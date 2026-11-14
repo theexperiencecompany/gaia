@@ -9,7 +9,7 @@ import {
   Mail01Icon,
   UserCircle02Icon,
 } from "@icons";
-import Image from "next/image";
+import Image, { type ImageProps } from "next/image";
 import { useState } from "react";
 import {
   chipVariants,
@@ -187,6 +187,8 @@ interface CreatorAvatarProps {
   showTooltip?: boolean;
   /** Render the creator's name beside the avatar (verified when it's ours) */
   showName?: boolean;
+  /** Eager for an avatar that opens in the first viewport. */
+  loading?: ImageProps["loading"];
 }
 
 export function CreatorAvatar({
@@ -194,6 +196,7 @@ export function CreatorAvatar({
   size = 27,
   showTooltip = true,
   showName = false,
+  loading,
 }: CreatorAvatarProps) {
   const avatarSrc = resolveCreatorAvatar(creator);
   const displayName = resolveCreatorName(creator);
@@ -209,6 +212,7 @@ export function CreatorAvatar({
               width={100}
               height={100}
               className="object-contain"
+              loading={loading}
             />
           ) : (
             <UserCircle02Icon className="h-4 w-4 text-zinc-400" />
@@ -229,6 +233,7 @@ export function CreatorAvatar({
             width={size}
             height={size}
             className="rounded-full h-7 w-7 object-contain"
+            loading={loading}
           />
         ) : (
           <UserCircle02Icon className="h-7 w-7 text-zinc-400" />

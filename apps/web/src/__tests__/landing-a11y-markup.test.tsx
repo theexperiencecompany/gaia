@@ -258,6 +258,8 @@ describe("landing markup accessibility", () => {
       <ComparisonCardGrid
         key="comparison"
         vsLabel={(name) => `GAIA vs ${name}`}
+        headingLevel="h2"
+        section={0}
         comparisons={[
           {
             slug: "notion",

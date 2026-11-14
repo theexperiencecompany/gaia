@@ -167,6 +167,7 @@ export default function OpenSourceAIClient() {
         <SectionHeader
           label="Source-Available"
           headline="A self-hosted AI assistant that does real work"
+          integrationsLoading="eager"
           description="Many open source AI assistant projects are chat interfaces for a model. GAIA is a full personal assistant you can run yourself: it manages email, calendar, tasks and workflows from databases on your own server."
           integrations={[
             { id: "github", label: "GitHub" },

@@ -24,6 +24,7 @@ export function BrandAssets() {
                 { format: ".png", path: "/brand/gaia_logo.png" },
               ]}
               imageAlt="The GAIA logo mark on a dark background"
+              loading="eager"
             />
           </div>
         </div>

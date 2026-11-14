@@ -105,6 +105,7 @@
 @source "../../../components/seo/RelatedAutomationsGrid.tsx";
 @source "../../../components/seo/RelatedComparisonsGrid.tsx";
 @source "../../../components/seo/SiteLink.tsx";
+@source "../../../components/seo/VersusLogos.tsx";
 @source "../../../components/shared/accordionVariants.ts";
 @source "../../../components/shared/buttonVariants.ts";
 @source "../../../components/shared/ChunkErrorRecovery.tsx";

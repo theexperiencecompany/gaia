@@ -45,9 +45,11 @@ export default function ToolsList({ tools }: ToolsListProps) {
           >
             <div className="flex min-h-8 items-center -space-x-1.5">
               {displayIcons.map((t, i) => {
+                // The collapsed card sits in the use case's header, in the first viewport.
                 const Icon = getToolCategoryIcon(t.category, {
                   width: 25,
                   height: 25,
+                  loading: "eager",
                 });
                 return (
                   <div

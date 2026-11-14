@@ -54,6 +54,7 @@ function NativeCreatorCard() {
           width={100}
           height={100}
           className="object-contain"
+          loading="eager"
         />
       </div>
       <div>
@@ -85,7 +86,7 @@ function CommunityCreatorCard({
             alt={creator.name || "Creator"}
             width={24}
             height={24}
-            loading="lazy"
+            loading="eager"
           />
           <Avatar.Fallback>{creator.name?.charAt(0) ?? "?"}</Avatar.Fallback>
         </Avatar>

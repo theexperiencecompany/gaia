@@ -7,6 +7,10 @@ import type { BlogPostMeta } from "@/lib/blog";
 import { BlogCard } from "./BlogCard";
 import { BlogFilters } from "./BlogFilters";
 
+// The first row: two featured cards side by side, or three of the rest when none is featured.
+const FEATURED_ROW = 2;
+const REST_ROW = 3;
+
 interface BlogListProps {
   blogs: BlogPostMeta[];
 }
@@ -28,12 +32,13 @@ export function BlogList({ blogs }: BlogListProps) {
         <div className="space-y-6">
           {featured.length > 0 && (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              {featured.map((blog) => (
+              {featured.map((blog, index) => (
                 <BlogCard
                   key={blog.slug}
                   blog={blog}
                   variant="large"
                   titleAs="h2"
+                  priority={index < FEATURED_ROW}
                 />
               ))}
             </div>
@@ -41,12 +46,13 @@ export function BlogList({ blogs }: BlogListProps) {
 
           {rest.length > 0 && (
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {rest.map((blog) => (
+              {rest.map((blog, index) => (
                 <BlogCard
                   key={blog.slug}
                   blog={blog}
                   variant="small"
                   titleAs="h2"
+                  priority={featured.length === 0 && index < REST_ROW}
                 />
               ))}
             </div>

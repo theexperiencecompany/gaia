@@ -1,5 +1,6 @@
 "use client";
 
+import type { ImageProps } from "next/image";
 import type { ReactNode } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
@@ -12,6 +13,7 @@ export interface StepCategoryIconsProps {
   className: string;
   spacing: string;
   showBackground: boolean;
+  loading?: ImageProps["loading"];
 }
 
 /** A workflow's chosen icon on its tinted tile. */
@@ -59,6 +61,7 @@ export function StepCategoryIcons({
   className,
   spacing,
   showBackground,
+  loading,
 }: StepCategoryIconsProps) {
   const { getIntegrationIconUrl } = useIntegrationLookup();
   // De-duplicate categories, preserving first-seen order.
@@ -74,6 +77,7 @@ export function StepCategoryIcons({
             width: iconSize,
             height: iconSize,
             showBackground: showBackground,
+            loading,
           },
           getIntegrationIconUrl(category),
         );

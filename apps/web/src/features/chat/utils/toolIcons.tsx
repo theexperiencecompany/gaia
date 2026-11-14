@@ -46,7 +46,7 @@ import {
   WorkflowCircle06Icon,
   ZapIcon,
 } from "@icons";
-import Image from "next/image";
+import Image, { type ImageProps } from "next/image";
 import {
   getIconPath,
   iconAliases,
@@ -63,6 +63,8 @@ interface IconProps {
   showBackground?: boolean;
   iconOnly?: boolean; // When true, renders just the icon without background wrapper
   pulsating?: boolean; // When true, animates the background with a pulsating effect
+  /** Eager for an image icon that opens in the first viewport. */
+  loading?: ImageProps["loading"];
 }
 
 interface IconConfig {
@@ -162,7 +164,8 @@ const AutoInvertIcon: React.FC<{
   width?: number;
   height?: number;
   className?: string;
-}> = ({ src, alt, size, width, height, className }) => {
+  loading?: ImageProps["loading"];
+}> = ({ src, alt, size, width, height, className, loading }) => {
   // const { shouldInvert } = useIconColorDetection(src);
   const displayWidth = width || size || 20;
   const displayHeight = height || size || 20;
@@ -182,6 +185,7 @@ const AutoInvertIcon: React.FC<{
         height={displayHeight}
         className={imgClassName}
         src={src}
+        loading={loading}
         unoptimized
       />
     );
@@ -197,6 +201,7 @@ const AutoInvertIcon: React.FC<{
       className={imgClassName}
       style={{ width: displayWidth, height: displayHeight }}
       src={src}
+      loading={loading}
     />
   );
 };
@@ -210,6 +215,7 @@ export const getToolCategoryIcon = (
     showBackground = true,
     iconOnly = false,
     pulsating = false,
+    loading,
     ...restProps
   } = iconProps;
 
@@ -258,6 +264,7 @@ export const getToolCategoryIcon = (
           height={defaultProps.height}
           className={restProps.className}
           src={iconUrl}
+          loading={loading}
         />
       );
       return showBackground ? (
@@ -282,6 +289,7 @@ export const getToolCategoryIcon = (
       height={defaultProps.height}
       className={restProps.className}
       src={config.icon as string}
+      loading={loading}
     />
   ) : (
     (() => {

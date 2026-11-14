@@ -1,5 +1,6 @@
 import { useInView } from "motion/react";
 import * as m from "motion/react-m";
+import type { ImageProps } from "next/image";
 import type { ReactNode } from "react";
 import { useRef } from "react";
 import IntegrationStrip from "./IntegrationStrip";
@@ -11,12 +12,15 @@ export default function SectionHeader({
   headline,
   description,
   integrations,
+  integrationsLoading,
   labelIcon,
 }: {
   label: string;
   headline: ReactNode;
   description: string;
   integrations?: { id: string; label: string }[];
+  /** Eager when the section starts in the first viewport. */
+  integrationsLoading?: ImageProps["loading"];
   labelIcon?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -56,7 +60,10 @@ export default function SectionHeader({
           transition={{ duration: 0.5, ease, delay: 0.24 }}
           className="mb-10"
         >
-          <IntegrationStrip integrations={integrations} />
+          <IntegrationStrip
+            integrations={integrations}
+            loading={integrationsLoading}
+          />
         </m.div>
       )}
       {!integrations && <div className="mb-10" />}

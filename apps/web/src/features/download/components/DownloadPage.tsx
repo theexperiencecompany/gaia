@@ -144,6 +144,8 @@ function DesktopDownloadButton({
         width={iconSize.width}
         height={iconSize.height}
         sizes="16px"
+        // The desktop buttons sit in the page's first section.
+        loading="eager"
         className={
           invertIcon
             ? "absolute inset-0 h-full w-full object-contain filter invert"

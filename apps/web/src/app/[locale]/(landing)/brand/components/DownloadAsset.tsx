@@ -1,7 +1,7 @@
 "use client";
 
 import { Download01Icon } from "@icons";
-import Image from "next/image";
+import Image, { type ImageProps } from "next/image";
 import { useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 
@@ -17,6 +17,8 @@ interface DownloadAssetProps {
   downloadOptions: DownloadOption[];
   imageAlt: string;
   backgroundColor?: "light" | "dark";
+  /** Eager for the asset that starts in the first viewport. */
+  loading?: ImageProps["loading"];
 }
 
 function downloadAsset(path: string, format: string) {
@@ -34,6 +36,7 @@ export function DownloadAsset({
   downloadOptions,
   imageAlt,
   backgroundColor = "light",
+  loading = "lazy",
 }: DownloadAssetProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -58,7 +61,7 @@ export function DownloadAsset({
             width={800}
             height={600}
             className="h-auto w-full object-contain p-10"
-            loading="lazy"
+            loading={loading}
           />
         </div>
 

@@ -9,6 +9,17 @@ const HUB_PAGE_SIZE = 40;
 /** The path segment that holds a hub's later pages: /automate/page/2. */
 const PAGE_SEGMENT = "page";
 
+/** Cards in a hub grid's first row at its widest (lg:grid-cols-3), which opens in the first viewport. */
+const HUB_FIRST_ROW = 3;
+
+/** Load a hub card's images eagerly in the first row of the page's first section, lazily after. */
+export function hubCardLoading(
+  section: number,
+  card: number,
+): "eager" | "lazy" {
+  return section === 0 && card < HUB_FIRST_ROW ? "eager" : "lazy";
+}
+
 export interface HubSection<T> {
   /** Fragment id the section navigation links to. */
   readonly id: string;

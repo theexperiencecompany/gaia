@@ -50,6 +50,7 @@ export default async function About() {
             height={logo.height}
             className="absolute inset-0 h-full w-full scale-110 object-contain grayscale"
             sizes="100vw"
+            priority
           />
         </div>
 

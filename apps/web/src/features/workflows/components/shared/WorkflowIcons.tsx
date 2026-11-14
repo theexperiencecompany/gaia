@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { ImageProps } from "next/image";
 import { useWorkflowIconElement } from "./WorkflowIconElements";
 import { CustomIconTile, StepCategoryIcons } from "./WorkflowIconParts";
 
@@ -18,6 +19,8 @@ interface WorkflowIconsProps {
   className?: string;
   spacing?: string;
   showBackground?: boolean;
+  /** Eager for icons that open in the first viewport. */
+  loading?: ImageProps["loading"];
 }
 
 /**
@@ -33,6 +36,7 @@ export default function WorkflowIcons({
   className = "",
   spacing = "-space-x-1.5 ",
   showBackground = true,
+  loading,
 }: WorkflowIconsProps) {
   const serverIcon = useWorkflowIconElement(icon, iconColor, iconSize);
   const categoryProps = {
@@ -42,6 +46,7 @@ export default function WorkflowIcons({
     className,
     spacing,
     showBackground,
+    loading,
   };
 
   // An explicit icon always wins over step-category icons: gating it on "no

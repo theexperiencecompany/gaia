@@ -197,6 +197,7 @@ function UseCaseMetaInfo({
                   width={100}
                   height={100}
                   className="object-contain"
+                  loading="eager"
                 />
               ) : (
                 <UserCircle02Icon className="h-6 w-6 text-zinc-300" />
@@ -217,6 +218,7 @@ function UseCaseMetaInfo({
             width: 28,
             height: 28,
             showBackground: false,
+            loading: "eager",
           })}
           label="Included with"
           value={integrationLabel}
@@ -238,6 +240,7 @@ function UseCaseMetaInfo({
                   width: 20,
                   height: 20,
                   showBackground: false,
+                  loading: "eager",
                 })
               : undefined
           }

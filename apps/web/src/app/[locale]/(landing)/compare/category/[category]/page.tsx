@@ -99,6 +99,8 @@ export default async function ComparisonCategoryPage({ params }: PageProps) {
       <ComparisonCardGrid
         comparisons={category.items}
         vsLabel={(name) => t("gaia_vs", { name })}
+        headingLevel="h2"
+        section={0}
       />
     </CategoryHubPage>
   );

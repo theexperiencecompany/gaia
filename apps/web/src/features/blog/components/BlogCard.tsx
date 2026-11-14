@@ -14,9 +14,16 @@ interface BlogCardProps {
   variant?: "large" | "small";
   /** h2 where the cards sit directly under the page h1, h3 under a section heading. */
   titleAs: "h2" | "h3";
+  /** For a card in the first row of the page: its image is likely the LCP. */
+  priority?: boolean;
 }
 
-export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
+export function BlogCard({
+  blog,
+  variant = "large",
+  titleAs,
+  priority = false,
+}: BlogCardProps) {
   const isLarge = variant === "large";
   const Title = titleAs;
   const image = blog.image ? getImageDimensions(blog.image) : null;
@@ -34,6 +41,7 @@ export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
               width={image.width}
               height={image.height}
               sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+              priority={priority}
               className="absolute inset-0 h-full w-full rounded-2xl object-cover"
             />
             <GrainOverlay className="rounded-2xl" />

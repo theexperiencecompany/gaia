@@ -1,4 +1,5 @@
 import { ComputerIcon, PackageOpenIcon } from "@icons";
+import type { ImageProps } from "next/image";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { DEVICE_INTEGRATION_CATEGORY } from "../constants/categories";
 
@@ -10,6 +11,8 @@ interface IntegrationIconProps {
   /** Integration category; drives the fallback glyph (a device server gets the
    * computer icon rather than the generic package). */
   category?: string;
+  /** Eager for a logo that opens in the first viewport. */
+  loading?: ImageProps["loading"];
 }
 
 /**
@@ -25,10 +28,11 @@ export function IntegrationIcon({
   size = 28,
   showBackground = false,
   category,
+  loading,
 }: IntegrationIconProps) {
   const icon = getToolCategoryIcon(
     integrationId,
-    { size, width: size, height: size, showBackground },
+    { size, width: size, height: size, showBackground, loading },
     iconUrl,
   );
   if (icon) return <>{icon}</>;

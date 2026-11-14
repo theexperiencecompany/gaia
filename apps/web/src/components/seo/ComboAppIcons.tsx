@@ -1,3 +1,4 @@
+import type { ImageProps } from "next/image";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { ComboApp } from "@/features/integrations/lib/comboApps";
 import { appIconUrl } from "@/features/integrations/lib/comboApps";
@@ -9,15 +10,18 @@ const TILT_DEGREES = 9;
 export function ComboAppIcon({
   app,
   size = ICON_SIZE,
+  loading,
 }: {
   readonly app: ComboApp;
   readonly size?: number;
+  readonly loading?: ImageProps["loading"];
 }) {
   return (
     <IntegrationIcon
       integrationId={app.slug}
       iconUrl={appIconUrl(app.slug)}
       size={size}
+      loading={loading}
     />
   );
 }
@@ -25,8 +29,10 @@ export function ComboAppIcon({
 /** A combo's two app logos, tilted apart and overlapping like the site's other icon stacks. */
 export function ComboAppIcons({
   apps,
+  loading,
 }: {
   readonly apps: readonly [ComboApp, ComboApp];
+  readonly loading?: ImageProps["loading"];
 }) {
   return (
     <span className="flex shrink-0 items-center -space-x-2">
@@ -39,7 +45,7 @@ export function ComboAppIcons({
             zIndex: apps.length - index,
           }}
         >
-          <ComboAppIcon app={app} />
+          <ComboAppIcon app={app} loading={loading} />
         </span>
       ))}
     </span>
