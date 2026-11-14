@@ -150,6 +150,9 @@ MAX_VOICE_ATTEMPTS: Final[int] = 2
 # The user's own todos due today or overdue the daily brief weighs as candidates.
 DUE_TODO_CANDIDATES_LIMIT: Final[int] = 20
 
+# Their oldest open todos with no due date, offered for GAIA to show or skip.
+UNDATED_TODO_CANDIDATES_LIMIT: Final[int] = 3
+
 # Events the weekly recap carries from the week ahead.
 WEEK_LIST_LIMIT: Final[int] = 5
 

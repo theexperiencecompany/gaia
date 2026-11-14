@@ -87,6 +87,10 @@ def _external_ref_filter(ref: ExternalRef) -> dict[str, object]:
     }
 
 
+def _own_open_query(user_id: str) -> dict[str, object]:
+    return {"user_id": user_id, "completed": False, "labels": {"$nin": [GAIA_TRACKED_LABEL]}}
+
+
 def _first_count(buckets: list[_FacetCount]) -> int:
     return buckets[0].count if buckets else 0
 
@@ -433,14 +437,22 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
 
         due_before keeps only the ones due strictly before it, so undated todos drop out.
         """
-        query: dict[str, object] = {
-            "user_id": user_id,
-            "completed": False,
-            "labels": {"$nin": [GAIA_TRACKED_LABEL]},
-        }
+        query = _own_open_query(user_id)
         if due_before is not None:
             query["due_date"] = {"$lt": due_before}
         return await self._find(query, sort=[("updated_at", -1)], limit=limit)
+
+    async def list_undated_user_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
+        """Return the user's own open todos with no due date, oldest first."""
+        return await self._find(
+            {**_own_open_query(user_id), "due_date": None},
+            sort=[("created_at", 1)],
+            limit=limit,
+        )
+
+    async def count_open_user_todos(self, user_id: str) -> int:
+        """Count every open todo of the user's own, however long the list."""
+        return await self._count(_own_open_query(user_id))
 
     async def find_tracked_by_short_id(self, user_id: str, *, short_id: str) -> list[TodoDocument]:
         """Find a user's tracked todos whose ObjectId ends with short_id.
