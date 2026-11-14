@@ -202,10 +202,14 @@ def _typed_figures(text: str, values: SlotValues) -> list[str]:
         | values.quoted
         | _counted(values)
     )
+    words = [word.strip(_WORD_EDGES) for word in text.split()]
+    # A held figure in the plural ("1:1s" of a "1:1") is the same figure.
     return [
-        word.strip(_WORD_EDGES)
-        for word in text.split()
-        if any(ch.isdigit() for ch in word) and word.strip(_WORD_EDGES) not in held
+        word
+        for word in words
+        if any(ch.isdigit() for ch in word)
+        and word not in held
+        and word.removesuffix("s") not in held
     ]
 
 
