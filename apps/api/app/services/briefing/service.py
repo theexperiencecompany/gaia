@@ -91,6 +91,7 @@ from app.services.briefing.context import UserClock
 from app.services.briefing.edition_email import HostedEditionImage, host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.held import held_items, held_text
 from app.services.briefing.link_tokens import LINK_TOKEN_RE, link_token, link_token_problems
 from app.services.briefing.message import (
     brief_message,
@@ -397,12 +398,6 @@ def _work_items(docs: list[TodoDocument], kind: BriefingItemKind) -> list[Briefi
     return list(items.values())
 
 
-def _held_text(doc: PendingBriefItemDocument) -> str:
-    """One line for a held result: where it came from and its report's first line."""
-    first_line = next((line.strip() for line in doc.text.splitlines() if line.strip()), "")
-    return f"{doc.source_title}: {first_line}"
-
-
 def _same_text_key(text: str) -> str:
     return " ".join(text.split()).casefold()  # pragma: no mutate — spaced joins stay injective
 
@@ -433,7 +428,7 @@ def _work_sections(work: context.TrackedWork, held: list[PendingBriefItemDocumen
     held_ids: list[str] = []
     duplicate_ids: list[str] = []
     for doc in held:
-        text = _held_text(doc)
+        text = held_text(doc)
         if _same_text_key(text) in seen:
             duplicate_ids.append(doc.id)
             continue
@@ -924,7 +919,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     open_count, open_titles = await context.user_open_todo_summary(user_id)
     calendar = await context.gather_calendar(user_id, clock, days=1)
     completed = await context.gather_completed_since(user_id, since)
-    held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
+    held = await held_items(user_id)
     facts = _build_facts(
         work,
         held,

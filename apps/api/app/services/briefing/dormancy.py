@@ -9,10 +9,10 @@ call, so a goalless account costs a few Mongo reads a day.
 Reactivation is pull-based, checked at run start: any activity the user made on
 any surface since dormancy began (users.last_active_at, the one activity record)
 wakes the loop on its next run. Only the daily run mutates dormancy state; the
-weekly digest reads it. This ladder is about having nothing to report, not about
-the user being away; an absent user's briefing workflow is paused by the
-user-dormancy sweep instead. A new account's first week never climbs the ladder:
-its briefs help the user get started instead.
+weekly digest reads it. This ladder is about having nothing to report; a user who
+stops acknowledging briefs is the winback's to back off (briefing.context), never
+the workflow-dormancy sweep's, which leaves the briefs alone. A new account's first
+week never climbs the ladder: its briefs help the user get started instead.
 """
 
 from dataclasses import dataclass

@@ -39,7 +39,7 @@ from app.agents.prompts.comms_prompts import (
     PLATFORM_DELIVERY_NOTE,
     SILENCE_NOTE,
 )
-from app.constants.briefing import BriefItemSource
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefItemSource
 from app.constants.chat import CONVERSATION_MAX_MESSAGES
 from app.constants.executor import (
     EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE,
@@ -53,6 +53,7 @@ from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource, MessageKind, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
@@ -2767,6 +2768,7 @@ class _Delivered:
     completed: AsyncMock
     failed: AsyncMock
     held: AsyncMock
+    daily_brief: AsyncMock
 
 
 @dataclass(frozen=True)
@@ -2777,6 +2779,7 @@ class _Seams:
     source: ConversationSource | None
     follow_ups: list[str] | None = None
     platform_id: str | None = None
+    daily_brief_live: bool = True
 
 
 async def _deliver_run(
@@ -2828,6 +2831,12 @@ async def _deliver_run(
             ) as completed,
             patch.object(pending_brief_items_repository, "create", new_callable=AsyncMock) as held,
             patch.object(
+                workflow_repository,
+                "find_system_workflow",
+                new_callable=AsyncMock,
+                return_value=MagicMock(activated=True) if seams.daily_brief_live else None,
+            ) as daily_brief,
+            patch.object(
                 rd, "send_workflow_failure_notification", new_callable=AsyncMock
             ) as failed,
         ):
@@ -2849,6 +2858,7 @@ async def _deliver_run(
         completed=completed,
         failed=failed,
         held=held,
+        daily_brief=daily_brief,
     )
 
 
@@ -3016,6 +3026,20 @@ class TestAWorkflowResult:
             "Morning digest",
         )
         assert (item.conversation_id, item.text) == ("conv-1", "Digest ready.")
+        assert delivered.event["workflow_delivery"] == "brief"
+
+    async def test_a_brief_workflow_with_no_daily_brief_to_carry_it_is_pushed_now(self) -> None:
+        """A weekly-only user's brief-delivery results were held for a daily that never ran."""
+        run = replace(_run(workflow=True), workflow_delivery=WorkflowDelivery.BRIEF)
+
+        delivered = await _deliver_run(
+            run, _Seams(comms_text="Digest ready.", source=None, daily_brief_live=False)
+        )
+
+        delivered.held.assert_not_awaited()
+        delivered.daily_brief.assert_awaited_once_with(USER_ID, DAILY_BRIEFING_WORKFLOW_KEY)
+        assert delivered.to_platforms.await_args.kwargs["notification_text"] == "Digest ready."
+        delivered.completed.assert_awaited_once()
         assert delivered.event["workflow_delivery"] == "brief"
 
     @pytest.mark.parametrize("delivery", list(WorkflowDelivery))
