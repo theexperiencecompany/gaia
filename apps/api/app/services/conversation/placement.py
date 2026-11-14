@@ -30,7 +30,11 @@ def segments(handed: Sequence[LoggedEntry], slots: Sequence[int]) -> tuple[Segme
     placed: list[Segment] = []
     rest = tuple(handed)
     for slot in slots:
-        below = tuple(logged for logged in rest if logged.seq < slot)
+        below = tuple(
+            entry
+            for entry in rest
+            if entry.seq < slot  # pragma: no mutate — seqs are unique: no input sits at a slot
+        )
         if not below:
             raise PlacementError(f"the segment opened at seq {slot} answers no input below it")
         placed.append(Segment(covers=below, slot=slot))
