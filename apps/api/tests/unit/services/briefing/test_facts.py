@@ -88,6 +88,20 @@ class TestTheFactLines:
             "(Fri Nov 13) | detail: needs sign-off | [[fact:1.count]] (3) requests, one item",
         ]
 
+    def test_the_users_own_todo_has_no_deliverable_and_reads_as_a_plain_line(self) -> None:
+        """Replay of 2026-11-14: placing an own todo raised KeyError on its todo id."""
+        item = BriefingItem(
+            text="Sort the garage", kind="you", action=BriefAction.ATTEND, todo_id="own-1"
+        )
+        candidate = BriefCandidate(
+            source="gaia", app="GAIA", state="you", title="Sort the garage", todo_id="own-1"
+        )
+
+        facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
+
+        assert "- fact 1 | Waiting on you: Sort the garage\n" in f"{facts.block}\n"
+        assert facts.deliverables == {}
+
 
 class TestWhatProseMayQuote:
     def test_the_figures_in_every_items_own_words_may_be_quoted(self) -> None:

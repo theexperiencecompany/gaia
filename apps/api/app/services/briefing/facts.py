@@ -138,6 +138,7 @@ class FactSources:
     todos_note says what the user's own todo list holds; None when the brief did not read it.
     """
 
+    #: GAIA's tracked work by todo id; the user's own todos have no deliverable here.
     artifacts: dict[str, ArtifactFact]
     open_todos: int
     calendar: list[BriefingEvent]
@@ -168,7 +169,7 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     for sec, picked in zip(chosen.sections, chosen.picked, strict=True):
         fact_lines.append(f"[{sec.title}]")
         for it, (fact_id, candidate) in zip(sec.items, picked, strict=True):
-            art = sources.artifacts[it.todo_id] if it.todo_id is not None else None
+            art = sources.artifacts.get(it.todo_id) if it.todo_id is not None else None
             # An empty deliverable has nothing to open, so nothing to link.
             if art is not None and art.chars and it.todo_id is not None:
                 deliverables[fact_id] = it.todo_id
