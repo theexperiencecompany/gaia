@@ -2,7 +2,7 @@
 #
 # Every rule runs at squirrel's own defaults, so the lane scores the site the way a
 # plain `squirrel audit` does. Only what does not score is set here, plus one
-# category off by decision. Each finding (page, check and item) is held to
+# category off by decision and keyword-stuffing's stop list carried past English. Each finding (page, check and item) is held to
 # scripts/ci/baselines/squirrel-build.txt (the PR gate) or squirrel-live.txt (the
 # full crawl). The squirrel bugs it cannot express (CJK lengths and word counts,
 # wiki-link text, cron syntax read as markdown) are dropped in
@@ -25,7 +25,43 @@ enable = ["*"]
 # Agent Experience (ax/*) is off by the founder's decision: not a standard this
 # site is held to. perf/ttfb stays on; smoke-web.sh turns it off only for a local
 # build, where response time measures the machine serving the crawl.
-disable = ["ax/*"]
+#
+# url/slug-convention judges each page type's path depth against its majority,
+# and English pages carry no locale prefix: the full crawl of 2026-11-14 passed
+# its case, separator, trailing-slash and date checks at 100% and flagged only
+# depth, 675 of 4,052 FAQ pages for /alternative-to/airtable (2 segments) beside
+# /fr/alternative-to/airtable (3), and every hub (/automate, /de/compare) beside
+# the category pages under it. Matching it means prefixing /en or flattening
+# the hubs, both URL moves; url/lowercase, url/hyphens and url/trailing-slash
+# still hold the other conventions on every page.
+disable = ["ax/*", "url/slug-convention"]
+
+# keyword-stuffing skips only English function words ("the", "and", "with", ...),
+# so on the es, fr, de and pt-br pages their own articles, prepositions and
+# pronouns read as stuffing: /fr/automate/google-calendar-teams flagged "les" at
+# 6.5%, and und, les, des, que and para were 1,300 of its 3,049 findings. This
+# extends squirrel's stop list to the site's other Latin-script languages; every
+# content word stays checked.
+[rule_options."content/keyword-stuffing"]
+whitelist = [
+  # es
+  "los", "las", "del", "con", "para", "que", "una", "unos", "unas", "por", "como",
+  "sus", "esta", "este", "estos", "estas", "pero", "sin", "sobre", "entre", "cada",
+  "todo", "todos", "tus", "hay", "cuando", "donde", "desde", "hasta",
+  # fr
+  "les", "des", "une", "pour", "dans", "est", "avec", "qui", "sur", "par", "vous",
+  "votre", "vos", "aux", "pas", "ses", "son", "sont", "ces", "cette", "mais", "tout",
+  "tous", "plus", "elle", "ils", "leur", "leurs", "nous", "notre", "sans", "chaque",
+  # de, past "des" (fr)
+  "und", "die", "der", "das", "den", "dem", "mit", "sie", "ist", "ein",
+  "eine", "einen", "einem", "einer", "auf", "aus", "bei", "von", "zum", "zur",
+  "nicht", "auch", "oder", "wenn", "sich", "ihre", "ihr", "ihren", "ihrem",
+  "wird", "werden", "kann", "nach", "wie", "alle", "jede", "jeden", "durch", "mehr",
+  "sind", "dass", "noch", "nur",
+  # pt-br, past the words it shares with es, fr and de
+  "com", "uma", "dos", "seu", "sua", "seus", "suas", "nos", "nas", "pelo", "pela",
+  "isso", "esse", "essa", "tudo",
+]
 
 # Off for the PR gate, whose proxy reaches no other host; the full crawl of the
 # live site turns them on (--external-links), so a link that went dead alerts.

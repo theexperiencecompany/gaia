@@ -17,10 +17,13 @@ import { ResolverFactory } from "oxc-resolver";
 
 const WEB = path.resolve(import.meta.dirname, "..");
 const SRC = path.join(WEB, "src");
+// @shared/* (tsconfig paths): its components and config carry class strings too (tool icon colours).
+const SHARED_TS = path.resolve(WEB, "../../libs/shared/ts/src");
+const SOURCE_ROOTS = [SRC, SHARED_TS];
 const APP = path.join(SRC, "app");
 const STYLES = path.join(APP, "styles");
 const OUT = path.join(STYLES, "generated");
-export const AREAS = ["marketing", "content", "app"];
+export const AREAS = ["marketing", "content", "directory", "app"];
 const ROUTE_FILES = ["layout", "template", "loading", "error", "not-found"];
 const ROUTE_FILE = /^(?:page|layout|template|loading|error|not-found|default|route)\.tsx?$/;
 const CODE = /\.(?:tsx?|jsx?|mjs)$/;
@@ -161,7 +164,7 @@ function reach(entries) {
       }
       if (isBuiltin(specifier) || /\.(?:css|svg|png|jpe?g|webp|gif|json|mdx?|txt|woff2?)$/.test(specifier)) continue;
       const resolved = resolveFrom(file, specifier);
-      if (resolved.startsWith(SRC) && CODE.test(resolved)) stack.push(resolved);
+      if (SOURCE_ROOTS.some((root) => resolved.startsWith(root + path.sep)) && CODE.test(resolved)) stack.push(resolved);
     }
   }
   return { files, heroui };

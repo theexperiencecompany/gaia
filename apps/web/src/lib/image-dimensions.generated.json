@@ -431,7 +431,7 @@
     "width": 334,
     "height": 104
   },
-  "/images/readme/self-host-installer.webp": {
+  "/images/readme/self-host-installer.jpg": {
     "width": 2400,
     "height": 1350
   },
@@ -446,10 +446,6 @@
   "/images/screenshots/desktop_dock.webp": {
     "width": 1280,
     "height": 720
-  },
-  "/images/screenshots/phone_dock.png": {
-    "width": 1920,
-    "height": 1080
   },
   "/images/screenshots/phone_dock.webp": {
     "width": 1920,
@@ -471,17 +467,9 @@
     "width": 1536,
     "height": 1024
   },
-  "/images/wallpapers/blueprint.png": {
-    "width": 1536,
-    "height": 1024
-  },
   "/images/wallpapers/blueprint.webp": {
     "width": 1536,
     "height": 1024
-  },
-  "/images/wallpapers/creation_of_adam.png": {
-    "width": 1672,
-    "height": 941
   },
   "/images/wallpapers/creation_of_adam.webp": {
     "width": 1672,
@@ -494,10 +482,6 @@
   "/images/wallpapers/earth_satellite.png": {
     "width": 1536,
     "height": 1024
-  },
-  "/images/wallpapers/ethereal_alpine_valley.png": {
-    "width": 1672,
-    "height": 941
   },
   "/images/wallpapers/ethereal_alpine_valley.webp": {
     "width": 1672,
@@ -531,15 +515,7 @@
     "width": 1672,
     "height": 941
   },
-  "/images/wallpapers/swiss_evening.png": {
-    "width": 1536,
-    "height": 1024
-  },
   "/images/wallpapers/swiss_evening.webp": {
-    "width": 1536,
-    "height": 1024
-  },
-  "/images/wallpapers/swiss_morning.png": {
     "width": 1536,
     "height": 1024
   },
@@ -547,15 +523,7 @@
     "width": 1536,
     "height": 1024
   },
-  "/images/wallpapers/swiss_night.png": {
-    "width": 1536,
-    "height": 1024
-  },
   "/images/wallpapers/swiss_night.webp": {
-    "width": 1536,
-    "height": 1024
-  },
-  "/images/wallpapers/swiss.png": {
     "width": 1536,
     "height": 1024
   },
