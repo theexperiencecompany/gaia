@@ -7,7 +7,6 @@ payload shape, and several webhook-processing seams — declared once here so
 neither file re-declares them.
 """
 
-from collections.abc import Iterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -16,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from bson import ObjectId
 import pytest
 
-from app.config.settings import settings
 from app.models.payment_models import SubscriptionDocument
 from app.models.user_models import UserDocument
 from app.services.payments.payment_webhook_service import PaymentWebhookService
@@ -325,10 +323,3 @@ def mock_subscription_plan_cache_drop():
         "app.services.payments.subscription_events.invalidate_plan_cache", new_callable=AsyncMock
     ) as mock_fn:
         yield mock_fn
-
-
-@pytest.fixture
-def referrals_off() -> Iterator[None]:
-    """Switch the referral program off through its flag's env default, which PostHog falls back to."""
-    with patch.object(settings, "ENABLE_REFERRALS", False):
-        yield

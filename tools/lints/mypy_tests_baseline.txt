@@ -161,7 +161,6 @@ apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_instructions.py	misc
 apps/api/tests/unit/app/test_main_smoke.py	arg-type
 apps/api/tests/unit/app/test_main_smoke.py	attr-defined
-apps/api/tests/unit/app/test_worker_smoke.py	attr-defined
 apps/api/tests/unit/browser_host/test_cdp_mux.py	attr-defined
 apps/api/tests/unit/browser_host/test_memory.py	attr-defined
 apps/api/tests/unit/browser_host/test_metrics.py	attr-defined
@@ -237,7 +236,6 @@ apps/api/tests/unit/middleware/test_request_timeout.py	arg-type
 apps/api/tests/unit/middleware/test_unhandled_exception_middleware.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	call-arg
-apps/api/tests/unit/models/test_agent_config.py	typeddict-item
 apps/api/tests/unit/models/test_auth_models.py	call-arg
 apps/api/tests/unit/models/test_integration_request_ssrf.py	call-arg
 apps/api/tests/unit/models/test_payment_models.py	arg-type
@@ -364,7 +362,6 @@ apps/api/tests/unit/services/test_marketplace_service.py	arg-type
 apps/api/tests/unit/services/test_marketplace_service.py	call-arg
 apps/api/tests/unit/services/test_mcp_tool_result.py	arg-type
 apps/api/tests/unit/services/test_mcp_tool_result.py	index
-apps/api/tests/unit/services/test_nurture_service.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
 apps/api/tests/unit/services/test_platform_message_service.py	attr-defined

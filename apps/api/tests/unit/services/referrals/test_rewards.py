@@ -6,7 +6,7 @@ branch decides and records: who converts, where a month lands, and what is told.
 """
 
 from collections.abc import AsyncIterator, Iterator
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import re
@@ -15,10 +15,10 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from dodopayments import NotFoundError
 import httpx
+from pymongo.errors import PyMongoError
 import pytest
 import time_machine
 
-from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.constants.referrals import (
     REWARD_APPLIED_BODY,
     REWARD_APPLIED_TITLE,
@@ -30,12 +30,15 @@ from app.constants.referrals import (
     REWARD_LOCK_UNAVAILABLE,
     REWARD_LOCK_WAIT_S,
     ReferralCopyVariant,
+    ReferralNudge,
 )
 from app.models.notification.notification_models import (
-    ChannelConfig,
+    ChannelDeliveryStatus,
     NotificationContent,
+    NotificationRecord,
     NotificationRequest,
     NotificationSourceEnum,
+    NotificationStatus,
     NotificationType,
 )
 from app.models.payment_models import SubscriptionDocument
@@ -48,6 +51,7 @@ from app.models.referral_models import (
 )
 from app.models.user_models import UserDocument
 from app.models.webhook_models import DodoPaymentData, DodoSubscriptionData
+from app.services.email import ReferralRewardEmail
 from app.services.payments.payment_service import payment_service
 from app.services.payments.subscription_events import SubscriptionEvent, SubscriptionEventKind
 from app.services.referrals.rewards import (
@@ -72,7 +76,10 @@ PAID_AT = datetime(2026, 10, 14, 11, 0, tzinfo=UTC)
 NEXT_BILL = datetime(2026, 11, 14, 9, 30, tzinfo=UTC)
 ONE_MONTH_LATER = datetime(2026, 12, 14, 9, 30, tzinfo=UTC)
 REFERRER = UserDocument(
-    id="64a0000000000000000000a1", first_name="Aryan", email="aryan@example.com"
+    id="64a0000000000000000000a1",
+    first_name="Aryan",
+    name="Aryan Randeriya",
+    email="aryan@example.com",
 )
 FRIEND = UserDocument(id="64a0000000000000000000f1", first_name="Priya", email="priya@example.com")
 SUB_ID = "sub_referrer"
@@ -142,6 +149,8 @@ class Seams:
     capture: MagicMock
     notify: AsyncMock
     apply_event: AsyncMock
+    email: AsyncMock
+    announced: AsyncMock
     log: MagicMock
     audit_log: MagicMock
     queue: AsyncMock
@@ -189,48 +198,65 @@ def seams() -> Iterator[Seams]:
     )
     lock = MagicMock()
     lock.return_value.hold.side_effect = lambda: _lease(held=True)
-    with (
-        time_machine.travel(NOW, tick=False),
-        patch(f"{REWARDS}.user_repository.get", AsyncMock(side_effect=users.get)),
-        patch(f"{REWARDS}.user_repository.get_by_email", AsyncMock(return_value=None)) as by_email,
-        patch(
-            f"{REWARDS}.subscription_repository.list_for_user", AsyncMock(return_value=[])
-        ) as list_for_user,
-        patch(
-            f"{REWARDS}.subscription_repository.get_active_for_user",
-            AsyncMock(return_value=_subscription()),
-        ) as get_active,
-        patch(
-            f"{REWARDS}.referral_repository.mark_paid", AsyncMock(return_value=_referral())
-        ) as mark_paid,
-        patch(f"{REWARDS}.referral_repository.get", AsyncMock(return_value=None)) as get_referral,
-        patch(f"{REWARDS}.referral_repository.update", AsyncMock()) as update,
-        patch(
-            f"{REWARDS}.referral_repository.list_owed", AsyncMock(return_value=[_referral()])
-        ) as owed,
-        patch(
-            f"{REWARDS}.referral_repository.pin_reward_target",
-            AsyncMock(
-                side_effect=lambda friend_id, *, subscription_id, target: _referral(
-                    friend_user_id=friend_id,
-                    reward_subscription_id=subscription_id,
-                    reward_target_billing_date=target,
-                )
-            ),
-        ) as pin_target,
-        patch.object(payment_service, "client", dodo, create=True),
-        patch(f"{REWARDS}.DistributedLock", lock),
-        patch(f"{REWARDS}.capture") as capture,
-        patch(
-            f"{REWARDS}.notification_service.create_notification",
-            AsyncMock(return_value=MagicMock()),
-        ) as notify,
-        patch(f"{BILLING_DATE}.apply_subscription_event", AsyncMock()) as apply_event,
-        patch(f"{BILLING_DATE}.log") as audit_log,
-        patch(f"{REWARDS}.log") as log,
-        patch(f"{REWARDS}.queue_settlement", AsyncMock(side_effect=_run_settle_job)) as queue,
-        patch(f"{REWARDS}.reclaim_reward", AsyncMock()) as reclaim,
-    ):
+    with ExitStack() as stack:
+        stack.enter_context(time_machine.travel(NOW, tick=False))
+        stack.enter_context(
+            patch(f"{REWARDS}.user_repository.get", AsyncMock(side_effect=users.get))
+        )
+        by_email = stack.enter_context(
+            patch(f"{REWARDS}.user_repository.get_by_email", AsyncMock(return_value=None))
+        )
+        list_for_user = stack.enter_context(
+            patch(f"{REWARDS}.subscription_repository.list_for_user", AsyncMock(return_value=[]))
+        )
+        get_active = stack.enter_context(
+            patch(
+                f"{REWARDS}.subscription_repository.get_active_for_user",
+                AsyncMock(return_value=_subscription()),
+            )
+        )
+        mark_paid = stack.enter_context(
+            patch(f"{REWARDS}.referral_repository.mark_paid", AsyncMock(return_value=_referral()))
+        )
+        get_referral = stack.enter_context(
+            patch(f"{REWARDS}.referral_repository.get", AsyncMock(return_value=None))
+        )
+        update = stack.enter_context(patch(f"{REWARDS}.referral_repository.update", AsyncMock()))
+        owed = stack.enter_context(
+            patch(f"{REWARDS}.referral_repository.list_owed", AsyncMock(return_value=[_referral()]))
+        )
+        pin_target = stack.enter_context(
+            patch(
+                f"{REWARDS}.referral_repository.pin_reward_target",
+                AsyncMock(
+                    side_effect=lambda friend_id, *, subscription_id, target: _referral(
+                        friend_user_id=friend_id,
+                        reward_subscription_id=subscription_id,
+                        reward_target_billing_date=target,
+                    )
+                ),
+            )
+        )
+        stack.enter_context(patch.object(payment_service, "client", dodo, create=True))
+        stack.enter_context(patch(f"{REWARDS}.DistributedLock", lock))
+        capture = stack.enter_context(patch(f"{REWARDS}.capture"))
+        notify = stack.enter_context(
+            patch(
+                f"{REWARDS}.notification_service.create_notification",
+                AsyncMock(return_value=MagicMock()),
+            )
+        )
+        apply_event = stack.enter_context(
+            patch(f"{BILLING_DATE}.apply_subscription_event", AsyncMock())
+        )
+        audit_log = stack.enter_context(patch(f"{BILLING_DATE}.log"))
+        email = stack.enter_context(patch(f"{REWARDS}.send_referral_reward_email", AsyncMock()))
+        announced = stack.enter_context(patch(f"{REWARDS}.record_announcement", AsyncMock()))
+        log = stack.enter_context(patch(f"{REWARDS}.log"))
+        queue = stack.enter_context(
+            patch(f"{REWARDS}.queue_settlement", AsyncMock(side_effect=_run_settle_job))
+        )
+        reclaim = stack.enter_context(patch(f"{REWARDS}.reclaim_reward", AsyncMock()))
         yield Seams(
             by_email,
             list_for_user,
@@ -245,6 +271,8 @@ def seams() -> Iterator[Seams]:
             capture,
             notify,
             apply_event,
+            email,
+            announced,
             log,
             audit_log,
             queue,
@@ -258,7 +286,6 @@ def _expected_notification(title_friend: str, body: str, reward: str) -> dict[st
         source=NotificationSourceEnum.REFERRAL_REWARD,
         type=NotificationType.SUCCESS,
         priority=2,
-        channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
         content=NotificationContent(
             title=REWARD_APPLIED_TITLE.format(friend=title_friend), body=body
         ),
@@ -705,6 +732,144 @@ class TestDatesAreUtc:
             await record_friend_payment(_payment())
 
         assert seams.notified().content.body == REWARD_APPLIED_BODY.format(date="Nov 14")
+
+
+def _record(*channels: tuple[str, NotificationStatus, bool]) -> NotificationRecord:
+    return NotificationRecord(
+        id="n-1",
+        user_id=REFERRER.id,
+        created_at=NOW,
+        original_request=NotificationRequest(
+            user_id=REFERRER.id,
+            source=NotificationSourceEnum.REFERRAL_REWARD,
+            content=NotificationContent(title="t", body="b"),
+        ),
+        channels=[
+            ChannelDeliveryStatus(channel_type=channel, status=status, skipped=skipped)
+            for channel, status, skipped in channels
+        ],
+    )
+
+
+class TestTheNewsReachesEveryChannel:
+    async def test_the_referrer_is_emailed_and_the_email_starts_the_week(
+        self, seams: Seams
+    ) -> None:
+        await record_friend_payment(_payment())
+
+        seams.email.assert_awaited_once_with(
+            ReferralRewardEmail(
+                to=REFERRER.email,
+                user_id=REFERRER.id,
+                first_name="Aryan",
+                friend_name="Priya",
+                reward_line=REWARD_APPLIED_BODY.format(date="Dec 14"),
+            )
+        )
+        seams.announced.assert_awaited_once_with(REFERRER.id, ReferralNudge.REWARD_EMAIL)
+
+    @pytest.mark.parametrize(
+        "referrer",
+        [
+            REFERRER.model_copy(update={"email": None}),
+            REFERRER.model_copy(update={"notification_channel_prefs": {"email": False}}),
+        ],
+        ids=["no-address", "email-off"],
+    )
+    async def test_a_referrer_without_email_gets_none(
+        self, seams: Seams, referrer: UserDocument
+    ) -> None:
+        with patch(
+            f"{REWARDS}.user_repository.get",
+            AsyncMock(side_effect={REFERRER.id: referrer, FRIEND.id: FRIEND}.get),
+        ):
+            await record_friend_payment(_payment())
+
+        seams.email.assert_not_awaited()
+        seams.announced.assert_not_awaited()
+
+    async def test_a_deleted_referrer_gets_no_email(self, seams: Seams) -> None:
+        with patch(
+            f"{REWARDS}.user_repository.get", AsyncMock(side_effect={FRIEND.id: FRIEND}.get)
+        ):
+            await record_friend_payment(_payment())
+
+        seams.email.assert_not_awaited()
+
+    async def test_a_refused_email_is_logged_and_never_fails_the_payment(
+        self, seams: Seams
+    ) -> None:
+        seams.email.side_effect = ConnectionError("provider down")
+
+        await record_friend_payment(_payment())
+
+        seams.log.error.assert_called_once_with(
+            "Referral reward email failed",
+            user_id=REFERRER.id,
+            error="provider down",
+            error_type="ConnectionError",
+        )
+        seams.announced.assert_not_awaited()
+
+    async def test_a_failed_announcement_stamp_neither_fails_the_payment_nor_skips_the_email(
+        self, seams: Seams
+    ) -> None:
+        seams.notify.return_value = _record(("telegram", NotificationStatus.DELIVERED, False))
+        seams.announced.side_effect = PyMongoError("mongo down")
+
+        await record_friend_payment(_payment())
+
+        seams.email.assert_awaited_once()
+        assert seams.announced.await_args_list == [
+            call(REFERRER.id, ReferralNudge.REWARD_DM),
+            call(REFERRER.id, ReferralNudge.REWARD_EMAIL),
+        ]
+        seams.log.error.assert_any_call(
+            "Referral reward announcement was not recorded",
+            user_id=REFERRER.id,
+            nudge=ReferralNudge.REWARD_DM.value,
+            error="mongo down",
+            error_type="PyMongoError",
+        )
+
+    async def test_a_note_delivered_on_a_chat_platform_starts_the_week(self, seams: Seams) -> None:
+        seams.notify.return_value = _record(
+            ("inapp", NotificationStatus.DELIVERED, False),
+            ("telegram", NotificationStatus.DELIVERED, False),
+        )
+
+        await record_friend_payment(_payment())
+
+        assert seams.announced.await_args_list == [
+            call(REFERRER.id, ReferralNudge.REWARD_DM),
+            call(REFERRER.id, ReferralNudge.REWARD_EMAIL),
+        ]
+
+    @pytest.mark.parametrize(
+        "channels",
+        [
+            [("inapp", NotificationStatus.DELIVERED, False)],
+            [("telegram", NotificationStatus.FAILED, False)],
+            [("telegram", NotificationStatus.DELIVERED, True)],
+        ],
+        ids=["app-only", "chat-failed", "chat-skipped"],
+    )
+    async def test_a_note_that_never_reached_chat_is_not_a_dm(
+        self, seams: Seams, channels: list[tuple[str, NotificationStatus, bool]]
+    ) -> None:
+        seams.notify.return_value = _record(*channels)
+
+        await record_friend_payment(_payment())
+
+        assert call(REFERRER.id, ReferralNudge.REWARD_DM) not in seams.announced.await_args_list
+
+    async def test_an_uncreated_note_still_sends_the_email(self, seams: Seams) -> None:
+        seams.notify.return_value = None
+
+        await record_friend_payment(_payment())
+
+        seams.email.assert_awaited_once()
+        seams.announced.assert_awaited_once_with(REFERRER.id, ReferralNudge.REWARD_EMAIL)
 
 
 class TestSettleOrder:

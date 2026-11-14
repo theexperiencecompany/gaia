@@ -104,6 +104,8 @@ export type ServerEventName =
   | "referral:gift_mint_failed"
   | "referral:invite_sent"
   | "referral:landing_resolved"
+  | "referral:nudge_dismissed"
+  | "referral:nudge_sent"
   | "referral:reward_granted"
   | "referral:reward_revoked"
   | "referral:signup_attributed"
@@ -1218,6 +1220,19 @@ export interface EventProperties {
     "landing_variant"?: string;
     "cookie_set": boolean;
   };
+  "referral:nudge_dismissed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "nudge": string;
+    "paused": boolean;
+  };
+  "referral:nudge_sent": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "nudge": string;
+  };
   "referral:reward_granted": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1236,7 +1251,7 @@ export interface EventProperties {
     "reclaimed": boolean;
   };
   "referral:share_clicked": {
-    "surface": "page" | "sidebar" | "post_payment";
+    "surface": "page" | "sidebar" | "post_payment" | "chat_card";
     "channel": "native" | "whatsapp" | "sms" | "x" | "linkedin" | "email" | "copy" | "qr";
     "copy_variant": "gift" | "earn" | "time_back";
   };

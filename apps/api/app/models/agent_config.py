@@ -18,6 +18,7 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, ConfigDict
 from typing_extensions import TypedDict
 
+from app.constants.chat import SourceCategory
 from app.constants.llm import LaneConfig, OpenRouterModelKwargs, OpenRouterReasoning
 from app.models.presence_models import PresenceSnapshot
 from shared.py.analytics.catalog.attribution import Actor
@@ -215,6 +216,11 @@ def agent_configurable(config: AgentRunConfig | None) -> AgentConfigurable:
     keep today's ``KeyError`` when it is absent.
     """
     return cast(AgentConfigurable, (config or {}).get(CONFIGURABLE_KEY) or {})
+
+
+def runs_on_bot(configurable: AgentConfigurable) -> bool:
+    """Whether the run answers a messaging-platform chat (WhatsApp, Telegram, iMessage...), not a GAIA app."""
+    return SourceCategory.from_source(configurable.get("conversation_source")) is SourceCategory.BOT
 
 
 class AgentConfigurableView(BaseModel):

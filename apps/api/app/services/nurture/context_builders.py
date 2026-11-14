@@ -10,6 +10,9 @@ from collections.abc import Awaitable, Callable, Mapping
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.user_models import UserDocument
 from app.services.oauth.oauth_service import check_multiple_integrations_status
+from app.services.payments.payment_service import payment_service
+from app.services.referrals.invites import friend_price_line, price_lines
+from app.services.referrals.offer import build_offer
 
 
 async def google_connection_status(user: UserDocument) -> dict[str, str | bool]:
@@ -27,6 +30,14 @@ async def google_connection_status(user: UserDocument) -> dict[str, str | bool]:
     return context
 
 
+async def referral_gift_prices(user: UserDocument) -> dict[str, str | bool]:  # noqa: ARG001 -- uniform CONTEXT_BUILDERS signature; the gift is the same for everyone
+    """Price the friend's gift for the share email, from the live Pro catalogue."""
+    offer = build_offer(await payment_service.get_pro_plans())
+    _, regular = price_lines(offer)
+    return {"price_line": friend_price_line(offer), "regular_price_line": regular}
+
+
 CONTEXT_BUILDERS: Mapping[str, Callable[[UserDocument], Awaitable[dict[str, str | bool]]]] = {
     "google_connection_status": google_connection_status,
+    "referral_gift_prices": referral_gift_prices,
 }

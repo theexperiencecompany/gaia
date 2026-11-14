@@ -11,6 +11,7 @@ from typing import Final, Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.referrals import SEND_REFERRAL_INVITE_TOOL
 
 # The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
 # default mode is a HILPreferences field default, so it lives with the model).
@@ -168,6 +169,10 @@ HIL_BG_RESULTS_TTL_SECONDS = 7200
 # insurance only; the dispatched run deletes the flag when it finalizes.
 HIL_RESUME_ACTIVE_KEY_PREFIX = "hil:resume_active:"
 HIL_RESUME_ACTIVE_TTL_SECONDS = 1800
+
+# Gated tools that only act in a GAIA app: on a chat platform they hand back a
+# message for the user to forward instead, so there is nothing to approve.
+BOT_INERT_TOOLS: frozenset[str] = frozenset({SEND_REFERRAL_INVITE_TOOL})
 
 # Orchestration/plumbing tools that must never be gated (they don't touch the
 # outside world; their inner calls are gated in the child graph). Ticket ops

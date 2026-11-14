@@ -64,6 +64,7 @@ from app.workers.tasks.inbox_desk_tasks import (
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 from app.workers.tasks.referral_tasks import (
+    send_referral_week_one_dms_task,
     settle_referral_rewards_task,
     sweep_unsettled_referral_rewards,
 )
@@ -77,6 +78,9 @@ from app.workers.tasks.tracked_todo_tasks import (
 )
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
 from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
+
+# ARQ launches this process as app.worker.WorkerSettings.
+__all__ = ["WorkerSettings"]
 
 # Rich tracebacks for anything that escapes to the top of this process, the same
 # way main.py sets them for the API process. Process policy, so it lives in the
@@ -123,6 +127,7 @@ _safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)
 _maintenance_sweep_tracked_todos = arq_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = arq_task(rescan_pending_scheduled_tasks)
 _run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
+_send_referral_week_one_dms = arq_task(send_referral_week_one_dms_task)
 _promote_usage_badges = arq_task(promote_usage_badges)
 _sweep_dormant_user_workflows = arq_task(sweep_dormant_user_workflows)
 _sweep_abandoned_imessage_registrations = arq_task(sweep_abandoned_imessage_registrations)
@@ -175,6 +180,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _cleanup_expired_reminders,
     _check_inactive_users,
     _run_nurture_sequence_task,
+    _send_referral_week_one_dms,
     _process_workflow_generation_task,
     _execute_workflow_by_id,
     _regenerate_workflow_steps,
@@ -237,6 +243,12 @@ WorkerSettings.cron_jobs = [
     cron(
         _run_nurture_sequence_task,
         minute=10,
+        second=0,
+    ),
+    # Hourly for the same reason: each user is DMed at 10am their own time.
+    cron(
+        cast(WorkerCoroutine, _send_referral_week_one_dms),
+        minute=50,
         second=0,
     ),
     cron(

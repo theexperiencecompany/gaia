@@ -35,6 +35,7 @@ from app.services.providers.provider_credentials_service import (
     ProviderConfig,
     resolve as resolve_resend_config,
 )
+from app.services.referrals.nudges import send_pitch
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
 from app.utils.timezone import as_utc, is_within_local_daytime
@@ -97,6 +98,11 @@ async def _send_step(user: UserDocument, step: NurtureStep) -> None:
     )
 
 
+async def _deliver_step(user: UserDocument, step: NurtureStep) -> bool:
+    await _send_step(user, step)
+    return True
+
+
 def _step_pending(
     step: NurtureStep, days_since_signup: int, completed: set[str], onboarded: bool
 ) -> bool:
@@ -153,7 +159,11 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
     if step is None:
         return False
 
-    await _send_step(user, step)
+    if step.nudge is None:
+        await _send_step(user, step)
+    elif not await send_pitch(user.id, step.nudge, lambda: _deliver_step(user, step)):
+        await _record_step(user.id, step.key, now, status=NurtureStepStatus.SKIPPED)
+        return False
     await _record_step(user.id, step.key, now, status=NurtureStepStatus.SENT)
     capture(UserId(user.id), NurtureEmailSent(step=step.key, day_offset=step.day_offset))
     log.set(user={"id": user.id}, nurture={"step": step.key})

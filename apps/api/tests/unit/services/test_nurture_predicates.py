@@ -14,6 +14,7 @@ from app.services.nurture.predicates import (
     google_suite_connected,
     has_workflow,
     linked_platform,
+    never_used_chat,
     onboarding_completed,
     used_chat,
     uses_todos,
@@ -50,6 +51,18 @@ class TestUsedChat:
     async def test_false_without_conversations(self, mock_count) -> None:
         mock_count.return_value = 0
         assert await used_chat(_user()) is False
+
+
+class TestNeverUsedChat:
+    @patch(
+        "app.services.nurture.predicates.conversation_repository.count_non_onboarding",
+        new_callable=AsyncMock,
+    )
+    async def test_skips_only_a_user_with_no_real_conversation(self, mock_count) -> None:
+        mock_count.return_value = 0
+        assert await never_used_chat(_user()) is True
+        mock_count.return_value = 3
+        assert await never_used_chat(_user()) is False
 
 
 class TestGoogleSuiteConnected:
@@ -119,6 +132,7 @@ def test_skip_predicates_map_exposes_every_predicate() -> None:
         "uses_todos",
         "has_workflow",
         "linked_platform",
+        "never_used_chat",
     }
     for predicate in SKIP_PREDICATES.values():
         assert callable(predicate)

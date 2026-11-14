@@ -1,0 +1,16 @@
+{% extends "_base_email.html" %}
+{#-
+  The share-GAIA step, for a subscriber who has been using GAIA for a couple of weeks.
+  Context: price_line, regular_price_line (from the live Pro catalogue).
+-#}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+A couple of weeks in, and I hope GAIA is making your days a little
+lighter.<br /><br />
+Here's something fun: you can give GAIA to your friends as a gift. They get
+it for just {{ price_line }}, then {{ regular_price_line }}.<br /><br />
+And you get a free month every time one of them joins. There's no
+limit, so the more friends, the more free months.<br /><br />
+Best,<br />
+Aryan
+{% endblock %}
