@@ -1384,6 +1384,7 @@ async def test_a_bot_runs_pending_handoff_card_carries_a_link_minted_for_its_use
         (HandoffStatus.COMPLETED.value, None),
     ]
     assert handoffs[0]["session_id"] == session_id
+    assert handoffs[0]["handoff_id"] == handoff_id
 
 
 async def test_a_web_runs_handoff_mints_no_link(monkeypatch: pytest.MonkeyPatch) -> None:
