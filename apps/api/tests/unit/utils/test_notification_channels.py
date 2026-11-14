@@ -18,6 +18,7 @@ from app.constants.notifications import (
     CHANNEL_TYPE_WHATSAPP,
 )
 from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import Notice
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -31,6 +32,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.utils.errors import ConversationNotFoundError
 from app.utils.notification.channels.conversation import (
     ConversationChannelAdapter,
     ConversationPayload,
@@ -232,6 +234,9 @@ class TestExternalTransformBrutalEdges:
         assert content.text == "**T**\nB"
 
 
+_CONVERSATION = "app.utils.notification.channels.conversation"
+
+
 class TestConversationChannel:
     def test_it_handles_only_a_notification_that_names_a_conversation(self) -> None:
         adapter = ConversationChannelAdapter()
@@ -259,32 +264,47 @@ class TestConversationChannel:
         with pytest.raises(ValueError, match="conversation_id"):
             await ConversationChannelAdapter().transform(_make_request())
 
-    @pytest.mark.parametrize(
-        ("delivered", "status", "error"),
-        [
-            (True, NotificationStatus.DELIVERED, None),
-            (False, NotificationStatus.FAILED, "conversation: not delivered"),
-        ],
-    )
-    async def test_deliver_logs_the_notice_and_reports_whether_it_landed(
-        self, delivered: bool, status: NotificationStatus, error: str | None
-    ) -> None:
+    async def test_deliver_logs_the_notice_once_under_the_notification_id(self) -> None:
         payload = ConversationPayload("c1", "notif-1", "hi", "origin")
-        with patch(
-            "app.utils.notification.channels.conversation.deliver_message_to_conversation",
-            new=AsyncMock(return_value=delivered),
-        ) as deliver:
+        ports = object()
+        with (
+            patch(f"{_CONVERSATION}.runtime_ports", return_value=ports),
+            patch(f"{_CONVERSATION}.accept", new=AsyncMock()) as accept,
+        ):
             result = await ConversationChannelAdapter().deliver(payload, "user-1")
 
-        deliver.assert_awaited_once_with(
-            conversation_id="c1",
-            user_id="user-1",
-            notification_id="notif-1",
-            text="hi",
-            origin="origin",
+        accept.assert_awaited_once_with(
+            ports, "c1", "user-1", Notice(id="notice:notif-1", text="hi", origin="origin")
         )
         assert (result.channel_type, result.status, result.error_message) == (
             CHANNEL_TYPE_CONVERSATION,
-            status,
+            NotificationStatus.DELIVERED,
+            None,
+        )
+
+    @pytest.mark.parametrize(
+        ("text", "refusal", "error"),
+        [
+            ("  ", None, "conversation: nothing to say"),
+            (
+                "hi",
+                ConversationNotFoundError(message="conversation c1 not found"),
+                "conversation: deleted",
+            ),
+        ],
+    )
+    async def test_deliver_skips_an_empty_notice_and_a_deleted_conversation(
+        self, text: str, refusal: Exception | None, error: str
+    ) -> None:
+        payload = ConversationPayload("c1", "notif-1", text, "origin")
+        with (
+            patch(f"{_CONVERSATION}.runtime_ports"),
+            patch(f"{_CONVERSATION}.accept", new=AsyncMock(side_effect=refusal)),
+        ):
+            result = await ConversationChannelAdapter().deliver(payload, "user-1")
+
+        assert (result.status, result.skipped, result.error_message) == (
+            NotificationStatus.FAILED,
+            True,
             error,
         )
