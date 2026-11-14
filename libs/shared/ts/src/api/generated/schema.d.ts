@@ -6162,7 +6162,7 @@ export interface components {
             approval_id: string;
             /** Args Preview */
             args_preview: {
-                [key: string]: unknown;
+                [key: string]: components["schemas"]["JsonValue"];
             };
             /** Asked At */
             asked_at?: string | null;

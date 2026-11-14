@@ -21,8 +21,6 @@ import httpx
 from standardwebhooks.webhooks import Webhook
 
 from app.constants.analytics import POSTHOG_SESSION_HEADER
-from app.models.conversation_frame_models import EntryFrame
-from app.models.conversation_log_models import ReplySettled
 from app.models.conversation_send_models import (
     ConversationEvent,
     MessageAccepted,
@@ -49,6 +47,7 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
+from scripts.evals.core.live_chat import TurnReader
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import OnboardingStep
 from shared.py.conversation_wire import ReplyOutcome
@@ -282,18 +281,19 @@ def chat(stack: Stack) -> None:
 
 def await_reply(lines: Iterable[str], message_id: str, *, deadline: float) -> None:
     """Read the events stream until the reply answering message_id settles answered."""
+    reader = TurnReader("", message_id, wait_for_work=False)
     for line in lines:
         if time.monotonic() > deadline:
             raise JourneyError(f"no reply to {message_id} settled in time")
         if not line.startswith(SSE_DATA_PREFIX):
             continue
-        frame = ConversationEvent.model_validate_json(line.removeprefix(SSE_DATA_PREFIX)).frame
-        if not isinstance(frame, EntryFrame) or not isinstance(frame.entry, ReplySettled):
+        reader.feed(ConversationEvent.model_validate_json(line.removeprefix(SSE_DATA_PREFIX)).frame)
+        if not reader.answered:
             continue
-        if message_id not in frame.entry.answers:
-            continue
-        if frame.entry.outcome is not ReplyOutcome.ANSWERED:
-            raise JourneyError(f"the reply to {message_id} settled {frame.entry.outcome.value}")
+        outcome = reader.turn().outcome
+        if outcome is not ReplyOutcome.ANSWERED:
+            settled = outcome.value if outcome else "without a reply"
+            raise JourneyError(f"the reply to {message_id} settled {settled}")
         return
     raise JourneyError(f"the events stream ended before the reply to {message_id} settled")
 

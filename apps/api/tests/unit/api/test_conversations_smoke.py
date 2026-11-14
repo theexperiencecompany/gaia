@@ -137,8 +137,8 @@ class TestGetConversation:
     """GET /api/v1/conversations/{id}."""
 
     async def test_get_existing(self, client: AsyncClient):
-        # A stray top-level field a legacy row carries must still reach the
-        # client: the document is extra="allow" and the response model keeps it.
+        # A stray top-level field a legacy row carries never reaches the client:
+        # the document ignores what it does not declare.
         mock_resp = LoadedConversation.model_validate(
             {
                 "conversation_id": "conv_123",
@@ -169,7 +169,7 @@ class TestGetConversation:
         body = resp.json()
         assert body["conversation_id"] == "conv_123"
         assert (body["items"], body["has_older"], body["state"]["head"]) == ([], False, 0)
-        assert body["metadata"] == {"legacy": True}
+        assert "metadata" not in body
         # The Mongo _id is excluded from the response model — it must not
         # reach the client.
         assert "id" not in body
@@ -354,4 +354,4 @@ class TestPinnedMessages:
         results = resp.json()["results"]
         assert len(results) == 1
         assert results[0]["conversation_id"] == "conv_123"
-        assert results[0]["item"]["text"] == "pinned answer"
+        assert results[0]["item"]["bubbles"] == ["pinned answer"]

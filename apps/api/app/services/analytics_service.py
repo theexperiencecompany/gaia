@@ -74,12 +74,7 @@ class AIFeature(StrEnum):
     VISION = "vision", ("image_to_text", "tool_media_vision", "vision_fallback")
     HIL = (
         "hil",
-        (
-            "hil_conversational_resolve",
-            "hil_conversational_resolve_batch",
-            "hil_intent_judge",
-            "hil_tool_classification",
-        ),
+        ("hil_tool_classification",),
     )
     ONBOARDING = (
         "onboarding",

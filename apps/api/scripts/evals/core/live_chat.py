@@ -5,7 +5,8 @@ client-minted message id (202, with the message's seq), then GET .../events afte
 seq until the message is answered. Every eval harness goes through this module, so the
 rules that decide what a run measures (which reply text is graded, which tool cards
 count, when a delegated answer has landed) live in one place: TurnReader, a pure fold
-over the stream's frames that is tested without an API.
+over the stream's screen frames (the items the server computed and its patches to
+them, parsed by the shared wire models) that is tested without an API.
 
 The differences between harnesses are TurnOptions fields rather than forks.
 """
@@ -21,24 +22,17 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel
 
-from app.models.conversation_frame_models import (
-    EntryFrame,
-    EntryUpdatedFrame,
-    FollowUpActionsEvent,
-    OutputFrame,
-    RetractFrame,
-    ToolDataEvent,
-    WorkDeltaFrame,
-)
-from app.models.conversation_log_models import (
-    ApprovalDecided,
-    ApprovalRequested,
-    Entry,
-    Reply,
-    ReplySettled,
-    UserMessage,
-    WorkFinished,
-    WorkStarted,
+from app.models.conversation_frame_models import RetractFrame, StateFrame
+from app.models.conversation_log_models import DisplayState
+from app.models.conversation_screen_models import (
+    ScreenFrame,
+    ScreenInsertFrame,
+    ScreenItem,
+    ScreenStreamFrame,
+    ScreenUpdateFrame,
+    UserItem,
+    WorkItem,
+    WorkStatus,
 )
 from app.models.conversation_send_models import ConversationEvent, MessageAccepted
 from shared.py.conversation_wire import (
@@ -49,6 +43,7 @@ from shared.py.conversation_wire import (
     FollowUpsDelta,
     ReplyDelta,
     ReplyDeltaFrame,
+    ReplyItem,
     ReplyOutcome,
     ToolDataEntry,
 )
@@ -147,14 +142,19 @@ def called_tools(tool_data: list[ToolDataEntry]) -> list[dict[str, object]]:
     return calls
 
 
-class TurnReader:
-    """Fold a conversation's frames into what one message caused.
+#: Work still under way: its write-up has not landed.
+_LIVE_WORK = frozenset({WorkStatus.RUNNING, WorkStatus.AWAITING_APPROVAL})
 
-    The message is answered once a ReplySettled lists it; it is settled once every piece
-    of work it started has finished and a reply has answered that finish (its write-up,
-    which also lists the message). done says when a follower stops reading: at the
-    answer, at the settle with wait_for_work, or at a pending approval with
-    stop_at_approval.
+
+class TurnReader:
+    """Fold a conversation's screen frames into what one message caused.
+
+    The turn is every item past the message's own. The message is answered once a reply
+    of the turn that narrates none of its work has settled, or once the conversation has
+    moved past it without thinking; it is settled once every piece of its work has
+    ended and a settled reply narrates each (its write-up). done says when a follower
+    stops reading: at the answer, at the settle with wait_for_work, or at a pending
+    approval with stop_at_approval.
     """
 
     def __init__(
@@ -171,57 +171,73 @@ class TurnReader:
         self._wait_for_work = wait_for_work
         self._stop_at_approval = stop_at_approval
         self._kinds: set[str] = set()
-        self._reply_order: list[str] = []
-        self._reply_text: dict[str, str] = {}
+        self._items: dict[str, ScreenItem] = {}
         self._attempt_reply: dict[str, str] = {}
         self._attempt_text: dict[str, list[str]] = {}
-        self._answering: list[str] = []
-        self._cards: dict[str, ToolDataEntry] = {}
-        self._tasks: set[str] = set()
-        self._live_tasks: set[str] = set()
-        self._unreported: set[str] = set()
-        self._answered = False
+        self._delta_cards: dict[str, ToolDataEntry] = {}
+        self._state: StateFrame | None = None
 
     @property
     def answered(self) -> bool:
-        return self._answered
+        if any(reply.outcome is not None for reply in self._own_replies()):
+            return True
+        own_seq = self._message_seq()
+        state = self._state
+        return (
+            own_seq is not None
+            and state is not None
+            and state.head > own_seq
+            and state.display is not DisplayState.THINKING
+        )
 
     @property
     def settled(self) -> bool:
-        return self._answered and not self._live_tasks and not self._unreported
+        work = self._work()
+        if not self.answered or any(item.status in _LIVE_WORK for item in work):
+            return False
+        narrated = {task for reply in self._written_up() for task in reply.narrates}
+        return all(item.task_id in narrated for item in work)
 
     @property
     def awaiting_approval(self) -> bool:
-        return self._turn.awaiting_approval
+        return self.turn().awaiting_approval
 
     @property
     def done(self) -> bool:
         if self._stop_at_approval and self.awaiting_approval:
             return True
-        return self.settled if self._wait_for_work else self._answered
+        return self.settled if self._wait_for_work else self.answered
 
-    def feed(self, frame: OutputFrame) -> None:
-        if self._collect_frame_kinds:
-            self._kinds.add(frame.kind.value)
+    def feed(self, frame: ScreenStreamFrame) -> None:
+        self._kind(frame.kind.value)
         match frame:
-            case EntryFrame() | EntryUpdatedFrame():
-                self._turn.last_seq = max(self._turn.last_seq, frame.seq)
-                self._entry(frame.entry)
+            case ScreenFrame(items=items):
+                for item in items:
+                    self._take(item)
+            case ScreenInsertFrame(item=item) | ScreenUpdateFrame(item=item):
+                self._take(item)
             case ReplyDeltaFrame():
                 self._kind(f"{frame.kind.value}:{frame.payload.type}")
+                if frame.reply_id is not None:
+                    self._attempt_reply[frame.attempt_id] = frame.reply_id
                 self._reply_delta(frame.attempt_id, frame.payload)
-            case WorkDeltaFrame():
-                self._kind(f"{frame.kind.value}:{frame.payload.type.value}")
-                if frame.task_id in self._live_tasks:
-                    self._payload(frame.payload)
             case RetractFrame():
                 self._attempt_text.pop(frame.attempt_id, None)
+            case StateFrame():
+                self._state = frame
             case _:
                 pass
 
     def _kind(self, kind: str) -> None:
         if self._collect_frame_kinds:
             self._kinds.add(kind)
+
+    def _take(self, item: ScreenItem) -> None:
+        self._kind(f"item:{item.kind.value}")
+        self._items[item.id] = item
+        self._turn.last_seq = max(self._turn.last_seq, item.seq)
+        if isinstance(item, WorkItem) and item in self._work():
+            self._work_approvals(item)
 
     def _reply_delta(self, attempt_id: str, payload: ReplyDelta) -> None:
         bubbles = self._attempt_text.setdefault(attempt_id, [])
@@ -234,119 +250,121 @@ class TurnReader:
                 self._attempt_text[attempt_id] = list(now)
             case CardsDelta(tool_data=cards):
                 for card in cards:
-                    self._card(card)
+                    self._delta_cards.setdefault(_card_key(card), card)
             case FollowUpsDelta(follow_up_actions=actions):
                 self._turn.follow_up_actions = list(actions)
 
-    def _payload(self, payload: object) -> None:
-        if isinstance(payload, ToolDataEvent):
-            self._card(payload.tool_data)
-        elif isinstance(payload, FollowUpActionsEvent):
-            self._turn.follow_up_actions = list(payload.follow_up_actions)
-
-    def _card(self, entry: ToolDataEntry) -> None:
-        self._cards.setdefault(json.dumps(entry, sort_keys=True, default=str), entry)
-        data = entry["data"]
-        if entry["tool_name"] == APPROVAL_CARD and isinstance(data, dict):
-            approval_id, outcome = data.get("approval_id"), data.get("outcome") or PENDING
-            decider = data.get("decider")
-            if isinstance(approval_id, str) and isinstance(outcome, str):
-                self._approval(approval_id, outcome, decider if isinstance(decider, str) else None)
+    def _work_approvals(self, item: WorkItem) -> None:
+        for asked in item.asking:
+            self._approval(asked.approval_id, PENDING)
+        for card in item.approvals:
+            data = card.data
+            outcome = PENDING if data.outcome is None else data.outcome.value
+            decider = None if data.decider is None else data.decider.value
+            self._approval(data.approval_id, outcome, decider)
 
     def _approval(self, approval_id: str, outcome: str, decider: str | None = None) -> None:
         seen = ApprovalSeen(approval_id=approval_id, outcome=outcome, decider=decider)
         if seen not in self._turn.approvals:
             self._turn.approvals.append(seen)
 
-    def _entry(self, entry: Entry) -> None:
-        self._kind(f"entry:{entry.kind.value}")
-        match entry:
-            case UserMessage(id=self._turn.message_id, reaction=reaction) if reaction is not None:
-                self._turn.reaction = reaction.emoji
-            case WorkStarted() | ApprovalRequested() | ApprovalDecided() | WorkFinished():
-                self._work_entry(entry)
-            case Reply():
-                self._reply(entry)
-            case ReplySettled():
-                self._settle(entry)
-            case _:
-                pass
+    def _message(self) -> UserItem | None:
+        item = self._items.get(self._turn.message_id)
+        return item if isinstance(item, UserItem) else None
 
-    def _work_entry(
-        self, entry: WorkStarted | ApprovalRequested | ApprovalDecided | WorkFinished
-    ) -> None:
-        match entry:
-            case WorkStarted() if (
-                self._turn.message_id in entry.answers or entry.joins in self._live_tasks
-            ):
-                self._turn.delegated = True
-                self._tasks.add(entry.task_id)
-                self._live_tasks.add(entry.task_id)
-            case ApprovalRequested() if entry.task_id in self._live_tasks:
-                self._approval(entry.approval_id, PENDING)
-            case ApprovalDecided() if any(
-                seen.approval_id == entry.approval_id for seen in self._turn.approvals
-            ):
-                self._approval(entry.approval_id, entry.outcome, entry.decider)
-            case WorkFinished() if entry.task_id in self._live_tasks:
-                self._live_tasks.discard(entry.task_id)
-                self._unreported.add(entry.id)
-                for card in entry.tool_data:
-                    self._card(card)
-            case _:
-                pass
+    def _message_seq(self) -> int | None:
+        message = self._message()
+        return None if message is None else message.seq
 
-    def _reply(self, entry: Reply) -> None:
-        if entry.reply_id not in self._reply_text:
-            self._reply_order.append(entry.reply_id)
-        self._attempt_reply[entry.attempt_id] = entry.reply_id
-        self._reply_text[entry.reply_id] = entry.text
-        for card in entry.tool_data:
-            self._card(card)
-        if entry.follow_up_actions:
-            self._turn.follow_up_actions = list(entry.follow_up_actions)
+    def _turn_items(self) -> list[ScreenItem]:
+        own_seq = self._message_seq()
+        if own_seq is None:
+            return []
+        return sorted((i for i in self._items.values() if i.seq > own_seq), key=lambda i: i.seq)
 
-    def _settle(self, entry: ReplySettled) -> None:
-        self._unreported.difference_update(entry.answers)
-        if self._turn.message_id not in entry.answers:
-            return
-        self._answering.append(entry.reply_id)
-        if not self._answered:
-            self._turn.outcome = entry.outcome
-            if entry.failure is not None:
-                self._turn.error = f"reply {entry.outcome.value}: {entry.failure.value}"
-        self._answered = True
+    def _work(self) -> list[WorkItem]:
+        return [item for item in self._turn_items() if isinstance(item, WorkItem)]
 
-    def _text(self, reply_id: str) -> str:
-        text = self._reply_text.get(reply_id, "")
-        if text.strip():
-            return text.strip()
+    def _replies(self) -> list[ReplyItem]:
+        return [item for item in self._turn_items() if isinstance(item, ReplyItem)]
+
+    def _tasks(self) -> set[str]:
+        return {item.task_id for item in self._work()}
+
+    def _own_replies(self) -> list[ReplyItem]:
+        tasks = self._tasks()
+        return [reply for reply in self._replies() if not tasks.intersection(reply.narrates)]
+
+    def _written_up(self) -> list[ReplyItem]:
+        tasks = self._tasks()
+        return [
+            reply
+            for reply in self._replies()
+            if reply.outcome is not None and tasks.intersection(reply.narrates)
+        ]
+
+    def _text(self, reply: ReplyItem) -> str:
+        text = NEW_MESSAGE_BREAKER.join(reply.bubbles).strip()
+        if text:
+            return text
         streamed = [
             NEW_MESSAGE_BREAKER.join(bubbles)
             for attempt, bubbles in self._attempt_text.items()
-            if self._attempt_reply.get(attempt) == reply_id
+            if self._attempt_reply.get(attempt) == reply.id
         ]
         return "".join(streamed).strip()
 
+    def _cards(self) -> list[ToolDataEntry]:
+        cards = dict(self._delta_cards)
+        for item in self._turn_items():
+            if isinstance(item, ReplyItem | WorkItem):
+                for card in item.tool_data:
+                    cards.setdefault(_card_key(card), card)
+        for card in cards.values():
+            data = card["data"]
+            if card["tool_name"] == APPROVAL_CARD and isinstance(data, dict):
+                approval_id, outcome = data.get("approval_id"), data.get("outcome") or PENDING
+                decider = data.get("decider")
+                if isinstance(approval_id, str) and isinstance(outcome, str):
+                    self._approval(
+                        approval_id, outcome, decider if isinstance(decider, str) else None
+                    )
+        return list(cards.values())
+
     def turn(self, *, include_nested_tool_names: bool = True) -> Turn:
         """The turn as read so far: reply is the message's own answer (or the sentinel), delivered its work's write-ups."""
-        answering = [reply_id for reply_id in self._reply_order if reply_id in set(self._answering)]
-        own = [self._text(reply_id) for reply_id in answering if reply_id not in self._tasks]
-        delivered = [self._text(reply_id) for reply_id in answering if reply_id in self._tasks]
-        tool_data = list(self._cards.values())
+        own = [reply for reply in self._own_replies() if reply.outcome is not None]
+        message = self._message()
+        reaction = None if message is None else message.message.reaction
+        first = own[0] if own else None
+        if first is not None and first.follow_up_actions:
+            self._turn.follow_up_actions = list(first.follow_up_actions)
+        tool_data = self._cards()
         return self._turn.model_copy(
             update={
-                "reply": "\n".join(text for text in own if text) or NO_TEXT_REPLY,
-                "delivered": [text for text in delivered if text],
+                "reply": "\n".join(text for r in own if (text := self._text(r))) or NO_TEXT_REPLY,
+                "delivered": [text for r in self._written_up() if (text := self._text(r))],
                 "tool_data": tool_data,
                 "tools": [
                     name
                     for entry in tool_data
                     for name in card_tool_names(entry, include_nested=include_nested_tool_names)
                 ],
+                "reaction": None if reaction is None else reaction.emoji,
+                "delegated": bool(self._work()),
+                "outcome": None if first is None else first.outcome,
+                "error": (
+                    None
+                    if first is None or first.failure is None or first.outcome is None
+                    else f"reply {first.outcome.value}: {first.failure.value}"
+                ),
                 "frame_kinds": sorted(self._kinds),
             }
         )
+
+
+def _card_key(card: ToolDataEntry) -> str:
+    return json.dumps(card, sort_keys=True, default=str)
 
 
 @dataclass(frozen=True)

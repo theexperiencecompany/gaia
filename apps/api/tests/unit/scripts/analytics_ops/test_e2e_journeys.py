@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -13,10 +12,10 @@ from scripts.analytics_ops.e2e_journeys import (
     await_reply,
 )
 
-from app.models.conversation_frame_models import EntryFrame
-from app.models.conversation_log_models import ReplySettled
+from app.models.conversation_screen_models import ScreenInsertFrame, UserItem
 from app.models.conversation_send_models import ConversationEvent
-from shared.py.conversation_wire import FailureReason, ReplyOutcome
+from shared.py.conversation_wire import FailureReason, ReplyItem, ReplyOutcome
+from tests.unit.evals.test_live_chat import reply, user
 
 WORKFLOW = "wf_1"
 EXECUTIONS_PATH = f"/api/v1/workflows/{WORKFLOW}/executions"
@@ -78,34 +77,40 @@ def test_a_workflow_executed_once_that_ran_twice_fails_the_journey() -> None:
         await_execution(_api(twice), WORKFLOW, timeout_s=5, poll_s=0)
 
 
-def _settled(answers: tuple[str, ...], outcome: ReplyOutcome = ReplyOutcome.ANSWERED) -> str:
-    entry = ReplySettled(
-        id="r1:settled",
-        reply_id="r1",
-        outcome=outcome,
-        answers=answers,
-        through=1,
-        quote_target=None,
-        failure=FailureReason.MODEL_ERROR if outcome is ReplyOutcome.FAILED else None,
-    )
-    frame = EntryFrame(seq=2, at=datetime(2026, 11, 13, tzinfo=UTC), entry=entry)
-    return f"data: {ConversationEvent(stream_id=None, frame=frame).model_dump_json()}"
+def _line(item: UserItem | ReplyItem) -> str:
+    frame = ScreenInsertFrame(item=item)
+    return f"data: {ConversationEvent(frame=frame).model_dump_json()}"
+
+
+def _reply(seq: int, outcome: ReplyOutcome = ReplyOutcome.ANSWERED) -> str:
+    failure = FailureReason.MODEL_ERROR if outcome is ReplyOutcome.FAILED else None
+    return _line(reply(seq, f"r{seq}", "done", outcome, failure=failure))
 
 
 def test_the_chat_journey_waits_for_the_reply_to_its_own_message() -> None:
-    lines = [": keepalive", _settled(("someone-else",)), _settled(("m1",))]
+    lines = [
+        ": keepalive",
+        _line(user(1, "someone-else")),
+        _reply(2),
+        _line(user(3, "m1")),
+        _reply(4),
+    ]
 
     await_reply(iter(lines), "m1", deadline=float("inf"))
 
 
 def test_a_reply_that_failed_fails_the_journey() -> None:
     with pytest.raises(JourneyError, match="failed"):
-        await_reply(iter([_settled(("m1",), ReplyOutcome.FAILED)]), "m1", deadline=float("inf"))
+        await_reply(
+            iter([_line(user(1, "m1")), _reply(2, ReplyOutcome.FAILED)]),
+            "m1",
+            deadline=float("inf"),
+        )
 
 
 def test_a_stream_that_ends_before_the_reply_fails_the_journey() -> None:
     with pytest.raises(JourneyError, match="ended"):
-        await_reply(iter([_settled(("someone-else",))]), "m1", deadline=float("inf"))
+        await_reply(iter([_line(user(1, "someone-else")), _reply(2)]), "m1", deadline=float("inf"))
 
 
 def test_a_reply_past_the_deadline_fails_the_journey() -> None:

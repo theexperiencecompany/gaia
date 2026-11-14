@@ -100,6 +100,8 @@ class TestOutboundEnvelopeRoundTrip:
             "text",
             "text_parts",
             "attachment",
+            "follow",
+            "notification_id",
             "enqueued_at",
         }
         assert payload["text"] == envelope.text
