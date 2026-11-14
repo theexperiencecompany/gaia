@@ -24,6 +24,7 @@ from app.constants.agents import (
     WORKFLOW_LOCK_CONTEXT_KEY,
 )
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
+from app.constants.graphs import GraphName
 from app.constants.llm import DEV_MODEL_OPTIONS
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -173,7 +174,7 @@ class TestCoreAgentLogic:
         patches = _common_patches()
         with (
             patches["construct"],
-            patches["get_graph"],
+            patches["get_graph"] as get_graph,
             patches["build_state"],
             patches["build_config"],
             patches["log"],
@@ -184,6 +185,8 @@ class TestCoreAgentLogic:
                 user=_make_user(),
             )
 
+        # The user's turn runs on the comms graph, whose thread is the conversation.
+        get_graph.assert_awaited_once_with(GraphName.COMMS)
         assert graph is FAKE_GRAPH
         assert state is FAKE_STATE
         assert config is FAKE_CONFIG

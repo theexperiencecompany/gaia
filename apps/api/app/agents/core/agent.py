@@ -34,6 +34,7 @@ from app.config.langfuse import trace_id_for_message
 from app.config.settings import settings
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY, WORKFLOW_LOCK_CONTEXT_KEY
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
+from app.constants.graphs import GraphName
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -190,7 +191,7 @@ async def _core_agent_logic(
                 trigger_context=trigger_context,
             ),
         ),
-        GraphManager.get_graph("comms_agent"),
+        GraphManager.get_graph(GraphName.COMMS),
     )
 
     initial_state = build_initial_state(
