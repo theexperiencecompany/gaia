@@ -1,6 +1,8 @@
 import axios, { type AxiosInstance } from "axios";
 import type {
   ActiveBotConversation,
+  BotDeliveryRecorded,
+  BotDeliveryReport,
   BotMessageAccepted,
   ConversationStopResponse,
   DeliveryFailureReport,
@@ -247,6 +249,26 @@ export class GaiaClient {
           headers: {
             "X-Bot-API-Key": this.apiKey,
             "X-Bot-Platform": platform,
+          },
+        },
+      );
+      return data;
+    });
+  }
+
+  /** Records how far the platform's follower delivered a conversation, the cursor a restart resumes from. */
+  async recordDelivered(
+    conversationId: string,
+    report: BotDeliveryReport,
+  ): Promise<BotDeliveryRecorded> {
+    return this.request(async () => {
+      const { data } = await this.client.put<BotDeliveryRecorded>(
+        `/api/v1/bot/conversations/${conversationId}/delivered`,
+        report,
+        {
+          headers: {
+            "X-Bot-API-Key": this.apiKey,
+            "X-Bot-Platform": report.platform,
           },
         },
       );

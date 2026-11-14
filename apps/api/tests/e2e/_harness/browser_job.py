@@ -354,7 +354,6 @@ class JobWorld:
         #: What reached any other turn's stream, by stream id.
         self.other_streams: dict[str, list[dict[str, Any]]] = {}
         self.bot_messages: list[str] = []
-        self.bot_photos: list[str] = []
         #: Each executor run woken to tell an ending landed in its inbox, by conversation.
         self.woken: list[str] = []
         #: What the job's logged work finished with: (task id, cards).
@@ -637,10 +636,6 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
         world.bot_messages.extend(blocks)
         return True
 
-    async def _outbound_photo(platform: Any, user_id: str, url: str, **kwargs: Any) -> bool:
-        world.bot_photos.append(url)
-        return True
-
     async def _wake(conversation_id: str, user: object) -> None:
         world.woken.append(conversation_id)
 
@@ -651,10 +646,9 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
 
     return [
         patch("app.agents.core.background.session_writer._collect", _collect),
-        patch("app.services.browser.bot_delivery.publish_outbound_message", _outbound_message),
-        patch("app.services.browser.bot_delivery.publish_outbound_photo", _outbound_photo),
+        patch("app.services.outbound_delivery.publish_outbound_message", _outbound_message),
         patch(
-            "app.services.browser.bot_delivery.create_live_view_link",
+            "app.services.browser.job_runner.create_live_view_link",
             AsyncMock(return_value=LIVE_VIEW_LINK),
         ),
         # A woken executor run is a graph run of its own; that it was woken is the telling.

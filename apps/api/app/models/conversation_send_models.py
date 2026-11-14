@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.constants.chat import ConversationSource
+from app.models.bot_models import BotDelivery, BotSessionDocument, PartialReply
 from app.models.conversation_screen_models import ScreenStreamFrame
 from app.models.message_models import SelectedCalendarEventData, SelectedWorkflowData
 from app.schemas.common import ResponseModel
@@ -64,10 +66,10 @@ class BotMessageAccepted(MessageAccepted):
 
 
 class ActiveBotConversation(ResponseModel):
-    """A bot session's conversation still answering; a restarted bot follows its events after after_seq.
+    """A bot session's conversation to follow: its events after after_seq, the bot's delivered-through cursor.
 
-    The log does not record what a platform delivered: after_seq is the newest settled reply's
-    seq, so the follower replays the reply in flight and everything after it.
+    partial_reply names the reply just past it that the bot had sent only its first bubbles of, so a
+    restarted follower sends the rest and repeats none.
     """
 
     conversation_id: str
@@ -75,6 +77,33 @@ class ActiveBotConversation(ResponseModel):
     channel_id: str | None
     is_dm: bool
     after_seq: int = Field(ge=0)
+    partial_reply: PartialReply | None = None
+
+    @classmethod
+    def of(cls, session: BotSessionDocument, delivery: BotDelivery) -> "ActiveBotConversation":
+        """Return the follow of session's conversation from delivery."""
+        return cls(
+            conversation_id=session.conversation_id,
+            platform_user_id=session.platform_user_id,
+            channel_id=session.channel_id,
+            is_dm=session.channel_id is None,
+            after_seq=delivery.delivered_seq,
+            partial_reply=delivery.partial_reply,
+        )
+
+
+class BotDeliveryReport(BaseModel):
+    """What a bot follower put on the platform: every item through delivered_seq, plus partial_reply."""
+
+    platform: ConversationSource
+    delivered_seq: int = Field(ge=0)
+    partial_reply: PartialReply | None = None
+
+
+class BotDeliveryRecorded(ResponseModel):
+    """Whether the report moved the cursor; False for one behind what is already recorded."""
+
+    recorded: bool
 
 
 class ConversationEvent(ResponseModel):

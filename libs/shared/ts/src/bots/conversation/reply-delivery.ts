@@ -5,7 +5,9 @@
  * The follower feeds it the reply's bubbles as they stream (live platforms) or
  * its saved bubbles at settle (the rest), and the machine decides
  * every send, edit, delete and pause. The first message the reply opens carries
- * the native quote.
+ * the native quote. A reply an earlier follow already sent the first bubbles of
+ * delivers only the rest, and each bubble that goes final is reported, so a
+ * restart resumes after it.
  */
 
 import { initialDeliveryState, stepDelivery } from "../utils/bubble-delivery";
@@ -36,6 +38,10 @@ export class ReplyDelivery {
     private readonly surface: ConversationSurface,
     /** The platform message the reply's first message answers natively. */
     private readonly replyTo: string | null,
+    /** How many of the reply's bubbles an earlier follow already delivered. */
+    private readonly skip: number,
+    /** Told how many of the reply's bubbles are final on the platform, each time that changes. */
+    private readonly onDelivered: (bubbles: number) => Promise<void>,
   ) {}
 
   /** The bubbles streamed into this reply so far. */
@@ -50,7 +56,7 @@ export class ReplyDelivery {
 
   bubbles(bubbles: readonly string[]): Promise<void> {
     this.fed = bubbles;
-    return this.apply({ kind: "bubbles", bubbles });
+    return this.apply({ kind: "bubbles", bubbles: bubbles.slice(this.skip) });
   }
 
   tick(): Promise<void> {
@@ -86,6 +92,9 @@ export class ReplyDelivery {
       case "delete":
         await this.deleteSlot(op.slot);
         return;
+      case "delivered":
+        await this.onDelivered(op.bubbles === 0 ? 0 : this.skip + op.bubbles);
+        return;
       default: {
         const unhandled: never = op;
         return unhandled;
@@ -94,7 +103,7 @@ export class ReplyDelivery {
   }
 
   private async post(slot: MessageSlot, text: string): Promise<void> {
-    const replyTo = this.opened ? null : this.replyTo;
+    const replyTo = this.opened || this.skip > 0 ? null : this.replyTo;
     this.messages.set(
       slot,
       await this.surface.send(this.config.render(text), replyTo),

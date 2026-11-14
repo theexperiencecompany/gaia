@@ -19,6 +19,7 @@ from app.agents.core.background.executor_channel import decide_drain
 from app.agents.tools.browser_chat_tools import browser_step_done, stop_browser_task
 from app.constants.agents import AgentTag
 from app.constants.browser import (
+    BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE,
     BROWSER_RUN_SESSION_LOST_SUMMARY,
     BROWSER_TAKEOVER_DONE_NOTE,
     BrowserSessionStatus,
@@ -163,8 +164,10 @@ async def test_every_step_card_reaches_the_jobs_stream_and_its_logged_work() -> 
     ] == ["session", "step", "step", "result"]
 
 
-async def test_a_bot_conversation_gets_one_photo_per_step_and_only_the_recap_line() -> None:
-    """Bots never see the SSE stream: a run the worker does not mirror to the platform is a run a Discord user watches in silence."""
+async def test_a_bot_conversations_run_reaches_its_bot_only_as_the_cards_its_follower_renders() -> (
+    None
+):
+    """A bot renders the run from the work item's cards, in order with its replies; a second queue to the platform raced them."""
     async with browser_job_world(STREAM, steps=TWO_STEPS) as world:
         async with executor_graph([RETRIEVE, START, "Started."]) as graph:
             await run_graph(
@@ -179,13 +182,13 @@ async def test_a_bot_conversation_gets_one_photo_per_step_and_only_the_recap_lin
             )
             await world.settle()
 
-    assert world.bot_photos == [
+    cards = world.cards()
+    assert [card["screenshot"] for card in cards if card["kind"] == "step"] == [
         SHOT_URL_TEMPLATE.format(index=1),
         SHOT_URL_TEMPLATE.format(index=2),
     ]
-    # Session start is silent, and the assistant voices the outcome once, so the
-    # progress channel closes with the recap link alone (else results arrive twice).
-    assert world.bot_messages == [f"📽 Here's a recap of the run: {REPLAY_URL}"]
+    assert [card["replay_url"] for card in cards if card["kind"] == "result"] == [REPLAY_URL]
+    assert world.bot_messages == []
 
 
 async def test_a_second_browser_task_in_one_turn_is_refused_by_name() -> None:
@@ -469,8 +472,15 @@ async def test_a_run_whose_engine_dies_mid_task_finishes_on_the_fallback_engine(
             await _drive(graph, world)
         history = world.record_browser_task.await_args.kwargs
 
-    sessions = [card["session_id"] for card in world.cards() if card["kind"] == "session"]
-    assert sessions == ["sess-1", "sess-2"]
+    sessions = [
+        (card["session_id"], card["detail"]) for card in world.cards() if card["kind"] == "session"
+    ]
+    # The move to the fallback engine is told on the new session's card.
+    assert sessions == [
+        ("sess-1", None),
+        ("sess-2", None),
+        ("sess-2", BROWSER_ENGINE_FALLBACK_WITHOUT_STATE_NOTE),
+    ]
     # One count across both engines: the fallback's first step follows the
     # primary's last, so no step card, recap frame or history row is overwritten.
     step_cards = [card for card in world.cards() if card["kind"] == "step"]
@@ -521,7 +531,7 @@ async def test_a_login_the_user_made_is_still_signed_in_after_the_run_moves_engi
         saves = world.save_storage_state.await_args_list
 
     sessions = [card["session_id"] for card in world.cards() if card["kind"] == "session"]
-    assert sessions == ["sess-1", "sess-2"]
+    assert sessions == ["sess-1", "sess-2", "sess-2"]
     # The fallback opened as the browser the user signed in on, not a fresh one.
     assert world.storage_reads == ["sess-1"]
     assert world.seeded_states == [None, LIVE_STORAGE_STATE]

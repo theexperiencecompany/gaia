@@ -120,16 +120,6 @@ TAKEOVER_KIND_CATEGORY: dict[TakeoverKind, SensitiveCategory] = {
 }
 
 
-# Shown on a CREDENTIALS handoff where BROWSER_PERSIST_LOGINS keeps logins: the
-# session is saved (Fernet-encrypted per user+site) and reused so the next task
-# skips the login. The Browser settings page can list/remove saved sites.
-BROWSER_CREDENTIALS_SAVED_NOTE = (
-    "Once you're signed in, I'll save this site's session, encrypted, so I can "
-    "skip the login next time. You can remove saved sites anytime in "
-    "your Browser settings."
-)
-
-
 class HandoffStatus(str, Enum):
     """State of a live-view handoff: pending, completed, cancelled, expired, or failed."""
 
@@ -181,7 +171,6 @@ BROWSER_HANDOFF_KEY_PREFIX = "browser:handoff:"
 # the text-channel equivalent of the card's buttons. Both converge on resolve_handoff.
 BROWSER_HANDOFF_REPLY_KEY_PREFIX = "browser:handoff:reply:"
 # The last line of a handoff a bot user is sent: only their word ends it.
-BROWSER_HANDOFF_REPLY_PROMPT = "Reply here when you're done, or tell me to stop."
 # A host session lives on a lease the run renews while its job is alive, paused
 # or not; one it stops renewing (its worker died) is disposed when the lease runs out.
 BROWSER_SESSION_LEASE_SECONDS = 90.0

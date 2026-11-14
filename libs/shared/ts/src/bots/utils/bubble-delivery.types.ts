@@ -8,7 +8,9 @@ export type DeliveryOp =
   | { kind: "edit"; slot: MessageSlot; text: string }
   | { kind: "send"; slot: MessageSlot; text: string }
   | { kind: "delete"; slot: MessageSlot }
-  | { kind: "pause" };
+  | { kind: "pause" }
+  /** The reply's first `bubbles` bubbles are final on screen, once the ops before this one ran. */
+  | { kind: "delivered"; bubbles: number };
 
 export type DeliveryEvent =
   /** The reply's bubbles as the server now has them: the last may still grow. */

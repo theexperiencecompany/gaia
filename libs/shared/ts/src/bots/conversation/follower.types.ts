@@ -1,5 +1,6 @@
 /** Types of the bot conversation follower: what an adapter gives it, and what it hands back. */
 
+import type { BotDeliveryReport, PartialReply } from "../../api/generated";
 import type { PlatformName } from "../types";
 import type { ReactionOutcome } from "../utils/reaction-outcome";
 
@@ -49,6 +50,10 @@ export interface FollowSurface extends ConversationSurface {
   sendFile: (file: ReplyFile) => Promise<void>;
   /** Sends a notice's rendered bubbles; where proactive messages are restricted they go as one. */
   sendNotice: (bubbles: string[]) => Promise<void>;
+  /** Sends the image at url (a browser step's screenshot) as a photo with its caption. */
+  sendPhoto: (url: string, caption: string) => Promise<void>;
+  /** Whether this chat is the user's own: a group is shown no browser progress. */
+  privateChat: boolean;
 }
 
 /** What a follower reports when it closes, for the follow's wide event. */
@@ -57,4 +62,16 @@ export interface FollowSummary {
   reactionsPlaced: number;
   noticesDelivered: number;
   filesDelivered: number;
+}
+
+/** How far a follower put its conversation on the platform: every item through delivered_seq, plus partial_reply. */
+export type DeliveryCursor = Required<Omit<BotDeliveryReport, "platform">>;
+
+/** Where a follow starts, and where it reports each step of what it delivers. */
+export interface FollowStart {
+  /** Items at or below it were delivered by an earlier follow. */
+  floor: number;
+  /** The reply just past the floor that an earlier follow sent only its first bubbles of. */
+  partialReply: PartialReply | null;
+  record: (cursor: DeliveryCursor) => Promise<void>;
 }
