@@ -160,6 +160,18 @@ async def test_find_one_asks_its_own_collection_with_the_filter_and_order() -> N
     collection.find_one.assert_awaited_once_with({"name": "x"}, sort=[("name", -1)])
 
 
+async def test_a_repository_that_skips_the_read_back_returns_the_insert_under_its_new_id() -> None:
+    collection = MagicMock()
+    collection.insert_one = AsyncMock(return_value=MagicMock(inserted_id="doc-1"))
+    collection.find_one = AsyncMock()
+    repo = _concrete(reads_back_inserts=False)()
+    with patch("app.db.repositories.base.get_async_collection", return_value=collection):
+        created = await repo.create(_Doc(name="x"))
+
+    assert (created.id, created.name) == ("doc-1", "x")
+    collection.find_one.assert_not_awaited()
+
+
 def test_a_sibling_collection_resolves_by_its_own_name_through_the_patched_binding() -> None:
     sibling = MagicMock()
     with patch(

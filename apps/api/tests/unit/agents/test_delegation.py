@@ -241,6 +241,26 @@ class TestABlockingRun:
         assert not await _thread_held()
         assert _events(h.writer) == ["subagent_start", "subagent_end"]
 
+    async def test_a_workflow_parents_blocking_run_returns_its_call_record(
+        self, redis: Any
+    ) -> None:
+        outcome = SubagentOutcome(
+            text="sent",
+            run_messages=(
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "GMAIL_SEND", "args": {"to": "a@b.c"}, "id": "t1"}],
+                ),
+                ToolMessage(content="ok", tool_call_id="t1"),
+            ),
+        )
+        parent: AgentConfigurable = {**LIVE, "workflow_id": "wf-1"}
+        with _blocking([outcome]):
+            result = await delegate(_delegation(parent), background=False)
+
+        assert result.startswith("sent\n\n")
+        assert 'GMAIL_SEND({"to":"a@b.c"})' in result
+
     async def test_a_failed_run_frees_its_thread_and_closes_its_row(self, redis: Any) -> None:
         with _blocking([RuntimeError("graph exploded")]) as h, pytest.raises(RuntimeError):
             await delegate(_delegation(), background=False)
@@ -390,6 +410,27 @@ class TestABackgroundRunOwnsItsStream:
         carried.assert_awaited_once_with(CONVERSATION, "u1", own, detached=True)
         opened.assert_awaited_once_with(own, conversation_id=CONVERSATION, user_id="u1")
         assert finished.await_args.args[:3] == (CONVERSATION, "u1", own)
+
+    async def test_a_run_with_no_user_opens_and_closes_its_work_under_one_owner(
+        self, redis: Any, client_edges: SimpleNamespace
+    ) -> None:
+        carried = AsyncMock(return_value=True)
+        finished = AsyncMock()
+        run = _delegation()
+        run.ctx.user_id = None
+        with (
+            patch(
+                f"{MODULE}.execute_subagent_stream",
+                new=AsyncMock(return_value=SubagentOutcome(text="done")),
+            ),
+            patch(f"{FOLDED}.record_work_carried", new=carried),
+            patch(f"{FOLDED}.open_detached_stream", new=AsyncMock()),
+            patch(f"{FOLDED}.record_work_finished", new=finished),
+        ):
+            await delegate(run, background=True)
+            await _drain()
+
+        assert carried.await_args.args[1] == finished.await_args.args[1] == ""
 
     async def test_its_approval_cards_and_image_ride_on_its_finished_work(
         self, redis: Any, client_edges: SimpleNamespace

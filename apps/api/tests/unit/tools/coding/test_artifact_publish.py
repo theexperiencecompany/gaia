@@ -13,7 +13,8 @@ from app.agents.tools.coding._artifacts import (
     publish_artifact,
     publish_artifact_write,
 )
-from app.agents.workspace.paths import MountRole
+from app.agents.tools.coding._context import sh_quote
+from app.agents.workspace.paths import MountRole, session_artifacts
 from app.services.artifact_events import ArtifactFileEvent
 
 WRITER = "app.agents.tools.coding._context.current_stream_writer"
@@ -86,5 +87,31 @@ async def test_bash_cards_every_file_find_lists_in_one_round_trip() -> None:
         await bash_tool._publish_artifacts(sandbox, "c1")
 
     sandbox.commands.run.assert_awaited_once()
+    (command,) = sandbox.commands.run.await_args.args
+    assert command.startswith(f"find {sh_quote(session_artifacts('c1'))} -type f ")
     # The trailing record is cut short (no mtime), so only the complete one is carded.
-    assert [_path(card) for card in written] == ["a.md"]
+    assert [card["artifact_data"] for card in written] == [
+        {
+            "event": "upsert",
+            "session_id": "c1",
+            "path": "a.md",
+            "size_bytes": 5,
+            "mtime": 1.5,
+            "content_type": "text/markdown",
+        }
+    ]
+
+
+async def test_bash_cards_every_complete_record_when_none_is_cut_short() -> None:
+    sandbox = SimpleNamespace(
+        commands=SimpleNamespace(
+            run=AsyncMock(
+                return_value=SimpleNamespace(stdout="a.md\x005\x001.5\x00b/c.txt\x0010\x002.5\x00")
+            )
+        )
+    )
+    written: list[dict[str, ArtifactFileEvent]] = []
+    with patch(WRITER, return_value=written.append):
+        await bash_tool._publish_artifacts(sandbox, "c1")
+
+    assert [_path(card) for card in written] == ["a.md", "b/c.txt"]
