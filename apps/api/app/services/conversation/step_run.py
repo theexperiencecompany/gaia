@@ -111,7 +111,7 @@ async def _watch(ports: RuntimePorts, attempt: Attempt, run: CommsRun) -> Ending
             if isinstance(signal, Answered):
                 await settle_segment_if_passed(ports, attempt)
                 attempt.answered = await finish_run(ports, attempt, signal.outcome)
-            elif not isinstance(signal, Tick):
+            elif not isinstance(signal, Tick | Summarized):
                 await _handle(ports, attempt, run, signal)
     finally:
         await close_pump(pump)
@@ -156,13 +156,11 @@ async def _handle(
     ports: RuntimePorts,
     attempt: Attempt,
     run: CommsRun,
-    event: Streamed | Summarized | ModelOutput,
+    event: Streamed | ModelOutput,
 ) -> None:
+    # A model output or summary was committed as it arrived, before the verdict.
     match event:
-        case Summarized():
-            _commit_quietly(attempt)
         case ModelOutput(has_tool_calls=has_tool_calls):
-            _commit_quietly(attempt)
             await settle_segment_if_passed(ports, attempt)
             if has_tool_calls and attempt.joiners:
                 await run.absorb(attempt.joiners)

@@ -82,7 +82,7 @@ async def _hold(ports: RuntimePorts, claim: StepClaim) -> None:
         if not beating.done() or beating.cancelled():
             raise
         # The beat cancelled this step: it could not prove its claim, so another may hold it now.
-        cast("asyncio.Task[object]", asyncio.current_task()).uncancel()
+        cast(asyncio.Task[object], asyncio.current_task()).uncancel()
         raise ClaimLost from None
     finally:
         beating.cancel()
@@ -219,11 +219,11 @@ async def _turns_before(ports: RuntimePorts, claim: StepClaim, seq: int) -> list
     since = max(0, seq - 1 - CLASSIFIER_LOOKBACK_SEQS)
     entries = await ports.log.read_after(claim.conversation_id, claim.user_id, since)
     turns: list[MessageDict] = []
-    for logged in entries:
+    for logged in itertools.takewhile(lambda logged: logged.seq < seq, entries):
         match logged.entry:
-            case UserMessage(text=text) if logged.seq < seq:
+            case UserMessage(text=text):
                 turns.append({"role": "user", "content": text})
-            case Reply(text=text) if logged.seq < seq and text:
+            case Reply(text=text) if text:
                 turns.append({"role": "assistant", "content": text})
     return turns
 
@@ -262,7 +262,7 @@ async def _answered_as_approval(
         outcome=ReplyOutcome.ANSWERED,
         answers=answers,
         through=first.seq,
-        quote_target=await quoted_target(ports, claim, answers, first.seq - 1, shown.seq),
+        quote_target=await quoted_target(ports, claim, answers, first, shown.seq),
     )
     await settle_inputs(ports, claim, (first,), settled, None)
     return True

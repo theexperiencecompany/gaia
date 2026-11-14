@@ -52,6 +52,7 @@ def _attempt(progress: Showing | None, woken_by: Entry | None = None) -> Attempt
         handed=(waking,),
         seen=1,
         view=StepView(state=EMPTY, after=0, entries=[]),
+        hint_head=EMPTY.head,
         progress=progress,
     )
 

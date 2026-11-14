@@ -83,7 +83,7 @@ class Attempt:
     seen: int
     view: StepView
     # The log's head as the last verdict's hint read it: the view answers only while it reaches this.
-    hint_head: int = 0
+    hint_head: int
     progress: Quiet | Drafting | Showing | None = None
     # Segments this attempt settled; the current one is the next.
     segment: int = 0

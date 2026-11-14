@@ -116,10 +116,15 @@ async def _answers_and_quote(
 
 
 async def quoted_target(
-    ports: RuntimePorts, claim: StepClaim, answers: tuple[str, ...], since: int, reply_seq: int
+    ports: RuntimePorts,
+    claim: StepClaim,
+    answers: tuple[str, ...],
+    first: LoggedEntry,
+    reply_seq: int,
 ) -> str | None:
-    entries = await ports.log.read_after(claim.conversation_id, claim.user_id, since)
-    return quote_in(answers, reply_seq, entries)
+    """Return what the reply quotes of the entries from first, the oldest input it answers."""
+    after = await ports.log.read_after(claim.conversation_id, claim.user_id, first.seq)
+    return quote_in(answers, reply_seq, [first, *after])
 
 
 async def put_reply(ports: RuntimePorts, attempt: Attempt, reply: Reply) -> LoggedEntry:
