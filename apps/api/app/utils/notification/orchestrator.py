@@ -219,7 +219,7 @@ class NotificationOrchestrator:
 
         By default: the inbox; the conversation the fact belongs to, unless the
         user is active somewhere else; the chat app the user is reached on, unless
-        that conversation already is its chat; and push to the user's phones.
+        that conversation already is its chat; and push to the user's phones for an approval.
         """
         if request.channels:
             named = [
@@ -241,7 +241,8 @@ class NotificationOrchestrator:
                     chat_app = None
         if chat_app is not None:
             channels.append(chat_app.value)
-        channels.append(CHANNEL_TYPE_PUSH)
+        if self._can_send(CHANNEL_TYPE_PUSH, request):
+            channels.append(CHANNEL_TYPE_PUSH)
         return channels, target
 
     def _can_send(self, channel_type: str, request: NotificationRequest) -> bool:

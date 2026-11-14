@@ -7,8 +7,13 @@ from typing import Any, cast
 from langchain_core.messages import ToolCall
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.core.subagents.integration_resolution import get_integration_target
 from app.agents.tools.core.registry import UNKNOWN_TOOL_CATEGORY, ToolRegistry, get_tool_registry
-from app.agents.tools.execute.unwrap import ExecuteCallArgs, unwrap_execute_call
+from app.agents.tools.execute.unwrap import (
+    ExecuteCallArgs,
+    execute_call_account,
+    unwrap_execute_call,
+)
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
 from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
@@ -26,6 +31,7 @@ from app.models.stream_events import (
     ToolCallsDataEntryData,
 )
 from app.services.browser.captions import describe_action
+from app.services.mcp.mcp_client import get_mcp_client, mcp_tool_owner
 from shared.py.wide_events import log
 
 # Type for the stream_writer callable used across agent execution paths.
@@ -172,16 +178,20 @@ async def format_tool_call_entry(
         execute_args: ExecuteCallArgs = cast(ExecuteCallArgs, call_args)
         raw_description = execute_args.get("task_description")
         task_description = raw_description if isinstance(raw_description, str) else None
+        account = execute_call_account(tool_name_raw, call_args)
         tool_name_raw = unwrapped_name
-        call_args = unwrapped_args
+        # The account the call acted as is part of what it did, so a wrong one is visible.
+        call_args = {**unwrapped_args, "account": account} if account else unwrapped_args
 
     is_core_tool = False  # set inside the non-special branch; safe default for short-circuits below
 
     if tool_name_raw in _SPECIAL_TOOLS:
         tool_category, tool_display_name, show_category = _SPECIAL_TOOLS[tool_name_raw]
         if tool_name_raw == ACTIVATE_INTEGRATION_TOOL_NAME and not integration_id:
-            # The card names the integration being activated, custom MCPs included.
-            integration_id = ActivateIntegrationCallArgs.model_validate(call_args).integration_id
+            # The card names the integration the activation resolves, by id or by name.
+            requested = ActivateIntegrationCallArgs.model_validate(call_args).integration_id
+            target = await get_integration_target(requested) if requested else None
+            integration_id = target.id if target else requested
     else:
         tool_category, integration_id, is_core_tool = await _general_tool_category(
             tool_registry, tool_name_raw, integration_id, user_id
@@ -216,6 +226,9 @@ async def format_tool_call_entry(
         known_icon, known_name = await _integration_display(integration_id)
         icon_url = icon_url or known_icon
         integration_name = integration_name or known_name
+
+    if tool_name_raw == ACTIVATE_INTEGRATION_TOOL_NAME and integration_name:
+        tool_display_name = _ACTIVATE_INTEGRATION_NAMED_LABEL.format(name=integration_name)
 
     # ToolCallsDataEntry declares exactly the ToolDataEntry keys this variant
     # carries, in the byte order the frontend parser expects — so its dump IS a
@@ -285,14 +298,14 @@ def format_browser_action_entry(
 # Special tools with custom display names and categories
 # Format: (category, display_name, show_category)
 _SPECIAL_TOOLS: dict[str, tuple[str, str, bool]] = {
-    "retrieve_tools": ("retrieve_tools", "Getting ready", False),
+    "retrieve_tools": ("retrieve_tools", "Finding the right tools", False),
     "call_executor": ("executor", "Working on it", False),
     "cancel_executor": ("cancel_executor", "Stopping that", False),
     "browser_step_done": (BROWSER_TOOL_CATEGORY, "Continuing the browser task", False),
     "stop_browser_task": (BROWSER_TOOL_CATEGORY, "Stopping the browser task", False),
     "tell_browser_task": (BROWSER_TOOL_CATEGORY, "Telling the browser task", False),
     "spawn_subagent": ("spawn_subagent", "Working on part of it", False),
-    ACTIVATE_INTEGRATION_TOOL_NAME: ("integrations", "Opening your app", False),
+    ACTIVATE_INTEGRATION_TOOL_NAME: ("integrations", "Connecting to your app", False),
     "plan_tasks": ("plan_tasks", "Planning", False),
     # Synthetic card a replayed workflow run leads with — never a callable
     # tool. The playbooks category carries the icon the authoring tools use.
@@ -300,6 +313,9 @@ _SPECIAL_TOOLS: dict[str, tuple[str, str, bool]] = {
     "update_tasks": ("plan_tasks", "Updating the plan", False),
     "finish_task": ("finish_task", "Wrapping up", False),
 }
+
+# The activate card's label once the integration's name is known.
+_ACTIVATE_INTEGRATION_NAMED_LABEL = "Connecting to {name}"
 
 
 def _owning_integration(tool_name: str, registry_category: str) -> OAuthIntegration | None:
@@ -336,7 +352,8 @@ async def _general_tool_category(
     # MCP tools no longer live in the global registry — resolve provenance
     # via the user's MCPClient when the caller didn't pre-supply it.
     if not integration_id and user_id:
-        integration_id = await _resolve_mcp_integration_id(tool_name_raw, user_id)
+        mcp_owner = await mcp_tool_owner(user_id, tool_name_raw)
+        integration_id = mcp_owner.integration_id if mcp_owner else None
     return integration_id or registry_category, integration_id, False
 
 
@@ -368,37 +385,10 @@ def _registry_mcp_ui_metadata(
     return mcp_ui, mcp_server_url
 
 
-async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | None:
-    """Resolve which integration owns an MCP tool via the user's MCPClient.
-
-    MCP tools no longer live in the global ToolRegistry — each MCPClient is
-    the single source of truth. Returns None if the tool isn't an MCP tool
-    or the user has no connected MCP that exposes it.
-    """
-    from app.services.mcp.mcp_client import (
-        get_mcp_client,
-    )
-
-    try:
-        mcp_client = await get_mcp_client(user_id)
-        return mcp_client.find_integration(tool_name)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.AGENT} MCP integration lookup failed for",
-            tool_name=tool_name,
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-        )
-        return None
-
-
 async def _resolve_mcp_ui_metadata(
     tool_name: str, user_id: str
 ) -> tuple[dict[str, object] | None, str | None]:
     """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
-    from app.services.mcp.mcp_client import get_mcp_client
-
     try:
         mcp_client = await get_mcp_client(user_id)
         for tools in mcp_client._tools.values():

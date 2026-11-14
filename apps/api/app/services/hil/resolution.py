@@ -53,12 +53,7 @@ from app.services.hil.policy import asks_every_time
 from app.services.hil.resume_slot import claim_resume_dispatch, release_resume_dispatch
 from app.services.latency_metrics import observe_hil_dispatch_lag, observe_hil_user_wait
 from app.utils.errors import AppError
-from shared.py.analytics.catalog.hil import (
-    DECIDED_OUTCOMES,
-    ApprovalDecider,
-    ApprovalOutcome,
-    UndecidedOutcome,
-)
+from shared.py.approvals import DECIDED_OUTCOMES, ApprovalDecider, ApprovalOutcome, UndecidedOutcome
 from shared.py.wide_events import log
 
 

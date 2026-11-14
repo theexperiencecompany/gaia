@@ -27,7 +27,7 @@ from app.constants.execute import (
 )
 from app.constants.log_tags import LogTag
 from app.services.composio.composio_service import get_composio_service
-from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.mcp_client import mcp_tool_owner
 from app.utils.mcp_utils import canonical_tool_name_map
 from shared.py.wide_events import log
 
@@ -100,27 +100,16 @@ def _from_registry(registry: ToolRegistry, tool_name: str) -> ResolvedTool | Non
 async def _resolve_mcp_tool(user_id: str | None, tool_name: str) -> ResolvedTool | None:
     if not user_id:
         return None
-    try:
-        mcp_client = await get_mcp_client(user_id=str(user_id))
-    except Exception as e:
-        # An MCP outage must not take down resolution for registry/Composio
-        # tools — but it is never silent (mirrors _user_mcp_tools).
-        log.warning(
-            f"{LogTag.TOOL} execute resolver: MCP client unavailable",
-            user_id=user_id,
-            error_type=type(e).__name__,
-        )
+    owner = await mcp_tool_owner(str(user_id), tool_name)
+    if owner is None:
         return None
-    integration_id = await mcp_client.resolve_tool_owner(tool_name)
-    if integration_id is None:
-        return None
-    for tool in await mcp_client.ensure_connected(integration_id):
+    for tool in await owner.client.ensure_connected(owner.integration_id):
         if tool.name == tool_name:
             return ResolvedTool(
                 name=tool.name,
                 tool=tool,
                 is_integration=True,
-                shape_scope=f"{MCP_SHAPE_SCOPE_PREFIX}{integration_id}",
+                shape_scope=f"{MCP_SHAPE_SCOPE_PREFIX}{owner.integration_id}",
             )
     return None
 

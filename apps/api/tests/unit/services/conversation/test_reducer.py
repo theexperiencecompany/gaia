@@ -27,7 +27,7 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.services.conversation.reducer import reduce
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from tests.unit.services.conversation.log_helpers import (
     asked,
     barge,

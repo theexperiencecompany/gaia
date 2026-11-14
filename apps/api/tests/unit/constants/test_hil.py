@@ -3,7 +3,8 @@
 from typing import get_args
 
 from app.constants.hil import DECISION_OUTCOME, ApprovalDecision
-from shared.py.analytics.catalog.hil import ApprovalDecided, DecidedOutcome
+from shared.py.analytics.catalog.hil import ApprovalDecided
+from shared.py.approvals import DecidedOutcome
 
 
 def test_every_user_decision_maps_onto_a_distinct_decided_outcome() -> None:

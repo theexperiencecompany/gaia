@@ -31,7 +31,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 
 #: Decisions the user made: the decision path starts the work that carries them out or reports the skip.
 USER_DECISIONS = frozenset({ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED})

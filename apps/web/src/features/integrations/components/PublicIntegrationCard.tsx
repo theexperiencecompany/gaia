@@ -6,17 +6,15 @@ import {
   CheckmarkBadge01Icon,
   DateTimeIcon,
   GitForkIcon,
-  PackageOpenIcon,
   UserCircle02Icon,
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { isPrivateBlobUrl } from "@/lib/privateBlob";
 
 import type { CommunityIntegration } from "../types";
+import { IntegrationIcon } from "./IntegrationIcon";
 
 function formatCloneCount(count: number): string {
   if (count >= 1000) {
@@ -28,64 +26,6 @@ function formatCloneCount(count: number): string {
 function getCategoryLabel(category: string): string {
   return category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
 }
-
-// Component to handle integration icon with fallback on error
-const IntegrationIcon: React.FC<{
-  integrationId: string;
-  iconUrl?: string | null;
-}> = ({ integrationId, iconUrl }) => {
-  const [hasError, setHasError] = useState(false);
-
-  // First, try to get the icon from toolCategoryIcon (which checks known categories)
-  const categoryIcon = getToolCategoryIcon(integrationId, {
-    size: 100,
-    width: 28,
-    height: 28,
-    showBackground: false,
-  });
-
-  // If we have a category icon, use it directly
-  if (categoryIcon) {
-    return <>{categoryIcon}</>;
-  }
-
-  // Otherwise, try to use the iconUrl with error handling
-  if (iconUrl && !hasError) {
-    // SVGs can't go through the Next.js image optimizer — load them
-    // unoptimized straight from the source host.
-    const isSvg = iconUrl.toLowerCase().endsWith(".svg");
-    if (isSvg) {
-      return (
-        <Image
-          src={iconUrl}
-          alt="Integration icon"
-          width={28}
-          height={28}
-          unoptimized
-          className="aspect-square object-contain rounded-lg max-w-7 max-h-7 min-w-7 min-h-7"
-          onError={() => setHasError(true)}
-        />
-      );
-    }
-    return (
-      <Image
-        src={iconUrl}
-        alt="Integration icon"
-        width={100}
-        height={100}
-        className="aspect-square object-contain rounded-lg max-w-7 max-h-7 min-w-7 min-h-7"
-        onError={() => setHasError(true)}
-      />
-    );
-  }
-
-  // Fallback to PackageOpenIcon
-  return (
-    <div className="flex h-9 w-9 aspect-square items-center justify-center rounded-xl bg-zinc-700 text-sm font-medium text-zinc-300">
-      <PackageOpenIcon />
-    </div>
-  );
-};
 
 interface PublicIntegrationCardProps {
   integration: CommunityIntegration;
@@ -102,6 +42,7 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
             <IntegrationIcon
               integrationId={integration.integrationId}
               iconUrl={integration.iconUrl}
+              size={28}
             />
           </div>
 

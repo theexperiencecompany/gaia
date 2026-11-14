@@ -18,8 +18,8 @@ from app.models.tool_data_models import ToolDataEntry
 from app.models.workflow_models import TriggerType
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from shared.py.analytics.catalog.attribution import Attribution
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.analytics.catalog.properties import Identifier
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 
 # A defaulted field is always serialized, so the generated client type marks it required.
 WIRE_CONFIG = ConfigDict(

@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Collection, Iterable
 import re
 import time
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
@@ -1343,6 +1343,31 @@ async def get_mcp_client(user_id: str) -> MCPClient:
     """Get MCP client for a user from the pool."""
     pool = await get_mcp_client_pool()
     return await pool.get(user_id)
+
+
+class McpToolOwner(NamedTuple):
+    client: MCPClient
+    integration_id: str
+
+
+async def mcp_tool_owner(user_id: str, tool_name: str) -> McpToolOwner | None:
+    """Return the user's connected MCP integration exposing tool_name; execute and tool cards both resolve through this.
+
+    None when no connected MCP exposes it, or when the user's MCP client is
+    unavailable: an MCP outage must not take down registry or Composio tools.
+    """
+    try:
+        client = await get_mcp_client(user_id=user_id)
+    except Exception as e:
+        log.warning(
+            f"{LogTag.MCP} MCP client unavailable for a tool owner lookup",
+            user_id=user_id,
+            tool_name=tool_name,
+            error_type=type(e).__name__,
+        )
+        return None
+    integration_id = await client.resolve_tool_owner(tool_name)
+    return None if integration_id is None else McpToolOwner(client, integration_id)
 
 
 async def drop_local_sessions(integration_id: str, user_ids: Iterable[str]) -> None:

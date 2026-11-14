@@ -1,5 +1,6 @@
 """Which integration an activate_integration card names."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages.tool import ToolCall
@@ -12,6 +13,7 @@ DISPLAY = {
     "custom_srv": ("https://icons.test/custom.png", "Custom Server"),
     "explicit": ("https://icons.test/explicit.png", "Explicit"),
 }
+TARGETS = {"Custom Server": "custom_srv"}
 
 
 async def _display(integration_id: str) -> tuple[str | None, str | None]:
@@ -20,6 +22,10 @@ async def _display(integration_id: str) -> tuple[str | None, str | None]:
 
 def _call(name: str, args: dict[str, object]) -> ToolCall:
     return ToolCall(id="tc1", name=name, args=args, type="tool_call")
+
+
+async def _target(requested: str) -> SimpleNamespace | None:
+    return SimpleNamespace(id=TARGETS.get(requested, requested))
 
 
 async def _format(
@@ -32,6 +38,7 @@ async def _format(
     with (
         patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
         patch(f"{MODULE}._integration_display", new=display),
+        patch(f"{MODULE}.get_integration_target", new=_target),
     ):
         entry = await format_tool_call_entry(call, integration_id=integration_id)
     assert entry is not None
@@ -48,6 +55,16 @@ class TestActivateIntegrationCardNamesItsIntegration:
 
         display.assert_awaited_once_with("custom_srv")
         assert data["icon_url"] == "https://icons.test/custom.png"
+        assert data["integration_name"] == "Custom Server"
+
+    async def test_an_integration_passed_by_name_is_labelled_by_the_one_it_resolves_to(
+        self,
+    ) -> None:
+        data, display = await _format(
+            _call("activate_integration", {"integration_id": "Custom Server"})
+        )
+
+        display.assert_awaited_once_with("custom_srv")
         assert data["integration_name"] == "Custom Server"
 
     async def test_an_integration_the_caller_already_knows_is_not_overwritten_by_the_args(

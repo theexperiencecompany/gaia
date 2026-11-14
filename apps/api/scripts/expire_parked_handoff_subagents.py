@@ -35,7 +35,7 @@ from app.db.repositories.hil import hil_approval_repository
 from app.models.hil_models import HILApprovalRecord
 from app.services.hil.approvals_store import clear_resume_item, mark_decided
 from app.services.hil.bridge import publish_decision
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 
 #: The retired ``SubagentKind.MCP`` value a handoff subagent's resume recipe carries.
 HANDOFF_SUBAGENT_KIND = "mcp"

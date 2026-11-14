@@ -14,11 +14,13 @@ from httpx import AsyncClient
 import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.integrations import NOT_SET_UP_ON_INSTANCE
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     MyIntegrationsResponse,
 )
+from app.services.composio.error_detail import AuthConfigNotFoundError
 from app.services.connect_link_service import ConnectLinkBinding
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import (
@@ -667,6 +669,25 @@ class TestConnectIntegration:
         mock_log.error.assert_called_once()
         assert mock_log.error.call_args.kwargs["error"] == _COMPOSIO_404
         mock_log.set.assert_any_call(integration={"id": "notion", "status": "error"})
+
+    async def test_connect_composio_missing_auth_config_says_not_set_up(
+        self, client: AsyncClient
+    ) -> None:
+        composio = MagicMock()
+        composio.connect_account = AsyncMock(side_effect=AuthConfigNotFoundError("Gmail", "ac_1"))
+        with (
+            patch(f"{_SERVICE}.auth_config_id_for", new_callable=AsyncMock, return_value="ac_1"),
+            patch(f"{_SERVICE}.get_account_record", new_callable=AsyncMock, return_value=None),
+            patch(f"{_SERVICE}.create_oauth_state", new_callable=AsyncMock, return_value="st"),
+            patch(f"{_SERVICE}.update_user_integration_status", new_callable=AsyncMock),
+            patch(f"{_SERVICE}.get_composio_service", return_value=composio),
+        ):
+            resp = await client.post(
+                f"{API}/connect/gmail",
+                json={"redirect_path": "/integrations"},
+            )
+        assert resp.status_code == 200
+        assert resp.json() == _error_body("gmail", "Gmail", f"Gmail {NOT_SET_UP_ON_INSTANCE}")
 
     async def test_connect_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(

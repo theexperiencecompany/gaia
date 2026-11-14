@@ -97,7 +97,8 @@ from app.services.hil.utils import (
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome, HilDecisionSubmitted
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log
 
 Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]

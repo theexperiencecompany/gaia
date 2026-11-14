@@ -86,7 +86,7 @@ from app.services.conversation.screen import project_screen
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.timezone import Timezone
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log, log_context
 
 #: A well-formed user id with no users row behind it.

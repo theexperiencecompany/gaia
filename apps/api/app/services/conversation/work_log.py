@@ -26,7 +26,7 @@ from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reply_analytics import capture_unanswered_stop, stopped_waking
 from app.services.conversation.runtime import runtime_ports
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log
 
 

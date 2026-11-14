@@ -24,7 +24,7 @@ from app.services.hil.intent import (
     judge_intent,
 )
 from app.services.hil.utils import PriorCall, unpack_tool_call
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request, make_tool
 

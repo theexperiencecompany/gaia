@@ -32,7 +32,7 @@ from app.models.conversation_log_models import (
 from app.models.conversation_models import ConversationEntry
 from app.models.message_models import ReplyToMessageData
 from app.models.tool_data_models import ToolDataEntry
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 
 _STOPPED_WORK = frozenset({WorkOutcome.CANCELLED, WorkOutcome.LOST})
 

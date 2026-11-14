@@ -23,10 +23,14 @@ function persistNow(conversationId: string): void {
   clearTimeout(persistTimers.get(conversationId));
   persistTimers.delete(conversationId);
   const { view, olderBefore } = liveConversation(conversationId);
-  chatDb.saveLog(conversationId, { entries: [...view.entries], olderBefore });
+  chatDb.saveLog(conversationId, {
+    items: [...view.items],
+    head: view.head,
+    olderBefore,
+  });
 }
 
-/** Save the conversation's log to AsyncStorage, coalescing bursts of frames. */
+/** Save the conversation's screen to AsyncStorage, coalescing bursts of frames. */
 function persistConversation(conversationId: string): void {
   if (persistTimers.has(conversationId)) return;
   persistTimers.set(
@@ -38,7 +42,8 @@ function persistConversation(conversationId: string): void {
 async function restore(conversationId: string): Promise<void> {
   const saved = await chatDb.getLog(conversationId);
   useLiveConversationStore.getState().restore(conversationId, {
-    entries: saved?.entries ?? [],
+    items: saved?.items ?? [],
+    head: saved?.head ?? 0,
     olderBefore: saved?.olderBefore ?? null,
     sends: {},
   });
@@ -71,7 +76,6 @@ const follower = createConversationFollower({
   subscribe: chatApi.subscribeToConversationEvents,
   isNotFound: (error) =>
     error instanceof EventStreamHttpError && error.status === HTTP_NOT_FOUND,
-  view: (conversationId) => liveConversation(conversationId).view,
   apply: (conversationId, frame) => {
     const gap = useLiveConversationStore
       .getState()
@@ -80,7 +84,7 @@ const follower = createConversationFollower({
     return gap;
   },
   retitle: retitleConversation,
-  // The saved log shows at once, and the stream resumes after the newest seq it holds.
+  // The saved screen shows at once, until the stream's first frame replaces it.
   prepare: restore,
   onInvalidFrame: (conversationId, error) => {
     console.error("[conversation] unreadable frame:", conversationId, error);

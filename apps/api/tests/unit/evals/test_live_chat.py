@@ -51,7 +51,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.conversation_send_models import ConversationEvent
 from app.models.tool_data_models import ToolDataEntry
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 
 pytestmark = pytest.mark.unit
 

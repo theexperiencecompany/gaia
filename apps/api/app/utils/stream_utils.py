@@ -17,12 +17,14 @@ async def extract_tool_entries_from_update(
     state_update: object,
     emitted_tool_calls: set[str],
     integration_metadata: IntegrationMetadata | None = None,
+    user_id: str | None = None,
 ) -> list[tuple[str, ToolDataEntry]]:
     """Extract new tool_data entries from a LangGraph state update.
 
     Deduplicates against emitted_tool_calls (mutated in place). state_update
     is typed object since callers pass whatever a node yielded, which is
     not always a mapping — the isinstance guard below is load-bearing.
+    user_id lets a per-user MCP tool's card resolve the integration it came from.
     """
     entries: list[tuple[str, ToolDataEntry]] = []
 
@@ -45,6 +47,7 @@ async def extract_tool_entries_from_update(
                 icon_url=metadata.icon_url,
                 integration_id=metadata.integration_id,
                 integration_name=metadata.name,
+                user_id=user_id,
             )
 
             if tool_entry:
