@@ -12,7 +12,7 @@ from app.models.scout_models import (
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.services.briefing.scouts.facts import memory_note, signals_block
+from app.services.briefing.scouts.facts import SHOWN_NOT_TOTAL, memory_note, signals_block
 from app.services.briefing.scouts.memory import remember
 
 USER_ID = "64f1c0ffee0000000000abcd"
@@ -102,10 +102,10 @@ class TestTheFactsBlock:
         ]
 
         assert signals_block(remembered, NOW).splitlines() == [
-            "[ACROSS THEIR APPS] 3 item(s) in 2 app(s)",
-            "[Jira] 1 item(s)",
+            f"[ACROSS THEIR APPS] 3 item(s) shown from 2 app(s). {SHOWN_NOT_TOTAL}",
+            "[Jira] 1 item(s) shown",
             "- other | issue: Issue 1 | state: Todo | first seen today, created date unknown",
-            "[Linear] 2 item(s)",
+            "[Linear] 2 item(s) shown",
             "- important | issue: Issue 9 | state: Todo | first seen yesterday, never mentioned,"
             " moved from Backlog to Todo",
             "- other | issue: Issue 2 | state: Todo | first seen 4 days ago, mentioned 3 time(s),"

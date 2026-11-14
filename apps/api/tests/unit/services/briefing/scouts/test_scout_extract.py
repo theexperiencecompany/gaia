@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from tests.helpers import captured_wide_event
 
 from app.constants.scouts import SCOUT_SIGNAL_CEILING
 from app.models.scout_models import SignalFields, SignalImportance, SignalSource
@@ -156,6 +157,67 @@ class TestReadingItems:
         assert len(extract_signals(GITHUB, [SOURCE], values)) == SCOUT_SIGNAL_CEILING
 
 
+class TestOneMalformedItem:
+    async def test_an_item_missing_its_required_fields_is_skipped_and_logged(self) -> None:
+        """One untitled task raised, the replay relearned, and the relearn failed on it too."""
+        values = {"reviews": {"items": [_pr(1), _pr(2, title=""), {"title": "no id"}, _pr(3)]}}
+
+        async with captured_wide_event() as event:
+            signals = extract_signals(GITHUB, [SOURCE], values)
+
+        assert [s.external_id for s in signals] == ["1", "3"]
+        assert event["warnings"] == [
+            {
+                "msg": "briefing.scout_items_unread",
+                "integration_id": "github",
+                "step_id": "reviews",
+                "items": 4,
+                "skipped": 2,
+                "skip_reason": "title is a str, not the value the scout learned",
+                "unread_fields": [],
+            }
+        ]
+
+    @pytest.mark.parametrize(
+        ("extra", "field", "empty"),
+        [
+            ({"author": {"id": 4}}, "people", []),
+            ({"author": [{"id": 4}, "ana", ""]}, "people", ["ana"]),
+            ({"due": "next week-ish"}, "due_at", None),
+            ({"created": "a while back"}, "created_at", None),
+            ({"updated": "lately"}, "updated_at", None),
+            ({"html_url": {"href": "x"}}, "url", None),
+            ({"state": ["open"]}, "state", None),
+        ],
+        ids=[
+            "person with no name",
+            "people not all names",
+            "due not a date",
+            "created not a date",
+            "updated not a date",
+            "url not text",
+            "state not text",
+        ],
+    )
+    async def test_an_optional_field_that_cannot_be_read_is_left_empty(
+        self, extra: dict[str, object], field: str, empty: object
+    ) -> None:
+        values = {"reviews": {"items": [_pr(1, **extra)]}}
+
+        async with captured_wide_event() as event:
+            [signal] = extract_signals(GITHUB, [SOURCE], values)
+
+        assert (signal.external_id, signal.title, getattr(signal, field)) == ("1", "PR 1", empty)
+        [warning] = event["warnings"]
+        assert (warning["skipped"], warning["unread_fields"]) == (0, [field])
+
+    async def test_a_cleanly_read_result_logs_nothing(self) -> None:
+        async with captured_wide_event() as event:
+            extract_signals(GITHUB, [SOURCE], {"reviews": {"items": [_pr(1, author="ana")]}})
+
+        assert "warnings" not in event
+
+
 class TestAMovedShape:
     @pytest.mark.parametrize(
         ("values", "message"),
@@ -169,7 +231,7 @@ class TestAMovedShape:
                 "reviews's items is a dict, not the value the scout learned",
             ),
             (
-                {"reviews": {"items": [{"title": "no id"}]}},
+                {"reviews": {"items": [{"title": "no id"}, {"title": "nor here"}]}},
                 "$steps.reviews is not in the current for_each element",
             ),
             (
@@ -184,52 +246,17 @@ class TestAMovedShape:
                 {"reviews": {"items": [_pr(1, title={"text": "x"})]}},
                 "title is a dict, not the value the scout learned",
             ),
-            (
-                {"reviews": {"items": [_pr(1, author={"id": 4})]}},
-                "a person in people is a dict, not the value the scout learned",
-            ),
-            (
-                {"reviews": {"items": [_pr(1, author=["ana", 3])]}},
-                "a person in people is a int, not the value the scout learned",
-            ),
-            (
-                {"reviews": {"items": [_pr(1, due="next week-ish")]}},
-                "due_at is a str, not the value the scout learned",
-            ),
-            (
-                {"reviews": {"items": [_pr(1, created="a while back")]}},
-                "created_at is a str, not the value the scout learned",
-            ),
-            (
-                {"reviews": {"items": [_pr(1, updated="lately")]}},
-                "updated_at is a str, not the value the scout learned",
-            ),
-            (
-                {"reviews": {"items": [_pr(1, html_url={"href": "x"})]}},
-                "url is a dict, not the value the scout learned",
-            ),
-            (
-                {"reviews": {"items": [_pr(1, state=["open"])]}},
-                "state is a list, not the value the scout learned",
-            ),
         ],
         ids=[
             "no list",
             "not a list",
-            "no id",
+            "no item has an id",
             "no title",
             "id not text",
             "title not text",
-            "person with no name",
-            "people not all names",
-            "due not a date",
-            "created not a date",
-            "updated not a date",
-            "url not text",
-            "state not text",
         ],
     )
-    def test_a_result_the_paths_no_longer_fit_raises(
+    def test_a_result_where_no_item_reads_raises(
         self, values: dict[str, object], message: str
     ) -> None:
         with pytest.raises(PlaceholderError) as raised:

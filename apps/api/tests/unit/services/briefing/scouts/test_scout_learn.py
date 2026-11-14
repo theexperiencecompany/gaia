@@ -36,16 +36,21 @@ from app.constants.llm import ModelUse
 from app.constants.log_tags import LogTag
 from app.constants.scouts import SCOUT_AGENT_NAME, SCOUT_LEARN_RECURSION_LIMIT
 from app.models.agent_config import agent_configurable
-from app.models.playbook_models import PlaybookBody, ToolStep
+from app.models.playbook_models import ForEachStep, PlaybookBody, ToolStep
 from app.models.scout_models import ScoutStatus, SignalImportance, SignalSource
 from app.services.briefing.scouts import learn
 from app.services.briefing.scouts.learn import learn_scout
 from app.services.briefing.scouts.spend import ScoutSpend
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools
-from app.services.briefing.scouts.watch import FrozenWatch, read_only_space, watch
+from app.services.briefing.scouts.watch import (
+    FrozenWatch,
+    ScoutSourceFailed,
+    read_only_space,
+    watch,
+)
 from app.services.hil.prompts import READ_ONLY_REFUSAL_TEMPLATE
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
-from app.services.workflow.playbook.evaluator import PlaybookUser
+from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.services.workflow.playbook.scripted_model import ScriptedCall, ScriptedModel
 from app.services.workflow.playbook.tool_graph import run_tool_graph
 from app.utils.errors import AppError
@@ -56,6 +61,8 @@ LINEAR = ScoutIntegration(integration_id="linear", name="Linear")
 _NOW = datetime(2026, 10, 22, 6, 0, tzinfo=UTC)
 _READ_ONLY = {MCP_ANNOTATIONS_METADATA_KEY: {"readOnlyHint": True}}
 CRITERIA = "open issues assigned to the user; closed ones are left out"
+
+_SPEND = ScoutSpend(f"scouts:spend:{USER_ID}:2026-10-22")
 
 # Learn runs book their spend to the scout tally in Redis.
 pytestmark = pytest.mark.usefixtures("fake_redis")
@@ -197,7 +204,7 @@ class TestLearnFreezeReplay:
     ) -> None:
         app = _App([_ISSUE])
         with _seams(app, _report()):
-            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
             assert learned.scout is not None
             assert learned.scout.playbook is not None
             replayed = await watch(
@@ -230,10 +237,32 @@ class TestLearnFreezeReplay:
         assert signal.importance is SignalImportance.NORMAL
         assert scout.criteria == CRITERIA
 
+    async def test_a_malformed_item_neither_stops_the_freeze_nor_the_replay(self) -> None:
+        """A nameless creator or an untitled issue failed the freeze, so the scout never learned."""
+        nameless = {**_ISSUE, "id": "ENG-13", "creator": {"id": 7}}
+        untitled = {**_ISSUE, "id": "ENG-14", "title": ""}
+        app = _App([_ISSUE, nameless, untitled])
+        with _seams(app, _report()):
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
+            assert learned.scout is not None
+            assert learned.scout.playbook is not None
+            replayed = await watch(
+                USER,
+                USER_ID,
+                FrozenWatch(LINEAR, learned.scout.playbook, learned.scout.sources),
+                app.tools(),
+            )
+
+        assert learned.scout.status is ScoutStatus.WATCHING
+        assert [(s.external_id, s.people) for s in replayed] == [
+            ("ENG-12", ["Priya"]),
+            ("ENG-13", []),
+        ]
+
     async def test_a_quiet_day_still_freezes_the_watch(self) -> None:
         app = _App([])
         with _seams(app, _report(signals=[])):
-            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
 
         assert learned.signals == []
         assert learned.scout is not None
@@ -246,7 +275,7 @@ class TestLearnFreezeReplay:
             email="ada@example.com", name="Ada", timezone="America/Los_Angeles"
         )
         with _seams(app, _report()), _spy_graph() as runs:
-            await learn_scout(los_angeles, USER_ID, LINEAR, _tools(app))
+            await learn_scout(los_angeles, USER_ID, LINEAR, _tools(app), _SPEND)
 
         [run] = runs
         [message] = run["args"][2]
@@ -258,7 +287,7 @@ class TestLearnFreezeReplay:
         app = _App([_ISSUE])
         wrong = {**_SOURCE, "fields": {**_FIELDS, "title": "name"}}
         with _seams(app, _report(sources=[wrong])):
-            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
 
         assert learned.scout is None
         assert learned.freeze_problem is not None
@@ -267,7 +296,7 @@ class TestLearnFreezeReplay:
     async def test_an_app_with_nothing_to_watch_is_recorded_without_calls(self) -> None:
         app = _App([])
         with _seams(app, _report(nothing_to_watch=True, steps=[], sources=[], signals=[])):
-            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
 
         assert learned.signals == []
         assert learned.scout is not None
@@ -277,7 +306,7 @@ class TestLearnFreezeReplay:
     async def test_a_run_that_writes_no_report_fails_loud(self) -> None:
         app = _App([_ISSUE])
         with _seams(app, "I looked around and it seems fine."), pytest.raises(AppError):
-            await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
 
 
 @contextmanager
@@ -300,7 +329,7 @@ class TestTheLearnRun:
     ) -> None:
         app = _App([_ISSUE])
         with _seams(app, _report()), _spy_graph() as runs:
-            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
 
         [run] = runs
         _model, tools, messages = run["args"]
@@ -309,7 +338,7 @@ class TestTheLearnRun:
         assert [(type(m), m.content) for m in messages] == [(HumanMessage, prompt)]
         assert run["agent_name"] == SCOUT_AGENT_NAME
         assert run["accounting"] == AccountingOptions(
-            recursion_limit=SCOUT_LEARN_RECURSION_LIMIT, ledger=ScoutSpend(USER_ID)
+            recursion_limit=SCOUT_LEARN_RECURSION_LIMIT, ledger=_SPEND
         )
         configurable = run["configurable"]
         assert set(configurable) == {
@@ -340,13 +369,13 @@ class TestTheLearnRun:
             patch.object(learn, "SCOUT_LEARN_TIMEOUT", timedelta(milliseconds=50)),
             pytest.raises(TimeoutError),
         ):
-            await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
 
     async def test_the_first_block_that_holds_a_report_is_the_report(self) -> None:
         app = _App([_ISSUE])
         text = '```json\n{"not": "a report"}\n```\n' + _report()
         with _seams(app, text):
-            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
 
         assert [s.external_id for s in learned.signals] == ["ENG-12"]
 
@@ -354,7 +383,7 @@ class TestTheLearnRun:
         app = _App([_ISSUE])
         reply = "x" * 300
         with _seams(app, reply), pytest.raises(AppError) as raised:
-            await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
 
         error = raised.value
         assert (error.message, error.why, error.fix) == (
@@ -368,7 +397,7 @@ class TestTheLearnRun:
         app = _App([_ISSUE])
         reply = '```json\n{broken\n```\n```json\n{"not": "a report"}\n```'
         with _seams(app, reply), pytest.raises(AppError) as raised:
-            await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
 
         assert raised.value.why == (
             "its final message (51 chars) held no ScoutReport: invalid JSON: Expecting "
@@ -380,7 +409,7 @@ class TestWhyAReportIsNotFrozen:
     async def _problem(self, report: str, app: _App | None = None) -> str | None:
         app = app or _App([_ISSUE])
         with _seams(app, report), patch.object(learn, "log") as log:
-            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
         assert learned.scout is None
         assert [s.external_id for s in learned.signals] == ["ENG-12"]
         log.warning.assert_called_once_with(
@@ -451,7 +480,7 @@ class TestWhyAReportIsNotFrozen:
                 AsyncMock(return_value=_Registry({})),
             ),
         ):
-            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app))
+            learned = await learn_scout(USER, USER_ID, LINEAR, _tools(app), _SPEND)
 
         assert learned.freeze_problem is None
         assert learned.scout is not None
@@ -482,10 +511,10 @@ class TestTheReplay:
         assert thread is not None
         assert re.fullmatch(rf"scout-linear-{USER_ID}-[0-9a-f]{{6}}", thread)
 
-    async def test_a_call_that_fails_stops_the_replay_and_names_the_scout(self) -> None:
+    async def test_a_call_that_fails_is_the_apps_failure_not_a_moved_shape(self) -> None:
         app = _App([_ISSUE])
         app.down = True
-        with _seams(app, _report()), pytest.raises(AppError) as raised:
+        with _seams(app, _report()), pytest.raises(ScoutSourceFailed) as raised:
             await watch(USER, USER_ID, self._frozen(), app.tools())
 
         error = raised.value
@@ -493,7 +522,56 @@ class TestTheReplay:
             "scout replay for linear stopped",
             "Playbook stopped at step 1 (list_issues): Error: ConnectionError: linear is down. "
             "Completed: nothing. Nothing after that step ran.",
-            "relearn the scout against the app's current tools",
+            "the scout keeps its calls and replays them on the next brief",
+        )
+
+    async def test_a_rate_limit_the_app_reports_is_the_apps_failure(self) -> None:
+        app = _App([_ISSUE])
+        app.failure = "429 rate limit exceeded"
+        with _seams(app, _report()), pytest.raises(ScoutSourceFailed):
+            await watch(USER, USER_ID, self._frozen(), app.tools())
+
+    @pytest.mark.parametrize(
+        ("later", "stopped_on"),
+        [
+            (
+                ToolStep(id="again", tool="list_issues", args={"assignee": "$steps.assigned.x"}),
+                "$steps.assigned.x is not in step 'assigned''s result",
+            ),
+            (
+                ForEachStep(
+                    id="each", tool="list_issues", for_each="$steps.assigned.x", max_items=2
+                ),
+                "$steps.assigned.x is not in step 'assigned''s result",
+            ),
+            (
+                ForEachStep(
+                    id="each", tool="list_issues", for_each="$steps.assigned.data", max_items=2
+                ),
+                "for_each needs a list to repeat over",
+            ),
+        ],
+        ids=["an argument", "a for_each list", "a for_each that is no list"],
+    )
+    async def test_a_later_step_reading_a_path_that_moved_is_a_moved_shape(
+        self, later: ToolStep | ForEachStep, stopped_on: str
+    ) -> None:
+        app = _App([_ISSUE])
+        playbook = PlaybookBody(
+            description="Linear issues assigned to the user",
+            steps=[ToolStep(id="assigned", tool="list_issues", args={"assignee": "me"}), later],
+            result_brief="-",
+        )
+        frozen = FrozenWatch(LINEAR, playbook, [SignalSource.model_validate(_SOURCE)])
+        with _seams(app, _report()), pytest.raises(PlaceholderError) as raised:
+            await watch(USER, USER_ID, frozen, app.tools())
+
+        assert (raised.value.message, raised.value.fix) == (
+            "scout replay for linear no longer fits its results",
+            "relearn the scout against the app's current results",
+        )
+        assert raised.value.why.startswith(
+            f"Playbook stopped at step 2 ({later.tool}): {stopped_on}"
         )
 
     async def test_a_replay_that_raises_is_logged_against_its_scout(self) -> None:
@@ -550,7 +628,7 @@ class TestReadOnlyAtCallTime:
             patch.object(learn, "run_tool_graph", keep_history),
             patch("app.services.hil.gate.log") as gate_log,
         ):
-            await learn_scout(USER, USER_ID, LINEAR, leaky)
+            await learn_scout(USER, USER_ID, LINEAR, leaky, _SPEND)
 
         assert _DELETED == []
         [answer] = [m for m in histories[0] if isinstance(m, ToolMessage)]

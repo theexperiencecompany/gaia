@@ -9,6 +9,9 @@ from app.models.scout_models import RememberedSignal, Signal, SignalImportance
 from app.utils.timezone import as_utc
 
 SIGNALS_HEADER = "[ACROSS THEIR APPS]"
+#: A scout reads one page of an app, capped at SCOUT_SIGNAL_CEILING, and the judge keeps
+#: only what matters: a count here is what the brief shows, never how many the app holds.
+SHOWN_NOT_TOTAL = "Counts are of the items shown here, not each app's total: an app may hold more."
 
 
 def _days_ago(then: datetime, now: datetime) -> str:
@@ -78,9 +81,12 @@ def signals_block(remembered: Sequence[RememberedSignal], now: datetime) -> str:
         key=lambda r: (r.signal.app, r.signal.importance is not SignalImportance.HIGH),
     )
     apps = {r.signal.integration_id for r in remembered}
-    lines = [f"{SIGNALS_HEADER} {len(remembered)} item(s) in {len(apps)} app(s)"]
+    lines = [
+        f"{SIGNALS_HEADER} {len(remembered)} item(s) shown from {len(apps)} app(s). "
+        f"{SHOWN_NOT_TOTAL}"
+    ]
     for app, items in groupby(ordered, key=lambda r: r.signal.app):
         group = list(items)
-        lines.append(f"[{app}] {len(group)} item(s)")
+        lines.append(f"[{app}] {len(group)} item(s) shown")
         lines.extend(_line(item, now) for item in group)
     return "\n".join(lines)
