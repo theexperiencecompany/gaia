@@ -109,6 +109,10 @@ async def test_every_device_is_sent_in_batches_and_gone_ones_are_retired(
     )
     sent = _sent(route)
     assert [len(batch) for batch in sent] == [100, 1]
+    # A stalled Expo must not hold the notification pipeline: every request is bounded.
+    assert route.calls[0].request.extensions["timeout"] == dict.fromkeys(
+        ("connect", "read", "write", "pool"), 10.0
+    )
     assert sent[1] == [
         {
             "to": "ExponentPushToken[100]",

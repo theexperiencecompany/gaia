@@ -148,13 +148,14 @@ class TestExternalPlatformTransform:
         ]
         request = _make_request(title="Task", body="details", actions=actions)
         with patch("app.utils.notification.channels.external.settings") as s:
-            s.FRONTEND_URL = "https://app.example.com/"
+            # A path prefix ending in "X" too: only the trailing slash is trimmed.
+            s.FRONTEND_URL = "https://example.com/INBOX/"
             content = await DiscordChannelAdapter().transform(request)
         assert content == ExternalPayload(
             notification_id="notif-1",
             text=(
                 "**Task**\ndetails\n\n"
-                "[View Task](https://app.example.com/todos/1) · [Open](https://app.example.com/x)"
+                "[View Task](https://example.com/INBOX/todos/1) · [Open](https://example.com/INBOX/x)"
             ),
             origin=notice_origin(request),
         )
