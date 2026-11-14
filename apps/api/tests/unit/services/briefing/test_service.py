@@ -120,6 +120,7 @@ from app.services.briefing.faithfulness import (
     UnsupportedClaims,
 )
 from app.services.briefing.scouts import service as scout_service
+from app.services.briefing.scouts.facts import SHOWN_NOT_TOTAL
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
@@ -2685,7 +2686,10 @@ class TestSignalsInTheBrief:
         await daily.run_daily_briefing(_USER)
 
         prompt = _prompt(world)
-        assert "[ACROSS THEIR APPS] 2 item(s) in 1 app(s)\n[Linear] 2 item(s)\n" in prompt
+        assert (
+            f"[ACROSS THEIR APPS] 2 item(s) shown from 1 app(s). {SHOWN_NOT_TOTAL}\n"
+            "[Linear] 2 item(s) shown\n"
+        ) in prompt
         assert (
             "- fact 1 | important | issue assigned to you: Fix the login redirect"
             " | state: In Progress | linkable | first seen 3 days ago, mentioned"

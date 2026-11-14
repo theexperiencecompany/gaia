@@ -24,7 +24,7 @@ from app.agents.core.background.session import ExecutorRun, TodoRun
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
-from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, BriefItemSource
+from app.constants.briefing import BriefItemSource
 from app.constants.comms import CommsDirectiveKind
 from app.constants.log_tags import LogTag
 from app.constants.notifications import QUIET_HOURS_EXEMPT, ProactiveMessageClass
@@ -44,7 +44,6 @@ from app.constants.todos import (
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.todos import todo_repository
-from app.db.repositories.workflows import workflow_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
@@ -56,6 +55,7 @@ from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
+from app.services.briefing.held import daily_brief_is_live
 from app.services.canvas_markdown import section_body
 from app.services.delivery.chat_channel import (
     ProactiveTarget,
@@ -276,15 +276,6 @@ def _can_wait(todo: TodoDocument, finished: FinishedTodoRun) -> bool:
     return desk_thread or finished.trigger_type is TriggerType.SCHEDULED_TODO
 
 
-async def _has_live_daily_brief(user_id: str) -> bool:
-    """Whether a daily brief will run for the user: its workflow exists and is switched on.
-
-    Without one, holding a result for "the brief" would mean nobody ever sees it.
-    """
-    workflow = await workflow_repository.find_system_workflow(user_id, DAILY_BRIEFING_WORKFLOW_KEY)
-    return workflow is not None and workflow.activated
-
-
 def _canvas_section(todo: TodoDocument, heading: str, max_chars: int) -> str | None:
     """Return one canvas section's body, bounded, or None when it is missing or empty."""
     body = section_body(todo.canvas_content, heading)
@@ -360,9 +351,7 @@ async def _narrate_and_deliver(
     only whether. The inbox desk's scheduled findings go into the next brief, never a message.
     """
     desk_sweep = _is_desk_sweep(todo, finished)
-    may_wait = (desk_sweep or _can_wait(todo, finished)) and await _has_live_daily_brief(
-        todo.user_id
-    )
+    may_wait = (desk_sweep or _can_wait(todo, finished)) and await daily_brief_is_live(todo.user_id)
     # Where it goes is looked up while comms writes it up: neither waits on the other.
     text, target = await asyncio.gather(
         narrate_executor_result(

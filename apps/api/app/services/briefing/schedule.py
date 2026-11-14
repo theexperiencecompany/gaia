@@ -38,6 +38,7 @@ from app.models.user_models import UserDocument
 from app.models.workflow_models import UpdateWorkflowRequest, Workflow, WorkflowDocument
 from app.services.analytics_service import capture
 from app.services.briefing import context
+from app.services.briefing.held import daily_brief_is_live, release_held_items
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone
@@ -220,6 +221,7 @@ async def set_briefing_schedule(
 
     Turning briefs off first moves each brief-delivery workflow to its delivery in
     workflow_deliveries, and raises BriefDeliveryWorkflowsError while any has none.
+    A schedule with no daily brief releases what was held for it.
     """
     if schedule.frequency is BriefingFrequency.OFF:
         await _move_off_the_brief(user_id, workflow_deliveries or {}, via)
@@ -228,6 +230,8 @@ async def set_briefing_schedule(
     if user is None:
         raise LookupError(f"Cannot schedule briefs for unknown user {user_id}")
     await resync_briefing_schedules(user)
+    if not await daily_brief_is_live(user_id):
+        await release_held_items(user_id)
     log.audit(
         "briefing schedule updated",
         actor=user_id,

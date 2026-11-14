@@ -45,6 +45,7 @@ from app.services.briefing.facts import (
     user_todos_note,
     work_stats,
 )
+from app.services.briefing.held import held_items
 from app.services.briefing.lifecycle import (
     already_delivered,
     bootstrap_should_skip,
@@ -141,7 +142,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     open_count = await todo_repository.count_open_user_todos(user_id)
     calendar = await context.gather_calendar(user_id, clock, days=1)
     completed = await context.gather_completed_since(user_id, since)
-    held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
+    held = await held_items(user_id)
     seen_at = datetime.now(UTC)
     scouts = await scout_signals(user, seen_at)
     gathered = await gather_candidates(

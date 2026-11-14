@@ -76,6 +76,8 @@ class BriefOutcome(StrEnum):
     FAILED = "failed"
 
 
+# Title of the in-app note that releases what was held when no daily brief will carry it.
+HELD_RELEASE_TITLE: Final[str] = "While you were away"
 # Daily brief section heads, numbered in order. Display casing: every surface shows
 # these as written; an edition that sets its heads in capitals does so in its own CSS.
 SECTION_TITLES: Final[dict[SectionKey, str]] = {
