@@ -5,6 +5,7 @@ import type {
   ConversationSyncItem,
   ConversationSyncRow,
   MessageAccepted,
+  RetryMessageRequest,
   SendMessageRequest,
   SystemPurpose as SystemPurposeLiteral,
 } from "@shared/api/generated";
@@ -232,6 +233,16 @@ export const chatApi = {
       path: { conversation_id: conversationId },
       body,
       silent: true,
+    }),
+
+  /** Ask the server to answer one of the conversation's user messages again, in that message's place. */
+  retryConversationMessage: (
+    conversationId: string,
+    body: RetryMessageRequest,
+  ): Promise<MessageAccepted> =>
+    api.post("/api/v1/conversations/{conversation_id}/retry", {
+      path: { conversation_id: conversationId },
+      body,
     }),
 
   /**

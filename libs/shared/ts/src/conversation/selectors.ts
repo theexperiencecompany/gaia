@@ -7,7 +7,6 @@ import type {
   PendingSend,
   ScreenItem,
   StreamDraft,
-  UserMessage,
 } from "./types";
 
 /**
@@ -98,7 +97,12 @@ export function sendingLoadingRow(
   return { visible: true, status: DISPLAY_STATE.THINKING, progress: null };
 }
 
-function retryTarget(item: ScreenItem | undefined): string | null {
+/** The user message a retry of an item answers again: a user item's own, or the one the server names as its retry target. */
+export function retryTarget(
+  view: ConversationView,
+  itemId: string,
+): string | null {
+  const item = view.items.find((candidate) => candidate.id === itemId);
   switch (item?.kind) {
     case SCREEN_ITEM_KIND.USER:
       return item.id;
@@ -108,18 +112,6 @@ function retryTarget(item: ScreenItem | undefined): string | null {
     default:
       return null;
   }
-}
-
-/** The user message a retry of an item resends: a user item's own, or the one the server names as its retry target. */
-export function messageToRetry(
-  view: ConversationView,
-  itemId: string,
-): UserMessage | null {
-  const targetId = retryTarget(
-    view.items.find((candidate) => candidate.id === itemId),
-  );
-  const target = view.items.find((candidate) => candidate.id === targetId);
-  return target?.kind === SCREEN_ITEM_KIND.USER ? target.message : null;
 }
 
 /** The words a pinned or searched item shows: the user's message, or a reply's or notice's bubbles. */

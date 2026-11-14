@@ -400,7 +400,8 @@ async def test_a_message_that_kicks_the_step_is_flushed_once_by_the_steps_commit
     log: MongoConversationLog, conversation: str, held: HeldFlushes, entries_collection: Any
 ) -> None:
     await log.append(conversation, UID, user("u1"))
-    assert held.spawned == []
+    # The new row's list push goes out at once; the message's flush waits for the step's commit.
+    assert held.spawned == [("conversation_list_push", {"conversation_id": conversation})]
     claim = await log.claim(conversation, UID)
     assert claim is not None
     unsettled = await log.unsettled(conversation, UID)

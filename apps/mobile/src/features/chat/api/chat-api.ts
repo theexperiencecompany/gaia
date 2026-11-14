@@ -6,6 +6,7 @@ import type {
   MessageAccepted,
   Reaction,
   ReplyToMessageData,
+  RetryMessageRequest,
   SelectedWorkflowDataOutput,
   SendMessageRequest,
   TodoRunWake,
@@ -213,6 +214,17 @@ export function sendConversationMessage(
   );
 }
 
+/** Ask the server to answer one of the conversation's user messages again, in that message's place. */
+export function retryConversationMessage(
+  conversationId: string,
+  body: RetryMessageRequest,
+): Promise<MessageAccepted> {
+  return apiService.post<MessageAccepted>(
+    `/conversations/${encodeURIComponent(conversationId)}/retry`,
+    body,
+  );
+}
+
 /** Stop everything running in a conversation. */
 export async function stopConversation(conversationId: string): Promise<void> {
   await apiService.post(
@@ -335,6 +347,7 @@ export const chatApi = {
   deleteMessage,
   pinMessage,
   sendConversationMessage,
+  retryConversationMessage,
   stopConversation,
   subscribeToConversationEvents,
   uploadFile,

@@ -47,7 +47,7 @@ interface UseChatReturn {
   conversationId: string | null;
   flatListRef: React.RefObject<FlashListRef<Message> | null>;
   sendMessage: (text: string, opts?: SendMessageOptions) => void;
-  /** Resend a failed send as-is, or send the message behind a reply again with retry_of. */
+  /** Resend a failed send as-is, or have the server answer the message behind a reply again. */
   retryMessage: (messageId: string) => void;
   stop: () => void;
   scrollToBottom: () => void;

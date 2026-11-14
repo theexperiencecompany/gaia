@@ -16112,6 +16112,29 @@
         "title": "RetractFrame",
         "type": "object"
       },
+      "RetryMessageRequest": {
+        "description": "Answer the user message target again in place; message_id is minted by the client and makes a resend a no-op.",
+        "properties": {
+          "message_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Message Id",
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "target"
+        ],
+        "title": "RetryMessageRequest",
+        "type": "object"
+      },
       "SandboxExecuteRequest": {
         "properties": {
           "data": {
@@ -16994,17 +17017,6 @@
                 "type": "null"
               }
             ]
-          },
-          "retry_of": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Retry Of"
           },
           "selected_calendar_event": {
             "anyOf": [
@@ -27827,6 +27839,79 @@
           }
         },
         "summary": "Mark As Read Endpoint",
+        "tags": [
+          "Conversations"
+        ]
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/retry": {
+      "post": {
+        "description": "Answer one of the conversation's user messages again; the new reply arrives on the events stream.",
+        "operationId": "conversations_retry_message_endpoint",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Retry Message Endpoint",
         "tags": [
           "Conversations"
         ]

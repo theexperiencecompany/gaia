@@ -1165,6 +1165,26 @@ export interface paths {
         patch: operations["conversations_mark_as_read_endpoint"];
         trace?: never;
     };
+    "/api/v1/conversations/{conversation_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Message Endpoint
+         * @description Answer one of the conversation's user messages again; the new reply arrives on the events stream.
+         */
+        post: operations["conversations_retry_message_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations/{conversation_id}/star": {
         parameters: {
             query?: never;
@@ -13474,6 +13494,16 @@ export interface components {
              */
             kind: "retract";
         };
+        /**
+         * RetryMessageRequest
+         * @description Answer the user message target again in place; message_id is minted by the client and makes a resend a no-op.
+         */
+        RetryMessageRequest: {
+            /** Message Id */
+            message_id: string;
+            /** Target */
+            target: string;
+        };
         /** SandboxExecuteRequest */
         SandboxExecuteRequest: {
             /** Data */
@@ -13834,8 +13864,6 @@ export interface components {
             /** Reply To */
             reply_to?: string | null;
             reply_to_message?: components["schemas"]["ReplyToMessageData"] | null;
-            /** Retry Of */
-            retry_of?: string | null;
             selected_calendar_event?: components["schemas"]["SelectedCalendarEventData"] | null;
             /** Selected Tool */
             selected_tool?: string | null;
@@ -17453,6 +17481,7 @@ export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
 export type RetractFrame = components['schemas']['RetractFrame'];
+export type RetryMessageRequest = components['schemas']['RetryMessageRequest'];
 export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
 export type SandboxExecuteResponse = components['schemas']['SandboxExecuteResponse'];
 export type SandboxToolSchemaRequest = components['schemas']['SandboxToolSchemaRequest'];
@@ -20908,6 +20937,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationActionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_retry_message_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetryMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageAccepted"];
                 };
             };
             /** @description Unprocessable Entity */

@@ -1,21 +1,17 @@
 import type { SendMessageRequest } from "@gaia/shared/api/generated";
-import {
-  isConversationIdTaken,
-  messageToRetry,
-} from "@gaia/shared/conversation";
+import { isConversationIdTaken, retryTarget } from "@gaia/shared/conversation";
 import { randomUUID } from "expo-crypto";
 import { queryClient } from "@/lib/query-provider";
 import { usePaywallStore } from "@/stores/paywall-store";
 import type { ApiFileData } from "../api/chat-api";
 import { chatKeys } from "../api/queries";
 import type { Conversation } from "../types";
-import { deliverSend } from "./connection";
+import { deliverRetry, deliverSend } from "./connection";
 import {
   liveConversation,
   type MobileSend,
   useLiveConversationStore,
 } from "./live-conversation-store";
-import { toApiFileData } from "./live-messages";
 
 const NEW_CONVERSATION_TITLE = "New conversation";
 
@@ -116,7 +112,7 @@ export function sendMessage(
 
 /**
  * Retry from a bubble: a send that never reached the server is resent as-is, so the
- * server's message id dedup holds; an accepted message is sent again naming it in retry_of.
+ * server's message id dedup holds; an accepted message is answered again by the server, in its place.
  */
 export async function retryMessage(
   conversationId: string,
@@ -127,22 +123,10 @@ export async function retryMessage(
     await deliverSend(conversationId, messageId);
     return;
   }
-  const asked = messageToRetry(live.view, messageId);
-  if (!asked) {
+  const target = retryTarget(live.view, messageId);
+  if (!target) {
     console.error("[retryMessage] No user message to retry:", messageId);
     return;
   }
-  sendMessage(
-    conversationId,
-    {
-      text: asked.text,
-      reply_to_message: asked.reply_to_message,
-      selected_tool: asked.selected_tool,
-      tool_category: asked.tool_category,
-      selected_workflow: asked.selected_workflow,
-      selected_calendar_event: asked.selected_calendar_event,
-      retry_of: asked.id,
-    },
-    toApiFileData(asked.files),
-  );
+  await deliverRetry(conversationId, target);
 }

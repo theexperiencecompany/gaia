@@ -17,7 +17,6 @@ class SendMessageRequest(BaseModel):
     message_id: str = Field(min_length=1, max_length=128)
     text: str = Field(max_length=32768)
     reply_to: str | None = None
-    retry_of: str | None = None
     file_ids: list[str] = Field(default_factory=list)
     voice: bool = False
     selected_tool: Identifier | None = None
@@ -35,6 +34,13 @@ class SendMessageRequest(BaseModel):
         ):
             raise ValueError("reply_to and reply_to_message.id name different messages")
         return self
+
+
+class RetryMessageRequest(BaseModel):
+    """Answer the user message target again in place; message_id is minted by the client and makes a resend a no-op."""
+
+    message_id: str = Field(min_length=1, max_length=128)
+    target: str = Field(min_length=1, max_length=128)
 
 
 class BargeInRequest(BaseModel):

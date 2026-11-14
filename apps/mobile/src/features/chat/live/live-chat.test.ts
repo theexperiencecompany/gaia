@@ -91,6 +91,13 @@ vi.mock("../api/chat-api", async () => {
         if (sendResult.fail) throw sendResult.fail;
         return { conversation_id: conversationId, message_id: body.message_id };
       },
+      retryConversationMessage: async (
+        conversationId: string,
+        body: { message_id: string },
+      ) => {
+        sendResult.calls.push({ conversationId, body });
+        return { conversation_id: conversationId, message_id: body.message_id };
+      },
     },
   };
 });
@@ -449,7 +456,7 @@ describe("sending", () => {
     expect(rows()[0]?.sendFailed).toBe(true);
   });
 
-  it("retries a failed reply as a new message naming the one it answers", async () => {
+  it("retries a failed reply by asking the server to answer its message again", async () => {
     release = openConversation(CONVERSATION);
     await flush();
     lastStream().push(entry(1, userMessage("m1", "plan my day")));
@@ -458,9 +465,6 @@ describe("sending", () => {
 
     await retryMessage(CONVERSATION, "r1");
 
-    expect(sendResult.calls[0]?.body).toMatchObject({
-      text: "plan my day",
-      retry_of: "m1",
-    });
+    expect(sendResult.calls[0]?.body).toMatchObject({ target: "m1" });
   });
 });

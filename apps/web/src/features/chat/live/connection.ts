@@ -1,5 +1,6 @@
 import type { ConversationPage } from "@shared/conversation";
 import { createConversationFollower } from "@shared/conversation/live";
+import { v4 as uuidv4 } from "uuid";
 import {
   ConversationNotFoundError,
   chatApi,
@@ -121,7 +122,29 @@ export function deliverSend(
   conversationId: string,
   messageId: string,
 ): Promise<void> {
-  const post = () => postSend(conversationId, messageId);
+  return afterEarlierDeliveries(conversationId, () =>
+    postSend(conversationId, messageId),
+  );
+}
+
+/** Ask the server to answer the user message target again, in order with this device's sends; it keeps the message's one bubble. */
+export function deliverRetry(
+  conversationId: string,
+  target: string,
+): Promise<void> {
+  return afterEarlierDeliveries(conversationId, async () => {
+    await chatApi.retryConversationMessage(conversationId, {
+      message_id: uuidv4(),
+      target,
+    });
+    follower.wake(conversationId);
+  });
+}
+
+function afterEarlierDeliveries(
+  conversationId: string,
+  post: () => Promise<void>,
+): Promise<void> {
   // An earlier send's failure is its own caller's to handle; this one goes out regardless.
   const delivery = (deliveries.get(conversationId) ?? Promise.resolve()).then(
     post,

@@ -53,12 +53,15 @@ vi.mock("@/features/chat/components/memory/MemoryModal", () => ({
 vi.mock("@/features/chat/components/bubbles/bot/SearchedImageDialog", () => ({
   default: () => null,
 }));
-vi.mock("./sendMessage", () => ({ sendMessage: vi.fn() }));
+vi.mock("./connection", async (actual) => ({
+  ...(await actual<Record<string, unknown>>()),
+  deliverRetry: vi.fn(),
+}));
 
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";
 import { useChatStore } from "@/stores/chatStore";
+import { deliverRetry } from "./connection";
 import { useLiveConversationStore } from "./liveConversationStore";
-import { sendMessage } from "./sendMessage";
 
 const CONVERSATION = "conv-1";
 
@@ -159,7 +162,7 @@ describe("the chat rendered from the server's screen patches", () => {
     ).toBeDefined();
   });
 
-  it("retries a failed reply by resending the message the server names", async () => {
+  it("retries a failed reply by asking the server to answer the message it names", async () => {
     renderChat();
     await feed(
       insertFrame(userItem("m1", 1, "book the flight")),
@@ -167,9 +170,9 @@ describe("the chat rendered from the server's screen patches", () => {
       insertFrame(failedReply("r1", 3, "m1")),
     );
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(vi.mocked(sendMessage)).toHaveBeenCalledWith(
-      "book the flight",
-      expect.objectContaining({ conversationId: CONVERSATION, retry_of: "m1" }),
+    expect(vi.mocked(deliverRetry)).toHaveBeenCalledExactlyOnceWith(
+      CONVERSATION,
+      "m1",
     );
   });
 

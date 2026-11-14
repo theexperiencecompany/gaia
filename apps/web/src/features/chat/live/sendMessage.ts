@@ -17,7 +17,6 @@ export type SendMessageOverrides = Partial<
   Pick<
     LocalSendBody,
     | "reply_to_message"
-    | "retry_of"
     | "selected_tool"
     | "tool_category"
     | "selected_workflow"
@@ -116,7 +115,6 @@ export async function sendMessage(
       text,
       reply_to: replyToMessage?.id ?? null,
       reply_to_message: replyToMessage,
-      retry_of: overrides?.retry_of ?? null,
       file_ids: fileData.map((file) => file.fileId),
       selected_tool: selectedTool,
       tool_category: overrides?.tool_category ?? null,

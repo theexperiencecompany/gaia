@@ -31,7 +31,7 @@ export type { LoadingRow, ScreenRow } from "./selectors";
 export {
   itemText,
   loadingRow,
-  messageToRetry,
+  retryTarget,
   screenRows,
   sendingLoadingRow,
 } from "./selectors";

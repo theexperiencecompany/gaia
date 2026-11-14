@@ -21,7 +21,15 @@ from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.bot_models import BotChatRequest, PartialReply
 from app.models.chat_models import ConversationSource
 from app.models.conversation_frame_models import StateFrame
-from app.models.conversation_log_models import BargeIn, DisplayState, Notice, UserMessage
+from app.models.conversation_log_models import (
+    BargeIn,
+    DisplayState,
+    Notice,
+    Reply,
+    ReplyOutcome,
+    ReplySettled,
+    UserMessage,
+)
 from app.models.conversation_send_models import ActiveBotConversation
 from app.models.notification.notification_models import NotificationStatus
 from app.models.user_models import AuthenticatedUser
@@ -414,3 +422,62 @@ async def test_a_new_conversation_is_titled_and_its_title_streamed(
     assert titled.await_count == 1
     assert titled.await_args.args[1] == {"role": "user", "content": "fly me to Lisbon"}
     assert [u.description for u in updates] == ["Flights to Lisbon"]
+
+
+async def test_a_retry_reanswers_its_message_in_place_without_a_second_user_item(
+    client: AsyncClient,
+    sends: Sends,
+    make_conversation: Callable[..., Awaitable[str]],
+) -> None:
+    conversation_id = await make_conversation(FAKE_USER.user_id, messages=_HISTORY)
+    url = f"/api/v1/conversations/{conversation_id}"
+    response = await client.post(f"{url}/retry", json={"message_id": "r1", "target": "old-u"})
+    log = MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
+    await log.append(
+        conversation_id,
+        FAKE_USER.user_id,
+        Reply(id="reply:again", reply_id="again", attempt_id="attempt:again", text="three now"),
+    )
+    await log.append(
+        conversation_id,
+        FAKE_USER.user_id,
+        ReplySettled(
+            id="settle:again",
+            reply_id="again",
+            outcome=ReplyOutcome.ANSWERED,
+            answers=("r1",),
+            through=_LOGGED + 1,
+            quote_target=None,
+        ),
+    )
+    entries = await conversation_log_repository.read_log(conversation_id, user_id=FAKE_USER.user_id)
+    items = (await client.get(f"{url}/entries", params={"before_seq": 100})).json()["items"]
+    retried = [e.entry for e in entries or [] if e.entry.id == "r1"]
+    assert response.status_code == 202, response.text
+    assert response.json()["seq"] == _LOGGED + 1
+    assert [(m.text, m.retry_of) for m in retried if isinstance(m, UserMessage)] == [
+        ("what's on today?", "old-u")
+    ]
+    assert [i["id"] for i in items if i["kind"] == "user"] == ["old-u"]
+    assert [(i["id"], i["retry_target"]) for i in items if i["kind"] == "reply"] == [
+        ("old-b", "old-u"),
+        ("again", "old-u"),
+    ]
+    assert EffectCall("kick") in sends.effects.calls
+    assert sends.captured.call_args.args[1].is_retry is True
+
+
+async def test_a_retry_of_a_message_the_conversation_does_not_hold_is_refused(
+    client: AsyncClient,
+    sends: Sends,
+    make_conversation: Callable[..., Awaitable[str]],
+) -> None:
+    conversation_id = await make_conversation(FAKE_USER.user_id, messages=_HISTORY)
+    response = await client.post(
+        f"/api/v1/conversations/{conversation_id}/retry",
+        json={"message_id": "r1", "target": "not-here"},
+    )
+    entries = await conversation_log_repository.read_log(conversation_id, user_id=FAKE_USER.user_id)
+    assert response.status_code == 404, response.text
+    assert len(entries or []) == _LOGGED
+    assert EffectCall("kick") not in sends.effects.calls
