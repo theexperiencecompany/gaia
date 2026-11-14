@@ -39,6 +39,7 @@ from app.constants.browser import (
 from app.constants.chat import ConversationSource
 from app.db.repositories.conversations import conversation_repository
 from app.models.conversation_send_models import SendMessageRequest
+from app.models.user_models import AuthenticatedUser
 from app.schemas.browser import (
     BrowserLoginResponse,
     BrowserTaskResponse,
@@ -151,20 +152,25 @@ def _record(status: HandoffStatus = HandoffStatus.PENDING, user_id: str = USER_I
 @pytest.fixture
 async def button_world(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
-) -> list[tuple[str, str, str]]:
-    """Open a pending login handoff in c1 over fakeredis; return what is sent to its conversation."""
-    recorded: list[tuple[str, str, str]] = []
+) -> list[tuple[str, str, str, str]]:
+    """Open a pending login handoff in c1 (a Telegram chat) over fakeredis; return what is sent to it, as whom."""
+    recorded: list[tuple[str, str, str, str]] = []
 
     async def _send(
         conversation_id: str,
-        _user: object,
+        user: AuthenticatedUser,
         body: SendMessageRequest,
         surface: ConversationSource,
     ) -> None:
-        recorded.append((conversation_id, body.text, surface))
+        recorded.append((conversation_id, body.text, surface, user.user_id))
+
+    async def _source(conversation_id: str, *, user_id: str) -> ConversationSource | None:
+        return (
+            ConversationSource.TELEGRAM if (conversation_id, user_id) == ("c1", USER_ID) else None
+        )
 
     monkeypatch.setattr(handoff_buttons, "send_message", _send)
-    monkeypatch.setattr(conversation_repository, "get_source", AsyncMock(return_value=None))
+    monkeypatch.setattr(conversation_repository, "get_source", _source)
     # A cancel is a real stop, which reads ARQ's keys: its pool is the same fake Redis.
     monkeypatch.setattr(RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     await create_pending_handoff(
@@ -178,7 +184,7 @@ async def button_world(
 
 class TestDecideBrowserHandoff:
     async def test_the_cards_decision_settles_it_and_reaches_the_agents_thread(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         """No turn runs for a tap: without the thread entry the agent's reply called the user's own note a mistake."""
         payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message="skip it")
@@ -200,12 +206,13 @@ class TestDecideBrowserHandoff:
             (
                 "c1",
                 "[From the browser handoff card] continue: skip it",
-                ConversationSource.WEB,
+                ConversationSource.TELEGRAM,
+                USER_ID,
             )
         ]
 
     async def test_a_tap_after_it_was_settled_another_way_decided_nothing(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         await cancel_handoff("h1")
         payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
@@ -224,7 +231,7 @@ class TestDecideBrowserHandoff:
     )
     async def test_another_users_or_a_gone_handoff_is_refused(
         self,
-        button_world: list[tuple[str, str, str]],
+        button_world: list[tuple[str, str, str, str]],
         handoff_id: str,
         user_id: str,
         code: int,
@@ -239,7 +246,7 @@ class TestDecideBrowserHandoff:
         assert button_world == []
 
     async def test_the_live_pages_stop_decides_the_handoff_its_link_was_sent_for(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         """A bot user has no web session: the code that opened the page is the authority, and only for its own handoff."""
         code = await mint_live_code("sess-1", USER_ID, "h1")
@@ -264,7 +271,7 @@ class TestDecideBrowserHandoff:
         assert record is not None
         assert record.message is None
         assert button_world == [
-            ("c1", "[From the browser handoff card] cancel", ConversationSource.WEB)
+            ("c1", "[From the browser handoff card] cancel", ConversationSource.TELEGRAM, USER_ID)
         ]
         # Settled, the link no longer opens anything.
         with pytest.raises(HTTPException) as exc:
@@ -275,7 +282,7 @@ class TestDecideBrowserHandoff:
         )
 
     async def test_cancel_stops_the_job_and_its_note_reaches_the_thread(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         """A cancel the run merely heard would end it on its own and report a result the user declined."""
         code = await mint_live_code("sess-1", USER_ID, "h1")
@@ -288,12 +295,13 @@ class TestDecideBrowserHandoff:
             (
                 "c1",
                 "[From the browser handoff card] cancel: wrong account",
-                ConversationSource.WEB,
+                ConversationSource.TELEGRAM,
+                USER_ID,
             )
         ]
 
     async def test_a_cancel_tap_is_counted_once_as_the_users_cancel(
-        self, button_world: list[tuple[str, str, str]], monkeypatch: pytest.MonkeyPatch
+        self, button_world: list[tuple[str, str, str, str]], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         captured: list[tuple[object, ...]] = []
         monkeypatch.setattr(handoff_buttons, "capture", lambda *args: captured.append(args))
@@ -305,7 +313,7 @@ class TestDecideBrowserHandoff:
         ]
 
     async def test_another_users_cancel_stops_nothing(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         with pytest.raises(
             BrowserHandoffNotOwned, match="^Not authorized to resolve this handoff$"
@@ -318,7 +326,7 @@ class TestDecideBrowserHandoff:
         assert button_world == []
 
     async def test_a_tap_another_decision_beat_is_not_written_as_the_users(
-        self, button_world: list[tuple[str, str, str]], monkeypatch: pytest.MonkeyPatch
+        self, button_world: list[tuple[str, str, str, str]], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The wait timed out between the read and the tap: the tap decided nothing."""
         monkeypatch.setattr(
@@ -333,7 +341,7 @@ class TestDecideBrowserHandoff:
         assert button_world == []
 
     async def test_a_live_page_whose_handoff_expired_says_it_is_gone(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         code = await mint_live_code("sess-1", USER_ID, "expired")
 

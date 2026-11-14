@@ -595,7 +595,7 @@ class TestActions:
 
         request = deps.notify.await_args.args[0]
         assert request.id == notification_id(
-            USER_ID, "todo_trigger", sub.id or "", hashlib.sha256(b"{}").hexdigest()
+            USER_ID, "todo_trigger", sub.id, hashlib.sha256(b"{}").hexdigest()
         )
         assert request.user_id == USER_ID
         assert request.source == NotificationSourceEnum.TODO_TRIGGER

@@ -17,7 +17,7 @@ import fakeredis.aioredis
 from langchain_core.messages import AIMessage, ToolMessage
 import pytest
 
-from app.agents.core.background import executor_queue
+from app.agents.core.background import executor_queue, folded_stream
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.subagents import delegation
 from app.agents.core.subagents.delegation import (
@@ -47,9 +47,10 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.tool_cards import FoldedCards
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
-from shared.py.conversation_wire import ToolDataEntry
+from shared.py.conversation_wire import ImageData, ToolDataEntry
 from shared.py.wide_events import log
 from tests.helpers import WideEventRecorder, captured_wide_event
 from tests.unit.services.conversation.log_helpers import user
@@ -366,6 +367,79 @@ class TestABackgroundRunOwnsItsStream:
         # Its own subagent group opens the record, the card it showed follows.
         assert [card["tool_name"] for card in ended.tool_data] == ["subagent_group", "search"]
         assert ended.tool_data[1] == cards[0]
+
+    async def test_its_own_stream_is_opened_and_closed_as_the_users_work(
+        self, redis: Any, client_edges: SimpleNamespace
+    ) -> None:
+        carried = AsyncMock(wraps=folded_stream.record_work_carried)
+        opened = AsyncMock(wraps=folded_stream.open_detached_stream)
+        finished = AsyncMock(wraps=folded_stream.record_work_finished)
+        with (
+            patch(
+                f"{MODULE}.execute_subagent_stream",
+                new=AsyncMock(return_value=SubagentOutcome(text="done")),
+            ),
+            patch(f"{FOLDED}.record_work_carried", new=carried),
+            patch(f"{FOLDED}.open_detached_stream", new=opened),
+            patch(f"{FOLDED}.record_work_finished", new=finished),
+        ):
+            await delegate(_delegation(), background=True)
+            await _drain()
+
+        (own,) = carried.await_args.args[2:]
+        carried.assert_awaited_once_with(CONVERSATION, "u1", own, detached=True)
+        opened.assert_awaited_once_with(own, conversation_id=CONVERSATION, user_id="u1")
+        assert finished.await_args.args[:3] == (CONVERSATION, "u1", own)
+
+    async def test_its_approval_cards_and_image_ride_on_its_finished_work(
+        self, redis: Any, client_edges: SimpleNamespace
+    ) -> None:
+        approval: ToolDataEntry = {"tool_name": "approval", "data": {"id": "a1"}}
+        image = ImageData(url="https://img/1.png", prompt="a cat")
+        streams: list[str] = []
+
+        def approvals_of(stream_id: str) -> tuple[ToolDataEntry, ...]:
+            streams.append(stream_id)
+            return (approval,)
+
+        with (
+            patch(
+                f"{MODULE}.execute_subagent_stream",
+                new=AsyncMock(return_value=SubagentOutcome(text="done")),
+            ),
+            patch(f"{FOLDED}.session_approval_cards", new=approvals_of),
+            patch(f"{FOLDED}.work_cards", new=AsyncMock(return_value=FoldedCards(image=image))),
+        ):
+            await delegate(_delegation(), background=True)
+            await _drain()
+
+        started, ended = await _logged(client_edges)
+        assert isinstance(started, WorkStarted) and isinstance(ended, WorkFinished)
+        assert streams == [started.task_id]
+        assert (ended.tool_data, ended.image, ended.report, ended.nothing_for_user) == (
+            (approval,),
+            image,
+            "",
+            True,
+        )
+
+    async def test_a_run_its_stop_refused_never_opens_its_stream_or_starts(
+        self, redis: Any, client_edges: SimpleNamespace
+    ) -> None:
+        execute = AsyncMock(return_value=SubagentOutcome(text="done"))
+        opened = AsyncMock()
+        with (
+            patch(f"{MODULE}.execute_subagent_stream", new=execute),
+            patch(f"{FOLDED}.record_work_carried", new=AsyncMock(return_value=False)),
+            patch(f"{FOLDED}.open_detached_stream", new=opened),
+        ):
+            await delegate(_delegation(), background=True)
+            await _drain()
+
+        execute.assert_not_awaited()
+        opened.assert_not_awaited()
+        # As stopped as one the user ended mid-run: nothing lands to restart the executor.
+        client_edges.deliver.assert_not_awaited()
 
     async def test_cards_that_cannot_be_logged_do_not_cost_the_run_its_result(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
