@@ -36,6 +36,9 @@ What is noise:
 - A failed run that recovered, a one-off sync blip, a retry nobody needs to see.
 - A chart of a flat or tiny series, or one that repeats a list already in the brief.
 
+A todo of the user's own with no due date (action attend, no due) is only still open, never
+urgent: place one when the day has room or a reason for it, else leave it out.
+
 ## The blocks
 - lead: at most one, and only as block 1. The one thing most worth starting the day on, something
   the user acts on (its item carries an action), and only when GAIA can concretely help with it. offer is what GAIA does when they say "Let's do it": one

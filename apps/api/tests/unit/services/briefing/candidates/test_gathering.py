@@ -57,6 +57,7 @@ def quiet_stores(monkeypatch: pytest.MonkeyPatch) -> None:
         todo_repository, "find_latest_by_external_ref", AsyncMock(return_value=None)
     )
     monkeypatch.setattr(todo_repository, "list_open_user_todos", AsyncMock(return_value=[]))
+    monkeypatch.setattr(todo_repository, "list_undated_user_todos", AsyncMock(return_value=[]))
 
 
 def _thread_todo(thread_id: str, title: str) -> TodoDocument:
@@ -180,7 +181,7 @@ class TestTheCalendarJoinsThePool:
         assert (event.title, event.is_event, event.time) == ("Board call", True, "3:00 PM")
 
 
-class TestDueTodosJoinThePool:
+class TestOwnTodosJoinThePool:
     async def test_the_users_own_todos_due_by_their_next_local_midnight_wait_on_them(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -198,6 +199,24 @@ class TestDueTodosJoinThePool:
             BriefAction.ATTEND,
         )
         assert listing.await_args.kwargs["due_before"] == datetime(2026, 11, 11, 18, 30, tzinfo=UTC)
+
+    async def test_an_undated_own_todo_is_offered_with_no_due_date(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        undated = TodoDocument(id="own-2", user_id=USER_ID, title="Sort the garage")
+        monkeypatch.setattr(
+            todo_repository, "list_undated_user_todos", AsyncMock(return_value=[undated])
+        )
+
+        gathered = await _gathered(TrackedWork(), _scouts())
+
+        [item] = gathered.pool.values()
+        assert (item.todo_id, item.due_at, item.state, item.action) == (
+            "own-2",
+            None,
+            "you",
+            BriefAction.ATTEND,
+        )
 
 
 class TestOneItemPerThing:
