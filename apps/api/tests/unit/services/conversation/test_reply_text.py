@@ -33,7 +33,6 @@ def test_streamed_text_only_appends_to_the_last_bubble_or_opens_later_ones(
         (("hello",), ("help",)),
         (("a", "b"), ("x", "b")),
         (("a", "b"), ("x", "bc")),
-        (("a", "b"), ("a",)),
         (("a", "b", "c"), ("a", "x", "cd")),
         (("ab", "c"), ("ab", "x", "c")),
     ],
@@ -42,3 +41,18 @@ def test_text_the_model_took_back_replaces_every_bubble(
     shown: tuple[str, ...], now: tuple[str, ...]
 ) -> None:
     assert bubble_deltas(shown, now) == [BubblesDelta(bubbles=now)]
+
+
+@pytest.mark.parametrize(
+    ("shown", "now"),
+    [
+        (("hello",), ("hel",)),
+        (("a", "b"), ("a",)),
+        (("a", "b"), ("a", "")),
+        (("hi",), ()),
+    ],
+)
+def test_text_taken_back_to_what_is_shown_stays_until_its_replacement_reads_past_it(
+    shown: tuple[str, ...], now: tuple[str, ...]
+) -> None:
+    assert bubble_deltas(shown, now) == []

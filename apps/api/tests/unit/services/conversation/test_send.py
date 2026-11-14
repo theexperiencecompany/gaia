@@ -233,7 +233,6 @@ async def test_a_send_into_an_open_conversation_is_neither_created_nor_titled(
         message_id="m1",
         text="again",
         reply_to="m0",
-        retry_of="m0",
         voice=True,
         selected_workflow=workflow_run().workflow,
         selected_calendar_event=CALENDAR_EVENT,
@@ -247,7 +246,6 @@ async def test_a_send_into_an_open_conversation_is_neither_created_nor_titled(
             text="again",
             surface=ConversationSource.WEB,
             reply_to="m0",
-            retry_of="m0",
             voice=True,
             selected_workflow=workflow_run().workflow,
             selected_calendar_event=CALENDAR_EVENT,
@@ -258,7 +256,7 @@ async def test_a_send_into_an_open_conversation_is_neither_created_nor_titled(
     world.files.attach_uploads.assert_not_awaited()
     world.files.get_uploads.assert_not_awaited()
     world.spawn.assert_not_called()
-    world.capture.assert_called_once_with(UserId(USER), _submitted(is_retry=True, is_reply=True))
+    world.capture.assert_called_once_with(UserId(USER), _submitted(is_reply=True))
 
 
 async def test_a_resent_message_keeps_its_first_seq_and_is_counted_once(world: World) -> None:
