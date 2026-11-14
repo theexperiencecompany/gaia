@@ -7,7 +7,7 @@ on its platform first, and logged only once it was sent.
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
-from app.models.chat_models import ConversationSource, ToolDataEntry
+from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import Notice
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
@@ -16,6 +16,7 @@ from app.services.platform_message_service import (
     is_bot_platform,
 )
 from app.utils.errors import ConversationNotFoundError
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log
 
 

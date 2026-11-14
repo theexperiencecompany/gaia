@@ -48,6 +48,9 @@ function stableRow(
   return message;
 }
 
+/** A bot message's text as one copy or search reads it: its bubbles, a blank line apart. */
+const copyText = (bubbles: readonly string[]) => bubbles.join("\n\n");
+
 // The bubble's registry narrows tool entries by name at render.
 const cards = (entries: readonly unknown[]) => entries as TypedToolDataEntry[];
 
@@ -77,11 +80,13 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): MessageType {
       const streamed = draft?.content;
       return stableRow(item.id, [item, streamed], () => ({
         type: "bot",
-        response: streamed?.responseText ?? item.text,
+        response: copyText(streamed?.bubbles ?? item.bubbles),
+        bubbles: streamed?.bubbles ?? item.bubbles,
         message_id: item.id,
         seq: item.seq,
         date: item.at,
         tool_data: cards(streamed?.toolData ?? item.tool_data),
+        timeline: streamed?.timeline ?? item.timeline,
         follow_up_actions: [
           ...(streamed?.followUpActions ?? item.follow_up_actions),
         ],
@@ -107,6 +112,7 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): MessageType {
           ...(item.handoff ? [item.handoff] : []),
           ...item.tool_data,
         ]),
+        timeline: item.timeline,
         image_data: item.image ?? undefined,
         in_progress: LIVE_WORK_STATUS.has(item.status),
         stopped: STOPPED_WORK.has(item.status),
@@ -115,11 +121,13 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): MessageType {
     case SCREEN_ITEM_KIND.NOTICE:
       return stableRow(item.id, [item], () => ({
         type: "bot",
-        response: item.text,
+        response: copyText(item.bubbles),
+        bubbles: item.bubbles,
         message_id: item.id,
         seq: item.seq,
         date: item.at,
         tool_data: cards(item.tool_data),
+        timeline: item.timeline,
         follow_up_actions: [...item.follow_up_actions],
       }));
     // The run's side of the chat: its card alone, as a message with no text.
@@ -160,9 +168,11 @@ function row(
       const id = draft.replyId ?? `draft:${draft.attemptId}`;
       return stableRow(`draft:${draft.attemptId}`, [draft.content], () => ({
         type: "bot",
-        response: draft.content.responseText,
+        response: copyText(draft.content.bubbles),
+        bubbles: draft.content.bubbles,
         message_id: id,
         tool_data: cards(draft.content.toolData),
+        timeline: draft.content.timeline,
         follow_up_actions: [...(draft.content.followUpActions ?? [])],
         in_progress: true,
       }));

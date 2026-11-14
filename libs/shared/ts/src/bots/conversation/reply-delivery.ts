@@ -2,8 +2,8 @@
  * One reply on the platform: the delivery state machine's state, and the
  * messages its operations opened.
  *
- * The follower feeds it the reply's streamed text and boundaries (live
- * platforms) or its saved text at settle (the rest), and the machine decides
+ * The follower feeds it the reply's bubbles as they stream (live platforms) or
+ * its saved bubbles at settle (the rest), and the machine decides
  * every send, edit, delete and pause. The first message the reply opens carries
  * the native quote.
  */
@@ -28,8 +28,8 @@ const logger = createBotLogger("shared", "reply-delivery");
 export class ReplyDelivery {
   private state: DeliveryState = initialDeliveryState();
   private readonly messages = new Map<MessageSlot, SentBubble>();
-  /** Every response chunk fed so far, to compare with the reply's saved text. */
-  private fed = "";
+  /** The bubbles fed last, to compare with the reply's saved ones. */
+  private fed: readonly string[] = [];
 
   constructor(
     private readonly config: DeliveryConfig,
@@ -38,8 +38,8 @@ export class ReplyDelivery {
     private readonly replyTo: string | null,
   ) {}
 
-  /** The text streamed into this reply so far. */
-  get streamed(): string {
+  /** The bubbles streamed into this reply so far. */
+  get streamed(): readonly string[] {
     return this.fed;
   }
 
@@ -48,17 +48,18 @@ export class ReplyDelivery {
     return this.messages.size > 0;
   }
 
-  text(chunk: string): Promise<void> {
-    this.fed += chunk;
-    return this.apply({ kind: "text", chunk });
+  bubbles(bubbles: readonly string[]): Promise<void> {
+    this.fed = bubbles;
+    return this.apply({ kind: "bubbles", bubbles });
   }
 
   tick(): Promise<void> {
     return this.apply({ kind: "tick" });
   }
 
-  boundary(discarded: boolean): Promise<void> {
-    return this.apply({ kind: "boundary", discarded });
+  retract(): Promise<void> {
+    this.fed = [];
+    return this.apply({ kind: "retract" });
   }
 
   end(): Promise<void> {

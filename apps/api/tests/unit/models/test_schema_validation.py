@@ -8,7 +8,6 @@ from app.models.chat_models import (
     ConversationModel,
     ConversationSource,
     ConversationSyncItem,
-    ImageData,
     MessageModel,
     SourceCategory,
     SystemPurpose,
@@ -18,7 +17,7 @@ from app.models.memory_models import (
     MemoryEntry,
     MemorySearchResult,
 )
-from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
+from app.models.message_models import FileData, SelectedWorkflowData
 from app.models.user_models import (
     NEEDS_MAX_SELECTION,
     PROFESSION_MAX_LENGTH,
@@ -29,6 +28,7 @@ from app.models.user_models import (
     UserUpdateResponse,
     role_of_need,
 )
+from shared.py.conversation_wire import ImageData, ReplyToMessageData
 
 
 class TestConversationModel:

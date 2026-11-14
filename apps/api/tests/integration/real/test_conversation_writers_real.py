@@ -27,14 +27,12 @@ from app.models.conversation_log_models import (
     ApprovalDecided,
     Entry,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     UserMessage,
     WorkOutcome,
 )
 from app.models.conversation_models import ConversationDocument
-from app.models.conversation_screen_models import NoticeItem, ReplyItem, ScreenItem
-from app.models.tool_data_models import ToolDataEntry
+from app.models.conversation_screen_models import NoticeItem, ScreenItem
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
@@ -43,6 +41,7 @@ from app.services.conversation.work_log import record_user_stop
 from app.services.onboarding.first_conversation import FirstConversation
 from app.utils.seeding_utils import seed_first_conversation
 from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from shared.py.conversation_wire import ReplyItem, ReplyOutcome, ToolDataEntry
 from tests.conftest import FAKE_USER
 from tests.helpers import item_cards, item_text, shown_items
 from tests.unit.services.conversation.log_helpers import asked, finished, started

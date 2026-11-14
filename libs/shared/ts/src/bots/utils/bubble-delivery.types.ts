@@ -11,9 +11,11 @@ export type DeliveryOp =
   | { kind: "pause" };
 
 export type DeliveryEvent =
-  | { kind: "text"; chunk: string }
+  /** The reply's bubbles as the server now has them: the last may still grow. */
+  | { kind: "bubbles"; bubbles: readonly string[] }
   | { kind: "tick" }
-  | { kind: "boundary"; discarded: boolean }
+  /** Take back everything shown, its first message left to overwrite. */
+  | { kind: "retract" }
   | { kind: "end" };
 
 export interface DeliveryConfig {
@@ -35,8 +37,8 @@ export interface Carry {
 }
 
 export interface TurnFields {
-  /** Raw text of the assistant message in flight. */
-  pending: string;
+  /** The reply's bubbles so far, as the server split them. */
+  pending: readonly string[];
   /** How many of its complete bubbles are delivered. */
   sealedBubbles: number;
   carry: Carry;

@@ -7,7 +7,6 @@ import type {
   HilMode,
   HilPreferences,
 } from "./approvals.types";
-import type { StreamToolDataEntry } from "./streaming";
 
 export type {
   ApprovalEnd,
@@ -111,26 +110,4 @@ export function toolOverrideValue(
 /** One line explaining how a settled approval ended, and what its action did. */
 export function approvalOutcomeLabel(data: ApprovalRequestData): string {
   return approvalLabel(data, OUTCOME_LINES)(data);
-}
-
-const approvalId = (entry: StreamToolDataEntry): string | null => {
-  if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return null;
-  const data = entry.data as Partial<ApprovalRequestData> | null;
-  return data && typeof data.approval_id === "string" ? data.approval_id : null;
-};
-
-/**
- * Pending→resolved updates for one approval replace the prior entry in place
- * (same slot), so replay and live streams both end with exactly one card.
- * Any non-approval entry is appended unchanged.
- */
-export function upsertApprovalToolData<T extends StreamToolDataEntry>(
-  entries: T[],
-  entry: T,
-): T[] {
-  const id = approvalId(entry);
-  if (id === null) return [...entries, entry];
-  const index = entries.findIndex((e) => approvalId(e) === id);
-  if (index < 0) return [...entries, entry];
-  return entries.map((e, i) => (i === index ? entry : e));
 }

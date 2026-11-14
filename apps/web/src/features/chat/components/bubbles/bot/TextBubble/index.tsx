@@ -6,10 +6,11 @@ import {
   type ApprovalRequestData,
 } from "@shared/chat";
 import { REPLY_CUT_SHORT } from "@shared/conversation";
-import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
+import { parseOpenUISegments } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
+import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
@@ -25,12 +26,8 @@ import { ChatItemBoundary } from "../ChatItemBoundary";
 import { StoppedNote } from "../StoppedNote";
 import type { ApprovalReceipt } from "../SubagentRow";
 import TodoProgressSection from "../TodoProgressSection";
-import UnifiedToolThread from "../UnifiedToolThread";
+import UnifiedToolThread, { type TimelineItem } from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
-import {
-  deriveProcessedToolKeys,
-  useSubagentSynthesis,
-} from "./useSubagentSynthesis";
 import { useToolRenderAudit } from "./useToolRenderAudit";
 
 // OpenUI components use bg-zinc-800 (same as the bubble) and must render
@@ -348,9 +345,13 @@ function MixedPart({
   );
 }
 
+const NO_BUBBLES: readonly string[] = [];
+
 export default function TextBubble({
   message_id,
   text,
+  bubbles = NO_BUBBLES,
+  timeline,
   disclaimer,
   tool_data,
   isConvoSystemGenerated,
@@ -372,14 +373,10 @@ export default function TextBubble({
     return parseThinkingFromText(text?.toString() || "");
   }, [text]);
 
-  // Single ordered timeline of tool calls + subagent groups (emission order)
-  // and the remaining tool_data entries that render via TOOL_RENDERERS.
-  const { timeline, processedTools } = useSubagentSynthesis(tool_data);
-
-  // One stable React key per processedTools entry — derived from
-  // stream-stable structure (ids/tool name/timestamp), never payload, so
-  // grouped cards (search results, approvals) keep identity as data grows.
-  const processedToolKeys = deriveProcessedToolKeys(processedTools);
+  // The server's timeline: the tool thread in emission order, then the cards
+  // that render on their own, each under a key stable across the stream.
+  const steps = (timeline?.steps ?? []) as readonly TimelineItem[];
+  const cards = timeline?.cards ?? [];
 
   // Dev-only: record what this bubble did with each tool_data entry.
   useToolRenderAudit(message_id, tool_data);
@@ -424,15 +421,15 @@ export default function TextBubble({
         <ThinkingBubble thinkingContent={parsedContent.thinking} />
       )}
 
-      {timeline.length > 0 && (
+      {steps.length > 0 && (
         <ChatItemBoundary
           key={`${baseId}-unified-tools`}
           item="tool_thread"
           messageId={message_id}
-          resetKey={timeline}
+          resetKey={steps}
         >
           <UnifiedToolThread
-            timeline={timeline}
+            timeline={steps}
             isStreaming={!!loading}
             pendingApprovalToolCallIds={pendingApprovalToolCallIds}
             approvalOutcomeByToolCallId={approvalOutcomeByToolCallId}
@@ -440,9 +437,9 @@ export default function TextBubble({
         </ChatItemBoundary>
       )}
 
-      {processedTools.map((entry, index) => {
+      {cards.map(({ key: entryKey, card }, index) => {
+        const entry = card as TypedToolDataEntry;
         const toolName = entry.tool_name;
-        const entryKey = processedToolKeys[index];
 
         if (toolName === "todo_progress") {
           const data = getTypedData(entry as ToolDataUnion, "todo_progress");
@@ -477,12 +474,9 @@ export default function TextBubble({
         // Gate on CLEANED display text, not raw `text`: mid-stream it can
         // hold non-visible content (thinking residue, a stray char) while
         // rendered text is empty, which would flash an empty bubble + tail.
-        parsedContent.cleanText.trim().length > 0 &&
+        bubbles.length > 0 &&
         (() => {
-          // Use cleaned text without thinking tags
-          const displayText = parsedContent.cleanText || "";
-          // Preserve :::openui fences when splitting so they aren't mangled.
-          const textParts = splitMessageByBreaks(displayText);
+          const textParts = bubbles;
 
           // Single pass so first/last/single reflect the *visible* list, not
           // array index — else a visible part sandwiched between blanks loses
@@ -500,7 +494,7 @@ export default function TextBubble({
             <ChatItemBoundary
               item="text"
               messageId={message_id}
-              resetKey={displayText}
+              resetKey={bubbles}
             >
               <div className="flex flex-col">
                 {visibleParts.map(({ part, originalIndex }, visibleIndex) => {

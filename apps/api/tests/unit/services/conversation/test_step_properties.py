@@ -11,7 +11,6 @@ from app.constants.chat import ConversationSource
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
-    ReplyDeltaFrame,
     ResponseEvent,
     ToolDataEvent,
 )
@@ -22,7 +21,6 @@ from app.models.conversation_log_models import (
     LoggedEntry,
     Rejected,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     StopBy,
     StopRequested,
@@ -44,7 +42,17 @@ from app.services.conversation.ports import (
     Summarized,
 )
 from app.services.conversation.reducer import reduce
+from app.services.conversation.screen import handoff_call_id
 from app.services.conversation.step import advance
+from shared.py.conversation_wire import (
+    NEW_MESSAGE_BREAKER,
+    BubblesDelta,
+    BubbleTextDelta,
+    CardsDelta,
+    ReplyDeltaFrame,
+    ReplyOutcome,
+    ToolDataEntry,
+)
 from tests.unit.services.conversation.log_helpers import EMPTY, asked, barge, fired, stop, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
@@ -345,6 +353,25 @@ def _assert_no_reply_settled_twice(entries: Sequence[LoggedEntry]) -> None:
     assert len(settled) == len(set(settled)), settled
 
 
+def _streamed(deltas: list[ReplyDeltaFrame]) -> tuple[str, tuple[ToolDataEntry, ...]]:
+    """Return the text and cards a client following the deltas shows."""
+    bubbles: list[str] = []
+    cards: tuple[ToolDataEntry, ...] = ()
+    for frame in deltas:
+        match frame.payload:
+            case BubbleTextDelta(bubble=bubble, text=more):
+                if bubble == len(bubbles):
+                    bubbles.append("")
+                bubbles[bubble] += more
+            case BubblesDelta(bubbles=now):
+                bubbles = list(now)
+            case CardsDelta(tool_data=now):
+                cards = now
+            case _:
+                pass
+    return NEW_MESSAGE_BREAKER.join(bubbles), cards
+
+
 def _assert_no_empty_answer(entries: Sequence[LoggedEntry]) -> None:
     replies = {item.entry.reply_id: item.entry for item in entries if isinstance(item.entry, Reply)}
     for item in entries:
@@ -370,15 +397,11 @@ def _assert_saved_replies_keep_everything_shown(
             continue
         deltas = sorted(shown[reply.attempt_id], key=lambda frame: frame.index)
         assert [frame.index for frame in deltas] == list(range(len(deltas)))
-        text = "".join(
-            frame.payload.response for frame in deltas if isinstance(frame.payload, ResponseEvent)
-        )
-        cards = tuple(
-            frame.payload.tool_data for frame in deltas if isinstance(frame.payload, ToolDataEvent)
-        )
+        text, cards = _streamed(deltas)
         if reply.heard_through is not None:
             text = text[: reply.heard_through]
-        assert (reply.text, reply.tool_data) == (text, cards), reply.reply_id
+        own = tuple(card for card in reply.tool_data if handoff_call_id(card) is None)
+        assert (reply.text, own) == (text, cards), reply.reply_id
 
 
 def _assert_every_reply_sits_below_what_it_answers(entries: Sequence[LoggedEntry]) -> None:

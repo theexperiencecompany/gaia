@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage
 
-from app.models.chat_models import ToolDataEntry
 from app.utils.agent_utils import (
     IntegrationMetadata,
     NodeMessagesUpdate,
     ToolCallView,
     format_tool_call_entry,
 )
+from shared.py.conversation_wire import ToolDataEntry
 
 
 async def extract_tool_entries_from_update(

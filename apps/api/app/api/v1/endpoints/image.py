@@ -7,7 +7,6 @@ from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators import tiered_rate_limit
-from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
 from app.models.message_models import MessageRequest
 from app.models.user_models import AuthenticatedUser
@@ -19,6 +18,7 @@ from app.services.image_service import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ImageDescribed, ImageGenerated
+from shared.py.conversation_wire import ImageData
 from shared.py.wide_events import log
 
 router = APIRouter()

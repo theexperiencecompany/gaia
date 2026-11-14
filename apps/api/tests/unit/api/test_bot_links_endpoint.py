@@ -20,7 +20,6 @@ from app.constants.cache import (
     PLATFORM_LINK_TOKEN_PREFIX,
     PLATFORM_LINK_TOKEN_TTL,
 )
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.models.bot_models import (
     CreateLinkTokenRequest,
     CreateLinkTokenResponse,
@@ -40,6 +39,7 @@ from app.services.outbound_delivery import OutboundResult
 from app.services.platform_link_code_service import LinkCodeClaim, PlatformLinkCodePayload
 from app.services.platform_link_completion import PostLinkSideEffectError
 from app.utils.errors import AppError
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 from shared.py.wide_events import log, log_context
 from tests.unit.services.conversation.runtime_doubles import Runtime
 

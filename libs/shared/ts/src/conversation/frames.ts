@@ -10,14 +10,12 @@ import type {
   StateFrame,
 } from "../api/generated";
 import { ToolDataEntrySchema } from "../chat/schema";
-import type { ChatStreamEvent } from "../chat/streaming";
-import type { TodoProgressSnapshot } from "../chat/types";
-import { ScreenItemSchema } from "./entries";
+import { ScreenItemSchema, ToolTimelineSchema } from "./entries";
 
 /**
  * Zod mirror of the conversation event stream's frames, each tied to its generated
- * API type. A delta's tagged payload is mapped onto the ChatStreamEvent the shared
- * TurnAccumulator folds.
+ * API type. A reply delta carries text for a bubble the server already split, or the
+ * reply's cards with the timeline the server folded them to.
  */
 
 export const FRAME_KIND = {
@@ -37,107 +35,21 @@ export const DISPLAY_STATE = {
   AWAITING_APPROVAL: "awaiting_approval",
 } as const;
 
-const optionalString = z
-  .string()
-  .nullish()
-  .transform((value) => value ?? undefined);
+const index = z.number().int().min(0);
 
-const StreamPayloadSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("response"), response: z.string() }),
+const ReplyDeltaSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("bubble_text"), bubble: index, text: z.string() }),
+  z.object({ type: z.literal("bubbles"), bubbles: z.array(z.string()) }),
   z.object({
-    type: z.literal("reasoning"),
-    reasoning: z.object({ content: z.string(), subagent_id: optionalString }),
-  }),
-  z.object({ type: z.literal("tool_data"), tool_data: ToolDataEntrySchema }),
-  z.object({
-    type: z.literal("tool_output"),
-    tool_output: z.object({
-      tool_call_id: z.string(),
-      output: z.string(),
-      subagent_id: optionalString,
-    }),
-  }),
-  z.object({
-    type: z.literal("message_boundary"),
-    message_boundary: z.object({
-      message_id: z.string(),
-      discarded: z.boolean(),
-    }),
-  }),
-  z.object({
-    type: z.literal("subagent_start"),
-    subagent_start: z.object({
-      subagent_id: z.string(),
-      subagent_name: z.string(),
-      subagent: optionalString,
-      agent_type: z.enum(["handoff", "spawned"]),
-      started_at: z.string(),
-      icon_url: optionalString,
-      tool_category: optionalString,
-      parent_subagent_id: optionalString,
-    }),
-  }),
-  z.object({
-    type: z.literal("subagent_end"),
-    subagent_end: z.object({
-      subagent_id: z.string(),
-      duration_ms: z.number(),
-      token_count: z
-        .number()
-        .nullish()
-        .transform((value) => value ?? null),
-    }),
+    type: z.literal("cards"),
+    tool_data: z.array(ToolDataEntrySchema),
+    timeline: ToolTimelineSchema,
   }),
   z.object({
     type: z.literal("follow_up_actions"),
     follow_up_actions: z.array(z.string()),
   }),
-  z.object({
-    type: z.literal("todo_progress"),
-    todo_progress: z.record(z.string(), z.unknown()),
-  }),
 ]) satisfies z.ZodType<ReplyDeltaFrame["payload"]>;
-
-type StreamPayload = z.infer<typeof StreamPayloadSchema>;
-
-/** Map a tagged delta payload onto the chat stream event the accumulator already folds. */
-function toStreamEvent(payload: StreamPayload): ChatStreamEvent {
-  switch (payload.type) {
-    case "response":
-      return { type: "response", chunk: payload.response };
-    case "reasoning":
-      return { type: "reasoning", ...payload.reasoning };
-    case "tool_data":
-      return { type: "tool_data", entry: payload.tool_data };
-    case "tool_output":
-      return { type: "tool_output", output: payload.tool_output };
-    case "message_boundary":
-      return {
-        type: "message_boundary",
-        messageId: payload.message_boundary.message_id,
-        discarded: payload.message_boundary.discarded,
-      };
-    case "subagent_start":
-      return { type: "subagent_start", payload: payload.subagent_start };
-    case "subagent_end":
-      return { type: "subagent_end", payload: payload.subagent_end };
-    case "follow_up_actions":
-      return { type: "follow_up_actions", actions: payload.follow_up_actions };
-    case "todo_progress":
-      // Same open-shape cast as parseChatStreamEvent: the snapshot is a dict[str, Any] on the wire.
-      return {
-        type: "todo_progress",
-        snapshot: payload.todo_progress as TodoProgressSnapshot,
-      };
-    default: {
-      const unhandled: never = payload;
-      return unhandled;
-    }
-  }
-}
-
-const index = z.number().int().min(0);
-const deltaPayload = StreamPayloadSchema.transform(toStreamEvent);
 
 const LiveTaskSchema = z.object({
   task_id: z.string(),
@@ -193,7 +105,7 @@ export const ConversationFrameSchema = z.discriminatedUnion("kind", [
   ScreenFrameSchema,
   ScreenInsertFrameSchema,
   ScreenUpdateFrameSchema,
-  ReplyDeltaFields.extend({ payload: deltaPayload }),
+  ReplyDeltaFields.extend({ payload: ReplyDeltaSchema }),
   RetractFrameSchema,
   StateFrameSchema,
   ConversationUpdatedFrameSchema,

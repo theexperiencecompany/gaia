@@ -28,7 +28,7 @@ from app.agents.llm.lane import ModelLane
 from app.agents.middleware.executor import BeforeModelResult
 from app.agents.tools import run_record
 from app.agents.tools.run_record import read_run_record
-from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
+from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
     DEFAULT_MAX_TOKENS,
@@ -75,6 +75,7 @@ from app.override.langgraph_bigtool.create_agent import (
     reject_unbound_tools,
 )
 from app.override.langgraph_bigtool.utils import RetrieveToolsResult, State
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 # ---------------------------------------------------------------------------
 # Helpers

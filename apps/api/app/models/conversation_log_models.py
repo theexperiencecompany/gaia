@@ -3,27 +3,24 @@
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
 from app.constants.chat import ConversationSource
-from app.models.chat_models import ImageData, ReactionBy
-from app.models.message_models import (
-    FileData,
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
+from app.models.chat_models import ReactionBy
+from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.todo_wake_models import TodoRunWake
-from app.models.tool_data_models import ToolDataEntry
 from app.models.workflow_models import TriggerType
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from shared.py.analytics.catalog.attribution import Attribution
 from shared.py.analytics.catalog.properties import Identifier
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
-
-# A defaulted field is always serialized, so the generated client type marks it required.
-WIRE_CONFIG = ConfigDict(
-    frozen=True, extra="forbid", json_schema_serialization_defaults_required=True
+from shared.py.conversation_wire import (
+    WIRE_CONFIG,
+    FailureReason,
+    ImageData,
+    ReplyOutcome,
+    ReplyToMessageData,
+    ToolDataEntry,
 )
 
 
@@ -78,31 +75,6 @@ class WorkOutcome(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     LOST = "lost"
-
-
-class ReplyOutcome(StrEnum):
-    """How a finished reply ended."""
-
-    ANSWERED = "answered"
-    STOPPED = "stopped"
-    # The user spoke over it: the saved reply is what they heard, up to Reply.heard_through.
-    TRUNCATED = "truncated"
-    FAILED = "failed"
-    SILENT = "silent"
-
-
-class FailureReason(StrEnum):
-    """Why a reply failed; a client words the line it shows under the reply from it."""
-
-    # The model call failed (a provider error, a dropped stream).
-    MODEL_ERROR = "model_error"
-    # The turn ran out of steps before it answered.
-    STEP_LIMIT = "step_limit"
-    # The process answering died; a later reply answers again.
-    SERVER_RESTART = "server_restart"
-
-
-_MAY_ANSWER_NOTHING = frozenset({ReplyOutcome.STOPPED, ReplyOutcome.FAILED})
 
 
 class Reaction(BaseModel):
@@ -337,6 +309,9 @@ class Reply(_Entry):
     imported: bool = False
     # Bumped on each in-place fill; a client applies an update only when it is newer.
     revision: int = Field(default=0, ge=0)
+
+
+_MAY_ANSWER_NOTHING = frozenset({ReplyOutcome.STOPPED, ReplyOutcome.FAILED})
 
 
 class ReplySettled(_Entry):

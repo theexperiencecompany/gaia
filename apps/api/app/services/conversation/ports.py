@@ -23,7 +23,6 @@ from app.models.conversation_log_models import (
     UserMessage,
 )
 from app.models.message_models import MessageDict
-from app.models.tool_data_models import ToolDataEntry
 from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.reply_files import ReplyFile
 from shared.py.analytics import Dedupe
@@ -33,6 +32,7 @@ from shared.py.analytics.catalog.chat import (
     ChatTurnReacted,
 )
 from shared.py.analytics.context import AnalyticsContext
+from shared.py.conversation_wire import ToolDataEntry
 
 
 class EntryRejected(Exception):

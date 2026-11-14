@@ -33,7 +33,7 @@ from app.constants.todos import (
 from app.db.mongodb.retry import TRANSIENT_MONGO_RETRY
 from app.db.repositories.todos import todo_repository
 from app.models.chat_models import ConversationSource
-from app.models.conversation_log_models import ReplyOutcome, TodoReportForm, TodoRun
+from app.models.conversation_log_models import TodoReportForm, TodoRun
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
@@ -57,6 +57,7 @@ from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
+from shared.py.conversation_wire import ReplyOutcome
 from shared.py.wide_events import log
 
 _NOT_SENT_NOTES: dict[TodoRunDeliveryOutcome, str] = {

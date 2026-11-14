@@ -4,15 +4,9 @@ from collections.abc import Sequence
 
 import pytest
 
-from app.models.conversation_log_models import (
-    Entry,
-    LoggedEntry,
-    Reply,
-    ReplyOutcome,
-    WorkOutcome,
-    WorkStarted,
-)
+from app.models.conversation_log_models import Entry, LoggedEntry, Reply, WorkOutcome, WorkStarted
 from app.services.conversation.outcome import STOPPED, EntryOutcome, await_outcome, entry_outcome
+from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.log_helpers import (
     finished,
     fired,

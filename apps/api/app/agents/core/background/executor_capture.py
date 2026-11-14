@@ -3,9 +3,9 @@
 from app.agents.core.background.session import get_session
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.conversation_frame_models import ToolDataEvent
-from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.graph_payloads import payloads_of_custom
 from app.services.conversation.tool_cards import fold_cards
+from shared.py.conversation_wire import ToolDataEntry
 
 
 def session_approval_cards(stream_id: str) -> tuple[ToolDataEntry, ...]:

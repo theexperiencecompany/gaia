@@ -5,7 +5,7 @@ import pytest
 from app.agents.prompts.comms_prompts import outcome_delivery_note, tracked_todo_delivery_note
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.comms import SILENCE_DIRECTIVE
-from app.constants.general import NEW_MESSAGE_BREAKER
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 pytestmark = pytest.mark.unit
 

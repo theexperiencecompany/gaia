@@ -16,7 +16,6 @@ from pydantic import BaseModel, ConfigDict
 
 from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
-from app.models.chat_models import ImageData
 from app.models.conversation_frame_models import (
     ImageEvent,
     ReasoningEvent,
@@ -28,7 +27,7 @@ from app.models.conversation_frame_models import (
     ToolOutputEvent,
 )
 from app.models.stream_events import SubagentEndPayload, SubagentStartPayload, ToolOutputPayload
-from app.models.tool_data_models import ToolDataEntry
+from shared.py.conversation_wire import ImageData, ToolDataEntry
 
 TOOL_CALLS_CARD = "tool_calls_data"
 TODO_PROGRESS_CARD = "todo_progress"

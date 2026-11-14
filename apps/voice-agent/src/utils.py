@@ -11,7 +11,6 @@ from src.constants import (
     MARKDOWN_RE,
     OPEN_OPENUI_FENCE_TAIL_RE,
     OPENUI_FENCE_RE,
-    SENTINEL_RE,
     TAG_RE,
     WHITESPACE_RE,
     LogTag,
@@ -19,11 +18,10 @@ from src.constants import (
 
 
 def sanitize_for_tts(piece: str) -> str:
-    """Strip OpenUI fences, directive prefixes, tags, sentinels, and markdown from a chunk."""
+    """Strip OpenUI fences, directive prefixes, tags (the bubble break among them) and markdown from a chunk."""
     piece = OPENUI_FENCE_RE.sub(" ", piece)
     piece = DIRECTIVE_PREFIX_RE.sub(" ", piece)
     piece = TAG_RE.sub(" ", piece)
-    piece = SENTINEL_RE.sub(" ", piece)
     piece = MARKDOWN_RE.sub(" ", piece)
     return WHITESPACE_RE.sub(" ", piece).strip()
 

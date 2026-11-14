@@ -80,7 +80,6 @@ from app.models.agent_models import (
     AgentConfigurableView,
     run_analytics_context,
 )
-from app.models.chat_models import ToolDataEntry
 from app.models.conversation_frame_models import ToolDataEvent
 from app.models.conversation_log_models import WorkOutcome
 from app.models.user_models import AuthenticatedUser
@@ -108,6 +107,7 @@ from app.utils.background_tasks import spawn_background_task
 from app.utils.errors import ConversationNotFoundError
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.context import analytics_context
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import WorkflowContext, get_trace_id, log, wide_task
 
 #: Task name for a queued executor run. Tests drain by this name to wait out

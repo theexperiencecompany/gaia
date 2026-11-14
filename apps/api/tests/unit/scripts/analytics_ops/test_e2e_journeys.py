@@ -14,8 +14,9 @@ from scripts.analytics_ops.e2e_journeys import (
 )
 
 from app.models.conversation_frame_models import EntryFrame
-from app.models.conversation_log_models import FailureReason, ReplyOutcome, ReplySettled
+from app.models.conversation_log_models import ReplySettled
 from app.models.conversation_send_models import ConversationEvent
+from shared.py.conversation_wire import FailureReason, ReplyOutcome
 
 WORKFLOW = "wf_1"
 EXECUTIONS_PATH = f"/api/v1/workflows/{WORKFLOW}/executions"

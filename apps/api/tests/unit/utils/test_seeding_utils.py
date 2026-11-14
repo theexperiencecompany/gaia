@@ -10,7 +10,6 @@ from uuid import UUID
 
 import pytest
 
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.models.conversation_log_models import Notice
 from app.models.user_models import OnboardingPreferences
@@ -22,6 +21,7 @@ from app.services.onboarding.first_conversation import (
 )
 from app.utils.message_breaks import split_message_bubbles
 from app.utils.seeding_utils import seed_first_conversation, seed_holo_card_conversation
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
 MODULE = "app.utils.seeding_utils"

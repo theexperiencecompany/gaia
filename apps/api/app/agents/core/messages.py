@@ -18,16 +18,13 @@ from app.helpers.message_helpers import (
     format_tool_selection_message,
     format_workflow_execution_message,
 )
-from app.models.message_models import (
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
+from app.models.message_models import SelectedCalendarEventData, SelectedWorkflowData
 from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.files import FileService
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.context import current_analytics_context
+from shared.py.conversation_wire import ReplyToMessageData
 
 
 @dataclass(frozen=True)

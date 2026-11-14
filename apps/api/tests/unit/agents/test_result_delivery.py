@@ -10,9 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
-from app.models.chat_models import ConversationSource, ToolDataEntry
+from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import Notice
 from app.utils.errors import ConversationNotFoundError
+from shared.py.conversation_wire import ToolDataEntry
 
 MODULE = "app.agents.core.background.result_delivery"
 USER_ID = "507f1f77bcf86cd799439011"

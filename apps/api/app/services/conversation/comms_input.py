@@ -31,7 +31,6 @@ from app.models.conversation_log_models import (
     LoggedEntry,
     Notice,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     StopRequested,
     UserMessage,
@@ -39,6 +38,7 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkOutcome,
 )
+from shared.py.conversation_wire import ReplyOutcome
 
 #: Every user message reads as its text.
 AS_TYPED: Mapping[str, str] = MappingProxyType({})

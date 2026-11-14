@@ -54,6 +54,9 @@ interface OpenReply {
   attempts: Set<string>;
 }
 
+const sameBubbles = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((bubble, at) => bubble === b[at]);
+
 export class ConversationFollower {
   private view: ConversationView = EMPTY_CONVERSATION_VIEW;
   /** Seqs of the messages this follow must see answered or stopped. */
@@ -258,12 +261,11 @@ export class ConversationFollower {
     if (!this.options.streaming) return;
     const reply = this.replyFor(attemptId, replyId);
     if (!reply) return;
-    if (payload.type === "response") {
-      await reply.delivery.text(payload.chunk);
-      this.schedulePreview();
-    } else if (payload.type === "message_boundary") {
-      await reply.delivery.boundary(payload.discarded);
-    }
+    if (payload.type !== "bubble_text" && payload.type !== "bubbles") return;
+    const draft = this.view.drafts.find((held) => held.attemptId === attemptId);
+    if (!draft) return;
+    await reply.delivery.bubbles(draft.content.bubbles);
+    this.schedulePreview();
   }
 
   private async finishReply(reply: ReplyItem): Promise<void> {
@@ -272,10 +274,10 @@ export class ConversationFollower {
     this.clearPreview();
     const delivery = this.open?.delivery ?? this.newDelivery(reply);
     this.open = null;
-    if (delivery.streamed !== reply.text) {
-      // What streamed is not what was saved (a delta gap, or nothing streamed): show the saved text.
-      if (delivery.opened) await delivery.boundary(true);
-      await delivery.text(reply.text);
+    if (!sameBubbles(delivery.streamed, reply.bubbles)) {
+      // What streamed is not what was saved (a delta gap, or nothing streamed): show the saved bubbles.
+      if (delivery.opened) await delivery.retract();
+      await delivery.bubbles(reply.bubbles);
     }
     await delivery.end();
     if (delivery.opened) this.summary.repliesDelivered += 1;

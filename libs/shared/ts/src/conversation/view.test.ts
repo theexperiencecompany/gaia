@@ -59,7 +59,7 @@ describe("a client's copy of the server's screen", () => {
       screenFrame([replyItem("r1", 2, "new", "answered"), userItem("u2", 3)]),
     );
     expect(ids(view)).toEqual(["u1", "r1", "u2"]);
-    expect(view.items[1]).toMatchObject({ text: "new" });
+    expect(view.items[1]).toMatchObject({ bubbles: ["new"] });
   });
 
   it("ignores an update to an item older than the loaded page", () => {
@@ -86,9 +86,9 @@ describe("a client's copy of the server's screen", () => {
     view = apply(view, replyDelta("a1", "r1", 0, "Hello"));
     view = apply(view, replyDelta("a1", "r1", 1, " there"));
     const [row] = screenRows(view);
-    expect(row.kind === "item" && row.draft?.content.responseText).toBe(
+    expect(row.kind === "item" && row.draft?.content.bubbles).toEqual([
       "Hello there",
-    );
+    ]);
     view = apply(
       view,
       updateFrame(replyItem("r1", 1, "Hello there", "answered")),

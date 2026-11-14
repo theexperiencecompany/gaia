@@ -3,11 +3,7 @@ import {
   TOOL_CALLS_DATA_TOOL_NAME,
 } from "@gaia/shared/chat";
 import { SEND_NOT_DELIVERED, STOPPED_NOTE } from "@gaia/shared/conversation";
-import {
-  parseOpenUISegments,
-  parseThinkingFromText,
-  splitMessageByBreaks,
-} from "@gaia/shared/utils";
+import { parseOpenUISegments, parseThinkingFromText } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
 import { useMemo } from "react";
@@ -101,7 +97,10 @@ interface MessagePart {
   index: number;
 }
 
-function useMessageParts(text: string | undefined): {
+function useMessageParts(
+  text: string | undefined,
+  bubbles: readonly string[] | undefined,
+): {
   parsedContent: ReturnType<typeof parseThinkingFromText>;
   messageParts: MessagePart[];
 } {
@@ -110,7 +109,7 @@ function useMessageParts(text: string | undefined): {
     () => parseThinkingFromText(text ?? ""),
     [text],
   );
-  const messageParts = splitMessageByBreaks(parsedContent.cleanText)
+  const messageParts = (bubbles ?? [parsedContent.cleanText])
     .filter(Boolean)
     .map((part, index) => ({ part, index }));
   return { parsedContent, messageParts };
@@ -546,7 +545,10 @@ export function ChatMessage({
   isLastMessage = false,
   loadingMessage = "Thinking...",
 }: ChatMessageProps) {
-  const { parsedContent, messageParts } = useMessageParts(message.text);
+  const { parsedContent, messageParts } = useMessageParts(
+    message.text,
+    message.bubbles,
+  );
   const handleLongPress = useMessageLongPress(message, onLongPress, onReply);
 
   if (message.isUser) {

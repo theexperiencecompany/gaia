@@ -6852,6 +6852,34 @@ export interface components {
             task: string;
         };
         /**
+         * BubblesDelta
+         * @description The reply's bubbles as they now stand, replacing every one shown: text the model took back is gone.
+         */
+        BubblesDelta: {
+            /** Bubbles */
+            bubbles: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "bubbles";
+        };
+        /**
+         * BubbleTextDelta
+         * @description More text for one bubble of the reply; a bubble past the last opens it.
+         */
+        BubbleTextDelta: {
+            /** Bubble */
+            bubble: number;
+            /** Text */
+            text: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "bubble_text";
+        };
+        /**
          * BudgetWindow
          * @description One cost-budget window: how much of the allowance is used, and when it
          *     resets. Deliberately no raw USD — see ``cost_budget.get_budget_status``.
@@ -7140,6 +7168,20 @@ export interface components {
         CalendarPreferencesUpdateResponse: {
             /** Message */
             message: string;
+        };
+        /**
+         * CardsDelta
+         * @description The reply's cards as they now stand, with the timeline they fold to.
+         */
+        CardsDelta: {
+            timeline: components["schemas"]["ToolTimeline"];
+            /** Tool Data */
+            tool_data: components["schemas"]["ToolDataEntry"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cards";
         };
         /**
          * ChangePasswordRequest
@@ -9074,10 +9116,10 @@ export interface components {
             collapsed_at?: string | null;
         };
         /**
-         * FollowUpActionsEvent
-         * @description A chat stream follow_up_actions event, tagged.
+         * FollowUpsDelta
+         * @description The suggestions offered under the reply.
          */
-        FollowUpActionsEvent: {
+        FollowUpsDelta: {
             /** Follow Up Actions */
             follow_up_actions: string[];
             /**
@@ -9614,18 +9656,6 @@ export interface components {
             url: string;
         };
         /**
-         * ImageEvent
-         * @description The image a run's image tool generated, tagged.
-         */
-        ImageEvent: {
-            image_data: components["schemas"]["ImageData"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "image_data";
-        };
-        /**
          * ImageToTextResponse
          * @description ``POST /image/text`` — the vision model's answer about the upload.
          */
@@ -10106,6 +10136,7 @@ export interface components {
             /** Id */
             id: string;
         };
+        JsonValue: unknown;
         /**
          * LabEventResponse
          * @description Accepted; the payload itself is never echoed back.
@@ -11091,35 +11122,6 @@ export interface components {
             /** Seq */
             seq: number;
         };
-        /**
-         * MessageBoundaryEvent
-         * @description A chat stream message_boundary event, tagged.
-         */
-        MessageBoundaryEvent: {
-            message_boundary: components["schemas"]["MessageBoundaryPayload"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "message_boundary";
-        };
-        /**
-         * MessageBoundaryPayload
-         * @description End of one assistant message inside a turn.
-         *
-         *     ``discarded`` is true when that message turned out to carry tool calls, which
-         *     makes any text it streamed a MOMENT-1 preamble ("let me get that set up…")
-         *     the user must not keep — the real reply arrives as the next message. The
-         *     frame exists because the wire streams that text BEFORE the tool call, so a
-         *     live consumer has already shown it by the time we know, and has to retract
-         *     it rather than leave a duplicate reply on screen.
-         */
-        MessageBoundaryPayload: {
-            /** Discarded */
-            discarded: boolean;
-            /** Message Id */
-            message_id: string;
-        };
         /** MessageFeedbackRequest */
         MessageFeedbackRequest: {
             /**
@@ -11371,6 +11373,8 @@ export interface components {
              * Format: date-time
              */
             at: string;
+            /** Bubbles */
+            bubbles: string[];
             /** Follow Up Actions */
             follow_up_actions: string[];
             /** Id */
@@ -11382,8 +11386,7 @@ export interface components {
             kind: "notice";
             /** Seq */
             seq: number;
-            /** Text */
-            text: string;
+            timeline: components["schemas"]["ToolTimeline"];
             /** Tool Data */
             tool_data: components["schemas"]["ToolDataEntry"][];
         };
@@ -12918,28 +12921,6 @@ export interface components {
             status: "ready" | "not_ready";
         };
         /**
-         * ReasoningEvent
-         * @description A chat stream reasoning event, tagged.
-         */
-        ReasoningEvent: {
-            reasoning: components["schemas"]["ReasoningPayload"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "reasoning";
-        };
-        /**
-         * ReasoningPayload
-         * @description A streamed reasoning ("thinking") delta from the model.
-         */
-        ReasoningPayload: {
-            /** Content */
-            content: string;
-            /** Subagent Id */
-            subagent_id?: string | null;
-        };
-        /**
          * RecordedCall
          * @description One tool call as it actually ran, recorded by app.agents.tools.invocation.
          *
@@ -13262,13 +13243,13 @@ export interface components {
              */
             kind: "reply_delta";
             /** Payload */
-            payload: components["schemas"]["ResponseEvent"] | components["schemas"]["ReasoningEvent"] | components["schemas"]["ToolDataEvent"] | components["schemas"]["ToolOutputEvent"] | components["schemas"]["MessageBoundaryEvent"] | components["schemas"]["SubagentStartEvent"] | components["schemas"]["SubagentEndEvent"] | components["schemas"]["FollowUpActionsEvent"] | components["schemas"]["TodoProgressEvent"] | components["schemas"]["ImageEvent"];
+            payload: components["schemas"]["BubbleTextDelta"] | components["schemas"]["BubblesDelta"] | components["schemas"]["CardsDelta"] | components["schemas"]["FollowUpsDelta"];
             /** Reply Id */
             reply_id: string | null;
         };
         /**
          * ReplyItem
-         * @description GAIA's reply: its text and own cards; outcome is None while it is still being written.
+         * @description GAIA's reply: its bubbles and own cards; outcome is None while it is still being written.
          */
         ReplyItem: {
             /**
@@ -13276,6 +13257,8 @@ export interface components {
              * Format: date-time
              */
             at: string;
+            /** Bubbles */
+            bubbles: string[];
             failure: components["schemas"]["FailureReason"] | null;
             /** Follow Up Actions */
             follow_up_actions: string[];
@@ -13295,8 +13278,7 @@ export interface components {
             quote: components["schemas"]["ReplyToMessageData"] | null;
             /** Seq */
             seq: number;
-            /** Text */
-            text: string;
+            timeline: components["schemas"]["ToolTimeline"];
             /** Tool Data */
             tool_data: components["schemas"]["ToolDataEntry"][];
         };
@@ -13352,19 +13334,6 @@ export interface components {
              * @description Whether the workflow was reset
              */
             success: boolean;
-        };
-        /**
-         * ResponseEvent
-         * @description A chat stream response event, tagged.
-         */
-        ResponseEvent: {
-            /** Response */
-            response: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "response";
         };
         /**
          * RetractFrame
@@ -14238,67 +14207,6 @@ export interface components {
             name: string;
         };
         /**
-         * SubagentEndEvent
-         * @description A chat stream subagent_end event, tagged.
-         */
-        SubagentEndEvent: {
-            subagent_end: components["schemas"]["SubagentEndPayload"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "subagent_end";
-        };
-        /**
-         * SubagentEndPayload
-         * @description Lifecycle payload marking a delegated subagent finishing.
-         */
-        SubagentEndPayload: {
-            /** Duration Ms */
-            duration_ms: number;
-            /** Subagent Id */
-            subagent_id: string;
-            /** Token Count */
-            token_count?: number | null;
-        };
-        /**
-         * SubagentStartEvent
-         * @description A chat stream subagent_start event, tagged.
-         */
-        SubagentStartEvent: {
-            subagent_start: components["schemas"]["SubagentStartPayload"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "subagent_start";
-        };
-        /**
-         * SubagentStartPayload
-         * @description Lifecycle payload marking a delegated subagent beginning execution.
-         */
-        SubagentStartPayload: {
-            /**
-             * Agent Type
-             * @enum {string}
-             */
-            agent_type: "handoff" | "spawned";
-            /** Icon Url */
-            icon_url?: string | null;
-            /** Parent Subagent Id */
-            parent_subagent_id?: string | null;
-            /** Started At */
-            started_at: string;
-            /** Subagent */
-            subagent?: string | null;
-            /** Subagent Id */
-            subagent_id: string;
-            /** Subagent Name */
-            subagent_name: string;
-            /** Tool Category */
-            tool_category?: string | null;
-        };
-        /**
          * SubscriptionAction
          * @description What firing a subscription does to its todo.
          * @enum {string}
@@ -14762,6 +14670,34 @@ export interface components {
          */
         SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "other";
         /**
+         * TimelineCard
+         * @description A card rendered on its own below the thread; a grouped tool's calls arrive as one card.
+         */
+        TimelineCard: {
+            card: components["schemas"]["ToolDataEntry"];
+            /** Key */
+            key: string;
+        };
+        /**
+         * TimelineStep
+         * @description One row of the tool thread, keyed stably across the stream.
+         *
+         *     data is the tool-call entry, or the subagent group with its handoff_input, handoff_output and
+         *     step_keys (one per tool call, in order) filled in.
+         */
+        TimelineStep: {
+            data: components["schemas"]["JsonValue"];
+            /** Key */
+            key: string;
+            kind: components["schemas"]["TimelineStepKind"];
+        };
+        /**
+         * TimelineStepKind
+         * @description What one row of a tool timeline shows: a tool call, or a subagent's group of them.
+         * @enum {string}
+         */
+        TimelineStepKind: "tool" | "subagent";
+        /**
          * TodoCanvasResponse
          * @description A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.
          */
@@ -14941,21 +14877,6 @@ export interface components {
              * @description ID of the associated workflow
              */
             workflow_id?: string | null;
-        };
-        /**
-         * TodoProgressEvent
-         * @description A chat stream todo_progress event, tagged.
-         */
-        TodoProgressEvent: {
-            /** Todo Progress */
-            todo_progress: {
-                [key: string]: unknown;
-            };
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "todo_progress";
         };
         /**
          * TodoResponse
@@ -15283,22 +15204,10 @@ export interface components {
         };
         /**
          * ToolDataEntry
-         * @description Unified structure for tool execution data.
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
          *
-         *     Every key an emitter can stamp must be declared here. This TypedDict is the
-         *     element type of ``MessageModel.tool_data``, and Pydantic drops undeclared
-         *     keys on ``model_dump()`` — which is how a message reaches Mongo. An emitted
-         *     key missing from this shape therefore survives the live SSE frame (the
-         *     frontend parses those against its own loose schema) and silently vanishes
-         *     from the stored turn, so the bug only ever appears on reload.
-         *
-         *     ``data`` is deliberately open: every tool owns the shape it puts here (a
-         *     calendar option list, an email thread, a rendered artifact), so the only
-         *     honest constraint is "JSON the frontend's per-tool card knows how to read".
-         *     Everything around it is closed.
-         *
-         *     The frontend mirror is ``ToolDataEntrySchema`` in
-         *     ``libs/shared/ts/src/chat/schema.ts``.
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
          */
         ToolDataEntry: {
             /** Data */
@@ -15317,18 +15226,6 @@ export interface components {
             tool_category?: string;
             /** Tool Name */
             tool_name: string;
-        };
-        /**
-         * ToolDataEvent
-         * @description A chat stream tool_data event (a tool card), tagged.
-         */
-        ToolDataEvent: {
-            tool_data: components["schemas"]["ToolDataEntry"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "tool_data";
         };
         /**
          * ToolInfo
@@ -15355,30 +15252,6 @@ export interface components {
             requires_integration: boolean;
         };
         /**
-         * ToolOutputEvent
-         * @description A chat stream tool_output event, tagged.
-         */
-        ToolOutputEvent: {
-            tool_output: components["schemas"]["ToolOutputPayload"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "tool_output";
-        };
-        /**
-         * ToolOutputPayload
-         * @description Result text for a completed tool call, keyed by its ``tool_call_id``.
-         */
-        ToolOutputPayload: {
-            /** Output */
-            output: string;
-            /** Subagent Id */
-            subagent_id?: string | null;
-            /** Tool Call Id */
-            tool_call_id: string;
-        };
-        /**
          * ToolsCategoryResponse
          * @description Response model for tools by category.
          */
@@ -15401,6 +15274,22 @@ export interface components {
             tools: components["schemas"]["ToolInfo"][];
             /** Total Count */
             total_count: number;
+        };
+        /**
+         * ToolTimeline
+         * @description What an item's cards show, in order: the tool thread, then the cards rendered on their own.
+         */
+        ToolTimeline: {
+            /**
+             * Cards
+             * @default []
+             */
+            cards: components["schemas"]["TimelineCard"][];
+            /**
+             * Steps
+             * @default []
+             */
+            steps: components["schemas"]["TimelineStep"][];
         };
         /**
          * TranscribeAudioResponse
@@ -16922,6 +16811,7 @@ export interface components {
             status: components["schemas"]["WorkStatus"];
             /** Task Id */
             task_id: string;
+            timeline: components["schemas"]["ToolTimeline"];
             /** Tool Data */
             tool_data: components["schemas"]["ToolDataEntry"][];
         };
@@ -17047,6 +16937,8 @@ export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus']
 export type BrowserStopOutcome = components['schemas']['BrowserStopOutcome'];
 export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
 export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
+export type BubblesDelta = components['schemas']['BubblesDelta'];
+export type BubbleTextDelta = components['schemas']['BubbleTextDelta'];
 export type BudgetWindow = components['schemas']['BudgetWindow'];
 export type BuiltInEngine = components['schemas']['BuiltInEngine'];
 export type BuiltInOption = components['schemas']['BuiltInOption'];
@@ -17067,6 +16959,7 @@ export type CalendarListResponse = components['schemas']['CalendarListResponse']
 export type CalendarPreferencesResponse = components['schemas']['CalendarPreferencesResponse'];
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
+export type CardsDelta = components['schemas']['CardsDelta'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];
 export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus'];
@@ -17174,7 +17067,7 @@ export type FirstStepKey = components['schemas']['FirstStepKey'];
 export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollapseRequest'];
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
-export type FollowUpActionsEvent = components['schemas']['FollowUpActionsEvent'];
+export type FollowUpsDelta = components['schemas']['FollowUpsDelta'];
 export type GateAuthor = components['schemas']['GateAuthor'];
 export type GateEdit = components['schemas']['GateEdit'];
 export type GateSkipRecord = components['schemas']['GateSkipRecord'];
@@ -17207,7 +17100,6 @@ export type HILPreferencesResponse = components['schemas']['HILPreferencesRespon
 export type HistoryFeatureUsage = components['schemas']['HistoryFeatureUsage'];
 export type HistoryUsagePeriod = components['schemas']['HistoryUsagePeriod'];
 export type ImageData = components['schemas']['ImageData'];
-export type ImageEvent = components['schemas']['ImageEvent'];
 export type ImageToTextResponse = components['schemas']['ImageToTextResponse'];
 export type ImportedCookie = components['schemas']['ImportedCookie'];
 export type ImportedLocalStorageItem = components['schemas']['ImportedLocalStorageItem'];
@@ -17235,6 +17127,7 @@ export type IntegrationToolApproval = components['schemas']['IntegrationToolAppr
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type JsonValue = components['schemas']['JsonValue'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
@@ -17288,8 +17181,6 @@ export type MemorySourceType = components['schemas']['MemorySourceType'];
 export type MemoryTreeNode = components['schemas']['MemoryTreeNode'];
 export type MemoryTreeResponse = components['schemas']['MemoryTreeResponse'];
 export type MessageAccepted = components['schemas']['MessageAccepted'];
-export type MessageBoundaryEvent = components['schemas']['MessageBoundaryEvent'];
-export type MessageBoundaryPayload = components['schemas']['MessageBoundaryPayload'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
 export type MessageRequest = components['schemas']['MessageRequest'];
@@ -17383,8 +17274,6 @@ export type QuietHours = components['schemas']['QuietHours'];
 export type Reaction = components['schemas']['Reaction'];
 export type ReactionBy = components['schemas']['ReactionBy'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
-export type ReasoningEvent = components['schemas']['ReasoningEvent'];
-export type ReasoningPayload = components['schemas']['ReasoningPayload'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
@@ -17405,7 +17294,6 @@ export type ReplyOutcome = components['schemas']['ReplyOutcome'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
-export type ResponseEvent = components['schemas']['ResponseEvent'];
 export type RetractFrame = components['schemas']['RetractFrame'];
 export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
 export type SandboxExecuteResponse = components['schemas']['SandboxExecuteResponse'];
@@ -17458,10 +17346,6 @@ export type StarVoiceRequest = components['schemas']['StarVoiceRequest'];
 export type StateFrame = components['schemas']['StateFrame'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
-export type SubagentEndEvent = components['schemas']['SubagentEndEvent'];
-export type SubagentEndPayload = components['schemas']['SubagentEndPayload'];
-export type SubagentStartEvent = components['schemas']['SubagentStartEvent'];
-export type SubagentStartPayload = components['schemas']['SubagentStartPayload'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
 export type SubscriptionCondition = components['schemas']['SubscriptionCondition'];
 export type SubscriptionDocument = components['schemas']['SubscriptionDocument'];
@@ -17487,6 +17371,9 @@ export type SupportRequestType = components['schemas']['SupportRequestType'];
 export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
+export type TimelineCard = components['schemas']['TimelineCard'];
+export type TimelineStep = components['schemas']['TimelineStep'];
+export type TimelineStepKind = components['schemas']['TimelineStepKind'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
@@ -17494,7 +17381,6 @@ export type TodoistNewTaskCreatedConfig = components['schemas']['TodoistNewTaskC
 export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
-export type TodoProgressEvent = components['schemas']['TodoProgressEvent'];
 export type TodoResponse = components['schemas']['TodoResponse'];
 export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
@@ -17507,12 +17393,10 @@ export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];
 export type TodoWorkflowStatusResponse = components['schemas']['TodoWorkflowStatusResponse'];
 export type ToolContract = components['schemas']['ToolContract'];
 export type ToolDataEntry = components['schemas']['ToolDataEntry'];
-export type ToolDataEvent = components['schemas']['ToolDataEvent'];
 export type ToolInfo = components['schemas']['ToolInfo'];
-export type ToolOutputEvent = components['schemas']['ToolOutputEvent'];
-export type ToolOutputPayload = components['schemas']['ToolOutputPayload'];
 export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse'];
 export type ToolsListResponse = components['schemas']['ToolsListResponse'];
+export type ToolTimeline = components['schemas']['ToolTimeline'];
 export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResponse'];
 export type TriageEmailSummary = components['schemas']['TriageEmailSummary'];
 export type TriggerConfig = components['schemas']['TriggerConfig'];

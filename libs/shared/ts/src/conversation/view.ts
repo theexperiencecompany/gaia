@@ -1,7 +1,4 @@
-import {
-  applyStreamEvent,
-  createTurnAccumulator,
-} from "../chat/turnAccumulator";
+import { applyReplyDelta, EMPTY_REPLY_DRAFT } from "./draft";
 import { LIVE_WORK_STATUS, SCREEN_ITEM_KIND } from "./entries";
 import { DISPLAY_STATE, FRAME_KIND } from "./frames";
 import type {
@@ -13,7 +10,6 @@ import type {
   StreamDraft,
 } from "./types";
 
-// The parsed frame, whose payload is the stream event the accumulator folds.
 type DeltaFrame = Extract<ConversationFrame, { kind: "reply_delta" }>;
 
 export const EMPTY_CONVERSATION_VIEW: ConversationView = {
@@ -85,7 +81,7 @@ function newDraft(frame: DeltaFrame): StreamDraft {
     attemptId: frame.attempt_id,
     replyId: frame.reply_id,
     nextIndex: 0,
-    content: createTurnAccumulator(),
+    content: EMPTY_REPLY_DRAFT,
   };
 }
 
@@ -106,7 +102,7 @@ function applyDelta(view: ConversationView, frame: DeltaFrame): FrameOutcome {
   }
   const advanced = {
     nextIndex: draft.nextIndex + 1,
-    content: applyStreamEvent(draft.content, frame.payload),
+    content: applyReplyDelta(draft.content, frame.payload),
   };
   const updated: StreamDraft = {
     ...draft,

@@ -48,11 +48,9 @@ from app.models.conversation_log_models import (
     TEXT_KINDS,
     ConversationState,
     Entry,
-    FailureReason,
     LoggedEntry,
     Reaction,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     Transition,
     UserMessage,
@@ -68,6 +66,7 @@ from app.models.conversation_models import (
     _ConversationIdRow,
 )
 from app.services.conversation.reducer import reduce
+from shared.py.conversation_wire import FailureReason, ReplyOutcome
 
 #: A server-side hash of the whole embedded array: any append, trim or in-place edit changes it.
 EMBEDDED_FINGERPRINT: dict[str, object] = {"$toHashedIndexKey": {"$ifNull": ["$messages", []]}}

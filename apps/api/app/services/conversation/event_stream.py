@@ -25,7 +25,6 @@ from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
     OutputFrame,
-    ReplyDeltaFrame,
     RetractFrame,
     WorkDeltaFrame,
     state_frame,
@@ -41,6 +40,7 @@ from app.models.conversation_screen_models import ScreenFrame, ScreenStreamFrame
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.ports import ConversationLog
 from app.services.conversation.screen_patches import ScreenTracker
+from shared.py.conversation_wire import ReplyDeltaFrame
 
 _FRAME: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)
 

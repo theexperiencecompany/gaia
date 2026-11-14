@@ -52,6 +52,8 @@ export interface Message {
   /** The message's place in its conversation's order; absent while a live row has none yet. */
   seq?: number;
   text: string;
+  /** A bot message's bubbles, split once by the server. */
+  bubbles?: readonly string[];
   isUser: boolean;
   timestamp: Date;
   fileIds?: string[];

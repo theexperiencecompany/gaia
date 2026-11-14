@@ -1,7 +1,5 @@
 """Shape rules of the conversation log and frame types: what can and cannot be built, and how they round-trip."""
 
-from collections.abc import Callable
-
 from pydantic import BaseModel, TypeAdapter, ValidationError
 import pytest
 
@@ -10,11 +8,11 @@ from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
     FollowUpActionsEvent,
+    ImageEvent,
     LiveTask,
     MessageBoundaryEvent,
     OutputFrame,
     ReasoningEvent,
-    ReplyDeltaFrame,
     ResponseEvent,
     RetractFrame,
     StateFrame,
@@ -32,11 +30,9 @@ from app.models.conversation_log_models import (
     ConversationState,
     DisplayState,
     Entry,
-    FailureReason,
     LiveWork,
     LoggedEntry,
     Reaction,
-    ReplyOutcome,
     ReplySettled,
     UserMessage,
 )
@@ -46,6 +42,18 @@ from app.models.stream_events import (
     SubagentEndPayload,
     SubagentStartPayload,
     ToolOutputPayload,
+)
+from shared.py.conversation_wire import (
+    BubblesDelta,
+    BubbleTextDelta,
+    CardsDelta,
+    FailureReason,
+    FollowUpsDelta,
+    ImageData,
+    ReplyDelta,
+    ReplyDeltaFrame,
+    ReplyOutcome,
+    ToolTimeline,
 )
 from tests.unit.services.conversation.log_helpers import (
     EMPTY,
@@ -216,6 +224,7 @@ _PAYLOADS: list[StreamPayload] = [
     SubagentEndEvent(subagent_end=SubagentEndPayload(subagent_id="s1", duration_ms=10)),
     FollowUpActionsEvent(follow_up_actions=["more"]),
     TodoProgressEvent(todo_progress={"done": 1}),
+    ImageEvent(image_data=ImageData(url="https://x.dev/a.png", prompt="a fox")),
 ]
 
 
@@ -231,21 +240,30 @@ def test_a_payload_is_the_chat_stream_event_plus_its_tag(payload: StreamPayload)
 
 
 @pytest.mark.parametrize("payload", _PAYLOADS, ids=lambda payload: type(payload).__name__)
-@pytest.mark.parametrize(
-    "frame_of",
-    [
-        lambda payload: ReplyDeltaFrame(attempt_id="a", reply_id=None, index=0, payload=payload),
-        lambda payload: WorkDeltaFrame(task_id="t1", index=3, payload=payload),
-    ],
-    ids=["reply_delta", "work_delta"],
-)
-def test_every_delta_round_trips_with_its_payload_type(
-    payload: StreamPayload, frame_of: Callable[[StreamPayload], ReplyDeltaFrame | WorkDeltaFrame]
-) -> None:
-    frame = frame_of(payload)
+def test_every_work_delta_round_trips_with_its_payload_type(payload: StreamPayload) -> None:
+    frame = WorkDeltaFrame(task_id="t1", index=3, payload=payload)
     parsed = _FRAMES.validate_json(frame.model_dump_json())
-    assert isinstance(parsed, ReplyDeltaFrame | WorkDeltaFrame)
-    assert type(parsed) is type(frame)
+    assert isinstance(parsed, WorkDeltaFrame)
+    assert type(parsed.payload) is type(payload)
+    assert parsed == frame
+
+
+_REPLY_DELTAS: list[ReplyDelta] = [
+    BubbleTextDelta(bubble=1, text="more"),
+    BubblesDelta(bubbles=("one", "two")),
+    CardsDelta(
+        tool_data=({"tool_name": "search", "data": {"q": "x"}},),
+        timeline=ToolTimeline(),
+    ),
+    FollowUpsDelta(follow_up_actions=("more",)),
+]
+
+
+@pytest.mark.parametrize("payload", _REPLY_DELTAS, ids=lambda payload: type(payload).__name__)
+def test_every_reply_delta_round_trips_with_its_payload_type(payload: ReplyDelta) -> None:
+    frame = ReplyDeltaFrame(attempt_id="a", reply_id=None, index=0, payload=payload)
+    parsed = _FRAMES.validate_json(frame.model_dump_json())
+    assert isinstance(parsed, ReplyDeltaFrame)
     assert type(parsed.payload) is type(payload)
     assert parsed == frame
 
