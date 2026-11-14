@@ -149,11 +149,6 @@ def _json_safe_tool_result(content: MessageContent) -> object:
     try:
         json.dumps(content)
     except TypeError:
-        model_dump = getattr(content, "model_dump", None)
-        if callable(model_dump):
-            return model_dump()
-        if hasattr(content, "__dict__"):
-            return dict(content.__dict__)
         return str(content)
     return content
 

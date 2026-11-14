@@ -31,7 +31,7 @@ def _record(**overrides: object) -> NotificationRecord:
         ),
     }
     data.update(overrides)
-    return NotificationRecord(**data)
+    return NotificationRecord.model_validate(data)
 
 
 @pytest.fixture

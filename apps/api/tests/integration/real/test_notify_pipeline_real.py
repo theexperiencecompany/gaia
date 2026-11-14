@@ -289,6 +289,8 @@ async def test_an_integration_expiry_raises_one_notification(
             await announce_account_expiry(str(LINKED_OID), "gmail", expired, [], None)
 
     (stored,) = await _notifications(mongo_db, str(LINKED_OID))
-    assert stored["original_request"]["source"] == "integration_expired"
+    request = stored["original_request"]
+    assert isinstance(request, dict)
+    assert request["source"] == "integration_expired"
     assert delivered.bot_messages == []
     assert len(delivered.socket_events) == 1

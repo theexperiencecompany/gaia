@@ -86,7 +86,7 @@ export async function linkDevUser(
   const seeded = await postJson<{ platform_user_ids: Record<string, string> }>(
     `${apiUrl}/api/v1/dev/seed`,
     {
-      email,
+      email: user.email,
       platform_links: [platform],
       // Every bot reply is paid-only; a scenario user without Pro only ever sees the paywall.
       pro: true,

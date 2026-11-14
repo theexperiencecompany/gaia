@@ -8,6 +8,7 @@ summarization call ran, and how the run ended.
 from collections.abc import Mapping
 from typing import cast
 
+from langchain_core.messages import ToolMessage
 from pydantic import ValidationError
 
 from app.agents.core.comms_directive import interpret_comms_output
@@ -36,7 +37,6 @@ from app.services.conversation.ports import (
     Silent,
     Streamed,
     Summarized,
-    ToolsRan,
 )
 from app.utils.agent_utils import NodeMessagesUpdate
 from app.utils.multimodal import extract_text_content
@@ -44,9 +44,21 @@ from shared.py.conversation_wire import ToolDataEntry
 
 #: The comms graph node that runs the model.
 _MODEL_NODE = "agent"
-#: The comms graph node that runs the model's tool calls.
-_TOOLS_NODE = "tools"
 GraphEvent = tuple[tuple[str, ...], str, object]
+
+
+def _written_by_model(event: GraphEvent) -> bool:
+    """Return whether the event is the comms model's own output rather than a running tool's."""
+    namespace, mode, payload = event
+    if namespace:
+        return False
+    if mode == "updates":
+        return isinstance(payload, Mapping) and _MODEL_NODE in payload
+    if mode == "messages":
+        # LangGraph's messages mode yields (chunk, metadata) pairs (Type Safety item 12).
+        chunk, _metadata = cast(tuple[object, StreamChunkMetadata], payload)
+        return not isinstance(chunk, ToolMessage)
+    return False
 
 
 def _marks_answer_complete(payload: object) -> bool:
@@ -78,14 +90,13 @@ class CommsEventMapper:
         if top_level and mode == "messages" and self._is_summary_call(payload):
             self._summarized = True
             out.append(Summarized())
+        by_model = _written_by_model(event)
         async for streamed in payloads_for_stream_event(
             event, self._graph, True, None, self._user_id
         ):
-            out.append(self._streamed(streamed))
+            out.append(self._streamed(streamed, by_model=by_model))
         if top_level and mode == "updates":
             out.extend(self._model_output(payload))
-            if isinstance(payload, Mapping) and _TOOLS_NODE in payload:
-                out.append(ToolsRan())
         if top_level and mode == "custom" and _marks_answer_complete(payload):
             out.extend(self._answer_final())
         return out
@@ -112,12 +123,12 @@ class CommsEventMapper:
         _chunk, metadata = cast(tuple[object, StreamChunkMetadata], payload)
         return bool(metadata.get("silent"))
 
-    def _streamed(self, payload: StreamPayload) -> RunEvent:
+    def _streamed(self, payload: StreamPayload, *, by_model: bool = True) -> RunEvent:
         if isinstance(payload, ToolDataEvent):
             self._cards.append(payload.tool_data)
         elif isinstance(payload, FollowUpActionsEvent):
             self._follow_ups = tuple(payload.follow_up_actions)
-        return Streamed(payload=payload)
+        return Streamed(payload=payload, by_model=by_model)
 
     def _model_output(self, payload: object) -> list[RunEvent]:
         if not isinstance(payload, Mapping) or _MODEL_NODE not in payload:

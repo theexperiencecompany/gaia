@@ -133,6 +133,8 @@ class Streamed:
     """A visible delta of the reply: text, reasoning or a tool card."""
 
     payload: StreamPayload
+    # False for what a running tool shows: it belongs beside its call, above inputs absorbed since.
+    by_model: bool = True
 
 
 @dataclass(frozen=True)
@@ -145,11 +147,6 @@ class ModelOutput:
     """The comms model node returned."""
 
     has_tool_calls: bool
-
-
-@dataclass(frozen=True)
-class ToolsRan:
-    """The tool calls of the model's last output returned: every card they show has streamed."""
 
 
 @dataclass(frozen=True)
@@ -190,7 +187,7 @@ class Finished:
     outcome: RunOutcome
 
 
-RunEvent = Streamed | Summarized | ModelOutput | ToolsRan | Answered | Finished
+RunEvent = Streamed | Summarized | ModelOutput | Answered | Finished
 
 
 class CommsRun(Protocol):

@@ -8,6 +8,7 @@ import pytest
 from app.agents.prompts.workflow_prompts import TRIGGERED_ACCOUNT_SECTION
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
+from app.constants.waits import WAIT_MET_CONTEXT_KEY
 from app.helpers.message_helpers import (
     _uploaded_file_lines,
     create_system_message,
@@ -611,6 +612,34 @@ class TestWorkflowExecutionMessageBranches:
             )
 
         assert result.endswith(note)
+
+    @pytest.mark.asyncio
+    async def test_a_run_started_by_a_met_wait_is_told_what_the_user_did(self) -> None:
+        note = "The user just connected Gmail. Pick it up from where it stopped."
+
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(), user_id="u1", trigger_context={WAIT_MET_CONTEXT_KEY: note}
+            )
+
+        assert result.endswith(note)
+
+    @pytest.mark.asyncio
+    async def test_a_met_wait_note_keeps_the_replay_evidence_before_it(self) -> None:
+        evidence = "<already_ran>archived 3 threads</already_ran>"
+        note = "The user just connected Gmail."
+
+        with self._no_db_workflow():
+            result = await format_workflow_execution_message(
+                self._selected(),
+                user_id="u1",
+                trigger_context={
+                    PLAYBOOK_FALLBACK_CONTEXT_KEY: evidence,
+                    WAIT_MET_CONTEXT_KEY: note,
+                },
+            )
+
+        assert result.endswith(f"{evidence}\n\n{note}")
 
     @pytest.mark.asyncio
     async def test_the_same_evidence_reaches_an_email_triggered_fallback(self) -> None:

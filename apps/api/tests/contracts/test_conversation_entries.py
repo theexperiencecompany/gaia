@@ -21,7 +21,7 @@ from app.models.conversation_log_models import Entry, Reply, ReplySettled, UserM
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationDocument,
-    ConversationEntriesPage,
+    LogPage,
 )
 from app.services.conversation import mongo_log as mongo_log_module
 from app.services.conversation.mongo_log import MongoConversationLog
@@ -662,7 +662,7 @@ async def test_a_deleted_conversations_leftover_entries_never_reach_search_or_pi
     assert await repo.find_owner_of_message(uid, "old-1") is None
 
 
-def _seqs(page: ConversationEntriesPage) -> list[int]:
+def _seqs(page: LogPage) -> list[int]:
     return [logged.seq for logged in page.entries]
 
 

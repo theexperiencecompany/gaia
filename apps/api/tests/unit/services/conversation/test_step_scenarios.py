@@ -45,7 +45,6 @@ from app.services.conversation.ports import (
     StepLimitReached,
     Streamed,
     Summarized,
-    ToolsRan,
 )
 from app.services.conversation.step import advance
 from shared.py.conversation_wire import (
@@ -103,6 +102,10 @@ FILE_CARD: ToolDataEntry = {
 
 def card() -> Streamed:
     return Streamed(payload=ToolDataEvent(tool_data=CARD))
+
+
+def tool_result_card() -> Streamed:
+    return Streamed(payload=ToolDataEvent(tool_data=CARD), by_model=False)
 
 
 def text(chunk: str) -> Streamed:
@@ -285,7 +288,6 @@ class StepScenarios:
                 text("on it"),
                 Do(arrive(rt, user("u2"))),
                 ModelOutput(True),
-                ToolsRan(),
                 text("both"),
                 Finished(Replied("on it")),
             ]
@@ -328,8 +330,7 @@ class StepScenarios:
                 card(),
                 Do(arrive(rt, user("u2"))),
                 ModelOutput(True),
-                card(),
-                ToolsRan(),
+                tool_result_card(),
                 text("both done"),
                 ModelOutput(False),
                 Finished(Replied("both done")),
@@ -356,7 +357,6 @@ class StepScenarios:
                 Do(arrive(rt, user("u2"))),
                 card(),
                 ModelOutput(True),
-                ToolsRan(),
                 text("PDEU is a university"),
                 ModelOutput(False),
                 Finished(Replied("PDEU is a university")),

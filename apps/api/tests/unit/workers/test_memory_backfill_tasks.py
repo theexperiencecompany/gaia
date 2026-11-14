@@ -23,7 +23,7 @@ from app.constants.memory import (
 )
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import Entry, Notice, Reply, UserMessage
-from app.models.conversation_models import LoadedConversation
+from app.models.conversation_models import StoredConversation
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import (
     _conversation_date,
@@ -55,7 +55,7 @@ def _conversation(
     *,
     created_at: str = "2026-01-01T10:00:00+00:00",
     entries: list[Entry] | None = None,
-) -> LoadedConversation:
+) -> StoredConversation:
     return make_loaded_conversation(
         conversation_id,
         USER_ID,

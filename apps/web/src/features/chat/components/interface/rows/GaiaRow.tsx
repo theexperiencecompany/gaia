@@ -131,8 +131,10 @@ export function GaiaRow({
       disableActions={quiet}
       follow_up_actions={quiet ? undefined : content.follow_up_actions}
       date={layout.isGroupedWithNext ? undefined : content.date}
-      isGroupedWithNext={layout.isGroupedWithNext}
-      isGroupedWithPrev={layout.isGroupedWithPrev}
+      grouping={{
+        withPrev: layout.isGroupedWithPrev,
+        withNext: layout.isGroupedWithNext,
+      }}
       hideAvatar={layout.compact}
     />
   );

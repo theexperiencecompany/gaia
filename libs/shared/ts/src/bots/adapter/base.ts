@@ -775,17 +775,19 @@ export abstract class BaseBotAdapter {
           recordBotFailure("conversation_resume_list_failed", error);
           return;
         }
+        const outcomes = await Promise.allSettled(
+          active.map((target) => this.followTarget(target)),
+        );
         let resumed = 0;
-        for (const target of active) {
-          try {
-            await this.followTarget(target);
+        outcomes.forEach((outcome, index) => {
+          if (outcome.status === "fulfilled") {
             resumed += 1;
-          } catch (error) {
-            recordBotFailure("conversation_resume_failed", error, {
-              conversation_id: target.conversation_id,
-            });
+            return;
           }
-        }
+          recordBotFailure("conversation_resume_failed", outcome.reason, {
+            conversation_id: active[index].conversation_id,
+          });
+        });
         wideLog.set({ active: active.length, resumed });
       },
     );
@@ -856,6 +858,7 @@ export abstract class BaseBotAdapter {
           await notifications.deliver(destination, bubbles.join("\n\n"));
           return;
         }
+        // react-doctor-disable-next-line async-await-in-loop -- bubbles must land on the platform in order
         for (const bubble of bubbles) await surface.send(bubble, null);
       },
       react: async (platformMessageId, emoji, replaces) => {

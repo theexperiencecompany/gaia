@@ -24,6 +24,7 @@ from app.constants.integrations import (
     MANAGED_BY_MCP,
     ConnectMode,
 )
+from app.constants.waits import WaitCondition
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.agent_models import (
@@ -38,6 +39,7 @@ from app.services.conversation.integration_log import record_integration_needed
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_oauth import build_oauth_auth_url
+from app.services.wait_service import wait_for_user
 from shared.py.wide_events import log
 
 
@@ -325,6 +327,9 @@ async def request_integration_connection(
     # endpoints), so there is no stream for a card to travel on. A run shows
     # one card per integration however many calls hit the gap.
     if source_category is not None and first_ask:
+        await wait_for_user(
+            run, user_id, WaitCondition.INTEGRATION_CONNECTED, integration_id, integration_name
+        )
         current_stream_writer()(
             {
                 "integration_connection_required": {

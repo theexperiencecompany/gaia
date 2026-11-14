@@ -11,6 +11,7 @@ import json
 from typing import Annotated
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 from prometheus_client import REGISTRY
@@ -34,7 +35,7 @@ from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.tools.execute.dispatch"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
-CONFIG = {"configurable": {"user_id": USER_ID}}
+CONFIG: RunnableConfig = {"configurable": {"user_id": USER_ID}}
 
 
 class _SendEmailArgs(BaseModel):

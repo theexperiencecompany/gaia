@@ -21,6 +21,7 @@ from app.tasks.reminder_tasks import (
 )
 from app.utils.notification.orchestrator import Notified
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog.delivery import ProactiveDestinationBasis, ProactiveDestinationKind
 from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.wide_events import log
 
@@ -48,12 +49,8 @@ def notify() -> Iterator[AsyncMock]:
 
 def _reminder(**overrides) -> ReminderModel:
     payload = overrides.pop("payload", StaticReminderPayload(title="Water the plants", body="Now"))
-    return ReminderModel(
-        id=REMINDER_ID,
-        user_id=USER_ID,
-        agent="static",
-        payload=payload,
-        **overrides,
+    return ReminderModel.model_validate(
+        {"_id": REMINDER_ID, "user_id": USER_ID, "agent": "static", "payload": payload, **overrides}
     )
 
 
@@ -96,7 +93,10 @@ async def test_a_fired_reminder_is_one_notification_keyed_by_its_occurrence(
     ],
 )
 async def test_reminder_completion_names_where_it_was_routed(
-    notify: AsyncMock, routed_to: ProactiveTarget, destination: str, basis: str
+    notify: AsyncMock,
+    routed_to: ProactiveTarget,
+    destination: ProactiveDestinationKind,
+    basis: ProactiveDestinationBasis,
 ) -> None:
     """A reminder kept in the app for a recently active web user is measurable, not silent."""
     notify.return_value = Notified(record=MagicMock(), target=routed_to)

@@ -12,7 +12,7 @@ class ApprovalDecisionRequest(BaseModel):
     """Body for a button approval decision (approve/deny, with scope and feedback)."""
 
     decision: ApprovalDecision
-    feedback: str | None = Field(None, max_length=2000)
+    feedback: str | None = Field(default=None, max_length=2000)
     scope: ApprovalScope = "once"
 
 
@@ -32,7 +32,7 @@ class BatchDecisionItem(BaseModel):
 
     approval_id: str
     decision: ApprovalDecision
-    feedback: str | None = Field(None, max_length=2000)
+    feedback: str | None = Field(default=None, max_length=2000)
 
 
 class BatchApprovalDecisionRequest(BaseModel):

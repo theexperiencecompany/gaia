@@ -7,6 +7,7 @@ routing, status codes, response bodies, and auth checks.
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import httpx
@@ -316,7 +317,7 @@ class TestBotSendMessage:
         mock_capture: MagicMock,
         client: AsyncClient,
         platform: str,
-        reason: str,
+        reason: Literal["plan_required", "subscription_required"],
     ):
         with (
             patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock),

@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, patch
 from app.services.conversation import workspace
 from app.services.conversation.workspace import schedule_last_active_touch
 from app.services.storage import JuiceFSUnavailable
+from shared.py.wide_events import log
 
 
 class TestScheduleLastActiveTouch:
@@ -30,7 +31,7 @@ class TestScheduleLastActiveTouch:
                 "touch_session_last_active",
                 new=AsyncMock(side_effect=RuntimeError("mongo timeout")),
             ),
-            patch.object(workspace.log, "warning") as mock_warning,
+            patch.object(log, "warning") as mock_warning,
         ):
             schedule_last_active_touch("user-1", "conv-1")
             mock_spawn.assert_called_once()
@@ -48,7 +49,7 @@ class TestScheduleLastActiveTouch:
                 "touch_session_last_active",
                 new=AsyncMock(side_effect=JuiceFSUnavailable("no mount")),
             ),
-            patch.object(workspace.log, "warning") as mock_warning,
+            patch.object(log, "warning") as mock_warning,
         ):
             schedule_last_active_touch("user-1", "conv-1")
             mock_spawn.assert_called_once()

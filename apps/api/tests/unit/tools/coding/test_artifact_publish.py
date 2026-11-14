@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, patch
@@ -27,7 +27,7 @@ def _cards(emit: Callable[[], None]) -> list[dict[str, object]]:
     return written
 
 
-def _path(card: dict[str, object]) -> object:
+def _path(card: Mapping[str, object]) -> object:
     return cast(dict[str, object], card["artifact_data"])["path"]
 
 

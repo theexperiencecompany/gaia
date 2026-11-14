@@ -65,7 +65,6 @@ from app.services.conversation.ports import (
     StepLimitReached,
     Streamed,
     Summarized,
-    ToolsRan,
     Unsettled,
 )
 from app.services.conversation.reply_analytics import capture_reply_ended, spoken_context
@@ -139,7 +138,7 @@ class _Attempt:
     segment: int = 0
     # Waking entries after covers, of the batch's group, not past a Stop.
     joiners: tuple[LoggedEntry, ...] = ()
-    # Joiners absorbed while text showed: their segment opens once the tool calls already shown return.
+    # Joiners absorbed while text showed: their segment opens once the model writes again.
     absorbed: tuple[LoggedEntry, ...] = ()
     # A Stop or another group's input ended the run of joinable entries.
     closed: bool = False
@@ -493,6 +492,8 @@ async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Endi
             elif not isinstance(signal, _Tick):
                 await _handle(ports, attempt, run, signal)
     finally:
+        # However the run ended, it read what it absorbed.
+        _cover_absorbed(attempt)
         await _close(pump)
 
 
@@ -578,13 +579,14 @@ async def _handle(
     ports: RuntimePorts,
     attempt: _Attempt,
     run: CommsRun,
-    event: Streamed | Summarized | ModelOutput | ToolsRan,
+    event: Streamed | Summarized | ModelOutput,
 ) -> None:
     match event:
         case Summarized():
             _commit_quietly(attempt)
         case ModelOutput(has_tool_calls=has_tool_calls):
             _commit_quietly(attempt)
+            await _open_absorbed_segment(ports, attempt)
             if has_tool_calls and attempt.joiners:
                 await run.absorb(attempt.joiners)
                 if isinstance(attempt.progress, _Showing):
@@ -592,10 +594,15 @@ async def _handle(
                 else:
                     attempt.covers = (*attempt.covers, *attempt.joiners)
                 attempt.joiners = ()
-        case ToolsRan():
-            await _open_absorbed_segment(ports, attempt)
-        case Streamed(payload=payload):
+        case Streamed(payload=payload, by_model=by_model):
+            if by_model:
+                await _open_absorbed_segment(ports, attempt)
             await _show(ports, attempt, payload)
+
+
+def _cover_absorbed(attempt: _Attempt) -> None:
+    attempt.covers = (*attempt.covers, *attempt.absorbed)
+    attempt.absorbed = ()
 
 
 def _commit_quietly(attempt: _Attempt) -> None:

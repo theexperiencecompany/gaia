@@ -4,9 +4,10 @@ from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
 from app.agents.core.held_replies import HeldChunk, HeldReplies
+from app.models.agent_models import StreamChunkMetadata
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
-_NODE = {"langgraph_checkpoint_ns": "agent:1"}
+_NODE: StreamChunkMetadata = {"langgraph_checkpoint_ns": "agent:1"}
 
 
 def _announcing(message_id: str, content: str) -> AIMessageChunk:

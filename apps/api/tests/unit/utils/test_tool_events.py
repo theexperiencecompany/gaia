@@ -26,7 +26,7 @@ pytestmark = pytest.mark.unit
     ],
 )
 def test_card_payload_is_wrapped_as_tool_data(field_name: str) -> None:
-    payload = {field_name: {"code": "MBDQ-GXGE", "message": "x"}}
+    payload: dict[str, object] = {field_name: {"code": "MBDQ-GXGE", "message": "x"}}
 
     result = normalize_custom_event(payload)
 

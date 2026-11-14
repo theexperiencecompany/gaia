@@ -4,7 +4,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import UUID
 
 from langchain_core.runnables import RunnableConfig
@@ -81,7 +81,9 @@ def logged_decisions() -> Iterator[dict[str, ApprovalDecided]]:
     decided: dict[str, ApprovalDecided] = {}
 
     async def _from_row(approval_id: str) -> ApprovalDecided | None:
-        read = ledger_decide.approval_ledger_repository.get_by_approval_id
+        # The module's current binding: the repo mock the running test patched in.
+        read = vars(ledger_decide)["approval_ledger_repository"].get_by_approval_id
+        assert isinstance(read, Mock)
         if read.side_effect is None:
             row = read.return_value
         elif callable(read.side_effect):
@@ -1505,7 +1507,10 @@ class TestDecideLedgerBatchOutcomes:
                 approval_id="ap_5", resolved=False, reason="not_found", outcome=None
             ),
             BatchDecisionOutcome(
-                approval_id="ap_6", resolved=False, reason="not_found", outcome="denied"
+                approval_id="ap_6",
+                resolved=False,
+                reason="not_found",
+                outcome=ApprovalOutcome.DENIED,
             ),
         ]
         assert _warned(seams.log.error) == {
@@ -1850,7 +1855,7 @@ class TestDecideLedgerAlwaysToolScope:
             patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
         ):
             await ledger_decide.decide_ledger_card(
-                "ap_abc", user_id=USER_ID, tap=ApprovalDecisionRequest(v=3, **tap)
+                "ap_abc", user_id=USER_ID, tap=ApprovalDecisionRequest(**tap)
             )
         return override
 

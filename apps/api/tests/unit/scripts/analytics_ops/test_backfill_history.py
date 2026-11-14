@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 from uuid import UUID
 
 from bson import ObjectId
@@ -18,6 +20,7 @@ from scripts.analytics_ops.backfill_history import (
 from scripts.analytics_ops.posthog_api import Sender
 
 from app.models.payment_models import SubscriptionDocument
+from shared.py.analytics.catalog.billing import SubscriptionActivated
 from tests.unit.scripts.analytics_ops.conftest import FakeReader
 
 ALICE = "6ac74a19fa5dfaf1f5770471"
@@ -85,7 +88,13 @@ class TestDeterminism:
     ) -> None:
         [message] = _send(recording_sender, sent, [activation(_subscription())])
 
-        assert message["properties"]["$ignore_sent_at"] is True
+        assert _props(message)["$ignore_sent_at"] is True
+
+
+def _props(message: dict[str, object]) -> dict[str, object]:
+    props = message["properties"]
+    assert isinstance(props, dict)
+    return props
 
 
 class TestPayload:
@@ -95,16 +104,16 @@ class TestPayload:
         [message] = _send(recording_sender, sent, [signup(_user())])
 
         assert (message["event"], message["distinct_id"]) == ("user:signed_up", ALICE)
-        assert message["properties"]["backfilled"] is True
-        assert "$set" not in message["properties"]
-        assert "$set_once" not in message["properties"]
+        assert _props(message)["backfilled"] is True
+        assert "$set" not in _props(message)
+        assert "$set_once" not in _props(message)
 
     def test_a_backfill_is_attributed_to_the_user_and_a_system_trigger(
         self, recording_sender: Sender, sent: list[dict[str, object]]
     ) -> None:
         [message] = _send(recording_sender, sent, [signup(_user())])
 
-        props = message["properties"]
+        props = _props(message)
         assert (props["actor"], props["trigger"], props["surface"]) == ("user", "system", "worker")
 
     def test_an_activation_carries_the_subscription_and_its_amount(
@@ -112,7 +121,7 @@ class TestPayload:
     ) -> None:
         [message] = _send(recording_sender, sent, [activation(_subscription())])
 
-        props = message["properties"]
+        props = _props(message)
         assert (message["event"], props["subscription_id"], props["amount"], props["currency"]) == (
             "subscription:activated",
             "sub_1",
@@ -125,7 +134,7 @@ class TestPayload:
     ) -> None:
         [message] = _send(recording_sender, sent, [activation(_subscription(currency="JPY"))])
 
-        props = message["properties"]
+        props = _props(message)
         assert (props["amount"], props["amount_charged_pre_tax"], props["currency_charged"]) == (
             2000.0,
             2000.0,
@@ -139,7 +148,7 @@ class TestPayload:
             recording_sender, sent, [activation(_subscription(recurring_pre_tax_amount=0))]
         )
 
-        props = message["properties"]
+        props = _props(message)
         assert (props["amount"], props["amount_charged_pre_tax"]) == (0.0, 0.0)
 
     def test_a_subscription_with_no_creation_time_cannot_be_backfilled(self) -> None:
@@ -202,37 +211,40 @@ class _Collection:
         return min(self.docs, key=lambda doc: str(doc["created_at"]), default=None)
 
 
-class _Db:
-    def __init__(self, subscriptions: list[dict[str, object]]) -> None:
-        self.subscriptions = _Collection(subscriptions)
-
-    def __getitem__(self, name: str) -> _Collection:
-        return getattr(self, name)
-
-
 def test_an_owners_activation_already_matched_by_id_does_not_cover_an_older_subscription() -> None:
     """The owner fallback counted sub_1's own activation as proof for sub_2, so sub_2 was never sent."""
     activations_on_alice = [(ALICE, "sub_1")]
-    db = _Db(
+    subscriptions = _Collection(
         [
             _subscription(dodo_subscription_id="sub_1").model_dump(),
             _subscription(dodo_subscription_id="sub_2").model_dump(),
         ]
     )
+    db = MagicMock()
+    db.subscriptions = subscriptions
+    db.__getitem__.side_effect = {"subscriptions": subscriptions}.__getitem__
+
+    def unmatched_owners(values: Mapping[str, object]) -> list[list[object]]:
+        ids, known = values["ids"], values["known"]
+        assert isinstance(ids, list) and isinstance(known, list)
+        return [
+            [owner]
+            for owner, sub_id in activations_on_alice
+            if owner in ids and sub_id not in known
+        ]
+
     reader = FakeReader(
         {
             backfill_history.TRACKED_SUBSCRIPTIONS_HOGQL: [["sub_1"]],
-            backfill_history.USERS_WITH_UNMATCHED_ACTIVATION_HOGQL: lambda values: [
-                [owner]
-                for owner, subscription_id in activations_on_alice
-                if owner in values["ids"] and subscription_id not in values["known"]
-            ],
+            backfill_history.USERS_WITH_UNMATCHED_ACTIVATION_HOGQL: unmatched_owners,
         }
     )
 
     planned, review = backfill_history.plan_activations(reader, db)
 
-    assert [backfill.event.subscription_id for backfill in planned] == ["sub_2"]
+    events = [backfill.event for backfill in planned]
+    assert [e.subscription_id for e in events if isinstance(e, SubscriptionActivated)] == ["sub_2"]
+    assert len(events) == 1
     assert review == []
 
 
