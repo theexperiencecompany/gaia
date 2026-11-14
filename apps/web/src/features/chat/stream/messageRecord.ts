@@ -1,4 +1,4 @@
-import type { TurnAccumulator } from "@shared/chat";
+import { stopStreamingArtifacts, type TurnAccumulator } from "@shared/chat";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { IMessage } from "@/lib/db/chatDb";
 import type { MessageType } from "@/types/features/convoTypes";
@@ -54,37 +54,41 @@ export const buildTurnMessageRecord = (
   error: string | null = null,
   emojiAck: EmojiAckStamp | null = null,
   stopped = false,
-): IMessage => ({
-  id: meta.botMessageId,
-  conversationId: meta.conversationId,
-  content: emojiAck ? emojiAck.emoji : acc.responseText,
-  role: "assistant",
-  status,
-  createdAt: meta.createdAt,
-  updatedAt: new Date(),
-  messageId: meta.botMessageId,
-  fileIds: meta.options.fileData.map((file) => file.fileId),
-  fileData: meta.options.fileData,
-  toolName: meta.options.selectedTool,
-  toolCategory: meta.options.toolCategory,
-  workflowId: meta.options.selectedWorkflow?.id ?? null,
-  selectedWorkflow: meta.options.selectedWorkflow,
-  selectedCalendarEvent: meta.options.selectedCalendarEvent,
-  tool_data:
-    acc.toolData.length > 0 ? (acc.toolData as TypedToolDataEntry[]) : null,
-  follow_up_actions: acc.followUpActions,
-  image_data: (acc.imageData as ImageData | null) ?? null,
-  memory_data: (acc.extras.memory_data as MemoryData | undefined) ?? null,
-  todo_progress: (acc.todoProgress as TodoProgressData | null) ?? null,
-  pinned: false,
-  isConvoSystemGenerated: false,
-  error,
-  kind: emojiAck?.kind,
-  reacts_to_message_id: emojiAck ? emojiAck.reactsToMessageId : undefined,
-  stopped: stopped || null,
-  replyToMessageId: meta.options.replyToMessage?.id ?? null,
-  replyToMessageData: meta.options.replyToMessage,
-});
+): IMessage => {
+  const toolData = stopped
+    ? stopStreamingArtifacts(acc.toolData)
+    : acc.toolData;
+  return {
+    id: meta.botMessageId,
+    conversationId: meta.conversationId,
+    content: emojiAck ? emojiAck.emoji : acc.responseText,
+    role: "assistant",
+    status,
+    createdAt: meta.createdAt,
+    updatedAt: new Date(),
+    messageId: meta.botMessageId,
+    fileIds: meta.options.fileData.map((file) => file.fileId),
+    fileData: meta.options.fileData,
+    toolName: meta.options.selectedTool,
+    toolCategory: meta.options.toolCategory,
+    workflowId: meta.options.selectedWorkflow?.id ?? null,
+    selectedWorkflow: meta.options.selectedWorkflow,
+    selectedCalendarEvent: meta.options.selectedCalendarEvent,
+    tool_data: toolData.length > 0 ? (toolData as TypedToolDataEntry[]) : null,
+    follow_up_actions: acc.followUpActions,
+    image_data: (acc.imageData as ImageData | null) ?? null,
+    memory_data: (acc.extras.memory_data as MemoryData | undefined) ?? null,
+    todo_progress: (acc.todoProgress as TodoProgressData | null) ?? null,
+    pinned: false,
+    isConvoSystemGenerated: false,
+    error,
+    kind: emojiAck?.kind,
+    reacts_to_message_id: emojiAck ? emojiAck.reactsToMessageId : undefined,
+    stopped: stopped || null,
+    replyToMessageId: meta.options.replyToMessage?.id ?? null,
+    replyToMessageData: meta.options.replyToMessage,
+  };
+};
 
 /**
  * Rebuild the send payload from a persisted queued record — the inverse of

@@ -7,7 +7,8 @@ import type { StreamToolDataEntry } from "../chat/streaming";
 
 export const ARTIFACT_CARD_TOOL_NAME = "artifact_done";
 
-export type ArtifactCardStatus = "streaming" | "ready" | "failed";
+/** "stopped" is the client's own: the user stopped the turn before the artifact was done. */
+export type ArtifactCardStatus = "streaming" | "ready" | "failed" | "stopped";
 
 /** Why a failed artifact gave up: ArtifactFailureReason in apps/api/app/models/openui_artifact_models.py. */
 export type ArtifactFailureReason =
@@ -87,6 +88,21 @@ export function upsertArtifactDone<T extends StreamToolDataEntry>(
     ...entry,
     data: { ...done, program: previous?.program },
   }));
+}
+
+/**
+ * A stopped turn's artifacts still writing end as stopped. The run is cancelled
+ * before create_artifact can send its done frame, so nothing else ends them.
+ */
+export function stopStreamingArtifacts<T extends StreamToolDataEntry>(
+  entries: T[],
+): T[] {
+  return entries.map((entry) => {
+    const card = cardOf(entry);
+    return card?.status === "streaming"
+      ? { ...entry, data: { ...card, status: "stopped" } }
+      : entry;
+  });
 }
 
 export function isArtifactDeltaFrame(

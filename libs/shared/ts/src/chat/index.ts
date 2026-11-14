@@ -3,7 +3,10 @@ export type {
   ArtifactCardStatus,
   ArtifactDeltaFrame,
 } from "../artifacts/openuiArtifacts";
-export { ARTIFACT_CARD_TOOL_NAME } from "../artifacts/openuiArtifacts";
+export {
+  ARTIFACT_CARD_TOOL_NAME,
+  stopStreamingArtifacts,
+} from "../artifacts/openuiArtifacts";
 export type {
   ApprovalDecision,
   ApprovalDecisionPayload,

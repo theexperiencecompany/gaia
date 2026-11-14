@@ -1,4 +1,8 @@
-import { createTurnAccumulator } from "@shared/chat";
+import {
+  ARTIFACT_CARD_TOOL_NAME,
+  type ArtifactCardData,
+  createTurnAccumulator,
+} from "@shared/chat";
 import { describe, expect, it } from "vitest";
 
 import { buildTurnMessageRecord, type EmojiAckStamp } from "./messageRecord";
@@ -54,5 +58,29 @@ describe("buildTurnMessageRecord", () => {
       buildTurnMessageRecord(meta, acc, "sent", null, null, true).stopped,
     ).toBe(true);
     expect(buildTurnMessageRecord(meta, acc, "sent").stopped).toBeNull();
+  });
+
+  it("ends an artifact still writing when the user stopped the turn as stopped", () => {
+    const writing: ArtifactCardData = {
+      stream_id: "s1",
+      kind: "report",
+      title: "Q3",
+      status: "streaming",
+      program: "root = ",
+    };
+    const acc = {
+      ...createTurnAccumulator(""),
+      toolData: [{ tool_name: ARTIFACT_CARD_TOOL_NAME, data: writing }],
+    };
+
+    const stopped = buildTurnMessageRecord(meta, acc, "sent", null, null, true);
+    const live = buildTurnMessageRecord(meta, acc, "sending");
+
+    expect(stopped.tool_data?.[0]?.data).toMatchObject({
+      stream_id: "s1",
+      status: "stopped",
+      program: "root = ",
+    });
+    expect(live.tool_data?.[0]?.data).toMatchObject({ status: "streaming" });
   });
 });
