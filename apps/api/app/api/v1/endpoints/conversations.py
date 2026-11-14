@@ -258,7 +258,7 @@ async def stop_conversation_endpoint(
         conversation={"operation": ConversationOperation.STOP, "id": conversation_id},
     )
     await require_owned_conversation(conversation_id, user.user_id)
-    result = await press_stop(conversation_id, user.user_id, None)
+    result = await press_stop(conversation_id, user.user_id)
     log.set_ns("conversation", stopped_work=result.work.stopped_anything)
     return result
 

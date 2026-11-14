@@ -11,7 +11,6 @@ import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background import (
-    executor_queue as eq,
     executor_runner as er,
 )
 from app.agents.core.background.executor_queue import release_lock_if_owned
@@ -46,7 +45,6 @@ async def spawned() -> AsyncIterator[AsyncMock]:
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     with (
         patch.object(redis_cache, "redis", client),
-        patch.object(eq, "StreamManager", AsyncMock()),
         patch.object(er, "record_work_carried", AsyncMock(return_value=True)),
         patch.object(er, "_spawn_detached_run") as spawn,
     ):

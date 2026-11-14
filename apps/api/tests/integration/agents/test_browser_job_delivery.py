@@ -1,7 +1,7 @@
 """One worker-side browser run reaches both audiences: the web turn's stream and the bot platform.
 
 Real code under test: execute_browser_job with its ProgressEmitter and
-BrowserThreadMirror, the job event feed, follow_job_cards, publish_to_stream and
+BrowserThreadMirror, the job event feed, follow_job_cards, the session collector and
 BotProgressDelivery. Faked: the browser itself (a scripted stand-in for
 BrowserTaskRunner), the browser host session, Redis, and the outbound bot queue.
 So this proves the wiring from one card snapshot to every surface that renders
@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 import fakeredis.aioredis
 import pytest
 
-from app.agents.core.background import redis_writer as rw
+from app.agents.core.background import session_writer as sw
 from app.agents.core.background.session import RunKind, create_session, teardown_session
 from app.constants.browser import (
     BROWSER_TASK_EVENT,
@@ -131,18 +131,16 @@ async def redis(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[fakeredis.aior
 
 
 @pytest.fixture
-def chunks(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    """Every SSE chunk the relay's writer published for this turn."""
-    published: list[str] = []
-    manager = MagicMock()
+def chunks(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    """Every frame the relay collected on this turn's stream."""
+    collected: list[dict[str, object]] = []
 
-    async def _publish_chunk(stream_id: str, chunk: str) -> None:
+    def _collect(stream_id: str, data: dict[str, object]) -> None:
         assert stream_id == STREAM_ID
-        published.append(chunk)
+        collected.append(data)
 
-    manager.publish_chunk = _publish_chunk
-    monkeypatch.setattr(rw, "stream_manager", manager)
-    return published
+    monkeypatch.setattr(sw, "collect_frame", _collect)
+    return collected
 
 
 @pytest.fixture
@@ -203,16 +201,12 @@ async def _run_and_relay(request: BrowserJobRequest) -> None:
     await execute_browser_job(request)
     deltas = WorkDeltas(request.conversation_id, STREAM_ID)
 
-    async def publish(data: dict[str, object]) -> None:
-        await rw.publish_to_stream(STREAM_ID, data)
+    def publish(data: dict[str, object]) -> None:
+        sw.collect_frame(STREAM_ID, data)
         deltas(data)
 
     await follow_job_cards(request.job_id, request.conversation_id, publish)
     await deltas.drain()
-
-
-def _frames(chunks: list[str]) -> list[dict[str, Any]]:
-    return [json.loads(chunk.removeprefix("data: ").strip()) for chunk in chunks]
 
 
 def _shape(frame: dict[str, Any]) -> str:
@@ -225,14 +219,14 @@ def _shape(frame: dict[str, Any]) -> str:
 
 
 async def test_a_web_turn_receives_the_whole_run_as_cards_and_a_browser_thread(
-    redis: fakeredis.aioredis.FakeRedis, chunks: list[str], browser: None
+    redis: fakeredis.aioredis.FakeRedis, chunks: list[dict[str, Any]], browser: None
 ) -> None:
     """The run happens in a worker with no stream of its own; what the card renderer and the tool thread receive has to be indistinguishable from a run that never left the turn."""
     create_session(STREAM_ID, RunKind.LIVE)
 
     await _run_and_relay(_request())
 
-    frames = _frames(chunks)
+    frames = chunks
     assert [_shape(frame) for frame in frames] == [
         BROWSER_TASK_EVENT,
         "subagent_start",
@@ -249,7 +243,7 @@ async def test_a_web_turn_receives_the_whole_run_as_cards_and_a_browser_thread(
 
 
 async def test_the_runs_cards_are_collected_onto_the_turns_message_under_one_group(
-    redis: fakeredis.aioredis.FakeRedis, chunks: list[str], browser: None
+    redis: fakeredis.aioredis.FakeRedis, chunks: list[dict[str, Any]], browser: None
 ) -> None:
     """Live SSE is only half of it: without the in-process collector the cards are gone on reload, and an action row orphaned from its group renders outside the browser thread."""
     create_session(STREAM_ID, RunKind.LIVE)
@@ -269,7 +263,7 @@ async def test_the_runs_cards_are_collected_onto_the_turns_message_under_one_gro
 
 async def test_a_bot_conversation_is_served_the_same_run_over_its_own_transport(
     redis: fakeredis.aioredis.FakeRedis,
-    chunks: list[str],
+    chunks: list[dict[str, Any]],
     outbound: dict[str, list[Any]],
     browser: None,
 ) -> None:
@@ -284,12 +278,12 @@ async def test_a_bot_conversation_is_served_the_same_run_over_its_own_transport(
     )
 
     assert [photo[2] for photo in outbound["photos"]] == [SHOT_URL]
-    assert [_shape(frame) for frame in _frames(chunks)].count(BROWSER_TASK_EVENT) == 3
+    assert [_shape(frame) for frame in chunks].count(BROWSER_TASK_EVENT) == 3
 
 
 async def test_a_web_conversation_is_never_pushed_to_a_bot_platform(
     redis: fakeredis.aioredis.FakeRedis,
-    chunks: list[str],
+    chunks: list[dict[str, Any]],
     outbound: dict[str, list[Any]],
     browser: None,
 ) -> None:
@@ -357,7 +351,7 @@ class _ScriptedBrowserWithHandoff(_ScriptedBrowser):
 
 async def test_a_run_asked_for_in_a_group_keeps_its_live_link_and_photos_in_the_requesters_dm(
     redis: fakeredis.aioredis.FakeRedis,
-    chunks: list[str],
+    chunks: list[dict[str, Any]],
     queue: list[dict[str, Any]],
     browser: None,
     monkeypatch: pytest.MonkeyPatch,

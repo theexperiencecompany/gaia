@@ -16,7 +16,6 @@ from langchain_core.tools import BaseTool
 import pytest
 
 from app.agents.core.background.executor_channel import decide_drain
-from app.agents.core.background.work_cancel import stop_unlogged_work
 from app.agents.tools.browser_chat_tools import browser_step_done, stop_browser_task
 from app.constants.agents import AgentTag
 from app.constants.browser import (
@@ -30,6 +29,7 @@ from app.constants.chat import SourceCategory
 from app.models.chat_models import ConversationSource
 from app.services.browser.chat_task import stop_report
 from app.services.browser.handoff import get_handoff
+from app.services.browser.job_stop import browser_job_task_id, stop_named_jobs
 from app.services.browser.jobs import get_conversation_slot
 from tests.e2e._harness.browser_job import (
     LIVE_STORAGE_STATE,
@@ -198,7 +198,7 @@ async def test_a_second_browser_task_in_one_turn_is_refused_by_name() -> None:
             run = await run_graph(
                 graph, "book me a table", thread_id=CONVERSATION, user_id=USER, **_configurable()
             )
-            await stop_unlogged_work(CONVERSATION, None)
+            await stop_named_jobs([browser_job_task_id(world.enqueued[0].job_id)])
             await world.settle()
 
     assert len(world.enqueued) == 1
@@ -223,13 +223,13 @@ async def test_a_stop_reaches_the_browser_and_releases_the_conversation() -> Non
             )
             assert world.enqueued, "the job never reached the worker"
 
-            # The part of a Stop that reaches a browser job, which is never log work.
-            stopped = await stop_unlogged_work(CONVERSATION, None)
+            # What a Stop's CancelWork does to the job's own logged work.
+            stopped = await stop_named_jobs([browser_job_task_id(world.enqueued[0].job_id)])
             await world.settle()
         assert await get_conversation_slot(CONVERSATION) is None
 
     assert world.aborted == [world.enqueued[0].job_id]
-    assert stop_report(stopped.browser_jobs.values()) == "Stopped the browser task."
+    assert stop_report(stopped.values()) == "Stopped the browser task."
     assert world.cards()[-1]["status"] == BrowserSessionStatus.CANCELLED.value
     # The stop already told the user: nobody is woken, and the thread only learns it ended.
     assert [entry.tag for entry in world.told] == [AgentTag.BROWSER_STOPPED]
@@ -682,14 +682,14 @@ async def test_a_stop_while_the_user_is_asked_to_sign_in_ends_the_run_stopped_at
                 graph, "book me a table", thread_id=CONVERSATION, user_id=USER, **_configurable()
             )
             handoff_id = await _wait_for_pending_handoff(world)
-            stopped = await stop_unlogged_work(CONVERSATION, None)
+            stopped = await stop_named_jobs([browser_job_task_id(world.enqueued[0].job_id)])
             await world.settle()
         record = await get_handoff(handoff_id)
         # Read inside the world: outside it the fake Redis is gone and this would reach
         # the process-wide client, bound to an earlier test's closed loop.
         slot = await get_conversation_slot(CONVERSATION)
 
-    assert stop_report(stopped.browser_jobs.values()) == "Stopped the browser task."
+    assert stop_report(stopped.values()) == "Stopped the browser task."
     assert record is not None
     assert record.status is HandoffStatus.CANCELLED
     handoffs = [card["status"] for card in world.cards() if card["kind"] == "handoff"]

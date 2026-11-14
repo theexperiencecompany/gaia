@@ -25,9 +25,7 @@ from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
     RunKind,
-    StreamSession,
     create_session,
-    teardown_session,
 )
 from app.constants.cache import (
     EXECUTOR_ALIVE_BEAT_SECONDS,
@@ -40,7 +38,6 @@ from app.constants.cache import (
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import StreamManager
 from app.db.redis import redis_cache
 from app.models.agent_models import (
     CONFIGURABLE_OWNED_KEYS,
@@ -340,47 +337,13 @@ def safe_configurable(configurable: AgentConfigurable) -> AgentConfigurable:
     return cast(AgentConfigurable, kept)
 
 
-async def open_detached_stream(
-    stream_id: str,
-    *,
-    conversation_id: str,
-    user_id: str,
-) -> StreamSession:
-    """Mint a stream a detached run owns: a session collects its frames for its WorkFinished."""
-    # Equivalent under mutation: session.kind is only read as `is RunKind.LIVE` (hil/bridge).
-    session = create_session(stream_id, RunKind.QUEUED)  # pragma: no mutate
-    await StreamManager.start_stream(
-        stream_id=stream_id,
-        conversation_id=conversation_id,
-        user_id=user_id,
-    )
-    return session
-
-
-async def close_detached_stream(stream_id: str, *, cancelled: bool) -> None:
-    """Drop a detached run's session and end the stream it owns.
-
-    A cancelled stream closes silently — the cancel already told the client — so
-    no [DONE] and no complete_stream.
-    """
-    teardown_session(stream_id)
-    await end_detached_stream(stream_id, cancelled=cancelled)
-
-
-async def end_detached_stream(stream_id: str, *, cancelled: bool) -> None:
-    """End a stream its run owns; a cancelled one closes silently (see close_detached_stream)."""
-    if not cancelled:
-        await StreamManager.publish_chunk(stream_id, "data: [DONE]\n\n")
-        await StreamManager.complete_stream(stream_id)
-
-
 async def prepare_run_from_item(
     conversation_id: str, item: ExecutorRunItem, *, claim: LockClaim
 ) -> PreparedQueuedTask | None:
     """Claim the busy lock and prepare a fresh run+stream from a stored item.
 
     Every detached run starts here, so this is the single place the conversation
-    is claimed and the frontend's stream is minted. claim picks which claim
+    is claimed and the run's stream is minted. claim picks which claim
     applies (see LockClaim); None means the conversation is already taken.
     """
     if not redis_cache.client:
@@ -393,7 +356,6 @@ async def prepare_run_from_item(
     configurable: AgentConfigurable = item.get("configurable") or {}
 
     queued_stream_id = f"{QUEUED_STREAM_ID_PREFIX}{uuid4()}"
-    user_id: str = configurable.get("user_id", "")
 
     lock_key = f"{EXECUTOR_BUSY_PREFIX}{conversation_id}"
     lock_value = build_lock_value(queued_stream_id, task_id or "")
@@ -410,11 +372,8 @@ async def prepare_run_from_item(
         # would see its own lock as FOREIGN and wedge it until TTL.
         await redis_cache.client.set(lock_key, lock_value, ex=EXECUTOR_BUSY_TTL)
 
-    session = await open_detached_stream(
-        queued_stream_id,
-        conversation_id=conversation_id,
-        user_id=user_id,
-    )
+    # Equivalent under mutation: session.kind is only read as `is RunKind.LIVE` (hil/bridge).
+    session = create_session(queued_stream_id, RunKind.QUEUED)  # pragma: no mutate
     session.executor_spawned = True
 
     configurable = {**configurable, "stream_id": queued_stream_id}

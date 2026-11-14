@@ -17,7 +17,6 @@ import fakeredis.aioredis
 from langchain_core.messages import AIMessage, ToolMessage
 import pytest
 
-from app.agents.core.background import executor_queue
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.subagents import delegation
 from app.agents.core.subagents.delegation import (
@@ -128,15 +127,11 @@ async def client_edges() -> AsyncIterator[SimpleNamespace]:
     install_runtime_ports(runtime.ports)
     await runtime.log.append(CONVERSATION, "u1", user("u1"))
     with (
-        patch.object(executor_queue, "StreamManager", AsyncMock()) as stream_manager,
-        patch(f"{MODULE}.stream_manager") as streams,
-        patch(f"{FOLDED}.stream_manager", new=streams),
+        patch(f"{MODULE}.stop_requested", new=AsyncMock(return_value=False)) as stopped,
+        patch(f"{FOLDED}.stop_requested", new=stopped),
         patch(f"{MODULE}.deliver_to_executor", new=AsyncMock()) as deliver,
     ):
-        streams.is_cancelled = AsyncMock(return_value=False)
-        yield SimpleNamespace(
-            runtime=runtime, deliver=deliver, streams=streams, stream_manager=stream_manager
-        )
+        yield SimpleNamespace(runtime=runtime, deliver=deliver, stopped=stopped)
 
 
 async def _logged(edges: SimpleNamespace) -> list[Entry]:
@@ -159,7 +154,7 @@ def own_stream() -> Iterator[dict[str, list[dict[str, Any]]]]:
     def _writer(stream_id: str) -> Any:
         return frames.setdefault(stream_id, []).append
 
-    with patch(f"{MODULE}.make_redis_stream_writer", side_effect=_writer):
+    with patch(f"{MODULE}.make_session_writer", side_effect=_writer):
         yield frames
 
 
@@ -586,9 +581,7 @@ class TestABackgroundRunTheUserStopped:
     async def test_a_dispatch_after_its_turn_was_stopped_never_starts(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
-        client_edges.streams.is_cancelled = AsyncMock(
-            side_effect=lambda sid: sid == LIVE["stream_id"]
-        )
+        client_edges.stopped.side_effect = lambda sid: sid == LIVE["stream_id"]
         execute = AsyncMock(return_value=SubagentOutcome(text="done"))
         with patch(f"{MODULE}.execute_subagent_stream", new=execute):
             result = await delegate(_delegation(), background=True)
@@ -672,13 +665,12 @@ class TestABackgroundRunsStreamLifecycle:
         kwargs = execute.await_args.kwargs
         assert kwargs["integration_metadata"] is metadata
         assert kwargs["subagent_id"] == "row-1"
-        client_edges.stream_manager.complete_stream.assert_awaited_once_with(stream_id)
 
-    async def test_a_stopped_run_closes_its_stream_silently(
+    async def test_a_stopped_run_logs_its_work_cancelled(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
-        client_edges.streams.is_cancelled = AsyncMock(
-            side_effect=lambda sid: str(sid).startswith(SUBAGENT_STREAM_ID_PREFIX)
+        client_edges.stopped.side_effect = lambda sid: str(sid).startswith(
+            SUBAGENT_STREAM_ID_PREFIX
         )
         with patch(
             f"{MODULE}.execute_subagent_stream",
@@ -687,8 +679,9 @@ class TestABackgroundRunsStreamLifecycle:
             await delegate(_delegation(), background=True)
             await _drain()
 
-        client_edges.stream_manager.publish_chunk.assert_not_awaited()
-        client_edges.stream_manager.complete_stream.assert_not_awaited()
+        ended = (await _logged(client_edges))[-1]
+        assert isinstance(ended, WorkFinished)
+        assert ended.outcome is WorkOutcome.CANCELLED
 
     async def test_the_runs_config_carries_its_stream_even_when_it_had_none(
         self, redis: Any, client_edges: SimpleNamespace

@@ -18,7 +18,7 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import fakeredis.aioredis
 import pytest
@@ -82,10 +82,9 @@ async def redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
 
 @pytest.fixture
 def stream_side():
-    """Capture the stream a detached run starts outside Redis."""
-    with patch.object(eq, "StreamManager") as stream_manager:
-        stream_manager.start_stream = AsyncMock()
-        yield SimpleNamespace(stream_manager=stream_manager)
+    """Record the session each detached run opens for its stream."""
+    with patch.object(eq, "create_session", wraps=eq.create_session) as create_session:
+        yield create_session
 
 
 def _no_redis() -> Any:
@@ -246,7 +245,7 @@ class TestWithoutRedis:
     async def test_preparing_a_run_yields_nothing(self, stream_side) -> None:
         with _no_redis():
             assert await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE) is None
-        stream_side.stream_manager.start_stream.assert_not_awaited()
+        stream_side.assert_not_called()
 
 
 class TestBuildRunItem:
@@ -411,7 +410,7 @@ class TestPrepareRunFromItem:
         assert prepared is None
         assert await redis.get(BUSY_KEY) == held
         # No stream is minted either.
-        stream_side.stream_manager.start_stream.assert_not_awaited()
+        stream_side.assert_not_called()
 
     async def test_acquire_takes_a_free_conversation(self, redis, stream_side) -> None:
         prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.ACQUIRE)
@@ -459,13 +458,11 @@ class TestPrepareRunFromItem:
         assert prepared.run.kind is RunKind.QUEUED
         assert prepared.run.is_queued is True
 
-    async def test_starts_the_stream_the_run_writes_to(self, redis, stream_side) -> None:
+    async def test_opens_the_session_the_run_writes_to(self, redis, stream_side) -> None:
         prepared = await prepare_run_from_item(CONVERSATION, _item(), claim=LockClaim.SEIZE)
 
         assert prepared is not None
-        stream_side.stream_manager.start_stream.assert_awaited_once_with(
-            stream_id=prepared.run.stream_id, conversation_id=CONVERSATION, user_id="u1"
-        )
+        stream_side.assert_called_once_with(prepared.run.stream_id, RunKind.QUEUED)
 
     async def test_carries_the_user_and_workflow_context_from_the_item(
         self, redis, stream_side

@@ -8,10 +8,10 @@ call follows the same feed into its own run's stream while it blocks.
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 
 from app.agents.core.background.folded_stream import close_folded_stream, open_folded_stream
-from app.agents.core.background.redis_writer import publish_to_stream
+from app.agents.core.background.session_writer import collect_frame
 from app.constants.log_tags import LogTag
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
@@ -22,7 +22,7 @@ from app.services.conversation.work_deltas import WorkDeltas
 from shared.py.wide_events import log
 
 #: Takes one card frame of the feed, in order.
-CardSink = Callable[[dict[str, object]], Awaitable[None]]
+CardSink = Callable[[dict[str, object]], None]
 
 
 async def follow_job_cards(job_id: str, conversation_id: str, sink: CardSink) -> None:
@@ -39,7 +39,7 @@ async def follow_job_cards(job_id: str, conversation_id: str, sink: CardSink) ->
         for entry_id, payload in events:
             if payload == JOB_TERMINAL_FRAME:
                 return
-            await sink(payload)
+            sink(payload)
             cursor = entry_id
         if (
             not events
@@ -69,8 +69,8 @@ async def relay_job_cards(request: BrowserJobRequest) -> None:
         return
     deltas = WorkDeltas(request.conversation_id, stream_id)
 
-    async def publish(data: dict[str, object]) -> None:
-        await publish_to_stream(stream_id, data)
+    def publish(data: dict[str, object]) -> None:
+        collect_frame(stream_id, data)
         deltas(data)
 
     try:

@@ -1,8 +1,7 @@
 """Stop a conversation's background work: the executor run, its inbox, subagents, approvals, browser jobs, replays.
 
 cancel_named_work cancels exactly the tasks it is given: a logged Stop's CancelWork
-names the work it covers, and the cancel_executor tool names the one task the user
-means. stop_unlogged_work stops the rest of a Stop, the work no log entry names.
+names the work it covers, and the cancel_executor tool names the one task the user means.
 """
 
 from collections.abc import Collection
@@ -10,38 +9,21 @@ from collections.abc import Collection
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_progress import drop_progress
 from app.agents.core.background.executor_queue import decode_raw_item, parse_lock_value
+from app.agents.core.background.run_stop import request_stop
 from app.agents.core.background.running_registry import RunningSubagents, stop_stream
 from app.constants.agents import PLAYBOOK_REPLAY_STREAM_ID_PREFIX
+from app.constants.browser import BrowserStopOutcome
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import RunningSubagent
 from app.models.work_cancel_models import WorkCancelled
-from app.services.browser.job_stop import RequesterChat, stop_chat_jobs, stop_named_jobs
+from app.services.browser.job_stop import stop_named_jobs, stop_run_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
 from shared.py.wide_events import log
 
 # A placeholder stream id some lock writers use; it names no stream to cancel.
 _NO_STREAM_IDS = frozenset({"", "1"})
-
-
-async def stop_unlogged_work(
-    conversation_id: str, requester: RequesterChat | None
-) -> WorkCancelled:
-    """Stop what the chat runs that no log entry names: its browser jobs, and subagents that outlived their run.
-
-    A logged Stop's CancelWork cancels the work the log holds; this is the rest of a Stop.
-    requester widens the browser stop to the job that answers to the user's own bot chat.
-    """
-    subagents = await RunningSubagents(conversation_id).stop_all()
-    # After the run's cancel: a stopped job's notice lands in the inbox and must survive it.
-    browser_jobs = await stop_chat_jobs(conversation_id, requester)
-    work = WorkCancelled(
-        subagent_ids=[subagent.subagent_id for subagent in subagents], browser_jobs=browser_jobs
-    )
-    await _settle(conversation_id, work, None)
-    return work
 
 
 async def cancel_named_work(
@@ -58,11 +40,13 @@ async def cancel_named_work(
     running_task_id = parse_lock_value(lock_value)[1] if lock_value else None
     named = running_task_id is not None and running_task_id in task_ids
     subagents: list[RunningSubagent] = []
+    browser_jobs: dict[str, BrowserStopOutcome] = {}
     if named and lock_value is not None:
         subagents = (await _stop_running_executor(conversation_id, lock_value))[1]
+        browser_jobs = await stop_run_jobs(conversation_id)
     # Detached work is logged under its own stream: a background subagent's, or a browser job's relay.
     subagents.extend(await RunningSubagents(conversation_id).stop_streams(task_ids))
-    browser_jobs = await stop_named_jobs(task_ids)
+    browser_jobs.update(await stop_named_jobs(task_ids))
     replays = await _stop_named_replays(task_ids)
     # Only once a running named task is gone: closing first would let it ask again.
     approvals = await _close_approvals(conversation_id, user_id, approval_ids)
@@ -86,7 +70,7 @@ async def _stop_named_replays(task_ids: Collection[str]) -> list[str]:
         task_id for task_id in task_ids if task_id.startswith(PLAYBOOK_REPLAY_STREAM_ID_PREFIX)
     ]
     for stream_id in replays:
-        await stream_manager.cancel_stream(stream_id)
+        await request_stop(stream_id)
     return replays
 
 

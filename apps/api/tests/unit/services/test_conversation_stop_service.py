@@ -1,4 +1,4 @@
-"""stop_conversation / press_stop: a logged Stop cancels the work it covers, then the rest stops what the log never held."""
+"""stop_conversation / press_stop: a logged Stop cancels the work it covers, and nothing else."""
 
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock
@@ -7,9 +7,8 @@ import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
-from app.constants.agents import AgentTag
+from app.agents.core.background.run_stop import stop_requested
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
-from app.core.stream_manager import stream_manager
 from app.models.work_cancel_models import WorkCancelled
 from app.services import conversation_stop_service
 from app.services.browser import job_stop
@@ -62,35 +61,33 @@ class TestStopConversation:
     async def test_nothing_running_is_an_empty_summary_that_touches_nothing(
         self, fake_redis: fakeredis.aioredis.FakeRedis, logged_stops: AsyncMock
     ) -> None:
-        result = await stop_conversation(CONVERSATION, USER, None)
+        result = await stop_conversation(CONVERSATION, USER)
 
         assert result.conversation_id == CONVERSATION
         assert result.work == WorkCancelled()
         logged_stops.assert_awaited_once()
         assert await fake_redis.keys("*") == []
 
-    async def test_the_answer_is_what_the_logged_stop_cancelled_and_the_rest_it_stopped(
+    async def test_the_answer_is_what_the_logged_stop_cancelled(
         self, logged_stops: AsyncMock
     ) -> None:
         logged_stops.return_value = LOGGED
         subagent_stream = await claim_subagent(CONVERSATION, "s1", dispatched_by="live-turn")
 
-        result = await stop_conversation(CONVERSATION, USER, None)
+        result = await stop_conversation(CONVERSATION, USER)
 
-        assert result.work == LOGGED.model_copy(update={"subagent_ids": ["s1"]})
-        assert await stream_manager.is_cancelled(subagent_stream)
-        assert [entry.tag for entry in await ExecutorInbox(CONVERSATION).read()] == [
-            AgentTag.EXECUTOR_INTERRUPTED
-        ]
+        assert result.work == LOGGED
+        # Work the log does not hold is not this Stop's to cancel.
+        assert not await stop_requested(subagent_stream)
 
     async def test_the_executor_is_left_to_the_logged_stop(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
         await seed_live_work(CONVERSATION)
 
-        await stop_conversation(CONVERSATION, USER, None)
+        await stop_conversation(CONVERSATION, USER)
 
-        assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)
+        assert not await stop_requested(EXECUTOR_STREAM)
         assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}") is not None
 
     async def test_another_conversations_work_keeps_running(
@@ -98,9 +95,9 @@ class TestStopConversation:
     ) -> None:
         await seed_live_work(OTHER_CONVERSATION)
 
-        await stop_conversation(CONVERSATION, USER, None)
+        await stop_conversation(CONVERSATION, USER)
 
-        assert not await stream_manager.is_cancelled(SUBAGENT_STREAM)
+        assert not await stop_requested(SUBAGENT_STREAM)
         assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{OTHER_CONVERSATION}") is not None
         assert len(await ExecutorInbox(OTHER_CONVERSATION).read()) == 1
 
@@ -112,23 +109,23 @@ class TestPressStop:
         logged_stops.return_value = LOGGED
         await seed_live_work(CONVERSATION)
 
-        await press_stop(CONVERSATION, USER, None)
+        await press_stop(CONVERSATION, USER)
 
         captured.assert_called_once_with(
             UserId(USER),
             ChatWorkStopped(
                 executor_stopped=True,
                 pending_tasks=1,
-                subagents=1,
+                subagents=0,
                 approvals=0,
-                browser_jobs=1,
+                browser_jobs=0,
             ),
         )
 
     async def test_a_press_with_nothing_running_still_answers_and_counts(
         self, captured: MagicMock
     ) -> None:
-        result = await press_stop(CONVERSATION, USER, None)
+        result = await press_stop(CONVERSATION, USER)
 
         assert result.work == WorkCancelled()
         captured.assert_called_once_with(
@@ -148,6 +145,6 @@ class TestPressStop:
         logged_stops.side_effect = WorkNotCancelled(CONVERSATION)
 
         with pytest.raises(WorkNotCancelled):
-            await press_stop(CONVERSATION, USER, None)
+            await press_stop(CONVERSATION, USER)
 
         captured.assert_not_called()
