@@ -238,7 +238,6 @@
 @source "../../[locale]/(landing)/client.tsx";
 @source "../../[locale]/(landing)/error.tsx";
 @source "../../[locale]/(landing)/layout.tsx";
-@source "../../[locale]/(landing)/loading.tsx";
 @source "../../[locale]/(landing)/page.tsx";
 @source "../../[locale]/(unindexed)/error.tsx";
 @source "../../[locale]/(unindexed)/layout.tsx";

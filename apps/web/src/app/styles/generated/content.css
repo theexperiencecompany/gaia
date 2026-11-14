@@ -117,7 +117,6 @@
 @source "../../../components/shared/RateLimitToast.tsx";
 @source "../../../components/shared/RouteError.tsx";
 @source "../../../components/shared/shape.ts";
-@source "../../../components/shared/SuspenseLoader.tsx";
 @source "../../../components/shared/tone.ts";
 @source "../../../components/ui/blur-stack.tsx";
 @source "../../../components/ui/button-variants.ts";
@@ -127,7 +126,6 @@
 @source "../../../components/ui/ProgressiveImage.tsx";
 @source "../../../components/ui/raised-button.tsx";
 @source "../../../components/ui/sheet.tsx";
-@source "../../../components/ui/spinner.tsx";
 @source "../../../components/ui/Toaster.tsx";
 @source "../../../config/openui/theme.ts";
 @source "../../../features/auth/constants.ts";
@@ -204,7 +202,6 @@
 @source "../../../../../../libs/shared/ts/src/utils/thinkingParser.ts";
 @source "../../[locale]/(landing)/error.tsx";
 @source "../../[locale]/(landing)/layout.tsx";
-@source "../../[locale]/(landing)/loading.tsx";
 @source "../../../features/alternatives/data/alternativesData.ts";
 @source "../../../features/alternatives/data/getTranslatedAlternative.ts";
 @source "../../../features/auth/api/authApi.ts";
