@@ -6,6 +6,7 @@ import { type ReactNode, Suspense } from "react";
 import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
+import { useCalendarChangesWebSocket } from "@/features/calendar/hooks/useCalendarChangesWebSocket";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
@@ -42,6 +43,9 @@ function PaidSessionEffects() {
 
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();
+
+  // Calendar edits made anywhere (this page, another tab, GAIA's agent) re-read the cached events
+  useCalendarChangesWebSocket();
 
   return null;
 }

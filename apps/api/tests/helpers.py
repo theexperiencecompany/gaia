@@ -46,6 +46,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Tool
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import Field
 import pytest
+from redis.asyncio.client import PubSub
 import respx
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -175,6 +176,19 @@ def ledger_facts(
     if isinstance(ended, ActionResult):
         return {"outcome": ApprovalOutcome.APPROVED, "action": ended}
     return {"outcome": ended, "action": None}
+
+
+async def published_broadcasts(pubsub: PubSub) -> list[dict[str, object]]:
+    """Every WebSocket broadcast that reached the subscribed channel within a second."""
+    published: list[dict[str, object]] = []
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 1
+    while loop.time() < deadline:
+        # The subscribe ack also reads as None, so None never means the channel is done.
+        message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
+        if message is not None:
+            published.append(json.loads(message["data"]))
+    return published
 
 
 def worker_redis_url(base_url: str) -> str:
