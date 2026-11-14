@@ -8,12 +8,12 @@ the mapping onto decisions run for real. Every decision commits through decide_l
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from app.constants.hil import HIL_JEV_REPLY_APPROVE_LINE, UNRELATED_FEEDBACK
+from app.constants.hil import HIL_JEV_REPLY_APPROVE_LINE
 from app.models.hil_models import ApprovalLedgerDocument
 from app.models.message_models import MessageDict
 from app.services.hil.bridge import build_action_detail
@@ -132,9 +132,7 @@ class TestSingleApproval:
 
         assert ("ap_1", "approve", None) not in _decided(decide)
 
-    async def test_moving_on_denies_every_pending_approval_with_the_moved_on_note(
-        self, decide: AsyncMock
-    ) -> None:
+    async def test_moving_on_leaves_the_approval_pending(self, decide: AsyncMock) -> None:
         with (
             _pending(_row("ap_1", "Send email")),
             serve_jev(jev_reply_body(("unrelated", 0.95))),
@@ -144,7 +142,7 @@ class TestSingleApproval:
             )
 
         assert action == "unrelated"
-        assert _decided(decide) == [("ap_1", "deny", UNRELATED_FEEDBACK)]
+        decide.assert_not_awaited()
 
     async def test_a_failing_classifier_leaves_the_approval_pending(
         self, decide: AsyncMock
@@ -200,19 +198,18 @@ class TestWhatTheClassifierReads:
         assert _asked_state(jev) == _expected_state("both", *rows)
 
 
-class TestMovingOnIsScopedToThisConversation:
+class TestMovingOnLeavesEveryApprovalPending:
     @pytest.mark.parametrize("rows", [("ap_1",), ("ap_1", "ap_2")])
-    async def test_moving_on_rereads_and_denies_this_users_pending_set(
+    async def test_a_new_request_decides_none_of_them(
         self, decide: AsyncMock, rows: tuple[str, ...]
     ) -> None:
         pending_rows = [_row(approval_id, f"Send {approval_id}") for approval_id in rows]
         verdicts = [("unrelated", 0.95)] * len(rows)
-        with _pending(*pending_rows) as pending, serve_jev(jev_reply_body(*verdicts)):
+        with _pending(*pending_rows), serve_jev(jev_reply_body(*verdicts)):
             action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "weather?")
 
         assert action == "unrelated"
-        assert pending.await_args_list == [call(CONVERSATION_ID, USER_ID)] * 2
-        assert _decided(decide) == [(r, "deny", UNRELATED_FEEDBACK) for r in rows]
+        decide.assert_not_awaited()
 
 
 class TestWhatIsLogged:
