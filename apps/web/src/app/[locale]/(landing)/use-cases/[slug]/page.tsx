@@ -24,7 +24,7 @@ interface PageProps {
   params: Promise<{ readonly slug: string }>;
 }
 
-export const revalidate = 3600; // Revalidate every hour
+export const revalidate = 3600;
 
 /** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
 export function generateStaticParams() {

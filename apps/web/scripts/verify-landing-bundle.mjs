@@ -6,9 +6,12 @@
  * chat store + the stream engine) through the post-OAuth toast, the PostHog SDK
  * through a static import, and the 200 KB OpenUI stylesheet through
  * globals.css. None of that shows up as a failure anywhere else: the pages
- * still render, only slower. This reads each prerendered page's own
- * <script>/<link> tags and the source maps of those chunks, so it checks
- * exactly what a visitor downloads before the page is interactive.
+ * still render, only slower. Several of these pages render on their first
+ * request, so there is no prerendered HTML to read. Instead this takes each
+ * route's eager chunks from the build manifests, the same lists Next writes
+ * into the page's <script>/<link> tags (the root main files plus every
+ * segment's entry chunks and CSS), and reads the source maps of those chunks,
+ * so it checks exactly what a visitor downloads before the page is interactive.
  *
  * Run after `next build` (needs productionBrowserSourceMaps):
  *   node scripts/verify-landing-bundle.mjs
@@ -16,17 +19,19 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NEXT_DIR = join(root, ".next");
-const PRERENDER_DIR = join(NEXT_DIR, "server", "app");
+const SERVER_APP_DIR = join(NEXT_DIR, "server", "app");
 
+/** One page per landing route type, with the app route that renders it. */
 const PAGES = [
-  "en",
-  "en/pricing",
-  "en/compare/motion",
-  "en/for/consultants",
-  "en/blog/why-open-source",
+  { url: "/en", route: "/[locale]/(landing)/page" },
+  { url: "/en/pricing", route: "/[locale]/(landing)/pricing/page" },
+  { url: "/en/compare/motion", route: "/[locale]/(landing)/compare/[slug]/page" },
+  { url: "/en/for/consultants", route: "/[locale]/(landing)/for/[persona]/page" },
+  { url: "/en/blog/why-open-source", route: "/[locale]/(landing)/blog/[slug]/page" },
 ];
 
 /** Source-map paths that must never be in a landing page's eager scripts. */
@@ -43,55 +48,63 @@ const FORBIDDEN_CSS = [{ label: "OpenUI component styles", needle: ".openui-card
 
 const SOURCE_MAP_URL = /\/\/# sourceMappingURL=(\S+)\s*$/;
 
-function staticFile(href) {
-  return join(NEXT_DIR, href.replace(/^\/_next\//, ""));
+function readJson(path) {
+  return JSON.parse(readFileSync(path, "utf8"));
 }
 
 function chunkSources(chunkPath) {
   const code = readFileSync(chunkPath, "utf8");
   const mapName = code.match(SOURCE_MAP_URL)?.[1];
   if (!mapName) throw new Error(`${chunkPath} has no sourceMappingURL`);
-  const map = JSON.parse(readFileSync(join(dirname(chunkPath), mapName), "utf8"));
+  const map = readJson(join(dirname(chunkPath), mapName));
   const sections = map.sections ? map.sections.map((section) => section.map) : [map];
   return sections.flatMap((section) => section.sources ?? []);
 }
 
+/** The route's client reference manifest, which lists each segment's entry JS and CSS. */
+function routeManifest(route) {
+  const manifestPath = join(SERVER_APP_DIR, `${route}_client-reference-manifest.js`);
+  if (!existsSync(manifestPath)) return null;
+  const sandbox = { globalThis: {} };
+  runInNewContext(readFileSync(manifestPath, "utf8"), sandbox);
+  return sandbox.globalThis.__RSC_MANIFEST?.[route] ?? null;
+}
+
 /** One line per page and offender, naming the first chunk that carries it. */
 const failures = new Map();
-function fail(page, label, detail) {
-  const key = `/${page}: ${label}`;
+function fail(url, label, detail) {
+  const key = `${url}: ${label}`;
   if (!failures.has(key)) failures.set(key, `${key} (${detail})`);
 }
 
-for (const page of PAGES) {
-  const htmlPath = join(PRERENDER_DIR, `${page}.html`);
-  if (!existsSync(htmlPath)) {
-    fail(page, "no prerendered HTML", htmlPath);
+// The chunks every app page boots with, ahead of its own segments' entries.
+const { rootMainFiles } = readJson(join(NEXT_DIR, "build-manifest.json"));
+
+for (const { url, route } of PAGES) {
+  const manifest = routeManifest(route);
+  if (!manifest) {
+    fail(url, "no client reference manifest", route);
     continue;
   }
-  const html = readFileSync(htmlPath, "utf8");
-  // noModule scripts are Next's legacy-browser polyfills, which ship without a map.
-  const scripts = new Set(
-    [...html.matchAll(/<script[^>]+src="(\/_next\/static\/[^"]+\.js)"[^>]*>/g)]
-      .filter((m) => !/noModule/i.test(m[0]))
-      .map((m) => m[1]),
-  );
+  const entryScripts = Object.values(manifest.entryJSFiles).flat();
   const styles = new Set(
-    [...html.matchAll(/<link[^>]+href="(\/_next\/static\/[^"]+\.css)"/g)].map((m) => m[1]),
+    Object.values(manifest.entryCSSFiles)
+      .flat()
+      .map((style) => style.path),
   );
-  if (scripts.size === 0) fail(page, "no eager scripts found", htmlPath);
+  if (entryScripts.length === 0) fail(url, "no route entry scripts found", route);
 
-  for (const script of scripts) {
-    for (const source of chunkSources(staticFile(script))) {
+  for (const script of new Set([...rootMainFiles, ...entryScripts])) {
+    for (const source of chunkSources(join(NEXT_DIR, script))) {
       for (const { label, pattern } of FORBIDDEN_SOURCES) {
-        if (pattern.test(source)) fail(page, label, `${script}: ${source}`);
+        if (pattern.test(source)) fail(url, label, `${script}: ${source}`);
       }
     }
   }
   for (const style of styles) {
-    const css = readFileSync(staticFile(style), "utf8");
+    const css = readFileSync(join(NEXT_DIR, style), "utf8");
     for (const { label, needle } of FORBIDDEN_CSS) {
-      if (css.includes(needle)) fail(page, label, style);
+      if (css.includes(needle)) fail(url, label, style);
     }
   }
 }
