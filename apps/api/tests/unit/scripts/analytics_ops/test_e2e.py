@@ -204,9 +204,59 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     *[("artifact:created", {**AGENT_WEB, **ARTIFACT_CREATED})] * 2,
     (
         "short_link:opened",
-        {**WEB_SERVER, "target_type": "openui_artifact", "viewer_signed_in": False},
+        {
+            **WEB_SERVER,
+            "target_type": "openui_artifact",
+            "access": "unlisted",
+            "viewer_signed_in": False,
+        },
     ),
     ("artifact:pdf_exported", {**WEB_SERVER, "kind": "dashboard", "pages": 1}),
+    (
+        "todos:created",
+        {
+            **WEB,
+            "priority": "none",
+            "has_due_date": False,
+            "has_description": False,
+            "labels_count": 0,
+            "subtasks_count": 0,
+            "has_project": False,
+            "is_sub_todo": False,
+        },
+    ),
+    (
+        "short_link:created",
+        {
+            **WEB,
+            "target_type": "todo_deliverable",
+            "access": "unlisted",
+            "origin": "owner_share",
+            "has_expiry": False,
+        },
+    ),
+    (
+        "short_link:opened",
+        {
+            **WEB_SERVER,
+            "target_type": "todo_deliverable",
+            "access": "unlisted",
+            "viewer_signed_in": True,
+        },
+    ),
+    (
+        "short_link:access_changed",
+        {
+            **WEB,
+            "target_type": "todo_deliverable",
+            "from_access": "unlisted",
+            "to_access": "people",
+            "grantee_count": 1,
+        },
+    ),
+    ("short_link:denied", {**WEB_SERVER, "target_type": "todo_deliverable", "reason": "forbidden"}),
+    ("short_link:rotated", {**WEB, "target_type": "todo_deliverable", "access": "people"}),
+    ("short_link:revoked", {**WEB, "target_type": "todo_deliverable", "reason": "owner"}),
     (
         "chat:message_submitted",
         {**BOT, "source": "telegram", "stream_id": "s-bot", "is_retry": False, "has_files": False},

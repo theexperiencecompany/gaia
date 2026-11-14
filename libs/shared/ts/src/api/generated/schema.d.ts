@@ -2174,9 +2174,10 @@ export interface paths {
         put?: never;
         /**
          * Create Short Link Route
-         * @description Share an artifact the caller owns: return its heygaia.link, minting one.
+         * @description Share an artifact you own: its live link, minted with the given settings when none is live.
          *
-         *     Turns sharing back on for a target its owner had stopped sharing.
+         *     Turns sharing back on for a target its owner had stopped sharing. The
+         *     target's own read under your account is the ownership check.
          */
         post: operations["short_links_create_short_link_route"];
         delete?: never;
@@ -2194,9 +2195,53 @@ export interface paths {
         };
         /**
          * Resolve Short Link Route
-         * @description Resolve a capability slug to its target's public view. No auth.
+         * @description Open a link: its target's public view and any framed content, or the denial the viewer sees.
          */
         get: operations["short_links_resolve_short_link_route"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Link Settings Route
+         * @description Change who one of your live links opens for, or when it expires.
+         */
+        patch: operations["short_links_update_link_settings_route"];
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/content-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Content Token Route
+         * @description Sign a short-lived URL that loads the link's file from the content origin, after the link's access check.
+         */
+        post: operations["short_links_content_token_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Link File Route
+         * @description Save the file behind a link: always an attachment, so it never renders on this origin.
+         */
+        get: operations["short_links_download_link_file_route"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2205,7 +2250,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/l/{slug}/file": {
+    "/api/v1/l/{slug}/meta": {
         parameters: {
             query?: never;
             header?: never;
@@ -2213,10 +2258,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Short Link File Route
-         * @description Stream the file behind a slug: raster images inline, everything else a download. No auth.
+         * Link Preview Meta Route
+         * @description What a chat preview or the page's metadata may show for a link, for anyone. No auth.
          */
-        get: operations["short_links_get_short_link_file_route"];
+        get: operations["short_links_link_preview_meta_route"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2238,8 +2283,8 @@ export interface paths {
          * Record Open Route
          * @description Count the link as opened, sent by the viewer's browser once the page shows.
          *
-         *     Not the resolve: the page resolves during SSR, where neither the viewer's
-         *     session nor their browser is visible, and unfurl bots resolve it too.
+         *     Not the resolve: public pages resolve during SSR, where neither the viewer's
+         *     session nor their browser is visible, and unfurl bots resolve them too.
          */
         post: operations["short_links_record_open_route"];
         delete?: never;
@@ -2257,11 +2302,51 @@ export interface paths {
         };
         /**
          * Get Short Link Pdf Route
-         * @description The artifact behind a slug as an A4 PDF. No auth, like the link itself.
+         * @description The artifact behind a link as an A4 PDF, for whoever the link opens for.
          */
         get: operations["short_links_get_short_link_pdf_route"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Link Route
+         * @description Report a link that breaks GAIA's terms; enough distinct reporters suspend it.
+         */
+        post: operations["short_links_report_link_route"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/l/{slug}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate Link Route
+         * @description Replace one of your live links with a new URL; the old one stops opening at once.
+         */
+        post: operations["short_links_rotate_link_route"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2277,7 +2362,7 @@ export interface paths {
         };
         /**
          * Get Share State Route
-         * @description Say whether one of your artifacts is shared, with its live link. Never mints one.
+         * @description Say whether one of your artifacts is shared, with its live link and settings. Never mints one.
          */
         get: operations["short_links_get_share_state_route"];
         put?: never;
@@ -8170,6 +8255,19 @@ export interface components {
             toolsCount: number | null;
         };
         /**
+         * ContentTokenResponse
+         * @description A short-lived URL that loads a link's content from the content origin.
+         */
+        ContentTokenResponse: {
+            /** Content Url */
+            content_url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
+        /**
          * ConversationActionResponse
          * @description Acknowledgement for a conversation-scoped action that reports back which
          *     conversation it applied to — delete, rename, mark read/unread.
@@ -10791,6 +10889,66 @@ export interface components {
             trigger_name: "linear_issue_updated";
         };
         /**
+         * LinkAccess
+         * @description Who a link opens for.
+         * @enum {string}
+         */
+        LinkAccess: "public" | "unlisted" | "people" | "owner";
+        /**
+         * LinkContent
+         * @description The bytes a link frames from the content origin; the page asks for a content token to load them.
+         */
+        LinkContent: {
+            /** Content Id */
+            content_id: string;
+            /** Mime */
+            mime: string;
+            render: components["schemas"]["RenderMode"];
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /**
+         * LinkDenial
+         * @description Why a link did not open; each is one ErrorEnvelope code and one page the viewer sees.
+         * @enum {string}
+         */
+        LinkDenial: "link_not_found" | "link_revoked" | "link_expired" | "link_removed" | "link_target_deleted" | "link_sign_in_required" | "link_forbidden";
+        /**
+         * LinkDenialEnvelope
+         * @description A link denial's body: code names the page the viewer sees.
+         */
+        LinkDenialEnvelope: {
+            code: components["schemas"]["LinkDenial"];
+            /**
+             * Errors
+             * @description Field-level failures; present only on 422.
+             */
+            errors?: components["schemas"]["ValidationIssue"][] | null;
+            /** Fix */
+            fix?: string | null;
+            /**
+             * Integration Id
+             * @description Integration an INTEGRATION_NOT_CONNECTED error asks to connect.
+             */
+            integration_id?: string | null;
+            /**
+             * Message
+             * @description Human-readable description of the failure.
+             */
+            message: string;
+            /** Signed In As */
+            signed_in_as?: string | null;
+            /**
+             * Toolkit
+             * @description Composio toolkit an INTEGRATION_NOT_CONNECTED error is about.
+             */
+            toolkit?: string | null;
+            /** Why */
+            why?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * LinkedUsersResponse
          * @description Response model for the list of platform_user_ids linked on a platform.
          */
@@ -10800,6 +10958,23 @@ export interface components {
              * @description platform_user_ids of accounts linked to the platform.
              */
             platform_user_ids?: string[];
+        };
+        /**
+         * LinkEnvelope
+         * @description What opening a link returns: its access level, the target's public view and any framed content.
+         */
+        LinkEnvelope: {
+            access: components["schemas"]["LinkAccess"];
+            content: components["schemas"]["LinkContent"] | null;
+            /** Downloadable */
+            downloadable: boolean;
+            /** Is Owner */
+            is_owner: boolean;
+            /** Owner Target Id */
+            owner_target_id: string | null;
+            target_type: components["schemas"]["ShortLinkTargetType"];
+            /** View */
+            view: components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicSessionArtifact"] | components["schemas"]["PublicWorkflowRun"] | components["schemas"]["PublicOpenUIArtifact"];
         };
         /**
          * LinkPlatformRequest
@@ -10837,6 +11012,57 @@ export interface components {
              * @description Link status (e.g., 'linked')
              */
             status: string;
+        };
+        /**
+         * LinkPreviewMeta
+         * @description What a chat preview or a page's metadata may show for a link, by its access level and state.
+         *
+         *     title and description are real content only for a live public or unlisted
+         *     link; any other link carries the kind line or the dead-link line. image_url
+         *     is None when the preview card is generated from these fields.
+         */
+        LinkPreviewMeta: {
+            access: components["schemas"]["LinkAccess"] | null;
+            /** Description */
+            description: string;
+            /** Image Url */
+            image_url: string | null;
+            /** Indexable */
+            indexable: boolean;
+            /** Live */
+            live: boolean;
+            target_type: components["schemas"]["ShortLinkTargetType"] | null;
+            /** Title */
+            title: string;
+        };
+        /** LinkReportRequest */
+        LinkReportRequest: {
+            reason: components["schemas"]["ReportReason"];
+            /** Turnstile Token */
+            turnstile_token?: string | null;
+        };
+        /**
+         * LinkSettings
+         * @description Who a link opens for and until when.
+         */
+        LinkSettings: {
+            /** @default unlisted */
+            access?: components["schemas"]["LinkAccess"];
+            /** Expires At */
+            expires_at?: string | null;
+            /** Grantees */
+            grantees?: string[];
+        };
+        /**
+         * LinkSettingsUpdate
+         * @description Owner changes to a live link; an omitted field keeps its value.
+         */
+        LinkSettingsUpdate: {
+            access?: components["schemas"]["LinkAccess"] | null;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Grantees */
+            grantees?: string[] | null;
         };
         /**
          * LinkTokenInfoResponse
@@ -13623,12 +13849,14 @@ export interface components {
         };
         /**
          * PublicSessionArtifact
-         * @description A file GAIA produced in a session's sandbox. ``content`` is the text of a
-         *     text file; binary files carry ``None`` and render as a metadata card.
+         * @description A file GAIA produced in a session's sandbox, as its link pinned it.
+         *
+         *     text is the file's text when it is shown as text (code, markdown, and HTML
+         *     source where the instance has no content origin); the page renders it
+         *     itself. Every other file is framed from the content origin (LinkEnvelope.content)
+         *     or offered as a download.
          */
         PublicSessionArtifact: {
-            /** Content */
-            content: string | null;
             /** Content Type */
             content_type: string;
             /** Filename */
@@ -13640,6 +13868,8 @@ export interface components {
              * @enum {string}
              */
             target_type: "session_artifact";
+            /** Text */
+            text: string | null;
         };
         /**
          * PublicSupportRequestCreate
@@ -14226,6 +14456,12 @@ export interface components {
             user_id: string;
         };
         /**
+         * RenderMode
+         * @description How a snapshot's bytes are shown, which fixes the headers the content origin serves them with.
+         * @enum {string}
+         */
+        RenderMode: "frame_active" | "image" | "image_svg" | "pdf" | "text" | "media" | "download";
+        /**
          * ReplyToMessageData
          * @description Data for the message being replied to.
          */
@@ -14240,6 +14476,11 @@ export interface components {
              */
             role: "user" | "assistant";
         };
+        /**
+         * ReportReason
+         * @enum {string}
+         */
+        ReportReason: "phishing" | "malware" | "harassment" | "illegal" | "other";
         /**
          * ResetSessionRequest
          * @description Request model for resetting a bot session (starting a new conversation).
@@ -14715,24 +14956,44 @@ export interface components {
             wizard_dismissed: boolean;
         };
         /**
+         * ShareLinkRequest
+         * @description Share one of the owner's artifacts: its live link, minted with settings when none is live.
+         */
+        ShareLinkRequest: {
+            settings?: components["schemas"]["LinkSettings"];
+            /** Target Id */
+            target_id: string;
+            target_type: components["schemas"]["ShortLinkTargetType"];
+        };
+        /**
          * ShortLinkResponse
-         * @description A minted heygaia.link URL.
+         * @description One live heygaia.link and its settings.
+         *
+         *     content_max_access is the widest level its file may be served at when the
+         *     file narrows it (a login form, an installer); None otherwise.
          */
         ShortLinkResponse: {
+            access: components["schemas"]["LinkAccess"];
+            content_max_access: components["schemas"]["LinkAccess"] | null;
+            /** Expires At */
+            expires_at: string | null;
+            /** Grantees */
+            grantees: string[];
+            /** Slug */
+            slug: string;
             /** Url */
             url: string;
         };
         /**
          * ShortLinkShareState
-         * @description Whether one of the owner's artifacts is shared: its live heygaia.link, or None.
+         * @description Whether one of the owner's artifacts is shared: its live link, or None.
          */
         ShortLinkShareState: {
-            /** Url */
-            url: string | null;
+            link: components["schemas"]["ShortLinkResponse"] | null;
         };
         /**
          * ShortLinkTargetRequest
-         * @description One of the owner's artifacts, to share (mint or fetch its link), read or stop sharing.
+         * @description One of the owner's artifacts, to read or stop sharing.
          */
         ShortLinkTargetRequest: {
             /** Target Id */
@@ -17723,6 +17984,7 @@ export type ConditionOperator = components['schemas']['ConditionOperator'];
 export type ConfirmedSocialProfile = components['schemas']['ConfirmedSocialProfile'];
 export type ConnectIntegrationRequest = components['schemas']['ConnectIntegrationRequest'];
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
+export type ContentTokenResponse = components['schemas']['ContentTokenResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
 export type ConversationDescriptionHit = components['schemas']['ConversationDescriptionHit'];
 export type ConversationDocument = components['schemas']['ConversationDocument'];
@@ -17869,9 +18131,18 @@ export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
 export type LinearIssueUpdatedConfig = components['schemas']['LinearIssueUpdatedConfig'];
+export type LinkAccess = components['schemas']['LinkAccess'];
+export type LinkContent = components['schemas']['LinkContent'];
+export type LinkDenial = components['schemas']['LinkDenial'];
+export type LinkDenialEnvelope = components['schemas']['LinkDenialEnvelope'];
 export type LinkedUsersResponse = components['schemas']['LinkedUsersResponse'];
+export type LinkEnvelope = components['schemas']['LinkEnvelope'];
 export type LinkPlatformRequest = components['schemas']['LinkPlatformRequest'];
 export type LinkPlatformResponse = components['schemas']['LinkPlatformResponse'];
+export type LinkPreviewMeta = components['schemas']['LinkPreviewMeta'];
+export type LinkReportRequest = components['schemas']['LinkReportRequest'];
+export type LinkSettings = components['schemas']['LinkSettings'];
+export type LinkSettingsUpdate = components['schemas']['LinkSettingsUpdate'];
 export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse'];
 export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
 export type LoginRequest = components['schemas']['LoginRequest'];
@@ -18043,7 +18314,9 @@ export type RegistrationPolicy = components['schemas']['RegistrationPolicy'];
 export type RegistrationPolicyRequest = components['schemas']['RegistrationPolicyRequest'];
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
+export type RenderMode = components['schemas']['RenderMode'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
+export type ReportReason = components['schemas']['ReportReason'];
 export type ResetSessionRequest = components['schemas']['ResetSessionRequest'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
@@ -18076,6 +18349,7 @@ export type SeriesShape = components['schemas']['SeriesShape'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];
+export type ShareLinkRequest = components['schemas']['ShareLinkRequest'];
 export type ShortLinkResponse = components['schemas']['ShortLinkResponse'];
 export type ShortLinkShareState = components['schemas']['ShortLinkShareState'];
 export type ShortLinkTargetRequest = components['schemas']['ShortLinkTargetRequest'];
@@ -24120,7 +24394,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ShortLinkTargetRequest"];
+                "application/json": components["schemas"]["ShareLinkRequest"];
             };
         };
         responses: {
@@ -24149,6 +24423,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Target not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24197,7 +24480,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PublicTodoDeliverable"] | components["schemas"]["PublicBriefing"] | components["schemas"]["PublicSessionArtifact"] | components["schemas"]["PublicWorkflowRun"] | components["schemas"]["PublicOpenUIArtifact"];
+                    "application/json": components["schemas"]["LinkEnvelope"];
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24211,7 +24530,69 @@ export interface operations {
             };
         };
     };
-    short_links_get_short_link_file_route: {
+    short_links_update_link_settings_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Link not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_content_token_route: {
         parameters: {
             query?: never;
             header?: never;
@@ -24245,15 +24626,44 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ContentTokenResponse"];
+                };
             };
-            /** @description Short link not found */
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24265,8 +24675,133 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Workspace storage offline */
-            503: {
+        };
+    };
+    short_links_download_link_file_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_link_preview_meta_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkPreviewMeta"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -24312,13 +24847,40 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Short link not found */
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -24370,7 +24932,179 @@ export interface operations {
                     "application/pdf": unknown;
                 };
             };
-            /** @description Short link not found */
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_report_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sign in to open this. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description You don't have access to this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description This link doesn't exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description The link is dead: revoked, expired, removed or its target deleted */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LinkDenialEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    short_links_rotate_link_route: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLinkResponse"];
+                };
+            };
+            /** @description Link not found */
             404: {
                 headers: {
                     [name: string]: unknown;

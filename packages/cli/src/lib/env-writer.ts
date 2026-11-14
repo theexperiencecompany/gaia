@@ -7,6 +7,7 @@ import {
 } from "./env-parser.js";
 import { needsLocalCertificate } from "./local-certificate.js";
 import { DEV_DOCKER_DIR, selfhostDir } from "./paths.js";
+import type { ShareDomainKind, ShareDomains } from "./share-domains.types.js";
 
 export interface EnvValues {
   [key: string]: string;
@@ -236,6 +237,8 @@ export interface SelfhostComposeSettings {
   dockerSocketGid: number;
   /** Public domain the proxy serves over HTTPS; kept from a prior run when absent, dropped when false. */
   domain?: DomainFlag;
+  /** The share domains this run serves beside it; kept from a prior run when absent. */
+  shareDomains?: ShareDomains;
 }
 
 /** Compose profile that runs the bundled single-origin proxy. */
@@ -282,6 +285,29 @@ const CADDY_GLOBAL_OPTIONS_ENV_KEY = "GAIA_CADDY_GLOBAL_OPTIONS";
 
 /** Caddy global option: issue every certificate from Caddy's own local authority. */
 const CADDY_LOCAL_CERTS_OPTION = "local_certs";
+
+/** The share domains, in the order `gaia up` asks them. */
+export const SHARE_DOMAIN_KINDS: readonly ShareDomainKind[] = [
+  "link",
+  "usercontent",
+];
+
+/** The compose env file key holding each share domain (the Caddyfile reads them). */
+const SHARE_DOMAIN_ENV_KEYS: Record<ShareDomainKind, string> = {
+  link: "GAIA_LINK_DOMAIN",
+  usercontent: "GAIA_USERCONTENT_DOMAIN",
+};
+
+/** The share domains an earlier `gaia up` recorded. */
+export function readShareDomains(repoRoot: string): ShareDomains {
+  const env = readDockerComposeEnv(repoRoot);
+  const domains: ShareDomains = {};
+  for (const kind of SHARE_DOMAIN_KINDS) {
+    const domain = env[SHARE_DOMAIN_ENV_KEYS[kind]];
+    if (domain) domains[kind] = domain;
+  }
+  return domains;
+}
 
 /** The domain the install serves GAIA at, if `gaia up --domain` set one. */
 export function readGaiaDomain(repoRoot: string): string | undefined {
@@ -363,6 +389,16 @@ export function writeDockerComposeEnv(
     } else if (selfhost.domain === false) {
       delete merged[GAIA_DOMAIN_ENV_KEY];
       delete merged[CADDY_GLOBAL_OPTIONS_ENV_KEY];
+    }
+    // A share domain redirects to, and is framed by, GAIA's own domain.
+    const shareDomains = selfhost.domain === false ? {} : selfhost.shareDomains;
+    if (shareDomains) {
+      for (const kind of SHARE_DOMAIN_KINDS) {
+        const key = SHARE_DOMAIN_ENV_KEYS[kind];
+        const domain = shareDomains[kind];
+        if (domain) merged[key] = domain;
+        else delete merged[key];
+      }
     }
   }
 

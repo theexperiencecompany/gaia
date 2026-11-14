@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { recordShortLinkOpen } from "@/features/short-links/api/shortLinksApi";
+import { recordShortLinkOpen } from "@/features/short-links/api/linkViewerApi";
 
 interface LinkOpenBeaconProps {
   slug: string;

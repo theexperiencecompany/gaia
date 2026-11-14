@@ -18,7 +18,7 @@ from app.models.briefing_models import (
 from app.models.short_link_models import ShortLinkTargetType
 from app.services.briefing.edition_email import HostedEditionImage, host_edition_image
 from app.services.briefing.message import full_brief_url
-from app.services.short_link_service import optional_short_link
+from app.services.links.service import optional_short_link
 
 
 @dataclass(frozen=True)

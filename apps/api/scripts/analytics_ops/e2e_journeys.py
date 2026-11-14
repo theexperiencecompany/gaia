@@ -329,10 +329,10 @@ def artifact(stack: Stack) -> None:
             ),
             HTTPStatus.OK,
         )
-        url = state.json()["url"]
-        if not url:
+        link = state.json()["link"]
+        if not link:
             raise JourneyError("create_artifact left the artifact without a link")
-        slug = url.rsplit("/", 1)[-1]
+        slug = link["slug"]
         _expect(api.get(f"/l/{slug}"), HTTPStatus.OK)
         # the page's open beacon, from a reader who is not the owner
         _expect(api.post("/dev/users", json={"email": ARTIFACT_READER}), HTTPStatus.OK)
@@ -341,6 +341,59 @@ def artifact(stack: Stack) -> None:
             HTTPStatus.NO_CONTENT,
         )
         _expect(api.get(f"/l/{slug}/pdf"), HTTPStatus.OK)
+
+
+#: A chat-preview bot's user agent: its fetch builds an unfurl and never counts as an open.
+SLACKBOT_USER_AGENT = "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"
+#: A signed-in viewer the shared todo is not granted to.
+LINK_STRANGER = "delivered+analytics-e2e-stranger@resend.dev"
+
+
+def link_share(stack: Stack) -> None:
+    """Share a todo, open it as a bot, a reader twice and a stranger, then narrow, rotate and revoke it."""
+    with stack.client() as api:
+        todo = _expect(
+            api.post(
+                "/todos", json={"title": "Analytics e2e shared todo"}, headers=stack.browser()
+            ),
+            HTTPStatus.CREATED,
+        ).json()
+        target = {"target_type": "todo_deliverable", "target_id": todo["id"]}
+        link = _expect(api.post("/l", json=target, headers=stack.browser()), HTTPStatus.OK).json()
+        slug = link["slug"]
+        _expect(api.post("/dev/users", json={"email": ARTIFACT_READER}), HTTPStatus.OK)
+        _expect(api.post("/dev/users", json={"email": LINK_STRANGER}), HTTPStatus.OK)
+        _expect(
+            api.post(
+                f"/l/{slug}/opened",
+                headers={DEV_USER_HEADER: ARTIFACT_READER, "User-Agent": SLACKBOT_USER_AGENT},
+            ),
+            HTTPStatus.NO_CONTENT,
+        )
+        for _ in range(2):
+            _expect(
+                api.post(f"/l/{slug}/opened", headers={DEV_USER_HEADER: ARTIFACT_READER}),
+                HTTPStatus.NO_CONTENT,
+            )
+        _expect(
+            api.patch(
+                f"/l/{slug}",
+                json={"access": "people", "grantees": [ARTIFACT_READER]},
+                headers=stack.browser(),
+            ),
+            HTTPStatus.OK,
+        )
+        _expect(
+            api.get(f"/l/{slug}", headers={DEV_USER_HEADER: LINK_STRANGER}), HTTPStatus.FORBIDDEN
+        )
+        rotated = _expect(
+            api.post(f"/l/{slug}/rotate", headers=stack.browser()), HTTPStatus.OK
+        ).json()
+        _expect(
+            api.get(f"/l/{rotated['slug']}", headers={DEV_USER_HEADER: ARTIFACT_READER}),
+            HTTPStatus.OK,
+        )
+        _expect(api.post("/l/unshare", json=target, headers=stack.browser()), HTTPStatus.OK)
 
 
 def briefing_schedule(stack: Stack) -> None:

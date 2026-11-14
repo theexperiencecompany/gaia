@@ -60,7 +60,7 @@ from app.models.trigger_subscription_models import (
     SubscriptionAction,
 )
 from app.services.integrations.user_integrations import get_connected_integration_ids
-from app.services.short_link_service import optional_short_link
+from app.services.links.service import optional_short_link
 from app.services.todo_activity import agent_actor, record_field_changes, record_waiting_change
 from app.services.todos.account_refs import owned_gmail_thread_ref, watched_account_id
 from app.services.todos.errors import (

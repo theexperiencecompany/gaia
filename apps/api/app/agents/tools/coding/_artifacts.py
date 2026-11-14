@@ -20,8 +20,8 @@ from app.agents.workspace.paths import (
 )
 from app.models.short_link_models import ShortLinkTargetType
 from app.services.artifact_events import publish_artifact_event, upsert_event
-from app.services.short_link_projections import session_artifact_target_id
-from app.services.short_link_service import optional_short_link
+from app.services.links.service import optional_short_link
+from app.services.links.targets.session_artifact import session_artifact_target_id
 from app.services.storage import ArtifactInfo
 
 

@@ -43,7 +43,7 @@ from app.services.briefing.slots import (
     render_slots,
     slot_problems,
 )
-from app.services.short_link_service import optional_short_link
+from app.services.links.service import optional_short_link
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from app.utils.user_preferences_utils import build_user_context_parts, onboarding_preferences

@@ -32,6 +32,7 @@ JS = {
     "desktop",
     "mobile",
     "shared-typescript",
+    "usercontent-worker",
     "wake-word",
     "web",
 }

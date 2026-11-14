@@ -7,7 +7,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const recordShortLinkOpen = vi.hoisted(() => vi.fn(() => Promise.resolve()));
-vi.mock("@/features/short-links/api/shortLinksApi", () => ({
+vi.mock("@/features/short-links/api/linkViewerApi", () => ({
   recordShortLinkOpen,
 }));
 

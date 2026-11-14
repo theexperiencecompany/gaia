@@ -113,6 +113,8 @@ Set these in `packages/cli/selfhost/.env`, then run `docker compose -f docker-co
 | `WEB_HOST_PORT` | The port GAIA is served on | `3000` |
 | `HTTPS_HOST_PORT` | The HTTPS port | `3443` |
 | `GAIA_DOMAIN` | A domain to serve over HTTPS with an automatic certificate | Unset: plain HTTP |
+| `GAIA_LINK_DOMAIN` | A short-link domain beside `GAIA_DOMAIN`; see [Share links and file previews](#share-links-and-file-previews) | Unset |
+| `GAIA_USERCONTENT_DOMAIN` | A domain that serves shared files beside `GAIA_DOMAIN` | Unset |
 | `COMPOSE_PROFILES` | `proxy` starts the bundled proxy. Leave it out when you bring your own | Unset: no proxy |
 | `GAIA_API_IMAGE`, `GAIA_WEB_IMAGE` | Use other images, such as your own builds | `ghcr.io/theexperiencecompany/gaia`, `ghcr.io/theexperiencecompany/gaia-web` |
 
@@ -131,6 +133,15 @@ HTTPS_HOST_PORT=443
 ```
 
 The proxy gets and renews the certificate for you. For a name no public authority can certify (`gaia.test`, `*.internal`, `*.home.arpa`), see [A local domain with HTTPS](/self-hosting/cli-reference#a-local-domain-with-https).
+
+### Share links and file previews
+
+With `GAIA_DOMAIN` set, two more domains are optional. Point each one's DNS at the server, add it to `packages/cli/selfhost/.env`, set its API settings in `apps/api/.env`, and run `up -d` again.
+
+- **Short links.** `GAIA_LINK_DOMAIN=go.example.com` makes the proxy redirect `https://go.example.com/<code>` to `https://gaia.example.com/l/<code>`. Set `SHORTLINK_BASE_URL=https://go.example.com` so new links use it. Without it, links read `https://gaia.example.com/l/<code>`.
+- **Shared files.** `GAIA_USERCONTENT_DOMAIN=files.example.com` makes the proxy send `/api/v1/usercontent/*` on that name to the API, with cookies removed both ways. Set `LINK_CONTENT_URL_TEMPLATE=https://files.example.com/api/v1/usercontent/{content_id}` and `LINK_CONTENT_SIGNING_KEY` to a random value of 32 characters or more (`openssl rand -hex 32`). Shared HTML then runs in a sandboxed frame and PDFs open in the browser. Without it, shared HTML shows as source code and other files download.
+
+Use a separate name for shared files, never a path on GAIA's own domain.
 
 ### Your own reverse proxy
 

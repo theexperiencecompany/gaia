@@ -1592,3 +1592,33 @@ jobs:
       deployments: write
       actions: read # IndexNow reads earlier runs' deploy jobs
     secrets: inherit # pragma: allowlist secret
+
+  # ── Master only: ship the usercontent Worker (*.heygaia.link) ──────────
+  # Its build (a wrangler dry-run bundle) ran in ts-build-test behind the same
+  # gate. Off until vars.USERCONTENT_WORKER_DEPLOY is 'true': the heygaia.link
+  # zone, its wildcard DNS record and the INTERNAL_API_TOKEN Worker secret must exist
+  # first, or the deploy reds master. After turning it on, dispatch ci.yml on
+  # master once (a dispatch runs every task) to ship the first version.
+  deploy-usercontent-worker:
+    needs: [detect, quality-gate]
+    if: ${{ always() && vars.USERCONTENT_WORKER_DEPLOY == 'true' && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.quality-gate.result == 'success' && contains(fromJSON(needs.detect.outputs.tasks), 'usercontent-worker:build') }}
+    concurrency:
+      group: deploy-usercontent-worker
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Deploy to Cloudflare Workers (gaia-usercontent)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm --filter ./apps/usercontent-worker exec wrangler deploy --config wrangler.jsonc \
+            --tag "${GITHUB_SHA::7}" --message "GitHub Actions: ${GITHUB_ACTOR} run ${GITHUB_RUN_ID}"

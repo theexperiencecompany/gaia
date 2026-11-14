@@ -1,9 +1,9 @@
 """Short-link models (heygaia.link/<slug>).
 
-A short link is a capability URL: the slug is a high-entropy, globally unique
-handle granting read-only access to exactly one artifact, so it opens from a
-chat app or an email with no signed-in session. Anyone holding the link can
-open it until the owner revokes it.
+A short link is a high-entropy, globally unique slug pointing at exactly one
+artifact. Its access level says who may open it: anyone (public, unlisted),
+signed-in grantees (people) or only its owner. It stays open until the owner
+revokes or rotates it, it expires, or GAIA takes it down.
 
 What a link serves is never the stored document. Each target type has a public
 view model below — the only shape the resolver returns — carrying what a
@@ -16,13 +16,14 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from app.db.repositories.base import UserScopedDocument
+from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.models.briefing_models import BriefingItemKind, BriefingKind, BriefingMood, BriefingStat
 from app.models.openui_artifact_models import ArtifactKind
 from app.models.workflow_execution_models import WorkflowExecutionStatus
 from app.schemas.common import ResponseModel
+from app.schemas.errors import ErrorEnvelope
 
 
 class ShortLinkTargetType(StrEnum):
@@ -43,13 +44,109 @@ class LinkViewerKind(StrEnum):
     RECIPIENT = "recipient"
 
 
+class LinkAccess(StrEnum):
+    """Who a link opens for."""
+
+    # Anyone; previews show the content and search engines may index it.
+    PUBLIC = "public"
+    # Anyone holding the URL; never indexed.
+    UNLISTED = "unlisted"
+    # Signed-in GAIA users whose account email is one of the link's grantees.
+    PEOPLE = "people"
+    # Only the owner, signed in.
+    OWNER = "owner"
+
+
+class RevokeReason(StrEnum):
+    """Why a link stopped opening."""
+
+    OWNER = "owner"
+    ROTATED = "rotated"
+    EXPIRED = "expired"
+    TAKEDOWN = "takedown"
+    TARGET_DELETED = "target_deleted"
+
+
+class LinkDenial(StrEnum):
+    """Why a link did not open; each is one ErrorEnvelope code and one page the viewer sees."""
+
+    NOT_FOUND = "link_not_found"
+    REVOKED = "link_revoked"
+    EXPIRED = "link_expired"
+    REMOVED = "link_removed"
+    TARGET_DELETED = "link_target_deleted"
+    SIGN_IN_REQUIRED = "link_sign_in_required"
+    FORBIDDEN = "link_forbidden"
+
+
+class RenderMode(StrEnum):
+    """How a snapshot's bytes are shown, which fixes the headers the content origin serves them with."""
+
+    FRAME_ACTIVE = "frame_active"
+    IMAGE = "image"
+    IMAGE_SVG = "image_svg"
+    PDF = "pdf"
+    TEXT = "text"
+    MEDIA = "media"
+    DOWNLOAD = "download"
+
+
+class PublishRejection(StrEnum):
+    """Why a file's bytes were not published; the link then shows only the file's name and size."""
+
+    TOO_LARGE = "too_large"
+    RESTRICTED_TYPE = "restricted_type"
+    QUOTA = "quota"
+
+
+class ReportReason(StrEnum):
+    PHISHING = "phishing"
+    MALWARE = "malware"
+    HARASSMENT = "harassment"
+    ILLEGAL = "illegal"
+    OTHER = "other"
+
+
 @dataclass(frozen=True, slots=True)
 class LinkViewer:
-    """Whoever opened a link: their session user (None when signed out), address and browser."""
+    """Whoever opened a link: their session user (None when signed out), address and browser.
+
+    email is set only where the deployment verifies account emails; elsewhere a
+    grant names accounts (ShortLink.grantee_ids), never an address anyone can register.
+    """
 
     user_id: str | None
+    email: str | None
     ip: str
     user_agent: str
+    #: The account's email as the viewer sees it on a FORBIDDEN page; never matched against a grant.
+    signed_in_as: str | None = None
+
+
+class LinkSnapshot(BaseModel):
+    """The file a link serves, pinned when it was published; resolution never reads the live file.
+
+    content_id names the immutable bytes in the link-content store and is None
+    when they were not published (rejected says why); the link then shows the
+    name and size only. max_access is the widest level the bytes may be served
+    at (restricted_by says what narrowed it). Several links may pin one
+    content_id after a rotation.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    filename: str
+    mime: str
+    size_bytes: int
+    render: RenderMode
+    content_id: str | None = None
+    #: sha256 of the bytes, so republishing an unchanged file is skipped.
+    digest: str | None = None
+    has_thumbnail: bool = False
+    rejected: PublishRejection | None = None
+    max_access: LinkAccess = LinkAccess.PUBLIC
+    restricted_by: PublishRejection | None = None
+    published_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ShortLink(UserScopedDocument):
@@ -66,7 +163,19 @@ class ShortLink(UserScopedDocument):
     target_id: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
+    #: The live/dead switch the unique live-target index is partial on.
     revoked: bool = False
+    revoked_at: datetime | None = None
+    revoked_reason: RevokeReason | None = None
+    #: Defaults carry a pre-access link as exactly what it was: unlisted, never expiring.
+    access: LinkAccess = LinkAccess.UNLISTED
+    grantees: list[str] = Field(default_factory=list)
+    #: The grantees' accounts, resolved when granted, where account emails are unverified (local sign-in).
+    grantee_ids: list[str] = Field(default_factory=list)
+    expires_at: datetime | None = None
+    snapshot: LinkSnapshot | None = None
+    #: Reports crossed the threshold; the link shows "removed" until an admin restores it.
+    suspended: bool = False
 
 
 class ShortLinkUpdate(BaseModel):
@@ -75,6 +184,14 @@ class ShortLinkUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     revoked: bool | None = None
+    revoked_at: datetime | None = None
+    revoked_reason: RevokeReason | None = None
+    access: LinkAccess | None = None
+    grantees: list[str] | None = None
+    grantee_ids: list[str] | None = None
+    expires_at: datetime | None = None
+    snapshot: LinkSnapshot | None = None
+    suspended: bool | None = None
 
 
 class _PublicView(BaseModel):
@@ -140,14 +257,19 @@ class PublicBriefing(_PublicView):
 
 
 class PublicSessionArtifact(_PublicView):
-    """A file GAIA produced in a session's sandbox. ``content`` is the text of a
-    text file; binary files carry ``None`` and render as a metadata card."""
+    """A file GAIA produced in a session's sandbox, as its link pinned it.
+
+    text is the file's text when it is shown as text (code, markdown, and HTML
+    source where the instance has no content origin); the page renders it
+    itself. Every other file is framed from the content origin (LinkEnvelope.content)
+    or offered as a download.
+    """
 
     target_type: Literal[ShortLinkTargetType.SESSION_ARTIFACT]
     filename: str
     content_type: str
     size_bytes: int
-    content: str | None
+    text: str | None
 
 
 class PublicWorkflowRun(_PublicView):
@@ -184,8 +306,88 @@ PublicShortLinkView = Annotated[
 ]
 
 
+class LinkContent(BaseModel):
+    """The bytes a link frames from the content origin; the page asks for a content token to load them."""
+
+    content_id: str
+    mime: str
+    size_bytes: int
+    render: RenderMode
+
+
+class LinkEnvelope(ResponseModel):
+    """What opening a link returns: its access level, the target's public view and any framed content."""
+
+    access: LinkAccess
+    target_type: ShortLinkTargetType
+    view: PublicShortLinkView
+    content: LinkContent | None
+    #: The link's file can be saved (GET /l/{slug}/download); False for every non-file type.
+    downloadable: bool
+    #: The viewer is the link's owner, so the page offers its share settings.
+    is_owner: bool
+    #: The target's id, for the owner's share settings; None for every other viewer.
+    owner_target_id: str | None
+
+
+class LinkDenialEnvelope(ErrorEnvelope):
+    """A link denial's body: code names the page the viewer sees."""
+
+    code: LinkDenial
+    #: Set on FORBIDDEN only: the account the viewer is signed in as.
+    signed_in_as: str | None = None
+
+
+class LinkPreviewMeta(ResponseModel):
+    """What a chat preview or a page's metadata may show for a link, by its access level and state.
+
+    title and description are real content only for a live public or unlisted
+    link; any other link carries the kind line or the dead-link line. image_url
+    is None when the preview card is generated from these fields.
+    """
+
+    live: bool
+    target_type: ShortLinkTargetType | None
+    access: LinkAccess | None
+    indexable: bool
+    title: str
+    description: str
+    image_url: str | None
+
+
+MAX_GRANTEES = 50
+
+
+class LinkSettings(BaseModel):
+    """Who a link opens for and until when."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    access: LinkAccess = LinkAccess.UNLISTED
+    grantees: list[EmailStr] = Field(default_factory=list, max_length=MAX_GRANTEES)
+    expires_at: AwareDatetime | None = None
+
+
+class LinkSettingsUpdate(BaseModel):
+    """Owner changes to a live link; an omitted field keeps its value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    access: LinkAccess | None = None
+    grantees: list[EmailStr] | None = Field(default=None, max_length=MAX_GRANTEES)
+    expires_at: AwareDatetime | None = None
+
+    @field_validator("access")
+    @classmethod
+    def _access_is_a_level(cls, access: LinkAccess | None) -> LinkAccess:
+        """Refuse an explicit null: a link always has a level; omit access to keep it."""
+        if access is None:
+            raise ValueError("access must be a level; omit it to keep the current one")
+        return access
+
+
 class ShortLinkTargetRequest(BaseModel):
-    """One of the owner's artifacts, to share (mint or fetch its link), read or stop sharing."""
+    """One of the owner's artifacts, to read or stop sharing."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -193,19 +395,69 @@ class ShortLinkTargetRequest(BaseModel):
     target_id: str = Field(min_length=1)
 
 
-class ShortLinkResponse(BaseModel):
-    """A minted heygaia.link URL."""
+class ShareLinkRequest(ShortLinkTargetRequest):
+    """Share one of the owner's artifacts: its live link, minted with settings when none is live."""
+
+    settings: LinkSettings = Field(default_factory=LinkSettings)
+
+
+class ShortLinkResponse(ResponseModel):
+    """One live heygaia.link and its settings.
+
+    content_max_access is the widest level its file may be served at when the
+    file narrows it (a login form, an installer); None otherwise.
+    """
 
     url: str
+    slug: str
+    access: LinkAccess
+    grantees: list[str]
+    expires_at: datetime | None
+    content_max_access: LinkAccess | None
 
 
 class ShortLinkShareState(ResponseModel):
-    """Whether one of the owner's artifacts is shared: its live heygaia.link, or None."""
+    """Whether one of the owner's artifacts is shared: its live link, or None."""
 
-    url: str | None
+    link: ShortLinkResponse | None
+
+
+class ContentTokenResponse(ResponseModel):
+    """A short-lived URL that loads a link's content from the content origin."""
+
+    content_url: str
+    expires_at: datetime
+
+
+class LinkReportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: ReportReason
+    #: Cloudflare Turnstile's token, required where the deployment checks one.
+    turnstile_token: str | None = None
 
 
 class StopSharingResult(ResponseModel):
     """Whether stopping killed a live link; False when the artifact was not shared."""
 
     revoked: bool
+
+
+class LinkReport(MongoDocument):
+    """One viewer reporting one link, stored in link_reports; a viewer counts once per link."""
+
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
+
+    slug: str
+    reason: ReportReason
+    #: The signed-in reporter's user id, else a keyed hash of their address and browser.
+    reporter_key: str
+    #: Only signed-in reports suspend a link: accounts cost more to fake than addresses.
+    signed_in: bool
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class LinkReportUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: ReportReason | None = None

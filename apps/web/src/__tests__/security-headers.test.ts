@@ -209,3 +209,23 @@ describe("security headers", () => {
     }
   });
 });
+
+describe("shared-link pages", () => {
+  it("sever the opener of every popup a shared file opens", () => {
+    const headers = workerHeaders(workerRules, "/l/abcdefghijk");
+    expect(headers.get("cross-origin-opener-policy")).toBe("same-origin");
+  });
+
+  it("leave the rest of the app's popups (OAuth, checkout) their opener", () => {
+    expect(
+      workerHeaders(workerRules, "/c/123").get("cross-origin-opener-policy"),
+    ).toBeUndefined();
+  });
+
+  it("frame the content origin", () => {
+    const csp = workerHeaders(workerRules, "/l/abcdefghijk").get(
+      "content-security-policy-report-only",
+    );
+    expect(csp).toMatch(/frame-src [^;]*https:\/\/\*\.heygaia\.link/);
+  });
+});

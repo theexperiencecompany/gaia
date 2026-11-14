@@ -8,6 +8,7 @@ vi.mock("@/lib/toast", () => ({ toast }));
 import { copyShortLink } from "@/features/short-links/utils/copyShortLink";
 
 const URL = "https://heygaia.link/abcdefghijk";
+const UNLISTED = { url: URL, access: "unlisted" } as const;
 
 function stubClipboard(writeText: (text: string) => Promise<void>) {
   vi.stubGlobal("navigator", { clipboard: { writeText } });
@@ -23,7 +24,7 @@ describe("copyShortLink", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     stubClipboard(writeText);
 
-    await copyShortLink(URL);
+    await copyShortLink(UNLISTED);
 
     expect(writeText).toHaveBeenCalledWith(URL);
     expect(toast.success).toHaveBeenCalledWith("Link copied", {
@@ -32,10 +33,20 @@ describe("copyShortLink", () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  it("says only the listed people can open a people link", async () => {
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+
+    await copyShortLink({ url: URL, access: "people" });
+
+    expect(toast.success).toHaveBeenCalledWith("Link copied", {
+      description: "Only the people you added can view it, once signed in.",
+    });
+  });
+
   it("shows the error toast, not success, when the clipboard is refused", async () => {
     stubClipboard(vi.fn().mockRejectedValue(new DOMException("denied")));
 
-    await expect(copyShortLink(URL)).resolves.toBeUndefined();
+    await expect(copyShortLink(UNLISTED)).resolves.toBeUndefined();
 
     expect(toast.error).toHaveBeenCalledWith("Couldn't copy the link", {
       description: "Your browser blocked clipboard access.",

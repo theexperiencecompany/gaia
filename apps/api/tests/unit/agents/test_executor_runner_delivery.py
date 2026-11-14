@@ -515,7 +515,7 @@ class TestWorkflowResultCarriesTheRunLink:
                 workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
             ),
             patch(
-                "app.services.short_link_service.short_link_repository.get_latest_for_target",
+                "app.services.links.service.short_link_repository.get_latest_for_target",
                 new_callable=AsyncMock,
                 side_effect=ServerSelectionTimeoutError("no primary"),
             ),

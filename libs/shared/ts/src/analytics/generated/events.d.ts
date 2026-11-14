@@ -122,9 +122,16 @@ export type ServerEventName =
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
   | "settings:quiet_hours_updated"
+  | "short_link:access_changed"
+  | "short_link:content_published"
   | "short_link:created"
+  | "short_link:denied"
   | "short_link:opened"
+  | "short_link:publish_rejected"
+  | "short_link:reported"
   | "short_link:revoked"
+  | "short_link:rotated"
+  | "short_link:taken_down"
   | "skill:disabled"
   | "skill:enabled"
   | "skill:installed"
@@ -1364,23 +1371,82 @@ export interface EventProperties {
     "start_hour": number;
     "end_hour": number;
   };
+  "short_link:access_changed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "from_access": "public" | "unlisted" | "people" | "owner";
+    "to_access": "public" | "unlisted" | "people" | "owner";
+    "grantee_count": number;
+  };
+  "short_link:content_published": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "render_mode": "frame_active" | "image" | "image_svg" | "pdf" | "text" | "media" | "download";
+    "size_bucket": "lt_100kb" | "lt_1mb" | "lt_10mb" | "gte_10mb";
+  };
   "short_link:created": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "access": "public" | "unlisted" | "people" | "owner";
+    "origin": "owner_share" | "gaia_attached";
+    "has_expiry": boolean;
+  };
+  "short_link:denied": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "reason": "expired" | "revoked" | "removed" | "target_deleted" | "sign_in_required" | "forbidden";
   };
   "short_link:opened": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "access": "public" | "unlisted" | "people" | "owner";
     "viewer_signed_in": boolean;
+  };
+  "short_link:publish_rejected": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "reason": "too_large" | "restricted_type" | "quota";
+  };
+  "short_link:reported": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "reason": "phishing" | "malware" | "harassment" | "illegal" | "other";
+    "reporter_signed_in": boolean;
   };
   "short_link:revoked": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "reason": "owner" | "rotated" | "expired" | "takedown" | "target_deleted";
+  };
+  "short_link:rotated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "access": "public" | "unlisted" | "people" | "owner";
+  };
+  "short_link:taken_down": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
+    "reason": "reports_threshold" | "admin";
   };
   "skill:disabled": {
     "actor": "user" | "agent";

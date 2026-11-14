@@ -6663,6 +6663,105 @@
       }
     },
     {
+      "event": "short_link:access_changed",
+      "class": "ShortLinkAccessChanged",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "The user changed who one of their links opens for, or its expiry.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user changed who one of their links opens for, or its expiry.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "from_access": {
+            "enum": ["public", "unlisted", "people", "owner"],
+            "title": "From Access",
+            "type": "string"
+          },
+          "to_access": {
+            "enum": ["public", "unlisted", "people", "owner"],
+            "title": "To Access",
+            "type": "string"
+          },
+          "grantee_count": {
+            "title": "Grantee Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "target_type",
+          "from_access",
+          "to_access",
+          "grantee_count"
+        ],
+        "title": "ShortLinkAccessChanged",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:content_published",
+      "class": "ShortLinkContentPublished",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A shared file's bytes were stored as a snapshot its link serves.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A shared file's bytes were stored as a snapshot its link serves.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "render_mode": {
+            "enum": [
+              "frame_active",
+              "image",
+              "image_svg",
+              "pdf",
+              "text",
+              "media",
+              "download"
+            ],
+            "title": "Render Mode",
+            "type": "string"
+          },
+          "size_bucket": {
+            "enum": ["lt_100kb", "lt_1mb", "lt_10mb", "gte_10mb"],
+            "title": "Size Bucket",
+            "type": "string"
+          }
+        },
+        "required": ["target_type", "render_mode", "size_bucket"],
+        "title": "ShortLinkContentPublished",
+        "type": "object"
+      }
+    },
+    {
       "event": "short_link:created",
       "class": "ShortLinkCreated",
       "owner": "server",
@@ -6686,26 +6785,40 @@
             ],
             "title": "Target Type",
             "type": "string"
+          },
+          "access": {
+            "enum": ["public", "unlisted", "people", "owner"],
+            "title": "Access",
+            "type": "string"
+          },
+          "origin": {
+            "enum": ["owner_share", "gaia_attached"],
+            "title": "Origin",
+            "type": "string"
+          },
+          "has_expiry": {
+            "title": "Has Expiry",
+            "type": "boolean"
           }
         },
-        "required": ["target_type"],
+        "required": ["target_type", "access", "origin", "has_expiry"],
         "title": "ShortLinkCreated",
         "type": "object"
       }
     },
     {
-      "event": "short_link:opened",
-      "class": "ShortLinkOpened",
+      "event": "short_link:denied",
+      "class": "ShortLinkDenied",
       "owner": "server",
       "domain": "short_link",
-      "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\n    Attributed to the owner. Unfurl bots building a chat preview never count.",
+      "description": "Someone opened one of the user's links and was turned away (dead, sign-in needed, not granted).",
       "previous_names": [],
       "budget_per_user_day": 500,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\nAttributed to the owner. Unfurl bots building a chat preview never count.",
+        "description": "Someone opened one of the user's links and was turned away (dead, sign-in needed, not granted).",
         "properties": {
           "target_type": {
             "enum": [
@@ -6718,13 +6831,137 @@
             "title": "Target Type",
             "type": "string"
           },
+          "reason": {
+            "enum": [
+              "expired",
+              "revoked",
+              "removed",
+              "target_deleted",
+              "sign_in_required",
+              "forbidden"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["target_type", "reason"],
+        "title": "ShortLinkDenied",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:opened",
+      "class": "ShortLinkOpened",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\n    Unfurl bots building a chat preview never count.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\nUnfurl bots building a chat preview never count.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "access": {
+            "enum": ["public", "unlisted", "people", "owner"],
+            "title": "Access",
+            "type": "string"
+          },
           "viewer_signed_in": {
             "title": "Viewer Signed In",
             "type": "boolean"
           }
         },
-        "required": ["target_type", "viewer_signed_in"],
+        "required": ["target_type", "access", "viewer_signed_in"],
         "title": "ShortLinkOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:publish_rejected",
+      "class": "ShortLinkPublishRejected",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A shared file was not published, or was published only for narrower access.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A shared file was not published, or was published only for narrower access.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": ["too_large", "restricted_type", "quota"],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["target_type", "reason"],
+        "title": "ShortLinkPublishRejected",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:reported",
+      "class": "ShortLinkReported",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "Someone reported one of the user's links.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone reported one of the user's links.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": ["phishing", "malware", "harassment", "illegal", "other"],
+            "title": "Reason",
+            "type": "string"
+          },
+          "reporter_signed_in": {
+            "title": "Reporter Signed In",
+            "type": "boolean"
+          }
+        },
+        "required": ["target_type", "reason", "reporter_signed_in"],
+        "title": "ShortLinkReported",
         "type": "object"
       }
     },
@@ -6733,16 +6970,112 @@
       "class": "ShortLinkRevoked",
       "owner": "server",
       "domain": "short_link",
-      "description": "The user revoked one of their heygaia.links.",
+      "description": "The user stopped sharing one of their artifacts.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "The user revoked one of their heygaia.links.",
-        "properties": {},
+        "description": "The user stopped sharing one of their artifacts.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "owner",
+              "rotated",
+              "expired",
+              "takedown",
+              "target_deleted"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["target_type", "reason"],
         "title": "ShortLinkRevoked",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:rotated",
+      "class": "ShortLinkRotated",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "The user replaced a link with a new URL; the old one stopped opening.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user replaced a link with a new URL; the old one stopped opening.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "access": {
+            "enum": ["public", "unlisted", "people", "owner"],
+            "title": "Access",
+            "type": "string"
+          }
+        },
+        "required": ["target_type", "access"],
+        "title": "ShortLinkRotated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:taken_down",
+      "class": "ShortLinkTakenDown",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "One of the user's links was removed for breaking GAIA's terms.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "One of the user's links was removed for breaking GAIA's terms.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run",
+              "openui_artifact"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "reason": {
+            "enum": ["reports_threshold", "admin"],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["target_type", "reason"],
+        "title": "ShortLinkTakenDown",
         "type": "object"
       }
     },

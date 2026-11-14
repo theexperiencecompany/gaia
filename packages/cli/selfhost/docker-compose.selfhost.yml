@@ -267,6 +267,10 @@ services:
       GAIA_SITE_ADDRESS: ${GAIA_DOMAIN:-:80}
       # "local_certs" for a domain no public CA certifies (gaia up --domain gaia.test).
       GAIA_CADDY_GLOBAL_OPTIONS: ${GAIA_CADDY_GLOBAL_OPTIONS:-}
+      # Optional share domains (gaia up --link-domain / --usercontent-domain);
+      # unset, a .invalid name no request carries (the Caddyfile's own fallback).
+      GAIA_LINK_SITE_ADDRESS: ${GAIA_LINK_DOMAIN:-http://link.gaia.invalid}
+      GAIA_USERCONTENT_SITE_ADDRESS: ${GAIA_USERCONTENT_DOMAIN:-http://usercontent.gaia.invalid}
     ports:
       - "${WEB_HOST_PORT:-3000}:80"
       - "${HTTPS_HOST_PORT:-3443}:443"

@@ -55,6 +55,8 @@ UNSCOPED = {
     "web-build",
     "desktop-build",
     "deploy-web",
+    # Deploys the Worker whole on master once detect's nx answer named its build.
+    "deploy-usercontent-worker",
 }
 
 

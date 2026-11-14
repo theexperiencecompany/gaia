@@ -8,6 +8,12 @@
  */
 import { FASTLANE_HOST, POSTHOG_HOST, RYBBIT_HOST } from "./third-party-origins.mjs";
 
+/** GAIA Cloud's content origin: a shared link's HTML, PDF and media frame from one host per snapshot. */
+const LINK_CONTENT_FRAME_ORIGIN = "https://*.heygaia.link";
+
+/** The shared-link pages (heygaia.link/<slug> lands on /l/<slug>). */
+const LINK_PAGE_SOURCE = "/l/:slug*";
+
 /** Same-origin MCP-UI sandbox proxy, iframed by MCPAppRenderer; the one page the app frames. */
 export const SANDBOX_PROXY_PATH = "/mcp-sandbox-proxy.html";
 
@@ -56,6 +62,7 @@ const CSP_DIRECTIVES = [
     "https://www.youtube.com",
     "https://player.vimeo.com",
     "https://*.dodopayments.com",
+    LINK_CONTENT_FRAME_ORIGIN,
     ...(apiOrigin ? [apiOrigin] : []),
   ],
   ["worker-src", "'self'", "blob:"],
@@ -105,6 +112,12 @@ const escapedProxyPath = SANDBOX_PROXY_PATH.slice(1).replaceAll(".", "\\.");
 export const NEXT_SECURITY_HEADER_RULES = [
   { source: `/((?!${escapedProxyPath}$).*)`, headers: SITE_HEADERS },
   { source: SANDBOX_PROXY_PATH, headers: SANDBOX_PROXY_HEADERS },
+  // A shared HTML file may open popups that leave its sandbox; this severs their
+  // window.opener, so none can navigate the viewer's tab to a lookalike page.
+  {
+    source: LINK_PAGE_SOURCE,
+    headers: [{ key: "Cross-Origin-Opener-Policy", value: "same-origin" }],
+  },
 ];
 
 function headerLines(headers) {

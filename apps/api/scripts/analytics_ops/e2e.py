@@ -61,8 +61,15 @@ from shared.py.analytics.catalog.settings import (
     SettingsBriefsOffBlocked,
     SettingsBriefsOffResolved,
 )
-from shared.py.analytics.catalog.short_links import ShortLinkOpened
-from shared.py.analytics.catalog.todos import TodosRunResultDelivered
+from shared.py.analytics.catalog.short_links import (
+    ShortLinkAccessChanged,
+    ShortLinkCreated,
+    ShortLinkDenied,
+    ShortLinkOpened,
+    ShortLinkRevoked,
+    ShortLinkRotated,
+)
+from shared.py.analytics.catalog.todos import TodosCreated, TodosRunResultDelivered
 from shared.py.analytics.catalog.workflows import (
     WorkflowCreated,
     WorkflowExecuted,
@@ -324,6 +331,31 @@ def build_journeys(transcript: Path) -> list[Journey]:
                 ),
                 Expect(ShortLinkOpened.event, None, False, (("target_type", "openui_artifact"),)),
                 Expect(ArtifactPdfExported.event, None, False, (("kind", "dashboard"),)),
+            ),
+        ),
+        Journey(
+            "link share",
+            journeys.link_share,
+            (
+                # The todo it shares is created by the journey itself.
+                Expect(TodosCreated.event, BROWSER, True),
+                Expect(
+                    ShortLinkCreated.event,
+                    None,
+                    True,
+                    (("target_type", "todo_deliverable"), ("origin", "owner_share")),
+                ),
+                # The unfurl bot's fetch and the reader's same-day reopen never count.
+                Expect(ShortLinkOpened.event, None, False, (("target_type", "todo_deliverable"),)),
+                Expect(
+                    ShortLinkAccessChanged.event,
+                    None,
+                    True,
+                    (("from_access", "unlisted"), ("to_access", "people"), ("grantee_count", 1)),
+                ),
+                Expect(ShortLinkDenied.event, None, False, (("reason", "forbidden"),)),
+                Expect(ShortLinkRotated.event, None, True, (("access", "people"),)),
+                Expect(ShortLinkRevoked.event, None, True, (("reason", "owner"),)),
             ),
         ),
         Journey(
