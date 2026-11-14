@@ -2113,7 +2113,7 @@ class TestTheFactsTheModelVoices:
             "Today's calendar:\n"
             "- fact 8 | [[fact:8.time]] (11:00 AM): Sequoia"
         ) in _prompt(world)
-        assert "The brief holds no items today" not in _prompt(world)
+        assert "No tracked work, results or app items need them today" not in _prompt(world)
         assert [(s.value, s.label) for s in _stored_payload(world).stats] == [
             ("1", "done since yesterday"),
             ("2", "in progress"),
@@ -2172,8 +2172,8 @@ class TestTheFactsTheModelVoices:
 
         assert (
             "[COUNTS] [[count:events]] (1)\n"
-            "The brief holds no items today. Do not claim anything ran, finished, or is "
-            "pending beyond what is stated here.\n"
+            "No tracked work, results or app items need them today. Do not claim anything ran, "
+            "finished, or is pending beyond what is stated here.\n"
             "The user's own todo list is empty.\n"
             "Today's calendar:\n- fact 1 | [[fact:1.time]] (11:00 AM): Sequoia"
         ) in _prompt(world)
