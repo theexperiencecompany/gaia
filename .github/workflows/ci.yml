@@ -262,7 +262,7 @@ jobs:
           TASK_FILES_PATH: ${{ runner.temp }}/task-files.json
         run: bash scripts/ci/changes.sh affected
       # Each task's changed files, for changes.sh files --task (the task-files composite).
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: task-files
           path: ${{ runner.temp }}/task-files.json
@@ -925,7 +925,7 @@ jobs:
       - uses: ./.github/actions/build-obscura
       - name: Pack the binaries
         run: tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/obscura-bin.tar" obscura
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: obscura-bin
           path: ${{ runner.temp }}/obscura-bin.tar
@@ -1087,7 +1087,7 @@ jobs:
             --sha "$GITHUB_SHA" --slice "$SLICE_NAME"
       - name: Upload test impact map
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !cancelled()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-impact-map-${{ matrix.slice }}
           path: .test-impact-map/test-impact-map-${{ matrix.slice }}.json
@@ -1095,7 +1095,7 @@ jobs:
           retention-days: 30
       - name: Upload coverage data
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ matrix.slice }}
           path: apps/api/.coverage.${{ matrix.slice }}
@@ -1182,7 +1182,7 @@ jobs:
           uv run --frozen --package gaia --group dev coverage report --fail-under="$FAIL_UNDER" | tail -n 5
           echo "coverage gate: fail-under=$FAIL_UNDER (master/dispatch only — PR lanes do not trace coverage)" >> "$GITHUB_STEP_SUMMARY"
           uv run --frozen --package gaia --group dev coverage xml -o coverage.xml
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-xml
           path: apps/api/coverage.xml
@@ -1339,7 +1339,7 @@ jobs:
         run: bash scripts/ci/embedding-sidecar.sh stop
       - name: Upload shard log
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mutation-log-${{ strategy.job-index }}
           # shard.verdict.json is the replay artifact every failing mutation

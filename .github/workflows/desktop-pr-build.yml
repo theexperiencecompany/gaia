@@ -58,7 +58,7 @@ jobs:
       - name: Upload packaging payload
         id: upload-payload
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-payload
           if-no-files-found: error
@@ -66,7 +66,7 @@ jobs:
           path: desktop-payload.tar.gz
       - name: Upload packaging payload (retry after a transient CreateArtifact timeout)
         if: steps.upload-payload.outcome == 'failure'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-payload
           if-no-files-found: error
