@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.8.0...desktop-v0.8.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** close the open npm Dependabot alerts ([#1630](https://github.com/theexperiencecompany/gaia/issues/1630)) ([7b2c8cd](https://github.com/theexperiencecompany/gaia/commit/7b2c8cdfb6e9b7553ea0d025a139368a46a30b53))
+
 ## [0.8.0](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.7.1...desktop-v0.8.0) (2026-10-26)
 
 

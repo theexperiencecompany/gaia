@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.7.0...cli-v0.8.0) (2026-11-14)
+
+
+### Features
+
+* **ci:** nx decides what CI runs; stop the self-made flakes and silent passes ([#1569](https://github.com/theexperiencecompany/gaia/issues/1569)) ([c722c9c](https://github.com/theexperiencecompany/gaia/commit/c722c9c021df2a050773dfe34cb2d9040bed2aeb))
+
+
+### Bug Fixes
+
+* **deps:** close the open npm Dependabot alerts ([#1630](https://github.com/theexperiencecompany/gaia/issues/1630)) ([7b2c8cd](https://github.com/theexperiencecompany/gaia/commit/7b2c8cdfb6e9b7553ea0d025a139368a46a30b53))
+
 ## [0.7.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.6.0...cli-v0.7.0) (2026-10-26)
 
 
