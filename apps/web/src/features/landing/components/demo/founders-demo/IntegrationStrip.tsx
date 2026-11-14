@@ -1,5 +1,4 @@
 import { Chip } from "@heroui/react";
-import { chipVariants } from "@/components/shared/controlVariants";
 import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
@@ -15,10 +14,7 @@ export default function IntegrationStrip({
           key={integration.id}
           variant="secondary"
           size="sm"
-          className={chipVariants({
-            hasStartContent: true,
-            className: toneVariants({ tone: "dim" }),
-          })}
+          className={toneVariants({ tone: "dim" })}
         >
           <span className="mx-1 flex items-center">
             {getToolCategoryIcon(integration.id, {
