@@ -3,7 +3,6 @@ export { ConversationFollower } from "./follower";
 export type {
   ConversationSurface,
   FollowSurface,
-  ReplyFile,
   SentBubble,
   StreamingOptions,
 } from "./follower.types";

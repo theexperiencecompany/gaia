@@ -62,7 +62,7 @@ export function screenRows(view: ConversationView): ScreenRow[] {
 /** The cards streaming now: the newest reply draft's, else the newest running work's. */
 function newestCards(view: ConversationView): readonly StreamToolDataEntry[] {
   const draft = view.drafts.at(-1);
-  if (draft) return draft.content.toolData;
+  if (draft) return draft.content.tool_data;
   const work = view.items.findLast(
     (item) =>
       item.kind === SCREEN_ITEM_KIND.WORK && LIVE_WORK_STATUS.has(item.status),

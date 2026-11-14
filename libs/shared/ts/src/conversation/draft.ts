@@ -7,9 +7,9 @@ type ReplyDelta = Extract<
 
 export const EMPTY_REPLY_DRAFT: ReplyDraft = {
   bubbles: [],
-  toolData: [],
+  tool_data: [],
   timeline: { steps: [], cards: [] },
-  followUpActions: [],
+  follow_up_actions: [],
 };
 
 /** Fold one reply delta into what the reply shows; the server already split and folded it. */
@@ -26,9 +26,9 @@ export function applyReplyDelta(
     case "bubbles":
       return { ...draft, bubbles: delta.bubbles };
     case "cards":
-      return { ...draft, toolData: delta.tool_data, timeline: delta.timeline };
+      return { ...draft, tool_data: delta.tool_data, timeline: delta.timeline };
     case "follow_up_actions":
-      return { ...draft, followUpActions: delta.follow_up_actions };
+      return { ...draft, follow_up_actions: delta.follow_up_actions };
     default: {
       const unhandled: never = delta;
       return unhandled;

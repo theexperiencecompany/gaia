@@ -57,9 +57,9 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): Message {
         text: (streamed?.bubbles ?? item.bubbles).join("\n\n"),
         bubbles: streamed?.bubbles ?? item.bubbles,
         isUser: false,
-        toolData: cards(streamed?.toolData ?? item.tool_data),
+        toolData: cards(streamed?.tool_data ?? item.tool_data),
         followUpActions: [
-          ...(streamed?.followUpActions ?? item.follow_up_actions),
+          ...(streamed?.follow_up_actions ?? item.follow_up_actions),
         ],
         imageData: item.image,
         pinned: item.pinned,
@@ -79,7 +79,7 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): Message {
         isUser: false,
         toolData: cards([
           ...(item.handoff ? [item.handoff] : []),
-          ...(draft?.content.toolData ?? item.tool_data),
+          ...(draft?.content.tool_data ?? item.tool_data),
         ]),
         imageData: item.image,
         inProgress: RUNNING_WORK.has(item.status),
@@ -127,8 +127,8 @@ function row(
         bubbles: draft.content.bubbles,
         isUser: false,
         timestamp: now,
-        toolData: cards(draft.content.toolData),
-        followUpActions: [...(draft.content.followUpActions ?? [])],
+        toolData: cards(draft.content.tool_data),
+        followUpActions: [...(draft.content.follow_up_actions ?? [])],
         inProgress: true,
       };
     }

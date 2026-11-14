@@ -85,10 +85,10 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): MessageType {
         message_id: item.id,
         seq: item.seq,
         date: item.at,
-        tool_data: cards(streamed?.toolData ?? item.tool_data),
+        tool_data: cards(streamed?.tool_data ?? item.tool_data),
         timeline: streamed?.timeline ?? item.timeline,
         follow_up_actions: [
-          ...(streamed?.followUpActions ?? item.follow_up_actions),
+          ...(streamed?.follow_up_actions ?? item.follow_up_actions),
         ],
         image_data: item.image ?? undefined,
         pinned: item.pinned,
@@ -172,9 +172,9 @@ function row(
         response: copyText(draft.content.bubbles),
         bubbles: draft.content.bubbles,
         message_id: id,
-        tool_data: cards(draft.content.toolData),
+        tool_data: cards(draft.content.tool_data),
         timeline: draft.content.timeline,
-        follow_up_actions: [...(draft.content.followUpActions ?? [])],
+        follow_up_actions: [...(draft.content.follow_up_actions ?? [])],
         in_progress: true,
       }));
     }

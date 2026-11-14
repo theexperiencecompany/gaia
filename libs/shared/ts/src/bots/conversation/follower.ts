@@ -17,6 +17,7 @@
  * follow opens on are history, delivered by an earlier follow.
  */
 
+import type { NoticeItem, ReplyItem, UserItem } from "../../api/generated";
 import { SCREEN_ITEM_KIND } from "../../conversation/entries";
 import { DISPLAY_STATE, FRAME_KIND } from "../../conversation/frames";
 import type {
@@ -39,10 +40,6 @@ import type {
 import { ReplyDelivery } from "./reply-delivery";
 
 const logger = createBotLogger("shared", "conversation-follower");
-
-type UserItem = Extract<ScreenItem, { kind: "user" }>;
-type ReplyItem = Extract<ScreenItem, { kind: "reply" }>;
-type NoticeItem = Extract<ScreenItem, { kind: "notice" }>;
 
 /** Display states during which the user should see GAIA typing. */
 const TYPING_DISPLAYS: ReadonlySet<string> = new Set([
@@ -304,11 +301,7 @@ export class ConversationFollower {
     await delivery.end();
     if (delivery.opened) this.summary.repliesDelivered += 1;
     for (const file of reply.files) {
-      await this.surface.sendFile({
-        conversationId: this.conversationId,
-        path: file.path,
-        contentType: file.content_type,
-      });
+      await this.surface.sendFile(this.conversationId, file);
       this.summary.filesDelivered += 1;
     }
     if (reply.failure) {

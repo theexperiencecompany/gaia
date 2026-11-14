@@ -51,7 +51,7 @@ export function useConversationDisplay(
 function newestToolInfo(view: ConversationView): ActiveToolInfo | undefined {
   const entry = view.drafts
     .at(-1)
-    ?.content.toolData.findLast(
+    ?.content.tool_data.findLast(
       (candidate) => candidate.tool_name === TOOL_CALLS_DATA_TOOL_NAME,
     );
   const hints = entry ? readToolDataLoadingHints(entry.data) : null;

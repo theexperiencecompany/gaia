@@ -43,7 +43,6 @@ apps/mobile/src/features/reminders/api/reminders-api.ts:ReminderCreate
 apps/mobile/src/features/reminders/api/reminders-api.ts:ReminderStatus
 apps/mobile/src/features/reminders/api/reminders-api.ts:ReminderUpdate
 apps/mobile/src/features/search/api/search-api.ts:SearchConversationResult
-apps/mobile/src/features/search/api/search-api.ts:SearchMessageResult
 apps/mobile/src/features/search/api/search-api.ts:SearchNoteResult
 apps/mobile/src/features/search/api/search-api.ts:SearchResponse
 apps/mobile/src/features/settings/api/settings-api.ts:HoloCardColors
@@ -72,15 +71,9 @@ apps/web/src/types/api/calendarApiTypes.ts:CalendarItem
 libs/shared/ts/src/bots/api/index.ts:TokenEntry
 libs/shared/ts/src/bots/api/media.ts:Headers
 libs/shared/ts/src/chat/approvals.types.ts:ApprovalDecision
-libs/shared/ts/src/chat/approvals.types.ts:ApprovalDecisionPayload
-libs/shared/ts/src/chat/approvals.types.ts:ApprovalRequestData
 libs/shared/ts/src/chat/approvals.types.ts:ApprovalScope
-libs/shared/ts/src/chat/approvals.types.ts:BatchApprovalDecisionPayload
 libs/shared/ts/src/chat/approvals.types.ts:HilMode
 libs/shared/ts/src/chat/fixtures.ts:ToolFixture
-libs/shared/ts/src/chat/streaming.ts:ChatStreamEvent
-libs/shared/ts/src/chat/streaming.ts:JsonObject
-libs/shared/ts/src/chat/turnAccumulator.ts:TurnAccumulator
 libs/shared/ts/src/chat/types.ts:ApiFileData
 libs/shared/ts/src/chat/types.ts:ApiToolData
 libs/shared/ts/src/chat/types.ts:ArtifactData

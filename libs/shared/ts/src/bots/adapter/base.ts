@@ -820,14 +820,14 @@ export abstract class BaseBotAdapter {
     const isChannel = channelId !== null;
     return {
       ...surface,
-      sendFile: (file) =>
+      sendFile: (conversationId, file) =>
         this.deliverOutboundFile(
           destination,
           {
-            conversation_id: file.conversationId,
+            conversation_id: conversationId,
             path: file.path,
             filename: file.path.split("/").pop() ?? file.path,
-            content_type: file.contentType,
+            content_type: file.content_type,
           },
           isChannel,
         ),

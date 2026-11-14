@@ -54,7 +54,7 @@ function recorder(): { surface: FollowSurface; calls: Call[] } {
     sendNotice: async (bubbles) => {
       calls.push({ op: "notice", bubbles });
     },
-    sendFile: async (file) => {
+    sendFile: async (_conversationId, file) => {
       calls.push({ op: "file", path: file.path });
     },
     send: async (text, replyTo) => {
