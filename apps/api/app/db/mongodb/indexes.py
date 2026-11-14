@@ -17,7 +17,7 @@ from app.constants.payments import CLAIMED_STATUS
 from app.constants.waits import WAIT_TTL_SECONDS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.approval_ledger import LIVE_ROW_FILTER, LIVE_ROW_INDEX_NAME
-from app.db.repositories.conversation_log import SWEEP_DUE_FILTER, SWEEP_INDEX_NAME
+from app.db.repositories.conversation_sweep import SWEEP_DUE_FILTER, SWEEP_INDEX_NAME
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.local_credentials import local_credentials_repository
 from app.db.repositories.users import user_repository

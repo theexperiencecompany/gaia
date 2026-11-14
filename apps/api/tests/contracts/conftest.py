@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Coroutine, Iterator
-from datetime import UTC
+from datetime import UTC, datetime
 import os
 from typing import Any
 import uuid
@@ -27,8 +27,14 @@ from redis.asyncio import Redis
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.mongodb.indexes import CONVERSATION_ENTRY_INDEXES
 from app.db.repositories import conversations as conversations_module
+from app.db.repositories.conversation_log import ConversationLogRepository
+from app.db.repositories.conversations import ConversationRepository
+from app.models.conversation_models import ConversationDocument
+from app.services.conversation.mongo_log import MongoConversationLog
 from shared.py.wide_events import _spawned_tasks
 from tests.helpers import worker_mongo_db_name, worker_redis_url
+from tests.unit.services.conversation.runtime_doubles import FakeClock
+from tests.unit.services.conversation.test_conversation_log_contract import UID
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 
@@ -154,3 +160,30 @@ def held(monkeypatch: pytest.MonkeyPatch) -> Iterator[HeldFlushes]:
     monkeypatch.setattr(conversations_module, "spawn_logged_task", flushes)
     yield flushes
     flushes.drop_all()
+
+
+async def create_conversation_head(conversation_id: str, user_id: str) -> None:
+    """Create the conversations head a log writes to, with no state and no runner yet."""
+    await ConversationRepository().create(
+        ConversationDocument.model_validate(
+            {
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
+    )
+
+
+@pytest.fixture
+async def conversation(raw_collection: AsyncIOMotorCollection) -> str:
+    """Return the id of a fresh conversation head owned by UID."""
+    conversation_id = f"c-{uuid.uuid4().hex}"
+    await create_conversation_head(conversation_id, UID)
+    return conversation_id
+
+
+@pytest.fixture
+def log() -> MongoConversationLog:
+    """Return the Mongo conversation log on a fake clock."""
+    return MongoConversationLog(ConversationLogRepository(), FakeClock())

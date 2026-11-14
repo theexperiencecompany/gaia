@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.constants.conversation import ACTIVE_BOT_CONVERSATIONS_LIMIT
-from app.db.repositories.conversation_log import SweepHead
+from app.db.repositories.conversation_sweep import SweepHead
 from app.models.bot_models import BotDelivery, BotSessionDocument
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.runtime import install_runtime_ports
@@ -61,7 +61,7 @@ def store() -> Iterator[Store]:
             new=AsyncMock(side_effect=store.sessions.get),
         ),
         patch(
-            f"{FOLLOWERS}.conversation_log_repository.list_live_heads",
+            f"{FOLLOWERS}.conversation_sweep_repository.list_live_heads",
             new=AsyncMock(side_effect=store.list_heads),
         ),
     ):

@@ -2,7 +2,7 @@
 
 from app.constants.conversation import ACTIVE_BOT_CONVERSATIONS_LIMIT
 from app.db.repositories.bot_sessions import bot_session_repository
-from app.db.repositories.conversation_log import SweepHead, conversation_log_repository
+from app.db.repositories.conversation_sweep import SweepHead, conversation_sweep_repository
 from app.models.bot_models import BotDelivery
 from app.models.conversation_log_models import ReplySettled
 from app.models.conversation_send_models import ActiveBotConversation
@@ -15,7 +15,7 @@ async def list_active_bot_conversations(platform: str) -> list[ActiveBotConversa
     for session in await bot_session_repository.list_owed(platform, ACTIVE_BOT_CONVERSATIONS_LIMIT):
         if session.delivery is not None:
             active[session.conversation_id] = ActiveBotConversation.of(session, session.delivery)
-    heads = await conversation_log_repository.list_live_heads(
+    heads = await conversation_sweep_repository.list_live_heads(
         platform, ACTIVE_BOT_CONVERSATIONS_LIMIT
     )
     for head in heads:

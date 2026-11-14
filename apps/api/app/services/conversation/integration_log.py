@@ -7,7 +7,7 @@ stand-in "I just connected X" message.
 from datetime import UTC, datetime
 
 from app.constants.conversation import INTEGRATION_NEED_WINDOW
-from app.db.repositories.conversation_log import conversation_log_repository
+from app.db.repositories.conversation_integration_entries import integration_entry_repository
 from app.models.agent_config import StepTurnRef
 from app.models.conversation_log_models import IntegrationConnected, IntegrationNeeded
 from app.services.conversation.log import accept
@@ -33,7 +33,7 @@ async def record_integration_needed(
 async def continue_after_connect(user_id: str, integration_id: str) -> int:
     """Wake every step-run conversation whose work waits on integration_id; return how many were woken."""
     since = datetime.now(UTC) - INTEGRATION_NEED_WINDOW
-    found = await conversation_log_repository.list_integration_entries(
+    found = await integration_entry_repository.list_integration_entries(
         user_id=user_id, integration_id=integration_id, since=since
     )
     answered = {

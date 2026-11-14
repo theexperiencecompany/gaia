@@ -35,7 +35,7 @@ def runtime() -> Runtime:
 
 @pytest.fixture
 def found() -> Iterator[AsyncMock]:
-    with patch(f"{MODULE}.conversation_log_repository") as repo:
+    with patch(f"{MODULE}.integration_entry_repository") as repo:
         repo.list_integration_entries = AsyncMock(return_value=[])
         yield repo.list_integration_entries
 
