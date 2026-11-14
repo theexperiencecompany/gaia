@@ -34,9 +34,10 @@ export const avatarVariants = tv({
   defaultVariants: { isBordered: false },
 });
 
-/** v2's wide modal sizes, which v3 lacks (it stops at lg, 32rem); on Modal.Dialog, whose Container then takes no size. */
+/** v2's wide modal sizes, which v3 lacks (it stops at lg, 32rem), on Modal.Dialog, whose Container then takes no size; inset none drops v3's 24px dialog padding for a dialog that lays out its own. */
 export const modalVariants = tv({
   variants: {
+    inset: { none: "p-0" },
     size: {
       xl: "gaia-modal-xl",
       "2xl": "gaia-modal-2xl",

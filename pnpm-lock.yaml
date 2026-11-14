@@ -1278,13 +1278,13 @@ importers:
   tools/heroui-migration:
     dependencies:
       pixelmatch:
-        specifier: 8.0.0
+        specifier: ^8.0.0
         version: 8.0.0
       playwright:
-        specifier: 1.62.1
+        specifier: ^1.62.1
         version: 1.62.1
       pngjs:
-        specifier: 7.0.0
+        specifier: ^7.0.0
         version: 7.0.0
     devDependencies:
       jscodeshift:
