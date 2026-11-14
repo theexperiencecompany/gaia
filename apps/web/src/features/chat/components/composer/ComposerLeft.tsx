@@ -2,6 +2,8 @@ import { Kbd, Tooltip } from "@heroui/react";
 import { AttachmentIcon, PlusSignIcon, Tick02Icon, ToolsIcon } from "@icons";
 import React from "react";
 import { Focusable } from "react-aria-components";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { shapeVariants } from "@/components/shared/shape";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -123,7 +125,12 @@ export default function ComposerLeft({
                   </div>
                 </DropdownMenuItem>
               </Tooltip.Trigger>
-              <Tooltip.Content>
+              <Tooltip.Content
+                className={overlayVariants({
+                  surface: "foreground",
+                  className: shapeVariants({ shape: "sm" }),
+                })}
+              >
                 <div className="max-w-[270px]">{item.description}</div>
               </Tooltip.Content>
             </Tooltip>

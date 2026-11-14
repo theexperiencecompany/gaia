@@ -2,6 +2,7 @@ import { ScrollShadow, Spinner, Tooltip } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
 
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { Gmail } from "@/components/shared/icons";
 import { useAppendToInput } from "@/stores/composerStore";
 import type { EmailFetchData } from "@/types/features/mailTypes";
@@ -153,7 +154,10 @@ export default function EmailListCard({
                     </div>
                   </button>
                 </Tooltip.Trigger>
-                <Tooltip.Content showArrow>
+                <Tooltip.Content
+                  className={overlayVariants({ surface: "foreground" })}
+                  showArrow
+                >
                   {`Ask about this email from ${extractSenderName(email.from || "Unknown Sender")}`}
                 </Tooltip.Content>
               </Tooltip>

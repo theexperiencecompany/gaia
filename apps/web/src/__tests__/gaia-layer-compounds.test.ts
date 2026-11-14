@@ -20,6 +20,20 @@ const UNRENDERED = [
   "[data-tree-column]",
   "[data-drop-target",
   '.slider[data-orientation="vertical"]',
+  // no GAIA Avatar takes a variant or colour, no Checkbox or Radio is secondary,
+  // indeterminate or invalid (grep: no isIndeterminate, isInvalid or variant on either)
+  "avatar--soft",
+  "avatar__fallback--accent",
+  "avatar__fallback--danger",
+  "avatar__fallback--success",
+  "avatar__fallback--warning",
+  "checkbox--secondary",
+  "[data-indeterminate",
+  ".checkbox[aria-invalid",
+  ".checkbox[data-invalid",
+  "radio-group--secondary",
+  ".radio[aria-invalid",
+  ".radio[data-invalid",
 ];
 
 type Styled = { selector: string; decls: Map<string, Set<string>> };

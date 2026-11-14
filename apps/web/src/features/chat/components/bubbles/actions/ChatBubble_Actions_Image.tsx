@@ -1,6 +1,7 @@
 import { Tooltip } from "@heroui/react";
 import { Cancel01Icon, DownloadSquare01Icon } from "@icons";
 import type React from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { toast } from "@/lib/toast";
 import type { ImageData } from "@/types/features/toolDataTypes";
@@ -83,7 +84,10 @@ export default function ChatBubble_Actions_Image({
           <span className="text-black">{fullWidth ? "Download" : ""}</span>
         </GaiaButton>
         <Tooltip.Content
-          className={fullWidth ? "hidden" : ""}
+          className={overlayVariants({
+            surface: "accent",
+            className: fullWidth ? "hidden" : "",
+          })}
           placement="right"
         >
           Download Image
