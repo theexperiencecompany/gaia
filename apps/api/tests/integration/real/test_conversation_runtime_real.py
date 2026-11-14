@@ -402,6 +402,11 @@ async def _quick_tick() -> None:
     await asyncio.sleep(0.01)
 
 
+async def _no_tick() -> None:
+    """Never tick, so a budgeted turn's hint reads follow its events, not the wall clock."""
+    await asyncio.Event().wait()
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -989,7 +994,7 @@ async def test_a_plain_turn_stays_within_its_mongo_and_redis_budget(
     mongo_db: AsyncIOMotorDatabase[dict[str, object]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    rig = await rig_for(gated("first answer", "second answer"))
+    rig = await rig_for(gated("first answer", "second answer"), tick=_no_tick)
     turn = await _measured_turn(rig, mongo_db, monkeypatch)
     _within(turn.spent, PLAIN_TURN)
     # The optional writes wait for the first text and still happen exactly once.
@@ -1023,7 +1028,7 @@ async def test_a_turn_that_hands_off_work_stays_within_its_mongo_and_redis_budge
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model = gated("first answer", "on it")
-    rig = await rig_for(model)
+    rig = await rig_for(model, tick=_no_tick)
     started: list[bool] = []
 
     async def dispatch() -> None:

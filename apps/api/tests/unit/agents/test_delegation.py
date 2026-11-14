@@ -17,7 +17,7 @@ import fakeredis.aioredis
 from langchain_core.messages import AIMessage, ToolMessage
 import pytest
 
-from app.agents.core.background import executor_queue, folded_stream
+from app.agents.core.background import executor_queue
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.subagents import delegation
 from app.agents.core.subagents.delegation import (
@@ -46,6 +46,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
+from app.services.conversation import work_log
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.tool_cards import FoldedCards
 from app.utils import background_tasks
@@ -391,9 +392,9 @@ class TestABackgroundRunOwnsItsStream:
     async def test_its_own_stream_is_opened_and_closed_as_the_users_work(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
-        carried = AsyncMock(wraps=folded_stream.record_work_carried)
-        opened = AsyncMock(wraps=folded_stream.open_detached_stream)
-        finished = AsyncMock(wraps=folded_stream.record_work_finished)
+        carried = AsyncMock(wraps=work_log.record_work_carried)
+        opened = AsyncMock(wraps=executor_queue.open_detached_stream)
+        finished = AsyncMock(wraps=work_log.record_work_finished)
         with (
             patch(
                 f"{MODULE}.execute_subagent_stream",

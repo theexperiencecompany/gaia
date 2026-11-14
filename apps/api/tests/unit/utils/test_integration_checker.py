@@ -98,7 +98,7 @@ def _graph_run(
         return expired and (user_id, integration_id) == (_USER, _INTEGRATION_ID)
 
     writer = MagicMock()
-    configurable = {"source_category": category}
+    configurable: dict[str, object] = {"source_category": category}
     if execution_mode is not None:
         configurable["execution_mode"] = execution_mode
     configurable.update(run_ids or {})
