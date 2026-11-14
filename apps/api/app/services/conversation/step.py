@@ -448,6 +448,7 @@ async def _run_attempt(
         raise
     except Exception as error:  # a store or stream failure mid-attempt fails it, under the claim
         await run.cancel(CancelReason.LOST)
+        await _answer_below_absorbed(ports, attempt)
         await _fail(ports, attempt, error)
         return
     except BaseException:
@@ -485,8 +486,6 @@ async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Endi
             elif not isinstance(signal, _Tick):
                 await _handle(ports, attempt, run, signal)
     finally:
-        # However the run ended, it read what it absorbed.
-        _cover_absorbed(attempt)
         await _close(pump)
 
 
@@ -591,15 +590,11 @@ async def _handle(
 
 
 async def _answer_below_absorbed(ports: RuntimePorts, attempt: _Attempt) -> None:
-    """Once the model writes after an absorb, settle what was shown above the absorbed inputs; the rest answers below them."""
+    """Once the model writes after an absorb, or the run ends, settle what was shown above the absorbed inputs; the rest answers below them."""
     if not attempt.absorbed:
         return
     if isinstance(attempt.progress, _Showing):
         await _next_segment(ports, attempt)
-    _cover_absorbed(attempt)
-
-
-def _cover_absorbed(attempt: _Attempt) -> None:
     attempt.covers = (*attempt.covers, *attempt.absorbed)
     attempt.absorbed = ()
 
@@ -679,6 +674,10 @@ def _own_cards(reply: Reply) -> tuple[ToolDataEntry, ...]:
 
 
 async def _end(ports: RuntimePorts, attempt: _Attempt, run: CommsRun, ending: _Ending) -> None:
+    # A restart withdraws the attempt and a lost claim leaves it to the new holder; every other end
+    # settles what was shown above the inputs the run absorbed, and answers those below them.
+    if ending is not Verdict.RESTART and ending is not Verdict.LOST:
+        await _answer_below_absorbed(ports, attempt)
     match ending:
         case Finished(outcome=outcome) if attempt.answered is not None:
             await _add_follow_ups(ports, attempt, attempt.answered, outcome)
