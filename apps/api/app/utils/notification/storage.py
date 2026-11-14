@@ -13,10 +13,6 @@ from shared.py.wide_events import log
 class MongoDBNotificationStorage:
     """Notification storage — delegates persistence to notification_repository."""
 
-    async def save_notification(self, notification: NotificationRecord) -> None:
-        """Save a notification to MongoDB."""
-        await notification_repository.create(notification)
-
     async def get_notification(
         self, notification_id: str, user_id: str | None
     ) -> NotificationRecord | None:
