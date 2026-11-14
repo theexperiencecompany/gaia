@@ -23,6 +23,7 @@ from app.models.conversation_frame_models import (
     state_frame,
 )
 from app.models.conversation_log_models import CommsPhase, Entry
+from app.models.conversation_screen_models import ScreenFrame
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.event_stream import (
     RedisStreamFrames,
@@ -127,38 +128,129 @@ async def test_no_reply_frame_opens_nothing(redis: Redis) -> None:
 
 
 async def test_a_follower_replays_the_log_then_only_what_the_log_cannot_say(redis: Redis) -> None:
-    log = await _log(user("u1"), started("w2", "live", 1), opened("e3", "r1"))
+    log = await _log(
+        user("u0"), user("u1"), started("w3", "live", 2), user("u4"), opened("e5", "r1")
+    )
     publish = RedisStreamFrames().publish
-    await publish(CID, _frame(1, user("u1")))
     await publish(
         CID,
+        _frame(1, user("u0")),
+        EntryUpdatedFrame(seq=1, entry=user("u0")),
+        _frame(2, user("u1")),
         _delta("a1", "r1", 0),
         _delta("a0", "r0", 0),
         _work("live"),
         _work("gone"),
-        EntryUpdatedFrame(seq=1, entry=user("u1")),
-        EntryUpdatedFrame(seq=3, entry=opened("e3", "r1")),
+        EntryUpdatedFrame(seq=2, entry=user("u1")),
+        EntryUpdatedFrame(seq=5, entry=opened("e5", "r1")),
     )
     state = await log.state(CID, UID)
 
-    follower = follow(log, CID, UID, 1)
-    replayed = [await anext(follower) for _ in range(6)]
+    follower = follow(log, CID, UID, 2)
+    replayed = [await anext(follower) for _ in range(7)]
 
-    logged = await log.read_after(CID, UID, 1)
+    logged = await log.read_after(CID, UID, 2)
+    assert [entry.seq for entry in logged] == [3, 4, 5]
     assert [item.frame for item in replayed if item is not None] == [
         *(EntryFrame(seq=entry.seq, at=entry.at, entry=entry.entry) for entry in logged),
         state_frame(state),
         _delta("a1", "r1", 0),
         _work("live"),
-        EntryUpdatedFrame(seq=1, entry=user("u1")),
+        EntryUpdatedFrame(seq=2, entry=user("u1")),
     ]
     assert all(item is not None and item.stream_id is None for item in replayed)
 
-    await publish(CID, _frame(3, opened("e3", "r1")), _frame(4, user("u4")))
+    await publish(CID, _frame(5, opened("e5", "r1")), _frame(6, user("u6")))
     live = await anext(follower)
     assert live is not None
-    assert live.frame == _frame(4, user("u4"))
+    assert live.frame == _frame(6, user("u6"))
     assert live.stream_id == await latest_frame_id(CID)
+
+    await publish(CID, _frame(7, user("u7")))
+    following = await anext(follower)
+    while following is None:
+        following = await anext(follower)
+    assert following.frame == _frame(7, user("u7"))
+    await follower.aclose()
+
+
+async def test_a_frame_published_while_the_log_is_replayed_is_followed_exactly_once(
+    redis: Redis,
+) -> None:
+    log = await _log(user("u1"), opened("e2", "r1"))
+    publish = RedisStreamFrames().publish
+    await publish(CID, _frame(1, user("u1")), _delta("a1", "r1", 0))
+
+    follower = follow(log, CID, UID, 1)
+    first = await anext(follower)
+    await publish(CID, _delta("a1", "r1", 1), _frame(3, user("u3")))
+    seen = [first]
+    while not (seen[-1] is not None and seen[-1].frame == _frame(3, user("u3"))):
+        seen.append(await anext(follower))
+
+    deltas = [
+        item.frame for item in seen if item is not None and isinstance(item.frame, ReplyDeltaFrame)
+    ]
+    assert deltas == [_delta("a1", "r1", 0), _delta("a1", "r1", 1)]
+    await follower.aclose()
+
+
+async def test_a_stream_without_the_followers_entry_is_replayed_from_its_start(
+    redis: Redis,
+) -> None:
+    log = await _log(user("u1"), started("w2", "live", 1), opened("e3", "r1"))
+    await publish_frames(_delta("a1", "r1", 0), _work("live"), _delta("a1", "r1", 1), _work("live"))
+
+    follower = follow(log, CID, UID, 0)
+    replayed = [await anext(follower) for _ in range(8)]
+
+    assert [item.frame for item in replayed if item is not None][4:] == [
+        _delta("a1", "r1", 0),
+        _work("live"),
+        _delta("a1", "r1", 1),
+        _work("live"),
+    ]
+    await follower.aclose()
+
+
+async def publish_frames(*frames: OutputFrame) -> None:
+    await RedisStreamFrames().publish(CID, *frames)
+
+
+async def test_a_draft_whose_reply_settled_is_not_replayed(redis: Redis) -> None:
+    log = await _log(user("u1"))
+    await _comms_thinking(log)
+    await publish_frames(
+        _frame(1, user("u1")),
+        _delta("a1", "r9", 0),
+        _frame(2, settled("s2", ["u1"], 1, reply_id="r9")),
+    )
+
+    follower = follow(log, CID, UID, 1)
+    assert isinstance((await anext(follower)).frame, type(state_frame(await log.state(CID, UID))))
+    await publish_frames(_frame(3, user("u3")))
+
+    after = await anext(follower)
+
+    assert after is not None
+    assert after.frame == _frame(3, user("u3"))
+    await follower.aclose()
+
+
+async def test_a_settle_of_another_reply_leaves_the_draft_replayed(redis: Redis) -> None:
+    log = await _log(user("u1"))
+    await _comms_thinking(log)
+    await publish_frames(
+        _frame(1, user("u1")),
+        _delta("a1", "r9", 0),
+        _frame(2, settled("s2", ["u1"], 1, reply_id="r8")),
+    )
+
+    follower = follow(log, CID, UID, 1)
+    replayed = [await anext(follower) for _ in range(2)]
+
+    assert replayed[1] is not None
+    assert replayed[1].frame == _delta("a1", "r9", 0)
     await follower.aclose()
 
 
@@ -202,8 +294,10 @@ async def test_event_lines_render_frames_as_sse_and_stop_with_the_process(redis:
 
     shown = [await anext(lines), await anext(lines)]
     assert all(line.startswith("data: ") and line.endswith("\n\n") for line in shown)
-    for line in shown:
-        ConversationEvent.model_validate_json(line.removeprefix("data: "))
+    screen = ConversationEvent.model_validate_json(shown[0].removeprefix("data: ")).frame
+    assert isinstance(screen, ScreenFrame)
+    assert len(screen.items) == 1
+    ConversationEvent.model_validate_json(shown[1].removeprefix("data: "))
 
     pending = asyncio.ensure_future(anext(lines))
     await asyncio.sleep(0.05)
@@ -222,6 +316,24 @@ async def test_event_lines_end_when_the_client_is_gone(redis: Redis) -> None:
     lines = [line async for line in event_lines(log, CID, UID, gone, asyncio.Event())]
 
     assert lines == []
+
+
+async def test_event_lines_on_an_empty_conversation_follow_its_first_entry(
+    redis: Redis,
+) -> None:
+    log = InMemoryConversationLog(FakeClock())
+    lines = event_lines(log, CID, UID, _never, asyncio.Event())
+    screen = ConversationEvent.model_validate_json((await anext(lines)).removeprefix("data: "))
+    assert isinstance(screen.frame, ScreenFrame)
+    assert screen.frame.items == ()
+    await anext(lines)
+
+    await publish_frames(_frame(1, user("u1")))
+    patch_line = await asyncio.wait_for(anext(lines), timeout=5)
+
+    assert patch_line.startswith("data: ")
+    assert "u1" in patch_line
+    await lines.aclose()
 
 
 async def _never() -> bool:

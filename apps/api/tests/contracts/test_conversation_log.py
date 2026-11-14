@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 import uuid
 
 from hypothesis import HealthCheck, given, settings, strategies as st
@@ -20,6 +20,7 @@ from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ConversationSyncItem
 from app.models.conversation_frame_models import EntryFrame, state_frame
 from app.models.conversation_log_models import (
+    SYNCED_KINDS,
     CommsPhase,
     ConversationState,
     Entry,
@@ -35,6 +36,7 @@ from app.models.conversation_models import ConversationDocument
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reducer import reduce
+from app.utils.errors import ConversationStoreError
 from shared.py.conversation_wire import ReplyItem, ReplyOutcome
 from tests.contracts.conftest import HeldFlushes
 from tests.helpers import shown_items
@@ -715,3 +717,175 @@ async def test_a_chat_shows_it_awaits_approval_exactly_while_its_work_waits_on_t
     for conversation_id in (background, web):
         await log.append(conversation_id, user_id, decided("d", "ap1"))
     assert await shown() == ({web: False}, {background: False, web: False})
+
+
+class TestTheRepositorysWritesOnTheHead:
+    """ConversationLogRepository's raw writes: what an append, an amend and a pin leave on the head row."""
+
+    @staticmethod
+    async def _commit(
+        conversation: str, entry: Entry, *, unread: bool = False
+    ) -> tuple[ConversationLogRepository, bool]:
+        repository = ConversationLogRepository()
+        read = await repository.read_log_head(conversation, user_id=UID)
+        assert read is not None
+        logged = LoggedEntry(seq=read.log_head + 1, at=datetime.now(UTC), entry=entry)
+        result = reduce(read.state, logged)
+        assert not isinstance(result, Rejected)
+        committed = await repository.commit_log_entry(
+            read, logged, result.state, epoch=None, unread=unread
+        )
+        return repository, committed
+
+    async def test_an_unread_commit_marks_the_row_and_advances_its_sync_clock(
+        self, conversation: str, raw_collection: Any, held: HeldFlushes
+    ) -> None:
+        need = IntegrationNeeded(id="n1", integration_id="gmail", integration_name="Gmail")
+        assert need.kind not in SYNCED_KINDS
+        before = await raw_collection.find_one({"conversation_id": conversation})
+
+        _repository, committed = await self._commit(conversation, need, unread=True)
+
+        assert committed is True
+        after = await raw_collection.find_one({"conversation_id": conversation})
+        assert after["is_unread"] is True
+        assert after["updatedAt"] != before.get("updatedAt")
+        assert [operation for operation, _ in held.spawned] == [
+            "conversation_list_push",
+            "conversation_flush",
+        ]
+
+    async def test_a_quiet_commit_of_an_unsynced_entry_leaves_the_row_as_it_was(
+        self, conversation: str, raw_collection: Any, held: HeldFlushes
+    ) -> None:
+        need = IntegrationNeeded(id="n1", integration_id="gmail", integration_name="Gmail")
+        before = await raw_collection.find_one({"conversation_id": conversation})
+
+        await self._commit(conversation, need)
+
+        after = await raw_collection.find_one({"conversation_id": conversation})
+        assert after.get("is_unread") == before.get("is_unread")
+        assert after.get("updatedAt") == before.get("updatedAt")
+        assert [operation for operation, _ in held.spawned] == ["conversation_flush"]
+
+    async def test_a_commit_announces_and_flushes_for_its_own_user(
+        self,
+        conversation: str,
+        held: HeldFlushes,
+        entries_collection: Any,
+    ) -> None:
+        with patch.object(conversations_module.websocket_manager, "announce") as announce:
+            announce.side_effect = lambda *_args: _noop()
+            await self._commit(conversation, user("u1"), unread=True)
+            await held.run_all()
+
+        announce.assert_called_once()
+        assert announce.call_args.args[0] == UID
+        assert announce.call_args.args[1]["conversation_id"] == conversation
+        stored = await entries_collection.find_one({"conversation_id": conversation})
+        assert (stored["user_id"], stored["seq"]) == (UID, 1)
+
+    async def test_an_amend_is_staged_once_per_revision_and_flushed_for_its_user(
+        self,
+        log: MongoConversationLog,
+        conversation: str,
+        raw_collection: Any,
+        held: HeldFlushes,
+        entries_collection: Any,
+    ) -> None:
+        appended = await log.append(conversation, UID, user("u1"))
+        await held.run_all()
+        repository = ConversationLogRepository()
+        entry = appended.logged.entry
+        assert isinstance(entry, UserMessage)
+        revised = appended.logged.model_copy(
+            update={"entry": entry.model_copy(update={"text": "edited", "revision": 1})}
+        )
+        before = await raw_collection.find_one({"conversation_id": conversation})
+
+        with patch.object(conversations_module.websocket_manager, "announce") as announce:
+            announce.side_effect = lambda *_args: _noop()
+            assert await repository.stage_unfenced_amend(
+                conversation, user_id=UID, amended=revised, after_revision=0
+            )
+            stale = revised.model_copy(
+                update={"entry": entry.model_copy(update={"text": "late", "revision": 1})}
+            )
+            assert not await repository.stage_unfenced_amend(
+                conversation, user_id=UID, amended=stale, after_revision=0
+            )
+            await held.run_all()
+
+        after = await raw_collection.find_one({"conversation_id": conversation})
+        assert after.get("updatedAt") == before.get("updatedAt")
+        announce.assert_not_called()
+        stored = await entries_collection.find_one({"conversation_id": conversation, "seq": 1})
+        assert (stored["user_id"], stored["text"], stored["revision"]) == (UID, "edited", 1)
+
+    async def test_a_synced_amend_advances_the_clock_and_announces_its_row(
+        self,
+        log: MongoConversationLog,
+        conversation: str,
+        raw_collection: Any,
+        held: HeldFlushes,
+    ) -> None:
+        appended = await log.append(conversation, UID, user("u1"))
+        await held.run_all()
+        entry = appended.logged.entry
+        assert isinstance(entry, UserMessage)
+        revised = appended.logged.model_copy(
+            update={"entry": entry.model_copy(update={"text": "edited", "revision": 1})}
+        )
+        before = await raw_collection.find_one({"conversation_id": conversation})
+
+        with patch.object(conversations_module.websocket_manager, "announce") as announce:
+            announce.side_effect = lambda *_args: _noop()
+            assert await ConversationLogRepository().stage_unfenced_amend(
+                conversation, user_id=UID, amended=revised, after_revision=0, advances_sync=True
+            )
+            await held.run_all()
+
+        after = await raw_collection.find_one({"conversation_id": conversation})
+        assert after["updatedAt"] != before.get("updatedAt")
+        assert announce.call_args.args[0] == UID
+        assert announce.call_args.args[1]["conversation_id"] == conversation
+
+    async def test_a_pin_bumps_the_revision_once_and_a_repeat_pin_is_a_no_op(
+        self, log: MongoConversationLog, conversation: str, held: HeldFlushes
+    ) -> None:
+        await log.append(conversation, UID, user("u1"))
+        await held.run_all()
+        repository = ConversationLogRepository()
+
+        assert await repository.set_pinned(conversation, user_id=UID, message_id="u1", pinned=True)
+        with patch.object(repository, "stage_unfenced_amend") as amend:
+            assert await repository.set_pinned(
+                conversation, user_id=UID, message_id="u1", pinned=True
+            )
+        amend.assert_not_called()
+
+        (pinned,) = await repository.read_log(conversation, user_id=UID, ids=["u1"]) or []
+        assert isinstance(pinned.entry, UserMessage)
+        assert (pinned.entry.pinned, pinned.entry.revision) == (True, 1)
+
+    async def test_a_pin_that_loses_every_write_says_where(
+        self, log: MongoConversationLog, conversation: str, held: HeldFlushes
+    ) -> None:
+        await log.append(conversation, UID, user("u1"))
+        await held.run_all()
+        repository = ConversationLogRepository()
+
+        with (
+            patch.object(repository, "stage_unfenced_amend", AsyncMock(return_value=False)),
+            pytest.raises(ConversationStoreError) as raised,
+        ):
+            await repository.set_pinned(conversation, user_id=UID, message_id="u1", pinned=True)
+
+        assert raised.value.message == (
+            f"pinning in conversation {conversation} lost every conditional write"
+        )
+        assert raised.value.meta == {"conversation_id": conversation, "entry_id": "u1"}
+
+
+async def _noop() -> None:
+    return None

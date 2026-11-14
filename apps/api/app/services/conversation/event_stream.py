@@ -92,7 +92,7 @@ def _reply_mark(frame: OutputFrame) -> str:
         case EntryFrame(entry=ReplySettled()) | RetractFrame():
             return "settle"
         case _:
-            return ""
+            return ""  # pragma: no mutate — any mark but open or settle leaves the open key alone
 
 
 class RedisStreamFrames:
@@ -100,7 +100,8 @@ class RedisStreamFrames:
 
     async def publish(self, conversation_id: str, *frames: OutputFrame) -> None:
         """Append frames in order and keep the stream alive; it is trimmed only up to the reply still open."""
-        pipeline = redis_cache.client.pipeline(transaction=False)
+        # Equivalent under mutation: each script is atomic on its own; MULTI would only wrap them.
+        pipeline = redis_cache.client.pipeline(transaction=False)  # pragma: no mutate
         for frame in frames:
             pipeline.eval(
                 _PUBLISH,
@@ -115,10 +116,8 @@ class RedisStreamFrames:
         await pipeline.execute()
 
 
-def _streamed(stream_id: str, fields: object) -> StreamedFrame:
-    return StreamedFrame(
-        stream_id=stream_id, frame=_FRAME.validate_json(_StreamFields.model_validate(fields).frame)
-    )
+def _frame(fields: object) -> OutputFrame:
+    return _FRAME.validate_json(_StreamFields.model_validate(fields).frame)
 
 
 async def read_frames(
@@ -127,7 +126,7 @@ async def read_frames(
     """Return the frames after cursor, waiting up to block_ms for the first; empty when none came."""
     results = await redis_cache.client.xread({_key(conversation_id): cursor}, block=block_ms)
     return [
-        _streamed(stream_id, fields)
+        StreamedFrame(stream_id=stream_id, frame=_frame(fields))
         for _stream, entries in results
         for stream_id, fields in entries
     ]
@@ -135,7 +134,8 @@ async def read_frames(
 
 async def latest_frame_id(conversation_id: str) -> str:
     """Return the id of the stream's newest frame, so a reader can start after it."""
-    newest = await redis_cache.client.xrevrange(_key(conversation_id), count=1)
+    # Equivalent under mutation: only the newest id is read; the count spares the rest.
+    newest = await redis_cache.client.xrevrange(_key(conversation_id), count=1)  # pragma: no mutate
     return newest[0][0] if newest else EVENTS_STREAM_START
 
 
@@ -189,16 +189,16 @@ async def _unlogged_frames(
     if through == EVENTS_STREAM_START:
         return []
     raw = await redis_cache.client.xrange(_key(conversation_id), "-", through)
-    frames = [_streamed(stream_id, fields) for stream_id, fields in raw]
+    frames = [_frame(fields) for _stream_id, fields in raw]
     seen = next(
         (
             index
-            for index, streamed in enumerate(frames)
-            if isinstance(streamed.frame, EntryFrame) and streamed.frame.seq == after_seq
+            for index, frame in enumerate(frames)
+            if isinstance(frame, EntryFrame) and frame.seq == after_seq
         ),
         -1,
     )
-    unseen = [streamed.frame for streamed in frames[seen + 1 :]]
+    unseen = frames[seen + 1 :]
     writing = state.open_reply or _drafting(unseen, state)
     live_tasks = {work.task_id for work in state.work}
     return [

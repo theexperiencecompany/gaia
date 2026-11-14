@@ -5,7 +5,7 @@ tests/integration/real/test_conversation_runtime_real.py.
 """
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Coroutine, Iterator
 from contextlib import ExitStack
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.core.background import session as sess, todo_run
-from app.agents.core.background.session import executor_abandoned
+from app.agents.core.background.session import RunKind, executor_abandoned
 from app.agents.core.background.todo_run import (
     ExecutorBusyError,
     TodoRunCancelledError,
@@ -26,6 +26,7 @@ from app.agents.core.background.todo_run import (
     run_todo_on_executor,
 )
 from app.agents.llm.lane import AgentRole
+from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversation_entries import EMPTY_LOG_STATE
 from app.models.conversation_log_models import (
@@ -42,7 +43,9 @@ from app.models.conversation_log_models import (
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.services.checkpoint_thread_reset import ThreadReset
 from app.services.conversation.outcome import EntryOutcome
+from app.utils.errors import ConversationNotFoundError
 from shared.py.conversation_wire import ReplyOutcome
+from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import todo_run as typed_todo_run
 
 pytestmark = pytest.mark.unit
@@ -352,3 +355,131 @@ async def test_the_executor_config_is_a_background_run_bound_to_the_todo() -> No
     assert turn.user_messages == ["Tracked todo: Watch the Acme thread"]
     assert turn.user_preferences == {"profession": "engineer"}
     assert turn.writing_style == {"summary": "terse"}
+
+
+class TestARunThatFinishedHandsItsResultOn:
+    """run_todo_on_executor past the wait: the run it spawned, the outcome it reads, what it hands on."""
+
+    async def test_a_finished_run_is_read_off_the_log_and_handed_to_delivery(
+        self, seams: _Seams
+    ) -> None:
+        names: list[str | None] = []
+        real_spawn = todo_run.spawn_background_task
+
+        def spawn(
+            coro: Coroutine[object, object, None], *, name: str | None = None
+        ) -> asyncio.Task[None]:
+            names.append(name)
+            return real_spawn(coro, name=name)
+
+        run_executor = AsyncMock()
+        with (
+            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "run_executor_background", run_executor),
+            patch.object(todo_run, "spawn_background_task", spawn),
+            patch.object(todo_run, "hand_unfinished_run_to_job", AsyncMock()) as handed,
+        ):
+            await run_todo_on_executor(REQUEST)
+
+        assert names == [todo_run.TODO_EXECUTOR_TASK_NAME]
+        kwargs = run_executor.await_args.kwargs
+        assert kwargs["task"] == REQUEST.task
+        assert kwargs["configurable"] == {"user_id": "user-1", "stream_id": "s"}
+        run = kwargs["run"]
+        task_id = seams.task_ids[-1]
+        assert (run.conversation_id, run.task_id, run.kind) == ("run-conv", task_id, RunKind.LIVE)
+        assert run.stream_id and run.stream_id != task_id
+        assert run.user_message_id is None
+        assert run.t_dispatch_perf is not None
+        seams.state.assert_awaited_once_with("run-conv", "user-1")
+        log_port, conversation_id, user_id, woke, timeout = seams.outcome.await_args.args
+        assert log_port.state is seams.state
+        assert (conversation_id, user_id, woke) == ("run-conv", "user-1", WOKE)
+        assert timeout == BACKGROUND_EXECUTOR_WAIT_TIMEOUT
+        (finished,) = seams.finish.await_args.args
+        assert finished == _finished_run(REQUEST, task_id, _done(task_id))
+        handed.assert_not_awaited()
+
+    async def test_a_run_delivery_could_not_finish_is_handed_to_a_job(self, seams: _Seams) -> None:
+        undone = object()
+        seams.finish.return_value = undone
+        with (
+            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "run_executor_background", AsyncMock()),
+            patch.object(todo_run, "hand_unfinished_run_to_job", AsyncMock()) as handed,
+        ):
+            await run_todo_on_executor(REQUEST)
+
+        handed.assert_awaited_once_with(undone)
+
+    async def test_a_run_whose_chat_was_deleted_delivers_nothing(self, seams: _Seams) -> None:
+        seams.state.side_effect = ConversationNotFoundError("gone")
+        with (
+            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "run_executor_background", AsyncMock()),
+        ):
+            async with captured_wide_event() as event:
+                await run_todo_on_executor(REQUEST)
+
+        assert event["tracked_todo"] == {"chat_deleted": True}
+        seams.outcome.assert_not_awaited()
+        seams.finish.assert_not_awaited()
+
+    async def test_a_parked_run_says_so_on_its_wide_event(self, seams: _Seams) -> None:
+        def parked(*_args: object) -> ConversationState:
+            work = LiveWork(
+                task_id=seams.task_ids[-1],
+                cause_through=3,
+                answers=("todo:run_1",),
+                pending_approvals=frozenset({"a1"}),
+            )
+            other = work.model_copy(update={"task_id": "someone-else"})
+            return EMPTY_LOG_STATE.model_copy(update={"work": (other, work)})
+
+        seams.state.side_effect = parked
+        with (
+            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "run_executor_background", AsyncMock()),
+        ):
+            async with captured_wide_event() as event:
+                await run_todo_on_executor(REQUEST)
+
+        assert event["tracked_todo"] == {"parked_on_approval": True}
+
+    async def test_another_tasks_live_work_does_not_park_this_run(self, seams: _Seams) -> None:
+        other = LiveWork(
+            task_id="someone-else", cause_through=3, answers=(), pending_approvals=frozenset()
+        )
+        seams.state.return_value = EMPTY_LOG_STATE.model_copy(update={"work": (other,)})
+        with (
+            patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(todo_run, "run_executor_background", AsyncMock()),
+        ):
+            await run_todo_on_executor(REQUEST)
+
+        seams.finish.assert_awaited_once()
+
+
+class TestTheFinishedRunsFields:
+    def test_it_carries_the_runs_own_word_that_nothing_is_for_the_user(self) -> None:
+        done = _done("t1")
+        quiet = done.work[0].model_copy(update={"nothing_for_user": True})
+
+        finished = _finished_run(REQUEST, "t1", EntryOutcome(done.settled, done.reply, (quiet,)))
+
+        assert finished.nothing_for_user is True
+        assert (finished.run_id, finished.todo_id, finished.user_id) == (
+            RUN.run_id,
+            RUN.todo_id,
+            "user-1",
+        )
+        assert (finished.conversation_id, finished.trigger_type) == ("run-conv", RUN.trigger_type)
+
+    def test_work_that_never_finished_fails_the_run_saying_so(self) -> None:
+        done = _done("t1")
+        other = done.work[0].model_copy(update={"task_id": "t2"})
+
+        with pytest.raises(TodoRunFailedError) as raised:
+            _finished_run(REQUEST, "t1", EntryOutcome(done.settled, done.reply, (other,)))
+
+        assert str(raised.value) == "its work never finished"
