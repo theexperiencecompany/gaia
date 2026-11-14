@@ -1,5 +1,6 @@
 {
   "name": "@gaia/heroui-migration",
+  "version": "0.0.0",
   "private": true,
   "type": "commonjs",
   "scripts": {
@@ -11,8 +12,8 @@
     "jscodeshift": "^0.15.2"
   },
   "dependencies": {
-    "pixelmatch": "8.0.0",
-    "playwright": "1.62.1",
-    "pngjs": "7.0.0"
+    "pixelmatch": "^8.0.0",
+    "playwright": "^1.62.1",
+    "pngjs": "^7.0.0"
   }
 }

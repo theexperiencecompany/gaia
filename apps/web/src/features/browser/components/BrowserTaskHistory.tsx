@@ -186,7 +186,8 @@ function TaskRow({
               <Modal.Dialog
                 className={modalVariants({
                   size: "2xl",
-                  className: "max-w-2xl p-0",
+                  inset: "none",
+                  className: "max-w-2xl",
                 })}
               >
                 <Modal.CloseTrigger aria-label="Close" />
