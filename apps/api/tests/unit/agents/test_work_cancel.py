@@ -9,12 +9,13 @@ import pytest
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_progress import progress_key
 from app.agents.core.background.work_cancel import cancel_named_work, stop_unlogged_work
-from app.constants.agents import AgentTag
+from app.constants.agents import PLAYBOOK_REPLAY_STREAM_ID_PREFIX, AgentTag
 from app.constants.browser import BrowserStopOutcome
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
 from app.core.stream_manager import stream_manager
 from app.models.work_cancel_models import WorkCancelled
 from app.services.browser import job_stop
+from app.services.browser.job_stop import browser_job_task_id
 from app.services.browser.jobs import job_cancel_requested
 from tests.helpers import captured_wide_event
 from tests.work_cancel_fakes import (
@@ -181,3 +182,30 @@ async def test_naming_only_queued_work_spares_the_run(pending_approvals: Approva
     assert work == WorkCancelled(executor_spared=True, pending_task_ids=["queued-task"])
     assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)
     pending_approvals.ledger.assert_not_awaited()
+
+
+async def test_naming_detached_work_stops_its_subagent_job_and_replay(
+    no_approvals: ApprovalSeams,
+) -> None:
+    await seed_live_work(CONVERSATION)
+    child = await claim_subagent(CONVERSATION, "s2", dispatched_by=SUBAGENT_STREAM)
+    replay = f"{PLAYBOOK_REPLAY_STREAM_ID_PREFIX}ex-1"
+
+    work = await cancel_named_work(
+        CONVERSATION,
+        USER,
+        [SUBAGENT_STREAM, browser_job_task_id(BROWSER_JOB), replay],
+        approval_ids=[],
+    )
+
+    assert work == WorkCancelled(
+        executor_spared=True,
+        subagent_ids=["s1", "s2"],
+        browser_jobs={BROWSER_JOB: BrowserStopOutcome.STOPPED},
+        replay_ids=[replay],
+    )
+    assert await stream_manager.is_cancelled(SUBAGENT_STREAM)
+    assert await stream_manager.is_cancelled(child)
+    assert await stream_manager.is_cancelled(replay)
+    assert await job_cancel_requested(BROWSER_JOB)
+    assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)

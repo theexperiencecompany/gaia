@@ -149,7 +149,8 @@ def _capture_turn_end(
         queued=any(
             isinstance(logged.entry, ReplySettled)
             and logged.entry.reply_id != end.reply_id
-            and logged.seq > asked.seq
+            # Equivalent under mutation as >=: the entry at asked.seq is the message itself.
+            and logged.seq > asked.seq  # pragma: no mutate
             for logged in end.since
         ),
         ttft_ms=None if end.shown is None else _ms(asked.at, end.shown),

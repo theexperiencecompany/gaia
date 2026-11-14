@@ -45,9 +45,11 @@ from app.agents.core.background.session import (
     RunIdentity,
     RunKind,
     create_session,
+    mark_executor_failed,
 )
 from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
+from app.agents.prompts.comms_prompts import outcome_delivery_note
 from app.constants.agents import AgentTag, OutcomeState
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.conversation import WORK_STOPPED_REPORT
@@ -67,7 +69,8 @@ from app.models.conversation_log_models import WorkOutcome
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation.tool_cards import FoldedCards
-from shared.py.conversation_wire import ToolDataEntry
+from app.services.conversation.work_log import WorkReport
+from shared.py.conversation_wire import ImageData, ToolDataEntry
 from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder
 
@@ -855,6 +858,34 @@ class TestARunHandsFinalizeWhatItProduced:
         h.spawn.assert_not_called()
         assert await ec.ExecutorInbox("conv-1").read() == []
 
+    async def test_the_graph_runs_on_the_prepared_context_and_streams_to_the_runs_writer(
+        self, fake_redis: Any
+    ) -> None:
+        seen: list[SubagentExecutionContext | None] = []
+        streamed = {"response": "hello"}
+
+        async def _execute(
+            *, ctx: SubagentExecutionContext | None, stream_writer: Any
+        ) -> SubagentOutcome:
+            seen.append(ctx)
+            stream_writer(streamed)
+            return SubagentOutcome(text="all done")
+
+        with (
+            self._lifecycle(execute=AsyncMock(side_effect=_execute)) as h,
+            patch.object(er, "make_redis_stream_writer") as make,
+            patch.object(er, "WorkDeltas") as deltas,
+        ):
+            deltas.return_value.wrap.side_effect = lambda writer: writer
+            deltas.return_value.drain = AsyncMock()
+            await self._drive()
+
+        assert len(seen) == 1
+        assert seen[0] is not None
+        assert seen[0].agent_name == "executor_agent"
+        make.return_value.assert_called_once_with(streamed)
+        assert self._delivered(h.deliver) == ("all done", "final")
+
     async def test_a_run_whose_setup_raised_leaves_pending_work_for_the_next_run(
         self, fake_redis: Any
     ) -> None:
@@ -915,3 +946,242 @@ async def test_a_stopped_run_reports_that_the_user_stopped_it() -> None:
     report = record.await_args.args[4]
     assert record.await_args.args[3] is WorkOutcome.CANCELLED
     assert report.text == WORK_STOPPED_REPORT
+
+
+class TestARunsEndIsLoggedAsItEnded:
+    """_log_work_finished: the WorkFinished a run's end logs, with its report, cards and review."""
+
+    @staticmethod
+    async def _log(
+        run: ExecutorRun,
+        outcome: er.TerminalOutcome | None,
+        *,
+        stopped: bool = False,
+        published: FoldedCards | None = None,
+    ) -> SimpleNamespace:
+        with (
+            patch.object(er, "record_work_finished", new_callable=AsyncMock) as record,
+            patch.object(
+                er, "work_cards", new=AsyncMock(return_value=published or FoldedCards())
+            ) as cards,
+        ):
+            await er._log_work_finished(run, outcome, stopped=stopped)
+        return SimpleNamespace(record=record, cards=cards)
+
+    async def test_a_finished_run_logs_its_report_cards_review_and_image(self) -> None:
+        image = ImageData(url="https://images.example.com/a.png", prompt="a chart")
+        shown: ToolDataEntry = {"tool_name": "search", "data": {"q": "x"}}
+        asked: ToolDataEntry = {"tool_name": "approval_request", "data": {"approval_id": "a1"}}
+        outcome = er.TerminalOutcome(
+            result_text="the digest",
+            result_type="final",
+            was_cancelled=False,
+            approval_cards=(asked,),
+            review=OutcomeReview(OutcomeState.DONE, "no call sent it", nothing_for_user=True),
+        )
+
+        logged = await self._log(
+            _run(RunKind.LIVE), outcome, published=FoldedCards(tool_data=(shown,), image=image)
+        )
+
+        logged.cards.assert_awaited_once_with("conv-1", ["task-1"])
+        args, kwargs = logged.record.await_args
+        assert args[:4] == ("conv-1", USER_ID, "task-1", WorkOutcome.DONE)
+        assert args[4] == WorkReport(
+            "the digest",
+            (shown, asked),
+            note=outcome_delivery_note(OutcomeState.DONE, "no call sent it"),
+            nothing_for_user=True,
+            image=image,
+        )
+        assert args[4].note
+        assert kwargs == {"continued_by_decision": True}
+
+    async def test_the_note_follows_the_outcome_the_run_declared(self) -> None:
+        outcome = er.TerminalOutcome(
+            result_text="r",
+            result_type="final",
+            was_cancelled=False,
+            review=OutcomeReview(OutcomeState.ASK, None),
+        )
+
+        logged = await self._log(_run(RunKind.LIVE), outcome)
+
+        note = logged.record.await_args.args[4].note
+        assert note == outcome_delivery_note(OutcomeState.ASK, None)
+        assert note != outcome_delivery_note(None, None)
+
+    @pytest.mark.parametrize(
+        ("todo", "execution"), [("todo-1", None), (None, "ex-1"), ("todo-1", "ex-1")]
+    )
+    async def test_a_todo_or_workflow_run_is_not_continued_by_a_decision(
+        self, todo: str | None, execution: str | None
+    ) -> None:
+        run = replace(_run(RunKind.LIVE), active_todo_id=todo, workflow_execution_id=execution)
+        outcome = er.TerminalOutcome(result_text="r", result_type="final", was_cancelled=False)
+
+        logged = await self._log(run, outcome)
+
+        assert logged.record.await_args.kwargs == {"continued_by_decision": False}
+
+    @pytest.mark.parametrize(
+        ("result_type", "cancelled", "stopped", "ended_as"),
+        [
+            ("final", False, False, WorkOutcome.DONE),
+            ("error", False, False, WorkOutcome.FAILED),
+            ("error", True, False, WorkOutcome.CANCELLED),
+            ("final", False, True, WorkOutcome.CANCELLED),
+        ],
+    )
+    async def test_the_outcome_names_how_the_run_ended(
+        self, result_type: str, cancelled: bool, stopped: bool, ended_as: WorkOutcome
+    ) -> None:
+        outcome = er.TerminalOutcome(
+            result_text="r", result_type=result_type, was_cancelled=cancelled
+        )
+
+        logged = await self._log(_run(RunKind.LIVE), outcome, stopped=stopped)
+
+        assert logged.record.await_args.args[3] is ended_as
+
+    @pytest.mark.parametrize("task_id", [None, ""])
+    async def test_a_run_with_no_logged_work_logs_nothing(self, task_id: str | None) -> None:
+        outcome = er.TerminalOutcome(result_text="r", result_type="final", was_cancelled=False)
+
+        logged = await self._log(replace(_run(RunKind.LIVE), task_id=task_id), outcome)
+
+        logged.record.assert_not_awaited()
+        logged.cards.assert_not_awaited()
+
+    async def test_an_abandoned_run_logs_nothing(self) -> None:
+        logged = await self._log(_run(RunKind.LIVE), None)
+
+        logged.record.assert_not_awaited()
+
+
+class TestTheRunsStreamWriter:
+    def test_a_step_dispatched_run_also_publishes_its_cards(self) -> None:
+        with (
+            patch.object(er, "make_redis_stream_writer") as make,
+            patch.object(er, "WorkDeltas") as deltas,
+        ):
+            writer, drain = er._stream_writer(_run(RunKind.LIVE, stream_id="s7"))
+
+        make.assert_called_once_with("s7")
+        deltas.assert_called_once_with("conv-1", "task-1")
+        deltas.return_value.wrap.assert_called_once_with(make.return_value)
+        assert writer is deltas.return_value.wrap.return_value
+        assert drain is deltas.return_value.drain
+
+    async def test_a_run_with_no_logged_work_writes_only_its_stream(self) -> None:
+        with (
+            patch.object(er, "make_redis_stream_writer") as make,
+            patch.object(er, "WorkDeltas") as deltas,
+        ):
+            writer, drain = er._stream_writer(replace(_run(RunKind.LIVE), task_id=None))
+
+        assert writer is make.return_value
+        deltas.assert_not_called()
+        assert await drain() is None
+
+
+class TestTheRunsStreamClose:
+    @pytest.mark.parametrize("cancelled", [True, False])
+    async def test_a_queued_run_closes_the_stream_it_owns(self, cancelled: bool) -> None:
+        with (
+            patch.object(er, "close_detached_stream", new_callable=AsyncMock) as close,
+            patch.object(er, "teardown_session") as teardown,
+        ):
+            await er._close_run_stream(_run(RunKind.QUEUED, stream_id="s3"), cancelled)
+
+        close.assert_awaited_once_with("s3", cancelled=cancelled)
+        teardown.assert_not_called()
+
+    async def test_a_live_run_only_tears_its_session_down(self) -> None:
+        with (
+            patch.object(er, "close_detached_stream", new_callable=AsyncMock) as close,
+            patch.object(er, "teardown_session") as teardown,
+        ):
+            await er._close_run_stream(_run(RunKind.LIVE, stream_id="s3"), True)
+
+        teardown.assert_called_once_with("s3")
+        close.assert_not_awaited()
+
+
+class TestFinalizeHandsOnHowTheRunEnded:
+    async def test_a_final_answer_signals_done_without_a_reason(self, boundaries) -> None:
+        with patch.object(er, "signal_executor_done") as done:
+            await er._finalize_executor_run(_run(RunKind.LIVE), "the answer", "final")
+
+        done.assert_called_once_with("s1", failed=False, reason=None)
+
+    async def test_a_finished_answer_is_never_cancelled_by_a_late_stop_flag(
+        self, boundaries
+    ) -> None:
+        boundaries.stream_manager.is_cancelled.return_value = True
+        create_session("s1", RunKind.QUEUED)
+        with patch.object(er, "close_detached_stream", new_callable=AsyncMock) as close:
+            await er._finalize_executor_run(_run(RunKind.QUEUED), "the answer", "final")
+
+        _run_arg, outcome = boundaries.logged.await_args.args
+        assert outcome.was_cancelled is False
+        assert boundaries.logged.await_args.kwargs == {"stopped": False}
+        close.assert_awaited_once_with("s1", cancelled=False)
+
+    async def test_a_stopped_run_is_cancelled_and_logged_as_stopped(self, boundaries) -> None:
+        boundaries.stream_manager.is_cancelled.return_value = True
+        create_session("s1", RunKind.QUEUED)
+        with patch.object(er, "close_detached_stream", new_callable=AsyncMock) as close:
+            await er._finalize_executor_run(_run(RunKind.QUEUED), "partial", "final", stopped=True)
+
+        _run_arg, outcome = boundaries.logged.await_args.args
+        assert outcome.was_cancelled is True
+        assert boundaries.logged.await_args.kwargs == {"stopped": True}
+        close.assert_awaited_once_with("s1", cancelled=True)
+
+
+class TestFinalizeOnlyReviewsAFinalAnswer:
+    async def test_a_run_its_waiter_gave_up_on_hands_on_no_outcome(self, boundaries) -> None:
+        create_session("s1", RunKind.LIVE)
+        mark_executor_failed("s1", "the waiter gave up")
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), "late", "final")
+
+        assert boundaries.logged.await_args.args[1] is None
+
+    async def test_a_failed_run_is_not_reviewed(self, boundaries) -> None:
+        with patch.object(er, "_review_outcome", new_callable=AsyncMock) as review:
+            await er._finalize_executor_run(_run(RunKind.LIVE), "boom", "error", _executor_ctx())
+
+        review.assert_not_awaited()
+        assert boundaries.logged.await_args.args[1].review == NOT_REVIEWED
+
+    async def test_a_final_answer_without_a_context_is_not_reviewed(self, boundaries) -> None:
+        with patch.object(er, "_review_outcome", new_callable=AsyncMock) as review:
+            await er._finalize_executor_run(_run(RunKind.LIVE), "done", "final")
+
+        review.assert_not_awaited()
+
+
+class TestStartingACarryRun:
+    async def test_a_run_the_log_refuses_releases_its_lock_and_closes_its_stream(self) -> None:
+        prepared = SimpleNamespace(run=SimpleNamespace(stream_id="s9"))
+        with (
+            patch.object(
+                er, "_prepare_executor_run", new=AsyncMock(return_value=prepared)
+            ) as prepare,
+            patch.object(er, "record_work_carried", new=AsyncMock(return_value=False)) as carried,
+            patch.object(er, "release_lock_if_owned", new_callable=AsyncMock) as release,
+            patch.object(er, "close_detached_stream", new_callable=AsyncMock) as close,
+            patch.object(er, "_spawn_detached_run") as spawn,
+        ):
+            started = await er._start_executor_run(
+                "conv-1", AuthenticatedUser(user_id=USER_ID), TASK
+            )
+
+        assert started is False
+        task_id = prepare.await_args.args[3]
+        carried.assert_awaited_once_with("conv-1", USER_ID, task_id)
+        release.assert_awaited_once_with("conv-1", "s9", task_id)
+        close.assert_awaited_once_with("s9", cancelled=True)
+        spawn.assert_not_called()

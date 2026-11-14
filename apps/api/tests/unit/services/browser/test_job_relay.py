@@ -9,10 +9,11 @@ import pytest
 from app.constants.browser import BrowserSessionStatus
 from app.constants.log_tags import LogTag
 from app.schemas.browser import BrowserResultSnapshot
-from app.schemas.browser_job import BrowserJobFinished
+from app.schemas.browser_job import BrowserJobFinished, BrowserJobRequest
 from app.services.browser import job_events, job_relay
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
-from app.services.browser.job_relay import follow_job_cards
+from app.services.browser.job_relay import follow_job_cards, relay_job_cards
+from app.services.browser.job_stop import browser_job_task_id
 from app.services.browser.jobs import claim_conversation_slot, record_ending
 from tests.helpers import captured_wide_event
 
@@ -149,3 +150,100 @@ async def test_cards_still_arriving_from_a_job_that_ended_are_all_read_before_it
     await follow_job_cards("job-1", "conv-1", sink)
 
     assert sink.cards == [_card(1), _card(2)]
+
+
+REQUEST = BrowserJobRequest(
+    job_id="job-1",
+    tool_call_id="call-1",
+    user_id="user-1",
+    conversation_id="conv-1",
+    task="book a table",
+    in_background=True,
+)
+STREAM = browser_job_task_id("job-1")
+
+
+class Relay:
+    """The relay's stream, logged-work and stop seams, recorded."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch, *, opened: bool = True) -> None:
+        self.calls: list[tuple[object, ...]] = []
+        self.published: list[tuple[str, dict[str, object]]] = []
+        self.deltas: list[dict[str, object]] = []
+        relay = self
+
+        async def _open(stream_id: str, *, conversation_id: str, user_id: str) -> bool:
+            relay.calls.append(("open", stream_id, conversation_id, user_id))
+            return opened
+
+        async def _close(stream_id: str, *, conversation_id: str, user_id: str) -> None:
+            relay.calls.append(("close", stream_id, conversation_id, user_id))
+
+        async def _stop(job_id: str) -> None:
+            relay.calls.append(("stop", job_id))
+
+        async def _publish(stream_id: str, data: dict[str, object]) -> None:
+            relay.published.append((stream_id, data))
+
+        class _Deltas:
+            def __init__(self, conversation_id: str, stream_id: str) -> None:
+                relay.calls.append(("deltas", conversation_id, stream_id))
+
+            def __call__(self, data: dict[str, object]) -> None:
+                relay.deltas.append(data)
+
+            async def drain(self) -> None:
+                relay.calls.append(("drain",))
+
+        monkeypatch.setattr(job_relay, "open_folded_stream", _open)
+        monkeypatch.setattr(job_relay, "close_folded_stream", _close)
+        monkeypatch.setattr(job_relay, "stop_job", _stop)
+        monkeypatch.setattr(job_relay, "publish_to_stream", _publish)
+        monkeypatch.setattr(job_relay, "WorkDeltas", _Deltas)
+
+
+async def test_the_relay_replays_every_card_onto_its_stream_and_closes_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    relay = Relay(monkeypatch)
+    for step in (1, 2):
+        await publish_job_event("job-1", _card(step))
+    await publish_job_event("job-1", JOB_TERMINAL_FRAME)
+
+    await relay_job_cards(REQUEST)
+
+    assert relay.published == [(STREAM, _card(1)), (STREAM, _card(2))]
+    assert relay.deltas == [_card(1), _card(2)]
+    assert relay.calls == [
+        ("open", STREAM, "conv-1", "user-1"),
+        ("deltas", "conv-1", STREAM),
+        ("drain",),
+        ("close", STREAM, "conv-1", "user-1"),
+    ]
+
+
+async def test_a_stop_that_beat_the_relay_stops_the_job_and_opens_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    relay = Relay(monkeypatch, opened=False)
+
+    await relay_job_cards(REQUEST)
+
+    assert relay.calls == [("open", STREAM, "conv-1", "user-1"), ("stop", "job-1")]
+    assert relay.published == []
+
+
+async def test_a_relay_that_outlives_the_feed_gives_up_and_still_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    relay = Relay(monkeypatch)
+    monkeypatch.setattr(job_relay, "browser_job_ttl_seconds", lambda: 0.05)
+
+    async with captured_wide_event() as event:
+        await relay_job_cards(REQUEST)
+
+    assert relay.calls[-2:] == [("drain",), ("close", STREAM, "conv-1", "user-1")]
+    [warning] = event["warnings"]
+    assert warning["msg"] == f"{LogTag.BROWSER} Browser job relay gave up before the job finished"
+    assert warning["browser"] == {"job_id": "job-1"}
+    assert event["browser"] == {"job_id": "job-1"}

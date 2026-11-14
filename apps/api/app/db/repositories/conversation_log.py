@@ -356,8 +356,8 @@ class ConversationLogRepository(ConversationRepository):
                         RUNNER_FIELD: {"epoch": epoch, "alive_key": alive_key},
                     }
                 },
-                projection={RUNNER_FIELD: 1},
-                return_document=ReturnDocument.BEFORE,
+                # Equivalent under mutation: only the holder is read back, the projection trims the rest.
+                projection={RUNNER_FIELD: 1},  # pragma: no mutate
             )
         if before is None:
             return None

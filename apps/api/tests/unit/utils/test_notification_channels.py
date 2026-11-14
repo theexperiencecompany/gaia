@@ -283,8 +283,11 @@ class TestConversationChannel:
         )
 
     async def test_transform_refuses_a_notification_without_a_conversation(self) -> None:
-        with pytest.raises(ValueError, match="conversation_id"):
+        with pytest.raises(ValueError) as refused:
             await ConversationChannelAdapter().transform(_make_request())
+        assert (
+            str(refused.value) == "a conversation notice needs the notification's conversation_id"
+        )
 
     async def test_deliver_logs_the_notice_once_under_the_notification_id(self) -> None:
         payload = ConversationPayload("c1", "notif-1", "hi", "origin")
