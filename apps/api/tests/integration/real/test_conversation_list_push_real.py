@@ -61,7 +61,7 @@ async def test_a_new_message_pushes_one_list_change(
         conversation_id, user_id, UserMessage(id="u1", text="hi", surface=ConversationSource.WEB)
     )
 
-    assert await published_broadcasts(broadcast_channel) == [
+    assert await published_broadcasts(broadcast_channel, user_id) == [
         _list_changed(user_id, conversation_id)
     ]
 
@@ -74,7 +74,7 @@ async def test_an_entry_the_list_does_not_show_pushes_nothing(
 
     await mongo_log.append(conversation_id, user_id, StopRequested(id="s1", by=StopBy.USER))
 
-    assert await published_broadcasts(broadcast_channel) == []
+    assert await published_broadcasts(broadcast_channel, user_id) == []
 
 
 async def test_each_row_field_write_pushes_once(
@@ -90,7 +90,7 @@ async def test_each_row_field_write_pushes_once(
     )
 
     assert (
-        await published_broadcasts(broadcast_channel)
+        await published_broadcasts(broadcast_channel, user_id)
         == [_list_changed(user_id, conversation_id)] * 3
     )
 
@@ -98,6 +98,7 @@ async def test_each_row_field_write_pushes_once(
 async def test_a_write_that_matched_no_conversation_pushes_nothing(
     mongo_log: MongoConversationLog, broadcast_channel: PubSub
 ) -> None:
-    await conversation_repository.set_starred("c-missing", user_id=str(ObjectId()), starred=True)
+    user_id = str(ObjectId())
+    await conversation_repository.set_starred("c-missing", user_id=user_id, starred=True)
 
-    assert await published_broadcasts(broadcast_channel) == []
+    assert await published_broadcasts(broadcast_channel, user_id) == []
