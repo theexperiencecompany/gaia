@@ -23,6 +23,7 @@ from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
+from app.models.brief_composition_models import ChartBlock, QuoteBlock
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingPayload,
@@ -130,14 +131,18 @@ def _is_empty_day(payload: BriefingPayload) -> bool:
     return not payload.blocks and not payload.calendar
 
 
-def _is_quiet_day(
-    laid: Laid, today: list[BriefingEvent] | context.CalendarUnread, ladder: dormancy.IdleLadder
-) -> bool:
-    """Say whether today gets the quiet note: nothing placed, no event, and nothing the ladder says."""
-    no_events = not today if isinstance(today, list) else True
+def _is_quiet_day(laid: Laid, events: list[BriefingEvent], ladder: dormancy.IdleLadder) -> bool:
+    """Say whether today gets the quiet note: no event, nothing the ladder says, and nothing new placed.
+
+    What an earlier brief already showed as it stands is no reason for an edition, nor a
+    stalled goal's progress or a note about it; a chart or a quote shows something that moved.
+    """
+    told = all(c.is_repeat for picked in laid.chosen.picked for _, c in picked)
+    shows_movement = any(isinstance(b, ChartBlock | QuoteBlock) for b in laid.blocks)
     return (
-        not laid.blocks
-        and no_events
+        told
+        and not shows_movement
+        and not events
         and ladder.wind_down is None
         and ladder.goal_question is dormancy.GoalQuestion.ASKED
     )
@@ -253,7 +258,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     ladder = await dormancy.climb_idle_ladder(
         user, dstate, clock.date_str, has_news=gathered.has_news, has_goal=has_goal
     )
-    if not winback.is_winback and not is_first and _is_quiet_day(laid, day.today, ladder):
+    if not winback.is_winback and not is_first and _is_quiet_day(laid, day.events, ladder):
         gap = day.today.gap if isinstance(day.today, context.CalendarUnread) else None
         await publish_quiet_note(user, clock, quiet_note(clock, gap), PoolCounts.of(pool))
         await _settle(user, ladder, gathered)
