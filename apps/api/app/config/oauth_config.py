@@ -190,6 +190,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
     # Individual Google integrations
     OAuthIntegration(
         id="googlecalendar",
+        legacy_ids=["google_calendar"],
         name="Google Calendar",
         description="Schedule meetings and manage your calendar events",
         category="productivity",
@@ -302,6 +303,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
     ),
     OAuthIntegration(
         id="googledocs",
+        legacy_ids=["google_docs"],
         name="Google Docs",
         description="Create, edit, and share documents in your workspace",
         category="productivity",
@@ -2263,6 +2265,13 @@ def set_instance_integrations(integrations: Sequence[OAuthIntegration]) -> None:
 def get_integration_by_id(integration_id: str) -> OAuthIntegration | None:
     """Return the matching integration, or None if no integration has this id."""
     return next((i for i in all_integrations() if i.id == integration_id), None)
+
+
+def canonical_integration_id(integration_id: str) -> str:
+    """Return the id a retired spelling was renamed to; any other id as it is."""
+    return next(
+        (i.id for i in all_integrations() if integration_id in i.legacy_ids), integration_id
+    )
 
 
 def get_integration_scopes(integration_id: str) -> list[str]:
