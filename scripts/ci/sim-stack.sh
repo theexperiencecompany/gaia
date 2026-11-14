@@ -21,7 +21,8 @@ source "$(dirname "$0")/lib/log.sh"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-API_PORT=8000
+# Off 8000: the per-job ChromaDB container publishes there.
+API_PORT=18400
 WEB_PORT=3000
 LLM_STUB_PORT=9797
 DEV_USER="dev@gaia.local"
@@ -83,6 +84,7 @@ cmd_up() {
   export OPENROUTER_BASE_URL="http://localhost:$LLM_STUB_PORT/api/v1"
   export NEXT_PUBLIC_API_BASE_URL="http://localhost:$API_PORT/api/v1/"
   export FRONTEND_URL="http://localhost:$WEB_PORT"
+  export HOST="http://localhost:$API_PORT"
   export LLM_STUB_PORT WEB_PORT API_PORT
 
   local stub api worker web

@@ -67,7 +67,7 @@ def test_up_publishes_the_database_the_api_reads(
     assert result.returncode == 0, result.stderr
     published = (tmp_path / "github_env").read_text().splitlines()
     assert f"E2E_MONGO_URI={expected}" in published
-    assert {"WEB_PORT=3000", "API_PORT=8000"} <= set(published)
+    assert {"WEB_PORT=3000", "API_PORT=18400"} <= set(published)
 
 
 def test_up_fails_when_a_process_exits_while_starting(tmp_path: Path) -> None:
