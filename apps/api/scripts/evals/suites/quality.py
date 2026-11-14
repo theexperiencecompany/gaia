@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -109,6 +110,194 @@ def turns_for(case: Case) -> list[str]:
 REACTION_KIND = "reaction"
 
 
+@dataclass
+class _TurnAccumulator:
+    """One turn's state while its SSE frames are reduced, one handler per frame kind."""
+
+    conversation_id: str | None = None
+    chunks: list[str] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    seen_call_ids: set[str] = field(default_factory=set)
+    follow_up_actions: list[str] | None = None
+    error: str | None = None
+    reaction: str | None = None
+    raw: list[dict[str, Any]] = field(default_factory=list)
+
+    def response(self, frame: Frame) -> None:
+        self.chunks.append(frame["response"])
+
+    def stream_init(self, frame: Frame) -> None:
+        self.conversation_id = frame.get("conversation_id") or self.conversation_id
+        self.raw.append(
+            {
+                "type": "init",
+                "conversation_id": self.conversation_id,
+                "user_message_id": frame.get("user_message_id"),
+                "bot_message_id": frame.get("bot_message_id"),
+                "stream_id": frame.get("stream_id"),
+            }
+        )
+
+    def conversation_description(self, frame: Frame) -> None:
+        self.raw.append(
+            {"type": "conversation_description", "detail": frame["conversation_description"]}
+        )
+
+    def main_response_complete(self, frame: Frame) -> None:
+        usage = frame.get("usage")
+        self.raw.append(
+            {"type": "main_response_complete", "usage": usage if isinstance(usage, dict) else None}
+        )
+
+    def follow_up(self, frame: Frame) -> None:
+        actions = frame["follow_up_actions"]
+        if isinstance(actions, list):
+            self.follow_up_actions = [a for a in actions if isinstance(a, str)]
+        self.raw.append({"type": "follow_up_actions", "actions": self.follow_up_actions})
+
+    def tool_data(self, frame: Frame) -> None:
+        entries = frame["tool_data"]
+        for entry in entries if isinstance(entries, list) else [entries]:
+            if not isinstance(entry, dict):
+                continue
+            outer = entry.get("tool_name", "")
+            data = entry.get("data")
+            if outer == "tool_calls_data" and isinstance(data, dict):
+                self._tool_call(data)
+            else:
+                self.raw.append(
+                    {
+                        "type": "tool_data",
+                        "tool_name": outer,
+                        "detail": _truncate(json.dumps(data), 200),
+                    }
+                )
+
+    def _tool_call(self, data: dict[str, Any]) -> None:
+        """Record a real tool call once per tool_call_id; journal every sighting."""
+        name = data.get("tool_name", "")
+        inputs = data.get("inputs", {})
+        call_id = data.get("tool_call_id")
+        if call_id and call_id not in self.seen_call_ids:
+            self.seen_call_ids.add(call_id)
+            self.tool_calls.append(
+                {"name": name, "args": inputs if isinstance(inputs, dict) else {}}
+            )
+        self.raw.append(
+            {"type": "tool_data", "tool_name": name, "detail": _truncate(json.dumps(inputs), 200)}
+        )
+
+    def tool_output(self, frame: Frame) -> None:
+        payload = frame["tool_output"]
+        if isinstance(payload, dict):
+            self.raw.append(
+                {
+                    "type": "tool_output",
+                    "tool_call_id": payload.get("tool_call_id"),
+                    "detail": _truncate(str(payload.get("output", "")), 200),
+                }
+            )
+
+    def subagent_start(self, frame: Frame) -> None:
+        start = frame["subagent_start"]
+        self.raw.append(
+            {
+                "type": "subagent_start",
+                "subagent_id": start.get("subagent_id"),
+                "name": start.get("subagent_name"),
+                "agent_type": start.get("agent_type"),
+            }
+        )
+
+    def subagent_end(self, frame: Frame) -> None:
+        end = frame["subagent_end"]
+        self.raw.append(
+            {
+                "type": "subagent_end",
+                "subagent_id": end.get("subagent_id"),
+                "duration_ms": end.get("duration_ms"),
+            }
+        )
+
+    def emoji_ack(self, frame: Frame) -> None:
+        self.reaction = str(frame["emoji_ack"].get("emoji") or "") or None
+        self.raw.append({"type": "emoji_ack", "emoji": self.reaction})
+
+    def stream_error(self, frame: Frame) -> None:
+        self.error = self.error or frame["error"]
+        self.raw.append({"type": "error", "detail": _truncate(frame["error"], 300)})
+
+    def progress(self, frame: Frame) -> None:
+        self.raw.append({"type": "progress", "detail": _truncate(frame["progress"], 120)})
+
+    def reasoning(self, frame: Frame) -> None:
+        self.raw.append({"type": "reasoning", "n_chars": len(json.dumps(frame["reasoning"]))})
+
+    def keepalive(self, frame: Frame) -> None:
+        del frame
+        self.raw.append({"type": "keepalive"})
+
+    def model_fallback(self, frame: Frame) -> None:
+        self.raw.append(
+            {"type": "model_fallback", "detail": json.dumps(frame["model_fallback"])[:120]}
+        )
+
+    def todo_progress(self, frame: Frame) -> None:
+        del frame
+        self.raw.append({"type": "todo_progress"})
+
+    def file_data(self, frame: Frame) -> None:
+        self.raw.append(
+            {"type": "file_data", "detail": _truncate(json.dumps(frame["file_data"]), 200)}
+        )
+
+    def unknown(self, frame: Frame) -> None:
+        self.raw.append({"type": "unknown", "detail": _truncate(json.dumps(frame), 200)})
+
+    def record(self) -> TurnRecord:
+        return {
+            "conversation_id": self.conversation_id,
+            "text": "".join(self.chunks),
+            "tool_calls": self.tool_calls,
+            "follow_up_actions": self.follow_up_actions,
+            "error": self.error,
+            "reaction": self.reaction,
+            "raw": self.raw,
+        }
+
+
+_FrameHandler = Callable[[_TurnAccumulator, Frame], None]
+
+#: Each frame kind as (key, required value type or None for mere presence, handler).
+#: A frame is handled by the first kind it matches, so the order is load-bearing.
+_FRAME_KINDS: tuple[tuple[str, type | None, _FrameHandler], ...] = (
+    ("response", str, _TurnAccumulator.response),
+    ("stream_id", None, _TurnAccumulator.stream_init),
+    ("conversation_description", str, _TurnAccumulator.conversation_description),
+    ("main_response_complete", None, _TurnAccumulator.main_response_complete),
+    ("follow_up_actions", None, _TurnAccumulator.follow_up),
+    ("tool_data", None, _TurnAccumulator.tool_data),
+    ("tool_output", None, _TurnAccumulator.tool_output),
+    ("subagent_start", dict, _TurnAccumulator.subagent_start),
+    ("subagent_end", dict, _TurnAccumulator.subagent_end),
+    ("emoji_ack", dict, _TurnAccumulator.emoji_ack),
+    ("error", str, _TurnAccumulator.stream_error),
+    ("progress", str, _TurnAccumulator.progress),
+    ("reasoning", None, _TurnAccumulator.reasoning),
+    ("keepalive", bool, _TurnAccumulator.keepalive),
+    ("model_fallback", dict, _TurnAccumulator.model_fallback),
+    ("todo_progress", None, _TurnAccumulator.todo_progress),
+    ("file_data", None, _TurnAccumulator.file_data),
+)
+
+
+def _frame_handler(frame: Frame) -> _FrameHandler:
+    for key, value_type, handler in _FRAME_KINDS:
+        if key in frame if value_type is None else isinstance(frame.get(key), value_type):
+            return handler
+    return _TurnAccumulator.unknown
+
+
 def _parse_frames(frames: list[Frame]) -> TurnRecord:
     """Reduce the raw SSE frame list into a turn record.
 
@@ -117,161 +306,10 @@ def _parse_frames(frames: list[Frame]) -> TurnRecord:
     frame wins), error (first error frame), and raw — a compact,
     truncated frame summary stored on the CaseRun for journaling.
     """
-    conversation_id: str | None = None
-    chunks: list[str] = []
-    tool_calls: list[dict[str, Any]] = []
-    seen_call_ids: set[str] = set()
-    follow_up_actions: list[str] | None = None
-    error: str | None = None
-    reaction: str | None = None
-    raw: list[dict[str, Any]] = []
-
+    turn = _TurnAccumulator()
     for frame in frames:
-        if isinstance(frame.get("response"), str):
-            chunks.append(frame["response"])
-            continue
-        if "stream_id" in frame:
-            conversation_id = frame.get("conversation_id") or conversation_id
-            raw.append(
-                {
-                    "type": "init",
-                    "conversation_id": conversation_id,
-                    "user_message_id": frame.get("user_message_id"),
-                    "bot_message_id": frame.get("bot_message_id"),
-                    "stream_id": frame.get("stream_id"),
-                }
-            )
-            continue
-        if isinstance(frame.get("conversation_description"), str):
-            raw.append(
-                {"type": "conversation_description", "detail": frame["conversation_description"]}
-            )
-            continue
-        if "main_response_complete" in frame:
-            usage = frame.get("usage")
-            raw.append(
-                {
-                    "type": "main_response_complete",
-                    "usage": usage if isinstance(usage, dict) else None,
-                }
-            )
-            continue
-        if "follow_up_actions" in frame:
-            actions = frame["follow_up_actions"]
-            if isinstance(actions, list):
-                follow_up_actions = [a for a in actions if isinstance(a, str)]
-            raw.append({"type": "follow_up_actions", "actions": follow_up_actions})
-            continue
-        if "tool_data" in frame:
-            entries = frame["tool_data"]
-            if not isinstance(entries, list):
-                entries = [entries]
-            for entry in entries:
-                if not isinstance(entry, dict):
-                    continue
-                outer = entry.get("tool_name", "")
-                data = entry.get("data")
-                if outer == "tool_calls_data" and isinstance(data, dict):
-                    name = data.get("tool_name", "")
-                    inputs = data.get("inputs", {})
-                    call_id = data.get("tool_call_id")
-                    if call_id and call_id not in seen_call_ids:
-                        seen_call_ids.add(call_id)
-                        tool_calls.append(
-                            {
-                                "name": name,
-                                "args": inputs if isinstance(inputs, dict) else {},
-                            }
-                        )
-                    raw.append(
-                        {
-                            "type": "tool_data",
-                            "tool_name": name,
-                            "detail": _truncate(json.dumps(inputs), 200),
-                        }
-                    )
-                else:
-                    raw.append(
-                        {
-                            "type": "tool_data",
-                            "tool_name": outer,
-                            "detail": _truncate(json.dumps(data), 200),
-                        }
-                    )
-            continue
-        if "tool_output" in frame:
-            payload = frame["tool_output"]
-            if isinstance(payload, dict):
-                raw.append(
-                    {
-                        "type": "tool_output",
-                        "tool_call_id": payload.get("tool_call_id"),
-                        "detail": _truncate(str(payload.get("output", "")), 200),
-                    }
-                )
-            continue
-        if isinstance(frame.get("subagent_start"), dict):
-            start = frame["subagent_start"]
-            raw.append(
-                {
-                    "type": "subagent_start",
-                    "subagent_id": start.get("subagent_id"),
-                    "name": start.get("subagent_name"),
-                    "agent_type": start.get("agent_type"),
-                }
-            )
-            continue
-        if isinstance(frame.get("subagent_end"), dict):
-            end = frame["subagent_end"]
-            raw.append(
-                {
-                    "type": "subagent_end",
-                    "subagent_id": end.get("subagent_id"),
-                    "duration_ms": end.get("duration_ms"),
-                }
-            )
-            continue
-        if isinstance(frame.get("emoji_ack"), dict):
-            reaction = str(frame["emoji_ack"].get("emoji") or "") or None
-            raw.append({"type": "emoji_ack", "emoji": reaction})
-            continue
-        if isinstance(frame.get("error"), str):
-            error = error or frame["error"]
-            raw.append({"type": "error", "detail": _truncate(frame["error"], 300)})
-            continue
-        if isinstance(frame.get("progress"), str):
-            raw.append({"type": "progress", "detail": _truncate(frame["progress"], 120)})
-            continue
-        if "reasoning" in frame:
-            raw.append({"type": "reasoning", "n_chars": len(json.dumps(frame["reasoning"]))})
-            continue
-        if isinstance(frame.get("keepalive"), bool):
-            raw.append({"type": "keepalive"})
-            continue
-        if isinstance(frame.get("model_fallback"), dict):
-            raw.append(
-                {"type": "model_fallback", "detail": json.dumps(frame["model_fallback"])[:120]}
-            )
-            continue
-        if "todo_progress" in frame:
-            raw.append({"type": "todo_progress"})
-            continue
-        if "file_data" in frame:
-            raw.append(
-                {"type": "file_data", "detail": _truncate(json.dumps(frame["file_data"]), 200)}
-            )
-            continue
-        raw.append({"type": "unknown", "detail": _truncate(json.dumps(frame), 200)})
-
-    return {
-        "conversation_id": conversation_id,
-        "text": "".join(chunks),
-        "tool_calls": tool_calls,
-        "follow_up_actions": follow_up_actions,
-        "error": error,
-        "reaction": reaction,
-        "raw": raw,
-    }
+        _frame_handler(frame)(turn, frame)
+    return turn.record()
 
 
 def _aggregate_usage(raw: list[dict[str, object]]) -> tuple[int, int]:
@@ -290,6 +328,22 @@ def _aggregate_usage(raw: list[dict[str, object]]) -> tuple[int, int]:
             total_in += int(model_data.get("input_tokens", 0) or 0)
             total_out += int(model_data.get("output_tokens", 0) or 0)
     return total_in, total_out
+
+
+def _transcript_entries(user_text: str, turn: TurnRecord) -> list[dict[str, str]]:
+    """The transcript lines one exchange adds: the user's turn, then GAIA's text and tap-back."""
+    entries = [{"role": "user", "content": user_text}]
+    if turn["text"]:
+        entries.append({"role": "assistant", "content": turn["text"]})
+    if turn["reaction"]:
+        entries.append(
+            {
+                "role": "assistant",
+                "content": f"[reaction: {turn['reaction']}]",
+                "kind": REACTION_KIND,
+            }
+        )
+    return entries
 
 
 class ChatStreamTransport:
@@ -338,17 +392,7 @@ class ChatStreamTransport:
                         }
                         turn = await self._stream_turn(client, payload, provider, email)
                         conversation_id = turn["conversation_id"] or conversation_id
-                        transcript.append({"role": "user", "content": turn_text})
-                        if turn["text"]:
-                            transcript.append({"role": "assistant", "content": turn["text"]})
-                        if turn["reaction"]:
-                            transcript.append(
-                                {
-                                    "role": "assistant",
-                                    "content": f"[reaction: {turn['reaction']}]",
-                                    "kind": REACTION_KIND,
-                                }
-                            )
+                        transcript.extend(_transcript_entries(turn_text, turn))
                         text_parts.append(turn["text"])
                         tool_calls.extend(turn["tool_calls"])
                         final_turn_tool_calls = turn["tool_calls"]
@@ -418,7 +462,7 @@ class ChatStreamTransport:
         and agent memory, making results order-dependent and concurrency
         unsafe. capability, gaia_bench and hil already mint per case.
         """
-        return f"{self.user_prefix}-{case.id[:40]}-{uuid.uuid4().hex[:8]}@gaia.local"
+        return f"delivered+{self.user_prefix}-{case.id[:40]}-{uuid.uuid4().hex[:8]}@resend.dev"
 
     async def _mint_user(
         self, client: httpx.AsyncClient, provider: ProviderConfig, email: str
@@ -779,8 +823,8 @@ class QualitySuite(Suite):
         """
         available = known_gates(self.EXTRA_GATES)
         scores = {name: available[name](case, run) for name in ALWAYS_SCORED}
-        for gate, field in METRIC_WHEN_PRESENT.items():
-            if case.expected.get(field):
+        for gate, expected_key in METRIC_WHEN_PRESENT.items():
+            if case.expected.get(expected_key):
                 scores[gate] = available[gate](case, run)
         gate_scores = score_gates(case, run, self.EXTRA_GATES)
         gate_scores.pop("overall", None)

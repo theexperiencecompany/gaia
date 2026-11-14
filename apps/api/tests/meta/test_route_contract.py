@@ -25,10 +25,24 @@ from starlette.responses import Response
 
 from app.core.openapi import api_operation_id
 from app.schemas.common import ResponseModel
+from app.schemas.errors import ErrorEnvelope
 from tests.meta.response_types import walk_response
 
 _SCHEMA_REF_PREFIX = "#/components/schemas/"
 _ENVELOPE_REF = f"{_SCHEMA_REF_PREFIX}ErrorEnvelope"
+
+
+def _envelope_refs() -> set[str]:
+    """ErrorEnvelope and every model extending it: the envelope with its context typed."""
+    found: set[str] = set()
+    pending: list[type[ErrorEnvelope]] = [ErrorEnvelope]
+    while pending:
+        model = pending.pop()
+        found.add(f"{_SCHEMA_REF_PREFIX}{model.__name__}")
+        pending.extend(model.__subclasses__())
+    return found
+
+
 _DEFAULTS_REQUIRED = "json_schema_serialization_defaults_required"
 _OMITTING_OPTIONS = ("response_model_exclude_none", "response_model_exclude_unset")
 
@@ -153,7 +167,7 @@ def test_two_routers_under_one_tag_share_an_id_namespace(all_routes: list[RouteC
     modules = {
         ctx.original_route.endpoint.__module__
         for ctx in all_routes
-        if ctx.tags and str(ctx.tags[0]) == "MCP"
+        if isinstance(ctx.original_route, APIRoute) and ctx.tags and str(ctx.tags[0]) == "MCP"
     }
     assert len(modules) > 1, f"the MCP routers merged; re-pin this on the survivor: {modules}"
 
@@ -198,12 +212,13 @@ def test_every_error_response_is_the_json_envelope(
     schema = app.openapi()
     assert _ENVELOPE_REF[len(_SCHEMA_REF_PREFIX) :] in schema["components"]["schemas"]
     shadowed = []
+    envelope_refs = _envelope_refs()
     for ctx in routes:
         route = ctx.original_route
         assert isinstance(route, APIRoute)
         # health's 503 is DegradedHealthResponse: the handler's own return type,
         # set on the injected Response — a documented body, not a shadowed one.
-        allowed_refs = _declared_body_refs(route) | {_ENVELOPE_REF}
+        allowed_refs = _declared_body_refs(route) | envelope_refs
         for method in route.methods:
             responses = schema["paths"][ctx.path_format][method.lower()]["responses"]
             for code, response in responses.items():

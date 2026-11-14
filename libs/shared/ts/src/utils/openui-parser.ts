@@ -12,6 +12,9 @@ export interface ContentSegment {
   type: "markdown" | "openui";
   content: string;
   isComplete: boolean;
+  /** Index in the source text where the segment starts. Streaming only appends,
+   *  so it is a stable identity for a segment across renders. */
+  offset: number;
 }
 
 const OPENUI_OPEN = ":::openui";
@@ -51,7 +54,9 @@ export function parseOpenUISegments(
   isStreaming: boolean,
 ): ContentSegment[] {
   if (!text?.includes(OPENUI_OPEN)) {
-    return [{ type: "markdown", content: text || "", isComplete: true }];
+    return [
+      { type: "markdown", content: text || "", isComplete: true, offset: 0 },
+    ];
   }
 
   const segments: ContentSegment[] = [];
@@ -67,6 +72,7 @@ export function parseOpenUISegments(
           type: "markdown",
           content: remaining,
           isComplete: true,
+          offset: cursor,
         });
       }
       break;
@@ -79,6 +85,7 @@ export function parseOpenUISegments(
           type: "markdown",
           content: markdownBefore,
           isComplete: true,
+          offset: cursor,
         });
       }
     }
@@ -94,6 +101,7 @@ export function parseOpenUISegments(
           type: "openui",
           content: openUIContent,
           isComplete: true,
+          offset: openIdx,
         });
       }
       cursor = closeIdx + OPENUI_CLOSE.length;
@@ -104,6 +112,7 @@ export function parseOpenUISegments(
           type: "openui",
           content: openUIContent,
           isComplete: !isStreaming,
+          offset: openIdx,
         });
       }
       break;

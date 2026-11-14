@@ -376,18 +376,24 @@ async def publish_outbound_file(
 
 
 async def publish_outbound_photo(
-    platform: ConversationSource, user_id: str, url: str, filename: str, caption: str | None = None
-) -> bool:
-    """Enqueue a CDN-hosted image (e.g. a browser-automation step screenshot) for the bot to deliver as a photo.
+    platform: ConversationSource,
+    user_id: str,
+    url: str,
+    filename: str,
+    *,
+    caption: str | None = None,
+    destination_override: str | None = None,
+) -> OutboundResult:
+    """Enqueue a CDN-hosted image for the bot to deliver as a photo.
 
-    Unlike publish_outbound_file, the bot fetches the bytes directly from url;
-    nothing is proxied through the session artifact store. Best-effort: unknown
-    platform, unlinked account, unavailable broker, and publish errors all
-    return False without raising.
+    Unlike publish_outbound_file, the bot fetches the bytes directly from url.
+    destination_override names the account when the caller already resolved it. Never
+    raises: an unknown platform or unlinked account is SKIPPED; a rejected URL,
+    unavailable broker or publish error is FAILED.
     """
-    prep = await _prepare(platform, user_id, "publish_outbound_photo")
+    prep = await _prepare(platform, user_id, "publish_outbound_photo", destination_override)
     if isinstance(prep, OutboundResult):
-        return False
+        return prep
     queue_name, destination_id, publisher = prep
 
     try:
@@ -398,7 +404,7 @@ async def publish_outbound_photo(
         )
     except ValidationError:
         # A rejected URL (non-https, non-own-API origin) must degrade to the
-        # caption text, never to silence: the caller falls back on False.
+        # caption text, never to silence: the caller falls back on FAILED.
         log.warning(
             "publish_outbound_photo: attachment URL rejected",
             platform=platform.value,
@@ -406,7 +412,7 @@ async def publish_outbound_photo(
             destination_hash=hash_platform_user_id(destination_id),
             filename=filename,
         )
-        return False
+        return OutboundResult.FAILED
     try:
         await publisher.publish_outbound(
             queue_name, envelope.model_dump_json().encode(), expiration=OUTBOUND_TTL_SECONDS_DEFAULT
@@ -426,7 +432,7 @@ async def publish_outbound_photo(
             destination_id=destination_id,
             envelope_id=envelope.id,
         )
-        return False
+        return OutboundResult.FAILED
 
     log.info(
         "outbound_photo_published",
@@ -434,4 +440,4 @@ async def publish_outbound_photo(
         queue=queue_name,
         filename=filename,
     )
-    return True
+    return OutboundResult.PUBLISHED

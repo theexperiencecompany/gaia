@@ -11,6 +11,7 @@ import asyncio
 from dataclasses import dataclass
 
 from app.agents.core.background.workflow_platform_delivery import deliver_workflow_result
+from app.constants.briefing import BriefItemSource
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.workflows import WorkflowDelivery
@@ -65,8 +66,9 @@ async def deliver_workflow_completion(user: AuthenticatedUser, run: CompletedWor
         await pending_brief_items_repository.create(
             PendingBriefItemDocument(
                 user_id=user.user_id,
-                workflow_id=run.workflow_id,
-                workflow_title=run.workflow_title,
+                source=BriefItemSource.WORKFLOW,
+                source_id=run.workflow_id,
+                source_title=run.workflow_title,
                 conversation_id=run.conversation_id,
                 text=run.text,
             )

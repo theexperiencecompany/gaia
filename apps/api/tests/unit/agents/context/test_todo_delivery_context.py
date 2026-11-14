@@ -21,6 +21,7 @@ from app.agents.core.graph_manager import GraphManager
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
+from app.db.repositories.workflows import workflow_repository
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
@@ -60,6 +61,8 @@ async def _delivered_request() -> HumanMessage:
         patch.object(todo_run_delivery, "todo_repository", repo),
         patch.object(todo_run_delivery, "record_run_finished", AsyncMock(return_value=True)),
         patch.object(todo_run_delivery, "capture", MagicMock()),
+        # No daily brief, so the desk's report is the message it always was.
+        patch.object(workflow_repository, "find_system_workflow", AsyncMock(return_value=None)),
         # Resolved alongside the narration: a real lookup would reach Mongo.
         patch.object(
             todo_run_delivery,

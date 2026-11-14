@@ -248,7 +248,10 @@ ALWAYS evaluated in the user's stored timezone. Pass cron in user-local wall-clo
 
 - GAIA reads the run's **final report** and messages the user's chat app
   (WhatsApp/Telegram/Discord/Slack) only when the run found something they need
-  to know or decide. A routine or no-op run sends nothing.
+  to know or decide. A routine or no-op run sends nothing. A repeating todo's
+  update that can wait until tomorrow morning goes into the user's next brief
+  instead; a one-time todo's answer, a watch the user set and a reminder they
+  timed always go now.
 - So end with a factual report (what you did, what changed, what needs them),
   and do NOT call `send_notification` to announce it — that sends it twice.
 - Every run's outcome, sent or not, is recorded in activity.md for you.

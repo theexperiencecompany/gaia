@@ -15,6 +15,22 @@ def hash_platform_user_id(platform_user_id: str) -> str:
     return hashed
 
 
+def hash_short_link_slug(slug: str) -> str:
+    """Hash a heygaia.link slug for a log field.
+
+    The slug is the capability, so a plaintext one in a log line is a working
+    link to someone's artifact.
+    """
+    hashed: str = hash_log_identifier(slug, _log_hash_secret())
+    return hashed
+
+
+def hash_link_viewer(ip: str, user_agent: str) -> str:
+    """Hash a signed-out link viewer's address and browser into one stable, unreadable key."""
+    hashed: str = hash_log_identifier(f"{ip}|{user_agent}", _log_hash_secret())
+    return hashed
+
+
 def user_text_shape(text: str) -> TextShape:
     """Shape of a user's query or message for a log field, keyed like every other log hash."""
     return text_shape(text, _log_hash_secret())

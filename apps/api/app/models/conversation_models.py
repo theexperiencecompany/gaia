@@ -191,6 +191,16 @@ class _ConversationIdRow(BaseModel):
     conversation_id: str
 
 
+class BotReplyRow(BaseModel):
+    """One unwound bot-platform user message — the briefing engine's reply-sync
+    read (``ConversationRepository.list_bot_replies_since``)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    source: str | None = None
+    text: str | None = None
+
+
 class _ConversationOwnerRow(_ConversationIdRow):
     """Projection of a conversation id and the user who owns it; anything else is a projection bug."""
 

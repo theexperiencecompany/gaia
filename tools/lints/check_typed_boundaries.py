@@ -89,6 +89,8 @@ EXTERNAL_TYPEDDICTS = (
     "OutputTokenDetails",
     # composio.core.models._modifiers.ToolExecuteParams: what a before-execute hook receives.
     "ToolExecuteParams",
+    # resend.Emails.SendResponse: what Emails.send returns (its message id).
+    "SendResponse",
     # chromadb.api.types.GetResult: what Collection.get returns.
     "GetResult",
 )
@@ -110,6 +112,7 @@ EXTERNAL_TYPEDDICT_PATHS = frozenset(
         "langchain_core.messages.content.ReasoningContentBlock",
         "langgraph.store.base.IndexConfig",
         "composio.core.models.tools.ToolExecutionResponse",
+        "playwright.async_api.FloatRect",
         "playwright.sync_api.StorageState",
         "playwright.sync_api.StorageStateCookie",
         "cdp_use.cdp.dom.commands.ResolveNodeReturns",

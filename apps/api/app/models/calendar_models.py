@@ -83,6 +83,7 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     id: str | None = None
     summary: str | None = None
     description: str | None = None
+    location: str | None = None
     eventType: str | None = None
     start: GoogleCalendarEventDateTime | None = None
     end: GoogleCalendarEventDateTime | None = None

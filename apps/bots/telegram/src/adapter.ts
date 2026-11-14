@@ -34,6 +34,7 @@ import {
   hashLogIdentifier,
   htmlToPlainText,
   type IncomingMedia,
+  isLegibleAsPhoto,
   MEDIA_READ_TIMEOUT_MS,
   type MediaKind,
   type OutboundFile,
@@ -511,9 +512,13 @@ export class TelegramAdapter extends BaseBotAdapter {
         ? caption.slice(0, TELEGRAM_CAPTION_MAX_CHARS)
         : undefined,
     };
-    // sendPhoto caps around 10 MB; deliver larger images as a document so they
-    // still arrive instead of being rejected.
-    if (mime.startsWith("image/") && data.length <= TELEGRAM_PHOTO_MAX_BYTES) {
+    // sendPhoto caps around 10 MB and recompresses to a small long side; deliver
+    // larger or tall images as a document so they arrive full size and legible.
+    if (
+      mime.startsWith("image/") &&
+      data.length <= TELEGRAM_PHOTO_MAX_BYTES &&
+      isLegibleAsPhoto(data)
+    ) {
       await this.bot.api.sendPhoto(destinationId, file, opts);
     } else {
       await this.bot.api.sendDocument(destinationId, file, opts);

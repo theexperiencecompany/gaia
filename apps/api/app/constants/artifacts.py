@@ -1,8 +1,5 @@
 """Constants for the conversation artifact registry and per-turn forwarder."""
 
-# Fields persisted on each artifact registry element (alongside updated_at / body).
-ARTIFACT_ELEMENT_FIELDS = ("path", "size_bytes", "mtime", "content_type")
-
 # Greppable log prefix for the artifact forwarder subsystem.
 ARTIFACT_LOG_PREFIX = "[artifacts]"
 

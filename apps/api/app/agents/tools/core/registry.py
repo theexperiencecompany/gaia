@@ -416,6 +416,7 @@ class ToolRegistry:
                     "update_notification_settings",
                     "update_preferences",
                     "set_selected_voice",
+                    "set_briefing_schedule",
                 },
             ),
         )  # pragma: no mutate -- closing paren is whitespace-only (AST-equivalent)

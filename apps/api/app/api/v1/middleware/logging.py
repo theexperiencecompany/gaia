@@ -23,6 +23,7 @@ from starlette.responses import Response
 
 from app.api.v1.middleware.auth import get_current_user
 from app.config.loggers import request_logger
+from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
 
 _WARNING = "WARNING"
@@ -122,7 +123,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             context = {
                 **wide_event_context,
                 "method": request.method,
-                "path": request.url.path,
+                "path": loggable_request_path(request),
                 "status_code": 500,
                 "status_phrase": "Internal Server Error",
                 "duration_ms": duration_ms,
@@ -164,7 +165,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             **wide_event_context,
             # HTTP request characteristics (always authoritative)
             "method": request.method,
-            "path": request.url.path,
+            "path": loggable_request_path(request),
             "status_code": status_code,
             "status_phrase": status_phrase,
             "duration_ms": duration_ms,

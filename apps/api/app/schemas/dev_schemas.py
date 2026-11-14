@@ -20,6 +20,11 @@ class SeedDevDataRequest(BaseModel):
         default_factory=list,
         description="Platforms to link (discord, slack, telegram, whatsapp)",
     )
+    postmarks: int = Field(
+        default=0,
+        ge=0,
+        description="Delivered past Air Mail briefs to seed, each with a distinct city stamp",
+    )
     pro: bool = Field(
         default=False,
         description="Grant an active dev Pro subscription, so paid-only surfaces open",
@@ -33,6 +38,7 @@ class SeedDevDataResponse(BaseModel):
     user_id: str
     todos_created: int
     conversations_created: int
+    postmarks_created: int
     platforms_linked: list[str]
     pro: bool
     # Contract for harness clients: inject messages as these ids — never

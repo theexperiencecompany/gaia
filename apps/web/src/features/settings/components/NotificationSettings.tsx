@@ -14,6 +14,7 @@ import {
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_PLATFORMS,
 } from "@/features/notification/constants";
+import { BriefingScheduleSettings } from "@/features/settings/components/BriefingScheduleSettings";
 import { ChatChannelSettings } from "@/features/settings/components/ChatChannelSettings";
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
@@ -162,6 +163,7 @@ export default function NotificationSettings() {
           </SettingsRow>
         )}
       </SettingsSection>
+      <BriefingScheduleSettings />
     </SettingsPage>
   );
 }

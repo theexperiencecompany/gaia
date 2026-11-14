@@ -1230,6 +1230,166 @@
       }
     },
     {
+      "event": "briefing:day_zero_hello_sent",
+      "class": "BriefingDayZeroHelloSent",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "GAIA's first text reached a freshly linked chat platform.",
+      "previous_names": [],
+      "budget_per_user_day": 2,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "GAIA's first text reached a freshly linked chat platform.",
+        "properties": {
+          "platform": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Platform",
+            "type": "string"
+          },
+          "has_goal": {
+            "title": "Has Goal",
+            "type": "boolean"
+          }
+        },
+        "required": ["platform", "has_goal"],
+        "title": "BriefingDayZeroHelloSent",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:opened",
+      "class": "BriefingOpened",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A user opened one of their briefs on its own page for the first time.",
+      "previous_names": [],
+      "budget_per_user_day": 4,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened one of their briefs on its own page for the first time.",
+        "properties": {
+          "kind": {
+            "enum": ["daily", "weekly"],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": ["kind"],
+        "title": "BriefingOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:postmarks_viewed",
+      "class": "BriefingPostmarksViewed",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A user opened Postmarks, the collection of Air Mail city stamps from their briefs.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user opened Postmarks, the collection of Air Mail city stamps from their briefs.",
+        "properties": {
+          "collected": {
+            "title": "Collected",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": ["collected", "total"],
+        "title": "BriefingPostmarksViewed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:provisioned",
+      "class": "BriefingProvisioned",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "The daily brief and weekly recap schedules were created for a user.",
+      "previous_names": [],
+      "budget_per_user_day": 2,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The daily brief and weekly recap schedules were created for a user.",
+        "properties": {
+          "held_for_goal": {
+            "title": "Held For Goal",
+            "type": "boolean"
+          }
+        },
+        "required": ["held_for_goal"],
+        "title": "BriefingProvisioned",
+        "type": "object"
+      }
+    },
+    {
+      "event": "briefing:sent",
+      "class": "BriefingSent",
+      "owner": "server",
+      "domain": "briefing",
+      "description": "A brief was stored and delivered; which edition it was drawn in and where it went.",
+      "previous_names": [],
+      "budget_per_user_day": 4,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A brief was stored and delivered; which edition it was drawn in and where it went.",
+        "properties": {
+          "kind": {
+            "enum": ["daily", "weekly"],
+            "title": "Kind",
+            "type": "string"
+          },
+          "family": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Family",
+            "type": "string"
+          },
+          "mood": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Mood",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "channel_count": {
+            "title": "Channel Count",
+            "type": "integer"
+          },
+          "stamp_collected": {
+            "title": "Stamp Collected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "family",
+          "mood",
+          "item_count",
+          "channel_count",
+          "stamp_collected"
+        ],
+        "title": "BriefingSent",
+        "type": "object"
+      }
+    },
+    {
       "event": "browser:engine_switched",
       "class": "BrowserEngineSwitched",
       "owner": "server",
@@ -4484,13 +4644,21 @@
               "/todos",
               "/integrations",
               "/workflows",
+              "/briefings",
               "/c"
             ],
             "title": "Destination",
             "type": "string"
           },
           "label": {
-            "enum": ["Home", "Tasks", "Integrations", "Workflows", "Chats"],
+            "enum": [
+              "Home",
+              "Tasks",
+              "Integrations",
+              "Workflows",
+              "Briefings",
+              "Chats"
+            ],
             "title": "Label",
             "type": "string"
           }
@@ -5963,6 +6131,102 @@
       }
     },
     {
+      "event": "settings:briefing_schedule_updated",
+      "class": "SettingsBriefingScheduleUpdated",
+      "owner": "server",
+      "domain": "settings",
+      "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A user changed how often briefs come and the daily brief's hour, in settings or by asking GAIA.",
+        "properties": {
+          "frequency": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Frequency",
+            "type": "string"
+          },
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          },
+          "via": {
+            "enum": ["settings", "agent"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["frequency", "hour", "via"],
+        "title": "SettingsBriefingScheduleUpdated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:briefs_off_blocked",
+      "class": "SettingsBriefsOffBlocked",
+      "owner": "server",
+      "domain": "settings",
+      "description": "Turning briefs off was refused because workflows still deliver their results to the brief.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Turning briefs off was refused because workflows still deliver their results to the brief.",
+        "properties": {
+          "workflow_count": {
+            "title": "Workflow Count",
+            "type": "integer"
+          },
+          "via": {
+            "enum": ["settings", "agent"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["workflow_count", "via"],
+        "title": "SettingsBriefsOffBlocked",
+        "type": "object"
+      }
+    },
+    {
+      "event": "settings:briefs_off_resolved",
+      "class": "SettingsBriefsOffResolved",
+      "owner": "server",
+      "domain": "settings",
+      "description": "Briefs were turned off after the user moved every brief-delivery workflow elsewhere.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Briefs were turned off after the user moved every brief-delivery workflow elsewhere.",
+        "properties": {
+          "moved_to_now": {
+            "title": "Moved To Now",
+            "type": "integer"
+          },
+          "moved_to_silent": {
+            "title": "Moved To Silent",
+            "type": "integer"
+          },
+          "via": {
+            "enum": ["settings", "agent"],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": ["moved_to_now", "moved_to_silent", "via"],
+        "title": "SettingsBriefsOffResolved",
+        "type": "object"
+      }
+    },
+    {
       "event": "settings:chat_channel_priority_updated",
       "class": "SettingsChatChannelPriorityUpdated",
       "owner": "server",
@@ -6212,6 +6476,88 @@
         },
         "required": ["enabled", "start_hour", "end_hour"],
         "title": "SettingsQuietHoursUpdated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:created",
+      "class": "ShortLinkCreated",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "A heygaia.link was minted for one of the user's artifacts.",
+      "previous_names": [],
+      "budget_per_user_day": 200,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A heygaia.link was minted for one of the user's artifacts.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": ["target_type"],
+        "title": "ShortLinkCreated",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:opened",
+      "class": "ShortLinkOpened",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\n    Attributed to the owner. Unfurl bots building a chat preview never count.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone other than the owner opened one of the user's heygaia.links, once a day per viewer.\n\nAttributed to the owner. Unfurl bots building a chat preview never count.",
+        "properties": {
+          "target_type": {
+            "enum": [
+              "todo_deliverable",
+              "briefing",
+              "session_artifact",
+              "workflow_run"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          },
+          "viewer_signed_in": {
+            "title": "Viewer Signed In",
+            "type": "boolean"
+          }
+        },
+        "required": ["target_type", "viewer_signed_in"],
+        "title": "ShortLinkOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "short_link:revoked",
+      "class": "ShortLinkRevoked",
+      "owner": "server",
+      "domain": "short_link",
+      "description": "The user revoked one of their heygaia.links.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user revoked one of their heygaia.links.",
+        "properties": {},
+        "title": "ShortLinkRevoked",
         "type": "object"
       }
     },

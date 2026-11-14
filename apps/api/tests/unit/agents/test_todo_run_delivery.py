@@ -19,6 +19,7 @@ from app.constants import todos as todo_constants
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
+from app.db.repositories.workflows import workflow_repository
 from app.models import todo_models
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import NotificationType
@@ -51,6 +52,12 @@ SCHEDULED = TodoRun(
     message_class=ProactiveMessageClass.ROUTINE,
     runs_once=True,
 )
+MAIL_WOKEN = TodoRun(
+    todo_id="todo-1",
+    trigger_type=TriggerType.INTEGRATION,
+    message_class=ProactiveMessageClass.ROUTINE,
+    runs_once=False,
+)
 
 
 @dataclass
@@ -62,6 +69,7 @@ class _Seams:
     in_app: AsyncMock
     target: AsyncMock
     report: AsyncMock
+    daily_brief: AsyncMock
 
     def entry(self) -> str:
         return self.activity.await_args.args[3]
@@ -82,6 +90,8 @@ def _seams(
         in_app=AsyncMock(),
         target=AsyncMock(return_value=InApp(reason="no_chat_app")),
         report=AsyncMock(),
+        # No daily brief unless a test turns one on, so nothing is held for it.
+        daily_brief=AsyncMock(return_value=None),
     )
     repo = MagicMock()
     repo.get_by_id = AsyncMock(return_value=todo)
@@ -91,6 +101,7 @@ def _seams(
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", repo),
+        patch.object(workflow_repository, "find_system_workflow", seams.daily_brief),
         patch.object(trd, "record_run_finished", seams.activity),
         patch.object(trd, "capture", seams.capture),
         patch.object(notification_service, "create_notification", seams.in_app),
@@ -190,7 +201,11 @@ class TestResultsThatReachNobody:
 
 
 class TestABriefingThatOwnsItsForm:
-    """The desk's run guidance sets its briefing's form; comms decides only whether it is sent."""
+    """The desk's run guidance sets its report's form; comms decides only whether it is sent.
+
+    Its scheduled sweep waits for the morning brief (test_tracked_todo_run_delivery.py), so
+    the report that goes out at once is the alert new mail wakes it for.
+    """
 
     BRIEFING = "1 need you\n\nNeeds you\n- Priya · pitch deck · by Fri · draft ready"
 
@@ -205,7 +220,7 @@ class TestABriefingThatOwnsItsForm:
     async def test_a_desk_briefing_reaches_the_app_as_the_desk_wrote_it(self) -> None:
         """Regression: comms retold a sectioned desk briefing as flat lines, its headings gone."""
         with _seams(todo=self._desk(), narrated="Priya: send the deck by Friday.") as seams:
-            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+            await deliver_todo_run_result(RUN, MAIL_WOKEN, self.BRIEFING, "final")
 
         assert seams.in_app.await_args.args[0].content.body == self.BRIEFING
 
@@ -215,13 +230,13 @@ class TestABriefingThatOwnsItsForm:
             narrated="Priya: send the deck by Friday.",
             sent_on=ConversationSource.TELEGRAM,
         ) as seams:
-            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+            await deliver_todo_run_result(RUN, MAIL_WOKEN, self.BRIEFING, "final")
 
         assert seams.send.await_args.kwargs["notification_text"] == self.BRIEFING
 
     async def test_comms_can_still_keep_a_desk_briefing_quiet(self) -> None:
         with _seams(todo=self._desk(), narrated="<SILENCE>nothing new</SILENCE>") as seams:
-            await deliver_todo_run_result(RUN, SCHEDULED, self.BRIEFING, "final")
+            await deliver_todo_run_result(RUN, MAIL_WOKEN, self.BRIEFING, "final")
 
         seams.send.assert_not_awaited()
         seams.in_app.assert_not_awaited()
@@ -444,6 +459,7 @@ class TestTheDecisionSeesTheStandingRules:
             "- thread abc",
             runs_once=True,
             run_history=(),
+            may_wait=False,
         )
 
     async def test_key_details_reach_the_write_up_as_details_not_rules(self) -> None:
@@ -452,11 +468,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy",
-            None,
-            "- thread abc",
-            runs_once=True,
-            run_history=(),
+            "Watch the deploy", None, "- thread abc", runs_once=True, run_history=(), may_wait=False
         )
 
     @pytest.mark.regression
@@ -474,6 +486,7 @@ class TestTheDecisionSeesTheStandingRules:
             details[: todo_constants.DELIVERY_KEY_DETAILS_MAX_CHARS],
             runs_once=True,
             run_history=(),
+            may_wait=False,
         )
 
     @pytest.mark.regression
@@ -483,11 +496,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy",
-            None,
-            None,
-            runs_once=True,
-            run_history=(),
+            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
         )
 
     @pytest.mark.regression
@@ -502,6 +511,7 @@ class TestTheDecisionSeesTheStandingRules:
             None,
             runs_once=True,
             run_history=(),
+            may_wait=False,
         )
 
     async def test_a_todo_without_standing_rules_gets_the_defaults_alone(self) -> None:
@@ -509,11 +519,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy",
-            None,
-            None,
-            runs_once=True,
-            run_history=(),
+            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
         )
 
     async def test_a_todo_with_no_canvas_gets_the_defaults_alone(self) -> None:
@@ -521,11 +527,7 @@ class TestTheDecisionSeesTheStandingRules:
             await deliver_todo_run_result(RUN, SCHEDULED, "report", "final")
 
         assert seams.narrate.await_args.kwargs["preamble"] == tracked_todo_delivery_note(
-            "Watch the deploy",
-            None,
-            None,
-            runs_once=True,
-            run_history=(),
+            "Watch the deploy", None, None, runs_once=True, run_history=(), may_wait=False
         )
 
 

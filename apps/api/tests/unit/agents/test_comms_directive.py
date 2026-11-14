@@ -55,6 +55,15 @@ class TestInterpretCommsOutput:
         assert d.kind == CommsDirectiveKind.SILENCE
         assert d.payload == "nothing new"
 
+    def test_a_brief_directive_carries_the_line_for_the_morning_brief(self) -> None:
+        d = interpret_comms_output("<BRIEF>Staging is green again after Tuesday's rollback</BRIEF>")
+        assert d == CommsDirective(
+            CommsDirectiveKind.BRIEF, "Staging is green again after Tuesday's rollback"
+        )
+
+    def test_an_empty_brief_directive_is_not_a_line_for_the_brief(self) -> None:
+        assert interpret_comms_output("<BRIEF></BRIEF>").kind is not CommsDirectiveKind.BRIEF
+
     def test_silence_directive(self) -> None:
         d = interpret_comms_output(
             "<SILENCE>background calendar refresh, nothing new</SILENCE><NEW_MESSAGE_BREAK>"

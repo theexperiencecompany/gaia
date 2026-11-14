@@ -1101,6 +1101,9 @@ importers:
       sanitize-html:
         specifier: ^2.18.1
         version: 2.18.1
+      server-only:
+        specifier: ^0.0.1
+        version: 0.0.1
       sharp:
         specifier: ^0.35.5
         version: 0.35.5(@types/node@24.13.3)
@@ -1207,6 +1210,9 @@ importers:
       hono:
         specifier: ^4.13.14
         version: 4.13.14
+      image-size:
+        specifier: ^2.0.4
+        version: 2.0.4
       posthog-node:
         specifier: ^5.51.4
         version: 5.51.4(rxjs@7.8.2)
@@ -12522,6 +12528,11 @@ packages:
     resolution: {integrity: sha512-6TDAlDPZxUFCv+fuOkIoXT/V/f3Qbq8e37p+YOiYrUv3v9cc3/6x78VdfPgFVaB9dZYeLUfKgHRebpkm/oP2VQ==}
     engines: {node: '>=0.10.0'}
     deprecated: Please migrate to image-size@2.x
+    hasBin: true
+
+  image-size@2.0.4:
+    resolution: {integrity: sha512-QRUkFFsRV/6fuESxb9Vkq+a0LkSrgKXuc2NEqfikiXxxN/G3tjWt5EVUlMaImRBZRZK/jRBEbYvpPYZL8t08Zw==}
+    engines: {node: '>=18'}
     hasBin: true
 
   immutable@5.1.9:
@@ -30987,6 +30998,8 @@ snapshots:
 
   image-size@0.5.5:
     optional: true
+
+  image-size@2.0.4: {}
 
   immutable@5.1.9:
     optional: true

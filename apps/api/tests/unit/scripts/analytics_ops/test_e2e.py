@@ -134,6 +134,29 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
     ("agent:run_started", {**AGENT_WEB, **WORKFLOW_RUN}),
     ("agent:run_completed", {**AGENT_WEB, **WORKFLOW_RUN}),
     (
+        "settings:briefing_schedule_updated",
+        {**WEB, "frequency": "weekdays", "hour": 7, "via": "settings"},
+    ),
+    (
+        "workflow:created",
+        {
+            **WEB,
+            "origin": "user_created",
+            "steps_count": 1,
+            "generated_immediately": False,
+            "trigger_type": "manual",
+        },
+    ),
+    ("settings:briefs_off_blocked", {**WEB, "workflow_count": 1, "via": "settings"}),
+    (
+        "settings:briefs_off_resolved",
+        {**WEB, "moved_to_now": 1, "moved_to_silent": 0, "via": "settings"},
+    ),
+    (
+        "settings:briefing_schedule_updated",
+        {**WEB, "frequency": "off", "hour": 8, "via": "settings"},
+    ),
+    (
         "chat:message_submitted",
         {**BOT, "source": "telegram", "stream_id": "s-bot", "is_retry": False, "has_files": False},
     ),

@@ -88,7 +88,7 @@ class BotProgressDelivery:
                 filename=f"browser-step-{self._steps_shown}{SHOT_SUFFIX}",
                 caption=caption,
             )
-            if sent:
+            if sent is OutboundResult.PUBLISHED:
                 return
         await self.note(_step_caption(self._steps_shown, snapshot.goal, snapshot.actions))
 

@@ -9,9 +9,7 @@ truth) plus a lightweight {session_id, path, event} reference on the bot
 message so the card re-renders on reload. A per-turn mtime map, loaded once,
 makes whole-dir re-emits idempotent.
 
-The event payload stays dict[str, Any] on purpose: its wire contract is
-owned by app.services.artifact_events and consumed by
-app.utils.artifact_utils, which both declare it as a plain dict.
+Each event is an ArtifactEventMessage, the wire shape app.services.artifact_events owns.
 """
 
 import asyncio
@@ -20,7 +18,7 @@ import contextlib
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any, TypedDict, cast
+from typing import TypedDict
 
 from redis.asyncio.client import PubSub
 
@@ -37,7 +35,7 @@ from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import ConversationSource
-from app.services.artifact_events import artifact_channel
+from app.services.artifact_events import ArtifactEventMessage, artifact_channel
 from app.services.chat.artifacts_registry import (
     get_conversation_artifacts,
     remove_conversation_artifact,
@@ -203,7 +201,7 @@ class ArtifactForwarder:
 
     # ── Per-event routing ──────────────────────────────────────────────────
 
-    async def _handle_event(self, payload: dict[str, Any]) -> None:
+    async def _handle_event(self, payload: ArtifactEventMessage) -> None:
         """Route one event: remove → drop, unchanged → skip, else → publish."""
         path = payload.get("path")
         event = payload.get("event")
@@ -215,11 +213,11 @@ class ArtifactForwarder:
         else:
             await self._apply_upsert(payload, path, event)
 
-    def _is_unchanged(self, path: str | None, payload: dict[str, Any]) -> bool:
+    def _is_unchanged(self, path: str | None, payload: ArtifactEventMessage) -> bool:
         return path is not None and self.registry_mtimes.get(path) == payload.get("mtime")
 
     async def _apply_upsert(
-        self, payload: dict[str, Any], path: str | None, event: str | None
+        self, payload: ArtifactEventMessage, path: str | None, event: str | None
     ) -> None:
         """Run the main pipeline for a new or changed file."""
         if not path:
@@ -229,7 +227,7 @@ class ArtifactForwarder:
         self.registry_mtimes[path] = payload.get("mtime")
         self.stats.upserts += 1
 
-        await self._stream_entry(build_artifact_full_entry(payload))  # 1. show live (full data)
+        await self._stream_entry(build_artifact_full_entry(dict(payload)))  # 1. show live
         await upsert_conversation_artifact(  # 2. registry = source of truth
             self.user_id, self.conversation_id, payload
         )
@@ -292,7 +290,9 @@ class ArtifactForwarder:
                 error_type=type(e).__name__,
             )
 
-    def _maybe_deliver_to_bot(self, payload: dict[str, Any], path: str, event: str | None) -> None:
+    def _maybe_deliver_to_bot(
+        self, payload: ArtifactEventMessage, path: str, event: str | None
+    ) -> None:
         """Push an agent-generated artifact to a bot user's outbound queue, once.
 
         User uploads (event == "upload") are skipped — the user already has
@@ -312,10 +312,15 @@ class ArtifactForwarder:
                 path=path,
                 filename=path.rsplit("/", 1)[-1],
                 content_type=payload.get("content_type"),
+                # The bot user never sees the web card, so the file message
+                # itself carries the public link minted with the event.
+                caption=payload.get("short_url"),
             )
         )
 
-    def _maybe_warm_cache(self, payload: dict[str, Any], path: str, event: str | None) -> None:
+    def _maybe_warm_cache(
+        self, payload: ArtifactEventMessage, path: str, event: str | None
+    ) -> None:
         """Warm the JuiceFS cache for follow-up-fetch files.
 
         Files with no inline body hit the file endpoint later; inlined files
@@ -373,21 +378,30 @@ def _bot_source(source: str | None) -> ConversationSource | None:
     return cs if cs in OUTBOUND_QUEUES else None
 
 
-def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> dict[str, Any] | None:
-    """Decode a pub/sub message into an artifact payload for this conversation.
+class _PubSubMessage(TypedDict):
+    """A frame from redis-py's PubSub.listen(): subscribe confirmations and data alike."""
+
+    type: str
+    data: str | bytes | int
+
+
+def _parse_artifact_message(
+    message: _PubSubMessage, conversation_id: str
+) -> ArtifactEventMessage | None:
+    """Decode a pub/sub message into an artifact event for this conversation.
 
     Returns None when the message isn't a data frame, can't be parsed, or
     belongs to a different conversation.
     """
-    if message.get("type") != "message":
+    if message["type"] != "message" or isinstance(message["data"], int):
         return None
     try:
-        payload = json.loads(message["data"])
+        payload: ArtifactEventMessage = json.loads(message["data"])
     except (ValueError, TypeError):
         return None
-    if payload.get("session_id") != conversation_id:
+    if payload["session_id"] != conversation_id:
         return None
-    return cast(dict[str, Any], payload)
+    return payload
 
 
 async def _close_pubsub(pubsub: PubSub, channel: str) -> None:

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
 import { tools } from "@/data/tools";
 import Thanks from "@/features/thanks/components/Thanks";
+import { internalApiHeaders } from "@/lib/internalApiHeaders";
 import {
   generateBreadcrumbSchema,
   generatePageMetadata,
@@ -56,7 +57,7 @@ async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
     const urls = tools.map((tool) => tool.url);
     const response = await fetch(`${apiUrl}/fetch-url-metadata`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...internalApiHeaders() },
       body: JSON.stringify({ urls }),
       next: { revalidate: 2592000 }, // Revalidate once per month (30 days)
     });

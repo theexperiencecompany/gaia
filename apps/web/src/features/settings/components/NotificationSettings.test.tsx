@@ -41,6 +41,10 @@ vi.mock("@/features/settings/components/ChatChannelSettings", () => ({
   ChatChannelSettings: () => null,
 }));
 
+vi.mock("@/features/settings/components/BriefingScheduleSettings", () => ({
+  BriefingScheduleSettings: () => null,
+}));
+
 vi.mock("@/features/settings/components/QuietHoursSettings", () => ({
   QuietHoursSettings: () => null,
 }));

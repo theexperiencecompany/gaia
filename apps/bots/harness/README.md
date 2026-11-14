@@ -15,7 +15,7 @@ diverges from the real adapter's.
 
 ```bash
 # one-shot: mint + link a dev user, inject one message, print + write the transcript
-nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local --out t.jsonl "remind me tomorrow"
+nx run bot-harness:sim -- send --emulate telegram --user "$DEV_USER" --out t.jsonl "remind me tomorrow"
 
 # multi-turn scenario with transcript assertions
 nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml --out run.jsonl
@@ -44,7 +44,7 @@ belonging to nobody. The turn reads as if GAIA silently dropped the reply.
 
 ```bash
 # a handoff turn: keep consuming for 20s after the stream closes
-nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local \
+nx run bot-harness:sim -- send --emulate telegram --user "$DEV_USER" \
   --settle 20000 --out t.jsonl "did those land in todoist?"
 ```
 

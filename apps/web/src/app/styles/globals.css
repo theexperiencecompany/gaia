@@ -565,14 +565,15 @@
     outline: 0 transparent;
   }
 
-  code {
-    border-radius: 10px;
-    padding: 4px;
-  }
-
   code,
   .monospace {
     font-family: var(--font-mono);
+  }
+
+  /* Inline code only: padding on a block's inline <code> shifts just its first line. */
+  :not(pre) > code {
+    border-radius: 10px;
+    padding: 4px;
   }
 
   li {
@@ -675,6 +676,15 @@
   }
   .maplibregl-popup-tip {
     @apply hidden!;
+  }
+  .maplibregl-ctrl-attrib {
+    @apply bg-zinc-900/70! text-zinc-500!;
+  }
+  .maplibregl-ctrl-attrib a {
+    @apply text-zinc-400!;
+  }
+  .maplibregl-ctrl-attrib-button {
+    @apply invert opacity-60;
   }
 }
 

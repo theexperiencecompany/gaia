@@ -13,6 +13,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import UJSONResponse
 from limits import RateLimitItem
 from limits.errors import StorageError
+from redis.exceptions import RedisError
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 
@@ -29,6 +30,7 @@ from app.config.settings import settings
 from app.constants.http import RETRY_AFTER_HEADER
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.schemas.errors import ErrorEnvelope, error_response
+from app.utils.loggable_path import loggable_request_path
 from shared.py.wide_events import log as wide_log
 
 RATE_LIMIT_EXCEEDED_CODE = "rate_limit_exceeded"
@@ -51,7 +53,7 @@ def _retry_after_seconds(request: Request) -> int | None:
     window, identifiers = current_limit
     try:
         reset_time, _remaining = request_limiter.limiter.get_window_stats(window, *identifiers)
-    except StorageError:
+    except (StorageError, RedisError):
         return window.get_expiry()
     return max(1, math.ceil(reset_time - time.time()))
 
@@ -69,7 +71,7 @@ def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> UJSONRespons
         client_ip=request.client.host
         if request.client
         else request.headers.get("x-forwarded-for", "unknown"),
-        path=request.url.path,
+        path=loggable_request_path(request),
         method=request.method,
         retry_after=retry_after,
     )

@@ -6,6 +6,7 @@ from uuid import UUID
 
 import pytest
 
+from app.constants.error_codes import BRIEFS_OFF
 from app.constants.integrations import (
     MAX_INTEGRATION_SEARCH_RESULTS,
     MAX_MY_INTEGRATIONS_RESULTS,
@@ -26,7 +27,7 @@ from app.schemas.integrations.responses import (
 import app.services.workflow.service  # noqa: F401  # side-effect import breaks the documented circular-dependency chain
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import WorkflowCreated
-from tests.helpers import captured_wide_event
+from tests.helpers import briefs_off_users_get, captured_wide_event
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -162,11 +163,11 @@ class TestCreateWorkflow:
         ):
             mock_runner.execute = AsyncMock(return_value="subagent output")
             await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
-                config=_make_config(), user_request="digest my PRs", delivery=WorkflowDelivery.BRIEF
+                config=_make_config(), user_request="digest my PRs", delivery=WorkflowDelivery.NOW
             )
 
         delivery, draft_id = draft.to_stream_payload.call_args.args
-        assert delivery == WorkflowDelivery.BRIEF
+        assert delivery == WorkflowDelivery.NOW
         assert UUID(draft_id).version == 4
         if waits:
             run, user_id, condition, subject_id, name = wait.await_args.args
@@ -179,6 +180,34 @@ class TestCreateWorkflow:
             )
         else:
             wait.assert_not_awaited()
+
+    async def test_a_brief_workflow_while_briefs_are_off_is_refused_with_what_to_ask(
+        self,
+    ) -> None:
+        """Regression: with briefs off the agent saved a brief workflow whose results were lost."""
+        from app.agents.tools.workflow_tool import create_workflow
+
+        with (
+            patch("app.utils.auth_utils.user_repository.get", new=briefs_off_users_get),
+            patch(f"{MODULE}.current_stream_writer", return_value=_writer_mock()),
+            patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
+        ):
+            mock_runner.execute = AsyncMock()
+
+            result = await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+                config=_make_config(),
+                user_request="check my email every morning, put it in my brief",
+                delivery=WorkflowDelivery.BRIEF,
+            )
+
+        assert result["success"] is False
+        assert result["error"] == BRIEFS_OFF
+        assert result["message"] == (
+            "The user has briefs turned off, so this workflow's results cannot go to their "
+            "brief. Ask them to pick instead: Choose Tell me now or Don't notify me, or turn "
+            "briefs back on in Settings."
+        )
+        mock_runner.execute.assert_not_awaited()
 
     async def test_new_mode_clarifying(self) -> None:
         """Clarifying mode returns the question for the user."""

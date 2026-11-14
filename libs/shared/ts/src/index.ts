@@ -286,6 +286,8 @@ export {
 } from "./tool-utils";
 export type {
   ActivityDay,
+  BriefingFrequency,
+  BriefingSchedule,
   BudgetWindow,
   BulkMoveRequest,
   ChannelPlatform,
@@ -466,6 +468,7 @@ export {
   truncateText,
 } from "./utils";
 export type {
+  BriefFreeDelivery,
   BuiltinTriggerMeta,
   IntegrationTriggerGroup,
   TriggerDisplayConfig,
@@ -474,6 +477,9 @@ export type {
   TriggerSchema,
 } from "./workflows";
 export {
+  BRIEF_DELIVERY_DESCRIPTION,
+  BRIEF_FREE_DELIVERIES,
+  BRIEFS_OFF_DELIVERY_REASON,
   BUILTIN_TRIGGER_META,
   buildDefaultTriggerConfig,
   findTriggerSchema,

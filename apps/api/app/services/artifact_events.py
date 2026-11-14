@@ -32,6 +32,10 @@ class ArtifactFileEvent(TypedDict):
     mtime: float
     content_type: str | None
     body: NotRequired[str]
+    # The artifact's public heygaia.link, present only when the tool that wrote
+    # the file this turn attached one. Watcher rescans and user uploads never
+    # carry it — the owner shares those from the file card.
+    short_url: NotRequired[str]
 
 
 class ArtifactRemoveEvent(TypedDict):
@@ -41,6 +45,21 @@ class ArtifactRemoveEvent(TypedDict):
 
 
 ArtifactEvent = ArtifactFileEvent | ArtifactRemoveEvent
+
+
+class ArtifactEventMessage(TypedDict):
+    """An ArtifactEvent as subscribers receive it, stamped with user_id and ts."""
+
+    event: Literal["upsert", "upload", "remove"]
+    session_id: str
+    path: str
+    user_id: str
+    ts: float
+    size_bytes: NotRequired[int]
+    mtime: NotRequired[float]
+    content_type: NotRequired[str | None]
+    body: NotRequired[str]
+    short_url: NotRequired[str]
 
 
 def artifact_channel(user_id: str) -> str:
@@ -56,14 +75,17 @@ def artifact_channel(user_id: str) -> str:
 
 
 def upsert_event(
-    session_id: str, info: ArtifactInfo, *, body: str | None = None
+    session_id: str,
+    info: ArtifactInfo,
+    *,
+    body: str | None = None,
+    short_url: str | None = None,
 ) -> ArtifactFileEvent:
     """Return an artifacts/ file-created-or-changed event.
 
-    body inlines small textual artifacts (callers enforce the size/type rule
-    via paths.is_inlineable_content_type / INLINE_ARTIFACT_MAX_BYTES) so the
-    side panel renders instantly and survives a reload; omitted for large or
-    binary files.
+    body inlines small text files (callers enforce the inline rule); omitted
+    for large or binary. short_url is the heygaia.link the writing tool
+    attached; this builder never mints one.
     """
     payload: ArtifactFileEvent = {
         "event": "upsert",
@@ -75,6 +97,8 @@ def upsert_event(
     }
     if body is not None:
         payload["body"] = body
+    if short_url is not None:
+        payload["short_url"] = short_url
     return payload
 
 

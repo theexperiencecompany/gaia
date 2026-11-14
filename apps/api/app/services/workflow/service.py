@@ -1,16 +1,21 @@
+from datetime import datetime
 import secrets
 import uuid
 
 from pymongo.errors import DuplicateKeyError
 
+from app.constants.briefing import BriefingFrequency
+from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import GateAuthor, GateOwner
 from app.constants.waits import WaitCondition
+from app.constants.workflows import WorkflowDelivery
 from app.db.chroma.chromadb import ChromaClient
 from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
 from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_gate_models import AuthoredGate
+from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     PublicWorkflowCard,
@@ -61,6 +66,32 @@ from .validators import WorkflowValidator
 
 _SLUG_SUFFIX_LEN = 6
 _SLUG_MAX_RETRIES = 5
+
+
+BRIEFS_OFF_FIX = "Choose Tell me now or Don't notify me, or turn briefs back on in Settings"
+
+
+class BriefsOffError(AppError):
+    """A workflow cannot send its results to the brief while the user has briefs off."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            message="Briefs are off, so a workflow cannot add its results to your brief",
+            why="With briefs off, its results would go nowhere",
+            fix=BRIEFS_OFF_FIX,
+            status_code=409,
+            code=BRIEFS_OFF,
+        )
+
+
+def delivers_to_a_missing_brief(
+    owner: AuthenticatedUser, delivery: WorkflowDelivery | None
+) -> bool:
+    """Report whether delivery is the brief while the owner has briefs turned off."""
+    return (
+        delivery is WorkflowDelivery.BRIEF
+        and owner.briefing_schedule.frequency is BriefingFrequency.OFF
+    )
 
 
 def _slug_suffix() -> str:
@@ -195,7 +226,9 @@ class WorkflowService:
         trigger_ids: list[str] = []
 
         # Every creator (route, tool, worker) lands here, so none can save a workflow for a non-user.
-        await require_owner(user_id)
+        owner = await require_owner(user_id)
+        if delivers_to_a_missing_brief(owner, request.delivery):
+            raise BriefsOffError()
 
         # A system workflow is one-per-user, keyed by system_workflow_key — hand
         # back the existing one instead of creating a near-duplicate.
@@ -592,11 +625,14 @@ class WorkflowService:
         request: UpdateWorkflowRequest,
         user_id: str,
         user_timezone: str | None = None,
+        *,
+        next_run_base: datetime | None = None,
     ) -> Workflow | None:
         """Update an existing workflow with timezone awareness.
 
         Uses Saga pattern for trigger updates: if new trigger registration fails,
-        attempts to restore the old triggers (compensation).
+        attempts to restore the old triggers (compensation). A rewritten schedule's
+        next run is the first occurrence after next_run_base (default: now).
         """
         # Track state for potential rollback. registered_trigger_ids is declared
         # out here because the compensation block in the `except` below reads it on
@@ -611,6 +647,10 @@ class WorkflowService:
             current_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not current_workflow:
                 return None
+            if request.delivery is WorkflowDelivery.BRIEF and delivers_to_a_missing_brief(
+                await require_owner(user_id), request.delivery
+            ):
+                raise BriefsOffError()
 
             # `model_fields_set` is what the client actually sent — the same
             # distinction `model_dump(exclude_unset=True)` encoded, kept on the
@@ -671,7 +711,7 @@ class WorkflowService:
                     )
                     new_trigger_config.timezone = timezone_to_use
                     if new_trigger_config.cron_expression:
-                        new_trigger_config.update_next_run(user_timezone=timezone_to_use)
+                        new_trigger_config.update_next_run(base_time=next_run_base)
 
                 # Check if we need to reschedule
                 old_config = current_workflow.trigger_config
@@ -687,6 +727,7 @@ class WorkflowService:
                 schedule_changed = (
                     old_config.type != new_trigger_config.type
                     or old_config.cron_expression != new_trigger_config.cron_expression
+                    or old_config.timezone != new_trigger_config.timezone
                     or old_config.enabled != new_trigger_config.enabled
                 )
 

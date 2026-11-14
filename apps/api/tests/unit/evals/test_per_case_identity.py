@@ -37,8 +37,9 @@ def test_identity_is_namespaced_by_suite() -> None:
     """Two suites running concurrently must not collide in the same account."""
     comms = SuiteChatTransport("comms").case_email(_case("shared-id"))
     safety = SuiteChatTransport("safety").case_email(_case("shared-id"))
-    assert comms.startswith("comms-")
-    assert safety.startswith("safety-")
+    # The namespace is the Resend sub-address tag, so the user still lands on its test sink.
+    assert comms.startswith("delivered+comms-")
+    assert safety.startswith("delivered+safety-")
     assert comms != safety
 
 

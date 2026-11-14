@@ -33,6 +33,7 @@ from app.constants.agents import (
     AgentTag,
     wrap_agent_payload,
 )
+from app.constants.briefing import BriefItemSource
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
@@ -1043,11 +1044,19 @@ class TestReplayCompletionNotification:
         item = harness.brief_create.await_args.args[0]
         assert (
             item.user_id,
-            item.workflow_id,
-            item.workflow_title,
+            item.source,
+            item.source_id,
+            item.source_title,
             item.conversation_id,
             item.text,
-        ) == (workflow.user_id, workflow.id, workflow.title, "conv_1", "Agenda sent.")
+        ) == (
+            workflow.user_id,
+            BriefItemSource.WORKFLOW,
+            workflow.id,
+            workflow.title,
+            "conv_1",
+            "Agenda sent.",
+        )
 
     async def test_an_untrusted_replay_leaves_the_notification_to_the_agent(
         self,

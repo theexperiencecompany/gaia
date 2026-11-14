@@ -1,7 +1,7 @@
 /**
  * `gaia-sim` CLI — drives the harness against a running GAIA API.
  *
- *   gaia-sim send --emulate telegram --user dev@gaia.local --out t.jsonl "hi"
+ *   gaia-sim send --emulate telegram --user "$DEV_USER" --out t.jsonl "hi"
  *   gaia-sim run scenarios/plain-reply.yaml --out run.jsonl
  *
  * `send` is one-shot: mint + link the dev user, inject the message as that

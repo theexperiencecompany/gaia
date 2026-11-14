@@ -22,7 +22,6 @@ from tests.integration_account_factories import make_integration_account, make_i
 from app.agents.context import fetchers
 from app.agents.context.fetchers import (
     NEW_USER_CONVERSATION_LIMIT,
-    _ConnectedIntegration,
     _dedupe_by_provider,
     _split_core_context,
     _split_off_section,
@@ -72,6 +71,7 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingSubdocument,
 )
+from app.services.integrations.user_integrations import ConnectedIntegration
 from app.utils.artifact_utils import artifact_url_base
 
 
@@ -590,7 +590,7 @@ class TestDedupeByProvider:
         self,
     ) -> None:
         """A later id-only entry for the same provider must not clobber an earlier resolved display name."""
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "slack", "name": "Slack Workspace"},
             {"id": "sl_ack", "name": "sl_ack"},
         ]
@@ -598,7 +598,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "slack", "name": "Slack Workspace"}]
 
     def test_an_id_named_entry_held_first_is_replaced_once_a_real_name_arrives(self) -> None:
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "slack", "name": "slack"},
             {"id": "sl_ack", "name": "Slack Workspace"},
         ]
@@ -607,7 +607,7 @@ class TestDedupeByProvider:
 
     def test_the_first_real_name_wins_over_a_second_equally_real_name(self) -> None:
         """Once a provider has resolved to ANY display name, a second row for it must not overwrite it, even with another real name."""
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "calendar", "name": "Calendar One"},
             {"id": "cal_endar", "name": "Calendar Two"},
         ]
@@ -615,7 +615,7 @@ class TestDedupeByProvider:
         assert _dedupe_by_provider(items) == [{"id": "calendar", "name": "Calendar One"}]
 
     def test_distinct_providers_are_all_kept_in_first_seen_order(self) -> None:
-        items: list[_ConnectedIntegration] = [
+        items: list[ConnectedIntegration] = [
             {"id": "gmail", "name": "Gmail"},
             {"id": "slack", "name": "Slack"},
             {"id": "notion", "name": "Notion"},

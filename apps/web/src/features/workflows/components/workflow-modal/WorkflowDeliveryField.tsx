@@ -1,10 +1,17 @@
 "use client";
 
-import { WORKFLOW_DELIVERIES, WORKFLOW_DELIVERY_COPY } from "@gaia/shared";
-import { Button } from "@heroui/button";
+import {
+  BRIEF_DELIVERY_DESCRIPTION,
+  BRIEFS_OFF_DELIVERY_REASON,
+  WORKFLOW_DELIVERIES,
+  WORKFLOW_DELIVERY_COPY,
+} from "@gaia/shared";
+import type { WorkflowDelivery } from "@shared/api/generated";
+import Link from "next/link";
 import { type Control, Controller } from "react-hook-form";
-import { cn } from "@/lib/utils";
+import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import { DeliverySegments } from "../DeliverySegments";
 import WorkflowSection from "./WorkflowSection";
 
 const FIELD_LABEL = "When a run finishes";
@@ -18,58 +25,58 @@ interface WorkflowDeliveryFieldProps {
 /**
  * How each run's result reaches the user. A segmented control with no default:
  * the choice is the user's to make, so nothing is preselected. Submitting
- * without one focuses the first segment and names the missing choice.
+ * without one focuses the first segment and names the missing choice. "Add to
+ * my brief" follows the briefing schedule and is unavailable while briefs are off.
  */
 export default function WorkflowDeliveryField({
   control,
   isDisabled = false,
 }: WorkflowDeliveryFieldProps) {
+  const { schedule } = useBriefingScheduleSettings();
+  const briefDescription = schedule?.frequency
+    ? BRIEF_DELIVERY_DESCRIPTION[schedule.frequency]
+    : WORKFLOW_DELIVERY_COPY.brief.description;
+  const briefsOff = briefDescription === null;
+  // While briefs are off, the reason line below the control speaks for "brief".
+  const helperFor = (value: WorkflowDelivery | null) => {
+    if (!value) return UNCHOSEN_HINT;
+    if (value === "brief") return briefDescription;
+    return WORKFLOW_DELIVERY_COPY[value].description;
+  };
+
   return (
     <Controller
       name="delivery"
       control={control}
       render={({ field, fieldState }) => {
         const errorMessage = fieldState.error?.message;
+        const helper = helperFor(field.value);
         return (
           <WorkflowSection label={FIELD_LABEL}>
-            <fieldset
-              aria-label={FIELD_LABEL}
-              className={cn(
-                "flex flex-col gap-1 rounded-xl bg-zinc-800/60 p-1 sm:flex-row",
-                errorMessage && "ring-1 ring-danger",
-              )}
-            >
-              {WORKFLOW_DELIVERIES.map((delivery, index) => {
-                const isSelected = field.value === delivery;
-                return (
-                  <Button
-                    key={delivery}
-                    ref={index === 0 ? field.ref : undefined}
-                    fullWidth
-                    radius="lg"
-                    variant="light"
-                    aria-pressed={isSelected}
-                    isDisabled={isDisabled}
-                    onPress={() => field.onChange(delivery)}
-                    className={cn(
-                      "h-9 font-medium",
-                      isSelected
-                        ? "bg-zinc-700 text-zinc-100 shadow-sm data-[hover=true]:bg-zinc-700"
-                        : "text-zinc-400",
-                    )}
-                  >
-                    {WORKFLOW_DELIVERY_COPY[delivery].label}
-                  </Button>
-                );
-              })}
-            </fieldset>
+            <DeliverySegments
+              label={FIELD_LABEL}
+              deliveries={WORKFLOW_DELIVERIES}
+              value={field.value}
+              onChange={field.onChange}
+              isDisabled={(delivery) =>
+                isDisabled || (delivery === "brief" && briefsOff)
+              }
+              firstRef={field.ref}
+              isInvalid={!!errorMessage}
+            />
             {errorMessage ? (
               <p className="px-1 pt-1 text-sm text-danger">{errorMessage}</p>
             ) : (
-              <p className="px-1 pt-1 text-sm text-zinc-400">
-                {field.value
-                  ? WORKFLOW_DELIVERY_COPY[field.value].description
-                  : UNCHOSEN_HINT}
+              helper && (
+                <p className="px-1 pt-1 text-sm text-zinc-400">{helper}</p>
+              )
+            )}
+            {briefsOff && (
+              <p className="px-1 text-sm text-zinc-400">
+                {BRIEFS_OFF_DELIVERY_REASON}{" "}
+                <Link href="/settings/notifications" className="text-primary">
+                  Turn on briefs
+                </Link>
               </p>
             )}
           </WorkflowSection>

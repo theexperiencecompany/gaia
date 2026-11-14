@@ -21,6 +21,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone,
     get_user_timezone_from_preferences,
 )
+from app.config.settings import settings
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.models.user_models import AuthenticatedUser, UserDocument
@@ -263,8 +264,8 @@ class TestGetCurrentUserWs:
     async def test_the_dev_bypass_resolves_its_target_without_a_session(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(oauth_dependencies.settings, "ENV", "development")
-        monkeypatch.setattr(oauth_dependencies.settings, "DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local")
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local")
         user_doc = MagicMock()
         bypass_user = AuthenticatedUser(user_id="u1", dev_bypass=True)
         websocket = _websocket()
@@ -286,8 +287,8 @@ class TestGetCurrentUserWs:
     async def test_a_bypass_target_with_no_user_is_refused_not_impersonated(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(oauth_dependencies.settings, "ENV", "development")
-        monkeypatch.setattr(oauth_dependencies.settings, "DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local")
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@gaia.local")
         with patch(_WS_DEV_BYPASS, new_callable=AsyncMock, return_value=("ghost@x", None)):
             with pytest.raises(WebSocketException) as exc:
                 await get_current_user_ws(_websocket())
@@ -295,14 +296,23 @@ class TestGetCurrentUserWs:
         assert exc.value.reason == "dev bypass target has no Mongo user"
 
 
+class TestTimezoneBackfill:
+    async def test_the_header_zone_is_stored_through_the_one_timezone_writer(self) -> None:
+        """The writer also moves the briefs onto the new clock; a raw update would not."""
+        with patch(f"{_DEPS}.set_user_timezone", new_callable=AsyncMock) as store:
+            await oauth_dependencies._backfill_user_timezone("u1", "Asia/Kolkata")
+
+        store.assert_awaited_once_with("u1", "Asia/Kolkata")
+
+
 _LOCAL_USER_ID = "507f1f77bcf86cd799439011"
 
 
 @pytest.fixture
 def local_auth_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(oauth_dependencies.settings, "ENV", "selfhost")
-    monkeypatch.setattr(oauth_dependencies.settings, "AUTH_MODE", "local")
-    monkeypatch.setattr(oauth_dependencies.settings, "DEV_AUTH_BYPASS_EMAIL", None)
+    monkeypatch.setattr(settings, "ENV", "selfhost")
+    monkeypatch.setattr(settings, "AUTH_MODE", "local")
+    monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
 
 
 @pytest.mark.usefixtures("local_auth_mode")
@@ -315,7 +325,7 @@ class TestGetCurrentUserWsLocalSession:
         lookup = AsyncMock(return_value=user_doc)
         with (
             patch("app.utils.local_auth_utils.resolve_session_token", resolve),
-            patch(f"{_DEPS}.user_repository.get", lookup),
+            patch("app.db.repositories.users.user_repository.get", lookup),
         ):
             user = await get_current_user_ws(_websocket({"gaia_session": "local.jwt"}))
 
@@ -375,7 +385,7 @@ class TestGetCurrentUserWsLocalSession:
                 "app.utils.local_auth_utils.resolve_session_token",
                 AsyncMock(return_value=_LOCAL_USER_ID),
             ),
-            patch(f"{_DEPS}.user_repository.get", AsyncMock(return_value=None)),
+            patch("app.db.repositories.users.user_repository.get", AsyncMock(return_value=None)),
         ):
             async with captured_wide_event() as event:
                 with pytest.raises(WebSocketException) as exc:

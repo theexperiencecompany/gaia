@@ -9,13 +9,13 @@ the frontend's batch-sync staleness check refetch the conversation afterwards.
 """
 
 from datetime import UTC, datetime
-from typing import Any, TypedDict, cast
+from typing import TypedDict, cast
 
-from app.constants.artifacts import ARTIFACT_ELEMENT_FIELDS
 from app.constants.cache import CONV_ARTIFACTS_CACHE_PATTERN, ONE_DAY_TTL
 from app.db.repositories.conversations import conversation_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.artifact_models import ArtifactRegistryEntry
+from app.services.artifact_events import ArtifactEventMessage
 
 
 class ArtifactRegistryPatch(TypedDict, total=False):
@@ -33,12 +33,13 @@ class ArtifactRegistryPatch(TypedDict, total=False):
 
 
 @CacheInvalidator(key_patterns=[CONV_ARTIFACTS_CACHE_PATTERN])
-async def upsert_conversation_artifact(user_id: str, conv_id: str, payload: dict[str, Any]) -> None:
+async def upsert_conversation_artifact(
+    user_id: str, conv_id: str, payload: ArtifactEventMessage
+) -> None:
     """Upsert one artifact onto the conversation registry, keyed by path.
 
     body is written only when the payload carries one, so a body-less
-    re-emit never wipes an inline preview. payload stays an untyped dict;
-    its wire contract is owned by app.services.artifact_events.
+    re-emit never wipes an inline preview.
     """
     now_iso = datetime.now(UTC).isoformat()
     path = payload["path"]
@@ -58,8 +59,13 @@ async def upsert_conversation_artifact(user_id: str, conv_id: str, payload: dict
         return
 
     # No existing element — push a new one.
-    element: dict[str, Any] = {key: payload.get(key) for key in ARTIFACT_ELEMENT_FIELDS}
-    element["updated_at"] = now_iso
+    element: ArtifactRegistryEntry = {
+        "path": path,
+        "size_bytes": payload.get("size_bytes"),
+        "mtime": payload.get("mtime"),
+        "content_type": payload.get("content_type"),
+        "updated_at": now_iso,
+    }
     if payload.get("body") is not None:
         element["body"] = payload["body"]
     await conversation_repository.push_artifact(

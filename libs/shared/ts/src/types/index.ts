@@ -36,6 +36,8 @@ export {
 } from "./models";
 export type { Note, NoteCreate, NoteListResponse, NoteUpdate } from "./notes";
 export type {
+  BriefingFrequency,
+  BriefingSchedule,
   ChannelPlatform,
   ChannelPreferences,
   InAppNotification,

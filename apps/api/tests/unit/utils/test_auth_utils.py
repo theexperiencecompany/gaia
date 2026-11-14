@@ -1,6 +1,5 @@
 """Unit tests for app.utils.auth_utils — WorkOS session authentication."""
 
-from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -10,12 +9,9 @@ import pytest
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.config.feature_flags import FeatureFlag
 from app.config.settings import settings
-from app.constants.auth import DEV_USER_HEADER, WOS_SESSION_COOKIE, InstanceRole
+from app.constants.auth import DEV_USER_HEADER, WOS_SESSION_COOKIE
 from app.constants.vfs import SYSTEM_USER_ID
-from app.models.first_steps_models import FirstStepsState
-from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import OnboardingPhase, OnboardingSubdocument, UserDocument
 from app.utils import auth_utils
 from app.utils.auth_utils import (
@@ -28,6 +24,7 @@ from app.utils.auth_utils import (
 )
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
 from tests.helpers import UNKNOWN_USER_ID, session_set_cookie, users_get
+from tests.user_document_factories import user_document_sample_values
 
 
 def _as_user(db_doc: dict) -> UserDocument:
@@ -786,40 +783,9 @@ class TestBuildUserContextLocalOnboarding:
 # ---------------------------------------------------------------------------
 
 
-_STAMP = datetime(2024, 5, 1, tzinfo=UTC)
-
-# One distinct non-default sample per declared field type, matched by the
-# first type name found in the field's annotation (order matters: the nested
-# models are named before the primitives their annotations also mention).
-_SAMPLE_BY_TYPE: tuple[tuple[str, object], ...] = (
-    ("OnboardingSubdocument", OnboardingSubdocument(focus="ops")),
-    ("FirstStepsState", FirstStepsState(collapsed=True, collapsed_at=_STAMP)),
-    ("QuietHours", QuietHours(enabled=False, start_hour=23, end_hour=6)),
-    ("FeatureFlag", {FeatureFlag.BROWSER_OBSCURA: True}),
-    ("InstanceRole", InstanceRole.ADMIN),
-    ("datetime", _STAMP),
-    ("bool", True),
-    ("int", 3),
-    ("list", ["item"]),
-    ("dict", {"k": "v"}),
-)
-
-
-def _sample_values() -> dict[str, object]:
-    """Return a non-default value for every declared UserDocument field but id."""
-    return {
-        name: next(
-            (value for type_name, value in _SAMPLE_BY_TYPE if type_name in str(field.annotation)),
-            f"{name}-value",
-        )
-        for name, field in UserDocument.model_fields.items()
-        if name != "id"
-    }
-
-
 def _every_field_document() -> tuple[UserDocument, dict[str, object]]:
     """Return a document with a distinct non-default value in every declared field."""
-    values = _sample_values()
+    values = user_document_sample_values()
     return UserDocument.model_validate({"id": "64abc123def4567890abcdef", **values}), values
 
 

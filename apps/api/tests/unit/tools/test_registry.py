@@ -442,6 +442,7 @@ _EXPECTED_ALWAYS_GATE_TOOL_NAMES = {
     "add_custom_mcp_server",
     "approve_device_pairing",
     "disconnect_integration",
+    "set_briefing_schedule",
     "set_selected_voice",
     "update_notification_settings",
     "update_preferences",
@@ -738,12 +739,14 @@ class TestCoreInitializationContract:
             "update_notification_settings",
             "update_preferences",
             "set_selected_voice",
+            "set_briefing_schedule",
             "manage_linked_account",
         ]
         assert {tool.name for tool in category.tools if tool.always_gate} == {
             "update_notification_settings",
             "update_preferences",
             "set_selected_voice",
+            "set_briefing_schedule",
         }
         assert all(tool.destructive is False for tool in category.tools)
 

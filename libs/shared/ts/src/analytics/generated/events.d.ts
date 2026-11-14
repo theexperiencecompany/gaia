@@ -11,6 +11,11 @@ export type ServerEventName =
   | "bot:audio_transcribed"
   | "bot:chat_opened"
   | "bot:session_reset"
+  | "briefing:day_zero_hello_sent"
+  | "briefing:opened"
+  | "briefing:postmarks_viewed"
+  | "briefing:provisioned"
+  | "briefing:sent"
   | "browser:engine_switched"
   | "browser:handoff_resolved"
   | "browser:import_token_minted"
@@ -107,10 +112,16 @@ export type ServerEventName =
   | "reminder:updated"
   | "search:performed"
   | "session:artifact_pinned"
+  | "settings:briefing_schedule_updated"
+  | "settings:briefs_off_blocked"
+  | "settings:briefs_off_resolved"
   | "settings:chat_channel_priority_updated"
   | "settings:notifications_toggled"
   | "settings:preferences_changed"
   | "settings:quiet_hours_updated"
+  | "short_link:created"
+  | "short_link:opened"
+  | "short_link:revoked"
   | "skill:disabled"
   | "skill:enabled"
   | "skill:installed"
@@ -396,6 +407,43 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "platform": string;
+  };
+  "briefing:day_zero_hello_sent": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "platform": string;
+    "has_goal": boolean;
+  };
+  "briefing:opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "kind": "daily" | "weekly";
+  };
+  "briefing:postmarks_viewed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "collected": number;
+    "total": number;
+  };
+  "briefing:provisioned": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "held_for_goal": boolean;
+  };
+  "briefing:sent": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "kind": "daily" | "weekly";
+    "family": string;
+    "mood": string;
+    "item_count": number;
+    "channel_count": number;
+    "stamp_collected": boolean;
   };
   "browser:engine_switched": {
     "actor": "user" | "agent";
@@ -957,8 +1005,8 @@ export interface EventProperties {
     "href": "/pricing" | "https://docs.heygaia.io";
   };
   "navigation:sidebar_clicked": {
-    "destination": "/dashboard" | "/todos" | "/integrations" | "/workflows" | "/c";
-    "label": "Home" | "Tasks" | "Integrations" | "Workflows" | "Chats";
+    "destination": "/dashboard" | "/todos" | "/integrations" | "/workflows" | "/briefings" | "/c";
+    "label": "Home" | "Tasks" | "Integrations" | "Workflows" | "Briefings" | "Chats";
   };
   "notes:created": {
     "actor": "user" | "agent";
@@ -1218,6 +1266,29 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
+  "settings:briefing_schedule_updated": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "frequency": string;
+    "hour": number;
+    "via": "settings" | "agent";
+  };
+  "settings:briefs_off_blocked": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "workflow_count": number;
+    "via": "settings" | "agent";
+  };
+  "settings:briefs_off_resolved": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "moved_to_now": number;
+    "moved_to_silent": number;
+    "via": "settings" | "agent";
+  };
   "settings:chat_channel_priority_updated": {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
@@ -1256,6 +1327,24 @@ export interface EventProperties {
     "enabled": boolean;
     "start_hour": number;
     "end_hour": number;
+  };
+  "short_link:created": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+  };
+  "short_link:opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run";
+    "viewer_signed_in": boolean;
+  };
+  "short_link:revoked": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
   };
   "skill:disabled": {
     "actor": "user" | "agent";

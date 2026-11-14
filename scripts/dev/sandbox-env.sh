@@ -31,9 +31,13 @@ export ENV=development
 # request 401s ("Dev bypass target has no Mongo user"). Mint it once the API is
 # up:  curl -X POST localhost:8000/api/v1/dev/users \
 #        -H 'content-type: application/json' \
-#        -d '{"email":"dev@gaia.local","name":"Dev User"}'
-# Then impersonate anyone per-request with the X-Dev-User header.
-export DEV_AUTH_BYPASS_EMAIL=dev@gaia.local
+#        -d "{\"email\":\"$DEV_USER\",\"name\":\"Dev User\"}"
+# Then impersonate anyone per-request with the X-Dev-User header. DEV_USER is
+# defined once, in mise.toml [env]; a shell that has not activated mise reads it
+# from there, so sourcing this works in a fresh shell and exports it for that curl.
+DEV_USER="${DEV_USER:-$(mise -C "$(git rev-parse --show-toplevel)" exec -- printenv DEV_USER)}"
+export DEV_USER
+export DEV_AUTH_BYPASS_EMAIL="${DEV_USER:?DEV_USER did not resolve from mise.toml [env] - install mise and trust this repo}"
 
 # Backing services from sandbox-services.sh. The database the app actually uses
 # is GAIA — the name in this URI's path is not what the repositories read.

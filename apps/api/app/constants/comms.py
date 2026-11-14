@@ -9,6 +9,8 @@ from enum import StrEnum
 
 SILENCE_TAG = "SILENCE"
 EMOJI_TAG = "EMOJI"
+#: A result that can wait: its one line goes into the user's next morning brief.
+BRIEF_TAG = "BRIEF"
 #: The line format the tags replaced ("REACT: 👍"). Only the parser reads it:
 #: comms checkpoints written before the tags carry such turns, and a model
 #: imitating its own history still emits them.
@@ -19,9 +21,11 @@ REACTION_TAG_ALIASES = frozenset({LEGACY_REACT_KEYWORD, "REACTION"})
 #: The directives as the prompts show them to comms.
 SILENCE_DIRECTIVE = f"<{SILENCE_TAG}>brief reason</{SILENCE_TAG}>"
 EMOJI_DIRECTIVE = f"<{EMOJI_TAG}>one emoji</{EMOJI_TAG}>"
+BRIEF_DIRECTIVE = f"<{BRIEF_TAG}>one line for the morning brief</{BRIEF_TAG}>"
 
 
 class CommsDirectiveKind(StrEnum):
     REPLY = "reply"
     SILENCE = "silence"
     REACT = "react"
+    BRIEF = "brief"

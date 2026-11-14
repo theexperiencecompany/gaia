@@ -152,7 +152,7 @@ class HilTransport:
         provider: ProviderConfig,
     ) -> CaseRun:
         del cfg, tracker
-        email = f"hil-{uuid.uuid4().hex[:10]}@gaia.local"
+        email = f"delivered+hil-{uuid.uuid4().hex[:10]}@resend.dev"
         transcript: list[dict[str, str]] = []
         tool_calls: list[dict[str, Any]] = []
         cards: list[Card] = []
