@@ -6,7 +6,6 @@ import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
 import {
   getAllCommunityIntegrations,
-  getCommunityIntegrations,
   getIntegrationWorkflows,
   getNativeIntegrations,
   getPublicIntegration,
@@ -35,6 +34,8 @@ import {
 } from "./integrationMeta";
 
 export const revalidate = 60;
+
+const RELATED_INTEGRATIONS_LIMIT = 6;
 
 /**
  * Generate static params for all public integrations (community + native).
@@ -233,17 +234,16 @@ async function getAutomateCombos(
     }));
 }
 
-/** Same-category siblings for SSR related-links (excludes the current page). */
+/** Same-category siblings for SSR related-links (excludes the current page), most popular first. */
 async function getRelatedIntegrations(
   category: string,
   slug: string,
 ): Promise<CommunityIntegration[]> {
-  const page = await getCommunityIntegrations({
-    category,
-    sort: "popular",
-    limit: 7,
-  });
-  return (page?.integrations ?? [])
-    .filter((integration) => integration.slug !== slug)
-    .slice(0, 6);
+  const community = await getAllCommunityIntegrations();
+  return community
+    .filter(
+      (integration) =>
+        integration.category === category && integration.slug !== slug,
+    )
+    .slice(0, RELATED_INTEGRATIONS_LIMIT);
 }
