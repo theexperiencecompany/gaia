@@ -200,17 +200,6 @@ async def gather_completed_since(user_id: str, since: datetime) -> CompletedWork
     return work
 
 
-async def user_open_todo_summary(user_id: str) -> tuple[int, list[str]]:
-    """Count + first titles of the user's own open todos, for the brief's facts.
-
-    The voice pass gets these so an empty day can't be voiced as "all clear"
-    while the user's own list still has work in it.
-    """
-    docs = await todo_repository.list_open_user_todos(user_id, limit=50)
-    titles = [d.title or "untitled" for d in docs]
-    return len(titles), titles[:5]
-
-
 async def format_lookback_block(
     user_id: str, yesterday_payload: BriefingPayload | None, since: datetime
 ) -> str:
