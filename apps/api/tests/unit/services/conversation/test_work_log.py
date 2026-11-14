@@ -153,7 +153,9 @@ async def test_lost_work_is_logged_under_its_own_id_so_a_late_result_is_never_it
     await accept(rt.ports, CONVERSATION, USER, user("u1"))
     assert await record_work_carried(CONVERSATION, USER, "t1")
     await record_work_finished(CONVERSATION, USER, "t1", WorkOutcome.LOST, WorkReport(text=""))
-    assert (await rt.entries())[-1].entry.id == "work:t1:lost"
+    assert (await rt.entries())[-1].entry == WorkFinished(
+        id="work:t1:lost", task_id="t1", outcome=WorkOutcome.LOST, report=""
+    )
 
 
 async def test_carried_work_with_no_cause_is_caused_by_everything_logged(rt: Runtime) -> None:
@@ -212,6 +214,9 @@ async def test_a_run_belongs_to_the_logged_work_holding_the_conversation(
 ) -> None:
     await accept(rt.ports, CONVERSATION, USER, user("u1"))
     assert await record_work_carried(CONVERSATION, USER, "t1")
+    assert (await rt.entries())[-1].entry == WorkStarted(
+        id="work:t1", task_id="t1", cause_through=1
+    )
     await busy_lock.set(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}", build_lock_value("s9", "t1"))
     assert await work_of_run(CONVERSATION, USER, "s9") == "t1"
 

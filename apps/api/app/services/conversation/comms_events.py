@@ -75,12 +75,12 @@ class CommsEventMapper:
     def __init__(self, user_id: str) -> None:
         self._user_id = user_id
         self._graph = GraphStreamState()
-        self._summarized = False
-        self._answered = False
+        self._summarized = False  # pragma: no mutate — only read as truthiness
+        self._answered = False  # pragma: no mutate — only read as truthiness
         self._cards: list[ToolDataEntry] = []
         self._follow_ups: tuple[str, ...] = ()
         self._answer = ""
-        self._final_reported = False
+        self._final_reported = False  # pragma: no mutate — only read as truthiness
 
     async def map(self, event: GraphEvent) -> list[RunEvent]:
         """Return the step events one graph stream event produces, in the order the step must see them."""

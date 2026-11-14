@@ -67,6 +67,7 @@ from tests.unit.services.conversation.runtime_doubles import (
     Pause,
     RecordingFrames,
     Runtime,
+    ScriptItem,
     Started,
 )
 
@@ -296,6 +297,32 @@ class StepScenarios:
             (first.attempt_id, 0),
             (second.attempt_id, 0),
         ]
+        await assert_quiet(rt)
+
+    @pytest.mark.parametrize(
+        "ending",
+        [Finished(Replied("")), Fail(RuntimeError("model down"))],
+        ids=["replied-empty", "failed"],
+    )
+    async def test_a_run_ending_right_after_an_absorb_answers_the_absorbed_below_them(
+        self, rt: Runtime, ending: ScriptItem
+    ) -> None:
+        # Regression: the shown reply above u2 was settled as answering u2 when the model never wrote again.
+        rt.runner.script([text("on it"), Do(arrive(rt, user("u2"))), ModelOutput(True), ending])
+        await send(rt, user("u1"))
+        await run(rt)
+        entries = await rt.entries()
+        seq_of = {logged.entry.id: logged.seq for logged in entries}
+        reply_seq = {
+            logged.entry.reply_id: logged.seq
+            for logged in entries
+            if isinstance(logged.entry, Reply)
+        }
+        settled = await settles(rt)
+        assert [settle.answers for settle in settled] == [("u1",), ("u2",)]
+        for settle in settled:
+            assert all(reply_seq[settle.reply_id] > seq_of[answered] for answered in settle.answers)
+        assert [reply.text for reply in await replies(rt)][0] == "on it"
         await assert_quiet(rt)
 
     async def test_cards_shown_before_a_message_arrives_stay_above_it_and_the_answer_follows_it(

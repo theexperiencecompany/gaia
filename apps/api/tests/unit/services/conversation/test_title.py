@@ -6,6 +6,7 @@ import pytest
 
 from app.constants.chat import ConversationSource
 from app.models.conversation_log_models import UserMessage
+from app.models.message_models import SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation import title as title_module
 from app.services.conversation.runtime import install_runtime_ports
@@ -45,13 +46,18 @@ async def test_the_title_is_generated_as_the_agent_and_published_to_the_conversa
     titler = Titler()
     monkeypatch.setattr(title_module, "generate_and_update_description", titler)
     user = AuthenticatedUser(user_id="uid1")
+    workflow = SelectedWorkflowData(id="wf_1", title="Trip", description="plan", steps=[])
     first = UserMessage(
-        id="m1", text="plan my trip", surface=ConversationSource.WEB, selected_tool="search"
+        id="m1",
+        text="plan my trip",
+        surface=ConversationSource.WEB,
+        selected_tool="search",
+        selected_workflow=workflow,
     )
     with analytics_context(USERS_TURN):
         await title_conversation(CONVERSATION, user, first)
     assert titler.asked == [
-        (CONVERSATION, {"role": "user", "content": "plan my trip"}, user, "search", None)
+        (CONVERSATION, {"role": "user", "content": "plan my trip"}, user, "search", workflow)
     ]
     assert titler.actors == [Actor.AGENT]
     assert rt.frames.published == [ConversationUpdatedFrame(description="Trip to Pune")]
