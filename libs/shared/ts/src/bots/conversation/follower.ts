@@ -144,7 +144,7 @@ export class ConversationFollower {
         return;
       case FRAME_KIND.RETRACT:
         if (this.options.streaming && this.open?.attempts.has(frame.attempt_id))
-          await this.open.delivery.boundary(true);
+          await this.open.delivery.retract();
         return;
       case FRAME_KIND.STATE:
         this.renderTyping();
