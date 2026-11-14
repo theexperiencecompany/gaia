@@ -24309,7 +24309,7 @@
   "paths": {
     "/api/v1/approvals/batch-decision": {
       "post": {
-        "description": "Decide several pending approvals in one submission (the batch review).\n\nPer-item outcomes: one already-decided or expired approval never fails the\nrest. Only the first resolvable decision dispatches the paused executor; the\njoin round it wakes collects the remaining decisions durably.",
+        "description": "Decide several pending approvals in one submission (the batch review).\n\nEach item commits exactly once on the ledger; one already decided or expired never fails the rest.",
         "operationId": "approvals_post_batch_decision",
         "requestBody": {
           "content": {
@@ -24557,7 +24557,7 @@
     },
     "/api/v1/approvals/{approval_id}/decision": {
       "post": {
-        "description": "Apply a button decision and resume the paused run.\n\n``resolve_approval`` raises :class:`ApprovalRequestNotFoundError` (410) or\n:class:`ApprovalRequestForbiddenError` (403) \u2014 both ``AppError`` subclasses \u2014 so\nlate/duplicate or cross-user deliveries can't double-resolve a request.",
+        "description": "Commit a button decision on the approval ledger, run the approved action and wake its owner.\n\nA stale or gone row commits nothing and says so, so the client refreshes instead of trusting the tap.",
         "operationId": "approvals_post_approval_decision",
         "parameters": [
           {

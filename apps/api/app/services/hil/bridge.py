@@ -1,16 +1,14 @@
-"""Surface an approval request to the user's clients, and remember declines.
+"""Surface a ledger approval's card to the user's clients, and remember declines.
 
-The gate pauses its run with LangGraph's interrupt(); nothing here waits. This
-module only *publishes*: it records the pending approval durably, pushes the
-approval_request tool_data card onto the turn's SSE stream, and wakes clients
-that aren't watching it. The decision arrives out-of-band and is applied by
-app/services/hil/resolution.py, which resumes the paused thread.
+Nothing here waits: the gate registers the call on the approval ledger and this
+module publishes its approval_request card, held on a live run until the run
+ends, and wakes clients that are not watching.
 
 Frame delivery mirrors make_redis_stream_writer: every frame is both published
 to the replayable stream event log (live + reload) AND appended to the stream
 session's tool-event collector so the executor drain path persists it. The gate
 only fires inside the detached executor/subagent (comms holds no gated tools),
-where get_stream_writer is unavailable — so this dual write, keyed purely by
+where get_stream_writer is unavailable, so this dual write, keyed purely by
 stream_id, is what makes the card work at every nesting depth.
 """
 
@@ -41,15 +39,12 @@ from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
-from app.models.agent_config import SubagentResumeItem
-from app.models.hil_models import DeclinedCallRecord, HILApprovalRecord
+from app.models.hil_models import DeclinedCallRecord
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
 from app.services.analytics_service import capture
-from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.notify import notify_approval_pending
 from app.services.hil.policy import asks_every_time
 from app.services.hil.utils import GatedApproval, GatedCall
-from app.services.latency_metrics import observe_hil_pause
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import (
@@ -128,45 +123,6 @@ class SettledApprovalCard:
     integration_name: str | None
 
 
-async def publish_approval_request(
-    approval: GatedApproval,
-    *,
-    auto_reason: str | None = None,
-    subagent_resume: SubagentResumeItem | None = None,
-    subagent_thread_id: str | None = None,
-) -> None:
-    """Record the pending approval and surface its card — exactly once.
-
-    The gate re-enters this on every resume replay (the node re-runs from the
-    top), so the card and the notification are gated on whether the upsert
-    actually created the record. A replay is a no-op.
-    """
-    created = await upsert_pending_approval(
-        approval, subagent_thread_id=subagent_thread_id, subagent_resume=subagent_resume
-    )
-    if not created:
-        return
-
-    # Counted here — the one place a genuine pause is born (gated on `created`,
-    # so a resume replay is a no-op) — not at the decision, where it would count
-    # decisions and miss still-pending pauses.
-    observe_hil_pause()
-    log.set(
-        hil={
-            "approval_id": approval.approval_id,
-            "tool": approval.tool_call.name,
-            "stream_id": approval.stream_id,
-        }
-    )
-    await _publish_entry(
-        approval.stream_id,
-        await _pending_entry(approval, auto_reason=auto_reason),
-    )
-    _schedule_pending_notification(
-        approval.user_id, approval.conversation_id, approval.approval_id, approval.summary
-    )
-
-
 async def publish_ledger_request(
     approval: GatedApproval,
     *,
@@ -178,8 +134,7 @@ async def publish_ledger_request(
 ) -> None:
     """Surface a ledger PENDING card exactly once per registration.
 
-    Same approval_request wire shape as the barrier path, so clients render it
-    unchanged. On a live run the card is HELD (recorded on the session for the
+    On a live run the card is HELD (recorded on the session for the
     end-of-run drain, no SSE until then); background runs publish immediately,
     nobody being there to watch the stream.
     """
@@ -225,46 +180,6 @@ async def publish_ledger_request(
         return
     frame = {"tool_data": entry.model_dump(), "_held_approval": True}
     session.tool_events.append(frame)
-
-
-async def publish_decision(
-    record: HILApprovalRecord,
-    outcome: ApprovalOutcome,
-    *,
-    stream_id: str,
-    feedback: str | None,
-) -> None:
-    """Settle this approval's card, on the stream the user is watching NOW.
-
-    Never record.stream_id: that is the stream the request was raised on, and a run
-    that paused resumes on a fresh one (prepare_run_from_item), leaving the original
-    closed. The client follows the new stream via executor.stream_started, so a card
-    settled on the old one resolves where nobody is looking.
-    """
-    card = SettledApprovalCard(
-        approval_id=record.approval_id,
-        tool_call=GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
-        summary=record.summary,
-        integration_name=record.integration_name,
-    )
-    entry = _approval_entry(card, outcome, decider=record.decider, feedback=feedback)
-    await _publish_entry(stream_id, entry)
-
-
-async def publish_auto_approval(approval: GatedApproval, *, reason: str) -> None:
-    """Record and surface an action auto mode ran without asking.
-
-    The card is published already settled, so it needs no decision and wakes nobody — it
-    is a receipt, not a request. Auto mode should never mean the user cannot see what was
-    done in their name.
-    """
-    await record_auto_approval(approval, reason=reason)
-    await _publish_entry(
-        approval.stream_id,
-        _approval_entry(
-            approval, ApprovalOutcome.APPROVED, decider=ApprovalDecider.AUTO, auto_reason=reason
-        ),
-    )
 
 
 async def remember_declined_call(

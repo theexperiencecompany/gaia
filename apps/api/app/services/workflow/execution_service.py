@@ -38,16 +38,20 @@ class WorkflowFireOverlapped(Exception):
     A workflow owns one conversation across all runs. The overlapped fire is dropped
     before it spends anything, not handed over: the run in flight delivers the
     workflow's one result, and this fire is neither a success to record nor a
-    failure to notify. holder names what is in flight, for the record and the log.
+    failure to notify. holder names what is in flight, for the record and the log;
+    awaiting_approval says the log has that work waiting on the user's decision.
     """
 
-    def __init__(self, *, user_id: str, conversation_id: str, holder: str) -> None:
+    def __init__(
+        self, *, user_id: str, conversation_id: str, holder: str, awaiting_approval: bool = False
+    ) -> None:
         super().__init__(
             f"Workflow fire overlapped an in-flight run of the same workflow (holder: {holder})"
         )
         self.user_id = user_id
         self.conversation_id = conversation_id
         self.holder = holder
+        self.awaiting_approval = awaiting_approval
 
 
 class PlaybookReplayRefused(Exception):

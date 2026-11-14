@@ -94,7 +94,6 @@ from app.services.conversation.work_log import (
     record_work_finished,
 )
 from app.services.cost_budget import format_reset_date
-from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.notification_service import notification_service
 from app.services.triggers.batching import (
     coalesce_window_seconds,
@@ -1253,6 +1252,7 @@ async def _admit_fire_to_conversation(workflow: Workflow, workflow_id: str) -> _
     )
     admission = _Admission(conversation_id=conversation_id, token=str(uuid4()))
     holder = "another fire being admitted"
+    awaiting_approval = False
     if await redis_cache.client.set(
         admission.key, admission.token, ex=WORKFLOW_FIRE_ADMISSION_TTL, nx=True
     ):
@@ -1261,6 +1261,7 @@ async def _admit_fire_to_conversation(workflow: Workflow, workflow_id: str) -> _
             return admission
         await _give_back_admission(admission)
         holder = ",".join(work.task_id for work in state.work) or "an unanswered fire"
+        awaiting_approval = any(work.pending_approvals for work in state.work)
     log.warning(
         f"{LogTag.WORKER} Workflow fire skipped; another run of this workflow "
         "holds its conversation",
@@ -1269,7 +1270,10 @@ async def _admit_fire_to_conversation(workflow: Workflow, workflow_id: str) -> _
         lock_holder=holder,
     )
     raise WorkflowFireOverlapped(
-        user_id=workflow.user_id, conversation_id=conversation_id, holder=holder
+        user_id=workflow.user_id,
+        conversation_id=conversation_id,
+        holder=holder,
+        awaiting_approval=awaiting_approval,
     )
 
 
@@ -1421,7 +1425,7 @@ async def _record_overlapped_fire(
     # This fire never ran: the conversation was already claimed by another run, so
     # it dropped out before charging quota. The user is told nothing — except when
     # the holding run is parked on an approval, the one overlap they can clear.
-    awaiting_approval = bool(await list_pending_for_conversation(overlapped.conversation_id))
+    awaiting_approval = overlapped.awaiting_approval
     log.set_ns(
         "workflow",
         overlapped=True,

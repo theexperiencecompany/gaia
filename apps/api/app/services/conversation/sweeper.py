@@ -31,9 +31,7 @@ from app.services.conversation.work_log import (
     record_approval_decided,
     record_work_finished,
 )
-from app.services.hil.approvals_store import get_approval
 from app.services.hil.ledger_decide import cancel_ledger_approvals
-from app.services.hil.resolution import cancel_conversation_approvals
 from shared.py.analytics.catalog.hil import ApprovalOutcome, UndecidedOutcome
 from shared.py.wide_events import log
 
@@ -139,22 +137,16 @@ async def _undecidable_as(
 ) -> UndecidedOutcome | None:
     """Return how an approval nobody can decide ends, closing its record; None while one still can.
 
-    Expired when it ran out of time; withdrawn when neither store holds it, so its run is gone.
+    Expired when it ran out of time; withdrawn when the ledger does not hold it, so its run is gone.
     """
-    barrier = await get_approval(approval_id)
     ledger = await approval_ledger_repository.get_by_approval_id(approval_id)
-    pending = (barrier is not None and barrier.outcome is None) or (
-        ledger is not None and ledger.outcome is None
-    )
+    pending = ledger is not None and ledger.outcome is None
     if pending and not expired:
         return None
-    if barrier is not None or ledger is not None:
+    if ledger is not None:
         if not pending:
-            # Decided in its store: that decision's own path logs it and resumes the work.
+            # Decided on the ledger: that decision's own path logs it and resumes the work.
             return None
-        await cancel_conversation_approvals(
-            conversation_id, user_id, [approval_id], ApprovalOutcome.EXPIRED
-        )
         await cancel_ledger_approvals(
             conversation_id, user_id, [approval_id], ApprovalOutcome.EXPIRED
         )

@@ -52,13 +52,13 @@ from app.services.hil.bridge import (
     _publish_entry,
     settle_session_approval_frame,
 )
-from app.services.hil.policy import asks_every_time, resolved_tool_key
-from app.services.hil.preferences import set_tool_override
-from app.services.hil.resolution import (
+from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
     ToolAlwaysAsksError,
 )
+from app.services.hil.policy import asks_every_time, resolved_tool_key
+from app.services.hil.preferences import set_tool_override
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
 from app.services.hil.utils import GatedCall
 from shared.py.analytics import UserId
