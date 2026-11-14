@@ -49,13 +49,7 @@ from app.helpers.agent_helpers import (
 )
 from app.models.agent_config import AgentConfigurable
 from app.models.agent_models import agent_user_context
-from app.models.conversation_log_models import (
-    LoggedEntry,
-    ReplyOutcome,
-    TodoRun,
-    TodoWoke,
-    WorkOutcome,
-)
+from app.models.conversation_log_models import LoggedEntry, TodoRun, TodoWoke, WorkOutcome
 from app.models.user_models import AuthenticatedUser
 from app.services.checkpoint_thread_reset import reset_conversation_threads
 from app.services.conversation.log import accept
@@ -65,6 +59,7 @@ from app.services.conversation.work_log import record_work_carried
 from app.utils.background_tasks import spawn_background_task
 from app.utils.errors import ConversationNotFoundError
 from app.utils.user_preferences_utils import onboarding_preferences
+from shared.py.conversation_wire import ReplyOutcome
 from shared.py.wide_events import log
 
 TODO_EXECUTOR_TASK_NAME = "tracked-todo-executor-run"

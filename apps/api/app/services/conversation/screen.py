@@ -25,7 +25,6 @@ from app.models.conversation_log_models import (
     IntegrationNeeded,
     Notice,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     StopRequested,
     TodoWoke,
@@ -37,7 +36,6 @@ from app.models.conversation_log_models import (
 )
 from app.models.conversation_screen_models import (
     NoticeItem,
-    ReplyItem,
     ScreenItem,
     TodoWokeItem,
     UserItem,
@@ -45,9 +43,16 @@ from app.models.conversation_screen_models import (
     WorkItem,
     WorkStatus,
 )
-from app.models.message_models import ReplyToMessageData
-from app.models.tool_data_models import ToolDataEntry
+from app.services.conversation.tool_timeline import tool_timeline
+from app.utils.message_breaks import split_message_bubbles
 from shared.py.approvals import ApprovalOutcome
+from shared.py.conversation_wire import (
+    ReplyItem,
+    ReplyOutcome,
+    ReplyToMessageData,
+    ToolDataEntry,
+    ToolTimeline,
+)
 
 #: The card a tool call streams; a hand-off is one whose call is call_executor.
 TOOL_CALL_CARD = "tool_calls_data"
@@ -291,12 +296,14 @@ def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
         case WorkStarted(task_id=task_id) if read.root(task_id) == task_id:
             return _work_item(seq, at, task_id, read)
         case Notice() as notice:
+            cards = read.cards(notice.tool_data)
             return NoticeItem(
                 id=notice.id,
                 seq=seq,
                 at=at,
-                text=notice.text,
-                tool_data=read.cards(notice.tool_data),
+                bubbles=tuple(split_message_bubbles(notice.text)),
+                tool_data=cards,
+                timeline=tool_timeline(cards),
                 follow_up_actions=notice.follow_up_actions,
             )
         case WorkflowFired() as fired:
@@ -320,9 +327,16 @@ def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
             assert_never(unhandled)
 
 
+def work_timeline(handoff: ToolDataEntry | None, cards: Iterable[ToolDataEntry]) -> ToolTimeline:
+    """Return the timeline a work item shows: its hand-off's card leads its work's cards."""
+    return tool_timeline((*(() if handoff is None else (handoff,)), *cards))
+
+
 def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkItem:
     started = read.started[task_id]
     finished = read.finished.get(task_id)
+    cards = () if finished is None else read.cards(finished.tool_data)
+    handoff = None if started.handoff is None else read.handoffs.get(started.handoff)
     return WorkItem(
         id=f"work:{task_id}",
         seq=seq,
@@ -330,8 +344,9 @@ def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkIte
         task_id=task_id,
         status=read.work_status(task_id),
         asking=read.asking(task_id),
-        handoff=None if started.handoff is None else read.handoffs.get(started.handoff),
-        tool_data=() if finished is None else read.cards(finished.tool_data),
+        handoff=handoff,
+        tool_data=cards,
+        timeline=work_timeline(handoff, cards),
         image=None if finished is None else finished.image,
     )
 
@@ -363,12 +378,14 @@ def _reply_item(seq: int, at: AwareDatetime, reply: Reply, read: _Log) -> ReplyI
         seq, at = settled_at.seq, settled_at.at
     target = reply.quote_target if settle is None else settle.quote_target
     quoted = None if target is None else read.users.get(target)
+    shown = read.cards(own)
     return ReplyItem(
         id=reply.reply_id,
         seq=seq,
         at=at,
-        text=reply.text,
-        tool_data=read.cards(own),
+        bubbles=tuple(split_message_bubbles(reply.text)),
+        tool_data=shown,
+        timeline=tool_timeline(shown),
         follow_up_actions=reply.follow_up_actions,
         image=reply.image,
         pinned=reply.pinned,

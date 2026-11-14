@@ -118,7 +118,9 @@ export function messageToRetry(
   return asked?.kind === SCREEN_ITEM_KIND.USER ? asked.message : null;
 }
 
-/** The words a pinned or searched item shows: the user's message, or a reply's or notice's text. */
+/** The words a pinned or searched item shows: the user's message, or a reply's or notice's bubbles. */
 export function itemText(item: ConversationMessageHit["item"]): string {
-  return item.kind === SCREEN_ITEM_KIND.USER ? item.message.text : item.text;
+  return item.kind === SCREEN_ITEM_KIND.USER
+    ? item.message.text
+    : item.bubbles.join("\n\n");
 }

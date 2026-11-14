@@ -51,15 +51,6 @@ export {
   PROMPT_ACTION_LABEL,
   reconcileIntegrationStatus,
 } from "./integrationStatus";
-export {
-  NEW_MESSAGE_BREAK_TOKEN,
-  NEW_MESSAGE_BREAK_TOKEN_LENGTH,
-} from "./messageBreakUtils";
-export type { StreamingBubbles } from "./messageBubbles";
-export {
-  splitMessageByBreaks,
-  splitStreamingBubbles,
-} from "./messageBubbles";
 export type {
   OpenUIActionEventLike,
   OpenUIActionHandlers,

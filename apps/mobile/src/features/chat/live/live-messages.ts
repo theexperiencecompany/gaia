@@ -54,7 +54,8 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): Message {
       const streamed = draft?.content;
       return {
         ...placed,
-        text: streamed?.responseText ?? item.text,
+        text: (streamed?.bubbles ?? item.bubbles).join("\n\n"),
+        bubbles: streamed?.bubbles ?? item.bubbles,
         isUser: false,
         toolData: cards(streamed?.toolData ?? item.tool_data),
         followUpActions: [
@@ -87,7 +88,8 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): Message {
     case SCREEN_ITEM_KIND.NOTICE:
       return {
         ...placed,
-        text: item.text,
+        text: item.bubbles.join("\n\n"),
+        bubbles: item.bubbles,
         isUser: false,
         toolData: cards(item.tool_data),
         followUpActions: [...item.follow_up_actions],
@@ -121,7 +123,8 @@ function row(
       const { draft } = shown;
       return {
         id: draft.replyId ?? `draft:${draft.attemptId}`,
-        text: draft.content.responseText,
+        text: draft.content.bubbles.join("\n\n"),
+        bubbles: draft.content.bubbles,
         isUser: false,
         timestamp: now,
         toolData: cards(draft.content.toolData),

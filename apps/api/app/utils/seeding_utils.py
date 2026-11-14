@@ -1,15 +1,15 @@
 from typing import cast
 from uuid import uuid4
 
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
-from app.models.chat_models import ConversationModel, SystemPurpose, ToolDataEntry
+from app.models.chat_models import ConversationModel, SystemPurpose
 from app.models.conversation_log_models import Notice
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation_service import create_conversation_service
 from app.services.onboarding.first_conversation import FirstConversation
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, ToolDataEntry
 from shared.py.wide_events import log
 
 _HOLO_CARD_CONVERSATION_DESCRIPTION = "Your holo card is ready"

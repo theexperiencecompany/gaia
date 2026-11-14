@@ -22,7 +22,7 @@ from standardwebhooks.webhooks import Webhook
 
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.models.conversation_frame_models import EntryFrame
-from app.models.conversation_log_models import ReplyOutcome, ReplySettled
+from app.models.conversation_log_models import ReplySettled
 from app.models.conversation_send_models import (
     ConversationEvent,
     MessageAccepted,
@@ -51,6 +51,7 @@ from app.models.workflow_models import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import OnboardingStep
+from shared.py.conversation_wire import ReplyOutcome
 
 from .posthog_api import REPO_ROOT
 

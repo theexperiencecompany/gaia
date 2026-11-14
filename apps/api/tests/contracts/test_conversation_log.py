@@ -28,15 +28,14 @@ from app.models.conversation_log_models import (
     LoggedEntry,
     Rejected,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     UserMessage,
 )
 from app.models.conversation_models import ConversationDocument
-from app.models.conversation_screen_models import ReplyItem
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reducer import reduce
+from shared.py.conversation_wire import ReplyItem, ReplyOutcome
 from tests.contracts.conftest import HeldFlushes
 from tests.helpers import shown_items
 from tests.unit.services.conversation.log_helpers import (

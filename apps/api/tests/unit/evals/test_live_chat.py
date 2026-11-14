@@ -29,8 +29,6 @@ from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
     OutputFrame,
-    ReplyDeltaFrame,
-    ResponseEvent,
     RetractFrame,
     ToolDataEvent,
     WorkDeltaFrame,
@@ -39,10 +37,8 @@ from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
     Entry,
-    FailureReason,
     Reaction,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     UserMessage,
     WorkFinished,
@@ -50,8 +46,14 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.conversation_send_models import ConversationEvent
-from app.models.tool_data_models import ToolDataEntry
 from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from shared.py.conversation_wire import (
+    BubbleTextDelta,
+    FailureReason,
+    ReplyDeltaFrame,
+    ReplyOutcome,
+    ToolDataEntry,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -150,7 +152,10 @@ class TestReply:
 
     def test_streamed_text_stands_in_until_the_entry_is_filled(self) -> None:
         delta = ReplyDeltaFrame(
-            attempt_id="a1", reply_id=None, index=0, payload=ResponseEvent(response="typed so far")
+            attempt_id="a1",
+            reply_id=None,
+            index=0,
+            payload=BubbleTextDelta(bubble=0, text="typed so far"),
         )
         reader = read(user(), delta, reply(2, "r1", ""), settled(3, "r1"))
 
@@ -158,7 +163,10 @@ class TestReply:
 
     def test_a_retracted_attempt_leaves_no_text(self) -> None:
         delta = ReplyDeltaFrame(
-            attempt_id="a1", reply_id=None, index=0, payload=ResponseEvent(response="let me look")
+            attempt_id="a1",
+            reply_id=None,
+            index=0,
+            payload=BubbleTextDelta(bubble=0, text="let me look"),
         )
         reader = read(
             user(),

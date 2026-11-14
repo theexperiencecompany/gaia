@@ -29,11 +29,11 @@ from app.models.conversation_frame_models import (
 )
 from app.models.mcp_app_models import McpUiMetadata, McpUiResource
 from app.models.stream_events import MessageBoundaryPayload, ReasoningPayload, ToolOutputPayload
-from app.models.tool_data_models import ToolDataEntry
 from app.services.chat.chunks import normalize_custom_event
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import NodeMessagesUpdate, ToolCallView, format_tool_call_entry
 from app.utils.multimodal import MessageContent, extract_text_content, has_media_blocks
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log
 
 _PAYLOADS: TypeAdapter[StreamPayload] = TypeAdapter(StreamPayload)

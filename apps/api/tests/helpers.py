@@ -62,24 +62,11 @@ from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
-from app.models.conversation_log_models import (
-    LoggedEntry,
-    Reply,
-    ReplyOutcome,
-    ReplySettled,
-    UserMessage,
-)
+from app.models.conversation_log_models import LoggedEntry, Reply, ReplySettled, UserMessage
 from app.models.conversation_models import LogPage
-from app.models.conversation_screen_models import (
-    NoticeItem,
-    ReplyItem,
-    ScreenItem,
-    UserItem,
-    WorkItem,
-)
+from app.models.conversation_screen_models import NoticeItem, ScreenItem, UserItem, WorkItem
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
-from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.screen import project_screen
@@ -87,6 +74,7 @@ from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.timezone import Timezone
 from shared.py.approvals import ActionResult, ApprovalOutcome
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, ReplyItem, ReplyOutcome, ToolDataEntry
 from shared.py.wide_events import log, log_context
 
 #: A well-formed user id with no users row behind it.
@@ -401,12 +389,12 @@ def shown_items(page: LogPage) -> list[ScreenItem]:
 
 
 def item_text(item: ScreenItem) -> str:
-    """Return the words an item shows: the user's message, a reply's or a notice's text, else none."""
+    """Return the words an item shows: the user's message, a reply's or a notice's bubbles, else none."""
     match item:
         case UserItem(message=message):
             return message.text
-        case ReplyItem(text=text) | NoticeItem(text=text):
-            return text
+        case ReplyItem(bubbles=bubbles) | NoticeItem(bubbles=bubbles):
+            return NEW_MESSAGE_BREAKER.join(bubbles)
         case _:
             return ""
 

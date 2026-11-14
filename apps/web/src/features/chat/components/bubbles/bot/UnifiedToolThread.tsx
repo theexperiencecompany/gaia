@@ -9,27 +9,30 @@ import type {
 } from "@/config/registries/toolRegistry";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { type ApprovalReceipt, StepRow, SubagentRow } from "./SubagentRow";
-import { deriveTimelineItemKeys } from "./TextBubble/useSubagentSynthesis";
 
 /**
  * Unified timeline item — either a regular tool call or a subagent invocation.
  * Items are rendered in a single "Used N tools" collapsible, in order of emission.
  */
-/** SubagentGroupData enriched with input/output extracted from the "Handing off" tool call */
+/** A subagent group as the server's timeline gives it: its hand-off's task and result, and a key per call. */
 export interface EnrichedSubagentGroup extends SubagentGroupData {
   /** Task instruction from the handoff tool call's inputs.task */
   handoff_input?: string;
   /** Result from the handoff tool call's output */
   handoff_output?: string;
+  /** One stable React key per entry of tool_calls, in order. */
+  step_keys: string[];
+  nested_subagents: EnrichedSubagentGroup[];
 }
 
+/** One row of the server's timeline, read as the shape its kind names. */
 export type TimelineItem =
-  | { kind: "tool"; data: ToolCallEntry }
-  | { kind: "subagent"; data: EnrichedSubagentGroup };
+  | { kind: "tool"; key: string; data: ToolCallEntry }
+  | { kind: "subagent"; key: string; data: EnrichedSubagentGroup };
 
 interface UnifiedToolThreadProps {
   /** Ordered timeline of tool calls and subagent groups, in emission order. */
-  timeline: TimelineItem[];
+  timeline: readonly TimelineItem[];
   /** Whether the owning message's stream is still open — gates subagent
    *  spinners so a dropped/missing end event can't spin a card forever. */
   isStreaming: boolean;
@@ -155,7 +158,6 @@ export default function UnifiedToolThread({
   // One stable React key per timeline item — derived from stream-stable
   // structure (tool_call_id/subagent_id/anchored slot), never payload, so a
   // growing reasoning delta keeps its row's identity and `expanded` state.
-  const itemKeys = deriveTimelineItemKeys(timeline);
 
   if (timeline.length === 0) return null;
 
@@ -203,7 +205,7 @@ export default function UnifiedToolThread({
               if (item.kind === "tool") {
                 return (
                   <StepRow
-                    key={itemKeys[idx]}
+                    key={item.key}
                     call={item.data}
                     isLast={isLast}
                     pendingApprovalToolCallIds={pendingApprovalToolCallIds}
@@ -214,7 +216,7 @@ export default function UnifiedToolThread({
 
               return (
                 <SubagentRow
-                  key={itemKeys[idx]}
+                  key={item.key}
                   group={item.data}
                   isLast={isLast}
                   isStreaming={isStreaming}

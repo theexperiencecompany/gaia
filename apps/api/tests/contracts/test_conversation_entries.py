@@ -17,13 +17,7 @@ from app.db.repositories.conversation_entries import EntryWindow
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ConversationSyncItem
-from app.models.conversation_log_models import (
-    Entry,
-    Reply,
-    ReplyOutcome,
-    ReplySettled,
-    UserMessage,
-)
+from app.models.conversation_log_models import Entry, Reply, ReplySettled, UserMessage
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationDocument,
@@ -35,6 +29,7 @@ from app.utils.errors import (
     ConversationNotFoundError,
     ConversationStoreError,
 )
+from shared.py.conversation_wire import ReplyOutcome
 from tests.contracts.conftest import HeldFlushes
 
 # Every test here writes entries, so each needs the collection with its unique indexes.

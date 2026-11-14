@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 import contextlib
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import itertools
 from typing import cast
 
@@ -19,7 +19,7 @@ from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
     FollowUpActionsEvent,
-    ReplyDeltaFrame,
+    MessageBoundaryEvent,
     ResponseEvent,
     RetractFrame,
     StreamPayload,
@@ -33,13 +33,11 @@ from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
     Entry,
-    FailureReason,
     IntegrationConnected,
     LoggedEntry,
     MergeGroup,
     Reaction,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     StepClaim,
     StopRequested,
@@ -71,15 +69,26 @@ from app.services.conversation.ports import (
 )
 from app.services.conversation.reply_analytics import capture_reply_ended, spoken_context
 from app.services.conversation.reply_files import reply_files
+from app.services.conversation.reply_text import ReplyText, bubble_deltas
 from app.services.conversation.screen import handoff_call_id
 from app.services.conversation.step_view import StepView
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.tool_cards import fold_cards
+from app.services.conversation.tool_timeline import tool_timeline
 from app.services.conversation.verdict import merge_group, quote_target, verdict
 from app.utils.hot_path import first_text_gate, first_text_shown
 from app.utils.liveness import keep_proving
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
+from shared.py.conversation_wire import (
+    CardsDelta,
+    FailureReason,
+    FollowUpsDelta,
+    ReplyDelta,
+    ReplyDeltaFrame,
+    ReplyOutcome,
+    ToolDataEntry,
+)
 from shared.py.wide_events import log
 
 
@@ -131,6 +140,8 @@ class _Attempt:
     # A Stop or another group's input ended the run of joinable entries.
     closed: bool = False
     deltas: int = 0
+    # The current segment's text as it streamed, which its bubbles are split from.
+    text: ReplyText = field(default_factory=ReplyText)
     # The reply as settled once the answer was final; the run only adds follow-up suggestions after.
     answered: LoggedEntry | None = None
 
@@ -588,6 +599,7 @@ async def _next_segment(ports: RuntimePorts, attempt: _Attempt) -> None:
     attempt.reply_id = f"r{attempt.attempt_id}"
     attempt.progress = _Quiet(reason=CommitReason.MODEL_OUTPUT)
     attempt.deltas = 0
+    attempt.text = ReplyText()
 
 
 async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) -> None:
@@ -595,7 +607,11 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
 
     A hand-off alone opens nothing: the work's bubble, at its WorkStarted, shows it.
     """
-    folded = _fold(_base_reply(attempt), payload)
+    before = _base_reply(attempt)
+    bubbles_before = attempt.text.bubbles
+    if isinstance(payload, ResponseEvent | MessageBoundaryEvent):
+        attempt.text = attempt.text.take(payload)
+    folded = _fold(before, payload, attempt.text)
     if not isinstance(attempt.progress, _Showing) and _is_visible(payload):
         folded = await _opening_reply(ports, attempt, folded)
         opened = await _append_seen(ports, attempt, folded)
@@ -609,14 +625,39 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
     attempt.progress = (
         replace(shown, reply=folded) if isinstance(shown, _Showing) else _Drafting(reply=folded)
     )
-    delta = ReplyDeltaFrame(
-        attempt_id=attempt.attempt_id,
-        reply_id=attempt.reply_id,
-        index=attempt.deltas,
-        payload=payload,
-    )
-    attempt.deltas += 1
-    await ports.frames.publish(attempt.claim.conversation_id, delta)
+    for change in _reply_deltas(before, folded, payload, bubbles_before, attempt.text.bubbles):
+        delta = ReplyDeltaFrame(
+            attempt_id=attempt.attempt_id,
+            reply_id=attempt.reply_id,
+            index=attempt.deltas,
+            payload=change,
+        )
+        attempt.deltas += 1
+        await ports.frames.publish(attempt.claim.conversation_id, delta)
+
+
+def _reply_deltas(
+    before: Reply,
+    folded: Reply,
+    payload: StreamPayload,
+    shown: tuple[str, ...],
+    bubbles: tuple[str, ...],
+) -> list[ReplyDelta]:
+    """Return what a client shows changing: bubble text, the follow-ups, or the cards and their timeline."""
+    match payload:
+        case ResponseEvent() | MessageBoundaryEvent():
+            return [*bubble_deltas(shown, bubbles)]
+        case FollowUpActionsEvent():
+            return [FollowUpsDelta(follow_up_actions=folded.follow_up_actions)]
+    cards = _own_cards(folded)
+    if cards == _own_cards(before):
+        return []
+    return [CardsDelta(tool_data=cards, timeline=tool_timeline(cards))]
+
+
+def _own_cards(reply: Reply) -> tuple[ToolDataEntry, ...]:
+    """Return the cards the reply shows; a hand-off shows on its work."""
+    return tuple(card for card in reply.tool_data if handoff_call_id(card) is None)
 
 
 async def _end(ports: RuntimePorts, attempt: _Attempt, run: CommsRun, ending: _Ending) -> None:
@@ -915,11 +956,11 @@ def _narrated(attempt: _Attempt) -> tuple[str, ...]:
     )
 
 
-def _fold(reply: Reply, payload: StreamPayload) -> Reply:
-    """Return reply with one more shown delta folded in: text, follow-ups, or what its cards show."""
+def _fold(reply: Reply, payload: StreamPayload, text: ReplyText) -> Reply:
+    """Return reply with one more shown delta folded in: its text so far, follow-ups, or what its cards show."""
     match payload:
-        case ResponseEvent(response=response):
-            return reply.model_copy(update={"text": reply.text + response})
+        case ResponseEvent() | MessageBoundaryEvent():
+            return reply.model_copy(update={"text": text.text})
         case FollowUpActionsEvent(follow_up_actions=actions):
             return reply.model_copy(update={"follow_up_actions": tuple(actions)})
     cards = fold_cards([payload], seed=reply.tool_data).tool_data

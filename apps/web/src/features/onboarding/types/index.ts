@@ -1,9 +1,7 @@
-export interface Message {
-  id: string;
-  type: "bot" | "user";
-  content: string;
-  questionFieldName?: string;
-}
+/** A turn of the onboarding chat: GAIA's lines, one bubble each, or the user's answer. */
+export type Message =
+  | { id: string; type: "bot"; lines: string[]; questionFieldName?: string }
+  | { id: string; type: "user"; content: string; questionFieldName?: string };
 
 /** Who the copy is talking to; ``firstName`` is absent for email-only accounts. */
 export interface Addressee {

@@ -20,7 +20,6 @@ from app.db.repositories.workflow_executions import workflow_executions_reposito
 from app.db.repositories.workflows import workflow_repository
 from app.models.conversation_log_models import (
     Reply,
-    ReplyOutcome,
     ReplySettled,
     WorkFinished,
     WorkflowFired,
@@ -64,6 +63,7 @@ from shared.py.analytics.context import (
     analytics_context,
     current_analytics_context,
 )
+from shared.py.conversation_wire import ReplyOutcome
 from tests.helpers import UNKNOWN_USER_ID, users_get
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"

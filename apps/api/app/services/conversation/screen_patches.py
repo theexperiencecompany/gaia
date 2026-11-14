@@ -23,7 +23,13 @@ from app.models.conversation_screen_models import (
     ScreenUpdateFrame,
     WorkItem,
 )
-from app.services.conversation.screen import LIVE_WORK, Positioned, project_screen, work_root
+from app.services.conversation.screen import (
+    LIVE_WORK,
+    Positioned,
+    project_screen,
+    work_root,
+    work_timeline,
+)
 from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation.work_deltas import work_payloads
 
@@ -102,7 +108,13 @@ class ScreenTracker:
             return item
         chain = [task for task in self._started if work_root(self._started, task) == item.task_id]
         live = fold_cards(payload for task in chain for payload in self._work.get(task, ()))
-        return item.model_copy(update={"tool_data": live.tool_data, "image": live.image})
+        return item.model_copy(
+            update={
+                "tool_data": live.tool_data,
+                "timeline": work_timeline(item.handoff, live.tool_data),
+                "image": live.image,
+            }
+        )
 
     async def on_work(self, delta: WorkDeltaFrame) -> list[ScreenPatch]:
         """Take one published card of running work and return the update to its item."""

@@ -22,7 +22,6 @@ from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
-from app.models.chat_models import ToolDataEntry
 from app.models.oauth_models import OAuthIntegration
 from app.models.stream_events import (
     ResponseFrame,
@@ -34,6 +33,7 @@ from app.models.stream_events import (
 )
 from app.services.browser.captions import describe_action
 from app.services.mcp.mcp_client import get_mcp_client, mcp_tool_owner
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log
 
 # Type for the stream_writer callable used across agent execution paths.

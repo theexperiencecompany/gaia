@@ -26,8 +26,6 @@ from app.models.conversation_frame_models import (
     EntryUpdatedFrame,
     FollowUpActionsEvent,
     OutputFrame,
-    ReplyDeltaFrame,
-    ResponseEvent,
     RetractFrame,
     ToolDataEvent,
     WorkDeltaFrame,
@@ -37,14 +35,23 @@ from app.models.conversation_log_models import (
     ApprovalRequested,
     Entry,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     UserMessage,
     WorkFinished,
     WorkStarted,
 )
 from app.models.conversation_send_models import ConversationEvent, MessageAccepted
-from app.models.tool_data_models import ToolDataEntry
+from shared.py.conversation_wire import (
+    NEW_MESSAGE_BREAKER,
+    BubblesDelta,
+    BubbleTextDelta,
+    CardsDelta,
+    FollowUpsDelta,
+    ReplyDelta,
+    ReplyDeltaFrame,
+    ReplyOutcome,
+    ToolDataEntry,
+)
 
 #: A turn that produced no prose at all. Scripts test replies against this
 #: sentinel, so it has to be one string, not one per harness.
@@ -201,12 +208,8 @@ class TurnReader:
                 self._turn.last_seq = max(self._turn.last_seq, frame.seq)
                 self._entry(frame.entry)
             case ReplyDeltaFrame():
-                self._kind(f"{frame.kind.value}:{frame.payload.type.value}")
-                if isinstance(frame.payload, ResponseEvent):
-                    self._attempt_text.setdefault(frame.attempt_id, []).append(
-                        frame.payload.response
-                    )
-                self._payload(frame.payload)
+                self._kind(f"{frame.kind.value}:{frame.payload.type}")
+                self._reply_delta(frame.attempt_id, frame.payload)
             case WorkDeltaFrame():
                 self._kind(f"{frame.kind.value}:{frame.payload.type.value}")
                 if frame.task_id in self._live_tasks:
@@ -219,6 +222,21 @@ class TurnReader:
     def _kind(self, kind: str) -> None:
         if self._collect_frame_kinds:
             self._kinds.add(kind)
+
+    def _reply_delta(self, attempt_id: str, payload: ReplyDelta) -> None:
+        bubbles = self._attempt_text.setdefault(attempt_id, [])
+        match payload:
+            case BubbleTextDelta(bubble=bubble, text=text):
+                if bubble == len(bubbles):
+                    bubbles.append("")
+                bubbles[bubble] += text
+            case BubblesDelta(bubbles=now):
+                self._attempt_text[attempt_id] = list(now)
+            case CardsDelta(tool_data=cards):
+                for card in cards:
+                    self._card(card)
+            case FollowUpsDelta(follow_up_actions=actions):
+                self._turn.follow_up_actions = list(actions)
 
     def _payload(self, payload: object) -> None:
         if isinstance(payload, ToolDataEvent):
@@ -304,8 +322,8 @@ class TurnReader:
         if text.strip():
             return text.strip()
         streamed = [
-            "".join(chunks)
-            for attempt, chunks in self._attempt_text.items()
+            NEW_MESSAGE_BREAKER.join(bubbles)
+            for attempt, bubbles in self._attempt_text.items()
             if self._attempt_reply.get(attempt) == reply_id
         ]
         return "".join(streamed).strip()

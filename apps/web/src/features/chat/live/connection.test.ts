@@ -117,7 +117,7 @@ const replyText = (attemptId: string, index: number, text: string) => ({
   attempt_id: attemptId,
   reply_id: null,
   index,
-  payload: { type: "response", response: text },
+  payload: { type: "bubble_text", bubble: 0, text },
 });
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -156,7 +156,7 @@ describe("following a conversation's events", () => {
 
     expect(ids()).toEqual(["m1", "r1"]);
     expect(view().display).toBe("thinking");
-    expect(view().drafts[0]?.content.responseText).toBe("Hello");
+    expect(view().drafts[0]?.content.bubbles).toEqual(["Hello"]);
   });
 
   it("titles the conversation from its title update, leaving the view as it was", async () => {
@@ -210,7 +210,7 @@ describe("following a conversation's events", () => {
     replay.push(screenOf(userItem("m1", 1)));
     replay.push(replyText("a1", 1, "two "));
     replay.push(replyText("a1", 2, "three"));
-    expect(view().drafts[0]?.content.responseText).toBe("one two three");
+    expect(view().drafts[0]?.content.bubbles).toEqual(["one two three"]);
   });
 
   it("waits on a conversation the server does not have yet and connects once a send lands", async () => {
@@ -401,7 +401,7 @@ describe("reload", () => {
     lastStream().push(insert(userItem("m-unsent", 4, "second")));
     lastStream().push(replyText("a2", 0, "on it"));
     expect(view().pending).toEqual([]);
-    expect(view().drafts[0]?.content.responseText).toBe("on it");
+    expect(view().drafts[0]?.content.bubbles).toEqual(["on it"]);
   });
 
   it("saves the screen and the sends it holds", async () => {

@@ -44,7 +44,6 @@ from app.constants.hil import SUBAGENT_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, RunningSubagent, SubagentKind
-from app.models.chat_models import ToolDataEntry
 from app.models.conversation_log_models import (
     Entry,
     WorkFinished,
@@ -56,6 +55,7 @@ from app.services.conversation.runtime import install_runtime_ports
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
 from shared.py.approvals import ApprovalOutcome
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log
 from tests.helpers import WideEventRecorder, captured_wide_event
 from tests.unit.services.conversation.log_helpers import user

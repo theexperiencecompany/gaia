@@ -28,7 +28,6 @@ from app.constants.log_tags import LogTag
 from app.core.request_context import resolve_caller
 from app.models.agent_config import read_run_metadata
 from app.models.agent_models import current_stream_writer
-from app.models.chat_models import ToolDataEntry
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.services.cost_budget import (
@@ -46,6 +45,7 @@ from app.services.limit_upsell import (
 )
 from app.services.payments.payment_service import payment_service
 from shared.py.analytics import UserId
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log
 
 # The LangChain-injected parameter every @with_rate_limiting tool must declare:

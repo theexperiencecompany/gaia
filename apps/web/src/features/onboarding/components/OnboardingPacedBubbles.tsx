@@ -7,7 +7,6 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
-import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 
@@ -64,7 +63,7 @@ export function OnboardingPacedBubbles({
       </AnimatePresence>
       {showLines ? (
         <OnboardingBotBubble
-          text={lines.join(NEW_MESSAGE_BREAK_TOKEN)}
+          lines={lines}
           partChoreography={phase === "done" ? undefined : LINE_CHOREOGRAPHY}
         />
       ) : (

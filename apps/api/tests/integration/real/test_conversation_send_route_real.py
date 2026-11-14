@@ -18,7 +18,7 @@ from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationSource
-from app.models.conversation_frame_models import ConversationUpdatedFrame, StateFrame
+from app.models.conversation_frame_models import StateFrame
 from app.models.conversation_log_models import BargeIn, DisplayState, UserMessage
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
@@ -30,6 +30,7 @@ from app.services.conversation.reply_files import ReplyFile
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
 from app.services.conversation.send import submit_bot_message
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
+from shared.py.conversation_wire import ConversationUpdatedFrame
 from shared.py.wide_events import _spawned_tasks
 from tests.conftest import FAKE_USER
 from tests.helpers import log_history

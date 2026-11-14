@@ -17,10 +17,8 @@ from app.models.conversation_frame_models import (
 )
 from app.models.conversation_log_models import (
     Entry,
-    FailureReason,
     LoggedEntry,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     WorkFinished,
     WorkOutcome,
@@ -29,16 +27,15 @@ from app.models.conversation_log_models import (
 from app.models.conversation_screen_models import (
     ScreenInsertFrame,
     ScreenItem,
-    ScreenItemKind,
     ScreenPatch,
     ScreenUpdateFrame,
     WorkItem,
     WorkStatus,
 )
 from app.models.conversation_send_models import ConversationEvent
-from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
 from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
+from shared.py.conversation_wire import FailureReason, ReplyOutcome, ScreenItemKind, ToolDataEntry
 from tests.unit.services.conversation.log_helpers import asked, decided, logged, notice, user
 
 

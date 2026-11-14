@@ -29,14 +29,7 @@ from app.constants.conversation import LOG_SEQ
 from app.core.lazy_loader import providers
 from app.models.agent_models import AgentRunnableConfig
 from app.models.conversation_frame_models import ToolDataEvent
-from app.models.conversation_log_models import (
-    Batch,
-    LoggedEntry,
-    Reply,
-    ReplyOutcome,
-    ReplySettled,
-    StepClaim,
-)
+from app.models.conversation_log_models import Batch, LoggedEntry, Reply, ReplySettled, StepClaim
 from app.services.conversation.comms_runner import CommsGraphRun, CommsGraphRunner, CommsTurn
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
@@ -53,6 +46,7 @@ from app.services.conversation.step import advance
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext
+from shared.py.conversation_wire import ReplyOutcome
 from tests.e2e._harness.graph_run import RecordingFakeModel, comms_graph, memory_engine_of
 from tests.unit.services.conversation.log_helpers import logged, stop, user
 from tests.unit.services.conversation.runtime_doubles import Runtime
