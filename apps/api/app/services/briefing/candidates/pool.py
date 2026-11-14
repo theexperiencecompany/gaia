@@ -17,6 +17,7 @@ from app.services.briefing.candidates.held import held_candidates
 from app.services.briefing.candidates.reminders import reminder_candidates
 from app.services.briefing.candidates.subjects import same_text_key
 from app.services.briefing.candidates.tracked import (
+    due_todo_candidates,
     gaia_work_candidates,
     user_done_candidates,
     waiting_candidates,
@@ -130,11 +131,13 @@ async def gather_candidates(
     """Run every producer, needs-you sources first, and number what they found."""
     work = sources.work
     day_start = day_start_utc(clock)
+    day_end = day_start_utc(clock, days_ago=-1)
     open_todo_ids = {doc.id for doc in [*work.blocked, *work.failed, *work.running]}
     candidates = [
         *waiting_candidates(work),
         *await approval_candidates(user_id, now, open_todo_ids),
-        *await reminder_candidates(user_id, day_start, day_start_utc(clock, days_ago=-1)),
+        *await reminder_candidates(user_id, day_start, day_end),
+        *await due_todo_candidates(user_id, day_end, work),
         *await failed_run_candidates(user_id, since),
         *app_signal_candidates(sources.scouts.remembered, now),
         *await held_candidates(user_id, sources.held),

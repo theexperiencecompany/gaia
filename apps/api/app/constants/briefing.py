@@ -131,6 +131,9 @@ RECENT_OPENINGS_SHOWN: Final[int] = 5
 # mend shows it what it wrote), then the run fails rather than ship it.
 MAX_VOICE_ATTEMPTS: Final[int] = 2
 
+# The user's own todos due today or overdue the daily brief weighs as candidates.
+DUE_TODO_CANDIDATES_LIMIT: Final[int] = 20
+
 # Events the weekly recap carries from the week ahead.
 WEEK_LIST_LIMIT: Final[int] = 5
 
