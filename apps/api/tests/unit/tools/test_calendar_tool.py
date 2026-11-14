@@ -120,6 +120,13 @@ def _no_captured_server_loop() -> Iterator[None]:
     reset_captured_loop()
 
 
+@pytest.fixture(autouse=True)
+def _quiet_client_announce() -> Iterator[None]:
+    """Stand in for the socket announce a write makes: on _run_sync's fresh loop a real Redis client, bound to another, fails."""
+    with patch(f"{MODULE}.calendar_service.announce_calendar_changed", new_callable=AsyncMock):
+        yield
+
+
 @pytest.fixture
 def writer():
     """Capture everything the tool pushes to the LangGraph stream."""
