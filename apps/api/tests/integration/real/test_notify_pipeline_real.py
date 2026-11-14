@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
+from typing import TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
@@ -62,6 +63,21 @@ class Delivered:
     socket_events: list[dict[str, object]] = field(default_factory=list)
     # Conversation-list pushes ride the same socket but belong to the log, not the notification.
     list_pushes: list[dict[str, object]] = field(default_factory=list)
+
+    def socket_event_types(self) -> list[str]:
+        """Return the type of every socket event, sorted."""
+        types: list[str] = []
+        for event in self.socket_events:
+            event_type = event["type"]
+            assert isinstance(event_type, str)
+            types.append(event_type)
+        return sorted(types)
+
+
+class _StoredNotice(TypedDict):
+    conversation_id: str
+    seq: int
+    text: str
 
 
 @pytest.fixture
@@ -150,7 +166,7 @@ async def _notifications(mongo_db, user_id: str) -> list[dict[str, object]]:
     return await mongo_db["notifications"].find({"user_id": user_id}).to_list(None)
 
 
-async def _notices(mongo_db) -> list[dict[str, object]]:
+async def _notices(mongo_db) -> list[_StoredNotice]:
     return await mongo_db[CONVERSATION_ENTRIES_COLLECTION].find({"kind": "notice"}).to_list(None)
 
 
@@ -192,7 +208,7 @@ async def test_a_retried_reminder_sends_one_notification_one_bot_notice_and_no_p
     assert envelope.follow.after_seq == notice_seq - 1
     # Only an approval wakes the phone (f399ea57e2).
     assert delivered.pushes == []
-    assert [e["type"] for e in delivered.socket_events] == ["notification.delivered"]
+    assert delivered.socket_event_types() == ["notification.delivered"]
 
 
 @pytest.mark.parametrize(
