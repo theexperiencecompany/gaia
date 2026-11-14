@@ -24,35 +24,28 @@ from typing import Any
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.errors import GraphBubbleUp
-from langgraph.types import Command, interrupt
+from langgraph.types import Command
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.execute.dispatch import _validate_args
 from app.constants.hil import (
     HIL_EXEMPT_TOOLS,
     HIL_STATUS_KWARG,
-    SUBAGENT_RESUME_CONFIG_KEY,
     HILToolMessageStatus,
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.approval_ledger import approval_ledger_repository
-from app.models.agent_models import AgentConfigurable, SubagentResumeItem
+from app.models.agent_models import AgentConfigurable
 from app.models.execute_models import DispatchError
 from app.models.hil_models import (
     ApprovalLedgerDocument,
     ApprovalProposal,
-    HILApprovalRecord,
 )
 from app.services.analytics_service import capture
 from app.services.conversation.work_log import record_approval_requested, work_of_run
-from app.services.feature_flags import is_hil_ledger_enabled, is_jev_judge_enabled
-from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
     GateVerdict,
     build_summary,
-    publish_approval_request,
-    publish_auto_approval,
-    publish_decision,
     publish_ledger_request,
     recall_declined_call,
     remember_declined_call,
@@ -74,13 +67,12 @@ from app.services.hil.policy import (
     has_pausing_sibling,
     resolve_policy,
 )
-from app.services.hil.preferences import get_hil_preferences, set_tool_override
+from app.services.hil.preferences import get_hil_preferences
 from app.services.hil.prompts import (
     AUTO_REJECT_TEMPLATE,
     DENIED_TEMPLATE,
     GATE_ERROR_TEMPLATE,
     TIMEOUT_TEMPLATE,
-    UNPAUSABLE_DENIAL_TEMPLATE,
 )
 from app.services.hil.tool_key import hil_tool_key, mcp_tool_identity
 from app.services.hil.utils import (
@@ -113,73 +105,21 @@ class GateContext:
     # The user's own recent turns, oldest first, the live request last. May be empty on
     # entry paths with no user message; the intent judge treats that as unverifiable.
     user_messages: list[str]
-    # Whether this run can pause for approval. A background/queued run carries an identity
-    # but has no live client to answer, so a gated call there is failed closed, not asked.
-    pausable: bool
+    # A background run has no live client watching: its cards publish at once, not at the run's end.
+    background: bool
     # Background owner parked on any approval this run registers, for the resume
     # driver: ("workflow"|"todo", the workflow/todo id). Empty on live runs,
     # which resume through the executor inbox instead of re-enqueueing.
     owner_run_type: str = ""
     owner_id: str = ""
-    # A background subagent's own run: its thread and the recipe that resumes it,
-    # filed on every approval it raises so a decision can resume it from anywhere.
-    subagent_thread_id: str | None = None
-    subagent_resume: SubagentResumeItem | None = None
-
-
-@dataclass(frozen=True)
-class _Pending:
-    """A call whose card is up and whose decision has not landed yet."""
-
-    approval_id: str
-    tool_name: str
-    summary: str
-    integration_name: str | None
 
 
 async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
-    """HIL's verdict for one call. None clears it to run.
+    """HIL's verdict for one call: None clears it to run; a ToolMessage is its whole result.
 
-    A ToolMessage IS the call's whole result — denied, timed out, or the gate itself
-    failed, and nothing will execute. Pauses here when the user hasn't answered yet;
-    the run checkpoints and EXITS on that interrupt(), and on resume the node
-    replays from the top and this same call finds its decision on the record.
+    A gated call registers on the approval ledger and returns at once: the model is
+    told it waits on the user, and the decision runs the action later, never this run.
     """
-    verdict = await _verdict(request)
-    if not isinstance(verdict, _Pending):
-        return verdict
-
-    interrupt(
-        {
-            "type": "hil_approval",
-            "approval_id": verdict.approval_id,
-            "tool_name": verdict.tool_name,
-            "summary": verdict.summary,
-            "integration_name": verdict.integration_name,
-        }
-    )
-    # Reached only on the replay, with the decision now durable on the record. Deciding
-    # again (rather than trusting the resume value) is what lets ONE decision wake a run
-    # holding several outstanding approvals without any of them being misapplied.
-    settled = await _verdict(request)
-    if isinstance(settled, _Pending):
-        log.error(
-            f"{LogTag.HIL} resumed with no decision on its record",
-            approval_id=settled.approval_id,
-            tool_name=settled.tool_name,
-        )
-        return _tool_message(
-            unpack_tool_call(request),
-            f"{settled.tool_name} woke with no decision on its record "
-            f"({settled.approval_id}) — a system error, not a denial. The action "
-            "was NOT performed. Report the stall and continue without it.",
-            "error",
-        )
-    return settled
-
-
-async def _verdict(request: ToolCallRequest) -> ToolMessage | _Pending | None:
-    """Where one call stands with HIL: cleared (None), blocked, or awaiting a user."""
     call = unpack_tool_call(request)
     if call.name in HIL_EXEMPT_TOOLS:
         return None
@@ -208,18 +148,7 @@ async def _verdict(request: ToolCallRequest) -> ToolMessage | _Pending | None:
 
     if policy == "allow":
         return None
-    if await is_hil_ledger_enabled(context.user_id):
-        # Executor-free path: register PENDING and return. No interrupt, no
-        # pause — background runs gate exactly like live ones, which is the
-        # whole point (pausable is irrelevant when nobody needs to pause).
-        return await _decide_ledger(request, context, call, policy)
-    if not context.pausable:
-        # The call is gated and HIL is on, but this run (background subagent, workflow,
-        # scheduled task) has no live client to approve it. Fail closed: refuse rather
-        # than run it unapproved or stall on an interrupt nothing can resume.
-        log.info(f"{LogTag.HIL} Denying gated : run cannot pause for approval", name=call.name)
-        return _unpausable_denial_message(call)
-    return await _decide(request, context, policy, call)
+    return await _decide_ledger(request, context, call, policy)
 
 
 async def _decide_ledger(
@@ -319,7 +248,7 @@ async def _decide_ledger(
             owner_id=context.owner_id,
             # Live runs hold the card until the run ends (a mid-run revoke is
             # never shown); background runs have no watcher, so publish now.
-            live=context.pausable,
+            live=not context.background,
         )
         # "allow" returned before this branch, so the only policies left are
         # the two that explain WHY this call is gated — the model deserves
@@ -332,7 +261,7 @@ async def _decide_ledger(
         return _tool_message(
             call,
             f"PENDING {ap_id}: {summary} queued — {why}. "
-            f"{_pending_guidance(ap_id, background=not context.pausable)}"
+            f"{_pending_guidance(ap_id, background=context.background)}"
             f"{deny_note}{auto_note}",
             "pending",
         )
@@ -351,10 +280,9 @@ async def _decide_ledger(
 def read_gate_context(request: ToolCallRequest) -> GateContext | None:
     """Return the run's approval identity, or None when the user cannot be identified.
 
-    A background/queued run *is* returned (with pausable=False): it has no live client
-    to approve, so the gate cannot ask — but a gated call there must be failed closed, not
-    silently allowed, which is why it is no longer discarded here. Only a run missing an
-    identity field is None, since without a user there is no policy to resolve.
+    A background run is returned with the workflow or todo that owns it, so its decision
+    wakes that work. Only a run missing an identity field is None: without a user there is
+    no policy to resolve.
     """
     configurable: AgentConfigurable = configurable_of(request)
     stream_id = configurable.get("stream_id")
@@ -365,7 +293,7 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
     conversation_id = configurable.get("conversation_id")
     if not stream_id or not user_id or not conversation_id:
         return None
-    pausable = configurable.get("execution_mode") != "background"
+    background = configurable.get("execution_mode") == "background"
     # Inherited unchanged from comms (see build_agent_config): inside the executor or a
     # subagent the local task is an agent-authored paraphrase, never the user's words.
     raw = configurable.get("user_messages")
@@ -374,161 +302,29 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
     # registers so the verdict can wake the right unit of work. Live runs leave
     # it empty — they resume through the executor inbox, never re-enqueueing.
     owner_run_type, owner_id = "", ""
-    if not pausable:
+    if background:
         workflow_id = configurable.get("workflow_id") or ""
         todo_id = configurable.get("active_todo_id") or ""
         if workflow_id:
             owner_run_type, owner_id = "workflow", workflow_id
         elif todo_id:
             owner_run_type, owner_id = "todo", todo_id
-    subagent_resume = configurable.get(SUBAGENT_RESUME_CONFIG_KEY)
     return GateContext(
-        stream_id,
-        user_id,
-        conversation_id,
-        turns,
-        pausable,
-        owner_run_type,
-        owner_id,
-        subagent_thread_id=configurable.get("thread_id") if subagent_resume else None,
-        subagent_resume=subagent_resume,
+        stream_id, user_id, conversation_id, turns, background, owner_run_type, owner_id
     )
-
-
-async def _decide(
-    request: ToolCallRequest,
-    context: GateContext,
-    policy: GatingPolicy,
-    call: GatedCall,
-) -> ToolMessage | _Pending | None:
-    """Surface the call and read where its decision stands.
-
-    Idempotent by construction, because every pass re-reads the record rather than
-    remembering anything: a replay re-publishes no card and re-runs no intent judge.
-    """
-    approval_id = approval_id_for(context.conversation_id, call.id)
-
-    try:
-        # This call's OWN decision comes first: the record is keyed by tool_call_id,
-        # unlike decline memory (keyed by name+args) — reading it second would let a
-        # decline shadow the very decision the user just gave.
-        record = await get_approval(approval_id)
-        if record is not None and record.outcome is not None:
-            return await _apply(record, request, context, call)
-
-        # A RETRY of something the user already declined this turn. Re-asking is the loop
-        # we want to kill (the executor never learns its subagent was declined, so it
-        # retries) — auto-deny with their original feedback instead.
-        declined = await recall_declined_call(context.stream_id, call.name, call.args)
-        if declined is not None:
-            log.info(f"{LogTag.HIL} auto-denying : declined earlier this turn", name=call.name)
-            if declined.decider is ApprovalDecider.AUTO:
-                return _auto_reject_message(call, declined.feedback or "")
-            return _refusal_message(call, declined)
-
-        invalid = await _invalid_args_message(request, context.user_id, call)
-        if invalid is not None:
-            return invalid
-
-        integration_name = await _integration_name_for(request, context.user_id, call.name)
-        summary = build_summary(call.name, call.args, integration_name, call.account)
-
-        decision: IntentDecision | None = None
-        if policy == "auto":
-            decision = await _judge(request, context, call, record, summary)
-
-        approval = GatedApproval(
-            approval_id=approval_id,
-            stream_id=context.stream_id,
-            user_id=context.user_id,
-            conversation_id=context.conversation_id,
-            tool_call=call,
-            summary=summary,
-            integration_name=integration_name,
-        )
-        if decision is not None and decision.outcome == "accept":
-            log.info(
-                f"{LogTag.HIL} auto-approved",
-                call_name=call.name,
-                reason=decision.reason,
-            )
-            # The receipt says GAIA decided to act, and why. It is not a claim that the
-            # action happened — the tool node runs it afterwards, like any other call.
-            await publish_auto_approval(approval, reason=decision.reason)
-            return None
-
-        if decision is not None and decision.outcome == "reject":
-            log.info(
-                f"{LogTag.HIL} auto-rejected",
-                call_name=call.name,
-                reason=decision.reason,
-            )
-            return await _auto_reject(context, call, decision.reason)
-
-        auto_reason = (
-            f"Auto mode wasn't sure: {decision.reason}"
-            if decision is not None and decision.outcome == "ask" and decision.reason
-            else None
-        )
-        await publish_approval_request(
-            approval,
-            auto_reason=auto_reason,
-            subagent_resume=context.subagent_resume,
-            subagent_thread_id=context.subagent_thread_id,
-        )
-        return _Pending(approval_id, call.name, summary, integration_name)
-    except GraphBubbleUp:
-        raise
-    except Exception as e:  # an approval gate must fail closed
-        log.error(
-            f"{LogTag.HIL} Could not publish approval for ; denying",
-            name=call.name,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return _gate_error_message(call)
-
-
-async def _apply(
-    record: HILApprovalRecord, request: ToolCallRequest, context: GateContext, call: GatedCall
-) -> ToolMessage | None:
-    """Turn a settled record into the call's fate: None runs it, a message blocks it.
-
-    The record is the decision — never the resume payload, which is only a wake-up.
-    """
-    outcome = _verdict_from_record(record)
-    await publish_decision(
-        record, outcome.outcome, stream_id=context.stream_id, feedback=outcome.feedback
-    )
-    if outcome.outcome is ApprovalOutcome.APPROVED:
-        if outcome.scope == "always_tool":
-            tool_key = await gated_tool_key(request, context.user_id, call.name)
-            await set_tool_override(context.user_id, tool_key, False)
-        return None
-
-    # Remember an explicit decline so a retry of the same call this turn is auto-denied
-    # without prompting again. Timeouts are not remembered — the user may just be away.
-    if outcome.outcome is ApprovalOutcome.DENIED:
-        await remember_declined_call(context.stream_id, call.name, call.args, outcome.feedback)
-    return _refusal_message(call, outcome)
 
 
 async def _judge(
     request: ToolCallRequest,
     context: GateContext,
     call: GatedCall,
-    record: HILApprovalRecord | None,
     summary: str,
 ) -> IntentDecision | None:
     """Ask the intent judge whether the user's request authorizes this call.
 
-    None means "don't auto-approve, don't spend a judge call": either a record
-    already exists (a card is up, the answer is the user's to give, and re-judging
-    would re-run a non-deterministic LLM call on every replay), or a sibling call
-    will pause, and the judge is the one thing in this node that isn't idempotent.
+    None means "don't auto-approve, don't spend a judge call": a sibling call will
+    wait on the user, and the judge is the one thing in this node that isn't idempotent.
     """
-    if record is not None:
-        return None
     if await has_pausing_sibling(request, context.user_id, call.id):
         log.info(f"{LogTag.HIL} not auto-approving : a sibling call may pause", name=call.name)
         return None
@@ -537,10 +333,6 @@ async def _judge(
     never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in await _never_auto_tools(
         context.user_id
     )
-    judge = None
-    if await is_jev_judge_enabled(context.user_id):
-        # JEV classifies first, LLM stays as its transport-failure fallback.
-        judge = JevIntentJudge()
     decision = await judge_intent(
         AutoContext(
             user_id=context.user_id,
@@ -548,7 +340,7 @@ async def _judge(
             never_auto=never_auto,
         ),
         user_messages=context.user_messages,
-        judge=judge,
+        judge=JevIntentJudge(),
         call=JudgedCall(
             tool_name=call.name,
             # The REAL tool's description — for an execute-proxied call the
@@ -615,16 +407,6 @@ async def _auto_history(user_id: str, tool_name: str) -> AutoHistory:
     return summarize_history(rows)
 
 
-def _verdict_from_record(record: HILApprovalRecord) -> GateVerdict:
-    """Return the decision as the record holds it — the one durable copy.
-
-    Anything but approved blocks the call: a cancelled or withdrawn approval must not act.
-    """
-    if record.outcome is None:
-        raise ValueError(f"approval {record.approval_id} is still pending")
-    return GateVerdict(outcome=record.outcome, feedback=record.feedback, scope=record.scope)
-
-
 # --- what a blocked call tells the model (text lives in prompts.py) ---------------------
 
 
@@ -679,7 +461,7 @@ async def _auto_ledger_verdict(
         return _AutoVerdict()
     integration_name = await _integration_name_for(request, context.user_id, call.name)
     summary = build_summary(call.name, call.args, integration_name, call.account)
-    decision = await _judge(request, context, call, None, summary)
+    decision = await _judge(request, context, call, summary)
     if decision is None:
         return _AutoVerdict()
     if decision.outcome == "accept":
@@ -722,7 +504,7 @@ def _live_envelope_message(
         call,
         f"PENDING {live.approval_id}: {live.summary} already requested and "
         f"awaiting the user's decision. "
-        f"{_pending_guidance(live.approval_id, background=not context.pausable)}",
+        f"{_pending_guidance(live.approval_id, background=context.background)}",
         "pending",
     )
 
@@ -754,11 +536,6 @@ def _prior_denial_note(denied: ApprovalLedgerDocument | None) -> str:
 def _gate_error_message(call: GatedCall) -> ToolMessage:
     """Tell the model the gate itself failed — the user was never asked."""
     return _tool_message(call, GATE_ERROR_TEMPLATE.format(tool=call.name), "error")
-
-
-def _unpausable_denial_message(call: GatedCall) -> ToolMessage:
-    """Tell the model a gated call was refused because this run cannot ask for approval."""
-    return _tool_message(call, UNPAUSABLE_DENIAL_TEMPLATE.format(tool=call.name), "denied")
 
 
 async def _invalid_args_message(

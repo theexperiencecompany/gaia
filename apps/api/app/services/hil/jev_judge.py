@@ -27,10 +27,8 @@ from app.services.hil.intent import (
     AutoHistory,
     AutoOutcome,
     IntentDecision,
-    IntentJudge,
     JudgedCall,
     _history_blocks,
-    _LLMIntentJudge,
     history_line,
     ungrounded_targets,
 )
@@ -220,47 +218,28 @@ async def ask_jev(
 
 
 class JevIntentJudge:
-    """Auto mode classifier: JEV decides, code applies the vetoes.
+    """Auto mode classifier: JEV decides, code applies the vetoes; unclear asks the user.
 
-    Fallback runs when the Decisions call fails; unclear asks the user.
+    The one classifier: a failed Decisions call raises, and judge_intent leaves the call to the user.
     """
-
-    def __init__(self, fallback: IntentJudge | None = None) -> None:
-        self._fallback = fallback or _LLMIntentJudge()
 
     async def decide(
         self,
         *,
-        user_id: str,
+        user_id: str,  # noqa: ARG002 -- IntentJudge protocol
         user_messages: list[str],
         call: JudgedCall,
         prior_calls: list[PriorCall],
         history: AutoHistory,
         assistant_turns: list[str] | None = None,
     ) -> IntentDecision:
-        try:
-            choice, confidence, probs, _in, _out = await ask_jev(
-                user_messages=user_messages,
-                call=call,
-                prior_calls=prior_calls,
-                history=history,
-                assistant_turns=assistant_turns,
-            )
-        except Exception as e:
-            log.warning(
-                f"{LogTag.HIL} JEV judge failed; falling back to the LLM judge",
-                tool_name=call.tool_name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return await self._fallback.decide(
-                user_id=user_id,
-                user_messages=user_messages,
-                call=call,
-                prior_calls=prior_calls,
-                history=history,
-                assistant_turns=assistant_turns,
-            )
+        choice, confidence, probs, _in, _out = await ask_jev(
+            user_messages=user_messages,
+            call=call,
+            prior_calls=prior_calls,
+            history=history,
+            assistant_turns=assistant_turns,
+        )
         return decide_from_verdict(
             JevVerdict(
                 choice=choice,

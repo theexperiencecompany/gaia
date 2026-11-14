@@ -39,11 +39,9 @@ export interface paths {
         put?: never;
         /**
          * Post Approval Decision
-         * @description Apply a button decision and resume the paused run.
+         * @description Commit a button decision on the approval ledger, run the approved action and wake its owner.
          *
-         *     ``resolve_approval`` raises :class:`ApprovalRequestNotFoundError` (410) or
-         *     :class:`ApprovalRequestForbiddenError` (403) — both ``AppError`` subclasses — so
-         *     late/duplicate or cross-user deliveries can't double-resolve a request.
+         *     A stale or gone row commits nothing and says so, so the client refreshes instead of trusting the tap.
          */
         post: operations["approvals_post_approval_decision"];
         delete?: never;
@@ -65,9 +63,7 @@ export interface paths {
          * Post Batch Decision
          * @description Decide several pending approvals in one submission (the batch review).
          *
-         *     Per-item outcomes: one already-decided or expired approval never fails the
-         *     rest. Only the first resolvable decision dispatches the paused executor; the
-         *     join round it wakes collects the remaining decisions durably.
+         *     Each item commits exactly once on the ledger; one already decided or expired never fails the rest.
          */
         post: operations["approvals_post_batch_decision"];
         delete?: never;

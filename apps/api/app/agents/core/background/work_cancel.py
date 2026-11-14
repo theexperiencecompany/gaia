@@ -20,7 +20,6 @@ from app.models.agent_models import RunningSubagent
 from app.models.work_cancel_models import WorkCancelled
 from app.services.browser.job_stop import RequesterChat, stop_chat_jobs, stop_named_jobs
 from app.services.hil.ledger_decide import cancel_ledger_approvals
-from app.services.hil.resolution import cancel_conversation_approvals
 from shared.py.wide_events import log
 
 # A placeholder stream id some lock writers use; it names no stream to cancel.
@@ -121,12 +120,10 @@ async def _stop_running_executor(
 async def _close_approvals(
     conversation_id: str, user_id: str, approval_ids: Collection[str]
 ) -> list[str]:
-    """Close these pending approvals in whichever store holds them, so no Approve revives stopped work."""
+    """Close these pending approvals on the ledger, so no Approve revives stopped work."""
     if not approval_ids:
         return []
-    barrier = await cancel_conversation_approvals(conversation_id, user_id, approval_ids)
-    ledger = await cancel_ledger_approvals(conversation_id, user_id, approval_ids)
-    return [*barrier, *ledger]
+    return await cancel_ledger_approvals(conversation_id, user_id, approval_ids)
 
 
 async def _settle(conversation_id: str, work: WorkCancelled, redirect: str | None) -> None:

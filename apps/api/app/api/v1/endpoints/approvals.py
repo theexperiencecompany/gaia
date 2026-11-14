@@ -5,7 +5,6 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.constants.hil import DECISION_OUTCOME
 from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
@@ -16,20 +15,12 @@ from app.schemas.hil_schemas import (
     SetToolOverrideRequest,
     UpdateHILPreferencesRequest,
 )
-from app.services.analytics_service import capture
-from app.services.feature_flags import is_hil_ledger_enabled
 from app.services.hil.ledger_decide import decide_ledger_batch, decide_ledger_card
 from app.services.hil.preferences import (
     get_hil_preferences,
     set_tool_override,
     update_hil_preferences,
 )
-from app.services.hil.resolution import (
-    resolve_approval,
-    resolve_approvals_batch,
-)
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import ApprovalDecided
 from shared.py.analytics.catalog.properties import Identifier
 from shared.py.wide_events import log
 
@@ -42,45 +33,26 @@ async def post_approval_decision(
     payload: ApprovalDecisionRequest,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> ApprovalDecisionResponse:
-    """Apply a button decision and resume the paused run.
+    """Commit a button decision on the approval ledger, run the approved action and wake its owner.
 
-    ``resolve_approval`` raises :class:`ApprovalRequestNotFoundError` (410) or
-    :class:`ApprovalRequestForbiddenError` (403) — both ``AppError`` subclasses — so
-    late/duplicate or cross-user deliveries can't double-resolve a request.
+    A stale or gone row commits nothing and says so, so the client refreshes instead of trusting the tap.
     """
     user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
     log.set(user={"id": user_id}, hil={"approval_id": approval_id, "decision": payload.decision})
-    if await is_hil_ledger_enabled(user_id):
-        # Executor-free path: CAS commit on the ledger, instant-eligible
-        # execution, agent wake — no paused run to resume. Errors are the same
-        # AppError shapes, so status codes never diverge between paths.
-        outcome = await decide_ledger_card(approval_id, user_id=user_id, tap=payload)
-        log.set(hil={"resolved": outcome.committed})
-        # Honest, not optimistic: a stale-v tap committed nothing, and the
-        # client must refresh the row instead of believing its tap landed.
-        # "stale" (row may still be live) is never "not_found" (row is gone).
-        if outcome.committed:
-            return ApprovalDecisionResponse(
-                success=True, outcome=outcome.outcome, action=outcome.action
-            )
+    outcome = await decide_ledger_card(approval_id, user_id=user_id, tap=payload)
+    log.set(hil={"resolved": outcome.committed})
+    if outcome.committed:
         return ApprovalDecisionResponse(
-            success=False,
-            reason="stale" if outcome.stale else "not_found",
-            outcome=outcome.outcome,
-            action=outcome.action,
+            success=True, outcome=outcome.outcome, action=outcome.action
         )
-    await resolve_approval(
-        approval_id=approval_id,
-        user_id=user_id,
-        kind=payload.decision,
-        feedback=payload.feedback,
-        scope=payload.scope,
+    return ApprovalDecisionResponse(
+        success=False,
+        reason="stale" if outcome.stale else "not_found",
+        outcome=outcome.outcome,
+        action=outcome.action,
     )
-    log.set(hil={"resolved": True})
-    capture(UserId(user_id), ApprovalDecided(outcome=DECISION_OUTCOME[payload.decision]))
-    return ApprovalDecisionResponse(success=True)
 
 
 @router.post("/batch-decision")
@@ -90,9 +62,7 @@ async def post_batch_decision(
 ) -> BatchApprovalDecisionResponse:
     """Decide several pending approvals in one submission (the batch review).
 
-    Per-item outcomes: one already-decided or expired approval never fails the
-    rest. Only the first resolvable decision dispatches the paused executor; the
-    join round it wakes collects the remaining decisions durably.
+    Each item commits exactly once on the ledger; one already decided or expired never fails the rest.
     """
     user_id = user.user_id
     if not user_id:
@@ -101,26 +71,8 @@ async def post_batch_decision(
         user={"id": user_id},
         hil={"operation": "batch_decision", "count": len(payload.decisions)},
     )
-    if await is_hil_ledger_enabled(user_id):
-        # Executor-free path: each item commits exactly once on the ledger.
-        # No resume dispatch exists here — execution and wake already happened
-        # inside decide_ledger.
-        outcomes = await decide_ledger_batch(user_id, payload.decisions)
-        log.set(hil={"resolved": sum(1 for o in outcomes if o.resolved)})
-        return BatchApprovalDecisionResponse(outcomes=outcomes)
-    outcomes = await resolve_approvals_batch(
-        user_id,
-        [(item.approval_id, item.decision, item.feedback) for item in payload.decisions],
-    )
+    outcomes = await decide_ledger_batch(user_id, payload.decisions)
     log.set(hil={"resolved": sum(1 for o in outcomes if o.resolved)})
-    capture(
-        UserId(user_id),
-        ApprovalDecided(
-            batch=True,
-            decisions=len(payload.decisions),
-            resolved=sum(1 for o in outcomes if o.resolved),
-        ),
-    )
     return BatchApprovalDecisionResponse(outcomes=outcomes)
 
 
