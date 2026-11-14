@@ -42,9 +42,9 @@ from app.constants.agents import (
     wrap_agent_payload,
 )
 from app.constants.briefing import (
+    BRIEFING_RHYTHM_WORKFLOW_KEYS,
     BRIEFING_RUN_SUMMARIES,
     DAILY_BRIEFING_WORKFLOW_KEY,
-    WEEKLY_DIGEST_WORKFLOW_KEY,
 )
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
@@ -668,8 +668,12 @@ async def _record_execution_failure(
             log.debug(f"{LogTag.WORKER} Failed to update workflow stats: %s" % e2)
 
     # An executor that died was already announced by the delivery path, as the
-    # workflow's failure notification; a second one here would say it twice.
-    if not isinstance(error, WorkflowExecutorFailed):
+    # workflow's failure notification; a second one here would say it twice. A brief
+    # is no workflow to the user: its failure is the logged error, and the next one runs.
+    if (
+        not isinstance(error, WorkflowExecutorFailed)
+        and workflow.system_workflow_key not in BRIEFING_RHYTHM_WORKFLOW_KEYS
+    ):
         await _notify_workflow_failed(error, workflow)
 
 
@@ -1281,9 +1285,6 @@ async def _drain_trigger_events(
     return merged, None
 
 
-_BRIEFING_WORKFLOW_KEYS = {DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY}
-
-
 async def _run_briefing_workflow(workflow: Workflow) -> str:
     """Run the briefing pipeline instead of the generic chat turn.
 
@@ -1317,7 +1318,7 @@ async def _run_and_record_success(fire: _Fire, trigger_type: str, execution_id: 
     # path delivers from the background path; a replay via _finish_after_replay.
     conversation_id: str | None
     trace: list[RecordedCall]
-    if workflow.system_workflow_key in _BRIEFING_WORKFLOW_KEYS:
+    if workflow.system_workflow_key in BRIEFING_RHYTHM_WORKFLOW_KEYS:
         conversation_id, trace, summary = None, [], await _run_briefing_workflow(workflow)
     else:
         conversation_id, trace, summary = await _run_workflow(fire)
