@@ -59,6 +59,7 @@ from shared.py.conversation_wire import (
     ReplyOutcome,
     ToolDataEntry,
 )
+from tests.hypothesis_profiles import property_examples
 from tests.unit.services.conversation.log_helpers import (
     EMPTY,
     asked,
@@ -94,7 +95,7 @@ APPEND_KINDS = (
     "work_cancelled",
 )
 QUIET_ROUNDS = 30
-STEP_EXAMPLES = 2000
+STEP_EXAMPLES = property_examples(2000)
 
 
 _STATELESS: dict[str, Callable[[int], Entry]] = {

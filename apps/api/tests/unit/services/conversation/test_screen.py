@@ -56,6 +56,7 @@ from shared.py.conversation_wire import (
     ToolDataEntry,
 )
 from tests.helpers import REPO_ROOT
+from tests.hypothesis_profiles import property_examples
 from tests.unit.services.conversation.log_helpers import (
     asked,
     decided,
@@ -439,7 +440,7 @@ class _Sim:
         self.reply = None
 
 
-@settings(max_examples=300, deadline=None)
+@settings(max_examples=property_examples(300), deadline=None)
 @given(st.lists(st.tuples(_ACTIONS, st.integers(min_value=0, max_value=7)), max_size=40))
 def test_any_conversation_only_grows_at_the_end_and_reloads_to_what_was_shown(
     actions: list[tuple[str, int]],
@@ -614,6 +615,8 @@ def test_a_hand_over_chain_that_loops_ends_at_the_task_it_came_back_to() -> None
         "t3": WorkStarted(id="work:t3", task_id="t3", cause_through=1, joins="t2"),
     }
     assert work_root(chain, "t1") == "t2"
+    back = {**chain, "t2": WorkStarted(id="work:t2", task_id="t2", cause_through=1, joins="t1")}
+    assert work_root(back, "t1") == "t1"
 
 
 def test_a_woken_todo_and_a_notice_show_as_their_own_items() -> None:

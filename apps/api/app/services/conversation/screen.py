@@ -322,8 +322,8 @@ def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
             | IntegrationConnected()
         ):
             return None
-        case unhandled:  # pragma: no mutate — unreachable: the Entry union is exhaustive
-            assert_never(unhandled)  # pragma: no mutate — unreachable
+        case _:
+            assert_never(logged.entry)
 
 
 def work_timeline(
