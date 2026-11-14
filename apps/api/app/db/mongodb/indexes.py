@@ -13,6 +13,7 @@ from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.constants.payments import CLAIMED_STATUS
+from app.constants.waits import WAIT_TTL_SECONDS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.local_credentials import local_credentials_repository
@@ -137,6 +138,7 @@ async def create_all_indexes() -> None:
             create_tool_output_shapes_indexes(),
             create_pending_brief_item_indexes(),
             create_email_verdict_indexes(),
+            create_wait_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -182,6 +184,7 @@ async def create_all_indexes() -> None:
             "tool_output_shapes",
             "pending_brief_items",
             "email_verdicts",
+            "waits",
         ]
 
         index_results = {}
@@ -956,6 +959,37 @@ async def create_email_verdict_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating email_verdicts indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_wait_indexes() -> None:
+    """Create indexes for the waits collection.
+
+    Unique on (user_id, condition, subject_id, waiter, waiter_id), the key every ask writes
+    and every met condition takes by its prefix; a TTL on created_at drops an ask unanswered
+    for 7 days.
+    """
+    waits_collection = get_async_collection("waits")
+    try:
+        await asyncio.gather(
+            waits_collection.create_index(
+                [
+                    ("user_id", 1),
+                    ("condition", 1),
+                    ("subject_id", 1),
+                    ("waiter", 1),
+                    ("waiter_id", 1),
+                ],
+                unique=True,
+            ),
+            waits_collection.create_index("created_at", expireAfterSeconds=WAIT_TTL_SECONDS),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating waits indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

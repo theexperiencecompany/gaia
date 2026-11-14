@@ -60,6 +60,8 @@ class WorkflowDraftPayload(TypedDict):
     runs_only_when: str | None
     direct_create: bool
     delivery: str
+    #: Sent back on create, so whatever waited on the user setting it up is picked back up.
+    draft_id: str
 
 
 class FinalizedOutput(BaseModel):
@@ -115,7 +117,7 @@ class FinalizedOutput(BaseModel):
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
     def to_stream_payload(
-        self, delivery: WorkflowDelivery
+        self, delivery: WorkflowDelivery, draft_id: str
     ) -> dict[Literal["workflow_draft"], WorkflowDraftPayload]:
         """Convert to the format expected by frontend stream handler.
 
@@ -134,6 +136,7 @@ class FinalizedOutput(BaseModel):
                 "runs_only_when": self.runs_only_when,
                 "direct_create": self.direct_create,
                 "delivery": delivery.value,
+                "draft_id": draft_id,
             }
         }
 

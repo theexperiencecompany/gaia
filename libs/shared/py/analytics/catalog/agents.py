@@ -3,7 +3,7 @@
 from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent
-from shared.py.analytics.catalog.properties import Identifier
+from shared.py.analytics.catalog.properties import Identifier, ModelId
 
 __all__ = [
     "AgentRunCompleted",
@@ -12,6 +12,7 @@ __all__ = [
     "AiLlmCallCompleted",
     "ToolExecuteFailed",
     "ToolUsed",
+    "WaitResumed",
 ]
 
 
@@ -92,8 +93,8 @@ class AiLlmCallCompleted(ServerEvent):
     agent_name: Identifier
     background: bool
     charge_to_budget: bool
-    model: Identifier
-    model_served: Identifier | None = None
+    model: ModelId
+    model_served: ModelId | None = None
     provider: Identifier | None = None
     input_tokens: int
     output_tokens: int
@@ -111,3 +112,17 @@ class AiLlmCallCompleted(ServerEvent):
     conversation_id: Identifier | None = None
     workflow_id: Identifier | None = None
     llm_call_id: Identifier
+
+
+class WaitResumed(ServerEvent):
+    """Something GAIA asked the user to do got done, and the chat, todo or workflow waiting on it was picked back up."""
+
+    event: ClassVar[str] = "agent:wait_resumed"
+    budget_per_user_day: ClassVar[int] = 50
+
+    # A WaitCondition value: what the user did.
+    condition: Identifier
+    # A WaiterKind value: what was picked back up.
+    waiter: Identifier
+    # Minutes between the latest ask and the user doing it.
+    waited_minutes: int

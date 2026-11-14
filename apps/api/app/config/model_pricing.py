@@ -53,6 +53,13 @@ MODEL_PRICING: dict[str, ModelPricing] = {
         output_cost_per_1k=0.0006,
         cached_input_cost_per_1k=0.000003,
     ),
+    # CLOUDFLARE_MODEL_NAME, every role while Workers AI is configured. Cloudflare list
+    # price 2026-11-13: $0.30/$1.20/$0.006 per 1M in/out/cached.
+    "@cf/deepseek-ai/deepseek-v4.1-flash-1017": ModelPricing(
+        input_cost_per_1k=0.0003,
+        output_cost_per_1k=0.0012,
+        cached_input_cost_per_1k=0.000006,
+    ),
     # BROWSER_AGENT_MODEL / BROWSER_USE_JEV_TEXT_MODEL, and DEFAULT_MODEL_NAME until
     # 2026-11-02: historical llm_call events still meter at the rate actually served.
     "deepseek/deepseek-v4-flash-0731": ModelPricing(
