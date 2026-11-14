@@ -49,11 +49,11 @@ def memory_note(item: RememberedSignal, now: datetime) -> str:
     return seen
 
 
-def _line(item: RememberedSignal, now: datetime) -> str:
+def _line(fact_id: int, item: RememberedSignal, now: datetime) -> str:
     signal = item.signal
     parts = [
-        f"- {'important' if signal.importance is SignalImportance.HIGH else 'other'} | "
-        f"{signal.kind}: {signal.title}"
+        f"- fact {fact_id} | {'important' if signal.importance is SignalImportance.HIGH else 'other'}"
+        f" | {signal.kind}: {signal.title}"
     ]
     if signal.state:
         parts.append(f"state: {signal.state}")
@@ -62,25 +62,28 @@ def _line(item: RememberedSignal, now: datetime) -> str:
     if signal.people:
         parts.append(f"with {', '.join(signal.people)}")
     if signal.url:
-        parts.append(f"link: {signal.url}")
+        parts.append("linkable")
     if signal.why:
         parts.append(f"why: {signal.why}")
     parts.append(memory_note(item, now))
     return " | ".join(parts)
 
 
-def signals_block(remembered: Sequence[RememberedSignal], now: datetime) -> str:
-    """Group signals per app, important ones first; empty when no scout found anything."""
+def signals_block(remembered: Sequence[tuple[int, RememberedSignal]], now: datetime) -> str:
+    """Group signals, each by its fact id, per app, important ones first; empty when there are none."""
     if not remembered:
         return ""
     ordered = sorted(
         remembered,
-        key=lambda r: (r.signal.app, r.signal.importance is not SignalImportance.HIGH),
+        key=lambda pair: (
+            pair[1].signal.app,
+            pair[1].signal.importance is not SignalImportance.HIGH,
+        ),
     )
-    apps = {r.signal.integration_id for r in remembered}
+    apps = {r.signal.integration_id for _, r in remembered}
     lines = [f"{SIGNALS_HEADER} {len(remembered)} item(s) in {len(apps)} app(s)"]
-    for app, items in groupby(ordered, key=lambda r: r.signal.app):
+    for app, items in groupby(ordered, key=lambda pair: pair[1].signal.app):
         group = list(items)
         lines.append(f"[{app}] {len(group)} item(s)")
-        lines.extend(_line(item, now) for item in group)
+        lines.extend(_line(fact_id, item, now) for fact_id, item in group)
     return "\n".join(lines)

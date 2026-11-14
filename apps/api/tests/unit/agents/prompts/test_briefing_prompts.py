@@ -17,10 +17,16 @@ from app.agents.prompts.briefing_prompts import (
     VoiceSituation,
     build_briefing_voice_prompt,
     build_day_zero_hello_prompt,
-    build_weekly_digest_prompt,
+    build_weekly_voice_prompt,
     reader_line,
     voice_correction_note,
     voice_unreadable_note,
+)
+from app.constants.briefing import (
+    MAX_BRIEF_CAPTION_CHARS,
+    MAX_BRIEF_HEADLINE_CHARS,
+    MAX_BRIEF_LEDE_CHARS,
+    MAX_BRIEF_MESSAGE_CHARS,
 )
 
 _GOAL = "Raising a seed round [mentioned 2026-10-01]"
@@ -133,22 +139,32 @@ def _prompt(
             offer_lighter_cadence=offer_lighter_cadence,
         ),
         recent_openings=recent_openings or [],
-        max_message_chars=1500,
     )
 
 
 @pytest.mark.regression
-def test_the_prompt_states_the_length_cap_the_message_is_checked_against() -> None:
+def test_the_prompt_states_every_length_cap_the_prose_is_held_to() -> None:
     """The writer was never told the cap, so a busy day ran over it on both attempts."""
-    prompt = build_briefing_voice_prompt(
-        date_local="Tuesday, October 14",
-        blocks=_BLOCKS,
-        situation=VoiceSituation(),
-        recent_openings=[],
-        max_message_chars=2100,
-    )
+    prompt = " ".join(_prompt().split())
 
-    assert "``message`` stays under 2100 characters" in prompt
+    assert (
+        f"headline at most {MAX_BRIEF_HEADLINE_CHARS} characters, lede {MAX_BRIEF_LEDE_CHARS}, "
+        f"caption {MAX_BRIEF_CAPTION_CHARS}, message {MAX_BRIEF_MESSAGE_CHARS}."
+    ) in prompt
+
+
+def test_the_voice_is_taught_every_slot_and_never_to_type_a_count() -> None:
+    prompt = " ".join(_prompt().split())
+
+    assert "You never type a count, a time, a date or a web address." in prompt
+    for slot in (
+        "[[count:needs_you]]",
+        "[[fact:N]]",
+        "[[fact:N.time]]",
+        "[[fact:N.count]]",
+        "[the phrase](fact:N)",
+    ):
+        assert f"``{slot}``" in prompt
 
 
 def test_an_ordinary_morning_goes_straight_from_goal_memory_to_the_goal_guidance() -> None:
@@ -157,6 +173,20 @@ def test_an_ordinary_morning_goes_straight_from_goal_memory_to_the_goal_guidance
     assert f"{_GOAL}\n\nIf no goal lane exists" in prompt
     for situation in _ALL_SITUATIONS:
         assert situation[0] not in prompt
+
+
+def test_a_goal_asked_about_recently_is_not_asked_about_again() -> None:
+    prompt = build_briefing_voice_prompt(
+        date_local="Tuesday, October 14",
+        blocks=_BLOCKS,
+        situation=VoiceSituation(goal_asked_recently=True),
+        recent_openings=[],
+    )
+
+    assert f"{_GOAL}\n\nYou asked recently whether their goal is still live." in prompt
+    assert "Do not ask about it again today, in any\nwording" in prompt
+    assert "If no goal lane exists" not in prompt
+    assert "confirming question" not in prompt
 
 
 @pytest.mark.parametrize(
@@ -207,13 +237,13 @@ def test_the_voice_is_told_to_summarise_first_and_link_only_what_the_user_opens(
 
     assert "ALWAYS summarise, THEN maybe link — never a bare link." in prompt
     assert (
-        "Every fact carries a ``summary:`` (concrete specifics) you MUST voice, a size hint "
-        "(``artifact holds ~N chars``); a fact with something to open also carries a "
-        "``link:`` you decide whether to use. A fact with no ``link:`` cannot be linked."
+        "A work fact carries a ``summary:`` (concrete specifics) you MUST voice and a size hint "
+        "(``artifact holds ~N chars``); a fact with something to open is marked ``linkable`` "
+        "and you decide whether to link it. A fact not marked ``linkable`` has nothing to link."
     ) in prompt
-    assert "the [full list](link:0) is ready" in prompt
+    assert "the [full list](fact:4) is ready" in prompt
     assert (
-        "Never invent a link number, and never paste an artifact's contents into the message."
+        "Never invent a fact number, and never paste an artifact's contents into the message."
     ) in prompt
 
 
@@ -264,14 +294,29 @@ def test_without_recent_briefs_no_openings_block_is_added() -> None:
 
 @pytest.mark.parametrize(
     "build",
-    [_prompt, partial(build_weekly_digest_prompt, date_local="2026-10-18", week_summary_block="-")],
+    [_prompt, partial(build_weekly_voice_prompt, date_local="2026-10-18", blocks=_BLOCKS)],
     ids=["daily", "weekly"],
 )
-def test_daily_and_weekly_share_one_message_voice(build: Callable[[], str]) -> None:
+def test_daily_and_weekly_share_one_message_voice_and_slot_grammar(
+    build: Callable[[], str],
+) -> None:
     prompt = build()
 
     assert "## THE MESSAGE (``message``)" in prompt
     assert '"message": "<the brief as a text, see THE MESSAGE>"' in prompt
+    assert "## SLOTS (how every count, time and link gets into your prose)" in prompt
+    assert "You are writing VOICE ONLY." in prompt
+
+
+def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() -> None:
+    prompt = build_weekly_voice_prompt(date_local="2026-10-18", blocks=_BLOCKS)
+
+    assert f"## THIS WEEK'S FACTS (final: voice them, never alter them)\n{_BLOCKS.facts}" in prompt
+    assert _GOAL in prompt
+    assert '"mood": "<weekly>"' in prompt
+    assert "## NEXT WEEK'S EDGE" in prompt
+    for daily_only in (_BLOCKS.lookback, _BLOCKS.replies, "TODAY'S FACTS", "EMPTY DAYS"):
+        assert daily_only not in prompt
 
 
 def test_everything_the_model_is_shown_is_what_its_prose_may_cite() -> None:

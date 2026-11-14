@@ -10,7 +10,6 @@ be served by a single-id entity cache.
 
 from datetime import UTC, datetime
 from typing import ClassVar
-import uuid
 
 from app.constants.briefing import BRIEFING_KIND_DAILY
 from app.db.repositories.base import UserScopedRepository
@@ -21,6 +20,7 @@ from app.models.briefing_models import (
     BriefingPayload,
     BriefingUpdate,
     EditionRender,
+    new_briefing_id,
 )
 from app.utils.errors import AppError
 
@@ -82,6 +82,11 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         """
         return await self._count({"user_id": user_id, "date": date, "kind": kind, **_DELIVERED}) > 0
 
+    async def briefing_id_for(self, user_id: str, date: str, kind: BriefingKind) -> str:
+        """Return the id the (user, date, kind) brief has, or the fresh one it will be stored under."""
+        existing = await self._find_one({"user_id": user_id, "date": date, "kind": kind})
+        return existing.id if existing else new_briefing_id()
+
     # ----------------------------------------------------------------- writes
 
     async def upsert_briefing(
@@ -91,15 +96,18 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         kind: BriefingKind,
         payload: BriefingPayload,
         *,
+        briefing_id: str,
         edition: EditionRender,
     ) -> BriefingModel:
-        """Store the payload (one per user/date/kind).
+        """Store the payload (one per user/date/kind) under briefing_id, from briefing_id_for.
 
         Preserves opened_at and delivered_channels across a same-day rerun. Persisted
         BEFORE delivery so the dashboard never misses a brief that reached a channel.
+        A racing run that stored the brief under another id first makes this a duplicate
+        of the unique (user, date, kind) key, so the write fails instead of overwriting it.
         """
         doc = await self._apply_raw_update(
-            {"user_id": user_id, "date": date, "kind": kind},
+            {"_id": briefing_id, "user_id": user_id, "date": date, "kind": kind},
             {
                 "$set": {
                     "payload": payload.model_dump(),
@@ -108,7 +116,6 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
                     "edition_paper": edition.paper,
                 },
                 "$setOnInsert": {
-                    "_id": f"brief_{uuid.uuid4().hex[:12]}",
                     "created_at": datetime.now(UTC),
                     "delivered_channels": [],
                     "opened_at": None,

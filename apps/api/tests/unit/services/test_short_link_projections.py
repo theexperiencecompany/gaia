@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.config.settings import settings
+from app.constants.briefing import BriefOutcome
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingItem,
@@ -115,6 +116,7 @@ class TestBriefing:
                         items=[
                             BriefingItem(
                                 text="Sent the Acme reply",
+                                outcome=BriefOutcome.SENT,
                                 todo_id="todo-secret-id",
                                 link="https://heygaia.link/xyz",
                             )

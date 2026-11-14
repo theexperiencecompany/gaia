@@ -21,10 +21,12 @@ from PIL import Image, ImageStat
 from playwright.async_api import async_playwright
 import pytest
 
+from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
 from app.services.briefing.render import ImageRenderOptions, render_html_to_image
+from tests.factories import make_brief_item
 
 # A brief, even a quiet one on the 540px canvas, is at least this many CSS px
 # tall; the blank render was 2px.
@@ -44,16 +46,18 @@ _DAILY: dict[str, Any] = {
             "numeral": "I",
             "title": "NEEDS YOU",
             "items": [
-                {"text": "Approve the reply to Priya about the term sheet", "kind": "you"},
-                {"text": "Sync Stripe invoices to the finance sheet", "kind": "failed"},
+                make_brief_item("Priya's term sheet reply", "you", action=BriefAction.APPROVE),
+                make_brief_item("Stripe invoice sync", "failed"),
             ],
         },
         {
             "numeral": "II",
             "title": "GAIA'S WORK",
             "items": [
-                {"text": "Investor update draft for October", "kind": "lookback"},
-                {"text": "Q4 hiring plan from your notes", "kind": "gaia"},
+                make_brief_item(
+                    "October investor update", "lookback", outcome=BriefOutcome.DRAFTED
+                ),
+                make_brief_item("Q4 hiring plan", "gaia"),
             ],
         },
     ],
@@ -69,12 +73,14 @@ _DAILY: dict[str, Any] = {
         "ahead": [{"date": "2026-10-19", "start": "09:00", "title": "Board call"}],
     },
     "generated_at": "6:02 AM",
+    # Set before every render (store_brief): the Invoice, Receipt and Boarding Pass encode it.
+    "link": "https://heygaia.link/aB3dE5gH7jK",
     "mood": "packed",
     "caption": "Coffee first, Priya second.",
     "hue": 120,
 }
 # The weekly family only ever renders the weekly recap, which carries its own
-# week-level headline (build_weekly_digest_prompt asks for the week's shape).
+# week-level headline (build_weekly_voice_prompt asks for the week's shape).
 _WEEKLY_HEADLINE = "A steady week: twelve things done, four of them by you."
 
 
@@ -115,9 +121,9 @@ _FIXTURE_STRINGS = (
 # One phrase from every item and event in _DAILY: a family that drops one
 # (flightplan once hid every untimed item) fails.
 _DAILY_PHRASES = (
-    "reply to Priya",
-    "Sync Stripe invoices",
-    "Investor update draft",
+    "term sheet reply",
+    "Stripe invoice sync",
+    "October investor update",
     "Q4 hiring plan",
     "Sequoia partner meeting",
     "Design review with Dhruv",
@@ -207,8 +213,8 @@ async def test_family_prints_the_brief_and_nothing_invented(
                         "numeral": "I",
                         "title": "NEEDS YOU",
                         "items": [
-                            {"text": "Approve the Acme MSA renewal", "kind": "you", "count": 3},
-                            {"text": "Reply to Daniel", "kind": "you"},
+                            make_brief_item("Acme MSA renewal", "you", count=3),
+                            make_brief_item("Daniel", "you", action=BriefAction.REPLY),
                         ],
                     }
                 ],
@@ -251,15 +257,15 @@ _BUSY = {
             **_DAILY["sections"][0],
             "items": [
                 *_DAILY["sections"][0]["items"],
-                {"text": "Decide on the podcast invite from Design Tools FM", "kind": "you"},
+                make_brief_item("Design Tools FM podcast invite", "you", action=BriefAction.REPLY),
             ],
         },
         {
             **_DAILY["sections"][1],
             "items": [
                 *_DAILY["sections"][1]["items"],
-                {"text": "Archived the newsletters from the weekend", "kind": "lookback"},
-                {"text": "Rescheduled the dentist after a calendar clash", "kind": "lookback"},
+                make_brief_item("Weekend newsletters archived", "lookback"),
+                make_brief_item("Dentist", "lookback", outcome=BriefOutcome.BOOKED),
             ],
         },
     ],
@@ -450,7 +456,9 @@ _ONLY_OVERNIGHT = {
         {
             "numeral": "I",
             "title": "GAIA'S WORK",
-            "items": [{"text": "Investor update draft for October", "kind": "lookback"}],
+            "items": [
+                make_brief_item("October investor update", "lookback", outcome=BriefOutcome.DRAFTED)
+            ],
         }
     ],
     "calendar": [],

@@ -101,14 +101,17 @@ class TestTheFactsBlock:
             ),
         ]
 
-        assert signals_block(remembered, NOW).splitlines() == [
+        assert signals_block(list(enumerate(remembered, start=1)), NOW).splitlines() == [
             "[ACROSS THEIR APPS] 3 item(s) in 2 app(s)",
             "[Jira] 1 item(s)",
-            "- other | issue: Issue 1 | state: Todo | first seen today, created date unknown",
+            "- fact 1 | other | issue: Issue 1 | state: Todo | first seen today, created date"
+            " unknown",
             "[Linear] 2 item(s)",
-            "- important | issue: Issue 9 | state: Todo | first seen yesterday, never mentioned,"
+            "- fact 3 | important | issue: Issue 9 | state: Todo | first seen yesterday, never"
+            " mentioned,"
             " moved from Backlog to Todo",
-            "- other | issue: Issue 2 | state: Todo | first seen 4 days ago, mentioned 3 time(s),"
+            "- fact 2 | other | issue: Issue 2 | state: Todo | first seen 4 days ago, mentioned"
+            " 3 time(s),"
             " last yesterday",
         ]
 
@@ -125,9 +128,9 @@ class TestTheFactsBlock:
             RememberedSignal(signal=signal, memory=_memory("5", times_shown=0, last_shown=NOW))
         ]
 
-        assert signals_block(remembered, NOW).splitlines()[-1] == (
-            "- other | issue: Issue 5 | state: Todo | due 2026-10-24 | with Priya, Sam"
-            " | link: https://linear.app/acme/issue/ENG-5 | why: blocks the release"
+        assert signals_block(list(enumerate(remembered, start=1)), NOW).splitlines()[-1] == (
+            "- fact 1 | other | issue: Issue 5 | state: Todo | due 2026-10-24 | with Priya, Sam"
+            " | linkable | why: blocks the release"
             " | first seen today, never mentioned"
         )
 
@@ -140,8 +143,9 @@ class TestTheFactsBlock:
             )
         ]
 
-        assert signals_block(remembered, NOW).splitlines()[-1] == (
-            "- other | issue: Issue 6 | state: Todo | first seen today, mentioned 1 time(s),"
+        assert signals_block(list(enumerate(remembered, start=1)), NOW).splitlines()[-1] == (
+            "- fact 1 | other | issue: Issue 6 | state: Todo | first seen today, mentioned 1"
+            " time(s),"
             " last today"
         )
 

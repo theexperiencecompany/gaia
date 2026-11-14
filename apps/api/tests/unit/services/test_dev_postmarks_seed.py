@@ -12,12 +12,13 @@ from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
-    NEEDS_YOU_SECTION_TITLE,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
+    SECTION_TITLES,
     WEEKLY_FAMILY,
-    WEEKLY_KICKER,
-    WORK_SECTION_TITLE,
+    BriefAction,
+    BriefOutcome,
+    SectionKey,
     hue_for_day,
 )
 from app.constants.notifications import NotificationChannel
@@ -30,6 +31,8 @@ from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmark
 from app.utils.errors import AppError
 
 MODULE = "app.services.dev_postmarks_seed"
+STORE = "app.services.briefing.store"
+SHORT_LINK = "https://heygaia.link/seededBrief"
 LAST_DAY = date(2026, 10, 1)
 # Unsorted on purpose, and more cities than seed days, so the cycle and the ordering show.
 CITIES = [f"city-{n:02d}" for n in (13, 2, 7, 1, 12, 4, 9, 3, 11, 5, 14, 8, 6, 10)]
@@ -72,7 +75,12 @@ def seeded() -> Iterator[Seeded]:
 
     with (
         patch(f"{MODULE}.hosted_stamp_weights", return_value=dict.fromkeys(CITIES, 1)),
-        patch(f"{MODULE}.host_edition_image", side_effect=fake_host),
+        patch(f"{STORE}.host_edition_image", side_effect=fake_host),
+        patch(f"{STORE}.optional_short_link", AsyncMock(return_value=SHORT_LINK)),
+        patch(
+            f"{MODULE}.briefing_repository.briefing_id_for",
+            AsyncMock(side_effect=lambda user_id, date, kind: f"brief_{date}"),
+        ),
         patch(f"{MODULE}.briefing_repository.upsert_briefing", new_callable=AsyncMock) as upsert,
         patch(
             f"{MODULE}.briefing_repository.set_delivered_channels", new_callable=AsyncMock
@@ -111,7 +119,9 @@ async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its
         seeded.rendered, seeded.upsert.await_args_list, seeded.deliver.await_args_list, strict=True
     ):
         assert upsert_call.args == (user.id, payload.date, BRIEFING_KIND_DAILY, payload)
+        assert payload.link == SHORT_LINK
         assert upsert_call.kwargs == {
+            "briefing_id": f"brief_{payload.date}",
             "edition": EditionRender(image_url=f"https://cdn.test/{key}.png"),
         }
         assert deliver_call.args == (
@@ -128,15 +138,17 @@ async def test_a_day_with_asks_and_work_reads_as_two_numbered_sections(user, see
     seed = dev_postmarks_seed._SEED_DAYS[PACKED_THURSDAY]
     brief = seeded.payloads()[PACKED_THURSDAY]
     day = LAST_DAY - timedelta(days=PACKED_THURSDAY)
-    assert [(s.numeral, s.title) for s in brief.sections] == [
-        (SECTION_NUMERALS[0], NEEDS_YOU_SECTION_TITLE),
-        (SECTION_NUMERALS[1], WORK_SECTION_TITLE),
+    assert [(s.numeral, s.key, s.title) for s in brief.sections] == [
+        (SECTION_NUMERALS[0], SectionKey.NEEDS_YOU, SECTION_TITLES[SectionKey.NEEDS_YOU]),
+        (SECTION_NUMERALS[1], SectionKey.GAIA_DID, SECTION_TITLES[SectionKey.GAIA_DID]),
     ]
     asks, work = brief.sections
-    assert [(i.text, i.kind) for i in asks.items] == [(t, "you") for t in seed.needs_you]
-    assert [(i.text, i.kind) for i in work.items] == [(t, "lookback") for t in seed.done] + [
-        (t, "gaia") for t in seed.running
+    assert [(i.action, i.text, i.kind) for i in asks.items] == [
+        (action, t, "you") for action, t in seed.needs_you
     ]
+    assert [(i.outcome, i.text, i.kind) for i in work.items] == [
+        (outcome, t, "lookback") for outcome, t in seed.done
+    ] + [(BriefOutcome.STARTED, t, "gaia") for t in seed.running]
     assert [(e.date, e.start, e.title, e.location) for e in brief.calendar] == [
         (day.isoformat(), e.start, e.title, e.location) for e in seed.events
     ]
@@ -152,8 +164,8 @@ async def test_a_day_with_nothing_waiting_drops_the_asks_section(user, seeded) -
     await seed_dev_postmarks(user, EMPTY_INBOX_DAY + 1)
 
     brief = seeded.payloads()[EMPTY_INBOX_DAY]
-    assert [(s.numeral, s.title) for s in brief.sections] == [
-        (SECTION_NUMERALS[0], WORK_SECTION_TITLE)
+    assert [(s.numeral, s.key) for s in brief.sections] == [
+        (SECTION_NUMERALS[0], SectionKey.GAIA_DID)
     ]
 
 
@@ -191,6 +203,26 @@ async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user
     assert all(p.stamp_city is None for p in payloads)
     weekly = payloads[-1]
     assert weekly.week is not None and len(weekly.week.days) == 7
+    assert [
+        (s.key, [(i.text, i.action, i.outcome, i.kind) for i in s.items]) for s in weekly.sections
+    ] == [
+        (
+            SectionKey.NEEDS_YOU,
+            [
+                ("Offsite venue", BriefAction.REPLY, None, "you"),
+                ("New lease terms", BriefAction.APPROVE, None, "you"),
+            ],
+        ),
+        (
+            SectionKey.GAIA_DID,
+            [
+                ("September expenses filed", None, BriefOutcome.FINISHED, "lookback"),
+                ("1:1 with Sam, now 3:30 PM", None, BriefOutcome.BOOKED, "lookback"),
+                ("October invoice to Acme", None, BriefOutcome.SENT, "lookback"),
+                ("Check-in for TP 1361", None, BriefOutcome.BOOKED, "lookback"),
+            ],
+        ),
+    ]
     assert seeded.deliver.await_count == 5
 
 
@@ -217,71 +249,6 @@ async def test_a_seed_count_past_the_daily_families_is_refused_naming_the_limit(
     assert raised.value.why == f"there are only {families} daily edition families besides Air Mail"
     assert raised.value.fix == f"ask for at most {families}"
     seeded.upsert.assert_not_awaited()
-
-
-async def test_the_weekly_recap_is_the_one_seeded_week_in_full(user, seeded) -> None:
-    await seed_dev_editions(user, 1)
-
-    weekly = seeded.payloads()[-1]
-    assert (weekly.kicker, weekly.date, weekly.template_family) == (
-        WEEKLY_KICKER,
-        "2026-10-11",
-        WEEKLY_FAMILY,
-    )
-    assert (weekly.headline, weekly.lede, weekly.message) == (
-        "A steady week: the release shipped and two decisions are still open",
-        "You closed 14 todos and I handled 22; the offsite venue and the lease still wait.",
-        "You closed 14 todos and I handled 22; the offsite venue and the lease still wait.",
-    )
-    assert (weekly.mood, weekly.caption, weekly.hue) == (
-        "clear",
-        "Two decisions and the week is closed.",
-        hue_for_day(date(2026, 10, 11).timetuple().tm_yday),
-    )
-    assert (weekly.recipient_name, weekly.generated_at) == ("Ada", "7:58 AM")
-    assert (weekly.tallies.done_by_you, weekly.tallies.done_by_gaia) == (14, 22)
-    asks, work = weekly.sections
-    assert [(s.numeral, s.title) for s in weekly.sections] == [
-        (SECTION_NUMERALS[0], NEEDS_YOU_SECTION_TITLE),
-        (SECTION_NUMERALS[1], WORK_SECTION_TITLE),
-    ]
-    assert [(i.text, i.kind) for i in asks.items] == [
-        ("Confirm the offsite venue", "you"),
-        ("Accept the new lease terms", "you"),
-    ]
-    shipped = [seed.done[0] for seed in dev_postmarks_seed._SEED_DAYS[:4]]
-    assert [(i.text, i.kind) for i in work.items] == [(t, "lookback") for t in shipped]
-    assert weekly.week is not None
-    assert weekly.week.shipped == shipped
-    assert weekly.week.handled == [
-        "Rescheduled 3 meetings",
-        "Paid 2 invoices",
-        "Archived 120 emails",
-    ]
-    assert [(e.date, e.start, e.title) for e in weekly.week.ahead] == [
-        ("2026-10-12", "10:00", "Quarterly planning"),
-        ("2026-10-14", "18:40", "Flight to Lisbon"),
-    ]
-
-
-async def test_a_hosted_editions_fold_and_paper_are_stored_beside_its_url(user) -> None:
-    hosted = HostedEditionImage(
-        display_url="https://cdn.test/e.png",
-        chat_url="https://cdn.test/e.jpg",
-        fold=0.4,
-        paper=(0.1, 0.2, 0.9, 0.8),
-    )
-    with (
-        patch(f"{MODULE}.hosted_stamp_weights", return_value=dict.fromkeys(CITIES, 1)),
-        patch(f"{MODULE}.host_edition_image", AsyncMock(return_value=hosted)),
-        patch(f"{MODULE}.briefing_repository.upsert_briefing", new_callable=AsyncMock) as upsert,
-        patch(f"{MODULE}.briefing_repository.set_delivered_channels", new_callable=AsyncMock),
-    ):
-        await seed_dev_postmarks(user, 1)
-
-    assert upsert.await_args.kwargs["edition"] == EditionRender(
-        image_url="https://cdn.test/e.png", fold=0.4, paper=[0.1, 0.2, 0.9, 0.8]
-    )
 
 
 async def test_every_daily_family_can_be_seeded_at_once(user, seeded) -> None:

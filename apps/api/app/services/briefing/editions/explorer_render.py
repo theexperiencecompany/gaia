@@ -231,6 +231,10 @@ const EXPLORER = {{
   fold(blocks) {{
     return blocks.map((block, i) => (i === 0 ? block.replace(/^(\\s*<[a-zA-Z][\\w-]*)/, "$1 data-fold") : block));
   }},
+  // Draws one of ed.codes (codes.py geometry) in ink, stretched to the box its class sets.
+  code(geometry, cls) {{
+    return `<svg class="${{cls}}" viewBox="0 0 ${{geometry.width}} ${{geometry.height}}" preserveAspectRatio="none" shape-rendering="crispEdges" aria-hidden="true"><path fill="var(--ink)" d="${{geometry.path}}"/></svg>`;
+  }},
   assets: {assets_json},
   cities: {cities_json},
 }};

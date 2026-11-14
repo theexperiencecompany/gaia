@@ -9,12 +9,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import re
 
+from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, BRIEFING_KIND_WEEKLY
 from app.db.repositories.briefings import BriefingsRepository
 from app.db.repositories.cache import CachePolicy
-from app.models.briefing_models import BriefingPayload, EditionRender
+from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload, EditionRender
 from tests.helpers import local_timezone
 
 
@@ -41,6 +42,27 @@ def _is_now(stamp: datetime | None) -> bool:
     return stamp is not None and abs(datetime.now(UTC) - stamp) < _FRESH
 
 
+async def _upsert(
+    repo: BriefingsRepository,
+    user_id: str,
+    date: str,
+    kind: BriefingKind,
+    payload: BriefingPayload,
+    *,
+    edition: EditionRender,
+) -> BriefingModel:
+    """Store the brief the way store_brief does: under the id briefing_id_for gives."""
+    briefing_id = await repo.briefing_id_for(user_id, date, kind)
+    return await repo.upsert_briefing(
+        user_id,
+        date,
+        kind,
+        payload,
+        briefing_id=briefing_id,
+        edition=edition,
+    )
+
+
 @pytest.fixture
 def repo(raw_collection) -> BriefingsRepository:
     return BriefingsRepository()
@@ -48,22 +70,22 @@ def repo(raw_collection) -> BriefingsRepository:
 
 class TestBriefingsCore:
     async def test_upsert_then_get_roundtrips(self, repo):
-        created = await repo.upsert_briefing(
-            "owner", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        created = await _upsert(
+            repo, "owner", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         fetched = await repo.get(created.id, user_id="owner")
         assert fetched == created
 
     async def test_get_is_scoped_to_user(self, repo):
-        created = await repo.upsert_briefing(
-            "owner", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        created = await _upsert(
+            repo, "owner", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         assert await repo.get(created.id, user_id="attacker") is None
         assert await repo.get(created.id, user_id="owner") is not None
 
     async def test_delete(self, repo):
-        created = await repo.upsert_briefing(
-            "owner", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        created = await _upsert(
+            repo, "owner", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         assert await repo.delete(created.id, user_id="owner") is True
         assert await repo.get(created.id, user_id="owner") is None
@@ -71,16 +93,16 @@ class TestBriefingsCore:
 
 class TestBriefingsUpsert:
     async def test_upsert_records_the_hosted_edition_render(self, repo):
-        stored = await repo.upsert_briefing(
-            "u-image", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        stored = await _upsert(
+            repo, "u-image", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         fetched = await repo.get(stored.id, user_id="u-image")
         assert fetched is not None and fetched.edition_image_url == _IMAGE
 
     async def test_upsert_records_where_the_edition_folds_and_where_its_paper_sits(self, repo):
         edition = EditionRender(image_url=_IMAGE, fold=0.4, paper=[0.1, 0.2, 0.9, 0.8])
-        stored = await repo.upsert_briefing(
-            "u-fold", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=edition
+        stored = await _upsert(
+            repo, "u-fold", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=edition
         )
 
         fetched = await repo.get(stored.id, user_id="u-fold")
@@ -92,8 +114,13 @@ class TestBriefingsUpsert:
         self, repo, raw_collection
     ):
         with local_timezone("Asia/Kolkata"):
-            stored = await repo.upsert_briefing(
-                "u-mint", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+            stored = await _upsert(
+                repo,
+                "u-mint",
+                "2026-08-06",
+                BRIEFING_KIND_DAILY,
+                _payload(),
+                edition=_EDITION,
             )
 
         assert re.fullmatch(r"brief_[0-9a-f]{12}", stored.id)
@@ -104,11 +131,12 @@ class TestBriefingsUpsert:
 
     async def test_upsert_creates_then_updates_payload_in_place(self, repo, raw_collection):
         user_id = "u-upsert"
-        first = await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        first = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         assert first.payload.headline == "All quiet"
-        second = await repo.upsert_briefing(
+        second = await _upsert(
+            repo,
             user_id,
             "2026-08-06",
             BRIEFING_KIND_DAILY,
@@ -121,14 +149,15 @@ class TestBriefingsUpsert:
 
     async def test_upsert_preserves_opened_at_across_rerun(self, repo):
         user_id = "u-preserve"
-        briefing = await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        briefing = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         assert briefing.opened_at is None
         opened = await repo.mark_opened(user_id, briefing.id)
         assert opened is not None and opened.opened_at is not None
 
-        rerun = await repo.upsert_briefing(
+        rerun = await _upsert(
+            repo,
             user_id,
             "2026-08-06",
             BRIEFING_KIND_DAILY,
@@ -138,15 +167,44 @@ class TestBriefingsUpsert:
         assert rerun.opened_at == opened.opened_at  # untouched by the rerun
         assert rerun.payload.headline == "rerun"
 
+    async def test_a_rerun_is_given_the_id_the_brief_already_has(self, repo):
+        stored = await _upsert(
+            repo, "u-id", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        )
+
+        assert await repo.briefing_id_for("u-id", "2026-08-06", BRIEFING_KIND_DAILY) == stored.id
+        assert await repo.briefing_id_for("u-id", "2026-08-07", BRIEFING_KIND_DAILY) != stored.id
+
+    async def test_a_brief_stored_first_under_another_id_refuses_the_late_upsert(
+        self, repo, raw_collection
+    ):
+        """The late run's edition encodes its own id's link, so it must not overwrite the stored brief."""
+        await raw_collection.create_index([("user_id", 1), ("date", 1), ("kind", 1)], unique=True)
+        stored = await _upsert(
+            repo, "u-race", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        )
+
+        with pytest.raises(DuplicateKeyError):
+            await repo.upsert_briefing(
+                "u-race",
+                "2026-08-06",
+                BRIEFING_KIND_DAILY,
+                _payload(headline="late"),
+                briefing_id="brief_000000000000",
+                edition=_EDITION,
+            )
+        assert await repo.get(stored.id, user_id="u-race") == stored
+
     async def test_upsert_distinguishes_by_date_and_kind(self, repo, raw_collection):
         user_id = "u-distinct"
-        await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        await repo.upsert_briefing(
-            user_id, "2026-08-07", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        await _upsert(
+            repo, user_id, "2026-08-07", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        await repo.upsert_briefing(
+        await _upsert(
+            repo,
             user_id,
             "2026-08-06",
             BRIEFING_KIND_WEEKLY,
@@ -159,14 +217,14 @@ class TestBriefingsUpsert:
 class TestBriefingsReads:
     async def test_get_before_date_excludes_same_day_and_orders_lexically(self, repo):
         user_id = "u-before"
-        earlier = await repo.upsert_briefing(
-            user_id, "2026-08-04", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        earlier = await _upsert(
+            repo, user_id, "2026-08-04", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        await repo.upsert_briefing(
-            user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        await _upsert(
+            repo, user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         result = await repo.get_before_date(
             user_id, kind=BRIEFING_KIND_DAILY, before_date="2026-08-05"
@@ -175,13 +233,14 @@ class TestBriefingsReads:
 
     async def test_get_before_date_returns_the_latest_earlier_brief_of_that_kind(self, repo):
         user_id = "u-before-latest"
-        await repo.upsert_briefing(
-            user_id, "2026-08-03", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        await _upsert(
+            repo, user_id, "2026-08-03", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        latest = await repo.upsert_briefing(
-            user_id, "2026-08-04", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        latest = await _upsert(
+            repo, user_id, "2026-08-04", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        await repo.upsert_briefing(
+        await _upsert(
+            repo,
             user_id,
             "2026-08-04",
             BRIEFING_KIND_WEEKLY,
@@ -201,14 +260,19 @@ class TestBriefingsReads:
 
     async def test_list_recent_is_newest_first_and_scoped(self, repo):
         user_id = "u-recent"
-        await repo.upsert_briefing(
-            user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        await _upsert(
+            repo, user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        newest = await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        newest = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        await repo.upsert_briefing(
-            "other-user", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        await _upsert(
+            repo,
+            "other-user",
+            "2026-08-06",
+            BRIEFING_KIND_DAILY,
+            _payload(),
+            edition=_EDITION,
         )
         recent = await repo.list_recent(user_id, limit=10)
         assert [b.user_id for b in recent] == [user_id, user_id]
@@ -217,14 +281,14 @@ class TestBriefingsReads:
     async def test_list_recent_orders_by_brief_date_not_write_time(self, repo, raw_collection):
         """A backfilled brief is written after newer days but still lists by its own date."""
         user_id = "u-backfilled"
-        later_day = await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        later_day = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        earlier_day = await repo.upsert_briefing(
-            user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        earlier_day = await _upsert(
+            repo, user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        weekly_same_day = await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_WEEKLY, _payload(), edition=_EDITION
+        weekly_same_day = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_WEEKLY, _payload(), edition=_EDITION
         )
         for hour, brief in enumerate([weekly_same_day, later_day, earlier_day]):
             await raw_collection.update_one(
@@ -239,24 +303,27 @@ class TestBriefingsReads:
         self, repo
     ):
         user_id = "u-stamped"
-        later = await repo.upsert_briefing(
+        later = await _upsert(
+            repo,
             user_id,
             "2026-08-07",
             BRIEFING_KIND_DAILY,
             _payload(stamp_city="lima"),
             edition=_EDITION,
         )
-        await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        earlier = await repo.upsert_briefing(
+        earlier = await _upsert(
+            repo,
             user_id,
             "2026-08-05",
             BRIEFING_KIND_DAILY,
             _payload(stamp_city="tokyo"),
             edition=_EDITION,
         )
-        await repo.upsert_briefing(
+        await _upsert(
+            repo,
             "other-user",
             "2026-08-04",
             BRIEFING_KIND_DAILY,
@@ -264,7 +331,8 @@ class TestBriefingsReads:
             edition=_EDITION,
         )
         # Stamped but delivered nowhere: the user never received this city.
-        await repo.upsert_briefing(
+        await _upsert(
+            repo,
             user_id,
             "2026-08-08",
             BRIEFING_KIND_DAILY,
@@ -285,13 +353,14 @@ class TestBriefingsReads:
 
     async def test_list_recent_honours_the_limit_and_the_kind(self, repo, raw_collection):
         user_id = "u-recent-kind"
-        oldest = await repo.upsert_briefing(
-            user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        oldest = await _upsert(
+            repo, user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        newest_daily = await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        newest_daily = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
-        weekly = await repo.upsert_briefing(
+        weekly = await _upsert(
+            repo,
             user_id,
             "2026-08-07",
             BRIEFING_KIND_WEEKLY,
@@ -311,20 +380,20 @@ class TestBriefingsReads:
     async def test_has_daily_briefing(self, repo):
         user_id = "u-has-daily"
         assert await repo.has_daily_briefing(user_id) is False
-        await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_WEEKLY, _payload(), edition=_EDITION
+        await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_WEEKLY, _payload(), edition=_EDITION
         )
         assert await repo.has_daily_briefing(user_id) is False  # weekly doesn't count
-        await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         assert await repo.has_daily_briefing(user_id) is True
 
     async def test_was_delivered_needs_a_channel_on_that_date_and_kind(self, repo):
         user_id = "u-delivered"
         assert await repo.was_delivered(user_id, "2026-08-06", BRIEFING_KIND_DAILY) is False
-        await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         # Stored but delivered nowhere: a retry may still send it.
         assert await repo.was_delivered(user_id, "2026-08-06", BRIEFING_KIND_DAILY) is False
@@ -339,8 +408,8 @@ class TestBriefingsReads:
 class TestBriefingsMarkOpened:
     async def test_mark_opened_is_idempotent(self, repo):
         user_id = "u-opened"
-        briefing = await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        briefing = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         with local_timezone("Asia/Kolkata"):
             first = await repo.mark_opened(user_id, briefing.id)
@@ -350,8 +419,8 @@ class TestBriefingsMarkOpened:
 
     async def test_mark_opened_missing_or_wrong_user_returns_none(self, repo):
         user_id = "u-owner"
-        briefing = await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        briefing = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         assert await repo.mark_opened("attacker", briefing.id) is None
         assert await repo.mark_opened(user_id, "brief_missing") is None
@@ -360,8 +429,8 @@ class TestBriefingsMarkOpened:
 class TestBriefingsDeliveredChannels:
     async def test_set_delivered_channels(self, repo):
         user_id = "u-channels"
-        stored = await repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        stored = await _upsert(
+            repo, user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         await repo.set_delivered_channels(
             user_id, "2026-08-06", BRIEFING_KIND_DAILY, ["inapp", "telegram"]
@@ -383,8 +452,13 @@ class TestWritesUnderACachePolicy:
         return _CachedBriefingsRepository()
 
     async def _cached_brief(self, cached_repo: _CachedBriefingsRepository, user_id: str):
-        stored = await cached_repo.upsert_briefing(
-            user_id, "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        stored = await _upsert(
+            cached_repo,
+            user_id,
+            "2026-08-06",
+            BRIEFING_KIND_DAILY,
+            _payload(),
+            edition=_EDITION,
         )
         assert await cached_repo.get(stored.id, user_id=user_id) == stored
         return stored
@@ -392,7 +466,8 @@ class TestWritesUnderACachePolicy:
     async def test_a_rerun_refreshes_the_cached_brief(self, cached_repo):
         stored = await self._cached_brief(cached_repo, "u-cache-rerun")
 
-        await cached_repo.upsert_briefing(
+        await _upsert(
+            cached_repo,
             "u-cache-rerun",
             "2026-08-06",
             BRIEFING_KIND_DAILY,

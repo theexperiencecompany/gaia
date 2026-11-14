@@ -5,10 +5,11 @@ schedules, budgets the prompt is held to, and the deterministic hue rotation. Sh
 workflow-execution branch so nothing hardcodes these values.
 """
 
+from datetime import timedelta
 from enum import StrEnum
 from typing import Final, Literal
 
-# Hard ceiling on the unsupervised weekly agent run; expiry raises so a stalled
+# Hard ceiling on the weekly digest's voice runs; expiry raises so a stalled
 # run fails loud and retries next week instead of hanging the worker slot.
 WEEKLY_GENERATION_TIMEOUT_SECONDS: Final[int] = 420
 
@@ -40,27 +41,100 @@ BRIEFING_KIND_WEEKLY: Final[Literal["weekly"]] = "weekly"
 DAILY_KICKER: Final[str] = "THE MORNING BRIEF"
 WEEKLY_KICKER: Final[str] = "THE WEEKLY DIGEST"
 
+
+class SectionKey(StrEnum):
+    """What one section of a brief holds; every surface reads the key, never the title or position."""
+
+    LEAD = "lead"
+    NEEDS_YOU = "needs_you"
+    UPDATES = "updates"
+    GAIA_DID = "gaia_did"
+
+
+class BriefAction(StrEnum):
+    """What a brief item asks the reader to do; set only on items that need them."""
+
+    APPROVE = "approve"
+    REPLY = "reply"
+    REVIEW = "review"
+    RETRY = "retry"
+    READ = "read"
+    ATTEND = "attend"
+
+
+class BriefOutcome(StrEnum):
+    """The state a reported brief item reached; set only on items that need nothing from the reader."""
+
+    APPROVED = "approved"
+    LANDED = "landed"
+    DRAFTED = "drafted"
+    BOOKED = "booked"
+    SENT = "sent"
+    FINISHED = "finished"
+    STARTED = "started"
+    CHANGED = "changed"
+    FAILED = "failed"
+
+
 # Daily brief section heads, numbered in order. Display casing: every surface shows
 # these as written; an edition that sets its heads in capitals does so in its own CSS.
-NEEDS_YOU_SECTION_TITLE: Final[str] = "Needs you"
-HELD_SECTION_TITLE: Final[str] = "While you were away"
-WORK_SECTION_TITLE: Final[str] = "GAIA's work"
-SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III")
-
-# A brief is finite: at most this many items across all its sections, so it reads
-# in under a minute. The daily brief keeps the highest-priority items (needs-you
-# first); a weekly payload over the cap fails generation.
-MAX_BRIEF_ITEMS: Final[int] = 8
-# The written brief message is a text, not a wall: a busy day fits in about 20 short lines.
-MAX_BRIEF_MESSAGE_CHARS: Final[int] = 1500
-# Room each app signal adds to that, up to a hard ceiling however much the apps hold.
-BRIEF_MESSAGE_CHARS_PER_SIGNAL: Final[int] = 60
-BRIEF_MESSAGE_CHAR_CEILING: Final[int] = 2700
+SECTION_TITLES: Final[dict[SectionKey, str]] = {
+    SectionKey.LEAD: "First up",
+    SectionKey.NEEDS_YOU: "Needs you",
+    SectionKey.UPDATES: "From your apps",
+    SectionKey.GAIA_DID: "GAIA's work",
+}
+# The weekly digest's updates are what the user finished this week.
+WEEKLY_SECTION_TITLES: Final[dict[SectionKey, str]] = {
+    **SECTION_TITLES,
+    SectionKey.UPDATES: "You finished",
+}
+SECTION_NUMERALS: Final[tuple[str, ...]] = ("I", "II", "III", "IV")
+# Every brief's sections in reading order, and the most items the selection judge
+# may put in each: the brief reads in under a minute.
+SECTION_ORDER: Final[tuple[SectionKey, ...]] = (
+    SectionKey.LEAD,
+    SectionKey.NEEDS_YOU,
+    SectionKey.UPDATES,
+    SectionKey.GAIA_DID,
+)
+SECTION_CAPS: Final[dict[SectionKey, int]] = {
+    SectionKey.LEAD: 1,
+    SectionKey.NEEDS_YOU: 4,
+    SectionKey.UPDATES: 3,
+    SectionKey.GAIA_DID: 3,
+}
+# The sections whose items ask something of the reader; every other section reports.
+ACTION_SECTIONS: Final[frozenset[SectionKey]] = frozenset({SectionKey.LEAD, SectionKey.NEEDS_YOU})
+# Every brief item is a short noun-phrase title and at most one muted detail line.
+BRIEF_ITEM_TITLE_MAX_CHARS: Final[int] = 50
+BRIEF_ITEM_DETAIL_MAX_CHARS: Final[int] = 80
+#: Selection judge calls per brief: one more when its answer breaks the contract, then the run fails.
+MAX_SELECTION_ATTEMPTS: Final[int] = 2
+#: The selection judge's metering label.
+BRIEF_SELECTION_LABEL: Final[str] = "brief_selection_judge"
+#: What a candidate's source is when GAIA itself, not a connected app, produced it.
+GAIA_SOURCE: Final[str] = "gaia"
+GAIA_APP_NAME: Final[str] = "GAIA"
+# Longest render that fits (Chromium, real renderers, worst of 20 skin seeds): headline 3 lines
+# of gradient's 46px h1, the tightest family; lede 3 lines, caption 1, of the classic edition.
+MAX_BRIEF_HEADLINE_CHARS: Final[int] = 52
+MAX_BRIEF_LEDE_CHARS: Final[int] = 247
+MAX_BRIEF_CAPTION_CHARS: Final[int] = 148
+# The message is a text, not a wall: about 20 short lines on the busiest day.
+MAX_BRIEF_MESSAGE_CHARS: Final[int] = 2700
 # How many recent briefs' opening lines the model sees, so today's opens differently.
 RECENT_OPENINGS_SHOWN: Final[int] = 5
-# Voice attempts per daily brief: one regeneration when the prose contradicts the items
-# (briefing/voice_check.py), then the run fails rather than ship it.
+# Voice attempts per brief: one regeneration when its slots or its claims fail the
+# facts, then the run fails rather than ship it.
 MAX_VOICE_ATTEMPTS: Final[int] = 2
+#: The faithfulness check's metering label.
+BRIEF_FAITHFULNESS_LABEL: Final[str] = "brief_faithfulness_check"
+#: The check judges, it does not write: the same draft gets the same verdict.
+BRIEF_FAITHFULNESS_TEMPERATURE: Final[float] = 0.0
+
+# The user's own todos due today or overdue the daily brief weighs as candidates.
+DUE_TODO_CANDIDATES_LIMIT: Final[int] = 20
 
 # Rows per list in the weekly edition (shipped, handled, the week ahead).
 WEEK_LIST_LIMIT: Final[int] = 5
@@ -92,6 +166,8 @@ ENABLED_BRIEFING_KEYS: Final[dict[BriefingFrequency, frozenset[str]]] = {
 # (brief, weekly digest) until a reactivation signal.
 IDLE_WARN_DAYS: Final[int] = 2
 IDLE_DORMANT_DAYS: Final[int] = 3
+#: How long a goal question waits before a brief asks about the same goal again.
+GOAL_QUESTION_REASK: Final = timedelta(days=7)
 # A new account's first days never wind down: the brief helps them get started instead.
 FIRST_WEEK_DAYS: Final[int] = 7
 

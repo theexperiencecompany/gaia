@@ -6842,6 +6842,12 @@ export interface components {
             user_name?: string | null;
         };
         /**
+         * BriefAction
+         * @description What a brief item asks the reader to do; set only on items that need them.
+         * @enum {string}
+         */
+        BriefAction: "approve" | "reply" | "review" | "retry" | "read" | "attend";
+        /**
          * BriefDeliveryWorkflow
          * @description A workflow whose results wait for the brief.
          */
@@ -6913,13 +6919,21 @@ export interface components {
         /**
          * BriefingItem
          * @description A single line inside a section, optionally bound to a todo.
+         *
+         *     It either asks something of the reader (action) or reports where a thing got to
+         *     (outcome), never both, under a short title and at most one detail line.
          */
         BriefingItem: {
+            action: components["schemas"]["BriefAction"] | null;
+            /** App */
+            app: string | null;
             /**
              * Count
              * @default 1
              */
             count: number;
+            /** Detail */
+            detail: string | null;
             /**
              * Kind
              * @default note
@@ -6928,10 +6942,17 @@ export interface components {
             kind: "gaia" | "you" | "lookback" | "failed" | "note";
             /** Link */
             link: string | null;
+            /** Offer */
+            offer: string | null;
+            outcome: components["schemas"]["BriefOutcome"] | null;
+            /** People */
+            people: string[];
             /** Text */
             text: string;
             /** Todo Id */
             todo_id: string | null;
+            /** Url */
+            url: string | null;
         };
         /**
          * BriefingListResponse
@@ -6972,6 +6993,11 @@ export interface components {
             /** Lede */
             lede: string;
             /**
+             * Link
+             * @description The brief's link, set before its edition renders: its heygaia.link, or its page URL when minting failed. The edition's QR and barcodes encode it; None on legacy rows.
+             */
+            link: string | null;
+            /**
              * Message
              * @description The brief as the user reads it: the text GAIA writes over the code-built facts, sent after the edition image in chat, under it in the email and on the brief's page. None on legacy rows.
              */
@@ -6990,6 +7016,13 @@ export interface components {
             recipient_name: string | null;
             /** Sections */
             sections: components["schemas"]["BriefingSection"][];
+            /**
+             * Sources Read
+             * @description The apps the brief read, by display name.
+             */
+            sources_read: string[];
+            /** Sources Unavailable */
+            sources_unavailable: components["schemas"]["UnreadSource"][];
             /**
              * Stamp City
              * @description Air Mail editions only: the city stamp (a stamps/cities.json slug) this brief carried. The Postmarks page reads it.
@@ -7045,6 +7078,12 @@ export interface components {
         BriefingSection: {
             /** Items */
             items: components["schemas"]["BriefingItem"][];
+            key: components["schemas"]["SectionKey"] | null;
+            /**
+             * More
+             * @default 0
+             */
+            more: number;
             /** Numeral */
             numeral: string;
             /** Title */
@@ -7150,6 +7189,12 @@ export interface components {
             /** You */
             you: number;
         };
+        /**
+         * BriefOutcome
+         * @description The state a reported brief item reached; set only on items that need nothing from the reader.
+         * @enum {string}
+         */
+        BriefOutcome: "approved" | "landed" | "drafted" | "booked" | "sent" | "finished" | "started" | "changed" | "failed";
         /**
          * BrowserImportRequest
          * @description A profile upload from the local CLI: the mint code plus a Playwright
@@ -14044,6 +14089,12 @@ export interface components {
          */
         ScheduleRejection: "wrong_field_count" | "unparseable" | "too_frequent" | "never_fires";
         /**
+         * ScoutSkipReason
+         * @description Why a scout contributed nothing to this brief.
+         * @enum {string}
+         */
+        ScoutSkipReason: "failed" | "budget" | "backoff" | "no_read_only_tools" | "unknown_integration";
+        /**
          * SearchIntegrationItem
          * @description Integration item in search results.
          */
@@ -14136,6 +14187,12 @@ export interface components {
             /** Notes */
             notes: components["schemas"]["NoteSearchResult"][];
         };
+        /**
+         * SectionKey
+         * @description What one section of a brief holds; every surface reads the key, never the title or position.
+         * @enum {string}
+         */
+        SectionKey: "lead" | "needs_you" | "updates" | "gaia_did";
         /**
          * SelectedCalendarEventData
          * @description Calendar event the user attached to a message.
@@ -16059,6 +16116,15 @@ export interface components {
             status?: "success";
         };
         /**
+         * UnreadSource
+         * @description A connected app the brief could not read this time, and why.
+         */
+        UnreadSource: {
+            /** App */
+            app: string;
+            reason: components["schemas"]["ScoutSkipReason"];
+        };
+        /**
          * UpdateCustomIntegrationRequest
          * @description Request to update a custom integration (partial update).
          */
@@ -17284,6 +17350,7 @@ export type Body_user_update_user_timezone = components['schemas']['Body_user_up
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
+export type BriefAction = components['schemas']['BriefAction'];
 export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
 export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
 export type BriefingEvent = components['schemas']['BriefingEvent'];
@@ -17299,6 +17366,7 @@ export type BriefingTallies = components['schemas']['BriefingTallies'];
 export type BriefingView = components['schemas']['BriefingView'];
 export type BriefingWeek = components['schemas']['BriefingWeek'];
 export type BriefingWeekDay = components['schemas']['BriefingWeekDay'];
+export type BriefOutcome = components['schemas']['BriefOutcome'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
 export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
 export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
@@ -17673,11 +17741,13 @@ export type SaveSocialProfilesResponse = components['schemas']['SaveSocialProfil
 export type SaveWritingStyleResponse = components['schemas']['SaveWritingStyleResponse'];
 export type ScheduledTaskStatus = components['schemas']['ScheduledTaskStatus'];
 export type ScheduleRejection = components['schemas']['ScheduleRejection'];
+export type ScoutSkipReason = components['schemas']['ScoutSkipReason'];
 export type SearchIntegrationItem = components['schemas']['SearchIntegrationItem'];
 export type SearchIntegrationsResponse = components['schemas']['SearchIntegrationsResponse'];
 export type SearchMode = components['schemas']['SearchMode'];
 export type SearchResultItem = components['schemas']['SearchResultItem'];
 export type SearchResultsResponse = components['schemas']['SearchResultsResponse'];
+export type SectionKey = components['schemas']['SectionKey'];
 export type SelectedCalendarEventData = components['schemas']['SelectedCalendarEventData'];
 export type SelectedWorkflowDataInput = components['schemas']['SelectedWorkflowDataInput'];
 export type SelectedWorkflowDataOutput = components['schemas']['SelectedWorkflowDataOutput'];
@@ -17774,6 +17844,7 @@ export type TriggerSubscriptionView = components['schemas']['TriggerSubscription
 export type TriggerType = components['schemas']['TriggerType'];
 export type UnlinkAccountResponse = components['schemas']['UnlinkAccountResponse'];
 export type UnpublishIntegrationResponse = components['schemas']['UnpublishIntegrationResponse'];
+export type UnreadSource = components['schemas']['UnreadSource'];
 export type UpdateCustomIntegrationRequest = components['schemas']['UpdateCustomIntegrationRequest'];
 export type UpdateDescriptionRequest = components['schemas']['UpdateDescriptionRequest'];
 export type UpdateDescriptionResponse = components['schemas']['UpdateDescriptionResponse'];

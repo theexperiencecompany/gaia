@@ -1868,6 +1868,19 @@
         "title": "BotSettingsResponse",
         "type": "object"
       },
+      "BriefAction": {
+        "description": "What a brief item asks the reader to do; set only on items that need them.",
+        "enum": [
+          "approve",
+          "reply",
+          "review",
+          "retry",
+          "read",
+          "attend"
+        ],
+        "title": "BriefAction",
+        "type": "string"
+      },
       "BriefDeliveryWorkflow": {
         "description": "A workflow whose results wait for the brief.",
         "properties": {
@@ -1984,6 +1997,22 @@
         "title": "BriefDeliveryWorkflowsConflict",
         "type": "object"
       },
+      "BriefOutcome": {
+        "description": "The state a reported brief item reached; set only on items that need nothing from the reader.",
+        "enum": [
+          "approved",
+          "landed",
+          "drafted",
+          "booked",
+          "sent",
+          "finished",
+          "started",
+          "changed",
+          "failed"
+        ],
+        "title": "BriefOutcome",
+        "type": "string"
+      },
       "BriefingEvent": {
         "description": "One calendar event on the user's own clock, read from their calendar.",
         "properties": {
@@ -2037,13 +2066,47 @@
         "type": "string"
       },
       "BriefingItem": {
-        "description": "A single line inside a section, optionally bound to a todo.",
+        "description": "A single line inside a section, optionally bound to a todo.\n\nIt either asks something of the reader (action) or reports where a thing got to\n(outcome), never both, under a short title and at most one detail line.",
         "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "app": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App"
+          },
           "count": {
             "default": 1,
             "minimum": 1.0,
             "title": "Count",
             "type": "integer"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
           },
           "kind": {
             "default": "note",
@@ -2068,7 +2131,37 @@
             ],
             "title": "Link"
           },
+          "offer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BriefOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "people": {
+            "items": {
+              "type": "string"
+            },
+            "title": "People",
+            "type": "array"
+          },
           "text": {
+            "maxLength": 50,
+            "minLength": 1,
             "title": "Text",
             "type": "string"
           },
@@ -2082,14 +2175,32 @@
               }
             ],
             "title": "Todo Id"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
           }
         },
         "required": [
           "text",
+          "action",
+          "outcome",
+          "detail",
           "todo_id",
           "kind",
           "link",
-          "count"
+          "count",
+          "app",
+          "url",
+          "people",
+          "offer"
         ],
         "title": "BriefingItem",
         "type": "object"
@@ -2161,6 +2272,18 @@
             "title": "Lede",
             "type": "string"
           },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The brief's link, set before its edition renders: its heygaia.link, or its page URL when minting failed. The edition's QR and barcodes encode it; None on legacy rows.",
+            "title": "Link"
+          },
           "message": {
             "anyOf": [
               {
@@ -2212,6 +2335,21 @@
               "$ref": "#/components/schemas/BriefingSection"
             },
             "title": "Sections",
+            "type": "array"
+          },
+          "sources_read": {
+            "description": "The apps the brief read, by display name.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources Read",
+            "type": "array"
+          },
+          "sources_unavailable": {
+            "items": {
+              "$ref": "#/components/schemas/UnreadSource"
+            },
+            "title": "Sources Unavailable",
             "type": "array"
           },
           "stamp_city": {
@@ -2274,9 +2412,12 @@
           "new_stamp",
           "recipient_name",
           "generated_at",
+          "link",
           "calendar",
           "tallies",
           "week",
+          "sources_read",
+          "sources_unavailable",
           "message"
         ],
         "title": "BriefingPayload",
@@ -2340,6 +2481,22 @@
             "title": "Items",
             "type": "array"
           },
+          "key": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SectionKey"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "more": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "More",
+            "type": "integer"
+          },
           "numeral": {
             "title": "Numeral",
             "type": "string"
@@ -2352,7 +2509,9 @@
         "required": [
           "numeral",
           "title",
-          "items"
+          "items",
+          "key",
+          "more"
         ],
         "title": "BriefingSection",
         "type": "object"
@@ -17086,6 +17245,18 @@
         "title": "ScheduledTaskStatus",
         "type": "string"
       },
+      "ScoutSkipReason": {
+        "description": "Why a scout contributed nothing to this brief.",
+        "enum": [
+          "failed",
+          "budget",
+          "backoff",
+          "no_read_only_tools",
+          "unknown_integration"
+        ],
+        "title": "ScoutSkipReason",
+        "type": "string"
+      },
       "SearchIntegrationItem": {
         "description": "Integration item in search results.",
         "properties": {
@@ -17248,6 +17419,17 @@
         ],
         "title": "SearchResultsResponse",
         "type": "object"
+      },
+      "SectionKey": {
+        "description": "What one section of a brief holds; every surface reads the key, never the title or position.",
+        "enum": [
+          "lead",
+          "needs_you",
+          "updates",
+          "gaia_did"
+        ],
+        "title": "SectionKey",
+        "type": "string"
       },
       "SelectedCalendarEventData": {
         "description": "Calendar event the user attached to a message.",
@@ -21223,6 +21405,24 @@
           "integrationId"
         ],
         "title": "UnpublishIntegrationResponse",
+        "type": "object"
+      },
+      "UnreadSource": {
+        "description": "A connected app the brief could not read this time, and why.",
+        "properties": {
+          "app": {
+            "title": "App",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ScoutSkipReason"
+          }
+        },
+        "required": [
+          "app",
+          "reason"
+        ],
+        "title": "UnreadSource",
         "type": "object"
       },
       "UpdateCustomIntegrationRequest": {

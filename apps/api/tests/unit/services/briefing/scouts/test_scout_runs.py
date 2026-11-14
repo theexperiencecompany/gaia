@@ -26,6 +26,7 @@ from app.models.playbook_models import PlaybookBody, ToolStep
 from app.models.scout_models import (
     ScoutDocument,
     ScoutOutcome,
+    ScoutResult,
     ScoutSkipReason,
     ScoutStatus,
     Signal,
@@ -276,6 +277,36 @@ class TestReplayOrLearn:
             ScoutSkipReason.BUDGET,
         )
         scouts.learn.assert_not_awaited()
+
+
+class TestScoutSignals:
+    async def test_only_a_replays_criteria_reach_the_brief_keyed_by_app(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        results = [
+            ScoutResult(
+                integration_id="linear",
+                app="Linear",
+                outcome=ScoutOutcome.REPLAYED,
+                criteria="open issues assigned to the user",
+            ),
+            ScoutResult(
+                integration_id="github",
+                app="GitHub",
+                outcome=ScoutOutcome.LEARNED,
+                criteria="open pull requests awaiting the user",
+            ),
+            ScoutResult(
+                integration_id="notion", app="Notion", outcome=ScoutOutcome.REPLAYED, criteria=None
+            ),
+        ]
+        monkeypatch.setattr(service, "run_scouts", AsyncMock(return_value=results))
+        monkeypatch.setattr(service, "remember", AsyncMock(return_value=[]))
+
+        signals = await service.scout_signals(USER, _NOW)
+
+        assert signals.criteria == {"Linear": "open issues assigned to the user"}
+        assert signals.results == results
 
 
 class TestWhoRunsScouts:

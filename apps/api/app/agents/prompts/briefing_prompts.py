@@ -1,13 +1,18 @@
 """Briefing generation prompts, the retention keystone.
 
 The builders assemble the contract the silent agent runs against; the service feeds in
-the formatted blocks. The agent proposes work with the create_tracked_todo tool, then
-emits exactly one BriefingPayload JSON object as its entire final message.
+the code-built facts. The agent writes only the voice: one JSON object of headline, lede,
+caption, mood and message as its entire final message.
 """
 
 from dataclasses import dataclass
 
-from app.constants.briefing import MAX_BRIEF_ITEMS
+from app.constants.briefing import (
+    MAX_BRIEF_CAPTION_CHARS,
+    MAX_BRIEF_HEADLINE_CHARS,
+    MAX_BRIEF_LEDE_CHARS,
+    MAX_BRIEF_MESSAGE_CHARS,
+)
 
 # How the brief's one message reads, shared by daily and weekly: every surface
 # (chat, email, the app) shows this text under the edition image.
@@ -52,125 +57,65 @@ useful specific thing, named: the person, the decision, the time.
 - At most ONE gentle suggestion, only when the facts support it (a deadline
   lands right before a meeting, a failed task needs a decision).
 - Never paste a raw URL: every surface adds the link to the full brief itself,
-  and a deliverable is linked only by wrapping its phrase in its fact's link
-  token, at most once per item.
+  and an item is linked only by its link slot, at most once per item.
 """.strip()
 
-# The exact output contract, shared by daily and weekly so the parser sees one
-# shape. ``hue`` is set deterministically in code post-run, so the model leaves
-# it at 0. Kept as a single block so the two prompts never drift.
-_PAYLOAD_SCHEMA = """
-## OUTPUT (read twice)
-
-Your ENTIRE final message MUST be a single JSON object inside one ```json code
-fence. No prose before it, no prose after it, no second fence. If you have
-nothing else to say, the JSON is the whole message.
-
-Schema (all fields required unless marked optional):
-
-```json
-{
-  "kicker": "THE MORNING BRIEF",        // short all-caps masthead label
-  "date": "<date exactly as given>",
-  "headline": "<one sharp plain-voice line, no markup, no emoji>",
-  "lede": "<1-2 sentences setting up the day>",
-  "stats": [                              // 0-3 real numbers, never invented
-    { "value": "3", "label": "queued for you", "delta": "+1" }  // delta optional
-  ],
-  "sections": [                           // Roman-numeraled, in order
-    {
-      "numeral": "I",
-      "title": "<section title>",
-      "items": [
-        { "text": "<see ITEM QUALITY>", "todo_id": "<id or omit>", "kind": "gaia" }
-      ]
-    }
-  ],
-  "mood": "<clear | packed | idle | winback>",  // keys the hero treatment
-  "caption": "<one witty closing line>",
-  "hue": 0,                               // leave 0; set deterministically later
-  "message": "<the brief as a text, see THE MESSAGE>"
-}
-```
-""".strip()
-
-_ITEM_KINDS = """
-Item ``kind`` is one of: ``gaia`` (GAIA is doing it), ``you`` (needs the user),
-``lookback`` (yesterday's result), or ``note`` (a plain highlight). Set ``todo_id`` only for items bound to a real
-todo you can see or just created. When an item is anchored to a real clock time
-(a calendar event, a deadline today), START its text with that user-local time
-in "H:MM AM — " form (e.g. "1:30 PM — Design review with Dhruv"); never invent
-a time for untimed work. Never emit HTML or Markdown styling inside any
-string; the renderer owns all styling.
-""".strip()
-
-_PAYLOAD_CONTRACT = f"{_PAYLOAD_SCHEMA}\n\n{_MESSAGE_VOICE}\n\n{_ITEM_KINDS}"
-
-# What separates a briefing the user acts on from a list they ignore. Shared by
-# both prompts so item quality never drifts between daily and weekly.
-_ITEM_QUALITY = f"""
-## ITEM QUALITY (this is the whole product)
-
-A bare todo title is a failure: a title alone tells the user nothing they can
-act on. Every item is one complete, self-sufficient sentence that answers:
-what, why now, and what happens next. Shape (not content) of each kind:
-
-- "you" item: the ONE concrete action plus the reason it is today's.
-- "gaia" item: what GAIA is doing and what the user gets, with when. Work still
-  running says so ("I'm on it, drafts land by ..."); failed work is reported
-  plainly with its cause, never hidden.
-- "lookback" item: the named outcome, not the activity.
-
-TRUTH RULE, absolute: every fact in an item (names, dates, documents, people,
-deadlines, numbers) must come from the context you were given or from tool
-results in this run. If you do not know a specific, write the item without it
-rather than inventing one. A fabricated "your lawyer needs this by Friday" for
-a user who has no lawyer destroys trust in one message.
-
-Selection beats coverage: pick items by leverage toward the user's goal, never
-by listing whatever todos exist. A brief is finite: at most {MAX_BRIEF_ITEMS} items
-across all sections, fewer when fewer matter. If a todo's title is vague, use its canvas,
-description, or serves to say something specific; if you know nothing concrete
-about it, it does not belong in the brief.
+_SLOTS = f"""
+## SLOTS (how every count, time and link gets into your prose)
+You never type a count, a time, a date or a web address. Where one goes, write a slot; the
+system fills it in from the facts:
+- ``[[count:needs_you]]``: a count from [COUNTS], by its name there.
+- ``[[fact:N.time]]``: fact N's time or date, when its line has one ("Sequoia at
+  [[fact:9.time]]").
+- ``[[fact:N.count]]``: how many requests fact N stands for, when its line says so.
+- ``[the phrase](fact:N)``: your own words for fact N, linked to what it opens when it is
+  marked ``linkable`` and plain text otherwise. This is how you refer to an item.
+- ``[[fact:N]]``: fact N's title exactly as listed. Titles are written as to-dos
+  ("Approve the Acme MSA renewal"), so "approve the [[fact:3]]" reads "approve the Approve
+  the ...". Use it only where the title reads naturally as it stands; otherwise write
+  "[approve the Acme renewal](fact:3)".
+The message must refer to every item waiting on the user and every calendar event through
+one of its slots, usually its phrase; a brief that leaves one out is sent back.
+A figure you type must stand as it is in a fact's title ("the Q3 interviews"); any other is
+said in words or left out. A slot naming no fact shown, a count not in [COUNTS] or a field
+the fact lacks is rejected. Lengths count the prose with its slots filled in: headline at
+most {MAX_BRIEF_HEADLINE_CHARS} characters, lede {MAX_BRIEF_LEDE_CHARS}, caption
+{MAX_BRIEF_CAPTION_CHARS}, message {MAX_BRIEF_MESSAGE_CHARS}.
 """.strip()
 
 
-_VOICE_CONTRACT = """
+# The voice JSON both briefs return; each fills in what its lede sets up and its moods.
+_VOICE_OUTPUT = """
 ## OUTPUT (read twice)
 
 Your ENTIRE final message MUST be a single JSON object inside one ```json code
 fence. No prose before or after it.
 
 ```json
-{
+{{
   "headline": "<one sharp plain-voice line, no markup, no emoji>",
-  "lede": "<1-2 sentences setting up the day>",
+  "lede": "<{lede}>",
   "caption": "<one witty closing line>",
-  "mood": "<clear | packed | idle | winback>",
+  "mood": "<{moods}>",
   "message": "<the brief as a text, see THE MESSAGE>"
-}
+}}
 ```
+""".strip()
 
+_VOICE_ONLY = """
 You are writing VOICE ONLY. The facts (what completed, what is running, what
 failed, what needs the user) are assembled by the system and shown below; they
-are already final. You cannot add, remove, or reword facts, only give the day
+are already final. You cannot add, remove, or reword facts, only give the brief
 its voice. Every specific in your prose must appear in the facts below; if it is
 not there, you do not say it.
+""".strip()
 
-The HEADLINE and LEDE are printed above the brief's items, so they are written
-from TODAY'S FACTS alone: name only people and things that appear in an item or
-in today's calendar, use only the non-zero numbers in [COUNTS] or the calendar, and never
-say something needs the user, or mention an event, unless an item or the
-calendar shows it. Yesterday, the user's replies and goal memory may shape the
-message and caption, never the headline or lede. The system checks the headline,
-lede and message against these facts, checks that the message mentions every item
-waiting on the user and every calendar event, and rejects a brief that does not
-match.
-
-Be CONCRETE, not vague. Each fact carries a ``detail:`` snippet — use it to name
-specifics ("vetted 12 investors — Elad Gil, Nat Friedman, Daniel Gross and 9
-more" beats "the investor list is ready"). Pull real names, counts, and choices
-straight from the detail; never invent ones that are not there.
+# How every brief's prose reads, past what its headline and lede are written from.
+_VOICE_CRAFT = """
+Be CONCRETE, not vague. A fact's ``detail:`` or ``summary:`` names specifics: use
+them ("vetted twelve investors, Elad Gil, Nat Friedman, Daniel Gross and more" beats
+"the investor list is ready"). Pull real names and choices straight from them;
+never invent ones that are not there.
 
 ## VOICE BAR (bad vs good)
 Horoscope filler is a defect. Never write these or their cousins: "You're making
@@ -179,7 +124,7 @@ great progress!", "Let's make today count", "Another productive day ahead",
 with a specific pulled from the facts, in second person, naming the goal it
 serves:
 - BAD headline: "A productive day ahead" / GOOD: "Two investor drafts are
-  written and waiting in your drafts folder"
+  waiting in your folder"
 - BAD lede: "You're making steady progress on your goals." / GOOD: "The Sequoia
   and Accel drafts are ready; the only open question is whether the deck link
   goes in the first email."
@@ -194,10 +139,10 @@ lede puts it in front of them. Finished work is the supporting cast, never the
 opener, whenever something is waiting on them. If nothing needs the user, open
 on the biggest finished result instead.
 
-ALWAYS summarise, THEN maybe link — never a bare link. Every fact carries a
-``summary:`` (concrete specifics) you MUST voice, a size hint (``artifact holds
-~N chars``); a fact with something to open also carries a ``link:`` you decide
-whether to use. A fact with no ``link:`` cannot be linked.
+ALWAYS summarise, THEN maybe link — never a bare link. A work fact carries a
+``summary:`` (concrete specifics) you MUST voice and a size hint (``artifact holds
+~N chars``); a fact with something to open is marked ``linkable`` and you decide
+whether to link it. A fact not marked ``linkable`` has nothing to link.
 
 Link when the artifact is something the user OPENS AND USES — a list they'll work
 from, drafts they'll send, posts they'll publish, a document — or when the fact
@@ -207,13 +152,13 @@ even if a big pile of research sits behind it, the conclusion is the value and
 there is nothing to open. Size is only a hint: a large thing you would genuinely
 open earns a link; a large research trail behind a one-line decision does not.
 
-When you do link, write a markdown link: the item's natural phrase in square
-brackets, then its ``link:`` value copied exactly, with nothing in between. For a
-fact ending ``link: (link:0)``: "I vetted 12 investors (Elad Gil, Nat Friedman,
-Daniel Gross and more), the [full list](link:0) is ready". The phrase becomes the
+When you do link, write the item's natural phrase in square brackets, then
+``(fact:N)`` with its fact's number, nothing in between. For fact 4, marked
+``linkable``: "I vetted twelve investors (Elad Gil, Nat Friedman, Daniel Gross and
+more), the [full list](fact:4) is ready". The phrase becomes the
 tappable link on every surface, and only the items you link get one. One link per
 item, once: never a link on its own, never a "here:" followed by links, never two
-links for one thing. Never invent a link number, and never paste an artifact's contents
+links for one thing. Never invent a fact number, and never paste an artifact's contents
 into the message. Do not overcorrect into forced
 quirkiness.
 
@@ -227,6 +172,29 @@ applies, that is your one ask, nothing else gets asked.
 NEVER COUNT ZEROS: name what exists, never tally what does not. "0 items
 waiting, 0 done, 0 in progress" is a status report, not a person talking; leave
 out anything with no count instead of saying it is zero.
+""".strip()
+
+_WORDS = """
+WORDS: never name the brief's internal machinery to the user: no "lane", "held
+results", "sections", "facts", a fact's number or "[COUNTS]" (say you'll track it as a goal, or
+just name the work). Never use em dashes or en dashes anywhere in any
+string; use commas, periods, or parentheses.
+""".strip()
+
+_VOICE_CONTRACT = """
+{output}
+
+{only}
+
+The HEADLINE and LEDE are printed above the brief's items, so they are written
+from TODAY'S FACTS alone: name only people and things that appear in an item or
+in today's calendar, and never say something needs the user, or mention an event,
+unless an item or the calendar shows it. Yesterday, the user's replies and goal
+memory may shape the message and caption, never the headline or lede. Once the
+slots are filled, a checker reads the headline, lede, caption and message against
+these facts and rejects any claim they do not support.
+
+{craft}
 
 EMPTY DAYS STAY TRUE: when the facts show no tracked work and no results, the
 headline and lede are one short, warm, true line about the day (the calendar,
@@ -237,11 +205,15 @@ never mention workflows, runs, or "everything ran smoothly" unless the facts
 name a workflow. A reassuring line about things that do not exist is a lie the
 user can check in one tap.
 
-WORDS: never name the brief's internal machinery to the user: no "lane", "held
-results", "sections", "facts" or "[COUNTS]" (say you'll track it as a goal, or
-just name the work). Never use em dashes or en dashes anywhere in any
-string; use commas, periods, or parentheses.
-""".strip()
+{words}
+""".strip().format(
+    output=_VOICE_OUTPUT.format(
+        lede="1-2 sentences setting up the day", moods="clear | packed | idle | winback"
+    ),
+    only=_VOICE_ONLY,
+    craft=_VOICE_CRAFT,
+    words=_WORDS,
+)
 
 
 @dataclass(frozen=True)
@@ -274,8 +246,8 @@ def _signals_section(signals: str) -> str:
 ## ACROSS THEIR APPS (real, current state of their connected apps)
 {signals}
 Voice these in the message, grouped by app. An important item gets its own line, named
-concretely, linked to its link when it has one. The rest of an app's items share one line
-("plus 3 more open in Linear"), linking the ones you name. Use each item's memory: an item
+concretely, linked with its fact's link slot when it is linkable. The rest of an app's items
+share one line ("plus a few more open in Linear"), linking the ones you name. Use each item's memory: an item
 mentioned yesterday and unchanged gets a short "still" or is left out; one that moved gets
 the move; one marked new is news. An item only first seen today is not new to them (the app
 dates it earlier, or not at all): never call it new, just assigned or today's. Never invent an
@@ -300,6 +272,29 @@ def _recent_openings_block(openings: list[str]) -> str:
     return f"\n## HOW YOUR LAST BRIEFS OPENED (open today's message differently)\n{listed}\n"
 
 
+_GOAL_QUESTION = """
+If no goal lane exists but the goal knowledge above names something specific, the
+whole brief is one short honest message plus ONE confirming question that quotes
+it and offers to start ("You mentioned <specific thing> [on <date>], want me to
+take that on and start with <first concrete deliverable> tonight?"). EXCEPTION,
+absolute: if the user's replies above ALREADY answered this with a yes, never ask
+it again in any wording. Acknowledge their yes plainly instead ("you said go
+ahead on the investor list, that's in motion") and say nothing more about it. Weigh
+the bracketed dates: a goal [mentioned] months ago with no activity since is
+probably stale; ask whether it is still live rather than acting on it. Only when
+the knowledge above is truly empty, ask ONE question with 2-3 specific, mutually
+exclusive, one-word-answerable options grounded in what you DO know (profession,
+onboarding focus, recent activity). Generic buckets (Work / Personal / Other) are
+a hard failure. Never ask an open-ended "what can I help with".
+""".strip()
+
+# A remembered goal is asked about once per GOAL_QUESTION_REASK; inside the window this replaces it.
+_GOAL_ASKED = """
+You asked recently whether their goal is still live. Do not ask about it again today, in any
+wording, and do not ask them to name one: mention a goal only where today's facts serve it.
+""".strip()
+
+
 @dataclass(frozen=True)
 class VoiceSituation:
     """Where the user stands today; each flag adds its one note to the voice prompt.
@@ -313,6 +308,8 @@ class VoiceSituation:
     wind_down: str | None = None
     first_week: bool = False
     offer_lighter_cadence: bool = False
+    #: A brief asked about their remembered goal inside GOAL_QUESTION_REASK.
+    goal_asked_recently: bool = False
 
 
 def build_briefing_voice_prompt(
@@ -321,12 +318,10 @@ def build_briefing_voice_prompt(
     blocks: VoicePromptBlocks,
     situation: VoiceSituation,
     recent_openings: list[str],
-    max_message_chars: int,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
     recent_openings are the first lines of the last few messages, so today's opens differently.
-    max_message_chars is the length cap the written message is checked against.
     """
     wind_down_note = ""
     if situation.wind_down == "warn":
@@ -388,6 +383,7 @@ def build_briefing_voice_prompt(
         if situation.offer_lighter_cadence
         else ""
     )
+    goal_note = _GOAL_ASKED if situation.goal_asked_recently else _GOAL_QUESTION
     setup_block = f"\n## THEIR GAIA SETUP (real facts)\n{blocks.setup}\n" if blocks.setup else ""
     return f"""You are GAIA voicing this user's daily briefing for {date_local}.
 
@@ -409,23 +405,12 @@ actually changed in response.
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {blocks.goal}
 {setup_block}{winback_note}{first_note}{first_week_note}{cadence_note}{wind_down_note}
-If no goal lane exists but the goal knowledge above names something specific, the
-whole brief is one short honest message plus ONE confirming question that quotes
-it and offers to start ("You mentioned <specific thing> [on <date>], want me to
-take that on and start with <first concrete deliverable> tonight?"). EXCEPTION,
-absolute: if the user's replies above ALREADY answered this with a yes, never ask
-it again in any wording. Acknowledge their yes plainly instead ("you said go
-ahead on the investor list, that's in motion") and say nothing more about it. Weigh
-the bracketed dates: a goal [mentioned] months ago with no activity since is
-probably stale; ask whether it is still live rather than acting on it. Only when
-the knowledge above is truly empty, ask ONE question with 2-3 specific, mutually
-exclusive, one-word-answerable options grounded in what you DO know (profession,
-onboarding focus, recent activity). Generic buckets (Work / Personal / Other) are
-a hard failure. Never ask an open-ended "what can I help with".
+{goal_note}
 {_recent_openings_block(recent_openings)}
 {_MESSAGE_VOICE}
-- Hard limit: ``message`` stays under {max_message_chars} characters. A longer one is
-  rejected, so on a full day fold an app's routine items into one line.
+- On a full day fold an app's routine items into one line rather than run long.
+
+{_SLOTS}
 
 {_VOICE_CONTRACT}
 """
@@ -451,38 +436,54 @@ def voice_unreadable_note(problems: list[str]) -> str:
     )
 
 
-def build_weekly_digest_prompt(
-    *,
-    date_local: str,
-    week_summary_block: str,
-) -> str:
-    """Assemble the weekly digest contract (kind=weekly payload)."""
+_WEEKLY_HEADLINE = """
+The HEADLINE names the week's shape in one plain line and the LEDE sets the week up in
+1-2 sentences, both from THIS WEEK'S FACTS alone: name only people and things that appear
+in an item or in the week ahead, and never say something needs the user unless an item
+shows it. Goal memory may shape the message and caption, never the headline or lede. Once
+the slots are filled, a checker reads the headline, lede, caption and message against these
+facts and rejects any claim they do not support.
+""".strip()
 
-    return f"""You are GAIA writing this user's weekly digest for the week ending {date_local}.
+_WEEKLY_VOICE_CONTRACT = f"""
+{_VOICE_OUTPUT.format(lede="1-2 sentences setting up the week", moods="weekly")}
 
-This is a zoom-out, not a to-do list. Celebrate the week honestly, real numbers
-only. Produce ONE structured payload.
+{_VOICE_ONLY}
 
-## THE WEEK
-{week_summary_block}
+{_WEEKLY_HEADLINE}
 
-{_ITEM_QUALITY}
+{_VOICE_CRAFT}
 
-## VOICE
-Warm but not saccharine; write like a person, vary sentence length, open on the
-point. The headline names the week's shape in one plain line. Stats carry the
-week's real totals (completed by GAIA, completed by you); never estimate a
-figure you were not given.
-Set mood to "weekly". The caption is one witty line worth sharing.
+{_WORDS}
+""".strip()
+
+
+def build_weekly_voice_prompt(*, date_local: str, blocks: VoicePromptBlocks) -> str:
+    """Voice pass over the week's code-built facts: what got done since Monday and what is ahead."""
+    return f"""You are GAIA voicing this user's weekly digest for the week ending {date_local}.
+
+This is a zoom-out, not a to-do list: the week since Monday, and the seven days ahead.
+Celebrate the week honestly.
+
+## WHO YOU'RE WRITING TO
+{blocks.reader}
+
+## THIS WEEK'S FACTS (final: voice them, never alter them)
+{blocks.facts}
+
+## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
+{blocks.goal}
 
 ## NEXT WEEK'S EDGE
-End the digest with ONE suggestion to sharpen a goal's strategy, grounded in the
-week's actual pattern ("3 of 5 cold investor emails went unanswered; warm intros
-through Elad's network look stronger. Want me to build that list?"). One suggestion,
-phrased as one question the user can answer with a single word. Never a generic
-"next week let's keep the momentum going".
+End the message with ONE suggestion that sharpens how they work toward a goal, grounded in
+this week's facts and phrased as one question they can answer with a single word. It is the
+digest's one ask. Never a generic "next week let's keep the momentum going".
 
-{_PAYLOAD_CONTRACT}
+{_MESSAGE_VOICE}
+
+{_SLOTS}
+
+{_WEEKLY_VOICE_CONTRACT}
 """
 
 

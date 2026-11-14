@@ -192,9 +192,11 @@ class ScoutResult(BaseModel):
     """One scout's contribution to a brief; a skipped scout says why and never stops the rest."""
 
     integration_id: str
+    #: The integration's display name.
+    app: str
     outcome: ScoutOutcome
     signals: list[Signal] = Field(default_factory=list)
-    #: A replayed scout's criteria, which its unjudged signals are judged by.
+    #: A replayed scout's criteria, which the brief's selection judge reads its rows by.
     criteria: str | None = None
     skip_reason: ScoutSkipReason | None = None
     error: str | None = None

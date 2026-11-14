@@ -414,17 +414,21 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             sort=[("completed_at", -1)],
         )
 
-    async def list_open_user_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
-        """Return the user's own (non-tracked) open todos, most-recently-updated first."""
-        return await self._find(
-            {
-                "user_id": user_id,
-                "completed": False,
-                "labels": {"$nin": [GAIA_TRACKED_LABEL]},
-            },
-            sort=[("updated_at", -1)],
-            limit=limit,
-        )
+    async def list_open_user_todos(
+        self, user_id: str, *, limit: int, due_before: datetime | None = None
+    ) -> list[TodoDocument]:
+        """Return the user's own (non-tracked) open todos, most-recently-updated first.
+
+        due_before keeps only the ones due strictly before it, so undated todos drop out.
+        """
+        query: dict[str, object] = {
+            "user_id": user_id,
+            "completed": False,
+            "labels": {"$nin": [GAIA_TRACKED_LABEL]},
+        }
+        if due_before is not None:
+            query["due_date"] = {"$lt": due_before}
+        return await self._find(query, sort=[("updated_at", -1)], limit=limit)
 
     async def find_tracked_by_short_id(self, user_id: str, *, short_id: str) -> list[TodoDocument]:
         """Find a user's tracked todos whose ObjectId ends with short_id.

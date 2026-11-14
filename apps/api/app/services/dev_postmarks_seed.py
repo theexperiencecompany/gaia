@@ -9,18 +9,19 @@ editions draws one per other daily family, plus a weekly recap. Fixed dates key 
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from uuid import uuid4
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
-    NEEDS_YOU_SECTION_TITLE,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
+    SECTION_TITLES,
     WEEKLY_FAMILY,
     WEEKLY_KICKER,
-    WORK_SECTION_TITLE,
+    BriefAction,
+    BriefOutcome,
+    SectionKey,
     hue_for_day,
 )
 from app.constants.notifications import NotificationChannel
@@ -35,12 +36,11 @@ from app.models.briefing_models import (
     BriefingTallies,
     BriefingWeek,
     BriefingWeekDay,
-    EditionRender,
 )
 from app.models.user_models import UserDocument
-from app.services.briefing.edition_email import host_edition_image
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.stamps import hosted_stamp_weights
+from app.services.briefing.store import store_brief
 from app.utils.errors import create_error
 
 _SEEDED_CHANNELS: list[str] = [NotificationChannel.INAPP.value, NotificationChannel.EMAIL.value]
@@ -70,9 +70,9 @@ class _SeedDay:
     lede: str
     mood: BriefingMood
     caption: str
-    needs_you: tuple[str, ...]
+    needs_you: tuple[tuple[BriefAction, str], ...]
     events: tuple[_SeedEvent, ...]
-    done: tuple[str, ...]
+    done: tuple[tuple[BriefOutcome, str], ...]
     running: tuple[str, ...] = ()
     done_by_you: int = 0
 
@@ -83,9 +83,15 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         lede="The Northwind contract is ready to sign, and nothing is booked after 2 PM.",
         mood="clear",
         caption="Sign early, then take the afternoon back.",
-        needs_you=("Sign the Northwind services agreement", "Approve Priya's travel request"),
+        needs_you=(
+            (BriefAction.APPROVE, "Northwind services agreement"),
+            (BriefAction.APPROVE, "Priya's travel request"),
+        ),
         events=(_SeedEvent("10:00", "Design review", "Studio 3"),),
-        done=("Filed September expenses", "Drafted replies to 6 newsletters you follow"),
+        done=(
+            (BriefOutcome.FINISHED, "September expenses filed"),
+            (BriefOutcome.DRAFTED, "Replies to 6 newsletters"),
+        ),
         done_by_you=3,
     ),
     _SeedDay(
@@ -93,15 +99,18 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         lede="Five calls back to back; I moved the 1:1 with Sam so you get lunch.",
         mood="packed",
         caption="Eat before the 1 PM.",
-        needs_you=("Confirm the offsite venue by noon",),
+        needs_you=((BriefAction.REPLY, "Offsite venue, by noon"),),
         events=(
             _SeedEvent("09:30", "Standup"),
             _SeedEvent("11:00", "Quarterly planning", "Boardroom"),
             _SeedEvent("13:00", "Customer call: Halden Labs"),
             _SeedEvent("15:30", "1:1 with Sam"),
         ),
-        done=("Rescheduled the 1:1 with Sam to 3:30 PM", "Summarised the Halden Labs thread"),
-        running=("Comparing three offsite venue quotes",),
+        done=(
+            (BriefOutcome.BOOKED, "1:1 with Sam, now 3:30 PM"),
+            (BriefOutcome.FINISHED, "Halden Labs thread summary"),
+        ),
+        running=("Offsite venue quotes",),
         done_by_you=1,
     ),
     _SeedDay(
@@ -109,12 +118,12 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         lede="Acme paid overnight and the login fix held through the weekend traffic.",
         mood="clear",
         caption="A clean slate for Monday.",
-        needs_you=("Review the draft pricing page copy",),
+        needs_you=((BriefAction.REVIEW, "Draft pricing page copy"),),
         events=(_SeedEvent("14:00", "Pricing sync", "Zoom"),),
         done=(
-            "Sent the October invoice to Acme",
-            "Checked error rates after the login fix",
-            "Archived 41 promotional emails",
+            (BriefOutcome.SENT, "October invoice to Acme"),
+            (BriefOutcome.FINISHED, "Error rates after the login fix"),
+            (BriefOutcome.FINISHED, "41 promotional emails archived"),
         ),
         done_by_you=2,
     ),
@@ -123,13 +132,16 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         lede="Boarding at 6:40 PM from gate B12; the hotel confirmed early check-in.",
         mood="clear",
         caption="Pack the charger this time.",
-        needs_you=("Choose a seat for the return flight",),
+        needs_you=((BriefAction.REVIEW, "Return flight seat"),),
         events=(
             _SeedEvent("12:30", "Lunch with Maya", "Café Lumen"),
             _SeedEvent("18:40", "Flight TP 1361 to Lisbon", "Terminal 2"),
         ),
-        done=("Checked you in for TP 1361", "Shared the itinerary with Maya"),
-        running=("Finding a dinner spot near the hotel",),
+        done=(
+            (BriefOutcome.BOOKED, "Check-in for TP 1361"),
+            (BriefOutcome.SENT, "Itinerary for Maya"),
+        ),
+        running=("Dinner spot near the hotel",),
     ),
     _SeedDay(
         headline="Three replies are waiting on you",
@@ -137,12 +149,12 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         mood="packed",
         caption="Ten minutes clears all three.",
         needs_you=(
-            "Respond to Jordan about the senior engineer offer",
-            "Accept the new lease terms",
-            "Decide on the conference talk slot",
+            (BriefAction.REPLY, "Jordan's senior engineer offer"),
+            (BriefAction.APPROVE, "New lease terms"),
+            (BriefAction.REPLY, "Conference talk slot"),
         ),
         events=(_SeedEvent("16:00", "Interview: frontend candidate"),),
-        done=("Collected the interview scorecards",),
+        done=((BriefOutcome.FINISHED, "Interview scorecards"),),
         done_by_you=4,
     ),
     _SeedDay(
@@ -153,9 +165,9 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         needs_you=(),
         events=(),
         done=(
-            "Booked the dentist for Tuesday 9 AM",
-            "Saved 4 long reads to your reading list",
-            "Renewed the domain for another year",
+            (BriefOutcome.BOOKED, "Dentist, Tuesday 9 AM"),
+            (BriefOutcome.FINISHED, "4 long reads saved"),
+            (BriefOutcome.FINISHED, "Domain renewed for a year"),
         ),
     ),
     _SeedDay(
@@ -163,13 +175,16 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         lede="Slides 4 to 9 are drafted; the revenue chart is waiting on the final close.",
         mood="packed",
         caption="Numbers first, polish later.",
-        needs_you=("Review the board deck revenue slide", "Send the final close figures to Elena"),
+        needs_you=(
+            (BriefAction.REVIEW, "Board deck revenue slide"),
+            (BriefAction.REPLY, "Final close figures for Elena"),
+        ),
         events=(
             _SeedEvent("10:30", "Finance sync", "Room 2B"),
             _SeedEvent("17:00", "Board prep with Elena"),
         ),
-        done=("Drafted slides 4 to 9 of the board deck",),
-        running=("Reconciling September revenue",),
+        done=((BriefOutcome.DRAFTED, "Board deck slides 4 to 9"),),
+        running=("September revenue reconciliation",),
         done_by_you=2,
     ),
     _SeedDay(
@@ -177,9 +192,12 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         lede="The flowers are ordered for Saturday delivery; the card still needs your words.",
         mood="clear",
         caption="Write it from the heart.",
-        needs_you=("Sign the birthday card before Friday",),
+        needs_you=((BriefAction.ATTEND, "Birthday card, before Friday"),),
         events=(_SeedEvent("19:00", "Dinner with Alex", "Osteria Nove"),),
-        done=("Ordered flowers for Saturday delivery", "Reserved a table at Osteria Nove"),
+        done=(
+            (BriefOutcome.BOOKED, "Flowers for Saturday"),
+            (BriefOutcome.BOOKED, "Table at Osteria Nove"),
+        ),
         done_by_you=1,
     ),
     _SeedDay(
@@ -187,12 +205,12 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         lede="Version 2.4 is live for everyone, and the changelog went out at 6 AM.",
         mood="clear",
         caption="Celebrate the team at standup.",
-        needs_you=("Approve the blog post about 2.4",),
+        needs_you=((BriefAction.APPROVE, "Blog post about 2.4"),),
         events=(_SeedEvent("09:30", "Standup"), _SeedEvent("15:00", "Retro", "Zoom")),
         done=(
-            "Published the 2.4 changelog",
-            "Posted the release note in #general",
-            "Closed 12 resolved issues",
+            (BriefOutcome.SENT, "2.4 changelog"),
+            (BriefOutcome.SENT, "Release note in #general"),
+            (BriefOutcome.FINISHED, "12 resolved issues closed"),
         ),
         done_by_you=5,
     ),
@@ -201,10 +219,13 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         lede="The insurance policy lapses on the 3rd; the cheaper quote is ready to compare.",
         mood="clear",
         caption="One decision, then you are covered.",
-        needs_you=("Renew the home insurance policy",),
+        needs_you=((BriefAction.APPROVE, "Home insurance renewal"),),
         events=(_SeedEvent("11:00", "Call with the accountant"),),
-        done=("Pulled three insurance quotes", "Paid the electricity bill"),
-        running=("Checking the accountant's tax questions",),
+        done=(
+            (BriefOutcome.FINISHED, "Three insurance quotes"),
+            (BriefOutcome.FINISHED, "Electricity bill paid"),
+        ),
+        running=("Accountant's tax questions",),
         done_by_you=2,
     ),
     _SeedDay(
@@ -218,7 +239,10 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
             _SeedEvent("08:30", "Focus: grant proposal"),
             _SeedEvent("14:00", "Advisor check-in"),
         ),
-        done=("Blocked 8:30 to 12 for the proposal", "Outlined the grant proposal sections"),
+        done=(
+            (BriefOutcome.BOOKED, "Proposal focus block, 8:30 to 12"),
+            (BriefOutcome.DRAFTED, "Grant proposal outline"),
+        ),
         done_by_you=3,
     ),
     _SeedDay(
@@ -226,9 +250,12 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
         lede="The card on the design tool expired; everything else renewed fine.",
         mood="clear",
         caption="Update the card and it retries.",
-        needs_you=("Authorize the new card for Figma billing",),
+        needs_you=((BriefAction.APPROVE, "New card for Figma billing"),),
         events=(_SeedEvent("13:00", "Lunch and learn", "Kitchen"),),
-        done=("Renewed the cloud storage plan", "Exported last month's receipts"),
+        done=(
+            (BriefOutcome.FINISHED, "Cloud storage plan renewed"),
+            (BriefOutcome.FINISHED, "Last month's receipts"),
+        ),
         done_by_you=1,
     ),
 )
@@ -238,23 +265,34 @@ def _brief_payload(
     day: date, seed: _SeedDay, user: UserDocument, family: str, city_slug: str | None = None
 ) -> BriefingPayload:
     iso_day = day.isoformat()
-    titled_items = (
-        (NEEDS_YOU_SECTION_TITLE, [BriefingItem(text=text, kind="you") for text in seed.needs_you]),
+    keyed_items = (
         (
-            WORK_SECTION_TITLE,
-            [BriefingItem(text=text, kind="lookback") for text in seed.done]
-            + [BriefingItem(text=text, kind="gaia") for text in seed.running],
+            SectionKey.NEEDS_YOU,
+            [BriefingItem(text=text, action=action, kind="you") for action, text in seed.needs_you],
+        ),
+        (
+            SectionKey.GAIA_DID,
+            [
+                BriefingItem(text=text, outcome=outcome, kind="lookback")
+                for outcome, text in seed.done
+            ]
+            + [
+                BriefingItem(text=text, outcome=BriefOutcome.STARTED, kind="gaia")
+                for text in seed.running
+            ],
         ),
     )
-    filled = [(title, items) for title, items in titled_items if items]
+    filled = [(key, items) for key, items in keyed_items if items]
     return BriefingPayload(
         kicker=DAILY_KICKER,
         date=iso_day,
         headline=seed.headline,
         lede=seed.lede,
         sections=[
-            BriefingSection(numeral=SECTION_NUMERALS[i], title=title, items=items)
-            for i, (title, items) in enumerate(filled)
+            BriefingSection(
+                numeral=SECTION_NUMERALS[i], title=SECTION_TITLES[key], key=key, items=items
+            )
+            for i, (key, items) in enumerate(filled)
         ],
         mood=seed.mood,
         caption=seed.caption,
@@ -320,16 +358,21 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
         sections=[
             BriefingSection(
                 numeral=SECTION_NUMERALS[0],
-                title=NEEDS_YOU_SECTION_TITLE,
+                title=SECTION_TITLES[SectionKey.NEEDS_YOU],
+                key=SectionKey.NEEDS_YOU,
                 items=[
-                    BriefingItem(text="Confirm the offsite venue", kind="you"),
-                    BriefingItem(text="Accept the new lease terms", kind="you"),
+                    BriefingItem(text="Offsite venue", action=BriefAction.REPLY, kind="you"),
+                    BriefingItem(text="New lease terms", action=BriefAction.APPROVE, kind="you"),
                 ],
             ),
             BriefingSection(
                 numeral=SECTION_NUMERALS[1],
-                title=WORK_SECTION_TITLE,
-                items=[BriefingItem(text=text, kind="lookback") for text in shipped],
+                title=SECTION_TITLES[SectionKey.GAIA_DID],
+                key=SectionKey.GAIA_DID,
+                items=[
+                    BriefingItem(text=text, outcome=outcome, kind="lookback")
+                    for outcome, text in shipped
+                ],
             ),
         ],
         mood="clear",
@@ -341,7 +384,7 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
         tallies=BriefingTallies(done_by_you=14, done_by_gaia=22),
         week=BriefingWeek(
             days=[BriefingWeekDay(you=you, gaia=gaia) for you, gaia in _WEEKLY_DAYS],
-            shipped=shipped,
+            shipped=[text for _, text in shipped],
             handled=["Rescheduled 3 meetings", "Paid 2 invoices", "Archived 120 emails"],
             ahead=[
                 BriefingEvent(date="2026-10-12", start="10:00", title="Quarterly planning"),
@@ -353,17 +396,6 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
 
 
 async def _store(user: UserDocument, payload: BriefingPayload, kind: BriefingKind) -> None:
-    """Render and host the edition, then upsert the brief as delivered in-app and by email."""
-    image = await host_edition_image(payload, owner_id=user.id, render_key=uuid4().hex)
-    await briefing_repository.upsert_briefing(
-        user.id,
-        payload.date,
-        kind,
-        payload,
-        edition=EditionRender(
-            image_url=image.display_url,
-            fold=image.fold,
-            paper=list(image.paper) if image.paper else None,
-        ),
-    )
+    """Store the brief with its rendered edition, marked delivered in-app and by email."""
+    await store_brief(user.id, payload.date, kind, payload)
     await briefing_repository.set_delivered_channels(user.id, payload.date, kind, _SEEDED_CHANNELS)
