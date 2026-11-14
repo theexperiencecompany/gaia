@@ -91,6 +91,7 @@ from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.todos import todo_repository
 from app.models.conversation_log_models import TodoReportForm
+from app.models.hil_models import ApprovalLedgerDocument
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
@@ -3084,6 +3085,7 @@ class TestTriggerEventsCoalesce:
             patch("app.workers.tasks.todo_run_context.todo_repository", row),
             patch(f"{_DISPATCH}.todo_repository", row),
             patch(f"{MODULE}.run_todo_on_executor", run),
+            _approved_ledger_row(),
             patch(f"{MODULE}.enforce_cost_budget", self.budget),
             patch(LOAD_USER, AsyncMock(side_effect=_user_context(timezone="UTC"))),
             patch(f"{_DISPATCH}.record_activity", AsyncMock()),
@@ -3995,11 +3997,28 @@ class _ResumeRun:
         return [f"[{c.args[2].value}] {c.args[3]}" for c in self.timeline.call_args_list]
 
 
+def _approved_ledger_row() -> AbstractContextManager[AsyncMock]:
+    """Serve the ledger row ap_1 a resume redeems."""
+    row = ApprovalLedgerDocument(
+        approval_id="ap_1",
+        conversation_id="conv-parked",
+        user_id="user-7",
+        fingerprint="fp-ap_1",
+        tool_name="GMAIL_SEND_EMAIL",
+        args={},
+        summary="Send briefing",
+    )
+    return patch(
+        f"{MODULE}.approval_ledger_repository.get_by_approval_id",
+        AsyncMock(side_effect=lambda approval_id: row if approval_id == "ap_1" else None),
+    )
+
+
 class TestResumeTrackedTodo:
     RESUME_MESSAGE = (
-        "Approval ap_1 was granted: Send briefing "
-        "The action has run — verify with a read if you need certainty, "
-        "never re-run the granted call blind. Continue the run from here."
+        "APPROVAL_READY ap_1: the user approved Send briefing (unknown age). "
+        'Run it now with execute(tool_name="approve", data={"id": "ap_1"}) and continue '
+        "with its result. If it is no longer needed, say so instead of running it."
     )
 
     @staticmethod
@@ -4038,6 +4057,7 @@ class TestResumeTrackedTodo:
             patch(f"{MODULE}._load_user_with_tz", run.load_user),
             patch(f"{MODULE}.enforce_cost_budget", run.budget),
             patch(f"{MODULE}.run_todo_on_executor", run.agent),
+            _approved_ledger_row(),
             patch(f"{MODULE}.record_activity", run.timeline),
             patch(f"{MODULE}.enqueue_worker_job", run.enqueue),
             patch(f"{MODULE}.log", run.log),
@@ -4089,8 +4109,8 @@ class TestResumeTrackedTodo:
             approval_summary="Send briefing",
         )
 
-    async def test_the_agent_is_told_the_granted_call_already_ran(self) -> None:
-        """Without it the resumed run re-issues the approved action, a second send the user never approved."""
+    async def test_the_resumed_run_is_the_one_that_redeems_the_ticket(self) -> None:
+        """No other run carries the ticket, so the resume itself must run the approved call."""
         run = await self._resume(_ResumeJob("conv-parked", "Send briefing"))
 
         assert run.agent.await_args.args[0].task == self.RESUME_MESSAGE
