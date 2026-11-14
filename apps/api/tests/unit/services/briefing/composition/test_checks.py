@@ -5,6 +5,7 @@ from datetime import date
 
 from pydantic import ValidationError
 import pytest
+from tests.helpers import user_clock
 
 from app.constants.briefing import (
     BRIEF_CHART_TITLE_MAX_CHARS,
@@ -95,6 +96,7 @@ POOL = FactPool(
         14: _item("Re: Re: Fwd: the revised Series A term sheet, with all redlines"),
         15: _item("Board deck numbers", state="gaia", outcome=BriefOutcome.STARTED),
         16: _item("CRM sync", state="failed", action=BriefAction.RETRY),
+        17: _item("Growth experiments", action=BriefAction.ATTEND, backlog=True),
     },
     series=[
         _series("meetings", [2, 1.5, 2, 0, 0, 2.5, 7]),
@@ -123,10 +125,8 @@ POOL = FactPool(
     goals=[GoalState(id="g1", statement="Ship v3", origin=GoalOrigin.MEMORY, done=2, open=1)],
     context=PoolContext(
         reader="Ada",
-        timezone="UTC",
-        today=date(2026, 11, 11),
-        calendar_events=1,
-        calendar_connected=True,
+        clock=user_clock("UTC", date(2026, 11, 11)),
+        calendar=1,
         calendar_span="today",
         recent_openings=[],
     ),
@@ -460,6 +460,27 @@ class TestEachBlockHasItsShape:
         assert _problems({"kind": "lead", "item": reported, "offer": "Retry it"}) == [
             "block 1 (lead): a lead is something to act on, so its item has an action"
         ]
+
+    def test_an_undated_todo_on_their_list_never_leads(self) -> None:
+        """Regression: three undated low-priority todos led the brief as decisions waiting."""
+        backlog = _placed(17, action="attend", title="Growth experiments")
+
+        assert _problems({"kind": "lead", "item": backlog, "offer": "Plan it"}) == [
+            "block 1 (lead): item 17 is an undated todo on their list, background that never "
+            "leads; lead with something that needs them today, or with nothing"
+        ]
+        assert (
+            _problems(
+                _items(1),
+                {
+                    "kind": "items",
+                    "state": "needs_you",
+                    "heading": "On your list",
+                    "items": [backlog],
+                },
+            )
+            == []
+        )
 
     def test_two_leads_are_refused(self) -> None:
         lead: dict[str, object] = {"kind": "lead", "item": _ask(1), "offer": "Draft it"}

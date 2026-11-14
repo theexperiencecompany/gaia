@@ -39,6 +39,7 @@ async def failed_run_candidates(user_id: str, since: datetime) -> list[BriefCand
         BriefCandidate(
             source=GAIA_SOURCE,
             app=GAIA_APP_NAME,
+            seen_as=f"workflow:{run.workflow_id}",
             state="failed",
             title=f"{titles[run.workflow_id]} failed",
             detail=run.error_message,

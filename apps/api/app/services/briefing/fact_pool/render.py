@@ -2,18 +2,27 @@
 
 from datetime import date
 
-from app.constants.briefing import NO_CALENDAR_CONNECTED
+from app.constants.briefing import (
+    BACKLOG_STATE,
+    CALENDAR_UNAVAILABLE,
+    NO_CALENDAR_CONNECTED,
+    REPEAT_MARK,
+)
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan, SeriesShape
 from app.models.briefing_models import BRIEFING_ITEM_STATES
 from app.models.scout_models import SignalImportance
+from app.services.briefing.context import CalendarGap, UserClock
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
+from app.services.briefing.scouts.facts import seen_note
 from app.services.briefing.slots import figure, series_figures
 
 # What each item state means, said beside the items so every reader of the pool reads them alike.
 _STATES = (
     "done: finished since the last brief, overnight; in progress: still running; "
-    "waiting on you: needs the user; failed: broke and needs the user; note: news that needs nothing"
+    "waiting on you: needs the user; failed: broke and needs the user; note: news that needs nothing; "
+    f"{BACKLOG_STATE}: an undated todo of their own, never news and never the lead. "
+    f"An item marked {REPEAT_MARK} was already shown, unchanged: not news, so it never leads"
 )
 
 
@@ -23,9 +32,25 @@ def _day(iso: str, today: date) -> str:
     return f"{label} (today)" if day == today else label
 
 
-def item_line(item_id: int, item: BriefCandidate) -> str:
+def item_state(item: BriefCandidate) -> str:
+    """Say how an item stands: a calendar event, backlog on their list, or its kind's state."""
+    if item.is_event:
+        return "calendar event"
+    if item.backlog:
+        return BACKLOG_STATE
+    return BRIEFING_ITEM_STATES[item.state].lower()
+
+
+def repeat_note(item: BriefCandidate, clock: UserClock) -> str | None:
+    """Say that an earlier brief already showed an item as it stands; None when it is news."""
+    if not item.is_repeat or item.memory is None:
+        return None
+    return f"{REPEAT_MARK} ({seen_note(item.memory, clock)})"
+
+
+def item_line(item_id: int, item: BriefCandidate, clock: UserClock) -> str:
     """Say one item with every fact its producer knows: its app, state, title and the rest."""
-    state = "calendar event" if item.is_event else BRIEFING_ITEM_STATES[item.state].lower()
+    state = item_state(item)
     head = f"{item_id}. [{item.app}] {state}"
     if item.importance is SignalImportance.HIGH:
         head += ", important"
@@ -35,9 +60,20 @@ def item_line(item_id: int, item: BriefCandidate) -> str:
     if item.time is not None:
         parts.append(f"at {item.time}")
     if item.due_at is not None:
-        parts.append(f"due {item.due_at.date().isoformat()}")
+        parts.append(f"due {clock.day_of(item.due_at).isoformat()}")
     if item.people:
         parts.append(f"with {', '.join(item.people)}")
+    parts += _what_it_asks(item)
+    if item.also_in:
+        parts.append(f"also found by {', '.join(item.also_in)}")
+    if (repeat := repeat_note(item, clock)) is not None:
+        parts.append(repeat)
+    return " | ".join(parts)
+
+
+def _what_it_asks(item: BriefCandidate) -> list[str]:
+    """Say how many asked, what the producer says it asks or reached, and whether it opens."""
+    parts: list[str] = []
     if item.count > 1:
         parts.append(f"{item.count} requests, one item")
     if item.action is not None:
@@ -46,9 +82,7 @@ def item_line(item_id: int, item: BriefCandidate) -> str:
         parts.append(f"outcome {item.outcome.value}")
     if item.url or item.todo_id:
         parts.append("linkable")
-    if item.also_in:
-        parts.append(f"also found by {', '.join(item.also_in)}")
-    return " | ".join(parts)
+    return parts
 
 
 def series_line(series: DataSeries, today: date) -> str:
@@ -81,10 +115,11 @@ def goal_line(goal: GoalState) -> str:
 
 def pool_block(pool: FactPool) -> str:
     """Lay out every item, series, quote and goal by id; a part with nothing in it says so."""
-    today = pool.context.today
+    clock = pool.context.clock
+    today = clock.now_local.date()
     parts = [
         f"ITEMS ({_STATES})",
-        "\n".join(item_line(i, c) for i, c in pool.items.items()) or "(none)",
+        "\n".join(item_line(i, c, clock) for i, c in pool.items.items()) or "(none)",
         "SERIES",
         "\n".join(series_line(s, today) for s in pool.series) or "(none)",
         "QUOTES",
@@ -96,20 +131,19 @@ def pool_block(pool: FactPool) -> str:
 
 
 def _calendar_line(context: PoolContext) -> str:
-    if not context.calendar_connected:
+    if context.calendar is CalendarGap.NOT_CONNECTED:
         return NO_CALENDAR_CONNECTED
-    if not context.calendar_events:
+    if context.calendar is CalendarGap.UNAVAILABLE:
+        return CALENDAR_UNAVAILABLE
+    if not context.calendar:
         return f"Nothing on the calendar {context.calendar_span}."
-    return (
-        f"Calendar {context.calendar_span}: {context.calendar_events} event(s), "
-        "every one listed below."
-    )
+    return f"Calendar {context.calendar_span}: {context.calendar} event(s), every one listed below."
 
 
 def context_block(context: PoolContext) -> str:
     """Say the day the pool sits in: the date, the calendar's load and how recent briefs opened."""
     lines = [
-        f"{context.today.strftime('%A %-d %B %Y')}, {context.timezone}.",
+        f"{context.clock.now_local.strftime('%A %-d %B %Y')}, {context.clock.tz.key}.",
         _calendar_line(context),
     ]
     if context.recent_openings:

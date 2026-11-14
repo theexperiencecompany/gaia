@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import date
 
 import pytest
+from tests.helpers import user_clock
 
 from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.brief_candidate_models import BriefCandidate
@@ -105,10 +106,8 @@ POOL = FactPool(
     goals=[_GOAL],
     context=PoolContext(
         reader="Ada",
-        timezone="UTC",
-        today=date(2026, 11, 11),
-        calendar_events=1,
-        calendar_connected=True,
+        clock=user_clock("UTC", date(2026, 11, 11)),
+        calendar=1,
         calendar_span="today",
         recent_openings=[],
     ),

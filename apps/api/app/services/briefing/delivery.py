@@ -43,11 +43,15 @@ def _wants_email(user: UserDocument) -> bool:
 
 
 async def _post_to_chat(
-    user: UserDocument, channel: ChatChannel, text: str, image_url: str, kind: BriefingKind
+    user: UserDocument,
+    channel: ChatChannel,
+    text: str,
+    image: PlatformImage | None,
+    kind: BriefingKind,
 ) -> OutboundResult:
     """Post the edition image captioned with text's first bubble, the rest after it, into the DM.
 
-    A reply there lands with the brief in context.
+    A note has no image and posts as text. A reply there lands with the brief in context.
     """
     return await post_to_platform_chat(
         user=build_user_context(user, auth_provider=None),
@@ -55,7 +59,7 @@ async def _post_to_chat(
         text=text,
         origin=f"{kind} brief",
         message_class=ProactiveMessageClass.ROUTINE,
-        image=PlatformImage(url=image_url, filename=f"gaia-{kind}-brief.jpg"),
+        image=image,
     )
 
 
@@ -70,13 +74,15 @@ async def deliver_brief(
     """Deliver one brief in-app and, when pushed, to email and the user's chat.
 
     The orchestrator gets only in-app (plus email when wanted), never the chat platform:
-    that message is the edition photo, posted through post_to_platform_chat.
+    that message is the edition photo, posted through post_to_platform_chat. A quiet day's
+    note has no edition: it goes everywhere as plain text, under the note's notification kind.
     """
     kind: BriefingKind = stored.briefing.kind
     message = delivered_message(payload)
     target = await resolve_proactive_target(user.id) if push else None
     channel = target if isinstance(target, ChatChannel) else None
-    card = briefing_card(briefing_view(stored.briefing))
+    edition = stored.image
+    card = briefing_card(briefing_view(stored.briefing)) if edition is not None else None
     channels = [NotificationChannel.INAPP] + (
         [NotificationChannel.EMAIL] if push and _wants_email(user) else []
     )
@@ -89,7 +95,7 @@ async def deliver_brief(
             content=NotificationContent(
                 title=payload.headline,
                 body=message,
-                rich_content=payload.model_dump(),
+                rich_content=payload.model_dump() if edition is not None else None,
                 actions=[
                     NotificationAction(
                         type=ActionType.REDIRECT,
@@ -106,7 +112,7 @@ async def deliver_brief(
                 ],
             ),
             metadata={
-                **card.model_dump(),
+                **(card.model_dump() if card is not None else {}),
                 "kind": notification_kind,
                 "brief_url": stored.link,
             },
@@ -115,8 +121,15 @@ async def deliver_brief(
     await post_brief_message(user.id, message, card)
     delivered = [c.channel_type for c in record.channels if c.reached_user]
     if channel:
-        text = chat_text(payload, stored.link)
-        result = await _post_to_chat(user, channel, text, stored.image.chat_url, kind)
+        result = await _post_to_chat(
+            user,
+            channel,
+            chat_text(payload, stored.link) if stored.link is not None else message,
+            PlatformImage(url=edition.chat_url, filename=f"gaia-{kind}-brief.jpg")
+            if edition is not None
+            else None,
+            kind,
+        )
         if result is OutboundResult.PUBLISHED:
             delivered.append(channel.source.value)
     return delivered

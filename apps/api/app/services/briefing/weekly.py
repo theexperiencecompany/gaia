@@ -53,7 +53,6 @@ from app.services.briefing.sections import (
     log_composition,
     sources_shown,
 )
-from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from shared.py.wide_events import log
 
@@ -80,29 +79,28 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     # One window for the candidates, the prose and the tallies: this week, Monday to now.
     since = context.week_start_utc(clock)
     completed = await context.gather_completed_since(user_id, since)
-    week = await context.gather_week(user_id, clock, completed)
-    has_calendar = await context.calendar_connected(user_id)
+    ahead = await context.gather_calendar(user_id, clock, days=7, days_ahead=1)
+    week = context.count_week(clock, completed, ahead)
     seen_at = datetime.now(UTC)
     gathered = await gather_week_candidates(user_id, clock, since, completed, week.ahead)
     goals = await context.stated_goals(user_id, user)
     goal_block, _ = context.format_goal_block(goals)
     window = week_window(clock)
+    past = await context.read_calendar(user_id, window.start, window.end)
     pool = await build_fact_pool(
         user_id,
         window,
         PoolReads(
             items=gathered.pool,
             signals=[],
-            calendar=await context.read_calendar(user_id, window.start, window.end),
+            calendar=past if isinstance(past, list) else [],
             goals=goals,
             criteria={},
         ),
         PoolContext(
             reader=display_first_name(user) or UNNAMED_READER,
-            timezone=user.timezone or Timezone.utc().value,
-            today=clock.now_local.date(),
-            calendar_events=len(week.ahead),
-            calendar_connected=has_calendar,
+            clock=clock,
+            calendar=len(week.ahead) if isinstance(ahead, list) else ahead.gap,
             calendar_span=WEEK_AHEAD_SPAN,
         ),
         seen_at,
@@ -117,8 +115,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
                 context.TrackedWork(completed=[*completed.gaia, *completed.user])
             ),
             open_todos=0,
-            calendar=week.ahead,
-            calendar_connected=has_calendar,
+            calendar=week.ahead if isinstance(ahead, list) else ahead,
             event_ids=event_ids(gathered.pool),
             span=WEEK_AHEAD,
             todos_note=None,

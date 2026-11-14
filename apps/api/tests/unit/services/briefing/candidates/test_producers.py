@@ -6,6 +6,7 @@ Faked seams: the repository reads each reading producer makes.
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 import pytest
 from tests.factories import make_user_id
@@ -58,12 +59,13 @@ from app.services.briefing.candidates.tracked import (
     user_done_candidates,
     waiting_candidates,
 )
-from app.services.briefing.context import TrackedWork
+from app.services.briefing.context import TrackedWork, UserClock
 from app.services.hil.tool_key import MCPToolIdentity, mcp_tool_key
 from app.services.todos.inbox_desk import INBOX_DESK_REF
 
 USER_ID = make_user_id()
 NOW = datetime(2026, 11, 10, 2, 30, tzinfo=UTC)
+CLOCK = UserClock(tz=ZoneInfo("UTC"), now_local=NOW, date_str="2026-11-10", day_of_year=314)
 DESK_ID = "desk-1"
 
 
@@ -404,7 +406,7 @@ class TestAppSignals:
         )
 
         [found] = app_signal_candidates(
-            [RememberedSignal(signal=signal, memory=memory, previous_state="Todo")], NOW
+            [RememberedSignal(signal=signal, memory=memory, previous_state="Todo")], CLOCK
         )
 
         assert (found.app, found.source, found.importance) == (

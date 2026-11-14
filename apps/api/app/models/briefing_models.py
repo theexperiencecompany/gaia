@@ -23,6 +23,7 @@ from app.constants.briefing import (
     MAX_BRIEF_LEDE_CHARS,
     MAX_BRIEF_MESSAGE_CHARS,
     BriefAction,
+    BriefForm,
     BriefingFrequency,
     BriefOutcome,
 )
@@ -291,6 +292,8 @@ class BriefingPayload(BaseModel):
             "None on legacy rows."
         ),
     )
+    #: An edition, or the plain note a quiet day sends instead of one.
+    form: BriefForm = BriefForm.EDITION
     calendar: list[BriefingEvent] = Field(
         default_factory=list, description="Today's calendar events, in start order."
     )

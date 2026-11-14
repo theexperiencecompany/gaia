@@ -307,6 +307,7 @@ async def get_calendar_events(
     all_events: list[GoogleCalendarEventResource] = []
     seen_event_ids: set[str] = set()
     calendars_truncated: list[str] = []
+    calendars_failed: list[str] = []
     fetch_every_page = fetch_all or not max_results
 
     if fetch_every_page:
@@ -332,6 +333,7 @@ async def get_calendar_events(
 
             all_events.extend(_tag_with_source_calendar(events, cal, seen_event_ids))
         except Exception as e:
+            calendars_failed.append(cal.id)
             log.error(
                 "Error fetching events for calendar",
                 cal_id=cal.id,
@@ -361,6 +363,7 @@ async def get_calendar_events(
         selected_calendars=user_selected_calendars,
         has_more=len(calendars_truncated) > 0,
         calendars_truncated=calendars_truncated,
+        calendars_failed=calendars_failed,
     )
 
 

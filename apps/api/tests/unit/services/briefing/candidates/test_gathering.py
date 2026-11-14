@@ -15,6 +15,7 @@ from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.reminders import reminder_repository
+from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
@@ -24,8 +25,10 @@ from app.models.scout_models import (
     RememberedSignal,
     ScoutOutcome,
     ScoutResult,
+    Sighting,
     Signal,
     SignalImportance,
+    SignalMemoryDocument,
 )
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.services.briefing.candidates.pool import (
@@ -41,6 +44,15 @@ USER_ID = make_user_id()
 NOW = datetime(2026, 11, 11, 2, 30, tzinfo=UTC)
 TZ = ZoneInfo("Asia/Kolkata")
 CLOCK = UserClock(tz=TZ, now_local=NOW.astimezone(TZ), date_str="2026-11-11", day_of_year=315)
+
+
+@pytest.fixture(autouse=True)
+def memory(monkeypatch: pytest.MonkeyPatch) -> dict[str, AsyncMock]:
+    """Signal memory as Mongo holds it: nothing seen before unless a test says so."""
+    seams = {"find_for": AsyncMock(return_value=[]), "record_seen": AsyncMock()}
+    for name, mock in seams.items():
+        monkeypatch.setattr(signal_memory_repository, name, mock)
+    return seams
 
 
 @pytest.fixture(autouse=True)
@@ -217,6 +229,72 @@ class TestOwnTodosJoinThePool:
             "you",
             BriefAction.ATTEND,
         )
+
+
+def _tracked(todo_id: str, title: str, label: str) -> TodoDocument:
+    return TodoDocument(
+        id=todo_id, user_id=USER_ID, title=title, labels=[GAIA_TRACKED_LABEL, label]
+    )
+
+
+def _shown(external_id: str, state: str, times: int) -> SignalMemoryDocument:
+    return SignalMemoryDocument(
+        user_id=USER_ID,
+        integration_id="gaia",
+        external_id=external_id,
+        first_seen=datetime(2026, 11, 8, 2, 30, tzinfo=UTC),
+        times_shown=times,
+        last_shown=datetime(2026, 11, 10, 2, 30, tzinfo=UTC),
+        last_state=state,
+    )
+
+
+class TestWhatEarlierBriefsShowedIsNotNews:
+    """Regression: the same stale approval and overdue todo came back every day as news."""
+
+    async def test_a_thing_shown_before_as_it_stands_is_a_repeat_and_no_news(
+        self, memory: dict[str, AsyncMock]
+    ) -> None:
+        approve = _tracked("t1", "Approve the MSA", NEEDS_REPLY_LABEL)
+        memory["find_for"].return_value = [_shown("todo:t1", "you", times=2)]
+
+        gathered = await _gathered(TrackedWork(blocked=[approve]), _scouts())
+
+        (candidate,) = gathered.pool.values()
+        assert candidate.is_repeat
+        assert not gathered.has_news
+        memory["find_for"].assert_awaited_once_with(USER_ID, [Sighting("gaia", "todo:t1", "you")])
+        memory["record_seen"].assert_awaited_once_with(
+            USER_ID, [Sighting("gaia", "todo:t1", "you")], NOW
+        )
+
+    async def test_a_thing_that_moved_since_is_news_again(
+        self, memory: dict[str, AsyncMock]
+    ) -> None:
+        memory["find_for"].return_value = [_shown("todo:t1", "gaia", times=3)]
+
+        gathered = await _gathered(
+            TrackedWork(blocked=[_tracked("t1", "Approve", NEEDS_REPLY_LABEL)]), _scouts()
+        )
+
+        (candidate,) = gathered.pool.values()
+        assert candidate.moved and not candidate.is_repeat
+        assert gathered.has_news
+
+    async def test_an_undated_own_todo_alone_is_no_news(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            todo_repository,
+            "list_undated_user_todos",
+            AsyncMock(return_value=[TodoDocument(id="u1", user_id=USER_ID, title="Plan Q1")]),
+        )
+
+        gathered = await _gathered(TrackedWork(), _scouts())
+
+        (candidate,) = gathered.pool.values()
+        assert candidate.backlog
+        assert not gathered.has_news
 
 
 class TestOneItemPerThing:
