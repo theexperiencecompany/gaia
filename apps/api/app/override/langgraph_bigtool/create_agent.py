@@ -95,8 +95,8 @@ from app.override.langgraph_bigtool.utils import (
     pop_pruned_tombstones,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
-from app.utils.message_breaks import normalize_message_breaks
-from app.utils.multimodal import extract_text_content
+from app.utils.message_breaks import normalize_message_breaks, split_message_bubbles
+from app.utils.multimodal import MessageContent, extract_text_content
 from shared.py.wide_events import log
 
 #: Graph node that answers a tool call the model made without binding the
@@ -292,9 +292,18 @@ def _tools_to_bind(deps: _AgentDeps, state: State) -> list[BaseTool]:
     return dedupe_tool_bindings(tools_to_bind)
 
 
+def _stored_comms_content(content: MessageContent) -> MessageContent:
+    """Return comms content as the thread keeps it: canonical breaks, and no text when it is breaks alone."""
+    if isinstance(content, str):
+        return normalize_message_breaks(content)
+    if split_message_bubbles(extract_text_content(content)):
+        return content
+    return [block for block in content if isinstance(block, dict) and block.get("type") != "text"]
+
+
 def _finalize_model_response(response: AIMessage, agent_name: str) -> AIMessage:
-    if agent_name == "comms_agent" and isinstance(response.content, str):
-        response.content = normalize_message_breaks(response.content)
+    if agent_name == "comms_agent":
+        response.content = _stored_comms_content(response.content)
 
     if not response.tool_calls and not response.content:
         response.content = "Empty response from model."

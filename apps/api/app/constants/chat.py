@@ -136,6 +136,17 @@ TURN_REPLY_NOT_SAVED = (
 # max_tokens exhausted mid-thought, a content filter) — a blank bubble reads as "it ignored me".
 EMPTY_RESPONSE_FALLBACK = "that didn't come through, say it again?"
 
+# No real reply opens with this many empty bubbles; past it a reply that is still
+# only breaks is a runaway (3,998 of them, ~100 s, in production) and is stopped.
+MAX_LEADING_MESSAGE_BREAKS = 8
+
+# Shown to the model, never stored, on the retry of an empty completion: the
+# history may hold the empty replies it is copying.
+EMPTY_COMPLETION_RETRY_NOTICE = (
+    "[System notice: your previous attempt at this reply produced no visible text. "
+    "Reply to the conversation in words.]"
+)
+
 # A recursion-limit stop is an expected degradation, not an infrastructure
 # failure — never show the raw "Recursion limit of N reached..." internals.
 RECURSION_LIMIT_MESSAGE = (

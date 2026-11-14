@@ -330,6 +330,25 @@ class TestAnEmptyCompletionIsNeverSaved:
         assert bot.response == ""
         assert published == []
 
+    async def test_a_stopped_turn_of_only_bubble_breaks_saves_no_breaks(self):
+        """A stop skips the fallback line; the breaks it streamed must still not become the saved reply."""
+        state = _StreamState()
+        state.complete_message = NEW_MESSAGE_BREAKER * 9
+        state.is_cancelled = True
+
+        bot, _ = await persist(state)
+
+        assert bot.response == ""
+
+    async def test_a_failed_turn_of_only_bubble_breaks_saves_no_breaks(self):
+        state = _StreamState()
+        state.complete_message = NEW_MESSAGE_BREAKER * 9
+        state.error = "Something went wrong while generating this response (TimeoutError)."
+
+        bot, _ = await persist(state)
+
+        assert bot.response == ""
+
     async def test_a_turn_whose_content_is_tool_cards_is_left_alone(self):
         """An image or a card with no prose is a real answer, not silence."""
         state = _StreamState()

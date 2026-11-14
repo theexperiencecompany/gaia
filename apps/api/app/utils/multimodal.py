@@ -30,7 +30,7 @@ ContentItem: TypeAlias = str | ContentBlock
 MessageContent: TypeAlias = str | list[ContentItem]
 
 
-class _BlockText(BaseModel):
+class ContentBlockText(BaseModel):
     """A content block's discriminator and text, as far as text extraction reads them."""
 
     model_config = ConfigDict(extra="ignore")
@@ -89,7 +89,8 @@ def extract_text_content(content: object) -> str:
             if isinstance(item, str):
                 text_parts.append(item)
             elif (
-                isinstance(item, dict) and (block := _BlockText.model_validate(item)).type == "text"
+                isinstance(item, dict)
+                and (block := ContentBlockText.model_validate(item)).type == "text"
             ):
                 text_parts.append(str(block.text or ""))
         return "\n".join(text_parts)

@@ -12,8 +12,11 @@ from app.utils.message_breaks import (
     PARTIAL_MESSAGE_BREAK_RE,
     _partial_sequence,
     _word_prefixes,
+    count_message_breaks,
+    is_only_message_breaks,
     normalize_message_breaks,
     split_message_bubbles,
+    strip_edge_message_breaks,
     strip_partial_message_break,
 )
 
@@ -184,3 +187,40 @@ class TestNormalizeMessageBreaks:
     def test_is_idempotent(self) -> None:
         once = normalize_message_breaks(f"{BR}a{BR * 2}b{BR}")
         assert normalize_message_breaks(once) == once
+
+
+class TestOnlyBreaksSoFar:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            " \n",
+            f"{BR}{BR}",
+            f"{BR}\n[NEW MESSAGE BREAK]",
+            f"{BR}<NEW_MESS",
+            f"{BR}<",
+            f"{BR} [ /",
+        ],
+    )
+    def test_breaks_whitespace_and_a_half_written_break_are_still_nothing(self, text):
+        assert is_only_message_breaks(text) is True
+
+    @pytest.mark.parametrize("text", [f"{BR}hi", f"{BR}<b>", "x", f"{BR}{BR}."])
+    def test_any_visible_character_is_text(self, text):
+        assert is_only_message_breaks(text) is False
+
+    def test_only_complete_breaks_are_counted(self):
+        assert count_message_breaks(f"{BR}[NEW_LINE_BREAK] {BR}<NEW_MESS") == 3
+
+
+class TestEdgeBreaks:
+    def test_runs_at_both_edges_go_and_the_breaks_between_bubbles_stay(self):
+        text = f" {BR}\n{BR}one{BR}{BR}two{BR} \n{BR} "
+
+        assert strip_edge_message_breaks(text) == f"one{BR}{BR}two"
+
+    def test_text_without_edge_breaks_is_unchanged(self):
+        assert strip_edge_message_breaks(f" one{BR}two\n") == f" one{BR}two\n"
+
+    def test_a_breaks_only_text_strips_to_nothing(self):
+        assert strip_edge_message_breaks(BR * 5) == ""

@@ -28,7 +28,7 @@ from app.constants.log_tags import LogTag
 from app.models.agent_models import CommsDirective
 from app.utils.message_breaks import (
     MESSAGE_BREAK_SENTINEL_RE,
-    PARTIAL_MESSAGE_BREAK_RE,
+    STREAMING_BREAK_TAIL_RE,
     split_message_bubbles,
     strip_partial_message_break,
 )
@@ -66,8 +66,6 @@ _DIRECTIVE_OPENINGS = (
     f"{SILENCE_TAG}:",
     f"{LEGACY_REACT_KEYWORD}:",
 )
-# A streamed tail that may still turn into a bubble break, down to a lone "<".
-_BREAK_TAIL_RE = re.compile(rf"{PARTIAL_MESSAGE_BREAK_RE.pattern}|[<\[]\s*/?\s*$", re.IGNORECASE)
 _EMOJI = TypeAdapter(Emoji)
 # The code points that join symbols into one emoji: ZWJ, the presentation selector, the keycap mark.
 _EMOJI_GLUE = frozenset({"\u200d", "\ufe0f", "\u20e3"})
@@ -212,7 +210,7 @@ def visible_comms_text_so_far(text: str) -> str:
     if _is_emoji_material(text.strip()):
         return ""
     *bubbles, last = MESSAGE_BREAK_SENTINEL_RE.split(text)
-    tail = _BREAK_TAIL_RE.search(last)
+    tail = STREAMING_BREAK_TAIL_RE.search(last)
     shown = last[: tail.start()] if tail else last
     writing = None
     if shown.strip() and not _could_become_directive(shown):
