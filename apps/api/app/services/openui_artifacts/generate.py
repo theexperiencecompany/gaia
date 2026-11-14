@@ -1,13 +1,13 @@
 """Write an artifact program with the artifact model over the OpenAI Responses API.
 
 The per-kind prompt is static, so it is the request's instructions and caches by prefix
-under one prompt_cache_key per kind; the brief (and, for a repair, the program and its
-problems) is the input.
+under one prompt_cache_key per kind; the brief under the user's date (and, for a repair, the
+program and its problems) is the input.
 """
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import date
 import time
 
 from openai import APIError, AsyncOpenAI
@@ -74,6 +74,8 @@ class ArtifactRequest:
     brief: str
     user_id: str
     conversation_id: str | None
+    #: The user's local date, which the artifact is written and grounded against.
+    today: date
     #: The request asks for inputs to interact with, which allows HtmlArtifact.
     interactive: bool = False
 
@@ -81,8 +83,9 @@ class ArtifactRequest:
 DeltaSink = Callable[[str], Awaitable[None]]
 
 
-def _input_for(brief: str) -> str:
-    return f"Today is {datetime.now(UTC).strftime('%d %B %Y')}.\n\n{brief}"
+def dated_brief(request: ArtifactRequest) -> str:
+    """Return the brief under the user's date: what the model is given and the program is grounded in."""
+    return f"Today is {request.today.strftime('%d %B %Y')}.\n\n{request.brief}"
 
 
 def repair_input(brief: str, program: str, problems: list[str]) -> str:
@@ -201,10 +204,10 @@ async def generate_reply(
 
 
 async def write_program(request: ArtifactRequest, on_delta: DeltaSink) -> GeneratedReply:
-    return await generate_reply(request, _input_for(request.brief), on_delta)
+    return await generate_reply(request, dated_brief(request), on_delta)
 
 
 async def repair_program(
     request: ArtifactRequest, program: str, problems: list[str]
 ) -> GeneratedReply:
-    return await generate_reply(request, repair_input(_input_for(request.brief), program, problems))
+    return await generate_reply(request, repair_input(dated_brief(request), program, problems))

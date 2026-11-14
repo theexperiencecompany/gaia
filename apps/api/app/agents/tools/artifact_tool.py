@@ -22,6 +22,7 @@ from app.services.openui_artifacts.create import ArtifactCreationError, create_o
 from app.services.openui_artifacts.generate import ArtifactRequest
 from app.services.short_link_service import optional_short_link
 from app.templates.docstrings.artifact_tool_docs import CREATE_ARTIFACT
+from app.utils.timezone import home_timezone_from_config
 
 
 class _DeltaBatcher:
@@ -72,6 +73,7 @@ async def create_artifact(
         brief=brief,
         user_id=get_user_id(config),
         conversation_id=get_session_id(config),
+        today=home_timezone_from_config(config).now().date(),
         interactive=interactive,
     )
     card = {"stream_id": stream_id, "kind": kind.value, "title": title}
