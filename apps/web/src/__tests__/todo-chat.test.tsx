@@ -37,6 +37,7 @@ function conversation(
     id,
     title: `Chat ${id}`,
     description: `Chat ${id}`,
+    awaitingApproval: false,
     createdAt: new Date("2026-10-01T00:00:00Z"),
     updatedAt: new Date("2026-10-01T00:00:00Z"),
     ...overrides,

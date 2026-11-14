@@ -207,7 +207,6 @@ export type {
   DesktopWindowInfo,
 } from "./desktop-tools";
 export {
-  DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   DESKTOP_TOOL_NAMES,
   isDesktopToolName,
 } from "./desktop-tools";
