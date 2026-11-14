@@ -17,9 +17,9 @@
  *   node scripts/verify-landing-bundle.mjs
  */
 import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runInNewContext } from "node:vm";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NEXT_DIR = join(root, ".next");
@@ -61,13 +61,15 @@ function chunkSources(chunkPath) {
   return sections.flatMap((section) => section.sources ?? []);
 }
 
+const require = createRequire(import.meta.url);
+
 /** The route's client reference manifest, which lists each segment's entry JS and CSS. */
+// Loaded the way Next's own build stats load it: the module assigns globalThis.__RSC_MANIFEST.
 function routeManifest(route) {
   const manifestPath = join(SERVER_APP_DIR, `${route}_client-reference-manifest.js`);
   if (!existsSync(manifestPath)) return null;
-  const sandbox = { globalThis: {} };
-  runInNewContext(readFileSync(manifestPath, "utf8"), sandbox);
-  return sandbox.globalThis.__RSC_MANIFEST?.[route] ?? null;
+  require(manifestPath);
+  return globalThis.__RSC_MANIFEST?.[route] ?? null;
 }
 
 /** One line per page and offender, naming the first chunk that carries it. */
