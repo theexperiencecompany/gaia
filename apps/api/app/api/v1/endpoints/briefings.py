@@ -21,14 +21,29 @@ router = APIRouter(prefix="/briefings", tags=["Briefings"])
 @router.get("")
 async def list_briefings(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-    limit: int = Query(default=30, ge=1, le=100),
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
+    before: Annotated[
+        str | None, Query(description="The previous page's next_cursor; omit for the first page.")
+    ] = None,
 ) -> BriefingListResponse:
-    """Archive of the user's briefings (daily + weekly), newest first."""
+    """One page of the user's briefings archive (daily + weekly), newest first."""
     user_id = user.user_id
     log.set(user={"id": user_id}, briefing={"operation": "list", "limit": limit})
+    anchor = None
+    if before is not None:
+        anchor = await briefing_repository.get(before, user_id=user_id)
+        if anchor is None:
+            raise HTTPException(status_code=404, detail="Briefing not found")
     # A quiet day's note has no edition: it was a message, not a brief to look back on.
-    briefings = await briefing_repository.list_recent(user_id, limit=limit, editions_only=True)
-    return BriefingListResponse(briefings=[briefing_view(b) for b in briefings])
+    # One past the page says whether another follows.
+    found = await briefing_repository.list_recent(
+        user_id, limit=limit + 1, editions_only=True, before=anchor
+    )
+    page = found[:limit]
+    return BriefingListResponse(
+        briefings=[briefing_view(b) for b in page],
+        next_cursor=page[-1].id if len(found) > limit else None,
+    )
 
 
 @router.get("/postmarks")

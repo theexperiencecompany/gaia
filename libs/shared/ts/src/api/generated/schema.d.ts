@@ -568,7 +568,7 @@ export interface paths {
         };
         /**
          * List Briefings
-         * @description Archive of the user's briefings (daily + weekly), newest first.
+         * @description One page of the user's briefings archive (daily + weekly), newest first.
          */
         get: operations["briefings_list_briefings"];
         put?: never;
@@ -7031,11 +7031,16 @@ export interface components {
         };
         /**
          * BriefingListResponse
-         * @description Archive response shape (frontend is coded against this).
+         * @description One page of the archive, newest first, and where the next page starts.
          */
         BriefingListResponse: {
             /** Briefings */
             briefings: components["schemas"]["BriefingView"][];
+            /**
+             * Next Cursor
+             * @description Pass as before to read the next page; None on the last page.
+             */
+            next_cursor: string | null;
         };
         /**
          * BriefingPayload
@@ -19660,6 +19665,8 @@ export interface operations {
     briefings_list_briefings: {
         parameters: {
             query?: {
+                /** @description The previous page's next_cursor; omit for the first page. */
+                before?: string | null;
                 limit?: number;
             };
             header?: never;

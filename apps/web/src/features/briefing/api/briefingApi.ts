@@ -1,14 +1,13 @@
 import { api } from "@/lib/api/typed";
+import { BRIEFING_ARCHIVE_PAGE_SIZE } from "../constants";
 
 export const briefingApi = {
-  // Fetch past briefings, most recent first.
-  fetchBriefings: async (limit = 30) => {
-    const data = await api.get("/api/v1/briefings", {
-      query: { limit },
+  // Fetch one page of past briefings, most recent first; before is the last page's next_cursor.
+  fetchBriefings: (before: string | null) =>
+    api.get("/api/v1/briefings", {
+      query: { limit: BRIEFING_ARCHIVE_PAGE_SIZE, before: before ?? undefined },
       silent: true,
-    });
-    return data.briefings;
-  },
+    }),
 
   // Fetch the Air Mail city stamps the user has collected.
   fetchPostmarks: () =>

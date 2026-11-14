@@ -2308,7 +2308,7 @@
         "type": "object"
       },
       "BriefingListResponse": {
-        "description": "Archive response shape (frontend is coded against this).",
+        "description": "One page of the archive, newest first, and where the next page starts.",
         "properties": {
           "briefings": {
             "items": {
@@ -2316,10 +2316,23 @@
             },
             "title": "Briefings",
             "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as before to read the next page; None on the last page.",
+            "title": "Next Cursor"
           }
         },
         "required": [
-          "briefings"
+          "briefings",
+          "next_cursor"
         ],
         "title": "BriefingListResponse",
         "type": "object"
@@ -26092,7 +26105,7 @@
     },
     "/api/v1/briefings": {
       "get": {
-        "description": "Archive of the user's briefings (daily + weekly), newest first.",
+        "description": "One page of the user's briefings archive (daily + weekly), newest first.",
         "operationId": "briefings_list_briefings",
         "parameters": [
           {
@@ -26105,6 +26118,24 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "The previous page's next_cursor; omit for the first page.",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The previous page's next_cursor; omit for the first page.",
+              "title": "Before"
             }
           }
         ],

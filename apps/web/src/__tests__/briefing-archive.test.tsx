@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The briefings archive says when it could not load, offers a retry, and
- * groups its folded cards by week with the weekly recap leading.
+ * The briefings archive says when it could not load, offers a retry, groups
+ * its folded cards by week with the weekly recap leading, and pages back.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -12,7 +12,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fetchBriefings = vi.fn();
 
 vi.mock("@/features/briefing/api/briefingApi", () => ({
-  briefingApi: { fetchBriefings: (limit: number) => fetchBriefings(limit) },
+  briefingApi: {
+    fetchBriefings: (before: string | null) => fetchBriefings(before),
+  },
 }));
 
 import { BriefingArchive } from "@/features/briefing/components/BriefingArchive";
@@ -71,7 +73,7 @@ describe("BriefingArchive", () => {
       .mockRejectedValueOnce(new Error("500"))
       .mockRejectedValueOnce(new Error("500"))
       .mockRejectedValueOnce(new Error("500"))
-      .mockResolvedValueOnce([brief]);
+      .mockResolvedValueOnce({ briefings: [brief], next_cursor: null });
 
     renderArchive();
 
@@ -103,7 +105,10 @@ describe("BriefingArchive", () => {
       payload: { ...brief.payload, headline: "A steady week" },
     };
     const lastWeek = { ...brief, id: "brief_old", date: "2026-10-07" };
-    fetchBriefings.mockResolvedValueOnce([brief, weekly, lastWeek]);
+    fetchBriefings.mockResolvedValueOnce({
+      briefings: [brief, weekly, lastWeek],
+      next_cursor: null,
+    });
 
     renderArchive();
 
@@ -121,5 +126,36 @@ describe("BriefingArchive", () => {
     expect(screen.getByText("4 waiting")).toBeTruthy();
     expect(screen.getAllByText("Air Mail, Bogotá")).toHaveLength(2);
     expect(screen.queryByText(/1 waiting/)).toBeNull();
+  });
+
+  it("reads the next page from where the last one ended, until there is none", async () => {
+    const lastWeek = {
+      ...brief,
+      id: "brief_old",
+      date: "2026-10-07",
+      payload: { ...brief.payload, headline: "An older morning" },
+    };
+    fetchBriefings
+      .mockResolvedValueOnce({ briefings: [brief], next_cursor: "brief_1" })
+      .mockResolvedValueOnce({ briefings: [lastWeek], next_cursor: null });
+
+    renderArchive();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Show older briefs" }),
+    );
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Open brief: An older morning",
+      }),
+    ).toBeTruthy();
+    expect(fetchBriefings.mock.calls).toEqual([[null], ["brief_1"]]);
+    expect(
+      screen.getByRole("button", { name: "Open brief: Your morning, sorted" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Show older briefs" }),
+    ).toBeNull();
   });
 });

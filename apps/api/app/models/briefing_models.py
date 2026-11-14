@@ -418,9 +418,12 @@ class BriefingCardData(BaseModel):
 
 
 class BriefingListResponse(BaseModel):
-    """Archive response shape (frontend is coded against this)."""
+    """One page of the archive, newest first, and where the next page starts."""
 
     briefings: list[BriefingView]
+    next_cursor: str | None = Field(
+        description="Pass as before to read the next page; None on the last page."
+    )
 
 
 class Postmark(ResponseModel):
