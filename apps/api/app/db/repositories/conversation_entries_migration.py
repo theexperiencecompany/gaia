@@ -572,9 +572,9 @@ class ConversationEntriesMigration(ConversationRepository):
                     "let": {"owner": "$user_id"},
                     "pipeline": [
                         {"$match": {**MESSAGE_SHAPED, "$expr": {"$eq": ["$user_id", "$$owner"]}}},
-                        {"$limit": 1},
-                        {"$project": {"_id": 1}},
-                        # pragma: no mutate end
+                        # only whether one exists is read
+                        {"$limit": 1},  # pragma: no mutate
+                        {"$project": {"_id": 1}},  # pragma: no mutate
                     ],
                     "as": _FOUND,
                 }

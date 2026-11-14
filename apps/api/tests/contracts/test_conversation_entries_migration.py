@@ -23,7 +23,7 @@ from app.db.repositories.conversation_entries_migration import (
 from app.db.repositories.conversation_entries_oracle import legacy_messages
 from app.db.repositories.conversations import ConversationRepository
 from app.models.conversation_log_models import LoggedEntry
-from app.models.conversation_models import ConversationEntry, LogPage
+from app.models.conversation_models import ConversationEntry, LegacyMessage, LogPage
 from app.scripts import migrate_conversation_entries as script
 from app.utils.errors import UnmigratedConversationError
 
@@ -114,6 +114,12 @@ async def _history(ref: HeadRef) -> list[tuple[str, str | None, str]]:
     doc = await ConversationRepository().get(ref.conversation_id, user_id=ref.user_id)
     assert doc is not None
     return [(m.type, m.message_id, m.response) for m in shown_messages(doc)]
+
+
+def test_a_legacy_element_is_stored_with_only_the_fields_it_holds() -> None:
+    element = LegacyMessage.model_validate({"type": "bot", "response": "hi"})
+
+    assert element.stored() == {"type": "bot", "response": "hi"}
 
 
 async def test_every_old_shape_becomes_log_entries_that_read_back_as_the_old_array(
