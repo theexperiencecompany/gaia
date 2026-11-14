@@ -1,12 +1,19 @@
 """Streamlined Dodo Payments integration service."""
 
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal, TypedDict, cast
+from typing import Literal, TypedDict, cast
 
-from dodopayments import DodoPayments, NotFoundError
-from dodopayments.types import Subscription
+from dodopayments import APIError, APIStatusError, DodoPayments, NotFoundError
+from dodopayments.types import (
+    CheckoutSessionCreateParams,
+    CheckoutSessionResponse,
+    NewCustomerParam,
+    Subscription,
+)
+from dodopayments.types.checkout_session_create_params import FeatureFlags
 from fastapi import HTTPException
 from pydantic import BaseModel
 
@@ -50,7 +57,10 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
+from app.models.referral_models import ReferralDocument
 from app.models.webhook_models import DodoSubscriptionData
+from app.services.analytics_service import capture
+from app.services.payments.discount_lookup import find_discount
 from app.services.payments.plan_cache import invalidate_plan_cache
 from app.services.payments.subscription_events import (
     SubscriptionEvent,
@@ -59,7 +69,39 @@ from app.services.payments.subscription_events import (
     apply_subscription_event,
     resolve_subscription_owner,
 )
+from app.services.referrals.gift import (
+    CheckoutGift,
+    code_value,
+    gift_code_for_checkout,
+    gift_mint_failure_reason,
+    gift_value,
+    is_refusal,
+    pending_gift_referral,
+    renew_gift_code,
+)
+from app.services.referrals.offer import ProPlans
+from shared.py.analytics import Dedupe, UserId
+from shared.py.analytics.catalog.referrals import ReferralGiftCheckoutOpened, ReferralGiftMintFailed
 from shared.py.wide_events import log
+
+
+class _CheckoutFeatureFlags(FeatureFlags, total=False):
+    """Dodo's checkout flags plus single_page, which the API takes and SDK 1.71 does not declare."""
+
+    single_page: bool
+
+
+@dataclass(frozen=True)
+class CheckoutRequest:
+    """One hosted checkout to open: who pays, for which product, where Dodo returns them, the caller's code."""
+
+    user_id: str
+    email: str
+    name: str
+    product_id: str
+    quantity: int
+    return_path: str
+    discount_code: str | None
 
 
 class CheckoutScanOutcome(StrEnum):
@@ -207,53 +249,19 @@ class DodoPaymentService:
         if existing:
             raise HTTPException(409, "Active subscription exists")
 
-        # Create hosted checkout session (preferred over deprecated subscriptions.create)
+        request = CheckoutRequest(
+            user_id=user_id,
+            email=user.email,
+            name=user.first_name or user.name or "User",
+            product_id=product_id,
+            quantity=quantity,
+            return_path=return_path,
+            discount_code=discount_code,
+        )
+        referral = await pending_gift_referral(user_id)
+        gift = await self._referral_gift(referral, request) if referral else None
         try:
-            customer: dict[str, str] = {
-                "email": user.email,
-                "name": user.first_name or user.name or "User",
-            }
-            params: dict[str, Any] = {
-                "product_cart": [
-                    {
-                        "product_id": product_id,
-                        "quantity": quantity,
-                    }
-                ],
-                "customer": customer,
-                "feature_flags": {
-                    # This renders the promo/discount code input on the hosted page
-                    "allow_discount_code": True,
-                    # Allow customers to change their billing address country
-                    "allow_customer_editing_country": True,
-                    # Wallets, email, billing and card on one page, no Continue to Payment step
-                    "single_page": True,
-                },
-                "return_url": f"{settings.FRONTEND_URL}{return_path}",
-                # The app is dark-only; Dodo's default follows the OS, which
-                # flashed a white sheet over GAIA for every light-mode user.
-                "customization": {"theme": DODO_CHECKOUT_THEME},
-                "metadata": {"user_id": user_id, "product_id": product_id},
-                "subscription_data": {
-                    # Use product's stored price; override trial if needed
-                },
-            }
-            if discount_code:
-                # Pre-apply a known discount (customer can still edit it on the page)
-                params["discount_code"] = discount_code
-            if settings.deployment.dev_tools:
-                # Local dev only: prefills everything but the card, and a card
-                # used once is offered back as a saved method, so a developer
-                # pays in one click after the first run.
-                params["billing_address"] = dict(DODO_TEST_MODE_BILLING_ADDRESS)
-                customer["phone_number"] = DODO_TEST_MODE_PHONE_NUMBER
-                params["show_saved_payment_methods"] = True
-
-            # The Dodo SDK's client is synchronous — run it off the event loop so a
-            # slow HTTP round-trip doesn't stall other requests.
-            checkout_session = await asyncio.to_thread(
-                self.client.checkout_sessions.create, **params
-            )
+            checkout_session, gift = await self._open_checkout(request, referral, gift)
         except Exception as e:
             log.error(
                 f"{LogTag.PAYMENT} Error creating Dodo checkout session",
@@ -262,6 +270,7 @@ class DodoPaymentService:
                 user_id=user_id,
             )
             raise HTTPException(502, f"Payment service error: {e!s}") from e
+        log.set_ns("payment", referral_gift_applied=gift is not None)
 
         # Look up plan name for richer logging
         plan_name: str | None = None
@@ -285,13 +294,22 @@ class DodoPaymentService:
         # Lets the result page resolve the purchase against Dodo even when the
         # subscription.active webhook hasn't landed yet (the webhook-vs-redirect
         # race); losing this record only disables that fallback.
+        opened_at = datetime.now(UTC)
+        if gift is not None:
+            capture(
+                UserId(user_id),
+                ReferralGiftCheckoutOpened(
+                    referrer_id=gift.referrer_id, duration=gift.duration.value
+                ),
+                dedupe=Dedupe(key=checkout_session.session_id, occurred_at=opened_at),
+            )
         try:
             await checkout_session_repository.create(
                 CheckoutSessionDocument(
                     session_id=checkout_session.session_id,
                     user_id=user_id,
                     product_id=product_id,
-                    created_at=datetime.now(UTC),
+                    created_at=opened_at,
                 )
             )
         except Exception as e:
@@ -311,6 +329,138 @@ class DodoPaymentService:
             payment_link=checkout_session.checkout_url,
             status="payment_link_created",
         )
+
+    def _checkout_params(
+        self, request: CheckoutRequest, gift: CheckoutGift | None
+    ) -> CheckoutSessionCreateParams:
+        customer: NewCustomerParam = {"email": request.email, "name": request.name}
+        flags: _CheckoutFeatureFlags = {
+            # Renders the promo-code input; locked when the referral gift is
+            # applied, since codes never stack and the gift already won.
+            "allow_discount_code": gift is None,
+            # Allow customers to change their billing address country
+            "allow_customer_editing_country": True,
+            # Wallets, email, billing and card on one page, no Continue to Payment step
+            "single_page": True,
+        }
+        params: CheckoutSessionCreateParams = {
+            "product_cart": [{"product_id": request.product_id, "quantity": request.quantity}],
+            "customer": customer,
+            "feature_flags": flags,
+            "return_url": f"{settings.FRONTEND_URL}{request.return_path}",
+            # The app is dark-only; Dodo's default follows the OS, which
+            # flashed a white sheet over GAIA for every light-mode user.
+            "customization": {"theme": DODO_CHECKOUT_THEME},
+            "metadata": {"user_id": request.user_id, "product_id": request.product_id},
+            "subscription_data": {
+                # Use product's stored price; override trial if needed
+            },
+        }
+        code = request.discount_code if gift is None else gift.code
+        if code:
+            params["discount_code"] = code
+        if settings.deployment.dev_tools:
+            # Local dev only: prefills everything but the card, and a card
+            # used once is offered back as a saved method, so a developer
+            # pays in one click after the first run.
+            params["billing_address"] = {**DODO_TEST_MODE_BILLING_ADDRESS}
+            customer["phone_number"] = DODO_TEST_MODE_PHONE_NUMBER
+            params["show_saved_payment_methods"] = True
+        return params
+
+    async def _create_session(
+        self, request: CheckoutRequest, gift: CheckoutGift | None
+    ) -> CheckoutSessionResponse:
+        # The Dodo SDK's client is synchronous — run it off the event loop so a
+        # slow HTTP round-trip doesn't stall other requests.
+        return await asyncio.to_thread(
+            self.client.checkout_sessions.create, **self._checkout_params(request, gift)
+        )
+
+    async def _open_checkout(
+        self,
+        request: CheckoutRequest,
+        referral: ReferralDocument | None,
+        gift: CheckoutGift | None,
+    ) -> tuple[CheckoutSessionResponse, CheckoutGift | None]:
+        """Open the session with the gift when it won, else with the caller's code.
+
+        A stored gift code Dodo refuses is renewed once; a fresh one refused too
+        opens the checkout without it, because the gift must never stop a friend paying.
+        """
+        if referral is not None and gift is not None:
+            try:
+                return await self._create_session(request, gift), gift
+            except APIStatusError as e:
+                if not is_refusal(e):
+                    raise
+                log.warning(
+                    f"{LogTag.PAYMENT} Dodo refused the stored referral gift; renewing it",
+                    error=str(e),
+                    user_id=request.user_id,
+                )
+            try:
+                renewed = await renew_gift_code(
+                    self.client, referral, gift, await self.get_pro_plans()
+                )
+                return await self._create_session(request, renewed), renewed
+            except APIError as e:
+                if isinstance(e, APIStatusError) and not is_refusal(e):
+                    raise
+                log.error(
+                    f"{LogTag.PAYMENT} Referral gift could not be renewed; checkout opens without it",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=request.user_id,
+                )
+                capture(
+                    UserId(request.user_id),
+                    ReferralGiftMintFailed(reason=gift_mint_failure_reason(e)),
+                )
+        return await self._create_session(request, None), None
+
+    async def _referral_gift(
+        self, referral: ReferralDocument, request: CheckoutRequest
+    ) -> CheckoutGift | None:
+        """Return the referred friend's gift for this checkout, or None when the caller's code is worth more.
+
+        The gift is a referral perk: Dodo failing to mint it must not stop the friend paying.
+        """
+        plans = await self.get_pro_plans()
+        plan = plans.for_product(request.product_id)
+        if plan is None:
+            return None
+        if not await self._gift_wins(plans, plan, request.discount_code):
+            log.set_ns("payment", referral_gift_outbid=True)
+            return None
+        try:
+            return await gift_code_for_checkout(self.client, referral, request.product_id, plans)
+        except APIError as e:
+            log.error(
+                f"{LogTag.PAYMENT} Referral gift could not be minted; checkout opens without it",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=request.user_id,
+            )
+            capture(
+                UserId(request.user_id), ReferralGiftMintFailed(reason=gift_mint_failure_reason(e))
+            )
+            return None
+
+    async def _gift_wins(self, plans: ProPlans, plan: PlanResponse, code: str | None) -> bool:
+        """Whether checkout applies the friend's gift on this plan over the caller's code; codes never stack."""
+        if not code:
+            return True
+        supplied = await find_discount(self.client, code)
+        return supplied is None or code_value(supplied, plan) <= gift_value(plans, plan)
+
+    async def pro_checkout_gift_cycles(self, plans: ProPlans) -> list[PlanDuration]:
+        """Return the billing cycles on which create_pro_checkout applies a referred friend's gift."""
+        return [
+            plan.duration
+            for plan in (plans.monthly, plans.yearly)
+            if await self._gift_wins(plans, plan, settings.PAYWALL_DISCOUNT_CODE)
+        ]
 
     async def cancel_subscription(self, user_id: str) -> UserSubscriptionStatus:
         """Cancel the user's subscription in Dodo and mirror it locally.
@@ -634,6 +784,13 @@ class DodoPaymentService:
             raise HTTPException(500, f"No purchasable {billing_cycle} plan is configured")
         return plan
 
+    async def get_pro_plans(self) -> ProPlans:
+        """Return the purchasable Pro plan for both billing cycles."""
+        monthly, yearly = await asyncio.gather(
+            self.get_pro_plan(PlanDuration.MONTHLY), self.get_pro_plan(PlanDuration.YEARLY)
+        )
+        return ProPlans(monthly=monthly, yearly=yearly)
+
     async def create_pro_checkout(
         self,
         user_id: str,
@@ -644,8 +801,8 @@ class DodoPaymentService:
 
         Every call mints fresh: Dodo sessions are single-use, so caching the
         last one would hand back its "link expired" page after a failed card.
-        settings.PAYWALL_DISCOUNT_CODE is applied here rather than by callers,
-        so every caller's pitch and link agree.
+        PAYWALL_DISCOUNT_CODE is applied here so every caller's pitch and link
+        agree; create_subscription swaps in a referred friend's gift.
         """
         return_path = source.return_path if source else PAYMENT_RESULT_PATH
         plan = await self.get_pro_plan(billing_cycle)

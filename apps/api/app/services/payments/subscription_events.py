@@ -42,6 +42,7 @@ from app.services.analytics_service import identify_user, track_subscription_eve
 from app.services.email import send_pro_subscription_email
 from app.services.payments.plan_cache import invalidate_plan_cache
 from app.services.payments.revenue_properties import subscription_revenue_properties
+from app.services.referrals.settlement_queue import queue_settlement
 from app.utils.money import to_major_units
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import as_utc
@@ -78,6 +79,8 @@ class SubscriptionEventKind(StrEnum):
     FAILED = "failed"
     ON_HOLD = "on_hold"
     PLAN_CHANGED = "plan_changed"
+    # GAIA moved the next charge itself, to deliver a referral's free month.
+    BILLING_DATE_MOVED = "billing_date_moved"
 
 
 @dataclass(frozen=True)
@@ -132,6 +135,22 @@ async def _queue_retry(task: str, *args: str, **context: str) -> None:
             error=str(e),
             error_type=type(e).__name__,
             **context,
+        )
+
+
+async def _queue_banked_referral_months(user_id: str) -> None:
+    """Hand a newly active subscriber's banked referral months to the worker, which moves the billing date.
+
+    Never raises, for the same reason as reactivate_workflows_safely.
+    """
+    try:
+        await queue_settlement(user_id)
+    except Exception as e:
+        log.error(
+            f"{LogTag.PAYMENT} Banked referral months could not be queued",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
         )
 
 
@@ -310,6 +329,10 @@ def _lapsed_state(status: SubscriptionStatus, _data: DodoSubscriptionData) -> Su
     return SubscriptionUpdate(status=status.value)
 
 
+def _billing_date_moved_state(data: DodoSubscriptionData) -> SubscriptionUpdate:
+    return SubscriptionUpdate(next_billing_date=data.next_billing_date)
+
+
 def _plan_changed_state(data: DodoSubscriptionData) -> SubscriptionUpdate:
     return SubscriptionUpdate(
         product_id=data.product_id,
@@ -327,6 +350,7 @@ DESIRED_STATE: dict[SubscriptionEventKind, Callable[[DodoSubscriptionData], Subs
     SubscriptionEventKind.FAILED: partial(_lapsed_state, SubscriptionStatus.FAILED),
     SubscriptionEventKind.ON_HOLD: partial(_lapsed_state, SubscriptionStatus.ON_HOLD),
     SubscriptionEventKind.PLAN_CHANGED: _plan_changed_state,
+    SubscriptionEventKind.BILLING_DATE_MOVED: _billing_date_moved_state,
 }
 
 
@@ -502,6 +526,7 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
             {
                 "dodo_subscription_id": data.subscription_id,
                 "user_id": user_id,
+                "dodo_customer_id": data.customer.customer_id,
                 "product_id": data.product_id,
                 "status": SubscriptionStatus.ACTIVE.value,
                 "quantity": data.quantity,
@@ -531,6 +556,7 @@ async def _create_row(event: SubscriptionEvent) -> SubscriptionEventResult:
     await reactivate_workflows_safely(user_id)
     await resume_paywall_pauses_safely(user_id)
     await queue_inbox_desk_safely(user_id)
+    await _queue_banked_referral_months(user_id)
 
     log.info(f"{LogTag.PAYMENT} Subscription activated", subscription_id=data.subscription_id)
     return SubscriptionEventResult(SubscriptionEventOutcome.CREATED, user_id)
@@ -582,7 +608,12 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
     # Matching on the id alone would let this older patch land on top of it.
     if not await subscription_repository.apply_update_by_dodo_id(
         data.subscription_id,
-        changes.model_copy(update={"last_event_at": event.occurred_at}),
+        changes.model_copy(
+            update={
+                "last_event_at": event.occurred_at,
+                "dodo_customer_id": data.customer.customer_id,
+            }
+        ),
         if_not_newer_than=event.occurred_at,
     ):
         log.warning(
@@ -600,6 +631,7 @@ async def apply_subscription_event(event: SubscriptionEvent) -> SubscriptionEven
         await reactivate_workflows_safely(row.user_id)
         await resume_paywall_pauses_safely(row.user_id)
         await queue_inbox_desk_safely(row.user_id)
+        await _queue_banked_referral_months(row.user_id)
     elif new_status in LAPSED_STATUSES:
         await deactivate_workflows_safely(row.user_id)
     await _sync_paid_person_properties(row.user_id, data.subscription_id, changes)

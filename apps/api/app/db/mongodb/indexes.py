@@ -100,6 +100,7 @@ async def create_all_indexes() -> None:
             create_workflow_indexes(),
             create_payment_indexes(),
             create_processed_webhook_indexes(),
+            create_referral_indexes(),
             create_usage_indexes(),
             create_integration_indexes(),
             create_user_integration_indexes(),
@@ -144,6 +145,7 @@ async def create_all_indexes() -> None:
             "workflows",
             "payments",
             "processed_webhooks",
+            "referrals",
             "usage",
             "integrations",
             "user_integrations",
@@ -764,6 +766,38 @@ async def create_processed_webhook_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating processed webhook indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_referral_indexes() -> None:
+    """Create the referral program's indexes; each unique one is a once-only guarantee.
+
+    One code per user and per code string, one referral per friend, one invite
+    per (sender, recipient), one suppression per address.
+    """
+    codes = get_async_collection("referral_codes")
+    referrals = get_async_collection("referrals")
+    invites = get_async_collection("referral_invites")
+    suppressions = get_async_collection("email_suppressions")
+    try:
+        await asyncio.gather(
+            codes.create_index("user_id", unique=True),
+            codes.create_index("code", unique=True),
+            referrals.create_index("friend_user_id", unique=True),
+            referrals.create_index([("referrer_user_id", 1), ("joined_at", -1)]),
+            referrals.create_index([("referrer_user_id", 1), ("reward_state", 1), ("paid_at", 1)]),
+            # A refund or dispute finds the referral its payment converted; the sweep finds stuck months.
+            referrals.create_index("payment_id", sparse=True),
+            referrals.create_index([("reward_state", 1), ("paid_at", 1)]),
+            invites.create_index([("sender_user_id", 1), ("recipient_email", 1)], unique=True),
+            suppressions.create_index("email", unique=True),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating referral indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

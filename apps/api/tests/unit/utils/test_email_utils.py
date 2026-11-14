@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.utils.email_utils import derive_name_from_email
+from app.utils.email_utils import derive_name_from_email, email_identity
 
 
 @pytest.mark.unit
@@ -55,3 +55,18 @@ class TestDeriveNameFromEmail:
         self, email: str, expected: str
     ) -> None:
         assert derive_name_from_email(email) == expected
+
+
+@pytest.mark.parametrize(
+    ("email", "identity"),
+    [
+        ("A.Ryan+promo@Gmail.com", "aryan@gmail.com"),
+        ("a.r.y.a.n@googlemail.com", "aryan@gmail.com"),
+        ("first.last+x@company.io", "first.last@company.io"),
+        ("  Someone@Example.COM ", "someone@example.com"),
+        # The domain is what follows the last @; a quoted local part may hold one.
+        ('"a.b@c"@gmail.com', '"ab@c"@gmail.com'),
+    ],
+)
+def test_email_identity_folds_every_spelling_of_one_mailbox(email: str, identity: str) -> None:
+    assert email_identity(email) == identity

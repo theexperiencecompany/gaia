@@ -16,6 +16,7 @@ from app.constants.delivery_alerts import (
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.referrals import SETTLE_REWARDS_TASK
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     PROVISION_INBOX_DESK_TASK,
@@ -62,6 +63,10 @@ from app.workers.tasks.inbox_desk_tasks import (
 )
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
+from app.workers.tasks.referral_tasks import (
+    settle_referral_rewards_task,
+    sweep_unsettled_referral_rewards,
+)
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
@@ -147,6 +152,13 @@ _sync_paid_person_properties = func(
     arq_task(sync_paid_person_properties_task),
     name=PAID_PERSON_SYNC_TASK,
 )
+# keep_result=0: the job id is per referrer (or friend), and a later payment must not collapse onto a finished run.
+_settle_referral_rewards = func(
+    arq_task(settle_referral_rewards_task),
+    name=SETTLE_REWARDS_TASK,
+    keep_result=0,
+)
+_sweep_unsettled_referral_rewards = arq_task(sweep_unsettled_referral_rewards)
 # Named from the constants their producers enqueue by.
 _record_delivery_failure = func(
     arq_task(record_delivery_failure), name=RECORD_DELIVERY_FAILURE_TASK
@@ -189,6 +201,8 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _warm_device_servers,
     _sync_workflows_for_subscription_state,
     _sync_paid_person_properties,
+    _settle_referral_rewards,
+    _sweep_unsettled_referral_rewards,
     _provision_inbox_desk,
     _record_delivery_failure,
     _refresh_delivery_incident,
@@ -301,6 +315,13 @@ WorkerSettings.cron_jobs = [
     cron(
         cast(WorkerCoroutine, _sweep_undelivered_signup_emails),
         minute=40,
+        second=0,
+    ),
+    # Settle referral months whose own job never ran or ran out of retries;
+    # off the other sweeps' minutes, idempotent per friend.
+    cron(
+        cast(WorkerCoroutine, _sweep_unsettled_referral_rewards),
+        minute={25, 55},
         second=0,
     ),
     # Retire memories whose forget_after has passed. Without this, expiry is

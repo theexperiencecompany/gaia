@@ -2956,8 +2956,29 @@
             "type": "string"
           },
           "enabled": {
-            "title": "Enabled",
-            "type": "boolean"
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Enabled"
+          },
+          "variant": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Variant"
           },
           "fallback_reason": {
             "enum": [
@@ -2971,7 +2992,7 @@
             "type": "string"
           }
         },
-        "required": ["flag", "enabled", "fallback_reason"],
+        "required": ["flag", "fallback_reason"],
         "title": "FeatureFlagEvaluated",
         "type": "object"
       }
@@ -5656,6 +5677,319 @@
           "has_external_link"
         ],
         "title": "RedditPostViewed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:banked_month_applied",
+      "class": "ReferralBankedMonthApplied",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A free month the referrer banked while unsubscribed moved their billing date; one per friend.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A free month the referrer banked while unsubscribed moved their billing date; one per friend.",
+        "properties": {
+          "friend_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Friend Id",
+            "type": "string"
+          },
+          "months": {
+            "title": "Months",
+            "type": "integer"
+          }
+        },
+        "required": ["friend_id", "months"],
+        "title": "ReferralBankedMonthApplied",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:converted",
+      "class": "ReferralConverted",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A referred friend's first payment succeeded; captured on the friend.",
+      "previous_names": [],
+      "budget_per_user_day": 5,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A referred friend's first payment succeeded; captured on the friend.",
+        "properties": {
+          "referrer_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Referrer Id",
+            "type": "string"
+          },
+          "landing_variant": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Landing Variant"
+          },
+          "self_referral": {
+            "title": "Self Referral",
+            "type": "boolean"
+          }
+        },
+        "required": ["referrer_id", "self_referral"],
+        "title": "ReferralConverted",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:gift_checkout_opened",
+      "class": "ReferralGiftCheckoutOpened",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A referred friend's checkout opened with their gift code applied; captured on the friend.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A referred friend's checkout opened with their gift code applied; captured on the friend.",
+        "properties": {
+          "referrer_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Referrer Id",
+            "type": "string"
+          },
+          "duration": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Duration",
+            "type": "string"
+          }
+        },
+        "required": ["referrer_id", "duration"],
+        "title": "ReferralGiftCheckoutOpened",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:gift_mint_failed",
+      "class": "ReferralGiftMintFailed",
+      "owner": "server",
+      "domain": "referral",
+      "description": "Dodo could not mint a referred friend's gift, so their checkout opened without it.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Dodo could not mint a referred friend's gift, so their checkout opened without it.",
+        "properties": {
+          "reason": {
+            "enum": [
+              "provider_unreachable",
+              "provider_rejected",
+              "provider_invalid_response"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": ["reason"],
+        "title": "ReferralGiftMintFailed",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:invite_sent",
+      "class": "ReferralInviteSent",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A referrer's invite email left, from their Gmail or GAIA's domain; one per recipient.",
+      "previous_names": [],
+      "budget_per_user_day": 250,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A referrer's invite email left, from their Gmail or GAIA's domain; one per recipient.",
+        "properties": {
+          "invite_surface": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Invite Surface",
+            "type": "string"
+          },
+          "channel": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Channel",
+            "type": "string"
+          }
+        },
+        "required": ["invite_surface", "channel"],
+        "title": "ReferralInviteSent",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:landing_resolved",
+      "class": "ReferralLandingResolved",
+      "owner": "server",
+      "domain": "referral",
+      "description": "Someone opened a referrer's invite link; captured on the referrer, since the visitor has no account.",
+      "previous_names": [],
+      "budget_per_user_day": 500,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Someone opened a referrer's invite link; captured on the referrer, since the visitor has no account.",
+        "properties": {
+          "outcome": {
+            "enum": ["valid", "disabled"],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "landing_variant": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Landing Variant"
+          },
+          "cookie_set": {
+            "title": "Cookie Set",
+            "type": "boolean"
+          }
+        },
+        "required": ["outcome", "cookie_set"],
+        "title": "ReferralLandingResolved",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:reward_granted",
+      "class": "ReferralRewardGranted",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A referrer earned a free month for a paying friend; captured on the referrer.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A referrer earned a free month for a paying friend; captured on the referrer.",
+        "properties": {
+          "friend_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Friend Id",
+            "type": "string"
+          },
+          "delivery": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Delivery",
+            "type": "string"
+          },
+          "months": {
+            "title": "Months",
+            "type": "integer"
+          }
+        },
+        "required": ["friend_id", "delivery", "months"],
+        "title": "ReferralRewardGranted",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:reward_revoked",
+      "class": "ReferralRewardRevoked",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A paying friend's first payment was refunded or disputed, so their referrer's month was taken back.\n\n    reclaimed is false when the month was already under way and could not be moved back.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A paying friend's first payment was refunded or disputed, so their referrer's month was taken back.\n\nreclaimed is false when the month was already under way and could not be moved back.",
+        "properties": {
+          "friend_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Friend Id",
+            "type": "string"
+          },
+          "reason": {
+            "enum": ["refund", "dispute"],
+            "title": "Reason",
+            "type": "string"
+          },
+          "prior_state": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Prior State",
+            "type": "string"
+          },
+          "reclaimed": {
+            "title": "Reclaimed",
+            "type": "boolean"
+          }
+        },
+        "required": ["friend_id", "reason", "prior_state", "reclaimed"],
+        "title": "ReferralRewardRevoked",
+        "type": "object"
+      }
+    },
+    {
+      "event": "referral:signup_attributed",
+      "class": "ReferralSignupAttributed",
+      "owner": "server",
+      "domain": "referral",
+      "description": "A new user signed up through a referral link; captured on the friend.",
+      "previous_names": [],
+      "budget_per_user_day": 5,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "A new user signed up through a referral link; captured on the friend.",
+        "properties": {
+          "referrer_id": {
+            "pattern": "^[0-9a-fA-F]{24}$",
+            "title": "Referrer Id",
+            "type": "string"
+          },
+          "landing_variant": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Landing Variant"
+          }
+        },
+        "required": ["referrer_id"],
+        "title": "ReferralSignupAttributed",
         "type": "object"
       }
     },

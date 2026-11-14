@@ -98,6 +98,15 @@ export type ServerEventName =
   | "projects:deleted"
   | "projects:updated"
   | "rate_limit:hit"
+  | "referral:banked_month_applied"
+  | "referral:converted"
+  | "referral:gift_checkout_opened"
+  | "referral:gift_mint_failed"
+  | "referral:invite_sent"
+  | "referral:landing_resolved"
+  | "referral:reward_granted"
+  | "referral:reward_revoked"
+  | "referral:signup_attributed"
   | "reminder:completed"
   | "reminder:created"
   | "reminder:deleted"
@@ -677,7 +686,8 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "flag": string;
-    "enabled": boolean;
+    "enabled"?: boolean;
+    "variant"?: string;
     "fallback_reason": "posthog_unconfigured" | "evaluation_error" | "flag_unevaluated" | "killed" | "user_choice";
   };
   "feedback:message_submitted": {
@@ -1154,6 +1164,73 @@ export interface EventProperties {
     "num_comments": number;
     "has_selftext": boolean;
     "has_external_link": boolean;
+  };
+  "referral:banked_month_applied": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "friend_id": string;
+    "months": number;
+  };
+  "referral:converted": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "referrer_id": string;
+    "landing_variant"?: string;
+    "self_referral": boolean;
+  };
+  "referral:gift_checkout_opened": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "referrer_id": string;
+    "duration": string;
+  };
+  "referral:gift_mint_failed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "reason": "provider_unreachable" | "provider_rejected" | "provider_invalid_response";
+  };
+  "referral:invite_sent": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "invite_surface": string;
+    "channel": string;
+  };
+  "referral:landing_resolved": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "outcome": "valid" | "disabled";
+    "landing_variant"?: string;
+    "cookie_set": boolean;
+  };
+  "referral:reward_granted": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "friend_id": string;
+    "delivery": string;
+    "months": number;
+  };
+  "referral:reward_revoked": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "friend_id": string;
+    "reason": "refund" | "dispute";
+    "prior_state": string;
+    "reclaimed": boolean;
+  };
+  "referral:signup_attributed": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "referrer_id": string;
+    "landing_variant"?: string;
   };
   "reminder:completed": {
     "actor": "user" | "agent";

@@ -79,13 +79,15 @@ class DodoWebhookEventType(str, Enum):
     SUBSCRIPTION_ON_HOLD = "subscription.on_hold"
     SUBSCRIPTION_PLAN_CHANGED = "subscription.plan_changed"
 
+    # A refunded or disputed first payment takes back the referrer's free month.
+    REFUND_SUCCEEDED = "refund.succeeded"
+    DISPUTE_OPENED = "dispute.opened"
+
     # Events Dodo sends that GAIA acknowledges and ignores. Must parse here — an
     # event outside this enum fails validation as a processing error rather than
     # landing in the "ignored" path. subscription.updated duplicates the status events above.
     SUBSCRIPTION_UPDATED = "subscription.updated"
-    REFUND_SUCCEEDED = "refund.succeeded"
     REFUND_FAILED = "refund.failed"
-    DISPUTE_OPENED = "dispute.opened"
     DISPUTE_EXPIRED = "dispute.expired"
     DISPUTE_ACCEPTED = "dispute.accepted"
     DISPUTE_CANCELLED = "dispute.cancelled"
@@ -172,6 +174,25 @@ class DodoSubscriptionData(BaseModel):
     discount_id: str | None = None
 
 
+class DodoRefundData(BaseModel):
+    """The refund a refund webhook carries: which payment, and whether all of it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    refund_id: str
+    payment_id: str
+    is_partial: bool
+
+
+class DodoDisputeData(BaseModel):
+    """The dispute a dispute webhook carries: which payment the payer contested."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    dispute_id: str
+    payment_id: str
+
+
 class DodoWebhookEvent(BaseModel):
     """Dodo webhook event structure."""
 
@@ -204,6 +225,14 @@ class DodoWebhookEvent(BaseModel):
                 )
                 return None
         return None
+
+    def get_refund_data(self) -> DodoRefundData:
+        """Parse a refund event's data; a body that does not validate is a malformed delivery."""
+        return DodoRefundData.model_validate(self.data)
+
+    def get_dispute_data(self) -> DodoDisputeData:
+        """Parse a dispute event's data; a body that does not validate is a malformed delivery."""
+        return DodoDisputeData.model_validate(self.data)
 
     def get_subscription_data(self) -> DodoSubscriptionData | None:
         """Extract subscription data if subscription event."""

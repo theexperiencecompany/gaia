@@ -3660,6 +3660,130 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/referrals/gift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Gift
+         * @description The caller's gift from the friend who referred them, for the paywall's price; null when none is owed.
+         */
+        get: operations["referrals_get_my_gift"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Invites
+         * @description Send an invite to each address; every address gets its own status, and one bad one fails nothing.
+         */
+        post: operations["referrals_create_invites"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Referrals
+         * @description The caller's link, gift, free months and friends; 403 REFERRAL_SUBSCRIPTION_REQUIRED when not subscribed.
+         */
+        get: operations["referrals_get_my_referrals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/resolve/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Code
+         * @description Public: who sent this invite link and the gift it carries; sets the 30-day first-touch cookie.
+         */
+        get: operations["referrals_resolve_code"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Suggestions
+         * @description People the caller met or emailed in the last 90 days, ranked; computed on demand, never stored.
+         */
+        get: operations["referrals_get_suggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referrals/unsubscribe/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Invite Unsubscribe Confirmation
+         * @description Public: the confirm page an invite's opt-out link opens; the button POSTs, so a link scanner opts nobody out.
+         */
+        get: operations["referrals_invite_unsubscribe_confirmation"];
+        put?: never;
+        /**
+         * Invite Unsubscribe
+         * @description Public: opt the address out of every future invite, whoever sends it; the RFC 8058 one-click target.
+         */
+        post: operations["referrals_invite_unsubscribe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/reminders": {
         parameters: {
             query?: never;
@@ -9217,6 +9341,18 @@ export interface components {
             trigger_name: "gmail_poll_inbox";
         };
         /**
+         * GoogleCalendarEventAttendee
+         * @description One invitee on an event Google returned; GAIA reads who they are.
+         */
+        GoogleCalendarEventAttendee: {
+            /** Displayname */
+            displayName?: string | null;
+            /** Email */
+            email?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * GoogleCalendarEventDateTime
          * @description The ``start``/``end`` object of a Google Calendar ``events`` resource.
          *
@@ -9244,6 +9380,8 @@ export interface components {
          *     client reads.
          */
         GoogleCalendarEventResource: {
+            /** Attendees */
+            attendees?: components["schemas"]["GoogleCalendarEventAttendee"][] | null;
             /** Calendarid */
             calendarId?: string | null;
             /** Calendartitle */
@@ -11523,7 +11661,7 @@ export interface components {
          * @description Originating system or feature that produced the notification.
          * @enum {string}
          */
-        NotificationSourceEnum: "ai_email_draft" | "ai_calendar_event" | "ai_todo_suggestion" | "ai_reminder" | "ai_todo_added" | "ai_agent" | "email_trigger" | "background_job" | "workflow_completed" | "workflow_failed" | "system_workflows_provisioned" | "usage_limit" | "integration_expired" | "todo_trigger";
+        NotificationSourceEnum: "ai_email_draft" | "ai_calendar_event" | "ai_todo_suggestion" | "ai_reminder" | "ai_todo_added" | "ai_agent" | "email_trigger" | "background_job" | "workflow_completed" | "workflow_failed" | "system_workflows_provisioned" | "usage_limit" | "integration_expired" | "todo_trigger" | "referral_reward";
         /**
          * NotificationStatus
          * @description Lifecycle state of a notification record.
@@ -12986,6 +13124,228 @@ export interface components {
             url: string;
         };
         /**
+         * ReferralCopyVariant
+         * @description The copy angle a referral surface speaks in; the PostHog experiment picks one.
+         * @enum {string}
+         */
+        ReferralCopyVariant: "gift" | "earn" | "time_back";
+        /**
+         * ReferralFriendGift
+         * @description The gift a referred friend's checkout applies, and who sent it.
+         */
+        ReferralFriendGift: {
+            /**
+             * Billing Cycles
+             * @description The Pro billing cycles checkout applies this gift on; the paywall's code saves more on the rest
+             */
+            billing_cycles: components["schemas"]["PlanDuration"][];
+            offer: components["schemas"]["ReferralOffer"];
+            /**
+             * Referrer First Name
+             * @description The referrer's first name, when their account has one
+             */
+            referrer_first_name: string | null;
+            /**
+             * Referrer Picture
+             * @description The referrer's photo, when they have one
+             */
+            referrer_picture: string | null;
+        };
+        /**
+         * ReferralGiftResponse
+         * @description The caller's gift from the friend who referred them; null when they are owed none.
+         */
+        ReferralGiftResponse: {
+            /** @description Null for anyone never referred, already subscribed, owed no saving over the paywall's code, or while referrals are off */
+            gift: components["schemas"]["ReferralFriendGift"] | null;
+        };
+        /**
+         * ReferralInviteRequest
+         * @description A batch of addresses to invite; each is judged on its own, so one invalid address fails nothing.
+         */
+        ReferralInviteRequest: {
+            /** Emails */
+            emails: string[];
+            surface: components["schemas"]["ReferralInviteSurface"];
+        };
+        /** ReferralInviteResponse */
+        ReferralInviteResponse: {
+            /**
+             * Results
+             * @description One result per requested address, in order
+             */
+            results: components["schemas"]["ReferralInviteResult"][];
+        };
+        /** ReferralInviteResult */
+        ReferralInviteResult: {
+            /**
+             * Email
+             * @description The address exactly as it was sent in the request
+             */
+            email: string;
+            status: components["schemas"]["ReferralInviteStatus"];
+        };
+        /**
+         * ReferralInviteStatus
+         * @description The outcome of one address in an invite batch.
+         * @enum {string}
+         */
+        ReferralInviteStatus: "sent" | "already_invited" | "invalid" | "unsubscribed" | "own_address";
+        /**
+         * ReferralInviteSurface
+         * @description Where in the product an invite was sent from.
+         * @enum {string}
+         */
+        ReferralInviteSurface: "page" | "hover_card" | "agent" | "suggestion";
+        /**
+         * ReferralLayoutVariant
+         * @description The referral page layout the PostHog experiment picks.
+         * @enum {string}
+         */
+        ReferralLayoutVariant: "ticket" | "progress" | "minimal";
+        /**
+         * ReferralMeResponse
+         * @description The caller's referral link, gift, progress and friends, plus the experiment's variants.
+         */
+        ReferralMeResponse: {
+            /** Code */
+            code: string;
+            copy_variant: components["schemas"]["ReferralCopyVariant"];
+            /**
+             * Friends
+             * @description Everyone who joined through the link, newest first
+             */
+            friends: components["schemas"]["ReferredFriend"][];
+            layout_variant: components["schemas"]["ReferralLayoutVariant"];
+            /**
+             * Months Applied
+             * @description Free months already added to the billing date
+             */
+            months_applied: number;
+            /**
+             * Months Banked
+             * @description Free months waiting for an active subscription
+             */
+            months_banked: number;
+            /**
+             * Months Earned
+             * @description Free months earned in total, applied or banked
+             */
+            months_earned: number;
+            /**
+             * Next Billing Date
+             * @description The caller's next charge, after any free months
+             */
+            next_billing_date: string | null;
+            offer: components["schemas"]["ReferralOffer"];
+            /** Share Link */
+            share_link: string;
+        };
+        /**
+         * ReferralOffer
+         * @description The friend's gift in money, from the live Pro catalogue; amounts are in the currency's minor unit.
+         */
+        ReferralOffer: {
+            /**
+             * Currency
+             * @description ISO 4217 code every amount below is in
+             */
+            currency: string;
+            /**
+             * Intro Cycles
+             * @description How many monthly charges the intro price covers
+             */
+            intro_cycles: number;
+            /**
+             * Monthly Intro Minor
+             * @description What a friend pays per month during the intro
+             */
+            monthly_intro_minor: number;
+            /**
+             * Monthly Regular Minor
+             * @description The monthly Pro price
+             */
+            monthly_regular_minor: number;
+            /**
+             * Yearly Discount Minor
+             * @description How much a friend saves on their first year
+             */
+            yearly_discount_minor: number;
+            /**
+             * Yearly Regular Minor
+             * @description The yearly Pro price
+             */
+            yearly_regular_minor: number;
+        };
+        /**
+         * ReferralResolveResponse
+         * @description What an invite landing page shows; valid is false for a code nobody owns.
+         */
+        ReferralResolveResponse: {
+            offer: components["schemas"]["ReferralOffer"];
+            /** Referrer First Name */
+            referrer_first_name: string | null;
+            /** Referrer Picture */
+            referrer_picture: string | null;
+            /** Valid */
+            valid: boolean;
+        };
+        /** ReferralSuggestion */
+        ReferralSuggestion: {
+            /**
+             * Count
+             * @description Meetings shared or emails sent in the lookback window
+             */
+            count: number;
+            /** Email */
+            email: string;
+            /**
+             * Name
+             * @description Display name, when the source carried one
+             */
+            name: string | null;
+            reason: components["schemas"]["ReferralSuggestionReason"];
+        };
+        /**
+         * ReferralSuggestionReason
+         * @description Why a contact is suggested: met in meetings, or emailed.
+         * @enum {string}
+         */
+        ReferralSuggestionReason: "met" | "emailed";
+        /** ReferralSuggestionsResponse */
+        ReferralSuggestionsResponse: {
+            /**
+             * Suggestions
+             * @description Ranked by how often you interact
+             */
+            suggestions: components["schemas"]["ReferralSuggestion"][];
+        };
+        /** ReferredFriend */
+        ReferredFriend: {
+            /**
+             * First Name
+             * @description The friend's first name, when their account has one
+             */
+            first_name: string | null;
+            /**
+             * Joined At
+             * Format: date-time
+             */
+            joined_at: string;
+            /**
+             * Paid At
+             * @description When their first payment went through
+             */
+            paid_at: string | null;
+            status: components["schemas"]["ReferredFriendStanding"];
+        };
+        /**
+         * ReferredFriendStanding
+         * @description How the referral page lists a friend: joined, paid, or refunded, a first payment taken back.
+         * @enum {string}
+         */
+        ReferredFriendStanding: "joined" | "paid" | "refunded";
+        /**
          * RegenerateStepsRequest
          * @description Request model for regenerating workflow steps.
          */
@@ -14022,6 +14382,8 @@ export interface components {
             created_at?: string | null;
             /** Currency */
             currency?: string | null;
+            /** Dodo Customer Id */
+            dodo_customer_id?: string | null;
             /** Dodo Subscription Id */
             dodo_subscription_id: string;
             /**
@@ -16618,6 +16980,7 @@ export type GmailMessagesResponse = components['schemas']['GmailMessagesResponse
 export type GmailMessageSummary = components['schemas']['GmailMessageSummary'];
 export type GmailNewMessageConfig = components['schemas']['GmailNewMessageConfig'];
 export type GmailPollInboxConfig = components['schemas']['GmailPollInboxConfig'];
+export type GoogleCalendarEventAttendee = components['schemas']['GoogleCalendarEventAttendee'];
 export type GoogleCalendarEventDateTime = components['schemas']['GoogleCalendarEventDateTime'];
 export type GoogleCalendarEventResource = components['schemas']['GoogleCalendarEventResource'];
 export type GoogleCalendarListEntry = components['schemas']['GoogleCalendarListEntry'];
@@ -16814,6 +17177,23 @@ export type RecurrenceRule = components['schemas']['RecurrenceRule'];
 export type RedeemLinkCodeRequest = components['schemas']['RedeemLinkCodeRequest'];
 export type RedeemLinkCodeResponse = components['schemas']['RedeemLinkCodeResponse'];
 export type RedirectConfig = components['schemas']['RedirectConfig'];
+export type ReferralCopyVariant = components['schemas']['ReferralCopyVariant'];
+export type ReferralFriendGift = components['schemas']['ReferralFriendGift'];
+export type ReferralGiftResponse = components['schemas']['ReferralGiftResponse'];
+export type ReferralInviteRequest = components['schemas']['ReferralInviteRequest'];
+export type ReferralInviteResponse = components['schemas']['ReferralInviteResponse'];
+export type ReferralInviteResult = components['schemas']['ReferralInviteResult'];
+export type ReferralInviteStatus = components['schemas']['ReferralInviteStatus'];
+export type ReferralInviteSurface = components['schemas']['ReferralInviteSurface'];
+export type ReferralLayoutVariant = components['schemas']['ReferralLayoutVariant'];
+export type ReferralMeResponse = components['schemas']['ReferralMeResponse'];
+export type ReferralOffer = components['schemas']['ReferralOffer'];
+export type ReferralResolveResponse = components['schemas']['ReferralResolveResponse'];
+export type ReferralSuggestion = components['schemas']['ReferralSuggestion'];
+export type ReferralSuggestionReason = components['schemas']['ReferralSuggestionReason'];
+export type ReferralSuggestionsResponse = components['schemas']['ReferralSuggestionsResponse'];
+export type ReferredFriend = components['schemas']['ReferredFriend'];
+export type ReferredFriendStanding = components['schemas']['ReferredFriendStanding'];
 export type RegenerateStepsRequest = components['schemas']['RegenerateStepsRequest'];
 export type RegenerateWritingStyleExampleResponse = components['schemas']['RegenerateWritingStyleExampleResponse'];
 export type RegisterServerRequest = components['schemas']['RegisterServerRequest'];
@@ -26878,6 +27258,363 @@ export interface operations {
             };
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_get_my_gift: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralGiftResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_create_invites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferralInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralInviteResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_get_my_referrals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralMeResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_resolve_code: {
+        parameters: {
+            query?: {
+                landing_variant?: components["schemas"]["ReferralCopyVariant"] | null;
+            };
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralResolveResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_get_suggestions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralSuggestionsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_invite_unsubscribe_confirmation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Invalid unsubscribe token */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    referrals_invite_unsubscribe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Invalid unsubscribe token */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

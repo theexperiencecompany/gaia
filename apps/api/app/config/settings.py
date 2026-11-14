@@ -169,6 +169,9 @@ class Settings(BrowserHostSettings):
     # per-user E2B sandbox, controllable from chat. Off by default; PostHog
     # targeting enables it for specific users.
     ENABLE_AGENT_LAB: bool = False
+    # The referral program: codes, invite landings, checkout gifts, invites and nudges.
+    # Off stops anything new; rewards for friends already referred still pay out.
+    ENABLE_REFERRALS: bool = True
 
     @field_validator("HOST", "FRONTEND_URL", mode="after")
     @classmethod

@@ -21,6 +21,7 @@ from standardwebhooks.webhooks import Webhook
 
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.referral_models import ReferralInviteStatus, ReferralInviteSurface
 from app.models.user_models import (
     OnboardingAnswers,
     OnboardingNeed,
@@ -42,6 +43,7 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
+from app.schemas.referrals import ReferralInviteRequest, ReferralMeResponse, ReferralResolveResponse
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.onboarding import OnboardingStep
 
@@ -58,6 +60,8 @@ PRO_PRICE_CENTS = 2000
 CURRENCY = "USD"
 BILLING_COUNTRY = "US"
 SIM_REPLY = "[[say:analytics e2e]]"
+# Resend's delivery sink: accepts the invite and mails no one.
+REFERRAL_INVITEE = "delivered@resend.dev"
 # The ARQ worker runs a manual workflow; a sim run finishes in seconds.
 WORKFLOW_RUN_TIMEOUT_S = 120.0
 WORKFLOW_POLL_INTERVAL_S = 1.0
@@ -242,6 +246,33 @@ def payment(stack: Stack) -> None:
     with stack.client() as api:
         _send_webhook(api, signer, DodoWebhookEventType.SUBSCRIPTION_ACTIVE, subscription)
         _send_webhook(api, signer, DodoWebhookEventType.PAYMENT_SUCCEEDED, paid)
+
+
+def referral_invite(stack: Stack) -> None:
+    """Invite one friend from the referral page, now that the payment made this user Pro."""
+    request = ReferralInviteRequest(emails=[REFERRAL_INVITEE], surface=ReferralInviteSurface.PAGE)
+    with stack.client() as api:
+        sent = _expect(
+            api.post(
+                "/referrals/invites", json=request.model_dump(mode="json"), headers=stack.browser()
+            ),
+            HTTPStatus.OK,
+        )
+    statuses = [result["status"] for result in sent.json()["results"]]
+    if statuses != [ReferralInviteStatus.SENT.value]:
+        raise JourneyError(f"/referrals/invites did not send the invite: {statuses}")
+
+
+def referral_landing(stack: Stack) -> None:
+    """Open this user's own invite link the way the landing page does; the landing is recorded on them."""
+    with stack.client() as api:
+        me = _expect(api.get("/referrals/me", headers=stack.browser()), HTTPStatus.OK)
+        code = ReferralMeResponse.model_validate(me.json()).code
+        landed = _expect(
+            api.get(f"/referrals/resolve/{code}", headers=stack.browser()), HTTPStatus.OK
+        )
+    if not ReferralResolveResponse.model_validate(landed.json()).valid:
+        raise JourneyError(f"/referrals/resolve/{code} called the user's own link invalid")
 
 
 def chat(stack: Stack) -> None:
