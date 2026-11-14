@@ -23,6 +23,7 @@ from app.agents.tools.workflow_tool import (
     resume_workflow,
 )
 from app.constants.workflows import WorkflowDelivery
+from app.models.agent_config import AgentConfigurableView
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
@@ -169,7 +170,11 @@ class TestWorkflowToolSerialization917:
             mock_update.return_value = updated
 
             await apply_workflow_edit(
-                draft=draft, workflow=workflow, user_id=FAKE_USER_ID, writer=writer
+                draft=draft,
+                workflow=workflow,
+                user_id=FAKE_USER_ID,
+                writer=writer,
+                run=AgentConfigurableView(),
             )
 
         mock_update.assert_awaited_once()

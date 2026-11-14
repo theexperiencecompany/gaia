@@ -37,7 +37,7 @@ class ProviderConfig(BaseModel):
     base_url: str | None = None
     model: str | None = None
     preset: str | None = None  # e.g. "opencode" | "nous"
-    # The non-secret account half: Cloudinary's cloud name, Google's OAuth client id.
+    # The non-secret account half: Cloudinary's cloud name, Google's OAuth client id, Cloudflare's account id.
     account_id: str | None = None
     # A second secret beside api_key: Cloudinary's API secret.
     api_secret: str | None = None

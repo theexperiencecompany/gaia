@@ -1,7 +1,10 @@
 """Unit tests for app.agents.tools.workflow_tool."""
 
 from typing import Any, Literal, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from uuid import UUID
+
+import pytest
 
 from app.constants.error_codes import BRIEFS_OFF
 from app.constants.integrations import (
@@ -9,6 +12,7 @@ from app.constants.integrations import (
     MAX_MY_INTEGRATIONS_RESULTS,
 )
 from app.constants.log_tags import LogTag
+from app.constants.waits import WaitCondition
 from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_config import TriggerSearchResult
 from app.models.workflow_models import TriggerType
@@ -140,7 +144,42 @@ class TestCreateWorkflow:
 
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
-        draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW)
+        draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW, ANY)
+
+    @pytest.mark.parametrize(("trigger_type", "waits"), [("integration", True), ("manual", False)])
+    async def test_an_integration_draft_keeps_the_chat_waiting_on_its_trigger_setup(
+        self, trigger_type: str, waits: bool
+    ) -> None:
+        from app.agents.tools.workflow_tool import create_workflow
+
+        draft = _make_draft(title="PR digest", trigger_type=trigger_type)
+        parsed = _make_parsed_result(mode="finalized", draft=draft)
+
+        with (
+            patch(f"{MODULE}.current_stream_writer", return_value=_writer_mock()),
+            patch(f"{MODULE}.parse_subagent_response", return_value=parsed),
+            patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
+            patch(f"{MODULE}.wait_for_user", new_callable=AsyncMock) as wait,
+        ):
+            mock_runner.execute = AsyncMock(return_value="subagent output")
+            await create_workflow.coroutine(  # type: ignore[attr-defined]  # langchain BaseTool exposes .coroutine only at runtime
+                config=_make_config(), user_request="digest my PRs", delivery=WorkflowDelivery.NOW
+            )
+
+        delivery, draft_id = draft.to_stream_payload.call_args.args
+        assert delivery == WorkflowDelivery.NOW
+        assert UUID(draft_id).version == 4
+        if waits:
+            run, user_id, condition, subject_id, name = wait.await_args.args
+            assert run.thread_id == "thread-123"
+            assert (user_id, condition, subject_id, name) == (
+                FAKE_USER_ID,
+                WaitCondition.WORKFLOW_TRIGGER_CONFIGURED,
+                draft_id,
+                "PR digest",
+            )
+        else:
+            wait.assert_not_awaited()
 
     async def test_a_brief_workflow_while_briefs_are_off_is_refused_with_what_to_ask(
         self,
@@ -321,7 +360,7 @@ class TestCreateWorkflow:
 
         assert result["success"] is True
         assert result["data"]["status"] == "draft_sent"
-        draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW)
+        draft.to_stream_payload.assert_called_once_with(WorkflowDelivery.NOW, ANY)
         capture.assert_not_called()  # the confirmed draft is counted by POST /workflows
 
 

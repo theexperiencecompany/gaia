@@ -12,17 +12,19 @@ from pymongo.errors import PyMongoError
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
 from app.constants.log_tags import LogTag
+from app.constants.waits import WaitCondition
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import UserIntegrationStatus
 from app.services.briefing.scouts.lifecycle import queue_scout_learn
 from app.services.integrations_fs import schedule_user_integrations_sync
+from app.services.wait_service import report_wait_met
 from shared.py.wide_events import log
 
 
 async def publish_connected(user_id: str, integration_id: str) -> None:
-    """Reflect a newly connected integration in the workspace VFS, on any open page, in the brief."""
+    """Reflect a new connection in the workspace VFS, on any open page, in the brief and to its waiters."""
     schedule_user_integrations_sync(user_id)
     # Best-effort too: a scout with no learn queued is learned by the next brief instead.
     try:
@@ -51,6 +53,7 @@ async def publish_connected(user_id: str, integration_id: str) -> None:
             error=str(e),
             error_type=type(e).__name__,
         )
+    await report_wait_met(user_id, WaitCondition.INTEGRATION_CONNECTED, integration_id)
 
 
 @CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)

@@ -34,7 +34,9 @@ class TestRunsOnlyWhen:
         assert result.mode == "finalized"
         assert result.draft is not None
         assert (
-            result.draft.to_stream_payload(WorkflowDelivery.NOW)["workflow_draft"]["runs_only_when"]
+            result.draft.to_stream_payload(WorkflowDelivery.NOW, "draft-1")["workflow_draft"][
+                "runs_only_when"
+            ]
             == BILLING
         )
 
@@ -45,7 +47,9 @@ class TestRunsOnlyWhen:
         assert result.mode == "finalized"
         assert result.draft is not None
         assert (
-            result.draft.to_stream_payload(WorkflowDelivery.NOW)["workflow_draft"]["runs_only_when"]
+            result.draft.to_stream_payload(WorkflowDelivery.NOW, "draft-1")["workflow_draft"][
+                "runs_only_when"
+            ]
             is None
         )
 
@@ -128,7 +132,19 @@ def test_the_stream_payload_carries_the_agents_delivery() -> None:
     result = parse_subagent_response(_reply())
 
     assert result.draft is not None
-    frame = result.draft.to_stream_payload(WorkflowDelivery.BRIEF)
+    frame = result.draft.to_stream_payload(WorkflowDelivery.BRIEF, "draft-1")
 
     assert frame["workflow_draft"]["delivery"] == "brief"
     assert frame["workflow_draft"]["suggested_title"] == "Billing replies"
+
+
+def test_the_stream_payload_carries_the_draft_id_the_create_sends_back() -> None:
+    result = parse_subagent_response(_reply())
+
+    assert result.draft is not None
+    assert (
+        result.draft.to_stream_payload(WorkflowDelivery.NOW, "draft-1")["workflow_draft"][
+            "draft_id"
+        ]
+        == "draft-1"
+    )

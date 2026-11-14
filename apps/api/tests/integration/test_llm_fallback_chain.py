@@ -28,17 +28,18 @@ from app.agents.llm.client import (
     init_llm,
     register_llm_providers,
 )
-from app.agents.llm.types import LLMProvider
+from app.agents.llm.types import LLMProvider, ProviderLLM
 from app.config.model_pricing import (
     DEFAULT_PRICING,
     ModelPricing,
     get_model_pricing,
 )
 from app.config.settings import settings
-from app.constants.llm import DEFAULT_LLM_PROVIDER, LLMProviderKey
+from app.constants.llm import DEFAULT_LLM_PROVIDER, LLMProviderName
 from app.constants.providers import (
     LLM_MODEL_PROFILES,
     LLM_PROVIDER_PRIORITY,
+    OVERRIDE_PROVIDER,
     CredentialProviderName,
 )
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
@@ -63,9 +64,9 @@ class TestProviderPriorityOrdering:
         mock_gemini = _make_mock_llm("gemini")
         mock_openrouter = _make_mock_llm("openrouter")
 
-        available = {
-            "gemini": mock_gemini,
-            "openrouter": mock_openrouter,
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.GEMINI: mock_gemini,
+            LLMProviderName.OPENROUTER: mock_openrouter,
         }
 
         ordered = _get_ordered_providers(available, preferred_provider=None, fallback_enabled=True)
@@ -79,10 +80,13 @@ class TestProviderPriorityOrdering:
         mock_gemini = _make_mock_llm("gemini")
         mock_openai = _make_mock_llm("openai")
 
-        available = {"openai": mock_openai, "gemini": mock_gemini}
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.OPENAI: mock_openai,
+            LLMProviderName.GEMINI: mock_gemini,
+        }
 
         ordered = _get_ordered_providers(
-            available, preferred_provider="openai", fallback_enabled=True
+            available, preferred_provider=LLMProviderName.OPENAI, fallback_enabled=True
         )
 
         assert ordered[0].name == "openai"
@@ -93,10 +97,13 @@ class TestProviderPriorityOrdering:
         mock_gemini = _make_mock_llm("gemini")
         mock_openai = _make_mock_llm("openai")
 
-        available = {"openai": mock_openai, "gemini": mock_gemini}
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.OPENAI: mock_openai,
+            LLMProviderName.GEMINI: mock_gemini,
+        }
 
         ordered = _get_ordered_providers(
-            available, preferred_provider="openai", fallback_enabled=False
+            available, preferred_provider=LLMProviderName.OPENAI, fallback_enabled=False
         )
 
         assert len(ordered) == 1
@@ -105,10 +112,10 @@ class TestProviderPriorityOrdering:
     def test_preferred_provider_not_available_fallback_enabled(self) -> None:
         """If preferred provider is not in available set, fallback fills the list from priority."""
         mock_gemini = _make_mock_llm("gemini")
-        available = {"gemini": mock_gemini}
+        available: dict[LLMProviderName, ProviderLLM] = {LLMProviderName.GEMINI: mock_gemini}
 
         ordered = _get_ordered_providers(
-            available, preferred_provider="openai", fallback_enabled=True
+            available, preferred_provider=LLMProviderName.OPENAI, fallback_enabled=True
         )
 
         assert len(ordered) == 1
@@ -122,7 +129,9 @@ class TestProviderPriorityOrdering:
     def test_fallback_disabled_no_preferred_still_returns_priority_order(self) -> None:
         """With fallback_enabled=False but no preferred provider, ordered list still populated from priority."""
         mock_openrouter = _make_mock_llm("openrouter")
-        available = {"openrouter": mock_openrouter}
+        available: dict[LLMProviderName, ProviderLLM] = {
+            LLMProviderName.OPENROUTER: mock_openrouter
+        }
 
         # When no ordered (preferred) providers, fallback_enabled=False still adds from priority
         # because the condition is `if fallback_enabled or not ordered`
@@ -211,7 +220,7 @@ class TestCreateConfigurableLLM:
     def test_no_alternatives_returns_primary_directly(self) -> None:
         """With no alternatives, the primary instance is returned unwrapped."""
         mock_instance = _make_mock_llm("primary")
-        primary = LLMProvider(name=LLMProviderKey.GEMINI, instance=mock_instance)
+        primary = LLMProvider(name=LLMProviderName.GEMINI, instance=mock_instance)
 
         result = _create_configurable_llm(primary, alternatives=[])
 
@@ -223,15 +232,15 @@ class TestCreateConfigurableLLM:
         mock_primary = _make_mock_llm("primary")
         mock_alt = _make_mock_llm("alt")
 
-        primary = LLMProvider(name=LLMProviderKey.GEMINI, instance=mock_primary)
-        alternatives = [LLMProvider(name=LLMProviderKey.OPENROUTER, instance=mock_alt)]
+        primary = LLMProvider(name=LLMProviderName.GEMINI, instance=mock_primary)
+        alternatives = [LLMProvider(name=LLMProviderName.OPENROUTER, instance=mock_alt)]
 
         _create_configurable_llm(primary, alternatives)
 
         mock_primary.configurable_alternatives.assert_called_once()
         call_kwargs = mock_primary.configurable_alternatives.call_args[1]
-        assert LLMProviderKey.OPENROUTER in call_kwargs
-        assert call_kwargs[LLMProviderKey.OPENROUTER] is mock_alt
+        assert LLMProviderName.OPENROUTER in call_kwargs
+        assert call_kwargs[LLMProviderName.OPENROUTER] is mock_alt
 
 
 @pytest.mark.integration
@@ -259,8 +268,9 @@ class TestProviderConstants:
         assert set(LLM_PROVIDER_PRIORITY) <= set(LLM_MODEL_PROFILES)
 
     def test_default_priority_matches_the_default_provider(self) -> None:
-        """Priority 1 is the provider serving DEFAULT_MODEL_NAME."""
-        assert LLM_PROVIDER_PRIORITY[0] == DEFAULT_LLM_PROVIDER == "openrouter"
+        """The override leads, then the provider serving DEFAULT_MODEL_NAME."""
+        assert LLM_PROVIDER_PRIORITY[:2] == (OVERRIDE_PROVIDER, DEFAULT_LLM_PROVIDER)
+        assert DEFAULT_LLM_PROVIDER == "openrouter"
 
 
 @pytest.mark.integration
