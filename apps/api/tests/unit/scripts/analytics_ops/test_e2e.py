@@ -115,6 +115,19 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             "is_new_conversation": True,
         },
     ),
+    # The journey presses Stop on the finished turn: nothing was left running.
+    (
+        "chat:work_stopped",
+        {
+            **WEB,
+            "streams": 0,
+            "executor_stopped": False,
+            "pending_tasks": 0,
+            "subagents": 0,
+            "approvals": 0,
+            "browser_jobs": 0,
+        },
+    ),
     (
         "workflow:created",
         {

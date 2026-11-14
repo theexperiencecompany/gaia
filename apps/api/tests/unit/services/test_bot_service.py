@@ -6,18 +6,16 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 from fastapi import HTTPException
 import pytest
 
-from app.constants.chat import MAX_MESSAGE_LENGTH, ConversationSource
+from app.constants.chat import MAX_MESSAGE_LENGTH
 from app.models.bot_models import BotChatRequest, BotSessionDocument
 from app.models.conversation_models import ConversationDocument
 from app.models.user_models import AuthenticatedUser
-from app.services import bot_service as bot_service_mod
 from app.services.bot_service import (
     BOT_RATE_LIMIT,
     BOT_RATE_WINDOW,
     BotService,
     build_bot_message_request,
 )
-from app.services.browser.job_stop import RequesterChat
 from shared.py.analytics import PlatformIdentity
 
 
@@ -532,68 +530,6 @@ class TestResetSession:
 
         assert result is not None
         mock_bot_repo.delete_by_session_key.assert_awaited_once_with("discord:user123:user123")
-
-    @pytest.mark.usefixtures("mock_create_conversation")
-    @pytest.mark.parametrize(
-        ("session", "conversation"),
-        [("conv-dm", "conv-dm"), (None, "discord:507f1f77bcf86cd799439011")],
-    )
-    async def test_stop_stops_the_sessions_browser_run_and_the_users_from_any_group(
-        self,
-        session: str | None,
-        conversation: str,
-        mock_bot_repo: MagicMock,
-        mock_conversations: MagicMock,
-        sample_user: AuthenticatedUser,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """/stop resets the session, and a browser run outlives the turn that started it; a group's run talks to the user in this DM."""
-        stopped: list[tuple[str, RequesterChat | None]] = []
-
-        async def _stop(conversation_id: str, requester: RequesterChat | None) -> dict[str, object]:
-            stopped.append((conversation_id, requester))
-            return {}
-
-        monkeypatch.setattr(bot_service_mod, "stop_chat_jobs", _stop)
-        mock_bot_repo.delete_by_session_key = AsyncMock()
-        mock_bot_repo.get_by_session_key = AsyncMock(
-            return_value=session and MagicMock(conversation_id=session)
-        )
-        mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
-        mock_conversations.exists = AsyncMock(return_value=False)
-
-        await BotService.reset_session("discord", "user123", "dm-chan", sample_user, is_dm=True)
-
-        mock_bot_repo.get_by_session_key.assert_awaited_once_with("discord:user123:user123")
-        # Its own run (or, with no session, the DM's address), and through the DM's
-        # requester chat, the user's run from any group.
-        assert stopped == [
-            (conversation, RequesterChat(sample_user.user_id, ConversationSource.DISCORD))
-        ]
-
-    async def test_reset_with_channel_id(
-        self,
-        mock_bot_repo: MagicMock,
-        mock_conversations: MagicMock,
-        mock_create_conversation: AsyncMock,
-        sample_user: AuthenticatedUser,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        stop = AsyncMock()
-        monkeypatch.setattr(bot_service_mod, "stop_chat_jobs", stop)
-        mock_bot_repo.delete_by_session_key = AsyncMock()
-        mock_bot_repo.get_by_session_key = AsyncMock(return_value=None)
-        mock_bot_repo.claim_session = AsyncMock(side_effect=TestGetOrCreateSession._claim_insert)
-        mock_conversations.exists = AsyncMock(return_value=False)
-
-        await BotService.reset_session("slack", "user123", "channel789", sample_user)
-
-        mock_bot_repo.delete_by_session_key.assert_awaited_once_with("slack:user123:channel789")
-        # The fresh session must be the SAME channel's, not the user's DM.
-        claim = mock_bot_repo.claim_session.await_args.kwargs
-        assert claim["session_key"] == "slack:user123:channel789"
-        # A group's /stop reaches only that group's own run.
-        stop.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

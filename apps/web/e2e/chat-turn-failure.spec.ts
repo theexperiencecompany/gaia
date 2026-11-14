@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
-import { SIM_ENABLED } from "./harness";
+import { COMPOSER_PLACEHOLDER, SIM_ENABLED } from "./harness";
 
-const COMPOSER_PLACEHOLDER = "What can I do for you today?";
 const PROGRESS_TEXT = "Here is the streamed progress";
 // The route error page that used to replace the whole conversation.
 const ROUTE_ERROR_HEADING = "Something went wrong";

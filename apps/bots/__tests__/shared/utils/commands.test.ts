@@ -31,6 +31,7 @@ import {
   helpCommand,
   type RichMessage,
   type RichMessageTarget,
+  stopCommand,
   withWideEvent,
 } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -60,6 +61,7 @@ function makeGaia() {
     deleteTodo: vi.fn(),
     listConversations: vi.fn(),
     resetSession: vi.fn(),
+    stopConversation: vi.fn(),
     getFrontendUrl: vi.fn().mockReturnValue("https://heygaia.io"),
   } as unknown as GaiaClient;
 }
@@ -615,5 +617,40 @@ describe("dispatchWorkflowSubcommand", () => {
   it("returns full workflow help for unknown subcommand", async () => {
     const result = await dispatchWorkflowSubcommand(gaia, ctx, "unknown", []);
     expect(result).toContain("/workflow");
+  });
+});
+
+describe("stopCommand", () => {
+  const dmCtx: CommandContext = { ...ctx, isDm: true };
+
+  it("stops the conversation's work and keeps the session (regression: /stop reset it)", async () => {
+    const gaia = makeGaia();
+    vi.mocked(gaia.stopConversation).mockResolvedValue(undefined as never);
+    const sendEphemeral = vi.fn().mockResolvedValue({});
+    const target = { sendEphemeral } as unknown as RichMessageTarget;
+
+    await stopCommand.execute({ gaia, target, ctx: dmCtx, args: {} });
+
+    expect(gaia.stopConversation).toHaveBeenCalledWith(
+      "telegram",
+      "user-42",
+      "chan-1",
+      true,
+    );
+    expect(gaia.resetSession).not.toHaveBeenCalled();
+    expect(sendEphemeral.mock.calls[0]?.[0]).not.toContain("new conversation");
+  });
+
+  it("an unlinked account's /stop is reported, not thrown", async () => {
+    const gaia = makeGaia();
+    vi.mocked(gaia.stopConversation).mockRejectedValue(
+      new Error("Connection lost"),
+    );
+    const sendEphemeral = vi.fn().mockResolvedValue({});
+    const target = { sendEphemeral } as unknown as RichMessageTarget;
+
+    await stopCommand.execute({ gaia, target, ctx, args: {} });
+
+    expect(sendEphemeral.mock.calls[0]?.[0]).toContain("Something went wrong");
   });
 });

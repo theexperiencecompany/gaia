@@ -16,7 +16,12 @@ vi.mock("@/lib/db/chatDb", () => ({
   dbEventEmitter: { on: vi.fn(), off: vi.fn() },
 }));
 
+vi.mock("@/services/syncService", () => ({
+  syncSingleConversation: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { textSendArgs } from "@/__tests__/helpers/sendArgs";
+import { chatApi } from "@/features/chat/api/chatApi";
 import { TurnSession } from "@/features/chat/stream/turnSession";
 import { useChatStore } from "@/stores/chatStore";
 import { useActiveComposerLocked, useStreamStore } from "@/stores/streamStore";
@@ -68,5 +73,22 @@ describe("Stop after the comms ack", () => {
 
     const { result } = renderHook(() => useActiveComposerLocked());
     expect(result.current).toBe(true);
+  });
+});
+
+describe("Stop reaches the server's conversation stop", () => {
+  it("asks the API to stop the conversation, not just the turn's stream", async () => {
+    const stop = vi
+      .spyOn(chatApi, "stopConversation")
+      .mockResolvedValue(undefined);
+    const session = new TurnSession(
+      CONV,
+      textSendArgs(CONV, "find me five fintech companies"),
+      { onEnd: vi.fn(), onRekey: vi.fn() },
+    );
+
+    await act(() => session.abort());
+
+    expect(stop).toHaveBeenCalledWith(CONV);
   });
 });

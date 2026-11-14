@@ -6,7 +6,13 @@ from collections.abc import Iterator
 
 import httpx
 import pytest
-from scripts.analytics_ops.e2e_journeys import JourneyError, await_execution
+from scripts.analytics_ops.e2e_journeys import (
+    JourneyError,
+    _initialized_conversation,
+    await_execution,
+)
+
+from app.models.stream_events import ConversationInitializedFrame
 
 WORKFLOW = "wf_1"
 EXECUTIONS_PATH = f"/api/v1/workflows/{WORKFLOW}/executions"
@@ -66,3 +72,21 @@ def test_a_workflow_executed_once_that_ran_twice_fails_the_journey() -> None:
     twice = [_execution("success"), _execution("success")]
     with pytest.raises(JourneyError, match="2 finished runs"):
         await_execution(_api(twice), WORKFLOW, timeout_s=5, poll_s=0)
+
+
+def test_the_chat_journey_stops_the_conversation_its_identity_frame_bound() -> None:
+    frame = ConversationInitializedFrame(
+        conversation_id="conv-1",
+        user_message_id="u1",
+        user_message_content="hi",
+        bot_message_id="b1",
+        stream_id="s1",
+    )
+    lines = ['data: {"response": "hi"}', f"data: {frame.model_dump_json()}", "data: [DONE]"]
+
+    assert _initialized_conversation(lines) == "conv-1"
+
+
+def test_a_chat_stream_without_an_identity_frame_fails_the_journey() -> None:
+    with pytest.raises(JourneyError):
+        _initialized_conversation(['data: {"response": "hi"}', "data: [DONE]"])

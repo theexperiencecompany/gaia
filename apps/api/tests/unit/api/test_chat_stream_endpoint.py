@@ -12,7 +12,7 @@ which run on their own streams and outlive the turn.
 
 import asyncio
 from collections.abc import AsyncGenerator, Iterator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from httpx import AsyncClient
 from prometheus_client import REGISTRY
@@ -29,6 +29,13 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from tests.browser_factories import make_browser_job_state
 from tests.conftest import FAKE_USER, FAKE_USER_2
+from tests.work_cancel_fakes import (
+    BROWSER_JOB,
+    EXECUTOR_STREAM,
+    ApprovalSeams,
+    approval_seams,
+    seed_live_work,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -337,8 +344,26 @@ async def _dispatched_by_turn() -> str:
     return stream_id
 
 
-@pytest.mark.usefixtures("fake_redis")
+@pytest.fixture
+def no_approvals() -> Iterator[ApprovalSeams]:
+    yield from approval_seams(pending=False)
+
+
+@pytest.mark.usefixtures("fake_redis", "no_approvals")
 class TestCancelStream:
+    async def test_stopping_a_turn_stops_the_conversations_whole_set_of_work(
+        self, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The mobile Stop names a stream; it reaches the executor and browser job like the web's."""
+        monkeypatch.setattr(job_stop, "_abort_if_started", AsyncMock(return_value=True))
+        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
+        await seed_live_work(CONVERSATION)
+
+        await client.post(f"/api/v1/cancel-stream/{TURN}")
+
+        assert await stream_manager.is_cancelled(EXECUTOR_STREAM)
+        assert await job_cancel_requested(BROWSER_JOB)
+
     @pytest.mark.regression
     async def test_stopping_a_turn_stops_the_background_subagents_it_dispatched(
         self, client: AsyncClient
@@ -373,6 +398,23 @@ class TestCancelStream:
         await client.post(f"/api/v1/cancel-stream/{TURN}")
 
         assert await job_cancel_requested("job-1")
+
+    async def test_stop_on_an_older_turn_cancels_it_and_the_live_turn(
+        self, client: AsyncClient
+    ) -> None:
+        """Only the newest turn is indexed per conversation; the held one is reached by its id."""
+        await stream_manager.start_stream(TURN, CONVERSATION, FAKE_USER.user_id)
+        await stream_manager.start_stream("newer-turn", CONVERSATION, FAKE_USER.user_id)
+
+        with patch("app.api.v1.endpoints.chat.log") as chat_log:
+            response = await client.post(f"/api/v1/cancel-stream/{TURN}")
+
+        assert response.json() == {"success": True, "stream_id": TURN, "error": None}
+        assert await stream_manager.is_cancelled(TURN)
+        assert await stream_manager.is_cancelled("newer-turn")
+        assert chat_log.set_ns.call_args_list == [
+            call("chat", stopped_streams=2, stopped_work=False)
+        ]
 
     async def test_another_users_stream_is_refused_and_nothing_stops(
         self, client: AsyncClient

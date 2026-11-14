@@ -121,6 +121,9 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 ```text
 [[tool:<name> <json-args>]]   one scripted tool call — repeatable, ordered
 [[say:<text>]]                the final assistant reply — at most one, terminal
+[[fail:<message>]]            break the final call after streaming the say text
+[[wait:<ms>]]                 hold the next step (tool call or reply) this long
+[[pace:<ms>]]                 stream the say text one word per chunk, this far apart
 ```
 
 - A message with **no** directives → the canned reply `ok (llm-stub)`.
@@ -131,6 +134,8 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 - **Nesting works.** A tool directive's args end where its JSON value ends, not at the first `]]`, so args may contain a literal `]]` — including a whole nested directive, at any depth. That is how you script a hand-off: `[[tool:handoff {"subagent_id":"gmail","task":"[[tool:GMAIL_FETCH_MESSAGES {\"max_results\":3}]]"}]]`. JSON-encode the args (`json.dumps`) and the escaping takes care of itself.
 - **Limitation:** a `[[say:…]]` body is plain text and ends at the first `]]`, so say text cannot contain that sequence. Put nested scripts in tool args.
 - **A directive opened but never closed → HTTP 500**, not a silent fall-through to the canned reply.
+- **Timing.** A wait belongs to the next tool directive after it, or to the reply when no tool follows; waits add up; a non-integer or negative count → HTTP 500. Each tier waits only on steps it emits itself: comms forwards executor tools at once and the executor waits on them, so `[[tool:create_todo {"title":"a"}]] [[wait:10000]] [[tool:create_todo {"title":"b"}]] [[say:Done]]` gets a quick reply and keeps background work running ~10s between the two todos — the window to send a second message into. A wait before the say is honoured by every tier that says it. `[[wait:3000]] [[say:hi]]` holds the first model output; `[[pace:200]] [[say:a long reply]]` streams it slowly for a mid-text send.
+- **Results are re-voiced.** A result payload (`<executor_result>`, `<executor_error>`, `<browser_*>`) handed to a tier after its newest script is answered with its own text, so a background run's result bubble reads the executor's say text.
 
 Example message that files a todo then replies: `add a todo [[tool:create_todo {"title":"buy milk"}]] [[say:Added it.]]`
 
@@ -236,6 +241,7 @@ Details:
 - `--emulate <platform>` pulls that platform's real `PLATFORM_LIMITS` / `STREAMING_DEFAULTS` / markdown converter from `libs/shared/ts/src/bots/` — the only residual is a conformance-locked `supportsEdit` map (`apps/bots/harness/src/emulation.ts`).
 - Requires the same `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`, `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET`) and a running API (real LLM, or the `--sim` stub via §3). Set `RABBITMQ_URL` to record proactive `outbound-delivery` events through the real outbound consumer (a loud warning prints when it is unset).
 - Transcript is JSONL events (`inbound`, `send`, `edit`, `typing`, `ephemeral`, `rich`, `split`, `outbound-delivery`) with final rendered payloads — assert on that, not on logs. Types: `apps/bots/harness/src/transcript.types.ts`.
+- A scenario turn is one `send` or a `burst` of messages at `afterMs` gaps, sent without waiting for each other's replies; the emulated platform decides whether they are taken one at a time (Telegram, WhatsApp and iMessage are; Discord and Slack are not — `serializesInbound` in `emulation.ts`). Inbound events are recorded on arrival. Order assertions: `delivered` (every message's final text in first-appearance order, proactive deliveries included), `bubbles` (the same without proactive deliveries) and `reactedTo` (which inbound positions got a reaction). Example: `scenarios/burst-during-work.yaml`.
 - A golden conformance suite (`apps/bots/__tests__/harness/conformance.test.ts`, wired into `mise test:bots`) drives the harness and the real adapter with only the SDK faked and fails CI if their output diverges. WhatsApp webhook replay lives in `apps/bots/__tests__/whatsapp/webhook-replay.e2e.test.ts`. See `apps/bots/CLAUDE.md`.
 
 ---

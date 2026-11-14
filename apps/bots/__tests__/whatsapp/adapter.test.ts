@@ -984,3 +984,67 @@ describe("WhatsAppAdapter - live turn reaction", () => {
     expect(mockSendText).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Inbound order — one user's messages run one at a time, /stop at once
+// ---------------------------------------------------------------------------
+
+describe("WhatsAppAdapter - inbound order", () => {
+  const WA_ID = "15551234567";
+
+  function textEvent(id: string, body: string) {
+    return {
+      message: {
+        id,
+        type: "text",
+        text: { body },
+        timestamp: String(Math.floor(Date.now() / 1000)),
+      },
+      conversation: { phone_number: `+${WA_ID}` },
+    };
+  }
+
+  /** Feeds text events to the adapter; handling the first one stays running until release(). */
+  async function deliver(texts: string[]) {
+    const webhook = await import("../../whatsapp/src/webhook");
+    vi.mocked(webhook.extractWaId).mockReturnValue(WA_ID);
+    vi.mocked(webhook.extractTextBody).mockImplementation(
+      (event) => event.message.text?.body ?? null,
+    );
+    const adapter = makeAdapter();
+    const priv = adapter as unknown as {
+      handleWebhookEvent: (event: unknown) => void;
+      handleIncomingMessage: (waId: string, text: string) => Promise<void>;
+    };
+    let release = (): void => undefined;
+    const firstHeld = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const handled: string[] = [];
+    priv.handleIncomingMessage = vi.fn(async (_waId: string, text: string) => {
+      handled.push(text);
+      if (text === texts[0]) await firstHeld;
+    });
+    texts.forEach((text, i) => {
+      priv.handleWebhookEvent(textEvent(`m${i}`, text));
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    return { handled, release };
+  }
+
+  it("handles a /stop behind a held message at once", async () => {
+    const { handled, release } = await deliver(["do the work", "/stop"]);
+
+    expect(handled).toContain("/stop");
+    release();
+  });
+
+  it("keeps a normal message behind the held one", async () => {
+    const { handled, release } = await deliver(["do the work", "and then"]);
+    expect(handled).toEqual(["do the work"]);
+
+    release();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(handled).toEqual(["do the work", "and then"]);
+  });
+});
