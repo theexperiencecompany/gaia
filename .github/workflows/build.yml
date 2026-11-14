@@ -449,6 +449,19 @@ jobs:
           docker buildx imagetools create -t "$IMAGE:$APPS_TAG" -t "$IMAGE:$COMMIT_SHA" "$IMAGE:$APPS_TAG" "$IMAGE@$ARM64_DIGEST"
           docker buildx imagetools inspect "$IMAGE:$APPS_TAG"
 
+  # gaia-fortress on a dispatch (fortress-image.yml). ci.yml's build phase skips
+  # it and calls fortress-image.yml itself as a leaf, because trigger-build
+  # awaits this whole workflow and a slow Fortress build would hold the deploy.
+  docker-api-fortress:
+    needs: [docker-release]
+    if: ${{ !cancelled() && inputs.phase != 'build' && needs.docker-release.outputs.apps_tag != '' }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/fortress-image.yml
+    with:
+      apps_tag: ${{ needs.docker-release.outputs.apps_tag }}
+
   # Self-hosters run the bots on arm64 too; production's bot images stay
   # amd64-only. Only a CLI release commit builds the arm64 half (native arm
   # runner, pushed by digest, untagged), and nothing on the production deploy

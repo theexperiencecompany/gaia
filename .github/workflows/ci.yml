@@ -1572,6 +1572,17 @@ jobs:
       web_image_tag: ${{ needs.build-images.outputs.web_tag }}
       docker_release_result: ${{ needs.build-images.outputs.docker_release_result }}
     secrets: inherit # pragma: allowlist secret
+  # A leaf beside trigger-build, not inside build-images, so the deploy never
+  # waits on the optional Fortress build.
+  fortress-image:
+    needs: [build-images]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/master' && needs.build-images.outputs.apps_tag != '' }}
+    uses: ./.github/workflows/fortress-image.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      apps_tag: ${{ needs.build-images.outputs.apps_tag }}
 
   # ── Master only: ship the web bundle web-build built, behind the gate ─────
   # A red gate or a failed build deploys nothing, and the run stays red, so the

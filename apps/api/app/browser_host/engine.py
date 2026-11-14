@@ -42,6 +42,7 @@ from app.constants.browser import (
     EngineExit,
 )
 from app.constants.fortress import (
+    FORTRESS_IMAGE,
     FORTRESS_IMAGE_BIN,
     FORTRESS_PERSONA_ARGS,
     FORTRESS_UNSUPPRESSED_DEFAULT_ARGS,
@@ -98,20 +99,24 @@ class ChromiumBinary:
 
 
 def resolve_chromium_binary() -> ChromiumBinary:
-    """Resolve the browser binary: CHROMIUM_BIN, else the image's Fortress when on, else Playwright's shell.
+    """Resolve the browser binary: CHROMIUM_BIN, else gaia-fortress's Fortress when on, else Playwright's shell.
 
     The shell build drops the browser-UI layer (three contexts: 702 MB versus
     1419 MB). Playwright's resolver is sync-only, so call this in a worker thread.
     """
     fortress = browser_host_settings.BROWSER_HOST_FORTRESS
-    configured_bin = browser_host_settings.CHROMIUM_BIN or (
-        FORTRESS_IMAGE_BIN if fortress else None
-    )
-    if configured_bin:
-        configured = Path(configured_bin)
+    if browser_host_settings.CHROMIUM_BIN:
+        configured = Path(browser_host_settings.CHROMIUM_BIN)
         if not configured.is_file():
             raise RuntimeError(f"the Chromium binary is not a file: {configured}")
         return ChromiumBinary(path=str(configured), fortress=fortress)
+    if fortress:
+        if not Path(FORTRESS_IMAGE_BIN).is_file():
+            raise RuntimeError(
+                f"BROWSER_HOST_FORTRESS is on but {FORTRESS_IMAGE_BIN} is missing: run this host "
+                f"on {FORTRESS_IMAGE} (the gaia image ships no Fortress) or set CHROMIUM_BIN"
+            )
+        return ChromiumBinary(path=FORTRESS_IMAGE_BIN, fortress=True)
     with sync_playwright() as p:
         full = Path(p.chromium.executable_path)
     shell = _headless_shell_beside(full)

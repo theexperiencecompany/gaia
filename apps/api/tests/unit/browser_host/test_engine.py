@@ -29,7 +29,7 @@ from app.constants.browser import (
     BrowserEngine,
     EngineExit,
 )
-from app.constants.fortress import FORTRESS_PERSONA_ARGS, FORTRESS_VOICES
+from app.constants.fortress import FORTRESS_IMAGE, FORTRESS_PERSONA_ARGS, FORTRESS_VOICES
 from shared.py.wide_events import log
 from tests.unit.browser_host.conftest import FakeMux
 
@@ -123,7 +123,7 @@ def test_fortress_on_without_a_configured_binary_launches_the_images_and_fails_l
     monkeypatch.setattr(browser_host_settings, "CHROMIUM_BIN", None)
     monkeypatch.setattr(browser_host_settings, "BROWSER_HOST_FORTRESS", True)
     monkeypatch.setattr(engine_mod, "FORTRESS_IMAGE_BIN", str(launcher))
-    with pytest.raises(RuntimeError, match="the Chromium binary is not a file"):
+    with pytest.raises(RuntimeError, match=f"run this host on {FORTRESS_IMAGE}"):
         engine_mod.resolve_chromium_binary()
 
     launcher.write_text("")

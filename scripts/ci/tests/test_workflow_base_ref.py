@@ -49,6 +49,7 @@ UNSCOPED = {
     "quality-gate",
     "build-images",
     "trigger-build",
+    "fortress-image",
     "deploy-unwedge",
     # Call a build or deploy workflow whole: detect's nx answer already decided
     # whether they run, and nothing inside them diffs the tree.
