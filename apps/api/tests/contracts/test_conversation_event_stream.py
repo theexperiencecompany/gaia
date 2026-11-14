@@ -344,5 +344,23 @@ async def test_event_lines_on_an_empty_conversation_follow_its_first_entry(
     await lines.aclose()
 
 
+async def test_a_quiet_stream_keeps_the_client_alive_and_still_follows(redis: Redis) -> None:
+    log = await _log(user("u1"))
+    lines = event_lines(log, CID, UID, _never, asyncio.Event())
+    await anext(lines)
+    await anext(lines)
+
+    assert await asyncio.wait_for(anext(lines), timeout=5) == ": keepalive\n\n"
+    assert await asyncio.wait_for(anext(lines), timeout=5) == ": keepalive\n\n"
+    await publish_frames(_frame(2, user("u2")))
+    line = await asyncio.wait_for(anext(lines), timeout=5)
+    while line == ": keepalive\n\n":
+        line = await asyncio.wait_for(anext(lines), timeout=5)
+
+    assert line.startswith("data: ")
+    assert "u2" in line
+    await lines.aclose()
+
+
 async def _never() -> bool:
     return False

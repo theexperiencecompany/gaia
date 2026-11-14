@@ -259,6 +259,16 @@ class TestWhatEachCallIsObservedAs:
         assert budgets == [True]
         assert observed == [("embed_query", "sidecar", 1, True)]
 
+    async def test_an_interactive_local_query_is_observed_as_interactive(
+        self, observed: list[tuple[str, str, int, bool]], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: None)
+        monkeypatch.setattr(embeddings, "_embed_query_sync", lambda text: [float(len(text))])
+
+        assert await embeddings.embed_query("abc", interactive=True) == [3.0]
+
+        assert observed == [("embed_query", "local", 1, True)]
+
     async def test_a_local_rerank_scores_every_document_against_the_query(
         self, observed: list[tuple[str, str, int, bool]], monkeypatch: pytest.MonkeyPatch
     ) -> None:

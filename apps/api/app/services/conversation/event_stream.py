@@ -238,7 +238,7 @@ def _unlogged(
             return task_id in live_tasks
         case EntryUpdatedFrame(seq=seq):
             return seq <= after_seq
-        case _:
+        case _:  # pragma: no mutate — without it the match returns None, as falsy as False
             return False
 
 
