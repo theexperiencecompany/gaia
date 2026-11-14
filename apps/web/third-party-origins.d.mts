@@ -6,3 +6,5 @@
 export const POSTHOG_HOST: string;
 export const RYBBIT_HOST: string;
 export const FASTLANE_HOST: string;
+export const TURNSTILE_HOST: string;
+export const CLOUDFLARE_INSIGHTS_HOST: string;

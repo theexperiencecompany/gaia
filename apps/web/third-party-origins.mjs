@@ -16,3 +16,9 @@ export const RYBBIT_HOST =
 export const FASTLANE_HOST =
   process.env.NEXT_PUBLIC_FASTLANE_HOST ??
   "https://aromatic-caribou-889.convex.site";
+
+/** Turnstile on /contact: @marsidev/react-turnstile loads its script and iframe from here. */
+export const TURNSTILE_HOST = "https://challenges.cloudflare.com";
+
+/** Cloudflare Web Analytics beacon, injected into every HTML response at the zone edge. */
+export const CLOUDFLARE_INSIGHTS_HOST = "https://static.cloudflareinsights.com";
