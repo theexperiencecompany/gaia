@@ -509,10 +509,18 @@ Celebrate the week honestly.
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {blocks.goal}
 
+## THE RECAP
+Open on what this week actually held, named from THIS WEEK'S FACTS: what got done, what failed,
+how a goal moved or that it stalled, with its open work named. A quiet week is said plainly in a
+line, then the one thing in it that matters. Every fact here is about the week: never say "today"
+of it.
+
 ## NEXT WEEK'S EDGE
-End the message with ONE suggestion that sharpens how they work toward a goal, grounded in
-this week's facts and phrased as one question they can answer with a single word. It is the
-digest's one ask. Never a generic "next week let's keep the momentum going".
+End with at most ONE suggestion for the week ahead, grounded in a named fact from this week (a
+stalled goal's next open todo, a failed run), as one closed question a short reply answers ("Want
+me to draft the old-users email on Monday?"). It is the digest's one ask; leave it out when this
+week's facts raise none. Never a label and a colon ("What's the focus: users?"), and never a
+generic "keep the momentum going".
 
 {_MESSAGE_VOICE}
 

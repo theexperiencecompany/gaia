@@ -339,6 +339,16 @@ def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() ->
         assert daily_only not in prompt
 
 
+def test_the_weekly_recaps_the_week_and_asks_at_most_one_grounded_closed_question() -> None:
+    prompt = build_weekly_voice_prompt(date_local="2026-10-18", blocks=_BLOCKS)
+
+    assert "## THE RECAP\nOpen on what this week actually held" in prompt
+    assert 'never say "today"\nof it' in prompt
+    assert "leave it out when this\nweek's facts raise none" in prompt
+    assert "Never a label and a colon" in prompt
+    assert "answer with a single word" not in prompt
+
+
 _OFFERS_A_DELIVERABLE = "OFFER one specific\nfirst deliverable as a QUESTION"
 _ASKS_FOR_THE_GOAL = "You don't know their goal\nyet, so ask ONE specific question"
 
