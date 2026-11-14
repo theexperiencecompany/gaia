@@ -31,7 +31,8 @@
           "imported": false,
           "revision": 0
         }
-      }
+      },
+      "head": 1
     }
   },
   {
@@ -66,7 +67,8 @@
           "imported": false,
           "revision": 0
         }
-      }
+      },
+      "head": 2
     }
   },
   {
@@ -91,7 +93,8 @@
         },
         "image": null,
         "retry_target": "u2"
-      }
+      },
+      "head": 3
     }
   },
   {
@@ -126,7 +129,8 @@
           "imported": false,
           "revision": 0
         }
-      }
+      },
+      "head": 4
     }
   },
   {
@@ -175,7 +179,8 @@
         },
         "image": null,
         "retry_target": "u2"
-      }
+      },
+      "head": 5
     }
   },
   {
@@ -255,7 +260,8 @@
         },
         "image": null,
         "retry_target": "u2"
-      }
+      },
+      "head": 9
     }
   },
   {
@@ -282,7 +288,8 @@
         "narrates": ["c4f22a9a"],
         "retry_target": null,
         "files": []
-      }
+      },
+      "head": 10
     }
   },
   {
@@ -313,7 +320,8 @@
         "narrates": ["c4f22a9a"],
         "retry_target": "u2",
         "files": []
-      }
+      },
+      "head": 11
     }
   }
 ]

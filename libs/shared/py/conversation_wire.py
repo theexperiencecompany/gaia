@@ -291,6 +291,8 @@ class ScreenFrame(BaseModel, Generic[ItemT]):
 
     kind: Literal[FrameKind.SCREEN] = FrameKind.SCREEN
     items: tuple[ItemT, ...]
+    # The log's head this screen projects: a page read at or below it is no newer than what it shows.
+    head: int = Field(ge=0)
 
 
 class ScreenInsertFrame(BaseModel, Generic[ItemT]):
@@ -300,6 +302,7 @@ class ScreenInsertFrame(BaseModel, Generic[ItemT]):
 
     kind: Literal[FrameKind.SCREEN_INSERT] = FrameKind.SCREEN_INSERT
     item: ItemT
+    head: int = Field(ge=0)
 
 
 class ScreenUpdateFrame(BaseModel, Generic[ItemT]):
@@ -309,3 +312,5 @@ class ScreenUpdateFrame(BaseModel, Generic[ItemT]):
 
     kind: Literal[FrameKind.SCREEN_UPDATE] = FrameKind.SCREEN_UPDATE
     item: ItemT
+    # An amended entry changes an item without a new seq, so the head names the log it reflects.
+    head: int = Field(ge=0)

@@ -49,6 +49,7 @@ export function userItem(
         at: AT,
         message: userMessageEntry(id, text),
       },
+      head: seq,
     },
   });
   if (frame.kind !== "screen_insert") throw new Error(frame.kind);
@@ -98,20 +99,21 @@ export const noticeItem = (
   follow_up_actions: [],
 });
 
-export const insertFrame = (item: ScreenItem): ConversationFrame => ({
-  kind: "screen_insert",
-  item,
-});
+/** A patch at the log head given; by default the head its item's own entry was logged at. */
+export const insertFrame = (
+  item: ScreenItem,
+  head = item.seq,
+): ConversationFrame => ({ kind: "screen_insert", item, head });
 
-export const updateFrame = (item: ScreenItem): ConversationFrame => ({
-  kind: "screen_update",
-  item,
-});
+export const updateFrame = (
+  item: ScreenItem,
+  head = item.seq,
+): ConversationFrame => ({ kind: "screen_update", item, head });
 
-export const screenFrame = (items: ScreenItem[]): ConversationFrame => ({
-  kind: "screen",
-  items,
-});
+export const screenFrame = (
+  items: ScreenItem[],
+  head = Math.max(0, ...items.map((item) => item.seq)),
+): ConversationFrame => ({ kind: "screen", items, head });
 
 export const replyDelta = (
   attemptId: string,

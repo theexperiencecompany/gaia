@@ -69,6 +69,30 @@ describe("a client's copy of the server's screen", () => {
     expect([view.head, view.display]).toEqual([4, "idle"]);
   });
 
+  it("keeps a settled reply when a page read before it settled lands before the state frame", () => {
+    let view = apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u4", 4)));
+    view = apply(view, stateFrame(8, "thinking"));
+    view = apply(view, insertFrame(replyItem("r2", 9, "Seco"), 9));
+    view = apply(view, updateFrame(replyItem("r2", 9, "Second turn."), 9));
+    view = apply(
+      view,
+      updateFrame(replyItem("r2", 9, "Second turn.", "answered"), 10),
+    );
+
+    view = applyPage(view, [userItem("u4", 4), replyItem("r2", 9, "Seco")], {
+      kind: "state",
+      head: 9,
+      display: "thinking",
+      work: [],
+    });
+    view = apply(view, stateFrame(10, "idle"));
+
+    expect(view.items.find((item) => item.id === "r2")).toMatchObject({
+      bubbles: ["Second turn."],
+      outcome: "answered",
+    });
+  });
+
   it("keeps live work cards when a page at the same head carries fewer", () => {
     let view = apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u1", 1)));
     view = apply(view, insertFrame(replyItem("r1", 2, ["Checked", "it."])));

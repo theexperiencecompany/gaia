@@ -16278,6 +16278,11 @@
         "additionalProperties": false,
         "description": "The newest page of the screen; a client replaces what it holds from the first item's seq on.",
         "properties": {
+          "head": {
+            "minimum": 0.0,
+            "title": "Head",
+            "type": "integer"
+          },
           "items": {
             "items": {
               "discriminator": {
@@ -16324,7 +16329,8 @@
         },
         "required": [
           "kind",
-          "items"
+          "items",
+          "head"
         ],
         "title": "ScreenFrame",
         "type": "object"
@@ -16333,6 +16339,11 @@
         "additionalProperties": false,
         "description": "An item became visible; its seq is its position, before every item with a higher one.",
         "properties": {
+          "head": {
+            "minimum": 0.0,
+            "title": "Head",
+            "type": "integer"
+          },
           "item": {
             "discriminator": {
               "mapping": {
@@ -16376,7 +16387,8 @@
         },
         "required": [
           "kind",
-          "item"
+          "item",
+          "head"
         ],
         "title": "ScreenInsertFrame",
         "type": "object"
@@ -16385,6 +16397,11 @@
         "additionalProperties": false,
         "description": "An item already shown changed in place; it keeps its position.",
         "properties": {
+          "head": {
+            "minimum": 0.0,
+            "title": "Head",
+            "type": "integer"
+          },
           "item": {
             "discriminator": {
               "mapping": {
@@ -16428,7 +16445,8 @@
         },
         "required": [
           "kind",
-          "item"
+          "item",
+          "head"
         ],
         "title": "ScreenUpdateFrame",
         "type": "object"

@@ -13576,6 +13576,8 @@ export interface components {
          * @description The newest page of the screen; a client replaces what it holds from the first item's seq on.
          */
         ScreenFrame: {
+            /** Head */
+            head: number;
             /** Items */
             items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
             /**
@@ -13589,6 +13591,8 @@ export interface components {
          * @description An item became visible; its seq is its position, before every item with a higher one.
          */
         ScreenInsertFrame: {
+            /** Head */
+            head: number;
             /** Item */
             item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"];
             /**
@@ -13602,6 +13606,8 @@ export interface components {
          * @description An item already shown changed in place; it keeps its position.
          */
         ScreenUpdateFrame: {
+            /** Head */
+            head: number;
             /** Item */
             item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"];
             /**

@@ -38,8 +38,10 @@ class ScreenItemMoved(Exception):
     """A new projection moved or dropped an item already shown, which the screen's rules forbid."""
 
 
-def screen_patches(shown: Sequence[ScreenItem], screen: Sequence[ScreenItem]) -> list[ScreenPatch]:
-    """Return the inserts and updates that turn shown into screen, applied in order.
+def screen_patches(
+    shown: Sequence[ScreenItem], screen: Sequence[ScreenItem], head: int
+) -> list[ScreenPatch]:
+    """Return the inserts and updates that turn shown into screen, the log at head, applied in order.
 
     Raises ScreenItemMoved when screen does not keep every shown item in its order.
     """
@@ -51,9 +53,9 @@ def screen_patches(shown: Sequence[ScreenItem], screen: Sequence[ScreenItem]) ->
     for item in screen:
         old = before.get(item.id)
         if old is None:
-            patches.append(ScreenInsertFrame(item=item))
+            patches.append(ScreenInsertFrame(item=item, head=head))
         elif old != item:
-            patches.append(ScreenUpdateFrame(item=item))
+            patches.append(ScreenUpdateFrame(item=item, head=head))
     return patches
 
 
@@ -99,6 +101,11 @@ class ScreenTracker:
         }
         return cls(conversation_id, entries, work)
 
+    @property
+    def head(self) -> int:
+        """Return the seq of the newest entry held: the log's head the items project."""
+        return max(self._entries, default=0)
+
     def _project(self) -> list[ScreenItem]:
         entries = [self._entries[seq] for seq in sorted(self._entries)]
         return [self._with_live_cards(item) for item in project_screen(entries)]
@@ -133,7 +140,7 @@ class ScreenTracker:
                 updated = self._with_live_cards(item)
                 if updated != item:
                     self.items[index] = updated
-                    patches.append(ScreenUpdateFrame(item=updated))
+                    patches.append(ScreenUpdateFrame(item=updated, head=self.head))
         return patches
 
     def take(self, frame: EntryFrame | EntryUpdatedFrame) -> list[ScreenPatch]:
@@ -146,6 +153,6 @@ class ScreenTracker:
 
     def _repatch(self) -> list[ScreenPatch]:
         screen = self._project()
-        patches = screen_patches(self.items, screen)
+        patches = screen_patches(self.items, screen, self.head)
         self.items = screen
         return patches

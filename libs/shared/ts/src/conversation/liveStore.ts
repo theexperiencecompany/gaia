@@ -85,7 +85,12 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
       restore: (conversationId, { items, head, olderBefore, sends }) => {
         if (get().conversations[conversationId]) return;
         // The saved screen is as far as this device knew it; the stream's screen frame moves it on.
-        const known = { ...EMPTY_CONVERSATION_VIEW, items, head };
+        const known = {
+          ...EMPTY_CONVERSATION_VIEW,
+          items,
+          head,
+          screenHead: head,
+        };
         const view = Object.entries(sends).reduce(
           (current, [id, send]) =>
             addPendingSend(current, { id, text: send.body.text }),

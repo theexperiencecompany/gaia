@@ -24,7 +24,7 @@ function persistNow(conversationId: string): void {
   db.putConversationLog({
     conversationId,
     items: [...view.items],
-    head: view.head,
+    head: view.screenHead,
     olderBefore,
     sends: { ...sends },
   }).catch((error: unknown) => {

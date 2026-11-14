@@ -251,8 +251,8 @@ async def follow_screen(
     """
     entries = await log.read_after(conversation_id, user_id, 0)
     tracker = await ScreenTracker.load(conversation_id, entries)
-    yield ScreenFrame(items=tuple(tracker.items[-CONVERSATION_READ_LIMIT:]))
     head = entries[-1].seq if entries else 0
+    yield ScreenFrame(items=tuple(tracker.items[-CONVERSATION_READ_LIMIT:]), head=head)
     async for streamed in follow(log, conversation_id, user_id, head):
         if streamed is None:
             yield None

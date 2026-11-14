@@ -441,12 +441,36 @@ def test_any_conversation_only_grows_at_the_end_and_reloads_to_what_was_shown(
             assert all(card["data"]["tool_name"] != CALL_EXECUTOR_NAME for card in item.tool_data)
 
 
+def test_every_patch_names_the_log_head_it_reflects_even_when_it_amends_an_older_entry() -> None:
+    log = _Log()
+    log.append(user("u1"))
+    reply = Reply(id="1.1:reply", reply_id="r1.1", attempt_id="1.1", text="Seco")
+    seq = log.append(reply)
+    log.fill(seq, reply.model_copy(update={"text": "Second turn.", "revision": 1}))
+    log.append(
+        ReplySettled(
+            id="1.1:settled",
+            reply_id="r1.1",
+            outcome=ReplyOutcome.ANSWERED,
+            answers=("u1",),
+            through=1,
+            quote_target="u1",
+        )
+    )
+    assert [(patch.item.id, patch.head) for patch in log.patches] == [
+        ("u1", 1),
+        ("r1.1", 2),
+        ("r1.1", 2),
+        ("r1.1", 3),
+    ]
+
+
 def test_a_projection_that_moves_a_shown_item_fails_loudly() -> None:
     first, second = project_screen([logged(1, user("u1")), logged(2, user("u2"))])
     with pytest.raises(ScreenItemMoved):
-        screen_patches([first, second], [second, first])
+        screen_patches([first, second], [second, first], 2)
     with pytest.raises(ScreenItemMoved):
-        screen_patches([first, second], [second])
+        screen_patches([first, second], [second], 2)
 
 
 async def test_a_handed_over_tasks_cards_show_on_the_work_item_it_joined() -> None:
