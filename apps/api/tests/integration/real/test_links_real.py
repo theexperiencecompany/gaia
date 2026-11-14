@@ -381,6 +381,40 @@ class TestRevokeRotateExpire:
             is None
         )
 
+    async def test_the_owner_still_opens_what_they_stopped_sharing_or_rotated_away(
+        self, client: AsyncClient, viewer: Viewer
+    ) -> None:
+        todo_id = await _todo()
+        old = (await _share(client, TODO, todo_id))["slug"]
+        new = (await client.post(f"/api/v1/l/{old}/rotate")).json()["slug"]
+        await client.post("/api/v1/l/unshare", json={"target_type": TODO, "target_id": todo_id})
+
+        viewer.user = OWNER
+        for slug in (old, new):
+            opened = await _open(client, slug)
+            assert opened.status_code == 200, opened.text
+            assert (opened.json()["is_owner"], opened.json()["view"]["title"]) == (
+                True,
+                "Reply to Acme",
+            )
+        viewer.user = STRANGER
+        assert (await _open(client, new)).json()["code"] == "link_revoked"
+
+    async def test_the_owner_of_a_stopped_file_sees_its_card_but_never_its_deleted_bytes(
+        self, client: AsyncClient, viewer: Viewer, workspace: Workspace, content_origin: None
+    ) -> None:
+        target = workspace.write("notes.md", b"# private")
+        slug = (await _share(client, SESSION, target))["slug"]
+        await client.post("/api/v1/l/unshare", json={"target_type": SESSION, "target_id": target})
+
+        viewer.user = OWNER
+        opened = (await _open(client, slug)).json()
+
+        assert (opened["view"]["filename"], opened["view"]["text"]) == ("notes.md", None)
+        assert (opened["content"], opened["downloadable"]) == (None, False)
+        assert (await client.post(f"/api/v1/l/{slug}/content-token")).status_code == 404
+        assert (await client.get(f"/api/v1/l/{slug}/download")).status_code == 404
+
     async def test_rotation_moves_every_setting_to_a_new_url(
         self, client: AsyncClient, viewer: Viewer
     ) -> None:

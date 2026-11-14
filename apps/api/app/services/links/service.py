@@ -420,12 +420,15 @@ async def revoke_conversation_links(user_id: str, conversation_id: str) -> None:
             await revoke_deleted_targets(user_id, spec.type, target_ids)
 
 
-def _served_snapshot(link: ShortLink) -> LinkSnapshot | None:
-    """Return the snapshot as the link may serve it: no bytes when its access is wider than they allow."""
+def _served(link: ShortLink) -> ShortLink:
+    """Return the link as it may serve its snapshot: no bytes once it is dead or wider than they allow.
+
+    A dead link opens only for its owner, and its bytes may already be deleted.
+    """
     snapshot = link.snapshot
-    if snapshot is None or servable(snapshot, link.access):
-        return snapshot
-    return snapshot.model_copy(update={"content_id": None})
+    if snapshot is None or (dead_state(link, _now()) is None and servable(snapshot, link.access)):
+        return link
+    return link.model_copy(update={"snapshot": snapshot.model_copy(update={"content_id": None})})
 
 
 def _viewer_key(viewer: LinkViewer) -> str:
@@ -465,12 +468,11 @@ async def _granted_view(
     decision = evaluate(link, viewer, _now())
     if isinstance(decision, Denied):
         raise _deny(link, viewer, decision.denial)
-    view = await REGISTRY[link.target_type].project(
-        link.user_id, link.target_id, _served_snapshot(link)
-    )
+    served = _served(link)
+    view = await REGISTRY[link.target_type].project(link.user_id, link.target_id, served.snapshot)
     if view is None:
         raise _deny(link, viewer, LinkDenial.TARGET_DELETED)
-    return link, decision.viewer_kind, view
+    return served, decision.viewer_kind, view
 
 
 async def resolve(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelope:

@@ -3,6 +3,7 @@
  * The /l/<slug> server page: metadata from /meta for everyone, the view only
  * for a real viewer, and the denial the server-side resolve answers.
  */
+import { ApiError } from "@shared/api";
 import { render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -42,6 +43,7 @@ const fetchMock = vi.fn<typeof fetch>();
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
+  resolveLinkInBrowser.mockClear();
   userAgent = "Mozilla/5.0 (Macintosh)";
   host = "gaia.example.org";
 });
@@ -114,19 +116,44 @@ describe("ShortLinkPage", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("shows a revoked link's dead state", async () => {
+  it("shows a removed link's dead state without asking the browser", async () => {
     fetchMock.mockResolvedValue(
-      respond(410, { message: "gone", code: "link_revoked" }),
+      respond(410, { message: "gone", code: "link_removed" }),
     );
 
     render(await ShortLinkPage({ params }));
 
     expect(
       screen.getByRole("heading", {
-        name: "This link was turned off by the person who shared it. Ask them for a new one.",
+        name: "This link was removed for breaking GAIA's terms.",
       }),
     ).toBeTruthy();
+    expect(resolveLinkInBrowser).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [
+      "link_revoked",
+      "This link was turned off by the person who shared it. Ask them for a new one.",
+    ],
+    [
+      "link_expired",
+      "This link has expired. Ask the person who shared it for a new one.",
+    ],
+  ])(
+    "hands a %s link to the browser, where only its owner still opens it",
+    async (code, copy) => {
+      fetchMock.mockResolvedValue(respond(410, { message: "gone", code }));
+      resolveLinkInBrowser.mockRejectedValueOnce(
+        new ApiError("gone", 410, { envelope: { message: "gone", code } }),
+      );
+
+      render(await ShortLinkPage({ params }));
+
+      expect(resolveLinkInBrowser).toHaveBeenCalledWith(SLUG);
+      expect(await screen.findByRole("heading", { name: copy })).toBeTruthy();
+    },
+  );
 
   it("hands a sign-in denial to the browser, which holds the session", async () => {
     fetchMock.mockResolvedValue(

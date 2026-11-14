@@ -30,6 +30,9 @@ _REVOKED_DENIAL: dict[RevokeReason, LinkDenial] = {
     RevokeReason.TARGET_DELETED: LinkDenial.TARGET_DELETED,
 }
 
+# Dead by the owner's own hand (stopped, rotated or expired): still theirs to open.
+_OWNER_STILL_OPENS = frozenset({LinkDenial.REVOKED, LinkDenial.EXPIRED})
+
 
 @dataclass(frozen=True, slots=True)
 class Granted:
@@ -79,14 +82,19 @@ def _may_open(link: ShortLink, viewer: LinkViewer) -> LinkDenial | None:
 
 
 def evaluate(link: ShortLink | None, viewer: LinkViewer, now: datetime) -> Granted | Denied:
-    """Decide whether viewer may open link now; the owner opens every live link at every level."""
+    """Decide whether viewer may open link now.
+
+    The owner opens every link at every level, a turned-off one too: the emails and
+    QR codes GAIA sent them carry it. A takedown or a deleted target closes it for them too.
+    """
     if link is None:
         return Denied(LinkDenial.NOT_FOUND)
     dead = dead_state(link, now)
+    is_owner = viewer.user_id is not None and viewer.user_id == link.user_id
+    if is_owner and (dead is None or dead in _OWNER_STILL_OPENS):
+        return Granted(LinkViewerKind.OWNER)
     if dead is not None:
         return Denied(dead)
-    if viewer.user_id is not None and viewer.user_id == link.user_id:
-        return Granted(LinkViewerKind.OWNER)
     denial = _may_open(link, viewer)
     if denial is not None:
         return Denied(denial)

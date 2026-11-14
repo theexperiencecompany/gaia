@@ -78,33 +78,59 @@ def test_a_live_link_opens_for_exactly_its_level(
     assert evaluate(_link(access), viewer, NOW) == expected
 
 
-# Dead states: every viewer, the owner included, sees the same denial.
+# Dead states: everyone but the owner sees the denial. The owner still opens a link they
+# turned off, rotated or let expire (their own emails and QR codes carry it); a takedown
+# or a deleted target closes it for them too.
 DEAD_STATES = [
-    ({"expires_at": NOW}, LinkDenial.EXPIRED),
-    ({"expires_at": NOW - timedelta(seconds=1)}, LinkDenial.EXPIRED),
-    ({"revoked": True, "revoked_reason": RevokeReason.OWNER}, LinkDenial.REVOKED),
-    ({"revoked": True, "revoked_reason": RevokeReason.ROTATED}, LinkDenial.REVOKED),
-    ({"revoked": True, "revoked_reason": RevokeReason.EXPIRED}, LinkDenial.EXPIRED),
-    ({"revoked": True, "revoked_reason": RevokeReason.TAKEDOWN}, LinkDenial.REMOVED),
+    ({"expires_at": NOW}, LinkDenial.EXPIRED, _OWNER),
+    ({"expires_at": NOW - timedelta(seconds=1)}, LinkDenial.EXPIRED, _OWNER),
+    ({"revoked": True, "revoked_reason": RevokeReason.OWNER}, LinkDenial.REVOKED, _OWNER),
+    ({"revoked": True, "revoked_reason": RevokeReason.ROTATED}, LinkDenial.REVOKED, _OWNER),
+    ({"revoked": True, "revoked_reason": RevokeReason.EXPIRED}, LinkDenial.EXPIRED, _OWNER),
+    (
+        {"revoked": True, "revoked_reason": RevokeReason.TAKEDOWN},
+        LinkDenial.REMOVED,
+        Denied(LinkDenial.REMOVED),
+    ),
     (
         {"revoked": True, "revoked_reason": RevokeReason.TARGET_DELETED},
         LinkDenial.TARGET_DELETED,
+        Denied(LinkDenial.TARGET_DELETED),
     ),
     # A link revoked before reasons existed reads as the owner's revoke.
-    ({"revoked": True}, LinkDenial.REVOKED),
-    ({"suspended": True}, LinkDenial.REMOVED),
+    ({"revoked": True}, LinkDenial.REVOKED, _OWNER),
+    ({"suspended": True}, LinkDenial.REMOVED, Denied(LinkDenial.REMOVED)),
     # Suspension wins over a later expiry: the link was removed first.
-    ({"suspended": True, "expires_at": NOW - timedelta(days=1)}, LinkDenial.REMOVED),
+    (
+        {"suspended": True, "expires_at": NOW - timedelta(days=1)},
+        LinkDenial.REMOVED,
+        Denied(LinkDenial.REMOVED),
+    ),
 ]
 
 
 @pytest.mark.parametrize("access", list(LinkAccess))
-@pytest.mark.parametrize("viewer", [ANON, OWNER, GRANTEE, STRANGER])
-@pytest.mark.parametrize(("state", "denial"), DEAD_STATES)
-def test_a_dead_link_opens_for_no_one(
-    access: LinkAccess, viewer: LinkViewer, state: dict[str, object], denial: LinkDenial
+@pytest.mark.parametrize("viewer", [ANON, GRANTEE, STRANGER, SLACKBOT])
+@pytest.mark.parametrize(("state", "denial", "_owner_sees"), DEAD_STATES)
+def test_a_dead_link_opens_for_no_one_but_maybe_its_owner(
+    access: LinkAccess,
+    viewer: LinkViewer,
+    state: dict[str, object],
+    denial: LinkDenial,
+    _owner_sees: Granted | Denied,
 ) -> None:
     assert evaluate(_link(access, **state), viewer, NOW) == Denied(denial)
+
+
+@pytest.mark.parametrize("access", list(LinkAccess))
+@pytest.mark.parametrize(("state", "_denial", "owner_sees"), DEAD_STATES)
+def test_the_owner_opens_what_they_turned_off_but_not_what_was_removed_or_deleted(
+    access: LinkAccess,
+    state: dict[str, object],
+    _denial: LinkDenial,
+    owner_sees: Granted | Denied,
+) -> None:
+    assert evaluate(_link(access, **state), OWNER, NOW) == owner_sees
 
 
 def test_a_future_expiry_is_still_live() -> None:

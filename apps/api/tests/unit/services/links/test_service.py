@@ -1005,6 +1005,27 @@ class TestResolve:
         )
         assert (envelope.content, envelope.downloadable) == (None, False)
 
+    @pytest.mark.parametrize(
+        "dead",
+        [
+            {"revoked": True, "revoked_reason": RevokeReason.OWNER},
+            {"expires_at": NOW},
+        ],
+    )
+    async def test_the_owner_opens_a_turned_off_file_without_its_bytes(
+        self, specs: Specs, frozen: None, monkeypatch: pytest.MonkeyPatch, dead: dict[str, object]
+    ) -> None:
+        monkeypatch.setattr(settings, "LINK_CONTENT_URL_TEMPLATE", "https://{content_id}.u.test")
+        monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
+        link = _link("s1", target_type=SESSION, target_id=FILE_ID, snapshot=FRESH, **dead)
+
+        envelope = await resolve(link, AS_OWNER)
+
+        specs.file_project.assert_awaited_once_with(
+            OWNER, FILE_ID, FRESH.model_copy(update={"content_id": None})
+        )
+        assert (envelope.content, envelope.downloadable, envelope.is_owner) == (None, False, True)
+
 
 class TestLinkResponse:
     def test_a_restricted_file_names_the_widest_level_it_may_be_served_at(self) -> None:

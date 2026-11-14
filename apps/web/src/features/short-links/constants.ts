@@ -110,6 +110,21 @@ export const GATED_LINK_DENIALS = [
 ] as const satisfies readonly LinkDenial[];
 
 /**
+ * Dead for everyone but the link's owner, who still opens what they turned off
+ * or let expire (the API's access rule), so the browser resolves them again too.
+ */
+export const OWNER_REOPENS_DENIALS = [
+  "link_revoked",
+  "link_expired",
+] as const satisfies readonly LinkDenial[];
+
+/** Every denial the server's anonymous resolve hands to the viewer's browser. */
+export const BROWSER_RESOLVED_DENIALS: ReadonlySet<string> = new Set([
+  ...GATED_LINK_DENIALS,
+  ...OWNER_REOPENS_DENIALS,
+]);
+
+/**
  * The sandbox an active (HTML) snapshot runs in: scripts and forms but no
  * same-origin (so no storage or cookies) and no top navigation (so it cannot
  * redirect the viewer's tab). The content origin's CSP repeats it.

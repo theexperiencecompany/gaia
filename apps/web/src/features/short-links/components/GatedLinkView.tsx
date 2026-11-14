@@ -25,9 +25,10 @@ async function resolveGated(slug: string): Promise<LinkResolution> {
 }
 
 /**
- * A people- or owner-only link, opened in the browser: only the browser holds
- * the viewer's session (the cookie is host-only on the API host), so server
- * rendering got a sign-in denial whoever is reading.
+ * A link server rendering could not open, opened again in the browser: only the
+ * browser holds the viewer's session (the cookie is host-only on the API host),
+ * so a people- or owner-only link, or one its owner turned off, answered the
+ * server as it answers a stranger.
  */
 export function GatedLinkView({ slug }: { slug: string }) {
   const [outcome, setOutcome] = useState<GatedOutcome | null>(null);

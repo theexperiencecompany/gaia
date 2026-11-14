@@ -6,6 +6,7 @@ import { cache } from "react";
 import { GatedLinkView } from "@/features/short-links/components/GatedLinkView";
 import { LinkUnavailable } from "@/features/short-links/components/LinkUnavailable";
 import { OpenLinkView } from "@/features/short-links/components/OpenLinkView";
+import { BROWSER_RESOLVED_DENIALS } from "@/features/short-links/constants";
 import type { LinkResolution } from "@/features/short-links/types";
 import { isUnfurlBot } from "@/features/short-links/utils/isUnfurlBot";
 import { linkUnavailableState } from "@/features/short-links/utils/linkDenial";
@@ -118,10 +119,7 @@ export default async function ShortLinkPage({ params }: PageProps) {
   }
   const { state } = resolution;
   if (state.denial === "link_not_found") notFound();
-  if (
-    state.denial === "link_sign_in_required" ||
-    state.denial === "link_forbidden"
-  ) {
+  if (BROWSER_RESOLVED_DENIALS.has(state.denial)) {
     return <GatedLinkView slug={slug} />;
   }
   // The App Router answers 200 here; only notFound() can set a status.
