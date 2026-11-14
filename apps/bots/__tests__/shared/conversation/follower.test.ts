@@ -23,6 +23,7 @@ import {
   insertFrame,
   replyDelta,
   replyItem,
+  retractFrame,
   screenFrame,
   stateFrame,
   updateFrame,
@@ -253,6 +254,31 @@ describe.each([
       text: options.streaming ? "Abou" : "About the first one.",
       replyTo: "11",
     });
+  });
+});
+
+describe("a retracted stream", () => {
+  it("deletes the preamble's later bubbles when the server retracts it, and overwrites its first", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, EDITING, surface);
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11")]),
+      insertFrame(replyItem("r1", 2, ["Let me check."])),
+      replyDelta("a-r1", "r1", 0, "Let me check."),
+      replyDelta("a-r1", "r1", 1, "One sec.", 1),
+    ]);
+    expect(sent(calls)).toHaveLength(2);
+
+    await follower.apply(retractFrame("a-r1"));
+    expect(calls.filter((call) => call.op === "delete")).toEqual([
+      { op: "delete", id: "m2" },
+    ]);
+
+    await follower.apply(
+      updateFrame(replyItem("r1", 2, ["Done."], "answered")),
+    );
+    expect(screen(calls)).toEqual(["Done."]);
+    expect(sent(calls)).toHaveLength(2);
   });
 });
 
