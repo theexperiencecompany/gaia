@@ -5,12 +5,12 @@ import type React from "react";
 import { useEffect, useRef } from "react";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { useComposerUI } from "@/stores/composerStore";
 
 interface SelectedToolIndicatorProps {
   toolName: string | null;
   toolCategory?: string | null;
   onRemove?: () => void;
+  isSlashCommandDropdownOpen?: boolean;
 }
 
 const TOOL_SUFFIX_REGEX = / tool$/i;
@@ -29,8 +29,8 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
   toolName,
   toolCategory,
   onRemove,
+  isSlashCommandDropdownOpen = false,
 }) => {
-  const { isSlashCommandDropdownOpen } = useComposerUI();
   const { integrations } = useIntegrations();
 
   // Custom integrations aren't in the static icon config, so their logo lives on
@@ -51,8 +51,12 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
     if (!toolName) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle escape if slash command dropdown is NOT open
-      if (e.key === "Escape" && !isSlashCommandOpenRef.current) {
+      // defaultPrevented: the dropdown's own Escape closed it on this keypress
+      if (
+        e.key === "Escape" &&
+        !e.defaultPrevented &&
+        !isSlashCommandOpenRef.current
+      ) {
         e.preventDefault();
         onRemoveRef.current?.();
       }

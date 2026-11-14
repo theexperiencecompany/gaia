@@ -5,10 +5,12 @@ import { Link } from "@heroui/link";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tooltip } from "@heroui/tooltip";
 import { ArrowRight02Icon, ConnectIcon, InformationCircleIcon } from "@icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKeys";
 import { InstanceSetupNotice } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -53,7 +55,8 @@ function IntegrationListSection({
   suggestedIntegrations = [],
 }: IntegrationListSectionProps) {
   const router = useRouter();
-  const { integrations, connectIntegration, refetch } = useIntegrations();
+  const queryClient = useQueryClient();
+  const { integrations, connectIntegration } = useIntegrations();
   const [connectingIds, setConnectingIds] = useState<Set<string>>(new Set());
 
   // Separate connected and not connected integrations, sorted alphabetically
@@ -64,8 +67,7 @@ function IntegrationListSection({
     .filter((i) => i.status !== "connected")
     .toSorted((a, b) => a.name.localeCompare(b.name));
 
-  const handleConnect = async (integrationId: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent card click
+  const handleConnect = async (integrationId: string) => {
     try {
       await connectIntegration(integrationId);
     } catch (error) {
@@ -73,11 +75,7 @@ function IntegrationListSection({
     }
   };
 
-  const handleConnectSuggested = async (
-    suggestion: SuggestedIntegration,
-    e: React.MouseEvent,
-  ) => {
-    e.stopPropagation(); // Prevent card click
+  const handleConnectSuggested = async (suggestion: SuggestedIntegration) => {
     setConnectingIds((prev) => new Set(prev).add(suggestion.id));
     const toastId = toast.loading(`Adding ${suggestion.name}...`);
 
@@ -88,7 +86,7 @@ function IntegrationListSection({
         toast.success(`${suggestion.name} connected successfully`, {
           id: toastId,
         });
-        await refetch();
+        invalidateIntegrationCaches(queryClient);
       } else if (result.status === "redirect" && result.redirectUrl) {
         toast.dismiss(toastId);
         window.location.href = result.redirectUrl;
@@ -170,9 +168,7 @@ function IntegrationListSection({
             variant="flat"
             color="primary"
             className="shrink-0 text-xs"
-            onPress={(e) =>
-              handleConnect(integration.id, e as unknown as React.MouseEvent)
-            }
+            onPress={() => handleConnect(integration.id)}
           >
             Connect
           </Button>
@@ -223,9 +219,7 @@ function IntegrationListSection({
           color="primary"
           className="shrink-0 text-xs"
           isLoading={isConnecting}
-          onPress={(e) =>
-            handleConnectSuggested(suggestion, e as unknown as React.MouseEvent)
-          }
+          onPress={() => handleConnectSuggested(suggestion)}
         >
           {isConnecting ? "Adding..." : "Add"}
         </Button>

@@ -6,10 +6,7 @@ import { useState } from "react";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
-import {
-  integrationKeys,
-  toolKeys,
-} from "@/features/integrations/api/queryKeys";
+import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKeys";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
@@ -190,9 +187,7 @@ export function IntegrationActions({
       integrationsApi.connectIntegration(id, { bearerToken: token }),
     onConnected: () => {
       toast.success(`Connected to ${integration.name}`);
-      // Refresh data in the background so the sidebar reflects the new tools.
-      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
+      invalidateIntegrationCaches(queryClient);
     },
   });
 

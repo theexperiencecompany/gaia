@@ -2,7 +2,7 @@ import type {
   AddIntegrationResponse,
   UpdateIntegrationAccountRequest,
 } from "@shared/api/generated";
-import { api, type RequestOrigin } from "@/lib/api/typed";
+import { api } from "@/lib/api/typed";
 import { sanitizeRedirectUrl } from "@/lib/url-safety";
 
 import type {
@@ -35,20 +35,15 @@ export const integrationsApi = {
    * Per-tool schemas are not included — only `toolCount`. Fetch one
    * integration's tools on demand via `getIntegrationTools`.
    */
-  getMyIntegrations: ({ background }: RequestOrigin = {}) =>
-    api.get("/api/v1/integrations/me", { background }),
+  getMyIntegrations: () => api.get("/api/v1/integrations/me"),
 
   /**
    * Get the full tool list for a single integration, on demand.
    */
-  getIntegrationTools: (
-    integrationId: string,
-    { background }: RequestOrigin = {},
-  ) =>
+  getIntegrationTools: (integrationId: string) =>
     api.get("/api/v1/integrations/{integration_id}/tools", {
       path: { integration_id: integrationId },
       silent: true,
-      background,
     }),
 
   /**

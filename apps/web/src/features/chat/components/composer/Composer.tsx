@@ -15,19 +15,19 @@ import { useComposerSeeds } from "@/features/chat/hooks/useComposerSeeds";
 import { useComposerSubmit } from "@/features/chat/hooks/useComposerSubmit";
 import { useFileAttachments } from "@/features/chat/hooks/useFileAttachments";
 import { useSlashCommandDropdownControl } from "@/features/chat/hooks/useSlashCommandDropdownControl";
+import { useSlashCommandDropdownState } from "@/features/chat/hooks/useSlashCommandDropdownState";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import {
   useComposerFiles,
   useComposerModeSelection,
   useComposerTextActions,
-  useComposerUI,
   useInputText,
   useReplyToMessage,
 } from "@/stores/composerStore";
 import type { ComposerMode } from "@/types/shared/searchTypes";
 
-import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
+import ComposerInput from "./ComposerInput";
 import ComposerToolbar from "./ComposerToolbar";
 import IntegrationsBanner from "./IntegrationsBanner";
 import SelectedCalendarEventIndicator from "./SelectedCalendarEventIndicator";
@@ -56,7 +56,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
   onVoiceModeHover,
 }) => {
   const [currentHeight, setCurrentHeight] = useState<number>(24);
-  const composerInputRef = useRef<ComposerInputRef>(null);
   const inputText = useInputText();
   const { setInputText } = useComposerTextActions();
   const {
@@ -68,8 +67,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
     setSelectedToolCategory,
   } = useComposerModeSelection();
   const { uploadedFiles, removeUploadedFile } = useComposerFiles();
-  const { isSlashCommandDropdownOpen, setIsSlashCommandDropdownOpen } =
-    useComposerUI();
   const { selectedWorkflow, clearSelectedWorkflow } = useWorkflowSelection();
   const { selectedCalendarEvent, clearSelectedCalendarEvent } =
     useCalendarEventSelection();
@@ -79,12 +76,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
     useComposerSubmit({ inputRef, scrollToBottom });
   const { attachFiles } = useFileAttachments();
   useComposerPaste({ inputRef, attachFiles });
-  const { handleToggleSlashCommandDropdown, handleIntegrationClick } =
-    useSlashCommandDropdownControl({
-      composerInputRef,
-      inputRef,
-      setIsSlashCommandDropdownOpen,
-    });
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
   const currentMode = useMemo(
     () => Array.from(selectedMode)[0],
@@ -145,6 +136,16 @@ const Composer: React.FC<MainSearchbarProps> = ({
     clearSelectedCalendarEvent();
   };
 
+  const slashCommand = useSlashCommandDropdownState({
+    inputRef,
+    searchbarText: inputText,
+    onSearchbarTextChange: setInputText,
+    onSlashCommandSelect: handleSlashCommandSelect,
+  });
+  const isSlashCommandDropdownOpen = slashCommand.slashCommandState.isActive;
+  const { handleToggleSlashCommandDropdown, handleIntegrationClick } =
+    useSlashCommandDropdownControl({ inputRef, slashCommand });
+
   // Out-of-band seeds (staged prompt, `?q=` deep link) land in the box here,
   // where the input actually lives.
   useComposerSeeds(inputRef);
@@ -165,6 +166,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
             toolName={selectedTool}
             toolCategory={selectedToolCategory}
             onRemove={handleRemoveSelectedTool}
+            isSlashCommandDropdownOpen={isSlashCommandDropdownOpen}
           />
           <SelectedWorkflowIndicator
             workflow={selectedWorkflow}
@@ -177,6 +179,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
           <SelectedReplyIndicator
             replyToMessage={replyToMessage}
             onRemove={clearReplyToMessage}
+            isSlashCommandDropdownOpen={isSlashCommandDropdownOpen}
             onNavigate={(messageId) => {
               const messageElement = document.getElementById(messageId);
               if (messageElement) {
@@ -194,7 +197,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
           />
         </div>
         <ComposerInput
-          ref={composerInputRef}
           searchbarText={inputText}
           onSearchbarTextChange={setInputText}
           handleFormSubmit={handleFormSubmit}
@@ -203,7 +205,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
           onHeightChange={setCurrentHeight}
           inputRef={inputRef}
           hasMessages={hasMessages}
-          onSlashCommandSelect={handleSlashCommandSelect}
+          slashCommand={slashCommand}
           onIntegrationClick={handleIntegrationClick}
         />
         <ComposerToolbar

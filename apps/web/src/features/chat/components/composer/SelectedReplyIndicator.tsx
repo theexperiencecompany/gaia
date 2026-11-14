@@ -6,13 +6,13 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef } from "react";
-import { useComposerUI } from "@/stores/composerStore";
 import type { ReplyToMessageData } from "@/stores/composerStore.types";
 
 interface SelectedReplyIndicatorProps {
   replyToMessage: ReplyToMessageData | null;
   onRemove?: () => void;
   onNavigate?: (messageId: string) => void;
+  isSlashCommandDropdownOpen?: boolean;
   /** When true, shows a smaller display-only version with connector line (for chat bubbles) */
   isDisplayOnly?: boolean;
   /** When true, hides the connector line in display-only mode */
@@ -59,9 +59,8 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
   onNavigate,
   isDisplayOnly = false,
   hideConnector = false,
+  isSlashCommandDropdownOpen = false,
 }) => {
-  const { isSlashCommandDropdownOpen } = useComposerUI();
-
   const onRemoveRef = useRef(onRemove);
   const isSlashCommandOpenRef = useRef(isSlashCommandDropdownOpen);
   useEffect(() => {
@@ -74,8 +73,12 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
     if (!replyToMessage) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle escape if slash command dropdown is NOT open
-      if (e.key === "Escape" && !isSlashCommandOpenRef.current) {
+      // defaultPrevented: the dropdown's own Escape closed it on this keypress
+      if (
+        e.key === "Escape" &&
+        !e.defaultPrevented &&
+        !isSlashCommandOpenRef.current
+      ) {
         e.preventDefault();
         onRemoveRef.current?.();
       }
