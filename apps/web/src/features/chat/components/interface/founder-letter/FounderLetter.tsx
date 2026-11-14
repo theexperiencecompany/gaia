@@ -3,7 +3,7 @@
 import { Modal } from "@heroui/react";
 import { CancelIcon } from "@icons";
 import type { CSSProperties } from "react";
-
+import { modalVariants } from "@/components/shared/controlVariants";
 import { useFounderLetter } from "@/features/chat/hooks/useFounderLetter";
 import { useFirstSteps } from "@/features/first-steps";
 import { track } from "@/lib/analytics";
@@ -241,7 +241,11 @@ export function FounderLetter({ hidden = false }: FounderLetterProps) {
           <Modal.Container className="items-center justify-center p-3 sm:p-6">
             <Modal.Dialog
               aria-label="A letter from Aryan Randeriya"
-              className="m-0 max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain bg-transparent p-0 shadow-none"
+              className={modalVariants({
+                inset: "none",
+                className:
+                  "m-0 max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain bg-transparent shadow-none",
+              })}
             >
               <div className="relative flex flex-col" style={LETTER_TYPOGRAPHY}>
                 <PaperBackdrop />
