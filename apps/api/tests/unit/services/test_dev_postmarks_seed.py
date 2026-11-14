@@ -14,19 +14,20 @@ from app.constants.briefing import (
     DAILY_KICKER,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
-    SECTION_TITLES,
     WEEKLY_FAMILY,
+    ArtFamily,
     BriefAction,
     BriefOutcome,
-    SectionKey,
     hue_for_day,
 )
 from app.constants.notifications import NotificationChannel
+from app.models.brief_composition_models import SectionBlock
 from app.models.briefing_models import BriefingPayload, EditionRender
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.editions.artworks import artworks_for
 from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmarks
 from app.utils.errors import AppError
 
@@ -138,9 +139,13 @@ async def test_a_day_with_asks_and_work_reads_as_two_numbered_sections(user, see
     seed = dev_postmarks_seed._SEED_DAYS[PACKED_THURSDAY]
     brief = seeded.payloads()[PACKED_THURSDAY]
     day = LAST_DAY - timedelta(days=PACKED_THURSDAY)
-    assert [(s.numeral, s.key, s.title) for s in brief.sections] == [
-        (SECTION_NUMERALS[0], SectionKey.NEEDS_YOU, SECTION_TITLES[SectionKey.NEEDS_YOU]),
-        (SECTION_NUMERALS[1], SectionKey.GAIA_DID, SECTION_TITLES[SectionKey.GAIA_DID]),
+    assert [(s.numeral, s.title) for s in brief.sections] == [
+        (SECTION_NUMERALS[0], "Waiting on you"),
+        (SECTION_NUMERALS[1], "Done overnight"),
+    ]
+    assert brief.blocks == [
+        SectionBlock(kind="items", section=0),
+        SectionBlock(kind="items", section=1),
     ]
     asks, work = brief.sections
     assert [(i.action, i.text, i.kind) for i in asks.items] == [
@@ -164,8 +169,8 @@ async def test_a_day_with_nothing_waiting_drops_the_asks_section(user, seeded) -
     await seed_dev_postmarks(user, EMPTY_INBOX_DAY + 1)
 
     brief = seeded.payloads()[EMPTY_INBOX_DAY]
-    assert [(s.numeral, s.key) for s in brief.sections] == [
-        (SECTION_NUMERALS[0], SectionKey.GAIA_DID)
+    assert [(s.numeral, s.title) for s in brief.sections] == [
+        (SECTION_NUMERALS[0], "Done overnight")
     ]
 
 
@@ -204,17 +209,17 @@ async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user
     weekly = payloads[-1]
     assert weekly.week is not None and len(weekly.week.days) == 7
     assert [
-        (s.key, [(i.text, i.action, i.outcome, i.kind) for i in s.items]) for s in weekly.sections
+        (s.title, [(i.text, i.action, i.outcome, i.kind) for i in s.items]) for s in weekly.sections
     ] == [
         (
-            SectionKey.NEEDS_YOU,
+            "Waiting on you",
             [
                 ("Offsite venue", BriefAction.REPLY, None, "you"),
                 ("New lease terms", BriefAction.APPROVE, None, "you"),
             ],
         ),
         (
-            SectionKey.GAIA_DID,
+            "Done overnight",
             [
                 ("September expenses filed", None, BriefOutcome.FINISHED, "lookback"),
                 ("1:1 with Sam, now 3:30 PM", None, BriefOutcome.BOOKED, "lookback"),
@@ -223,7 +228,17 @@ async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user
             ],
         ),
     ]
+    assert [(b.kind, b.section) for b in weekly.blocks] == [("items", 0), ("items", 1)]
     assert seeded.deliver.await_count == 5
+
+
+async def test_a_framed_family_is_seeded_hanging_a_painting_that_fits_it(user, seeded) -> None:
+    await seed_dev_editions(user, len(NON_POSTAL_FAMILIES))
+
+    hung = {p.template_family: p.artwork_id for p in seeded.payloads()}
+    for family in ArtFamily:
+        assert hung[family] in artworks_for(family)
+    assert {f for f, artwork_id in hung.items() if artwork_id} == set(ArtFamily)
 
 
 async def test_no_editions_seeds_nothing_and_too_many_is_refused(user, seeded) -> None:

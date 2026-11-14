@@ -20,6 +20,7 @@ from app.constants.chat import ConversationSource
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
+from app.models.brief_pool_models import GoalOrigin
 from app.models.user_models import DayZeroHello, UserDocument
 from app.services.briefing import context, silent_turn
 from app.services.delivery.chat_channel import ChatChannel
@@ -49,13 +50,15 @@ class Seams:
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.get_user = AsyncMock(return_value=_user())
         self.mark_sent = AsyncMock()
-        self.goal = AsyncMock(return_value=("Stated goal: raise a seed round", True))
+        self.goal = AsyncMock(
+            return_value=[context.StatedGoal("raise a seed round", GoalOrigin.ONBOARDING)]
+        )
         self.agent = AsyncMock(return_value=SimpleNamespace(message='["Hi Ada!", "Brief at 8."]'))
         self.post = AsyncMock(return_value=OutboundResult.PUBLISHED)
         self.capture = MagicMock()
         monkeypatch.setattr(user_repository, "get", self.get_user)
         monkeypatch.setattr(user_repository, "mark_day_zero_hello_sent", self.mark_sent)
-        monkeypatch.setattr(context, "format_goal_block", self.goal)
+        monkeypatch.setattr(context, "stated_goals", self.goal)
         monkeypatch.setattr(silent_turn, "call_agent_silent", self.agent)
         monkeypatch.setattr(hello, "post_to_platform_chat", self.post)
         monkeypatch.setattr(hello, "capture", self.capture)
@@ -223,7 +226,7 @@ class TestDelivery:
         self, seams: Seams, name: str | None
     ) -> None:
         seams.get_user.return_value = _user(name=name, email="delivered+dev@resend.dev")
-        seams.goal.return_value = ("No stated goal on record yet.", False)
+        seams.goal.return_value = []
 
         await seams.send()
 

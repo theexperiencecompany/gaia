@@ -33,6 +33,7 @@ from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingItem,
@@ -107,20 +108,27 @@ def _user_with_focus(focus: str) -> UserDocument:
     return UserDocument(onboarding=OnboardingSubdocument(focus=focus))
 
 
+def _memory(note: str, *entities: str) -> SimpleNamespace:
+    """Return a recalled memory as the goal reader sees it: its note and the names it is about."""
+    return SimpleNamespace(note=note, entities=[SimpleNamespace(name=e) for e in entities])
+
+
 class TestGoalBlock:
     @pytest.fixture
     def recall(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         recall = AsyncMock(return_value=SimpleNamespace(memories=[]))
         monkeypatch.setattr(context, "memory_engine", SimpleNamespace(recall=recall))
-        monkeypatch.setattr(context, "entry_to_note", str)
+        monkeypatch.setattr(context, "entry_to_note", lambda entry: entry.note)
         return recall
 
     @pytest.mark.parametrize("focus", ["", "  ", "nothing", "N/A", "idk"])
     async def test_junk_focus_and_no_memories_is_no_goal(
         self, recall: AsyncMock, focus: str
     ) -> None:
-        block, has_goal = await context.format_goal_block(_USER, _user_with_focus(focus))
+        goals = await context.stated_goals(_USER, _user_with_focus(focus))
+        block, has_goal = context.format_goal_block(goals)
 
+        assert goals == []
         assert has_goal is False
         assert "No stated goal" in block
 
@@ -128,13 +136,19 @@ class TestGoalBlock:
         self, recall: AsyncMock
     ) -> None:
         recall.return_value = SimpleNamespace(
-            memories=["Raising a seed round", "Raising a seed round"]
+            memories=[
+                _memory("Raising a seed round", "Accel"),
+                _memory("Raising a seed round", "Accel"),
+            ]
         )
 
-        block, has_goal = await context.format_goal_block(
-            _USER, _user_with_focus("Close 10 customers")
-        )
+        goals = await context.stated_goals(_USER, _user_with_focus("Close 10 customers"))
+        block, has_goal = context.format_goal_block(goals)
 
+        assert goals == [
+            context.StatedGoal("Close 10 customers", GoalOrigin.ONBOARDING),
+            context.StatedGoal("Raising a seed round", GoalOrigin.MEMORY, ("Accel",)),
+        ]
         assert has_goal is True
         assert block.splitlines() == ["Stated goal: Close 10 customers", "- Raising a seed round"]
 
@@ -143,7 +157,7 @@ class TestGoalBlock:
         recall.side_effect = RuntimeError("vector store down")
 
         with pytest.raises(RuntimeError, match="vector store down"):
-            await context.format_goal_block(_USER, _user_with_focus("Ship v2"))
+            await context.stated_goals(_USER, _user_with_focus("Ship v2"))
 
 
 class TestTrackedWork:
@@ -474,8 +488,6 @@ class TestWeek:
             (0, 0),
             (0, 1),
         ]
-        assert week.shipped == ["Gym"]
-        assert week.handled == ["Deck", "Memo"]
         assert context.week_start_utc(clock) == datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
 
 
@@ -496,7 +508,7 @@ class TestGoalBlockEdges:
     def recall(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
         recall = AsyncMock(return_value=SimpleNamespace(memories=[]))
         monkeypatch.setattr(context, "memory_engine", SimpleNamespace(recall=recall))
-        monkeypatch.setattr(context, "entry_to_note", str)
+        monkeypatch.setattr(context, "entry_to_note", lambda entry: entry.note)
         return recall
 
     def test_a_missing_focus_is_not_a_goal(self) -> None:
@@ -505,22 +517,26 @@ class TestGoalBlockEdges:
     async def test_no_onboarding_and_no_memories_asks_for_goal_discovery(
         self, recall: AsyncMock
     ) -> None:
-        assert await context.format_goal_block(_USER, UserDocument()) == (
+        assert context.format_goal_block(await context.stated_goals(_USER, UserDocument())) == (
             "No stated goal on record yet — treat goal discovery as part of today's job.",
             False,
         )
 
     async def test_memory_is_asked_what_the_user_is_working_on(self, recall: AsyncMock) -> None:
-        await context.format_goal_block(_USER, UserDocument())
+        await context.stated_goals(_USER, UserDocument())
 
         recall.assert_awaited_once_with(
             _USER, "what is the user currently working on and their goals", limit=5
         )
 
     async def test_a_blank_memory_is_not_a_goal(self, recall: AsyncMock) -> None:
-        recall.return_value = SimpleNamespace(memories=["   ", "Hiring a designer"])
+        recall.return_value = SimpleNamespace(
+            memories=[_memory("   "), _memory("Hiring a designer")]
+        )
 
-        block, has_goal = await context.format_goal_block(_USER, UserDocument())
+        block, has_goal = context.format_goal_block(
+            await context.stated_goals(_USER, UserDocument())
+        )
 
         assert (block, has_goal) == ("- Hiring a designer", True)
 
@@ -768,8 +784,6 @@ class TestWeekEdges:
             week = await context.gather_week(_USER, clock, completed)
 
         assert [(d.you, d.gaia) for d in week.days][:2] == [(1, 1), (1, 1)]
-        assert week.shipped == ["Run", "Gym"]
-        assert week.handled == ["Brief", "Memo"]
         assert context.week_start_utc(clock).tzinfo is UTC
 
     async def test_two_on_one_day_count_twice(

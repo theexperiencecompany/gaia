@@ -23,6 +23,7 @@ from app.db.repositories.workflow_executions import workflow_executions_reposito
 from app.db.repositories.workflows import workflow_repository
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
+from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingKind,
@@ -132,24 +133,41 @@ def has_meaningful_focus(focus: str | None) -> bool:
     return bool(cleaned) and cleaned.lower() not in _JUNK_FOCUS_VALUES
 
 
-async def format_goal_block(user_id: str, user: UserDocument) -> tuple[str, bool]:
-    """Return (formatted goal block, has_goal); has_goal gates cold-start."""
-    focus = (user.onboarding.focus if user.onboarding else "").strip()
-    lines = [f"Stated goal: {focus}"] if has_meaningful_focus(focus) else []
+@dataclass(frozen=True)
+class StatedGoal:
+    """A goal the user stated, and the names it is about, which link their todos to it."""
 
+    statement: str
+    origin: GoalOrigin
+    terms: tuple[str, ...] = ()
+
+
+async def stated_goals(user_id: str, user: UserDocument) -> list[StatedGoal]:
+    """Return the onboarding focus, when it is a real goal, then what memory says they work toward."""
+    focus = (user.onboarding.focus if user.onboarding else "").strip()
+    goals = [StatedGoal(focus, GoalOrigin.ONBOARDING)] if has_meaningful_focus(focus) else []
     result = await memory_engine.recall(
         user_id, "what is the user currently working on and their goals", limit=5
     )
     for entry in result.memories:
-        line = f"- {entry_to_note(entry).strip()}"
-        if line != "- " and line not in lines:
-            lines.append(line)
+        statement = entry_to_note(entry).strip()
+        if statement and statement not in {g.statement for g in goals}:
+            terms = tuple(entity.name for entity in entry.entities)
+            goals.append(StatedGoal(statement, GoalOrigin.MEMORY, terms))
+    return goals
 
-    if not lines:
+
+def format_goal_block(goals: list[StatedGoal]) -> tuple[str, bool]:
+    """Return (formatted goal block, has_goal); has_goal gates cold-start."""
+    if not goals:
         return (
             "No stated goal on record yet — treat goal discovery as part of today's job.",
             False,
         )
+    lines = [
+        f"Stated goal: {g.statement}" if g.origin is GoalOrigin.ONBOARDING else f"- {g.statement}"
+        for g in goals
+    ]
     return ("\n".join(lines), True)
 
 
@@ -283,24 +301,33 @@ def _to_event(event: GoogleCalendarEventResource, tz: ZoneInfo) -> BriefingEvent
     return None
 
 
+async def calendar_connected(user_id: str) -> bool:
+    """Report whether the user has a calendar connected, so an empty read means an empty day."""
+    return GOOGLE_CALENDAR_INTEGRATION_ID in await get_connected_integration_ids(user_id)
+
+
+async def read_calendar(
+    user_id: str, start: datetime, end: datetime
+) -> list[GoogleCalendarEventResource]:
+    """Return the user's calendar events from start to end, as Google sends them.
+
+    Empty when no calendar is connected; a connected calendar that fails to answer raises.
+    """
+    if not await calendar_connected(user_id):
+        return []
+    response = await get_calendar_events(
+        user_id, time_min=start.isoformat(), time_max=end.isoformat(), fetch_all=True
+    )
+    return response.events
+
+
 async def gather_calendar(
     user_id: str, clock: UserClock, *, days: int, days_ahead: int = 0
 ) -> list[BriefingEvent]:
-    """Return the user's calendar events over days local days from days_ahead.
-
-    Ordered by start (all-day first). Empty when no calendar is connected; a connected
-    calendar that fails to answer raises.
-    """
-    if GOOGLE_CALENDAR_INTEGRATION_ID not in await get_connected_integration_ids(user_id):
-        return []
+    """Return the user's calendar events over days local days from days_ahead, ordered by start (all-day first)."""
     start = day_start_utc(clock, days_ago=-days_ahead)
-    response = await get_calendar_events(
-        user_id,
-        time_min=start.isoformat(),
-        time_max=(start + timedelta(days=days)).isoformat(),
-        fetch_all=True,
-    )
-    events = [e for e in (_to_event(raw, clock.tz) for raw in response.events) if e]
+    raw = await read_calendar(user_id, start, start + timedelta(days=days))
+    events = [e for e in (_to_event(event, clock.tz) for event in raw) if e]
     return sorted(events, key=lambda e: (e.date, e.start or ""))
 
 
@@ -310,18 +337,13 @@ def week_start_utc(clock: UserClock) -> datetime:
 
 
 async def gather_week(user_id: str, clock: UserClock, completed: CompletedWork) -> BriefingWeek:
-    """Lay this week's completions (gathered since week_start_utc) out by owner and day.
+    """Count this week's completions (gathered since week_start_utc) by owner and day.
 
     Also includes the calendar for the seven days ahead.
     """
     monday = clock.now_local.date() - timedelta(days=clock.now_local.weekday())
     days = [BriefingWeekDay(you=0, gaia=0) for _ in range(7)]
-    shipped: list[str] = []
-    handled: list[str] = []
-    for docs, titles, by_gaia in (
-        (completed.gaia, handled, True),
-        (completed.user, shipped, False),
-    ):
+    for docs, by_gaia in ((completed.gaia, True), (completed.user, False)):
         for doc in reversed(docs):
             if doc.completed_at is None:
                 continue
@@ -332,11 +354,5 @@ async def gather_week(user_id: str, clock: UserClock, completed: CompletedWork) 
                 days[index].gaia += 1
             else:
                 days[index].you += 1
-            titles.append(doc.title)
     ahead = await gather_calendar(user_id, clock, days=7, days_ahead=1)
-    return BriefingWeek(
-        days=days,
-        shipped=shipped[:WEEK_LIST_LIMIT],
-        handled=handled[:WEEK_LIST_LIMIT],
-        ahead=ahead[:WEEK_LIST_LIMIT],
-    )
+    return BriefingWeek(days=days, ahead=ahead[:WEEK_LIST_LIMIT])

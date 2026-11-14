@@ -117,6 +117,12 @@ const config: KnipConfig = {
     // into the headless-Chromium render document (editions/explorer_render.py),
     // never imported as JS modules — knip cannot see that consumption.
     "apps/api/app/services/briefing/editions/explorer/js/**",
+    // The block plumbing those templates draw with: inlined into the same document the same way.
+    "apps/api/app/services/briefing/editions/explorer/shell/**",
+
+    // The edition reading-system rules: read by test_edition_reading_system.py and evaluated
+    // in the rendered page through Playwright, never imported.
+    "apps/api/tests/integration/edition_reading_rules.js",
 
     // Jev's in-page scripts: read by jev/page.py and evaluated in the tab over CDP, never imported.
     "apps/api/app/services/browser/jev/*.js",

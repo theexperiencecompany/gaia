@@ -13,7 +13,6 @@ from app.constants.briefing import BriefAction
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.codes import Symbology, code_geometry
 from app.services.briefing.editions.explorer_adapter import ExplorerArt, build_ed
-from app.services.briefing.editions.explorer_render import explorer_family_ids
 from app.services.briefing.editions.stamps import stamp_for
 
 LINK = "https://heygaia.link/aB3dE5gH7jK"
@@ -164,204 +163,78 @@ class TestArt:
         assert ed["assets"] == ASSETS
 
 
+_WEEK = {
+    "days": [{"you": i, "gaia": 7 - i} for i in range(7)],
+    "ahead": [{"date": "2026-07-06", "title": "Board meeting"}],
+}
+_TODAY_EVENT = {"date": "2026-07-05", "start": "11:00", "title": "Sequoia"}
+
+_SECTION = {
+    "numeral": "I",
+    "title": "Needs you",
+    "items": [
+        _item("Acme MSA renewal", "you", action=BriefAction.APPROVE, count=3),
+        _item("Sync Stripe", "failed"),
+        _item("Investor update", "lookback"),
+    ],
+}
+
+
 @pytest.mark.unit
-class TestContent:
-    """Each bucket holds what its heading promises.
-
-    "Today" is the user's calendar led by the first thing waiting on them;
-    GAIA's work (and any note) is "while you slept"; every ask, including a
-    failed run to retry, is a decision. A status word is never a headline.
-    """
-
-    def _daily(self, **overrides: Any) -> BriefingPayload:
-        return _payload(
-            sections=[
-                {
-                    "numeral": "I",
-                    "title": "NEEDS YOU",
-                    "items": [
-                        _item("Priya reply", "you", action=BriefAction.REPLY, detail="due 12:00"),
-                        _item("Sync Stripe invoices", "failed"),
-                    ],
-                },
-                {
-                    "numeral": "II",
-                    "title": "GAIA'S WORK",
-                    "items": [
-                        _item("Investor update", "lookback"),
-                        _item("Q4 hiring plan", "gaia"),
-                    ],
-                },
-            ],
-            calendar=[
-                {
-                    "date": "2026-07-05",
-                    "start": "11:00",
-                    "title": "Sequoia",
-                    "location": "Menlo Park",
-                },
-                {"date": "2026-07-05", "start": None, "title": "Offsite"},
-            ],
-            **overrides,
+class TestBlocks:
+    def test_the_drawn_blocks_are_passed_in_reading_order(self) -> None:
+        ed = _build(
+            _payload(
+                sections=[_SECTION],
+                blocks=[
+                    {"kind": "note", "text": "Mornings are tight."},
+                    {"kind": "items", "section": 0},
+                ],
+            )
         )
 
-    def test_today_is_the_calendar_only(self) -> None:
-        today = _build(self._daily())["content"]["today"]
+        assert [b["kind"] for b in ed["blocks"]] == ["note", "items"]
 
-        assert today == [
+    def test_the_weekly_family_lists_the_week_ahead_as_its_calendar(self) -> None:
+        ed = _build(_payload(week=_WEEK, calendar=[_TODAY_EVENT]), family="weekly")
+
+        assert ed["blocks"] == [
             {
-                "time": "11:00 AM",
-                "t24": "11:00",
-                "label": "Sequoia",
-                "note": "Menlo Park",
-                "tag": "",
-            },
-            {"time": None, "t24": None, "label": "Offsite", "note": None, "tag": ""},
-        ]
-
-    @pytest.mark.parametrize("family", sorted(explorer_family_ids()))
-    def test_no_item_appears_in_two_sections_in_any_family(self, family: str) -> None:
-        content = build_ed(
-            self._daily(),
-            edition_no=1,
-            generated_local="",
-            assets=ASSETS,
-            art=ART,
-            family=family,
-        )["content"]
-
-        rows = [
-            *content["today"],
-            *content["overnight"],
-            *content["running"],
-            *content["decisions"],
-        ]
-        labels = [row["label"] for row in rows if row["label"] != "—"]
-        assert len(labels) == len(set(labels)), labels
-
-    def test_a_failed_run_is_a_decision_to_retry_never_a_today_item(self) -> None:
-        content = _build(self._daily())["content"]
-
-        assert content["decisions"] == [
-            {"verb": "Reply", "label": "Priya reply", "note": "due 12:00", "action": "reply"},
-            {"verb": "Retry", "label": "Sync Stripe invoices", "note": None, "action": "retry"},
-        ]
-        assert all("Stripe" not in row["label"] for row in content["today"])
-
-    def test_overnight_holds_only_finished_work_and_running_work_is_its_own_bucket(self) -> None:
-        """Regression: Air Mail filed in-progress work under "Done while you slept"."""
-        content = _build(self._daily())["content"]
-
-        assert [(r["label"], r["tag"], r["outcome"]) for r in content["overnight"]] == [
-            ("Investor update", "DONE", "finished")
-        ]
-        assert [(r["label"], r["tag"], r["outcome"]) for r in content["running"]] == [
-            ("Q4 hiring plan", "IN PROGRESS", "started")
-        ]
-
-    def test_an_item_is_filed_by_what_it_asks_or_reports_not_by_its_kind(self) -> None:
-        """A lead that is a calendar event still asks something: it is a decision."""
-        content = _build(
-            _payload(
-                sections=[
+                "kind": "calendar",
+                "events": [
                     {
-                        "numeral": "I",
-                        "title": "First up",
-                        "key": "lead",
-                        "items": [_item("Sequoia", "note", action=BriefAction.ATTEND)],
+                        "t12": None,
+                        "t24": None,
+                        "day": "Mon",
+                        "title": "Board meeting",
+                        "detail": None,
+                        "logo": "googlecalendar",
                     }
-                ]
-            )
-        )["content"]
-
-        assert content["overnight"] == []
-        assert content["decisions"] == [
-            {"verb": "Attend", "label": "Sequoia", "note": None, "action": "attend"}
+                ],
+                "more": 0,
+                "first": None,
+                "last": None,
+            }
         ]
 
-    def test_an_empty_day_leaves_every_bucket_empty_instead_of_a_fake_row(self) -> None:
-        """Regression: empty buckets rendered as "EOD Nothing on the calendar today" rows."""
-        content = _build(_payload(sections=[]))["content"]
+    def test_a_daily_family_lists_todays_calendar(self) -> None:
+        ed = _build(_payload(week=_WEEK, calendar=[_TODAY_EVENT]), family="swiss")
 
-        assert (
-            content["today"],
-            content["overnight"],
-            content["running"],
-            content["decisions"],
-        ) == ([], [], [], [])
+        assert [
+            e["title"] for b in ed["blocks"] if b["kind"] == "calendar" for e in b["events"]
+        ] == ["Sequoia"]
 
-    def test_a_note_reads_as_overnight_without_a_tag(self) -> None:
-        overnight = _build(
-            _payload(sections=[{"numeral": "I", "title": "X", "items": [_item("Heads up")]}])
-        )["content"]["overnight"]
+    def test_todays_events_are_not_named_by_a_weekday_and_the_apps_read_carry_their_marks(
+        self,
+    ) -> None:
+        ed = _build(
+            _payload(calendar=[_TODAY_EVENT], sources_read=["Gmail"]),
+            family="swiss",
+        )
 
-        assert overnight == [
-            {"t24": None, "label": "Heads up", "note": None, "tag": "", "outcome": "changed"}
-        ]
-
-    def test_each_section_says_how_many_its_cap_left_out(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {
-                        "numeral": "I",
-                        "title": "Needs you",
-                        "key": "needs_you",
-                        "items": [_item("Acme invoice", "you")],
-                        "more": 2,
-                    },
-                    {
-                        "numeral": "II",
-                        "title": "GAIA's work",
-                        "key": "gaia_did",
-                        "items": [_item("Deck", "lookback")],
-                    },
-                ]
-            )
-        )["content"]
-
-        assert content["more"] == {"needs_you": 2, "updates": 0, "gaia_did": 0}
-
-    def test_the_updates_and_gaia_sections_report_their_own_overflow(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {
-                        "numeral": "I",
-                        "title": "Updates",
-                        "key": "updates",
-                        "items": [_item("Payout landed", "lookback")],
-                        "more": 5,
-                    },
-                    {
-                        "numeral": "II",
-                        "title": "GAIA's work",
-                        "key": "gaia_did",
-                        "items": [_item("Deck", "lookback")],
-                        "more": 7,
-                    },
-                ]
-            )
-        )["content"]
-
-        assert content["more"] == {"needs_you": 0, "updates": 5, "gaia_did": 7}
-
-    def test_a_brief_without_a_gaia_section_says_none_were_left_out_of_it(self) -> None:
-        content = _build(
-            _payload(
-                sections=[
-                    {
-                        "numeral": "I",
-                        "title": "Updates",
-                        "key": "updates",
-                        "items": [_item("Payout landed", "lookback")],
-                        "more": 5,
-                    }
-                ]
-            )
-        )["content"]
-
-        assert content["more"] == {"needs_you": 0, "updates": 5, "gaia_did": 0}
+        [calendar] = [b for b in ed["blocks"] if b["kind"] == "calendar"]
+        assert [e["day"] for e in calendar["events"]] == [None]
+        assert ed["sources"] == [{"name": "Gmail", "logo": "gmail"}]
 
 
 @pytest.mark.unit
@@ -372,15 +245,8 @@ class TestHeadline:
 
         assert ed["deck"] == "Two replies need you"
 
-    def test_an_empty_bucket_is_never_padded_with_a_placeholder_row(self) -> None:
-        content = _build(_payload(), family="boardingpass")["content"]
-
-        assert (
-            content["today"],
-            content["overnight"],
-            content["running"],
-            content["decisions"],
-        ) == ([], [], [], [])
+    def test_an_empty_day_draws_no_block_instead_of_a_placeholder_row(self) -> None:
+        assert _build(_payload(), family="boardingpass")["blocks"] == []
 
 
 @pytest.mark.unit
@@ -405,7 +271,7 @@ class TestStats:
     def test_figures_come_from_the_tallies(self) -> None:
         ed = _build(_payload(tallies={"done_by_you": 2, "done_by_gaia": 1}))
 
-        assert ed["content"]["stats"] == {
+        assert ed["stats"] == {
             "done": 3,
             "you": 2,
             "gaia": 1,
@@ -414,70 +280,39 @@ class TestStats:
         }
 
     def test_a_zero_figure_is_unknown_so_the_template_draws_nothing(self) -> None:
-        stats = _build(_payload(tallies={"done_by_you": 1, "done_by_gaia": 0}))["content"]["stats"]
+        stats = _build(_payload(tallies={"done_by_you": 1, "done_by_gaia": 0}))["stats"]
 
         assert (stats["done"], stats["you"], stats["gaia"]) == (1, 1, None)
 
     def test_work_done_only_by_gaia_still_draws_the_figures(self) -> None:
-        stats = _build(_payload(tallies={"done_by_you": 0, "done_by_gaia": 2}))["content"]["stats"]
+        stats = _build(_payload(tallies={"done_by_you": 0, "done_by_gaia": 2}))["stats"]
 
         assert (stats["done"], stats["you"], stats["gaia"]) == (2, None, 2)
 
     def test_no_tallies_leaves_no_stats_block(self) -> None:
-        assert _build(_payload())["content"]["stats"] is None
+        assert _build(_payload())["stats"] is None
 
     def test_zero_tallies_leave_no_stats_block(self) -> None:
         payload = _payload(tallies={"done_by_you": 0, "done_by_gaia": 0})
 
-        assert _build(payload)["content"]["stats"] is None
+        assert _build(payload)["stats"] is None
 
 
 @pytest.mark.unit
 class TestAwaiting:
-    def test_counts_every_todo_behind_the_asks_and_retries(self) -> None:
-        section = {
-            "numeral": "I",
-            "title": "Needs you",
-            "items": [
-                _item("Acme MSA renewal", "you", action=BriefAction.APPROVE, count=3),
-                _item("Sync Stripe", "failed"),
-                _item("Investor update", "lookback"),
-            ],
-        }
+    def test_counts_every_todo_behind_the_drawn_asks(self) -> None:
+        payload = _payload(sections=[_SECTION], blocks=[{"kind": "items", "section": 0}])
 
-        assert _build(_payload(sections=[section]))["content"]["awaiting"] == 4
+        assert _build(payload)["awaiting"] == 4
+
+    def test_an_ask_the_edition_does_not_draw_is_not_billed(self) -> None:
+        assert _build(_payload(sections=[_SECTION]))["awaiting"] is None
 
     def test_nothing_awaiting_is_unknown_so_the_template_bills_no_figure(self) -> None:
         section = {"numeral": "I", "title": "Work", "items": [_item("Deck", "lookback")]}
+        payload = _payload(sections=[section], blocks=[{"kind": "items", "section": 0}])
 
-        assert _build(_payload(sections=[section]))["content"]["awaiting"] is None
-
-
-_WEEK = {
-    "days": [{"you": i, "gaia": 7 - i} for i in range(7)],
-    "shipped": ["Launch post"],
-    "handled": ["Inbox zero"],
-    "ahead": [{"date": "2026-07-06", "title": "Board meeting"}],
-}
-
-
-@pytest.mark.unit
-class TestWeek:
-    def test_the_weekly_family_draws_the_real_week(self) -> None:
-        ed = _build(_payload(week=_WEEK), family="weekly")
-
-        assert ed["week"] == {
-            "days": [{"you": i, "gaia": 7 - i} for i in range(7)],
-            "shipped": ["Launch post"],
-            "handled": ["Inbox zero"],
-            "ahead": [{"day": "Mon", "label": "Board meeting"}],
-        }
-
-    def test_the_weekly_family_without_a_week_draws_none(self) -> None:
-        assert _build(_payload(), family="weekly")["week"] is None
-
-    def test_other_families_carry_no_week(self) -> None:
-        assert _build(_payload(week=_WEEK), family="swiss")["week"] is None
+        assert _build(payload)["awaiting"] is None
 
 
 @pytest.mark.unit

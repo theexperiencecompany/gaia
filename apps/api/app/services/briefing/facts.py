@@ -1,11 +1,14 @@
 """Build the facts block the model voices, and the values its slots render, from the chosen sections."""
 
-from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from dataclasses import dataclass, field
+from datetime import datetime
 
 from app.constants.briefing import (
     GAIA_APP_NAME,
+    NO_CALENDAR_CONNECTED,
 )
+from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.briefing_models import (
     BRIEFING_ITEM_STATES,
     NEEDS_YOU_ITEM_KINDS,
@@ -16,13 +19,20 @@ from app.models.briefing_models import (
 )
 from app.services.briefing import context
 from app.services.briefing.artifacts import ArtifactFact
+from app.services.briefing.candidates.calendar import event_time
 from app.services.briefing.candidates.subjects import subject_key
+from app.services.briefing.composition.voiced_blocks import (
+    block_words,
+    charted_figures,
+    voiced_block_lines,
+)
 from app.services.briefing.context import UserClock
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import (
     BriefFact,
     CountSlot,
     SlotValues,
+    figures_in,
 )
 
 
@@ -31,11 +41,11 @@ def _fact_line(fact_id: int, item: BriefingItem, fact: BriefFact, detail: str | 
     if item.app and item.app != GAIA_APP_NAME:
         line += f" | in {item.app}"
     if fact.time:
-        line += f" | time: {fact.time}"
+        line += f" | time: [[fact:{fact_id}.time]] ({fact.time})"
     if detail:
         line += f" | detail: {detail}"
     if fact.count > 1:
-        line += f" | {fact.count} requests, one item"
+        line += f" | [[fact:{fact_id}.count]] ({fact.count}) requests, one item"
     return line
 
 
@@ -54,8 +64,8 @@ class Facts:
     """The brief's sections and stats, the facts block the model voices, and what its slots render.
 
     deliverables maps a fact id to the todo whose deliverable it links (minted only when the
-    message links it); addresses maps a fact id to the app link it carries; must_mention are
-    the facts waiting on the user and today's events, which the message refers to.
+    message links it); addresses maps a fact id to the app link it carries; lead is the fact
+    the composition leads with, which the message refers to, or None.
     """
 
     sections: list[BriefingSection]
@@ -63,7 +73,7 @@ class Facts:
     values: SlotValues
     deliverables: dict[int, str]
     addresses: dict[int, str]
-    must_mention: frozenset[int]
+    lead: int | None
 
 
 def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
@@ -82,16 +92,8 @@ def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
 
 def _due_on(due_at: datetime, clock: UserClock) -> str:
     """Say a due date the way the brief does: today, or its weekday and date."""
-    aware = due_at if due_at.tzinfo else due_at.replace(tzinfo=UTC)
-    day = aware.astimezone(clock.tz).date()
+    day = due_at.date()
     return "today" if day.isoformat() == clock.date_str else day.strftime("%a %b %-d")
-
-
-def _event_time(event: BriefingEvent, clock: UserClock) -> str | None:
-    """Say when an event starts; one on another day than the brief's names its weekday too."""
-    day = "" if event.date == clock.date_str else date.fromisoformat(event.date).strftime("%a")
-    start = datetime.strptime(event.start, "%H:%M").strftime("%-I:%M %p") if event.start else ""
-    return " ".join(part for part in (day, start) if part) or None
 
 
 def _counts(items: list[BriefingItem], open_todos: int, events: int) -> dict[CountSlot, int]:
@@ -108,20 +110,24 @@ def _counts(items: list[BriefingItem], open_todos: int, events: int) -> dict[Cou
 
 
 @dataclass(frozen=True)
-class CalendarSpan:
-    """How the facts head the brief's calendar, and say it is empty."""
+class BriefSpan:
+    """How the facts name the brief's span: its calendar's heading, an empty calendar, no items."""
 
     heading: str
     empty: str
+    no_items: str
 
 
-TODAY = CalendarSpan(
+_NO_CLAIM = "Do not claim anything ran, finished, or is pending beyond what is stated here."
+TODAY = BriefSpan(
     heading="Today's calendar",
-    empty="The user's calendar has nothing today (or no calendar is connected).",
+    empty="The user's calendar has nothing today.",
+    no_items=f"No tracked work, results or app items need them today. {_NO_CLAIM}",
 )
-WEEK_AHEAD = CalendarSpan(
+WEEK_AHEAD = BriefSpan(
     heading="The week ahead",
-    empty="The user's calendar has nothing in the week ahead (or no calendar is connected).",
+    empty="The user's calendar has nothing in the week ahead.",
+    no_items=f"The digest holds no items from this week. {_NO_CLAIM}",
 )
 
 
@@ -133,12 +139,15 @@ class FactSources:
     """
 
     artifacts: dict[str, ArtifactFact]
+    open_todos: int
     calendar: list[BriefingEvent]
+    calendar_connected: bool
     #: The pool id of each calendar event, in calendar order.
     event_ids: list[int]
-    span: CalendarSpan
+    span: BriefSpan
     todos_note: str | None
-    open_todos: int = 0
+    #: The composition's blocks, whose charts, quotes, progress and notes the voice is told of.
+    blocks: list[BriefBlock] = field(default_factory=list)
 
 
 def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts:
@@ -149,13 +158,13 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     deliverable; app signals are voiced from their own block, with their memory.
     """
     facts: dict[int, BriefFact] = {}
+    own_words = block_words(sources.blocks)
     deliverables: dict[int, str] = {}
     addresses: dict[int, str] = {}
     items = [it for sec in chosen.sections for it in sec.items]
     counts = _counts(items, sources.open_todos, len(sources.calendar))
-    voiced = " · ".join(f"{slot.value}: {n}" for slot, n in counts.items())
+    voiced = " · ".join(f"[[count:{slot.value}]] ({n})" for slot, n in counts.items())
     fact_lines = [f"[COUNTS] {voiced}"] if voiced else []
-    must_mention: list[int] = []
     for sec, picked in zip(chosen.sections, chosen.picked, strict=True):
         fact_lines.append(f"[{sec.title}]")
         for it, (fact_id, candidate) in zip(sec.items, picked, strict=True):
@@ -170,9 +179,8 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
                 time=_due_on(candidate.due_at, clock) if candidate.due_at else None,
                 count=it.count,
             )
-            if it.kind in NEEDS_YOU_ITEM_KINDS:
-                must_mention.append(fact_id)
             linkable = fact_id in deliverables or fact_id in addresses
+            own_words += _own_words(candidate, it, art)
             if candidate.signal is not None:
                 continue
             line = (
@@ -183,35 +191,61 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
             fact_lines.append(f"{line} | linkable" if linkable else line)
     events = list(zip(sources.event_ids, sources.calendar, strict=True))
     for fact_id, event in events:
-        facts[fact_id] = BriefFact(title=event.title, time=_event_time(event, clock))
+        facts[fact_id] = BriefFact(title=event.title, time=event_time(event, clock.date_str))
     if not chosen.sections:
-        fact_lines.append(
-            "GAIA has no tracked work and no background work ran. Do not claim anything "
-            "ran, finished, or is pending beyond what is stated here."
-        )
+        fact_lines.append(sources.span.no_items)
+    fact_lines += voiced_block_lines(sources.blocks)
     if sources.todos_note is not None:
         fact_lines.append(sources.todos_note)
-    fact_lines.append(_calendar_note(events, sources.span, clock))
+    fact_lines.append(_calendar_note(events, sources, clock))
     return Facts(
         sections=chosen.sections,
         block="\n".join(fact_lines),
-        values=SlotValues(facts=facts, counts=counts),
+        values=SlotValues(
+            facts=facts,
+            counts=counts,
+            series=charted_figures(sources.blocks),
+            quoted=figures_in(own_words),
+        ),
         deliverables=deliverables,
         addresses=addresses,
-        must_mention=frozenset([*must_mention, *sources.event_ids]),
+        lead=_lead(chosen, sources.blocks),
     )
 
 
+def _lead(chosen: Chosen, blocks: list[BriefBlock]) -> int | None:
+    """Return the fact id of the item the composition leads with, or None without a lead."""
+    led = [b.section for b in blocks if isinstance(b, SectionBlock) and b.kind == "lead"]
+    return chosen.picked[led[0]][0][0] if led else None
+
+
+def _own_words(
+    candidate: BriefCandidate, item: BriefingItem, art: ArtifactFact | None
+) -> list[str]:
+    """Return the words an item's fact line shows beside its title, which prose may quote."""
+    signal = candidate.signal
+    words = [candidate.title, candidate.detail, item.detail, art.snippet if art else None]
+    if signal is not None:
+        words += [signal.why, signal.state, signal.text]
+    return [w for w in words if w]
+
+
+def _event_slot(fact_id: int, time: str | None) -> str:
+    return f"[[fact:{fact_id}.time]] ({time})" if time else "all day"
+
+
 def _calendar_note(
-    events: list[tuple[int, BriefingEvent]], span: CalendarSpan, clock: UserClock
+    events: list[tuple[int, BriefingEvent]], sources: FactSources, clock: UserClock
 ) -> str:
+    if not sources.calendar_connected:
+        return NO_CALENDAR_CONNECTED
     if not events:
-        return span.empty
+        return sources.span.empty
     lines = [
-        f"- fact {fact_id} | {_event_time(e, clock) or 'all day'}: {e.title}"
+        f"- fact {fact_id} | {_event_slot(fact_id, event_time(e, clock.date_str))}: {e.title}"
         for fact_id, e in events
     ]
-    return f"{span.heading}:\n" + "\n".join(lines)
+    return f"{sources.span.heading}:\n" + "\n".join(lines)
 
 
 def user_todos_note(open_count: int, open_titles: list[str]) -> str:

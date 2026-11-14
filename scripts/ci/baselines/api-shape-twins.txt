@@ -192,6 +192,7 @@ libs/shared/ts/src/chat/types.ts:TodoProgressItem=NotificationView
 libs/shared/ts/src/chat/types.ts:TodoProject=ProjectCreate
 libs/shared/ts/src/chat/types.ts:TodoSubtask=SubTaskInput
 libs/shared/ts/src/chat/types.ts:TodoToolStats=TodoCounts
+libs/shared/ts/src/chat/types.ts:TwitterPostCreatedData=QuoteSpan
 libs/shared/ts/src/chat/types.ts:WebResult=SearchResultItem
 libs/shared/ts/src/chat/types.ts:WorkflowCreatedData=PublicWorkflowCard
 libs/shared/ts/src/desktop-tools/types.ts:DesktopToolResult=DesktopToolResultRequest

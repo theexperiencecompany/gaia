@@ -18,6 +18,7 @@ from app.constants.briefing import (
     BriefOutcome,
 )
 from app.constants.todos import (
+    BLOCKING_LABEL,
     FAILED_LABEL,
     GAIA_TRACKED_LABEL,
     NEEDS_REPLY_LABEL,
@@ -30,7 +31,6 @@ from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
-from app.models.brief_candidate_models import CandidateKind
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalRecord
@@ -94,18 +94,16 @@ class TestTrackedTodos:
 
         found = waiting_candidates(work)
 
-        assert [(c.title, c.kind, c.state, c.todo_id, c.app, c.action) for c in found] == [
+        assert [(c.title, c.state, c.todo_id, c.app, c.action) for c in found] == [
             (
                 "Approve the Priya reply",
-                CandidateKind.NEEDS_YOU,
                 "you",
                 "b1",
                 "GAIA",
-                BriefAction.REVIEW,
+                BriefAction.APPROVE,
             ),
             (
                 "Book the Lisbon flights",
-                CandidateKind.NEEDS_YOU,
                 "failed",
                 "f1",
                 "GAIA",
@@ -113,6 +111,20 @@ class TestTrackedTodos:
             ),
         ]
         assert all(c.outcome is None for c in found)
+
+    @pytest.mark.parametrize(
+        ("label", "action"),
+        [
+            (WAITING_FOR_APPROVAL_LABEL, BriefAction.APPROVE),
+            (NEEDS_REPLY_LABEL, BriefAction.REPLY),
+            (BLOCKING_LABEL, BriefAction.REVIEW),
+        ],
+    )
+    def test_a_waiting_todo_asks_what_its_label_says(self, label: str, action: BriefAction) -> None:
+        """Live brief: an approval read as "review", so "To approve" over it was refused."""
+        [found] = waiting_candidates(TrackedWork(blocked=[_todo("b1", "Priya's venues", label)]))
+
+        assert found.action is action
 
     def test_an_inbox_desk_thread_is_a_gmail_item_and_one_subject_counts_its_todos(self) -> None:
         thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f")
@@ -127,6 +139,25 @@ class TestTrackedTodos:
 
         assert (found.app, found.source, found.count, found.todo_id) == ("Gmail", "gmail", 2, "t1")
 
+    def test_only_a_gmail_todo_carries_a_ref_to_its_thread(self) -> None:
+        thread = ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="18c2f")
+        desk = ExternalRef(source=ExternalRefSource.INBOX_DESK, id="int-9")
+        work = TrackedWork(
+            blocked=[
+                _todo("t1", "Reply to Dan", external_ref=thread),
+                _todo("t2", "Triage the mailbox", external_ref=desk),
+                _todo("t3", "Plain todo"),
+            ]
+        )
+
+        found = waiting_candidates(work)
+
+        assert [(c.todo_id, c.ref) for c in found] == [
+            ("t1", "gmail:18c2f"),
+            ("t2", None),
+            ("t3", None),
+        ]
+
     def test_gaias_finished_work_then_its_running_work(self) -> None:
         work = TrackedWork(
             completed=[_todo("c1", "Investor update")], running=[_todo("r1", "Vet the Q4 leads")]
@@ -134,9 +165,9 @@ class TestTrackedTodos:
 
         found = gaia_work_candidates(work)
 
-        assert [(c.title, c.kind, c.state, c.outcome) for c in found] == [
-            ("Investor update", CandidateKind.GAIA_DID, "lookback", BriefOutcome.FINISHED),
-            ("Vet the Q4 leads", CandidateKind.GAIA_DID, "gaia", BriefOutcome.STARTED),
+        assert [(c.title, c.state, c.outcome) for c in found] == [
+            ("Investor update", "lookback", BriefOutcome.FINISHED),
+            ("Vet the Q4 leads", "gaia", BriefOutcome.STARTED),
         ]
         assert all(c.action is None for c in found)
 
@@ -149,9 +180,9 @@ class TestTrackedTodos:
 
         found = user_done_candidates(done)
 
-        assert [(c.title, c.kind, c.state, c.todo_id, c.count) for c in found] == [
-            ("Send the deck to Priya", CandidateKind.UPDATE, "lookback", "u1", 2),
-            ("File the VAT return", CandidateKind.UPDATE, "lookback", "u3", 1),
+        assert [(c.title, c.state, c.todo_id, c.count) for c in found] == [
+            ("Send the deck to Priya", "lookback", "u1", 2),
+            ("File the VAT return", "lookback", "u3", 1),
         ]
         assert {c.outcome for c in found} == {BriefOutcome.FINISHED}
 
@@ -180,9 +211,7 @@ class TestDueTodos:
             ("File the VAT return", "Q3", overdue, "o1"),
             ("Renew the passport", None, NOW, "o2"),
         ]
-        assert {(c.kind, c.state, c.action, c.app) for c in found} == {
-            (CandidateKind.NEEDS_YOU, "you", BriefAction.ATTEND, "GAIA")
-        }
+        assert {(c.state, c.action, c.app) for c in found} == {("you", BriefAction.ATTEND, "GAIA")}
         assert listing.await_args.args == (USER_ID,)
         assert listing.await_args.kwargs == {
             "limit": DUE_TODO_CANDIDATES_LIMIT,
@@ -246,11 +275,10 @@ class TestHeldResults:
 
         found = await held_candidates(USER_ID, held)
 
-        assert [(c.app, c.kind, c.title, c.held_id, c.outcome) for c in found] == [
-            ("Gmail", CandidateKind.UPDATE, "Stripe payout of $2,400 landed", "h1", None),
+        assert [(c.app, c.title, c.held_id, c.outcome) for c in found] == [
+            ("Gmail", "Stripe payout of $2,400 landed", "h1", None),
             (
                 "GAIA",
-                CandidateKind.GAIA_DID,
                 "Research digest: 3 new papers on retrieval",
                 "h2",
                 BriefOutcome.FINISHED,
@@ -336,10 +364,9 @@ class TestAppSignals:
             [RememberedSignal(signal=signal, memory=memory, previous_state="Todo")], NOW
         )
 
-        assert (found.app, found.source, found.kind, found.importance) == (
+        assert (found.app, found.source, found.importance) == (
             "Linear",
             "linear",
-            CandidateKind.NEEDS_YOU,
             SignalImportance.HIGH,
         )
         assert (found.url, found.people, found.signal) == (signal.url, ["Priya"], signal)
@@ -364,20 +391,17 @@ class TestCalendar:
         events = [
             BriefingEvent(date="2026-11-10", start="11:00", title="Sequoia", location="Zoom"),
             BriefingEvent(date="2026-11-10", title="Diwali"),
+            BriefingEvent(date="2026-11-13", start="15:00", title="Pitch to Accel"),
         ]
 
-        found = calendar_candidates(events)
+        found = calendar_candidates(events, "2026-11-10")
 
-        assert [(c.app, c.kind, c.title, c.detail, c.action) for c in found] == [
-            (
-                "Google Calendar",
-                CandidateKind.EVENT,
-                "Sequoia",
-                "at 11:00 | Zoom",
-                BriefAction.ATTEND,
-            ),
-            ("Google Calendar", CandidateKind.EVENT, "Diwali", "all day", BriefAction.ATTEND),
+        assert [(c.is_event, c.title, c.time, c.detail, c.action) for c in found] == [
+            (True, "Sequoia", "11:00 AM", "Zoom", BriefAction.ATTEND),
+            (True, "Diwali", None, "all day", BriefAction.ATTEND),
+            (True, "Pitch to Accel", "Fri 3:00 PM", None, BriefAction.ATTEND),
         ]
+        assert {c.app for c in found} == {"Google Calendar"}
 
 
 def _ledger(approval_id: str, **fields: Any) -> ApprovalLedgerDocument:
@@ -424,10 +448,10 @@ class TestApprovals:
 
         found = await approval_candidates(USER_ID, NOW, {"b1"})
 
-        assert [(c.app, c.title, c.kind, c.state) for c in found] == [
-            ("Gmail", "Send the invoice to Acme", CandidateKind.NEEDS_YOU, "you"),
-            ("GAIA", "Approve create_reminder", CandidateKind.NEEDS_YOU, "you"),
-            ("Slack", "Message #launch on Slack", CandidateKind.NEEDS_YOU, "you"),
+        assert [(c.app, c.title, c.state) for c in found] == [
+            ("Gmail", "Send the invoice to Acme", "you"),
+            ("GAIA", "Approve create_reminder", "you"),
+            ("Slack", "Message #launch on Slack", "you"),
         ]
         assert [c.source for c in found] == ["gmail", "gaia", "Slack"]
         assert {c.action for c in found} == {BriefAction.APPROVE}
@@ -511,11 +535,10 @@ class TestReminders:
 
         [found] = await reminder_candidates(USER_ID, start, end)
 
-        assert (found.title, found.detail, found.due_at, found.kind, found.action) == (
+        assert (found.title, found.detail, found.due_at, found.action) == (
             "Call the dentist",
             "Six-month cleaning appointment",
             due.scheduled_at,
-            CandidateKind.NEEDS_YOU,
             BriefAction.ATTEND,
         )
         assert read.await_args.args == (USER_ID, start, end)

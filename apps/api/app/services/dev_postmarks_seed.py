@@ -16,16 +16,16 @@ from app.constants.briefing import (
     DAILY_KICKER,
     POSTAL_FAMILY,
     SECTION_NUMERALS,
-    SECTION_TITLES,
     WEEKLY_FAMILY,
     WEEKLY_KICKER,
+    ArtFamily,
     BriefAction,
     BriefOutcome,
-    SectionKey,
     hue_for_day,
 )
 from app.constants.notifications import NotificationChannel
 from app.db.repositories.briefings import briefing_repository
+from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingItem,
@@ -39,6 +39,7 @@ from app.models.briefing_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.editions.artworks import artworks_for
 from app.services.briefing.editions.stamps import hosted_stamp_weights
 from app.services.briefing.store import store_brief
 from app.utils.errors import create_error
@@ -261,17 +262,32 @@ _SEED_DAYS: tuple[_SeedDay, ...] = (
 )
 
 
+# The headings a composition gives a seeded brief's asks and its finished work.
+_ASKS_HEADING = "Waiting on you"
+_DONE_HEADING = "Done overnight"
+
+
+def _section_blocks(count: int) -> list[BriefBlock]:
+    return [SectionBlock(kind="items", section=i) for i in range(count)]
+
+
 def _brief_payload(
-    day: date, seed: _SeedDay, user: UserDocument, family: str, city_slug: str | None = None
+    day: date,
+    seed: _SeedDay,
+    user: UserDocument,
+    family: str,
+    *,
+    city_slug: str | None = None,
+    artwork_id: str | None = None,
 ) -> BriefingPayload:
     iso_day = day.isoformat()
     keyed_items = (
         (
-            SectionKey.NEEDS_YOU,
+            _ASKS_HEADING,
             [BriefingItem(text=text, action=action, kind="you") for action, text in seed.needs_you],
         ),
         (
-            SectionKey.GAIA_DID,
+            _DONE_HEADING,
             [
                 BriefingItem(text=text, outcome=outcome, kind="lookback")
                 for outcome, text in seed.done
@@ -282,23 +298,23 @@ def _brief_payload(
             ],
         ),
     )
-    filled = [(key, items) for key, items in keyed_items if items]
+    filled = [(heading, items) for heading, items in keyed_items if items]
     return BriefingPayload(
         kicker=DAILY_KICKER,
         date=iso_day,
         headline=seed.headline,
         lede=seed.lede,
         sections=[
-            BriefingSection(
-                numeral=SECTION_NUMERALS[i], title=SECTION_TITLES[key], key=key, items=items
-            )
-            for i, (key, items) in enumerate(filled)
+            BriefingSection(numeral=SECTION_NUMERALS[i], title=heading, items=items)
+            for i, (heading, items) in enumerate(filled)
         ],
+        blocks=_section_blocks(len(filled)),
         mood=seed.mood,
         caption=seed.caption,
         hue=hue_for_day(day.timetuple().tm_yday),
         template_family=family,
         stamp_city=city_slug,
+        artwork_id=artwork_id,
         recipient_name=user.name,
         generated_at=_GENERATED_AT,
         calendar=[
@@ -324,7 +340,9 @@ async def seed_dev_postmarks(user: UserDocument, count: int) -> None:
         day = _LAST_SEEDED_DATE - timedelta(days=days_before)
         seed = _SEED_DAYS[days_before % len(_SEED_DAYS)]
         await _store(
-            user, _brief_payload(day, seed, user, POSTAL_FAMILY, slug), BRIEFING_KIND_DAILY
+            user,
+            _brief_payload(day, seed, user, POSTAL_FAMILY, city_slug=slug),
+            BRIEFING_KIND_DAILY,
         )
 
 
@@ -343,7 +361,14 @@ async def seed_dev_editions(user: UserDocument, count: int) -> None:
     for offset, family in enumerate(families[:count]):
         day = _FIRST_EDITION_DATE + timedelta(days=offset)
         seed = _SEED_DAYS[offset % len(_SEED_DAYS)]
-        await _store(user, _brief_payload(day, seed, user, family), BRIEFING_KIND_DAILY)
+        artwork_id = (
+            sorted(artworks_for(ArtFamily(family)))[offset] if family in ArtFamily else None
+        )
+        await _store(
+            user,
+            _brief_payload(day, seed, user, family, artwork_id=artwork_id),
+            BRIEFING_KIND_DAILY,
+        )
     await _store(user, _weekly_payload(user), BRIEFING_KIND_WEEKLY)
 
 
@@ -358,8 +383,7 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
         sections=[
             BriefingSection(
                 numeral=SECTION_NUMERALS[0],
-                title=SECTION_TITLES[SectionKey.NEEDS_YOU],
-                key=SectionKey.NEEDS_YOU,
+                title=_ASKS_HEADING,
                 items=[
                     BriefingItem(text="Offsite venue", action=BriefAction.REPLY, kind="you"),
                     BriefingItem(text="New lease terms", action=BriefAction.APPROVE, kind="you"),
@@ -367,14 +391,14 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
             ),
             BriefingSection(
                 numeral=SECTION_NUMERALS[1],
-                title=SECTION_TITLES[SectionKey.GAIA_DID],
-                key=SectionKey.GAIA_DID,
+                title=_DONE_HEADING,
                 items=[
                     BriefingItem(text=text, outcome=outcome, kind="lookback")
                     for outcome, text in shipped
                 ],
             ),
         ],
+        blocks=_section_blocks(2),
         mood="clear",
         caption="Two decisions and the week is closed.",
         hue=hue_for_day(_WEEKLY_SEEDED_DATE.timetuple().tm_yday),
@@ -384,8 +408,6 @@ def _weekly_payload(user: UserDocument) -> BriefingPayload:
         tallies=BriefingTallies(done_by_you=14, done_by_gaia=22),
         week=BriefingWeek(
             days=[BriefingWeekDay(you=you, gaia=gaia) for you, gaia in _WEEKLY_DAYS],
-            shipped=[text for _, text in shipped],
-            handled=["Rescheduled 3 meetings", "Paid 2 invoices", "Archived 120 emails"],
             ahead=[
                 BriefingEvent(date="2026-10-12", start="10:00", title="Quarterly planning"),
                 BriefingEvent(date="2026-10-14", start="18:40", title="Flight to Lisbon"),

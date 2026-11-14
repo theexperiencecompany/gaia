@@ -21,7 +21,7 @@ from PIL import Image, ImageStat
 from playwright.async_api import async_playwright
 import pytest
 
-from app.constants.briefing import BriefAction, BriefOutcome
+from app.constants.briefing import ArtFamily, BriefAction, BriefOutcome
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.edition_email import render_edition_png
 from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
@@ -68,8 +68,6 @@ _DAILY: dict[str, Any] = {
     "tallies": {"done_by_you": 1, "done_by_gaia": 3},
     "week": {
         "days": [{"you": 1, "gaia": 2}, {"you": 3, "gaia": 1}] + [{"you": 0, "gaia": 1}] * 5,
-        "shipped": ["Closed the Acme renewal"],
-        "handled": ["Filed every October receipt"],
         "ahead": [{"date": "2026-10-19", "start": "09:00", "title": "Board call"}],
     },
     "generated_at": "6:02 AM",
@@ -79,6 +77,15 @@ _DAILY: dict[str, Any] = {
     "caption": "Coffee first, Priya second.",
     "hue": 120,
 }
+
+
+def _composed(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the payload with each section composed as its own items block, in order."""
+    blocks = [{"kind": "items", "section": n} for n in range(len(payload["sections"]))]
+    return {**payload, "blocks": blocks}
+
+
+_DAILY = _composed(_DAILY)
 # The weekly family only ever renders the weekly recap, which carries its own
 # week-level headline (build_weekly_voice_prompt asks for the week's shape).
 _WEEKLY_HEADLINE = "A steady week: twelve things done, four of them by you."
@@ -95,6 +102,7 @@ _QUIET = {
     **_DAILY,
     "headline": "A quiet morning.",
     "sections": [],
+    "blocks": [],
     "calendar": [],
     "tallies": None,
     "mood": "idle",
@@ -119,15 +127,15 @@ _FIXTURE_STRINGS = (
     "Randeriya",
 )
 # One phrase from every item and event in _DAILY: a family that drops one
-# (flightplan once hid every untimed item) fails.
-_DAILY_PHRASES = (
+# (flightplan once hid every untimed item) fails. The weekly lists the week ahead.
+_ITEM_PHRASES = (
     "term sheet reply",
     "Stripe invoice sync",
     "October investor update",
     "Q4 hiring plan",
-    "Sequoia partner meeting",
-    "Design review with Dhruv",
 )
+_DAILY_PHRASES = (*_ITEM_PHRASES, "Sequoia partner meeting", "Design review with Dhruv")
+_WEEKLY_PHRASES = (*_ITEM_PHRASES, "Board call")
 # The invoice once billed "1 Wednesday", the receipt totalled "1 WEDNESDAY" and the
 # invoice priced every overnight row at "0.00".
 _INVENTED_AMOUNT = re.compile(
@@ -144,8 +152,18 @@ def _png_height(png: bytes) -> int:
     return int(struct.unpack(">I", png[20:24])[0])
 
 
+# The painting publish_brief draws for a framed family.
+_ARTWORK = "wheat-field-cypresses"
+
+
+def _artwork(family: str) -> str | None:
+    return _ARTWORK if family in ArtFamily else None
+
+
 def _render_html(family: str, payload: dict[str, Any]) -> str:
-    data = BriefingPayload.model_validate({**payload, "template_family": family})
+    data = BriefingPayload.model_validate(
+        {"artwork_id": _artwork(family), **payload, "template_family": family}
+    )
     return EXPLORER_RENDERER[family](data, edition_no=287, generated_local="", tz_label="")
 
 
@@ -191,7 +209,8 @@ async def test_family_prints_the_brief_and_nothing_invented(
         assert fixture.lower() not in text.lower(), f"{family} printed fixture text {fixture!r}"
     if payload is _DAILY:
         flat = " ".join(text.split()).lower()
-        missing = [p for p in _DAILY_PHRASES if p.lower() not in flat]
+        phrases = _WEEKLY_PHRASES if family == "weekly" else _DAILY_PHRASES
+        missing = [p for p in phrases if p.lower() not in flat]
         assert not missing, f"{family} dropped {missing}"
     found = _ZERO_FILLED.search(text)
     context = text[max(0, found.start() - 60) : found.end() + 20] if found else ""
@@ -208,6 +227,7 @@ async def test_family_prints_the_brief_and_nothing_invented(
         (
             {
                 **_DAILY,
+                "blocks": [{"kind": "items", "section": 0}],
                 "sections": [
                     {
                         "numeral": "I",
@@ -249,7 +269,13 @@ def _png_width(png: bytes) -> int:
     return int(struct.unpack(">I", png[16:20])[0])
 
 
-_SPARSE = {**_DAILY, "sections": [_DAILY["sections"][0]], "calendar": [], "tallies": None}
+_SPARSE = {
+    **_DAILY,
+    "sections": [_DAILY["sections"][0]],
+    "blocks": [{"kind": "items", "section": 0}],
+    "calendar": [],
+    "tallies": None,
+}
 _BUSY = {
     **_DAILY,
     "sections": [
@@ -314,6 +340,7 @@ def _shipped(family: str, payload: dict[str, Any]) -> BriefingPayload:
             **_as_rendered(family, payload),
             "template_family": family,
             "stamp_city": "tokyo" if family == "postal" else None,
+            "artwork_id": _artwork(family),
         }
     )
 
@@ -452,6 +479,7 @@ async def test_the_boarding_pass_barcode_line_carries_the_users_passenger_code(
 # "REVIEW  Nothing pending your review").
 _ONLY_OVERNIGHT = {
     **_DAILY,
+    "blocks": [{"kind": "items", "section": 0}],
     "sections": [
         {
             "numeral": "I",
@@ -482,80 +510,24 @@ async def test_an_empty_bucket_renders_no_placeholder_row(
     assert found is None, f"{family} printed a placeholder row in {context!r}"
 
 
-# Section headings each family prints only above a non-empty bucket (explorer/README.md,
-# "Empty sections"). A quiet brief has every bucket empty, so none may survive.
-_EMPTY_BUCKET_HEADINGS = {
-    "almanac": (
-        "Matters for your judgement",
-        "What matters to-day",
-        "Work performed in the night",
-        "Calculations for the day",
-    ),
-    "band": ("need your call", "on today", "done while you slept"),
-    "boardingpass": (
-        "Awaiting your confirmation",
-        "Itinerary · today",
-        "Services completed in transit",
-    ),
-    "broadsheet": ("Needs your call", "What matters today", "While you slept", "day's figures"),
-    "exhibition": ("Programme for the day", "Awaiting your decision", "while you slept"),
-    "flightplan": ("needs your call", "Elevation · the day", "while you slept"),
-    "gradient": ("Needs your call", "Handled overnight"),
-    "instrument": ("needs your call", "Operating window", "Overnight log", "readout"),
-    "invoice": ("Approval required", "Today, billable", "Paid in advance"),
-    "librarycard": ("Awaiting your signature", "Checked out", "Returned overnight"),
-    "memo": ("What matters today", "While you slept", "Needs your call", "By the numbers"),
-    "menu": ("awaiting the table", "prepared overnight"),
-    "metromap": ("Decision line", "Day line", "night line"),
-    "playfair": ("The day ahead", "While you slept", "For your decision"),
-    "postal": ("Waiting on your reply", "Your day", "Done while you slept"),
-    "receipt": ("Overnight", "Awaiting payment", "Items:"),
-    "swiss": ("What matters today", "While you slept", "Needs your call"),
-}
+_DRAWN_BLOCKS = """() => document.querySelectorAll('.rs-sec, .rs-lead, [data-block]').length"""
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(("family", "headings"), sorted(_EMPTY_BUCKET_HEADINGS.items()))
-async def test_an_empty_bucket_leaves_no_section_heading(
-    family: str, headings: tuple[str, ...]
-) -> None:
-    text = " ".join((await _visible_text(_render_html(family, _QUIET))).split()).lower()
+@pytest.mark.parametrize("family", _FAMILIES)
+async def test_an_empty_brief_draws_no_block_and_no_heading(family: str) -> None:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        try:
+            page = await browser.new_page(viewport={"width": 540, "height": 800})
+            # The weekly lists the week ahead as its calendar, a real block: an empty brief has none.
+            empty = {**_QUIET, "week": None}
+            await page.set_content(_render_html(family, _as_rendered(family, empty)))
+            drawn = await page.evaluate(_DRAWN_BLOCKS)
+        finally:
+            await browser.close()
 
-    left = [h for h in headings if h.lower() in text]
-    assert not left, f"{family} printed {left} above an empty bucket"
-
-
-# The heading each family files GAIA's still-running work under, apart from what it
-# finished. Air Mail once printed in-progress work under "Done while you slept".
-_RUNNING_HEADINGS = {
-    "almanac": "Work still in progress",
-    "band": "still in progress",
-    "boardingpass": "Services still in progress",
-    "broadsheet": "Still in progress",
-    "exhibition": "Still in progress",
-    "flightplan": "still in progress",
-    "gradient": "Still in progress",
-    "instrument": "still running",
-    "invoice": "Still in progress",
-    "librarycard": "Still in progress with GAIA",
-    "memo": "Still in progress",
-    "menu": "still in preparation",
-    "metromap": "night line · still running",
-    "playfair": "Still in progress",
-    "postal": "Still in progress",
-    "receipt": "Still in progress",
-    "swiss": "Still in progress",
-}
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(("family", "heading"), sorted(_RUNNING_HEADINGS.items()))
-async def test_running_work_is_filed_apart_from_finished_work(family: str, heading: str) -> None:
-    daily = " ".join((await _visible_text(_render_html(family, _DAILY))).split()).lower()
-    done_only = " ".join((await _visible_text(_render_html(family, _ONLY_OVERNIGHT))).split())
-
-    assert heading.lower() in daily, f"{family} filed running work under no running heading"
-    assert heading.lower() not in done_only.lower(), f"{family} labelled finished work running"
+    assert drawn == 0, f"{family} drew {drawn} block(s) for a brief with none"
 
 
 @pytest.mark.integration

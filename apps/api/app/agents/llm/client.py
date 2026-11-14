@@ -1129,6 +1129,10 @@ class StructuredCallOptions:
     use: ModelUse = ModelUse.HELPER
     #: 1 disables retry, for a caller on a hard latency budget.
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS
+    #: Have the provider hold the reply to the schema (strict tools on an OpenAI wire, the
+    #: response schema on Gemini), so a model cannot leave a field out. Every field of the
+    #: schema must then be required, with no defaults.
+    schema_held: bool = False
 
 
 _DEFAULT_STRUCTURED_OPTIONS = StructuredCallOptions()
@@ -1684,14 +1688,17 @@ def _structured_tool_choice(llm: BaseChatModel) -> str:
     return "required" if forced else "auto"
 
 
-def _structured_tool_runnable(llm: BaseChatModel, schema: type[_StructuredT]) -> Runnable:
+def _structured_tool_runnable(
+    llm: BaseChatModel, schema: type[_StructuredT], *, strict: bool = False
+) -> Runnable:
     """Build the one-tool structured runnable every non-Gemini one-shot runs on.
 
     Not with_structured_output: it forces the tool by name, and it parses streamed
     arguments leniently. The call is unstreamed (streaming=False also holds under
     astream_events), so :func:_parse_structured_reply sees the arguments exactly as sent.
+    strict has the OpenAI wire hold the arguments to the schema.
     """
-    tool = convert_to_openai_tool(schema)
+    tool = convert_to_openai_tool(schema, strict=strict or None)
     tool_choice = _structured_tool_choice(llm)
     bound = llm.model_copy(update={"streaming": False}).bind_tools(
         [schema],
@@ -1700,10 +1707,39 @@ def _structured_tool_runnable(llm: BaseChatModel, schema: type[_StructuredT]) ->
             "kwargs": {"method": "function_calling", "tool_choice": tool_choice},
             "schema": tool,
         },
+        **({"strict": True} if strict else {}),
     )
     return bound | RunnableLambda(
         lambda message: _parse_structured_reply(message, schema),
         name=_structured_tool_name(schema),
+    )
+
+
+def _parse_json_reply(message: BaseMessage, schema: type[_StructuredT]) -> _StructuredT:
+    """Return the schema filled from a JSON reply; raise MalformedStructuredOutputError otherwise."""
+    name = _structured_tool_name(schema)
+    if not isinstance(message, AIMessage):
+        raise MalformedStructuredOutputError(
+            f"{name}: expected an AI reply, got {type(message).__name__}"
+        )
+    if _ReplyMetadata.model_validate(message.response_metadata).stopped_at_output_cap():
+        raise MalformedStructuredOutputError(f"{name}: reply stopped at the output cap")
+    try:
+        return schema.model_validate_json(message.text)
+    except ValidationError as error:
+        raise MalformedStructuredOutputError(
+            f"{name}: the reply does not fit the schema: {error}", llm_output=message.text
+        ) from error
+
+
+def _gemini_schema_runnable(llm: ChatGoogleGenerativeAI, schema: type[_StructuredT]) -> Runnable:
+    """Build a Gemini one-shot whose reply the response schema holds: JSON that fits, field for field."""
+    bound = llm.bind(
+        response_mime_type="application/json",
+        response_json_schema=schema.model_json_schema(),
+    )
+    return bound | RunnableLambda(
+        lambda message: _parse_json_reply(message, schema), name=_structured_tool_name(schema)
     )
 
 
@@ -1717,7 +1753,11 @@ def _structured_runnable(
     its provider (measured: rotation dips). Only an OpenRouter wire receives it.
     """
     model = resolve_model(options.use, temperature=options.temperature, reasoning=options.reasoning)
-    structured = _structured_tool_runnable(model, schema)
+    structured = (
+        _gemini_schema_runnable(model, schema)
+        if options.schema_held and isinstance(model, ChatGoogleGenerativeAI)
+        else _structured_tool_runnable(model, schema, strict=options.schema_held)
+    )
     session_id = _sticky_session_id(config, auxiliary=True)
     if session_id and _is_openrouter_wire(structured):
         structured = structured.bind(session_id=session_id)

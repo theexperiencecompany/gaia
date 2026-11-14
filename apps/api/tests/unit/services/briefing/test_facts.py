@@ -1,311 +1,227 @@
-"""The facts block the model voices, and the values its slots render, built from the chosen sections."""
+"""The facts the voice is shown: one line per item and event, the figures its prose may quote and its slots."""
 
-from datetime import UTC, datetime, timedelta
-import os
-import time
-from unittest.mock import patch
+from dataclasses import replace
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.constants.briefing import BriefAction, BriefOutcome
-from app.models.brief_candidate_models import BriefCandidate, CandidateKind
+from app.constants.briefing import NO_CALENDAR_CONNECTED, BriefAction
+from app.models.brief_candidate_models import BriefCandidate
+from app.models.brief_composition_models import BriefBlock, ChartBlock, ChartKind, SectionBlock
+from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.models.briefing_models import BriefingEvent, BriefingItem, BriefingSection
 from app.models.scout_models import Signal
 from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.context import UserClock
-from app.services.briefing.facts import TODAY, WEEK_AHEAD, CalendarSpan, FactSources, build_facts
+from app.services.briefing.facts import TODAY, WEEK_AHEAD, BriefSpan, FactSources, build_facts
 from app.services.briefing.sections import Chosen
-from app.services.briefing.slots import BriefFact, CountSlot
+from app.services.briefing.slots import BriefFact, CountSlot, SeriesField
 
-NOW = datetime(2026, 10, 14, 1, 35, tzinfo=UTC)
-TZ = ZoneInfo("Asia/Kolkata")
-CLOCK = UserClock(tz=TZ, now_local=NOW.astimezone(TZ), date_str="2026-10-14", day_of_year=287)
+pytestmark = pytest.mark.unit
+
+_TZ = ZoneInfo("Asia/Kolkata")
+_NOW = datetime(2026, 11, 11, 2, 30, tzinfo=UTC)
+_CLOCK = UserClock(tz=_TZ, now_local=_NOW.astimezone(_TZ), date_str="2026-11-11", day_of_year=315)
+_SERIES = DataSeries(
+    id="gmail_sorted",
+    label="Mail sorted",
+    unit="emails",
+    source="gmail",
+    app="Gmail",
+    shape=SeriesShape.CATEGORICAL,
+    points=[SeriesPoint(x="Junk", y=22), SeriesPoint(x="Needs a reply", y=9)],
+)
 
 
-def _candidate(title: str, **fields: object) -> BriefCandidate:
-    defaults: dict[str, object] = {
-        "source": "gaia",
-        "app": "GAIA",
-        "kind": CandidateKind.NEEDS_YOU,
-        "state": "you",
-        "title": title,
-    }
-    return BriefCandidate.model_validate({**defaults, **fields})
-
-
-def _section(items: list[BriefingItem]) -> BriefingSection:
-    return BriefingSection(numeral="I", title="Needs you", items=items)
+def _chosen(*picked: tuple[BriefingItem, BriefCandidate]) -> Chosen:
+    return Chosen(
+        sections=[BriefingSection(numeral="I", title="Waiting", items=[i for i, _ in picked])],
+        picked=[[(n, c) for n, (_, c) in enumerate(picked, start=1)]],
+    )
 
 
 def _sources(
     *,
     artifacts: dict[str, ArtifactFact] | None = None,
+    open_todos: int = 0,
     calendar: list[BriefingEvent] | None = None,
     event_ids: list[int] | None = None,
-    span: CalendarSpan = TODAY,
-    todos_note: str | None = None,
-    open_todos: int = 0,
+    span: BriefSpan = TODAY,
+    blocks: list[BriefBlock] | None = None,
 ) -> FactSources:
     return FactSources(
         artifacts=artifacts or {},
+        open_todos=open_todos,
         calendar=calendar or [],
+        calendar_connected=True,
         event_ids=event_ids or [],
         span=span,
-        todos_note=todos_note,
-        open_todos=open_todos,
+        todos_note=None,
+        blocks=blocks or [],
     )
 
 
-def _ask(text: str, **fields: object) -> BriefingItem:
-    return BriefingItem.model_validate(
-        {"text": text, "action": BriefAction.REPLY, "kind": "you", **fields}
-    )
+class TestTheFactLines:
+    def test_an_item_line_says_its_app_when_it_is_due_its_detail_and_how_many_asked(self) -> None:
+        item = BriefingItem(
+            text="Reply to Maya", kind="you", app="Gmail", count=3, action=BriefAction.REPLY
+        )
+        candidate = BriefCandidate(
+            source="gmail",
+            app="Gmail",
+            state="you",
+            title="Re: term sheet",
+            detail="needs sign-off",
+            due_at=datetime(2026, 11, 13, 9, 0, tzinfo=UTC),
+            count=3,
+        )
 
+        facts = build_facts(_chosen((item, candidate)), _sources(open_todos=4), _CLOCK)
 
-class TestTheFactLine:
-    def test_a_line_names_the_app_the_due_time_the_detail_and_how_many_requests_it_stands_for(
-        self,
-    ) -> None:
-        item = _ask("Send the invoice", app="Gmail", count=2)
-        candidate = _candidate("Send the invoice", due_at=NOW, detail="to Acme")
-        chosen = Chosen(sections=[_section([item])], picked=[[(1, candidate)]])
-
-        facts = build_facts(chosen, _sources(), CLOCK)
-
-        assert facts.block.splitlines() == [
-            "[COUNTS] needs_you: 1",
-            "[Needs you]",
-            "- fact 1 | Waiting on you: Send the invoice | in Gmail | time: today"
-            " | detail: to Acme | 2 requests, one item",
-            "The user's calendar has nothing today (or no calendar is connected).",
+        assert facts.values.counts == {CountSlot.NEEDS_YOU: 1, CountSlot.OPEN_TODOS: 4}
+        assert facts.values.facts[1] == BriefFact(title="Reply to Maya", time="Fri Nov 13", count=3)
+        assert facts.block.splitlines()[:3] == [
+            "[COUNTS] [[count:needs_you]] (1) · [[count:open_todos]] (4)",
+            "[Waiting]",
+            "- fact 1 | Waiting on you: Reply to Maya | in Gmail | time: [[fact:1.time]] "
+            "(Fri Nov 13) | detail: needs sign-off | [[fact:1.count]] (3) requests, one item",
         ]
-        assert facts.values.facts[1] == BriefFact(title="Send the invoice", time="today", count=2)
 
-    def test_a_due_date_on_another_day_names_its_weekday_and_date(self) -> None:
-        item = _ask("Pay the invoice")
-        candidate = _candidate("Pay the invoice", due_at=NOW + timedelta(days=2))
-        chosen = Chosen(sections=[_section([item])], picked=[[(1, candidate)]])
 
-        facts = build_facts(chosen, _sources(), CLOCK)
+class TestWhatProseMayQuote:
+    def test_the_figures_in_every_items_own_words_may_be_quoted(self) -> None:
+        first = (
+            BriefingItem(text="Q3 plan", kind="you", todo_id="t1", action=BriefAction.REPLY),
+            BriefCandidate(
+                source="gaia", app="GAIA", state="you", title="Q3 plan", detail="due by 5pm"
+            ),
+        )
+        second = (
+            BriefingItem(text="Q4 plan", kind="you", action=BriefAction.REPLY),
+            BriefCandidate(source="gaia", app="GAIA", state="you", title="Q4 plan"),
+        )
+        art = ArtifactFact(snippet="42 slides", chars=900, action=False)
 
-        assert facts.values.facts[1].time == "Fri Oct 16"
-        assert "| time: Fri Oct 16" in facts.block
+        facts = build_facts(_chosen(first, second), _sources(artifacts={"t1": art}), _CLOCK)
 
-    def test_a_due_time_is_read_on_the_readers_calendar_not_utcs(self) -> None:
-        item = _ask("Call the dentist")
-        just_after_midnight_in_india = datetime(2026, 10, 13, 19, 0, tzinfo=UTC)
-        candidate = _candidate("Call the dentist", due_at=just_after_midnight_in_india)
-        chosen = Chosen(sections=[_section([item])], picked=[[(1, candidate)]])
+        assert facts.values.quoted == {"Q3", "5pm", "42", "Q4"}
 
-        facts = build_facts(chosen, _sources(), CLOCK)
-
-        assert facts.values.facts[1].time == "today"
-
-    def test_a_naive_stored_due_time_is_utc_whatever_the_servers_zone(self) -> None:
-        item = _ask("Call the dentist")
-        candidate = _candidate("Call the dentist", due_at=datetime(2026, 10, 13, 19, 0))
-        chosen = Chosen(sections=[_section([item])], picked=[[(1, candidate)]])
-
-        with patch.dict(os.environ, {"TZ": "Pacific/Auckland"}):
-            time.tzset()
-            try:
-                facts = build_facts(chosen, _sources(), CLOCK)
-            finally:
-                os.environ.pop("TZ", None)
-        time.tzset()
-
-        assert facts.values.facts[1].time == "today"
-
-    def test_a_line_without_an_app_time_or_detail_is_only_its_state_and_title(self) -> None:
-        item = BriefingItem(text="Investor update", outcome=BriefOutcome.FINISHED, kind="lookback")
-        candidate = _candidate("Investor update", kind=CandidateKind.GAIA_DID, state="lookback")
-        chosen = Chosen(sections=[_section([item])], picked=[[(4, candidate)]])
-
-        facts = build_facts(chosen, _sources(), CLOCK)
-
-        assert "- fact 4 | Done: Investor update\n" in f"{facts.block}\n"
-        assert facts.values.facts[4] == BriefFact(title="Investor update", time=None, count=1)
-
-    def test_an_app_signal_is_a_fact_but_not_a_line_and_the_items_after_it_still_are(self) -> None:
+    def test_a_signals_own_reason_state_and_text_may_be_quoted_too(self) -> None:
         signal = Signal(
             integration_id="linear",
             app="Linear",
-            external_id="ENG-42",
-            kind="issue assigned to you",
-            title="Fix the login redirect",
+            external_id="ENG-12",
+            kind="issue",
+            title="Fix login",
+            why="due in 2 days",
+            state="P1 open",
+            text="repro on build 88",
         )
-        items = [_ask("Fix the login redirect", app="Linear"), _ask("Reply to Dan")]
-        picked = [
-            (1, _candidate("Fix the login redirect", signal=signal)),
-            (2, _candidate("Reply to Dan", detail="about the lease")),
-        ]
-        chosen = Chosen(sections=[_section(items)], picked=[picked])
-
-        facts = build_facts(chosen, _sources(), CLOCK)
-
-        assert facts.values.facts[1].title == "Fix the login redirect"
-        assert "fact 1" not in facts.block
-        assert "- fact 2 | Waiting on you: Reply to Dan | detail: about the lease" in facts.block
-
-
-class TestTheDeliverablesAndLinks:
-    def test_an_item_with_an_artifact_reads_with_its_summary_and_size_and_links_it(self) -> None:
-        item = BriefingItem(
-            text="Deck", outcome=BriefOutcome.FINISHED, kind="lookback", todo_id="t1"
+        item = BriefingItem(text="Fix login", kind="you", action=BriefAction.REPLY)
+        candidate = BriefCandidate(
+            source="linear", app="Linear", state="you", title="Fix login 4", signal=signal
         )
-        candidate = _candidate("Deck", kind=CandidateKind.GAIA_DID, todo_id="t1")
-        chosen = Chosen(sections=[_section([item])], picked=[[(1, candidate)]])
-        artifacts = {"t1": ArtifactFact(snippet="Ten slides", chars=10, action=False)}
 
-        facts = build_facts(chosen, _sources(artifacts=artifacts), CLOCK)
+        facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
 
-        assert (
-            "- fact 1 | Done: Deck | summary: Ten slides | artifact holds ~10 chars | linkable"
-            in facts.block.splitlines()
-        )
-        assert facts.sections == chosen.sections
-        assert (facts.deliverables, facts.addresses) == ({1: "t1"}, {})
-
-    def test_an_empty_artifact_has_nothing_to_open_so_the_apps_own_link_serves(self) -> None:
-        item = _ask("Sync failed", todo_id="t2")
-        candidate = _candidate("Sync failed", todo_id="t2", url="https://app.example/sync")
-        chosen = Chosen(sections=[_section([item])], picked=[[(1, candidate)]])
-        artifacts = {"t2": ArtifactFact(snippet="", chars=0, action=True)}
-
-        facts = build_facts(chosen, _sources(artifacts=artifacts), CLOCK)
-
-        assert (
-            "- fact 1 | Waiting on you: Sync failed | artifact holds ~0 chars | waiting on you"
-            " | linkable" in facts.block.splitlines()
-        )
-        assert (facts.deliverables, facts.addresses) == ({}, {1: "https://app.example/sync"})
-
-    def test_an_item_with_no_todo_never_opens_a_deliverable(self) -> None:
-        item = _ask("Reply to Dan")
-        candidate = _candidate("Reply to Dan")
-        chosen = Chosen(sections=[_section([item])], picked=[[(1, candidate)]])
-
-        facts = build_facts(chosen, _sources(), CLOCK)
-
-        assert (facts.deliverables, facts.addresses) == ({}, {})
-        assert "linkable" not in facts.block
+        assert facts.values.quoted == {"4", "2", "P1", "88"}
 
 
-class TestTheCountsAndMustMention:
-    def test_every_kind_of_item_and_event_is_counted_in_its_own_slot(self) -> None:
-        items = [
-            _ask("Reply to Dan"),
-            BriefingItem(text="Deck", outcome=BriefOutcome.FINISHED, kind="lookback"),
-            BriefingItem(text="Report", outcome=BriefOutcome.FINISHED, kind="lookback"),
-            BriefingItem(text="Digest", outcome=BriefOutcome.STARTED, kind="gaia"),
-            BriefingItem(text="Crawl", outcome=BriefOutcome.STARTED, kind="gaia"),
-            BriefingItem(text="Scrape", outcome=BriefOutcome.STARTED, kind="gaia"),
-            BriefingItem(text="Payout", outcome=BriefOutcome.LANDED, kind="note"),
-        ]
-        picked = [(i, _candidate(item.text)) for i, item in enumerate(items, start=1)]
+class TestTheCalendarAndTheCharts:
+    def test_a_charts_figures_are_what_the_series_slots_render(self) -> None:
+        chart = ChartBlock(chart=ChartKind.BAR, title="Mail", takeaway="Junk.", series=[_SERIES])
+
+        facts = build_facts(Chosen(sections=[], picked=[]), _sources(blocks=[chart]), _CLOCK)
+
+        assert facts.values.series["gmail_sorted"][SeriesField.TOTAL] == "31"
+
+    def test_events_and_their_ids_must_pair_up(self) -> None:
+        event = BriefingEvent(date="2026-11-11", start="15:00", title="Board call")
+
+        with pytest.raises(ValueError, match="zip"):
+            build_facts(
+                Chosen(sections=[], picked=[]),
+                _sources(calendar=[event], event_ids=[]),
+                _CLOCK,
+            )
+
+    def test_the_calendar_note_lists_each_event_by_its_fact_and_time(self) -> None:
         events = [
-            BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia"),
-            BriefingEvent(date="2026-10-14", title="Diwali"),
+            BriefingEvent(date="2026-11-11", start="15:00", title="Board call"),
+            BriefingEvent(date="2026-11-11", start=None, title="Offsite"),
         ]
-        sources = _sources(calendar=events, event_ids=[8, 9])
+        span = BriefSpan(heading="This week", empty="Nothing.", no_items="None.")
 
-        facts = build_facts(Chosen(sections=[_section(items)], picked=[picked]), sources, CLOCK)
-
-        assert facts.block.splitlines()[0] == (
-            "[COUNTS] needs_you: 1 · done: 2 · in_progress: 3 · while_away: 1 · events: 2"
-        )
-        assert facts.values.counts == {
-            CountSlot.NEEDS_YOU: 1,
-            CountSlot.DONE: 2,
-            CountSlot.IN_PROGRESS: 3,
-            CountSlot.WHILE_AWAY: 1,
-            CountSlot.EVENTS: 2,
-        }
-        assert [facts.values.facts[i].title for i in (8, 9)] == ["Sequoia", "Diwali"]
-
-    def test_open_todos_count_only_when_the_brief_read_them(self) -> None:
-        chosen = Chosen(sections=[], picked=[])
-
-        without = build_facts(chosen, _sources(), CLOCK)
-        with_todos = build_facts(chosen, _sources(open_todos=3), CLOCK)
-
-        assert CountSlot.OPEN_TODOS not in without.values.counts
-        assert "[COUNTS]" not in without.block
-        assert with_todos.values.counts == {CountSlot.OPEN_TODOS: 3}
-        assert with_todos.block.splitlines()[0] == "[COUNTS] open_todos: 3"
-
-    def test_what_waits_on_the_user_and_every_event_must_be_mentioned(self) -> None:
-        items = [
-            _ask("Reply to Dan"),
-            BriefingItem(text="Sync failed", action=BriefAction.RETRY, kind="failed"),
-            BriefingItem(text="Payout landed", outcome=BriefOutcome.LANDED, kind="note"),
-        ]
-        picked = [(1, _candidate("a")), (2, _candidate("b")), (3, _candidate("c"))]
-        chosen = Chosen(sections=[_section(items)], picked=[picked])
-        sources = _sources(
-            calendar=[BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia")],
-            event_ids=[4],
-        )
-
-        facts = build_facts(chosen, sources, CLOCK)
-
-        assert facts.must_mention == frozenset({1, 2, 4})
-
-    def test_with_nothing_chosen_the_block_says_so_and_does_not_invent_work(self) -> None:
         facts = build_facts(
-            Chosen(sections=[], picked=[]), _sources(todos_note="Todos: none."), CLOCK
+            Chosen(sections=[], picked=[]),
+            _sources(calendar=events, event_ids=[7, 8], span=span),
+            _CLOCK,
         )
 
-        assert facts.block.splitlines() == [
-            "GAIA has no tracked work and no background work ran. Do not claim anything "
-            "ran, finished, or is pending beyond what is stated here.",
-            "Todos: none.",
-            "The user's calendar has nothing today (or no calendar is connected).",
+        assert facts.block.splitlines()[-3:] == [
+            "This week:",
+            "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
+            "- fact 8 | all day: Offsite",
         ]
 
+    def test_with_no_calendar_connected_the_note_says_so_not_that_it_is_empty(self) -> None:
+        unconnected = replace(_sources(), calendar_connected=False)
 
-class TestTheCalendarNote:
-    def test_each_event_is_a_fact_with_its_time_and_another_days_names_its_weekday(self) -> None:
-        events = [
-            BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia"),
-            BriefingEvent(date="2026-10-14", title="Diwali"),
-            BriefingEvent(date="2026-10-16", start="15:00", title="Pitch to Accel"),
-        ]
-        sources = _sources(calendar=events, event_ids=[7, 8, 9], span=WEEK_AHEAD)
+        facts = build_facts(Chosen(sections=[], picked=[]), unconnected, _CLOCK)
 
-        facts = build_facts(Chosen(sections=[], picked=[]), sources, CLOCK)
-
-        assert facts.block.splitlines()[-4:] == [
-            "The week ahead:",
-            "- fact 7 | 11:00 AM: Sequoia",
-            "- fact 8 | all day: Diwali",
-            "- fact 9 | Fri 3:00 PM: Pitch to Accel",
-        ]
-        assert [facts.values.facts[i].time for i in (7, 8, 9)] == [
-            "11:00 AM",
-            None,
-            "Fri 3:00 PM",
-        ]
+        assert facts.block.splitlines()[-1] == NO_CALENDAR_CONNECTED
+        assert TODAY.empty not in facts.block
 
 
-class TestAnInconsistentSelectionFailsLoudly:
-    def test_a_section_without_its_picked_candidates(self) -> None:
-        chosen = Chosen(sections=[_section([_ask("Reply to Dan")])], picked=[])
+class TestTheEmptyBriefAndTheLead:
+    def test_a_brief_with_no_items_tells_the_voice_not_to_claim_any_work(self) -> None:
+        facts = build_facts(Chosen(sections=[], picked=[]), _sources(), _CLOCK)
 
-        with pytest.raises(ValueError, match="zip"):
-            build_facts(chosen, _sources(), CLOCK)
+        assert (
+            "No tracked work, results or app items need them today. Do not claim anything ran, "
+            "finished, or is pending beyond what is stated here."
+        ) in facts.block.splitlines()
+        assert facts.lead is None
 
-    def test_an_item_without_its_candidate(self) -> None:
-        chosen = Chosen(sections=[_section([_ask("Reply to Dan")])], picked=[[]])
+    def test_a_weekly_with_no_items_says_so_of_the_week_not_of_today(self) -> None:
+        facts = build_facts(Chosen(sections=[], picked=[]), _sources(span=WEEK_AHEAD), _CLOCK)
 
-        with pytest.raises(ValueError, match="zip"):
-            build_facts(chosen, _sources(), CLOCK)
+        assert (
+            "The digest holds no items from this week. Do not claim anything ran, finished, or "
+            "is pending beyond what is stated here."
+        ) in facts.block.splitlines()
+        assert "today" not in facts.block
 
-    def test_an_event_without_its_pool_id(self) -> None:
-        sources = _sources(
-            calendar=[BriefingEvent(date="2026-10-14", title="Sequoia")], event_ids=[]
+    def test_an_event_is_a_fact_timed_on_the_users_day(self) -> None:
+        event = BriefingEvent(date="2026-11-11", start="15:00", title="Board call")
+
+        facts = build_facts(
+            Chosen(sections=[], picked=[]), _sources(calendar=[event], event_ids=[7]), _CLOCK
         )
 
-        with pytest.raises(ValueError, match="zip"):
-            build_facts(Chosen(sections=[], picked=[]), sources, CLOCK)
+        assert facts.values.facts == {7: BriefFact(title="Board call", time="3:00 PM")}
+
+    def test_the_lead_is_the_first_item_of_the_section_the_composition_leads_with(self) -> None:
+        def item(text: str) -> tuple[BriefingItem, BriefCandidate]:
+            return (
+                BriefingItem(text=text, kind="you", action=BriefAction.REPLY),
+                BriefCandidate(source="gaia", app="GAIA", state="you", title=text),
+            )
+
+        sections = [
+            BriefingSection(numeral="I", title="Waiting", items=[item("a")[0], item("b")[0]]),
+            BriefingSection(numeral="II", title="First", items=[item("c")[0], item("d")[0]]),
+        ]
+        picked = [
+            [(1, item("a")[1]), (2, item("b")[1])],
+            [(5, item("c")[1]), (6, item("d")[1])],
+        ]
+        blocks: list[BriefBlock] = [
+            SectionBlock(kind="items", section=0),
+            SectionBlock(kind="lead", section=1),
+        ]
+
+        facts = build_facts(Chosen(sections, picked), _sources(blocks=blocks), _CLOCK)
+
+        assert facts.lead == 5

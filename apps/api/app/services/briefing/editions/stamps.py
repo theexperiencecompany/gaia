@@ -1,6 +1,6 @@
 """Air Mail city stamps: the founder's 85 city artworks and their postage.
 
-The artworks are hosted on Cloudinary (uploaded by scripts/upload_city_stamps.py),
+The artworks are hosted on Cloudinary (uploaded by scripts/upload_briefing_art.py),
 never committed. explorer/assets/stamps/ holds cities.json and countries.json. A
 brief's stamp city is drawn from the user's shuffle bag; stamp_for turns it into the
 city skin the vendored postal template reads, and the Postmarks page places it on
@@ -112,5 +112,7 @@ def stamp_asset_url(slug: str) -> str:
     city: StampCity | None = stamp_catalogue().get(slug)
     url = city.url if city else None
     if not url:
-        raise KeyError(f"stamp city {slug!r} has no hosted art (run scripts/upload_city_stamps.py)")
+        raise KeyError(
+            f"stamp city {slug!r} has no hosted art (run scripts/upload_briefing_art.py stamps)"
+        )
     return url

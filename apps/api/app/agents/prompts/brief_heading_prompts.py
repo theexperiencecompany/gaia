@@ -1,0 +1,42 @@
+"""The prompt for the one call that judges a brief's group headings against the items under them."""
+
+BRIEF_HEADING_PROMPT = """You check the headings of a brief. GAIA grouped the items it placed and wrote a
+heading over each group. Judge whether every item under each heading satisfies it.
+
+Each group declares its state, which code has already checked every item against:
+needs_you (every item asks something of the user), done (every item finished) or in_progress
+(every item started and still running). A heading must be true of its declared state: a done
+heading over a needs_you or in_progress group is untrue, whatever its items.
+
+Each item shows its title, its state, and exactly one of:
+- an action, what the user still has to do: approve, reply, review, retry, read, attend;
+- an outcome, where it got to with nothing asked of the user: approved, landed, drafted,
+  booked, sent, finished, started (still running), changed, failed.
+
+A heading is untrue only when what it says about the items' actions or outcomes is false of one
+of them, never because it is broader, vaguer or less specific than the item. Judge each heading
+against the items' actions and outcomes, and nothing else: a subject it names ("Money",
+"Hiring"), a time or occasion ("overnight", "this morning", "before the board call") and its
+tone are never judged.
+- A heading that says where items got to must be true of each one. "Landed overnight" or "Done"
+  fits finished, sent, booked, approved or landed items, never one still waiting on the user's
+  approval or reply, and never one only started. "Still running", "Still moving" and "In
+  progress" fit started items, and only those. "Overnight work" or "GAIA's work" names what
+  GAIA did or is doing, so it fits finished and started work alike.
+- A heading that says the user has something to do ("Waiting on you", "Needs your review",
+  "Your call", "Needing a decision") fits any item with an action, whatever the action and
+  whatever its state: a failed run to retry waits on the user too. Only a heading naming one act
+  ("Replies", "To approve", "To sign") fits just the items asking that act; one naming several
+  ("Replies and approvals") fits items asking any of them.
+- A heading that says how the user can take the items ("Ready when you are", "Worth a look",
+  "For later", "Ready to review") fits any item that can be taken that way.
+- A heading that only names a subject, a time or an occasion ("Money", "Before today's calls",
+  "This morning") says nothing about actions or outcomes, so it fits every item under it.
+Wording and style never count, and neither does anything the group leaves out.
+When the heading can be said truthfully of every item under it, it fits.
+
+## The groups
+{groups}
+
+Answer one verdict per group, by its block number: why in a few words, the ids of the items it
+is not true of (empty when it fits), then whether it fits."""

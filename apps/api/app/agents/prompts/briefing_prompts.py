@@ -1,13 +1,16 @@
 """Briefing generation prompts, the retention keystone.
 
-The builders assemble the contract the silent agent runs against; the service feeds in
-the code-built facts. The agent writes only the voice: one JSON object of headline, lede,
-caption, mood and message as its entire final message.
+The builders assemble the contract the voice call writes against; the service feeds in
+the code-built facts. The model writes only the voice: headline, lede, caption, mood and
+message, as one structured answer. The day-zero hello is still a silent agent turn.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from app.agents.prompts.comms_prompts import GAIA_PERSONA, GAIA_VOICE
 from app.constants.briefing import (
+    FREQUENCY_CLAIMS,
+    LEAD_HEADING,
     MAX_BRIEF_CAPTION_CHARS,
     MAX_BRIEF_HEADLINE_CHARS,
     MAX_BRIEF_LEDE_CHARS,
@@ -64,43 +67,50 @@ _SLOTS = f"""
 ## SLOTS (how every count, time and link gets into your prose)
 You never type a count, a time, a date or a web address. Where one goes, write a slot; the
 system fills it in from the facts:
-- ``[[count:needs_you]]``: a count from [COUNTS], by its name there.
+- ``[[count:needs_you]]``: a count from [COUNTS], by its name there. Every figure the facts
+  carry is listed beside the slot that writes it, as ``[[fact:9.time]] (11:00 AM)``: write
+  the slot, never the figure in brackets.
 - ``[[fact:N.time]]``: fact N's time or date, when its line has one ("Sequoia at
   [[fact:9.time]]").
 - ``[[fact:N.count]]``: how many requests fact N stands for, when its line says so.
+- ``[[series:ID.peak]]`` (or ``.total``, ``.latest``, ``.low``, ``.peak_at``): a figure of a
+  series a chart in [ALSO IN THE BRIEF] draws, by the series id listed there.
 - ``[the phrase](fact:N)``: your own words for fact N, linked to what it opens when it is
   marked ``linkable`` and plain text otherwise. This is how you refer to an item.
 - ``[[fact:N]]``: fact N's title exactly as listed. Titles are written as to-dos
   ("Approve the Acme MSA renewal"), so "approve the [[fact:3]]" reads "approve the Approve
   the ...". Use it only where the title reads naturally as it stands; otherwise write
   "[approve the Acme renewal](fact:3)".
-The message must refer to every item waiting on the user and every calendar event through
-one of its slots, usually its phrase; a brief that leaves one out is sent back.
-A figure you type must stand as it is in a fact's title ("the Q3 interviews"); any other is
-said in words or left out. A slot naming no fact shown, a count not in [COUNTS] or a field
+The message must refer to the lead (the item under [{LEAD_HEADING}]) through
+one of its slots, usually its phrase; a brief that leaves it out is sent back. Everything else
+the edition already shows, so what else the message says is your call.
+Every count the brief carries has a slot: the items waiting, done, in progress and while away,
+the events, the open todos, each request count and each charted figure. A figure you type must
+stand as it is in a fact's own words (its title, detail or a quote: "the Q3 interviews", "the
+1x preference"); any other count is its slot, and any other figure is said in words or left out. A slot naming no fact shown, a count not in [COUNTS] or a field
 the fact lacks is rejected. Lengths count the prose with its slots filled in: headline at
 most {MAX_BRIEF_HEADLINE_CHARS} characters, lede {MAX_BRIEF_LEDE_CHARS}, caption
 {MAX_BRIEF_CAPTION_CHARS}, message {MAX_BRIEF_MESSAGE_CHARS}.
 """.strip()
 
 
-# The voice JSON both briefs return; each fills in what its lede sets up and its moods.
+# The voice both briefs return; each fills in what its lede sets up and its moods.
 _VOICE_OUTPUT = """
 ## OUTPUT (read twice)
 
-Your ENTIRE final message MUST be a single JSON object inside one ```json code
-fence. No prose before or after it.
-
-```json
-{{
-  "headline": "<one sharp plain-voice line, no markup, no emoji>",
-  "lede": "<{lede}>",
-  "caption": "<one witty closing line>",
-  "mood": "<{moods}>",
-  "message": "<the brief as a text, see THE MESSAGE>"
-}}
-```
+Return the brief's voice, every field filled:
+- headline: one sharp plain-voice line, no markup, no emoji
+- lede: {lede}
+- caption: one witty closing line
+- mood: {moods}
+- message: the brief as a text, see THE MESSAGE
 """.strip()
+
+# The brief is GAIA writing to the user itself, in the voice chat uses.
+_SPEAKER = (
+    f'{GAIA_PERSONA}\n{GAIA_VOICE}\nThe brief is you writing to them: say "I" for what you '
+    'did, never "GAIA", and write sentences a person would text, never "App: thing" lists.'
+)
 
 _VOICE_ONLY = """
 You are writing VOICE ONLY. The facts (what completed, what is running, what
@@ -110,8 +120,16 @@ its voice. Every specific in your prose must appear in the facts below; if it is
 not there, you do not say it.
 """.strip()
 
+# A frequency word no fact uses is sent back by the prose check, so the voice is told each one.
+_HOW_OFTEN = f"""
+NEVER CLAIM HOW OFTEN: you see today, not their history, so never say how often something
+happens unless a fact you were given says it. These words are sent back wherever no fact uses
+them: {", ".join(FREQUENCY_CLAIMS)}. Say a thing once: a lede that restates its own point
+("clear today. The day is open.") is padding.
+""".strip()
+
 # How every brief's prose reads, past what its headline and lede are written from.
-_VOICE_CRAFT = """
+_VOICE_CRAFT = f"""
 Be CONCRETE, not vague. A fact's ``detail:`` or ``summary:`` names specifics: use
 them ("vetted twelve investors, Elad Gil, Nat Friedman, Daniel Gross and more" beats
 "the investor list is ready"). Pull real names and choices straight from them;
@@ -169,6 +187,8 @@ Never "anything else you need?", never two questions, and skip it entirely when
 nothing needs deciding. ONE question across the WHOLE brief: if the goal question below
 applies, that is your one ask, nothing else gets asked.
 
+{_HOW_OFTEN}
+
 NEVER COUNT ZEROS: name what exists, never tally what does not. "0 items
 waiting, 0 done, 0 in progress" is a status report, not a person talking; leave
 out anything with no count instead of saying it is zero.
@@ -176,7 +196,7 @@ out anything with no count instead of saying it is zero.
 
 _WORDS = """
 WORDS: never name the brief's internal machinery to the user: no "lane", "held
-results", "sections", "facts", a fact's number or "[COUNTS]" (say you'll track it as a goal, or
+results", "sections", "facts", "briefing items", a fact's number or "[COUNTS]" (say you'll track it as a goal, or
 just name the work). Never use em dashes or en dashes anywhere in any
 string; use commas, periods, or parentheses.
 """.strip()
@@ -190,9 +210,7 @@ The HEADLINE and LEDE are printed above the brief's items, so they are written
 from TODAY'S FACTS alone: name only people and things that appear in an item or
 in today's calendar, and never say something needs the user, or mention an event,
 unless an item or the calendar shows it. Yesterday, the user's replies and goal
-memory may shape the message and caption, never the headline or lede. Once the
-slots are filled, a checker reads the headline, lede, caption and message against
-these facts and rejects any claim they do not support.
+memory may shape the message and caption, never the headline or lede.
 
 {craft}
 
@@ -230,14 +248,6 @@ class VoicePromptBlocks:
     # What the user's connected apps hold that needs them, with what earlier briefs said.
     signals: str = ""
 
-    @property
-    def context(self) -> str:
-        """Return everything the model is told besides its instructions: what its prose may cite."""
-        return (
-            f"{self.reader}\n{self.facts}\n{self.goal}\n{self.lookback}\n{self.replies}"
-            f"\n{self.setup}\n{self.signals}"
-        )
-
 
 def _signals_section(signals: str) -> str:
     if not signals:
@@ -265,18 +275,44 @@ def reader_line(first_name: str | None) -> str:
     )
 
 
-def _recent_openings_block(openings: list[str]) -> str:
-    if not openings:
+@dataclass(frozen=True)
+class RecentLines:
+    """What the last few daily briefs printed, newest first; today's brief reuses none of it."""
+
+    headlines: list[str] = field(default_factory=list)
+    ledes: list[str] = field(default_factory=list)
+    captions: list[str] = field(default_factory=list)
+    #: The first line of each message.
+    openings: list[str] = field(default_factory=list)
+
+    def every(self) -> list[str]:
+        """Return every line, whatever field printed it."""
+        return [*self.headlines, *self.ledes, *self.captions, *self.openings]
+
+
+def _recent_lines_block(recent: RecentLines) -> str:
+    groups = (
+        ("Headlines", recent.headlines),
+        ("Ledes", recent.ledes),
+        ("Captions", recent.captions),
+        ("Message openings", recent.openings),
+    )
+    listed = [
+        f"{name}:\n" + "\n".join(f"- {line}" for line in lines) for name, lines in groups if lines
+    ]
+    if not listed:
         return ""
-    listed = "\n".join(f"- {line}" for line in openings)
-    return f"\n## HOW YOUR LAST BRIEFS OPENED (open today's message differently)\n{listed}\n"
+    return (
+        "\n## WHAT YOUR LAST BRIEFS SAID (say today's in fresh words: never reuse one of these "
+        "lines, or open the same way)\n" + "\n".join(listed) + "\n"
+    )
 
 
 _GOAL_QUESTION = """
 If no goal lane exists but the goal knowledge above names something specific, the
 whole brief is one short honest message plus ONE confirming question that quotes
-it and offers to start ("You mentioned <specific thing> [on <date>], want me to
-take that on and start with <first concrete deliverable> tonight?"). EXCEPTION,
+it and offers to start on one deliverable you name ("You mentioned launching the
+mobile app by December, want me to start with a launch checklist tonight?"). EXCEPTION,
 absolute: if the user's replies above ALREADY answered this with a yes, never ask
 it again in any wording. Acknowledge their yes plainly instead ("you said go
 ahead on the investor list, that's in motion") and say nothing more about it. Weigh
@@ -317,11 +353,11 @@ def build_briefing_voice_prompt(
     date_local: str,
     blocks: VoicePromptBlocks,
     situation: VoiceSituation,
-    recent_openings: list[str],
+    recent: RecentLines,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
-    recent_openings are the first lines of the last few messages, so today's opens differently.
+    recent is what the last few briefs printed, so today's says it in fresh words.
     """
     wind_down_note = ""
     if situation.wind_down == "warn":
@@ -385,7 +421,9 @@ def build_briefing_voice_prompt(
     )
     goal_note = _GOAL_ASKED if situation.goal_asked_recently else _GOAL_QUESTION
     setup_block = f"\n## THEIR GAIA SETUP (real facts)\n{blocks.setup}\n" if blocks.setup else ""
-    return f"""You are GAIA voicing this user's daily briefing for {date_local}.
+    return f"""{_SPEAKER}
+
+You are voicing this user's daily briefing for {date_local}.
 
 ## WHO YOU'RE WRITING TO
 {blocks.reader}
@@ -406,7 +444,7 @@ actually changed in response.
 {blocks.goal}
 {setup_block}{winback_note}{first_note}{first_week_note}{cadence_note}{wind_down_note}
 {goal_note}
-{_recent_openings_block(recent_openings)}
+{_recent_lines_block(recent)}
 {_MESSAGE_VOICE}
 - On a full day fold an app's routine items into one line rather than run long.
 
@@ -416,23 +454,27 @@ actually changed in response.
 """
 
 
-def voice_correction_note(problems: list[str]) -> str:
-    """Return the retry instruction naming how the last brief broke the facts."""
+def voice_correction_note(problems: list[str], last: str) -> str:
+    """Return the retry instruction: how the last brief broke the facts, and that brief to mend."""
     listed = "\n".join(f"- {problem}" for problem in problems)
     return (
         "## YOUR LAST BRIEF WAS REJECTED\n"
         f"It did not match today's facts:\n{listed}\n"
-        "Write it again from today's facts only, then return the whole JSON."
+        f"This was your last brief:\n{last}\n"
+        "Change only what each problem names, keep every other word and slot as it was, "
+        "then return the whole voice."
     )
 
 
-def voice_unreadable_note(problems: list[str]) -> str:
-    """Return the retry instruction naming why the last reply could not be read as the voice JSON."""
+def voice_unreadable_note(problems: list[str], last: str) -> str:
+    """Return the retry instruction: why the last reply was no whole voice, and that reply."""
     listed = "\n".join(f"- {problem}" for problem in problems)
     return (
         "## YOUR LAST REPLY COULD NOT BE READ\n"
-        f"It was not the voice JSON object:\n{listed}\n"
-        "Return the whole JSON again in one ```json fence, with every field of the schema."
+        f"It was not a whole voice:\n{listed}\n"
+        f"This was your last reply:\n{last}\n"
+        "Change only what each problem names, keep everything else as it was, and return the "
+        "whole voice, with every field filled."
     )
 
 
@@ -440,9 +482,7 @@ _WEEKLY_HEADLINE = """
 The HEADLINE names the week's shape in one plain line and the LEDE sets the week up in
 1-2 sentences, both from THIS WEEK'S FACTS alone: name only people and things that appear
 in an item or in the week ahead, and never say something needs the user unless an item
-shows it. Goal memory may shape the message and caption, never the headline or lede. Once
-the slots are filled, a checker reads the headline, lede, caption and message against these
-facts and rejects any claim they do not support.
+shows it. Goal memory may shape the message and caption, never the headline or lede.
 """.strip()
 
 _WEEKLY_VOICE_CONTRACT = f"""
@@ -460,7 +500,9 @@ _WEEKLY_VOICE_CONTRACT = f"""
 
 def build_weekly_voice_prompt(*, date_local: str, blocks: VoicePromptBlocks) -> str:
     """Voice pass over the week's code-built facts: what got done since Monday and what is ahead."""
-    return f"""You are GAIA voicing this user's weekly digest for the week ending {date_local}.
+    return f"""{_SPEAKER}
+
+You are voicing this user's weekly digest for the week ending {date_local}.
 
 This is a zoom-out, not a to-do list: the week since Monday, and the seven days ahead.
 Celebrate the week honestly.
@@ -474,10 +516,18 @@ Celebrate the week honestly.
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {blocks.goal}
 
+## THE RECAP
+Open on what this week actually held, named from THIS WEEK'S FACTS: what got done, what failed,
+how a goal moved or that it stalled, with its open work named. A quiet week is said plainly in a
+line, then the one thing in it that matters. Every fact here is about the week: never say "today"
+of it.
+
 ## NEXT WEEK'S EDGE
-End the message with ONE suggestion that sharpens how they work toward a goal, grounded in
-this week's facts and phrased as one question they can answer with a single word. It is the
-digest's one ask. Never a generic "next week let's keep the momentum going".
+End with at most ONE suggestion for the week ahead, grounded in a named fact from this week (a
+stalled goal's next open todo, a failed run), as one closed question a short reply answers ("Want
+me to draft the old-users email on Monday?"). It is the digest's one ask; leave it out when this
+week's facts raise none. Never a label and a colon ("What's the focus: users?"), and never a
+generic "keep the momentum going".
 
 {_MESSAGE_VOICE}
 

@@ -1,7 +1,11 @@
 "use client";
 
 import { Link } from "@heroui/link";
-import type { BriefingEvent } from "@shared/api/generated";
+import type {
+  BriefingEvent,
+  BriefingPayload,
+  BriefPoolItem,
+} from "@shared/api/generated";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import type { z } from "zod";
@@ -9,11 +13,21 @@ import type { z } from "zod";
 import type { briefingSchema } from "@/config/openui/promptSpecs";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 
+import { EDITION_ROWS_SHOWN } from "../constants";
+
 /** The brief's fields this view reads: the stored payload and the OpenUI component share them. */
 export type BriefingEditionPayload = z.infer<typeof briefingSchema> & {
   calendar?: BriefingEvent[];
   message?: string | null;
+  /** What the brief read but GAIA left out of today's composition. */
+  uncomposed?: BriefPoolItem[];
+  /** The brief as composed, in reading order: the blocks its edition drew. */
+  blocks?: BriefingPayload["blocks"];
+  /** Composed blocks the day's edition could not draw in its idiom. */
+  undrawn?: BriefingPayload["undrawn"];
 };
+
+type UndrawnBlock = BriefingPayload["undrawn"][number];
 
 type EditionItem = BriefingEditionPayload["sections"][number]["items"][number];
 
@@ -37,17 +51,58 @@ function itemHref(item: EditionItem): string | null {
   return item.link ?? null;
 }
 
-function ItemRow({ item }: { item: EditionItem }) {
-  const href = itemHref(item);
+function poolItemHref(item: BriefPoolItem): string | null {
+  if (item.todo_id) return `/todos?todoId=${item.todo_id}`;
+  return item.url;
+}
+
+/** A block the edition left to this page, said in one line: a lead or group is listed with the sections. */
+function undrawnLine(block: UndrawnBlock): string | null {
+  switch (block.kind) {
+    case "chart":
+      return `${block.title}: ${block.takeaway}`;
+    case "quote":
+      return `“${block.quote.text}” ${block.quote.author}, ${block.quote.app}`;
+    case "progress":
+      return `${block.goal.statement}: ${block.goal.done} of ${block.goal.done + block.goal.open} done`;
+    case "note":
+      return block.text;
+    default:
+      return null;
+  }
+}
+
+function undrawnLines(payload: BriefingEditionPayload): string[] {
+  return (payload.undrawn ?? [])
+    .map(undrawnLine)
+    .filter((line): line is string => line !== null);
+}
+
+/** What the full page lists for a brief that has an edition: every item the image left out. */
+function leftOutItems(payload: BriefingEditionPayload): EditionItem[] {
+  const drawnOverflow = (payload.blocks ?? []).flatMap((block) =>
+    block.kind === "items"
+      ? (payload.sections[block.section]?.items ?? []).slice(EDITION_ROWS_SHOWN)
+      : [],
+  );
+  const undrawnSections = (payload.undrawn ?? []).flatMap((block) =>
+    block.kind === "lead" || block.kind === "items"
+      ? (payload.sections[block.section]?.items ?? [])
+      : [],
+  );
+  return [...undrawnSections, ...drawnOverflow];
+}
+
+function ItemRow({ text, href }: { text: string; href: string | null }) {
   if (!href) {
-    return <p className="text-sm font-medium text-zinc-200">{item.text}</p>;
+    return <p className="text-sm font-medium text-zinc-200">{text}</p>;
   }
   return (
     <Link
       href={href}
       className="block text-sm font-medium text-zinc-200 hover:text-zinc-50"
     >
-      {item.text}
+      {text}
     </Link>
   );
 }
@@ -78,9 +133,11 @@ function clockTime(start: string): string {
   });
 }
 
-/** A brief with no rendered edition, read as text: the headline, GAIA's message, then its items. */
+/** A brief with no rendered edition, read as text: the headline, GAIA's message, its items, then what it could not draw or left out. */
 function BriefingText({ payload }: { payload: BriefingEditionPayload }) {
   const calendar = payload.calendar ?? [];
+  const uncomposed = payload.uncomposed ?? [];
+  const undrawn = undrawnLines(payload);
   return (
     <article className="w-full rounded-2xl bg-zinc-800 p-4">
       <p className="mb-3 text-sm font-semibold text-zinc-100">
@@ -112,31 +169,138 @@ function BriefingText({ payload }: { payload: BriefingEditionPayload }) {
         {payload.sections.map((section) => (
           <ItemGroup key={section.title} title={section.title}>
             {section.items.map((item) => (
-              <ItemRow key={item.todo_id ?? item.text} item={item} />
+              <ItemRow
+                key={item.todo_id ?? item.text}
+                text={item.text}
+                href={itemHref(item)}
+              />
             ))}
           </ItemGroup>
         ))}
+        {undrawn.length > 0 && (
+          <ItemGroup title="More from GAIA">
+            {undrawn.map((line) => (
+              <p key={line} className="text-sm text-zinc-300">
+                {line}
+              </p>
+            ))}
+          </ItemGroup>
+        )}
+        {uncomposed.length > 0 && (
+          <ItemGroup title="Everything else">
+            {uncomposed.map((item) => (
+              <ItemRow
+                key={`${item.app}-${item.todo_id ?? item.title}`}
+                text={item.title}
+                href={poolItemHref(item)}
+              />
+            ))}
+          </ItemGroup>
+        )}
       </div>
     </article>
   );
 }
 
+/** A titled list under the edition, in its column. */
+function BelowEdition({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-labelledby={id} className="mx-auto w-full max-w-[540px]">
+      <h2 id={id} className="mb-1 text-sm font-medium text-zinc-300">
+        {title}
+      </h2>
+      <ul className="divide-y divide-white/5">{children}</ul>
+    </section>
+  );
+}
+
+/** What GAIA read but left out of the edition, one row each, opening its source when it has one. */
+function PoolItemRow({ item }: { item: BriefPoolItem }) {
+  const href = poolItemHref(item);
+  return (
+    <li className="flex flex-col gap-0.5 py-3">
+      {href ? (
+        <Link
+          href={href}
+          isExternal={!href.startsWith("/")}
+          className="w-fit text-sm text-zinc-100 hover:text-white"
+        >
+          {item.title}
+        </Link>
+      ) : (
+        <p className="text-sm text-zinc-100">{item.title}</p>
+      )}
+      {item.detail && <p className="text-xs text-zinc-500">{item.detail}</p>}
+    </li>
+  );
+}
+
 /**
- * One brief. The rendered edition already carries every item, so it stands on
- * the page alone; a brief stored before editions were rendered reads as text.
+ * One brief. The rendered edition already carries every item it drew, so it
+ * stands on the page alone with only what it could not draw or left out listed
+ * under it; a brief stored before editions were rendered reads as text.
  */
 export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
   if (!imageUrl) return <BriefingText payload={payload} />;
+  const uncomposed = payload.uncomposed ?? [];
+  const undrawn = undrawnLines(payload);
+  const leftOut = leftOutItems(payload);
+  const hiddenEvents = (payload.calendar ?? []).slice(EDITION_ROWS_SHOWN);
   return (
-    <Image
-      src={imageUrl}
-      alt={payload.headline}
-      width={EDITION_WIDTH}
-      height={EDITION_TYPICAL_HEIGHT}
-      sizes="(max-width: 640px) 100vw, 572px"
-      // On a phone the image's own transparent margin stands in for StandalonePage's
-      // px-4 gutter, so the paper gets the screen's width instead of losing 32px.
-      className="-mx-4 h-auto w-[calc(100%+2rem)] max-w-none sm:mx-auto sm:w-full sm:max-w-[572px]"
-    />
+    <div className="w-full space-y-8">
+      <Image
+        src={imageUrl}
+        alt={payload.headline}
+        width={EDITION_WIDTH}
+        height={EDITION_TYPICAL_HEIGHT}
+        sizes="(max-width: 640px) 100vw, 572px"
+        // On a phone the image's own transparent margin stands in for StandalonePage's
+        // px-4 gutter, so the paper gets the screen's width instead of losing 32px.
+        className="-mx-4 h-auto w-[calc(100%+2rem)] max-w-none sm:mx-auto sm:w-full sm:max-w-[572px]"
+      />
+      {(undrawn.length > 0 ||
+        leftOut.length > 0 ||
+        hiddenEvents.length > 0) && (
+        <BelowEdition id="brief-more-from-gaia" title="More from GAIA">
+          {undrawn.map((line) => (
+            <li key={line} className="py-3 text-sm text-zinc-300">
+              {line}
+            </li>
+          ))}
+          {hiddenEvents.map((event) => (
+            <li
+              key={`${event.start ?? "all-day"}-${event.title}`}
+              className="py-3 text-sm text-zinc-300"
+            >
+              {event.start ? `${clockTime(event.start)} ` : ""}
+              {event.title}
+            </li>
+          ))}
+          {leftOut.map((item) => (
+            <li key={item.todo_id ?? item.text} className="py-3">
+              <ItemRow text={item.text} href={itemHref(item)} />
+            </li>
+          ))}
+        </BelowEdition>
+      )}
+      {uncomposed.length > 0 && (
+        <BelowEdition id="brief-everything-else" title="Everything else">
+          {uncomposed.map((item) => (
+            <PoolItemRow
+              key={`${item.app}-${item.todo_id ?? item.title}`}
+              item={item}
+            />
+          ))}
+        </BelowEdition>
+      )}
+    </div>
   );
 }

@@ -40,7 +40,7 @@ async def provision_existing_user(user_id: str) -> str:
     if user.briefing_bootstrap is not None or await briefing_repository.has_daily_briefing(user_id):
         return "already_rolled_out"
 
-    _, has_goal = await context.format_goal_block(user_id, user)
+    has_goal = bool(await context.stated_goals(user_id, user))
     integrations = await user_integration_repository.count_for_user(user_id)
     if not has_goal and integrations <= _SPARSE_INTEGRATION_MAX:
         await user_repository.set_briefing_bootstrap_pending(user_id)

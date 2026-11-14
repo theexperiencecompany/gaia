@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from app.models.brief_pool_models import GoalOrigin
 from app.models.user_models import BriefingBootstrap, UserDocument
 from app.services.briefing import context, rollout
 from app.services.briefing.rollout import provision_existing_user
@@ -74,15 +75,15 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
         h.provisioned.append(user_id)
         return []
 
-    async def fake_format_goal_block(user_id: str, user: UserDocument) -> tuple[str, bool]:
+    async def fake_stated_goals(user_id: str, user: UserDocument) -> list[context.StatedGoal]:
         h.goal_calls.append((user_id, user))
-        return ("goal block", h.has_goal)
+        return [context.StatedGoal("Ship v2", GoalOrigin.ONBOARDING)] if h.has_goal else []
 
     def fake_capture(user_id: UserId, event: Any) -> None:
         h.captured.append((user_id, event))
 
     monkeypatch.setattr(rollout, "provision_briefing_workflows", fake_provision)
-    monkeypatch.setattr(context, "format_goal_block", fake_format_goal_block)
+    monkeypatch.setattr(context, "stated_goals", fake_stated_goals)
     monkeypatch.setattr(rollout, "capture", fake_capture)
     monkeypatch.setattr(rollout, "user_integration_repository", h.integrations)
     monkeypatch.setattr(rollout, "user_repository", h.users)

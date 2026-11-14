@@ -3,16 +3,15 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.constants.briefing import GAIA_SOURCE
-from app.models.brief_candidate_models import BriefCandidate, CandidateKind
+from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent, UnreadSource
+from app.models.scout_models import SignalImportance
 from app.services.briefing.candidates.app_signals import app_signal_candidates
 from app.services.briefing.candidates.approvals import approval_candidates
 from app.services.briefing.candidates.calendar import calendar_candidates
 from app.services.briefing.candidates.failed_runs import failed_run_candidates
 from app.services.briefing.candidates.held import held_candidates
-from app.services.briefing.candidates.judge import CandidatePool
 from app.services.briefing.candidates.reminders import reminder_candidates
 from app.services.briefing.candidates.subjects import same_text_key
 from app.services.briefing.candidates.tracked import (
@@ -40,7 +39,7 @@ class GatheredCandidates:
     @property
     def has_news(self) -> bool:
         """Whether anything besides the calendar is in the pool."""
-        return any(c.kind is not CandidateKind.EVENT for c in self.pool.values())
+        return any(not c.is_event for c in self.pool.values())
 
 
 @dataclass(frozen=True)
@@ -51,6 +50,43 @@ class CandidateSources:
     held: list[PendingBriefItemDocument]
     scouts: ScoutSignals
     calendar: list[BriefingEvent]
+
+
+def _found_by(candidate: BriefCandidate) -> str:
+    return f"the {candidate.app} scout" if candidate.signal is not None else candidate.app
+
+
+def _merged(first: BriefCandidate, again: BriefCandidate) -> BriefCandidate:
+    """Fold a second source's find of the same thing into the first, keeping what only it knew."""
+    high = SignalImportance.HIGH in (first.importance, again.importance)
+    return first.model_copy(
+        update={
+            "detail": first.detail or again.detail,
+            "people": list(dict.fromkeys([*first.people, *again.people])),
+            "due_at": first.due_at or again.due_at,
+            "url": first.url or again.url,
+            "importance": SignalImportance.HIGH if high else first.importance,
+            "todo_id": first.todo_id or again.todo_id,
+            "held_id": first.held_id or again.held_id,
+            "signal": first.signal or again.signal,
+            "also_in": [*first.also_in, _found_by(again), *again.also_in],
+        }
+    )
+
+
+def _one_per_thing(candidates: list[BriefCandidate]) -> list[BriefCandidate]:
+    """Fold candidates about the same outside thing into one, in the order each was first found."""
+    by_ref: dict[str, int] = {}
+    kept: list[BriefCandidate] = []
+    for candidate in candidates:
+        if candidate.ref is not None and candidate.ref in by_ref:
+            index = by_ref[candidate.ref]
+            kept[index] = _merged(kept[index], candidate)
+            continue
+        if candidate.ref is not None:
+            by_ref[candidate.ref] = len(kept)
+        kept.append(candidate)
+    return kept
 
 
 def _numbered(candidates: list[BriefCandidate]) -> tuple[dict[int, BriefCandidate], list[str]]:
@@ -67,17 +103,6 @@ def _numbered(candidates: list[BriefCandidate]) -> tuple[dict[int, BriefCandidat
             seen.add(key)
         pool[len(pool) + 1] = candidate
     return pool, duplicates
-
-
-def sources_shown(pool: CandidatePool, shown: set[int]) -> list[str]:
-    """Name the apps behind what the brief shows: the items it picked and its calendar events."""
-    return list(
-        dict.fromkeys(
-            c.app
-            for i, c in pool.items()
-            if (i in shown or c.kind is CandidateKind.EVENT) and c.source != GAIA_SOURCE
-        )
-    )
 
 
 def _unavailable(scouts: ScoutSignals) -> list[UnreadSource]:
@@ -105,21 +130,25 @@ async def gather_candidates(
         *app_signal_candidates(sources.scouts.remembered, now),
         *await held_candidates(user_id, sources.held),
         *gaia_work_candidates(work),
-        *calendar_candidates(sources.calendar),
+        *calendar_candidates(sources.calendar, clock.date_str),
     ]
-    pool, duplicates = _numbered(candidates)
+    pool, duplicates = _numbered(_one_per_thing(candidates))
     return GatheredCandidates(pool, duplicates, _unavailable(sources.scouts))
 
 
 async def gather_week_candidates(
-    user_id: str, since: datetime, completed: CompletedWork, ahead: list[BriefingEvent]
+    user_id: str,
+    clock: UserClock,
+    since: datetime,
+    completed: CompletedWork,
+    ahead: list[BriefingEvent],
 ) -> GatheredCandidates:
     """Run the producers over the week since Monday: failed runs, what got done, the week ahead."""
     candidates = [
         *await failed_run_candidates(user_id, since),
         *user_done_candidates(completed.user),
         *gaia_work_candidates(TrackedWork(completed=completed.gaia)),
-        *calendar_candidates(ahead),
+        *calendar_candidates(ahead, clock.date_str),
     ]
     pool, duplicates = _numbered(candidates)
     return GatheredCandidates(pool, duplicates, [])

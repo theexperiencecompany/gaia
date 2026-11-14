@@ -16,11 +16,7 @@
    ========================================================================== */
 (() => {
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const clock = (t24) => {
-    if (!t24) return "";
-    const [h, m] = t24.split(":").map(Number);
-    return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-  };
+  const B = EXPLORER.blocks;
 
   /* Every texture, tilt and noise seed is drawn from the edition's date, so one day always prints the same envelope. */
   function rngFor(ed) {
@@ -90,9 +86,9 @@ ${fibres("ap-fd", lerp(rng, 10, 40), "#4a2e10", 0.13)}${fibres("ap-fd", lerp(rng
 <mask id="ap-knock" maskUnits="userSpaceOnUse" x="-4" y="-4" width="${W + 8}" height="${H + 8}"><rect x="-4" y="-4" width="${W + 8}" height="${H + 8}" fill="#fff"/>
 <g fill="none" stroke="#000"><rect x="6.5" y="6.5" width="${W - 13}" height="${H - 13}" stroke-width="1.15"/><rect x="9.3" y="9.3" width="${W - 18.6}" height="${H - 18.6}" stroke-width=".5"/><path d="M45 ${top + 13}V${H - 13}" stroke-width=".5"/></g>
 <g fill="#000">${plane}
-${city.air ? `<text x="${(W + 45) / 2}" y="24" text-anchor="middle" font-size="11.5" font-weight="600" style="font-family:'Hiragino Sans','Noto Sans CJK JP','Kohinoor Devanagari','Noto Sans Devanagari','Helvetica Neue',sans-serif">${esc(city.air)}</text>` : ""}
-<text x="${(W + 45) / 2}" y="${top + 34}" text-anchor="middle" font-size="22" font-weight="700" letter-spacing=".9" style="font-family:'Playfair Display',Georgia,serif">PAR AVION</text>
-<text x="${(W + 45) / 2}" y="${top + 49}" text-anchor="middle" font-size="8.6" font-weight="600" letter-spacing="2.1" style="font-family:'Aeonik Extended','Helvetica Neue',sans-serif">BY AIR MAIL</text></g>
+${city.air ? `<text x="${(W + 45) / 2}" y="24" text-anchor="middle" font-size="11.5" font-weight="600" style="font-family:'TeX Gyre Heros',sans-serif">${esc(city.air)}</text>` : ""}
+<text x="${(W + 45) / 2}" y="${top + 34}" text-anchor="middle" font-size="22" font-weight="700" letter-spacing=".9" style="font-family:'Source Serif 4',serif">PAR AVION</text>
+<text x="${(W + 45) / 2}" y="${top + 49}" text-anchor="middle" font-size="8.6" font-weight="600" letter-spacing="2.1" style="font-family:'Aeonik Extended','TeX Gyre Heros',sans-serif">BY AIR MAIL</text></g>
 <rect x="-4" y="-4" width="${W + 8}" height="${H + 8}" fill="url(#ap-rubg)" filter="url(#ap-rubn)"/></mask>
 <filter id="ap-rubn" x="0" y="0" width="1" height="1"><feTurbulence type="fractalNoise" baseFrequency=".35" numOctaves="2" seed="${seedOf(rng)}" result="n"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 2.2 -.7" result="na"/><feComposite in="SourceGraphic" in2="na" operator="in"/></filter>
 <filter id="ap-plate" x="-2%" y="-4%" width="104%" height="108%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="2" seed="${seedOf(rng)}" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale=".7" xChannelSelector="R" yChannelSelector="G" result="d"/><feTurbulence type="fractalNoise" baseFrequency=".3 .5" numOctaves="2" seed="${seedOf(rng)}" result="p"/><feColorMatrix in="p" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -.5 0 0 0 1.2" result="pm"/><feComposite in="d" in2="pm" operator="in"/></filter>
@@ -130,8 +126,8 @@ ${city.air ? `<text x="${(W + 45) / 2}" y="24" text-anchor="middle" font-size="1
 <g stroke-width=".35"><ellipse cx="32" cy="41" rx="16" ry="14" fill="#f7f3e8"/>${rosette.join("")}</g>
 <circle cx="32" cy="41" r="9.6" fill="#f7f3e8" stroke-width=".7"/>
 </g>
-<g fill="var(--defin)" style="font-family:'Playfair Display',Georgia,serif"><text x="32" y="46.2" text-anchor="middle" font-size="14.5" font-weight="700">25</text></g>
-<g fill="#f7f3e8" style="font-family:'Aeonik Extended','Helvetica Neue',sans-serif" font-weight="600" text-anchor="middle"><text x="32" y="21.2" font-size="6.4" letter-spacing="1.4">GAIA</text><text x="32" y="63.4" font-size="4.6" letter-spacing="1.1">AIR MAIL</text></g>
+<g fill="var(--defin)" style="font-family:'Source Serif 4',serif"><text x="32" y="46.2" text-anchor="middle" font-size="14.5" font-weight="700">25</text></g>
+<g fill="#f7f3e8" style="font-family:'Aeonik Extended','TeX Gyre Heros',sans-serif" font-weight="600" text-anchor="middle"><text x="32" y="21.2" font-size="6.4" letter-spacing="1.4">GAIA</text><text x="32" y="63.4" font-size="4.6" letter-spacing="1.1">AIR MAIL</text></g>
 </g></svg>`;
   }
 
@@ -152,7 +148,7 @@ ${city.air ? `<text x="${(W + 45) / 2}" y="24" text-anchor="middle" font-size="1
       })
       .join("");
     const star = (x) => `<path transform="translate(${x} ${cy}) scale(2.7)" d="M0 -1 L.24 -.32 L.95 -.31 L.38 .12 L.59 .81 L0 .4 L-.59 .81 L-.38 .12 L-.95 -.31 L-.24 -.32Z"/>`;
-    const font = `font-family="'Aeonik Extended','Helvetica Neue',Arial,sans-serif" font-weight="600"`;
+    const font = `font-family="'Aeonik Extended','TeX Gyre Heros',sans-serif" font-weight="600"`;
     const angle = lerp(rng, 0, 1) < 0.5 ? lerp(rng, -150, -100) : lerp(rng, 20, 70);
     const mark = `<g fill="none" stroke="currentColor" stroke-width="2.9" stroke-linecap="round">${waves}</g>
 <circle cx="${cx}" cy="${cy}" r="57" fill="none" stroke="currentColor" stroke-width="2.6"/>
@@ -211,7 +207,7 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
   background-image: radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,.06), transparent 60%),
     repeating-linear-gradient(94deg, rgba(0,0,0,.12) 0 2px, rgba(255,255,255,.014) 2px 5px); }
 .t-postal * { box-sizing: border-box; margin: 0; padding: 0; }
-.t-postal .tw { font-family: 'American Typewriter', 'Courier New', monospace; }
+.t-postal .tw { font-family: 'Cutive', serif; }
 .t-postal .env { position: relative; padding: 12px; transform: rotate(-1deg); background-color: var(--env);
   box-shadow: 0 1px 1px rgba(0,0,0,.3), 0 3px 6px rgba(0,0,0,.18), 0 26px 44px rgba(0,0,0,.45); }
 .t-postal .paper { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -228,49 +224,59 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
 .t-postal .pm { position: absolute; top: 66px; left: 8px; width: 250px; height: 107px; transform: rotate(-3deg); color: var(--mark); mix-blend-mode: multiply; }
 .t-postal .pm svg { display: block; width: 100%; height: 100%; }
 .t-postal .addr { position: absolute; left: 150px; right: 24px; top: 276px; z-index: 3; line-height: 1.5; }
-.t-postal .addr .lab { position: absolute; right: 100%; margin-right: 14px; top: 7px; font-size: 15px; font-style: italic; opacity: .8; }
+.t-postal .addr .lab { position: absolute; right: 100%; margin-right: 14px; top: 7px; font-size: 15px; opacity: .8; }
 .t-postal .addr .to { font-size: 25px; line-height: 1.2; text-wrap: balance; }
 .t-postal .addr .re { font-size: 18px; }
 .t-postal .addr .meta { font-size: 15px; }
 .t-postal .addr .under { width: 150px; border-bottom: 1px solid currentColor; opacity: .4; margin-top: 8px; }
 .t-postal .letter { position: relative; z-index: 2; width: 94%; margin: -40px auto 0; transform: rotate(.6deg); padding: 36px 34px 40px;
   background-color: #fbf9f1; background-image: repeating-linear-gradient(90deg, rgba(90,70,30,.035) 0 1px, transparent 1px 7px), radial-gradient(130% 100% at 50% 30%, transparent 60%, rgba(120,100,60,.08) 100%);
-  box-shadow: 0 2px 2px rgba(0,0,0,.18), 0 24px 40px rgba(0,0,0,.4); font: 400 18px/1.55 'Iowan Old Style', Charter, Georgia, serif; }
+  box-shadow: 0 2px 2px rgba(0,0,0,.18), 0 24px 40px rgba(0,0,0,.4); font: 400 18px/1.55 'Source Serif 4', serif; }
 .t-postal .lhead { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 14px; border-bottom: 1px solid rgba(0,0,0,.18); }
 .t-postal .lbrand { font-size: 15px; letter-spacing: 0; }
 .t-postal .lmeta { font-size: 14px; letter-spacing: .04em; color: #5f594d; font-variant-numeric: tabular-nums; }
 .t-postal .dated { margin-top: 18px; text-align: right; font-size: 15px; letter-spacing: .02em; color: #5f594d; }
 .t-postal .dear { margin-top: 10px; font-style: italic; font-size: 19px; }
 .t-postal .deck { margin-top: 8px; font-size: 29px; line-height: 1.25; font-style: italic; letter-spacing: -.005em; text-wrap: balance; }
-.t-postal .blk { margin-top: 36px; }
-.t-postal .blabel { font: italic 600 21px/1.2 'Iowan Old Style', Charter, Georgia, serif; color: #2a2822; margin-bottom: 10px; }
-.t-postal .blabel.red { color: var(--ribbon); }
-.t-postal .li { display: grid; grid-template-columns: 84px 1fr; column-gap: 12px; padding: 6px 0; font-size: 17px; line-height: 1.5; }
-.t-postal .li > span:last-child { text-wrap: pretty; }
-.t-postal .li .w { font-size: 15px; letter-spacing: 0; color: #4a4437; font-variant-numeric: tabular-nums; padding-top: 3px; }
-.t-postal .li .w.verb { color: var(--ribbon); font: italic 600 17px/1.5 'Iowan Old Style', Charter, Georgia, serif; padding-top: 0; }
-.t-postal .li .nt { color: #5a5345; font-style: italic; }
-.t-postal .li .tg { display: block; margin-top: 2px; font-size: 14px; letter-spacing: 0; color: #8a836c; }
+.t-postal .letter { --rs-font: 'Source Serif 4', serif; --rs-font-h: 'Source Serif 4', serif; --rs-ink: #2a2822; --rs-muted: #5a5345; --rs-acc: var(--ribbon); --rs-base: 15px; --rs-title-weight: 400; --rs-verb-weight: 600; --rs-h-style: italic; --rs-h-track: 0; --rs-title-track: 0; --rs-kick-case: none; --rs-kick-style: italic; --rs-kick-track: 0; }
+.t-postal .letter .rs-verb { font-style: italic; }
+.t-postal .blk { margin-top: 16px; }
+.t-postal .blk[data-block] { margin-top: 40px; }
+.t-postal .q { font-style: italic; font-size: 19px; line-height: 1.5; color: #3d382d; text-wrap: pretty; padding-left: 18px; border-left: 2px solid rgba(42,40,34,.25); }
+.t-postal .q .by { display: block; margin-top: 6px; font-style: normal; font-size: 15px; color: #5a5345; }
+.t-postal .para { font-size: 18px; line-height: 1.55; text-wrap: pretty; }
 .t-postal .ps { display: grid; grid-template-columns: 84px 1fr; column-gap: 12px; margin-top: 36px; font-size: 17px; line-height: 1.55; text-wrap: pretty; }
 .t-postal .ps .w { font-size: 15px; padding-top: 2px; }
-.t-postal .ps b { font-family: 'American Typewriter', 'Courier New', monospace; font-weight: normal; font-size: 19px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.t-postal .ps b { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .t-postal .sign { margin-top: 22px; font-size: 18px; font-style: italic; }
-.t-postal .sig { display: inline-block; margin-top: 4px; font: italic 500 36px/1 'Playfair Display', Georgia, serif; color: #233f7d; transform: rotate(-4deg); }
+.t-postal .sig { display: inline-block; margin-top: 4px; font: italic 500 36px/1 'Source Serif 4', serif; color: #233f7d; transform: rotate(-4deg); }
+.t-postal .src { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 13px; letter-spacing: .02em; line-height: 1.4; color: #5f594d; }
+.t-postal .src .logos { display: inline-flex; gap: 7px; flex: none; }
+.t-postal .src .xb-logo { width: 15px; height: 15px; color: #2a2822; }
 .t-postal .lfoot { margin-top: 26px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,.18); display: flex; justify-content: space-between; font-size: 13px; letter-spacing: .06em; color: #5f594d; }
 `,
     render(ed, skin) {
-      const c = ed.content;
-      const needs = c.decisions.slice(0, 3);
       const city = skin.city;
       const rng = rngFor(ed);
-      const li = (w, wCls, text, note, tag) => `<div class="li" data-role="body"><span class="w tw${wCls ? " " + wCls : ""}">${esc(w)}</span><span>${esc(text)}${note ? ` <span class="nt">— ${esc(note)}</span>` : ""}${tag ? `<span class="tg tw">${esc(tag)}</span>` : ""}</span></div>`;
-      const blocks = [];
-      if (needs.length) blocks.push(`<div class="blk"><h3 class="blabel red">Waiting on your reply</h3>${needs.map((d) => li(d.verb, "verb", d.label, d.note)).join("")}</div>`);
-      if (c.today.length) blocks.push(`<div class="blk"><h3 class="blabel">Your day</h3>${c.today.map((e) => li(e.time || "EOD", "", e.label, e.note)).join("")}</div>`);
-      if (c.overnight.length) blocks.push(`<div class="blk"><h3 class="blabel">Done while you slept</h3>${c.overnight.map((e) => li(clock(e.t24), "", e.label, e.note)).join("")}</div>`);
-      if (c.running.length) blocks.push(`<div class="blk"><h3 class="blabel">Still in progress</h3>${c.running.map((e) => li(clock(e.t24), "", e.label, e.note)).join("")}</div>`);
-      const s = c.stats;
-      const ps = s ? `<p class="ps" data-role="body"><span class="w tw">P.S.</span><span>Yesterday we closed <b>${s.done}</b> things${s.you && s.gaia ? ` (you ${s.you}, me ${s.gaia})` : ""}${s.mail ? ` and handled <b>${s.mail}</b> emails` : ""}.${s.focus ? ` You have <b>${esc(s.focus)}</b> of focus ahead.` : ""}</span></p>` : "";
+      const blk = (html, kind) => `<div class="blk"${kind ? ` data-block="${kind}"` : ""}>${html}</div>`;
+      // A goal is told, not charted: it joins the P.S. as a sentence.
+      const told = [];
+      const R = {
+        lead: (b) => blk(B.lead(b, { kicker: "First, this", mode: "color" })),
+        items: (b) => blk(B.section(b.heading, B.items(b, { mode: "color" }))),
+        calendar: (b) => blk(B.section("Your day", B.events(b, { clock: "t12", allDay: "All day", mode: "color" }))),
+        quote: (q) => blk(`<blockquote class="q">&ldquo;${esc(q.text)}&rdquo;<span class="by">${esc(q.author)}, by ${esc(q.app)}</span></blockquote>`, "quote"),
+        progress: (p) => {
+          told.push(`<span data-block="progress">On your goal, &ldquo;${esc(p.statement)}&rdquo;, <b>${p.done}</b> of <b>${p.total}</b> are done.</span>`);
+          return "";
+        },
+        note: (n) => blk(`<p class="para">${esc(n.text)}</p>`, "note"),
+      };
+      const blocks = B.layout(ed, R);
+      const s = ed.stats;
+      const figures = s ? `Yesterday we closed <b>${s.done}</b> ${s.done === 1 ? "thing" : "things"}${s.you && s.gaia ? ` (you ${s.you}, me ${s.gaia})` : ""}${s.mail ? ` and handled <b>${s.mail}</b> emails` : ""}.${s.focus ? ` You have <b>${esc(s.focus)}</b> of focus ahead.` : ""}` : "";
+      const said = [figures, ...told].filter(Boolean).join(" ");
+      const ps = said ? `<p class="ps"><span class="w">P.S.</span><span>${said}</span></p>` : "";
       return `<article class="t-postal" style="--env:${skin.paper.env}; --envInk:${skin.paper.ink}; --tint:${skin.paper.tint}; --mark:${skin.ink.mark}; --defin:${skin.ink.defin}; --ribbon:${skin.ink.ribbon}">
 <div class="env">${paper(rng)}<div class="face tw">
   <div class="ret"><img src="${ed.assets.TEC_MARK}" alt="The Experience Company"><span>GAIA Post<br>The Experience Company</span></div>
@@ -289,6 +295,7 @@ ${star(cx - 47.5)}${star(cx + 47.5)}`;
   ${ps}
   <p class="sign">Yours, always on watch,<br><span class="sig">GAIA</span></p>
   <div class="lfoot tw"><span>Posted ${esc(ed.time)} · GAIA Post</span><span>Edition No. ${ed.editionNo}</span></div>
+  ${ed.sources.length ? `<p class="src tw" data-block="sources"><span class="logos">${ed.sources.map((x) => EXPLORER.blocks.logo(x.logo, { mode: "color", cls: "" })).join("")}</span><span>Written from your ${esc(EXPLORER.blocks.appList(ed.sources))}</span></p>` : ""}
 </div></article>`;
     },
   });

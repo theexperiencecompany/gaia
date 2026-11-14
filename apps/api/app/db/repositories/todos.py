@@ -414,6 +414,18 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             sort=[("completed_at", -1)],
         )
 
+    async def list_external_ref_activity_since(
+        self, user_id: str, source: ExternalRefSource, *, since: datetime
+    ) -> list[TodoDocument]:
+        """Return the user's todos about one kind of outside object opened or completed since (UTC)."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "external_ref.source": source.value,
+                "$or": [{"created_at": {"$gte": since}}, {"completed_at": {"$gte": since}}],
+            }
+        )
+
     async def list_open_user_todos(
         self, user_id: str, *, limit: int, due_before: datetime | None = None
     ) -> list[TodoDocument]:

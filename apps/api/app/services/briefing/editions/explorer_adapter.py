@@ -1,36 +1,27 @@
 """BriefingPayload -> the vendored explorer templates' ed shape.
 
-The templates in editions/explorer/js/ expect four buckets (today, overnight for
-what finished, running for what GAIA is still doing, decisions) plus a stats tuple; this module maps our looser payload by meaning, never by position.
-Every item lives in exactly one bucket. Stats come from the payload's tallies, with
-unknown or zero figures as None so the template renders nothing for them.
+ed carries the edition's furniture (date, recipient, figures, codes, a stamp or a painting)
+and the brief's drawn blocks (explorer_blocks.py), which every family renders in its own
+idiom. Unknown or zero figures are None so the template renders nothing for them.
 
 ed values are passed through unescaped: every vendored template HTML-escapes its own
 text, so pre-escaping here would double-encode entities.
 """
 
-from datetime import date, datetime
+from datetime import date
 import re
-from typing import NamedTuple, TypedDict
+from typing import TypedDict
 
-from app.constants.briefing import (
-    POSTAL_FAMILY,
-    WEEKLY_FAMILY,
-    BriefAction,
-    BriefOutcome,
-    SectionKey,
-)
-from app.models.briefing_models import (
-    NEEDS_YOU_ITEM_KINDS,
-    BriefingEvent,
-    BriefingItem,
-    BriefingItemKind,
-    BriefingPayload,
-    BriefingSection,
-    BriefingTallies,
-    BriefingWeek,
-)
+from app.constants.briefing import POSTAL_FAMILY, WEEKLY_FAMILY
+from app.models.briefing_models import BriefingEvent, BriefingPayload, BriefingTallies
 from app.services.briefing.editions.codes import CodeGeometry, Symbology, family_codes
+from app.services.briefing.editions.explorer_blocks import (
+    ExplorerBlock,
+    ExplorerSource,
+    awaiting,
+    build_blocks,
+    read_sources,
+)
 from app.services.briefing.editions.stamps import Stamp, stamp_for
 
 _WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -51,43 +42,6 @@ _MONTHS = [
 
 _GENERATED_TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$")
 
-# GAIA-side state of an overnight row, as the short caps tag the templates set
-# beside it (the contract's sample data used "REVIEW", "SHIP", "DONE").
-_OVERNIGHT_TAGS: dict[BriefingItemKind, str] = {"gaia": "IN PROGRESS", "lookback": "DONE"}
-
-
-class ExplorerTodayItem(TypedDict):
-    """One content.today row, keyed exactly as the vendored JS reads it."""
-
-    time: str | None
-    t24: str | None
-    label: str
-    note: str | None
-    tag: str
-
-
-class ExplorerOvernightItem(TypedDict):
-    t24: str | None
-    label: str
-    note: str | None
-    tag: str
-    outcome: str
-
-
-class ExplorerDecisionItem(TypedDict):
-    verb: str
-    label: str
-    note: str | None
-    action: str
-
-
-class ExplorerMore(TypedDict):
-    """Per section, the items its cap left out, for "+N more in the full brief"."""
-
-    needs_you: int
-    updates: int
-    gaia_did: int
-
 
 class ExplorerStats(TypedDict):
     """Each figure is None when unknown or zero; the templates guard on it."""
@@ -99,44 +53,14 @@ class ExplorerStats(TypedDict):
     focus: str | None
 
 
-class ExplorerContent(TypedDict):
-    today: list[ExplorerTodayItem]
-    overnight: list[ExplorerOvernightItem]
-    running: list[ExplorerOvernightItem]
-    decisions: list[ExplorerDecisionItem]
-    #: Todos waiting on the reader (a grouped ask counts each); None when nothing waits.
-    awaiting: int | None
-    stats: ExplorerStats | None
-    more: ExplorerMore
-
-
 class ExplorerArt(TypedDict):
-    """The painting the edition hangs (editions/artworks.py), its image a data URI."""
+    """The painting a framed family hangs (editions/artworks.py), its image a hosted URL."""
 
     src: str
     title: str
     artist: str
     year: str
     medium: str
-
-
-class ExplorerAheadItem(TypedDict):
-    day: str
-    label: str
-
-
-class ExplorerWeekDay(TypedDict):
-    you: int
-    gaia: int
-
-
-class ExplorerWeek(TypedDict):
-    """ed.week: the real week the weekly family draws."""
-
-    days: list[ExplorerWeekDay]
-    shipped: list[str]
-    handled: list[str]
-    ahead: list[ExplorerAheadItem]
 
 
 class ExplorerRecipient(TypedDict):
@@ -166,10 +90,16 @@ class ExplorerEdition(TypedDict):
     deck: str
     #: None when the payload carries no name; the templates then address "you".
     recipient: ExplorerRecipient | None
-    content: ExplorerContent
-    week: ExplorerWeek | None
+    #: The brief's drawn blocks in reading order, the calendar among them.
+    blocks: list[ExplorerBlock]
+    #: Todos waiting on the reader (a grouped ask counts each); None when nothing waits.
+    awaiting: int | None
+    stats: ExplorerStats | None
+    #: The apps the brief read, for the "made from your apps" line.
+    sources: list[ExplorerSource]
     stamp: Stamp | None
-    art: ExplorerArt
+    #: None for a family that hangs no painting.
+    art: ExplorerArt | None
     assets: dict[str, str]
     #: The codes the family prints (none for most), each encoding the brief's link.
     codes: dict[Symbology, CodeGeometry]
@@ -181,16 +111,16 @@ def build_ed(
     edition_no: int,
     generated_local: str,
     assets: dict[str, str],
-    art: ExplorerArt,
+    art: ExplorerArt | None,
     family: str,
 ) -> ExplorerEdition:
     """Build the vendored templates' ed object from a briefing payload.
 
     generated_local (e.g. "6:02 AM"); empty uses the payload's generated_at. assets maps
-    asset key to image URL. family decides whether ed carries the week or a stamp.
+    asset key to image URL. family decides whether the calendar is the week ahead, and the stamp.
     """
     date_parts = _date_parts(payload.date)
-    buckets = _build_buckets(payload.sections, payload.calendar)
+    calendar = edition_calendar(payload, family)
     generated = generated_local or payload.generated_at or ""
 
     return {
@@ -206,21 +136,20 @@ def build_ed(
         "time24": _time24(generated),
         "deck": payload.headline,
         "recipient": _build_recipient(payload.recipient_name),
-        "content": {
-            "today": buckets.today,
-            "overnight": buckets.overnight,
-            "running": buckets.running,
-            "decisions": buckets.decisions,
-            "awaiting": _awaiting(payload.sections),
-            "stats": _build_stats(payload.tallies),
-            "more": _build_more(payload.sections),
-        },
-        "week": _build_week(payload.week) if family == WEEKLY_FAMILY else None,
+        "blocks": build_blocks(payload.blocks, payload.sections, calendar, payload.date),
+        "awaiting": awaiting(payload.blocks, payload.sections),
+        "stats": _build_stats(payload.tallies),
+        "sources": read_sources(payload.sources_read),
         "stamp": _build_stamp(payload.stamp_city) if family == POSTAL_FAMILY else None,
         "art": art,
         "assets": assets,
         "codes": family_codes(family, payload.link),
     }
+
+
+def edition_calendar(payload: BriefingPayload, family: str) -> list[BriefingEvent]:
+    """Return the events the family's calendar lists: the weekly's week ahead, else today's."""
+    return payload.week.ahead if family == WEEKLY_FAMILY and payload.week else payload.calendar
 
 
 def _date_parts(iso_date: str) -> tuple[str, int, str, str, int, str]:
@@ -262,80 +191,8 @@ def _time24(generated_local: str) -> str:
     return f"{hour:02d}:{minute}"
 
 
-def _clock12(t24: str) -> str:
-    """24h "13:05" -> "1:05 PM"."""
-    return datetime.strptime(t24, "%H:%M").strftime("%-I:%M %p")
-
-
-def _event_row(event: BriefingEvent) -> ExplorerTodayItem:
-    return {
-        "time": _clock12(event.start) if event.start else None,
-        "t24": event.start or None,
-        "label": event.title,
-        "note": event.location or None,
-        "tag": "",
-    }
-
-
-def _overnight_row(item: BriefingItem, outcome: BriefOutcome) -> ExplorerOvernightItem:
-    return {
-        "t24": None,
-        "label": item.text,
-        "note": item.detail,
-        "tag": _OVERNIGHT_TAGS.get(item.kind, ""),
-        "outcome": outcome.value,
-    }
-
-
-def _decision_row(item: BriefingItem, action: BriefAction) -> ExplorerDecisionItem:
-    return {
-        "verb": action.value.capitalize(),
-        "label": item.text,
-        "note": item.detail,
-        "action": action.value,
-    }
-
-
-class _Buckets(NamedTuple):
-    today: list[ExplorerTodayItem]
-    overnight: list[ExplorerOvernightItem]
-    running: list[ExplorerOvernightItem]
-    decisions: list[ExplorerDecisionItem]
-
-
-def _build_buckets(sections: list[BriefingSection], calendar: list[BriefingEvent]) -> _Buckets:
-    """Map items by meaning (see the module docstring); an empty bucket stays empty.
-
-    An item that asks something is a decision; one that reports is overnight, or running
-    while GAIA has only started it.
-    """
-    items = [item for section in sections for item in section.items]
-    reported = [(i, i.outcome) for i in items if i.outcome is not None]
-    return _Buckets(
-        today=[_event_row(e) for e in calendar],
-        overnight=[_overnight_row(i, o) for i, o in reported if o is not BriefOutcome.STARTED],
-        running=[_overnight_row(i, o) for i, o in reported if o is BriefOutcome.STARTED],
-        decisions=[_decision_row(i, i.action) for i in items if i.action is not None],
-    )
-
-
 def _positive(value: int) -> int | None:
     return value if value > 0 else None
-
-
-def _awaiting(sections: list[BriefingSection]) -> int | None:
-    return _positive(
-        sum(item.count for s in sections for item in s.items if item.kind in NEEDS_YOU_ITEM_KINDS)
-    )
-
-
-def _build_more(sections: list[BriefingSection]) -> ExplorerMore:
-    more = {s.key: s.more for s in sections if s.key is not None}
-    return {
-        "needs_you": more.get(SectionKey.NEEDS_YOU, 0),
-        "updates": more.get(SectionKey.UPDATES, 0),
-        "gaia_did": more.get(SectionKey.GAIA_DID, 0),
-    }
 
 
 def _build_stats(tallies: BriefingTallies | None) -> ExplorerStats | None:
@@ -360,19 +217,6 @@ def _build_stats(tallies: BriefingTallies | None) -> ExplorerStats | None:
 def _build_recipient(name: str | None) -> ExplorerRecipient | None:
     full = " ".join((name or "").split())
     return {"name": full, "first": full.partition(" ")[0]} if full else None
-
-
-def _build_week(week: BriefingWeek | None) -> ExplorerWeek | None:
-    if not week:
-        return None
-    return {
-        "days": [{"you": d.you, "gaia": d.gaia} for d in week.days],
-        "shipped": list(week.shipped),
-        "handled": list(week.handled),
-        "ahead": [
-            {"day": date.fromisoformat(e.date).strftime("%a"), "label": e.title} for e in week.ahead
-        ],
-    }
 
 
 def _build_stamp(slug: str | None) -> Stamp | None:

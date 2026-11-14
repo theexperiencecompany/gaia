@@ -13,6 +13,7 @@ from typing import Protocol
 from app.constants.briefing import (
     DESK_FAMILIES,
     DESK_SHADOW_BLEED_PX,
+    EXPLORER_SCALE,
     POSTAL_FAMILY,
     WEEKLY_FAMILY,
 )
@@ -97,7 +98,6 @@ class EditionFrame:
 
 DESK_MARGIN_PX = 16
 _EXPLORER_ROOT = "#root > article"
-_EXPLORER_SCALE = 3
 
 
 def edition_frame(family: str) -> EditionFrame:
@@ -106,7 +106,7 @@ def edition_frame(family: str) -> EditionFrame:
     bleed = DESK_SHADOW_BLEED_PX if on_a_desk else 0
     return EditionFrame(
         width=EXPLORER_CANVAS_PX + 2 * bleed,
-        device_scale_factor=_EXPLORER_SCALE,
+        device_scale_factor=EXPLORER_SCALE,
         clip_selector=_EXPLORER_ROOT,
         trim_margin_px=DESK_MARGIN_PX if on_a_desk else None,
         clip_bleed_px=bleed,

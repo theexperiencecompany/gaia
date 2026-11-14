@@ -1,19 +1,20 @@
 """The daily brief: look back since yesterday, choose what matters, voice it and publish it."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from app.agents.prompts.briefing_prompts import (
+    RecentLines,
     VoicePromptBlocks,
     VoiceSituation,
     build_briefing_voice_prompt,
-    reader_line,
 )
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     DAILY_KICKER,
-    RECENT_OPENINGS_SHOWN,
-    SECTION_TITLES,
-    BriefingBag,
+    RECENT_BRIEFS_RECALLED,
+    TODAY_SPAN,
+    UNNAMED_READER,
     BriefingRunOutcome,
 )
 from app.constants.user_activity import ActivityStatus
@@ -28,15 +29,16 @@ from app.models.briefing_models import (
 from app.models.user_models import UserDocument
 from app.services.briefing import chat_sync, context, dormancy
 from app.services.briefing.artifacts import gather_artifacts
-from app.services.briefing.candidates.judge import select_candidates
 from app.services.briefing.candidates.pool import (
     CandidateSources,
+    GatheredCandidates,
     gather_candidates,
-    sources_shown,
 )
-from app.services.briefing.edition_draws import draw_from_bag
-from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.composition.compose import compose_brief
+from app.services.briefing.edition_draws import draw_edition
 from app.services.briefing.errors import BriefingGenerationError
+from app.services.briefing.fact_pool.pool import FactPool, PoolContext, PoolReads, build_fact_pool
+from app.services.briefing.fact_pool.window import daily_window
 from app.services.briefing.facts import (
     TODAY,
     FactSources,
@@ -50,20 +52,30 @@ from app.services.briefing.lifecycle import (
     clear_bootstrap,
     wake_or_skip,
 )
-from app.services.briefing.prose import Prose, Writing, links_in, voiced_payload, written_brief
-from app.services.briefing.publish import Push, publish_brief
+from app.services.briefing.prose import (
+    Prose,
+    Writing,
+    links_in,
+    opening_line,
+    reader_block,
+    voiced_payload,
+    written_brief,
+)
+from app.services.briefing.publish import PoolCounts, Push, publish_brief
 from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
-from app.services.briefing.scouts.service import scout_signals
+from app.services.briefing.scouts.service import ScoutSignals, scout_signals
 from app.services.briefing.sections import (
+    Laid,
     carried_ids,
-    chosen_sections,
     chosen_signals,
     event_ids,
-    log_selection,
-    picked_ids,
+    lay_out,
+    log_composition,
+    sources_shown,
 )
 from app.services.briefing.slots import (
+    figures_in,
     referenced_facts,
 )
 from app.services.integrations.user_integrations import (
@@ -71,7 +83,6 @@ from app.services.integrations.user_integrations import (
     get_connected_integrations_named,
 )
 from app.services.user_activity.status import activity_status_of
-from app.utils.auth_utils import build_user_context
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from shared.py.wide_events import log
@@ -89,18 +100,54 @@ async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: b
     return "\n".join(lines)
 
 
-async def _recent_openings(user_id: str) -> list[str]:
-    """Return the opening line of each recent daily brief's message, newest first."""
-    recent = await briefing_repository.list_recent(
-        user_id, limit=RECENT_OPENINGS_SHOWN, kind=BRIEFING_KIND_DAILY
+async def _recent_lines(user_id: str) -> RecentLines:
+    """Return what the recent daily briefs printed, newest first."""
+    payloads = [
+        brief.payload
+        for brief in await briefing_repository.list_recent(
+            user_id, limit=RECENT_BRIEFS_RECALLED, kind=BRIEFING_KIND_DAILY
+        )
+    ]
+    return RecentLines(
+        headlines=[p.headline for p in payloads if p.headline],
+        ledes=[p.lede for p in payloads if p.lede],
+        captions=[p.caption for p in payloads if p.caption],
+        openings=[opening_line(p.message) for p in payloads if p.message],
     )
-    messages = [brief.payload.message for brief in recent if brief.payload.message]
-    return [next(line.strip() for line in m.splitlines() if line.strip()) for m in messages]
 
 
 def _is_empty_day(payload: BriefingPayload) -> bool:
-    """Nothing needs the user, in GAIA or their apps, and nothing is on their calendar."""
-    return not payload.calendar and not any(section.items for section in payload.sections)
+    """Say whether the composition placed nothing and the user's calendar is empty."""
+    return not payload.blocks and not payload.calendar
+
+
+async def _composed_day(
+    user: UserDocument,
+    clock: context.UserClock,
+    gathered: GatheredCandidates,
+    scouts: ScoutSignals,
+    goals: list[context.StatedGoal],
+    pool_context: PoolContext,
+) -> tuple[FactPool, Laid]:
+    """Build today's fact pool over the week ending today, compose the brief over it and lay it out."""
+    window = daily_window(clock)
+    pool = await build_fact_pool(
+        user.id,
+        window,
+        PoolReads(
+            items=gathered.pool,
+            signals=[r.signal for r in scouts.remembered],
+            calendar=await context.read_calendar(user.id, window.start, window.end),
+            goals=goals,
+            criteria=scouts.criteria,
+        ),
+        pool_context,
+        datetime.now(UTC),
+    )
+    composed = await compose_brief(user.id, pool, BRIEFING_KIND_DAILY)
+    laid = lay_out(composed.rendered, pool)
+    log_composition(pool, laid)
+    return pool, laid
 
 
 async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
@@ -117,7 +164,8 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     if dstate is None:
         return BriefingRunOutcome.DORMANT
 
-    goal_block, has_goal = await context.format_goal_block(user_id, user)
+    goals = await context.stated_goals(user_id, user)
+    goal_block, has_goal = context.format_goal_block(goals)
     if bootstrap_should_skip(user, has_goal):
         log.info("briefing.bootstrap_pending_skip", user_id=user_id)
         return BriefingRunOutcome.BOOTSTRAP_PENDING
@@ -134,10 +182,11 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         log.info("briefing.winback_backoff", user_id=user_id, unacknowledged=winback.unacknowledged)
         return BriefingRunOutcome.WINBACK_BACKOFF
 
-    # Facts are assembled by code from tracked-work state; the model only voices them.
+    # Facts are assembled by code from tracked-work state; the model composes and voices them.
     work = await context.gather_tracked_work(user_id, since)
     artifacts = gather_artifacts(work)
     open_count, open_titles = await context.user_open_todo_summary(user_id)
+    has_calendar = await context.calendar_connected(user_id)
     calendar = await context.gather_calendar(user_id, clock, days=1)
     completed = await context.gather_completed_since(user_id, since)
     held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
@@ -146,27 +195,35 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     gathered = await gather_candidates(
         user_id, clock, since, seen_at, CandidateSources(work, held, scouts, calendar)
     )
-    selection = await select_candidates(
-        user_id,
-        gathered.pool,
-        scouts.criteria,
-        seen_at,
-        user.timezone or Timezone.utc().value,
-        kind=BRIEFING_KIND_DAILY,
+    recent = await _recent_lines(user_id)
+    pool, laid = await _composed_day(
+        user,
+        clock,
+        gathered,
+        scouts,
+        goals,
+        PoolContext(
+            reader=display_first_name(user) or UNNAMED_READER,
+            timezone=user.timezone or Timezone.utc().value,
+            today=clock.now_local.date(),
+            calendar_events=len(calendar),
+            calendar_connected=has_calendar,
+            calendar_span=TODAY_SPAN,
+            recent_openings=recent.openings,
+        ),
     )
-    log_selection(len(gathered.pool), selection)
-    chosen = chosen_sections(selection, gathered.pool, SECTION_TITLES)
-    remembered = chosen_signals(chosen, scouts.remembered)
-    signals = [item.signal for _, item in remembered]
+    remembered = chosen_signals(laid.chosen, scouts.remembered)
     facts = build_facts(
-        chosen,
+        laid.chosen,
         FactSources(
             artifacts=artifacts,
             open_todos=open_count,
             calendar=calendar,
+            calendar_connected=has_calendar,
             event_ids=event_ids(gathered.pool),
             span=TODAY,
             todos_note=user_todos_note(open_count, open_titles),
+            blocks=laid.blocks,
         ),
         clock,
     )
@@ -181,7 +238,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     offer_lighter = await activity_status_of(user_id) == ActivityStatus.IDLE
 
     blocks = VoicePromptBlocks(
-        reader=reader_line(display_first_name(user)),
+        reader=reader_block(user),
         facts=facts.block,
         goal=goal_block,
         lookback=lookback_block,
@@ -200,30 +257,28 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             offer_lighter_cadence=offer_lighter,
             goal_asked_recently=ladder.goal_question is dormancy.GoalQuestion.ASKED,
         ),
-        recent_openings=await _recent_openings(user_id),
+        recent=recent,
     )
     voice, draft = await written_brief(
-        build_user_context(user, auth_provider=None),
-        clock,
+        user_id,
         prompt,
         Writing(
-            values=facts.values,
-            context=blocks.context,
-            must_mention=frozenset()
-            if winback.is_winback or ladder.wind_down is not None
-            else facts.must_mention,
-            kind=BRIEFING_KIND_DAILY,
+            # What was done since the last brief is the user's own record, quotable as it stands.
+            values=replace(facts.values, quoted=facts.values.quoted | figures_in([lookback_block])),
+            lead=None if winback.is_winback or ladder.wind_down is not None else facts.lead,
+            recent=recent,
+            grounds=f"{facts.block}\n{blocks.signals}",
         ),
     )
     links = await links_in(user_id, voice.message, facts)
-    family = draw_from_bag(user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS)
+    edition = draw_edition(user, laid.blocks)
     payload = voiced_payload(
         clock,
         Prose(voice, draft, links),
         facts,
         kicker=DAILY_KICKER,
         mood="winback" if winback.is_winback else draft.mood,
-        family=family.member,
+        family=edition.family.member,
     ).model_copy(
         update={
             "stats": work_stats(work),
@@ -231,8 +286,11 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             "tallies": BriefingTallies(
                 done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
             ),
-            "sources_read": sources_shown(gathered.pool, picked_ids(chosen)),
+            "sources_read": sources_shown(laid, gathered.pool),
             "sources_unavailable": gathered.sources_unavailable,
+            "blocks": edition.drawn,
+            "undrawn": edition.undrawn,
+            "uncomposed": laid.uncomposed,
         }
     )
     await publish_brief(
@@ -240,19 +298,20 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         clock,
         BRIEFING_KIND_DAILY,
         payload,
-        [family],
+        [edition.family],
         # The idle ladder's goal question, warning and goodbye are messages in
         # their own right, so they push even on an otherwise empty day.
         Push(
             push=not _is_empty_day(payload) or ladder.wind_down is not None or winback.is_winback,
-            signal_count=len(signals),
+            signal_count=len(remembered),
+            pool=PoolCounts.of(pool),
         ),
     )
     spoken = referenced_facts(voice.message)
     await signal_memory_repository.mark_shown(
         user_id, [item.signal for i, item in remembered if i in spoken], datetime.now(UTC)
     )
-    carried = carried_ids(selection, gathered.pool, gathered.duplicate_held_ids)
+    carried = carried_ids(gathered.pool, gathered.duplicate_held_ids)
     if carried:
         await pending_brief_items_repository.consume(user_id, carried)
     await clear_bootstrap(user)

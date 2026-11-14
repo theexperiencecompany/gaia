@@ -10,6 +10,7 @@ conversation once re-extracted the same transcript ~76 times); Provenance
 not a disclosure).
 """
 
+from collections.abc import Sequence
 import contextlib
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
@@ -23,6 +24,7 @@ from app.agents.context.slots import (
     slot_of,
 )
 from app.config.oauth_config import get_memory_extraction_prompt
+from app.constants.briefing import SilentTurnSource
 from app.constants.log_tags import LogTag
 from app.constants.memory import (
     MEMORY_DELTA_CONTEXT_MESSAGES,
@@ -54,7 +56,7 @@ _CONTEXT_MARKER = "--- earlier context: already extracted, do NOT re-extract ---
 _DELTA_MARKER = "--- new since the last extraction ---"
 
 
-def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
+def _check_worth_learning(messages: Sequence[AnyMessage]) -> tuple[bool, str]:
     """Return whether a turn carries any substantive user content worth extracting.
 
     No message-count or tool-call gating: a single-message disclosure must
@@ -76,7 +78,7 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
     return False, "No substantive user message"
 
 
-def _delta_worth_learning(delta: list[AnyMessage]) -> bool:
+def _delta_worth_learning(delta: Sequence[AnyMessage]) -> bool:
     """Return whether the NEW slice of a thread justifies an extraction call.
 
     The node's thread-level check passes on ANY substantive user message,
@@ -129,7 +131,7 @@ def _memory_entries(msg: AnyMessage) -> list[tuple[str, str]]:
 
 
 def _format_messages_for_user_memory(
-    messages: list[AnyMessage],
+    messages: Sequence[AnyMessage],
     context_count: int = 0,
 ) -> list[dict[str, str]]:
     """Convert messages to a role/content transcript for the extraction LLM.
@@ -154,8 +156,8 @@ def _format_messages_for_user_memory(
 
 
 async def _messages_to_ingest(
-    user_id: str, thread_id: str | None, messages: list[AnyMessage]
-) -> tuple[list[AnyMessage], int]:
+    user_id: str, thread_id: str | None, messages: Sequence[AnyMessage]
+) -> tuple[Sequence[AnyMessage], int]:
     """Return the slice of the thread to extract from, and how much of it is context.
 
     Returns (messages, context_count): the first context_count entries were
@@ -182,7 +184,9 @@ async def _messages_to_ingest(
     return messages, 0
 
 
-async def _mark_ingested(user_id: str, thread_id: str | None, messages: list[AnyMessage]) -> None:
+async def _mark_ingested(
+    user_id: str, thread_id: str | None, messages: Sequence[AnyMessage]
+) -> None:
     """Record the last message this thread has extracted from.
 
     Written only after retain returns, so a failed ingestion is retried on
@@ -198,7 +202,7 @@ async def _mark_ingested(user_id: str, thread_id: str | None, messages: list[Any
 
 
 async def _store_user_memory_background(
-    messages: list[AnyMessage],
+    messages: Sequence[AnyMessage],
     user_id: str,
     session_id: str | None,
     extraction_prompt: str | None,
@@ -288,6 +292,11 @@ async def memory_node(
         return state
 
     if not user_id:
+        return state
+    if configurable.get("conversation_source") in set(SilentTurnSource):
+        # GAIA wrote this turn's prompt (the day-zero hello): learning from it would
+        # store GAIA's own words as the user's, and read them back as goals tomorrow.
+        log.set(memory_ingest={"skipped": "silent_turn"})
         return state
 
     task = spawn_background_task(

@@ -6,14 +6,14 @@ from datetime import UTC, datetime
 from app.agents.prompts.briefing_prompts import (
     VoicePromptBlocks,
     build_weekly_voice_prompt,
-    reader_line,
 )
 from app.constants.briefing import (
     BRIEFING_KIND_WEEKLY,
+    UNNAMED_READER,
+    WEEK_AHEAD_SPAN,
     WEEKLY_FAMILY,
     WEEKLY_GENERATION_TIMEOUT_SECONDS,
     WEEKLY_KICKER,
-    WEEKLY_SECTION_TITLES,
     BriefingRunOutcome,
 )
 from app.db.repositories.users import user_repository
@@ -22,12 +22,14 @@ from app.models.briefing_models import (
 )
 from app.services.briefing import context, dormancy
 from app.services.briefing.artifacts import gather_artifacts
-from app.services.briefing.candidates.judge import select_candidates
 from app.services.briefing.candidates.pool import (
     gather_week_candidates,
-    sources_shown,
 )
+from app.services.briefing.composition.compose import compose_brief
+from app.services.briefing.editions.capabilities import split_drawable
 from app.services.briefing.errors import BriefingGenerationError
+from app.services.briefing.fact_pool.pool import PoolContext, PoolReads, build_fact_pool
+from app.services.briefing.fact_pool.window import week_window
 from app.services.briefing.facts import (
     WEEK_AHEAD,
     FactSources,
@@ -36,15 +38,21 @@ from app.services.briefing.facts import (
 from app.services.briefing.lifecycle import (
     already_delivered,
 )
-from app.services.briefing.prose import Prose, Writing, links_in, voiced_payload, written_brief
-from app.services.briefing.publish import Push, publish_brief
-from app.services.briefing.sections import (
-    chosen_sections,
-    event_ids,
-    log_selection,
-    picked_ids,
+from app.services.briefing.prose import (
+    Prose,
+    Writing,
+    links_in,
+    reader_block,
+    voiced_payload,
+    written_brief,
 )
-from app.utils.auth_utils import build_user_context
+from app.services.briefing.publish import PoolCounts, Push, publish_brief
+from app.services.briefing.sections import (
+    event_ids,
+    lay_out,
+    log_composition,
+    sources_shown,
+)
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from shared.py.wide_events import log
@@ -73,34 +81,53 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     since = context.week_start_utc(clock)
     completed = await context.gather_completed_since(user_id, since)
     week = await context.gather_week(user_id, clock, completed)
+    has_calendar = await context.calendar_connected(user_id)
     seen_at = datetime.now(UTC)
-    gathered = await gather_week_candidates(user_id, since, completed, week.ahead)
-    selection = await select_candidates(
+    gathered = await gather_week_candidates(user_id, clock, since, completed, week.ahead)
+    goals = await context.stated_goals(user_id, user)
+    goal_block, _ = context.format_goal_block(goals)
+    window = week_window(clock)
+    pool = await build_fact_pool(
         user_id,
-        gathered.pool,
-        {},
+        window,
+        PoolReads(
+            items=gathered.pool,
+            signals=[],
+            calendar=await context.read_calendar(user_id, window.start, window.end),
+            goals=goals,
+            criteria={},
+        ),
+        PoolContext(
+            reader=display_first_name(user) or UNNAMED_READER,
+            timezone=user.timezone or Timezone.utc().value,
+            today=clock.now_local.date(),
+            calendar_events=len(week.ahead),
+            calendar_connected=has_calendar,
+            calendar_span=WEEK_AHEAD_SPAN,
+        ),
         seen_at,
-        user.timezone or Timezone.utc().value,
-        kind=BRIEFING_KIND_WEEKLY,
     )
-    log_selection(len(gathered.pool), selection)
-    chosen = chosen_sections(selection, gathered.pool, WEEKLY_SECTION_TITLES)
+    composed = await compose_brief(user_id, pool, BRIEFING_KIND_WEEKLY)
+    laid = lay_out(composed.rendered, pool)
+    log_composition(pool, laid)
     facts = build_facts(
-        chosen,
+        laid.chosen,
         FactSources(
             artifacts=gather_artifacts(
                 context.TrackedWork(completed=[*completed.gaia, *completed.user])
             ),
+            open_todos=0,
             calendar=week.ahead,
+            calendar_connected=has_calendar,
             event_ids=event_ids(gathered.pool),
             span=WEEK_AHEAD,
             todos_note=None,
+            blocks=laid.blocks,
         ),
         clock,
     )
-    goal_block, _ = await context.format_goal_block(user_id, user)
     blocks = VoicePromptBlocks(
-        reader=reader_line(display_first_name(user)),
+        reader=reader_block(user),
         facts=facts.block,
         goal=goal_block,
         lookback="",
@@ -110,17 +137,12 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     # worker slot (observed live 2026-08-07).
     async with asyncio.timeout(WEEKLY_GENERATION_TIMEOUT_SECONDS):
         voice, draft = await written_brief(
-            build_user_context(user, auth_provider=None),
-            clock,
+            user_id,
             build_weekly_voice_prompt(date_local=clock.date_str, blocks=blocks),
-            Writing(
-                values=facts.values,
-                context=blocks.context,
-                must_mention=facts.must_mention,
-                kind=BRIEFING_KIND_WEEKLY,
-            ),
+            Writing(values=facts.values, lead=facts.lead, grounds=facts.block),
         )
     links = await links_in(user_id, voice.message, facts)
+    drawn, undrawn = split_drawable(WEEKLY_FAMILY, laid.blocks)
     payload = voiced_payload(
         clock,
         Prose(voice, draft, links),
@@ -135,7 +157,10 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
                 done_by_you=sum(d.you for d in week.days),
                 done_by_gaia=sum(d.gaia for d in week.days),
             ),
-            "sources_read": sources_shown(gathered.pool, picked_ids(chosen)),
+            "sources_read": sources_shown(laid, gathered.pool),
+            "blocks": drawn,
+            "undrawn": undrawn,
+            "uncomposed": laid.uncomposed,
         }
     )
     await publish_brief(
@@ -144,6 +169,6 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         BRIEFING_KIND_WEEKLY,
         payload,
         [],
-        Push(push=True),
+        Push(push=True, pool=PoolCounts.of(pool)),
     )
     return BriefingRunOutcome.SENT

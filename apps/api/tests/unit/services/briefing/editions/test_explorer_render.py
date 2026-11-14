@@ -12,15 +12,15 @@ from typing import Any
 import pytest
 
 from app.models.briefing_models import BriefingPayload
-from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame
-from app.services.briefing.editions.artworks import ARTWORKS
+from app.services.briefing.editions import EXPLORER_RENDERER, edition_frame, explorer_render
+from app.services.briefing.editions.artworks import artwork_catalogue
 from app.services.briefing.editions.explorer_render import (
     _TRANSPARENT_DESK_CSS,
     EXPLORER_CANVAS_PX,
     _asset_data_uris,
-    _font_faces_css,
     _module_sources,
     _raw_assets,
+    _shell_sources,
     explorer_family_ids,
     explorer_family_names,
     render_explorer_edition,
@@ -31,11 +31,11 @@ from app.services.briefing.editions.stamps import hosted_stamp_weights, stamp_as
 # so each test must start cold.
 _CACHED_LOADERS = (
     _module_sources,
+    _shell_sources,
     explorer_family_names,
     explorer_family_ids,
     _raw_assets,
     _asset_data_uris,
-    _font_faces_css,
 )
 
 
@@ -175,9 +175,42 @@ class TestDocumentShell:
     def test_each_module_gets_its_own_script_tag_on_its_own_line(self) -> None:
         html = _render()
 
-        # 10 modules => 9 joins between them, plus the shim before and the
-        # bootstrap after — anything else means the modules ran together.
-        assert html.count("</script>\n<script>") == 11
+        # 10 modules => 9 joins between them, plus the shim and the block plumbing
+        # before and the bootstrap after — anything else means the modules ran together.
+        assert html.count("</script>\n<script>") == 12
+
+    def test_only_the_marks_of_the_apps_the_brief_prints_are_embedded(self) -> None:
+        item = {"text": "PR #12", "kind": "you", "action": "review", "source": "github"}
+        payload = _payload(
+            sections=[{"numeral": "I", "title": "Needs you", "items": [item]}],
+            blocks=[{"kind": "items", "section": 0}],
+        )
+
+        html = _render(payload)
+
+        assert '.xb-logo[data-logo="github"]' in html
+        assert '.xb-logo[data-logo="googlecalendar"]' in html
+        assert '.xb-logo[data-logo="slack"]' not in html
+        assert 'logoKinds: {"github": "mono", "googlecalendar": "color"}' in html
+
+    def test_the_shared_block_script_and_reading_css_are_inlined(self) -> None:
+        html = _render()
+
+        assert (explorer_render._SHELL_DIR / "blocks.js").read_text() in html
+        assert (explorer_render._SHELL_DIR / "reading.css").read_text() in html
+
+    def test_the_weekly_edition_prints_the_marks_of_its_week_ahead_not_todays_calendar(
+        self,
+    ) -> None:
+        week = {
+            "days": [{"you": 0, "gaia": 0}] * 7,
+            "ahead": [{"date": "2026-07-07", "start": "10:00", "title": "Board"}],
+        }
+        payload = _payload(template_family="weekly", calendar=[], week=week)
+
+        html = _render(payload, family="weekly")
+
+        assert '.xb-logo[data-logo="googlecalendar"]' in html
 
     def test_deterministic_rng_shim_is_inlined(self) -> None:
         html = _render()
@@ -185,19 +218,27 @@ class TestDocumentShell:
         assert "function mulberry32(a) {" in html
         assert "function strSeed(s) {" in html
 
-    def test_five_font_faces_are_embedded_as_data_uris(self) -> None:
-        html = _render()
-        # The templates' own inline SVG styles name these fonts too; count the head's rules only.
+    def test_only_the_drawn_familys_fonts_are_embedded(self) -> None:
+        html = _render(family="swiss")
         faces = html[html.index("@font-face{") : html.index("* { margin")]
+        families = re.findall(r"@font-face\{font-family:'([^']+)'", faces)
 
-        assert html.count("@font-face{") == 5
-        assert faces.count("font-family:'Aeonik Extended'") == 2
-        assert faces.count("font-family:'Playfair Display'") == 3
-        assert faces.count("font-style:italic") == 1
-        assert "src:url(data:font/woff2;base64," in faces
-        # The rules are concatenated with nothing between them, so each one
-        # butts straight against the next.
-        assert faces.count("format('woff2');}@font-face{") == 4
+        assert families == [
+            "Aeonik Extended",
+            "Aeonik Extended",
+            "TeX Gyre Heros",
+            "TeX Gyre Heros",
+            "TeX Gyre Heros",
+        ]
+        assert faces.count("src:url(data:font/woff2;base64,") == 5
+        assert "size-adjust" not in faces
+
+    def test_a_scaled_face_carries_its_size_adjust(self) -> None:
+        html = _render(family="postal")
+        cutive = re.search(r"@font-face\{font-family:'Cutive';[^}]*\}", html)
+
+        assert cutive is not None
+        assert "size-adjust:83%;" in cutive.group()
 
 
 @pytest.mark.unit
@@ -245,25 +286,44 @@ class TestEmbeddedLiterals:
         assert ed["time24"] == "06:02"
         assert ed["deck"] == "A quiet Sunday"
         assert ed["dateLong"] == "Sunday, 5 July 2026"
-        assert ed["content"]["today"][0]["label"] == "Standup"
-        assert ed["content"]["stats"]["done"] == 3
+        assert ed["blocks"][0]["events"][0]["title"] == "Standup"
+        assert ed["stats"]["done"] == 3
 
-    def test_the_painting_and_its_catalogue_line_come_from_the_artwork_pool(self) -> None:
-        artwork = ARTWORKS[12 % len(ARTWORKS)]
+    @pytest.mark.parametrize("family", ["exhibition", "broadsheet", "almanac"])
+    def test_a_framed_family_hangs_the_drawn_artwork_by_its_hosted_url(self, family: str) -> None:
+        artwork = artwork_catalogue()["oxbow"]
 
-        art = _embedded_const(_render(edition_no=12), "ed")["art"]
+        art = _embedded_const(_render(_payload(artwork_id="oxbow"), family=family), "ed")["art"]
 
-        assert (art["title"], art["artist"]) == (artwork.title, artwork.artist)
-        assert (art["year"], art["medium"]) == (artwork.year, artwork.medium)
-        assert art["src"] == f"data:image/jpeg;base64,{_raw_assets()[artwork.asset_key]}"
+        assert art == {
+            "src": artwork.url,
+            "title": "The Oxbow",
+            "artist": "Thomas Cole",
+            "year": "1836",
+            "medium": "oil on canvas",
+        }
+        assert art["src"].startswith("https://res.cloudinary.com/")
 
-    def test_consecutive_editions_hang_different_paintings(self) -> None:
-        titles = [
-            _embedded_const(_render(edition_no=n), "ed")["art"]["title"]
-            for n in range(len(ARTWORKS))
-        ]
+    def test_a_re_render_hangs_the_same_artwork_whatever_the_edition_number(self) -> None:
+        payload = _payload(artwork_id="kambara")
 
-        assert sorted(titles) == sorted(a.title for a in ARTWORKS)
+        hung = {
+            _embedded_const(_render(payload, family="exhibition", edition_no=n), "ed")["art"][
+                "title"
+            ]
+            for n in range(12)
+        }
+
+        assert hung == {"Kambara"}
+
+    def test_a_framed_family_without_a_drawn_artwork_fails_loud(self) -> None:
+        with pytest.raises(ValueError, match="exhibition edition needs the artwork_id"):
+            _render(family="exhibition")
+
+    def test_a_family_with_no_frame_hangs_nothing(self) -> None:
+        ed = _embedded_const(_render(_payload(artwork_id="oxbow"), family="memo"), "ed")
+
+        assert ed["art"] is None
 
     def test_the_asset_map_is_the_band_and_the_experience_company_mark(self) -> None:
         ed = _embedded_const(_render(), "ed")
@@ -311,7 +371,7 @@ class TestPostalStamp:
 
     def test_the_template_city_axis_is_every_hosted_city(self) -> None:
         html = _render(family="swiss")
-        match = re.search(r"\n  cities: (\[.*?\]),\n\};", html, re.S)
+        match = re.search(r"\n  cities: (\[.*?\]),\n", html, re.S)
 
         assert match is not None
         cities = json.loads(match.group(1))
@@ -359,7 +419,8 @@ class TestScriptEscaping:
                             {"text": "</script>alert(1)", "kind": "note", "outcome": "changed"}
                         ],
                     }
-                ]
+                ],
+                blocks=[{"kind": "items", "section": 0}],
             )
         )
 

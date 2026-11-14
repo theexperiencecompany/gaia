@@ -83,10 +83,27 @@ def _people(value: object) -> list[str]:
     return [_person(person) for person in people]
 
 
+def _amount(value: object) -> float | None:
+    """Return a figure as a number; a numeric string reads as its number."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        raise _shape_error("amount", value)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise _shape_error("amount", value) from exc
+    raise _shape_error("amount", value)
+
+
 def _signal(integration: ScoutIntegration, source: SignalSource, item: object) -> Signal:
     fields = source.fields
     token = f"$steps.{source.step_id}"
     url, state = _optional(item, fields.url), _optional(item, fields.state)
+    amount, text = _amount(_optional(item, fields.amount)), _optional(item, fields.text)
     return Signal(
         integration_id=integration.integration_id,
         app=integration.name,
@@ -97,6 +114,9 @@ def _signal(integration: ScoutIntegration, source: SignalSource, item: object) -
         people=_people(_optional(item, fields.people)),
         url=None if url is None else _as_text(url, "url"),
         state=None if state is None or fields.state is None else _state(state, fields.state),
+        amount=amount,
+        amount_unit=source.amount_unit if amount is not None else None,
+        text=None if text is None or text == "" else _as_text(text, "text"),
         created_at=_moment(_optional(item, fields.created_at), "created_at"),
         updated_at=_moment(_optional(item, fields.updated_at), "updated_at"),
     )

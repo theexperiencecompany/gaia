@@ -13,7 +13,6 @@ import uuid
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.briefing import (
-    ACTION_SECTIONS,
     BRIEF_ITEM_DETAIL_MAX_CHARS,
     BRIEF_ITEM_TITLE_MAX_CHARS,
     BRIEFING_KIND_DAILY,
@@ -26,10 +25,10 @@ from app.constants.briefing import (
     BriefAction,
     BriefingFrequency,
     BriefOutcome,
-    SectionKey,
 )
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.base import UserScopedDocument
+from app.models.brief_composition_models import BriefBlock
 from app.models.scout_models import ScoutSkipReason
 from app.schemas.common import ResponseModel
 from app.schemas.errors import ErrorEnvelope
@@ -136,6 +135,8 @@ class BriefingItem(BaseModel):
     count: int = Field(default=1, ge=1)
     #: The app the item came from ("GitHub", "Gmail", "GAIA"); None on legacy rows.
     app: str | None = None
+    #: That app's integration id ("github"), or GAIA_SOURCE; the edition prints its mark.
+    source: str | None = None
     #: A deep link into that app, when it gave one.
     url: str | None = None
     people: list[str] = Field(default_factory=list)
@@ -150,28 +151,26 @@ class BriefingItem(BaseModel):
 
 
 class BriefingSection(BaseModel):
-    """A Roman-numeraled section of the briefing."""
+    """A group of items under the heading GAIA gave it, numbered in reading order."""
 
     model_config = ConfigDict(json_schema_serialization_defaults_required=True)
 
     numeral: str
     title: str
     items: list[BriefingItem] = Field(default_factory=list)
-    #: What the section holds; None on legacy rows and on the model-written weekly recap.
-    key: SectionKey | None = None
-    #: Items chosen for the section that its cap left out, for "+N more in the full brief".
-    more: int = Field(default=0, ge=0)
 
-    @model_validator(mode="after")
-    def _items_fit_the_section(self) -> Self:
-        if self.key is None:
-            return self
-        asks = self.key in ACTION_SECTIONS
-        misfit = [i.text for i in self.items if (i.action is not None) != asks]
-        if misfit:
-            needed = "an action" if asks else "an outcome"
-            raise ValueError(f"{self.key.value} items need {needed}: {misfit}")
-        return self
+
+class BriefPoolItem(BaseModel):
+    """A pool item the composition left out, in its source's own words, for the full brief page."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    title: str = Field(min_length=1)
+    detail: str | None = None
+    kind: BriefingItemKind
+    app: str
+    url: str | None = None
+    todo_id: str | None = None
 
 
 class BriefingEvent(BaseModel):
@@ -208,13 +207,10 @@ class BriefingWeekDay(BaseModel):
 
 
 class BriefingWeek(BaseModel):
-    """The real week the weekly edition draws: Monday-to-Sunday completions,
-    what shipped, what GAIA handled, and the calendar ahead. Every field is
-    counted or read, never estimated."""
+    """The real week behind the weekly recap: Monday-to-Sunday completions and the
+    calendar ahead. Every field is counted or read, never estimated."""
 
     days: list[BriefingWeekDay] = Field(min_length=7, max_length=7)
-    shipped: list[str] = Field(default_factory=list)
-    handled: list[str] = Field(default_factory=list)
     ahead: list[BriefingEvent] = Field(default_factory=list)
 
 
@@ -266,6 +262,13 @@ class BriefingPayload(BaseModel):
             "this brief carried. The Postmarks page reads it."
         ),
     )
+    artwork_id: str | None = Field(
+        default=None,
+        description=(
+            "Exhibition, Broadsheet and Almanac editions only: the painting (an "
+            "artworks/artworks.json slug) this brief hangs, so a re-render hangs it again."
+        ),
+    )
     new_stamp: NewStamp | None = Field(
         default=None,
         description="Set when this brief's stamp is one the user had not collected before.",
@@ -303,6 +306,25 @@ class BriefingPayload(BaseModel):
             "The brief as the user reads it: the text GAIA writes over the code-built "
             "facts, sent after the edition image in chat, under it in the email and on "
             "the brief's page. None on legacy rows."
+        ),
+    )
+    blocks: list[BriefBlock] = Field(
+        default_factory=list,
+        description=(
+            "The brief as GAIA composed it, in reading order: each lead or items block "
+            "names its section; charts, quotes, progress and notes carry their data. "
+            "Empty on legacy rows."
+        ),
+    )
+    uncomposed: list[BriefPoolItem] = Field(
+        default_factory=list,
+        description="Everything the brief read that the composition left out, for its full page.",
+    )
+    undrawn: list[BriefBlock] = Field(
+        default_factory=list,
+        description=(
+            "Composed blocks the drawn edition cannot draw in its idiom (a chart on the Menu), "
+            "moved out of blocks onto the brief's full page."
         ),
     )
 
