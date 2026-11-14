@@ -18,6 +18,7 @@ from app.constants.log_tags import LogTag
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.db.repositories.workflows import workflow_repository
+from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import (
     Reply,
     ReplySettled,
@@ -26,8 +27,15 @@ from app.models.conversation_log_models import (
     WorkOutcome,
 )
 from app.models.notification.notification_models import (
+    ActionConfig,
+    ActionStyle,
     ActionType,
+    ChannelDeliveryStatus,
+    NotificationAction,
     NotificationSourceEnum,
+    NotificationStatus,
+    NotificationType,
+    RedirectConfig,
     notification_id,
 )
 from app.models.playbook_models import PlaybookRunStatus
@@ -36,6 +44,7 @@ from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerType, WorkflowExecutionRequest, WorkflowStep
 from app.services.conversation.outcome import EntryOutcome
+from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.workflow.conversation_service import build_selected_workflow_data
 from app.services.workflow.execution_service import WorkflowFireTimedOut, WorkflowTurnFailed
 from app.services.workflow.notifications import notify_workflow_result
@@ -57,7 +66,11 @@ from app.workers.tasks.workflow_tasks import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
-from shared.py.analytics.catalog.workflows import WorkflowCreated, WorkflowExecuted
+from shared.py.analytics.catalog.workflows import (
+    WorkflowCreated,
+    WorkflowExecuted,
+    WorkflowResultDelivered,
+)
 from shared.py.analytics.context import (
     AnalyticsContext,
     analytics_context,
@@ -1183,14 +1196,85 @@ class TestWorkflowNotificationSenders:
         assert notif_req.message == "Three meetings today."
         # Routed by the pipeline, not pinned to the inbox.
         assert notif_req.channels == []
-        actions = notif_req.content.actions
-        assert len(actions) == 1
-        assert actions[0].type == ActionType.REDIRECT
-        assert actions[0].config.redirect.url == "/c/conv_xyz"
+        assert notif_req.type is NotificationType.SUCCESS
+        (action,) = notif_req.content.actions
+        expected_action = NotificationAction(
+            type=ActionType.REDIRECT,
+            label="View Results",
+            style=ActionStyle.PRIMARY,
+            config=ActionConfig(
+                redirect=RedirectConfig(
+                    url="/c/conv_xyz", open_in_new_tab=False, close_notification=True
+                )
+            ),
+        )
+        assert action.model_dump(exclude={"id"}) == expected_action.model_dump(exclude={"id"})
         assert notif_req.metadata == {
             "workflow_id": "wf_1",
             "conversation_id": "conv_xyz",
         }
+
+    @pytest.mark.parametrize(
+        ("status", "channels", "target", "expected"),
+        [
+            (
+                NotificationStatus.DELIVERED,
+                [
+                    ChannelDeliveryStatus(
+                        channel_type="telegram", status=NotificationStatus.DELIVERED
+                    )
+                ],
+                ChatChannel(
+                    source=ConversationSource.TELEGRAM,
+                    platform_user_id="tg-1",
+                    basis="recent_activity",
+                ),
+                WorkflowResultDelivered(
+                    workflow_id="wf_1",
+                    outcome="delivered",
+                    platform="telegram",
+                    destination="chat_app",
+                    destination_basis="recent_activity",
+                ),
+            ),
+            (
+                NotificationStatus.PENDING,
+                [],
+                InApp(reason="no_chat_app"),
+                WorkflowResultDelivered(
+                    workflow_id="wf_1",
+                    outcome="undelivered",
+                    platform=None,
+                    destination="in_app",
+                    destination_basis="no_chat_app",
+                ),
+            ),
+        ],
+        ids=["chat-app", "inbox"],
+    )
+    async def test_the_delivery_is_counted_once_with_where_it_landed(
+        self,
+        status: NotificationStatus,
+        channels: list[ChannelDeliveryStatus],
+        target: ChatChannel | InApp,
+        expected: WorkflowResultDelivered,
+    ) -> None:
+        record = MagicMock(status=status, channels=channels)
+        with (
+            patch("app.services.workflow.notifications.notification_service") as mock_notif,
+            patch("app.services.workflow.notifications.capture") as capture,
+        ):
+            mock_notif.notify = AsyncMock(return_value=Notified(record=record, target=target))
+            await notify_workflow_result(
+                workflow_id="wf_1",
+                workflow_title="Morning Briefing",
+                execution_id="exec_9",
+                conversation_id="conv_xyz",
+                user_id=USER_ID,
+                result_text="Three meetings today.",
+            )
+
+        capture.assert_called_once_with(UserId(USER_ID), expected)
 
 
 # ---------------------------------------------------------------------------

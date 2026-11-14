@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import inspect
 from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
@@ -458,6 +459,11 @@ class TestSendNotificationChannels:
         mock_resolve.assert_awaited_once_with(FAKE_USER_ID)
         assert _requested_channels(mock_service) == ["telegram"]
         assert result["delivered_channels"] == ["telegram"]
+        # The tool call is the fact, so a replayed call names the same notification.
+        sent: NotificationRequest = mock_service.notify.await_args.args[0]
+        assert sent.id == str(
+            uuid5(NAMESPACE_URL, f"gaia-notification:{FAKE_USER_ID}:agent_notification:call-1:")
+        )
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")

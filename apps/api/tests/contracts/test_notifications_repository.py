@@ -58,6 +58,9 @@ class TestNotificationRepository:
         )
         (stored,) = await raw_collection.find({"id": "once"}).to_list(None)
         assert stored["status"] == NotificationStatus.PENDING.value
+        # Only the record's own set fields are written: no unset field lands as null.
+        assert set(stored) - {"_id"} <= set(NotificationRecord.model_fields)
+        assert None not in stored.values()
 
     async def test_a_channel_is_claimed_once_and_its_outcome_replaces_the_claim(self, repo):
         await repo.insert_if_absent(_record(id="claimed"))

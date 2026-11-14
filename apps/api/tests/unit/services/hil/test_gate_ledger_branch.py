@@ -1,6 +1,6 @@
 """Ledger branch of the approval gate (flag on: register, never interrupt)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,9 +9,11 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 import pytest
+import time_machine
 
-from app.constants.hil import HIL_STATUS_KWARG
+from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS, HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
+from app.models.conversation_log_models import ApprovalRequested
 from app.models.hil_models import (
     ApprovalLedgerDocument,
     ApprovalProposal,
@@ -21,8 +23,13 @@ from app.services.hil.bridge import GateVerdict
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
 from app.services.hil.jev_judge import JevIntentJudge
-from app.services.hil.prompts import AUTO_REJECT_TEMPLATE, DENIED_TEMPLATE, GATE_ERROR_TEMPLATE
-from app.services.hil.utils import GatedApproval, GatedCall
+from app.services.hil.prompts import (
+    AUTO_REJECT_TEMPLATE,
+    DENIED_TEMPLATE,
+    GATE_ERROR_TEMPLATE,
+    TIMEOUT_TEMPLATE,
+)
+from app.services.hil.utils import GatedApproval, GatedCall, approval_window_label
 from app.utils.general_utils import ELLIPSIS
 from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 
@@ -441,6 +448,38 @@ class TestLedgerRegistration:
         _assert_pending(result)
         assert (result.name, result.tool_call_id) == (GATED_TOOL, "call-1")
 
+    @time_machine.travel(datetime(2026, 11, 14, 12, 0, tzinfo=UTC), tick=False)
+    async def test_the_log_records_the_request_with_everything_its_card_shows(
+        self, gate_seams: GateSeams
+    ) -> None:
+        with (
+            patch(f"{MODULE}.asks_every_time", new=AsyncMock(return_value=True)) as asks,
+            patch(f"{MODULE}.work_of_run", new=AsyncMock(return_value="t1")) as work,
+        ):
+            result = await gate.decide_tool_call(gated_request())
+
+        work.assert_awaited_once_with(CONVERSATION_ID, USER_ID, STREAM_ID)
+        asks.assert_awaited_once_with(GATED_TOOL, GATED_ARGS)
+        gate_seams.requested.assert_awaited_once_with(
+            CONVERSATION_ID,
+            USER_ID,
+            ApprovalRequested(
+                id="approval:ap_abc1234567",
+                task_id="t1",
+                approval_id="ap_abc1234567",
+                summary=GATED_SUMMARY,
+                expires_at=datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
+                + timedelta(seconds=HIL_APPROVAL_TIMEOUT_SECONDS),
+                tool_call_id="call-1",
+                gated_tool_name=GATED_TOOL,
+                integration_name="Gmail",
+                args_preview=GATED_ARGS,
+                always_asks=True,
+            ),
+        )
+        assert result is not None
+        assert 'execute(tool_name="revoke", data={"id": "ap_abc1234567"})' in str(result.content)
+
     async def test_a_call_on_a_named_account_is_its_own_approval(
         self, gate_seams: GateSeams
     ) -> None:
@@ -562,6 +601,14 @@ class TestLedgerCollapsesIntoExistingRows:
         )
         assert gate._approval_destination(background=background) is expected_destination
         _assert_pending(result)
+        assert result is not None
+        content = str(result.content)
+        where = gate._DESTINATION_WORDING[expected_destination]
+        assert content.startswith(
+            "PENDING ap_live: Send the old one already requested and awaiting the user's "
+            f"decision. The approval request appears to the user in {where}, "
+        )
+        assert 'execute(tool_name="revoke", data={"id": "ap_live"})' in content
         gate_seams.ledger.register.assert_not_awaited()
         gate_seams.announce.assert_not_awaited()
 
@@ -604,6 +651,20 @@ class TestLedgerDeclineMemory:
             tool=GATED_TOOL, feedback=" The user said: 'wrong person'."
         )
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
+        gate_seams.ledger.register.assert_not_awaited()
+
+    async def test_an_approval_that_expired_this_turn_is_repeated_as_a_timeout(
+        self, gate_seams: GateSeams
+    ) -> None:
+        gate_seams.recall.return_value = GateVerdict(outcome=ApprovalOutcome.EXPIRED, feedback=None)
+
+        result = await gate.decide_tool_call(gated_request())
+
+        assert result is not None
+        assert result.content == TIMEOUT_TEMPLATE.format(
+            tool=GATED_TOOL, feedback="", waited=approval_window_label()
+        )
+        assert result.additional_kwargs[HIL_STATUS_KWARG] == "timeout"
         gate_seams.ledger.register.assert_not_awaited()
 
     async def test_an_auto_refusal_without_words_is_repeated_as_auto(

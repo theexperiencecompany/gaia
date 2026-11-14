@@ -6,12 +6,7 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
-
-from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
-from app.models.conversation_log_models import ApprovalDecided
-from app.models.hil_models import ApprovalLedgerDocument
-from app.scripts.migrate_approval_vocabulary import (
+from scripts.migrate_approval_vocabulary import (
     CARD_STATUSES,
     LEDGER,
     LEDGER_STATES,
@@ -21,6 +16,11 @@ from app.scripts.migrate_approval_vocabulary import (
     rewrite,
     verify,
 )
+
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.models.conversation_log_models import ApprovalDecided
+from app.models.hil_models import ApprovalLedgerDocument
 from shared.py.approvals import ActionResult, ApprovalDecider
 
 pytestmark = [pytest.mark.integration, pytest.mark.service]
