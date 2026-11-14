@@ -70,6 +70,7 @@ class ConversationLogContract:
         with pytest.raises(EntryRejected) as rejected:
             await subject.log.append(CID, UID, settled("s", ["u1"], 1, reply_id="nope"))
         assert rejected.value.reason is RejectReason.REPLY_NOT_OPEN
+        assert str(rejected.value) == RejectReason.REPLY_NOT_OPEN.value
         assert (await subject.log.state(CID, UID)).head == 1
         assert len(await subject.log.read_after(CID, UID, 0)) == 1
 

@@ -221,6 +221,7 @@ def _gate_claim(workflow: MagicMock, calls: list[tuple[str, datetime | None]]):
 
 
 @pytest.mark.unit
+@pytest.mark.usefixtures("fake_redis")  # the fire's admission key, on this test's own loop
 class TestWorkerRejectsStaleFire:
     @staticmethod
     @staticmethod
