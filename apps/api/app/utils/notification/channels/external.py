@@ -19,6 +19,7 @@ from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
 )
+from app.models.platform_models import PlatformLinkEntry
 from app.services.bot_service import BotService
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
@@ -98,7 +99,9 @@ class ExternalPlatformAdapter(ChannelAdapter[ExternalPayload]):
         if not split_message_bubbles(content.text):
             return self._skipped(f"{self.channel_type}: nothing to send")
         user = await user_repository.get(user_id)
-        entry = linked_platforms_of(user).get(self.platform.value) if user else None
+        entry: PlatformLinkEntry | None = (
+            linked_platforms_of(user).get(self.platform.value) if user else None
+        )
         platform_user_id = entry.get("platformUserId") if entry else None
         if user is None or not platform_user_id:
             return self._skipped(f"{self.channel_type}: not linked")
