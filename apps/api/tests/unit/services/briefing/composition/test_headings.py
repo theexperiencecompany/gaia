@@ -7,6 +7,7 @@ from datetime import date
 from unittest.mock import AsyncMock
 
 import pytest
+from tests.helpers import user_clock
 
 from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL
 from app.models.brief_candidate_models import BriefCandidate
@@ -31,10 +32,8 @@ POOL = FactPool(
     goals=[],
     context=PoolContext(
         reader="Ada",
-        timezone="UTC",
-        today=date(2026, 11, 11),
-        calendar_events=0,
-        calendar_connected=True,
+        clock=user_clock("UTC", date(2026, 11, 11)),
+        calendar=0,
         calendar_span="today",
         recent_openings=[],
     ),

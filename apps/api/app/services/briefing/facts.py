@@ -1,9 +1,10 @@
 """Build the facts block the model voices, and the values its slots render, from the chosen sections."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
 
 from app.constants.briefing import (
+    BACKLOG_STATE,
+    CALENDAR_UNAVAILABLE,
     GAIA_APP_NAME,
     NO_CALENDAR_CONNECTED,
 )
@@ -26,7 +27,8 @@ from app.services.briefing.composition.voiced_blocks import (
     charted_figures,
     voiced_block_lines,
 )
-from app.services.briefing.context import UserClock
+from app.services.briefing.context import CalendarGap, CalendarUnread, UserClock, due_on
+from app.services.briefing.fact_pool.render import repeat_note
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import (
     BriefFact,
@@ -36,21 +38,33 @@ from app.services.briefing.slots import (
 )
 
 
-def _fact_line(fact_id: int, item: BriefingItem, fact: BriefFact, detail: str | None) -> str:
-    line = f"- fact {fact_id} | {BRIEFING_ITEM_STATES[item.kind]}: {item.text}"
+def _fact_line(
+    fact_id: int, item: BriefingItem, fact: BriefFact, candidate: BriefCandidate, clock: UserClock
+) -> str:
+    state = BACKLOG_STATE.capitalize() if candidate.backlog else BRIEFING_ITEM_STATES[item.kind]
+    line = f"- fact {fact_id} | {state}: {item.text}"
     if item.app and item.app != GAIA_APP_NAME:
         line += f" | in {item.app}"
     if fact.time:
         line += f" | time: [[fact:{fact_id}.time]] ({fact.time})"
-    if detail:
-        line += f" | detail: {detail}"
+    if candidate.detail:
+        line += f" | detail: {candidate.detail}"
     if fact.count > 1:
         line += f" | [[fact:{fact_id}.count]] ({fact.count}) requests, one item"
+    if (repeat := repeat_note(candidate, clock)) is not None:
+        line += f" | {repeat}"
     return line
 
 
-def _work_fact_line(fact_id: int, item: BriefingItem, fact: BriefFact, art: ArtifactFact) -> str:
-    line = _fact_line(fact_id, item, fact, None)
+def _work_fact_line(
+    fact_id: int,
+    item: BriefingItem,
+    fact: BriefFact,
+    candidate: BriefCandidate,
+    art: ArtifactFact,
+    clock: UserClock,
+) -> str:
+    line = _fact_line(fact_id, item, fact, candidate.model_copy(update={"detail": None}), clock)
     if art.snippet:
         line += f" | summary: {art.snippet}"
     line += f" | artifact holds ~{art.chars} chars"
@@ -77,32 +91,32 @@ class Facts:
 
 
 def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
-    """Build the stat row: one figure per non-empty tracked-work state, counted by subject."""
+    """Build the stat row: one figure per non-empty tracked-work state, each subject once, in full."""
     figures = (
-        (work.completed, "done since yesterday"),
-        (work.running, "in progress"),
-        (work.blocked, "waiting on you"),
+        (len({subject_key(d) for d in work.completed}), "done since last brief"),
+        (work.open_subjects.running, "in progress"),
+        (work.open_subjects.blocked, "waiting on you"),
     )
-    return [
-        BriefingStat(value=str(len({subject_key(d) for d in docs})), label=label)
-        for docs, label in figures
-        if docs
-    ]
+    return [BriefingStat(value=str(n), label=label) for n, label in figures if n]
 
 
-def _due_on(due_at: datetime, clock: UserClock) -> str:
-    """Say a due date the way the brief does: today, or its weekday and date."""
-    day = due_at.date()
-    return "today" if day.isoformat() == clock.date_str else day.strftime("%a %b %-d")
+def _counts(
+    placed: list[tuple[BriefingItem, BriefCandidate]], open_todos: int, events: int
+) -> dict[CountSlot, int]:
+    """Return the counts a [[count:...]] slot voices, each counting only what its name claims, zeros left out.
 
-
-def _counts(items: list[BriefingItem], open_todos: int, events: int) -> dict[CountSlot, int]:
-    """Return the counts a [[count:...]] slot voices, zeros left out."""
+    Waiting on you leaves out a calendar event and backlog; while away is what came in to be
+    held for the brief.
+    """
     counts = {
-        CountSlot.NEEDS_YOU: sum(1 for it in items if it.kind in NEEDS_YOU_ITEM_KINDS),
-        CountSlot.DONE: sum(1 for it in items if it.kind == "lookback"),
-        CountSlot.IN_PROGRESS: sum(1 for it in items if it.kind == "gaia"),
-        CountSlot.WHILE_AWAY: sum(1 for it in items if it.kind == "note"),
+        CountSlot.NEEDS_YOU: sum(
+            1
+            for it, c in placed
+            if it.kind in NEEDS_YOU_ITEM_KINDS and not (c.is_event or c.backlog)
+        ),
+        CountSlot.DONE: sum(1 for it, _ in placed if it.kind == "lookback"),
+        CountSlot.IN_PROGRESS: sum(1 for it, _ in placed if it.kind == "gaia"),
+        CountSlot.WHILE_AWAY: sum(1 for _, c in placed if c.held_id is not None),
         CountSlot.OPEN_TODOS: open_todos,
         CountSlot.EVENTS: events,
     }
@@ -141,8 +155,8 @@ class FactSources:
     #: GAIA's tracked work by todo id; the user's own todos have no deliverable here.
     artifacts: dict[str, ArtifactFact]
     open_todos: int
-    calendar: list[BriefingEvent]
-    calendar_connected: bool
+    #: The span's events, or why its calendar went unread: never an empty day.
+    calendar: list[BriefingEvent] | CalendarUnread
     #: The pool id of each calendar event, in calendar order.
     event_ids: list[int]
     span: BriefSpan
@@ -162,10 +176,8 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     own_words = block_words(sources.blocks)
     deliverables: dict[int, str] = {}
     addresses: dict[int, str] = {}
-    items = [it for sec in chosen.sections for it in sec.items]
-    counts = _counts(items, sources.open_todos, len(sources.calendar))
-    voiced = " · ".join(f"[[count:{slot.value}]] ({n})" for slot, n in counts.items())
-    fact_lines = [f"[COUNTS] {voiced}"] if voiced else []
+    placed: list[tuple[BriefingItem, BriefCandidate]] = []
+    fact_lines: list[str] = []
     for sec, picked in zip(chosen.sections, chosen.picked, strict=True):
         fact_lines.append(f"[{sec.title}]")
         for it, (fact_id, candidate) in zip(sec.items, picked, strict=True):
@@ -177,20 +189,26 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
                 addresses[fact_id] = candidate.url
             facts[fact_id] = BriefFact(
                 title=it.text,
-                time=_due_on(candidate.due_at, clock) if candidate.due_at else None,
+                time=due_on(candidate.due_at, clock) if candidate.due_at else None,
                 count=it.count,
             )
             linkable = fact_id in deliverables or fact_id in addresses
             own_words += _own_words(candidate, it, art)
+            placed.append((it, candidate))
             if candidate.signal is not None:
                 continue
             line = (
-                _fact_line(fact_id, it, facts[fact_id], candidate.detail)
+                _fact_line(fact_id, it, facts[fact_id], candidate, clock)
                 if art is None
-                else _work_fact_line(fact_id, it, facts[fact_id], art)
+                else _work_fact_line(fact_id, it, facts[fact_id], candidate, art, clock)
             )
             fact_lines.append(f"{line} | linkable" if linkable else line)
-    events = list(zip(sources.event_ids, sources.calendar, strict=True))
+    calendar = sources.calendar if isinstance(sources.calendar, list) else []
+    counts = _counts(placed, sources.open_todos, len(calendar))
+    voiced = " · ".join(f"[[count:{slot.value}]] ({n})" for slot, n in counts.items())
+    if voiced:
+        fact_lines.insert(0, f"[COUNTS] {voiced}")
+    events = list(zip(sources.event_ids, calendar, strict=True))
     for fact_id, event in events:
         facts[fact_id] = BriefFact(title=event.title, time=event_time(event, clock.date_str))
     if not chosen.sections:
@@ -238,7 +256,9 @@ def _event_slot(fact_id: int, time: str | None) -> str:
 def _calendar_note(
     events: list[tuple[int, BriefingEvent]], sources: FactSources, clock: UserClock
 ) -> str:
-    if not sources.calendar_connected:
+    if isinstance(sources.calendar, CalendarUnread):
+        if sources.calendar.gap is CalendarGap.UNAVAILABLE:
+            return CALENDAR_UNAVAILABLE
         return NO_CALENDAR_CONNECTED
     if not events:
         return sources.span.empty

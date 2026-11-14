@@ -11,9 +11,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from tests.factories import make_user_id
+from tests.helpers import user_clock
 
 from app.constants.briefing import (
     BRIEFING_RHYTHM_WORKFLOW_KEYS,
+    CALENDAR_UNAVAILABLE,
     NO_CALENDAR_CONNECTED,
     BriefAction,
     BriefOutcome,
@@ -34,10 +36,10 @@ from app.models.brief_pool_models import (
 )
 from app.models.calendar_models import GoogleCalendarEventDateTime, GoogleCalendarEventResource
 from app.models.email_verdict_models import EmailVerdictDocument
-from app.models.scout_models import Signal, SignalImportance
+from app.models.scout_models import Signal, SignalImportance, SignalMemoryDocument
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.workflow_execution_models import RunMoment
-from app.services.briefing.context import StatedGoal
+from app.services.briefing.context import CalendarGap, StatedGoal
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext, PoolReads, build_fact_pool
 from app.services.briefing.fact_pool.render import (
     context_block,
@@ -54,10 +56,8 @@ WINDOW = SeriesWindow(first_day=date(2026, 11, 5), days=7, tz=KOLKATA)
 NOW = datetime(2026, 11, 11, 2, 30, tzinfo=UTC)
 CONTEXT = PoolContext(
     reader="Ada",
-    timezone="Asia/Kolkata",
-    today=date(2026, 11, 11),
-    calendar_events=2,
-    calendar_connected=True,
+    clock=user_clock("Asia/Kolkata", date(2026, 11, 11)),
+    calendar=2,
     calendar_span="today",
     recent_openings=[],
 )
@@ -296,7 +296,7 @@ class TestTheContextBlock:
     def test_the_day_the_calendar_and_how_recent_briefs_opened_are_each_a_line(self) -> None:
         context = replace(
             CONTEXT,
-            today=date(2026, 11, 5),
+            clock=user_clock("Asia/Kolkata", date(2026, 11, 5)),
             recent_openings=["Priya replied overnight.", "Big day for the raise."],
         )
 
@@ -308,21 +308,70 @@ class TestTheContextBlock:
         ]
 
     def test_an_empty_calendar_and_no_openings_say_just_that(self) -> None:
-        assert context_block(replace(CONTEXT, calendar_events=0)).splitlines() == [
+        assert context_block(replace(CONTEXT, calendar=0)).splitlines() == [
             "Wednesday 11 November 2026, Asia/Kolkata.",
             "Nothing on the calendar today.",
         ]
 
     def test_with_no_calendar_connected_it_never_says_the_calendar_is_empty(self) -> None:
-        unconnected = replace(CONTEXT, calendar_events=0, calendar_connected=False)
+        unconnected = replace(CONTEXT, calendar=CalendarGap.NOT_CONNECTED)
 
         assert context_block(unconnected).splitlines() == [
             "Wednesday 11 November 2026, Asia/Kolkata.",
             NO_CALENDAR_CONNECTED,
         ]
 
+    def test_a_calendar_that_did_not_answer_is_never_called_empty(self) -> None:
+        unread = replace(CONTEXT, calendar=CalendarGap.UNAVAILABLE)
+
+        assert context_block(unread).splitlines() == [
+            "Wednesday 11 November 2026, Asia/Kolkata.",
+            CALENDAR_UNAVAILABLE,
+        ]
+
 
 class TestAnItemLine:
+    def test_a_due_date_is_the_users_own_day_not_utcs(self) -> None:
+        """Regression: a todo due 1 AM in Kolkata read as due the day before, its UTC date."""
+        item = BriefCandidate(
+            source="gaia",
+            app="GAIA",
+            state="you",
+            title="Rent",
+            due_at=datetime(2026, 11, 11, 19, 30, tzinfo=UTC),
+        )
+
+        assert (
+            item_line(1, item, CONTEXT.clock) == "1. [GAIA] waiting on you: Rent | due 2026-11-12"
+        )
+
+    def test_an_undated_own_todo_reads_as_on_their_list_not_waiting(self) -> None:
+        item = BriefCandidate(source="gaia", app="GAIA", state="you", title="Plan Q1", backlog=True)
+
+        assert item_line(4, item, CONTEXT.clock) == "4. [GAIA] on their list, undated: Plan Q1"
+
+    def test_an_item_an_earlier_brief_showed_as_it_stands_is_marked_still_open(self) -> None:
+        shown = SignalMemoryDocument(
+            user_id="u1",
+            integration_id="gaia",
+            external_id="todo:t1",
+            first_seen=datetime(2026, 11, 8, 3, tzinfo=UTC),
+            times_shown=2,
+            last_shown=datetime(2026, 11, 10, 3, tzinfo=UTC),
+            last_state="you",
+        )
+        item = BriefCandidate(
+            source="gaia", app="GAIA", state="you", title="Approve the MSA", memory=shown
+        )
+
+        assert item_line(2, item, CONTEXT.clock) == (
+            "2. [GAIA] waiting on you: Approve the MSA | already shown, still open"
+            " (first seen 3 days ago, mentioned 2 time(s), last yesterday)"
+        )
+        assert item_line(2, item.model_copy(update={"moved": True}), CONTEXT.clock) == (
+            "2. [GAIA] waiting on you: Approve the MSA"
+        )
+
     def test_an_item_says_every_fact_its_producer_knows_in_order(self) -> None:
         item = BriefCandidate(
             source="github",
@@ -341,7 +390,7 @@ class TestAnItemLine:
             also_in=["Slack", "Linear"],
         )
 
-        assert item_line(7, item) == (
+        assert item_line(7, item, CONTEXT.clock) == (
             "7. [GitHub] failed, important: Deploy broke | CI red on main | at 4:00 PM"
             " | due 2026-11-12 | with Maya Chen, Ravi Rao | 3 requests, one item"
             " | action retry | outcome drafted | linkable | also found by Slack, Linear"
@@ -350,14 +399,14 @@ class TestAnItemLine:
     def test_a_plain_item_is_only_its_head(self) -> None:
         item = BriefCandidate(source="stripe", app="Stripe", state="note", title="Payout sent")
 
-        assert item_line(2, item) == "2. [Stripe] note: Payout sent"
+        assert item_line(2, item, CONTEXT.clock) == "2. [Stripe] note: Payout sent"
 
     def test_one_request_is_not_called_a_group(self) -> None:
         item = BriefCandidate(source="stripe", app="Stripe", state="note", title="Payout", count=1)
         grouped = item.model_copy(update={"count": 2})
 
-        assert item_line(1, item) == "1. [Stripe] note: Payout"
-        assert item_line(1, grouped).endswith("| 2 requests, one item")
+        assert item_line(1, item, CONTEXT.clock) == "1. [Stripe] note: Payout"
+        assert item_line(1, grouped, CONTEXT.clock).endswith("| 2 requests, one item")
 
     @pytest.mark.parametrize(("url", "todo_id"), [("https://x.test", None), (None, "t1")])
     def test_an_item_with_either_a_url_or_a_todo_is_linkable(
@@ -367,7 +416,7 @@ class TestAnItemLine:
             source="gmail", app="Gmail", state="you", title="Reply", url=url, todo_id=todo_id
         )
 
-        assert item_line(1, item) == "1. [Gmail] waiting on you: Reply | linkable"
+        assert item_line(1, item, CONTEXT.clock) == "1. [Gmail] waiting on you: Reply | linkable"
 
     def test_a_calendar_event_is_not_named_by_its_state(self) -> None:
         item = BriefCandidate(
@@ -378,10 +427,26 @@ class TestAnItemLine:
             is_event=True,
         )
 
-        assert item_line(3, item) == "3. [Google Calendar] calendar event: Board call"
+        assert (
+            item_line(3, item, CONTEXT.clock) == "3. [Google Calendar] calendar event: Board call"
+        )
 
 
 class TestAnEmptyPool:
+    def test_the_pool_says_each_due_date_on_the_users_own_day(self) -> None:
+        rent = BriefCandidate(
+            source="gaia",
+            app="GAIA",
+            state="you",
+            title="Rent",
+            due_at=datetime(2026, 11, 11, 19, 30, tzinfo=UTC),
+        )
+        pool = FactPool(
+            items={1: rent}, series=[], quotes=[], goals=[], context=CONTEXT, criteria={}
+        )
+
+        assert pool_block(pool).split("\n")[1] == "1. [GAIA] waiting on you: Rent | due 2026-11-12"
+
     def test_each_part_with_nothing_in_it_says_none(self) -> None:
         pool = FactPool(items={}, series=[], quotes=[], goals=[], context=CONTEXT, criteria={})
 

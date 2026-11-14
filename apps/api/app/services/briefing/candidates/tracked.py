@@ -94,11 +94,13 @@ async def own_todo_candidates(
 ) -> list[BriefCandidate]:
     """Return the user's own open todos due before the cutoff, then their oldest undated ones.
 
-    A todo a tracked candidate already covers, by id or subject, is left to it.
+    An undated one is backlog: on their list, never the brief's news. A todo a tracked
+    candidate already covers, by id or subject, is left to it.
     """
     tracked = [*work.completed, *work.running, *work.blocked, *work.failed]
     tracked_ids = {doc.id for doc in tracked}
     tracked_subjects = {subject_key(doc) for doc in tracked}
+
     docs = [
         *await todo_repository.list_open_user_todos(
             user_id, limit=DUE_TODO_CANDIDATES_LIMIT, due_before=due_before
@@ -108,7 +110,10 @@ async def own_todo_candidates(
         ),
     ]
     own = [d for d in docs if d.id not in tracked_ids and subject_key(d) not in tracked_subjects]
-    return _grouped(own, "you", action=_attended)
+    return [
+        c.model_copy(update={"backlog": c.due_at is None})
+        for c in _grouped(own, "you", action=_attended)
+    ]
 
 
 def gaia_work_candidates(work: TrackedWork) -> list[BriefCandidate]:

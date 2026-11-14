@@ -16,6 +16,7 @@ async def reminder_candidates(
         BriefCandidate(
             source=GAIA_SOURCE,
             app=GAIA_APP_NAME,
+            seen_as=f"reminder:{reminder.id}",
             state="you",
             title=reminder.payload.title,
             detail=reminder.payload.body or None,

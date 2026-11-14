@@ -26,6 +26,7 @@ from app.models.briefing_models import BriefingKind
 from app.services.briefing.composition.checks import WRITTEN_FIELDS, composition_problems
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.composition.prompt import composition_prompt
+from app.services.briefing.context import due_on
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.fact_pool.render import pool_block
 from app.services.briefing.slots import BriefFact, SlotValues, render_slots, series_figures
@@ -47,11 +48,12 @@ class Composed:
 
 def pool_values(pool: FactPool) -> SlotValues:
     """Return what a composition's slots render: each item's title and due date, each series' figures."""
+    clock = pool.context.clock
     return SlotValues(
         facts={
             i: BriefFact(
                 title=c.title,
-                time=c.time or (c.due_at.strftime("%a %b %-d") if c.due_at is not None else None),
+                time=c.time or (due_on(c.due_at, clock) if c.due_at is not None else None),
                 count=c.count,
             )
             for i, c in pool.items.items()

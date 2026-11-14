@@ -166,10 +166,18 @@ def _chart_problems(
     return problems
 
 
-def _lead_problems(where: str, index: int, block: ComposedLead, values: SlotValues) -> list[str]:
+def _lead_problems(
+    where: str, index: int, block: ComposedLead, pool: FactPool, values: SlotValues
+) -> list[str]:
     problems = [] if index == 0 else [f"{where}: a lead opens the brief, so it is block 1"]
     if block.item.action is None:
         problems.append(f"{where}: a lead is something to act on, so its item has an action")
+    candidate = pool.items.get(block.item.id)
+    if candidate is not None and candidate.backlog:
+        problems.append(
+            f"{where}: item {block.item.id} is an undated todo on their list, background "
+            "that never leads; lead with something that needs them today, or with nothing"
+        )
     return problems + _text_problems(where, "offer", block.offer, BRIEF_OFFER_MAX_CHARS, values)
 
 
@@ -215,7 +223,7 @@ def _own_problems(
     """Name what breaks the block's own kind of contract, its items aside."""
     where = _where(index, block)
     if isinstance(block, ComposedLead):
-        return _lead_problems(where, index, block, values)
+        return _lead_problems(where, index, block, pool, values)
     if isinstance(block, ComposedItems):
         heading = _text_problems(where, "heading", block.heading, BRIEF_HEADING_MAX_CHARS, values)
         return heading + _state_problems(where, block)
