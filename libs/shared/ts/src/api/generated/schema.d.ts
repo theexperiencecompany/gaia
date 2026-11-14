@@ -7153,6 +7153,11 @@ export interface components {
              */
             hour?: number;
             /**
+             * Next Daily Brief At
+             * @description When the next daily brief runs (UTC); None while no daily brief runs.
+             */
+            next_daily_brief_at: string | null;
+            /**
              * Paused For Plan
              * @description The schedule sends briefs, but none run: the user is not on Pro.
              */

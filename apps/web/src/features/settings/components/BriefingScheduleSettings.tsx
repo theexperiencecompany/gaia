@@ -4,6 +4,7 @@ import type { BriefingFrequency } from "@gaia/shared/types";
 import { Button } from "@heroui/button";
 import { Select, SelectItem } from "@heroui/select";
 import { formatHour12 } from "@shared/utils";
+import { format, parseISO } from "date-fns";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { BriefsOffBlockedModal } from "@/features/settings/components/BriefsOffBlockedModal";
@@ -16,6 +17,9 @@ import {
   isQuietHour,
 } from "@/features/settings/utils/quietHoursAxis";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
+
+/** The next daily brief, on the reader's clock: "Mon 16 Nov, 7 AM". */
+const NEXT_BRIEF_FORMAT = "EEE d MMM, h a";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
@@ -108,9 +112,16 @@ export function BriefingScheduleSettings() {
       <SettingsRow
         label="Daily brief at"
         description={
-          isHeldByQuietHours && quietHours
-            ? `Lands at ${formatHour(quietHours.end_hour)}, when your quiet hours end.`
-            : undefined
+          [
+            isHeldByQuietHours && quietHours
+              ? `Lands at ${formatHour(quietHours.end_hour)}, when your quiet hours end.`
+              : null,
+            schedule?.next_daily_brief_at
+              ? `Next one ${format(parseISO(schedule.next_daily_brief_at), NEXT_BRIEF_FORMAT)}.`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" ") || undefined
         }
       >
         <Select

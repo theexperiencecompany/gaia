@@ -30,14 +30,21 @@ vi.mock("@/features/settings/api/quietHoursApi", () => ({
 
 const NIGHT: QuietHours = { enabled: true, start_hour: 22, end_hour: 8 };
 
+type RunState = Pick<
+  BriefingScheduleState,
+  "paused_for_plan" | "next_daily_brief_at"
+>;
+
 function renderSchedule(
-  stored: Omit<BriefingScheduleState, "paused_for_plan">,
+  stored: Omit<BriefingScheduleState, keyof RunState>,
   quietHours: QuietHours,
-  pausedForPlan = false,
+  runs: Partial<RunState> = {},
 ) {
   const schedule: BriefingScheduleState = {
     ...stored,
-    paused_for_plan: pausedForPlan,
+    paused_for_plan: false,
+    next_daily_brief_at: null,
+    ...runs,
   };
   vi.mocked(NotificationsAPI.getBriefingSchedule).mockResolvedValue(schedule);
   vi.mocked(quietHoursApi.fetch).mockResolvedValue(quietHours);
@@ -102,7 +109,9 @@ describe("a schedule that does not run without Pro", () => {
   });
 
   it("says the briefs are paused and offers the upgrade", async () => {
-    renderSchedule({ frequency: "daily", hour: 8 }, NIGHT, true);
+    renderSchedule({ frequency: "daily", hour: 8 }, NIGHT, {
+      paused_for_plan: true,
+    });
 
     expect(await screen.findByText("Your briefs are paused")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
@@ -120,5 +129,27 @@ describe("a schedule that does not run without Pro", () => {
 
     await screen.findAllByText("8 AM");
     expect(screen.queryByText("Your briefs are paused")).toBeNull();
+  });
+});
+
+describe("when the next daily brief lands", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("names the day and hour of the next one, on the reader's clock", async () => {
+    const next = new Date(2026, 10, 16, 9, 0).toISOString();
+    renderSchedule({ frequency: "daily", hour: 9 }, NIGHT, {
+      next_daily_brief_at: next,
+    });
+
+    expect(await screen.findByText("Next one Mon 16 Nov, 9 AM.")).toBeTruthy();
+  });
+
+  it("names none while no daily brief runs", async () => {
+    renderSchedule({ frequency: "daily", hour: 9 }, NIGHT);
+
+    await screen.findAllByText("9 AM");
+    expect(screen.queryByText(/^Next one/)).toBeNull();
   });
 });

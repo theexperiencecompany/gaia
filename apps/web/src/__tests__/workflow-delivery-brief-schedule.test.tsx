@@ -28,12 +28,13 @@ function DeliveryOnly({ delivery }: { delivery: WorkflowDelivery }) {
 }
 
 function renderField(
-  schedule: Omit<BriefingScheduleState, "paused_for_plan">,
+  schedule: Pick<BriefingScheduleState, "frequency" | "hour">,
   delivery: WorkflowDelivery,
 ) {
   vi.mocked(NotificationsAPI.getBriefingSchedule).mockResolvedValue({
     ...schedule,
     paused_for_plan: false,
+    next_daily_brief_at: null,
   });
   return render(<DeliveryOnly delivery={delivery} />);
 }

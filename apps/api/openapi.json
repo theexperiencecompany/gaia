@@ -2651,6 +2651,19 @@
             "title": "Hour",
             "type": "integer"
           },
+          "next_daily_brief_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the next daily brief runs (UTC); None while no daily brief runs.",
+            "title": "Next Daily Brief At"
+          },
           "paused_for_plan": {
             "description": "The schedule sends briefs, but none run: the user is not on Pro.",
             "title": "Paused For Plan",
@@ -2658,7 +2671,8 @@
           }
         },
         "required": [
-          "paused_for_plan"
+          "paused_for_plan",
+          "next_daily_brief_at"
         ],
         "title": "BriefingScheduleState",
         "type": "object"

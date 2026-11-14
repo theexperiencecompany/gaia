@@ -149,7 +149,7 @@ async def _set_briefing_schedule(
     described = (
         f"Briefing schedule updated: {briefing_schedule.describe_briefing_schedule(updated)}."
     )
-    if (await briefing_schedule.briefing_schedule_state(updated)).paused_for_plan:
+    if await briefing_schedule.briefs_paused_for_plan(updated):
         return f"{described} {BRIEFS_PAUSED_FOR_PLAN_NOTE}"
     return described
 

@@ -70,6 +70,9 @@ class BriefingScheduleState(BriefingSchedule):
     paused_for_plan: bool = Field(
         description="The schedule sends briefs, but none run: the user is not on Pro."
     )
+    next_daily_brief_at: datetime | None = Field(
+        description="When the next daily brief runs (UTC); None while no daily brief runs."
+    )
 
 
 #: Where a workflow's results can go once there is no brief to hold them.
