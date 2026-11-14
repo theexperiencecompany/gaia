@@ -19,7 +19,6 @@ score:Performance=72
 score:Security=96
 score:Social Media=87
 score:Structured Data=93
-score:URL Structure=93
 *	content/duplicate-description/duplicate-description	240以上の自動化コンボを検索しましょう。gmail + slack、notion + todoist、github +
 *	content/duplicate-description/duplicate-description	240개 이상의 자동화 콤보를 탐색하세요. gmail + slack, notion + todoist, git
 *	content/duplicate-description/duplicate-description	ai, 자동화, 생산성에 관한 필수 개념을 배우세요. ai 에이전트, langgraph, mcp, 벡터 임베
@@ -115,11 +114,6 @@ score:URL Structure=93
 *	schema/entity-conflicts/entity-conflicts	syn:WebPage|name:dropbox ai integration - automate dropbox with ai url
 *	security/csp/csp-missing
 *	social/asset-divergence/asset-divergence	og-image:/api/og/integrations
-*	url/slug-convention/slug-convention	depth:category:1
-*	url/slug-convention/slug-convention	depth:category:2
-*	url/slug-convention/slug-convention	depth:category:3
-*	url/slug-convention/slug-convention	depth:faq:1
-*	url/slug-convention/slug-convention	depth:faq:2
 /about	links/no-contextual-inbound/no-contextual-inbound
 /ai-assistant-that-can-see-your-screen	content/keyword-stuffing/keyword-stuffing	screen
 /ai-assistant-that-uses-your-computer	content/keyword-stuffing/keyword-stuffing	browser

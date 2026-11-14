@@ -14,17 +14,11 @@ score:Content=85
 score:Core SEO=91
 score:Performance=75
 score:Security=96
-score:URL Structure=93
 *	perf/critical-request-chains/critical-request-chains	CSS: /_next/static/chunks/*.css
 *	perf/css-file-size/css-file-size-warn	/_next/static/chunks/*.css
 *	perf/source-maps/source-maps-exposed	/_next/static/chunks/*.js.map
 *	perf/total-byte-weight/total-byte-weight
 *	security/csp/csp-missing
-*	url/slug-convention/slug-convention	depth:category:1
-*	url/slug-convention/slug-convention	depth:category:2
-*	url/slug-convention/slug-convention	depth:category:3
-*	url/slug-convention/slug-convention	depth:faq:1
-*	url/slug-convention/slug-convention	depth:faq:2
 /	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
 /about	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
 /ai-assistant-that-can-see-your-screen	content/keyword-stuffing/keyword-stuffing	screen
