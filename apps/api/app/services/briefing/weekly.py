@@ -51,6 +51,7 @@ from app.services.briefing.sections import (
     event_ids,
     lay_out,
     log_composition,
+    sources_shown,
 )
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
@@ -138,10 +139,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         voice, draft = await written_brief(
             user_id,
             build_weekly_voice_prompt(date_local=clock.date_str, blocks=blocks),
-            Writing(
-                values=facts.values,
-                lead=facts.lead,
-            ),
+            Writing(values=facts.values, lead=facts.lead, grounds=facts.block),
         )
     links = await links_in(user_id, voice.message, facts)
     drawn, undrawn = split_drawable(WEEKLY_FAMILY, laid.blocks)
@@ -159,7 +157,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
                 done_by_you=sum(d.you for d in week.days),
                 done_by_gaia=sum(d.gaia for d in week.days),
             ),
-            "sources_read": gathered.sources_read,
+            "sources_read": sources_shown(laid, gathered.pool),
             "blocks": drawn,
             "undrawn": undrawn,
             "uncomposed": laid.uncomposed,

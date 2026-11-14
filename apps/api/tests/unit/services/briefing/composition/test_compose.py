@@ -559,3 +559,26 @@ class TestWhatARejectionSays:
         assert raised.value.why == (
             "the answer was not a whole BriefComposition tool call (cut off at the cap)"
         )
+
+
+class TestAWeeklyRecaps:
+    async def test_a_weekly_that_places_nothing_from_its_pool_is_sent_back(
+        self, model: AsyncMock
+    ) -> None:
+        model.side_effect = [BriefComposition(blocks=[]), _GOOD]
+
+        composed = await compose_brief(USER, POOL, "weekly")
+
+        assert composed.written == _GOOD
+        assert (
+            "a weekly digest recaps the week: place what its pool holds of it (what got done, "
+            "its series, each goal's progress, even a stalled one) instead of nothing"
+        ) in _prompt(model, 1)
+
+    async def test_a_daily_may_leave_its_whole_pool_out(self, model: AsyncMock) -> None:
+        model.return_value = BriefComposition(blocks=[])
+
+        composed = await compose_brief(USER, POOL, "daily")
+
+        assert composed.written == BriefComposition(blocks=[])
+        model.assert_awaited_once()

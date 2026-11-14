@@ -5,7 +5,7 @@ the code-built facts. The model writes only the voice: headline, lede, caption, 
 message, as one structured answer. The day-zero hello is still a silent agent turn.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.agents.prompts.comms_prompts import GAIA_PERSONA, GAIA_VOICE
 from app.constants.briefing import (
@@ -178,6 +178,10 @@ Never "anything else you need?", never two questions, and skip it entirely when
 nothing needs deciding. ONE question across the WHOLE brief: if the goal question below
 applies, that is your one ask, nothing else gets asked.
 
+NEVER CLAIM HOW OFTEN: never say something is rare, unusual, usual or happening again
+unless a fact you were given says so; you see today, not their history. Say a thing once:
+a lede that restates its own point ("clear today. The day is open.") is padding.
+
 NEVER COUNT ZEROS: name what exists, never tally what does not. "0 items
 waiting, 0 done, 0 in progress" is a status report, not a person talking; leave
 out anything with no count instead of saying it is zero.
@@ -248,7 +252,9 @@ Voice these in the message, grouped by app. An important item gets its own line,
 concretely, linked with its fact's link slot when it is linkable. The rest of an app's items
 share one line ("plus a few more open in Linear"), linking the ones you name. Use each item's memory: an item
 mentioned yesterday and unchanged gets a short "still" or is left out; one that moved gets
-the move; a new one is news. Never invent an item, a link, a date or a person not shown here.
+the move; one marked new is news. An item only first seen today is not new to them (the app
+dates it earlier, or not at all): never call it new, just assigned or today's. Never invent an
+item, a link, a date or a person not shown here.
 """
 
 
@@ -262,11 +268,60 @@ def reader_line(first_name: str | None) -> str:
     )
 
 
-def _recent_openings_block(openings: list[str]) -> str:
-    if not openings:
+@dataclass(frozen=True)
+class RecentLines:
+    """What the last few daily briefs printed, newest first; today's brief reuses none of it."""
+
+    headlines: list[str] = field(default_factory=list)
+    ledes: list[str] = field(default_factory=list)
+    captions: list[str] = field(default_factory=list)
+    #: The first line of each message.
+    openings: list[str] = field(default_factory=list)
+
+    def every(self) -> list[str]:
+        """Return every line, whatever field printed it."""
+        return [*self.headlines, *self.ledes, *self.captions, *self.openings]
+
+
+def _recent_lines_block(recent: RecentLines) -> str:
+    groups = (
+        ("Headlines", recent.headlines),
+        ("Ledes", recent.ledes),
+        ("Captions", recent.captions),
+        ("Message openings", recent.openings),
+    )
+    listed = [
+        f"{name}:\n" + "\n".join(f"- {line}" for line in lines) for name, lines in groups if lines
+    ]
+    if not listed:
         return ""
-    listed = "\n".join(f"- {line}" for line in openings)
-    return f"\n## HOW YOUR LAST BRIEFS OPENED (open today's message differently)\n{listed}\n"
+    return (
+        "\n## WHAT YOUR LAST BRIEFS SAID (say today's in fresh words: never reuse one of these "
+        "lines, or open the same way)\n" + "\n".join(listed) + "\n"
+    )
+
+
+_GOAL_QUESTION = """
+If no goal lane exists but the goal knowledge above names something specific, the
+whole brief is one short honest message plus ONE confirming question that quotes
+it and offers to start on one deliverable you name ("You mentioned launching the
+mobile app by December, want me to start with a launch checklist tonight?"). EXCEPTION,
+absolute: if the user's replies above ALREADY answered this with a yes, never ask
+it again in any wording. Acknowledge their yes plainly instead ("you said go
+ahead on the investor list, that's in motion") and say nothing more about it. Weigh
+the bracketed dates: a goal [mentioned] months ago with no activity since is
+probably stale; ask whether it is still live rather than acting on it. Only when
+the knowledge above is truly empty, ask ONE question with 2-3 specific, mutually
+exclusive, one-word-answerable options grounded in what you DO know (profession,
+onboarding focus, recent activity). Generic buckets (Work / Personal / Other) are
+a hard failure. Never ask an open-ended "what can I help with".
+""".strip()
+
+# A remembered goal is asked about once per GOAL_QUESTION_REASK; inside the window this replaces it.
+_GOAL_ASKED = """
+You asked recently whether their goal is still live. Do not ask about it again today, in any
+wording, and do not ask them to name one: mention a goal only where today's facts serve it.
+""".strip()
 
 
 @dataclass(frozen=True)
@@ -282,6 +337,8 @@ class VoiceSituation:
     wind_down: str | None = None
     first_week: bool = False
     offer_lighter_cadence: bool = False
+    #: A brief asked about their remembered goal inside GOAL_QUESTION_REASK.
+    goal_asked_recently: bool = False
 
 
 def build_briefing_voice_prompt(
@@ -289,11 +346,11 @@ def build_briefing_voice_prompt(
     date_local: str,
     blocks: VoicePromptBlocks,
     situation: VoiceSituation,
-    recent_openings: list[str],
+    recent: RecentLines,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
-    recent_openings are the first lines of the last few messages, so today's opens differently.
+    recent is what the last few briefs printed, so today's says it in fresh words.
     """
     wind_down_note = ""
     if situation.wind_down == "warn":
@@ -355,6 +412,7 @@ def build_briefing_voice_prompt(
         if situation.offer_lighter_cadence
         else ""
     )
+    goal_note = _GOAL_ASKED if situation.goal_asked_recently else _GOAL_QUESTION
     setup_block = f"\n## THEIR GAIA SETUP (real facts)\n{blocks.setup}\n" if blocks.setup else ""
     return f"""{_SPEAKER}
 
@@ -378,20 +436,8 @@ actually changed in response.
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {blocks.goal}
 {setup_block}{winback_note}{first_note}{first_week_note}{cadence_note}{wind_down_note}
-If no goal lane exists but the goal knowledge above names something specific, the
-whole brief is one short honest message plus ONE confirming question that quotes
-it and offers to start on one deliverable you name ("You mentioned launching the
-mobile app by December, want me to start with a launch checklist tonight?"). EXCEPTION,
-absolute: if the user's replies above ALREADY answered this with a yes, never ask
-it again in any wording. Acknowledge their yes plainly instead ("you said go
-ahead on the investor list, that's in motion") and say nothing more about it. Weigh
-the bracketed dates: a goal [mentioned] months ago with no activity since is
-probably stale; ask whether it is still live rather than acting on it. Only when
-the knowledge above is truly empty, ask ONE question with 2-3 specific, mutually
-exclusive, one-word-answerable options grounded in what you DO know (profession,
-onboarding focus, recent activity). Generic buckets (Work / Personal / Other) are
-a hard failure. Never ask an open-ended "what can I help with".
-{_recent_openings_block(recent_openings)}
+{goal_note}
+{_recent_lines_block(recent)}
 {_MESSAGE_VOICE}
 - On a full day fold an app's routine items into one line rather than run long.
 
@@ -463,10 +509,18 @@ Celebrate the week honestly.
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {blocks.goal}
 
+## THE RECAP
+Open on what this week actually held, named from THIS WEEK'S FACTS: what got done, what failed,
+how a goal moved or that it stalled, with its open work named. A quiet week is said plainly in a
+line, then the one thing in it that matters. Every fact here is about the week: never say "today"
+of it.
+
 ## NEXT WEEK'S EDGE
-End the message with ONE suggestion that sharpens how they work toward a goal, grounded in
-this week's facts and phrased as one question they can answer with a single word. It is the
-digest's one ask. Never a generic "next week let's keep the momentum going".
+End with at most ONE suggestion for the week ahead, grounded in a named fact from this week (a
+stalled goal's next open todo, a failed run), as one closed question a short reply answers ("Want
+me to draft the old-users email on Monday?"). It is the digest's one ask; leave it out when this
+week's facts raise none. Never a label and a colon ("What's the focus: users?"), and never a
+generic "keep the momentum going".
 
 {_MESSAGE_VOICE}
 

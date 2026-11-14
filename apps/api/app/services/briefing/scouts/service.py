@@ -11,7 +11,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.constants.scouts import SCOUT_RELEARN_BACKOFF, SCOUT_TURN_TIMEOUT
+from app.constants.scouts import SCOUT_CONCURRENCY, SCOUT_RELEARN_BACKOFF, SCOUT_TURN_TIMEOUT
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.scouts import scouts_repository
 from app.models.payment_models import PlanType
@@ -204,14 +204,19 @@ async def _scouts_skipped(user_id: str) -> str | None:
 
 
 async def run_scouts(user: UserDocument) -> list[ScoutResult]:
-    """Run the scout of every connected integration the brief does not cover elsewhere."""
+    """Run the scout of every connected integration the brief does not cover elsewhere, a few at once."""
     skipped = await _scouts_skipped(user.id)
     if skipped is not None:
         log.set_ns("scouts", skipped=skipped)
         return []
-    results = [
-        await _scout_turn(user, integration) for integration in await scout_integrations(user.id)
-    ]
+    slots = asyncio.Semaphore(SCOUT_CONCURRENCY)
+
+    async def turn(integration: ScoutIntegration) -> ScoutResult:
+        # The turn's timeout starts once it holds a slot, never while it waits for one.
+        async with slots:
+            return await _scout_turn(user, integration)
+
+    results = list(await asyncio.gather(*(turn(i) for i in await scout_integrations(user.id))))
     log.set_ns(
         "scouts",
         outcomes={r.integration_id: r.outcome.value for r in results},

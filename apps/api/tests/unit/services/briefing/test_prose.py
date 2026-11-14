@@ -6,12 +6,12 @@ from pydantic import ValidationError
 import pytest
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
-from app.agents.prompts.briefing_prompts import voice_correction_note
+from app.agents.prompts.briefing_prompts import RecentLines, voice_correction_note
 from app.models.briefing_models import BriefVoice
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.briefing import prose
 from app.services.briefing.errors import VoiceUnreadableError
-from app.services.briefing.prose import Writing, reader_block, written_brief
+from app.services.briefing.prose import Writing, opening_line, reader_block, written_brief
 from app.services.briefing.slots import BriefFact, SlotValues
 
 pytestmark = pytest.mark.unit
@@ -110,3 +110,87 @@ class TestAVoiceThatBreaksItsFacts:
             f"PROMPT\n\n{voice_correction_note([problem], broke.model_dump_json(indent=2))}"
         )
         assert (voice, draft.message) == (mended, "Reply to Dan first.")
+
+
+class TestAVoiceThatRepeatsOrOverclaims:
+    """A line a recent brief printed, or a claim of how often something happens, is sent back."""
+
+    @staticmethod
+    def _asked(monkeypatch: pytest.MonkeyPatch, *voices: BriefVoice) -> AsyncMock:
+        asked = AsyncMock(side_effect=list(voices))
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        return asked
+
+    async def test_a_headline_or_opening_a_recent_brief_printed_is_sent_back(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        stale = _voice(
+            headline="An open day, with room to reset",
+            message="[Reply to Dan](fact:1) before lunch.\n\nThen nothing.",
+        )
+        asked = self._asked(monkeypatch, stale, _voice())
+        recent = RecentLines(
+            headlines=["An open day with room to reset."],
+            openings=["Reply to Dan before lunch."],
+        )
+
+        voice, _ = await written_brief(
+            _USER_ID, "PROMPT", Writing(values=_VALUES, lead=1, recent=recent)
+        )
+
+        problems = [
+            "the headline repeats a recent brief's line ('An open day, with room to reset'); "
+            "write today's in fresh words",
+            "the message's opening repeats a recent brief's line ('Reply to Dan before lunch.'); "
+            "write today's in fresh words",
+        ]
+        assert asked.await_args_list[1].args[1] == (
+            f"PROMPT\n\n{voice_correction_note(problems, stale.model_dump_json(indent=2))}"
+        )
+        assert voice == _voice()
+
+    async def test_a_frequency_no_fact_states_is_sent_back(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rare = _voice(caption="A rare blank square on the calendar.", lede="Clear, as usual.")
+        asked = self._asked(monkeypatch, rare, _voice())
+
+        await written_brief(
+            _USER_ID,
+            "PROMPT",
+            Writing(values=_VALUES, lead=1, grounds="The user's calendar has nothing today."),
+        )
+
+        problems = [
+            "the lede says how often something happens ('usual') and no fact says so; "
+            "say only what today's facts show",
+            "the caption says how often something happens ('rare') and no fact says so; "
+            "say only what today's facts show",
+        ]
+        assert asked.await_args_list[1].args[1] == (
+            f"PROMPT\n\n{voice_correction_note(problems, rare.model_dump_json(indent=2))}"
+        )
+
+    async def test_a_frequency_a_fact_states_may_be_voiced(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        grounded = _voice(caption="Rarely this quiet.")
+        asked = self._asked(monkeypatch, grounded)
+
+        voice, _ = await written_brief(
+            _USER_ID,
+            "PROMPT",
+            Writing(values=_VALUES, lead=1, grounds="Calendar: rarely this quiet in a month."),
+        )
+
+        assert voice == grounded
+        asked.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("message", "opening"),
+    [("\n  Priya replied overnight.\nMore.", "Priya replied overnight."), (" \n\t\n", "")],
+    ids=["first-non-blank-line", "all-blank"],
+)
+def test_a_messages_opening_is_its_first_non_blank_line(message: str, opening: str) -> None:
+    assert opening_line(message) == opening

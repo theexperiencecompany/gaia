@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from app.constants.briefing import LEAD_HEADING, SECTION_NUMERALS
+from app.constants.briefing import GAIA_SOURCE, LEAD_HEADING, SECTION_NUMERALS
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import (
     BriefBlock,
@@ -147,6 +147,23 @@ def lay_out(composition: BriefComposition, pool: FactPool) -> Laid:
             _uncomposed(c) for i, c in pool.items.items() if i not in placed and not c.is_event
         ],
     )
+
+
+def _block_sources(block: BriefBlock) -> list[tuple[str, str]]:
+    """Return the (source, app) of every series a chart draws and of a quote."""
+    if isinstance(block, ChartBlock):
+        return [(series.source, series.app) for series in block.series]
+    if isinstance(block, QuoteBlock):
+        return [(block.quote.source, block.quote.app)]
+    return []
+
+
+def sources_shown(laid: Laid, items: Mapping[int, BriefCandidate]) -> list[str]:
+    """Name the apps the brief shows something from: an item, a calendar event, a series or a quote."""
+    picked = {i for group in laid.chosen.picked for i, _ in group}
+    shown = [(c.source, c.app) for i, c in items.items() if i in picked or c.is_event]
+    shown += [pair for block in laid.blocks for pair in _block_sources(block)]
+    return list(dict.fromkeys(app for source, app in shown if source != GAIA_SOURCE))
 
 
 def carried_ids(items: Mapping[int, BriefCandidate], duplicates: list[str]) -> list[str]:

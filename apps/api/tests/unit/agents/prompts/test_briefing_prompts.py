@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from app.agents.prompts.briefing_prompts import (
+    RecentLines,
     VoicePromptBlocks,
     VoiceSituation,
     build_briefing_voice_prompt,
@@ -124,7 +125,7 @@ def _prompt(
     wind_down: str | None = None,
     first_week: bool = False,
     offer_lighter_cadence: bool = False,
-    recent_openings: list[str] | None = None,
+    recent: RecentLines | None = None,
 ) -> str:
     return build_briefing_voice_prompt(
         date_local="Tuesday, October 14",
@@ -136,7 +137,7 @@ def _prompt(
             first_week=first_week,
             offer_lighter_cadence=offer_lighter_cadence,
         ),
-        recent_openings=recent_openings or [],
+        recent=recent or RecentLines(),
     )
 
 
@@ -171,6 +172,20 @@ def test_an_ordinary_morning_goes_straight_from_goal_memory_to_the_goal_guidance
     assert f"{_GOAL}\n\nIf no goal lane exists" in prompt
     for situation in _ALL_SITUATIONS:
         assert situation[0] not in prompt
+
+
+def test_a_goal_asked_about_recently_is_not_asked_about_again() -> None:
+    prompt = build_briefing_voice_prompt(
+        date_local="Tuesday, October 14",
+        blocks=_BLOCKS,
+        situation=VoiceSituation(goal_asked_recently=True),
+        recent=RecentLines(),
+    )
+
+    assert f"{_GOAL}\n\nYou asked recently whether their goal is still live." in prompt
+    assert "Do not ask about it again today, in any\nwording" in prompt
+    assert "If no goal lane exists" not in prompt
+    assert "confirming question" not in prompt
 
 
 @pytest.mark.parametrize(
@@ -268,20 +283,32 @@ def test_the_unreadable_note_lists_each_problem_on_its_own_line_between_header_a
     ]
 
 
-def test_recent_openings_are_listed_for_the_model_to_avoid() -> None:
-    prompt = _prompt(recent_openings=["Priya replied overnight.", "Big day for the raise."])
+def test_every_line_recent_briefs_printed_is_listed_for_the_model_to_avoid() -> None:
+    prompt = _prompt(
+        recent=RecentLines(
+            headlines=["An open day, with room to reset"],
+            captions=["A rare blank square on the calendar."],
+            openings=["Priya replied overnight.", "Big day for the raise."],
+        )
+    )
 
     assert (
-        "## HOW YOUR LAST BRIEFS OPENED (open today's message differently)\n"
-        "- Priya replied overnight.\n"
-        "- Big day for the raise.\n"
+        "## WHAT YOUR LAST BRIEFS SAID (say today's in fresh words: never reuse one of these "
+        "lines, or open the same way)\n"
+        "Headlines:\n- An open day, with room to reset\n"
+        "Captions:\n- A rare blank square on the calendar.\n"
+        "Message openings:\n- Priya replied overnight.\n- Big day for the raise.\n"
     ) in prompt
 
 
-def test_without_recent_briefs_no_openings_block_is_added() -> None:
+def test_the_voice_is_told_never_to_claim_how_often_something_happens() -> None:
+    assert "NEVER CLAIM HOW OFTEN: never say something is rare, unusual, usual" in _prompt()
+
+
+def test_without_recent_briefs_no_recent_lines_block_is_added() -> None:
     prompt = _prompt()
 
-    assert "HOW YOUR LAST BRIEFS OPENED" not in prompt
+    assert "WHAT YOUR LAST BRIEFS SAID" not in prompt
     assert 'Never ask an open-ended "what can I help with".\n\n## THE MESSAGE' in prompt
 
 
@@ -310,6 +337,16 @@ def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() ->
     assert "## NEXT WEEK'S EDGE" in prompt
     for daily_only in (_BLOCKS.lookback, _BLOCKS.replies, "TODAY'S FACTS", "EMPTY DAYS"):
         assert daily_only not in prompt
+
+
+def test_the_weekly_recaps_the_week_and_asks_at_most_one_grounded_closed_question() -> None:
+    prompt = build_weekly_voice_prompt(date_local="2026-10-18", blocks=_BLOCKS)
+
+    assert "## THE RECAP\nOpen on what this week actually held" in prompt
+    assert 'never say "today"\nof it' in prompt
+    assert "leave it out when this\nweek's facts raise none" in prompt
+    assert "Never a label and a colon" in prompt
+    assert "answer with a single word" not in prompt
 
 
 _OFFERS_A_DELIVERABLE = "OFFER one specific\nfirst deliverable as a QUESTION"

@@ -469,6 +469,55 @@ class TestBackoff:
         assert scouts.stored["linear"] == _scout(LINEAR)
 
 
+class TestScoutsRunTogether:
+    async def test_scouts_overlap_up_to_the_limit_and_report_in_integration_order(
+        self, scouts: Scouts, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        apps = [ScoutIntegration(f"app-{n}", f"App {n}") for n in range(5)]
+        scouts.integrations = apps
+        for app in apps:
+            scouts.stored[app.integration_id] = _scout(app)
+        monkeypatch.setattr(service, "SCOUT_CONCURRENCY", 2)
+        running: list[str] = []
+        peak = 0
+
+        async def watch(user: Any, user_id: str, frozen: FrozenWatch, tools: ScoutTools) -> Any:
+            nonlocal peak
+            running.append(frozen.integration.integration_id)
+            peak = max(peak, len(running))
+            for _ in range(3):
+                await asyncio.sleep(0)
+            running.remove(frozen.integration.integration_id)
+            return [_signal(frozen.integration, "replayed-1")]
+
+        scouts.watch.side_effect = watch
+
+        results = await service.run_scouts(USER)
+
+        assert peak == 2
+        assert [r.integration_id for r in results] == [a.integration_id for a in apps]
+
+    async def test_a_waiting_scout_is_not_timed_out_by_the_ones_ahead_of_it(
+        self, scouts: Scouts, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        scouts.integrations = [GITHUB, LINEAR]
+        scouts.stored["github"] = _scout(GITHUB)
+        scouts.stored["linear"] = _scout(LINEAR)
+        monkeypatch.setattr(service, "SCOUT_CONCURRENCY", 1)
+        monkeypatch.setattr(service, "SCOUT_TURN_TIMEOUT", timedelta(seconds=0.05))
+
+        async def watch(user: Any, user_id: str, frozen: FrozenWatch, tools: ScoutTools) -> Any:
+            if frozen.integration.integration_id == "github":
+                await asyncio.sleep(0.04)
+            return [_signal(frozen.integration, "replayed-1")]
+
+        scouts.watch.side_effect = watch
+
+        github, linear = await service.run_scouts(USER)
+
+        assert (github.outcome, linear.outcome) == (ScoutOutcome.REPLAYED, ScoutOutcome.REPLAYED)
+
+
 class TestOneScoutFailing:
     async def test_a_failing_scout_is_a_typed_skip_and_the_others_still_report(
         self, scouts: Scouts

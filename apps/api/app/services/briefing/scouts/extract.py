@@ -46,13 +46,13 @@ def _optional(item: object, path: str | None) -> object:
     return value
 
 
-def _due(value: object) -> datetime | None:
+def _moment(value: object, what: str) -> datetime | None:
     if value is None or value == "":
         return None
     try:
         moment = _DATETIME.validate_python(value)
     except ValidationError as exc:
-        raise _shape_error("due_at", value) from exc
+        raise _shape_error(what, value) from exc
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
@@ -110,13 +110,15 @@ def _signal(integration: ScoutIntegration, source: SignalSource, item: object) -
         external_id=_as_text(resolve_item(token, fields.external_id, item), "external_id"),
         kind=source.kind,
         title=_as_text(resolve_item(token, fields.title, item), "title"),
-        due_at=_due(_optional(item, fields.due_at)),
+        due_at=_moment(_optional(item, fields.due_at), "due_at"),
         people=_people(_optional(item, fields.people)),
         url=None if url is None else _as_text(url, "url"),
         state=None if state is None or fields.state is None else _state(state, fields.state),
         amount=amount,
         amount_unit=source.amount_unit if amount is not None else None,
         text=None if text is None or text == "" else _as_text(text, "text"),
+        created_at=_moment(_optional(item, fields.created_at), "created_at"),
+        updated_at=_moment(_optional(item, fields.updated_at), "updated_at"),
     )
 
 

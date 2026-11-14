@@ -887,6 +887,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             doc_id=user_id,
         )
 
+    async def record_goal_question(self, user_id: str) -> None:
+        """Stamp now as when a brief last asked whether the user's goal is still live."""
+        await self._apply_raw_update_unfetched(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"briefing_dormancy.goal_asked_at": datetime.now(UTC)}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=user_id,
+        )
+
     async def clear_briefing_dormancy(self, user_id: str) -> None:
         await self._apply_raw_update_unfetched(
             {"_id": self._id_value(user_id)},

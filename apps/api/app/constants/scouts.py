@@ -13,6 +13,8 @@ SCOUT_LEARN_RECURSION_LIMIT: Final[int] = 24
 SCOUT_LEARN_TIMEOUT: Final = timedelta(seconds=120)
 #: Wall clock one scout gets, learn or replay, before it is skipped so the next scout still runs.
 SCOUT_TURN_TIMEOUT: Final = timedelta(minutes=5)
+#: Scouts one brief runs at once; each holds an app connection, so the rest wait their turn.
+SCOUT_CONCURRENCY: Final[int] = 4
 #: Safety ceiling on read-only tools bound onto one learn run (provider caps sit near 128);
 #: past it the tools most relevant to SCOUT_TOOL_QUERY are bound.
 SCOUT_MAX_BOUND_TOOLS: Final[int] = 100
@@ -24,6 +26,8 @@ SCOUT_TOOL_QUERY: Final[str] = (
 
 #: Safety ceiling on signals one scout may hand the brief: a runaway list, not a quota.
 SCOUT_SIGNAL_CEILING: Final[int] = 50
+#: How recently an app must say an item was created for a brief to call its first sighting new.
+SIGNAL_NEW_WITHIN: Final = timedelta(days=1)
 
 #: What one user's scouts may spend in a UTC day before the rest are skipped. Scouts book
 #: here, never into the user's own allowance, so the brief writer is never starved by them.
