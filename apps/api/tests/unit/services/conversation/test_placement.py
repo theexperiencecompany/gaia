@@ -43,10 +43,19 @@ def test_a_segment_that_opened_with_nothing_below_it_is_refused() -> None:
         segments(_inputs(1), (2, 3))
 
 
-@pytest.mark.parametrize(("handed", "slots"), [((2, 1), ()), ((1,), (3, 3))])
-def test_seqs_out_of_log_order_are_refused(handed: tuple[int, ...], slots: tuple[int, ...]) -> None:
-    with pytest.raises(PlacementError, match="not ascending"):
+@pytest.mark.parametrize(
+    ("handed", "slots", "refusal"),
+    [
+        ((2, 1), (), "handed input seqs [2, 1] are not ascending"),
+        ((1,), (3, 3), "slot seqs [3, 3] are not ascending"),
+    ],
+)
+def test_seqs_out_of_log_order_are_refused(
+    handed: tuple[int, ...], slots: tuple[int, ...], refusal: str
+) -> None:
+    with pytest.raises(PlacementError) as refused:
         segments(_inputs(*handed), slots)
+    assert str(refused.value) == refusal
 
 
 def test_handing_an_input_into_a_settled_segment_is_refused() -> None:

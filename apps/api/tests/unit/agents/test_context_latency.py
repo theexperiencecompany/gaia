@@ -10,6 +10,8 @@ from app.agents.context.section_context import SectionContext
 from app.agents.context.sections import Section, SectionId
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
+from app.constants.log_tags import LogTag
+from tests.helpers import captured_wide_event
 
 
 def _count(stage: str) -> float:
@@ -77,7 +79,11 @@ async def test_a_section_past_its_deadline_is_dropped_and_the_rest_still_render(
         patch.object(assemble, "sections_for", side_effect=_fake_sections_for),
         patch.object(assemble, "CONTEXT_SECTION_DEADLINE_SECONDS", 0.05),
     ):
-        result = await asyncio.wait_for(assemble.assemble_context(_ctx()), timeout=2)
+        async with captured_wide_event() as event:
+            result = await asyncio.wait_for(assemble.assemble_context(_ctx()), timeout=2)
 
     assert "text-user_prefs" in result.stable.content
     assert result.volatile is None
+    [warning] = event["warnings"]
+    assert warning["msg"] == f"{LogTag.AGENT} Context section dropped at its deadline"
+    assert (warning["section"], warning["deadline_seconds"]) == ("memory_recall", 0.05)

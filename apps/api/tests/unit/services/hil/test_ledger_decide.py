@@ -94,20 +94,22 @@ def logged_decisions() -> Iterator[dict[str, ApprovalDecided]]:
     async def _in_its_conversation(conversation_id: str, user_id: str, approval_id: str) -> bool:
         """Whether the log is addressed by the approval's own conversation and user."""
         row = await _row(approval_id)
-        if not isinstance(getattr(row, "conversation_id", None), str):
+        row_conversation = getattr(row, "conversation_id", None)
+        if not isinstance(row_conversation, str):
             return True  # no row to check the address against
-        return (conversation_id, user_id) == (row.conversation_id, row.user_id)
+        return (conversation_id, user_id) == (row_conversation, getattr(row, "user_id", None))
 
     async def _from_row(approval_id: str) -> ApprovalDecided | None:
         row = await _row(approval_id)
         outcome = getattr(row, "outcome", None)
         if not isinstance(outcome, ApprovalOutcome):
             return None
+        action = getattr(row, "action", None)
         return ApprovalDecided(
             id=f"approval:{approval_id}:decided",
             approval_id=approval_id,
             outcome=outcome,
-            action=row.action if isinstance(row.action, ActionResult) else None,
+            action=action if isinstance(action, ActionResult) else None,
         )
 
     async def _decide(

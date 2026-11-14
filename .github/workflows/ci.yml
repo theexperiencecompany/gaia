@@ -1345,8 +1345,7 @@ jobs:
     env:
       GAIA_PR_BASE: ${{ needs.detect.outputs.base_ref }}
       SHARD_POOL: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].pool }}
-      # A mutant is killed or not by the same examples on every run.
-      HYPOTHESIS_PROFILE: ci
+      # Hypothesis runs its "mutation" profile under mutmut (apps/api/tests/hypothesis_profiles.py).
     # Above the step timeout below, so a slow shard is failed by the step (which
     # keeps its log artifact) rather than cancelled by the job (which retains
     # nothing).

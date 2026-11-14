@@ -22,7 +22,6 @@ import { BUBBLE_PAUSE_MS } from "../utils/bubbles";
 import { isMessageGoneError, retryAfterMs } from "../utils/delivery-errors";
 import { createBotLogger, sanitizeErrorForLog } from "../utils/logger";
 import { sleep } from "../utils/timeout";
-import { wideLog } from "../utils/wide-events";
 import type { ConversationSurface, SentBubble } from "./follower.types";
 
 const logger = createBotLogger("shared", "reply-delivery");
@@ -63,11 +62,6 @@ export class ReplyDelivery {
     return this.apply({ kind: "tick" });
   }
 
-  retract(): Promise<void> {
-    this.fed = [];
-    return this.apply({ kind: "retract" });
-  }
-
   end(): Promise<void> {
     return this.apply({ kind: "end" });
   }
@@ -89,9 +83,6 @@ export class ReplyDelivery {
         return;
       case "edit":
         await this.editSlot(op.slot, op.text);
-        return;
-      case "delete":
-        await this.deleteSlot(op.slot);
         return;
       case "delivered":
         await this.onDelivered(op.bubbles === 0 ? 0 : this.skip + op.bubbles);
@@ -146,26 +137,6 @@ export class ReplyDelivery {
           slot,
         });
       }
-    }
-  }
-
-  private async deleteSlot(slot: MessageSlot): Promise<void> {
-    const message = this.messages.get(slot);
-    this.messages.delete(slot);
-    if (!message) return;
-    if (!message.delete) {
-      throw new Error(
-        `${this.config.platform} cannot delete a bot message, so it must not stream`,
-      );
-    }
-    try {
-      await message.delete();
-    } catch (err) {
-      // The retracted text stays on screen; nothing else can take it back.
-      wideLog.warning("bubble_delete_failed", {
-        ...sanitizeErrorForLog(err),
-        slot,
-      });
     }
   }
 }

@@ -660,9 +660,6 @@ export class TelegramAdapter extends BaseBotAdapter {
               updated,
               logEditFailure(sent.message_id),
             ),
-          delete: async () => {
-            await this.bot.api.deleteMessage(chatId, sent.message_id);
-          },
         };
       },
       react: (platformMessageId, emoji, replaces) =>

@@ -7,7 +7,6 @@ export type MessageSlot = number;
 export type DeliveryOp =
   | { kind: "edit"; slot: MessageSlot; text: string }
   | { kind: "send"; slot: MessageSlot; text: string }
-  | { kind: "delete"; slot: MessageSlot }
   | { kind: "pause" }
   /** The reply's first `bubbles` bubbles are final on screen, once the ops before this one ran. */
   | { kind: "delivered"; bubbles: number };
@@ -16,8 +15,6 @@ export type DeliveryEvent =
   /** The reply's bubbles as the server now has them: the last may still grow. */
   | { kind: "bubbles"; bubbles: readonly string[] }
   | { kind: "tick" }
-  /** Take back everything shown, its first message left to overwrite. */
-  | { kind: "retract" }
   | { kind: "end" };
 
 export interface DeliveryConfig {
@@ -27,7 +24,7 @@ export interface DeliveryConfig {
   render: (text: string) => string;
 }
 
-/** A message whose text the next output may overwrite: the unopened first one, or retracted text. */
+/** The reply's unopened first message, which its first text overwrites. */
 export interface Reusable {
   slot: MessageSlot;
 }

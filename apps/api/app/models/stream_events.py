@@ -131,18 +131,9 @@ class ToolOutputPayload(BaseModel):
 
 
 class MessageBoundaryPayload(BaseModel):
-    """End of one assistant message inside a turn.
-
-    ``discarded`` is true when that message turned out to carry tool calls, which
-    makes any text it streamed a MOMENT-1 preamble ("let me get that set up…")
-    the user must not keep — the real reply arrives as the next message. The
-    frame exists because the wire streams that text BEFORE the tool call, so a
-    live consumer has already shown it by the time we know, and has to retract
-    it rather than leave a duplicate reply on screen.
-    """
+    """End of one assistant message inside a turn; the next text opens a new bubble."""
 
     message_id: str
-    discarded: bool
 
 
 class ReasoningPayload(BaseModel):

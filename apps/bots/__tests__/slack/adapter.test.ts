@@ -98,7 +98,6 @@ function makeSlackClient(tsOverride?: string) {
         .mockResolvedValue({ ts: tsOverride ?? "1234567890.123456" }),
       update: vi.fn().mockResolvedValue({}),
       postEphemeral: vi.fn().mockResolvedValue({}),
-      delete: vi.fn().mockResolvedValue({}),
     },
   };
 }
@@ -399,21 +398,16 @@ describe("SlackAdapter - postSlackMessage", () => {
     });
   });
 
-  it("edits and deletes the message it posted by its ts", async () => {
+  it("edits the message it posted by its ts", async () => {
     await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
 
     const sent = await lastSurface().send("draft", null);
     await sent.edit("final");
-    await sent.delete?.();
 
     expect(appClient.chat.update).toHaveBeenCalledWith({
       channel: "C789",
       ts: "ts-sent",
       text: "final",
-    });
-    expect(appClient.chat.delete).toHaveBeenCalledWith({
-      channel: "C789",
-      ts: "ts-sent",
     });
   });
 

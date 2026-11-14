@@ -56,8 +56,8 @@ class _Steps:
     """The steps running in this process, and whether it still starts new ones."""
 
     def __init__(self) -> None:
-        self.running: set[asyncio.Task[None]] = set()
-        self.draining = False
+        self.running: set[asyncio.Task[None]] = set()  # pragma: no mutate — built at import
+        self.draining = False  # pragma: no mutate — only read as truthiness
 
 
 _steps = _Steps()

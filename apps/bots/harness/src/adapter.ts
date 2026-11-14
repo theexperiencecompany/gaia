@@ -298,8 +298,7 @@ export class HarnessAdapter extends BaseBotAdapter {
 
   /**
    * The emulated chat a conversation follows into. Without edit support
-   * (WhatsApp, iMessage) an "edit" is a new message, and only the live platforms
-   * can delete one.
+   * (WhatsApp, iMessage) an "edit" is a new message.
    */
   private conversationSurface(channelId: string): ConversationSurface {
     const record = (text: string, replyTo: string | null): string => {
@@ -330,14 +329,6 @@ export class HarnessAdapter extends BaseBotAdapter {
             }
             return Promise.resolve();
           },
-          ...(this.emulation.supportsDelete
-            ? {
-                delete: () => {
-                  this.transcript.record({ type: "delete", messageId: id });
-                  return Promise.resolve();
-                },
-              }
-            : {}),
         });
       },
       react: (platformMessageId, emoji, replaces) =>

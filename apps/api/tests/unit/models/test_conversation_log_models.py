@@ -140,7 +140,7 @@ def test_an_answered_or_silent_reply_must_name_what_it_answers(outcome: ReplyOut
 def test_a_failure_reason_is_named_exactly_when_the_reply_failed(
     outcome: ReplyOutcome, failure: FailureReason | None
 ) -> None:
-    with pytest.raises(ValidationError, match="names its failure"):
+    with pytest.raises(ValidationError) as refused:
         ReplySettled(
             id="s",
             reply_id="r",
@@ -150,6 +150,10 @@ def test_a_failure_reason_is_named_exactly_when_the_reply_failed(
             quote_target=None,
             failure=failure,
         )
+    [error] = refused.value.errors()
+    assert (
+        error["msg"] == "Value error, a failed reply names its failure, and only a failed one does"
+    )
 
 
 def test_a_settled_reply_must_state_its_quote_target() -> None:
@@ -213,7 +217,7 @@ _PAYLOADS: list[StreamPayload] = [
     ReasoningEvent(reasoning=ReasoningPayload(content="thinking")),
     ToolDataEvent(tool_data={"tool_name": "search", "data": {"q": "x"}, "tool_category": "web"}),
     ToolOutputEvent(tool_output=ToolOutputPayload(tool_call_id="c1", output="ok")),
-    MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1", discarded=True)),
+    MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1")),
     SubagentStartEvent(
         subagent_start=SubagentStartPayload(
             subagent_id="s1", subagent_name="gmail", agent_type="spawned", started_at="now"

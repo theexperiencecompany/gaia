@@ -30,7 +30,6 @@ import {
   insertFrame,
   replyDelta,
   replyItem,
-  retractFrame,
   screenFrame,
   stateFrame,
   updateFrame,
@@ -100,7 +99,7 @@ import { injectGaia } from "../shared/helpers/inject-gaia";
 interface ApiScript {
   /** The reply's streamed chunks; its saved text is their concatenation. */
   chunks?: string[];
-  /** Streamed by an attempt that is retracted before the reply's chunks. */
+  /** Streamed as the reply's first bubble, before its chunks follow in the next. */
   preamble?: string;
   /** The post is refused with this error instead of accepted. */
   refuse?: GaiaApiError;
@@ -134,16 +133,19 @@ function turnFrames(
   }
   const chunks = script.chunks ?? [];
   const text = chunks.join("");
-  const preamble = script.preamble
-    ? [
-        insertFrame(replyItem("r1", 2, script.preamble)),
-        replyDelta("a0", "r1", 0, script.preamble),
-        retractFrame("a0"),
-      ]
-    : [insertFrame(replyItem("r1", 2, chunks[0] ?? ""))];
+  if (script.preamble) {
+    return [
+      ...opened,
+      insertFrame(replyItem("r1", 2, script.preamble)),
+      replyDelta("a1", "r1", 0, script.preamble),
+      ...chunks.map((chunk, i) => replyDelta("a1", "r1", i + 1, chunk, 1)),
+      updateFrame(replyItem("r1", 2, [script.preamble, text], "answered")),
+      stateFrame(3, "idle"),
+    ];
+  }
   return [
     ...opened,
-    ...preamble,
+    insertFrame(replyItem("r1", 2, chunks[0] ?? "")),
     ...chunks.map((chunk, i) => replyDelta("a1", "r1", i, chunk)),
     updateFrame(replyItem("r1", 2, text, "answered")),
     stateFrame(3, "idle"),
@@ -182,7 +184,6 @@ function makeGaia(script: ApiScript) {
 type Op =
   | { op: "create"; id: string; text: string }
   | { op: "update"; id: string; text: string }
-  | { op: "delete"; id: string }
   | { op: "react"; emoji: string }
   | { op: "aux"; text: string };
 
@@ -206,11 +207,6 @@ function reduce(ops: Op[]): Canonical {
       reactions.push(op.emoji);
       continue;
     }
-    if (op.op === "delete") {
-      order.splice(order.indexOf(op.id), 1);
-      byId.delete(op.id);
-      continue;
-    }
     if (!byId.has(op.id)) order.push(op.id);
     byId.set(op.id, op.text);
     allTexts.push(op.text);
@@ -230,8 +226,6 @@ function reduceTranscript(recorder: TranscriptRecorder): Canonical {
       ops.push({ op: "create", id: event.messageId, text: event.text });
     else if (event.type === "edit")
       ops.push({ op: "update", id: event.messageId, text: event.text });
-    else if (event.type === "delete")
-      ops.push({ op: "delete", id: event.messageId });
     else if (event.type === "ephemeral")
       ops.push({ op: "aux", text: event.text });
     else if (event.type === "reaction")
@@ -279,10 +273,6 @@ async function driveTelegram(script: ApiScript): Promise<Canonical> {
           return {};
         },
       ),
-      deleteMessage: vi.fn(async (_chat: number, id: number) => {
-        ops.push({ op: "delete", id: String(id) });
-        return true;
-      }),
       sendChatAction: vi.fn(async () => true),
       setMessageReaction: vi.fn(
         async (_chat: string, _id: number, [r]: { emoji: string }[]) => {
@@ -331,10 +321,6 @@ async function driveSlack(script: ApiScript): Promise<Canonical> {
             return {};
           },
         ),
-        delete: vi.fn(async ({ ts: id }: { ts: string }) => {
-          ops.push({ op: "delete", id });
-          return {};
-        }),
       },
       reactions: {
         add: vi.fn(async ({ name }: { name: string }) => {
@@ -562,7 +548,7 @@ describe("gaia-sim conformance: harness output matches the real adapter", () => 
       expect(harness.bubbles).toEqual(real.bubbles);
     }, 20_000);
 
-    it("retracted preamble — both leave only the reply on screen", async () => {
+    it("hand-off preamble — both keep it and show the reply below it", async () => {
       const script = {
         preamble: "Let me look into your calendar",
         chunks: ["All set, it is on your list."],
@@ -571,6 +557,7 @@ describe("gaia-sim conformance: harness output matches the real adapter", () => 
       const real = await REAL_DRIVERS[platform](script);
 
       expect(real.bubbles).toEqual([
+        renderForPlatform("Let me look into your calendar", platform),
         renderForPlatform("All set, it is on your list.", platform),
       ]);
       expect(harness.bubbles).toEqual(real.bubbles);

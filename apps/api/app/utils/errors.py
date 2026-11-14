@@ -153,6 +153,11 @@ class ConversationStoreError(AppError):
     """The conversation store failed or kept losing a conditional write; the operation did not happen."""
 
 
+@dataclass
+class ShownReplyRetriedError(AppError):
+    """A model call restarted after the user saw part of its reply; the reply fails as shown, never retracted."""
+
+
 __all__ = [
     "AppError",
     "ConversationAlreadyExistsError",
@@ -162,6 +167,7 @@ __all__ = [
     "EmptyUpdateError",
     "IntegrationNotConnectedError",
     "RepositoryMisconfiguredError",
+    "ShownReplyRetriedError",
     "UnmigratedConversationError",
     "create_error",
 ]

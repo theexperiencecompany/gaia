@@ -329,7 +329,7 @@ export async function deliverTurn(
 
 /**
  * The final text of everything still delivered, in the order each first appeared:
- * a bubble holds its last edit, a deleted one is gone, and with `proactive` a
+ * a bubble holds its last edit, and with `proactive` a
  * backend delivery and an attachment caption are entries of their own.
  */
 function deliveredTexts(
@@ -347,9 +347,6 @@ function deliveredTexts(
       } else {
         texts[index] = event.text;
       }
-    } else if (event.type === "delete") {
-      const index = indexById.get(event.messageId);
-      if (index !== undefined) texts[index] = null;
     } else if (
       proactive &&
       (event.type === "outbound-delivery" ||

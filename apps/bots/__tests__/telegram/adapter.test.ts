@@ -58,7 +58,6 @@ const mockBotInstance = {
     editMessageText: vi.fn().mockResolvedValue({}),
     sendMessage: vi.fn().mockResolvedValue({ message_id: 99 }),
     sendChatAction: vi.fn().mockResolvedValue({}),
-    deleteMessage: vi.fn().mockResolvedValue(true),
     setMessageReaction: mockSetMessageReaction,
   },
 };
@@ -687,15 +686,6 @@ describe("TelegramAdapter - conversation surface", () => {
 
     await expect(sent.edit("next")).rejects.toThrow("Too Many Requests");
     expect(api.editMessageText).toHaveBeenCalledTimes(1);
-  });
-
-  it("deletes the sent message", async () => {
-    const surface = await surfaceFor();
-    const sent = await surface.send("first", null);
-
-    await sent.delete?.();
-
-    expect(api.deleteMessage).toHaveBeenCalledWith(100, 99);
   });
 
   it("reacts in the chat it was posted from", async () => {

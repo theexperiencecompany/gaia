@@ -8,9 +8,8 @@
  * Live platforms (Telegram, Slack) show each bubble as its own message from its
  * first word: the preview only ever holds the bubble being written, a break
  * seals it as it stands, and the next bubble opens a new message. Nothing
- * collapses at the end. A retraction (a hand-off preamble, a retried model
- * attempt) deletes the retracted message's later bubbles and leaves its first
- * one to be overwritten in place by whatever comes next.
+ * collapses at the end. Text once shown is never taken back: the server only
+ * ever extends a reply's bubbles.
  *
  * Other platforms show nothing until a message is final: each kept message is
  * sent when its boundary arrives, bubble by bubble, a pause between them.
@@ -246,20 +245,6 @@ function keepMessage(draft: Draft, config: DeliveryConfig): void {
   closeMessage(draft);
 }
 
-/** Takes the in-flight message back: its later messages deleted, its first left to overwrite. */
-function retractMessage(draft: Draft): void {
-  const shown = [...draft.earlier, ...(draft.live ? [draft.live.slot] : [])];
-  const [first, ...rest] = shown;
-  if (first !== undefined) {
-    for (const slot of rest) draft.ops.push({ kind: "delete", slot });
-    draft.reusable = { slot: first };
-  }
-  // The bubbles counted delivered are taken back with the rest.
-  if (draft.sealedBubbles > 0)
-    draft.ops.push({ kind: "delivered", bubbles: 0 });
-  closeMessage(draft);
-}
-
 /** Applies one stream event: the next state, and the platform operations to run, in order. */
 export function stepDelivery(
   state: DeliveryState,
@@ -269,16 +254,16 @@ export function stepDelivery(
   const draft = toDraft(state);
   switch (event.kind) {
     case "bubbles":
-      // Text the model took back: what is shown is withdrawn and the bubbles go out again.
-      if (!extendsShown(draft.pending, event.bubbles)) retractMessage(draft);
+      if (!extendsShown(draft.pending, event.bubbles)) {
+        throw new Error(
+          "a reply's bubbles shrank: shown text is never taken back",
+        );
+      }
       draft.pending = event.bubbles;
       if (config.live) sealCompleteBubbles(draft, config);
       break;
     case "tick":
       if (config.live) previewOpenBubble(draft, config);
-      break;
-    case "retract":
-      retractMessage(draft);
       break;
     case "end":
       keepMessage(draft, config);

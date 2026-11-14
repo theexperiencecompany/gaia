@@ -402,6 +402,11 @@ async def _quick_tick() -> None:
     await asyncio.sleep(0.01)
 
 
+async def _no_tick() -> None:
+    """Never tick, so a budgeted turn's hint reads follow its events, not the wall clock."""
+    await asyncio.Event().wait()
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 

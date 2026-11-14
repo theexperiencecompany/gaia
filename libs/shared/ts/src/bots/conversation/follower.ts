@@ -194,8 +194,7 @@ export class ConversationFollower {
         await this.renderDelta(frame.attempt_id, frame.reply_id, frame.payload);
         return;
       case FRAME_KIND.RETRACT:
-        if (this.options.streaming && this.open?.attempts.has(frame.attempt_id))
-          await this.open.delivery.retract();
+        // Only an attempt that showed no text is withdrawn: nothing it streamed was posted.
         return;
       case FRAME_KIND.STATE:
         this.renderTyping();
@@ -338,7 +337,7 @@ export class ConversationFollower {
         item.seq > this.floor,
     );
     if (!opened) return null;
-    // A retracted attempt leaves its reply open: the next attempt overwrites it in place.
+    // A retried attempt keeps its reply open: the next attempt's text follows what was shown.
     this.open ??= { delivery: this.newDelivery(opened), attempts: new Set() };
     this.open.attempts.add(attemptId);
     return this.open;
@@ -366,8 +365,7 @@ export class ConversationFollower {
     const delivery = this.open?.delivery ?? this.newDelivery(reply);
     this.open = null;
     if (!sameBubbles(delivery.streamed, reply.bubbles)) {
-      // What streamed is not what was saved (a delta gap, or nothing streamed): show the saved bubbles.
-      if (delivery.opened) await delivery.retract();
+      // A delta gap, or nothing streamed: the saved bubbles extend whatever was shown.
       await delivery.bubbles(reply.bubbles);
     }
     await delivery.end();

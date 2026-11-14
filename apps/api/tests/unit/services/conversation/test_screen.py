@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 import itertools
 import json
+from unittest.mock import AsyncMock
 
 from hypothesis import given, settings, strategies as st
 import pytest
@@ -12,12 +13,14 @@ from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
+    ImageEvent,
     ToolDataEvent,
     WorkDeltaFrame,
 )
 from app.models.conversation_log_models import (
     Entry,
     LoggedEntry,
+    Notice,
     Reply,
     ReplySettled,
     WorkFinished,
@@ -25,27 +28,45 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.conversation_screen_models import (
+    NoticeItem,
+    ReplyItem,
     ScreenInsertFrame,
     ScreenItem,
     ScreenPatch,
     ScreenUpdateFrame,
+    TodoWokeItem,
     WorkItem,
     WorkStatus,
 )
 from app.models.conversation_send_models import ConversationEvent
 from app.models.hil_models import ApprovalDescription, ApprovalDetail
-from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
+from app.services.conversation import screen_patches as screen_patches_module
+from app.services.conversation.screen import (
+    TOOL_CALL_CARD,
+    project_screen,
+    work_root,
+    work_timeline,
+)
 from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
+from app.utils.message_breaks import split_message_bubbles
 from shared.py.conversation_wire import (
     FailureReason,
-    ReplyItem,
+    ImageData,
     ReplyOutcome,
     ScreenItemKind,
     ToolDataEntry,
     ToolProgress,
 )
 from tests.helpers import REPO_ROOT
-from tests.unit.services.conversation.log_helpers import asked, decided, logged, notice, user
+from tests.hypothesis_profiles import property_examples
+from tests.unit.services.conversation.log_helpers import (
+    asked,
+    decided,
+    logged,
+    notice,
+    todo_woke,
+    user,
+)
 
 
 def _handoff(call_id: str) -> ToolDataEntry:
@@ -421,7 +442,7 @@ class _Sim:
         self.reply = None
 
 
-@settings(max_examples=300, deadline=None)
+@settings(max_examples=property_examples(300), deadline=None)
 @given(st.lists(st.tuples(_ACTIONS, st.integers(min_value=0, max_value=7)), max_size=40))
 def test_any_conversation_only_grows_at_the_end_and_reloads_to_what_was_shown(
     actions: list[tuple[str, int]],
@@ -713,3 +734,142 @@ def test_an_items_timeline_states_the_newest_tool_calls_progress_line() -> None:
         icon_url=None,
         show_category=True,
     )
+
+
+def test_a_moved_item_is_named_with_both_orders() -> None:
+    first, second = project_screen([logged(1, user("u1")), logged(2, user("u2"))])
+    with pytest.raises(ScreenItemMoved) as moved:
+        screen_patches([first, second], [second, first], 2)
+    assert str(moved.value) == "shown ['u1', 'u2'], projected ['u2', 'u1']"
+
+
+_RUNNING = [
+    logged(1, user("u1")),
+    logged(2, WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))),
+]
+_MADE = ImageData(url="https://img.example/1.png", prompt="a cat")
+
+
+def test_a_running_tasks_published_cards_and_image_show_on_its_work_item() -> None:
+    published = [ToolDataEvent(tool_data=_card("x")), ImageEvent(image_data=_MADE)]
+    tracker = ScreenTracker("c1", _RUNNING, {"t1": published})
+    [_, work] = tracker.items
+    assert isinstance(work, WorkItem)
+    assert (work.tool_data, work.image) == ((_card("x"),), _MADE)
+    assert work.timeline == work_timeline(work.handoff, (_card("x"),), work.approvals)
+
+
+async def test_a_reader_that_missed_a_tasks_frames_reads_its_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = AsyncMock(
+        return_value=[ToolDataEvent(tool_data=_card("x")), ToolDataEvent(tool_data=_card("y"))]
+    )
+    monkeypatch.setattr(screen_patches_module, "work_payloads", record)
+    tracker = ScreenTracker("c1", _RUNNING, {})
+    gap = WorkDeltaFrame(task_id="t1", index=1, payload=ToolDataEvent(tool_data=_card("y")))
+    (patch,) = await tracker.on_work(gap)
+    record.assert_awaited_once_with("c1", "t1")
+    assert isinstance(patch.item, WorkItem)
+    assert patch.item.tool_data == (_card("x"), _card("y"))
+
+
+def test_a_hand_over_chain_that_loops_ends_at_the_task_it_came_back_to() -> None:
+    chain = {
+        "t1": WorkStarted(id="work:t1", task_id="t1", cause_through=1, joins="t2"),
+        "t2": WorkStarted(id="work:t2", task_id="t2", cause_through=1, joins="t3"),
+        "t3": WorkStarted(id="work:t3", task_id="t3", cause_through=1, joins="t2"),
+    }
+    assert work_root(chain, "t1") == "t2"
+    back = {**chain, "t2": WorkStarted(id="work:t2", task_id="t2", cause_through=1, joins="t1")}
+    assert work_root(back, "t1") == "t1"
+
+
+def test_a_woken_todo_and_a_notice_show_as_their_own_items() -> None:
+    woke = todo_woke("tw1")
+    said = Notice(id="n1", text="first\n\nsecond", origin="reminder")
+    [woken, noticed] = project_screen([logged(1, woke), logged(2, said)])
+    assert woken == TodoWokeItem(id="tw1", seq=1, at=logged(1, woke).at, wake=woke.run.wake)
+    assert isinstance(noticed, NoticeItem)
+    assert noticed.bubbles == tuple(split_message_bubbles("first\n\nsecond"))
+
+
+_IMAGE = ImageData(url="https://img.example/2.png", prompt="a dog")
+
+
+def test_work_and_a_reply_show_the_image_each_made() -> None:
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    done = WorkFinished(id="f1", task_id="t1", outcome=WorkOutcome.DONE, report="r", image=_IMAGE)
+    reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text="here", image=_IMAGE)
+    items = project_screen(
+        [logged(1, user("u1")), logged(2, started), logged(3, done), logged(4, reply)]
+    )
+    images = {item.id: getattr(item, "image", None) for item in items}
+    assert (images["work:t1"], images["r1"]) == (_IMAGE, _IMAGE)
+
+
+def test_a_reply_narrates_what_its_settle_names_and_keeps_its_failure() -> None:
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    done = WorkFinished(id="f1", task_id="t1", outcome=WorkOutcome.DONE, report="r")
+    reply = Reply(id="o1", reply_id="t9", attempt_id="a1", text="partly")
+    failed = ReplySettled(
+        id="s1",
+        reply_id="t9",
+        outcome=ReplyOutcome.FAILED,
+        answers=("u1",),
+        through=1,
+        quote_target=None,
+        failure=FailureReason.MODEL_ERROR,
+        narrates=("t1",),
+    )
+    items = project_screen(
+        [
+            logged(1, user("u1")),
+            logged(2, started),
+            logged(3, done),
+            logged(4, reply),
+            logged(5, failed),
+        ]
+    )
+    [shown] = [item for item in items if isinstance(item, ReplyItem)]
+    assert (shown.narrates, shown.failure) == (("t1",), FailureReason.MODEL_ERROR)
+
+
+def test_a_reply_naming_its_work_is_not_rekeyed_by_a_task_sharing_its_id() -> None:
+    first = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    second = WorkStarted(id="work:r1", task_id="r1", cause_through=1, answers=("u1",))
+    ends = [
+        WorkFinished(id=f"f-{task}", task_id=task, outcome=WorkOutcome.DONE, report="r")
+        for task in ("t1", "r1")
+    ]
+    reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text="both", narrates=("t1",))
+    log = [user("u1"), first, second, *ends, reply]
+    items = project_screen([logged(seq, entry) for seq, entry in enumerate(log, start=1)])
+    [shown] = [item for item in items if isinstance(item, ReplyItem)]
+    assert shown.narrates == ("t1",)
+
+
+def test_an_imported_reply_shows_once_its_history_settled_it() -> None:
+    reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text="old answer", imported=True)
+    settle = ReplySettled(
+        id="s1",
+        reply_id="r1",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("u1",),
+        through=1,
+        quote_target=None,
+        imported=True,
+    )
+    log = [logged(1, user("u1")), logged(2, reply)]
+    assert [item.id for item in project_screen(log)] == ["u1"]
+    assert [item.id for item in project_screen([*log, logged(3, settle)])] == ["u1", "r1"]
+
+
+def test_an_approval_card_on_a_work_item_carries_wire_json() -> None:
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    log = [logged(1, user("u1")), logged(2, started), logged(3, asked("ask:a1", "t1", "a1"))]
+    [_, ended] = project_screen([*log, logged(4, decided("dec:a1", "a1"))])
+    assert isinstance(ended, WorkItem)
+    [card] = [entry.card for entry in ended.timeline.cards]
+    [answered] = card["data"]
+    assert type(answered["outcome"]) is str
