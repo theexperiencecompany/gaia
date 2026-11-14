@@ -10,8 +10,9 @@ import { WEB_BASE_URL } from "./e2e/harness";
 export default defineConfig({
   testDir: "./e2e",
   // The self-host journey runs only against a `gaia up` stack (playwright.selfhost.config.ts);
-  // e2e/worker runs against the built worker, through playwright.worker.config.ts.
-  testIgnore: ["selfhost/**", "worker/**"],
+  // e2e/worker runs against the built worker, through playwright.worker.config.ts;
+  // e2e/primitive-parity through playwright.parity.config.ts (`mise web:primitive-parity`).
+  testIgnore: ["selfhost/**", "worker/**", "primitive-parity/**"],
   globalSetup: "./e2e/global-setup.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

@@ -1,5 +1,6 @@
 import { Kbd, Tooltip } from "@heroui/react";
 import { AudioWave01Icon } from "@icons";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
@@ -170,7 +171,11 @@ export default function RightSide({
           >
             <AudioWave01Icon className="text-zinc-400" />
           </GaiaButton>
-          <Tooltip.Content placement="left" showArrow>
+          <Tooltip.Content
+            className={overlayVariants({ surface: "accent" })}
+            placement="left"
+            showArrow
+          >
             Voice Mode
           </Tooltip.Content>
         </Tooltip>
@@ -184,7 +189,13 @@ export default function RightSide({
             onSend={handleFormSubmit}
           />
         </Tooltip.Trigger>
-        <Tooltip.Content placement="right" showArrow>
+        <Tooltip.Content
+          className={overlayVariants({
+            surface: showStop ? "danger" : "accent",
+          })}
+          placement="right"
+          showArrow
+        >
           {getTooltipContent()}
         </Tooltip.Content>
       </Tooltip>

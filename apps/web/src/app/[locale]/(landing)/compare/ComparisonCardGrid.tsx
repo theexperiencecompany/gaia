@@ -48,9 +48,9 @@ export function ComparisonCardGrid({
               />
             </div>
           </div>
-          <h3 className="text-lg font-medium text-white transition-colors group-hover:text-accent">
+          <h2 className="text-lg font-medium text-white transition-colors group-hover:text-accent">
             {vsLabel(comparison.name)}
-          </h3>
+          </h2>
           <p className="text-sm text-zinc-500">{comparison.tagline}</p>
           <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
             {comparison.description}

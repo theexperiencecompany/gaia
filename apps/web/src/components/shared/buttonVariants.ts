@@ -57,15 +57,15 @@ export const buttonOverlayVariants = tv({
  * text (the small inline text action, 4px by 8px, no fill).
  */
 const GAIA_BUTTON_FILLS = {
+  // v2's solid and flat hover kept the fill and dimmed the whole button to 90%
   "default-solid":
-    "bg-zinc-700 text-foreground hover:bg-zinc-600 active:bg-zinc-600",
+    "bg-zinc-700 text-default-foreground hover:opacity-90 active:opacity-90",
   "default-soft":
-    "bg-default-soft text-default-soft-foreground hover:bg-default-soft-hover active:bg-default-soft-hover",
+    "bg-default-soft text-default-soft-foreground hover:opacity-90 active:opacity-90",
   "success-soft":
-    "bg-success-soft text-success-soft-foreground hover:bg-success-soft-hover active:bg-success-soft-hover",
+    "bg-success-soft text-success-soft-foreground hover:opacity-90 active:opacity-90",
   "warning-soft":
-    "bg-warning-soft text-warning-soft-foreground hover:bg-warning-soft-hover active:bg-warning-soft-hover",
-  // v2's flat hover kept the 20% tint and dimmed the whole button to 90%
+    "bg-warning-soft text-warning-soft-foreground hover:opacity-90 active:opacity-90",
   "accent-soft":
     "bg-accent-soft text-accent-soft-foreground hover:opacity-90 active:opacity-90",
   text: "h-auto min-h-0 min-w-0 bg-transparent px-2 py-1 hover:bg-transparent active:bg-transparent",

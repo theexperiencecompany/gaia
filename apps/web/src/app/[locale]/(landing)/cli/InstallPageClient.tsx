@@ -198,7 +198,7 @@ export function InstallPageClient() {
       <div className="mx-auto mt-24 w-full max-w-4xl px-4 sm:mt-32 sm:px-6">
         <div className="relative aspect-video w-full overflow-hidden rounded-4xl bg-zinc-900">
           <Image
-            src="/images/readme/self-host-installer.webp"
+            src="/images/readme/self-host-installer.jpg"
             alt="The GAIA installer: Node.js, the GAIA CLI and Docker installed, then GAIA downloading with a progress bar and a row per service"
             width={2400}
             height={1350}

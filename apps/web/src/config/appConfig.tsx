@@ -424,6 +424,7 @@ export const footerSections: LinkSection[] = [
       { label: "Marketplace", href: "/marketplace" },
       { label: "Bots", href: "/bots" },
       { label: "Pricing", href: "/pricing" },
+      { label: "Sign Up", href: "/signup" },
       { label: "Roadmap", href: vanityTarget("/roadmap"), external: true },
     ],
   },

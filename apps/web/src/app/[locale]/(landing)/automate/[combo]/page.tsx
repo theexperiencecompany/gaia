@@ -166,6 +166,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
           data={data}
           toolACompareHref={toolACompareHref}
           toolBCompareHref={toolBCompareHref}
+          t={t}
         />
         {relatedRows.map((row) => (
           <RelatedAutomationsGrid
