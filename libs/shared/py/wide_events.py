@@ -59,6 +59,7 @@ import asyncio
 from collections.abc import AsyncIterator, Coroutine, Mapping
 import contextlib
 import contextvars
+from enum import StrEnum
 import sys
 import time
 from typing import Any, NotRequired, TypedDict
@@ -193,11 +194,33 @@ class ModelContext(TypedDict, total=False):
     call_failed: bool
 
 
+class ConversationOperation(StrEnum):
+    """The conversation endpoint a wide event records."""
+
+    BARGE_IN = "barge_in"
+    BATCH_SYNC = "batch_sync"
+    CREATE = "create"
+    DELETE = "delete"
+    DELETE_ALL = "delete_all"
+    ENTRIES_BEFORE = "entries_before"
+    EVENTS = "events"
+    GET = "get"
+    GET_PINNED = "get_pinned"
+    LIST = "list"
+    MARK_READ = "mark_read"
+    MARK_UNREAD = "mark_unread"
+    PIN_MESSAGE = "pin_message"
+    SEND = "send"
+    STAR = "star"
+    STOP = "stop"
+    UPDATE_DESCRIPTION = "update_description"
+
+
 class ConversationContext(TypedDict, total=False):
     """Conversation CRUD/operation context (create, list, delete, star, …)."""
 
     id: str
-    operation: str  # "create"|"list"|"get"|"delete"|"delete_all"|"star"|"pin_message"|"update_messages"|"batch_sync"|"mark_read"|"mark_unread"|"update_description"
+    operation: ConversationOperation
     page: int
     limit: int
     total_returned: int
@@ -513,13 +536,16 @@ class VoiceContext(TypedDict, total=False):
     """Voice-agent (LiveKit) session/turn operation context."""
 
     operation: (
-        str  # "session_start"|"turn"|"drain"|"credentials"|"tts"|"stt"|"tool_call"|"session_end"
+        str  # "session_start"|"turn"|"follow"|"barge_in"|"credentials"|"tts"|"stt"|"session_end"
     )
     room: str
     participant: str
     model: str
     provider: str
     turn_index: int
+    # A barge-in: the reply the user spoke over, and the characters of it they heard.
+    reply_id: str
+    heard_through: int
     # Session-end aggregate. The LiveKit session lifecycle callbacks fire after
     # the entrypoint's setup event has emitted, so the worker accumulates them
     # and reports the whole session once from its shutdown callback (see
@@ -1084,6 +1110,7 @@ __all__ = [
     "ChatContext",
     "ModelContext",
     "ConversationContext",
+    "ConversationOperation",
     "TodoContext",
     "MemoryContext",
     "CalendarContext",

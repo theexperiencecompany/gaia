@@ -13,18 +13,13 @@ import { ShieldIcon } from "@icons";
 import type {
   ApprovalDecision,
   ApprovalRequestData,
-  ApprovalStatus,
   BatchDecisionOutcome,
 } from "@shared/chat";
-import { formatApprovalAge } from "@shared/chat";
+import { approvalAgeSeconds, formatApprovalAge } from "@shared/chat";
 import { flattenArgsPreview } from "@shared/utils";
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
-import {
-  BATCH_OUTCOME_REASON,
-  resolveBatchOutcomeStatus,
-} from "@/features/chat/utils/batchOutcome";
+import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
 import { toast } from "@/lib/toast";
 
 interface SheetDecision {
@@ -36,48 +31,11 @@ interface ApprovalReviewSheetProps {
   items: ApprovalRequestData[];
   open: boolean;
   onClose: () => void;
-  /** The conversation owning these cards — clears that stream's gate instead
-   * of the active one. */
-  conversationId?: string;
-  onSettled: (
-    approvalId: string,
-    status: ApprovalStatus,
-    feedback: string | null,
-  ) => void;
 }
 
-/**
- * Settle one batch outcome: server truth wins over the tapped button, so a
- * lost race never paints the wrong verdict. Any other uncommitted item keeps
- * its decision in the sheet for review or retry.
- */
-function settleBatchOutcome(
-  outcome: BatchDecisionOutcome,
-  made: SheetDecision,
-  onSettled: ApprovalReviewSheetProps["onSettled"],
-  removeDecision: (approvalId: string) => void,
-): void {
-  if (outcome.resolved) {
-    onSettled(
-      outcome.approval_id,
-      made.decision === "approve" ? "approved" : "denied",
-      made.feedback.trim() || null,
-    );
-    removeDecision(outcome.approval_id);
-    return;
-  }
-  if (outcome.reason === BATCH_OUTCOME_REASON.NOT_FOUND) {
-    onSettled(
-      outcome.approval_id,
-      resolveBatchOutcomeStatus(
-        outcome.status,
-        made.decision === "approve" ? "approved" : "denied",
-      ),
-      made.feedback.trim() || null,
-    );
-    removeDecision(outcome.approval_id);
-  }
-}
+/** Whether the server took this decision or found it already made: either way the sheet lets go of it. */
+const isSettled = (outcome: BatchDecisionOutcome): boolean =>
+  outcome.resolved || outcome.reason === BATCH_OUTCOME_REASON.NOT_FOUND;
 
 /**
  * Bottom sheet for 3+ pending approvals. Same rows as the inline cards, one
@@ -88,12 +46,10 @@ export default function ApprovalReviewSheet({
   items,
   open,
   onClose,
-  conversationId,
-  onSettled,
 }: ApprovalReviewSheetProps) {
   const [decisions, setDecisions] = useState<Record<string, SheetDecision>>({});
   const [submitting, setSubmitting] = useState(false);
-  const markApprovalDecided = useMarkApprovalDecided();
+  const [openedAt] = useState(() => Date.now());
 
   const toggle = (approvalId: string, decision: ApprovalDecision) => {
     setDecisions((prev) => {
@@ -131,7 +87,6 @@ export default function ApprovalReviewSheet({
           feedback: decisions[approval_id].feedback.trim() || undefined,
         })),
       });
-      markApprovalDecided(conversationId);
       const removeDecision = (approvalId: string) => {
         setDecisions((prev) => {
           const next = { ...prev };
@@ -140,16 +95,12 @@ export default function ApprovalReviewSheet({
         });
       };
       for (const outcome of response.outcomes) {
-        const made = decisions[outcome.approval_id];
-        if (made) settleBatchOutcome(outcome, made, onSettled, removeDecision);
+        if (isSettled(outcome)) removeDecision(outcome.approval_id);
       }
       const kept = response.outcomes.filter(
         (o) => !o.resolved && o.reason !== BATCH_OUTCOME_REASON.NOT_FOUND,
       );
-      if (kept.some((o) => o.reason === BATCH_OUTCOME_REASON.STALE)) {
-        toast.error("Some approvals already moved — kept for review");
-      }
-      if (kept.some((o) => o.reason !== BATCH_OUTCOME_REASON.STALE)) {
+      if (kept.length > 0) {
         toast.error("Some approvals couldn't be submitted — please try again");
       }
     } catch {
@@ -201,9 +152,11 @@ export default function ApprovalReviewSheet({
                       <div className="text-sm leading-snug text-zinc-100">
                         {item.summary}
                       </div>
-                      {item.age_seconds != null && (
+                      {item.asked_at && (
                         <div className="mt-0.5 text-[11px] text-zinc-500">
-                          {formatApprovalAge(item.age_seconds)}
+                          {formatApprovalAge(
+                            approvalAgeSeconds(item.asked_at, openedAt),
+                          )}
                         </div>
                       )}
                       {shown.length > 0 && (

@@ -9,6 +9,7 @@ import stackprinter
 # custom tools 500 with "Missing user_id in auth_credentials" because the
 # CustomTool user_id-injection patch never loads here.
 from app.config.sentry import init_sentry
+from app.constants.conversation import SWEEP_SECONDS
 from app.constants.delivery_alerts import (
     RECORD_DELIVERY_FAILURE_TASK,
     REFRESH_DELIVERY_INCIDENT_TASK,
@@ -52,18 +53,17 @@ from app.workers.tasks import (
     sweep_idle_sandboxes,
     sweep_undelivered_signup_emails,
 )
+from app.workers.tasks.conversation_sweep_tasks import sweep_step_conversations
 from app.workers.tasks.delivery_alert_tasks import (
     record_delivery_failure,
     refresh_delivery_incident_task,
 )
 from app.workers.tasks.device_tasks import warm_device_servers
-from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.inbox_desk_tasks import (
     provision_inbox_desk_task,
 )
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
-from app.workers.tasks.reply_sweep_tasks import sweep_unfinished_replies
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
@@ -90,8 +90,7 @@ init_sentry()
 # correlated worker_task event; cron jobs reuse these same wrapped functions.
 _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
-_sweep_hil_approvals = arq_task(sweep_hil_approvals)
-_sweep_unfinished_replies = arq_task(sweep_unfinished_replies)
+_sweep_step_conversations = arq_task(sweep_step_conversations)
 _check_inactive_users = arq_task(check_inactive_users)
 _process_workflow_generation_task = arq_task(process_workflow_generation_task)
 _execute_workflow_by_id = arq_task(execute_workflow_by_id)
@@ -165,8 +164,7 @@ _refresh_delivery_incident = func(
 # Every job on the default queue. Browser jobs have their own worker
 # (app.workers.browser_worker), started from the worker lifecycle.
 TASK_FUNCTIONS: list[WorkerFunction] = [
-    _sweep_hil_approvals,
-    _sweep_unfinished_replies,
+    _sweep_step_conversations,
     _process_reminder,
     _cleanup_expired_reminders,
     _check_inactive_users,
@@ -205,15 +203,9 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
 WorkerSettings.functions = TASK_FUNCTIONS
 
 WorkerSettings.cron_jobs = [
-    cron(
-        # Every minute: HIL approvals must expire promptly — a stale pending
-        # approval hijacks the conversation's next messages and holds the
-        # executor's claim on the thread.
-        _sweep_hil_approvals,
-        second=0,
-    ),
     # Every minute: a reply whose turn died mid-stream reads as failed, not in progress forever.
-    cron(_sweep_unfinished_replies, second=30),
+    # Every 15s: a step-run conversation a dead process left is answered, and its lost work reported.
+    cron(_sweep_step_conversations, second=set(SWEEP_SECONDS)),
     # Every few seconds: a browser job whose worker died is ended, and a result no
     # run was woken for is told, within moments rather than a lock's TTL.
     browser_reaper_cron(),

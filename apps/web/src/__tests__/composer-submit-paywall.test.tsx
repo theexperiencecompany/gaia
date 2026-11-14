@@ -14,12 +14,13 @@ const clearReplyToMessage = vi.fn();
 
 let isPaid = false;
 let isSubscriptionStatusUnknown = false;
+let pickedTool: string | null = null;
 
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   useIsPaid: () => ({ isPaid, isUnknown: isSubscriptionStatusUnknown }),
 }));
 
-vi.mock("@/features/chat/stream/sendMessage", () => ({ sendMessage }));
+vi.mock("@/features/chat/live/sendMessage", () => ({ sendMessage }));
 
 vi.mock("@/features/chat/hooks/useCalendarEventSelection", () => ({
   useCalendarEventSelection: () => ({
@@ -41,8 +42,8 @@ vi.mock("@/stores/composerStore", () => ({
   useInputText: () => "Hello GAIA",
   useComposerTextActions: () => ({ clearInputText }),
   useComposerModeSelection: () => ({
-    selectedTool: null,
-    selectedToolCategory: null,
+    selectedTool: pickedTool,
+    selectedToolCategory: pickedTool ? "gmail" : null,
     setSelectedTool: vi.fn(),
     setSelectedToolCategory: vi.fn(),
     clearToolSelection,
@@ -67,6 +68,7 @@ describe("useComposerSubmit paywall pre-check", () => {
   beforeEach(() => {
     isPaid = false;
     isSubscriptionStatusUnknown = false;
+    pickedTool = null;
     useUpgradeModalStore.setState({ open: false, offer: null });
     vi.clearAllMocks();
   });
@@ -107,6 +109,28 @@ describe("useComposerSubmit paywall pre-check", () => {
     expect(clearInputText).toHaveBeenCalledTimes(1);
   });
 
+  it("sends the picked tool with the message", () => {
+    isPaid = true;
+    pickedTool = "gmail_send";
+    const { result } = renderHook(() =>
+      useComposerSubmit({
+        inputRef: { current: null },
+        scrollToBottom: vi.fn(),
+      }),
+    );
+
+    result.current.handleFormSubmit();
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      "Hello GAIA",
+      expect.objectContaining({
+        selected_tool: "gmail_send",
+        tool_category: "gmail",
+      }),
+    );
+    expect(clearToolSelection).toHaveBeenCalledTimes(1);
+  });
+
   it("lets the send proceed while the subscription status is still unknown, instead of opening the paywall (cold-cache race)", () => {
     isPaid = false;
     isSubscriptionStatusUnknown = true;
@@ -119,7 +143,7 @@ describe("useComposerSubmit paywall pre-check", () => {
 
     result.current.handleFormSubmit();
 
-    // The backend's 402 on chat-stream is the backstop for a genuinely free
+    // The backend's 402 on a send is the backstop for a genuinely free
     // user — a not-yet-resolved plan status must never trap a paying user
     // behind the non-dismissible paywall.
     expect(sendMessage).toHaveBeenCalledTimes(1);

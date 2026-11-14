@@ -119,7 +119,7 @@ def _sweep_patches(**overrides) -> tuple[MagicMock, dict[str, AsyncMock], list]:
         patch(f"{MODULE}.todo_repository.update", mocks["store_schedule"]),
         patch(f"{MODULE}.record_activity", mocks["activity"]),
         patch(f"{MODULE}.todo_repository.add_labels", mocks["add_labels"]),
-        patch(f"{MODULE}.notification_service.create_notification", mocks["notify"]),
+        patch(f"{MODULE}.notification_service.notify", mocks["notify"]),
         patch(f"{MODULE}.tracked_todo_service.normalize_stored_canvas", mocks["migrate"]),
     ]
     return pool, mocks, patches
@@ -299,7 +299,7 @@ class TestHealthCheckExpired:
                 f"{MODULE}._health_check_verdict",
                 AsyncMock(return_value="NOTIFY: Your todo expired and needs a decision."),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
         ):
             outcome = await _health_check_expired(_doc(title="Ship the report"), pool)
@@ -328,7 +328,7 @@ class TestHealthCheckExpired:
                 f"{MODULE}._health_check_verdict",
                 AsyncMock(return_value="NOTIFY: still expired"),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
         ):
             outcome = await _health_check_expired(_doc(), pool)
 
@@ -344,7 +344,7 @@ class TestHealthCheckExpired:
                 f"{MODULE}._health_check_verdict",
                 AsyncMock(side_effect=ValueError("No human message or selected tool")),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             pytest.raises(ValueError, match="No human message"),
         ):
             await _health_check_expired(_doc(), pool)
@@ -439,7 +439,7 @@ class TestNotifyOverdue:
         notify = AsyncMock()
         add_labels = AsyncMock()
         with (
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.todo_repository.add_labels", add_labels),
             patch(f"{MODULE}.record_activity", AsyncMock()) as activity,
         ):
@@ -467,7 +467,7 @@ class TestNotifyOverdue:
         pool.get = AsyncMock(return_value="4")
         notify = AsyncMock()
         with (
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.todo_repository.add_labels", AsyncMock()),
         ):
             result = await _notify_overdue(_doc(), pool)
@@ -570,7 +570,7 @@ class TestIsUserDaytime:
 class TestSendUserDormantDigest:
     async def test_single_todo_digest(self):
         notify = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", notify):
+        with patch(f"{MODULE}.notification_service.notify", notify):
             await _send_user_dormant_digest(
                 "user-1", [_doc(title="Unfinished thing", updated_at=NOW - timedelta(days=7))], NOW
             )
@@ -586,7 +586,7 @@ class TestSendUserDormantDigest:
 
     async def test_multi_todo_digest_counts_and_links_to_the_list(self):
         notify = AsyncMock()
-        with patch(f"{MODULE}.notification_service.create_notification", notify):
+        with patch(f"{MODULE}.notification_service.notify", notify):
             await _send_user_dormant_digest(
                 "user-1",
                 [
@@ -604,7 +604,7 @@ class TestSendUserDormantDigest:
 
     async def test_notification_failure_is_swallowed(self):
         with patch(
-            f"{MODULE}.notification_service.create_notification",
+            f"{MODULE}.notification_service.notify",
             AsyncMock(side_effect=RuntimeError("notification bus down")),
         ):
             await _send_user_dormant_digest("user-1", [_doc()], NOW)
@@ -1018,7 +1018,7 @@ class TestExpiredTierContainment:
         with (
             patch(f"{MODULE}._read_canvas", canvas),
             patch(f"{MODULE}._health_check_verdict", health),
-            patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+            patch(f"{MODULE}.notification_service.notify", AsyncMock()),
         ):
             outcome = await _health_check_expired(doc, pool)
 

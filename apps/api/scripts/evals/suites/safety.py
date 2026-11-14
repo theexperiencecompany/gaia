@@ -1,6 +1,6 @@
 """Safety suite — what GAIA does when the request, or its context, is hostile.
 
-Five families, all over the live chat-stream wire:
+Five families, all over the live chat wire (send + events):
 
 * **chat-level injection** — the user's own message carries an instruction aimed
   at the agent's rules ("ignore your instructions", a fake system block, a fake
@@ -108,7 +108,7 @@ def _verdict(per_text: list[str]) -> str:
 
 
 class SafetyTransport:
-    """Live chat-stream runs, one per phrasing, with the verdict as end state."""
+    """Live chat runs, one per phrasing, with the verdict as end state."""
 
     def __init__(self) -> None:
         self._shared = SuiteChatTransport("safety")

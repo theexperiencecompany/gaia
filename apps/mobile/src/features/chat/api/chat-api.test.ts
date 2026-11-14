@@ -1,6 +1,13 @@
 import { ApiError } from "@gaia/shared";
+import { userItem } from "@gaia/shared/conversation/testing";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchConversation, postApprovalDecision } from "./chat-api";
+import {
+  fetchConversationPage,
+  fetchEntriesBefore,
+  postApprovalDecision,
+  sendConversationMessage,
+  stopConversation,
+} from "./chat-api";
 
 const { getMock, postMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
@@ -65,37 +72,72 @@ describe("postApprovalDecision", () => {
   });
 });
 
-describe("fetchConversation", () => {
-  it("carries what woke a tracked todo's run onto its user message", async () => {
-    const wake = {
-      kind: "schedule",
-      trigger_names: [],
-      approval_summary: null,
-    };
-    getMock.mockResolvedValue({
-      _id: "c",
-      user_id: "u",
-      conversation_id: "todo-chat",
-      description: "Watch the staging deploy",
-      is_system_generated: true,
-      system_purpose: null,
-      is_unread: false,
-      createdAt: "2026-10-31T14:05:00Z",
-      messages: [
-        {
-          type: "user",
-          response: "",
-          date: "2026-10-31T14:05:00Z",
-          message_id: "m-1",
-          fileIds: [],
-          fileData: [],
-          todo_run_wake: wake,
-        },
-      ],
+const PAGE = {
+  items: [userItem("m-3", 3, "thanks")],
+  state: { kind: "state", head: 3, display: "idle", work: [] },
+  has_older: true,
+  cursor: 3,
+};
+
+describe("loading the log", () => {
+  beforeEach(() => {
+    getMock.mockReset();
+  });
+
+  it("reads a conversation as its newest page of screen items, with the head's state", async () => {
+    getMock.mockResolvedValue({ conversation_id: "c1", ...PAGE });
+
+    const page = await fetchConversationPage("c1");
+
+    expect(getMock).toHaveBeenCalledWith("/conversations/c1");
+    expect(page.items.map((item) => [item.kind, item.id])).toEqual([
+      ["user", "m-3"],
+    ]);
+    expect([page.state.head, page.cursor]).toEqual([3, 3]);
+  });
+
+  it("pages back through the entries route before a seq", async () => {
+    getMock.mockResolvedValue(PAGE);
+
+    await fetchEntriesBefore("c 1", 4, 50);
+
+    expect(getMock).toHaveBeenCalledWith(
+      "/conversations/c%201/entries?before_seq=4&limit=50",
+    );
+  });
+
+  it("refuses a payload that is not a page of the log", async () => {
+    getMock.mockResolvedValue({ messages: [], has_more: false });
+
+    await expect(fetchConversationPage("c1")).rejects.toThrow();
+  });
+});
+
+describe("the conversation routes", () => {
+  beforeEach(() => {
+    postMock.mockReset();
+  });
+
+  it("sends a message to the conversation's messages route with the client-minted id", async () => {
+    postMock.mockResolvedValue({
+      conversation_id: "c/1",
+      message_id: "m1",
+      seq: 3,
     });
 
-    const conversation = await fetchConversation("todo-chat");
+    await sendConversationMessage("c/1", { message_id: "m1", text: "hi" });
 
-    expect(conversation?.messages[0]?.todoRunWake).toEqual(wake);
+    expect(postMock).toHaveBeenCalledWith("/conversations/c%2F1/messages", {
+      message_id: "m1",
+      text: "hi",
+    });
+  });
+
+  it("stops through the conversation's stop route", async () => {
+    postMock.mockResolvedValue({});
+
+    await stopConversation("c1");
+
+    expect(postMock).toHaveBeenCalledWith("/conversations/c1/stop");
   });
 });

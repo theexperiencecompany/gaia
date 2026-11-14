@@ -4,13 +4,14 @@ import { type ReactNode, useMemo, useRef } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import MemoryIndicator from "@/features/chat/components/memory/MemoryIndicator";
 import {
-  logoDelayFor,
   type PartChoreography,
   resolvePartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
-import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
-import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
+import type {
+  BubbleGrouping,
+  ChatBubbleBotProps,
+} from "@/types/features/chatBubbleTypes";
 import { BotBubbleAvatar, BotBubbleFooter } from "./BotBubbleChrome";
 import { describeBotBubbleContent } from "./botBubbleContent";
 import ImageBubble from "./ImageBubble";
@@ -21,8 +22,7 @@ export default function ChatBubbleBot(
   props: ChatBubbleBotProps & {
     disableActions?: boolean;
     hideAvatar?: boolean;
-    isGroupedWithNext?: boolean;
-    isGroupedWithPrev?: boolean;
+    grouping?: BubbleGrouping;
     children?: ReactNode;
     /** Per-part reveal cadence; see TextBubble. */
     partChoreography?: PartChoreography;
@@ -30,6 +30,7 @@ export default function ChatBubbleBot(
 ) {
   const {
     text,
+    bubbles,
     loading = false,
     message_id,
     pinned,
@@ -43,8 +44,7 @@ export default function ChatBubbleBot(
     error,
     disableActions = false,
     hideAvatar = false,
-    isGroupedWithNext = false,
-    isGroupedWithPrev = false,
+    grouping,
     children,
     onRetry,
     isRetrying,
@@ -75,12 +75,10 @@ export default function ChatBubbleBot(
   const logoDelay = useMemo(
     () =>
       itShouldShowTextBubble
-        ? logoDelayFor(
-            parseThinkingFromText(text?.toString() || "").cleanText,
-            partChoreography.staggerSeconds,
-          )
+        ? Math.max(0, (bubbles?.length ?? 0) - 1) *
+          partChoreography.staggerSeconds
         : 0,
-    [text, itShouldShowTextBubble, partChoreography.staggerSeconds],
+    [bubbles, itShouldShowTextBubble, partChoreography.staggerSeconds],
   );
 
   // A failed turn with no response text still shows the quiet error bubble.
@@ -103,7 +101,7 @@ export default function ChatBubbleBot(
   // The error bubble gets the same chrome as a text bubble (avatar + actions,
   // so Retry is reachable).
   const showBubbleChrome = itShouldShowTextBubble || hasError;
-  const showAvatar = !hideAvatar && !isGroupedWithNext && showBubbleChrome;
+  const showAvatar = !hideAvatar && !grouping?.withNext && showBubbleChrome;
 
   return (
     <div
@@ -112,7 +110,7 @@ export default function ChatBubbleBot(
       onMouseOut={handleMouseOut}
       onFocus={handleMouseOver}
       onBlur={handleMouseOut}
-      className={`relative flex flex-col ${isGroupedWithPrev ? "mt-1.5" : ""}`}
+      className={`relative flex flex-col ${grouping?.withPrev ? "mt-1.5" : ""}`}
     >
       {/*
         Alignment is structural, not per-message. Every bot bubble reserves

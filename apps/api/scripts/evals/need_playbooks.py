@@ -48,11 +48,9 @@ JUDGE_TIMEOUT_SECONDS = 90.0
 #: named here now that the shared helper takes it as an argument.
 TURN_TIMEOUT_SECONDS = 180.0
 DELIVERY_WAIT_SECONDS = 75.0
-DELIVERY_POLL_SECONDS = 3.0
 TURN_OPTIONS = TurnOptions(
     timeout=TURN_TIMEOUT_SECONDS,
     delivery_wait_seconds=DELIVERY_WAIT_SECONDS,
-    delivery_poll_seconds=DELIVERY_POLL_SECONDS,
 )
 
 
@@ -113,7 +111,7 @@ async def _one(api_url: str, need: OnboardingNeed) -> Graded:
     opener = compose_first_message(prefs)
     async with dev_client(email) as client:
         conversation_id = await open_conversation(client, api_url, "need playbook eval")
-        turn = await send_turn(client, api_url, opener, conversation_id, [], TURN_OPTIONS)
+        turn = await send_turn(client, api_url, opener, conversation_id, TURN_OPTIONS)
     lowered = turn.reply.lower()
     return Graded(
         need=need,

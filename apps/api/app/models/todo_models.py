@@ -12,7 +12,7 @@ from app.constants.todos import (
     NoReplyPlan,
     WaitingOn,
 )
-from app.db.repositories.base import UserScopedDocument
+from app.models.document_models import UserScopedDocument
 from app.models.scheduler_models import DeactivationReason
 from app.models.trigger_subscription_models import TriggerSubscription, TriggerSubscriptionView
 from app.models.workflow_models import WorkflowWithIntegrations
@@ -584,6 +584,11 @@ class TodoDocument(UserScopedDocument):
     def runs_once(self) -> bool:
         """Whether nothing will wake this todo again: no recurrence and no watch."""
         return not (self.recurrence or self.trigger_subscriptions)
+
+    @property
+    def owns_report_form(self) -> bool:
+        """Whether the outside object this todo is about is a kind whose run guidance sets its report's form."""
+        return self.external_ref is not None and self.external_ref.source.owns_report_form
 
 
 class TodoUpdate(BaseModel):

@@ -152,7 +152,10 @@ async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
         "app.agents.tools.executor_tool._dispatch_executor",
         new=AsyncMock(return_value="Task accepted"),
     ) as mock_dispatch:
-        await call_executor.ainvoke(tool_args, config={"configurable": configurable})
+        await call_executor.ainvoke(
+            {"type": "tool_call", "id": "call_1", "name": call_executor.name, "args": tool_args},
+            config={"configurable": configurable},
+        )
     return mock_dispatch.call_args.kwargs["task"]
 
 
@@ -303,8 +306,22 @@ class TestTheSimStubRunsABriefsScriptOnce:
                 "last_run": _LAST_RUN,
                 "playbook_check": f"{_FALLBACK_NOTE}\n\n{PLAYBOOK_CHECK_BRIEF}",
             },
+            {
+                "acceptance_criteria": ["done"],
+                "intent": ExecutorIntent(
+                    desired_outcome="the scripted directives run",
+                    time_horizon=TimeHorizon.ONE_SHOT,
+                ),
+            },
         ],
-        ids=["criteria", "last-run", "last-run-no-criteria", "playbook-note", "every-section"],
+        ids=[
+            "criteria",
+            "last-run",
+            "last-run-no-criteria",
+            "playbook-note",
+            "every-section",
+            "intent",
+        ],
     )
     def test_a_brief_quoting_the_request_yields_one_tool_call(
         self, sections: dict[str, Any]

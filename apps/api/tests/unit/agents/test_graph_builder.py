@@ -14,12 +14,12 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import pytest
 
 from app.agents.core.background.executor_channel import drain_inbox_hook
-from app.agents.core.graph_builder.build_graph import build_executor_graph
 from app.agents.core.nodes.adapt_media import adapt_media_node
+from app.agents.core.nodes.drain_conversation_log import drain_conversation_log_hook
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.agents.middleware.factory import SubagentStackOptions
-from app.agents.middleware.subagent import SubagentMiddleware, spawner_of
+from app.agents.middleware.subagent import SubagentMiddleware
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.general import FINISH_TASK_NAME
 
@@ -433,6 +433,7 @@ class TestBuildCommsGraph:
             assert kwargs["agent_config"].agent_name == "comms_agent"
             assert kwargs["tools_config"].disable_retrieve_tools is True
             from app.agents.tools import memory_tools
+            from app.agents.tools.weather_tool import get_weather
             from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 
             # Comms binds these statically: retrieval is off, so a tool absent
@@ -447,6 +448,7 @@ class TestBuildCommsGraph:
                 "search_public_workflows",
                 web_search_tool.name,
                 fetch_webpages.name,
+                get_weather.name,
                 *[memory_tool.name for memory_tool in memory_tools.tools],
             ]
 
@@ -500,7 +502,11 @@ class TestBuildCommsGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["hooks_config"].pre_model_hooks
-            assert pre_model_hooks == [filter_messages_node, manage_system_prompts_node]
+            assert pre_model_hooks == [
+                filter_messages_node,
+                drain_conversation_log_hook,
+                manage_system_prompts_node,
+            ]
 
     async def test_comms_middleware_passed_to_create_agent(self):
         mock_mw = [MagicMock(name="mw1")]
@@ -783,7 +789,6 @@ class TestBuildExecutorGraph:
 
     async def test_subagent_middleware_wired_when_present(self):
         """When SubagentMiddleware is in the middleware stack, set_llm/set_tools/set_store are called."""
-        from app.agents.middleware.subagent import SubagentMiddleware
 
         mock_sub_mw = MagicMock(spec=SubagentMiddleware)
 
@@ -800,39 +805,6 @@ class TestBuildExecutorGraph:
         mock_sub_mw.set_llm.assert_called_once_with(deps["llm"])
         mock_sub_mw.set_tools.assert_called_once()
         mock_sub_mw.set_store.assert_called_once()
-
-    @pytest.mark.parametrize("in_memory", [True, False])
-    async def test_the_compiled_graph_names_the_spawner_it_was_built_with(
-        self, in_memory: bool
-    ) -> None:
-        """A parked spawn is rebuilt through spawner_of(executor graph), on either checkpointer."""
-        sub_mw = MagicMock(spec=SubagentMiddleware)
-        manager = MagicMock()
-        with ExitStack() as stack:
-            deps = _apply_patches(
-                stack,
-                {
-                    f"{_MOD}.create_executor_middleware": MagicMock(return_value=[sub_mw]),
-                    f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=manager),
-                },
-            )
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=in_memory
-            ) as graph:
-                assert spawner_of(graph) is sub_mw
-
-    @pytest.mark.parametrize("in_memory", [True, False])
-    async def test_a_graph_built_without_a_spawner_names_none(self, in_memory: bool) -> None:
-        manager = MagicMock()
-        with ExitStack() as stack:
-            deps = _apply_patches(
-                stack, {f"{_MOD}.get_checkpointer_manager": AsyncMock(return_value=manager)}
-            )
-            async with build_executor_graph(
-                chat_llm=deps["llm"], in_memory_checkpointer=in_memory
-            ) as graph:
-                with pytest.raises(KeyError):
-                    spawner_of(graph)
 
     async def test_no_subagent_middleware_logs_warning(self):
         """When SubagentMiddleware is not in the stack, a warning is logged."""

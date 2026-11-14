@@ -34,6 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 import uvicorn
 
+from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManager
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
 from app.constants.cache import (
     REPO_GLOBAL_SCOPE,
@@ -43,18 +44,20 @@ from app.constants.cache import (
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.mongodb.indexes import (
     CONVERSATION_ENTRY_INDEXES,
+    CONVERSATION_SWEEP_KEYS,
+    CONVERSATION_SWEEP_OPTIONS,
     TODO_OPEN_EXTERNAL_REF_KEYS,
     TODO_OPEN_EXTERNAL_REF_OPTIONS,
 )
 from app.db.redis import delete_cache, redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
-from app.models.chat_models import MessageModel
 from app.models.conversation_models import ConversationDocument
 from app.models.payment_models import PlanType
 from shared.py.wide_events import _spawned_tasks
 from tests.helpers import (
     HeaderDrivenAuthMiddleware,
+    log_history,
     pg_advisory_lock,
     pick_free_port,
     skip_items_without_real_services,
@@ -101,6 +104,7 @@ async def conversations_collection(mongo_db):
     entries = mongo_db[CONVERSATION_ENTRIES_COLLECTION]
     for keys, options in CONVERSATION_ENTRY_INDEXES:
         await entries.create_index(keys, **options)
+    await coll.create_index(CONVERSATION_SWEEP_KEYS, **CONVERSATION_SWEEP_OPTIONS)
     await coll.delete_many({})
     await entries.delete_many({})
 
@@ -267,12 +271,7 @@ def make_conversation(conversations_collection):
             **overrides,
         }
         await conversation_repository.create(ConversationDocument.model_validate(doc))
-        if messages:
-            await conversation_repository.append_messages(
-                conv_id,
-                user_id=user_id,
-                messages=[MessageModel.model_validate(message) for message in messages],
-            )
+        await log_history(conv_id, user_id, messages)
         return conv_id
 
     return _make
@@ -339,3 +338,12 @@ async def user_id(mongo_db, real_redis: Redis) -> AsyncIterator[str]:
     await mongo_db["projects"].delete_many({"user_id": str(owner)})
     await mongo_db["users"].delete_many({"_id": owner})
     await delete_cache(user_repository.cache_policy.entity_key(REPO_GLOBAL_SCOPE, str(owner)))
+
+
+@pytest.fixture
+async def manager(postgres_url: str) -> AsyncIterator[CheckpointerManager]:
+    """Yield a real Postgres checkpointer for a comms graph built in the test."""
+    mgr = CheckpointerManager(conninfo=postgres_url)
+    await mgr.setup()
+    yield mgr
+    await mgr.close()

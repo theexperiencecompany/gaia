@@ -19,13 +19,9 @@ from app.helpers.message_helpers import (
     format_workflow_execution_message,
 )
 from app.models.calendar_models import GoogleCalendarEventDateTime
-from app.models.message_models import (
-    FileData,
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
+from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.workflow_models import WorkflowStep
+from shared.py.conversation_wire import ReplyToMessageData
 
 # ---------------------------------------------------------------------------
 # create_system_message

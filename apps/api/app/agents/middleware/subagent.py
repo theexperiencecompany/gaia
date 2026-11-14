@@ -10,7 +10,6 @@ default, blocking on request.
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Annotated, Any, Protocol, cast
-from weakref import WeakKeyDictionary
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -48,14 +47,12 @@ from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.agents.workspace.offload import read_offload
 from app.constants.agents import LARGE_TOOL_RESULT_CHARS
 from app.constants.general import SPAWN_AGENT_NAME, SPAWN_THREAD_PREFIX
-from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import AgentIdentity, AgentThread, build_agent_config
 from app.models.agent_models import (
     AgentConfigurable,
     AnyAgentMiddleware,
-    SubagentKind,
     agent_configurable,
 )
 from shared.py.wide_events import log
@@ -195,17 +192,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     inherited_tool_names=selected_tool_ids,
                     integration_ids=integration_ids or [],
                 )
-                result = await delegate(
-                    delegation,
-                    background=background,
-                    # Only a resume replay can find this spawn's thread already run.
-                    probe_parked=bool(configurable.get(HIL_RESUME_CONFIG_KEY)),
-                )
+                result = await delegate(delegation, background=background)
                 return _tool_result(result, tool_call_id)
             except GraphBubbleUp:
-                # The HIL gate's interrupt bubbling up from a blocking spawn. Control
-                # flow, not a failure — converting it to a tool error would drop the
-                # user's approval request on the floor.
+                # LangGraph control flow from a blocking spawn, not a failure.
                 raise
             except Exception as e:
                 log.error(f"{LogTag.AGENT} Subagent execution failed", error_type=type(e).__name__)
@@ -240,7 +230,6 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         name = (task[:40].rstrip() + "…") if len(task) > 40 else (task or "Subagent")
         return Delegation(
             ctx=ctx,
-            kind=SubagentKind.SPAWN,
             # Stable across replays, so an approval pause reuses its UI row.
             subagent_id=subagent_row_id(tool_call_id),
             tool_call_id=tool_call_id,
@@ -413,19 +402,3 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             self._tool_space = tool_space
         if tool_runtime_config is not None:
             self._tool_runtime_config = tool_runtime_config
-
-
-#: The spawner each compiled executor graph was built with. A parked background
-#: spawn is resumed by whichever process receives the user's decision, possibly
-#: after a restart, so it is rebuilt from its executor graph's own spawner.
-_SPAWNERS: WeakKeyDictionary[CompiledStateGraph, SubagentMiddleware] = WeakKeyDictionary()
-
-
-def bind_spawner(graph: CompiledStateGraph, spawner: SubagentMiddleware) -> None:
-    """Record the spawner a compiled executor graph carries."""
-    _SPAWNERS[graph] = spawner
-
-
-def spawner_of(graph: CompiledStateGraph) -> SubagentMiddleware:
-    """Return the spawner a compiled executor graph was built with."""
-    return _SPAWNERS[graph]

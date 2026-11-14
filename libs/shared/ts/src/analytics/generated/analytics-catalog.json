@@ -728,19 +728,19 @@
       "class": "ApprovalDecided",
       "owner": "server",
       "domain": "approval",
-      "description": "A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved).",
+      "description": "A user decided one pending approval (outcome) or a batch of them (batch, decisions, resolved).",
       "previous_names": [],
       "budget_per_user_day": 10,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved).",
+        "description": "A user decided one pending approval (outcome) or a batch of them (batch, decisions, resolved).",
         "properties": {
-          "decision": {
+          "outcome": {
             "anyOf": [
               {
-                "enum": ["approve", "deny"],
+                "enum": ["approved", "denied"],
                 "type": "string"
               },
               {
@@ -748,7 +748,7 @@
               }
             ],
             "default": null,
-            "title": "Decision"
+            "title": "Outcome"
           },
           "batch": {
             "anyOf": [
@@ -1651,57 +1651,6 @@
       }
     },
     {
-      "event": "chat:background_update_resolved",
-      "class": "ChatBackgroundUpdateResolved",
-      "owner": "server",
-      "domain": "chat",
-      "description": "Comms resolved a background executor update as a message, a one-emoji react, or silence.",
-      "previous_names": [],
-      "budget_per_user_day": 100,
-      "at_most_once_ttl_seconds": null,
-      "base_properties": "Attribution",
-      "properties": {
-        "additionalProperties": false,
-        "description": "Comms resolved a background executor update as a message, a one-emoji react, or silence.",
-        "properties": {
-          "outcome": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
-            "title": "Outcome",
-            "type": "string"
-          },
-          "emoji": {
-            "anyOf": [
-              {
-                "pattern": "^(?:[0-9#*]\ufe0f?\u20e3|[^\\x00-\\x7F]{1,16})$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Emoji"
-          },
-          "delivery": {
-            "anyOf": [
-              {
-                "enum": ["message", "reaction", "badge", "fallback_text"],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Delivery"
-          }
-        },
-        "required": ["outcome"],
-        "title": "ChatBackgroundUpdateResolved",
-        "type": "object"
-      }
-    },
-    {
       "event": "chat:composer_plus_menu_clicked",
       "class": "ChatComposerPlusMenuClicked",
       "owner": "web",
@@ -2001,10 +1950,6 @@
             "title": "Conversation Id",
             "type": "string"
           },
-          "voice_mode": {
-            "title": "Voice Mode",
-            "type": "boolean"
-          },
           "is_new_conversation": {
             "title": "Is New Conversation",
             "type": "boolean"
@@ -2070,7 +2015,6 @@
         "required": [
           "stream_id",
           "conversation_id",
-          "voice_mode",
           "is_new_conversation",
           "delegated",
           "queued"
@@ -2103,10 +2047,6 @@
             "title": "Conversation Id",
             "type": "string"
           },
-          "voice_mode": {
-            "title": "Voice Mode",
-            "type": "boolean"
-          },
           "is_new_conversation": {
             "title": "Is New Conversation",
             "type": "boolean"
@@ -2172,7 +2112,6 @@
         "required": [
           "stream_id",
           "conversation_id",
-          "voice_mode",
           "is_new_conversation",
           "delegated",
           "queued"
@@ -2576,6 +2515,52 @@
         },
         "required": ["voice_mode_enabled"],
         "title": "ChatVoiceModeToggled",
+        "type": "object"
+      }
+    },
+    {
+      "event": "chat:work_stopped",
+      "class": "ChatWorkStopped",
+      "owner": "server",
+      "domain": "chat",
+      "description": "The user stopped a conversation: its reply in flight and the background work it had running.",
+      "previous_names": [],
+      "budget_per_user_day": 20,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "The user stopped a conversation: its reply in flight and the background work it had running.",
+        "properties": {
+          "executor_stopped": {
+            "title": "Executor Stopped",
+            "type": "boolean"
+          },
+          "pending_tasks": {
+            "title": "Pending Tasks",
+            "type": "integer"
+          },
+          "subagents": {
+            "title": "Subagents",
+            "type": "integer"
+          },
+          "approvals": {
+            "title": "Approvals",
+            "type": "integer"
+          },
+          "browser_jobs": {
+            "title": "Browser Jobs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "executor_stopped",
+          "pending_tasks",
+          "subagents",
+          "approvals",
+          "browser_jobs"
+        ],
+        "title": "ChatWorkStopped",
         "type": "object"
       }
     },
@@ -3434,14 +3419,14 @@
       "class": "HilRevoked",
       "owner": "server",
       "domain": "hil",
-      "description": "A pending ledger approval was withdrawn by its proposer, the executor, or a cancelled run.",
+      "description": "A pending ledger approval was closed undecided: withdrawn, cancelled by a Stop, or expired.",
       "previous_names": [],
       "budget_per_user_day": 50,
       "at_most_once_ttl_seconds": null,
       "base_properties": "Attribution",
       "properties": {
         "additionalProperties": false,
-        "description": "A pending ledger approval was withdrawn by its proposer, the executor, or a cancelled run.",
+        "description": "A pending ledger approval was closed undecided: withdrawn, cancelled by a Stop, or expired.",
         "properties": {
           "approval_id": {
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
@@ -3456,9 +3441,14 @@
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Revoker",
             "type": "string"
+          },
+          "outcome": {
+            "enum": ["expired", "cancelled", "withdrawn"],
+            "title": "Outcome",
+            "type": "string"
           }
         },
-        "required": ["approval_id", "ledger_version", "revoker"],
+        "required": ["approval_id", "ledger_version", "revoker", "outcome"],
         "title": "HilRevoked",
         "type": "object"
       }
@@ -5402,7 +5392,6 @@
                   "workflow_autosend",
                   "workflow_activation",
                   "api_402",
-                  "chat_stream_402",
                   "composer_notice",
                   "rate_limit_card",
                   "rate_limit_toast",
@@ -7725,7 +7714,7 @@
           "urgent_choice": {
             "anyOf": [
               {
-                "enum": ["incident", "service_down", "meeting"],
+                "enum": ["incident", "service_down", "meeting", "can_wait"],
                 "type": "string"
               },
               {

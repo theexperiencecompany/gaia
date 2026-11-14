@@ -5,14 +5,6 @@ its handoff to the comms agent. Centralized so the executor runner, capture,
 and any future consumers reference a single source of truth.
 """
 
-# SSE frame key carrying the executor's narrated answer for voice-mode TTS.
-# Must match VOICE_TTS_KEY in apps/voice-agent/src/constants.py — the voice
-# agent matches on this exact string to decide what to speak.
-VOICE_TTS_KEY = "voice_tts"
-# SSE frame key carrying the saved bot message's id alongside the voice answer.
-# Must match MESSAGE_ID_KEY in apps/voice-agent/src/constants.py.
-MESSAGE_ID_KEY = "message_id"
-
 # User-facing error text when the executor exhausts its recursion budget
 # (GraphRecursionError). Handed to comms as the error result so it's re-voiced in
 # GAIA's persona instead of leaking the raw LangGraph traceback string.
@@ -29,33 +21,10 @@ EXECUTOR_CRASH_MESSAGE = (
     "Never offer to re-run it yourself, and never claim a result."
 )
 
-# result_type for a run that stopped on a HIL approval instead of finishing. Such
-# a run has nothing to deliver and KEEPS the busy lock: its thread is checkpointed
-# with pending work, so no queued task may run on it until the approval resolves.
-EXECUTOR_PAUSED = "paused"
-
-# User-facing text when a run paused for approval but its resume context could not be
-# recorded, so no decision could ever restart it. Handed to comms as the error result
-# rather than parking the conversation behind a lock nothing will ever release.
-EXECUTOR_APPROVAL_LOST_MESSAGE = (
-    "I couldn't set up the approval for that action, so I've stopped. Please try again."
-)
-
 # agent:run_failed reasons for executor failures that are not a raised exception.
 EXECUTOR_ERROR_PREP_FAILED = "executor_prep_failed"
-EXECUTOR_ERROR_MALFORMED_APPROVAL = "malformed_approval"
-EXECUTOR_ERROR_APPROVAL_LOST = "approval_lost"
 #: The run ended with no answer at all; it is delivered as EXECUTOR_CRASH_MESSAGE.
 EXECUTOR_ERROR_NO_ANSWER = "no_answer"
-
-# When comms narration fails. Never the executor's own text (internal, maybe a raw
-# exception), and never a claim of done: a "final" report can itself describe a failure.
-EXECUTOR_NARRATION_FAILED_MESSAGE = (
-    "I couldn't write up how that went, so I can't confirm it's done. Ask me and I'll check."
-)
-EXECUTOR_NARRATION_FAILED_ERROR_MESSAGE = (
-    "That task didn't finish, and I couldn't write up what went wrong. Please try again."
-)
 
 # Seed task for a run started for inbox work no live run will absorb (late work, a
 # subagent landing on a rested executor). The entries arrive through the drain hook;

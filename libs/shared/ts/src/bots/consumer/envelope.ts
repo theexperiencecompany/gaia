@@ -15,6 +15,7 @@
  */
 
 import { z } from "zod";
+import type { ActiveBotConversation } from "../../api/generated";
 import { isOwnApiUrl } from "../utils/own-api";
 
 /**
@@ -73,20 +74,16 @@ export function outboundAttachmentSchemaFor(ownApiOrigin: string | undefined) {
   ]);
 }
 
-/**
- * A native emoji reaction to an existing platform message. Mirrors
- * ``OutboundReaction`` in ``apps/api/app/schemas/outbound.py``.
- */
-export const outboundReactionSchema = z.object({
-  /** Platform-native id of the message to react to. */
-  target_platform_message_id: z.string().min(1),
-  /** Single emoji to attach. */
-  emoji: z.string().min(1),
-  /** GAIA's reaction already on that message, which this one replaces. */
-  replaces_emoji: z.string().min(1).nullish(),
-});
-
 /** Shape of a bot-facing message on the delivery bus, bound to this bot's API origin. */
+/** A wake: the bot conversation to follow, after the seq its follower starts from. */
+const conversationFollowSchema = z.object({
+  conversation_id: z.string().min(1),
+  platform_user_id: z.string().min(1),
+  channel_id: z.string().nullable(),
+  is_dm: z.boolean(),
+  after_seq: z.number().int().min(0),
+}) satisfies z.ZodType<ActiveBotConversation>;
+
 export function outboundMessageEnvelopeSchemaFor(
   ownApiOrigin: string | undefined,
 ) {
@@ -117,8 +114,10 @@ export function outboundMessageEnvelopeSchemaFor(
       text_parts: z.array(z.string()).nullish(),
       /** A file to deliver (PDF/docx/etc.) — optional. */
       attachment: outboundAttachmentSchemaFor(ownApiOrigin).nullish(),
-      /** A native emoji reaction to an existing platform message — optional. */
-      reaction: outboundReactionSchema.nullish(),
+      /** A bot conversation to follow now: something the bot renders was just logged there. */
+      follow: conversationFollowSchema.nullish(),
+      /** The notification this message delivers; the backend sends each one once per channel. */
+      notification_id: z.string().nullish(),
       /** ISO-8601 enqueue timestamp. */
       enqueued_at: z.string(),
     })
@@ -127,14 +126,12 @@ export function outboundMessageEnvelopeSchemaFor(
         Boolean(e.text) ||
         Boolean(e.text_parts?.length) ||
         Boolean(e.attachment) ||
-        Boolean(e.reaction),
+        Boolean(e.follow),
       {
-        message: "envelope requires text, text_parts, attachment, or reaction",
+        message: "envelope requires text, text_parts, attachment, or follow",
       },
     );
 }
-
-export type OutboundReaction = z.infer<typeof outboundReactionSchema>;
 
 export type OutboundAttachment = z.infer<
   ReturnType<typeof outboundAttachmentSchemaFor>

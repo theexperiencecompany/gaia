@@ -4,9 +4,10 @@ Without the unwrap every proxied card in the "Used N tools" thread collapses to
 a generic "Execute" row: wrong name, wrong category/icon, envelope as inputs.
 """
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from langchain_core.messages import ToolCall
 import pytest
 
 from app.utils.agent_utils import format_tool_call_entry
@@ -45,6 +46,18 @@ class TestExecuteProxyRendering:
         assert data["tool_name"] == "GMAIL_SEND_EMAIL"
         assert (data["tool_category"], data["integration_name"]) == ("gmail", "Gmail")
         assert data["inputs"] == {"recipient_email": "bob@example.com", "subject": "Re: deck"}
+
+    async def test_the_account_a_call_acted_as_is_on_its_card(self) -> None:
+        call = _execute_call()
+        call["args"]["account"] = "work@example.com"
+        with patch(REGISTRY_PATCH, new_callable=AsyncMock, return_value=_registry()):
+            entry = await format_tool_call_entry(cast(ToolCall, call))
+        assert entry is not None
+        assert entry["data"]["inputs"] == {
+            "recipient_email": "bob@example.com",
+            "subject": "Re: deck",
+            "account": "work@example.com",
+        }
 
     async def test_task_description_is_the_display_label(self) -> None:
         with patch(REGISTRY_PATCH, new_callable=AsyncMock, return_value=_registry()):

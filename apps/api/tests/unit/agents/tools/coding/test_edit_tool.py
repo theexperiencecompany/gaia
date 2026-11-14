@@ -17,14 +17,16 @@ this file only checks how edit routes through them.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 import contextlib
-from typing import Any
+from contextlib import AbstractAsyncContextManager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from e2b import NotFoundException
+from langchain_core.runnables import RunnableConfig
 import pytest
 
+from app.agents.tools.coding._artifacts import WrittenFile
 from app.agents.tools.coding.edit_tool import (
     MAX_FILE_BYTES,
     MAX_PATCH_BYTES,
@@ -40,6 +42,7 @@ from app.agents.tools.coding.edit_tool import (
 from app.agents.workspace.paths import MountRole
 from app.models.payment_models import PlanType
 from app.services import gaia_task_files
+from app.services.gaia_task_files import RootFile
 from app.services.sandbox import SandboxAcquisitionError
 
 MODULE = "app.agents.tools.coding.edit_tool"
@@ -47,7 +50,7 @@ MODULE = "app.agents.tools.coding.edit_tool"
 USER_ID = "user-1"
 SESSION_ID = "conv-1"
 
-CONFIG: dict[str, Any] = {
+CONFIG: RunnableConfig = {
     "configurable": {"user_id": USER_ID, "conversation_id": SESSION_ID},
     "metadata": {"user_id": USER_ID, "conversation_id": SESSION_ID},
 }
@@ -71,7 +74,7 @@ def _patch(old_string: str, new_string: str, replace_all: bool = False) -> EditP
 
 
 @pytest.fixture(autouse=True)
-def _rate_limit_passes() -> None:
+def _rate_limit_passes() -> Iterator[None]:
     """Fix the @with_rate_limiting seam (not under test) to pass.
 
     edit is invoked with a chat-shaped config, so the wrapper's user-context
@@ -100,7 +103,7 @@ def _sbx(content: bytes = b"", *, read_error: Exception | None = None) -> AsyncM
     return sbx
 
 
-def _sandbox_cm(sbx: AsyncMock) -> Callable[[str], AsyncIterator[AsyncMock]]:
+def _sandbox_cm(sbx: AsyncMock) -> Callable[[str], AbstractAsyncContextManager[AsyncMock]]:
     """Stand-in for acquire_sandbox: yields a fixed sandbox for the config's user."""
 
     @contextlib.asynccontextmanager
@@ -120,7 +123,7 @@ async def _do_edit_env(
     with (
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=MTIME)) as mock_atomic,
         patch(f"{MODULE}.safe_emit") as mock_emit,
-        patch(f"{MODULE}.publish_artifact_write", AsyncMock()) as mock_publish,
+        patch(f"{MODULE}.publish_artifact_write") as mock_publish,
     ):
         yield sbx, mock_atomic, mock_emit, mock_publish
 
@@ -195,8 +198,10 @@ async def test_do_edit_single_occurrence_replaces_with_exact_payloads() -> None:
         },
         session_id=SESSION_ID,
     )
-    mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "def foo():\n    return 2\n", 24, MTIME
+    mock_publish.assert_called_once_with(
+        WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH),
+        24,
+        MTIME,
     )
 
 
@@ -217,8 +222,8 @@ async def test_do_edit_replace_all_replaces_every_occurrence() -> None:
         },
         session_id=SESSION_ID,
     )
-    mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "X b X c X", 9, MTIME
+    mock_publish.assert_called_once_with(
+        WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH), 9, MTIME
     )
 
 
@@ -232,7 +237,7 @@ async def test_do_edit_multiple_occurrences_without_replace_all_is_ambiguous() -
     )
     mock_atomic.assert_not_awaited()
     mock_emit.assert_not_called()
-    mock_publish.assert_not_awaited()
+    mock_publish.assert_not_called()
 
 
 async def test_do_edit_old_string_not_found_is_clean_error() -> None:
@@ -242,7 +247,7 @@ async def test_do_edit_old_string_not_found_is_clean_error() -> None:
     assert out == "Error: old_string not found in file"
     mock_atomic.assert_not_awaited()
     mock_emit.assert_not_called()
-    mock_publish.assert_not_awaited()
+    mock_publish.assert_not_called()
 
 
 async def test_do_edit_read_failure_aborts_before_any_write() -> None:
@@ -257,7 +262,7 @@ async def test_do_edit_read_failure_aborts_before_any_write() -> None:
     assert out == "Error: file not found at /workspace/missing.txt"
     mock_atomic.assert_not_awaited()
     mock_emit.assert_not_called()
-    mock_publish.assert_not_awaited()
+    mock_publish.assert_not_called()
 
 
 async def test_do_edit_size_counts_bytes_not_characters() -> None:
@@ -279,8 +284,8 @@ async def test_do_edit_size_counts_bytes_not_characters() -> None:
         },
         session_id=SESSION_ID,
     )
-    mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "coffee☕", 9, MTIME
+    mock_publish.assert_called_once_with(
+        WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH), 9, MTIME
     )
 
 
@@ -314,7 +319,7 @@ async def test_edit_replaces_file_with_exact_payloads() -> None:
         patch(f"{MODULE}.acquire_sandbox", _sandbox_cm(sbx)),
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=MTIME)) as mock_atomic,
         patch(f"{MODULE}.safe_emit") as mock_emit,
-        patch(f"{MODULE}.publish_artifact_write", AsyncMock()) as mock_publish,
+        patch(f"{MODULE}.publish_artifact_write") as mock_publish,
     ):
         result = await edit.ainvoke(
             {"path": "scratch/app.py", "old_string": "return 1", "new_string": "return 2"},
@@ -334,8 +339,10 @@ async def test_edit_replaces_file_with_exact_payloads() -> None:
         },
         session_id=SESSION_ID,
     )
-    mock_publish.assert_awaited_once_with(
-        USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH, "def foo():\n    return 2\n", 24, MTIME
+    mock_publish.assert_called_once_with(
+        WrittenFile(USER_ID, MountRole.SCRATCH, SESSION_ID, ABS_PATH),
+        24,
+        MTIME,
     )
 
 
@@ -346,7 +353,7 @@ async def test_edit_relative_path_resolves_under_session_root() -> None:
         patch(f"{MODULE}.acquire_sandbox", _sandbox_cm(sbx)),
         patch(f"{MODULE}.atomic_write", AsyncMock(return_value=1.0)) as mock_atomic,
         patch(f"{MODULE}.safe_emit"),
-        patch(f"{MODULE}.publish_artifact_write", AsyncMock()),
+        patch(f"{MODULE}.publish_artifact_write"),
     ):
         result = await edit.ainvoke(
             {"path": "app.py", "old_string": "v = 1", "new_string": "v = 2"},
@@ -465,7 +472,7 @@ async def test_edit_artifact_publish_failure_is_converted_to_error() -> None:
         patch(f"{MODULE}.safe_emit"),
         patch(
             f"{MODULE}.publish_artifact_write",
-            AsyncMock(side_effect=RuntimeError("channel down")),
+            side_effect=RuntimeError("channel down"),
         ),
     ):
         result = await edit.ainvoke(
@@ -493,7 +500,7 @@ TASK_ABS = f"/workspace/{TASK_REL}"
 
 async def test_maybe_edit_task_file_resolves_and_forwards_exact_args() -> None:
     target = _target(TASK_ABS)
-    task_ref = object()
+    task_ref = RootFile(name="index.md")
     patch_obj = _patch("a", "b")
     with (
         patch(
@@ -569,7 +576,7 @@ async def test_maybe_edit_task_file_logs_unexpected_failure_exactly() -> None:
 
 
 async def test_edit_task_file_forwards_exact_args_and_emits() -> None:
-    task_ref = object()
+    task_ref = RootFile(name="index.md")
     target = _target(TASK_ABS)
     patch_obj = _patch("old", "new")
     with (

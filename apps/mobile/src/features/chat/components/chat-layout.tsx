@@ -17,16 +17,15 @@ interface ChatLayoutProps {
  * only owns the chat header and its hooks (toggle drawer, new chat).
  */
 export function ChatLayout({ children, background }: ChatLayoutProps) {
-  const { setActiveChatId, clearActiveMessages } = useChatContext();
+  const { setActiveChatId } = useChatContext();
   const { closeSidebar } = useSidebar();
   const router = useRouter();
 
   const handleNewChat = useCallback(() => {
     closeSidebar();
-    clearActiveMessages();
     setActiveChatId(null);
     router.replace("/");
-  }, [closeSidebar, clearActiveMessages, router, setActiveChatId]);
+  }, [closeSidebar, router, setActiveChatId]);
 
   return (
     <View style={{ flex: 1 }}>

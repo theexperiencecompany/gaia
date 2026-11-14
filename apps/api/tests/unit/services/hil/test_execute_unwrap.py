@@ -17,13 +17,12 @@ from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.models.hil_models import HILPreferences
 from app.services.hil.classification import _ClassifyResult
-from app.services.hil.policy import has_pausing_sibling, resolve_policy
+from app.services.hil.policy import resolve_policy
 from app.services.hil.utils import unpack_tool_call
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
 from .conftest import (
     USER_ID,
-    ai_message_with_calls,
     make_request,
     make_tool,
     resolver_returning,
@@ -253,62 +252,3 @@ class TestPolicyUnwrapsExecute:
             patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
         ):
             assert await resolve_policy(request, USER_ID, "GMAIL_FETCH_EMAILS") == "allow"
-
-
-class TestSiblingScanUnwrapsExecute:
-    async def test_execute_wrapped_destructive_sibling_pauses(self) -> None:
-        sibling = {
-            "id": "sib-1",
-            "name": EXECUTE_TOOL_NAME,
-            "args": {"task_description": "d", "tool_name": "GMAIL_DELETE_EMAIL", "data": {}},
-        }
-        pending = {"id": "call-x", "name": "read", "args": {}}
-        request = make_request(
-            name="read",
-            args={},
-            call_id="call-x",
-            messages=[ai_message_with_calls(pending, sibling)],
-        )
-        registry = _registry_with_tool("GMAIL_DELETE_EMAIL", "Deletes an email permanently.")
-
-        async def _classify(name: str, description: str, **_: Any) -> bool:
-            return name == "GMAIL_DELETE_EMAIL"
-
-        with (
-            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
-            patch(
-                f"{MODULE}.get_hil_preferences",
-                new=AsyncMock(return_value=HILPreferences(mode="always_ask")),
-            ),
-            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(side_effect=_classify)),
-        ):
-            assert await has_pausing_sibling(request, USER_ID, "call-x") is True
-
-    async def test_execute_wrapped_argument_gated_sibling_pauses_in_always_allow(self) -> None:
-        sibling = {
-            "id": "sib-1",
-            "name": EXECUTE_TOOL_NAME,
-            "args": {
-                "task_description": "d",
-                "tool_name": "manage_linked_account",
-                "data": {"action": "disconnect"},
-            },
-        }
-        pending = {"id": "call-x", "name": "read", "args": {}}
-        request = make_request(
-            name="read",
-            args={},
-            call_id="call-x",
-            messages=[ai_message_with_calls(pending, sibling)],
-        )
-        with (
-            patch(
-                f"{MODULE}.get_tool_registry",
-                new=AsyncMock(return_value=SimpleNamespace(get_tool_meta=lambda name: None)),
-            ),
-            patch(
-                f"{MODULE}.get_hil_preferences",
-                new=AsyncMock(return_value=HILPreferences(mode="always_allow")),
-            ),
-        ):
-            assert await has_pausing_sibling(request, USER_ID, "call-x") is True

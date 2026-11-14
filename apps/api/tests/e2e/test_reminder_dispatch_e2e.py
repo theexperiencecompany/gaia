@@ -5,7 +5,7 @@ execute_reminder_by_agent patched out, execute_reminder_by_agent with the
 notification service patched out), and test_platform_delivery_recording_e2e
 only checks the recording text landed in a thread. Nothing proved the whole
 chain with the real scheduler in the middle: ARQ task -> claim -> execute ->
-in-app notification + platform delivery -> COMPLETED, exactly once even when
+one notify call -> COMPLETED, exactly once even when
 two workers race, and paused after one blocked tick until the subscription returns.
 
 Real: ReminderScheduler.process_task_execution (claim/execute/status),
@@ -18,19 +18,18 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
 import pytest
 
-from app.models.chat_models import ConversationSource
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.scheduler_models import ScheduledTaskStatus, TaskOutcome
 from app.services.delivery.chat_channel import InApp
 from app.services.payments.subscription_events import resume_paywall_pauses_safely
 from app.services.reminder_service import ReminderScheduler
 from app.tasks.reminder_tasks import PAYWALL_FEATURE_REMINDER
+from app.utils.notification.orchestrator import Notified
 
 pytestmark = pytest.mark.e2e
 
@@ -61,7 +60,7 @@ def _make_reminder(**overrides) -> ReminderModel:
         "source_conversation_id": "conv-1",
     }
     data.update(overrides)
-    return ReminderModel(**data)
+    return ReminderModel.model_validate(data)
 
 
 class _MemoryReminderStore:
@@ -118,22 +117,16 @@ def _patch_repo(store: _MemoryReminderStore):
 
 
 def _patch_delivery_edges(paid: bool = True):
+    """Double the plan read and the notify pipeline, whose own delivery is proven in test_notify_pipeline_real."""
     paid_m = AsyncMock(return_value=paid)
-    user_m = AsyncMock(return_value=SimpleNamespace(user_id=USER_ID))
-    conv_m = AsyncMock(return_value=ConversationSource.TELEGRAM)
-    plat_m = AsyncMock()
+    notify_m = AsyncMock(
+        return_value=Notified(record=MagicMock(), target=InApp(reason="no_chat_app"))
+    )
     patchers = (
         patch(f"{REMINDER_TASKS}.is_paid", new=paid_m),
-        patch(f"{REMINDER_TASKS}.load_user_context", new=user_m),
-        # Nobody active: the reminder lands back in the chat it was set in.
-        patch(
-            f"{REMINDER_TASKS}.resolve_proactive_target",
-            new=AsyncMock(return_value=InApp(reason="no_chat_app")),
-        ),
-        patch(f"{REMINDER_TASKS}.deliver_message_to_conversation", new=conv_m),
-        patch(f"{REMINDER_TASKS}.deliver_result_to_platforms", new=plat_m),
+        patch(f"{REMINDER_TASKS}.notification_service.notify", new=notify_m),
     )
-    return patchers, (paid_m, user_m, conv_m, plat_m)
+    return patchers, (paid_m, notify_m)
 
 
 class TestStaticReminderFiresEndToEnd:
@@ -141,24 +134,18 @@ class TestStaticReminderFiresEndToEnd:
         reminder = _make_reminder()
         store = _MemoryReminderStore(reminder)
         repo_patchers, _ = _patch_repo(store)
-        edge_patchers, (_, _, conv_m, plat_m) = _patch_delivery_edges(paid=True)
+        edge_patchers, (_, notify) = _patch_delivery_edges(paid=True)
         with ExitStack() as stack:
             for patcher in (*repo_patchers, *edge_patchers):
                 stack.enter_context(patcher)
-            create_notification = stack.enter_context(
-                patch(
-                    "app.services.notification_service.notification_service.create_notification",
-                    new_callable=AsyncMock,
-                )
-            )
             stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
             result = await _make_scheduler().process_task_execution(reminder.id)
 
         assert result.success is True
-        # The in-app badge is the pinned delivery; the platform send is the side channel.
-        create_notification.assert_awaited_once()
-        conv_m.assert_awaited_once()
-        plat_m.assert_awaited_once()
+        # One fact, one notification: the pipeline routes it to the chat and the chat app.
+        (request,) = notify.await_args.args
+        assert request.conversation_id == reminder.source_conversation_id
+        notify.assert_awaited_once()
         assert store.statuses == [ScheduledTaskStatus.COMPLETED]
 
     async def test_second_worker_loses_the_claim_and_sends_nothing(self) -> None:
@@ -166,16 +153,10 @@ class TestStaticReminderFiresEndToEnd:
         reminder = _make_reminder()
         store = _MemoryReminderStore(reminder)
         repo_patchers, _ = _patch_repo(store)
-        edge_patchers, _ = _patch_delivery_edges(paid=True)
+        edge_patchers, (_, notify) = _patch_delivery_edges(paid=True)
         with ExitStack() as stack:
             for patcher in (*repo_patchers, *edge_patchers):
                 stack.enter_context(patcher)
-            create_notification = stack.enter_context(
-                patch(
-                    "app.services.notification_service.notification_service.create_notification",
-                    new_callable=AsyncMock,
-                )
-            )
             stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
             scheduler = _make_scheduler()
             first = await scheduler.process_task_execution(reminder.id)
@@ -184,7 +165,7 @@ class TestStaticReminderFiresEndToEnd:
         assert first.success is True
         assert second.success is False
         assert "not in scheduled status" in (second.message or "")
-        create_notification.assert_awaited_once()
+        notify.assert_awaited_once()
         assert store.statuses == [ScheduledTaskStatus.COMPLETED]
 
 
@@ -194,16 +175,10 @@ class TestUnpaidRecurringReminderPausesUntilPaid:
         reminder = _make_reminder(repeat="0 9 * * *", timezone="Asia/Kolkata")
         store = _MemoryReminderStore(reminder)
         repo_patchers, _ = _patch_repo(store)
-        edge_patchers, (_, _, conv_m, plat_m) = _patch_delivery_edges(paid=False)
+        edge_patchers, (_, notify) = _patch_delivery_edges(paid=False)
         with ExitStack() as stack:
             for patcher in (*repo_patchers, *edge_patchers):
                 stack.enter_context(patcher)
-            create_notification = stack.enter_context(
-                patch(
-                    "app.services.notification_service.notification_service.create_notification",
-                    new_callable=AsyncMock,
-                )
-            )
             capture = stack.enter_context(patch(f"{REMINDER_TASKS}.capture"))
             paywall_block = stack.enter_context(patch(f"{REMINDER_TASKS}.capture_paywall_block"))
             rearm = stack.enter_context(
@@ -224,9 +199,7 @@ class TestUnpaidRecurringReminderPausesUntilPaid:
 
         assert blocked.outcome is TaskOutcome.ENTITLEMENT_BLOCKED
         assert next_tick.success is False
-        create_notification.assert_not_awaited()
-        conv_m.assert_not_awaited()
-        plat_m.assert_not_awaited()
+        notify.assert_not_awaited()
         assert store.statuses == [ScheduledTaskStatus.PAUSED]
         # The blocked fire is one paywall block, never a completed reminder.
         paywall_block.assert_called_once_with(reminder.user_id, PAYWALL_FEATURE_REMINDER)

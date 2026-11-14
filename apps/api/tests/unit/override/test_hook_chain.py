@@ -143,23 +143,29 @@ class TestDeclaredChains:
             manage_system_prompts_node,
         ]
 
-    async def test_comms_filters_then_manages_prompts_and_nothing_else(self):
-        """Comms' live-work status rides the turn-start context, so no hook adds a per-call frame."""
+    async def test_comms_filters_drains_the_log_then_manages_prompts(self):
+        """Inputs logged after the batch join the attempt before the prompt manager builds the request."""
+        from app.agents.core.nodes.drain_conversation_log import drain_conversation_log_hook
         from app.agents.core.nodes.filter_messages import filter_messages_node
         from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 
         hooks = await self._hooks_for("build_comms_graph")
 
-        assert hooks == [filter_messages_node, manage_system_prompts_node]
+        assert hooks == [
+            filter_messages_node,
+            drain_conversation_log_hook,
+            manage_system_prompts_node,
+        ]
 
     async def test_comms_does_not_carry_the_executor_only_hooks(self):
-        """Comms has no todos and no media lane; carrying those hooks would cost every chat turn unused work."""
+        """Comms has no inbox and no media lane; carrying those hooks would cost every chat turn unused work."""
+        from app.agents.core.background.executor_channel import drain_inbox_hook
         from app.agents.core.nodes.adapt_media import adapt_media_node
 
         hooks = await self._hooks_for("build_comms_graph")
 
         assert adapt_media_node not in hooks
-        assert len(hooks) == 2
+        assert drain_inbox_hook not in hooks
 
 
 class TestEndGraphHooks:

@@ -4,6 +4,7 @@ from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
+from shared.py.approvals import DecidedOutcome, UndecidedOutcome
 
 __all__ = [
     "ApprovalDecided",
@@ -15,12 +16,12 @@ __all__ = [
 
 
 class ApprovalDecided(ServerEvent):
-    """A user decided one pending approval (decision) or a batch of them (batch, decisions, resolved)."""
+    """A user decided one pending approval (outcome) or a batch of them (batch, decisions, resolved)."""
 
     event: ClassVar[str] = "approval:decided"
     budget_per_user_day: ClassVar[int] = 10
 
-    decision: Literal["approve", "deny"] | None = None
+    outcome: DecidedOutcome | None = None
     batch: bool | None = None
     decisions: int | None = None
     resolved: int | None = None
@@ -48,7 +49,8 @@ class HilDecisionSubmitted(ServerEvent):
     event: ClassVar[str] = "hil:decision_submitted"
     budget_per_user_day: ClassVar[int] = 10
 
-    decision: Literal["approved", "denied"]
+    # Named decision, not outcome: the live "HIL decisions submitted, by decision" insight breaks down on it.
+    decision: DecidedOutcome
     tool_name: Identifier
     via: HilDecisionVia
     # Absent on an auto decision, which settles the call before any ledger row exists.
@@ -58,7 +60,7 @@ class HilDecisionSubmitted(ServerEvent):
 
 
 class HilRevoked(ServerEvent):
-    """A pending ledger approval was withdrawn by its proposer, the executor, or a cancelled run."""
+    """A pending ledger approval was closed undecided: withdrawn, cancelled by a Stop, or expired."""
 
     event: ClassVar[str] = "hil:revoked"
     budget_per_user_day: ClassVar[int] = 50
@@ -66,6 +68,7 @@ class HilRevoked(ServerEvent):
     approval_id: Identifier
     ledger_version: int
     revoker: Identifier
+    outcome: UndecidedOutcome
 
 
 class HilResumed(ServerEvent):

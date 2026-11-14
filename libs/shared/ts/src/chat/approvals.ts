@@ -1,17 +1,25 @@
 import type {
+  ApprovalEnd,
+  ApprovalLabels,
+} from "../utils/approvalLabels.types";
+import type {
   ApprovalRequestData,
-  ApprovalStatus,
   HilMode,
   HilPreferences,
 } from "./approvals.types";
-import type { StreamToolDataEntry } from "./streaming";
 
 export type {
+  ApprovalEnd,
+  ApprovalLabels,
+} from "../utils/approvalLabels.types";
+export type {
+  ActionResult,
+  ApprovalDecider,
   ApprovalDecision,
   ApprovalDecisionPayload,
+  ApprovalOutcome,
   ApprovalRequestData,
   ApprovalScope,
-  ApprovalStatus,
   BatchApprovalDecisionPayload,
   BatchApprovalDecisionResponse,
   BatchDecisionItem,
@@ -28,6 +36,15 @@ export const DEFAULT_HIL_MODE: HilMode = "always_allow";
 /** Approve taps on cards older than this re-confirm in place first. */
 export const RECONFIRM_AGE_SECONDS = 86400;
 
+/** Seconds since the card was asked, as of now (epoch ms); null when the card carries no time. */
+export function approvalAgeSeconds(
+  askedAt: string | null | undefined,
+  now: number,
+): number | null {
+  if (!askedAt) return null;
+  return Math.max(0, (now - Date.parse(askedAt)) / 1000);
+}
+
 /** Compact card age: "asked just now" / "asked 1h ago" / "asked 2d ago". */
 export function formatApprovalAge(
   ageSeconds: number | null | undefined,
@@ -40,9 +57,41 @@ export function formatApprovalAge(
 }
 
 /** A decided approval — no longer actionable, kept as a receipt. */
-export function isSettled(status: ApprovalStatus): boolean {
-  return status !== "pending";
+export function isSettled(end: ApprovalEnd): boolean {
+  return end.outcome != null;
 }
+
+/** Pick a card's words from its outcome, decider and action: the one rule every client reads. */
+export function approvalLabel<T>(
+  end: ApprovalEnd,
+  labels: ApprovalLabels<T>,
+): T {
+  if (end.outcome == null) return labels.pending;
+  if (end.outcome === "approved" && end.action)
+    return labels.action[end.action];
+  if (end.outcome === "approved" && end.decider === "auto")
+    return labels.autoApproved;
+  return labels.outcome[end.outcome];
+}
+
+const OUTCOME_LINES: ApprovalLabels<(data: ApprovalRequestData) => string> = {
+  pending: () => "",
+  autoApproved: (data) =>
+    data.auto_reason?.trim() || "Matched what you asked for",
+  outcome: {
+    approved: () => "You approved this",
+    denied: (data) => data.feedback?.trim() || "You declined this",
+    expired: () => "Expired without a response",
+    cancelled: () => "Cancelled before you decided",
+    withdrawn: () => "Agent withdrew this",
+  },
+  action: {
+    executing: () => "You approved this",
+    executed: () => "The approved action ran",
+    failed: () => "Approved, but it didn't go through",
+    unknown: () => "Outcome unknown",
+  },
+};
 
 /**
  * Whether a tool needs approval — i.e. is in the gated set the mode acts on.
@@ -67,44 +116,7 @@ export function toolOverrideValue(
   return ask === destructive ? null : ask;
 }
 
-/** One line explaining how a settled approval was decided. */
+/** One line explaining how a settled approval ended, and what its action did. */
 export function approvalOutcomeLabel(data: ApprovalRequestData): string {
-  switch (data.status) {
-    case "auto_approved":
-      return data.auto_reason?.trim() || "Matched what you asked for";
-    case "approved":
-      return "You approved this";
-    case "denied":
-      return data.feedback?.trim() || "You declined this";
-    case "timeout":
-      return "Expired without a response";
-    case "abandoned":
-      return "Dropped when you moved on";
-    case "revoked":
-      return "Agent withdrew this";
-    default:
-      return "";
-  }
-}
-
-const approvalId = (entry: StreamToolDataEntry): string | null => {
-  if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return null;
-  const data = entry.data as Partial<ApprovalRequestData> | null;
-  return data && typeof data.approval_id === "string" ? data.approval_id : null;
-};
-
-/**
- * Pending→resolved updates for one approval replace the prior entry in place
- * (same slot), so replay and live streams both end with exactly one card.
- * Any non-approval entry is appended unchanged.
- */
-export function upsertApprovalToolData<T extends StreamToolDataEntry>(
-  entries: T[],
-  entry: T,
-): T[] {
-  const id = approvalId(entry);
-  if (id === null) return [...entries, entry];
-  const index = entries.findIndex((e) => approvalId(e) === id);
-  if (index < 0) return [...entries, entry];
-  return entries.map((e, i) => (i === index ? entry : e));
+  return approvalLabel(data, OUTCOME_LINES)(data);
 }

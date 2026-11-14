@@ -1,7 +1,7 @@
 import {
   APPROVAL_REQUEST_TOOL_NAME,
+  type ApprovalEnd,
   type ApprovalRequestData,
-  type ApprovalStatus,
   SUBAGENT_GROUP_TOOL_NAME,
   type SubagentGroupData,
   TOOL_CALLS_DATA_TOOL_NAME,
@@ -373,16 +373,20 @@ export function buildApprovalLookup(
   toolData: ToolDataEntry[] | undefined,
 ): ApprovalLookup {
   const pendingToolCallIds = new Set<string>();
-  const statusByToolCallId = new Map<string, ApprovalStatus>();
+  const statusByToolCallId = new Map<string, ApprovalEnd>();
 
   for (const entry of toolData ?? []) {
     if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) continue;
     const data = entry.data as Partial<ApprovalRequestData> | null;
-    if (!data?.tool_call_id || !data.status) continue;
-    if (data.status === "pending") {
+    if (!data?.tool_call_id) continue;
+    if (data.outcome == null) {
       pendingToolCallIds.add(data.tool_call_id);
     } else {
-      statusByToolCallId.set(data.tool_call_id, data.status);
+      statusByToolCallId.set(data.tool_call_id, {
+        outcome: data.outcome,
+        decider: data.decider ?? null,
+        action: data.action ?? null,
+      });
     }
   }
 

@@ -34,12 +34,12 @@ from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import MEMORY_RECALL_MARKER, mark
 from app.agents.context.tiers import AgentTier
 from app.constants.browser import HandoffStatus
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.schemas.browser import NewHandoff
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser.handoff import create_pending_handoff, get_handoff
 from app.services.browser.jobs import put_job_state, set_latest_job
 from app.utils.multimodal import extract_text_content
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 from tests.browser_factories import make_browser_job_state
 from tests.e2e._harness.graph_run import (
     AGENT_NODE,

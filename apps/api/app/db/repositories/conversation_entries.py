@@ -1,9 +1,9 @@
 """The stored shape of a conversation entry and its head, and the expressions the append protocol commits with.
 
-An entry is one message as stored today, keyed by (user_id, conversation_id, seq)
-and (user_id, conversation_id, id); id is the message's message_id. The head is the
-conversations document: log_head is the highest committed seq and outbox holds the
-committed entries not yet copied into conversation_entries.
+An entry is one conversation log entry, keyed by (user_id, conversation_id, seq) and
+(user_id, conversation_id, id). The head is the conversations document: log_head is the
+highest committed seq and outbox holds the committed entries not yet copied into
+conversation_entries.
 """
 
 from __future__ import annotations
@@ -12,72 +12,101 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
-import hashlib
-import json
 
+from pydantic import TypeAdapter
 from pymongo.errors import PyMongoError
 
-from app.constants.chat import CONVERSATION_ENTRIES_MIGRATION_SCRIPT
-from app.models.chat_models import MessageModel
+from app.models.conversation_log_models import (
+    ApprovalDecided,
+    ApprovalRequested,
+    CommsPhase,
+    ConversationState,
+    Entry,
+    EntryKind,
+    LoggedEntry,
+    Reply,
+    ReplySettled,
+    WorkFinished,
+    WorkStarted,
+)
 from app.models.conversation_models import (
-    ConversationEntry,
     ConversationHead,
     EntryKey,
+    MessageShape,
     StoredEntry,
 )
-from app.utils.errors import ConversationStoreError, UnmigratedConversationError
+from app.utils.errors import ConversationStoreError
 
 LOG_HEAD_FIELD = "log_head"
 OUTBOX_FIELD = "outbox"
-#: The fingerprint of the embedded array as the migration last copied it, so any later old-build write shows.
-MIGRATED_FINGERPRINT_FIELD = "migrated_fingerprint"
-#: On a migrated entry: each field's hash as its embedded element held it (verify and the merge compare them).
+#: The conversation log's fold, its step holder {epoch, alive_key} and the last epoch handed out.
+STATE_FIELD = "state"
+RUNNER_FIELD = "runner"
+RUNNER_EPOCH_FIELD = "runner_epoch"
+#: On an amendable log entry (a reply, a user message): bumped by each amend, staged through the outbox.
+REVISION_FIELD = "revision"
+#: On a migrated entry: each field's hash as the migration wrote it (the next pass sets only what changed).
 MIGRATION_FIELDS_FIELD = "migration_fields"
-_EMBEDDED_FIELD = "_embedded"
 #: Head fields that never reach a ConversationDocument (or the client it is returned to).
 HEAD_INTERNAL_FIELDS = (
-    "messages",
     LOG_HEAD_FIELD,
     OUTBOX_FIELD,
-    MIGRATED_FINGERPRINT_FIELD,
-    _EMBEDDED_FIELD,
+    STATE_FIELD,
+    RUNNER_FIELD,
+    RUNNER_EPOCH_FIELD,
+)
+#: The kinds the conversation log appends; a stored entry with any other kind, or none, is a message.
+LOG_KINDS: list[str] = [kind.value for kind in EntryKind]
+
+#: The fold of a log with no entries yet: what a head that stores no state holds.
+EMPTY_LOG_STATE = ConversationState(
+    head=0,
+    settled_through=0,
+    stopped_through=0,
+    unsettled_waking=(),
+    comms=CommsPhase.IDLE,
+    open_reply=None,
+    work=(),
+)
+#: The kinds that open what a later entry completes: a reply its settle, a task its finish, an approval its decision.
+OPENER_KINDS: frozenset[str] = frozenset(
+    {EntryKind.REPLY, EntryKind.WORK_STARTED, EntryKind.APPROVAL_REQUESTED}
 )
 
-#: A server-side hash of the whole embedded array: any append, trim or in-place edit changes it.
-EMBEDDED_FINGERPRINT: dict[str, object] = {"$toHashedIndexKey": {"$ifNull": ["$messages", []]}}
-#: Heads whose embedded array holds messages the entries do not: never migrated, or written since.
-UNMIGRATED_HEADS: dict[str, object] = {
-    "messages.0": {"$exists": True},
-    "$or": [
-        {LOG_HEAD_FIELD: {"$exists": False}},
-        {"$expr": {"$ne": [EMBEDDED_FINGERPRINT, f"${MIGRATED_FINGERPRINT_FIELD}"]}},
-    ],
-}
-#: Added to every head read so the refusal below needs no second query and never ships the array.
-EMBEDDED_STATE_STAGE: dict[str, object] = {
-    "$addFields": {
-        _EMBEDDED_FIELD: {
-            "count": {"$size": {"$ifNull": ["$messages", []]}},
-            "fingerprint": EMBEDDED_FINGERPRINT,
+#: Derived from the log's stored state: live work is paused on the user's approval.
+AWAITING_APPROVAL: dict[str, object] = {
+    "$anyElementTrue": [
+        {
+            "$map": {
+                "input": {"$ifNull": [f"${STATE_FIELD}.work", []]},
+                "as": "work",
+                "in": {"$gt": [{"$size": {"$ifNull": ["$$work.pending_approvals", []]}}, 0]},
+            }
         }
-    }
+    ]
+}
+#: Added to every head read, which never ships the embedded array.
+AWAITING_APPROVAL_STAGE: dict[str, object] = {
+    "$addFields": {"awaiting_approval": AWAITING_APPROVAL}
 }
 DROP_EMBEDDED_STAGE: dict[str, object] = {"$project": {"messages": 0}}
 #: Cards whose message is not committed yet wait on the head under this field, by message id;
 #: a turn saves within itself, so ones a day old are dropped by the next commit.
 FOLDED_CARDS_FIELD = "folded_cards"
 FOLDED_CARDS_KEEP_SECONDS = 86_400
-#: What an append reads of its head: identity, the log, and whether the migration caught up.
+#: What an append reads of its head: identity and the log.
 _APPEND_HEAD_FIELDS: dict[str, object] = {
     "conversation_id": 1,
     "user_id": 1,
     LOG_HEAD_FIELD: 1,
     OUTBOX_FIELD: 1,
-    MIGRATED_FINGERPRINT_FIELD: 1,
-    _EMBEDDED_FIELD: 1,
+    STATE_FIELD: 1,
+    RUNNER_FIELD: 1,
+    RUNNER_EPOCH_FIELD: 1,
 }
-CONTENT_HASH_FIELD = "content_hash"
-_EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1, CONTENT_HASH_FIELD: 1}
+_EXISTING_FIELDS: dict[str, object] = {"_id": 0, "id": 1, "seq": 1}
+#: Where head_with_unsettled puts the collection's entries it read beside the head.
+UNSETTLED_ROWS_FIELD = "unsettled_rows"
 _HEAD_OF_ENTRY = "_head"
 #: Each outbox entry of a head, one document apiece.
 _OUTBOX_AS_ENTRIES: list[dict[str, object]] = [
@@ -122,35 +151,71 @@ class Head:
         stored = {row.id: row.seq for row in self.document.existing}
         return {**stored, **{entry.id: seq for seq, entry in self.outbox.items()}}
 
-    def known_content(self) -> dict[str, str | None]:
-        """Return the committed-content hash of every entry id this head's reads saw."""
-        stored = {row.id: row.content_hash for row in self.document.existing}
-        return {**stored, **{entry.id: entry.content_hash for entry in self.outbox.values()}}
 
-    def pending(self) -> list[ConversationEntry]:
-        """Read the outbox's committed entries."""
-        return [entry_of(entry) for entry in self.outbox.values()]
+def current_state(head: ConversationHead) -> ConversationState:
+    """Return the stored fold at log_head: a seq holding a message folds as an entry that changes nothing."""
+    stored = head.state or EMPTY_LOG_STATE
+    return stored.model_copy(update={"head": head.log_head or 0})
+
+
+def openers_outside(page: Sequence[LoggedEntry]) -> dict[str, list[str]]:
+    """Return, by the field that names them, the openers page's entries complete but page lacks."""
+    replies: set[str] = set()
+    tasks: set[str] = set()
+    approvals: set[str] = set()
+    held_replies: set[str] = set()
+    held_tasks: set[str] = set()
+    held_approvals: set[str] = set()
+    for logged in page:
+        match logged.entry:
+            case Reply(reply_id=reply_id):
+                held_replies.add(reply_id)
+            case WorkStarted(task_id=task_id, joins=joined):
+                held_tasks.add(task_id)
+                if joined is not None:
+                    tasks.add(joined)
+            case ApprovalRequested(task_id=task_id, approval_id=approval_id):
+                held_approvals.add(approval_id)
+                tasks.add(task_id)
+            case ReplySettled(reply_id=reply_id):
+                replies.add(reply_id)
+            case WorkFinished(task_id=task_id):
+                tasks.add(task_id)
+            case ApprovalDecided(approval_id=approval_id):
+                approvals.add(approval_id)
+    wanted = {
+        "reply_id": (replies, held_replies),
+        "task_id": (tasks, held_tasks),
+        "approval_id": (approvals, held_approvals),
+    }
+    return {field: sorted(names - held) for field, (names, held) in wanted.items() if names - held}
+
+
+def newest(stored: StoredEntry | None, staged: StoredEntry) -> StoredEntry:
+    """Pick the copy of one entry a read returns: the staged one unless the collection already holds its revision."""
+    if stored is None:
+        return staged
+    if staged.revision is None:
+        return stored
+    return staged if stored.revision is None or staged.revision > stored.revision else stored
+
+
+_ENTRY: TypeAdapter[Entry] = TypeAdapter(Entry)
+#: A stored entry's keys beside the log entry's own fields; id is both, so it stays.
+_POSITION_KEYS = ("conversation_id", "user_id", "seq", "at", "content_hash", "migration_fields")
 
 
 @dataclass(frozen=True)
 class StoredRow:
-    """A stored entry with what places it across conversations: whose, which, and when it was committed."""
+    """A stored log entry with the conversation it belongs to."""
 
-    user_id: str
     conversation_id: str
-    at: datetime
-    entry: ConversationEntry
+    logged: LoggedEntry
 
 
 def head_from_raw(raw: Mapping[str, object]) -> Head:
-    """Parse a head read, refusing one whose messages still live only in the embedded array."""
-    document = ConversationHead.model_validate(raw)
-    embedded = document.embedded
-    if embedded is not None and embedded.count:
-        migrated = document.log_head is not None
-        if not migrated or document.migrated_fingerprint != embedded.fingerprint:
-            raise unmigrated(f"conversation {document.conversation_id}")
-    return Head(document=document, fields=head_fields(raw))
+    """Parse a head read into the log's view and the conversation document's own fields."""
+    return Head(document=ConversationHead.model_validate(raw), fields=head_fields(raw))
 
 
 def head_with_existing(
@@ -163,7 +228,6 @@ def head_with_existing(
     """
     return [
         {"$match": {"conversation_id": conversation_id, "user_id": user_id}},
-        EMBEDDED_STATE_STAGE,
         {"$project": _APPEND_HEAD_FIELDS},
         {
             "$lookup": {
@@ -184,9 +248,43 @@ def head_with_existing(
     ]
 
 
+def head_with_unsettled(
+    conversation_id: str, user_id: str, *, entries_collection: str
+) -> list[dict[str, object]]:
+    """Read the head, then the collection's entries after what it settled or stopped through its log_head, in one aggregate."""
+    since = {
+        "$max": [
+            {"$ifNull": [f"${STATE_FIELD}.settled_through", 0]},
+            {"$ifNull": [f"${STATE_FIELD}.stopped_through", 0]},
+        ]
+    }
+    after_since = {"$gt": ["$seq", "$$since"]}
+    through_head = {"$lte": ["$seq", "$$head"]}
+    return [
+        {"$match": {"conversation_id": conversation_id, "user_id": user_id}},
+        {"$project": _APPEND_HEAD_FIELDS},
+        {
+            "$lookup": {
+                "from": entries_collection,
+                "let": {"since": since, "head": {"$ifNull": [f"${LOG_HEAD_FIELD}", 0]}},
+                "pipeline": [
+                    {
+                        "$match": {
+                            "user_id": user_id,
+                            "conversation_id": conversation_id,
+                            "$expr": {"$and": [after_since, through_head]},
+                        }
+                    }
+                ],
+                "as": UNSETTLED_ROWS_FIELD,
+            }
+        },
+    ]
+
+
 def _counted_heads(excluding: Mapping[str, object] | None) -> dict[str, object]:
-    """Match the heads whose entries a cross-conversation read counts: migrated, and not excluded."""
-    return {"$nor": [UNMIGRATED_HEADS, *([dict(excluding)] if excluding else [])]}
+    """Match the heads whose entries a cross-conversation read counts: all but the excluded."""
+    return {"$nor": [dict(excluding)]} if excluding else {}
 
 
 def outbox_entries_matching(
@@ -198,12 +296,6 @@ def outbox_entries_matching(
         OUTBOX_FIELD: {"$exists": True, "$ne": {}},
         **_counted_heads(excluding),
     }
-    return [{"$match": heads}, *_OUTBOX_AS_ENTRIES, {"$match": dict(match)}]
-
-
-def every_outbox_entry_matching(match: Mapping[str, object]) -> list[dict[str, object]]:
-    """Read every head's outbox entries that match, across all users (a maintenance sweep's read)."""
-    heads = {OUTBOX_FIELD: {"$exists": True, "$ne": {}}}
     return [{"$match": heads}, *_OUTBOX_AS_ENTRIES, {"$match": dict(match)}]
 
 
@@ -241,57 +333,49 @@ def stored_entries_matching(
     return [*pipeline, {"$limit": limit}] if limit else pipeline
 
 
-def unmigrated(subject: str) -> UnmigratedConversationError:
-    """Build the refusal for messages that still live only in the embedded array, naming the script."""
-    return UnmigratedConversationError(
-        message=(
-            f"{subject} has messages the entries migration has not copied: run "
-            f"python -m {CONVERSATION_ENTRIES_MIGRATION_SCRIPT} --apply"
-        ),
-        why="its messages still live only in the embedded messages array",
-    )
-
-
 def head_fields(raw: Mapping[str, object]) -> dict[str, object]:
     """Drop the protocol's own fields from a head, leaving the conversation document."""
     return {key: value for key, value in raw.items() if key not in HEAD_INTERNAL_FIELDS}
 
 
-def stored_message(message: MessageModel) -> dict[str, object]:
-    """Return the message as an entry stores it: today's fields, with id in place of message_id."""
-    data = {k: v for k, v in message.model_dump().items() if v is not None}
-    data["id"] = data.pop("message_id")
-    return data
-
-
-def content_hash(stored: Mapping[str, object]) -> str:
-    """Hash a message as append commits it, so a retry can tell the same message from another under its id."""
-    return hashlib.sha256(
-        json.dumps(dict(stored), sort_keys=True, default=str).encode()
-    ).hexdigest()
-
-
-def entry_of(stored: StoredEntry) -> ConversationEntry:
-    """Read a stored entry (from the collection or an outbox) back as a seq-tagged message."""
-    return ConversationEntry.model_validate(
-        {**stored.message_fields(), "message_id": stored.id, "seq": stored.seq}
+def logged_of(stored: StoredEntry) -> LoggedEntry:
+    """Read a stored entry (from the collection or an outbox) back as the log entry it holds."""
+    fields = {k: v for k, v in stored.document().items() if k not in _POSITION_KEYS}
+    return LoggedEntry(
+        seq=stored.seq, at=committed_at(stored), entry=_ENTRY.validate_python(fields)
     )
 
 
-def stored_row(raw: Mapping[str, object]) -> StoredRow:
-    """Read a stored entry with its owner, conversation and commit time; one without a commit time is corrupt."""
-    stored = StoredEntry.model_validate(raw)
+def stored_at(at: datetime) -> datetime:
+    """Return at as Mongo keeps it, to the millisecond, so a live entry equals its reread."""
+    return at.replace(microsecond=at.microsecond // 1000 * 1000)
+
+
+def log_document(conversation_id: str, user_id: str, logged: LoggedEntry) -> dict[str, object]:
+    """Return a log entry as its conversation_entries document stores it."""
+    return {
+        **logged.entry.model_dump(),
+        "conversation_id": conversation_id,
+        "user_id": user_id,
+        "seq": logged.seq,
+        "at": logged.at,
+    }
+
+
+def committed_at(stored: StoredEntry) -> datetime:
+    """Return a stored entry's commit time; one without a commit time is corrupt."""
     if stored.at is None:
         raise ConversationStoreError(
             message="a stored conversation entry has no commit time",
             meta={"conversation_id": stored.conversation_id, "seq": str(stored.seq)},
         )
-    return StoredRow(
-        user_id=stored.user_id,
-        conversation_id=stored.conversation_id,
-        at=stored.at,
-        entry=entry_of(stored),
-    )
+    return stored.at
+
+
+def stored_row(raw: Mapping[str, object]) -> StoredRow:
+    """Read a stored entry with the conversation it belongs to."""
+    stored = StoredEntry.model_validate(raw)
+    return StoredRow(conversation_id=stored.conversation_id, logged=logged_of(stored))
 
 
 def at_its_seq(entry: StoredEntry) -> dict[str, object]:
@@ -302,34 +386,6 @@ def at_its_seq(entry: StoredEntry) -> dict[str, object]:
 def is_same_entry(stored: Mapping[str, object] | None, entry: StoredEntry) -> bool:
     """Whether stored is this entry (same id at its seq), so inserting it again found it flushed."""
     return stored is not None and EntryKey.model_validate(stored).id == entry.id
-
-
-def filled(message: MessageModel) -> list[dict[str, object]]:
-    """Pipeline that replaces an entry's content with message, keeping its keys and the cards folded in since it opened."""
-    data = stored_message(message)
-    # The entry now holds this message: a retried append of it is the same save, not a conflict.
-    committed = content_hash(data)
-    own_cards = data.pop("tool_data", [])
-    del data["id"]
-    cleared = [
-        name
-        for name in MessageModel.model_fields
-        # pinned is the user's mark on the message, not the turn's content.
-        if name not in data and name not in ("message_id", "tool_data", "pinned")
-    ]
-    cards = {"$concatArrays": [{"$literal": own_cards}, {"$ifNull": ["$tool_data", []]}]}
-    pipeline: list[dict[str, object]] = [
-        {
-            "$set": {
-                **{key: {"$literal": value} for key, value in data.items()},
-                CONTENT_HASH_FIELD: committed,
-                "tool_data": {"$cond": [{"$eq": [cards, []]}, "$$REMOVE", cards]},
-            }
-        }
-    ]
-    if cleared:
-        pipeline.append({"$unset": cleared})
-    return pipeline
 
 
 @contextmanager
@@ -352,35 +408,45 @@ def at_log_head(log_head: int) -> dict[str, object]:
 
 @dataclass(frozen=True)
 class EntryWindow:
-    """Which entries of a conversation a read asks for: a seq range, the newest limit, or these ids."""
+    """Which log entries of a conversation a read asks for: a seq range, the newest limit, these ids or replies.
+
+    kinds narrows the read (every log kind by default); ids, reply_ids and named together match
+    an entry with one of the ids, one of the reply ids, or one of a named field's values.
+    """
 
     after_seq: int = 0
     before_seq: int | None = None
     limit: int | None = None
     newest_first: bool = False
     ids: Sequence[str] | None = None
+    reply_ids: Sequence[str] | None = None
+    # An entry whose field holds one of the names, as openers_outside names them.
+    named: Mapping[str, Sequence[str]] | None = None
+    kinds: frozenset[str] | None = None
 
     def upper(self, log_head: int) -> int:
         return log_head if self.before_seq is None else min(log_head, self.before_seq - 1)
 
-    def lower(self, log_head: int) -> int:
-        # Seqs are dense, so the newest limit entries are the top limit seqs: a read of many heads
-        # bounds each one in the query instead of fetching all and trimming.
-        if self.limit and self.ids is None:
-            return max(self.after_seq, self.upper(log_head) - self.limit)
-        return self.after_seq
-
     def seq_range(self, log_head: int) -> dict[str, int]:
-        return {"$gt": self.lower(log_head), "$lte": self.upper(log_head)}
+        return {"$gt": self.after_seq, "$lte": self.upper(log_head)}
 
-    def id_clause(self) -> dict[str, object]:
-        return {} if self.ids is None else {"id": {"$in": list(self.ids)}}
+    def clauses(self) -> dict[str, object]:
+        named = [
+            *([{"id": {"$in": list(self.ids)}}] if self.ids is not None else []),
+            *([{"reply_id": {"$in": list(self.reply_ids)}}] if self.reply_ids is not None else []),
+            *({field: {"$in": list(names)}} for field, names in (self.named or {}).items()),
+        ]
+        return {"kind": {"$in": sorted(self._kinds())}, **({"$or": named} if named else {})}
 
-    def admits(self, entry: ConversationEntry, log_head: int) -> bool:
-        in_range = self.lower(log_head) < entry.seq <= self.upper(log_head)
-        return in_range and (self.ids is None or entry.message_id in self.ids)
+    def admits(self, entry: StoredEntry, log_head: int) -> bool:
+        in_range = self.after_seq < entry.seq <= self.upper(log_head)
+        return (
+            in_range
+            and entry.shape().kind in self._kinds()
+            and self._names(entry.id, entry.shape())
+        )
 
-    def take(self, union: Mapping[int, ConversationEntry]) -> list[ConversationEntry]:
+    def take(self, union: Mapping[int, StoredEntry]) -> list[StoredEntry]:
         seqs = sorted(union, reverse=True)
         if self.limit:
             seqs = seqs[: self.limit]
@@ -388,94 +454,14 @@ class EntryWindow:
             seqs.reverse()
         return [union[seq] for seq in seqs]
 
+    def _kinds(self) -> frozenset[str]:
+        return self.kinds if self.kinds is not None else frozenset(LOG_KINDS)
 
-def waiting_for(message_id: str) -> dict[str, object]:
-    """Read the waiting-room entry for message_id, taking the id as a literal, never a path."""
-    return {
-        "$getField": {
-            "field": {"$literal": message_id},
-            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
-        }
-    }
-
-
-def absorbing(message_id: str, message: Mapping[str, object]) -> dict[str, object]:
-    """Build the entry as committed, stamped at commit time unless it carries its own, its waiting cards after its tool_data.
-
-    The entry itself is a $literal, so text that starts with "$" is never read as a path.
-    """
-    waiting = {"$getField": {"field": "cards", "input": waiting_for(message_id)}}
-    tool_data = {
-        "$concatArrays": [{"$ifNull": ["$$message.tool_data", []]}, {"$ifNull": [waiting, []]}]
-    }
-    return {
-        "$let": {
-            "vars": {"message": {"$literal": dict(message)}},
-            "in": {
-                "$mergeObjects": [
-                    "$$message",
-                    {
-                        "at": {"$ifNull": ["$$message.at", "$$NOW"]},
-                        "tool_data": {"$cond": [{"$eq": [tool_data, []]}, "$$REMOVE", tool_data]},
-                    },
-                ]
-            },
-        }
-    }
-
-
-def still_waiting(saved_ids: list[str]) -> dict[str, object]:
-    """Keep the waiting room minus the cards these messages absorbed and any a day stale."""
-    kept = {
-        "$arrayToObject": {
-            "$filter": {
-                "input": {"$objectToArray": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]}},
-                "as": "waiting",
-                "cond": {
-                    "$and": [
-                        {"$not": [{"$in": ["$$waiting.k", {"$literal": saved_ids}]}]},
-                        {
-                            "$gt": [
-                                "$$waiting.v.since",
-                                {
-                                    "$dateSubtract": {
-                                        "startDate": "$$NOW",
-                                        "unit": "second",
-                                        "amount": FOLDED_CARDS_KEEP_SECONDS,
-                                    }
-                                },
-                            ]
-                        },
-                    ]
-                },
-            }
-        }
-    }
-    return {
-        "$let": {
-            "vars": {"kept": kept},
-            "in": {"$cond": [{"$eq": ["$$kept", {}]}, "$$REMOVE", "$$kept"]},
-        }
-    }
-
-
-def parked(message_id: str, cards: Sequence[Mapping[str, object]]) -> dict[str, object]:
-    """Return the waiting room with these cards added under message_id, keeping when it first waited."""
-    waiting = waiting_for(message_id)
-    return {
-        "$setField": {
-            "field": {"$literal": message_id},
-            "input": {"$ifNull": [f"${FOLDED_CARDS_FIELD}", {}]},
-            "value": {
-                "since": {
-                    "$ifNull": [{"$getField": {"field": "since", "input": waiting}}, "$$NOW"]
-                },
-                "cards": {
-                    "$concatArrays": [
-                        {"$ifNull": [{"$getField": {"field": "cards", "input": waiting}}, []]},
-                        {"$literal": [dict(card) for card in cards]},
-                    ]
-                },
-            },
-        }
-    }
+    def _names(self, entry_id: str, shape: MessageShape) -> bool:
+        if self.ids is None and self.reply_ids is None and self.named is None:
+            return True
+        return (
+            entry_id in (self.ids or ())
+            or shape.reply_id in (self.reply_ids or ())
+            or any(getattr(shape, field) in names for field, names in (self.named or {}).items())
+        )

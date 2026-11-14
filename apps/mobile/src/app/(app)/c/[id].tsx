@@ -5,7 +5,6 @@ import { Image } from "react-native";
 import { ChatScreenContent } from "@/features/chat/components/chat/chat-screen-content";
 import { ChatLayout } from "@/features/chat/components/chat-layout";
 import { useChatContext } from "@/features/chat/hooks/use-chat-context";
-import { useChatStore } from "@/stores/chat-store";
 
 function normalizeRouteId(rawId: string | string[] | undefined): string | null {
   if (!rawId) {
@@ -22,7 +21,6 @@ export default function ChatDeepLinkScreen() {
   const { id } = useLocalSearchParams<{ id?: string | string[] }>();
   const normalizedId = useMemo(() => normalizeRouteId(id), [id]);
   const { setActiveChatId } = useChatContext();
-  const isTyping = useChatStore((state) => state.streamingState.isTyping);
 
   useEffect(() => {
     setActiveChatId(normalizedId);
@@ -31,7 +29,7 @@ export default function ChatDeepLinkScreen() {
   return (
     <ChatLayout
       background={
-        !normalizedId && !isTyping ? (
+        !normalizedId ? (
           <>
             <Image
               source={require("@/assets/background/chat.jpg")}

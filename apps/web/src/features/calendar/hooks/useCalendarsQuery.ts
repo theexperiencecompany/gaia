@@ -3,6 +3,7 @@ import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 
 import { calendarApi } from "../api/calendarApi";
+import { calendarKeys } from "../api/queryKeys";
 
 /**
  * Centralized hook for fetching the calendar list (used by
@@ -16,7 +17,7 @@ export const useCalendarsQuery = (
   options?: Partial<UseQueryOptions<CalendarItem[], Error>>,
 ) => {
   return useQuery({
-    queryKey: ["calendars"],
+    queryKey: calendarKeys.calendars,
     queryFn: async (): Promise<CalendarItem[]> => {
       return await calendarApi.fetchCalendars();
     },

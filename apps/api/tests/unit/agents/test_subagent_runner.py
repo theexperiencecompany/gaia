@@ -12,7 +12,6 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-from langgraph.types import Command, Interrupt
 from prometheus_client import REGISTRY
 import pytest
 
@@ -20,7 +19,6 @@ from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background import redis_writer as rw
-from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import RunKind, StreamSession, create_session
 from app.agents.core.background.subagent_channel import SubagentCancel
@@ -39,7 +37,6 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.llm.lane import AgentRole
 from app.constants.agents import NO_ANSWER_NOTICE, AgentTag, wrap_agent_payload
-from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import BUDGET_STOP_METADATA_KEY, DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
 from app.models.mcp_config import MCPConfig, SubAgentConfig
@@ -341,7 +338,6 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert not result.paused
         assert result.text == "Hello world"
 
     @pytest.mark.asyncio
@@ -358,7 +354,6 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert not result.paused
         assert result.answered is False
 
     @pytest.mark.asyncio
@@ -374,7 +369,6 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert not result.paused
         assert result.answered is False
         assert result.text == NO_ANSWER_NOTICE.format(name=f"The {ctx.agent_name} run")
 
@@ -572,7 +566,6 @@ class TestExecuteSubagentStream:
             result = await execute_subagent_stream(ctx, stream_writer=None)
 
         # Should not raise
-        assert not result.paused
         assert result.answered is False
 
     @pytest.mark.asyncio
@@ -697,7 +690,6 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert not result.paused
         assert result.text == "ok"
 
     @pytest.mark.asyncio
@@ -758,18 +750,6 @@ class TestProcessUpdatesPayload:
             new_callable=AsyncMock,
             return_value=entries,
         )
-
-    @pytest.mark.asyncio
-    async def test_an_interrupt_event_records_its_payloads_and_stops_there(self):
-        """Approval values accumulate because one __interrupt__ event arrives per paused task."""
-        run = _make_run()
-        payload = {LANGGRAPH_INTERRUPT_KEY: ({"approval_id": "a1"}, {"approval_id": "a2"})}
-
-        with patch("app.agents.core.subagents.subagent_runner.log"):
-            await _process_updates_payload(run, payload)
-
-        assert run.pending_approvals == [{"approval_id": "a1"}, {"approval_id": "a2"}]
-        assert run.run_messages == []
 
     @pytest.mark.asyncio
     async def test_a_non_agent_node_is_skipped_without_abandoning_the_rest(self):
@@ -845,6 +825,7 @@ class TestProcessUpdatesPayload:
             "state_update": state_update,
             "emitted_tool_calls": {"tc-already"},
             "integration_metadata": metadata,
+            "user_id": "u1",
         }
 
     @pytest.mark.asyncio
@@ -1035,28 +1016,6 @@ class TestFinalizeRun:
             }
         }
 
-    def test_a_paused_run_returns_its_partial_text_the_merged_approval_and_its_messages(self):
-        ai = AIMessage(content="", tool_calls=[{"name": "send_email", "args": {}, "id": "tc-1"}])
-        run = _make_run()
-        run.held.texts["m1"] = "partial"
-        run.run_messages = [ai]
-        run.pending_approvals = [
-            {"approval_id": "a1", "tool": "send_email"},
-            {"approval_id": "a2", "tool": "delete_file"},
-        ]
-
-        with patch("app.agents.core.subagents.subagent_runner.log"):
-            outcome = _finalize_run(run)
-
-        assert outcome.paused
-        assert outcome.text == "partial"
-        assert outcome.interrupt == {
-            "approval_id": "a1",
-            "tool": "send_email",
-            "approval_ids": ["a1", "a2"],
-        }
-        assert outcome.run_messages == (ai,)
-
     def test_a_narration_only_run_is_reported_as_an_actionable_failure(self):
         run = _make_run(ctx_overrides=self._ctx_overrides())
         run.held.texts["m1"] = "I will send the email"
@@ -1065,7 +1024,6 @@ class TestFinalizeRun:
             outcome = _finalize_run(run)
 
         assert outcome.text == _NARRATION
-        assert not outcome.paused
         assert mock_log.warning.call_args == call(
             "subagent_returned_narration_only", subagent_name="test_agent"
         )
@@ -1633,40 +1591,6 @@ class TestReasoningStreamsPerDeltaButPersistsPerBlock:
             assert _collected_reasoning(session) == ["abc", "d"]
 
     @pytest.mark.asyncio
-    async def test_the_entries_that_reach_tool_data_are_two_as_well(self):
-        """What is persisted is the DRAINED shape; the entry count has to survive absorb_collector_event too."""
-        with _real_stream_writer() as (writer, _stream_manager, _session):
-
-            async def _fake_astream(*args, **kwargs):
-                yield ("messages", (_thinking("a"), {}))
-                yield ("messages", (_thinking("b"), {}))
-                yield ("messages", (_thinking("c"), {}))
-                yield ("updates", {"agent": {"messages": []}})
-                yield ("messages", (_thinking("d"), {}))
-
-            mock_graph = MagicMock()
-            mock_graph.astream = _fake_astream
-            ctx = _make_ctx(subagent_graph=mock_graph)
-
-            with (
-                patch("app.agents.core.subagents.subagent_runner.log"),
-                patch(
-                    "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
-                    new_callable=AsyncMock,
-                    return_value=[("tc-1", {"name": "web_search"})],
-                ),
-            ):
-                await execute_subagent_stream(ctx, stream_writer=writer)
-
-            reasoning_entries = [
-                entry["data"]["reasoning"]
-                for entry in drain_executor_tool_data("s-reasoning")
-                if entry.get("tool_category") == "reasoning"
-            ]
-
-        assert reasoning_entries == ["abc", "d"]
-
-    @pytest.mark.asyncio
     async def test_thinking_with_no_tool_after_it_is_one_entry_not_dropped(self):
         with _real_stream_writer() as (writer, stream_manager, session):
 
@@ -1764,7 +1688,6 @@ class TestSubagentRunLatency:
             )
 
         assert outcome.text
-        assert not outcome.paused
         assert _subagent_count("test", "success") == before + 1
 
     @pytest.mark.asyncio
@@ -1790,34 +1713,6 @@ class TestSubagentRunLatency:
             )
             is None
         )
-
-    @pytest.mark.asyncio
-    async def test_paused_segment_observes_paused_span_not_success(self):
-        async def _fake_astream(*args, **kwargs):
-            yield ("updates", {"agent": {"messages": []}})
-            if False:
-                yield ("updates", {})
-
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-        ctx = _make_ctx(subagent_graph=mock_graph)
-        paused_before = _subagent_count("test", "paused")
-        success_before = _subagent_count("test", "success")
-
-        with (
-            patch("app.agents.core.subagents.subagent_runner.log"),
-            patch(
-                "app.agents.core.subagents.subagent_runner._finalize_run",
-                return_value=SubagentOutcome(text="", interrupt={"approval_id": "a1"}),
-            ),
-        ):
-            outcome = await execute_subagent_stream(
-                ctx, stream_writer=MagicMock(), subagent_id="lat-sub-paused"
-            )
-
-        assert outcome.paused
-        assert _subagent_count("test", "paused") == paused_before + 1
-        assert _subagent_count("test", "success") == success_before
 
     @pytest.mark.asyncio
     async def test_failed_segment_observes_error_span(self):
@@ -1859,34 +1754,6 @@ class TestSubagentRunLatency:
         assert captured["kwargs"]["stream_mode"] == ["messages", "custom", "updates"]
         assert captured["kwargs"]["config"] is ctx.config
         assert captured["kwargs"]["durability"] == "exit"
-
-    @pytest.mark.asyncio
-    async def test_resume_reclocks_the_run_before_streaming_it(self):
-        """A resume goes through _with_current_time(resume, configurable), in that argument order."""
-        captured: dict[str, Any] = {}
-        reclocker = MagicMock(return_value=object())
-
-        async def _fake_astream(*args, **kwargs):
-            captured["args"] = args
-            yield ("updates", {"agent": {"messages": [AIMessage(content="done")]}})
-
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-        mock_graph.aget_state = AsyncMock(return_value=MagicMock(interrupts=("x",), next=None))
-        ctx = _make_ctx(subagent_graph=mock_graph)
-        resume = Command(resume="approved")
-
-        with (
-            patch("app.agents.core.subagents.subagent_runner.log"),
-            patch(
-                "app.agents.core.subagents.subagent_runner._with_current_time",
-                reclocker,
-            ),
-        ):
-            await execute_subagent_stream(ctx, resume=resume)
-
-        reclocker.assert_called_once_with(resume, ctx.configurable)
-        assert captured["args"][0] is reclocker.return_value
 
     @pytest.mark.asyncio
     async def test_custom_mcp_label_collapses_to_one_series(self):
@@ -1952,8 +1819,8 @@ class TestSubagentRunLatency:
                 ctx, stream_writer=MagicMock(), subagent_id="lat-cancel"
             )
 
-        assert not outcome.paused
         mock_is_cancelled.assert_awaited_once_with("s-cancel")
+        assert outcome.stopped is True
         assert _subagent_count("test", "cancelled") == cancelled_before + 1
         assert _subagent_count("test", "success") == success_before
 
@@ -2155,61 +2022,69 @@ class TestTheExecutorsCancel:
         assert _subagent_sum("test", "cancelled") == pytest.approx(sum_before + 0.75)
 
 
-# ---------------------------------------------------------------------------
-# a decision resumes the interrupt it answers
-# ---------------------------------------------------------------------------
+class _ColdMcpClient:
+    """A user's MCPClient that has not loaded the tool in this process: only its owner lookup knows it."""
+
+    def __init__(self) -> None:
+        self._tools: dict[str, list[Any]] = {}
+
+    def find_integration(self, tool_name: str) -> str | None:
+        return None
+
+    async def resolve_tool_owner(self, tool_name: str) -> str | None:
+        return "int_weather" if tool_name == "get_forecast" else None
 
 
-class TestAResumeIsAddressedToItsInterrupt:
-    async def test_with_several_pending_the_decision_goes_to_its_own_gate(self):
-        captured: dict[str, Any] = {}
+class _UnknownToolRegistry:
+    def get_category_of_tool(self, tool_name: str) -> str:
+        return "unknown"
 
-        async def _fake_astream(*args, **kwargs):
-            captured["resume"] = args[0]
-            yield ("updates", {"agent": {"messages": [AIMessage(content="sent")]}})
+    def get_all_tools_for_search(self) -> list[Any]:
+        return []
 
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-        mock_graph.aget_state = AsyncMock(
-            return_value=MagicMock(
-                next=("tools",),
-                interrupts=(
-                    Interrupt(value="not a gate payload", id="i-0"),
-                    Interrupt(value={"approval_id": "a1"}, id="i-1"),
-                    Interrupt(value={"approval_id": "a2"}, id="i-2"),
-                ),
-            )
+
+@pytest.mark.asyncio
+async def test_an_executor_runs_custom_mcp_tool_card_names_the_integration_it_came_from() -> None:
+    forecast_call = AIMessage(
+        content="",
+        tool_calls=[{"name": "get_forecast", "args": {"city": "Pune"}, "id": "tc-fc"}],
+    )
+
+    async def _fake_astream(*args: Any, **kwargs: Any) -> Any:
+        yield ("updates", {"agent": {"messages": [forecast_call]}})
+
+    mock_graph = MagicMock()
+    mock_graph.astream = _fake_astream
+    stream_writer = MagicMock()
+
+    with (
+        patch("app.agents.core.subagents.subagent_runner.log"),
+        patch(
+            "app.utils.agent_utils.get_tool_registry",
+            new_callable=AsyncMock,
+            return_value=_UnknownToolRegistry(),
+        ),
+        patch(
+            "app.services.mcp.mcp_client.get_mcp_client",
+            new_callable=AsyncMock,
+            return_value=_ColdMcpClient(),
+        ),
+        patch(
+            "app.utils.agent_utils.get_mcp_client",
+            new_callable=AsyncMock,
+            return_value=_ColdMcpClient(),
+        ),
+        patch(
+            "app.utils.agent_utils._integration_display",
+            new_callable=AsyncMock,
+            return_value=("https://weather.example/icon.png", "Bundle Weather"),
+        ),
+    ):
+        await execute_subagent_stream(
+            _make_ctx(subagent_graph=mock_graph, user_id="u1"), stream_writer=stream_writer
         )
-        decision = {"status": "approved", "approval_id": "a2"}
 
-        with patch("app.agents.core.subagents.subagent_runner.log"):
-            await execute_subagent_stream(
-                _make_ctx(subagent_graph=mock_graph), resume=Command(resume=decision)
-            )
-
-        assert captured["resume"].resume == {"i-2": decision}
-
-    async def test_a_resume_keeps_its_update_and_is_re_clocked_in_the_users_zone(self):
-        captured: dict[str, Any] = {}
-
-        async def _fake_astream(*args, **kwargs):
-            captured["resume"] = args[0]
-            yield ("updates", {"agent": {"messages": [AIMessage(content="sent")]}})
-
-        mock_graph = MagicMock()
-        mock_graph.astream = _fake_astream
-        mock_graph.aget_state = AsyncMock(return_value=MagicMock(interrupts=("x",), next=None))
-        ctx = _make_ctx(
-            subagent_graph=mock_graph,
-            configurable={"thread_id": "t1", "user_timezone": "Asia/Kolkata"},
-        )
-        note = HumanMessage(content="the user added a cc")
-
-        with patch("app.agents.core.subagents.subagent_runner.log"):
-            await execute_subagent_stream(
-                ctx, resume=Command(resume={"status": "approved"}, update={"messages": [note]})
-            )
-
-        carried, clock = captured["resume"].update["messages"]
-        assert carried is note
-        assert "User Local Time (Asia/Kolkata)" in clock.content
+    card = stream_writer.call_args[0][0]["tool_data"]["data"]
+    assert card["tool_category"] == "int_weather"
+    assert card["integration_name"] == "Bundle Weather"
+    assert card["icon_url"] == "https://weather.example/icon.png"

@@ -1,10 +1,9 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { ArrowUp02Icon, Clock01Icon, StopIcon } from "@icons";
+import { ArrowUp02Icon, StopIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
-import { TextMorph } from "torph/react";
 import {
   type ComposerSendMode,
   useComposerSendMode,
@@ -29,41 +28,22 @@ function getButtonStyle(
 
 const MODE_ARIA_LABEL = {
   stop: "Stop generation",
-  queue: "Queue message",
   send: "Send message",
 } as const satisfies Record<ComposerSendMode, string>;
 
-// The glyph (and Queue label) for each mode. Kept out of the JSX so the
-// AnimatePresence wrapper stays flat instead of nesting a ternary.
+// The glyph for each mode, kept out of the JSX so the AnimatePresence wrapper stays flat.
 function renderModeContent(mode: ComposerSendMode) {
-  switch (mode) {
-    case "stop":
-      return (
-        <StopIcon
-          color="currentColor"
-          fill="currentColor"
-          width={20}
-          height={20}
-        />
-      );
-    case "queue":
-      return (
-        <>
-          <Clock01Icon color="currentColor" width={18} height={18} />
-          <TextMorph as="span" className="font-medium text-sm">
-            Queue
-          </TextMorph>
-        </>
-      );
-    default:
-      return <ArrowUp02Icon color="currentColor" />;
-  }
+  return mode === "stop" ? (
+    <StopIcon color="currentColor" fill="currentColor" width={20} height={20} />
+  ) : (
+    <ArrowUp02Icon color="currentColor" />
+  );
 }
 
 interface SendStopButtonProps {
   /** Whether there is content ready to send. */
   hasContent: boolean;
-  /** Submit handler invoked when sending or queueing. */
+  /** Submit handler invoked when sending. */
   onSend: () => void;
   /** While true an attachment is still uploading, so send is held. */
   isUploading?: boolean;
@@ -71,9 +51,8 @@ interface SendStopButtonProps {
 }
 
 /**
- * The chat send button. While a stream is open it flips to Stop (empty
- * composer) or Queue (typed content, held behind the running turn). Single
- * source of truth for both the web composer and the desktop assistant popup —
+ * The chat send button. While GAIA is busy it flips to Stop when the composer
+ * is empty; typed content always sends. Single source of truth for both the web composer and the desktop assistant popup —
  * edit here, ships to both.
  */
 export default function SendStopButton({
@@ -83,7 +62,7 @@ export default function SendStopButton({
   className = "h-9 min-h-9 w-9 max-w-9 min-w-9",
 }: Readonly<SendStopButtonProps>) {
   const stopStream = useStopStream();
-  const { showQueue, showStop, mode } = useComposerSendMode(hasContent);
+  const { showStop, mode } = useComposerSendMode(hasContent);
 
   const handlePress = () => {
     if (showStop) {
@@ -99,25 +78,21 @@ export default function SendStopButton({
     isUploading,
   );
 
-  // Queue widens into a labelled pill; stop/send stay icon-only square buttons.
   const stopCursor = showStop ? "cursor-pointer" : "";
-  const shapeClass = showQueue
-    ? "h-9 min-h-9 gap-1.5 rounded-xl px-3"
-    : `${className} ${stopCursor}`;
 
   return (
     <Button
-      isIconOnly={!showQueue}
+      isIconOnly
       aria-label={MODE_ARIA_LABEL[mode]}
-      className={`transition-all duration-300 ${contentColor} ${shapeClass}`}
+      className={`transition-all duration-300 ${contentColor} ${className} ${stopCursor}`}
       color={bg}
-      // Stop (abort the stream) is always pressable; send/queue is gated on
+      // Stop is always pressable; send is gated on
       // readiness — there must be content AND no in-flight upload, otherwise the
       // submit is dropped by the composer's uploading guard.
       disabled={!showStop && (!hasContent || isUploading)}
       radius="full"
       // In stop mode the button aborts the stream rather than submitting, so it
-      // must not trigger the composer form. Only send/queue submit.
+      // must not trigger the composer form. Only send submits.
       type={showStop ? "button" : "submit"}
       onPress={handlePress}
     >

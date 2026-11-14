@@ -15,13 +15,11 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
-from app.models.workflow_models import TriggerType
 from shared.py.analytics import Dedupe
-from shared.py.wide_events import current_workflow_execution_id, log
+from shared.py.wide_events import current_workflow_execution_id
 
 
 class RunKind(StrEnum):
@@ -55,9 +53,6 @@ class StreamSession:
     #: Why, when it failed: the executor's own error text, or the wait's.
     executor_failure: str | None = None
     tool_events: list[dict[str, Any]] = field(default_factory=list)
-    # Voice-mode streams: the executor's finalize step publishes a TTS-only
-    # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
-    voice_mode: bool = False
     # ``perf_counter`` of this stream's first executor frame, set once by the
     # writer. A redirect's second run must not inherit the cancelled run's.
     executor_first_frame_perf: float | None = None
@@ -67,17 +62,6 @@ class StreamSession:
     # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for
     # the executor's own calls) — the one fact that survives the echo above.
     tool_output_owners: dict[str, str | None] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class TodoRun:
-    """The tracked todo a background executor run is executing, and what woke it."""
-
-    todo_id: str
-    trigger_type: TriggerType
-    #: Read when the run starts: a run that completes its todo tears its watches
-    #: down, so the todo read at delivery would look like one that runs once.
-    runs_once: bool
 
 
 @dataclass(frozen=True)
@@ -152,9 +136,6 @@ class ExecutorRun:
     workflow_title: str = ""
     workflow_notify_on_completion: bool = True
     active_todo_id: str | None = None
-    #: Set only on a tracked todo's own scheduled/triggered run: it executes in its
-    #: todo's chat, which keeps its report, and its result goes through todo delivery.
-    todo_run: TodoRun | None = None
     #: Where the turn that spawned this run came from. Defaults to background
     #: work, matching ``build_agent_config``: the only callers that leave the
     #: source unset are the silent background paths.
@@ -228,38 +209,13 @@ class ExecutorRun:
 
     @property
     def owns_stream(self) -> bool:
-        """Whether this run streams into a message of its own instead of a comms turn's.
-
-        A detached run does, and so does a tracked todo's run, which streams into
-        its todo's chat with no comms turn in front of it.
-        """
-        return self.is_queued or self.todo_run is not None
+        """Whether this run streams into a message of its own instead of a comms turn's: a detached run does."""
+        return self.is_queued
 
     @property
     def render_message_id(self) -> str | None:
         """The chat message this run's frames render into: the live turn's, a resumed turn's, or its own placeholder."""
         return self.bot_message_id or (self.task_id if self.owns_stream else None)
-
-    @property
-    def renders_native_cards(self) -> bool:
-        """Whether this run's items reach the user as cards rather than as words.
-
-        Only first-party clients render tool cards. A bot conversation gets plain
-        text over its platform API and a scheduled workflow gets a notification,
-        so telling comms "these items are already on the user's screen" there
-        suppresses the only copy of the data the user would ever see.
-        """
-        return self.source_category is SourceCategory.UI
-
-    @property
-    def executor_owns_tool_data(self) -> bool:
-        """Whether this run persists its own tool_data.
-
-        The real axis is live-streamed vs background-detached: live-streamed
-        attaches tool_data to the comms message; a run with no comms consumer
-        (detached, a workflow's, a tracked todo's) self-persists.
-        """
-        return self.owns_stream or self.workflow_id is not None
 
 
 # ── Session registry ─────────────────────────────────────────────────
@@ -285,23 +241,6 @@ def get_session(stream_id: str) -> StreamSession | None:
     return _sessions.get(stream_id)
 
 
-def get_or_create_session(stream_id: str, kind: RunKind = RunKind.LIVE) -> StreamSession:
-    """Return the session, creating one if missing.
-
-    Implicit creation preserves the old dicts' auto-vivify behavior but is
-    logged: in a correctly ordered flow the session is always registered
-    (chat stream / silent agent / queue pop) before anything touches it.
-    """
-    session = _sessions.get(stream_id)
-    if session is None:
-        log.warning(
-            f"{LogTag.AGENT} Implicit session creation — registration ordering gap",
-            stream_id=stream_id,
-        )
-        session = create_session(stream_id, kind)
-    return session
-
-
 def teardown_session(stream_id: str) -> None:
     """Drop all orchestration state for a stream. Safe to call multiple times."""
     _sessions.pop(stream_id, None)
@@ -317,8 +256,8 @@ _abandoned: deque[str] = deque(maxlen=_ABANDONED_REMEMBERED)
 
 
 def mark_executor_spawned(stream_id: str) -> None:
-    """Record that call_executor spawned a background task for this stream."""
-    session = get_or_create_session(stream_id)
+    """Record that call_executor spawned a background task for this stream, opening its live session."""
+    session = _sessions.get(stream_id) or create_session(stream_id, RunKind.LIVE)
     session.executor_spawned = True
     session.executor_first_frame_perf = None  # new incarnation, new first frame
 

@@ -122,6 +122,28 @@ class ConversationNotFoundError(AppError):
 
 
 @dataclass
+class ConversationAlreadyExistsError(AppError):
+    """The conversation a create named already exists for this user."""
+
+    status_code: int = 409
+
+
+@dataclass
+class ConversationIdTakenError(AppError):
+    """The conversation id a create named already belongs to another user."""
+
+    status_code: int = 409
+    code: str = "conversation_id_taken"
+
+
+@dataclass
+class ConversationEntryNotFoundError(AppError):
+    """The log entry a write named is not in the conversation, or is another kind."""
+
+    status_code: int = 404
+
+
+@dataclass
 class UnmigratedConversationError(AppError):
     """A conversation still keeps its messages only in the embedded array the entries migration replaces."""
 
@@ -133,6 +155,8 @@ class ConversationStoreError(AppError):
 
 __all__ = [
     "AppError",
+    "ConversationAlreadyExistsError",
+    "ConversationIdTakenError",
     "ConversationNotFoundError",
     "ConversationStoreError",
     "EmptyUpdateError",

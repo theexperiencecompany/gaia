@@ -10,7 +10,6 @@ it; it does not prove Browser-Use produces those snapshots.
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from functools import partial
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -19,7 +18,6 @@ import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background import redis_writer as rw
-from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.session import RunKind, create_session, teardown_session
 from app.constants.browser import (
     BROWSER_TASK_EVENT,
@@ -28,6 +26,7 @@ from app.constants.browser import (
     HandoffStatus,
 )
 from app.constants.chat import SourceCategory
+from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.bot_models import BotSessionDocument
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
@@ -40,7 +39,7 @@ from app.schemas.browser import (
     BrowserStepSnapshot,
 )
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
-from app.services import outbound_delivery as outbound_mod, platform_message_service
+from app.services import outbound_delivery as outbound_mod
 from app.services.browser import (
     bot_delivery as bot_mod,
     job_runner as jr,
@@ -49,6 +48,8 @@ from app.services.browser.job_relay import follow_job_cards
 from app.services.browser.job_runner import execute_browser_job
 from app.services.browser.jobs import put_job_state
 from app.services.browser.ledger import RunLedger
+from app.services.conversation.work_deltas import WorkDeltas, work_cards
+from app.services.platform_link_service import PlatformLinkService
 
 pytestmark = pytest.mark.integration
 
@@ -201,9 +202,14 @@ async def _run_and_relay(request: BrowserJobRequest) -> None:
     """Run the job, which closes its own feed, then follow the feed onto the turn's stream."""
     await put_job_state(BrowserJobState.of(request, BrowserJobStatus.QUEUED))
     await execute_browser_job(request)
-    await follow_job_cards(
-        request.job_id, request.conversation_id, partial(rw.publish_to_stream, STREAM_ID)
-    )
+    deltas = WorkDeltas(request.conversation_id, STREAM_ID)
+
+    async def publish(data: dict[str, object]) -> None:
+        await rw.publish_to_stream(STREAM_ID, data)
+        deltas(data)
+
+    await follow_job_cards(request.job_id, request.conversation_id, publish)
+    await deltas.drain()
 
 
 def _frames(chunks: list[str]) -> list[dict[str, Any]]:
@@ -251,7 +257,7 @@ async def test_the_runs_cards_are_collected_onto_the_turns_message_under_one_gro
 
     await _run_and_relay(_request())
 
-    entries = drain_executor_tool_data(STREAM_ID)
+    entries = (await work_cards(_request().conversation_id, [STREAM_ID])).tool_data
     cards = [e for e in entries if e["tool_name"] == BROWSER_TASK_EVENT]
     assert [card["data"]["kind"] for card in cards] == ["session", "step", "result"]
     groups = [e for e in entries if e["tool_name"] == "subagent_group"]
@@ -316,7 +322,7 @@ def queue(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         outbound_mod, "get_rabbitmq_publisher", AsyncMock(return_value=_Publisher())
     )
     monkeypatch.setattr(
-        outbound_mod.PlatformLinkService,
+        PlatformLinkService,
         "get_linked_platforms",
         AsyncMock(return_value={"discord": {"platformUserId": DM_ID}}),
     )
@@ -360,7 +366,7 @@ async def test_a_run_asked_for_in_a_group_keeps_its_live_link_and_photos_in_the_
     """The live link drives the user's browser and a step photo can show a signed-in page, so a group that asked sees neither; only the final answer goes back there."""
     monkeypatch.setattr(jr, "BrowserTaskRunner", _ScriptedBrowserWithHandoff)
     monkeypatch.setattr(
-        platform_message_service.bot_session_repository,
+        bot_session_repository,
         "get_by_conversation_id",
         AsyncMock(return_value=_bot_session(GROUP_CHANNEL_ID)),
     )

@@ -2,7 +2,6 @@
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -15,25 +14,20 @@ from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.cache import CUSTOM_INT_METADATA_CACHE_PREFIX, CUSTOM_INT_METADATA_TTL
 from app.models.integration_models import Integration
-from app.models.stream_events import ToolOutputPayload
 from app.services.browser.captions import describe_action
 from app.services.composio.instance_toolkits import (
     InstanceToolkitRecord,
     build_instance_integration,
 )
+from app.services.mcp.mcp_client import McpToolOwner
 from app.utils.agent_utils import (
     IntegrationDisplayMetadata,
     _general_tool_category,
     _registry_mcp_ui_metadata,
     _resolve_mcp_ui_metadata,
     format_browser_action_entry,
-    format_sse_data,
-    format_sse_response,
     format_tool_call_entry,
-    process_custom_event_for_tools,
-    strip_internal_agent_tags,
 )
-from app.utils.stream_publishers import ExtractedToolData, publish_tool_output
 
 
 def _integration(integration_id: str, name: str) -> Integration:
@@ -79,7 +73,7 @@ class TestFormatToolCallEntry:
             result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
 
         assert result is not None
-        assert result["data"]["message"] == "Getting ready"
+        assert result["data"]["message"] == "Finding the right tools"
         assert result["data"]["show_category"] is False
 
     @pytest.mark.asyncio
@@ -100,8 +94,38 @@ class TestFormatToolCallEntry:
         assert result is not None
         # "integrations" is the frontend icon-config key carrying ConnectIcon.
         assert result["data"]["tool_category"] == "integrations"
-        assert result["data"]["message"] == "Opening your app"
+        assert result["data"]["message"] == "Connecting to your app"
         assert result["data"]["show_category"] is False
+
+    @pytest.mark.asyncio
+    async def test_activate_integration_names_the_app_it_connects_to(self) -> None:
+        tool_call = {
+            "name": "activate_integration",
+            "args": {"integration_id": "int_weather"},
+            "id": "tc3b",
+        }
+        with (
+            patch(
+                "app.utils.agent_utils.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=_FakeRegistry({}),
+            ),
+            patch(
+                "app.utils.agent_utils._integration_display",
+                new_callable=AsyncMock,
+                return_value=(None, "Bundle Weather"),
+            ),
+            patch(
+                "app.utils.agent_utils.get_integration_target",
+                new_callable=AsyncMock,
+                return_value=MagicMock(id="int_weather"),
+            ),
+        ):
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+
+        assert result is not None
+        assert result["data"]["message"] == "Connecting to Bundle Weather"
+        assert result["data"]["integration_name"] == "Bundle Weather"
 
     @pytest.mark.asyncio
     async def test_regular_tool_with_integration_id(self) -> None:
@@ -244,33 +268,6 @@ class TestFormatBrowserActionEntry:
 # ---------------------------------------------------------------------------
 
 
-class TestPublishToolOutput:
-    @pytest.mark.asyncio
-    async def test_an_empty_output_is_streamed_but_never_captured_for_the_saved_turn(self) -> None:
-        tool_outputs: dict[str, str] = {}
-        new_data = ExtractedToolData(tool_output=ToolOutputPayload(tool_call_id="tc-1", output=""))
-
-        with patch("app.utils.stream_publishers.stream_manager") as sm:
-            sm.publish_chunk = AsyncMock()
-            await publish_tool_output("stream-1", new_data, tool_outputs)
-
-        assert tool_outputs == {}
-        sm.publish_chunk.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_a_non_empty_output_is_captured_under_its_tool_call(self) -> None:
-        tool_outputs: dict[str, str] = {}
-        new_data = ExtractedToolData(
-            tool_output=ToolOutputPayload(tool_call_id="tc-1", output="42 results")
-        )
-
-        with patch("app.utils.stream_publishers.stream_manager") as sm:
-            sm.publish_chunk = AsyncMock()
-            await publish_tool_output("stream-1", new_data, tool_outputs)
-
-        assert tool_outputs == {"tc-1": "42 results"}
-
-
 class TestResolveMcpUiMetadata:
     @pytest.mark.asyncio
     async def test_the_named_tools_mcp_ui_and_server_url_are_returned(self) -> None:
@@ -281,7 +278,7 @@ class TestResolveMcpUiMetadata:
         client._tools = {"notion_int": [tool]}
 
         with patch(
-            "app.services.mcp.mcp_client.get_mcp_client",
+            "app.utils.agent_utils.get_mcp_client",
             new_callable=AsyncMock,
             return_value=client,
         ):
@@ -308,9 +305,9 @@ class TestResolveMcpIconName:
                 return_value=mock_registry,
             ),
             patch(
-                "app.db.redis.get_cache", new_callable=AsyncMock, return_value=None
+                "app.utils.agent_utils.get_cache", new_callable=AsyncMock, return_value=None
             ) as mock_get_cache,
-            patch("app.db.redis.set_cache", new_callable=AsyncMock) as mock_set_cache,
+            patch("app.utils.agent_utils.set_cache", new_callable=AsyncMock) as mock_set_cache,
             patch(
                 "app.utils.agent_utils.integration_repository.get",
                 new_callable=AsyncMock,
@@ -354,7 +351,7 @@ class TestResolveMcpIconName:
                 new_callable=AsyncMock,
                 return_value=mock_registry,
             ),
-            patch("app.db.redis.get_cache", new_callable=AsyncMock, return_value=cached),
+            patch("app.utils.agent_utils.get_cache", new_callable=AsyncMock, return_value=cached),
             patch(
                 "app.utils.agent_utils.integration_repository.get",
                 new_callable=AsyncMock,
@@ -392,9 +389,9 @@ class _FakeRegistry:
 
 def _mcp_lookup(integration_id: str = "notion_int") -> Any:
     return patch(
-        "app.utils.agent_utils._resolve_mcp_integration_id",
+        "app.utils.agent_utils.mcp_tool_owner",
         new_callable=AsyncMock,
-        return_value=integration_id,
+        return_value=McpToolOwner(MagicMock(), integration_id),
     )
 
 
@@ -438,7 +435,7 @@ class TestGeneralToolCategory:
             )
 
         assert result == ("notion_int", "notion_int", False)
-        mock_resolve.assert_awaited_once_with("notion_tool", "u1")
+        mock_resolve.assert_awaited_once_with("u1", "notion_tool")
 
     @pytest.mark.asyncio
     async def test_an_unauthenticated_platform_mcp_tool_is_owned_by_its_integration(self) -> None:
@@ -709,64 +706,8 @@ class TestIntegrationIdentityOnToolCalls:
 
 
 # ---------------------------------------------------------------------------
-# format_sse_response / format_sse_data
-# ---------------------------------------------------------------------------
-
-
-class TestSSEFormatters:
-    def test_format_sse_response(self) -> None:
-        result = format_sse_response("Hello world")
-        assert result.startswith("data: ")
-        assert result.endswith("\n\n")
-        parsed = json.loads(result[6:])
-        assert parsed["response"] == "Hello world"
-
-    def test_format_sse_data(self) -> None:
-        result = format_sse_data({"key": "value", "count": 42})
-        assert result.startswith("data: ")
-        parsed = json.loads(result[6:])
-        assert parsed["key"] == "value"
-        assert parsed["count"] == 42
-
-
-# ---------------------------------------------------------------------------
 # process_custom_event_for_tools
 # ---------------------------------------------------------------------------
-
-
-class TestProcessCustomEventForTools:
-    def test_with_payload(self) -> None:
-        with patch(
-            "app.utils.agent_utils.extract_tool_data",
-            return_value={"tool_data": [{"tool_name": "t", "data": 1}]},
-        ) as mock_extract:
-            result = process_custom_event_for_tools({"some": "payload"})
-        assert result == ExtractedToolData(tool_data=[{"tool_name": "t", "data": 1}])
-        assert mock_extract.call_args.args == ('{"some": "payload"}',)
-
-    def test_with_none_payload(self) -> None:
-        with patch(
-            "app.utils.agent_utils.extract_tool_data",
-            return_value=None,
-        ):
-            result = process_custom_event_for_tools(None)
-        assert result == ExtractedToolData()
-
-    def test_extract_returns_none(self) -> None:
-        with patch(
-            "app.utils.agent_utils.extract_tool_data",
-            return_value=None,
-        ):
-            result = process_custom_event_for_tools({"x": 1})
-        assert result == ExtractedToolData()
-
-    def test_exception_returns_empty(self) -> None:
-        with patch(
-            "app.utils.agent_utils.extract_tool_data",
-            side_effect=RuntimeError("parse fail"),
-        ):
-            result = process_custom_event_for_tools({"x": 1})
-        assert result == ExtractedToolData()
 
 
 # ---------------------------------------------------------------------------
@@ -776,8 +717,8 @@ class TestProcessCustomEventForTools:
 
 class TestWrapAgentPayload:
     def test_body_is_framed_by_an_open_and_close_tag(self) -> None:
-        assert wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "3 unread") == (
-            "<executor_result>\n3 unread\n</executor_result>\n"
+        assert wrap_agent_payload(AgentTag.LAST_RUN, "3 unread") == (
+            "<last_run>\n3 unread\n</last_run>\n"
         )
 
     def test_the_producing_agent_is_named_on_the_opening_tag(self) -> None:
@@ -787,48 +728,17 @@ class TestWrapAgentPayload:
 
     def test_a_payload_with_no_producing_agent_carries_no_attribute(self) -> None:
         """A tag with an empty agent attribute still matches the strip pattern but reads as broken markup."""
-        assert wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "done", agent=None) == (
-            "<executor_result>\ndone\n</executor_result>\n"
+        assert wrap_agent_payload(AgentTag.LAST_RUN, "done", agent=None) == (
+            "<last_run>\ndone\n</last_run>\n"
         )
 
     def test_consecutive_blocks_concatenate_without_running_together(self) -> None:
         """The trailing newline is load-bearing: without it, joined blocks' tags land on one line."""
-        joined = wrap_agent_payload(AgentTag.RETURNED_TO_FRONTEND, "a card is up") + (
-            wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "3 unread")
+        joined = wrap_agent_payload(AgentTag.PLATFORM_DELIVERY, "a card is up") + (
+            wrap_agent_payload(AgentTag.LAST_RUN, "3 unread")
         )
 
         assert joined == (
-            "<returned_to_frontend>\na card is up\n</returned_to_frontend>\n"
-            "<executor_result>\n3 unread\n</executor_result>\n"
+            "<platform_delivery>\na card is up\n</platform_delivery>\n"
+            "<last_run>\n3 unread\n</last_run>\n"
         )
-
-
-class TestStripInternalAgentTags:
-    def test_a_parroted_block_keeps_its_words_and_loses_the_frame(self) -> None:
-        text = wrap_agent_payload(AgentTag.EXECUTOR_RESULT, "you have 3 unread")
-
-        assert strip_internal_agent_tags(text) == "you have 3 unread"
-
-    def test_a_lone_closing_tag_is_stripped(self) -> None:
-        """Covers the common half-leak: the model writes its reply then closes the handed block."""
-        assert strip_internal_agent_tags("3 unread</executor_result>") == "3 unread"
-
-    def test_an_attributed_tag_is_stripped(self) -> None:
-        assert (
-            strip_internal_agent_tags('<subagent_result agent="gmail">\nsent\n</subagent_result>')
-            == "sent"
-        )
-
-    def test_case_is_ignored(self) -> None:
-        assert strip_internal_agent_tags("<Executor_Result> done") == "done"
-
-    def test_ordinary_markup_in_a_reply_survives(self) -> None:
-        """A reply with legitimate angle brackets (code, HTML, comparisons) must pass through untouched."""
-        reply = "use `<div>` for that, and 3 < 5 is true"
-
-        assert strip_internal_agent_tags(reply) == reply
-
-    @pytest.mark.parametrize("tag", list(AgentTag))
-    def test_every_declared_tag_is_covered_by_the_strip(self, tag: AgentTag) -> None:
-        """Drift guard: a new AgentTag member extends the backstop for free, unlike a hand-listed pattern."""
-        assert strip_internal_agent_tags(wrap_agent_payload(tag, "payload")) == "payload"

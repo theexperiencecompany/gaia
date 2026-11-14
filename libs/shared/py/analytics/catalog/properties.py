@@ -36,7 +36,7 @@ ModelId = Annotated[
     IdKind("model_id"),
 ]
 
-#: A URL path with no query string, e.g. "/api/v1/chat-stream". No whitespace, "@", "?" or "#".
+#: A URL path with no query string, e.g. "/api/v1/conversations". No whitespace, "@", "?" or "#".
 UrlPath = Annotated[str, StringConstraints(pattern=r"^/[^\s@?#]*$"), IdKind("url_path")]
 
 #: A hostname as urlsplit returns it, internationalised names included. One token: no whitespace, "@" or "/".

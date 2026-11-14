@@ -104,7 +104,9 @@ export function Platforms({ state, dispatch, onConfirmed }: PlatformsProps) {
       )}
       {awaitingPlatform && (
         <m.div className="flex flex-col items-start gap-3" {...MOTION_FADE_UP}>
-          <OnboardingBotBubble text={AWAITING_LINK_LINES[awaitingPlatform]} />
+          <OnboardingBotBubble
+            lines={[AWAITING_LINK_LINES[awaitingPlatform]]}
+          />
           <div className="flex flex-wrap items-center gap-2 sm:ml-10.75">
             <Spinner
               size="sm"

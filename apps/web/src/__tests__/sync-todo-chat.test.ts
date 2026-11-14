@@ -8,23 +8,18 @@ import {
 
 vi.mock("@/features/chat/api/chatApi", () => ({
   chatApi: { fetchConversations: vi.fn(), batchSyncConversations: vi.fn() },
-  toClientMessages: () => [],
+}));
+
+vi.mock("@/features/chat/live/connection", () => ({
+  applyConversationPage: vi.fn(),
 }));
 
 vi.mock("@/lib/db/chatDb", () => ({
   db: {
     getAllConversations: vi.fn(),
-    deleteConversationsAndMessagesBulk: vi.fn(),
+    deleteConversationsAndLogsBulk: vi.fn(),
     putConversation: vi.fn(),
-    getMessagesForConversation: vi.fn().mockResolvedValue([]),
-    syncMessages: vi.fn(),
   },
-}));
-
-vi.mock("@/stores/streamStore", () => ({
-  hasAnyLiveTurn: () => false,
-  isConversationStreamingNow: () => false,
-  shouldBlockSyncForConversation: () => false,
 }));
 
 const LONG_AGO = new Date("2026-01-01T00:00:00Z");
@@ -38,7 +33,7 @@ const LISTED = {
   system_purpose: null,
   is_unread: null,
   source: null,
-  has_live_approval: null,
+  awaiting_approval: false,
   createdAt: LONG_AGO.toISOString(),
   updatedAt: LONG_AGO.toISOString(),
 };
@@ -80,7 +75,7 @@ describe("syncing a tracked todo's chat", () => {
           system_purpose: null,
           is_unread: null,
           source: null,
-          has_live_approval: null,
+          awaiting_approval: false,
           createdAt: LONG_AGO.toISOString(),
           updatedAt: LONG_AGO.toISOString(),
         },
@@ -93,12 +88,12 @@ describe("syncing a tracked todo's chat", () => {
     vi.mocked(db.getAllConversations).mockResolvedValue([
       local("listed"),
       local("deleted-on-server"),
-      local("todo-chat", { todoId: "todo-1" }),
+      local("todo-chat", { todoId: "todo-1", listed: false }),
     ]);
 
     await batchSyncConversations();
 
-    expect(db.deleteConversationsAndMessagesBulk).toHaveBeenCalledWith([
+    expect(db.deleteConversationsAndLogsBulk).toHaveBeenCalledWith([
       "deleted-on-server",
     ]);
   });
@@ -106,13 +101,12 @@ describe("syncing a tracked todo's chat", () => {
   it("asks the server about every local todo chat and drops the ones it no longer has", async () => {
     vi.mocked(chatApi.fetchConversations).mockResolvedValue(listing([]));
     vi.mocked(db.getAllConversations).mockResolvedValue([
-      local("kept-todo-chat", { todoId: "todo-1" }),
-      local("deleted-todo-chat", { todoId: "todo-2" }),
+      local("kept-todo-chat", { todoId: "todo-1", listed: false }),
+      local("deleted-todo-chat", { todoId: "todo-2", listed: false }),
     ]);
     vi.mocked(chatApi.batchSyncConversations).mockResolvedValue({
       conversations: [],
       missing: ["deleted-todo-chat"],
-      active_streams: {},
     });
 
     await batchSyncConversations();
@@ -130,7 +124,7 @@ describe("syncing a tracked todo's chat", () => {
       ],
       {},
     );
-    expect(db.deleteConversationsAndMessagesBulk).toHaveBeenCalledWith([
+    expect(db.deleteConversationsAndLogsBulk).toHaveBeenCalledWith([
       "deleted-todo-chat",
     ]);
   });
@@ -139,11 +133,15 @@ describe("syncing a tracked todo's chat", () => {
     await applySyncedConversation("todo-chat", {
       conversation_id: "todo-chat",
       description: "Watch the deploy",
-      messages: [],
+      items: [],
+      state: { kind: "state", head: 0, display: "idle", work: [] },
+      cursor: null,
       artifacts: [],
-      has_live_approval: null,
+      awaiting_approval: false,
+      has_older: false,
       todo_id: "todo-1",
       source: null,
+      listed: false,
       starred: null,
       is_system_generated: null,
       system_purpose: null,
@@ -156,6 +154,7 @@ describe("syncing a tracked todo's chat", () => {
       id: "todo-chat",
       title: "Watch the deploy",
       todoId: "todo-1",
+      listed: false,
     });
   });
 });
@@ -164,18 +163,17 @@ describe("syncing a bot DM chat", () => {
   it("keeps it locally and asks only for what changed, although the server never lists it", async () => {
     vi.mocked(chatApi.fetchConversations).mockResolvedValue(listing([]));
     vi.mocked(db.getAllConversations).mockResolvedValue([
-      local("whatsapp-dm", { source: "whatsapp" }),
+      local("whatsapp-dm", { source: "whatsapp", listed: false }),
       local("deleted-on-server"),
     ]);
     vi.mocked(chatApi.batchSyncConversations).mockResolvedValue({
       conversations: [],
       missing: [],
-      active_streams: {},
     });
 
     await batchSyncConversations();
 
-    expect(db.deleteConversationsAndMessagesBulk).toHaveBeenCalledWith([
+    expect(db.deleteConversationsAndLogsBulk).toHaveBeenCalledWith([
       "deleted-on-server",
     ]);
     expect(chatApi.batchSyncConversations).toHaveBeenCalledWith(
@@ -193,11 +191,15 @@ describe("syncing a bot DM chat", () => {
     await applySyncedConversation("telegram-dm", {
       conversation_id: "telegram-dm",
       description: "Telegram Chat",
-      messages: [],
+      items: [],
+      state: { kind: "state", head: 0, display: "idle", work: [] },
+      cursor: null,
       artifacts: [],
-      has_live_approval: null,
+      awaiting_approval: false,
+      has_older: false,
       todo_id: null,
       source: "telegram",
+      listed: false,
       starred: null,
       is_system_generated: null,
       system_purpose: null,
@@ -209,6 +211,7 @@ describe("syncing a bot DM chat", () => {
     expect(vi.mocked(db.putConversation).mock.calls[0][0]).toMatchObject({
       id: "telegram-dm",
       source: "telegram",
+      listed: false,
     });
   });
 });

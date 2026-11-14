@@ -64,6 +64,29 @@ def test_the_embedding_sidecar_imports_without_settings() -> None:
     assert result.returncode == 0, result.stderr[-2000:]
 
 
+def test_the_conversation_core_imports_without_settings() -> None:
+    """The log, frames, reducer, verdict and the step on its ports never load settings, a database or LangGraph."""
+    probe = (
+        "import sys\n"
+        "import app.models.conversation_log_models, app.models.conversation_frame_models\n"
+        "import app.services.conversation.reducer, app.services.conversation.verdict\n"
+        "import app.services.conversation.ports, app.services.conversation.log\n"
+        "import app.services.conversation.step\n"
+        "banned = ('app.config.settings', 'langgraph', 'pymongo', 'motor', 'redis')\n"
+        "loaded = [name for name in banned if name in sys.modules]\n"
+        "sys.exit(f'imported {loaded}' if loaded else 0)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[2],
+        env={"ENV": "test", "PATH": os.environ["PATH"], "LOG_LEVEL": "ERROR"},
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+
+
 def test_the_configurable_key_matches_langgraphs() -> None:
     """app.models.agent_config spells langgraph's CONF out to stay a leaf."""
     from langgraph.constants import CONF

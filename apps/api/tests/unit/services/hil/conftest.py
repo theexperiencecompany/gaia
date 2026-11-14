@@ -8,7 +8,6 @@ any of those shapes breaks these tests instead of silently passing against a stu
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -22,7 +21,7 @@ import pytest
 from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.constants.execute import EXECUTE_TOOL_NAME
-from app.models.hil_models import HILApprovalRecord, HILPreferences
+from app.models.hil_models import HILPreferences
 from app.services.hil.gate import decide_tool_call
 from app.services.hil.intent import IntentDecision
 from app.services.providers.provider_credentials_service import ProviderConfig
@@ -33,6 +32,16 @@ STREAM_ID = "stream-1"
 
 # The JEV Decisions transport: the network boundary every JEV question crosses.
 JEV_CLIENT_MODULE = "app.services.hil.jev_client"
+
+
+@pytest.fixture(autouse=True)
+def logged_work() -> Iterator[AsyncMock]:
+    """Every gated run is the conversation's logged task t1; yields the ApprovalRequested log write."""
+    with (
+        patch("app.services.hil.gate.work_of_run", new=AsyncMock(return_value="t1")),
+        patch("app.services.hil.gate.record_approval_requested", new=AsyncMock()) as requested,
+    ):
+        yield requested
 
 
 def make_tool(
@@ -104,26 +113,6 @@ def human_message(text: str) -> HumanMessage:
     return HumanMessage(content=text)
 
 
-def make_record(**overrides: Any) -> HILApprovalRecord:
-    """Build a real pending approval record."""
-    now = datetime.now(UTC)
-    defaults: dict[str, Any] = {
-        "approval_id": "appr-1",
-        "user_id": USER_ID,
-        "conversation_id": CONVERSATION_ID,
-        "stream_id": STREAM_ID,
-        "tool_name": "send_email",
-        "tool_call_id": "call-1",
-        "args": {"to": "bob@example.com"},
-        "summary": "Send email — to: bob@example.com",
-        "status": "pending",
-        "created_at": now,
-        "expires_at": now + timedelta(seconds=900),
-        "resume_item": {"run": "item"},
-    }
-    return HILApprovalRecord(**{**defaults, **overrides})
-
-
 @pytest.fixture
 def gated_tool() -> BaseTool:
     return make_tool()
@@ -162,21 +151,15 @@ class GateSeams:
     """
 
     policy: AsyncMock
-    ledger_enabled: set[str]
-    jev_enabled: set[str]
     recall: AsyncMock
     remember: AsyncMock
     ledger: MagicMock
     tool: BaseTool
     gated_tool: AsyncMock
-    publish_ledger: AsyncMock
-    publish_request: AsyncMock
-    publish_auto: AsyncMock
-    pausing_sibling: AsyncMock
+    announce: AsyncMock
+    requested: AsyncMock
     prefs: AsyncMock
     judge: AsyncMock
-    get_approval: AsyncMock
-    interrupt: MagicMock
     log: MagicMock
 
 
@@ -200,7 +183,7 @@ def _fake_registry() -> MagicMock:
 
 
 @pytest.fixture
-def gate_seams() -> Iterator[GateSeams]:
+def gate_seams(logged_work: AsyncMock) -> Iterator[GateSeams]:
     tool = StructuredTool.from_function(
         func=lambda to: None, name=GATED_TOOL, description="Send an email.", args_schema=_SendArgs
     )
@@ -217,18 +200,9 @@ def gate_seams() -> Iterator[GateSeams]:
     ledger.find_latest_denied = AsyncMock(return_value=None)
     ledger.register = AsyncMock(return_value="ap_abc1234567")
     ledger.recent_tool_outcomes = AsyncMock(return_value=[])
-    ledger_enabled: set[str] = {USER_ID}
-    jev_enabled: set[str] = set()
     with (
         patch(f"{GATE_MODULE}.resolve_policy", new=AsyncMock(return_value="ask")) as policy,
-        patch(
-            f"{GATE_MODULE}.is_hil_ledger_enabled",
-            new=AsyncMock(side_effect=lambda uid: uid in ledger_enabled),
-        ),
-        patch(
-            f"{GATE_MODULE}.is_jev_judge_enabled",
-            new=AsyncMock(side_effect=lambda uid: uid in jev_enabled),
-        ),
+        patch(f"{GATE_MODULE}.asks_every_time", new=AsyncMock(return_value=False)),
         patch(f"{GATE_MODULE}.recall_declined_call", new=AsyncMock(return_value=None)) as recall,
         patch(f"{GATE_MODULE}.remember_declined_call", new=AsyncMock()) as remember,
         patch(f"{GATE_MODULE}.approval_ledger_repository", new=ledger),
@@ -236,36 +210,25 @@ def gate_seams() -> Iterator[GateSeams]:
         patch(
             f"{GATE_MODULE}.gated_tool_object", new=AsyncMock(side_effect=_resolve_tool)
         ) as gated,
-        patch(f"{GATE_MODULE}.publish_ledger_request", new=AsyncMock()) as publish_ledger,
-        patch(f"{GATE_MODULE}.publish_approval_request", new=AsyncMock()) as publish_request,
-        patch(f"{GATE_MODULE}.publish_auto_approval", new=AsyncMock()) as publish_auto,
-        patch(f"{GATE_MODULE}.has_pausing_sibling", new=AsyncMock(return_value=False)) as sibling,
+        patch(f"{GATE_MODULE}.announce_approval", new=AsyncMock()) as announce,
         patch(f"{GATE_MODULE}.get_hil_preferences", new=AsyncMock(side_effect=_prefs)) as prefs,
         patch(
             f"{GATE_MODULE}.judge_intent",
             new=AsyncMock(return_value=IntentDecision("ask", "")),
         ) as judge,
-        patch(f"{GATE_MODULE}.get_approval", new=AsyncMock(return_value=None)) as get_approval,
-        patch(f"{GATE_MODULE}.interrupt") as interrupt,
         patch(f"{GATE_MODULE}.log") as log,
     ):
         yield GateSeams(
             policy=policy,
-            ledger_enabled=ledger_enabled,
-            jev_enabled=jev_enabled,
             recall=recall,
             remember=remember,
             ledger=ledger,
             tool=tool,
             gated_tool=gated,
-            publish_ledger=publish_ledger,
-            publish_request=publish_request,
-            publish_auto=publish_auto,
-            pausing_sibling=sibling,
+            announce=announce,
+            requested=logged_work,
             prefs=prefs,
             judge=judge,
-            get_approval=get_approval,
-            interrupt=interrupt,
             log=log,
         )
 

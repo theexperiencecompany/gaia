@@ -140,24 +140,6 @@ export type CalendarEvent = TimedEvent | SingleTimeEvent;
 /** `POST /calendar/event` body. */
 export type EventCreatePayload = EventCreateRequest;
 
-// Calendar types for conversation messages
-// Read-only: the create-event flow now runs through HIL approvals, but ~8 months
-// of stored conversations still restore this key, so old cards must still render.
-export type CalendarOptions = {
-  summary: string;
-  description?: string;
-  start?: string;
-  end?: string;
-  calendar_id?: string;
-  calendar_name?: string;
-  background_color?: string;
-  is_all_day?: boolean;
-  recurrence?: RecurrenceData;
-  attendees?: string[];
-  create_meeting_room?: boolean;
-  same_day_events?: SameDayEvent[]; // Context: existing events on the same day
-};
-
 // Calendar event date/time structure from Google Calendar API
 export type CalendarEventDateTime = {
   date?: string; // For all-day events (YYYY-MM-DD format)
@@ -212,32 +194,4 @@ export type CalendarListFetchData = {
   id: string;
   description: string;
   backgroundColor?: string;
-};
-
-// Same-day events type for showing existing events when adding calendar events
-export type SameDayEvent = {
-  id: string;
-  summary: string;
-  start?: {
-    date?: string;
-    dateTime?: string;
-    timeZone?: string;
-  };
-  end?: {
-    date?: string;
-    dateTime?: string;
-    timeZone?: string;
-  };
-  description?: string;
-  location?: string;
-  attendees?: Array<{
-    email: string;
-    responseStatus?: string;
-    organizer?: boolean;
-  }>;
-  recurrence?: string[];
-  status?: string;
-  calendarId?: string;
-  calendarTitle?: string;
-  background_color?: string;
 };

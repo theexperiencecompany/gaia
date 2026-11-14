@@ -35,15 +35,8 @@ export const integrationsApi = {
    * Per-tool schemas are not included — only `toolCount`. Fetch one
    * integration's tools on demand via `getIntegrationTools`.
    */
-  getMyIntegrations: () => api.get("/api/v1/integrations/me"),
-
-  /** Fast Mongo-backed catalog snapshot; status refresh is a separate request. */
-  getMyIntegrationsSnapshot: ({ background }: RequestOrigin = {}) =>
-    api.get("/api/v1/integrations/me/snapshot", { background }),
-
-  /** Status refresh can be slow for legacy provider connections; keep it off the catalog request. */
-  getIntegrationStatuses: ({ background }: RequestOrigin = {}) =>
-    api.get("/api/v1/integrations/status", { silent: true, background }),
+  getMyIntegrations: ({ background }: RequestOrigin = {}) =>
+    api.get("/api/v1/integrations/me", { background }),
 
   /**
    * Get the full tool list for a single integration, on demand.

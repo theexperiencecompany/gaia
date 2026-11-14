@@ -19,7 +19,6 @@ FIVE_MINUTES_TTL = 300
 
 # TTL Aliases
 DEFAULT_CACHE_TTL = ONE_HOUR_TTL
-STATS_CACHE_TTL = THIRTY_MINUTES_TTL
 CUSTOM_INT_METADATA_TTL = ONE_HOUR_TTL
 SUBAGENT_CACHE_TTL = ONE_HOUR_TTL
 # Subscription plan tier, cached for hot paths (rate limiting, per-request model
@@ -38,16 +37,6 @@ PLANS_CACHE_KEYS = (ACTIVE_PLANS_CACHE_KEY, ALL_PLANS_CACHE_KEY)
 # doesn't re-ask Dodo about every session. Minting a new session drops the key.
 CHECKOUT_SCAN_MISS_CACHE_PREFIX = "checkout_scan_miss:"
 CHECKOUT_SCAN_MISS_TTL = 60
-# The tracked-todo summary injected into comms context. Deliberately short: the
-# list changes as the agent works, and a stale pin is worse than the lookup it
-# saves. Keyed by user alone, so only the unpinned summary may use it.
-TRACKED_TODOS_SUMMARY_CACHE_KEY = "tracked_todos:summary:{user_id}"
-TRACKED_TODOS_SUMMARY_CACHE_TTL = 60
-# A minted Dodo checkout session, per user and billing cycle. Reused rather than
-# re-minted so a user who asks to upgrade twice — or hits a limit repeatedly —
-# doesn't leave a trail of abandoned sessions in Dodo.
-UPGRADE_LINK_CACHE_PREFIX = "upgrade_link:"
-UPGRADE_LINK_CACHE_TTL = ONE_HOUR_TTL
 OAUTH_STATE_TTL = TEN_MINUTES_TTL
 OAUTH_DISCOVERY_TTL = ONE_DAY_TTL
 MCP_TOOLS_CACHE_TTL = ONE_DAY_TTL
@@ -56,7 +45,6 @@ SKILLS_TEXT_CACHE_TTL = TWELVE_HOUR_TTL
 USER_INSTRUCTIONS_CACHE_TTL = ONE_DAY_TTL
 COMMUNITY_CACHE_TTL = FIVE_MINUTES_TTL
 FAVICON_CACHE_TTL = SIX_MONTH_TTL
-SEARCH_CACHE_TTL = ONE_DAY_TTL
 STREAM_TTL = FIVE_MINUTES_TTL
 # A streaming turn refreshes its progress/resume keys once they drop below this,
 # so the refresh costs one TTL read per frame instead of a read-plus-two-writes.
@@ -66,16 +54,9 @@ MOBILE_REDIRECT_TTL = FIVE_MINUTES_TTL
 
 # Long TTLs with event-driven invalidation — short TTLs are a symptom of
 # missing invalidation, not a safety net.
-INTEGRATION_STATUS_CACHE_TTL = ONE_DAY_TTL
-SUBAGENT_PROMPT_CACHE_TTL = ONE_DAY_TTL
 WEB_SEARCH_CACHE_TTL = TEN_MINUTES_TTL
 WEBPAGE_FETCH_CACHE_TTL = THIRTY_MINUTES_TTL
-WORKFLOW_GENERATION_CACHE_TTL = ONE_DAY_TTL
 
-# Bounded in-process LRU+TTL cache for per-(integration, user) compiled
-# subagent graphs. Caps RSS growth that scales with MAU × MCP integrations.
-SUBAGENT_GRAPH_CACHE_MAX_SIZE = 100
-SUBAGENT_GRAPH_CACHE_TTL_SECONDS = TEN_MINUTES_TTL
 SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS = 60
 
 # Repository layer aliases: entity rows are hot/long-lived; query caches are
@@ -105,7 +86,6 @@ LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
 USER_PRESENCE_PREFIX = "user_presence"
 
 # Cache key prefixes
-TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
 SUBAGENT_CACHE_PREFIX = "subagent_info"
 OAUTH_STATE_PREFIX = "mcp_oauth_state"
@@ -135,9 +115,6 @@ USER_SKILLS_CACHE_KEY = "skills:user:{user_id}:agent:{agent_name}"
 # v2: the listing now merges in-memory builtin skills; bump busts stale empty entries.
 SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
 USER_INSTRUCTIONS_CACHE_KEY = "user_instructions:{user_id}"
-# Conversation-level artifact registry; long TTL with event-driven invalidation
-# on every upsert/remove — a chat turn reads it once instead of re-scanning the costly JuiceFS dir.
-CONV_ARTIFACTS_CACHE_PATTERN = "conv_artifacts:{user_id}:{conv_id}"
 # A user's uploaded-file listings; busted on every file upload/update/delete.
 FILES_CACHE_PATTERN = "files:{user_id}:*"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
@@ -148,11 +125,6 @@ STREAM_EVENTS_PREFIX = "stream:events:"
 STREAM_EVENTS_MAXLEN = 4096
 # Reverse index {user_id}:{conversation_id} -> stream_id for the in-flight chat
 # turn, so a reloaded client can rediscover and re-attach to a live stream.
-STREAM_ACTIVE_PREFIX = "stream:active:"
-# Turn-send dedup: {user_id}:{turn_id} -> stream_id, claimed atomically (SETNX)
-# so a retried POST can't persist the same turn twice.
-STREAM_TURN_DEDUP_PREFIX = "stream:turn:"
-STREAM_TURN_DEDUP_TTL = TEN_MINUTES_TTL
 STATE_KEY_PREFIX = "oauth_state"
 # Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
 CONNECT_LINK_PREFIX = "connect_link"
@@ -196,12 +168,6 @@ HIL_DECLINED_PREFIX = "hil:declined:"
 WORKFLOW_LIMIT_NOTICE_PREFIX = "workflow:limit-notice:"
 WORKFLOW_LIMIT_NOTICE_TTL = ONE_DAY_TTL
 
-# One bot user's personalised Dodo upgrade link; gates the MINT, not the
-# message, so a lapsed user's blocked turns don't each cost a get_plans call
-# and a checkout_sessions insert. An hour, not a day, since a Dodo session is single-use.
-BOT_UPGRADE_LINK_PREFIX = "bot:upgrade-link:"
-BOT_UPGRADE_LINK_TTL = ONE_HOUR_TTL
-
 # Every tool call one run made, in order, keyed by the run's stream id. Outlives
 # the longest run (a parked approval) so the trace and a playbook write read it whole.
 RUN_RECORD_PREFIX = "run_record:"
@@ -210,6 +176,10 @@ RUN_RECORD_TTL = ONE_DAY_TTL * 2
 RUN_BLOCKED_INTEGRATIONS_PREFIX = "run_blocked_integrations:"
 
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
+# A workflow fire's admission to its conversation: taken before the fire spends quota, given back
+# when it ends. Short on purpose: the conversation log keeps the fire's run apart from other work.
+WORKFLOW_FIRE_ADMISSION_PREFIX = "workflow:fire_admission:"
+WORKFLOW_FIRE_ADMISSION_TTL = 120
 # Set when an executor run ends asking the user to confirm; only then may the
 # next call_executor carry irreversible_approved (confirmation_gate.py).
 AWAITING_CONFIRMATION_PREFIX = "executor:awaiting_confirmation:"
@@ -254,10 +224,6 @@ RUNNING_SUBAGENTS_TTL = ONE_HOUR_TTL
 # One live run per subagent checkpoint thread (SET NX, value = subagent_id): two
 # runs on one LangGraph thread corrupt its checkpoint. Held for the run's lifetime.
 RUNNING_SUBAGENT_THREAD_PREFIX = "subagents:thread:"
-# Max time a caller waits for a detached executor to finish before draining
-# whatever tool events were collected. Matches the busy lock TTL — the executor
-# cannot outlive its lock, so waiting longer would be pointless.
-EXECUTOR_WAIT_TIMEOUT = THIRTY_MINUTES_TTL
 #: Shorter than the worker's job timeout on purpose: waiting as long as the job
 #: means the job gets cut first mid-bookkeeping. Seen live: a stopped-mid-run
 #: executor left a record stuck 'running'.
@@ -265,10 +231,6 @@ BACKGROUND_EXECUTOR_WAIT_TIMEOUT = 25 * 60
 # ElevenLabs voice lists (account + shared library) cached for the voice picker.
 ELEVENLABS_VOICES_CACHE_KEY = "voice:elevenlabs_voices"
 ELEVENLABS_SHARED_VOICES_CACHE_KEY = "voice:elevenlabs_shared_voices"
-# Upper bound a voice-mode stream waits for a delegated executor's narrated
-# answer before sending [DONE] anyway. Real action turns resolve in a few
-# seconds; on timeout the answer still reaches the user via the WebSocket push.
-VOICE_EXECUTOR_RESULT_TIMEOUT_S = 90.0
 
 # One-shot gate (SET NX) for the heads-up at PRO_MONTHLY_BUDGET_HEADS_UP_FRACTION of
 # the month, so a pro user is told once per month, not once per request.

@@ -16,7 +16,7 @@ from pydantic import (
 from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.schemas.common import ResponseModel
 
 
@@ -351,8 +351,8 @@ class EventDeleteRequest(BaseModel):
     """Request to delete one event, identified by id and calendar."""
 
     event_id: str = Field(..., title="Event ID to delete")
-    calendar_id: str = Field("primary", title="Calendar ID containing the event")
-    summary: str | None = Field(None, title="Event summary for confirmation")
+    calendar_id: str = Field(default="primary", title="Calendar ID containing the event")
+    summary: str | None = Field(default=None, title="Event summary for confirmation")
 
 
 class BatchEventDeleteRequest(BaseModel):
@@ -525,18 +525,24 @@ class EventUpdateRequest(BaseModel):
     """Request to update one event's fields, identified by id and calendar."""
 
     event_id: str = Field(..., title="Event ID to update")
-    calendar_id: str = Field("primary", title="Calendar ID containing the event")
-    summary: str | None = Field(None, title="Updated event summary")
-    description: str | None = Field(None, title="Updated event description")
-    start: str | None = Field(None, title="Updated start time in ISO 8601 format")
-    end: str | None = Field(None, title="Updated end time in ISO 8601 format")
-    is_all_day: bool | None = Field(None, title="Updated all-day status")
+    calendar_id: str = Field(default="primary", title="Calendar ID containing the event")
+    summary: str | None = Field(default=None, title="Updated event summary")
+    description: str | None = Field(default=None, title="Updated event description")
+    start: str | None = Field(default=None, title="Updated start time in ISO 8601 format")
+    end: str | None = Field(default=None, title="Updated end time in ISO 8601 format")
+    is_all_day: bool | None = Field(default=None, title="Updated all-day status")
     timezone: str | None = Field(
-        None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
+        default=None, title="Timezone for the event (e.g., 'America/Los_Angeles', 'UTC')"
     )
-    timezone_offset: str | None = Field(None, title="Updated timezone offset in (+|-)HH:MM format")
-    original_summary: str | None = Field(None, title="Original event summary for confirmation")
-    recurrence: RecurrenceData | None = Field(None, title="Recurrence rules for recurring event")
+    timezone_offset: str | None = Field(
+        default=None, title="Updated timezone offset in (+|-)HH:MM format"
+    )
+    original_summary: str | None = Field(
+        default=None, title="Original event summary for confirmation"
+    )
+    recurrence: RecurrenceData | None = Field(
+        default=None, title="Recurrence rules for recurring event"
+    )
 
 
 class CalendarPreferencesDocument(MongoDocument):

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.tools import BaseTool
 import pytest
 
-from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.core.subagents.integration_target import CustomMcpSubagent
 from app.agents.tools.core import retrieval
 from app.constants.log_tags import LogTag
 from app.models.mcp_config import MCPConfig

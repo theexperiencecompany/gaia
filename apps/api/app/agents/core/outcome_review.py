@@ -105,31 +105,43 @@ class OutcomeReview:
 
     declared: OutcomeState | None
     problem: str | None
+    #: The run's own word that it found nothing to tell the user; no call can back it.
+    nothing_for_user: bool = False
 
     @property
     def verified(self) -> bool:
         return self.declared is not None and self.problem is None
 
 
+#: A run with no finished thread to read: no outcome, no problem, no declaration.
+NOT_REVIEWED = OutcomeReview(None, None)
+
+
 class _FinishArgs(BaseModel):
     """The arguments of finish_task as the model sent them, valid or not."""
 
     outcome: object = None
+    nothing_for_user: object = None
+
+    @classmethod
+    def of(cls, call: ToolCall) -> _FinishArgs:
+        return cls.model_validate(call["args"])
+
+    @property
+    def declared(self) -> OutcomeState | None:
+        raw = self.outcome
+        return OutcomeState(raw) if isinstance(raw, str) and raw in OutcomeState else None
 
 
-def _finish_outcome(call: ToolCall) -> OutcomeState | None:
-    raw = _FinishArgs.model_validate(call["args"]).outcome
-    return OutcomeState(raw) if isinstance(raw, str) and raw in OutcomeState else None
-
-
-def _declared_outcome(delegation: Sequence[AnyMessage]) -> OutcomeState | None:
+def _finish_args(delegation: Sequence[AnyMessage]) -> _FinishArgs:
+    """Return what the delegation's last finish_task call declared; nothing when it made none."""
     for message in reversed(delegation):
         if not isinstance(message, AIMessage):
             continue
         for call in message.tool_calls:
             if _is_finish_task(call):
-                return _finish_outcome(call)
-    return None
+                return _FinishArgs.of(call)
+    return _FinishArgs()
 
 
 def _is_finish_task(call: ToolCall) -> bool:
@@ -138,26 +150,31 @@ def _is_finish_task(call: ToolCall) -> bool:
 
 def review_outcome(delegation: Sequence[AnyMessage]) -> OutcomeReview:
     """Check the declared outcome against this delegation's successful tool calls."""
-    declared = _declared_outcome(delegation)
+    finish = _finish_args(delegation)
+    return OutcomeReview(
+        finish.declared, _unbacked(finish.declared, delegation), finish.nothing_for_user is True
+    )
+
+
+def _unbacked(declared: OutcomeState | None, delegation: Sequence[AnyMessage]) -> str | None:
+    """Name why this delegation's successful calls do not back the declared outcome, if they do not."""
     asleep = todo_left_asleep(delegation)
     if declared is None or asleep:
-        return OutcomeReview(declared, asleep)
+        return asleep
     calls = _successful_calls(delegation)
     if declared is OutcomeState.DONE and not calls:
-        return OutcomeReview(declared, "done was declared but no work call succeeded")
+        return "done was declared but no work call succeeded"
     if (
         declared is OutcomeState.SCHEDULE
         and not _briefed_with(delegation, TODO_WAKES_AGAIN_TAG)
         and not any(_wakes_later(c) for c in calls)
     ):
-        return OutcomeReview(
-            declared, "schedule was declared but no tracked todo was scheduled to wake GAIA"
-        )
+        return "schedule was declared but no tracked todo was scheduled to wake GAIA"
     if declared is OutcomeState.SUBSCRIBE and not any(
         _effective_call(c)[0] == OUTCOME_SUBSCRIBE_TOOL for c in calls
     ):
-        return OutcomeReview(declared, "subscribe was declared but no trigger watch was set")
-    return OutcomeReview(declared, None)
+        return "subscribe was declared but no trigger watch was set"
+    return None
 
 
 def outcome_unbacked(state: State) -> bool:

@@ -26,7 +26,7 @@ from app.agents.middleware import (
     create_comms_middleware,
     create_executor_middleware,
 )
-from app.agents.middleware.subagent import SubagentMiddleware, bind_spawner
+from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools import memory_tools
 from app.agents.tools.browser_chat_tools import (
     browser_step_done,
@@ -48,10 +48,12 @@ from app.agents.tools.subagent_control_tool import (
     message_subagent,
 )
 from app.agents.tools.todo_tools import create_todo_tools
+from app.agents.tools.weather_tool import get_weather
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.agents import EXECUTOR_SPAWN_EXCLUDED_TOOLS
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.graphs import GraphName
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.agent_config import (
@@ -191,8 +193,6 @@ async def build_executor_graph(
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
         graph = builder.compile(checkpointer=in_memory_checkpointer_instance, store=store)
-        if subagent_mw is not None:
-            bind_spawner(graph, subagent_mw)
         # Surface fallback at WARNING — users silently lose conversation memory
         # when Postgres checkpointer is unavailable.
         if not in_memory_checkpointer:
@@ -209,15 +209,13 @@ async def build_executor_graph(
     else:
         postgres_checkpointer = checkpointer_manager.get_checkpointer()
         graph = builder.compile(checkpointer=postgres_checkpointer, store=store)
-        if subagent_mw is not None:
-            bind_spawner(graph, subagent_mw)
         log.info("graph_compiled_postgres", graph="comms", model=model_name)
         log.set(agent={"model": model_name})
         yield graph
 
 
 @lazy_provider(
-    name="executor_agent",
+    name=GraphName.EXECUTOR,
     required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,
@@ -302,12 +300,13 @@ def comms_tools() -> dict[str, BaseTool]:
         "search_public_workflows": search_public_workflows,
         web_search_tool.name: web_search_tool,
         fetch_webpages.name: fetch_webpages,
+        get_weather.name: get_weather,
         **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
     }
 
 
 @lazy_provider(
-    name="comms_agent",
+    name=GraphName.COMMS,
     required_keys=[],
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,

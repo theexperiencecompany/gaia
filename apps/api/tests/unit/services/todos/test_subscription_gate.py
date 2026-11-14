@@ -81,8 +81,8 @@ def _stored(
             new=AsyncMock(side_effect=count),
         ),
         patch(
-            "app.services.todos.todo_service.approval_ledger_repository.list_live_by_owners",
-            new=AsyncMock(return_value=[]),
+            "app.services.todos.todo_service.pending_approvals_by_owner",
+            new=AsyncMock(return_value={}),
         ),
         patch("app.services.triggers.gate_edits.capture"),
     ):

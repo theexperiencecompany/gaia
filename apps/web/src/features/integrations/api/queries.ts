@@ -6,19 +6,14 @@ import { integrationsApi } from "./integrationsApi";
 import { integrationKeys, toolKeys } from "./queryKeys";
 
 /**
- * The integration and tool reads, keyed once: hooks read them as the user's,
- * and the post-connect settle poll re-reads the same queries as background.
+ * The integration and tool reads, keyed once. A server push
+ * (integration_status_update) invalidates them; nothing re-reads on a timer.
  */
 export const integrationQueries = {
-  snapshot: (origin?: RequestOrigin) =>
+  mine: (origin?: RequestOrigin) =>
     queryOptions({
       queryKey: integrationKeys.me,
-      queryFn: () => integrationsApi.getMyIntegrationsSnapshot(origin),
-    }),
-  statuses: (origin?: RequestOrigin) =>
-    queryOptions({
-      queryKey: integrationKeys.status,
-      queryFn: () => integrationsApi.getIntegrationStatuses(origin),
+      queryFn: () => integrationsApi.getMyIntegrations(origin),
     }),
   tools: (integrationId: string, origin?: RequestOrigin) =>
     queryOptions({

@@ -60,6 +60,7 @@ from app.db.repositories.usage_daily import UsageDailyIncrement
 from app.services.cost_budget import record_model_call_usage
 from app.services.llm_usage_analytics import capture_llm_call
 from app.utils.background_tasks import spawn_background_task
+from app.utils.hot_path import after_first_text
 from shared.py.wide_events import current_workflow_execution_id, log
 
 # Exception types per :func:`classify_error_family`. Curated tuples rather than
@@ -235,6 +236,7 @@ async def _insert_ledger_row(doc: LLMCallDocument) -> None:
     event, so a Mongo blip costs only an analytics row (and its event, since
     PostHog mirrors the ledger). Logged as a warning so a gap is measurable.
     """
+    await after_first_text()
     try:
         stored = await llm_calls_repository.create(doc)
     except Exception as e:

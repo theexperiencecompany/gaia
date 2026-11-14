@@ -1,13 +1,12 @@
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from langchain_core.messages import AnyMessage, HumanMessage
+from langchain_core.messages import AnyMessage
 
 from app.agents.context.assemble import assemble_context
 from app.agents.context.presence_note import presence_note_message
-from app.agents.context.reaction_note import reaction_note_message
 from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
 from app.helpers.message_helpers import (
@@ -19,16 +18,13 @@ from app.helpers.message_helpers import (
     format_tool_selection_message,
     format_workflow_execution_message,
 )
-from app.models.message_models import (
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
+from app.models.message_models import SelectedCalendarEventData, SelectedWorkflowData
 from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser
 from app.services.files import FileService
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.context import current_analytics_context
+from shared.py.conversation_wire import ReplyToMessageData
 
 
 @dataclass(frozen=True)
@@ -66,19 +62,23 @@ class MessageAttachments:
     trigger_context: Mapping[str, object] | None = None
 
 
-async def construct_langchain_messages(
-    query: str,
-    scope: MessageScope | None = None,
-    attachments: MessageAttachments | None = None,
-) -> list[AnyMessage]:
-    """Construct LangChain messages for agent interaction.
+@dataclass(frozen=True)
+class TurnContext:
+    """The messages around a comms turn's inputs: system prompt and context slots ahead, the clock after."""
 
-    Builds a conversation from system prompt + optional memory + human
-    message. query is the user's turn: the human message and the memory
-    recall query. The checkpointer owns history, so only this turn is built.
+    #: The system prompt and the assembled context slots.
+    chain: list[AnyMessage]
+    #: Where the user is, inline just ahead of the turn it describes; None when nothing is due.
+    presence: AnyMessage | None
+    #: The current time, after the turn's inputs.
+    clock: AnyMessage
+
+
+async def build_turn_context(query: str, scope: MessageScope) -> TurnContext:
+    """Build the system prompt, context slots, presence note and clock of a comms turn on query.
+
+    query is the user's turn: the memory recall query of the context slots.
     """
-    scope = scope or MessageScope()
-    attachments = attachments or MessageAttachments()
     user_id, user_name, user_dict = scope.user_id, scope.user_name, scope.user_dict
     conversation_id, source = scope.conversation_id, scope.source
 
@@ -96,8 +96,6 @@ async def construct_langchain_messages(
     user_preferences, writing_style = onboarding_preferences(
         user_dict.onboarding if user_dict else None
     )
-
-    user_content = query.strip()
 
     assembled, note = await asyncio.gather(
         assemble_context(
@@ -129,20 +127,17 @@ async def construct_langchain_messages(
 
     # The recall block and the clock are written into the thread with this turn and
     # stay where they are, so the next turn's request begins with this one.
-    time_msg = build_current_time_message(user_timezone=user_timezone)
-    chain_msgs: list[AnyMessage] = [system_msg, assembled.stable]
+    chain: list[AnyMessage] = [system_msg, assembled.stable]
     if assembled.volatile is not None:
-        chain_msgs.append(assembled.volatile)
-
-    human_msg = HumanMessage(content=await _human_content(scope, attachments, user_content))
-    # Read after the gather, never awaited: a reaction still deciding costs this turn nothing.
-    reacted = reaction_note_message(scope.instant_reaction)
-    # The notes sit inline just ahead of the turn they describe, and stay in the thread.
-    turn_msgs = [*(m for m in (note, reacted) if m is not None), human_msg]
-    return [*chain_msgs, *turn_msgs, time_msg]
+        chain.append(assembled.volatile)
+    return TurnContext(
+        chain=chain,
+        presence=note,
+        clock=build_current_time_message(user_timezone=user_timezone),
+    )
 
 
-async def _human_content(
+async def human_content(
     scope: MessageScope, attachments: MessageAttachments, user_content: str
 ) -> str:
     """Return the user's turn as the model reads it, reframed by what the turn carries."""
@@ -161,7 +156,9 @@ async def _human_content(
         if selected_tool
         else user_content
     )
-    files_block = await _uploaded_files_block(scope, attachments)
+    files_block = await _uploaded_files_block(
+        attachments.currently_uploaded_file_ids, scope.user_id, scope.conversation_id
+    )
 
     # Files alone are a whole turn: the user is handing them over to talk about.
     if not content and not files_block:
@@ -174,15 +171,17 @@ async def _human_content(
     return "\n\n".join(part for part in (content, files_block) if part)
 
 
-async def _uploaded_files_block(scope: MessageScope, attachments: MessageAttachments) -> str:
-    """Describe the files this turn uploaded, or an empty string when it uploaded none.
+async def _uploaded_files_block(
+    file_ids: Sequence[str] | None, user_id: str | None, conversation_id: str | None
+) -> str:
+    """Describe the files a user turn uploaded, or an empty string when it uploaded none.
 
     Mongo is the only source: filename, summary and the workspace path are read
     from the stored document, so an agent is never told a file is missing when
     it is on disk (or present when it is not).
     """
-    file_ids = attachments.currently_uploaded_file_ids
-    if not file_ids or not scope.user_id:
+    if not file_ids or not user_id:
         return ""
-    files = await FileService.get_uploads(file_ids, scope.user_id, scope.conversation_id)
-    return format_files_list(files, file_ids, scope.conversation_id, include_processing_guide=False)
+    ids = list(file_ids)
+    files = await FileService.get_uploads(ids, user_id, conversation_id)
+    return format_files_list(files, ids, conversation_id, include_processing_guide=False)

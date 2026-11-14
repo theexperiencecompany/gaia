@@ -4,7 +4,6 @@ import re
 
 import pytest
 
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.utils.message_breaks import (
     _OPEN,
     _SENTINEL_WORD_SEQUENCES,
@@ -16,6 +15,7 @@ from app.utils.message_breaks import (
     split_message_bubbles,
     strip_partial_message_break,
 )
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 BR = NEW_MESSAGE_BREAKER
 
@@ -91,6 +91,56 @@ class TestSplitMessageBubbles:
 
     def test_text_without_sentinel_is_one_bubble(self) -> None:
         assert split_message_bubbles("just one thing") == ["just one thing"]
+
+    def test_a_break_inside_a_code_block_is_a_newline(self) -> None:
+        text = (
+            "see<NEW_MESSAGE_BREAK>```py\na = 1<NEW_MESSAGE_BREAK>b = 2\n```<NEW_MESSAGE_BREAK>done"
+        )
+        assert split_message_bubbles(text) == ["see", "```py\na = 1\nb = 2\n```", "done"]
+
+    def test_a_break_inside_an_unclosed_code_block_never_splits(self) -> None:
+        assert split_message_bubbles("```\na<NEW_MESSAGE_BREAK>b") == ["```\na\nb"]
+
+    def test_a_break_inside_an_openui_block_is_a_newline(self) -> None:
+        text = ":::openui\nCard(a)<NEW_MESSAGE_BREAK>Card(b)\n:::<NEW_MESSAGE_BREAK>after"
+        assert split_message_bubbles(text) == [":::openui\nCard(a)\nCard(b)\n:::", "after"]
+
+    def test_a_nested_openui_block_keeps_its_outer_block_whole(self) -> None:
+        text = ":::openui\nA\n:::openui\nB<NEW_MESSAGE_BREAK>C\n:::<NEW_MESSAGE_BREAK>after"
+        assert split_message_bubbles(text) == [":::openui\nA\n:::openui\nB\nC\n:::", "after"]
+
+    def test_every_code_block_keeps_its_breaks_and_the_text_between_still_splits(self) -> None:
+        text = (
+            "```a<NEW_MESSAGE_BREAK>b```<NEW_MESSAGE_BREAK>mid<NEW_MESSAGE_BREAK>"
+            "```c<NEW_MESSAGE_BREAK>d```<NEW_MESSAGE_BREAK>end"
+        )
+        assert split_message_bubbles(text) == ["```a\nb```", "mid", "```c\nd```", "end"]
+
+    def test_every_openui_block_keeps_its_breaks_and_the_text_between_still_splits(self) -> None:
+        text = (
+            ":::openui\nA<NEW_MESSAGE_BREAK>B\n:::<NEW_MESSAGE_BREAK>mid<NEW_MESSAGE_BREAK>"
+            ":::openui\nC<NEW_MESSAGE_BREAK>D\n:::<NEW_MESSAGE_BREAK>end"
+        )
+        assert split_message_bubbles(text) == [
+            ":::openui\nA\nB\n:::",
+            "mid",
+            ":::openui\nC\nD\n:::",
+            "end",
+        ]
+
+    def test_a_break_inside_an_unclosed_openui_block_never_splits(self) -> None:
+        assert split_message_bubbles(":::openui\nA<NEW_MESSAGE_BREAK>B") == [":::openui\nA\nB"]
+
+    def test_a_third_openui_block_is_found_after_the_second(self) -> None:
+        text = (
+            ":::openui\nA\n:::<NEW_MESSAGE_BREAK>:::openui\nB<NEW_MESSAGE_BREAK>C\n:::"
+            "<NEW_MESSAGE_BREAK>:::openui\nD\n:::"
+        )
+        assert split_message_bubbles(text) == [
+            ":::openui\nA\n:::",
+            ":::openui\nB\nC\n:::",
+            ":::openui\nD\n:::",
+        ]
 
 
 class TestPrefixBuilders:

@@ -1,0 +1,29 @@
+# Three Telegram messages in a burst while background work runs. Each message is
+# posted the moment it arrives and nothing waits behind the work: the server's
+# step answers the burst with one reply while the executor keeps going, and the
+# work's result arrives on the same events stream as a native reply to the
+# message that asked for it.
+#
+# The burst is one reply because "two" and "three" arrive while the reply to "one"
+# is still uncommitted (the [[wait]] stands in for a real model's latency), so the
+# step restarts it with all three. With an instant model, "one" would be answered
+# before "two" arrived, and the plan answers what arrives after a reply settled with
+# the next reply, never by merging it into one already shown.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/burst-during-work.yaml
+name: burst during background work
+emulate: telegram
+user: scenario-harness@gaia.local
+turns:
+  - burst:
+      - send: 'stock up [[tool:call_executor {"acceptance_criteria":["both todos created"],"desired_outcome":"a stocked pantry","time_horizon":"one_shot","task":"stock up [[tool:create_todo {\"title\":\"sc-1\"}]] [[wait:15000]] [[tool:create_todo {\"title\":\"sc-2\"}]] [[say:Pantry stocked.]]"}]] [[say:On it.]]'
+      - send: "one [[wait:2000]]"
+        afterMs: 3000
+      - send: "two"
+        afterMs: 300
+      - send: "three [[say:Got all three.]]"
+        afterMs: 300
+    settleMs: 45000
+    expect:
+      - bubbles: ["On it.", "Got all three.", "Pantry stocked."]

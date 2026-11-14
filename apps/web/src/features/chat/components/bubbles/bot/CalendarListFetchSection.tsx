@@ -4,11 +4,7 @@ interface CalendarListFetchSectionProps {
   calendars: CalendarListFetchData[];
 }
 
-/**
- * Read-only render of a legacy calendar-list fetch restored from history.
- * The interactive draft/add flows moved to HIL approvals; this only replays
- * what an older conversation already showed, so it carries no select action.
- */
+/** The calendars the agent listed, read-only. */
 export function CalendarListFetchSection({
   calendars,
 }: CalendarListFetchSectionProps) {

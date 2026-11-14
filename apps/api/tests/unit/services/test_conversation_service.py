@@ -21,14 +21,12 @@ from app.models.chat_models import (
     ConversationModel,
     ConversationSource,
     ConversationSyncItem,
-    MessageModel,
     SystemPurpose,
-    UpdateMessagesRequest,
 )
 from app.models.conversation_models import (
-    ConversationDocument,
     ConversationMessageHit,
     ConversationSummary,
+    StoredConversation,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services import conversation_service
@@ -49,9 +47,8 @@ from app.services.conversation_service import (
     require_owned_conversation,
     star_conversation,
     update_conversation_description,
-    update_messages,
 )
-from app.utils.errors import AppError
+from app.utils.errors import AppError, ConversationIdTakenError, ConversationStoreError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import (
     ChatConversationCreated,
@@ -61,6 +58,7 @@ from shared.py.analytics.catalog.chat import (
     ChatMessagePinned,
     ChatMessageUnpinned,
 )
+from tests.factories import make_reply_item
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -92,14 +90,15 @@ def _no_analytics():
         yield
 
 
-def _document(**overrides) -> ConversationDocument:
+def _document(**overrides) -> StoredConversation:
     data = {
         "user_id": USER_ID,
         "conversation_id": "conv_abc",
         "createdAt": "2026-01-01T00:00:00+00:00",
+        "state": {"head": 0, "display": "idle", "work": []},
     }
     data.update(overrides)
-    return ConversationDocument.model_validate(data)
+    return StoredConversation.model_validate(data)
 
 
 class TestCreateConversationService:
@@ -125,11 +124,11 @@ class TestCreateConversationService:
             )
         assert exc_info.value.status_code == 403
 
-    async def test_raises_500_on_repository_error(self, mock_repo, test_user):
-        mock_repo.create.side_effect = Exception("DB connection failed")
-        with pytest.raises(HTTPException) as exc_info:
+    async def test_an_id_another_user_holds_is_refused_as_a_conflict(self, mock_repo, test_user):
+        mock_repo.create.side_effect = ConversationIdTakenError(message="taken")
+        with pytest.raises(ConversationIdTakenError) as exc_info:
             await create_conversation_service(ConversationModel(conversation_id="c"), test_user)
-        assert exc_info.value.status_code == 500
+        assert exc_info.value.status_code == 409
 
     async def test_captures_conversation_created(self, mock_repo, test_user):
         mock_repo.create.return_value = _document()
@@ -144,9 +143,9 @@ class TestCreateConversationService:
         )
 
     async def test_no_capture_on_repository_error(self, mock_repo, test_user):
-        mock_repo.create.side_effect = Exception("DB connection failed")
+        mock_repo.create.side_effect = ConversationStoreError(message="DB connection failed")
         with (
-            pytest.raises(HTTPException),
+            pytest.raises(ConversationStoreError),
             patch("app.services.conversation_service.capture") as mock_capture,
         ):
             await create_conversation_service(ConversationModel(conversation_id="c"), test_user)
@@ -337,94 +336,53 @@ class TestListConversations:
         assert mock_repo.count_active.call_args[0][0] == "user_1"
 
 
-class TestUpdateMessages:
-    async def test_appends_and_returns_ids(self, mock_repo, test_user):
-        mock_repo.append_messages.return_value = {"m1": 4}
-        request = UpdateMessagesRequest(
-            conversation_id="conv_abc", messages=[MessageModel(type="user", response="Hi")]
-        )
-        result = await update_messages(request, test_user)
-        assert (result.message_ids, result.message_seqs) == (["m1"], [4])
-        assert result.conversation_id == "conv_abc"
-        assert mock_repo.append_messages.call_args.kwargs["user_id"] == USER_ID
-
-    async def test_raises_404_when_conversation_missing(self, mock_repo, test_user):
-        mock_repo.append_messages.return_value = None
-        request = UpdateMessagesRequest(
-            conversation_id="missing", messages=[MessageModel(type="user", response="Hi")]
-        )
-        with pytest.raises(HTTPException) as exc_info:
-            await update_messages(request, test_user)
-        assert exc_info.value.status_code == 404
+@pytest.fixture
+def mock_log_repo():
+    """Patch the log repository a pin amends through."""
+    repo = AsyncMock()
+    with patch.object(conversation_service, "conversation_log_repository", repo):
+        yield repo
 
 
 class TestPinMessage:
-    async def test_pins_message(self, mock_repo, test_user):
+    @pytest.mark.parametrize(
+        ("pinned", "event"), [(True, ChatMessagePinned()), (False, ChatMessageUnpinned())]
+    )
+    async def test_a_pin_amends_the_logged_message_and_is_captured(
+        self, mock_repo, mock_log_repo, test_user, pinned, event
+    ):
         mock_repo.exists.return_value = True
-        mock_repo.get_message.return_value = MessageModel(
-            type="bot", response="Hello", message_id="msg_1"
-        )
-        mock_repo.set_message_pinned.return_value = True
-        result = await pin_message("conv_abc", "msg_1", True, test_user)
-        assert result.pinned is True
-        assert "pinned successfully" in result.message
+        mock_log_repo.set_pinned.return_value = True
+        with patch("app.services.conversation_service.capture") as mock_capture:
+            result = await pin_message("conv_abc", "msg_1", pinned, test_user)
+        assert result.pinned is pinned
         mock_repo.exists.assert_awaited_once_with("conv_abc", user_id=USER_ID)
-        mock_repo.get_message.assert_awaited_once_with("conv_abc", "msg_1", user_id=USER_ID)
-        mock_repo.set_message_pinned.assert_awaited_once_with(
-            "conv_abc", user_id=USER_ID, message_id="msg_1", pinned=True
+        mock_log_repo.set_pinned.assert_awaited_once_with(
+            "conv_abc", user_id=USER_ID, message_id="msg_1", pinned=pinned
         )
+        mock_capture.assert_called_once_with(UserId(USER_ID), event)
 
-    async def test_pin_captures_pinned_with_user_id(self, mock_repo, test_user):
-        mock_repo.exists.return_value = True
-        mock_repo.get_message.return_value = MessageModel(
-            type="bot", response="Hello", message_id="msg_1"
-        )
-        mock_repo.set_message_pinned.return_value = True
-        with patch(
-            "app.services.conversation_service.capture",
-        ) as mock_capture:
-            await pin_message("conv_abc", "msg_1", True, test_user)
-        mock_capture.assert_called_once_with(UserId(USER_ID), ChatMessagePinned())
-
-    async def test_unpin_captures_unpinned_with_user_id(self, mock_repo, test_user):
-        mock_repo.exists.return_value = True
-        mock_repo.get_message.return_value = MessageModel(
-            type="bot", response="Hello", message_id="msg_1"
-        )
-        mock_repo.set_message_pinned.return_value = True
-        with patch(
-            "app.services.conversation_service.capture",
-        ) as mock_capture:
-            await pin_message("conv_abc", "msg_1", False, test_user)
-        mock_capture.assert_called_once_with(UserId(USER_ID), ChatMessageUnpinned())
-
-    async def test_raises_404_conversation_not_found(self, mock_repo, test_user):
+    async def test_raises_404_conversation_not_found(self, mock_repo, mock_log_repo, test_user):
         mock_repo.exists.return_value = False
         with pytest.raises(HTTPException) as exc_info:
             await pin_message("conv_abc", "msg_1", True, test_user)
         assert exc_info.value.status_code == 404
+        mock_log_repo.set_pinned.assert_not_awaited()
 
-    async def test_raises_404_message_not_found(self, mock_repo, test_user):
+    async def test_raises_404_message_not_found(self, mock_repo, mock_log_repo, test_user):
         mock_repo.exists.return_value = True
-        mock_repo.get_message.return_value = None
-        with pytest.raises(HTTPException) as exc_info:
-            await pin_message("conv_abc", "missing", True, test_user)
+        mock_log_repo.set_pinned.return_value = False
+        with patch("app.services.conversation_service.capture") as mock_capture:
+            with pytest.raises(HTTPException) as exc_info:
+                await pin_message("conv_abc", "missing", True, test_user)
         assert exc_info.value.status_code == 404
+        mock_capture.assert_not_called()
 
 
 class TestGetStarredMessages:
     async def test_returns_pinned(self, mock_repo, test_user):
         mock_repo.list_pinned_messages.return_value = [
-            ConversationMessageHit(
-                conversation_id="conv_1",
-                message={
-                    "type": "bot",
-                    "response": "test",
-                    "message_id": "m1",
-                    "pinned": True,
-                    "seq": 1,
-                },
-            )
+            ConversationMessageHit(conversation_id="conv_1", item=make_reply_item("test"))
         ]
         result = await get_starred_messages(test_user)
         assert len(result.results) == 1
@@ -480,94 +438,53 @@ class TestBatchSyncConversations:
         assert result.conversations == []
         mock_repo.find_updated_since.assert_not_called()
 
-    async def test_reports_active_stream_of_an_up_to_date_conversation(self, mock_repo, test_user):
-        """A reloading client holding current history is sent no row, yet must still learn its turn is live."""
-        mock_repo.find_updated_since.return_value = []
-        mock_repo.owned_ids.return_value = {"conv_abc"}
-        resumable = AsyncMock(return_value="stream-1")
-        with patch.object(
-            conversation_service.stream_manager, "get_resumable_stream_id", new=resumable
-        ):
-            request = BatchSyncRequest(
-                conversations=[
-                    ConversationSyncItem(
-                        conversation_id="conv_abc", last_updated="2026-01-01T00:00:00+00:00"
-                    )
-                ]
-            )
-            result = await batch_sync_conversations(request, test_user)
-
-        assert result.conversations == []
-        assert result.active_streams == {"conv_abc": "stream-1"}
-        resumable.assert_awaited_once_with(USER_ID, "conv_abc")
-
-    async def test_returns_rows_and_active_streams(self, mock_repo, test_user):
+    async def test_returns_the_rows_without_internal_ids(self, mock_repo, test_user):
         mock_repo.find_updated_since.return_value = [_document(description="Updated Chat")]
         mock_repo.owned_ids.return_value = {"conv_abc"}
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value="stream-1"),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
         assert len(result.conversations) == 1
         row = result.conversations[0]
         assert row.conversation_id == "conv_abc"
-        assert result.active_streams == {"conv_abc": "stream-1"}
         # The internal user_id/_id must not leak into a serialized sync row.
         serialized = row.model_dump()
         assert "user_id" not in serialized and "_id" not in serialized
 
     async def test_flagged_row_reaches_the_client(self, mock_repo, test_user):
         """The sidebar dot reads batch-sync rows: a dropped flag here is a missing dot no frontend mapping can recover."""
-        mock_repo.find_updated_since = AsyncMock(return_value=[_document(has_live_approval=True)])
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value=None),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        mock_repo.find_updated_since = AsyncMock(return_value=[_document(awaiting_approval=True)])
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
         (row,) = result.conversations
-        assert row.has_live_approval is True
+        assert row.awaiting_approval is True
 
     async def test_unflagged_row_reads_unset(self, mock_repo, test_user):
         mock_repo.find_updated_since = AsyncMock(return_value=[_document()])
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value=None),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
-        assert result.conversations[0].has_live_approval in (None, False)
+        assert result.conversations[0].awaiting_approval is False
 
-    async def test_a_todos_chat_tells_the_client_which_todo_it_belongs_to(
-        self, mock_repo, test_user
+    @pytest.mark.parametrize(
+        ("overrides", "listed"),
+        [
+            ({}, True),
+            ({"source": "web"}, True),
+            ({"todo_id": "todo-1"}, False),
+            ({"source": "telegram"}, False),
+        ],
+    )
+    async def test_a_row_says_whether_the_conversation_list_shows_it(
+        self, mock_repo, test_user, overrides: dict[str, str], listed: bool
     ):
-        """A client that opened a todo's chat keeps it in its own store; this is how it keeps it out of the list."""
-        mock_repo.find_updated_since = AsyncMock(return_value=[_document(todo_id="todo-1")])
-        with patch.object(
-            conversation_service.stream_manager,
-            "get_resumable_stream_id",
-            new=AsyncMock(return_value=None),
-        ):
-            request = BatchSyncRequest(
-                conversations=[ConversationSyncItem(conversation_id="conv_abc")]
-            )
-            result = await batch_sync_conversations(request, test_user)
+        """A client keeps an unlisted chat cached instead of reading its absence from the list as a delete."""
+        mock_repo.find_updated_since = AsyncMock(return_value=[_document(**overrides)])
+        request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
+        result = await batch_sync_conversations(request, test_user)
 
-        assert result.conversations[0].todo_id == "todo-1"
+        assert result.conversations[0].listed is listed
 
     async def test_an_asked_for_chat_the_user_no_longer_owns_comes_back_missing(
         self, mock_repo, test_user

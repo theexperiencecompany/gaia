@@ -25,13 +25,15 @@ import uuid
 
 from pymongo.errors import DuplicateKeyError
 import pytest
+from redis.exceptions import RedisError
 
 from app.agents.core.integration_capabilities import (
     get_user_integration_capabilities,
 )
 from app.config.settings import settings
 from app.constants.cache import MCP_TOOLS_CACHE_KEY
-from app.constants.integrations import MAX_ACCOUNTS_PER_INTEGRATION
+from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT, MAX_ACCOUNTS_PER_INTEGRATION
+from app.core.websocket_manager import websocket_manager
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
@@ -653,7 +655,7 @@ class TestUpdateUserIntegrationStatus:
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
     async def test_update_status_connected_success(self, mock_repo, mock_sched, mock_ws):
         mock_repo.set_status = AsyncMock(return_value=True)
-        mock_ws.broadcast_to_user = AsyncMock()
+        mock_ws.announce = AsyncMock()
 
         result = await _uncached(update_user_integration_status)(
             USER_ID, INTEGRATION_ID, "connected"
@@ -669,42 +671,42 @@ class TestUpdateUserIntegrationStatus:
         mock_sched.assert_called_once_with(USER_ID)
         # The connected transition pushes a live status update so an open card
         # flips without a reload (this is what makes the inline chat card live).
-        mock_ws.broadcast_to_user.assert_awaited_once_with(
-            user_id=USER_ID,
-            message={
-                "type": "integration_status_update",
-                "data": {"integration_id": INTEGRATION_ID, "status": "connected"},
-            },
+        mock_ws.announce.assert_awaited_once_with(
+            USER_ID,
+            {"type": "integration_status_update", "data": {"integration_id": INTEGRATION_ID}},
         )
 
-    @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
-    async def test_connected_broadcast_failure_is_non_fatal(self, mock_repo, mock_sched, mock_ws):
+    async def test_connected_broadcast_failure_is_non_fatal(self, mock_repo, mock_sched):
         # Best-effort: status is already persisted, client recovers on next catalog
         # read, so a broadcast failure (Redis down) mustn't fail the connection —
         # but it must still show in the wide event; silent swallowing is the risk.
         mock_repo.set_status = AsyncMock(return_value=True)
-        mock_ws.broadcast_to_user = AsyncMock(side_effect=RuntimeError("redis down"))
 
-        async with captured_wide_event() as event:
-            result = await _uncached(update_user_integration_status)(
-                USER_ID, INTEGRATION_ID, "connected"
-            )
+        with patch.object(
+            websocket_manager, "broadcast_to_user", AsyncMock(side_effect=RedisError("redis down"))
+        ):
+            async with captured_wide_event() as event:
+                result = await _uncached(update_user_integration_status)(
+                    USER_ID, INTEGRATION_ID, "connected"
+                )
 
         assert result is True
         (warning,) = event["warnings"]
-        assert "Failed to broadcast connected status" in warning["msg"]
-        assert warning["integration_id"] == INTEGRATION_ID
+        assert "Failed to announce a change" in warning["msg"]
+        assert warning["announced"] == "integration_status_update"
         assert warning["error"] == "redis down"
-        assert warning["error_type"] == "RuntimeError"
+        assert warning["error_type"] == "RedisError"
 
     @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
-    async def test_update_status_created_does_not_schedule(self, mock_repo, mock_sched, mock_ws):
+    async def test_update_status_created_tells_open_pages_without_scheduling(
+        self, mock_repo, mock_sched, mock_ws
+    ):
         mock_repo.set_status = AsyncMock(return_value=True)
-        mock_ws.broadcast_to_user = AsyncMock()
+        mock_ws.announce = AsyncMock()
 
         result = await _uncached(update_user_integration_status)(USER_ID, INTEGRATION_ID, "created")
 
@@ -716,15 +718,22 @@ class TestUpdateUserIntegrationStatus:
             expired_reason=None,
         )
         mock_sched.assert_not_called()
-        # Only the connected transition broadcasts; created must not.
-        mock_ws.broadcast_to_user.assert_not_awaited()
+        # A failed connect falls back to created: a page waiting on its tools must hear it.
+        mock_ws.announce.assert_awaited_once_with(
+            USER_ID,
+            {"type": "integration_status_update", "data": {"integration_id": INTEGRATION_ID}},
+        )
 
+    @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
     @patch("app.services.integrations.user_integration_status.user_integration_repository")
-    async def test_update_status_expired_passes_the_reason_through(self, mock_repo, mock_sched):
+    async def test_update_status_expired_passes_the_reason_through(
+        self, mock_repo: MagicMock, mock_sched: MagicMock, mock_ws: MagicMock
+    ) -> None:
         # The expiry transition owns the VFS resync itself, so this chokepoint
         # must keep scheduling it only on connect.
         mock_repo.set_status = AsyncMock(return_value=True)
+        mock_ws.announce = AsyncMock()
 
         result = await _uncached(update_user_integration_status)(
             USER_ID, INTEGRATION_ID, "expired", expired_reason="refresh_token_revoked"
@@ -738,6 +747,10 @@ class TestUpdateUserIntegrationStatus:
             expired_reason="refresh_token_revoked",
         )
         mock_sched.assert_not_called()
+        mock_ws.announce.assert_awaited_once_with(
+            USER_ID,
+            {"type": INTEGRATION_STATUS_UPDATE_EVENT, "data": {"integration_id": INTEGRATION_ID}},
+        )
 
     @patch("app.services.integrations.user_integration_status.websocket_manager")
     @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
@@ -746,7 +759,7 @@ class TestUpdateUserIntegrationStatus:
         self, mock_repo: MagicMock, mock_sched: MagicMock, mock_ws: MagicMock
     ) -> None:
         mock_repo.set_status = AsyncMock(return_value=False)
-        mock_ws.broadcast_to_user = AsyncMock()
+        mock_ws.announce = AsyncMock()
 
         result = await _uncached(update_user_integration_status)(
             USER_ID, INTEGRATION_ID, "connected"
@@ -754,7 +767,7 @@ class TestUpdateUserIntegrationStatus:
 
         assert result is False
         mock_sched.assert_not_called()
-        mock_ws.broadcast_to_user.assert_not_awaited()
+        mock_ws.announce.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

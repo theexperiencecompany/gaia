@@ -1,7 +1,7 @@
 """Resolve pending HIL approvals from a bot user's next chat reply.
 
-BUTTON-LESS CHANNELS ONLY: the caller (_resolve_pending_approval_turn in
-app/services/chat/stream.py) invokes this for messaging-platform bots alone;
+BUTTON-LESS CHANNELS ONLY: the conversation step's approval replies
+(HilApprovalReplies) invoke this for messaging-platform bots alone;
 web/mobile/desktop resolve via POST /approvals/{id}/decision instead.
 
 A reply approves (runs EXACTLY as proposed), denies (any change is a deny with
@@ -12,64 +12,63 @@ user's flag is on, the LLM on its transport failure. Fails safe: a classifier
 error leaves approvals pending, never approves.
 """
 
+from collections.abc import Sequence
 import contextlib
-from typing import Literal, assert_never
+from typing import assert_never
 
-from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, silent_metered_config
 from app.constants.hil import (
-    HIL_CLASSIFIER_MAX_ARG_CHARS,
-    HIL_CLASSIFIER_MAX_DETAIL_CHARS,
-    HIL_LLM_TIMEOUT_SECONDS,
+    HIL_CLASSIFIER_HISTORY_TURNS,
     UNRELATED_FEEDBACK,
+    ApprovalDecision,
     ReplyChoice,
 )
 from app.constants.log_tags import LogTag
-from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.hil_models import (
     ApprovalLedgerDocument,
     BatchDecisionResult,
     BatchItemDecision,
     DecisionAction,
     DecisionResult,
-    HILApprovalRecord,
-    LedgerState,
 )
 from app.models.message_models import MessageDict
-from app.services.feature_flags import is_jev_reply_enabled
-from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.hil.bridge import build_action_detail
-from app.services.hil.jev_reply import ask_jev_reply, settle_reply
-from app.services.hil.ledger_decide import LedgerDecision, decide_ledger
-from app.services.hil.prompts import (
-    CONVERSATIONAL_BATCH_PROMPT,
-    CONVERSATIONAL_CONTEXT_BLOCK,
-    CONVERSATIONAL_REPLY_PROMPT,
-)
-from app.services.hil.resolution import (
+from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
-    abandon_conversation_approvals,
-    resolve_approval,
 )
-from app.utils.general_utils import clip_text
+from app.services.hil.jev_reply import ask_jev_reply, settle_reply
+from app.services.hil.ledger_decide import LedgerDecision, decide_ledger
+from app.services.hil.pending import pending_approvals
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log
 
-# Ground truth for a settled ledger row in the bot reply's words. Lives here, not
-# result_delivery (which only knows barrier statuses), so the bot path can narrate
-# executed/failed/unknown/revoked without depending on that module.
-LEDGER_OUTCOME_TEXT: dict[LedgerState, str] = {
-    LedgerState.APPROVED: "approved by the user; the agent runs it from the ticket",
-    LedgerState.DENIED: "denied by the user; the action did NOT run",
-    LedgerState.EXECUTED: "approved by the user and executed",
-    LedgerState.FAILED: "approved by the user but execution failed",
-    LedgerState.UNKNOWN: "approved by the user but the outcome is unknown; never retried",
-    LedgerState.REVOKED: "withdrawn by the agent; the action did NOT run",
+# Ground truth for a settled ledger row in the bot reply's words: the action's
+# result when one ran, else how the approval ended.
+LEDGER_OUTCOME_TEXT: dict[ApprovalOutcome, str] = {
+    ApprovalOutcome.APPROVED: "approved by the user; the agent runs it from the ticket",
+    ApprovalOutcome.DENIED: "denied by the user; the action did NOT run",
+    ApprovalOutcome.EXPIRED: "expired unanswered; the action did NOT run",
+    ApprovalOutcome.CANCELLED: "cancelled when the user stopped the work; the action did NOT run",
+    ApprovalOutcome.WITHDRAWN: "withdrawn by the agent; the action did NOT run",
+}
+LEDGER_ACTION_TEXT: dict[ActionResult, str] = {
+    ActionResult.EXECUTING: "approved by the user and running now",
+    ActionResult.EXECUTED: "approved by the user and executed",
+    ActionResult.FAILED: "approved by the user but execution failed",
+    ActionResult.UNKNOWN: "approved by the user but the outcome is unknown; never retried",
 }
 
 
-def ledger_outcome_text(state: LedgerState) -> str:
-    """One line of ground truth for a settled ledger row."""
-    return LEDGER_OUTCOME_TEXT.get(state, state.value)
+def ledger_outcome_text(outcome: ApprovalOutcome | None, action: ActionResult | None) -> str:
+    """One line of ground truth for a ledger row."""
+    if action is not None:
+        return LEDGER_ACTION_TEXT[action]
+    return "still pending" if outcome is None else LEDGER_OUTCOME_TEXT[outcome]
+
+
+def classifier_history(prior: Sequence[MessageDict]) -> list[MessageDict]:
+    """Keep the turns before a reply the approval classifier reads it against."""
+    return list(prior[-HIL_CLASSIFIER_HISTORY_TURNS:])
 
 
 async def resolve_pending_from_message(
@@ -85,53 +84,39 @@ async def resolve_pending_from_message(
     "deny" when things were only declined, "unrelated" when the user moved on),
     or None when nothing was pending or the reply addressed none of it.
     """
-    pending = await list_pending_for_conversation(conversation_id)
-    if pending:
-        if len(pending) == 1:
-            return await _resolve_single(pending[0], conversation_id, user_id, message, history)
-        return await _resolve_batch(pending, conversation_id, user_id, message, history)
-    # Barrier store empty: ledger-enabled users' rows live in approval_ledger.
-    ledger_pending = await _list_pending_ledger(conversation_id)
-    if not ledger_pending:
+    pending = await pending_approvals(conversation_id, user_id)
+    if not pending:
         return None
-    if len(ledger_pending) == 1:
-        return await _resolve_single(ledger_pending[0], conversation_id, user_id, message, history)
-    return await _resolve_batch(ledger_pending, conversation_id, user_id, message, history)
+    if len(pending) == 1:
+        return await _resolve_single(pending[0], conversation_id, user_id, message, history)
+    return await _resolve_batch(pending, conversation_id, user_id, message, history)
 
 
 async def _resolve_single(
-    record: HILApprovalRecord | ApprovalLedgerDocument,
+    record: ApprovalLedgerDocument,
     conversation_id: str,
     user_id: str,
     message: str,
     history: list[MessageDict] | None,
 ) -> DecisionAction | None:
     action_detail = build_action_detail(record.summary, record.args)
-    result = await interpret_decision_message(message, action_detail, history, user_id=user_id)
+    result = await interpret_decision_message(message, action_detail, history)
     if result is None:
         # The classifier errored. Leave the approval pending rather than abandon it —
         # a transient hiccup must not silently decline a legitimate pending action
         # (matches the batch path's fail-toward-pending behavior).
         return None
     if result.action == "unrelated":
-        # The user moved on. Abandon the paused run so it resumes, sees a refusal,
-        # wraps up, and frees the conversation's executor lock for the new turn.
-        if isinstance(record, ApprovalLedgerDocument):
-            await _abandon_ledger_approvals(conversation_id, user_id)
-        else:
-            await abandon_conversation_approvals(conversation_id, user_id, UNRELATED_FEEDBACK)
+        await _abandon_ledger_approvals(conversation_id, user_id)
         return "unrelated"
 
     action, feedback = no_arg_edit(result.action, result.feedback)
-    if isinstance(record, ApprovalLedgerDocument):
-        await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
-    else:
-        await _safe_resolve(record.approval_id, user_id, action, feedback)
+    await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
     return action
 
 
 async def _resolve_batch(
-    pending: list[HILApprovalRecord] | list[ApprovalLedgerDocument],
+    pending: list[ApprovalLedgerDocument],
     conversation_id: str,
     user_id: str,
     message: str,
@@ -139,19 +124,12 @@ async def _resolve_batch(
 ) -> DecisionAction | None:
     """Apply a per-item classification of message to the pending batch.
 
-    Decisions dispatch through resolve_approval (barrier) or decide_ledger
-    (ledger) one by one; the per-conversation resume slot ensures only the first
-    actually re-dispatches the executor — the join round it wakes collects the rest.
+    Each decision commits through decide_ledger, one by one.
     """
     action_details = [build_action_detail(r.summary, r.args) for r in pending]
-    result = await interpret_batch_decision_message(
-        message, action_details, history, user_id=user_id
-    )
+    result = await interpret_batch_decision_message(message, action_details, history)
     if result.unrelated:
-        if pending and isinstance(pending[0], ApprovalLedgerDocument):
-            await _abandon_ledger_approvals(conversation_id, user_id)
-        else:
-            await abandon_conversation_approvals(conversation_id, user_id, UNRELATED_FEEDBACK)
+        await _abandon_ledger_approvals(conversation_id, user_id)
         return "unrelated"
 
     approved, denied = await _apply_decisions(pending, user_id, result.decisions)
@@ -163,7 +141,7 @@ async def _resolve_batch(
 
 
 async def _apply_decisions(
-    pending: list[HILApprovalRecord] | list[ApprovalLedgerDocument],
+    pending: list[ApprovalLedgerDocument],
     user_id: str,
     decisions: list[BatchItemDecision],
 ) -> tuple[int, int]:
@@ -174,10 +152,7 @@ async def _apply_decisions(
             continue
         record = pending[decision.index - 1]
         action, feedback = no_arg_edit(decision.action, decision.feedback)
-        if isinstance(record, ApprovalLedgerDocument):
-            await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
-        else:
-            await _safe_resolve(record.approval_id, user_id, action, feedback)
+        await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
         if action == "approve":
             approved += 1
         else:
@@ -189,42 +164,28 @@ async def interpret_batch_decision_message(
     message: str,
     action_details: list[str],
     history: list[MessageDict] | None = None,
-    *,
-    user_id: str,
 ) -> BatchDecisionResult:
-    """Classify a chat reply against several pending approvals, per item.
-
-    JEV first when the user's flag is on; its failure falls back to the LLM.
-    """
-    if await is_jev_reply_enabled(user_id):
-        try:
-            verdicts, _in, _out = await ask_jev_reply(message, action_details, history)
-        except Exception as e:
-            _log_jev_fallback(e)
-        else:
-            return batch_from_jev_reply(settle_reply(verdicts), message)
-    return await classify_batch_with_llm(message, action_details, history, user_id=user_id)
+    """Classify a chat reply against several pending approvals, per item; JEV failing leaves them all pending."""
+    try:
+        verdicts, _in, _out = await ask_jev_reply(message, action_details, history)
+    except Exception as e:  # the one classifier failed: nothing is decided on a guess
+        _log_jev_failure(e)
+        return BatchDecisionResult(unrelated=False)
+    return batch_from_jev_reply(settle_reply(verdicts), message)
 
 
 async def interpret_decision_message(
     message: str,
     action_detail: str,
     history: list[MessageDict] | None = None,
-    *,
-    user_id: str,
 ) -> DecisionResult | None:
-    """Classify a chat reply against one pending approval; None leaves it pending.
-
-    JEV first when the user's flag is on; its failure falls back to the LLM.
-    """
-    if await is_jev_reply_enabled(user_id):
-        try:
-            verdicts, _in, _out = await ask_jev_reply(message, [action_detail], history)
-        except Exception as e:
-            _log_jev_fallback(e)
-        else:
-            return decision_from_jev_reply(settle_reply(verdicts)[0], message)
-    return await classify_with_llm(message, action_detail, history, user_id=user_id)
+    """Classify a chat reply against one pending approval; None leaves it pending, as does JEV failing."""
+    try:
+        verdicts, _in, _out = await ask_jev_reply(message, [action_detail], history)
+    except Exception as e:  # the one classifier failed: nothing is decided on a guess
+        _log_jev_failure(e)
+        return None
+    return decision_from_jev_reply(settle_reply(verdicts)[0], message)
 
 
 def decision_from_jev_reply(choice: ReplyChoice, message: str) -> DecisionResult | None:
@@ -264,67 +225,9 @@ def batch_from_jev_reply(choices: list[ReplyChoice], message: str) -> BatchDecis
     return BatchDecisionResult(unrelated=False, decisions=decisions)
 
 
-async def classify_batch_with_llm(
-    message: str,
-    action_details: list[str],
-    history: list[MessageDict] | None = None,
-    *,
-    user_id: str,
-) -> BatchDecisionResult:
-    """LLM per-item classification of a reply against several pending approvals.
-
-    Fails toward leaving everything pending (empty decisions, not unrelated) —
-    never toward acting, and never toward abandoning on an LLM hiccup.
-    """
-    try:
-        return await ainvoke_structured(
-            BatchDecisionResult,
-            _batch_prompt(message, action_details, history),
-            label="hil_conversational_resolve_batch",
-            config=silent_metered_config(user_id),
-            options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} Batch conversational resolve failed, leaving pending",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return BatchDecisionResult(unrelated=False)
-
-
-async def classify_with_llm(
-    message: str,
-    action_detail: str,
-    history: list[MessageDict] | None = None,
-    *,
-    user_id: str,
-) -> DecisionResult | None:
-    """LLM classification of a reply against one pending approval.
-
-    None on an LLM error, so the caller leaves the approval pending — never toward
-    silently executing an action, and never toward abandoning a legitimate one on a
-    transient hiccup (an error is not the same signal as a genuine unrelated)."""
-    try:
-        return await ainvoke_structured(
-            DecisionResult,
-            _prompt(message, action_detail, history),
-            label="hil_conversational_resolve",
-            config=silent_metered_config(user_id),
-            options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS),
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} Conversational resolve failed, leaving pending",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return None
-
-
 def no_arg_edit(
-    action: Literal["approve", "deny"], feedback: str | None
-) -> tuple[Literal["approve", "deny"], str | None]:
+    action: ApprovalDecision, feedback: str | None
+) -> tuple[ApprovalDecision, str | None]:
     """Turn an 'approve' carrying feedback into a deny, since there is no arg-editing.
 
     The gate runs the tool with its ORIGINAL args, so an 'approve' with feedback
@@ -339,56 +242,28 @@ def no_arg_edit(
 # --- internals -----------------------------------------------------------------
 
 
-def _log_jev_fallback(error: Exception) -> None:
-    log.warning(
-        f"{LogTag.HIL} JEV reply classifier failed; falling back to the LLM classifier",
+def _log_jev_failure(error: Exception) -> None:
+    log.error(
+        f"{LogTag.HIL} JEV reply classifier failed; the approvals stay pending",
         error=str(error),
         error_type=type(error).__name__,
     )
 
 
-async def _safe_resolve(
-    approval_id: str, user_id: str, decision: Literal["approve", "deny"], feedback: str | None
-) -> None:
-    """Apply one decision, tolerating an already-resolved/expired approval."""
-    with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
-        await resolve_approval(
-            approval_id=approval_id,
-            user_id=user_id,
-            kind=decision,
-            feedback=feedback,
-            scope="once",
-        )
-
-
-async def _list_pending_ledger(conversation_id: str) -> list[ApprovalLedgerDocument]:
-    """Ledger-enabled users' decidable rows: list_open covers live states, only PENDING decides here."""
-    return [
-        row
-        for row in await approval_ledger_repository.list_open(conversation_id)
-        if row.state is LedgerState.PENDING
-    ]
-
-
 async def _safe_resolve_ledger(
-    approval_id: str, user_id: str, decision: Literal["approve", "deny"], feedback: str | None
+    approval_id: str, user_id: str, decision: ApprovalDecision, feedback: str | None
 ) -> None:
-    """Apply one ledger decision, tolerating a lost race.
-
-    Bots carry no row version, so v=None — the PENDING->decided CAS inside
-    decide_ledger still guards.
-    """
+    """Apply one decision, tolerating one the log already took."""
     result: LedgerDecision | None = None
     with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
         result = await decide_ledger(
-            approval_id, user_id=user_id, kind=decision, feedback=feedback, v=None, via="chat"
+            approval_id, user_id=user_id, kind=decision, feedback=feedback, via="chat"
         )
     if result is not None and not result.committed:
         log.warning(
             f"{LogTag.HIL} Ledger bot decision lost the race",
             approval_id=approval_id,
-            state=result.state.value,
-            outcome=ledger_outcome_text(result.state),
+            outcome=ledger_outcome_text(result.outcome, result.action),
         )
 
 
@@ -397,46 +272,12 @@ async def _abandon_ledger_approvals(conversation_id: str, user_id: str) -> None:
 
     Denies with the moved-on feedback, which wakes the agent to wrap up.
     """
-    for row in await _list_pending_ledger(conversation_id):
+    for row in await pending_approvals(conversation_id, user_id):
         with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
             await decide_ledger(
                 row.approval_id,
                 user_id=user_id,
                 kind="deny",
                 feedback=UNRELATED_FEEDBACK,
-                v=None,
                 via="chat",
             )
-
-
-def _history_block(history: list[MessageDict] | None) -> str:
-    """Recent turns as role: content lines, per-turn and total bounded."""
-    if not history:
-        return ""
-    lines = [
-        f"{turn.get('role', '')}: {clip_text(turn.get('content') or '', HIL_CLASSIFIER_MAX_ARG_CHARS)}"
-        for turn in history
-    ]
-    return clip_text("\n".join(lines), HIL_CLASSIFIER_MAX_DETAIL_CHARS)
-
-
-def _context(history: list[MessageDict] | None) -> str:
-    history_block = _history_block(history)
-    return CONVERSATIONAL_CONTEXT_BLOCK.format(history=history_block) if history_block else ""
-
-
-def _prompt(message: str, action_detail: str, history: list[MessageDict] | None) -> str:
-    return CONVERSATIONAL_REPLY_PROMPT.format(
-        action=action_detail, context=_context(history), message=message
-    )
-
-
-def _batch_prompt(
-    message: str, action_details: list[str], history: list[MessageDict] | None
-) -> str:
-    actions = "\n\n".join(
-        f"{index}. {detail}" for index, detail in enumerate(action_details, start=1)
-    )
-    return CONVERSATIONAL_BATCH_PROMPT.format(
-        actions=actions, context=_context(history), message=message
-    )

@@ -1,7 +1,11 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
 import json
-from typing import Any, ClassVar, TypeVar, cast
+from typing import ClassVar, NotRequired, TypedDict, TypeVar, cast
 
 from fastapi import WebSocket
+from redis.exceptions import RedisError
 
 from app.constants.log_tags import LogTag
 from app.constants.websocket import WEBSOCKET_BROADCAST_CHANNEL
@@ -9,6 +13,14 @@ from app.db.redis import redis_cache
 from shared.py.wide_events import log
 
 T = TypeVar("T", bound="WebSocketManager")
+
+
+class ClientAnnouncement(TypedDict):
+    """That something a user's clients cache changed: the event type, and what changed."""
+
+    type: str
+    conversation_id: NotRequired[str]
+    data: NotRequired[dict[str, str]]
 
 
 class WebSocketBroadcastError(RuntimeError):
@@ -28,7 +40,7 @@ class WebSocketManager:
     keeps the publishing replica from delivering the same message twice.
     """
 
-    _instance: ClassVar["WebSocketManager | None"] = None
+    _instance: ClassVar[WebSocketManager | None] = None
 
     def __new__(cls: type[T]) -> T:
         if cls._instance is None:
@@ -61,7 +73,7 @@ class WebSocketManager:
         log.set(websocket={"user_id": user_id, "connection_id": id(websocket)})
         log.info(f"{LogTag.STARTUP} Removed WebSocket connection for user", user_id=user_id)
 
-    async def broadcast_to_user(self, user_id: str, message: dict[str, Any]) -> None:
+    async def broadcast_to_user(self, user_id: str, message: Mapping[str, object]) -> None:
         """Publish a message to every replica holding one of this user's sockets.
 
         Callable from anywhere — request handlers, ARQ workers, schedulers. It
@@ -77,7 +89,22 @@ class WebSocketManager:
             json.dumps({"user_id": user_id, "message": message}),
         )
 
-    async def deliver_local(self, user_id: str, message: dict[str, Any]) -> int:
+    async def announce(self, user_id: str, message: ClientAnnouncement) -> None:
+        """Broadcast that something the user's clients cache changed, after the write committed; logs a failure instead of raising.
+
+        A missed announcement catches up on the client's reconnect, and raising would fail a write that already happened.
+        """
+        try:
+            await self.broadcast_to_user(user_id, message)
+        except (WebSocketBroadcastError, RedisError) as e:
+            log.warning(
+                f"{LogTag.STARTUP} Failed to announce a change to the user's clients",
+                announced=message["type"],
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
+    async def deliver_local(self, user_id: str, message: Mapping[str, object]) -> int:
         """Write a broadcast to this process's sockets; returns how many survived.
 
         Sockets that fail the write are already gone (the peer dropped without a

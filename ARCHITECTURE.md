@@ -47,10 +47,10 @@ The **only** agent the user talks to. Owns the conversation thread, narrates pro
 
 ### Where it lives
 
-- `apps/api/app/agents/core/agent.py` — entry points `call_agent()` (live SSE stream) and `call_agent_silent()` (background/workflow).
+- `apps/api/app/services/conversation/` — the conversation runtime: `send.py` accepts a message (`POST /conversations/{id}/messages`), `step.py` answers it, `event_stream.py` serves `GET /conversations/{id}/events`. A workflow fire is not a chat turn: `execute_workflow_as_chat` (`apps/api/app/workers/tasks/workflow_tasks.py`) appends a `WorkflowFired` entry, the conversation step answers it, and the job reads the outcome off the log (`apps/api/app/services/conversation/outcome.py`).
 - `apps/api/app/agents/core/graph_builder/build_graph.py` — `build_comms_graph()` / `build_comms_agent()`. Comms is built with `disable_retrieve_tools=True` and end-graph hooks `[follow_up_actions_node, memory_node]`.
 - `apps/api/app/override/langgraph_bigtool/utils.py` — `State`, the graph state every tier runs on: `messages` (a `DeltaChannel`, not a plain snapshot channel), `todos`, `intent`, `integration_usernames`, `remaining_steps`. Per-run values like `user_id`, `active_todo_id` and `execution_mode` live in `config["configurable"]` (`AgentConfigurable`), not in state.
-- `apps/api/app/agents/core/messages.py` — `construct_langchain_messages` builds the message array with per-turn context (calendar, reply-to, file refs, timezone).
+- `apps/api/app/agents/core/messages.py` — `build_turn_context` builds a step turn's context (calendar, reply-to, file refs, presence, timezone); `services/conversation/comms_turn.py` wraps it into the comms attempt's config and prompt.
 - `apps/api/app/agents/core/graph_manager.py` — `GraphManager.get_graph(name)` resolves graphs via lazy providers.
 
 ### Comms tool surface (deliberately tiny)
@@ -104,11 +104,10 @@ One rule governs it:
 
 - `apps/api/app/agents/core/background/executor_capture.py` — per-stream collector for executor tool events so background/workflow runs render identically to live chat.
 - `apps/api/app/agents/core/background/executor_channel.py` — **the live channel.** `ExecutorInbox` (per-conversation pending messages), the `decide_drain` rule, the `<user_interjection>` / `<executor_interrupted>` framing, and `drain_inbox_hook`. See "Live channel" below.
-- `apps/api/app/agents/core/background/executor_queue.py` — the `busy` Redis lock (`try_acquire_lock` SET NX, `release_lock_if_owned`, `extend_lock_if_owned`; every holder renews its liveness with `keep_alive`, whose beat also re-arms the busy lock it holds (ownership-checked), so a run that outlives `EXECUTOR_BUSY_TTL` keeps its lock and that TTL is only the crash net, and `reclaim_dead_lock` is the one way a dead holder's lock is freed) plus `prepare_run_from_item` / `build_run_item`, which materialize a **detached** run — one that owns its own stream. `open_detached_stream` / `close_detached_stream` are the one way any detached run (executor or background subagent) mints its stream, announces it with `executor.stream_started` (folded into `bot_message_id`'s message when given) and ends it. There is no queue of pending runs.
-- `apps/api/app/agents/core/background/result_delivery.py` — `deliver_result()` and `persist_cancelled_run()`. Finished text → narrate and deliver as new bot message; cancelled → persist `tool_data` only if `executor_owns_tool_data`.
-- `apps/api/app/agents/core/background/session.py` — `StreamSession`, `ExecutorRun`, `RunKind` (LIVE shares comms' stream / QUEUED owns its own). **One session per `stream_id`** replaces the old module-level dict soup.
-- `apps/api/app/agents/core/background/redis_writer.py` — `make_redis_stream_writer(stream_id)` routes executor tool events back to the SSE consumer.
-- `apps/api/app/agents/core/background/comms_narrator.py` — comm-side re-narration of the executor's terminal message.
+- `apps/api/app/agents/core/background/executor_queue.py` — the `busy` Redis lock (`try_acquire_lock` SET NX, `release_lock_if_owned`, `extend_lock_if_owned`; every holder renews its liveness with `keep_alive`, whose beat also re-arms the busy lock it holds (ownership-checked), so a run that outlives `EXECUTOR_BUSY_TTL` keeps its lock and that TTL is only the crash net, and `reclaim_dead_lock` is the one way a dead holder's lock is freed) plus `prepare_run_from_item` / `build_run_item`, which materialize a **detached** run — one that owns its own stream. `open_detached_stream` / `close_detached_stream` are the one way any detached run (executor or background subagent) mints its stream and ends it. There is no queue of pending runs.
+- `apps/api/app/agents/core/background/result_delivery.py` — `deliver_message_to_conversation()`, which reminders use. Executor results are not delivered here: a run ends by logging `WorkFinished`, and the step writes its reply.
+- `apps/api/app/agents/core/background/session.py` — `StreamSession`, `ExecutorRun`, `RunKind` (LIVE: dispatched by a comms attempt under the attempt's stream id, its session opened by `call_executor` and torn down when the run finalizes / QUEUED owns its own stream). **One session per `stream_id`** replaces the old module-level dict soup.
+- `apps/api/app/agents/core/background/redis_writer.py` — `make_redis_stream_writer(stream_id)` collects a run's tool events into its session (for `WorkFinished`'s cards); `WorkDeltas` republishes them as `work_delta` frames on the conversation's events stream.
 
 ### Pre-model hooks (shared by comms + executor + subagents)
 
@@ -119,9 +118,9 @@ One rule governs it:
 
 ### Helper layer
 
-- `apps/api/app/helpers/agent_helpers.py` — `build_agent_config`, `build_initial_state`, `execute_graph_streaming`, `execute_graph_silent`.
+- `apps/api/app/helpers/agent_helpers.py` — `build_agent_config`, `build_initial_state`, `frames_for_stream_event`.
 - `apps/api/app/core/lazy_loader.py` — `lazy_provider` / `providers.aget()` for on-demand graph creation.
-- `apps/api/app/core/stream_manager.py` — Redis-backed SSE stream + cancel signaling.
+- `apps/api/app/core/stream_manager.py` — a run's Redis stream and its cancel flag. Clients never read it: they follow `GET /conversations/{id}/events`.
 
 ---
 
@@ -134,7 +133,7 @@ Historical conversations can still hold `handoff` tool calls and `agent_type: "h
 ### Delegation — the spawn_subagent runner
 
 - `apps/api/app/agents/core/subagents/delegation.py` — `Delegation` + `delegate()`: the ONE lifecycle of a delegated run. `spawn_subagent` only builds a `Delegation` (`SubagentMiddleware.build_delegation`); everything after is here: the checkpoint-thread claim in `RunningSubagents` (a held thread refuses the delegation), `subagent_start`/`subagent_end`, the drive loop, background dispatch, the inbox landing, the park and the resume.
-- **Background by default** (`background=True`): the tool returns an acknowledgement naming the subagent id (`subagent_row_id(tool_call_id)`, stable across replays) and the run continues as a detached task on **its own stream** (announced via `open_detached_stream`, folded into the dispatching turn's message). Its frames are saved into that message at the end (`append_message_tool_data`), and its result lands in `ExecutorInbox` as `SUBAGENT_RESULT` through `deliver_to_executor`, waking a rested executor. Its `RunningSubagents` record names its own stream and the stream that dispatched it, so stopping a stream (`running_registry.stop_stream`, the one path behind `POST /cancel-stream` and `cancel_executor`) stops every run it dispatched, however deep, even after the dispatching run ended; `cancel_executor([])` stops every live one. A run the user stopped lands nothing, so it cannot restart the executor they just stopped. The announcement carries `kind: "subagent"` (`DetachedStreamKind`): the web client (`useExecutorStream`) folds such a stream with `foldOwnToolData` (`@gaia/shared/chat`) — upserting only the subagent's own group and approval cards into the turn's message, never its text or status — so a card raised after the turn ended, and the resumed run's cards, render inline. `background=False` blocks inside the tool call and bubbles each HIL pause up to the executor (`resume_for_gate`).
+- **Background by default** (`background=True`): the tool returns an acknowledgement naming the subagent id (`subagent_row_id(tool_call_id)`, stable across replays) and the run continues as a detached task on **its own stream** (opened by `open_detached_stream`). Its frames are saved into that message at the end (`append_message_tool_data`), and its result lands in `ExecutorInbox` as `SUBAGENT_RESULT` through `deliver_to_executor`, waking a rested executor. Its `RunningSubagents` record names its own stream and the stream that dispatched it, so stopping a stream (`running_registry.stop_stream`, the one path behind Stop and `cancel_executor`) stops every run it dispatched, however deep, even after the dispatching run ended; `cancel_executor([])` stops every live one. A run the user stopped lands nothing, so it cannot restart the executor they just stopped. The web client no longer follows detached streams: it renders a conversation from its one events stream (`apps/web/src/features/chat/live/`), where a task's cards arrive as `work_delta` frames. `background=False` blocks inside the tool call and bubbles each HIL pause up to the executor (`resume_for_gate`).
 - **Headless runs block.** A workflow/scheduled-todo run (`execution_mode == "background"`) or one with no stream delivers once, so `runs_in_background` sends it blocking; parallel calls in one AI message still run concurrently.
 - **Steering:** every run (blocking or background) is registered while it runs, so `message_subagent` reaches its `SubagentInbox` and `cancel_subagent` sets its `SubagentCancel` flag.
 - **HIL in a background run:** the run carries a `SubagentResumeItem` under configurable `subagent_resume`; the gate files it (and the thread) on every approval the run raises, with the normal card on the run's own stream. A gated call parks the run on its checkpointed thread (thread released, a park note lands in the inbox). The decision resumes it: `resolution._dispatch_decided` → `parked_resume.resume_parked_subagent` rebuilds the delegation by the tool's own builder (spawn: `spawner_of(executor graph)`) and claims the thread — a still-draining run's own park resumes on a decision that beat it. The sweep redispatches decided-unresumed subagent records like executor pauses. Ledger mode (`ENABLE_HIL_LEDGER`, on by default) never parks: the run gets `PENDING <id>` and finishes.
@@ -146,7 +145,8 @@ Historical conversations can still hold `handoff` tool calls and `agent_type: "h
 - `apps/api/app/agents/core/subagents/builtin_subagents.py` — `BUILTIN_SUBAGENTS` (currently `docgen`, `gaia_knowledge_guide`). Excluded from the marketplace.
 - `apps/api/app/agents/core/subagents/base_subagent.py` — `SubAgentFactory.create_provider_subagent()`. Wires a scoped worker graph: scoped tool dict, `SubagentMiddleware`, todo tools, Composio tools, no end-hooks (memory learning runs once per comms turn, not per subagent), checkpointer, and the three pre-model hooks. Reached at runtime only for spawn workers and dev direct-invocation.
 - `apps/api/app/agents/core/subagents/provider_subagents.py` — `create_subagent()` (provider graphs; kept for dev/tests). `register_subagent_providers()` registers lazy loaders.
-- `apps/api/app/agents/core/subagents/integration_resolution.py` — `get_integration_target()` (an integration id → its `Subagent` config or `CustomMcpSubagent`, Redis cached at `SUBAGENT_CACHE_PREFIX` with negative caching), `check_integration_connection()` (Composio/OAuth gate), `check_mcp_connection()` (auth-required platform MCP and custom MCP gate, renders the connect card) and `is_per_user_mcp()`.
+- `apps/api/app/agents/core/subagents/integration_target.py` — `get_integration_target()` (an integration id → its `Subagent` config or `CustomMcpSubagent`, Redis cached at `SUBAGENT_CACHE_PREFIX` with negative caching), kept free of connection and OAuth imports so `agent_utils` can use it without an import cycle.
+- `apps/api/app/agents/core/subagents/integration_resolution.py` — `check_integration_connection()` (Composio/OAuth gate), `check_mcp_connection()` (auth-required platform MCP and custom MCP gate, renders the connect card) and `is_per_user_mcp()`.
 - `apps/api/app/agents/core/subagents/integration_activation.py` — `activate_integration`: connection gate, tool loading (Composio tools bind/preload from the registry; MCP tools preload from `MCPClient.tools_for`), context sections (static notes, standing instructions, account identity, skills) and the conversation stamp that scopes `retrieve_tools`.
 - `apps/api/app/services/mcp/custom_mcp_index.py` — `index_custom_mcp_as_subagent` writes the ChromaDB pointer docs that keep a not-yet-activated custom MCP discoverable through `retrieve_tools`; a hit renders as an `activate_integration` pointer.
 - `apps/api/app/agents/core/subagents/subagent_runner.py` — `SubagentExecutionContext`, `build_initial_messages` (seeds `[static_system, dynamic_stable, memory_recall?, human_task, current_time]` in canonical slot order — see §Context assembly), `execute_subagent_stream` (handles `messages`/`custom`/`updates` events; emits `subagent_start`/`subagent_end` lifecycle), `prepare_executor_execution` (builds executor context with `DIRECT EXECUTION HINT`).
@@ -231,7 +231,7 @@ All five bots live in `apps/bots/`, share a unified command system in `libs/shar
 
 ### How a bot message reaches the agent
 
-Bot receives message → adapter builds `CommandContext` → unified `BotCommand` (`gaia.ts` etc.) → `GaiaClient` HTTP call to API → `apps/api/app/agents/core/agent.py::call_agent()` → comms graph → executor → SSE stream back through `outbound-consumer.ts`.
+Bot receives message → adapter builds `CommandContext` → unified `BotCommand` (`gaia.ts` etc.) → `GaiaClient` posts the message (`/bot` send route) → the conversation step runs comms → executor → the bot follows the conversation's events stream; files and notifications arrive through `outbound-consumer.ts`.
 
 ---
 
@@ -422,7 +422,8 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
   - `trigger_service.py` — `TriggerService` (composio triggers: gmail, calendar, slack, github, linear, todoist, sheets, docs).
   - `scheduler.py` — cron-based scheduled workflow execution.
   - `queue_service.py` — workflow execution queue.
-  - `execution_service.py` — `WorkflowExecutionService` (runs workflows).
+  - `execution_service.py` — execution records and the fire's failure types.
+  - A fire runs on the conversation step: `WorkflowFired{run: WorkflowRun}` (`apps/api/app/models/conversation_log_models.py`) carries the workflow card, trigger context, execution id (the run-record key), the fire's busy-lock reservation and timezone; `comms_turn.build_comms_turn` builds the turn from it, and `await_outcome` reports the run back to the ARQ job.
   - `generation_service.py` — AI workflow generation from natural language.
   - `context_extractor.py` — `WorkflowContextExtractor` (extracts context from conversation).
   - `workflow_subagent.py` — `WorkflowSubagentRunner` (subagent that generates workflows).
@@ -472,7 +473,7 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
 - `apps/api/app/agents/tools/tracked_todo_tools.py` — `create_tracked_todo`, `update_tracked_todo`, `complete_tracked_todo`, `search_todo_context`, `list_tracked_todos` (lifecycle + metadata only). Backed by `apps/api/app/services/tracked_todo_service.py`. Supports cron recurrence + timezone-aware fire times.
 - Every scheduled or triggered run (`apps/api/app/workers/tasks/tracked_todo_tasks.py`) runs on the executor directly, never through comms, from the todo's canvas, activity and references (`apps/api/app/agents/core/background/todo_run.py`). Tracked todos never get a workflow (a playbook replay would freeze the calls); classic todos (C) still auto-generate one.
 - A scheduled fire runs only if the todo's stored `scheduled_at` still names it: ARQ cannot cancel a deferred job, so that check is how a reschedule retires the old one.
-- The run's result is delivered once, by `apps/api/app/agents/core/background/todo_run_delivery.py`: comms decides whether it is worth a message (or `SILENCE`), `notify_on_run` is read at the end of the run, and activity.md records the outcome either way.
+- The run's result is delivered once, by `apps/api/app/agents/core/background/todo_run_delivery.py`: comms decides whether it is worth a message (or `SILENCE`), `notify_on_run` is read at the end of the run, and activity.md records the outcome either way. A todo whose kind sets its own report form (`ExternalRefSource.owns_report_form`: the Inbox desk, an email thread) has its report sent as written, so its run says when that report holds nothing for the user: `finish_task(nothing_for_user=true)`, read by `outcome_review`, sends nothing without asking comms.
 - Working notes are two files per todo, `/workspace/gaia-tasks/<slug>-<shortid>/canvas.md` (recall doc) and `activity.md` (dated log), which the executor reads and edits with the generic `read`/`edit`/`write` tools.
 - Ownership: every tracked todo carries `## Done when` and `## Evidence` canvas sections (`create_tracked_todo(done_when=, evidence=)`), and is never left open with nothing to wake it. `outcome_review.todo_left_asleep` flags a delegation that creates one with no schedule, recurrence or watch and arms nothing after, or a run whose brief carries `TODO_REARM_TAG` (added by `todo_run_prompt` when the todo has no recurrence and no subscription) and neither closes nor re-arms it; both get one completion nudge, then deliver as unverified. Comms hands news about an active tracked todo to the executor bound to it, which checks Done when and closes or moves it.
 - `apps/api/app/services/gaia_task_files.py` — routes those paths inside the file tools to the todo document (`canvas_content` / `activity_content`), so the notes work in native dev with no JuiceFS and the disk tree stays a read-only projection.
@@ -500,7 +501,6 @@ Integration tools (Composio + MCP — the thousands) are **never bound** to the 
   - `pool.py` — `SandboxPool` (per-user `AsyncSandbox` pool with `asyncio.Lock` and refcount; Prometheus `set_sandbox_pool_size` gauge; per-shard tracking for `JUICEFS_NUM_SHARDS`).
   - `lifecycle.py` — acquire / release / pause-on-idle (refcount-based kill timer).
   - `shard_router.py` — `shard_for(user_id)` distributes users across E2B sandboxes.
-  - `artifact_watcher.py` — watches sandbox for produced files; emits to SSE.
   - `__init__.py` — `acquire_sandbox(user_id)` entrypoint + `SandboxAcquisitionError`.
 - `apps/api/app/constants/sandbox.py` — `BASH_DEFAULT_TIMEOUT_SECONDS`, `BASH_MAX_COMMAND_LENGTH`, `BASH_MAX_TIMEOUT_SECONDS`, `WORKSPACE_TMP_SUFFIX`.
 - All coding tools (bash, read, edit, write) target the user's E2B sandbox + JuiceFS mount — on GAIA Cloud.
@@ -616,5 +616,5 @@ A browser task is a background job, not a tool call the turn holds open. `browse
 | Change memory projection | `apps/api/app/memory/projection.py` + `apps/api/app/services/memory_fs.py` |
 | Change workflow triggers | `apps/api/app/services/workflow/trigger_service.py` + `apps/api/app/models/trigger_config.py` |
 | Change tracked-todo notes (canvas.md / activity.md) | `apps/api/app/services/gaia_task_files.py` + `apps/api/app/services/todo_canvas_storage.py` |
-| Change sandbox behavior | `apps/api/app/services/sandbox/{pool,lifecycle,shard_router,artifact_watcher}.py` |
+| Change sandbox behavior | `apps/api/app/services/sandbox/{pool,lifecycle,shard_router}.py` |
 | Change notification routing | `apps/api/app/utils/notification/orchestrator.py` + `apps/api/app/services/outbound_delivery.py` |

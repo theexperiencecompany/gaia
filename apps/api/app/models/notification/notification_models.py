@@ -1,11 +1,11 @@
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.db.repositories.base import UserScopedDocument
+from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
 
 
@@ -45,6 +45,7 @@ class NotificationSourceEnum(str, Enum):
     USAGE_LIMIT = "usage_limit"
     INTEGRATION_EXPIRED = "integration_expired"
     TODO_TRIGGER = "todo_trigger"
+    APPROVAL = "approval"
 
 
 class ActionType(str, Enum):
@@ -158,10 +159,18 @@ class ChannelConfig(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
 
 
+def notification_id(user_id: str, kind: str, subject_id: str, occurrence: str = "") -> str:
+    """Return the one id a fact has, so a retried producer re-sends the same notification."""
+    return str(
+        uuid5(NAMESPACE_URL, f"gaia-notification:{user_id}:{kind}:{subject_id}:{occurrence}")
+    )
+
+
 class NotificationRequest(BaseModel):
     """Inbound request to send a notification to a user across channels."""
 
-    id: str = Field(default_factory=lambda: str(uuid4()))
+    #: Built with notification_id, never random: the id is what makes a retry a no-op.
+    id: str
     user_id: str
     source: NotificationSourceEnum
     type: NotificationType = NotificationType.INFO
@@ -171,6 +180,10 @@ class NotificationRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     scheduled_for: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    #: The conversation the fact belongs to; it is logged there as a Notice.
+    conversation_id: str | None = None
+    #: What a chat reads, in GAIA's voice; None renders the title and body.
+    message: str | None = None
 
     @field_validator("priority", mode="before")
     def validate_priority(cls, v: int) -> int:

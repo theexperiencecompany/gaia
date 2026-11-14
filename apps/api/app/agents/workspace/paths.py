@@ -85,30 +85,6 @@ _EXT_CONTENT_TYPES = {
     **dict.fromkeys(_PLAIN_TEXT_EXTS, "text/plain"),
 }
 
-# Rides the SSE event + Mongo conversation inline for an instant, reload-safe
-# preview. 64 KB covers virtually every agent-written HTML/MD/code file.
-INLINE_ARTIFACT_MAX_BYTES = 64 * 1024
-
-_INLINEABLE_APPLICATION_TYPES = frozenset(
-    {
-        "application/json",
-        "application/xml",
-        _APPLICATION_YAML,
-        "application/x-yaml",
-        "application/javascript",
-        "application/x-sh",
-        "image/svg+xml",
-    }
-)
-
-
-def is_inlineable_content_type(content_type: str | None) -> bool:
-    """Whether the content type is safe to ship as a UTF-8 string inline."""
-    if not content_type:
-        return False
-    return content_type.startswith("text/") or content_type in _INLINEABLE_APPLICATION_TYPES
-
-
 WORKSPACE_ROOT = "/workspace"
 ARTIFACTS_DIRNAME = "artifacts"
 USER_UPLOADED_DIRNAME = "user-uploaded"
@@ -179,32 +155,29 @@ def is_under_workspace(abs_path: str) -> bool:
     return abs_path == WORKSPACE_ROOT or abs_path.startswith(WORKSPACE_ROOT + "/")
 
 
+_ROOT_ROLES: dict[str, MountRole] = {
+    SKILLS_DIRNAME: MountRole.SKILLS,
+    SETTINGS_DIRNAME: MountRole.SETTINGS,
+    PINNED_DIRNAME: MountRole.PINNED,
+    GAIA_RUNTIME_DIRNAME: MountRole.GAIA_RUNTIME,
+}
+_SESSION_ROLES: dict[str, MountRole] = {
+    SCRATCH_DIRNAME: MountRole.SCRATCH,
+    USER_UPLOADED_DIRNAME: MountRole.USER_UPLOADED,
+    ARTIFACTS_DIRNAME: MountRole.ARTIFACTS,
+}
+
+
 def classify(abs_path: str) -> tuple[MountRole, str | None]:
     """Return (role, conv_id_or_None). Used to route writes + emit events."""
-    if not is_under_workspace(abs_path):
+    if not is_under_workspace(abs_path) or abs_path == WORKSPACE_ROOT:
         return MountRole.UNKNOWN, None
-    rest = abs_path[len(WORKSPACE_ROOT) + 1 :].split("/") if abs_path != WORKSPACE_ROOT else []
-    if not rest:
-        return MountRole.UNKNOWN, None
-    head = rest[0]
-    if head == SKILLS_DIRNAME:
-        return MountRole.SKILLS, None
-    if head == SETTINGS_DIRNAME:
-        return MountRole.SETTINGS, None
-    if head == PINNED_DIRNAME:
-        return MountRole.PINNED, None
-    if head == GAIA_RUNTIME_DIRNAME:
-        return MountRole.GAIA_RUNTIME, None
-    if head == SESSIONS_DIRNAME and len(rest) >= 3:
-        conv = rest[1]
-        sub = rest[2]
-        if sub == SCRATCH_DIRNAME:
-            return MountRole.SCRATCH, conv
-        if sub == USER_UPLOADED_DIRNAME:
-            return MountRole.USER_UPLOADED, conv
-        if sub == ARTIFACTS_DIRNAME:
-            return MountRole.ARTIFACTS, conv
-        return MountRole.SCRATCH, conv  # tolerate session subroots
+    rest = abs_path[len(WORKSPACE_ROOT) + 1 :].split("/")
+    if rest[0] in _ROOT_ROLES:
+        return _ROOT_ROLES[rest[0]], None
+    if rest[0] == SESSIONS_DIRNAME and len(rest) >= 3:
+        # A session subroot that is not one of the three is tolerated as scratch.
+        return _SESSION_ROLES.get(rest[2], MountRole.SCRATCH), rest[1]
     return MountRole.UNKNOWN, None
 
 

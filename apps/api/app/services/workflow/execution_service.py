@@ -33,23 +33,35 @@ class WorkflowFireTimedOut(Exception):
 
 
 class WorkflowFireOverlapped(Exception):
-    """A fire that found this workflow's conversation already busy.
+    """A fire that found this workflow's conversation already busy when it asked for admission.
 
-    A workflow owns one conversation across all runs, and a fire claims its
-    executor lock first, so two fires never run at once. The overlapped fire
-    is dropped, not handed over: the run holding the lock delivers the
-    workflow's one result, and this fire is neither a success to record nor
-    a failure to notify. holder is the in-flight run's lock value, kept for
-    the record and the log.
+    A workflow owns one conversation across all runs. The overlapped fire is dropped
+    before it spends anything, not handed over: the run in flight delivers the
+    workflow's one result, and this fire is neither a success to record nor a
+    failure to notify. holder names what is in flight, for the record and the log;
+    awaiting_approval says the log has that work waiting on the user's decision.
     """
 
-    def __init__(self, *, user_id: str, conversation_id: str, holder: str) -> None:
+    def __init__(
+        self, *, user_id: str, conversation_id: str, holder: str, awaiting_approval: bool = False
+    ) -> None:
         super().__init__(
             f"Workflow fire overlapped an in-flight run of the same workflow (holder: {holder})"
         )
         self.user_id = user_id
         self.conversation_id = conversation_id
         self.holder = holder
+        self.awaiting_approval = awaiting_approval
+
+
+class PlaybookReplayRefused(Exception):
+    """The conversation log refused to start a replay: other work or a fire got there after admission."""
+
+    def __init__(self, conversation_id: str) -> None:
+        super().__init__(
+            f"conversation {conversation_id} refused the replay: other work runs there"
+        )
+        self.conversation_id = conversation_id
 
 
 class WorkflowRunFailed(Exception):
@@ -81,14 +93,17 @@ class PlaybookFallbackFailed(WorkflowRunFailed):
         self.cause = cause
 
 
-class WorkflowExecutorFailed(WorkflowRunFailed):
-    """The executor a fire delegated to ended in an error.
+class WorkflowTurnFailed(WorkflowRunFailed):
+    """The workflow's turn, or the work it handed off, ended without carrying the run out.
 
-    Comms answers such a run with an apology, and the delivery path has already
-    told the user the workflow failed. The message is that apology; recording
-    it as the run's successful result would say the workflow ran when it did
-    not, so the fire is closed out as a failure like any other raise.
+    Failed, stopped, or lost: recording it as a successful run would say the workflow ran
+    when it did not, so the fire is closed out, and the user told, as a failure.
     """
+
+
+def new_execution_id() -> str:
+    """Mint a workflow execution id: once per fire, by whoever starts it."""
+    return f"exec_{uuid4().hex[:12]}"
 
 
 async def create_execution(
@@ -96,15 +111,16 @@ async def create_execution(
     user_id: str,
     trigger_type: str = "manual",
     conversation_id: str | None = None,
+    execution_id: str | None = None,
 ) -> WorkflowExecution:
-    """Create a workflow execution record with status "running".
+    """Create a workflow execution record with status "running", under the id the fire was started with.
 
     Args:
         trigger_type: manual, schedule, or an integration name.
     """
     execution = await workflow_executions_repository.create(
         WorkflowExecutionDocument(
-            execution_id=f"exec_{uuid4().hex[:12]}",
+            execution_id=execution_id or new_execution_id(),
             workflow_id=workflow_id,
             user_id=user_id,
             status="running",
@@ -137,10 +153,14 @@ async def record_skipped_execution(
     trigger_type: str,
     summary: str,
     conversation_id: str | None = None,
+    execution_id: str | None = None,
 ) -> WorkflowExecution:
     """Record a fire that never ran, so run history shows it and why instead of a silent gap."""
     execution = await create_execution(
-        workflow_id=workflow_id, user_id=user_id, trigger_type=trigger_type
+        workflow_id=workflow_id,
+        user_id=user_id,
+        trigger_type=trigger_type,
+        execution_id=execution_id,
     )
     await complete_execution(
         execution_id=execution.execution_id,

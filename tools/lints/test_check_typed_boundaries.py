@@ -298,3 +298,22 @@ def test_a_storage_state_from_anywhere_but_playwright_is_not_a_known_typeddict(
         "    a = state['cookies']\n"
     )
     assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [3]
+
+
+def test_a_typeddict_declared_in_the_shared_lib_is_a_declared_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    shared = tmp_path / "libs" / "shared" / "py" / "wire.py"
+    shared.parent.mkdir(parents=True)
+    shared.write_text("from typing import TypedDict\nclass Card(TypedDict):\n    name: str\n")
+    module = tmp_path / "apps" / "api" / "app" / "services" / "probe.py"
+    module.parent.mkdir(parents=True)
+    module.write_text(
+        "from shared.py.wire import Card\n"
+        "def f(card: Card, raw: dict[str, str]) -> str:\n"
+        "    a = card['name']\n"
+        "    return a + raw['name']\n"
+    )
+    found = scan([module], shape_sources=[shared])
+    assert found == {("apps/api/app/services/probe.py", STRING_KEY_READ): [4]}

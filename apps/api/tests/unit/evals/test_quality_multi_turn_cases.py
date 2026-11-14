@@ -3,7 +3,7 @@
 Regression cover for a silent data-shape bug: QualitySuite.load_cases built
 each Case with setup=row — the whole leftover YAML row — so a case
 written with a setup: block landed at case.setup["setup"]["turns"] while
-ChatStreamTransport read case.setup["turns"]. The lookup missed, the
+ChatTransport read case.setup["turns"]. The lookup missed, the
 transport fell back to splitting prompt, and every setup.turns case ran
 turn 1 only.
 

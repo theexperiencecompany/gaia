@@ -64,3 +64,20 @@ async def test_gather_total_covers_slowest_section() -> None:
     total_delta = _sum("total") - total_sum_before
     slow_delta = _sum("section:memory_recall") - slow_before
     assert total_delta >= slow_delta - 0.005
+
+
+async def test_a_section_past_its_deadline_is_dropped_and_the_rest_still_render() -> None:
+    hung = _stub_section(SectionId.MEMORY_RECALL, 3600, PromptSlot.MEMORY_RECALL)
+    fast = _stub_section(SectionId.USER_PREFS, 0.0, PromptSlot.DYNAMIC_STABLE)
+
+    def _fake_sections_for(tier: AgentTier, slot: PromptSlot) -> list[Section]:
+        return [fast] if slot == PromptSlot.DYNAMIC_STABLE else [hung]
+
+    with (
+        patch.object(assemble, "sections_for", side_effect=_fake_sections_for),
+        patch.object(assemble, "CONTEXT_SECTION_DEADLINE_SECONDS", 0.05),
+    ):
+        result = await asyncio.wait_for(assemble.assemble_context(_ctx()), timeout=2)
+
+    assert "text-user_prefs" in result.stable.content
+    assert result.volatile is None

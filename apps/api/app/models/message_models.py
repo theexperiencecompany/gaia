@@ -1,10 +1,9 @@
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
 from typing_extensions import TypedDict
 
 from app.constants.chat import MAX_MESSAGE_LENGTH
-from app.constants.todos import TodoWakeKind
 from app.constants.vfs import SAFE_PATH_ID_PATTERN
 from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.workflow_models import WorkflowStep
@@ -38,16 +37,6 @@ class FileData(BaseModel):
     sandbox_path: str | None = None
 
 
-class TodoRunWake(BaseModel):
-    """What woke one run of a tracked todo, shown on the user's side of its chat."""
-
-    kind: TodoWakeKind
-    #: The watched events that woke a TRIGGER run, deduplicated and sorted; empty otherwise.
-    trigger_names: list[str]
-    #: The call the user approved, for an APPROVAL run; None otherwise.
-    approval_summary: str | None
-
-
 class SelectedWorkflowData(BaseModel):
     """Workflow the user attached to a message for execution."""
 
@@ -71,64 +60,6 @@ class SelectedCalendarEventData(BaseModel):
     calendarTitle: str | None = None
     backgroundColor: str | None = None
     isAllDay: bool | None = False
-
-
-class ReplyToMessageData(BaseModel):
-    """Data for the message being replied to."""
-
-    id: str
-    content: str
-    role: Literal["user", "assistant"]
-
-
-class MessageRequestWithHistory(BaseModel):
-    """Chat-stream request carrying the full message history and attachments."""
-
-    message: str = Field(max_length=MAX_MESSAGE_LENGTH)
-    conversation_id: SafePathId | None = None
-    messages: list[MessageDict]
-    fileIds: list[str] | None = []
-    fileData: list[FileData] | None = []
-
-    @property
-    def uploaded_file_ids(self) -> list[str]:
-        """Every file id this turn references, from either client field."""
-        return list(
-            dict.fromkeys(
-                [
-                    *(self.fileIds or []),
-                    *((file.fileId for file in self.fileData) if self.fileData else []),
-                ]
-            )
-        )
-
-    # Identifier-shaped so chat:message_submitted can carry them; a bad one 422s before any work.
-    selectedTool: Identifier | None = None
-    toolCategory: Identifier | None = None
-    selectedWorkflow: SelectedWorkflowData | None = None
-    selectedCalendarEvent: SelectedCalendarEventData | None = None
-    replyToMessage: ReplyToMessageData | None = None
-    # Client-generated id for this SEND, stable across retries: doubles as the
-    # idempotency key (duplicate POST -> 409) and the USER MESSAGE ID itself, so
-    # the optimistic and persisted records share one key. Path-safe (pin route).
-    turn_id: SafePathId | None = None
-    is_onboarding_demo: bool = False
-    # The user resent an earlier message from its retry action; only the client knows it was one.
-    is_retry: bool = False
-    # Voice sessions set this so the stream holds open until a delegated executor
-    # delivers its narrated answer (a `voice_tts` SSE frame). Text clients leave
-    # it False — their executor result arrives out-of-band over the WebSocket.
-    voice_mode: bool = False
-    # DEV-ONLY (ENV=development): per-request model overrides from the chat-header
-    # selector. `use_default_models` keeps the plan-routed default; otherwise these
-    # ids (keys of DEV_MODEL_OPTIONS) pin the comms / executor models. Ignored in prod.
-    comms_model: str | None = None
-    executor_model: str | None = None
-    use_default_models: bool = True
-    # Platform-native id of the user's message (WhatsApp wamid, Telegram
-    # message_id, Discord id, Slack ts). Set only by bot turns for later native
-    # reactions; web and other clients leave it None.
-    platform_message_id: str | None = None
 
 
 class MessageRequest(BaseModel):

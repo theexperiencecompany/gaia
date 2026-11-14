@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
-import { SIM_ENABLED } from "./harness";
+import { COMPOSER_PLACEHOLDER, SIM_ENABLED } from "./harness";
 
-const COMPOSER_PLACEHOLDER = "What can I do for you today?";
 const PROGRESS_TEXT = "Here is the streamed progress";
 // The route error page that used to replace the whole conversation.
 const ROUTE_ERROR_HEADING = "Something went wrong";
@@ -28,37 +27,73 @@ test.describe("chat turn failure", () => {
   test("a card that throws while rendering leaves the rest of the turn on screen", async ({
     page,
   }) => {
-    // The stream is canned so one card can carry a payload it cannot render
+    // The events are canned so one card can carry a payload it cannot render
     // (a calendar card handed a string instead of a list).
-    await page.route("**/chat-stream", async (route) => {
-      const request = route.request().postDataJSON() as {
-        turn_id: string;
-        message: string;
+    let sent: { message_id: string; text: string } | null = null;
+    await page.route("**/conversations/*/messages", async (route) => {
+      sent = route.request().postDataJSON() as {
+        message_id: string;
+        text: string;
       };
-      const body = [
-        {
-          conversation_id: randomUUID(),
-          conversation_description: "New Chat",
-          user_message_id: request.turn_id,
-          user_message_content: request.message,
-          bot_message_id: randomUUID(),
-          stream_id: randomUUID(),
+      const conversationId = new URL(route.request().url()).pathname
+        .split("/")
+        .at(-2);
+      await route.fulfill({
+        status: 202,
+        json: {
+          conversation_id: conversationId,
+          message_id: sent.message_id,
+          seq: 1,
         },
-        { response: PROGRESS_TEXT },
+      });
+    });
+    await page.route("**/conversations/*/events*", async (route) => {
+      if (!sent) {
+        await route.fulfill({ status: 404, json: {} });
+        return;
+      }
+      const attemptId = randomUUID();
+      const frames = [
         {
-          tool_data: {
-            tool_name: "calendar_options",
-            data: "not-a-list",
-            timestamp: new Date().toISOString(),
+          kind: "entry",
+          seq: 1,
+          at: new Date().toISOString(),
+          entry: {
+            kind: "user_message",
+            id: sent.message_id,
+            text: sent.text,
+            surface: "web",
           },
         },
-      ]
-        .map(sseFrame)
-        .join("");
+        { kind: "state", head: 1, display: "thinking", work: [] },
+        {
+          kind: "reply_delta",
+          attempt_id: attemptId,
+          reply_id: null,
+          index: 0,
+          payload: { type: "response", response: PROGRESS_TEXT },
+        },
+        {
+          kind: "reply_delta",
+          attempt_id: attemptId,
+          reply_id: null,
+          index: 1,
+          payload: {
+            type: "tool_data",
+            tool_data: {
+              tool_name: "calendar_options",
+              data: "not-a-list",
+              timestamp: new Date().toISOString(),
+            },
+          },
+        },
+      ];
       await route.fulfill({
         status: 200,
         headers: { "content-type": "text/event-stream" },
-        body,
+        body: frames
+          .map((frame) => sseFrame({ stream_id: null, frame }))
+          .join(""),
       });
     });
 

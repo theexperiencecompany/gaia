@@ -40,13 +40,17 @@ import {
   parseUserId,
   platformIdentity,
 } from "../../analytics";
+import type { ActiveBotConversation } from "../../api/generated";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
-import type {
-  OutboundAttachment,
-  OutboundReaction,
-} from "../consumer/envelope";
+import type { OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
+import { STREAMING_DEFAULTS } from "../conversation/delivery-options";
+import type {
+  ConversationSurface,
+  FollowSurface,
+} from "../conversation/follower.types";
+import { ConversationFollowers } from "../conversation/followers";
 import {
   createDeliveryFailureReporter,
   DELIVERY_FAILURE_KIND,
@@ -58,13 +62,22 @@ import type {
   AuthStatus,
   BotCommand,
   BotConfig,
+  ChatRequest,
   CommandContext,
   OutboundNotifications,
   PlatformName,
   RichMessageTarget,
 } from "../types";
-import { BOT_FAILURE_REASON, recordBotFailure } from "../utils/failure-reasons";
-import { formatBotError, renderForPlatform } from "../utils/formatters";
+import {
+  BOT_FAILURE_REASON,
+  type BotFailureReason,
+  recordBotFailure,
+} from "../utils/failure-reasons";
+import {
+  buildPlanRequiredMessage,
+  formatBotError,
+  renderForPlatform,
+} from "../utils/formatters";
 import {
   type BotLogger,
   createBotLogger,
@@ -79,11 +92,10 @@ import {
 } from "../utils/media";
 import {
   REACTION_OUTCOME,
-  REACTION_SURFACE,
   type ReactionOutcome,
-  reactionDeliveredProperties,
 } from "../utils/reaction-outcome";
 import { wideLog, withWideEvent } from "../utils/wide-events";
+import { ArrivalOrder } from "./arrival-order";
 import { BotServer } from "./base-server";
 
 /** An outbound artifact, fetched and within the platform's cap, ready to upload. */
@@ -156,6 +168,12 @@ export abstract class BaseBotAdapter {
 
   private _botServer: BotServer | null = null;
   private _outboundConsumer: OutboundConsumer | null = null;
+  /**
+   * Orders each sender's posts by arrival: adapters whose platform can deliver one
+   * user's messages concurrently run each inbound message through arrivals.run.
+   */
+  protected readonly arrivals = new ArrivalOrder();
+  private _followers: ConversationFollowers | null = null;
 
   /**
    * Shared HTTP server for this bot process, available during all lifecycle methods. Created in
@@ -227,6 +245,8 @@ export abstract class BaseBotAdapter {
           // Consume backend-originated outbound messages (executor replies,
           // reminders) and deliver them via this platform's send primitive.
           this.startOutboundConsumer();
+          // In the background, so a slow API never holds the platform's boot.
+          void this.resumeFollows();
 
           // Start the server after registerEvents() so all routes are mounted.
           await this._botServer.start();
@@ -266,6 +286,7 @@ export abstract class BaseBotAdapter {
           await this._outboundConsumer.stop();
           this._outboundConsumer = null;
         }
+        await this._followers?.stopAll();
         await this.stop();
         if (this._botServer) {
           await this._botServer.stop();
@@ -294,10 +315,9 @@ export abstract class BaseBotAdapter {
       (id, text, isChannel) => this.deliverOutbound(id, text, isChannel),
       (id, attachment, isChannel) =>
         this.deliverOutboundFile(id, attachment, isChannel),
+      (target) => this.followTarget(target),
       this.config.gaiaApiUrl,
       this.reportDeliveryFailure,
-      (id, reaction, isChannel) =>
-        this.deliverOutboundReaction(id, reaction, isChannel),
       this.outboundNotifications,
     );
     void this._outboundConsumer.start();
@@ -339,6 +359,14 @@ export abstract class BaseBotAdapter {
    * Called as the final step of {@link boot}.
    */
   protected abstract start(): Promise<void>;
+
+  /**
+   * The chat a restarted bot follows a still-answering conversation into, rebuilt
+   * from its session: the DM with platform_user_id, or channel_id.
+   */
+  protected abstract resumeSurface(
+    target: ActiveBotConversation,
+  ): Promise<ConversationSurface>;
 
   /**
    * Gracefully disconnects from the platform.
@@ -456,8 +484,8 @@ export abstract class BaseBotAdapter {
 
   /**
    * Attaches `emoji` natively to an existing platform message in place of
-   * `replaces`, GAIA's earlier reaction there — the one reaction primitive, used
-   * by live turns and the outbound consumer alike. Where a platform keeps one
+   * `replaces`, GAIA's earlier reaction there; the conversation follower reacts
+   * through it. Where a platform keeps one
    * reaction per sender, setting one replaces the other; where reactions add up,
    * the adapter removes `replaces` first. This default is for platforms with no
    * reaction API.
@@ -470,36 +498,6 @@ export abstract class BaseBotAdapter {
     _replaces: string | null,
   ): Promise<ReactionOutcome> {
     return Promise.resolve(REACTION_OUTCOME.PLATFORM_UNSUPPORTED);
-  }
-
-  /**
-   * Delivers an outbound envelope's `reaction`: attached natively when the
-   * platform allows it, otherwise sent as a text bubble so the ack is never lost.
-   */
-  private async deliverOutboundReaction(
-    destinationId: string,
-    reaction: OutboundReaction,
-    isChannel: boolean,
-  ): Promise<void> {
-    const outcome = await this.reactToMessage(
-      destinationId,
-      reaction.target_platform_message_id,
-      reaction.emoji,
-      isChannel,
-      reaction.replaces_emoji ?? null,
-    );
-    if (outcome !== REACTION_OUTCOME.ATTACHED) {
-      wideLog.warning("outbound_reaction_fallback_text", {
-        target_platform_message_id: reaction.target_platform_message_id,
-        reason: outcome,
-      });
-      await this.deliverOutbound(destinationId, reaction.emoji, isChannel);
-    }
-    this.analytics.capture(
-      await this.resolveDistinctId(destinationId),
-      "bot:reaction_delivered",
-      reactionDeliveredProperties(outcome, REACTION_SURFACE.OUTBOUND),
-    );
   }
 
   // ---------------------------------------------------------------------------
@@ -521,6 +519,8 @@ export abstract class BaseBotAdapter {
     args: Record<string, string | number | boolean | undefined> = {},
     rawText?: string,
   ): Promise<void> {
+    // A command posts nothing, so the sender's next message need not wait for it.
+    this.arrivals.release();
     const distinctId = await this.resolveDistinctId(target.userId);
     const userHash = hashLogIdentifier(target.userId);
     const channelHash = hashLogIdentifier(target.channelId);
@@ -687,8 +687,231 @@ export abstract class BaseBotAdapter {
   }
 
   /**
+   * Posts one inbound chat message and follows its conversation. Returns once the
+   * message is accepted; the reply, reactions and late results render through
+   * surface in the background, so nothing the user sends next waits on this one.
+   */
+  protected postAndFollow(
+    request: ChatRequest,
+    surface: ConversationSurface,
+    onAuthError: (authUrl: string) => Promise<void>,
+  ): Promise<void> {
+    return withWideEvent(
+      "chat",
+      {
+        platform: request.platform,
+        component: "base-adapter",
+        user_hash: hashLogIdentifier(request.platformUserId),
+        // channelId can be a raw PII identifier (a WhatsApp wa_id), so it is hashed too.
+        channel_hash: hashLogIdentifier(request.channelId),
+        message_length: request.message.length,
+        has_files: Boolean(request.fileIds?.length || request.fileData?.length),
+      },
+      async () => {
+        const startMs = Date.now();
+        const analytics = await this.analyticsFor(request.platformUserId);
+        analytics.client.capture(analytics.distinctId, "bot:message_received", {
+          interaction_type: "chat",
+          message_length: request.message.length,
+        });
+        let accepted: Awaited<ReturnType<GaiaClient["postMessage"]>>;
+        try {
+          accepted = await this.arrivals.post(() =>
+            this.gaia.postMessage(request),
+          );
+        } catch (error) {
+          const reason = recordBotFailure("chat_post_refused", error, {
+            context: "chat:post",
+          });
+          await this.reportPostRefused(
+            reason,
+            error,
+            request,
+            surface,
+            onAuthError,
+          );
+          analytics.client.capture(analytics.distinctId, "bot:error", {
+            context: "chat:post",
+            duration_ms: Date.now() - startMs,
+          });
+          return;
+        }
+        wideLog.set({
+          conversation_id: accepted.conversation_id,
+          seq: accepted.seq,
+        });
+        this.followers.follow(
+          {
+            platform: request.platform,
+            platformUserId: request.platformUserId,
+          },
+          accepted.conversation_id,
+          accepted.seq,
+          this.followSurface(
+            surface,
+            request.platformUserId,
+            request.isDm || !request.channelId ? null : request.channelId,
+          ),
+        );
+      },
+    );
+  }
+
+  /**
+   * Follows again every conversation the server lists as still answering, so a
+   * result that lands after a restart still reaches the platform. Never throws:
+   * a conversation it cannot reach stays in the log and on web.
+   */
+  protected resumeFollows(): Promise<void> {
+    return withWideEvent(
+      "conversation_resume",
+      { platform: this.platform, component: "base-adapter" },
+      async () => {
+        let active: ActiveBotConversation[];
+        try {
+          active = await this.gaia.listActiveConversations(this.platform);
+        } catch (error) {
+          recordBotFailure("conversation_resume_list_failed", error);
+          return;
+        }
+        const outcomes = await Promise.allSettled(
+          active.map((target) => this.followTarget(target)),
+        );
+        let resumed = 0;
+        outcomes.forEach((outcome, index) => {
+          if (outcome.status === "fulfilled") {
+            resumed += 1;
+            return;
+          }
+          recordBotFailure("conversation_resume_failed", outcome.reason, {
+            conversation_id: active[index].conversation_id,
+          });
+        });
+        wideLog.set({ active: active.length, resumed });
+      },
+    );
+  }
+
+  /** Follows a conversation the server listed or woke, after its after_seq, on the chat it lives in. */
+  private async followTarget(target: ActiveBotConversation): Promise<void> {
+    const surface = await this.resumeSurface(target);
+    this.followers.resume(
+      { platform: this.platform, platformUserId: target.platform_user_id },
+      target.conversation_id,
+      target.after_seq,
+      this.followSurface(
+        surface,
+        target.platform_user_id,
+        target.is_dm ? null : target.channel_id,
+      ),
+    );
+  }
+
+  /**
+   * The adapter's surface as a follower renders to it: files and notices go to the
+   * channel, or the user's DM when channelId is null, through the same platform
+   * sends a backend message uses; a reaction the platform accepted is captured as
+   * bot:reaction_delivered.
+   */
+  private followSurface(
+    surface: ConversationSurface,
+    platformUserId: string,
+    channelId: string | null,
+  ): FollowSurface {
+    const destination = channelId ?? platformUserId;
+    const isChannel = channelId !== null;
+    return {
+      ...surface,
+      sendFile: (conversationId, file) =>
+        this.deliverOutboundFile(
+          destination,
+          {
+            conversation_id: conversationId,
+            path: file.path,
+            filename: file.path.split("/").pop() ?? file.path,
+            content_type: file.content_type,
+          },
+          isChannel,
+        ),
+      sendNotice: async (bubbles) => {
+        const notifications = this.outboundNotifications;
+        if (
+          notifications &&
+          (await notifications.windowClosed(destination, isChannel))
+        ) {
+          await notifications.deliver(destination, bubbles.join("\n\n"));
+          return;
+        }
+        // react-doctor-disable-next-line async-await-in-loop -- bubbles must land on the platform in order
+        for (const bubble of bubbles) await surface.send(bubble, null);
+      },
+      react: async (platformMessageId, emoji, replaces) => {
+        const outcome = await surface.react(platformMessageId, emoji, replaces);
+        if (outcome === REACTION_OUTCOME.ATTACHED) {
+          const analytics = await this.analyticsFor(platformUserId);
+          analytics.client.capture(
+            analytics.distinctId,
+            "bot:reaction_delivered",
+            { success: true, surface: "live", delivery: "native" },
+          );
+        }
+        return outcome;
+      },
+    };
+  }
+
+  /** One follower per conversation a message was posted into, reading its events through gaia. */
+  private get followers(): ConversationFollowers {
+    this._followers ??= new ConversationFollowers(
+      (ctx, conversationId, signal) =>
+        this.gaia.conversationEvents(ctx, conversationId, signal),
+      STREAMING_DEFAULTS[this.platform],
+    );
+    return this._followers;
+  }
+
+  /** Settles once every conversation followed so far is idle with its replies shown. */
+  conversationsIdle(): Promise<void> {
+    return this.followers.idle();
+  }
+
+  /** Tells the user why their message was not accepted: the link prompt, the plan prompt, or the error. */
+  private async reportPostRefused(
+    reason: BotFailureReason,
+    error: unknown,
+    request: ChatRequest,
+    surface: ConversationSurface,
+    onAuthError: (authUrl: string) => Promise<void>,
+  ): Promise<void> {
+    if (reason === BOT_FAILURE_REASON.ACCOUNT_NOT_LINKED) {
+      const { authUrl } = await this.gaia.createLinkToken(
+        request.platform,
+        request.platformUserId,
+      );
+      wideLog.audit("auth_link_issued", {
+        user_hash: hashLogIdentifier(request.platformUserId),
+      });
+      await onAuthError(authUrl);
+      return;
+    }
+    const text =
+      reason === BOT_FAILURE_REASON.PLAN_REQUIRED
+        ? buildPlanRequiredMessage(this.gaia.getPricingUrl())
+        : formatBotError(error, request.platform);
+    if (isLostReply(reason)) {
+      this.reportDeliveryFailure({
+        kind: DELIVERY_FAILURE_KIND.REPLY_FAILED,
+        reason,
+        error_message: describeErrorForAlert(error, "chat"),
+        destination_id: request.platformUserId,
+      });
+    }
+    await surface.send(renderForPlatform(text, request.platform), null);
+  }
+
+  /**
    * The analytics client bound to this user's resolved identity, for handing to
-   * shared helpers like {@link handleStreamingChat}.
+   * shared helpers.
    */
   protected async analyticsFor(
     platformUserId: string,

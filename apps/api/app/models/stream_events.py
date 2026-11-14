@@ -49,12 +49,11 @@ in exactly one helper, so the frame and the persisted record can never
 disagree.
 """
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel, JsonValue
 
-from app.models.chat_models import MessageReaction
-from app.models.hil_models import HILApprovalStatus
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 
 # ---------------------------------------------------------------------------
 # Structured payloads (wrapped in a one-word envelope key at the emit site)
@@ -99,29 +98,23 @@ class ApprovalRequestEntryData(BaseModel):
     integration_name: str | None
     summary: str
     # The gated call's own arguments — arbitrary LLM-authored JSON, no fixed schema.
-    args_preview: dict[str, Any]
-    status: HILApprovalStatus
+    args_preview: dict[str, JsonValue]
+    # How the approval ended (None while pending), who decided, and what the action did.
+    # The card's label is read from these; nothing stores a label.
+    outcome: ApprovalOutcome | None
+    decider: ApprovalDecider | None = None
+    action: ActionResult | None = None
     feedback: str | None
     auto_reason: str | None
     timeout_seconds: int
-    # Ledger-backed approvals (executor-free HIL): the agent's one-line why, age in
-    # seconds, and the row version the client saw (echoed back on decide; stale v
-    # never overwrites). All optional — old-path cards omit them.
-    rationale: str | None = None
-    age_seconds: int | None = None
-    ledger_version: int | None = None
+    # When the user was asked, so a client can say how long ago.
+    asked_at: AwareDatetime | None = None
     # The call asks in every mode, so clients must not offer "always allow" on it.
     always_asks: bool = False
 
 
 class ApprovalRequestEntry(BaseModel):
-    """The ``approval_request`` tool_data entry built by ``hil.bridge``.
-
-    Emitted (wrapped in a ``tool_data`` envelope) when a gated call asks for the
-    user's decision, and re-emitted in its resolved status once decided —
-    ``stream_utils._append_or_upsert_tool_data`` replaces the earlier frame in
-    the persisted turn so only the final status survives.
-    """
+    """An approval card: the screen draws one per ApprovalRequested entry, ended by its decision entries."""
 
     tool_name: str
     tool_category: str
@@ -159,6 +152,10 @@ class ReasoningPayload(BaseModel):
     subagent_id: str | None = None
 
 
+#: "handoff" survives only in stored conversations; every new run is "spawned".
+SubagentAgentType = Literal["handoff", "spawned"]
+
+
 class SubagentStartPayload(BaseModel):
     """Lifecycle payload marking a delegated subagent beginning execution."""
 
@@ -167,7 +164,7 @@ class SubagentStartPayload(BaseModel):
     #: The integration id the removed handoff tool stamped; no current producer sets it.
     #: subagent_id is this dispatch's row (unique per call), not the subagent's identity.
     subagent: str | None = None
-    agent_type: str
+    agent_type: SubagentAgentType
     started_at: str
     icon_url: str | None = None
     tool_category: str | None = None
@@ -199,21 +196,6 @@ class FollowUpActionsFrame(BaseModel):
     follow_up_actions: list[str]
 
 
-class ErrorFrame(BaseModel):
-    """Terminal error for the stream."""
-
-    error: str
-
-
-class ModelFallbackFrame(BaseModel):
-    """One-time notice that the primary model failed and a backup answered.
-
-    Emitted at most once per stream; the frontend surfaces it as a quiet toast.
-    """
-
-    model_fallback: dict[str, str]
-
-
 class MainResponseCompleteFrame(BaseModel):
     """Marks the primary assistant response as finished.
 
@@ -226,57 +208,7 @@ class MainResponseCompleteFrame(BaseModel):
     usage: dict[str, Any] | None = None
 
 
-class ReactionPayload(MessageReaction):
-    """A reaction GAIA placed, and the user message it sits on."""
-
-    message_id: str
-
-
-class ReactionFrame(BaseModel):
-    """GAIA reacted to a user message; the client sets the message's badge, replacing any earlier one.
-
-    Not the turn's answer: a turn can react and still reply or keep working.
-    """
-
-    reaction: ReactionPayload
-
-
 class TodoProgressFrame(BaseModel):
     """Envelope for a todo-progress snapshot."""
 
     todo_progress: dict[str, Any]
-
-
-class ConversationDescriptionFrame(BaseModel):
-    """A freshly generated conversation title/description."""
-
-    conversation_description: str
-
-
-class ConversationInitializedFrame(BaseModel):
-    """Identity frame sent first: conversation + message ids for the turn.
-
-    New conversations dump all fields (``conversation_description`` may be
-    ``null`` and is still included); resumed conversations exclude the two
-    conversation-level fields via ``model_dump(exclude=...)``.
-    """
-
-    conversation_id: str | None = None
-    conversation_description: str | None = None
-    # Single identity: this IS the client's send id (turn_id) when the client
-    # provided one — the optimistic record already carries the final key.
-    user_message_id: str
-    # The saved user message's place in the conversation's order.
-    user_message_seq: int
-    # The user message text. Makes the event log a complete record of the
-    # turn: a client that reloads before its local write ever committed can
-    # reconstruct the user message from replay alone.
-    user_message_content: str
-    bot_message_id: str
-    stream_id: str
-
-
-class ReplyPlacedFrame(BaseModel):
-    """The reply took its place in the order, when first shown or else when saved: the seq its bubble sorts by."""
-
-    bot_message_seq: int

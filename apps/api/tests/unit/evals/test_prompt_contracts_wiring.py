@@ -40,6 +40,7 @@ from scripts.evals.suites.quality import (
 
 from app.config.oauth_config import get_integration_by_id
 from app.constants.hil_destructive_tools import GMAIL_DESTRUCTIVE_TOOLS
+from app.models.mcp_config import SubAgentConfig
 
 NEVER_IN_CONVERSATION = "openui.never_openui_in_conversation"
 
@@ -79,7 +80,7 @@ def _ship_edited_prompt(
         cache.cache_clear()
 
 
-def _gmail_subagent_config() -> object:
+def _gmail_subagent_config() -> SubAgentConfig:
     integration = get_integration_by_id("gmail")
     assert integration is not None, "the gmail integration is gone; re-anchor this suite"
     return integration.subagent_config
@@ -203,7 +204,7 @@ def test_quality_scores_every_prompt_derived_gate_on_every_case() -> None:
         ("dash_discipline", "done — took a second"),
         ("banned_bot_phrases", "done. Is there anything else?"),
         ("internal_machinery", "the executor is still working on it"),
-        ("internal_tags", "<executor_result> all done"),
+        ("internal_tags", "<server_restart> all done"),
     ],
 )
 def test_each_prompt_gate_can_actually_fail_a_reply(gate_name: str, reply: str) -> None:

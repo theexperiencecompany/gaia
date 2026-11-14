@@ -12,6 +12,17 @@ directives out of it:
     [[fail:<message>]]            fault injection: the final call breaks after
                                   streaming the say text (if any) — a mid-stream
                                   provider failure, deterministic for sim tests
+    [[wait:<ms>]]                 hold the next step this long before answering
+    [[pace:<ms>]]                 stream the say text one word per chunk, this
+                                  far apart
+    [[narrate:<text>]]            text the front door streams with its hand-off
+                                  call, the preamble GAIA then retracts
+
+Timing: a wait belongs to the next tool directive after it, or to the final
+reply when no tool follows; consecutive waits add up. Each tier waits only on
+the steps it emits itself: the front door forwards executor tools at once (the
+executor waits on them), and the say is emitted, and waited on, by every tier
+that reaches it.
 
 The stub is stateless. On every invocation it re-derives where in the script it
 is by counting the tool-call turns already present in the request's message list
@@ -77,7 +88,7 @@ RETRIEVE_TOOLS_TOOL = "retrieve_tools"
 # through execute — retrieving it again would loop forever.
 EXECUTE_TOOL = "execute"
 
-_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say|fail):")
+_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say|fail|wait|pace|narrate):")
 _CLOSE = "]]"
 # Consumes exactly one JSON value and reports where it ended, so a ``]]`` inside
 # the value (a nested directive) cannot be mistaken for the closing delimiter.
@@ -95,10 +106,11 @@ _ECHO_BLOCK_RE = re.compile(r"<([a-z][a-z0-9_]*)(?:\s[^>]*)?>.*?</\1>", re.DOTAL
 
 
 # compose_executor_brief lays the brief out as sections joined by a blank line:
-# the user's request under this header, the task, then the definition of done.
-# The front door forwards that request as the task word for word, so a quote the
-# task restates is a second copy of the script the task already carries.
+# the user's request under this header, the task, the intent, then the definition
+# of done. The front door forwards that request as the task word for word, so a
+# quote the task restates is a second copy of the script the task already carries.
 VERBATIM_REQUEST_HEADER = "Original request (verbatim):"
+INTENT_SECTION_HEAD = "Outcome the user actually wants:"
 DONE_SECTION_HEAD = "Definition of done"
 _SECTION_BREAK = "\n\n"
 
@@ -114,16 +126,20 @@ def _strip_echoed_payloads(text: str) -> str:
 def _strip_restated_request(text: str) -> str:
     """Drop the brief's request quote when the task section is that same request.
 
-    Quote and task fill the span from the header to the definition of done (the
-    last_run and playbook sections are tag blocks, gone before this runs), so the
-    quote is restated only when that span is one text twice.
+    Quote and task fill the span from the header to the intent or the definition
+    of done (the last_run and playbook sections are tag blocks, gone before this
+    runs), so the quote is restated only when that span is one text twice.
     """
     header_at = text.find(VERBATIM_REQUEST_HEADER)
     if header_at < 0:
         return text
     span_at = header_at + len(VERBATIM_REQUEST_HEADER)
-    done_at = text.find(_SECTION_BREAK + DONE_SECTION_HEAD, span_at)
-    span_end = len(text) if done_at < 0 else done_at
+    section_starts = [
+        found
+        for head in (INTENT_SECTION_HEAD, DONE_SECTION_HEAD)
+        if (found := text.find(_SECTION_BREAK + head, span_at)) >= 0
+    ]
+    span_end = min(section_starts, default=len(text))
     span = text[span_at:span_end]
     cut = span.find(_SECTION_BREAK)
     while cut >= 0:
@@ -164,15 +180,41 @@ class FailDirective:
     message: str
 
 
-Directive = ToolDirective | SayDirective | FailDirective
+@dataclass(frozen=True)
+class WaitDirective:
+    """A [[wait:...]] hold on the step that follows it."""
+
+    ms: int
+
+
+@dataclass(frozen=True)
+class PaceDirective:
+    """A [[pace:...]] gap between the streamed words of the say text."""
+
+    ms: int
+
+
+@dataclass(frozen=True)
+class NarrateDirective:
+    """A [[narrate:...]] preamble the front door streams alongside its hand-off call."""
+
+    text: str
+
+
+Directive = (
+    ToolDirective | SayDirective | FailDirective | WaitDirective | PaceDirective | NarrateDirective
+)
 
 
 @dataclass(frozen=True)
 class ToolCallResponse:
-    """A tool call as the answer to one invocation."""
+    """A tool call as the answer to one invocation, sent after ``delay_ms``, after any ``text``."""
 
     name: str
     args: dict[str, Any]
+    delay_ms: int = 0
+    text: str = ""
+    pace_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -181,6 +223,8 @@ class SayResponse:
 
     text: str
     fail: str | None = None
+    delay_ms: int = 0
+    pace_ms: int = 0
 
 
 Response = ToolCallResponse | SayResponse
@@ -202,6 +246,15 @@ def parse_directives(text: str) -> list[Directive]:
         elif opener.group(1) == "fail":
             say, pos = _scan_say(text, opener.end())
             directive = FailDirective(message=say.text)
+        elif opener.group(1) == "wait":
+            ms, pos = _scan_ms(text, opener.end(), "wait")
+            directive = WaitDirective(ms=ms)
+        elif opener.group(1) == "pace":
+            ms, pos = _scan_ms(text, opener.end(), "pace")
+            directive = PaceDirective(ms=ms)
+        elif opener.group(1) == "narrate":
+            say, pos = _scan_say(text, opener.end())
+            directive = NarrateDirective(text=say.text)
         else:
             directive, pos = _scan_tool(text, opener.end())
         if directive is None:
@@ -237,6 +290,16 @@ def _scan_say(text: str, start: int) -> tuple[SayDirective, int]:
     if end < 0:
         raise DirectiveError(f"unterminated say directive: [[say:{text[start : start + 60]}")
     return SayDirective(text=text[start:end].strip()), end + len(_CLOSE)
+
+
+def _scan_ms(text: str, start: int, kind: str) -> tuple[int, int]:
+    """Read a timing directive's body: a whole, non-negative millisecond count."""
+    body, end = _scan_say(text, start)
+    if not body.text.isdigit():
+        raise DirectiveError(
+            f"{kind} directive needs whole milliseconds, got [[{kind}:{body.text}]]"
+        )
+    return int(body.text), end
 
 
 #: How a directive looks once it has been embedded in a JSON string: its quotes
@@ -398,9 +461,36 @@ def _work_primary_index(messages: Sequence[dict[str, Any]]) -> int | None:
     return None
 
 
+@dataclass(frozen=True)
+class _Script:
+    """A script split into its tool steps and its closing, each step with the wait before it."""
+
+    tools: list[ToolDirective]
+    tool_waits: list[int]
+    closing: list[Directive]
+    final_wait: int
+
+
+def _script(directives: Sequence[Directive]) -> _Script:
+    tools: list[ToolDirective] = []
+    tool_waits: list[int] = []
+    closing: list[Directive] = []
+    pending_wait = 0
+    for directive in directives:
+        if isinstance(directive, WaitDirective):
+            pending_wait += directive.ms
+        elif isinstance(directive, ToolDirective):
+            tools.append(directive)
+            tool_waits.append(pending_wait)
+            pending_wait = 0
+        else:
+            closing.append(directive)
+    return _Script(tools, tool_waits, closing, pending_wait)
+
+
 def _collect_work_directives(
     messages: Sequence[dict[str, Any]],
-) -> tuple[list[ToolDirective], list[Directive], int | None]:
+) -> tuple[_Script, int | None]:
     """Collect the current task's directives PLUS every steer folded into its run.
 
     A run works through the whole plan — the original tool directives and each
@@ -410,7 +500,7 @@ def _collect_work_directives(
     "newest scripted message wins" made the stub drop it)."""
     primary_idx = _work_primary_index(messages)
     if primary_idx is None:
-        return [], None, None
+        return _script([]), None
     genuine: list[Directive] = list(
         parse_directives(_strip_echoed_payloads(message_text(messages[primary_idx])))
     )
@@ -420,30 +510,39 @@ def _collect_work_directives(
         text = message_text(message)
         if _is_interjection(text):
             genuine.extend(parse_directives(_strip_echoed_payloads(text)))
-    tool_dirs = [d for d in genuine if isinstance(d, ToolDirective)]
-    closing = [d for d in genuine if not isinstance(d, ToolDirective)]
-    return tool_dirs, closing, primary_idx
+    return _script(genuine), primary_idx
 
 
-def _terminal(directives: Sequence[Directive]) -> SayResponse:
+def _terminal(script: _Script) -> SayResponse:
     """Resolve the script's last word: its say text, broken by its fail directive if it has one."""
-    say = next((d for d in reversed(directives) if isinstance(d, SayDirective)), None)
-    fail = next((d for d in reversed(directives) if isinstance(d, FailDirective)), None)
+    closing = script.closing
+    say = next((d for d in reversed(closing) if isinstance(d, SayDirective)), None)
+    fail = next((d for d in reversed(closing) if isinstance(d, FailDirective)), None)
+    pace = next((d for d in reversed(closing) if isinstance(d, PaceDirective)), None)
+    timing = {"delay_ms": script.final_wait, "pace_ms": pace.ms if pace is not None else 0}
     if fail is not None:
-        return SayResponse(say.text if say is not None else "", fail=fail.message)
-    return SayResponse(say.text if say is not None else DEFAULT_REPLY)
+        return SayResponse(say.text if say is not None else "", fail=fail.message, **timing)
+    return SayResponse(say.text if say is not None else DEFAULT_REPLY, **timing)
+
+
+def _narration(script: _Script) -> dict[str, Any]:
+    """Return the preamble a front-door hand-off streams, paced like the reply; empty without one."""
+    narrate = next((d for d in script.closing if isinstance(d, NarrateDirective)), None)
+    if narrate is None:
+        return {}
+    pace = next((d for d in reversed(script.closing) if isinstance(d, PaceDirective)), None)
+    return {"text": narrate.text, "pace_ms": pace.ms if pace is not None else 0}
 
 
 def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
     """Executor/subagent tier: aggregate the task + its steers, emit the next step."""
-    tool_dirs, closing, primary_idx = _collect_work_directives(messages)
-    if not tool_dirs and not closing:
-        return SayResponse(DEFAULT_REPLY)
-
+    script, primary_idx = _collect_work_directives(messages)
+    tool_dirs = script.tools
     tail = messages[primary_idx + 1 :] if primary_idx is not None else messages
     di = _cursor(tool_dirs, _emitted_tool_names(tail), available_tools)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
+        wait = script.tool_waits[di]
         if nxt.name not in available_tools:
             # retrieve_tools decides: internal tools bind, integration tools come
             # back as schema docs and stay unbound — those run through execute.
@@ -461,9 +560,10 @@ def _resolve_work(messages: Sequence[dict[str, Any]], available_tools: frozenset
                         "tool_name": nxt.name,
                         "data": nxt.args,
                     },
+                    delay_ms=wait,
                 )
-        return ToolCallResponse(name=nxt.name, args=nxt.args)
-    return _terminal(closing)
+        return ToolCallResponse(name=nxt.name, args=nxt.args, delay_ms=wait)
+    return _terminal(script)
 
 
 def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozenset[str]) -> Response:
@@ -477,11 +577,8 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
         return SayResponse(DEFAULT_REPLY)
 
     task_text = _strip_echoed_payloads(message_text(messages[latest]))
-    directives = parse_directives(task_text)
-    tool_dirs = [d for d in directives if isinstance(d, ToolDirective)]
-    closing = [d for d in directives if not isinstance(d, ToolDirective)]
-    if not tool_dirs and not closing:
-        return SayResponse(DEFAULT_REPLY)
+    script = _script(parse_directives(task_text))
+    tool_dirs = script.tools
 
     di = _cursor(tool_dirs, _emitted_tool_names(messages[latest + 1 :]), available_tools)
     if di < len(tool_dirs):
@@ -490,10 +587,44 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
         # fallbacks live in _resolve_work. Comms forwards and is done.
         if nxt.name not in available_tools and CALL_EXECUTOR_TOOL in available_tools:
             return ToolCallResponse(
-                name=CALL_EXECUTOR_TOOL, args={"task": task_text, **SCRIPTED_HAND_OFF_ARGS}
+                name=CALL_EXECUTOR_TOOL,
+                args={"task": task_text, **SCRIPTED_HAND_OFF_ARGS},
+                **_narration(script),
             )
-        return ToolCallResponse(name=nxt.name, args=nxt.args)
-    return _terminal(closing)
+        return ToolCallResponse(name=nxt.name, args=nxt.args, delay_ms=script.tool_waits[di])
+    return _terminal(script)
+
+
+# Payloads a tier hands the next one to re-voice: a run's result, never a context slot.
+_RESULT_PAYLOAD_RE = re.compile(
+    r"<(?P<tag>executor_result|executor_error|browser_[a-z_]+)(?:\s[^>]*)?>\n?(?P<body>.*?)\n?</(?P=tag)>",
+    re.DOTALL,
+)
+
+
+# The conversation step's note for finished work (WORK_DONE_NOTE / WORK_UNFINISHED_NOTE in
+# apps/api/app/constants/conversation.py): its report is the result to re-voice.
+_WORK_NOTE_RE = re.compile(
+    r"^\[Background work (?:finished|ended \w+)\. The user has not seen this(?: result)? yet, "
+    r"so (?:report it|tell them) in your reply: (?P<body>.*)\]$",
+    re.DOTALL,
+)
+
+
+def _result_echo(messages: Sequence[dict[str, Any]]) -> SayResponse | None:
+    """Return the newest result payload handed over after the newest script, as the reply."""
+    scripted = _script_message_index(messages)
+    for idx in range(len(messages) - 1, -1, -1):
+        if scripted is not None and idx <= scripted:
+            return None
+        message = messages[idx]
+        if message.get("role") != "user":
+            continue
+        text = message_text(message)
+        found = _RESULT_PAYLOAD_RE.search(text) or _WORK_NOTE_RE.match(text.strip())
+        if found is not None:
+            return SayResponse(found.group("body").strip())
+    return None
 
 
 def resolve_response(
@@ -502,9 +633,13 @@ def resolve_response(
 ) -> Response:
     """Pick the next scripted action for this invocation (stateless).
 
-    The front door (``call_executor`` bound) forwards/cancels the newest
+    A result handed to this tier after its script is re-voiced word for word.
+    Otherwise the front door (``call_executor`` bound) forwards/cancels the newest
     instruction; the tier that runs work aggregates the task and every steer
     folded into its run."""
+    echoed = _result_echo(messages)
+    if echoed is not None:
+        return echoed
     if CALL_EXECUTOR_TOOL in available_tools:
         return _resolve_comms(messages, available_tools)
     return _resolve_work(messages, available_tools)

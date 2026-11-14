@@ -17,6 +17,12 @@ CHANNEL_TYPE_WHATSAPP = "whatsapp"
 CHANNEL_TYPE_SLACK = "slack"
 CHANNEL_TYPE_IMESSAGE = "imessage"
 CHANNEL_TYPE_EMAIL = "email"
+#: Expo push to the user's registered phones.
+CHANNEL_TYPE_PUSH: Final = "push"
+#: A Notice in the conversation the fact belongs to.
+CHANNEL_TYPE_CONVERSATION: Final = "conversation"
+#: The push category the mobile app answers with approve/deny buttons.
+APPROVAL_PUSH_CATEGORY: Final = "hil_approval"
 
 # External channel types a notification can be delivered on
 EXTERNAL_NOTIFICATION_CHANNELS = (
@@ -28,8 +34,7 @@ EXTERNAL_NOTIFICATION_CHANNELS = (
 )
 
 # Every channel type a notification may name explicitly (the tool validates
-# against this). One naming none goes in-app plus the user's preferred chat
-# platform; see ``NotificationOrchestrator._default_channels``.
+# against this). One naming none is routed by ``NotificationOrchestrator._route``.
 NOTIFICATION_CHANNEL_TYPES = (
     CHANNEL_TYPE_INAPP,
     CHANNEL_TYPE_TELEGRAM,

@@ -4,17 +4,14 @@ from collections.abc import Awaitable, Callable
 import json
 from unittest.mock import AsyncMock, patch
 
-from pydantic import ValidationError
 import pytest
 
 from app.constants.delivery_alerts import DeliveryFailureKind
 from app.constants.outbound import (
-    OUTBOUND_QUEUES,
     OUTBOUND_TTL_SECONDS_DEFAULT,
     OUTBOUND_TTL_SECONDS_GREETING,
 )
 from app.models.chat_models import ConversationSource
-from app.schemas.outbound import OutboundMessageEnvelope, OutboundReaction
 from app.services import outbound_delivery as od
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.log_identifiers import hash_platform_user_id
@@ -279,116 +276,6 @@ class TestPublishOutboundMessageBrutalEdges:
         assert publisher.publish_outbound.await_count == 1
 
 
-class TestPublishOutboundFile:
-    """publish_outbound_file enqueues an attachment envelope and is best-effort — every can't-deliver path returns False, never raises."""
-
-    async def test_unsupported_platform_returns_false(self) -> None:
-        # WEB has no outbound queue — the link lookup must not even be reached.
-        with patch.object(
-            PlatformLinkService, "get_linked_platforms", new_callable=AsyncMock
-        ) as linked:
-            ok = await od.publish_outbound_file(
-                ConversationSource.WEB, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
-            )
-        assert ok is False
-        linked.assert_not_awaited()
-
-    async def test_unlinked_account_returns_false(self) -> None:
-        with patch.object(
-            PlatformLinkService,
-            "get_linked_platforms",
-            new_callable=AsyncMock,
-            return_value={},
-        ):
-            ok = await od.publish_outbound_file(
-                ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
-            )
-        assert ok is False
-
-    async def test_broker_unavailable_returns_false(self) -> None:
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("whatsapp", "15551234567"),
-            ),
-            patch.object(
-                od,
-                "get_rabbitmq_publisher",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("down"),
-            ),
-        ):
-            ok = await od.publish_outbound_file(
-                ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
-            )
-        assert ok is False
-
-    async def test_publish_error_returns_false(self) -> None:
-        publisher = AsyncMock()
-        publisher.publish_outbound = AsyncMock(side_effect=RuntimeError("boom"))
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("whatsapp", "15551234567"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            ok = await od.publish_outbound_file(
-                ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
-            )
-        assert ok is False
-
-    async def test_success_enqueues_attachment_envelope(self) -> None:
-        publisher = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("whatsapp", "15551234567"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            ok = await od.publish_outbound_file(
-                ConversationSource.WHATSAPP,
-                "u1",
-                "conv-1",
-                "artifacts/report.pdf",
-                "report.pdf",
-                content_type="application/pdf",
-                caption="here you go",
-            )
-        assert ok is True
-        queue, body = publisher.publish_outbound.await_args.args
-        assert queue == "outbound.whatsapp"
-        envelope = json.loads(body)
-        # A FILE envelope: it carries the artifact reference, not inline text.
-        assert envelope.get("text") is None
-        assert envelope["destination_id"] == "15551234567"
-        assert envelope["attachment"] == {
-            "conversation_id": "conv-1",
-            "path": "artifacts/report.pdf",
-            "url": None,
-            "filename": "report.pdf",
-            "content_type": "application/pdf",
-            "caption": "here you go",
-        }
-        # A queued file expires like a queued message: the artifact it points at
-        # is cleaned up, so a late delivery hands the bot a dead reference.
-        assert (
-            publisher.publish_outbound.await_args.kwargs["expiration"]
-            == OUTBOUND_TTL_SECONDS_DEFAULT
-        )
-
-
 class TestPublishOutboundPhoto:
     """publish_outbound_photo enqueues a URL the bot fetches itself, and never raises."""
 
@@ -479,7 +366,8 @@ class TestPublishOutboundPhoto:
 
         assert ok is False
         fields = logger.error.call_args.kwargs
-        assert logger.error.call_args.args == ("publish_outbound_photo: publish failed",)
+        assert logger.error.call_args.args == ("outbound attachment publish failed",)
+        assert logger.error.call_args.kwargs["operation"] == "publish_outbound_photo"
         assert fields["platform"] == "telegram"
         assert fields["error"] == "boom"
         assert fields["error_type"] == "RuntimeError"
@@ -654,7 +542,8 @@ class TestNotifyAccountLinked:
 class TestOutboundBubbleSplitting:
     """Raw agent text carries bubble-break sentinels; outbound publish is the last place that can turn them into real bubbles."""
 
-    async def test_sentinels_inside_one_part_become_ordered_bubbles(self) -> None:
+    async def test_a_part_travels_as_the_bubbles_the_server_split(self) -> None:
+        """The server splits once; the bot sends each part as one bubble."""
         publisher = AsyncMock()
         with (
             patch.object(
@@ -675,8 +564,9 @@ class TestOutboundBubbleSplitting:
         assert ok is od.OutboundResult.PUBLISHED
         envelope = json.loads(publisher.publish_outbound.await_args.args[1])
         assert envelope["text_parts"] == ["all set.", "8 tasks created", "2 nudges"]
+        assert envelope.get("text") is None
 
-    async def test_a_trailing_partial_sentinel_never_ships(self) -> None:
+    async def test_a_part_of_nothing_but_sentinels_is_not_published(self) -> None:
         publisher = AsyncMock()
         with (
             patch.object(
@@ -689,160 +579,11 @@ class TestOutboundBubbleSplitting:
                 od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
             ),
         ):
-            await od.publish_outbound_message(
-                ConversationSource.WHATSAPP, "user-1", ["here are your numbers<NEW_MESSAGE_B"]
+            ok = await od.publish_outbound_message(
+                ConversationSource.WHATSAPP, "user-1", ["<NEW_MESSAGE_BREAK> [NEW_LINE_BREAK]"]
             )
-        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
-        assert envelope["text"] == "here are your numbers"
-
-
-class TestPublishOutboundReaction:
-    async def test_reaction_envelope_carries_target_and_emoji(self) -> None:
-        publisher = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value={"telegram": {"platformUserId": "4242"}},
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            ok = await od.publish_outbound_reaction(
-                ConversationSource.TELEGRAM, "user-1", "777", "👍", replaces_emoji="🔎"
-            )
-        assert ok is od.OutboundResult.PUBLISHED
-        _queue, body = publisher.publish_outbound.await_args.args
-        envelope = json.loads(body)
-        assert envelope["reaction"] == {
-            "target_platform_message_id": "777",
-            "emoji": "👍",
-            "replaces_emoji": "🔎",
-        }
-        assert envelope.get("text") is None
-        assert envelope["destination_id"] == "4242"
-
-    async def test_reaction_only_envelope_passes_validation(self) -> None:
-        """A reaction travels with no text body — the schema must accept it."""
-        env = OutboundMessageEnvelope(
-            platform="telegram",
-            destination_id="4242",
-            reaction=OutboundReaction(target_platform_message_id="777", emoji="👍"),
-        )
-        assert env.reaction is not None
-        assert env.reaction.emoji == "👍"
-
-    def test_payloadless_envelope_is_rejected_naming_every_accepted_payload(self) -> None:
-        with pytest.raises(ValidationError) as rejected:
-            OutboundMessageEnvelope(platform="telegram", destination_id="4242")
-
-        assert [error["msg"] for error in rejected.value.errors()] == [
-            "Value error, envelope requires text, text_parts, attachment, or reaction"
-        ]
-
-    async def test_a_dm_reaction_goes_to_the_platforms_queue_as_a_dm(self) -> None:
-        publisher = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("telegram", "4242"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-            patch.object(od, "log") as mock_log,
-        ):
-            await od.publish_outbound_reaction(ConversationSource.TELEGRAM, "user-1", "777", "👍")
-
-        queue, body = publisher.publish_outbound.await_args.args
-        envelope = json.loads(body)
-        assert queue == OUTBOUND_QUEUES[ConversationSource.TELEGRAM]
-        assert envelope["platform"] == "telegram"
-        assert envelope["is_channel"] is False
-        mock_log.info.assert_called_once_with(
-            "outbound_reaction_published", platform="telegram", queue=queue
-        )
-
-    async def test_a_channel_reaction_addresses_the_group_without_a_dm_lookup(self) -> None:
-        publisher = AsyncMock()
-        resolve = AsyncMock()
-        with (
-            patch.object(PlatformLinkService, "get_linked_platforms", resolve),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            ok = await od.publish_outbound_reaction(
-                ConversationSource.TELEGRAM,
-                "user-1",
-                "777",
-                "👍",
-                destination_override="-100999",
-                is_channel=True,
-            )
-
-        assert ok is od.OutboundResult.PUBLISHED
-        resolve.assert_not_awaited()
-        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
-        assert envelope["destination_id"] == "-100999"
-        assert envelope["is_channel"] is True
-
-    async def test_an_unlinked_account_skips_the_reaction(self) -> None:
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value={},
-            ) as linked,
-            patch.object(od, "log") as mock_log,
-        ):
-            ok = await od.publish_outbound_reaction(
-                ConversationSource.TELEGRAM, "user-1", "777", "👍"
-            )
-
         assert ok is od.OutboundResult.SKIPPED
-        linked.assert_awaited_once_with("user-1")
-        assert mock_log.warning.call_args.kwargs["operation"] == "publish_outbound_reaction"
-
-    async def test_a_platform_with_no_outbound_queue_skips_the_reaction(self) -> None:
-        resolve = AsyncMock()
-        with patch.object(PlatformLinkService, "get_linked_platforms", resolve):
-            ok = await od.publish_outbound_reaction(ConversationSource.WEB, "user-1", "777", "👍")
-
-        assert ok is od.OutboundResult.SKIPPED
-        resolve.assert_not_awaited()
-
-    async def test_a_failed_publish_is_reported_as_failed_not_skipped(self) -> None:
-        publisher = AsyncMock()
-        publisher.publish_outbound.side_effect = RuntimeError("channel closed")
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("telegram", "4242"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-            patch.object(od, "log") as mock_log,
-        ):
-            ok = await od.publish_outbound_reaction(
-                ConversationSource.TELEGRAM, "user-1", "777", "👍"
-            )
-
-        assert ok is od.OutboundResult.FAILED
-        mock_log.error.assert_called_once_with(
-            "publish_outbound_reaction: publish failed",
-            platform="telegram",
-            error="channel closed",
-        )
-        mock_log.info.assert_not_called()
+        publisher.publish_outbound.assert_not_awaited()
 
 
 def _only(entries: list[dict[str, object]], msg: str) -> dict[str, object]:
@@ -897,36 +638,6 @@ class TestAFailedOutboundSendIsExplainedOnTheWideEvent:
 
         error = _only(event["errors"], "publish_outbound_message: publish failed")
         assert error["user_id"] == "user-1"
-        assert error["destination_hash"] == hash_platform_user_id("15551234567")
-        assert error["error"] == "channel closed"
-        assert error["error_type"] == "ConnectionError"
-
-    async def test_a_failed_file_publish_records_the_envelope_the_bot_never_got(self) -> None:
-        publisher = AsyncMock()
-        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("whatsapp", "15551234567"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-        ):
-            async with captured_wide_event() as event:
-                ok = await od.publish_outbound_file(
-                    ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
-                )
-
-        assert ok is False
-        (_, body), _ = publisher.publish_outbound.await_args
-        error = _only(event["errors"], "publish_outbound_file: publish failed")
-        assert error["platform"] == "whatsapp"
-        assert error["user_id"] == "u1"
-        # The id the bot would have logged on delivery: the join key for a lost file.
-        assert error["envelope_id"] == json.loads(body)["id"]
         assert error["destination_hash"] == hash_platform_user_id("15551234567")
         assert error["error"] == "channel closed"
         assert error["error_type"] == "ConnectionError"
@@ -1011,25 +722,6 @@ class TestALostOutboundMessageIsAlerted:
                 id="channel-message",
             ),
             pytest.param(
-                lambda: od.publish_outbound_reaction(
-                    ConversationSource.WHATSAPP,
-                    "u1",
-                    "wamid.1",
-                    "👍",
-                    destination_override="15551234567",
-                    is_channel=True,
-                ),
-                True,
-                id="channel-reaction",
-            ),
-            pytest.param(
-                lambda: od.publish_outbound_file(
-                    ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
-                ),
-                False,
-                id="file",
-            ),
-            pytest.param(
                 lambda: od.publish_outbound_photo(
                     ConversationSource.WHATSAPP, "u1", "https://cdn.test/s.png", "s.png"
                 ),
@@ -1092,29 +784,6 @@ class TestALostOutboundMessageIsAlerted:
             envelope_id=_published_id(publisher),
         )
 
-    async def test_a_failed_file_publish_alerts(self) -> None:
-        publisher = AsyncMock()
-        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
-        report = AsyncMock()
-        with (
-            patch.object(
-                PlatformLinkService,
-                "get_linked_platforms",
-                new_callable=AsyncMock,
-                return_value=_linked("whatsapp", "15551234567"),
-            ),
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-            patch.object(od, "report_delivery_failure", report),
-        ):
-            ok = await od.publish_outbound_file(
-                ConversationSource.WHATSAPP, "u1", "conv-1", "artifacts/r.pdf", "r.pdf"
-            )
-
-        assert ok is False
-        assert _alert(report) == _enqueue_alert(envelope_id=_published_id(publisher))
-
     async def test_a_failed_photo_publish_alerts(self) -> None:
         publisher = AsyncMock()
         publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
@@ -1137,34 +806,6 @@ class TestALostOutboundMessageIsAlerted:
 
         assert ok is False
         assert _alert(report) == _enqueue_alert(envelope_id=_published_id(publisher))
-
-    async def test_a_failed_group_reaction_alerts_as_a_channel_send(self) -> None:
-        publisher = AsyncMock()
-        publisher.publish_outbound = AsyncMock(side_effect=ConnectionError("channel closed"))
-        report = AsyncMock()
-        with (
-            patch.object(
-                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
-            ),
-            patch.object(od, "report_delivery_failure", report),
-        ):
-            ok = await od.publish_outbound_reaction(
-                ConversationSource.TELEGRAM,
-                "user-1",
-                "777",
-                "👍",
-                destination_override="-100999",
-                is_channel=True,
-            )
-
-        assert ok is od.OutboundResult.FAILED
-        assert _alert(report) == _enqueue_alert(
-            platform=ConversationSource.TELEGRAM,
-            user_id="user-1",
-            destination_id="-100999",
-            is_channel=True,
-            envelope_id=_published_id(publisher),
-        )
 
     async def test_a_skipped_publish_does_not_alert(self) -> None:
         report = AsyncMock()

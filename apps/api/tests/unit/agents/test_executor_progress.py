@@ -43,11 +43,12 @@ from app.constants.cache import (
 )
 from app.constants.executor import EXECUTOR_PROGRESS_MAX_CALLS
 from app.constants.general import CALL_EXECUTOR_NAME
-from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
+from app.services.conversation.runtime import install_runtime_ports
 from tests.helpers import captured_wide_event
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 CONV = "conv-1"
 HOLDER = build_lock_value("stream-1", "task-1")
@@ -351,15 +352,6 @@ class TestLifetime:
 
         assert describe_progress(await read_progress(CONV, HOLDER)) == ""
 
-    async def test_a_paused_run_keeps_its_progress_for_the_approval_window(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
-        await _record(HOLDER, _call("GMAIL_SEND", {"to": "a@b.c"}))
-
-        await hold_run_alive(CONV, HOLDER, HIL_PAUSED_LOCK_TTL_SECONDS)
-
-        assert await fake_redis.ttl(progress_key(CONV, HOLDER)) > EXECUTOR_ALIVE_TTL
-
     async def test_the_beat_never_creates_a_record(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:
@@ -405,6 +397,7 @@ class TestLifetime:
         """Cancel frees the lock directly, so the run's later finalize finds it gone and deletes nothing."""
         monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
         monkeypatch.setattr(websocket_manager, "broadcast_to_user", AsyncMock())
+        install_runtime_ports(Runtime().ports)
         await _hold_live_lock(fake_redis)
         await _record(HOLDER, _call("search", {"q": "x"}))
 

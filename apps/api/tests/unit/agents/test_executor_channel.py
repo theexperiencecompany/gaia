@@ -18,6 +18,7 @@ from unittest.mock import ANY, AsyncMock, patch
 import fakeredis.aioredis
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langgraph.store.memory import InMemoryStore
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
@@ -42,7 +43,6 @@ from app.override.langgraph_bigtool.utils import (
 )
 from app.services import cost_budget
 from app.services.cost_budget import get_request_tokens, record_model_call_usage
-from app.utils.agent_utils import strip_internal_agent_tags
 from tests.helpers import captured_wide_event
 
 CONVERSATION = "conv-1"
@@ -64,6 +64,10 @@ RUN_CONFIG: RunnableConfig = {
 def _state(*messages: AnyMessage) -> State:
     """Build a graph state holding just these messages, the only key the drain reads."""
     return cast(State, {"messages": list(messages)})
+
+
+#: Pre-model hooks never read the store; the hook chain still hands one over.
+STORE = InMemoryStore()
 
 
 @pytest.fixture
@@ -151,6 +155,23 @@ class TestInbox:
 
         assert removed == 1
         assert [entry.id for entry in await inbox.read()] == ["steer"]
+
+    async def test_clear_drops_the_work_and_keeps_the_stop_notices(
+        self, inbox: ExecutorInbox
+    ) -> None:
+        """A second Stop must not report the first one's notices as pending work, or wipe them."""
+        await inbox.append("pending", "the task being cancelled")
+        await inbox.announce_interruption()
+        await inbox.append("browser", "stopped", AgentTag.BROWSER_STOPPED)
+
+        removed = await inbox.clear()
+
+        assert removed == 1
+        assert [entry.tag for entry in await inbox.read()] == [
+            AgentTag.EXECUTOR_INTERRUPTED,
+            AgentTag.BROWSER_STOPPED,
+        ]
+        assert await inbox.clear() == 0
 
     async def test_an_unreadable_entry_does_not_wedge_the_channel(
         self, inbox: ExecutorInbox, redis
@@ -243,7 +264,7 @@ class TestInbox:
         await inbox.announce_interruption("then check my email")
 
         result = await drain_inbox_hook(
-            _state(*(as_interjection(entry) for entry in first)), CONFIG, None
+            _state(*(as_interjection(entry) for entry in first)), CONFIG, STORE
         )
 
         injected = result[INJECTED_MESSAGES_KEY]
@@ -322,13 +343,6 @@ class TestFraming:
 
         assert "<executor_interrupted>" in as_interjection(entry).content
 
-    def test_the_framing_never_reaches_the_user(self) -> None:
-        content = as_interjection(InboxEntry(id="t1", text="also check spam")).text
-
-        stripped = strip_internal_agent_tags(content)
-        assert "also check spam" in stripped
-        assert "user_interjection" not in stripped
-
 
 class TestDrainHook:
     async def test_pending_work_is_injected_into_the_model_input(
@@ -337,7 +351,7 @@ class TestDrainHook:
         await inbox.append("t1", "also check spam")
         state = _state(HumanMessage(content="find my flight email"))
 
-        result = await drain_inbox_hook(state, CONFIG, None)
+        result = await drain_inbox_hook(state, CONFIG, STORE)
 
         assert "also check spam" in result["messages"][-1].content
 
@@ -347,7 +361,7 @@ class TestDrainHook:
         """Without the staging the message reaches ONE model call and is then gone from the thread — the whole bug this channel exists to avoid."""
         await inbox.append("t1", "also check spam")
 
-        result = await drain_inbox_hook(_state(), CONFIG, None)
+        result = await drain_inbox_hook(_state(), CONFIG, STORE)
 
         staged = pop_injected_messages(result)
         assert [m.additional_kwargs[INBOX_ENTRY_ID] for m in staged] == ["t1"]
@@ -358,7 +372,7 @@ class TestDrainHook:
         await inbox.append("t1", "also check spam")
         committed = HumanMessage(content="x", additional_kwargs={INBOX_ENTRY_ID: "t1"})
 
-        result = await drain_inbox_hook(_state(committed), CONFIG, None)
+        result = await drain_inbox_hook(_state(committed), CONFIG, STORE)
 
         assert result.get(INJECTED_MESSAGES_KEY, []) == []
 
@@ -366,7 +380,7 @@ class TestDrainHook:
         """Staging is not committing: a run that dies at the model call must leave the entry pending, so the thread stays the only record of what was actually delivered."""
         await inbox.append("t1", "also check spam")
 
-        await drain_inbox_hook(_state(), CONFIG, None)
+        await drain_inbox_hook(_state(), CONFIG, STORE)
 
         assert [entry.id for entry in await inbox.read()] == ["t1"]
 
@@ -374,21 +388,21 @@ class TestDrainHook:
         await inbox.append("t1", "also check spam")
         committed = HumanMessage(content="x", additional_kwargs={INBOX_ENTRY_ID: "t1"})
 
-        await drain_inbox_hook(_state(committed), CONFIG, None)
+        await drain_inbox_hook(_state(committed), CONFIG, STORE)
 
         assert await inbox.count() == 0
 
     async def test_an_empty_inbox_leaves_the_turn_untouched(self, inbox: ExecutorInbox) -> None:
         state = _state(AIMessage(content="working"))
 
-        assert await drain_inbox_hook(state, CONFIG, None) is state
+        assert await drain_inbox_hook(state, CONFIG, STORE) is state
 
     async def test_a_turn_with_no_conversation_is_left_alone(self, inbox: ExecutorInbox) -> None:
         await inbox.append("t1", "also check spam")
         state = _state()
 
         async with captured_wide_event() as event:
-            assert await drain_inbox_hook(state, {"configurable": {}}, None) is state
+            assert await drain_inbox_hook(state, {"configurable": {}}, STORE) is state
 
         assert event["warnings"] == [
             {"msg": f"{LogTag.AGENT} drain_inbox_hook: run carries no conversation_id"}
@@ -401,14 +415,14 @@ class TestDrainHook:
         await inbox.append("t1", "also check spam")
         thread_only: RunnableConfig = {"configurable": {"thread_id": f"executor_{CONVERSATION}"}}
 
-        assert await drain_inbox_hook(_state(), thread_only, None) == {"messages": []}
+        assert await drain_inbox_hook(_state(), thread_only, STORE) == {"messages": []}
 
     async def test_a_redis_failure_never_breaks_the_turn(self, inbox: ExecutorInbox) -> None:
         """Reading the inbox is enrichment; failing it must not fail the run."""
         state = _state(HumanMessage(content="find my flight email"))
         async with captured_wide_event() as event:
             with patch.object(ExecutorInbox, "read", side_effect=RuntimeError("redis down")):
-                assert await drain_inbox_hook(state, CONFIG, None) is state
+                assert await drain_inbox_hook(state, CONFIG, STORE) is state
 
         assert event["errors"] == [
             {"msg": f"{LogTag.AGENT} drain_inbox_hook failed", "error_type": "RuntimeError"}
@@ -419,7 +433,7 @@ class TestDrainHook:
     ) -> None:
         await inbox.append("t1", "also check spam")
 
-        result = await drain_inbox_hook(cast(State, {}), CONFIG, None)
+        result = await drain_inbox_hook(cast(State, {}), CONFIG, STORE)
 
         assert [m.additional_kwargs[INBOX_ENTRY_ID] for m in result["messages"]] == ["t1"]
 
@@ -428,7 +442,7 @@ class TestDrainHook:
         await inbox.append("t2", "second thing")
 
         async with captured_wide_event() as event:
-            await drain_inbox_hook(_state(), CONFIG, None)
+            await drain_inbox_hook(_state(), CONFIG, STORE)
 
         assert event["executor_inbox_injected"] == 2
 
@@ -438,7 +452,7 @@ class TestDrainHook:
         await inbox.append("t1", "first thing")
         await inbox.append("t2", "second thing")
 
-        result = await drain_inbox_hook(_state(), CONFIG, None)
+        result = await drain_inbox_hook(_state(), CONFIG, STORE)
 
         injected = [m.content for m in result[INJECTED_MESSAGES_KEY]]
         assert "first thing" in injected[0]
@@ -478,7 +492,7 @@ class TestAnAbsorbedUserTurnGetsItsOwnRequestCeiling:
         await inbox.append("t2", "now do the same for my work account")
 
         async with captured_wide_event() as event:
-            await drain_inbox_hook(_state(), RUN_CONFIG, None)
+            await drain_inbox_hook(_state(), RUN_CONFIG, STORE)
 
         assert await get_request_tokens(FIRST_TURN_REQUEST) == 0
         assert event["request_ceiling_restarted"] is True
@@ -489,7 +503,7 @@ class TestAnAbsorbedUserTurnGetsItsOwnRequestCeiling:
         await inbox.append("r1", "found 3 invoices", AgentTag.SUBAGENT_RESULT)
 
         async with captured_wide_event() as event:
-            await drain_inbox_hook(_state(), RUN_CONFIG, None)
+            await drain_inbox_hook(_state(), RUN_CONFIG, STORE)
 
         assert await get_request_tokens(FIRST_TURN_REQUEST) == 1_000
         assert "request_ceiling_restarted" not in event
@@ -502,8 +516,8 @@ class TestAnAbsorbedUserTurnGetsItsOwnRequestCeiling:
         await inbox.append("t2", "now do the same for my work account")
 
         with patch.object(redis, "delete", AsyncMock(side_effect=RedisConnectionError("gone"))):
-            assert await drain_inbox_hook(_state(), RUN_CONFIG, None) == _state()
-        retried = await drain_inbox_hook(_state(), RUN_CONFIG, None)
+            assert await drain_inbox_hook(_state(), RUN_CONFIG, STORE) == _state()
+        retried = await drain_inbox_hook(_state(), RUN_CONFIG, STORE)
 
         assert [m.additional_kwargs[INBOX_ENTRY_ID] for m in retried["messages"]] == ["t2"]
         assert await get_request_tokens(FIRST_TURN_REQUEST) == 0
@@ -516,6 +530,6 @@ class TestAnAbsorbedUserTurnGetsItsOwnRequestCeiling:
         await inbox.append("t2", "now do the same for my work account")
         committed = HumanMessage(content="x", additional_kwargs={INBOX_ENTRY_ID: "t2"})
 
-        await drain_inbox_hook(_state(committed), RUN_CONFIG, None)
+        await drain_inbox_hook(_state(committed), RUN_CONFIG, STORE)
 
         assert await get_request_tokens(FIRST_TURN_REQUEST) == 1_000

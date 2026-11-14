@@ -70,6 +70,7 @@ def _make_record(
         status=status,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
         original_request=NotificationRequest(
+            id="n-read",
             user_id=FAKE_USER_ID,
             source=NotificationSourceEnum.AI_AGENT,
             type=NotificationType.INFO,

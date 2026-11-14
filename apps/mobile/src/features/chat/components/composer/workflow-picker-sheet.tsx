@@ -22,6 +22,7 @@ import { useWorkflows } from "@/features/workflows/hooks/use-workflows";
 import type { Workflow } from "@/features/workflows/types/workflow-types";
 import { useResponsive } from "@/lib/responsive";
 import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
+import type { SelectedWorkflow } from "../chat/composer-draft";
 
 export interface WorkflowPickerSheetRef {
   open: () => void;
@@ -29,7 +30,7 @@ export interface WorkflowPickerSheetRef {
 }
 
 interface WorkflowPickerSheetProps {
-  onSelectWorkflow: (workflow: { id: string; title: string }) => void;
+  onSelectWorkflow: (workflow: SelectedWorkflow) => void;
 }
 
 export const WorkflowPickerSheet = forwardRef<
@@ -59,7 +60,13 @@ export const WorkflowPickerSheet = forwardRef<
 
   const handleSelect = useCallback(
     (workflow: Workflow) => {
-      onSelectWorkflow({ id: workflow.id, title: workflow.title });
+      onSelectWorkflow({
+        id: workflow.id,
+        title: workflow.title,
+        description: workflow.description,
+        prompt: workflow.prompt,
+        steps: workflow.steps,
+      });
       setIsOpen(false);
       setSearchQuery("");
     },

@@ -17,14 +17,14 @@ case here is one of the four ways it goes wrong:
 * **fabricating** — claiming an action happened, or inventing a capability or a
   fact. Gated by must_not_communicate plus rubric criteria.
 
-Transport is the live chat-stream SSE wire via
-:class:~scripts.evals.suites.livechat.SuiteChatTransport — the same frames the
-web client renders — under this suite's own dev user, so its memories never mix
+Transport is send + events via
+:class:~scripts.evals.suites.livechat.SuiteChatTransport (the same frames the
+web client renders), under this suite's own dev user, so its memories never mix
 with the quality or safety suites'.
 
 What these cases do NOT exercise: the executor's answer. On a delegated turn the
-SSE text is the comms ack and the final answer arrives out of band (WebSocket +
-Mongo), so communicate strings are always matched against the ack, never
+text is the comms reply; the transport does not wait for the work's write-up,
+so communicate strings are always matched against the ack, never
 against work output. That is a deliberate boundary — the executor's answers are
 the capability suite's job.
 """

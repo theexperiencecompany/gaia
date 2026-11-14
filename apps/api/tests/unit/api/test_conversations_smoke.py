@@ -19,19 +19,21 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.conversation_frame_models import StateFrame
+from app.models.conversation_log_models import DisplayState
 from app.models.conversation_models import (
     ConversationActionResponse,
-    ConversationDocument,
-    ConversationEntry,
     ConversationListResponse,
     ConversationMessageHit,
     CreateConversationResponse,
     DeleteAllConversationsResponse,
+    LoadedConversation,
     PinnedMessagesResponse,
     StarConversationResponse,
     UpdateDescriptionResponse,
 )
 from tests.conftest import FAKE_USER
+from tests.factories import make_reply_item
 
 CONV_SERVICE = "app.api.v1.endpoints.conversations"
 
@@ -65,6 +67,9 @@ class TestCreateConversation:
         mock_log.set.assert_any_call(
             user={"id": FAKE_USER.user_id},
             conversation={"operation": "create", "is_new": True},
+        )
+        mock_log.set.assert_any_call(
+            conversation={"operation": "create", "is_new": True, "id": "conv_123"}
         )
 
     async def test_create_requires_auth(self, unauthed_client: AsyncClient):
@@ -101,6 +106,9 @@ class TestListConversations:
             user={"id": FAKE_USER.user_id},
             conversation={"operation": "list", "page": 1, "limit": 10},
         )
+        mock_log.set.assert_any_call(
+            conversation={"operation": "list", "page": 1, "limit": 10, "total_returned": 0}
+        )
 
     async def test_list_with_pagination(self, client: AsyncClient):
         mock_resp = ConversationListResponse(
@@ -135,14 +143,14 @@ class TestGetConversation:
     """GET /api/v1/conversations/{id}."""
 
     async def test_get_existing(self, client: AsyncClient):
-        # A stray top-level field a legacy row carries must still reach the
-        # client: the document is extra="allow" and the response model keeps it.
-        mock_resp = ConversationDocument.model_validate(
+        # A stray top-level field a legacy row carries never reaches the client:
+        # the document ignores what it does not declare.
+        mock_resp = LoadedConversation.model_validate(
             {
                 "conversation_id": "conv_123",
                 "user_id": "user_1",
-                "messages": [],
                 "metadata": {"legacy": True},
+                "state": StateFrame(head=0, display=DisplayState.IDLE, work=()),
             }
         )
         with (
@@ -166,8 +174,8 @@ class TestGetConversation:
         assert mock_get.await_args.kwargs == {}
         body = resp.json()
         assert body["conversation_id"] == "conv_123"
-        assert body["messages"] == []
-        assert body["metadata"] == {"legacy": True}
+        assert (body["items"], body["has_older"], body["state"]["head"]) == ([], False, 0)
+        assert "metadata" not in body
         # The Mongo _id is excluded from the response model — it must not
         # reach the client.
         assert "id" not in body
@@ -330,7 +338,7 @@ class TestPinnedMessages:
             results=[
                 ConversationMessageHit(
                     conversation_id="conv_123",
-                    message=ConversationEntry(type="bot", response="pinned answer", seq=3),
+                    item=make_reply_item("pinned answer", seq=3),
                 )
             ]
         )
@@ -352,4 +360,4 @@ class TestPinnedMessages:
         results = resp.json()["results"]
         assert len(results) == 1
         assert results[0]["conversation_id"] == "conv_123"
-        assert results[0]["message"]["response"] == "pinned answer"
+        assert results[0]["item"]["bubbles"] == ["pinned answer"]

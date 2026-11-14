@@ -9,7 +9,7 @@
  */
 
 import type { AnalyticsId } from "@gaia/shared/analytics";
-import { BaseBotAdapter } from "@gaia/shared/bots";
+import { BaseBotAdapter, type ConversationSurface } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const PLATFORM_USER_ID = "123456789";
@@ -38,13 +38,16 @@ class TestAdapter extends BaseBotAdapter {
   protected async stop(): Promise<void> {
     /* nothing to disconnect */
   }
+  protected async resumeSurface(): Promise<ConversationSurface> {
+    throw new Error("no restart under test");
+  }
   protected async deliverOutbound(): Promise<void> {
     /* no outbound delivery under test */
   }
   protected async sendOutboundFile(): Promise<void> {
     /* no file delivery under test */
   }
-  buildContext() {
+  override buildContext() {
     return {} as never;
   }
 

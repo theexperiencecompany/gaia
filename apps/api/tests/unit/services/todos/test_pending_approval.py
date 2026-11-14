@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.models.hil_models import LedgerState
 from app.models.todo_models import TodoDocument
 
 MODULE = "app.services.todos.todo_service"
@@ -32,7 +31,8 @@ def _row(owner_id: str = "todo-1", **overrides: Any) -> MagicMock:
     row.approval_id = "ap_1"
     row.conversation_id = "conv-9"
     row.owner_id = owner_id
-    row.state = LedgerState.PENDING
+    row.outcome = None
+    row.action = None
     for key, value in overrides.items():
         setattr(row, key, value)
     return row
@@ -53,8 +53,8 @@ class TestGetTodoPending:
             patch(f"{MODULE}.todo_repository.get", new=AsyncMock(return_value=_todo())),
             patch(f"{MODULE}.todo_repository.count_open_sub_todos", new=AsyncMock(return_value={})),
             patch(
-                f"{MODULE}.approval_ledger_repository.list_live_by_owners",
-                new=AsyncMock(return_value=[_row()]),
+                f"{MODULE}.pending_approvals_by_owner",
+                new=AsyncMock(return_value={"todo-1": _row()}),
             ) as live,
         ):
             response = await TodoService.get_todo("todo-1", "user-1")
@@ -71,8 +71,8 @@ class TestGetTodoPending:
             patch(f"{MODULE}.todo_repository.get", new=AsyncMock(return_value=_todo())),
             patch(f"{MODULE}.todo_repository.count_open_sub_todos", new=AsyncMock(return_value={})),
             patch(
-                f"{MODULE}.approval_ledger_repository.list_live_by_owners",
-                new=AsyncMock(return_value=[]),
+                f"{MODULE}.pending_approvals_by_owner",
+                new=AsyncMock(return_value={}),
             ),
         ):
             response = await TodoService.get_todo("todo-1", "user-1")
@@ -93,8 +93,8 @@ class TestListTodosPending:
             ),
             patch(f"{MODULE}.todo_repository.count_open_sub_todos", new=AsyncMock(return_value={})),
             patch(
-                f"{MODULE}.approval_ledger_repository.list_live_by_owners",
-                new=AsyncMock(return_value=[_row(owner_id="todo-2")]),
+                f"{MODULE}.pending_approvals_by_owner",
+                new=AsyncMock(return_value={"todo-2": _row(owner_id="todo-2")}),
             ) as live,
         ):
             response = await TodoService.list_todos(

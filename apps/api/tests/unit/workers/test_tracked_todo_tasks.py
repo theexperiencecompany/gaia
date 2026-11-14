@@ -24,6 +24,7 @@ import re
 from types import SimpleNamespace
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from arq.connections import ArqRedis
@@ -36,7 +37,6 @@ from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
 import respx
 import time_machine
 
-from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import (
     ExecutorBusyError,
     TodoRunCancelledError,
@@ -92,10 +92,11 @@ from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WAIT_MET_TRIGGER
 from app.db.repositories.todos import todo_repository
-from app.models.message_models import TodoRunWake
+from app.models.conversation_log_models import TodoReportForm
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.scheduler_models import DeactivationReason
@@ -106,6 +107,7 @@ from app.models.todo_models import (
     TodoRunContext,
     TodoUpdate,
 )
+from app.models.todo_wake_models import TodoRunWake
 from app.models.trigger_gate_models import AuthoredGate, QuietHoursBypass, SystemGate, TriggerGate
 from app.models.trigger_subscription_models import (
     ConditionOperator,
@@ -1765,7 +1767,7 @@ class TestARecurringTodoOutlivesAFailedOccurrence:
                 LOAD_USER,
                 AsyncMock(side_effect=_user_context(timezone=timezone)),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
             patch(f"{MODULE}.enforce_cost_budget", AsyncMock()),
             _serving(pool),
@@ -3566,14 +3568,28 @@ class TestExecuteOnExecutor:
 
         request = self._request()
         assert request.user is user
-        assert request.todo_run == TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+        run = request.todo_run
+        assert (run.todo_id, run.trigger_type, run.runs_once, run.title) == (
+            "todo-1",
+            TriggerType.SCHEDULED_TODO,
+            True,
+            "Check the deploy",
         )
-        assert request.todo_title == "Check the deploy"
+        assert run.report_form is TodoReportForm.WRITE_UP
         assert "Execute the following scheduled task: Check the deploy" in request.task
         assert "Details: verify staging" in request.task
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
         assert "Recent activity (activity.md):\n- earlier run" in request.task
+
+    async def test_each_run_of_a_todo_gets_its_own_run_id(self):
+        await self._execute()
+        first = self._request().todo_run.run_id
+        await self._execute()
+        second = self._request().todo_run.run_id
+
+        assert first != second
+        assert str(UUID(first)) == first
+        assert str(UUID(second)) == second
 
     @pytest.mark.parametrize(
         ("fields", "runs_once"),
@@ -3613,7 +3629,7 @@ class TestExecuteOnExecutor:
     async def test_a_scheduled_run_says_its_schedule_woke_it(self):
         await self._execute()
 
-        assert self._request().wake == TodoRunWake(
+        assert self._request().todo_run.wake == TodoRunWake(
             kind=TodoWakeKind.SCHEDULE,
             trigger_names=[],
             approval_summary=None,
@@ -3635,7 +3651,7 @@ class TestExecuteOnExecutor:
                 coalesced=also,
             )
 
-        assert self._request().wake == TodoRunWake(
+        assert self._request().todo_run.wake == TodoRunWake(
             kind=TodoWakeKind.TRIGGER,
             trigger_names=["gmail_email_sent", "gmail_new_message"],
             approval_summary=None,
@@ -3823,16 +3839,21 @@ class TestMarkTodoFailed:
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
-            patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
         ):
-            await _mark_todo_failed("todo-1", OWNER_ID, _doc(title="Nightly backup"))
+            doc = _doc(title="Nightly backup", scheduled_at=datetime(2026, 11, 14, 8, tzinfo=UTC))
+            await _mark_todo_failed("todo-1", OWNER_ID, doc)
 
         repo.add_labels.assert_awaited_once_with("todo-1", user_id=OWNER_ID, labels=[FAILED_LABEL])
         # A failed todo is skipped by the execution path until a manual reset, so
         # leaving its subscriptions armed would burn events on a todo that cannot run.
         teardown.assert_awaited_once_with("todo-1", OWNER_ID, reason="failed")
         request = notify.await_args.args[0]
+        # One id per failed occurrence: a retried job tells the user once.
+        assert request.id == notification_id(
+            OWNER_ID, "todo_run_failed", "todo-1", "2026-11-14 08:00:00+00:00"
+        )
         assert request.user_id == OWNER_ID
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
         assert request.type == NotificationType.ERROR
@@ -3847,7 +3868,7 @@ class TestMarkTodoFailed:
                 "app.workers.tasks.todo_run_context.todo_repository",
                 MagicMock(add_labels=AsyncMock()),
             ),
-            patch(f"{MODULE}.notification_service.create_notification", AsyncMock()),
+            patch(f"{MODULE}.notification_service.notify", AsyncMock()),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
         ):
             await _mark_todo_failed("todo-1", OWNER_ID, _doc())
@@ -3866,7 +3887,7 @@ class TestMarkTodoFailed:
             patch(f"{MODULE}.todo_repository", repo),
             patch("app.workers.tasks.todo_run_context.todo_repository", repo),
             patch(
-                f"{MODULE}.notification_service.create_notification",
+                f"{MODULE}.notification_service.notify",
                 AsyncMock(side_effect=RuntimeError("notification bus down")),
             ),
             patch(f"{MODULE}.teardown_subscriptions", AsyncMock(return_value=0)),
@@ -4142,15 +4163,19 @@ class TestResumeTrackedTodo:
         # Its own thread too: a reset would drop the very thread it continues.
         assert request.fresh_thread is False
         assert request.user is run.user
-        assert request.todo_run == TodoRun(
-            todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+        run = request.todo_run
+        assert (run.todo_id, run.trigger_type, run.runs_once, run.title) == (
+            "todo-1",
+            TriggerType.SCHEDULED_TODO,
+            True,
+            "Check the deploy",
         )
-        assert request.todo_title == "Check the deploy"
+        assert run.report_form is TodoReportForm.WRITE_UP
 
     async def test_a_resume_says_the_approval_woke_it(self) -> None:
         run = await self._resume(_ResumeJob("conv-parked", "Send briefing"))
 
-        assert run.agent.await_args.args[0].wake == TodoRunWake(
+        assert run.agent.await_args.args[0].todo_run.wake == TodoRunWake(
             kind=TodoWakeKind.APPROVAL,
             trigger_names=[],
             approval_summary="Send briefing",

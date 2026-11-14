@@ -177,9 +177,6 @@ WORKFLOW_SUBAGENT_RECURSION_LIMIT = 20
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
-# When this few supersteps remain before the limit, acall_model injects a
-# wrap-up notice so the model finishes with a summary instead of GraphRecursionError.
-RECURSION_WRAPUP_THRESHOLD_STEPS = 6
 # Remaining supersteps (this fraction of the run's limit, floored) at which acall_model
 # starts showing the wrap-up notice, so the model answers before GraphRecursionError.
 # Executor: 20 of 100, ~10 model turns — a fixed 6 left a looping model only 3.

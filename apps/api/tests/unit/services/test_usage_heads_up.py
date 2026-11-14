@@ -39,7 +39,7 @@ def created() -> Iterator[AsyncMock]:
     """Stub the notification write and answer the allowance window for known users only."""
     notify = AsyncMock()
     with (
-        patch.object(notification_service, "create_notification", notify),
+        patch.object(notification_service, "notify", notify),
         patch.object(
             usage_heads_up,
             "monthly_allowance_window",

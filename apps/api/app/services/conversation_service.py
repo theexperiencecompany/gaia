@@ -9,31 +9,33 @@ from psycopg_pool import AsyncConnectionPool
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
+from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
     BatchSyncRequest,
     ConversationModel,
     SystemPurpose,
-    UpdateMessagesRequest,
 )
 from app.models.conversation_models import (
     BatchSyncResponse,
     ConversationActionResponse,
     ConversationDocument,
+    ConversationEntriesPage,
     ConversationListResponse,
     ConversationSyncRow,
     CreateConversationResponse,
     DeleteAllConversationsResponse,
+    LoadedConversation,
+    LogPage,
     PinMessageResponse,
     PinnedMessagesResponse,
     StarConversationResponse,
     SystemConversationCreated,
     UpdateDescriptionResponse,
-    UpdateMessagesResponse,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.conversation.screen_patches import ScreenTracker
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
@@ -122,13 +124,7 @@ async def create_conversation_service(
         createdAt=created_at,
     )
 
-    try:
-        await conversation_repository.create(document)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create conversation: {e!s}",
-        ) from e
+    await conversation_repository.create(document)
 
     # Runs from the conversations endpoint, the chat stream's background init,
     # bot message handling, and seeding — always with an explicit user_id.
@@ -176,8 +172,16 @@ async def get_conversations(
     )
 
 
-async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> ConversationDocument:
-    """Fetch a specific conversation by ID (messages already normalized on read)."""
+async def _screen(conversation_id: str, page: LogPage) -> ConversationEntriesPage:
+    """Return the screen the log page projects to, running work showing the cards it has published."""
+    tracker = await ScreenTracker.load(conversation_id, page.entries)
+    return ConversationEntriesPage(
+        items=tracker.items, state=page.state, has_older=page.has_older, cursor=page.cursor
+    )
+
+
+async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> LoadedConversation:
+    """Fetch a conversation with the newest page of its log."""
     user_id = user.user_id
     document = await conversation_repository.get(conversation_id, user_id=user_id)
     if document is None:
@@ -185,7 +189,25 @@ async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> Con
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
-    return document
+    fields = dict(document)
+    del fields["entries"]
+    screen = await _screen(conversation_id, document)
+    return LoadedConversation.model_validate({**fields, **dict(screen)})
+
+
+async def get_entries_before(
+    conversation_id: str, user: AuthenticatedUser, *, before_seq: int, limit: int
+) -> ConversationEntriesPage:
+    """Return the page of the conversation's entries before before_seq, for a client loading older history."""
+    page = await conversation_repository.read_entries_before(
+        conversation_id, user_id=user.user_id, before_seq=before_seq, limit=limit
+    )
+    if page is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found or does not belong to the user",
+        )
+    return await _screen(conversation_id, page)
 
 
 async def star_conversation(
@@ -293,33 +315,6 @@ async def delete_todo_conversations(user_id: str, todo_ids: list[str]) -> None:
         await _cleanup_conversation_storage(user_id, conversation_id)
 
 
-async def update_messages(
-    request: UpdateMessagesRequest,
-    user: AuthenticatedUser,
-) -> UpdateMessagesResponse:
-    """Append messages to a conversation, returning the ids they were stored under."""
-    user_id = user.user_id
-    seqs = await conversation_repository.append_messages(
-        request.conversation_id,
-        user_id=user_id,
-        messages=request.messages,
-    )
-
-    if seqs is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Conversation not found or does not belong to the user",
-        )
-
-    return UpdateMessagesResponse(
-        conversation_id=request.conversation_id,
-        message="Messages updated",
-        modified_count=1,
-        message_ids=list(seqs),
-        message_seqs=list(seqs.values()),
-    )
-
-
 async def pin_message(
     conversation_id: str, message_id: str, pinned: bool, user: AuthenticatedUser
 ) -> PinMessageResponse:
@@ -328,17 +323,10 @@ async def pin_message(
     if not await conversation_repository.exists(conversation_id, user_id=user_id):
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    if (
-        await conversation_repository.get_message(conversation_id, message_id, user_id=user_id)
-        is None
+    if not await conversation_log_repository.set_pinned(
+        conversation_id, user_id=user_id, message_id=message_id, pinned=pinned
     ):
         raise HTTPException(status_code=404, detail="Message not found in conversation")
-
-    updated = await conversation_repository.set_message_pinned(
-        conversation_id, user_id=user_id, message_id=message_id, pinned=pinned
-    )
-    if not updated:
-        raise HTTPException(status_code=404, detail="Message not found or update failed")
 
     capture(UserId(user_id), ChatMessagePinned() if pinned else ChatMessageUnpinned())
     response_message = (
@@ -463,12 +451,7 @@ async def mark_conversation_as_unread(
 async def batch_sync_conversations(
     request: BatchSyncRequest, user: AuthenticatedUser
 ) -> BatchSyncResponse:
-    """Return only conversations updated since the client's last-seen timestamp.
-
-    Also reports the in-flight stream of every requested conversation it owns
-    (active_streams), stale or not, so a reloaded client can re-attach without
-    refetching the history it already holds.
-    """
+    """Return only conversations updated since the client's last-seen timestamp."""
     user_id = user.user_id
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
@@ -484,6 +467,7 @@ async def batch_sync_conversations(
 
     rows: list[ConversationSyncRow] = []
     for document in documents:
+        screen = await _screen(document.conversation_id, document)
         rows.append(
             ConversationSyncRow(
                 conversation_id=document.conversation_id,
@@ -494,22 +478,19 @@ async def batch_sync_conversations(
                 is_unread=document.is_unread,
                 createdAt=document.createdAt,
                 updatedAt=document.updatedAt,
-                messages=document.messages,
+                items=screen.items,
+                state=screen.state,
+                has_older=screen.has_older,
+                cursor=screen.cursor,
                 artifacts=document.artifacts,
-                has_live_approval=document.has_live_approval,
+                awaiting_approval=document.awaiting_approval,
                 todo_id=document.todo_id,
                 source=document.source,
+                listed=document.listed,
             )
         )
 
-    owned_ids = [cid for cid in requested if cid in owned]
-    stream_ids = await asyncio.gather(
-        *(stream_manager.get_resumable_stream_id(user_id, cid) for cid in owned_ids)
-    )
     return BatchSyncResponse(
         conversations=rows,
         missing=[cid for cid in requested if cid not in owned],
-        active_streams={
-            cid: stream_id for cid, stream_id in zip(owned_ids, stream_ids) if stream_id
-        },
     )

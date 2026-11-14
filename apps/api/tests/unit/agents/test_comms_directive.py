@@ -10,9 +10,9 @@ from app.agents.core.comms_directive import (
     visible_comms_text_so_far,
 )
 from app.constants.comms import CommsDirectiveKind
-from app.constants.general import NEW_MESSAGE_BREAKER as BREAK
 from app.constants.log_tags import LogTag
 from app.models.agent_models import CommsDirective
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER as BREAK
 from tests.helpers import captured_wide_event
 
 pytestmark = pytest.mark.unit

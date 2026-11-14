@@ -7,6 +7,7 @@ import argparse
 from bson import ObjectId
 import pytest
 
+from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_OPTIONS
 from app.scripts.retire_unlinked_bot_sessions import Verdict, _plan, _run
 
 pytestmark = pytest.mark.service
@@ -41,6 +42,10 @@ def _conversation(user_id: str, conversation_id: str) -> dict[str, str]:
 async def _seed(mongo_db, real_redis):
     for name in ("users", "bot_sessions", "conversations"):
         await mongo_db[name].delete_many({})
+    # The repair runs over data from before ids were unique: a shared id is what it finds.
+    index = CONVERSATION_ID_UNIQUE_OPTIONS["name"]
+    if index in await mongo_db["conversations"].index_information():
+        await mongo_db["conversations"].drop_index(index)
     await mongo_db["users"].insert_many(
         [
             _user(HEALTHY_OID, "tg-healthy"),

@@ -16,8 +16,9 @@ from starlette.requests import Request
 
 from app.agents.skills.models import Skill, SkillAuthor, SkillSource
 from app.constants.memory import MemoryDocType
+from app.models.conversation_log_models import ApprovalDecided as LoggedDecision
 from app.models.files_models import FileDocument
-from app.models.hil_models import ApprovalLedgerDocument, LedgerState
+from app.models.hil_models import ApprovalLedgerDocument
 from app.models.integration_models import Integration
 from app.models.memory_models import MemoryDocument
 from app.models.notification.notification_models import NotificationRecord
@@ -30,8 +31,7 @@ from app.models.user_instructions_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import Workflow
-from app.schemas.hil_schemas import BatchDecisionOutcome
-from app.services.hil.ledger_decide import LedgerDecision
+from app.services.conversation.work_log import DecisionTaken
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.calendars import CalendarPreferencesUpdated
 from shared.py.analytics.catalog.chat import (
@@ -41,7 +41,7 @@ from shared.py.analytics.catalog.chat import (
     ImageGenerated,
 )
 from shared.py.analytics.catalog.devices import DeviceApproved, DeviceRevoked
-from shared.py.analytics.catalog.hil import ApprovalDecided
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnectInitiated,
     IntegrationCustomDeleted,
@@ -80,6 +80,7 @@ from shared.py.analytics.catalog.workflows import (
     WorkflowUnpublished,
     WorkflowUpdated,
 )
+from shared.py.approvals import ApprovalOutcome
 
 pytestmark = pytest.mark.unit
 
@@ -480,7 +481,7 @@ class TestCalendarPrefs:
 
 class TestImageNewEvents:
     async def test_generate_captures(self, client: AsyncClient) -> None:
-        from app.models.chat_models import ImageData
+        from shared.py.conversation_wire import ImageData
 
         with (
             patch("app.api.v1.endpoints.image.api_generate_image", new_callable=AsyncMock) as m,
@@ -533,6 +534,7 @@ def _notif_record() -> NotificationRecord:
         status=NotificationStatus.READ,
         created_at=_dt(2026, 1, 1, tzinfo=_UTC),
         original_request=NotificationRequest(
+            id="n-read",
             user_id=UID,
             source=NotificationSourceEnum.AI_AGENT,
             type=NotificationType.INFO,
@@ -615,60 +617,8 @@ class TestNotificationNewEvents:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.usefixtures("hil_barrier_mode")
-class TestApprovalNewEvents:
-    async def test_decision_captures(self, client: AsyncClient) -> None:
-        with (
-            patch("app.api.v1.endpoints.approvals.resolve_approval", new_callable=AsyncMock),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post("/api/v1/approvals/a1/decision", json={"decision": "approve"})
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(UserId(UID), ApprovalDecided(decision="approve"))
-
-    async def test_batch_captures(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.approvals.resolve_approvals_batch",
-                new_callable=AsyncMock,
-                return_value=[BatchDecisionOutcome(approval_id="a1", resolved=True)],
-            ),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post(
-                "/api/v1/approvals/batch-decision",
-                json={"decisions": [{"approval_id": "a1", "decision": "approve"}]},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_called_once_with(
-            UserId(UID), ApprovalDecided(batch=True, decisions=1, resolved=1)
-        )
-
-
-def _ledger_decision(*, committed: bool, stale: bool = False) -> LedgerDecision:
-    return LedgerDecision(
-        committed=committed,
-        approval_id="ap_1",
-        prior_state=LedgerState.PENDING,
-        state=LedgerState.APPROVED if committed else LedgerState.PENDING,
-        stale=stale,
-    )
-
-
 class TestLedgerApprovalEvents:
-    """The ledger emits hil:decision_submitted per committed decision; the endpoint must not count it twice."""
-
-    async def test_a_committed_decision_emits_no_second_event(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.approvals.decide_ledger_card",
-                new=AsyncMock(return_value=_ledger_decision(committed=True)),
-            ),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post("/api/v1/approvals/ap_1/decision", json={"decision": "deny"})
-        assert resp.json()["success"] is True
-        mock_capture.assert_not_called()
+    """The ledger emits hil:decision_submitted per committed decision, named by where it was made."""
 
     @pytest.mark.regression
     async def test_a_card_tap_is_decided_as_a_card_decision(self, client: AsyncClient) -> None:
@@ -680,13 +630,24 @@ class TestLedgerApprovalEvents:
             user_id="507f1f77bcf86cd799439011",
         )
         repo = MagicMock(
-            get_by_approval_id=AsyncMock(return_value=row), transition=AsyncMock(return_value=True)
+            get_by_approval_id=AsyncMock(return_value=row), settle=AsyncMock(return_value=True)
         )
         ledger = "app.services.hil.ledger_decide"
         with (
             patch(f"{ledger}.approval_ledger_repository", new=repo),
-            patch(f"{ledger}.publish_ledger_decision", new=AsyncMock()),
-            patch(f"{ledger}.sync_conversation_approval_flag", new=AsyncMock()),
+            patch(
+                f"{ledger}.record_approval_decided",
+                new=AsyncMock(
+                    return_value=DecisionTaken(
+                        stands=LoggedDecision(
+                            id="approval:ap_1:decided",
+                            approval_id="ap_1",
+                            outcome=ApprovalOutcome.DENIED,
+                        ),
+                        taken=True,
+                    )
+                ),
+            ),
             patch(f"{ledger}._deliver_verdict", new=AsyncMock()),
             patch(f"{ledger}.record_owner_deny", new=AsyncMock()),
             patch(f"{ledger}.reconcile_conversation_ledger", new=AsyncMock()),
@@ -694,24 +655,12 @@ class TestLedgerApprovalEvents:
         ):
             await client.post("/api/v1/approvals/ap_1/decision", json={"decision": "deny"})
 
-        assert capture.call_args.args[1].via == "card"
-
-    async def test_a_batch_emits_no_second_event(self, client: AsyncClient) -> None:
-        with (
-            patch(
-                "app.api.v1.endpoints.approvals.decide_ledger_batch",
-                new=AsyncMock(
-                    return_value=[BatchDecisionOutcome(approval_id="ap_1", resolved=True)]
-                ),
-            ),
-            patch("app.api.v1.endpoints.approvals.capture") as mock_capture,
-        ):
-            resp = await client.post(
-                "/api/v1/approvals/batch-decision",
-                json={"decisions": [{"approval_id": "ap_1", "decision": "approve"}]},
-            )
-        assert resp.status_code == 200
-        mock_capture.assert_not_called()
+        [submitted] = [
+            call.args[1]
+            for call in capture.call_args_list
+            if isinstance(call.args[1], HilDecisionSubmitted)
+        ]
+        assert submitted.via == "card"
 
 
 class TestPlatformConnectInit:

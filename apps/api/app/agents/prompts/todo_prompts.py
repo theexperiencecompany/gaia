@@ -414,11 +414,17 @@ REPLY_DRAFT_RULE = (
     "only the user has is missing, and name it as the item's status."
 )
 
+# Follows each place a run's guidance has it report nothing; delivery sends such a run nowhere.
+NOTHING_FOR_USER_FINISH = (
+    "A report that says only that is the run's record, never a message: end the run with "
+    "finish_task nothing_for_user=true, so nothing is sent to the user."
+)
+
 # Follows a desk run that happens inside the user's quiet hours; a Standing rule still beats it.
 INBOX_DESK_QUIET_HOURS_NOTE = (
     "It is {local_time} for the user, inside their quiet hours: do this run's steps, then "
     "report only that nothing is new, unless a Standing rule asks to hear at any hour; the "
-    "next briefing carries the rest."
+    f"next briefing carries the rest. {NOTHING_FOR_USER_FINISH}"
 )
 
 # Where an email is, said only when it tells the user something.
@@ -473,7 +479,7 @@ FYI: grouped by kind, each line its count and a few words on what it was, like "
 Noticed: each conclusion step 5 added or changed, one line ending "reply to change", like "GitHub notifications are low priority; reply to change".
 Suggested: the entry step 5 suggested, as one question, like "Label GitHub notifications GitHub and keep them out of the inbox? Reply yes to set it up". Only what labeling and archiving can do; never a Gmail filter.
 Filtered: what the sweeps counted that no section above lists: the number, then the biggest kinds with counts, like "18 · 9 GitHub notifications · 5 newsletters · 4 promotions".
-Nothing in any section: say only that nothing is new.
+Nothing in any section: say only that nothing is new. {NOTHING_FOR_USER_FINISH}
 Write every line the way a sharp assistant would say it out loud: plain words and the concrete fact, no filler, no forced cheer.
 One question: a briefing asks at most one yes or no question, so a bare "yes" can mean only one thing: when the Suggested change and an Asking once question are both due, ask the Asking once question and keep the suggestion for a later briefing.
 Asking once: two things you do only after the user says yes, each asked at most once ever, as the briefing's last line when it shows why. {InboxDeskAsk.SUMMARIES}: when a Needs you item has a summary, ask whether to keep them, like "Want a short summary under each email that needs you? Reply yes or no."; with no answer, keep them. {InboxDeskAsk.TODOS}: when Today has a task from mail, ask whether to put tasks like it on their todo list; with no answer, do not. Ask one only while no Standing rule settles it and Current State's "{INBOX_DESK_ASKED_ONCE}:" line does not name it, then add its name and today's date to that line, like "{INBOX_DESK_ASKED_ONCE}: {InboxDeskAsk.SUMMARIES} 2026-11-05". Never ask it again.
@@ -507,5 +513,5 @@ GMAIL_THREAD_RUN_GUIDANCE = f"""EMAIL THREAD: this todo owns Gmail thread {{ref_
 - Whenever a reply thread stays open, set the next check with update_tracked_todo scheduled_at: 3 business days out for {WAITING_FOR_REPLY_LABEL} with waiting_on='event' (the thread watch wakes you; this is the backup), 2 for {NEEDS_REPLY_LABEL} with waiting_on='time'.
 - An {ACTION_NEEDED_LABEL} todo gets no draft and no follow-up: complete it when the thread shows the action done (a later "payment successful"), otherwise leave it for the user with its next check 3 business days out (waiting_on='event').
 - Everything is answered and nobody is waiting: delete your draft while the thread still has it, then complete_tracked_todo.
-Your final report is {INBOX_MAIL_ALERT_FORM} only when the user has to act before the desk's next briefing (its time is in this prompt when the desk is this todo's parent, otherwise the next morning): someone needs an answer today, a time they were offered is about to pass, a deadline moved up. News alone, like an answer they were waiting on, waits for the briefing, and so does anything that arrives at night and can be handled in the morning. Otherwise your report is only that nothing needs the user now: the briefing lists this thread while it stays open, nudge and draft included.
+Your final report is {INBOX_MAIL_ALERT_FORM} only when the user has to act before the desk's next briefing (its time is in this prompt when the desk is this todo's parent, otherwise the next morning): someone needs an answer today, a time they were offered is about to pass, a deadline moved up. News alone, like an answer they were waiting on, waits for the briefing, and so does anything that arrives at night and can be handled in the morning. Otherwise your report is only that nothing needs the user now: the briefing lists this thread while it stays open, nudge and draft included. {NOTHING_FOR_USER_FINISH}
 Keep canvas.md current: the participants and the ask under Key Details; the deadline, the draft id with the date it was saved (or that the user discarded it) and the next follow-up date under Current State."""

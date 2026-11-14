@@ -20,7 +20,6 @@ from app.agents.core.background.session import ExecutorRun, RunKind
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.constants import executor as executor_constants
 from app.constants.executor import (
-    EXECUTOR_ERROR_MALFORMED_APPROVAL,
     EXECUTOR_ERROR_PREP_FAILED,
     EXECUTOR_STEP_LIMIT_MESSAGE,
 )
@@ -63,7 +62,7 @@ async def _run_with(
             else AsyncMock(side_effect=side_effect),
         ),
     ):
-        return await er._execute_executor("do the thing", {}, run, None)
+        return await er._execute_executor("do the thing", {}, run)
 
 
 @pytest.fixture
@@ -174,15 +173,6 @@ class TestAFailureBeforeOrInsteadOfARunNamesItsCause:
 
         assert result.type == "final"
         assert result.stopped is True
-
-    async def test_a_pause_with_no_approval_id_is_a_malformed_approval(self) -> None:
-        result = await _run_with(SubagentOutcome(text="", interrupt={"summary": "x"}))
-
-        assert (result.text, result.type, result.error_type) == (
-            "Approval request was malformed",
-            "error",
-            EXECUTOR_ERROR_MALFORMED_APPROVAL,
-        )
 
 
 @pytest.mark.unit

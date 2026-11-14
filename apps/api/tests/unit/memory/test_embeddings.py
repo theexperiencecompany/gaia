@@ -17,6 +17,14 @@ import httpx
 from pydantic import BaseModel
 import pytest
 
+from app.constants.memory import (
+    EMBEDDING_MODEL_NAME,
+    EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS,
+    EMBEDDING_SIDECAR_RETRIES,
+    EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
+    EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+    MODEL_CACHE_DIR,
+)
 from app.memory import embeddings
 from app.memory.embeddings import chunk_texts
 from app.models.embedding_sidecar_models import (
@@ -27,6 +35,7 @@ from app.models.embedding_sidecar_models import (
     RerankRequest,
     RerankResponse,
 )
+from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 
 
@@ -212,7 +221,7 @@ class TestSharedHttpClient:
         first = embeddings._get_http_client()
         second = embeddings._get_http_client()
         assert first is second
-        assert first.timeout == httpx.Timeout(embeddings.EMBEDDING_SIDECAR_TIMEOUT_SECONDS)
+        assert first.timeout == httpx.Timeout(EMBEDDING_SIDECAR_TIMEOUT_SECONDS)
 
     def test_new_loop_gets_fresh_client(self) -> None:
         # Pooled connections from an old event loop are unusable in a new one
@@ -279,7 +288,7 @@ class TestTransientRetry:
 
         assert result == EmbedResponse(vectors=[[1.0]])
         assert len(attempts) == 2
-        assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
+        assert sleeps == [EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
     async def test_exhausted_retries_fail_loud(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
@@ -293,10 +302,8 @@ class TestTransientRetry:
         with pytest.raises(httpx.HTTPStatusError):
             await embeddings._sidecar_post("/embed", EmbedRequest(texts=["a"]), EmbedResponse)
 
-        assert len(attempts) == embeddings.EMBEDDING_SIDECAR_RETRIES + 1
-        assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS] * (
-            embeddings.EMBEDDING_SIDECAR_RETRIES
-        )
+        assert len(attempts) == EMBEDDING_SIDECAR_RETRIES + 1
+        assert sleeps == [EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS] * (EMBEDDING_SIDECAR_RETRIES)
 
     async def test_429_is_retried_too(self, monkeypatch: pytest.MonkeyPatch) -> None:
         attempts = self._client(
@@ -317,7 +324,7 @@ class TestTransientRetry:
 
         assert result == EmbedResponse(vectors=[[1.0]])
         assert len(attempts) == 2
-        assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
+        assert sleeps == [EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
     async def test_connection_error_is_retried(self, monkeypatch: pytest.MonkeyPatch) -> None:
         sleeps: list[float] = []
@@ -346,7 +353,7 @@ class TestTransientRetry:
         )
 
         assert result == EmbedQueryResponse(vector=[1.0])
-        assert sleeps == [embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
+        assert sleeps == [EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS]
 
     async def test_transport_budget_is_consumed_per_failure(
         self, monkeypatch: pytest.MonkeyPatch
@@ -379,8 +386,8 @@ class TestTransientRetry:
 
         assert result == EmbedQueryResponse(vector=[1.0])
         assert sleeps == [
-            embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
-            embeddings.EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
+            EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
+            EMBEDDING_SIDECAR_RETRY_MAX_WAIT_SECONDS,
         ]
 
     async def test_transport_budget_exhaustion_fails_loud(
@@ -427,14 +434,13 @@ class TestPooledClientThroughPublicApi:
             return httpx.Response(200, json={"vector": [0.0]})
 
         transport = httpx.MockTransport(handler)
-        real_cls = httpx.AsyncClient
 
-        class Tracking(real_cls):
-            def __init__(self, **kwargs: object) -> None:
-                super().__init__(transport=transport, **kwargs)
+        class Tracking(httpx.AsyncClient):
+            def __init__(self, *, timeout: float) -> None:
+                super().__init__(transport=transport, timeout=timeout)
                 made.append(self)
 
-        monkeypatch.setattr(embeddings.httpx, "AsyncClient", Tracking)
+        monkeypatch.setattr(httpx, "AsyncClient", Tracking)
         monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar.test")
 
         await embeddings.embed_query("one")
@@ -442,7 +448,7 @@ class TestPooledClientThroughPublicApi:
 
         assert len(made) == 1
         assert calls["n"] == 2
-        assert made[0].timeout == httpx.Timeout(embeddings.EMBEDDING_SIDECAR_TIMEOUT_SECONDS)
+        assert made[0].timeout == httpx.Timeout(EMBEDDING_SIDECAR_TIMEOUT_SECONDS)
 
         closed = made[0]
         await closed.aclose()
@@ -456,11 +462,11 @@ class TestInteractiveBudget:
     def test_call_budget_interactive_drops_retries_and_shortens_timeout(self) -> None:
         assert embeddings._call_budget(interactive=True) == (
             0,
-            embeddings.EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS,
+            EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS,
         )
         assert embeddings._call_budget(interactive=False) == (
-            embeddings.EMBEDDING_SIDECAR_RETRIES,
-            embeddings.EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+            EMBEDDING_SIDECAR_RETRIES,
+            EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
         )
 
     async def test_interactive_call_uses_short_timeout(
@@ -482,8 +488,8 @@ class TestInteractiveBudget:
         await embeddings.embed_query("q", interactive=False)
 
         assert seen == [
-            embeddings.EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS,
-            embeddings.EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
+            EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS,
+            EMBEDDING_SIDECAR_TIMEOUT_SECONDS,
         ]
 
     async def test_interactive_503_fails_fast_without_retry(
@@ -615,21 +621,24 @@ class TestBakedModels:
         """Record what the embedding loader hands fastembed, without loading ONNX."""
         calls: list[dict[str, Any]] = []
         monkeypatch.setattr(embeddings, "_embedding_model", None)
-        monkeypatch.setattr(
-            embeddings, "TextEmbedding", lambda **kwargs: calls.append(kwargs) or MagicMock()
-        )
+
+        def record_load(**kwargs: Any) -> MagicMock:
+            calls.append(kwargs)
+            return MagicMock()
+
+        monkeypatch.setattr(embeddings, "TextEmbedding", record_load)
         return calls
 
     def test_baked_model_loads_from_the_image_without_the_cache(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, loader_kwargs: list[dict[str, Any]]
     ) -> None:
-        (tmp_path / embeddings.EMBEDDING_MODEL_NAME).mkdir(parents=True)
+        (tmp_path / EMBEDDING_MODEL_NAME).mkdir(parents=True)
         monkeypatch.setattr(embeddings, "BAKED_MODELS_DIR", str(tmp_path))
 
         embeddings._get_embedding_model()
 
         (call,) = loader_kwargs
-        assert call["specific_model_path"] == str(tmp_path / embeddings.EMBEDDING_MODEL_NAME)
+        assert call["specific_model_path"] == str(tmp_path / EMBEDDING_MODEL_NAME)
 
     def test_model_missing_from_the_baked_dir_comes_from_the_cache(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Any, loader_kwargs: list[dict[str, Any]]
@@ -641,7 +650,7 @@ class TestBakedModels:
 
         (call,) = loader_kwargs
         assert call["specific_model_path"] is None
-        assert call["cache_dir"] == embeddings.MODEL_CACHE_DIR
+        assert call["cache_dir"] == MODEL_CACHE_DIR
 
     def test_no_baked_dir_comes_from_the_cache(
         self, monkeypatch: pytest.MonkeyPatch, loader_kwargs: list[dict[str, Any]]
@@ -660,7 +669,7 @@ async def test_an_interactive_fail_fast_error_is_not_recorded_as_an_error(
 ) -> None:
     """Recall's handled timeout is a warning; a save's failure is still an error."""
     recorded: list[str] = []
-    monkeypatch.setattr(embeddings.log, "error", lambda *a, **k: recorded.append("error"))
+    monkeypatch.setattr(log, "error", lambda *a, **k: recorded.append("error"))
 
     async def times_out() -> list[float]:
         raise TimeoutError("sidecar busy")
@@ -680,7 +689,7 @@ async def test_the_real_embed_query_path_does_not_log_a_handled_failure(
 ) -> None:
     """The flag has to reach _observed from embed_query, not only to the transport."""
     recorded: list[str] = []
-    monkeypatch.setattr(embeddings.log, "error", lambda *a, **k: recorded.append("error"))
+    monkeypatch.setattr(log, "error", lambda *a, **k: recorded.append("error"))
     monkeypatch.setattr(embeddings, "_sidecar_url", lambda: "http://sidecar")
 
     async def unreachable(*args: object, **kwargs: object) -> None:
@@ -695,3 +704,43 @@ async def test_the_real_embed_query_path_does_not_log_a_handled_failure(
     with pytest.raises(httpx.ConnectError):
         await embeddings.embed_query("q")
     assert recorded == ["error"]
+
+
+class TestInteractiveLocalDeadline:
+    """The in-process model obeys the same interactive deadline as the sidecar."""
+
+    async def test_interactive_local_embed_query_raises_timeout_at_the_deadline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        release = asyncio.Event()
+
+        async def model_still_downloading(func: object, *args: object) -> list[float]:
+            await release.wait()
+            return [0.1]
+
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: None)
+        monkeypatch.setattr(asyncio, "to_thread", model_still_downloading)
+        monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS", 0.05)
+
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(embeddings.embed_query("q", interactive=True), timeout=2)
+        assert asyncio.get_running_loop().time() - started < 1
+
+    async def test_interactive_local_rerank_raises_timeout_at_the_deadline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        release = asyncio.Event()
+
+        async def model_still_downloading(func: object, *args: object) -> list[float]:
+            await release.wait()
+            return [0.1]
+
+        monkeypatch.setattr(embeddings, "_sidecar_url", lambda: None)
+        monkeypatch.setattr(asyncio, "to_thread", model_still_downloading)
+        monkeypatch.setattr(embeddings, "EMBEDDING_SIDECAR_INTERACTIVE_TIMEOUT_SECONDS", 0.05)
+
+        started = asyncio.get_running_loop().time()
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(embeddings.rerank("q", ["d"], interactive=True), timeout=2)
+        assert asyncio.get_running_loop().time() - started < 1

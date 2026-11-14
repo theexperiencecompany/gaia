@@ -1,0 +1,38 @@
+# How one reply splits into bubbles, played on each platform with --emulate:
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/bubble-splitting.yaml --emulate telegram
+# (and slack, whatsapp, discord). Replies stream word by word ([[pace:...]]), so
+# a live platform previews each bubble as it is written; the assertions are on
+# what is left on screen: every bubble once, in order, nothing retracted.
+name: bubble splitting
+emulate: telegram
+user: dev@gaia.local
+settleMs: 25000
+turns:
+  # R2: three bubbles, two breaks.
+  - send: "[[pace:60]] [[say:Morning! Here is a quick rundown of what your day looks like.<NEW_MESSAGE_BREAK>You have three meetings today, and the first one starts at ten sharp.<NEW_MESSAGE_BREAK>Do you want me to push the standup to the afternoon so you get a break?]]"
+    settleMs: 0
+    expect:
+      - bubbles:
+          - "Morning! Here is a quick rundown"
+          - "You have three meetings today"
+          - "push the standup to the afternoon"
+  # R3: a short bubble, then one longer than any platform's limit, cut where it streams.
+  - send: "[[pace:2]] [[say:Here is the full plan you asked for, written out.<NEW_MESSAGE_BREAK>Section 1. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly.\n\nSection 2. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly.\n\nSection 3. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly.\n\nSection 4. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly.\n\nSection 5. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly.\n\nSection 6. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly.\n\nSection 7. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly.\n\nSection 8. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly.\n\nSection 9. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly.\n\nSection 10. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends cleanly. This paragraph describes one part of the plan in plain words so the reader can follow it. It runs for a few sentences and ends the plan.]]"
+    settleMs: 0
+    expect:
+      - minBubbles: 3
+      - contains: "Here is the full plan you asked for"
+      - contains: "It runs for a few sentences and ends the plan."
+  # R5: the front door narrates, hands off and is retracted; the reply takes its place.
+  - send: '[[pace:60]] [[narrate:Sure thing, give me a moment.<NEW_MESSAGE_BREAK>Let me look into your calendar for that one.]] [[tool:create_todo {"title": "bubble-r5"}]] [[say:All set, I added it to your todo list for today.]]'
+    expect:
+      - bubbles: ["All set, I added it to your todo list for today."]
+  # R10: a reply of three bubbles after a slow tool. It arrives once, through the
+  # conversation's events stream, split the same way on every platform.
+  - send: '[[tool:create_todo {"title": "bubble-r10"}]] [[wait:3000]] [[say:First result bubble, the todo was created as you asked.<NEW_MESSAGE_BREAK>Second result bubble, it is due today at five in the evening.<NEW_MESSAGE_BREAK>Third result bubble, tell me if you want a reminder too.]]'
+    expect:
+      - delivered:
+          - "First result bubble"
+          - "Second result bubble"
+          - "Third result bubble"

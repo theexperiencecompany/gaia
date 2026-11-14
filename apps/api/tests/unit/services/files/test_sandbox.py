@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
+from app.models.files_models import PageWiseSummary
 from app.services.files import sandbox
 from app.services.files.sandbox import UploadMirror, workspace_upload_name
 from app.services.storage import FsOps, JuiceFSUnavailable
@@ -29,17 +30,20 @@ def workspace(tmp_path, monkeypatch):
     return tmp_path, uploads
 
 
-def _mirror(**overrides) -> UploadMirror:
-    values = {
-        "file_id": "f-1",
-        "filename": "table.png",
-        "content": b"image-bytes",
-        "content_type": "image/png",
-        "description": "a table",
-        "page_wise_summary": None,
-    }
-    values.update(overrides)
-    return UploadMirror(**values)
+def _mirror(
+    *,
+    filename: str = "table.png",
+    description: str | None = "a table",
+    page_wise_summary: PageWiseSummary = None,
+) -> UploadMirror:
+    return UploadMirror(
+        file_id="f-1",
+        filename=filename,
+        content=b"image-bytes",
+        content_type="image/png",
+        description=description,
+        page_wise_summary=page_wise_summary,
+    )
 
 
 def _fake_writer(root: Path):
@@ -84,7 +88,6 @@ class TestMirrorUpload:
             patch.object(sandbox, "fs_timer", timer),
             patch.object(sandbox, "write_session_file", writer),
             patch.object(sandbox, "chmod_path", AsyncMock()) as chmod,
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
         ):
             path = await sandbox.mirror_upload(USER, CONV, _mirror())
 
@@ -107,13 +110,6 @@ class TestMirrorUpload:
             call(uploads / "f-1_table.png", 0o444),
             call(uploads / "f-1_table.png.summary.md", 0o444),
         ]
-        assert publish.await_args.args[0] == USER
-        event = publish.await_args.args[1]
-        assert event["event"] == "upload"
-        assert event["session_id"] == CONV
-        assert event["path"] == "f-1_table.png"
-        assert event["size_bytes"] == len(b"image-bytes")
-        assert event["content_type"] == "image/png"
 
     async def test_a_page_only_summary_reaches_the_sidecar(self, workspace):
         root, uploads = workspace
@@ -122,7 +118,6 @@ class TestMirrorUpload:
             patch.object(sandbox, "fs_timer", _timer()),
             patch.object(sandbox, "write_session_file", _fake_writer(root)),
             patch.object(sandbox, "chmod_path", AsyncMock()),
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()),
         ):
             await sandbox.mirror_upload(
                 USER,
@@ -143,7 +138,6 @@ class TestMirrorUpload:
             patch.object(sandbox, "fs_timer", _timer()),
             patch.object(sandbox, "write_session_file", writer),
             patch.object(sandbox, "chmod_path", AsyncMock()),
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()),
         ):
             await sandbox.mirror_upload(
                 USER, CONV, _mirror(description=None, page_wise_summary=None)
@@ -288,7 +282,6 @@ class TestDeleteUpload:
             patch.object(sandbox, "session_root", return_value=root) as session_root,
             patch.object(sandbox, "fs_timer", timer),
             patch.object(sandbox, "chmod_path", AsyncMock()) as chmod,
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
         ):
             assert await sandbox.delete_upload(USER, CONV, "f-1_a.png") is True
 
@@ -300,12 +293,6 @@ class TestDeleteUpload:
         ]
         assert not (uploads / "f-1_a.png").exists()
         assert not (uploads / "f-1_a.png.summary.md").exists()
-        assert publish.await_args.args[0] == USER
-        assert publish.await_args.args[1] == {
-            "event": "remove",
-            "session_id": CONV,
-            "path": "f-1_a.png",
-        }
 
     async def test_removes_a_sidecar_whose_file_is_already_gone(self, workspace):
         _root, uploads = workspace
@@ -314,7 +301,6 @@ class TestDeleteUpload:
         with (
             patch.object(sandbox, "fs_timer", _timer()),
             patch.object(sandbox, "chmod_path", AsyncMock()),
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()),
         ):
             assert await sandbox.delete_upload(USER, CONV, "f-1_a.png") is True
 
@@ -324,12 +310,10 @@ class TestDeleteUpload:
         with (
             patch.object(sandbox, "fs_timer", _timer()),
             patch.object(sandbox, "chmod_path", AsyncMock()) as chmod,
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
         ):
             assert await sandbox.delete_upload(USER, CONV, "missing.png") is False
 
         chmod.assert_not_awaited()
-        publish.assert_not_awaited()
 
     async def test_returns_false_when_the_mount_is_unavailable(self, workspace):
         _root, uploads = workspace
@@ -340,12 +324,10 @@ class TestDeleteUpload:
             patch.object(
                 sandbox, "chmod_path", AsyncMock(side_effect=JuiceFSUnavailable("no mount"))
             ),
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
             patch.object(sandbox, "log") as mock_log,
         ):
             assert await sandbox.delete_upload(USER, CONV, "f-1_a.png") is False
 
-        publish.assert_not_awaited()
         mock_log.warning.assert_called_once_with(
             "[files] juicefs unavailable; not deleting upload",
             error="no mount",
@@ -361,12 +343,10 @@ class TestDeleteUpload:
         with (
             patch.object(sandbox, "fs_timer", _timer()),
             patch.object(sandbox, "chmod_path", AsyncMock(side_effect=RuntimeError("io"))),
-            patch.object(sandbox, "publish_artifact_event", AsyncMock()) as publish,
             patch.object(sandbox, "log") as mock_log,
         ):
             assert await sandbox.delete_upload(USER, CONV, "f-1_a.png") is False
 
-        publish.assert_not_awaited()
         mock_log.error.assert_called_once_with(
             "[files] failed to delete upload from sandbox",
             error="io",

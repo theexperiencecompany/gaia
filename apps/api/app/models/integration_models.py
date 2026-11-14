@@ -15,8 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.constants.integrations import INTEGRATION_ACCOUNT_ID_PREFIX, ConnectMode
-from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.helpers.slug_helpers import generate_integration_slug
+from app.models.document_models import MongoDocument, UserScopedDocument
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent, OAuthIntegration
 

@@ -15,11 +15,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import fakeredis.aioredis
 from langchain_core.messages import AIMessage, ToolMessage
-from langgraph.errors import GraphInterrupt
-from langgraph.types import Command
 import pytest
 
-from app.agents.core.background import executor_queue
+from app.agents.core.background import executor_queue, folded_stream
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.subagents import delegation
 from app.agents.core.subagents.delegation import (
@@ -34,29 +32,34 @@ from app.agents.prompts import delegation_prompts
 from app.agents.prompts.delegation_prompts import (
     BACKGROUND_DELEGATION_ACK,
     SUBAGENT_FAILED_RESULT,
-    SUBAGENT_PARKED_ENTRY,
     SUBAGENT_RESULT_ENTRY,
-    SUBAGENT_UNRESUMABLE_PARK,
     THREAD_BUSY_REFUSAL,
 )
 from app.constants.agents import AgentTag
-from app.constants.hil import SUBAGENT_RESUME_CONFIG_KEY
+from app.constants.cache import RUNNING_SUBAGENT_THREAD_PREFIX
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.models.agent_models import AgentConfigurable, RunningSubagent, SubagentKind
-from app.models.chat_models import MessageModel, ToolDataEntry
-from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.models.agent_models import AgentConfigurable, RunningSubagent
+from app.models.conversation_log_models import (
+    Entry,
+    WorkFinished,
+    WorkOutcome,
+    WorkStarted,
+)
+from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.tool_cards import FoldedCards
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
+from shared.py.conversation_wire import ImageData, ToolDataEntry
 from shared.py.wide_events import log
 from tests.helpers import WideEventRecorder, captured_wide_event
-from tests.unit.services.hil.conftest import make_record
+from tests.unit.services.conversation.log_helpers import user
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 pytestmark = pytest.mark.unit
 
 MODULE = "app.agents.core.subagents.delegation"
 FOLDED = "app.agents.core.background.folded_stream"
-FOLDED_CARDS = "app.services.folded_cards"
 
 
 class _OwnStream:
@@ -81,21 +84,20 @@ LIVE: AgentConfigurable = {
 }
 
 
-def _delegation(parent: AgentConfigurable | None = None, **ctx_overrides: Any) -> Delegation:
-    parent = dict(parent if parent is not None else LIVE)
-    configurable = {**parent, "thread_id": THREAD, **ctx_overrides}
+def _delegation(parent: AgentConfigurable | None = None) -> Delegation:
+    parent = (LIVE if parent is None else parent).copy()
+    configurable: AgentConfigurable = {**parent, "thread_id": THREAD}
     return Delegation(
         ctx=SubagentExecutionContext(
             subagent_graph=MagicMock(),
             agent_name="spawned_subagent",
-            config={"configurable": dict(configurable)},
+            config={"agent_name": "spawned_subagent", "configurable": dict(configurable)},
             configurable=configurable,
             integration_id="spawn",
             initial_state={},
             user_id="u1",
             stream_id=parent.get("stream_id"),
         ),
-        kind=SubagentKind.SPAWN,
         subagent_id="row-1",
         tool_call_id="call-1",
         task="summarise the report",
@@ -113,6 +115,13 @@ async def _drain() -> None:
         await asyncio.gather(*pending, return_exceptions=True)
 
 
+async def _thread_held() -> bool:
+    """Whether a live run's claim is on THREAD's checkpoint thread."""
+    client = redis_cache.client
+    assert client is not None
+    return bool(await client.exists(f"{RUNNING_SUBAGENT_THREAD_PREFIX}{THREAD}"))
+
+
 @pytest.fixture
 async def redis() -> AsyncIterator[Any]:
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
@@ -122,34 +131,25 @@ async def redis() -> AsyncIterator[Any]:
 
 
 @pytest.fixture
-def client_edges() -> Iterator[SimpleNamespace]:
-    """Record the stream, websocket and persistence edges a background run touches."""
-    broadcasts: list[dict[str, Any]] = []
-
-    async def _broadcast(_user_id: str, payload: dict[str, Any]) -> None:
-        broadcasts.append(payload)
-
+async def client_edges() -> AsyncIterator[SimpleNamespace]:
+    """Record the stream and log edges a background run touches."""
+    runtime = Runtime()
+    install_runtime_ports(runtime.ports)
+    await runtime.log.append(CONVERSATION, "u1", user("u1"))
     with (
         patch.object(executor_queue, "StreamManager", AsyncMock()) as stream_manager,
-        patch.object(executor_queue.websocket_manager, "broadcast_to_user", new=_broadcast),
-        patch(f"{FOLDED_CARDS}.conversation_repository") as conversations,
         patch(f"{MODULE}.stream_manager") as streams,
         patch(f"{FOLDED}.stream_manager", new=streams),
         patch(f"{MODULE}.deliver_to_executor", new=AsyncMock()) as deliver,
     ):
-        conversations.append_message_tool_data = AsyncMock(return_value=True)
-        conversations.extend_subagent_group = AsyncMock(return_value=True)
-        conversations.get_message = AsyncMock(
-            return_value=MessageModel(type="bot", response="", tool_data=[])
-        )
         streams.is_cancelled = AsyncMock(return_value=False)
         yield SimpleNamespace(
-            broadcasts=broadcasts,
-            conversations=conversations,
-            deliver=deliver,
-            streams=streams,
-            stream_manager=stream_manager,
+            runtime=runtime, deliver=deliver, streams=streams, stream_manager=stream_manager
         )
+
+
+async def _logged(edges: SimpleNamespace) -> list[Entry]:
+    return [logged.entry for logged in await edges.runtime.log.read_after(CONVERSATION, "u1", 1)]
 
 
 @pytest.fixture
@@ -193,11 +193,6 @@ def _landing(result: str) -> str:
     )
 
 
-def _approvals(*records: HILApprovalRecord) -> AsyncMock:
-    by_id = {r.approval_id: r for r in records}
-    return AsyncMock(side_effect=by_id.get)
-
-
 class TestWhereARunRuns:
     def test_a_live_conversation_runs_in_the_background(self) -> None:
         assert runs_in_background(True, LIVE) is True
@@ -215,14 +210,12 @@ class TestWhereARunRuns:
 
 
 @contextmanager
-def _blocking(outcomes: list[Any], recovered: SubagentOutcome | None = None) -> Iterator[Any]:
+def _blocking(outcomes: list[Any]) -> Iterator[Any]:
     writer = MagicMock()
     execute = AsyncMock(side_effect=outcomes)
     with (
         patch(f"{MODULE}.current_stream_writer", return_value=writer),
         patch(f"{MODULE}.execute_subagent_stream", new=execute),
-        patch(f"{MODULE}.recover_from_checkpoint", new=AsyncMock(return_value=recovered)),
-        patch(f"{MODULE}.resume_for_gate", return_value={"status": "approved"}),
     ):
         yield SimpleNamespace(writer=writer, execute=execute)
 
@@ -236,37 +229,44 @@ class TestABlockingRun:
         held_during: list[bool] = []
 
         async def _run(**_kwargs: Any) -> SubagentOutcome:
-            held_during.append(await RunningSubagents(CONVERSATION).holds_thread(THREAD))
+            held_during.append(await _thread_held())
             return SubagentOutcome(text="done")
 
         with _blocking([]) as h:
             h.execute.side_effect = _run
-            result = await delegate(_delegation(), background=False, probe_parked=False)
+            result = await delegate(_delegation(), background=False)
 
         assert result == "done"
         assert held_during == [True]
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
         assert _events(h.writer) == ["subagent_start", "subagent_end"]
+
+    async def test_a_workflow_parents_blocking_run_returns_its_call_record(
+        self, redis: Any
+    ) -> None:
+        outcome = SubagentOutcome(
+            text="sent",
+            run_messages=(
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "GMAIL_SEND", "args": {"to": "a@b.c"}, "id": "t1"}],
+                ),
+                ToolMessage(content="ok", tool_call_id="t1"),
+            ),
+        )
+        parent: AgentConfigurable = {**LIVE, "workflow_id": "wf-1"}
+        with _blocking([outcome]):
+            result = await delegate(_delegation(parent), background=False)
+
+        assert result.startswith("sent\n\n")
+        assert 'GMAIL_SEND({"to":"a@b.c"})' in result
 
     async def test_a_failed_run_frees_its_thread_and_closes_its_row(self, redis: Any) -> None:
         with _blocking([RuntimeError("graph exploded")]) as h, pytest.raises(RuntimeError):
-            await delegate(_delegation(), background=False, probe_parked=False)
+            await delegate(_delegation(), background=False)
 
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
         assert _events(h.writer) == ["subagent_start", "subagent_end"]
-
-    async def test_a_pause_bubbles_up_with_the_row_left_open(self, redis: Any) -> None:
-        paused = SubagentOutcome(text="", interrupt={"approval_id": "a1"})
-        with (
-            _blocking([paused]) as h,
-            patch(f"{MODULE}.resume_for_gate", side_effect=GraphInterrupt()),
-            pytest.raises(GraphInterrupt),
-        ):
-            await delegate(_delegation(), background=False, probe_parked=False)
-
-        assert _events(h.writer) == ["subagent_start"]
-        # Released, so the replay that the decision triggers can claim it again.
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
 
     async def test_a_held_thread_refuses_in_whole_sentences(self, redis: Any) -> None:
         await RunningSubagents(CONVERSATION).claim(
@@ -280,44 +280,11 @@ class TestABlockingRun:
             )
         )
         with _blocking([]) as h:
-            result = await delegate(_delegation(), background=False, probe_parked=False)
+            result = await delegate(_delegation(), background=False)
 
         h.execute.assert_not_awaited()
         assert result.startswith("summarise the report is already running on this integration")
         assert "message_subagent" in result and "cancel_subagent" in result
-
-    async def test_a_replay_recovers_the_finished_thread_instead_of_rerunning_it(
-        self, redis: Any
-    ) -> None:
-        with _blocking([], recovered=SubagentOutcome(text="recovered")) as h:
-            result = await delegate(_delegation(), background=False, probe_parked=True)
-
-        assert result == "recovered"
-        h.execute.assert_not_awaited()
-
-    async def test_a_workflow_run_records_every_call_across_a_pause(self, redis: Any) -> None:
-        def _outcome(text: str, to: str, *, paused: bool) -> SubagentOutcome:
-            return SubagentOutcome(
-                text=text,
-                interrupt={"approval_id": "a1"} if paused else None,
-                run_messages=(
-                    AIMessage(
-                        content="",
-                        tool_calls=[{"name": "GMAIL_SEND", "args": {"to": to}, "id": to}],
-                    ),
-                    ToolMessage(content="sent", tool_call_id=to),
-                ),
-            )
-
-        parent = {**LIVE, "workflow_id": "wf-1", "execution_mode": "background"}
-        with _blocking(
-            [_outcome("", "a@b.c", paused=True), _outcome("both sent", "d@e.f", paused=False)]
-        ):
-            result = await delegate(_delegation(parent), background=True, probe_parked=False)
-
-        assert result.startswith("both sent")
-        assert 'GMAIL_SEND({"to":"a@b.c"})' in result
-        assert 'GMAIL_SEND({"to":"d@e.f"})' in result
 
 
 class TestABackgroundDispatch:
@@ -328,22 +295,22 @@ class TestABackgroundDispatch:
             f"{MODULE}.execute_subagent_stream",
             new=AsyncMock(return_value=SubagentOutcome(text="the summary")),
         ):
-            ack = await delegate(_delegation(), background=True, probe_parked=False)
+            ack = await delegate(_delegation(), background=True)
             await _drain()
 
         assert "started in the background as subagent row-1" in ack
         landed = client_edges.deliver.await_args
         assert landed.args[2] == "summarise the report (subagent row-1): the summary"
         assert landed.kwargs["tag"] is AgentTag.SUBAGENT_RESULT
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     async def test_a_replay_of_the_dispatching_node_does_not_run_it_twice(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
         execute = AsyncMock(return_value=SubagentOutcome(text="the summary"))
         with patch(f"{MODULE}.execute_subagent_stream", new=execute):
-            first = await delegate(_delegation(), background=True, probe_parked=False)
-            second = await delegate(_delegation(), background=True, probe_parked=False)
+            first = await delegate(_delegation(), background=True)
+            second = await delegate(_delegation(), background=True)
             await _drain()
 
         assert first == second
@@ -361,12 +328,12 @@ class TestABackgroundDispatch:
             started_at="",
         )
         await RunningSubagents(CONVERSATION).claim(holder)
-        refused = await delegate(_delegation(), background=True, probe_parked=False)
+        refused = await delegate(_delegation(), background=True)
         await RunningSubagents(CONVERSATION).deregister(holder)
 
         execute = AsyncMock(return_value=SubagentOutcome(text="ran"))
         with patch(f"{MODULE}.execute_subagent_stream", new=execute):
-            retried = await delegate(_delegation(), background=True, probe_parked=False)
+            retried = await delegate(_delegation(), background=True)
             await _drain()
 
         assert "already running" in refused
@@ -375,7 +342,7 @@ class TestABackgroundDispatch:
 
 
 class TestABackgroundRunOwnsItsStream:
-    async def test_it_announces_its_own_stream_folded_into_the_parents_message(
+    async def test_it_runs_on_its_own_stream_logged_as_detached_work(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
         seen: dict[str, Any] = {}
@@ -388,169 +355,163 @@ class TestABackgroundRunOwnsItsStream:
             return SubagentOutcome(text="done")
 
         with patch(f"{MODULE}.execute_subagent_stream", new=_run):
-            await delegate(_delegation(), background=True, probe_parked=False)
+            await delegate(_delegation(), background=True)
             await _drain()
 
-        (announced,) = [
-            b for b in client_edges.broadcasts if b["type"] == "executor.stream_started"
-        ]
-        assert announced["stream_id"] == seen["stream_id"] != "parent-stream"
-        assert announced["task_id"] == "row-1"
-        assert announced["bot_message_id"] == "bot-msg-1"
-        # The client upserts only this run's cards: the turn's own run may still be writing.
-        assert announced["kind"] == "subagent"
-        # The gate reads both off the run's configurable: the card goes on this
-        # stream, and the approval record gets the recipe that resumes the run.
+        started, ended = await _logged(client_edges)
+        assert isinstance(started, WorkStarted)
+        assert (started.task_id, started.detached) == (seen["stream_id"], True)
+        assert seen["stream_id"] != "parent-stream"
+        assert isinstance(ended, WorkFinished)
+        assert (ended.task_id, ended.outcome) == (seen["stream_id"], WorkOutcome.DONE)
+        # The gate reads the run's stream off its configurable.
         assert seen["configurable"]["stream_id"] == seen["stream_id"]
-        assert seen["configurable"][SUBAGENT_RESUME_CONFIG_KEY]["tool_call_id"] == "call-1"
         # A Stop on the dispatching turn still reaches it.
         assert seen["parent_stream_id"] == "parent-stream"
 
-    async def test_its_frames_are_saved_into_the_parents_message(
+    async def test_its_cards_are_logged_on_its_own_finished_work(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
-        with patch(
-            f"{MODULE}.execute_subagent_stream",
-            new=AsyncMock(return_value=SubagentOutcome(text="done")),
-        ):
-            await delegate(_delegation(), background=True, probe_parked=False)
+        cards: list[ToolDataEntry] = [{"tool_name": "search", "data": {"q": "x"}}]
+
+        async def _run(**kwargs: Any) -> SubagentOutcome:
+            kwargs["stream_writer"]({"tool_data": cards[0]})
+            return SubagentOutcome(text="done")
+
+        with patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(side_effect=_run)):
+            await delegate(_delegation(), background=True)
             await _drain()
 
-        saved = client_edges.conversations.append_message_tool_data.await_args
-        assert saved.args[0] == CONVERSATION
-        assert saved.kwargs["message_id"] == "bot-msg-1"
-        assert saved.kwargs["entries"], "the run's subagent row must be saved"
+        _, ended = await _logged(client_edges)
+        assert isinstance(ended, WorkFinished)
+        # Its own subagent group opens the record, the card it showed follows.
+        assert [card["tool_name"] for card in ended.tool_data] == ["subagent_group", "search"]
+        assert ended.tool_data[1] == cards[0]
 
-    async def test_cards_that_cannot_be_saved_do_not_cost_the_run_its_result(
+    async def test_its_own_stream_is_opened_and_closed_as_the_users_work(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
-        client_edges.conversations.get_message.side_effect = RuntimeError("mongo down")
-        with patch(
-            f"{MODULE}.execute_subagent_stream",
-            new=AsyncMock(return_value=SubagentOutcome(text="the summary")),
+        carried = AsyncMock(wraps=folded_stream.record_work_carried)
+        opened = AsyncMock(wraps=folded_stream.open_detached_stream)
+        finished = AsyncMock(wraps=folded_stream.record_work_finished)
+        with (
+            patch(
+                f"{MODULE}.execute_subagent_stream",
+                new=AsyncMock(return_value=SubagentOutcome(text="done")),
+            ),
+            patch(f"{FOLDED}.record_work_carried", new=carried),
+            patch(f"{FOLDED}.open_detached_stream", new=opened),
+            patch(f"{FOLDED}.record_work_finished", new=finished),
         ):
-            await delegate(_delegation(), background=True, probe_parked=False)
+            await delegate(_delegation(), background=True)
+            await _drain()
+
+        (own,) = carried.await_args.args[2:]
+        carried.assert_awaited_once_with(CONVERSATION, "u1", own, detached=True)
+        opened.assert_awaited_once_with(own, conversation_id=CONVERSATION, user_id="u1")
+        assert finished.await_args.args[:3] == (CONVERSATION, "u1", own)
+
+    async def test_a_run_with_no_user_opens_and_closes_its_work_under_one_owner(
+        self, redis: Any, client_edges: SimpleNamespace
+    ) -> None:
+        carried = AsyncMock(return_value=True)
+        finished = AsyncMock()
+        run = _delegation()
+        run.ctx.user_id = None
+        with (
+            patch(
+                f"{MODULE}.execute_subagent_stream",
+                new=AsyncMock(return_value=SubagentOutcome(text="done")),
+            ),
+            patch(f"{FOLDED}.record_work_carried", new=carried),
+            patch(f"{FOLDED}.open_detached_stream", new=AsyncMock()),
+            patch(f"{FOLDED}.record_work_finished", new=finished),
+        ):
+            await delegate(run, background=True)
+            await _drain()
+
+        assert carried.await_args.args[1] == finished.await_args.args[1] == ""
+
+    async def test_its_approval_cards_and_image_ride_on_its_finished_work(
+        self, redis: Any, client_edges: SimpleNamespace
+    ) -> None:
+        approval: ToolDataEntry = {"tool_name": "approval", "data": {"id": "a1"}}
+        image = ImageData(url="https://img/1.png", prompt="a cat")
+        streams: list[str] = []
+
+        def approvals_of(stream_id: str) -> tuple[ToolDataEntry, ...]:
+            streams.append(stream_id)
+            return (approval,)
+
+        with (
+            patch(
+                f"{MODULE}.execute_subagent_stream",
+                new=AsyncMock(return_value=SubagentOutcome(text="done")),
+            ),
+            patch(f"{FOLDED}.session_approval_cards", new=approvals_of),
+            patch(f"{FOLDED}.work_cards", new=AsyncMock(return_value=FoldedCards(image=image))),
+        ):
+            await delegate(_delegation(), background=True)
+            await _drain()
+
+        started, ended = await _logged(client_edges)
+        assert isinstance(started, WorkStarted) and isinstance(ended, WorkFinished)
+        assert streams == [started.task_id]
+        assert (ended.tool_data, ended.image, ended.report, ended.nothing_for_user) == (
+            (approval,),
+            image,
+            "",
+            True,
+        )
+
+    async def test_a_run_its_stop_refused_never_opens_its_stream_or_starts(
+        self, redis: Any, client_edges: SimpleNamespace
+    ) -> None:
+        execute = AsyncMock(return_value=SubagentOutcome(text="done"))
+        opened = AsyncMock()
+        with (
+            patch(f"{MODULE}.execute_subagent_stream", new=execute),
+            patch(f"{FOLDED}.record_work_carried", new=AsyncMock(return_value=False)),
+            patch(f"{FOLDED}.open_detached_stream", new=opened),
+        ):
+            await delegate(_delegation(), background=True)
+            await _drain()
+
+        execute.assert_not_awaited()
+        opened.assert_not_awaited()
+        # As stopped as one the user ended mid-run: nothing lands to restart the executor.
+        client_edges.deliver.assert_not_awaited()
+
+    async def test_cards_that_cannot_be_logged_do_not_cost_the_run_its_result(
+        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
+    ) -> None:
+        with (
+            patch(
+                f"{MODULE}.execute_subagent_stream",
+                new=AsyncMock(return_value=SubagentOutcome(text="the summary")),
+            ),
+            patch(f"{FOLDED}.record_work_finished", side_effect=RuntimeError("mongo down")),
+        ):
+            await delegate(_delegation(), background=True)
             await _drain()
 
         (landed,) = [c.args[2] for c in client_edges.deliver.await_args_list]
         assert landed.endswith(": the summary")
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
-
-
-class TestAResumedRunSavesIntoWhatItsParkSaved:
-    """A resumed run's frames join the parked run's saved row and card; a reload shows one of each."""
-
-    @staticmethod
-    def _saved_turn() -> MessageModel:
-        return MessageModel(
-            type="bot",
-            response="",
-            tool_data=[
-                {
-                    "tool_name": "subagent_group",
-                    "data": {"subagent_id": "row-1", "tool_calls": [{"tool_call_id": "a"}]},
-                },
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "appr-1", "status": "approved"},
-                },
-            ],
-        )
-
-    async def test_its_calls_extend_the_saved_row_and_the_card_is_not_saved_twice(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        client_edges.conversations.get_message.return_value = self._saved_turn()
-
-        async def _resumed(**kwargs: Any) -> SubagentOutcome:
-            writer = kwargs["stream_writer"]
-            writer(
-                {
-                    "tool_data": {
-                        "tool_name": "approval_request",
-                        "tool_category": "hil",
-                        "data": {"approval_id": "appr-1", "status": "approved"},
-                    }
-                }
-            )
-            writer(
-                {
-                    "tool_data": {
-                        "tool_name": "tool_calls_data",
-                        "subagent_id": "row-1",
-                        "data": {"tool_name": "create_flowchart", "tool_call_id": "b"},
-                    }
-                }
-            )
-            return SubagentOutcome(text="drawn")
-
-        with patch(f"{MODULE}.execute_subagent_stream", new=_resumed):
-            assert await delegation.resume_background(
-                _delegation(), {"status": "approved", "approval_id": "appr-1"}
-            )
-            await _drain()
-
-        extended = client_edges.conversations.extend_subagent_group.await_args
-        assert extended.kwargs["message_id"] == "bot-msg-1"
-        group = extended.kwargs["group"]
-        assert group.subagent_id == "row-1"
-        assert [c["tool_call_id"] for c in group.tool_calls] == ["b"]
-        assert group.completed_at is not None
-        client_edges.conversations.append_message_tool_data.assert_not_awaited()
-
-
-class TestABackgroundRunThatParks:
-    @staticmethod
-    def _paused() -> SubagentOutcome:
-        return SubagentOutcome(
-            text="", interrupt={"approval_id": "appr-1", "summary": "Send the report"}
-        )
-
-    async def test_it_says_what_it_waits_on_and_lands_no_result(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        pending = make_record(approval_id="appr-1", summary="Send the report")
-        with (
-            patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(return_value=self._paused())),
-            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=pending)),
-        ):
-            await delegate(_delegation(), background=True, probe_parked=False)
-            await _drain()
-
-        (announced,) = [c.args[2] for c in client_edges.deliver.await_args_list]
-        assert "waiting for the user's approval: Send the report (approval appr-1)" in announced
-        assert "cannot be reviewed" not in announced
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
-
-    async def test_a_decision_that_beat_the_park_resumes_it_at_once(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        decided = make_record(approval_id="appr-1", status=HILApprovalStatus.APPROVED)
-        execute = AsyncMock(side_effect=[self._paused(), SubagentOutcome(text="sent")])
-        with (
-            patch(f"{MODULE}.execute_subagent_stream", new=execute),
-            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=decided)),
-            patch(f"{MODULE}.mark_resumed", new=AsyncMock()) as resumed,
-        ):
-            await delegate(_delegation(), background=True, probe_parked=False)
-            await _drain()
-
-        assert execute.await_count == 2
-        resume = execute.await_args_list[1].kwargs["resume"]
-        assert resume.resume == {
-            "status": "approved",
-            "feedback": None,
-            "scope": "once",
-            "approval_id": "appr-1",
-        }
-        resumed.assert_awaited_once_with("appr-1")
-        (landed,) = [c.args[2] for c in client_edges.deliver.await_args_list]
-        assert landed.endswith(": sent")
+        assert not await _thread_held()
+        assert recorder.event("subagent_run")["errors"] == [
+            {
+                "msg": f"{LogTag.AGENT} Could not log a detached run's end",
+                "conversation_id": CONVERSATION,
+                "stream_id": _OwnStream(),
+                "error_type": "RuntimeError",
+                "error": "mongo down",
+            }
+        ]
 
 
 FULL_DISPLAY = SubagentDisplay(
     name="summarise the report",
-    agent_type="mcp",
+    agent_type="handoff",
     tool_category="linear",
     icon_url="https://icons.example/linear.png",
     integration="linear",
@@ -559,35 +520,19 @@ FULL_DISPLAY = SubagentDisplay(
 
 
 class TestABlockingRunDrivesItsGraph:
-    async def test_every_segment_runs_with_the_parents_writer_and_the_runs_identity(
+    async def test_the_run_drives_with_the_parents_writer_and_the_runs_identity(
         self, redis: Any
     ) -> None:
         metadata = IntegrationMetadata(name="Linear", integration_id="linear")
         run = replace(_delegation(), integration_metadata=metadata)
-        paused = SubagentOutcome(text="", interrupt={"approval_id": "a1"})
-        with _blocking([paused, SubagentOutcome(text="done")]) as h:
-            await delegate(run, background=False, probe_parked=False)
+        with _blocking([SubagentOutcome(text="done")]) as h:
+            await delegate(run, background=False)
 
-        first, second = (c.kwargs for c in h.execute.await_args_list)
-        for segment in (first, second):
-            assert segment["ctx"] is run.ctx
-            assert segment["stream_writer"] is h.writer
-            assert segment["integration_metadata"] is metadata
-            assert segment["subagent_id"] == "row-1"
-        assert second["resume"] == Command(resume={"status": "approved"})
-
-    async def test_a_replay_probes_its_own_thread_before_running(self, redis: Any) -> None:
-        run = _delegation()
-        recover = AsyncMock(return_value=None)
-        with (
-            _blocking([SubagentOutcome(text="ran")]) as h,
-            patch(f"{MODULE}.recover_from_checkpoint", new=recover),
-        ):
-            result = await delegate(run, background=False, probe_parked=True)
-
-        recover.assert_awaited_once_with(run.ctx)
-        assert result == "ran"
-        h.execute.assert_awaited_once()
+        (segment,) = (c.kwargs for c in h.execute.await_args_list)
+        assert segment["ctx"] is run.ctx
+        assert segment["stream_writer"] is h.writer
+        assert segment["integration_metadata"] is metadata
+        assert segment["subagent_id"] == "row-1"
 
     async def test_it_is_steerable_for_exactly_its_run(self, redis: Any) -> None:
         seen: list[RunningSubagent | None] = []
@@ -598,7 +543,7 @@ class TestABlockingRunDrivesItsGraph:
 
         with _blocking([]) as h:
             h.execute.side_effect = _run
-            await delegate(_delegation(), background=False, probe_parked=False)
+            await delegate(_delegation(), background=False)
 
         assert seen[0] is not None and seen[0].subagent_thread_id == THREAD
         assert await RunningSubagents(CONVERSATION).get("row-1") is None
@@ -607,7 +552,7 @@ class TestABlockingRunDrivesItsGraph:
         clock = SimpleNamespace(monotonic=MagicMock(side_effect=[10.0, 12.5]))
         run = replace(_delegation(), display=FULL_DISPLAY)
         with _blocking([SubagentOutcome(text="done")]) as h, patch(f"{MODULE}.time", clock):
-            await delegate(run, background=False, probe_parked=False)
+            await delegate(run, background=False)
 
         start = h.writer.call_args_list[0].args[0]["subagent_start"]
         end = h.writer.call_args_list[1].args[0]["subagent_end"]
@@ -615,7 +560,7 @@ class TestABlockingRunDrivesItsGraph:
             "subagent": "linear",
             "subagent_id": "row-1",
             "subagent_name": "summarise the report",
-            "agent_type": "mcp",
+            "agent_type": "handoff",
             "icon_url": "https://icons.example/linear.png",
             "tool_category": "linear",
             "parent_subagent_id": "parent-row",
@@ -632,7 +577,7 @@ class TestWhatTheExecutorIsTold:
             f"{MODULE}.execute_subagent_stream",
             new=AsyncMock(return_value=SubagentOutcome(text="the summary")),
         ):
-            ack = await delegate(_delegation(), background=True, probe_parked=False)
+            ack = await delegate(_delegation(), background=True)
             await _drain()
 
         assert ack == BACKGROUND_DELEGATION_ACK.format(
@@ -644,7 +589,7 @@ class TestWhatTheExecutorIsTold:
     ) -> None:
         await RunningSubagents(CONVERSATION).claim(_running())
 
-        refused = await delegate(_delegation(), background=True, probe_parked=False)
+        refused = await delegate(_delegation(), background=True)
 
         assert refused == THREAD_BUSY_REFUSAL.format(name="summarise the report")
 
@@ -658,7 +603,7 @@ class TestWhatTheExecutorIsTold:
             return SubagentOutcome(text="done")
 
         with patch(f"{MODULE}.execute_subagent_stream", new=_run):
-            await delegate(_delegation(), background=True, probe_parked=False)
+            await delegate(_delegation(), background=True)
             await _drain()
 
         assert seen[0] is not None
@@ -677,79 +622,14 @@ class TestWhatTheExecutorIsTold:
                 ToolMessage(content="ok", tool_call_id="t1"),
             ),
         )
-        parent = {**LIVE, "workflow_id": "wf-1"}
+        parent: AgentConfigurable = {**LIVE, "workflow_id": "wf-1"}
         with patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(return_value=outcome)):
-            await delegate(_delegation(parent), background=True, probe_parked=False)
+            await delegate(_delegation(parent), background=True)
             await _drain()
 
         (landed,) = _landings(client_edges.deliver)
         assert landed.startswith(_landing("sent"))
         assert 'GMAIL_SEND({"to":"a@b.c"})' in landed
-
-
-class TestResumingABackgroundRun:
-    async def test_a_held_thread_refuses_the_resume_and_runs_nothing(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        await RunningSubagents(CONVERSATION).claim(_running())
-        execute = AsyncMock()
-        with patch(f"{MODULE}.execute_subagent_stream", new=execute):
-            resumed = await delegation.resume_background(_delegation(), {"status": "approved"})
-            await _drain()
-
-        assert resumed is False
-        execute.assert_not_awaited()
-
-    async def test_a_resume_that_finishes_lands_its_result_steerably(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        seen: list[RunningSubagent | None] = []
-
-        async def _run(**_kwargs: Any) -> SubagentOutcome:
-            seen.append(await RunningSubagents(CONVERSATION).get("row-1"))
-            return SubagentOutcome(text="sent")
-
-        with patch(f"{MODULE}.execute_subagent_stream", new=_run):
-            assert await delegation.resume_background(_delegation(), {"status": "approved"})
-            await _drain()
-
-        assert seen[0] is not None
-        assert _landings(client_edges.deliver) == [_landing("sent")]
-        assert recorder.event("subagent_run")["resumed"] is True
-
-    async def test_a_resumed_runs_record_names_the_stream_it_runs_on_and_no_dispatcher(
-        self,
-        redis: Any,
-        client_edges: SimpleNamespace,
-        own_stream: dict[str, list[dict[str, Any]]],
-    ) -> None:
-        seen: list[RunningSubagent] = []
-
-        async def _run(**_kwargs: Any) -> SubagentOutcome:
-            seen.extend(await RunningSubagents(CONVERSATION).live())
-            return SubagentOutcome(text="sent")
-
-        with patch(f"{MODULE}.execute_subagent_stream", new=_run):
-            assert await delegation.resume_background(_delegation(), {"status": "approved"})
-            await _drain()
-
-        ((own_stream_id, _),) = own_stream.items()
-        (record,) = seen
-        assert own_stream_id.startswith(SUBAGENT_STREAM_ID_PREFIX)
-        assert record.stream_id == own_stream_id
-        assert record.dispatched_by is None
-
-    async def test_a_redundant_resume_lands_nothing(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        with patch(
-            f"{MODULE}.execute_subagent_stream",
-            new=AsyncMock(return_value=SubagentOutcome(text="")),
-        ):
-            await delegation.resume_background(_delegation(), {"status": "approved"})
-            await _drain()
-
-        client_edges.deliver.assert_not_awaited()
 
 
 class TestABackgroundRunsBoundary:
@@ -762,20 +642,18 @@ class TestABackgroundRunsBoundary:
         ):
             async with captured_wide_event():
                 log.set(trace_id="trace-1")
-                await delegate(_delegation(), background=True, probe_parked=False)
+                await delegate(_delegation(), background=True)
                 await _drain()
 
         event = recorder.event("subagent_run")
-        (announced,) = [
-            b for b in client_edges.broadcasts if b["type"] == "executor.stream_started"
-        ]
+        started, _ = await _logged(client_edges)
+        assert isinstance(started, WorkStarted)
         assert event["trace_id"] == "trace-1"
         assert event["agent_name"] == "spawned_subagent"
         assert event["conversation_id"] == CONVERSATION
-        assert event["stream_id"] == announced["stream_id"]
+        assert event["stream_id"] == started.task_id
         assert event["subagent_id"] == "row-1"
         assert event["integration_id"] == "spawn"
-        assert event["resumed"] is False
 
     async def test_a_failed_run_lands_its_error_and_closes_its_row(
         self,
@@ -788,7 +666,7 @@ class TestABackgroundRunsBoundary:
             f"{MODULE}.execute_subagent_stream",
             new=AsyncMock(side_effect=RuntimeError("graph exploded")),
         ):
-            await delegate(_delegation(), background=True, probe_parked=False)
+            await delegate(_delegation(), background=True)
             await _drain()
 
         failure = SUBAGENT_FAILED_RESULT.format(name="summarise the report", error="graph exploded")
@@ -803,7 +681,7 @@ class TestABackgroundRunsBoundary:
             "error": "graph exploded",
         }
         assert await RunningSubagents(CONVERSATION).get("row-1") is None
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     async def test_a_landing_that_cannot_be_delivered_is_recorded(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
@@ -813,7 +691,7 @@ class TestABackgroundRunsBoundary:
             f"{MODULE}.execute_subagent_stream",
             new=AsyncMock(return_value=SubagentOutcome(text="done")),
         ):
-            await delegate(_delegation(), background=True, probe_parked=False)
+            await delegate(_delegation(), background=True)
             await _drain()
 
         (error,) = recorder.event("subagent_run")["errors"]
@@ -836,13 +714,13 @@ class TestABackgroundRunTheUserStopped:
         )
         execute = AsyncMock(return_value=SubagentOutcome(text="done"))
         with patch(f"{MODULE}.execute_subagent_stream", new=execute):
-            result = await delegate(_delegation(), background=True, probe_parked=False)
+            result = await delegate(_delegation(), background=True)
             await _drain()
 
         assert result == delegation_prompts.STOPPED_BEFORE_START.format(name="summarise the report")
         execute.assert_not_awaited()
         assert await RunningSubagents(CONVERSATION).live() == []
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     @pytest.mark.regression
     async def test_it_lands_nothing_so_the_stopped_executor_does_not_restart(
@@ -850,11 +728,11 @@ class TestABackgroundRunTheUserStopped:
     ) -> None:
         stopped = SubagentOutcome(text="got halfway", stopped=True)
         with patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(return_value=stopped)):
-            await delegate(_delegation(), background=True, probe_parked=False)
+            await delegate(_delegation(), background=True)
             await _drain()
 
         client_edges.deliver.assert_not_awaited()
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     @pytest.mark.regression
     async def test_its_record_names_its_own_stream_and_the_stream_that_dispatched_it(
@@ -870,7 +748,7 @@ class TestABackgroundRunTheUserStopped:
             return SubagentOutcome(text="done")
 
         with patch(f"{MODULE}.execute_subagent_stream", new=_run):
-            await delegate(_delegation(), background=True, probe_parked=False)
+            await delegate(_delegation(), background=True)
             await _drain()
 
         ((own_stream_id, _),) = own_stream.items()
@@ -889,7 +767,7 @@ class TestABackgroundRunTheUserStopped:
             patch(f"{MODULE}.execute_subagent_stream", new=_run),
             patch(f"{MODULE}.current_stream_writer", return_value=MagicMock()),
         ):
-            await delegate(_delegation(), background=False, probe_parked=False)
+            await delegate(_delegation(), background=False)
 
         (record,) = seen
         assert record.stream_id == record.dispatched_by == LIVE["stream_id"]
@@ -906,16 +784,11 @@ class TestABackgroundRunsStreamLifecycle:
         run = replace(_delegation(), display=FULL_DISPLAY, integration_metadata=metadata)
         execute = AsyncMock(return_value=SubagentOutcome(text="done"))
         with patch(f"{MODULE}.execute_subagent_stream", new=execute):
-            await delegate(run, background=True, probe_parked=False)
+            await delegate(run, background=True)
             await _drain()
 
         ((stream_id, frames),) = own_stream.items()
-        (announced,) = [
-            b for b in client_edges.broadcasts if b["type"] == "executor.stream_started"
-        ]
-        assert stream_id == announced["stream_id"]
         assert stream_id.startswith(SUBAGENT_STREAM_ID_PREFIX)
-        assert announced["conversation_id"] == CONVERSATION
         assert [next(iter(f)) for f in frames] == ["subagent_start", "subagent_end"]
         assert frames[0]["subagent_start"]["subagent"] == "linear"
         assert frames[0]["subagent_start"]["icon_url"] == "https://icons.example/linear.png"
@@ -923,23 +796,6 @@ class TestABackgroundRunsStreamLifecycle:
         assert kwargs["integration_metadata"] is metadata
         assert kwargs["subagent_id"] == "row-1"
         client_edges.stream_manager.complete_stream.assert_awaited_once_with(stream_id)
-
-    async def test_a_parked_run_leaves_its_row_open(
-        self,
-        redis: Any,
-        client_edges: SimpleNamespace,
-        own_stream: dict[str, list[dict[str, Any]]],
-    ) -> None:
-        paused = SubagentOutcome(text="", interrupt={"approval_id": "appr-1"})
-        with (
-            patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(return_value=paused)),
-            patch(f"{MODULE}.get_approval", new=_approvals()),
-        ):
-            await delegate(_delegation(), background=True, probe_parked=False)
-            await _drain()
-
-        (frames,) = own_stream.values()
-        assert [next(iter(f)) for f in frames] == ["subagent_start"]
 
     async def test_a_stopped_run_closes_its_stream_silently(
         self, redis: Any, client_edges: SimpleNamespace
@@ -951,13 +807,13 @@ class TestABackgroundRunsStreamLifecycle:
             f"{MODULE}.execute_subagent_stream",
             new=AsyncMock(return_value=SubagentOutcome(text="done")),
         ):
-            await delegate(_delegation(), background=True, probe_parked=False)
+            await delegate(_delegation(), background=True)
             await _drain()
 
         client_edges.stream_manager.publish_chunk.assert_not_awaited()
         client_edges.stream_manager.complete_stream.assert_not_awaited()
 
-    async def test_the_runs_config_carries_its_stream_and_recipe_even_when_it_had_none(
+    async def test_the_runs_config_carries_its_stream_even_when_it_had_none(
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
         run = _delegation()
@@ -970,219 +826,7 @@ class TestABackgroundRunsStreamLifecycle:
             return SubagentOutcome(text="done")
 
         with patch(f"{MODULE}.execute_subagent_stream", new=_run):
-            await delegate(run, background=True, probe_parked=False)
+            await delegate(run, background=True)
             await _drain()
 
         assert seen["stream_id"] == seen["own"]
-        assert seen[SUBAGENT_RESUME_CONFIG_KEY]["tool_call_id"] == "call-1"
-
-    async def test_a_run_with_no_user_announces_nothing_and_saves_under_no_user(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        base = _delegation()
-        run = replace(base, ctx=replace(base.ctx, user_id=None))
-        entries: list[ToolDataEntry] = [{"tool_name": "search", "data": {"q": "x"}}]
-        with (
-            patch(
-                f"{MODULE}.execute_subagent_stream",
-                new=AsyncMock(return_value=SubagentOutcome(text="done")),
-            ),
-            patch(f"{FOLDED}.drain_executor_tool_data", return_value=entries),
-        ):
-            await delegate(run, background=True, probe_parked=False)
-            await _drain()
-
-        conversations = client_edges.conversations
-        assert client_edges.broadcasts == []
-        assert conversations.get_message.await_args.kwargs["user_id"] == ""
-        assert conversations.append_message_tool_data.await_args.kwargs["user_id"] == ""
-
-
-GROUP = {"tool_name": "subagent_group", "data": {"subagent_id": "row-1", "tool_calls": []}}
-HELD_CARD = {"tool_name": "approval_request", "data": {"approval_id": "appr-1"}}
-NEW_CARD = {"tool_name": "approval_request", "data": {"approval_id": "appr-2"}}
-SEARCH = {"tool_name": "search", "data": {"q": "x"}}
-
-
-class TestSavingABackgroundRunsFrames:
-    @staticmethod
-    async def _run(entries: list[Any], parent: AgentConfigurable | None = None) -> None:
-        with (
-            patch(
-                f"{MODULE}.execute_subagent_stream",
-                new=AsyncMock(return_value=SubagentOutcome(text="done")),
-            ),
-            patch(f"{FOLDED}.drain_executor_tool_data", return_value=entries),
-        ):
-            await delegate(_delegation(parent), background=True, probe_parked=False)
-            await _drain()
-
-    async def test_the_frames_are_appended_to_the_users_own_message(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        await self._run([GROUP, SEARCH])
-
-        conversations = client_edges.conversations
-        conversations.get_message.assert_awaited_once_with(CONVERSATION, "bot-msg-1", user_id="u1")
-        conversations.append_message_tool_data.assert_awaited_once_with(
-            CONVERSATION, user_id="u1", message_id="bot-msg-1", entries=[GROUP, SEARCH]
-        )
-        assert "errors" not in recorder.event("subagent_run")
-
-    async def test_a_resumed_segment_extends_its_row_and_saves_only_new_cards(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        client_edges.conversations.get_message.return_value = MessageModel(
-            type="bot", response="", tool_data=[GROUP, HELD_CARD]
-        )
-
-        await self._run([GROUP, HELD_CARD, NEW_CARD, SEARCH])
-
-        extended = client_edges.conversations.extend_subagent_group.await_args
-        assert extended.args == (CONVERSATION,)
-        assert extended.kwargs["user_id"] == "u1"
-        assert extended.kwargs["message_id"] == "bot-msg-1"
-        assert extended.kwargs["group"].subagent_id == "row-1"
-        client_edges.conversations.append_message_tool_data.assert_awaited_once_with(
-            CONVERSATION, user_id="u1", message_id="bot-msg-1", entries=[NEW_CARD, SEARCH]
-        )
-
-    async def test_a_run_with_no_message_to_fold_into_saves_nothing_and_says_so(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        parent = {k: v for k, v in LIVE.items() if k != "bot_message_id"}
-
-        await self._run([GROUP, SEARCH], parent)
-
-        client_edges.conversations.get_message.assert_not_awaited()
-        client_edges.conversations.append_message_tool_data.assert_not_awaited()
-        assert recorder.event("subagent_run")["warnings"] == [
-            {
-                "msg": f"{LogTag.AGENT} Detached stream has no message to save its cards into",
-                "conversation_id": CONVERSATION,
-                "stream_id": _OwnStream(),
-                "entries": 2,
-            }
-        ]
-
-    async def test_frames_for_a_message_not_saved_yet_wait_for_its_save(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        """A fast run can end before its turn saved the message: its cards wait on the conversation."""
-        conversations = client_edges.conversations
-        conversations.get_message.return_value = None
-        conversations.park_folded_cards = AsyncMock(return_value=True)
-
-        await self._run([GROUP, SEARCH])
-
-        conversations.append_message_tool_data.assert_not_awaited()
-        conversations.park_folded_cards.assert_awaited_once_with(
-            CONVERSATION, user_id="u1", message_id="bot-msg-1", entries=[GROUP, SEARCH]
-        )
-        assert "errors" not in recorder.event("subagent_run")
-
-    async def test_an_append_that_matched_nothing_is_recorded(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        client_edges.conversations.append_message_tool_data.return_value = False
-
-        await self._run([GROUP, SEARCH, NEW_CARD])
-
-        assert recorder.event("subagent_run")["errors"] == [
-            {
-                "msg": f"{LogTag.AGENT} Detached stream cards matched no message; not saved",
-                "conversation_id": CONVERSATION,
-                "message_id": "bot-msg-1",
-                "entries": 3,
-            }
-        ]
-
-    async def test_a_save_that_raises_is_recorded_and_the_result_still_lands(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        client_edges.conversations.get_message.side_effect = RuntimeError("mongo down")
-
-        await self._run([GROUP])
-
-        assert _landings(client_edges.deliver) == [_landing("done")]
-        assert recorder.event("subagent_run")["errors"] == [
-            {
-                "msg": f"{LogTag.AGENT} Could not save a detached stream's cards",
-                "conversation_id": CONVERSATION,
-                "stream_id": _OwnStream(),
-                "error_type": "RuntimeError",
-                "error": "mongo down",
-            }
-        ]
-
-
-class TestWhatAParkedRunSays:
-    @staticmethod
-    async def _park(
-        interrupt: dict[str, Any], *records: HILApprovalRecord
-    ) -> tuple[AsyncMock, AsyncMock]:
-        execute = AsyncMock(
-            side_effect=[
-                SubagentOutcome(text="", interrupt=interrupt),
-                SubagentOutcome(text="sent"),
-            ]
-        )
-        with (
-            patch(f"{MODULE}.execute_subagent_stream", new=execute),
-            patch(f"{MODULE}.get_approval", new=_approvals(*records)),
-            patch(f"{MODULE}.mark_resumed", new=AsyncMock()) as resumed,
-        ):
-            await delegate(_delegation(), background=True, probe_parked=False)
-            await _drain()
-        return execute, resumed
-
-    async def test_it_names_every_approval_it_waits_on(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        pending = make_record(approval_id="a1", summary="Send the report")
-
-        await self._park({"approval_ids": ["a1", "a2"], "summary": "Send both"}, pending)
-
-        assert _landings(client_edges.deliver) == [
-            SUBAGENT_PARKED_ENTRY.format(
-                name="summarise the report",
-                subagent_id="row-1",
-                summaries="Send the report (approval a1); Send both (approval a2)",
-            )
-        ]
-
-    async def test_an_approval_with_no_summary_anywhere_is_an_action(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        await self._park({"approval_id": "a1"})
-
-        (announced,) = _landings(client_edges.deliver)
-        assert "waiting for the user's approval: an action (approval a1)." in announced
-
-    async def test_a_decision_on_a_later_approval_still_resumes_it(
-        self, redis: Any, client_edges: SimpleNamespace
-    ) -> None:
-        pending = make_record(approval_id="a1")
-        decided = make_record(approval_id="a2", status=HILApprovalStatus.APPROVED)
-
-        execute, resumed = await self._park({"approval_ids": ["a1", "a2"]}, pending, decided)
-
-        assert execute.await_count == 2
-        assert execute.await_args_list[1].kwargs["resume"].resume["approval_id"] == "a2"
-        resumed.assert_awaited_once_with("a2")
-        assert _landings(client_edges.deliver) == [_landing("sent")]
-
-    async def test_a_pause_with_no_approval_id_lands_as_unfinished(
-        self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
-    ) -> None:
-        await self._park({"summary": "Send the report"})
-
-        assert _landings(client_edges.deliver) == [
-            _landing(SUBAGENT_UNRESUMABLE_PARK.format(name="summarise the report"))
-        ]
-        assert recorder.event("subagent_run")["errors"] == [
-            {
-                "msg": f"{LogTag.HIL} Background subagent paused with no approval id",
-                "agent_name": "spawned_subagent",
-            }
-        ]

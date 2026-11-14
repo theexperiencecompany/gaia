@@ -100,8 +100,8 @@ def _classify(payload: dict[str, Any]) -> str:
 class Transcript:
     """A parsed chat stream, queried by frame kind and by tool.
 
-    Build it with :meth:from_chunks (the strings execute_graph_streaming
-    yields) or :meth:from_sse (a raw HTTP response body).
+    Build it with :meth:from_chunks (the frames
+    payloads_for_stream_event yields) or :meth:from_sse (a raw HTTP response body).
     """
 
     def __init__(
@@ -118,7 +118,7 @@ class Transcript:
 
     @classmethod
     def from_chunks(cls, chunks: Iterable[str]) -> Transcript:
-        """Parse the chunk strings yielded by execute_graph_streaming.
+        """Parse the chunk strings payloads_for_stream_event yields.
 
         Each yield is exactly one frame, so chunks are parsed individually —
         joining them first would glue the nostream: marker (which has no

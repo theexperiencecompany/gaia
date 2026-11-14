@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import json
 from typing import Any, Literal, TypeVar, cast
-from uuid import uuid4
 
 from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -44,6 +43,7 @@ from app.agents.workspace.offload import OffloadInfo, read_offload
 from app.constants.agents import PLAYBOOK_SUSPECT_BASELINE_WINDOW
 from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
+from app.core.stream_manager import stream_manager
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.agent_models import AgentConfigurable
 from app.models.playbook_models import (
@@ -167,6 +167,8 @@ class PlaybookRunResult(BaseModel):
     #: step ran anyway (``ok=True``, ``text`` the fallback record of what ran) —
     #: a delivered run, not a playbook to heal.
     narration_failed: str | None = None
+    #: A Stop on the replay's logged work ended it between steps: nothing to deliver, nothing to hand over.
+    stopped: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,6 +204,7 @@ class _Run:
     #: Set on a dry run: only its allowlisted reads reach a tool.
     dry_run: DryRun | None = None
     position: int = 0
+    stopped: bool = False
 
 
 async def run_playbook(
@@ -209,6 +212,7 @@ async def run_playbook(
     *,
     user: PlaybookUser,
     conversation_id: str,
+    stream_id: str,
     trigger: Mapping[str, object],
     dry_run: DryRun | None = None,
 ) -> PlaybookRunResult:
@@ -217,6 +221,7 @@ async def run_playbook(
     trigger is the fire's own context (the webhook payload, the batched
     events), addressable as $trigger.<path>. A dry run calls only its
     allowlisted reads; every other step answers with what it would have called.
+    A cancel of stream_id stops the replay before its next call.
     """
     registry = await get_tool_registry()
     recent = await workflow_executions_repository.find_recent_with_trace(
@@ -224,7 +229,7 @@ async def run_playbook(
     )
     previous = recent[0] if recent else None
     configurable: AgentConfigurable = {
-        "stream_id": f"playbook_{uuid4().hex}",
+        "stream_id": stream_id,
         "user_id": playbook.user_id,
         "conversation_id": conversation_id,
         "execution_mode": "background",
@@ -251,6 +256,7 @@ async def run_playbook(
             completed=run.completed,
             failure=_failure_text(failure, run.completed),
             llm_calls=run.llm_calls,
+            stopped=run.stopped,
         )
     if run.suspect is not None:
         # Stopped on the record's word: no narration, nothing to deliver. The
@@ -490,6 +496,10 @@ async def _call_step(
     # A raise out of the graph is a stopped step, not a dead run: the steps
     # before it already had their side effects, and only a result that carries
     # the trace lets the worker hand the rest to the agent without repeating them.
+    configurable: AgentConfigurable = run.configurable
+    if await stream_manager.is_cancelled(configurable["stream_id"]):
+        run.stopped = True
+        return _StepFailure(call.position, call.tool_name, "the replay was stopped")
     if run.dry_run is not None and not run.dry_run.runs(call.tool_name, call.args):
         return ToolMessage(
             content=run.dry_run.would_call(call.tool_name, call.args),

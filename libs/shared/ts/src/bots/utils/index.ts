@@ -1,7 +1,7 @@
 /**
  * Bot utility barrel export.
  *
- * Three layers of reusable logic, ordered from low-level to high-level:
+ * Two layers of reusable logic, ordered from low-level to high-level:
  *
  * 1. formatters - Pure functions that turn data into display strings.
  *    Use these when you need custom response assembly.
@@ -9,15 +9,23 @@
  * 2. commands  - Business-logic handlers that call GaiaClient, format results,
  *    and return a ready-to-send string. Bot adapters call these directly.
  *
- * 3. streaming - handleStreamingChat: full streaming lifecycle handler.
- *    Bot adapters provide three callbacks (editMessage, onAuthError, onGenericError)
- *    and the shared function handles throttling, cursor display, and error routing.
- *
  * Text helpers (arg parsing, platform limits, truncation, chunking) live in
  * ./text so sibling modules can import them without a barrel import cycle.
  */
 
-export { segmentIntoBubbles } from "./bubbles";
+export {
+  initialDeliveryState,
+  LIVE_PREVIEW_SHARE,
+  stepDelivery,
+} from "./bubble-delivery";
+export type {
+  DeliveryConfig,
+  DeliveryEvent,
+  DeliveryOp,
+  DeliveryState,
+  MessageSlot,
+} from "./bubble-delivery.types";
+export { BUBBLE_PAUSE_MS } from "./bubbles";
 export {
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
@@ -95,12 +103,6 @@ export {
   WEBHOOK_MAX_BODY_BYTES,
 } from "./request-body";
 export { readStreamBytesCapped } from "./stream-bytes";
-export type {
-  MessageEditor,
-  NewMessageSender,
-  StreamingOptions,
-} from "./streaming";
-export { handleStreamingChat, STREAMING_DEFAULTS } from "./streaming";
 export {
   chunkResponse,
   extractSubcommandArgs,

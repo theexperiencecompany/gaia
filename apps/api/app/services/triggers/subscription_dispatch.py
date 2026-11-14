@@ -13,6 +13,8 @@ case.
 """
 
 from datetime import UTC, datetime
+import hashlib
+import json
 
 from redis.exceptions import RedisError
 
@@ -25,6 +27,7 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
+    notification_id,
 )
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
 from app.models.trigger_subscription_models import (
@@ -311,11 +314,11 @@ async def _perform_action(
             case SubscriptionAction.EXECUTE:
                 await _execute(todo, subscription, payload, coalesced=coalesced, verdict=verdict)
             case SubscriptionAction.NOTIFY:
-                await _notify(todo, subscription)
+                await _notify(todo, subscription, payload)
             case SubscriptionAction.COMPLETE:
                 await _complete(todo, subscription)
             case SubscriptionAction.UNBLOCK:
-                await _unblock(todo, subscription)
+                await _unblock(todo, subscription, payload)
     except Exception as e:
         # The fire is already on the timeline; without this it reads as if the action ran.
         await record_activity(
@@ -358,10 +361,14 @@ async def _execute(
     log.info("todo_subscription.execution_enqueued", todo_id=todo.id)
 
 
-async def _notify(todo: TodoDocument, subscription: TriggerSubscription) -> None:
-    """Tell the user the event landed. No state change — that is the point."""
-    await notification_service.create_notification(
+async def _notify(
+    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, object]
+) -> None:
+    """Tell the user the event landed, once per event however often it is redelivered."""
+    event = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+    await notification_service.notify(
         NotificationRequest(
+            id=notification_id(todo.user_id, "todo_trigger", subscription.id, event),
             user_id=todo.user_id,
             source=NotificationSourceEnum.TODO_TRIGGER,
             content=NotificationContent(
@@ -387,7 +394,9 @@ async def _complete(todo: TodoDocument, subscription: TriggerSubscription) -> No
     log.info("todo_subscription.completed_todo", todo_id=todo.id)
 
 
-async def _unblock(todo: TodoDocument, subscription: TriggerSubscription) -> None:
+async def _unblock(
+    todo: TodoDocument, subscription: TriggerSubscription, payload: dict[str, object]
+) -> None:
     """Clear the blocking labels, or degrade to notify when there are none.
 
     A todo that was never blocked has nothing to unblock, and silently doing
@@ -398,7 +407,7 @@ async def _unblock(todo: TodoDocument, subscription: TriggerSubscription) -> Non
     blocking = BLOCKING_LABELS.intersection(todo.labels)
     if not blocking:
         log.info("todo_subscription.unblock_degraded_to_notify", todo_id=todo.id)
-        await _notify(todo, subscription)
+        await _notify(todo, subscription, payload)
         return
 
     await todo_repository.update(

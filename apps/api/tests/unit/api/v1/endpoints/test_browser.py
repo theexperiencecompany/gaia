@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, call, patch
 from annotated_types import Ge, Le
 import fakeredis.aioredis
 from fastapi import HTTPException
+from fastapi.routing import APIRoute
 from httpx import AsyncClient
 import pytest
 from tests.conftest import FAKE_USER
@@ -26,9 +27,8 @@ from tests.helpers import captured_wide_event
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.endpoints import browser as browser_ep, browser_live_view as live_view_ep
+from app.config.settings import settings
 from app.constants.browser import (
-    BROWSER_HANDOFF_ACK_CANCEL,
-    BROWSER_HANDOFF_ACK_CONTINUE,
     BROWSER_HANDOFF_GONE_DETAIL,
     BROWSER_HANDOFF_NOT_OWNED_DETAIL,
     BROWSER_LIVE_VIEW_NOT_WAITING_DETAIL,
@@ -36,6 +36,10 @@ from app.constants.browser import (
     HandoffDecision,
     HandoffStatus,
 )
+from app.constants.chat import ConversationSource
+from app.db.repositories.conversations import conversation_repository
+from app.models.conversation_send_models import SendMessageRequest
+from app.models.user_models import AuthenticatedUser
 from app.schemas.browser import (
     BrowserLoginResponse,
     BrowserTaskResponse,
@@ -44,7 +48,7 @@ from app.schemas.browser import (
     NewHandoff,
 )
 from app.schemas.browser_job import BrowserJobStopped
-from app.services.browser import handoff_buttons, job_stop
+from app.services.browser import handoff_buttons
 from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import cancel_handoff, create_pending_handoff, get_handoff
 from app.services.browser.jobs import done_state
@@ -55,6 +59,7 @@ from app.services.browser.takeover_token import (
     takeover_token_ttl_seconds,
     verify_takeover_token,
 )
+from app.utils.redis_utils import RedisPoolManager
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserHandoffResolved
 
@@ -147,16 +152,27 @@ def _record(status: HandoffStatus = HandoffStatus.PENDING, user_id: str = USER_I
 @pytest.fixture
 async def button_world(
     fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
-) -> list[tuple[str, str, str]]:
-    """Open a pending login handoff in c1 over fakeredis; return what reaches the agent's thread."""
-    recorded: list[tuple[str, str, str]] = []
+) -> list[tuple[str, str, str, str]]:
+    """Open a pending login handoff in c1 (a Telegram chat) over fakeredis; return what is sent to it, as whom."""
+    recorded: list[tuple[str, str, str, str]] = []
 
-    async def _record(conversation_id: str, user_message: str, reply: str) -> None:
-        recorded.append((conversation_id, user_message, reply))
+    async def _send(
+        conversation_id: str,
+        user: AuthenticatedUser,
+        body: SendMessageRequest,
+        surface: ConversationSource,
+    ) -> None:
+        recorded.append((conversation_id, body.text, surface, user.user_id))
 
-    monkeypatch.setattr(handoff_buttons, "record_exchange_in_thread", _record)
+    async def _source(conversation_id: str, *, user_id: str) -> ConversationSource | None:
+        return (
+            ConversationSource.TELEGRAM if (conversation_id, user_id) == ("c1", USER_ID) else None
+        )
+
+    monkeypatch.setattr(handoff_buttons, "send_message", _send)
+    monkeypatch.setattr(conversation_repository, "get_source", _source)
     # A cancel is a real stop, which reads ARQ's keys: its pool is the same fake Redis.
-    monkeypatch.setattr(job_stop.RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
+    monkeypatch.setattr(RedisPoolManager, "get_pool", AsyncMock(return_value=fake_redis))
     await create_pending_handoff(
         "h1",
         NewHandoff(
@@ -168,7 +184,7 @@ async def button_world(
 
 class TestDecideBrowserHandoff:
     async def test_the_cards_decision_settles_it_and_reaches_the_agents_thread(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         """No turn runs for a tap: without the thread entry the agent's reply called the user's own note a mistake."""
         payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE, message="skip it")
@@ -190,12 +206,13 @@ class TestDecideBrowserHandoff:
             (
                 "c1",
                 "[From the browser handoff card] continue: skip it",
-                BROWSER_HANDOFF_ACK_CONTINUE,
+                ConversationSource.TELEGRAM,
+                USER_ID,
             )
         ]
 
     async def test_a_tap_after_it_was_settled_another_way_decided_nothing(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         await cancel_handoff("h1")
         payload = HandoffDecisionRequest(decision=HandoffDecision.CONTINUE)
@@ -214,7 +231,7 @@ class TestDecideBrowserHandoff:
     )
     async def test_another_users_or_a_gone_handoff_is_refused(
         self,
-        button_world: list[tuple[str, str, str]],
+        button_world: list[tuple[str, str, str, str]],
         handoff_id: str,
         user_id: str,
         code: int,
@@ -229,7 +246,7 @@ class TestDecideBrowserHandoff:
         assert button_world == []
 
     async def test_the_live_pages_stop_decides_the_handoff_its_link_was_sent_for(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         """A bot user has no web session: the code that opened the page is the authority, and only for its own handoff."""
         code = await mint_live_code("sess-1", USER_ID, "h1")
@@ -254,7 +271,7 @@ class TestDecideBrowserHandoff:
         assert record is not None
         assert record.message is None
         assert button_world == [
-            ("c1", "[From the browser handoff card] cancel", BROWSER_HANDOFF_ACK_CANCEL)
+            ("c1", "[From the browser handoff card] cancel", ConversationSource.TELEGRAM, USER_ID)
         ]
         # Settled, the link no longer opens anything.
         with pytest.raises(HTTPException) as exc:
@@ -265,7 +282,7 @@ class TestDecideBrowserHandoff:
         )
 
     async def test_cancel_stops_the_job_and_its_note_reaches_the_thread(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         """A cancel the run merely heard would end it on its own and report a result the user declined."""
         code = await mint_live_code("sess-1", USER_ID, "h1")
@@ -278,12 +295,13 @@ class TestDecideBrowserHandoff:
             (
                 "c1",
                 "[From the browser handoff card] cancel: wrong account",
-                BROWSER_HANDOFF_ACK_CANCEL,
+                ConversationSource.TELEGRAM,
+                USER_ID,
             )
         ]
 
     async def test_a_cancel_tap_is_counted_once_as_the_users_cancel(
-        self, button_world: list[tuple[str, str, str]], monkeypatch: pytest.MonkeyPatch
+        self, button_world: list[tuple[str, str, str, str]], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         captured: list[tuple[object, ...]] = []
         monkeypatch.setattr(handoff_buttons, "capture", lambda *args: captured.append(args))
@@ -295,7 +313,7 @@ class TestDecideBrowserHandoff:
         ]
 
     async def test_another_users_cancel_stops_nothing(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         with pytest.raises(
             BrowserHandoffNotOwned, match="^Not authorized to resolve this handoff$"
@@ -308,7 +326,7 @@ class TestDecideBrowserHandoff:
         assert button_world == []
 
     async def test_a_tap_another_decision_beat_is_not_written_as_the_users(
-        self, button_world: list[tuple[str, str, str]], monkeypatch: pytest.MonkeyPatch
+        self, button_world: list[tuple[str, str, str, str]], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The wait timed out between the read and the tap: the tap decided nothing."""
         monkeypatch.setattr(
@@ -323,7 +341,7 @@ class TestDecideBrowserHandoff:
         assert button_world == []
 
     async def test_a_live_page_whose_handoff_expired_says_it_is_gone(
-        self, button_world: list[tuple[str, str, str]]
+        self, button_world: list[tuple[str, str, str, str]]
     ) -> None:
         code = await mint_live_code("sess-1", USER_ID, "expired")
 
@@ -342,9 +360,7 @@ class TestDecideBrowserHandoff:
 
 @pytest.fixture
 def takeover_secret(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        browser_ep.settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "x" * 40, raising=False
-    )
+    monkeypatch.setattr(settings, "BROWSER_TAKEOVER_TOKEN_SECRET", "x" * 40, raising=False)
 
 
 @pytest.mark.usefixtures("takeover_secret")
@@ -572,9 +588,9 @@ class TestClearBrowserLoginsContract:
 
 
 class TestRouteMetadata:
-    def _route(self, path: str, method: str) -> Any:
+    def _route(self, path: str, method: str) -> APIRoute:
         for route in browser_ep.router.routes:
-            if route.path == path and method in route.methods:
+            if isinstance(route, APIRoute) and route.path == path and method in route.methods:
                 return route
         raise AssertionError(f"no {method} route for {path}")
 
@@ -643,5 +659,9 @@ class TestAuthenticatedUserThroughTheApp:
     )
     def test_user_id_comes_from_the_auth_dependency(self, path: str, method: str) -> None:
         """A route resolving its own id from request.state is how the 500s got in."""
-        route = next(r for r in browser_ep.router.routes if r.path == path and method in r.methods)
+        route = next(
+            r
+            for r in browser_ep.router.routes
+            if isinstance(r, APIRoute) and r.path == path and method in r.methods
+        )
         assert [d.call for d in route.dependant.dependencies] == [get_user_id]

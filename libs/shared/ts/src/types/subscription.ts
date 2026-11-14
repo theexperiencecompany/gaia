@@ -3,9 +3,9 @@
  *
  * The API returns HTTP 402 with the error envelope `{ code, message,
  * checkout_url, discount_code }` from `app/decorators/entitlements.py`. Every
- * client has to recognise the same shape — web through its axios interceptor
- * and chat-stream client, mobile through its SSE client — so the type and the
- * narrowing live here rather than being re-derived per app.
+ * client has to recognise the same shape (web through its axios interceptor,
+ * mobile from a refused send's body), so the type and the narrowing live here
+ * rather than being re-derived per app.
  */
 
 export const SUBSCRIPTION_REQUIRED_CODE = "subscription_required";
@@ -39,9 +39,8 @@ export function getSubscriptionRequiredDetail(
 }
 
 /**
- * Same extraction from a raw response body string. The mobile SSE transport
- * only ever hands back `responseText`, never a parsed object; a body that is
- * not JSON at all is simply "not a paywall", not an error to throw.
+ * Same extraction from a raw response body string, as mobile's ApiError carries
+ * it; a body that is not JSON at all is simply "not a paywall", not an error.
  */
 export function parseSubscriptionRequiredBody(
   body: string | null | undefined,

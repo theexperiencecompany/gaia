@@ -1,54 +1,11 @@
 import { useMemo } from "react";
-import type { IMessage } from "@/lib/db/chatDb";
+import { useLiveMessages } from "@/features/chat/live/useLiveChat";
 import type { OptimisticMessage } from "@/stores/chatStore";
 import { useChatStore } from "@/stores/chatStore";
 import type { MessageType } from "@/types/features/convoTypes";
 
-// Caches by message ref, since the store preserves idle IMessage references
-// across streaming ticks (only the streaming message is replaced — see
-// chatStore.addOrUpdateMessage) — this lets the message list skip re-rendering every bubble per token.
-const conversionCache = new WeakMap<IMessage, MessageType>();
-
-export const mapStoredMessageToConversationMessage = (
-  message: IMessage,
-): MessageType => {
-  const cached = conversionCache.get(message);
-  if (cached) return cached;
-
-  const mapped = {
-    type: message.role === "user" ? "user" : "bot",
-    response: message.content,
-    message_id: message.messageId ?? message.id,
-    date: message.createdAt?.toISOString(),
-    fileIds: message.fileIds,
-    fileData: message.fileData,
-    selectedTool: message.toolName ?? undefined,
-    toolCategory: message.toolCategory ?? undefined,
-    selectedWorkflow: message.selectedWorkflow ?? undefined,
-    selectedCalendarEvent: message.selectedCalendarEvent ?? undefined,
-    todo_run_wake: message.todoRunWake ?? undefined,
-    loading: message.status === "sending",
-    queued: message.status === "queued",
-    failed: message.status === "failed",
-    tool_data: message.tool_data ?? undefined,
-    follow_up_actions: message.follow_up_actions ?? undefined,
-    image_data: message.image_data ?? undefined,
-    memory_data: message.memory_data ?? undefined,
-    todo_progress: message.todo_progress ?? undefined,
-    pinned: message.pinned ?? undefined,
-    isConvoSystemGenerated: message.isConvoSystemGenerated ?? undefined,
-    error: message.error ?? undefined,
-    replyToMessage: message.replyToMessageData ?? undefined,
-    stopped: message.stopped ?? undefined,
-    reaction: message.reaction ?? undefined,
-  } as MessageType;
-
-  conversionCache.set(message, mapped);
-  return mapped;
-};
-
 /**
- * The optimistic message is a separate shape from a stored one — it has no
+ * The optimistic message is a separate shape from a logged one — it has no
  * status field, so `failed` is carried explicitly rather than derived. It only
  * exists before the backend assigns ids, and it is the only record of a send
  * that died there.
@@ -71,40 +28,24 @@ export const mapOptimisticMessageToConversationMessage = (
   failed: message.failed,
 });
 
+/** The active conversation's rows: its log's view, or the first send of a conversation not created yet. */
 export const useConversation = () => {
   const activeConversationId = useChatStore(
     (state) => state.activeConversationId,
   );
-  const messagesByConversation = useChatStore(
-    (state) => state.messagesByConversation,
-  );
-  // Get single optimistic message for new conversations (before conversation ID exists)
   const optimisticMessage = useChatStore((state) => state.optimisticMessage);
+  const liveMessages = useLiveMessages(activeConversationId);
 
   const convoMessages = useMemo(() => {
-    // Get messages from IndexedDB for the active conversation
-    const dbMessages = activeConversationId
-      ? (messagesByConversation[activeConversationId] ?? [])
-      : [];
-
-    // Convert IndexedDB messages to MessageType (cached per stored message ref).
-    const messages = dbMessages.map(mapStoredMessageToConversationMessage);
-
-    // Only add optimistic message for NEW conversations (no activeConversationId)
-    // For existing conversations, messages are already in IndexedDB with optimistic flag
     if (
       optimisticMessage &&
       !activeConversationId &&
       optimisticMessage.conversationId === null
     ) {
-      return [
-        ...messages,
-        mapOptimisticMessageToConversationMessage(optimisticMessage),
-      ];
+      return [mapOptimisticMessageToConversationMessage(optimisticMessage)];
     }
-
-    return messages;
-  }, [activeConversationId, messagesByConversation, optimisticMessage]);
+    return liveMessages;
+  }, [activeConversationId, optimisticMessage, liveMessages]);
 
   return { convoMessages };
 };

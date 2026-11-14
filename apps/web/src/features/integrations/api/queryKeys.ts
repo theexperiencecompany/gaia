@@ -5,16 +5,14 @@
  * stay consistent across hooks, pages, and components. Values match the keys
  * used elsewhere in the app (incl. mobile), so cache identity is preserved.
  *
- * The catalog snapshot and status map are separate queries; per-integration
- * tools are still fetched on demand at GET /integrations/{id}/tools.
+ * The catalog (GET /integrations/me) carries each integration's one status;
+ * per-integration tools are fetched on demand at GET /integrations/{id}/tools.
  */
 export const integrationKeys = {
-  /** Prefix — invalidating this busts the catalog, status, and per-integration tools. */
+  /** Prefix — invalidating this busts the catalog and per-integration tools. */
   all: ["integrations"] as const,
-  /** Fast personalized catalog snapshot. */
+  /** The personalized catalog, each integration with its status. */
   me: ["integrations", "me"] as const,
-  /** The independently refreshed connection map (GET /integrations/status). */
-  status: ["integrations", "status"] as const,
   /** One integration's tools (GET /integrations/{id}/tools). */
   tools: (integrationId: string) =>
     ["integrations", integrationId, "tools"] as const,

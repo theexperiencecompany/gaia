@@ -1,22 +1,26 @@
-import type { TurnAccumulator } from "@gaia/shared/chat";
-import { applyStreamEvent, createTurnAccumulator } from "@gaia/shared/chat";
-import { foldReactionAcks } from "@gaia/shared/utils";
+import type { SelectedWorkflowDataInput } from "@gaia/shared/api/generated";
+import { DISPLAY_STATE } from "@gaia/shared/conversation";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
-import { chatDb } from "@/lib/db/chatDb";
+import { useCallback, useEffect, useRef } from "react";
 import { useChatStore } from "@/stores/chat-store";
-import { usePaywallStore } from "@/stores/paywall-store";
-import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
-import { chatKeys, useConversationQuery } from "../api/queries";
+import { chatApi, type Message } from "../api/chat-api";
+import {
+  chatKeys,
+  useChatQueryClient,
+  useConversationsQuery,
+} from "../api/queries";
 import type { AttachmentFile } from "../components/composer/attachment-preview";
-import type { Conversation, ReplyToMessageData } from "../types";
-
-const EMPTY_MESSAGES: Message[] = [];
-
-/** Delay (ms) before re-fetching conversation after a turn ends or is cancelled. */
-const POST_TURN_SYNC_DELAY_MS = 1500;
+import { useLiveConversation } from "../live/live-conversation-store";
+import { retryMessage, sendMessage } from "../live/send-message";
+import {
+  type LiveLoading,
+  useConversationPageQuery,
+  useLiveLoading,
+  useLiveMessages,
+  useOpenConversation,
+} from "../live/use-live-chat";
+import type { ReplyToMessageData } from "../types";
 
 export type { Message } from "../api/chat-api";
 
@@ -28,25 +32,24 @@ export interface SendMessageOptions {
   replyToMessage?: ReplyToMessageData | null;
   selectedTool?: string | null;
   toolCategory?: string | null;
-  selectedWorkflow?: { id: string; name: string } | null;
+  selectedWorkflow?: SelectedWorkflowDataInput | null;
   attachments?: AttachmentFile[];
 }
 
 interface UseChatReturn {
+  /** The rows of the conversation's view: its saved and paged log, then the stream. */
   messages: Message[];
-  isTyping: boolean;
+  /** The loading row: GAIA owes the user something. */
+  loading: LiveLoading;
+  /** GAIA is doing something in this conversation that Stop would end. */
+  busy: boolean;
   isLoading: boolean;
-  progress: string | null;
-  progressToolName: string | null;
   conversationId: string | null;
   flatListRef: React.RefObject<FlashListRef<Message> | null>;
-  sendMessage: (text: string, opts?: SendMessageOptions) => Promise<void>;
-  /**
-   * Re-run a failed turn, preserving its original send options. Only the most
-   * recent assistant message — the one the request is bound to — is retryable.
-   */
-  retryMessage: (failedMessageId: string) => void;
-  cancelStream: () => void;
+  sendMessage: (text: string, opts?: SendMessageOptions) => void;
+  /** Resend a failed send as-is, or send the message behind a reply again with retry_of. */
+  retryMessage: (messageId: string) => void;
+  stop: () => void;
   scrollToBottom: () => void;
   refetch: () => Promise<void>;
 }
@@ -56,573 +59,104 @@ export function useChat(
   options?: UseChatOptions,
 ): UseChatReturn {
   const flatListRef = useRef<FlashListRef<Message>>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const streamIdRef = useRef<string | null>(null);
-  /**
-   * Shared, tested turn accumulator (@gaia/shared/chat) — the single source
-   * of truth for the in-flight assistant message. Every parsed stream event
-   * folds into it via applyStreamEvent, so response text, tool data,
-   * approvals (upserted per approval_id), reasoning steps, subagent groups
-   * and todo progress all assemble identically to web and background runs.
-   */
-  const turnAccumulatorRef = useRef<TurnAccumulator>(createTurnAccumulator());
-  /**
-   * Settle function for the in-flight turn. Every terminal path (done, error,
-   * user cancel) funnels through it and only the first call wins — this is
-   * what prevents the old double-finalize races where an abort triggered
-   * onClose → onDone and re-persisted a half-finished response.
-   */
-  const settleRef = useRef<
-    ((cause: "done" | "error" | "aborted") => void) | null
-  >(null);
-  const lastRequestRef = useRef<{
-    text: string;
-    opts: SendMessageOptions;
-    /** Assistant message this request produced (temp id until server assigns). */
-    assistantMessageId: string;
-  } | null>(null);
   const queryClient = useQueryClient();
-
   const storeActiveChatId = useChatStore((state) => state.activeChatId);
-  const effectiveChatId = chatId ?? storeActiveChatId;
+  const conversationId = chatId ?? storeActiveChatId;
 
-  const activeConvIdRef = useRef<string | null>(effectiveChatId);
-  const [currentConversationId, setCurrentConversationId] = useState<
-    string | null
-  >(effectiveChatId);
+  useOpenConversation(conversationId);
 
+  const { isLoading, refetch: refetchQuery } =
+    useConversationPageQuery(conversationId);
+  const messages = useLiveMessages(conversationId);
+  const loading = useLiveLoading(conversationId);
+  const { view } = useLiveConversation(conversationId);
+  const busy = view.display !== DISPLAY_STATE.IDLE;
+
+  // Opening a conversation the list shows unread reads it, including one that
+  // turns unread while it is on screen.
+  const { data: conversations } = useConversationsQuery();
+  const { updateConversationInCache } = useChatQueryClient();
+  const unread =
+    conversations?.find((conversation) => conversation.id === conversationId)
+      ?.is_unread ?? false;
   useEffect(() => {
-    const newEffectiveId = chatId ?? storeActiveChatId;
-    if (newEffectiveId === null) {
-      // Reset to null when starting a new chat
-      setCurrentConversationId(null);
-      activeConvIdRef.current = null;
-    } else if (!newEffectiveId.startsWith("temp-")) {
-      setCurrentConversationId(newEffectiveId);
-      activeConvIdRef.current = newEffectiveId;
-    }
-  }, [chatId, storeActiveChatId]);
-
-  // When a conversation is opened, eagerly seed the React Query cache from
-  // AsyncStorage so the UI renders instantly before the network fetch resolves.
-  // This does NOT touch Zustand — streaming messages still take priority.
-  useEffect(() => {
-    if (!currentConversationId || currentConversationId.startsWith("temp-")) {
-      return;
-    }
-
-    const cacheKey = chatKeys.messages(currentConversationId);
-    // Only seed if React Query has no data yet for this conversation
-    if (queryClient.getQueryData(cacheKey) !== undefined) return;
-
-    chatDb.getMessages(currentConversationId).then((persisted) => {
-      if (persisted.length > 0) {
-        // setQueryData without overwriting if a fetch already completed
-        queryClient.setQueryData(
-          cacheKey,
-          (existing: Message[] | undefined) => existing ?? persisted,
-        );
-      }
-    });
-  }, [currentConversationId, queryClient]);
-
-  const {
-    data: cachedMessages,
-    isLoading,
-    refetch: refetchQuery,
-  } = useConversationQuery(currentConversationId);
-
-  const streamingMessages = useChatStore(
-    useShallow((state) =>
-      currentConversationId
-        ? (state.messagesByConversation[currentConversationId] ?? null)
-        : null,
-    ),
-  );
-
-  const rawMessages = streamingMessages ?? cachedMessages ?? EMPTY_MESSAGES;
-
-  // Reaction acks fold onto their targets here so an emoji-ack renders as a
-  // badge on the answered message instead of a stray bubble — web parity via
-  // the same shared fold `useConversation` uses. Stored records stay unfolded.
-  const messages = useMemo(
-    () =>
-      foldReactionAcks(
-        rawMessages,
-        (message) => message.text,
-        (ack) => (ack.toolData?.length ? { ...ack, text: "" } : null),
-      ),
-    [rawMessages],
-  );
-
-  const streamingState = useChatStore(
-    useShallow((state) => state.streamingState),
-  );
-
-  const isTyping =
-    streamingState.isTyping &&
-    streamingState.conversationId === currentConversationId;
-
-  const progress =
-    streamingState.conversationId === currentConversationId
-      ? streamingState.progress
-      : null;
-
-  const progressToolName =
-    streamingState.conversationId === currentConversationId
-      ? streamingState.progressToolName
-      : null;
-
-  useEffect(() => {
-    if (cachedMessages && cachedMessages.length > 0 && currentConversationId) {
-      chatApi.markConversationAsRead(currentConversationId);
-    }
-  }, [cachedMessages, currentConversationId]);
+    if (!conversationId || !unread) return;
+    updateConversationInCache(conversationId, { is_unread: false });
+    chatApi.markConversationAsRead(conversationId);
+  }, [conversationId, unread, updateConversationInCache]);
 
   const scrollToBottom = useCallback(() => {
     flatListRef.current?.scrollToEnd({ animated: true });
   }, []);
 
-  /** Reconcile the optimistic local state against server truth shortly after a turn ends. */
-  const scheduleReconcile = useCallback(
-    (conversationId: string) => {
-      if (conversationId.startsWith("temp-")) return;
-      setTimeout(() => {
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.messages(conversationId),
-        });
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversations(),
-        });
-      }, POST_TURN_SYNC_DELAY_MS);
+  const onNavigate = options?.onNavigate;
+  const openNewConversation = (newConversationId: string) => {
+    // A new conversation has no log yet: nothing to fetch before its first message lands.
+    queryClient.setQueryData(chatKeys.page(newConversationId), 0);
+    useChatStore.getState().setActiveChatId(newConversationId);
+    onNavigate?.(newConversationId);
+  };
+  const send = (text: string, opts?: SendMessageOptions) => {
+    const attachments = opts?.attachments ?? [];
+    const sentTo = sendMessage(
+      conversationId,
+      {
+        text,
+        reply_to_message: opts?.replyToMessage ?? null,
+        selected_tool: opts?.selectedTool ?? null,
+        tool_category: opts?.toolCategory ?? null,
+        selected_workflow: opts?.selectedWorkflow ?? null,
+      },
+      attachments.flatMap((attachment) =>
+        attachment.fileId
+          ? [
+              {
+                fileId: attachment.fileId,
+                fileName: attachment.name,
+                contentType: attachment.mimeType,
+                fileSize: attachment.size,
+                url: attachment.fileUrl,
+              },
+            ]
+          : [],
+      ),
+      openNewConversation,
+    );
+    if (sentTo === conversationId) return;
+    openNewConversation(sentTo);
+  };
+
+  const retry = useCallback(
+    (messageId: string) => {
+      if (!conversationId) return;
+      retryMessage(conversationId, messageId).catch((error: unknown) => {
+        console.error("[use-chat] retry failed:", error);
+      });
     },
-    [queryClient],
+    [conversationId],
   );
 
-  const cancelStream = useCallback(() => {
-    // Settle as "aborted" FIRST so the SSE close that the abort triggers can't
-    // run onDone afterwards and persist the partial response as final.
-    settleRef.current?.("aborted");
-    settleRef.current = null;
-
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-
-    // Notify the backend so it can stop processing. Fire-and-forget.
-    const streamId = streamIdRef.current;
-    if (streamId) {
-      chatApi.cancelStream(streamId).catch(() => {
-        // Ignore — backend may already be done.
-      });
-      streamIdRef.current = null;
-    }
-
-    useChatStore.getState().setStreamingState({
-      isStreaming: false,
-      isTyping: false,
-      conversationId: null,
-      progress: null,
-      progressToolName: null,
+  const stop = useCallback(() => {
+    if (!conversationId) return;
+    chatApi.stopConversation(conversationId).catch((error: unknown) => {
+      console.error("[use-chat] stop failed:", error);
     });
-
-    // Pull server truth: the backend persists whatever it produced before the
-    // cancel arrived, and that partial answer should survive.
-    const convId = activeConvIdRef.current;
-    if (convId && !convId.startsWith("temp-")) {
-      scheduleReconcile(convId);
-    }
-  }, [queryClient, scheduleReconcile]);
-
-  const sendMessage = useCallback(
-    async (text: string, opts?: SendMessageOptions) => {
-      cancelStream();
-      const store = useChatStore.getState();
-
-      const replyToMessage = opts?.replyToMessage ?? null;
-      const selectedTool = opts?.selectedTool ?? null;
-      const toolCategory = opts?.toolCategory ?? null;
-      const selectedWorkflow = opts?.selectedWorkflow ?? null;
-      const attachments = opts?.attachments ?? [];
-
-      const userMessage: Message = {
-        id: `temp-user-${Date.now()}`,
-        text,
-        isUser: true,
-        timestamp: new Date(),
-        replyToMessage: replyToMessage ?? undefined,
-      };
-
-      const aiMessage: Message = {
-        id: `temp-ai-${Date.now()}`,
-        text: "",
-        isUser: false,
-        timestamp: new Date(),
-      };
-
-      lastRequestRef.current = {
-        text,
-        opts: {
-          replyToMessage,
-          selectedTool,
-          toolCategory,
-          selectedWorkflow,
-          attachments,
-        },
-        assistantMessageId: aiMessage.id,
-      };
-
-      const uploadedFileIds = attachments
-        .filter((a) => a.fileId)
-        .map((a) => a.fileId as string);
-      const uploadedFileData = attachments
-        .filter((a) => a.fileId)
-        .map((a) => ({
-          fileId: a.fileId as string,
-          fileName: a.name,
-          contentType: a.mimeType,
-          fileSize: a.size,
-        }));
-
-      const storeKey = activeConvIdRef.current || `temp-${Date.now()}`;
-      activeConvIdRef.current = storeKey;
-
-      if (!currentConversationId) {
-        setCurrentConversationId(storeKey);
-      }
-
-      const existingMessages =
-        store.messagesByConversation[storeKey] ??
-        cachedMessages ??
-        EMPTY_MESSAGES;
-
-      store.setMessages(storeKey, [
-        ...existingMessages,
-        userMessage,
-        aiMessage,
-      ]);
-      store.setStreamingState({
-        isTyping: true,
-        isStreaming: true,
-        conversationId: storeKey,
-      });
-      // Clear any previous wall: if the user has since subscribed this send
-      // succeeds, and leaving the old notice up would say otherwise. A still
-      // unsubscribed user gets another 402 and the wall comes straight back.
-      usePaywallStore.getState().clearBlock();
-      turnAccumulatorRef.current = createTurnAccumulator();
-      streamIdRef.current = null;
-
-      // Single-settle turn finalization: exactly one of done/error/aborted ever
-      // runs. The SSE layer can fire multiple terminal signals (error then close,
-      // abort then close); without this guard each would re-persist state and race the reconcile refetch.
-      let settled: "done" | "error" | "aborted" | null = null;
-      const settle = (cause: "done" | "error" | "aborted") => {
-        if (settled) return;
-        settled = cause;
-        settleRef.current = null;
-
-        const finalConvId = activeConvIdRef.current;
-        const liveStore = useChatStore.getState();
-
-        if (cause === "aborted") {
-          // cancelStream owns the aborted path (state reset + refetch).
-          return;
-        }
-
-        streamIdRef.current = null;
-        abortControllerRef.current = null;
-
-        const finalMessages = finalConvId
-          ? liveStore.messagesByConversation[finalConvId]
-          : undefined;
-
-        if (finalMessages && finalConvId) {
-          // Update React Query cache so the UI picks up the final messages
-          queryClient.setQueryData(
-            chatKeys.messages(finalConvId),
-            finalMessages,
-          );
-
-          // Persist to AsyncStorage so messages survive app restarts
-          chatDb.saveMessages(finalConvId, finalMessages).catch((err) => {
-            console.warn(
-              "[use-chat] Failed to persist messages on stream end:",
-              err,
-            );
-          });
-
-          liveStore.clearMessages(finalConvId);
-        }
-
-        liveStore.setStreamingState({
-          isTyping: false,
-          isStreaming: false,
-          conversationId: null,
-          progress: null,
-          progressToolName: null,
-        });
-
-        if (finalConvId) {
-          // The local accumulator is an approximation of what the server
-          // persisted (tool outputs, memory data, real timestamps). Always
-          // reconcile against server truth shortly after the turn ends.
-          scheduleReconcile(finalConvId);
-        }
-      };
-      settleRef.current = settle;
-
-      try {
-        const existingConvId = activeConvIdRef.current;
-        const apiConversationId =
-          existingConvId && !existingConvId.startsWith("temp-")
-            ? existingConvId
-            : null;
-
-        const controller = await fetchChatStream(
-          {
-            message: text,
-            conversationId: apiConversationId,
-            messages: [...existingMessages, userMessage],
-            fileIds: uploadedFileIds,
-            fileData: uploadedFileData,
-            selectedTool,
-            toolCategory,
-            workflowId: selectedWorkflow?.id ?? null,
-            replyToMessage: replyToMessage ?? null,
-          },
-          {
-            onStreamId: (id) => {
-              streamIdRef.current = id;
-            },
-            onMessageIds: (userMsgId, botMsgId) => {
-              // Server ids let an emoji_ack find the user message it reacts to.
-              useChatStore
-                .getState()
-                .adoptTurnMessageIds(storeKey, userMsgId, botMsgId);
-              // Keep the retry binding pointing at the real message.
-              if (lastRequestRef.current) {
-                lastRequestRef.current = {
-                  ...lastRequestRef.current,
-                  assistantMessageId: botMsgId,
-                };
-              }
-            },
-            onConversationCreated: (newConvId, description) => {
-              if (chatId) return;
-              const liveStore = useChatStore.getState();
-              liveStore.setMessages(
-                newConvId,
-                liveStore.messagesByConversation[storeKey] || [],
-              );
-              liveStore.clearMessages(storeKey);
-              liveStore.setStreamingState({ conversationId: newConvId });
-              liveStore.setActiveChatId(newConvId);
-
-              // Show the new conversation in the sidebar immediately by
-              // prepending to the React Query cache (the sidebar's single
-              // source of truth); the background refetch confirms it.
-              queryClient.setQueryData(
-                chatKeys.conversations(),
-                (prev: Conversation[] | undefined) => {
-                  if (!prev) return prev;
-                  if (prev.some((c) => c.id === newConvId)) return prev;
-                  const now = new Date().toISOString();
-                  const entry = {
-                    id: newConvId,
-                    title: description || "New conversation",
-                    created_at: now,
-                    updated_at: now,
-                  };
-                  return [entry, ...prev];
-                },
-              );
-
-              activeConvIdRef.current = newConvId;
-              setCurrentConversationId(newConvId);
-              options?.onNavigate?.(newConvId);
-            },
-            onProgress: (message, toolName) => {
-              useChatStore.getState().setStreamingState({
-                progress: message,
-                progressToolName: toolName ?? null,
-              });
-            },
-            onStreamEvent: (event) => {
-              // Fold every parsed frame into the shared turn accumulator, then
-              // derive live UI state from it — the reducer already upserts
-              // approvals, coalesces reasoning into tool_calls_data, nests subagent groups, and upserts todo progress.
-              turnAccumulatorRef.current = applyStreamEvent(
-                turnAccumulatorRef.current,
-                event,
-              );
-              const acc = turnAccumulatorRef.current;
-              const convId = activeConvIdRef.current;
-              if (!convId) return;
-              const liveStore = useChatStore.getState();
-
-              switch (event.type) {
-                case "response":
-                  liveStore.updateLastMessage(convId, acc.responseText);
-                  return;
-                case "emoji_ack":
-                  // The turn is a reaction: foldReactionAcks badges the emoji
-                  // onto the user's message instead of rendering this bubble.
-                  liveStore.updateLastAssistantMessage(convId, {
-                    text: event.emoji,
-                    kind: "emoji_ack",
-                    reacts_to_message_id: event.reactsToMessageId,
-                  });
-                  return;
-                case "tool_data":
-                case "tool_output":
-                case "reasoning":
-                case "subagent_start":
-                case "subagent_end":
-                case "todo_progress":
-                  // Keep the last AI message in sync with accumulated tool
-                  // data so tool cards render live during streaming.
-                  liveStore.updateLastAssistantMessage(convId, {
-                    toolData: acc.toolData,
-                    imageData: acc.imageData,
-                  });
-                  return;
-                case "unknown": {
-                  // Image-generation frames arrive as untyped payloads; the
-                  // accumulator turns them into first-class image state
-                  // (generating = url "" until the real URL lands).
-                  if (acc.imageData === null && !acc.generatingImage) return;
-                  liveStore.updateLastAssistantMessage(convId, {
-                    toolData: acc.toolData,
-                    imageData: acc.imageData,
-                  });
-                  return;
-                }
-                case "follow_up_actions":
-                  liveStore.updateLastMessageFollowUp(convId, event.actions);
-                  return;
-                default:
-                  // Lifecycle frames (progress, done, keepalive, …) are
-                  // handled by their own callbacks below or ignored.
-                  return;
-              }
-            },
-            onDone: () => settle("done"),
-            onTransportClosed: () => {
-              // Transport died before the backend's done event — the answer
-              // is truncated. Keep the partial text, mark retryable.
-              console.error("Stream closed before completion");
-              useChatStore
-                .getState()
-                .updateLastAssistantMessage(activeConvIdRef.current!, {
-                  error: "Connection lost before the response finished.",
-                });
-              settle("error");
-            },
-            onSubscriptionRequired: (detail) => {
-              // Not a failure to retry — the account simply isn't subscribed. The
-              // wall (with checkout link) renders above the composer; the assistant
-              // bubble just says why it stopped, with no retry affordance.
-              usePaywallStore.getState().setBlocked(detail);
-              useChatStore
-                .getState()
-                .updateLastAssistantMessage(activeConvIdRef.current!, {
-                  error: detail.message,
-                });
-              settle("error");
-            },
-            onError: (error) => {
-              console.error("Stream error:", error);
-              // Keep everything streamed so far — only mark the message as
-              // failed. Wiping the text (the old behaviour) destroyed the
-              // partial answer the user was already reading.
-              useChatStore
-                .getState()
-                .updateLastAssistantMessage(activeConvIdRef.current!, {
-                  error:
-                    error.message ||
-                    "Something went wrong while generating the response.",
-                });
-              settle("error");
-            },
-          },
-        );
-        abortControllerRef.current = controller;
-      } catch (error) {
-        console.error("Error starting stream:", error);
-        useChatStore
-          .getState()
-          .updateLastAssistantMessage(activeConvIdRef.current!, {
-            error: "Couldn't reach the server. Check your connection.",
-          });
-        settle("error");
-      }
-    },
-    [
-      chatId,
-      currentConversationId,
-      cancelStream,
-      cachedMessages,
-      queryClient,
-      options,
-      scheduleReconcile,
-    ],
-  );
-
-  const retryMessage = useCallback(
-    (failedMessageId: string) => {
-      const last = lastRequestRef.current;
-      const convId = activeConvIdRef.current;
-      if (!last || !convId) return;
-      // Only the assistant message this request produced is retryable.
-      if (failedMessageId !== last.assistantMessageId) return;
-
-      // Settlement clears the transient store; the finalized messages live in
-      // the React Query cache — read from whichever still has them.
-      const store = useChatStore.getState();
-      const msgs =
-        store.messagesByConversation[convId] ??
-        queryClient.getQueryData<Message[]>(chatKeys.messages(convId));
-      if (!msgs) return;
-
-      // Drop the failed turn entirely, INCLUDING the user message —
-      // sendMessage below appends a fresh copy of it.
-      let lastUserIdx = -1;
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].isUser) {
-          lastUserIdx = i;
-          break;
-        }
-      }
-      if (lastUserIdx < 0) return;
-
-      const kept = msgs.slice(0, lastUserIdx);
-      store.setMessages(convId, kept);
-      if (!convId.startsWith("temp-")) {
-        queryClient.setQueryData(chatKeys.messages(convId), kept);
-      }
-
-      void sendMessage(last.text, last.opts);
-    },
-    [sendMessage, queryClient],
-  );
+  }, [conversationId]);
 
   const refetch = useCallback(async () => {
-    if (currentConversationId) {
-      await refetchQuery();
-    }
-  }, [currentConversationId, refetchQuery]);
+    if (conversationId) await refetchQuery();
+  }, [conversationId, refetchQuery]);
 
   return {
     messages,
-    isTyping,
+    loading,
+    busy,
     isLoading,
-    progress,
-    progressToolName,
-    conversationId: currentConversationId,
+    conversationId,
     flatListRef,
-    sendMessage,
-    retryMessage,
-    cancelStream,
+    sendMessage: send,
+    retryMessage: retry,
+    stop,
     scrollToBottom,
     refetch,
   };

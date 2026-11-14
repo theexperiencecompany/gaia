@@ -9,10 +9,15 @@
  * against.
  */
 
-import type { PlatformName } from "@gaia/shared/bots";
+import { allCommands, type PlatformName } from "@gaia/shared/bots";
 import { HarnessAdapter } from "./adapter";
 import { isEmulatablePlatform, resolveEmulation } from "./emulation";
-import type { Scenario, ScenarioAssertion } from "./scenario.types";
+import type {
+  BurstMessage,
+  Scenario,
+  ScenarioAssertion,
+  ScenarioTurn,
+} from "./scenario.types";
 import { TranscriptRecorder } from "./transcript";
 import type { TranscriptEvent } from "./transcript.types";
 
@@ -81,8 +86,10 @@ export async function linkDevUser(
   const seeded = await postJson<{ platform_user_ids: Record<string, string> }>(
     `${apiUrl}/api/v1/dev/seed`,
     {
-      email,
+      email: user.email,
       platform_links: [platform],
+      // Every bot reply is paid-only; a scenario user without Pro only ever sees the paywall.
+      pro: true,
     },
   );
   // The seeded id is the seed endpoint's contract — never re-derive its format.
@@ -146,7 +153,8 @@ async function bootAdapter(
     consumesOutbound,
   });
   try {
-    await adapter.boot([]);
+    // The same commands the real bots register, so /stop, /new and /help behave as they do live.
+    await adapter.boot(allCommands);
   } catch (error: unknown) {
     // Boot can fail after the outbound consumer is up; left running it keeps
     // the process alive and silently takes another run's replies.
@@ -202,7 +210,9 @@ export async function sendOneShot(params: {
   const cutShort = terminationRequested();
   try {
     await Promise.race([
-      adapter.simulateMessage(user.platformUserId, message, { channelId }),
+      adapter
+        .simulateMessage(user.platformUserId, message, { channelId })
+        .then(() => adapter.conversationsIdle()),
       cutShort,
     ]);
     await settle(settleMs, cutShort);
@@ -246,9 +256,7 @@ export async function runScenario(
   try {
     for (const [index, turn] of scenario.turns.entries()) {
       const before = transcript.getEvents().length;
-      await adapter.simulateMessage(user.platformUserId, turn.send, {
-        channelId: turn.channelId,
-      });
+      await deliverTurn(adapter, user.platformUserId, turn);
       // Settle BEFORE slicing: a late outbound delivery belongs to the turn
       // that caused it, and its assertions must be able to see it.
       await settle(
@@ -258,7 +266,7 @@ export async function runScenario(
       const turnEvents = transcript.getEvents().slice(before);
       for (const assertion of turn.expect ?? []) {
         for (const failure of evaluateAssertion(turnEvents, assertion)) {
-          failures.push(`turn ${index + 1} ("${turn.send}"): ${failure}`);
+          failures.push(`turn ${index + 1} (${turnLabel(turn)}): ${failure}`);
         }
       }
     }
@@ -275,6 +283,99 @@ export async function runScenario(
   };
 }
 
+/** A turn's messages: its single `send`, or its burst. */
+function turnMessages(turn: ScenarioTurn): BurstMessage[] {
+  if (turn.send !== undefined && turn.burst === undefined) {
+    return [{ send: turn.send }];
+  }
+  if (turn.burst !== undefined && turn.send === undefined) {
+    if (turn.burst.length === 0) {
+      throw new Error("a scenario burst needs at least one message");
+    }
+    return turn.burst;
+  }
+  throw new Error("a scenario turn sets exactly one of `send` and `burst`");
+}
+
+function turnLabel(turn: ScenarioTurn): string {
+  return turnMessages(turn)
+    .map((message) => `"${message.send}"`)
+    .join(" + ");
+}
+
+/**
+ * Injects a turn's messages at their scripted gaps, each without waiting for
+ * the reply to the one before, and resolves once every reply has been shown.
+ */
+export async function deliverTurn(
+  adapter: HarnessAdapter,
+  platformUserId: string,
+  turn: ScenarioTurn,
+): Promise<void> {
+  const handled: Promise<void>[] = [];
+  for (const message of turnMessages(turn)) {
+    if (message.afterMs) {
+      await new Promise((resolve) => setTimeout(resolve, message.afterMs));
+    }
+    handled.push(
+      adapter.simulateMessage(platformUserId, message.send, {
+        channelId: turn.channelId,
+      }),
+    );
+  }
+  await Promise.all(handled);
+  await adapter.conversationsIdle();
+}
+
+/**
+ * The final text of everything still delivered, in the order each first appeared:
+ * a bubble holds its last edit, a deleted one is gone, and with `proactive` a
+ * backend delivery and an attachment caption are entries of their own.
+ */
+function deliveredTexts(
+  events: readonly TranscriptEvent[],
+  proactive: boolean,
+): string[] {
+  const texts: (string | null)[] = [];
+  const indexById = new Map<string, number>();
+  for (const event of events) {
+    if (event.type === "send" || event.type === "edit") {
+      const index = indexById.get(event.messageId);
+      if (index === undefined) {
+        indexById.set(event.messageId, texts.length);
+        texts.push(event.text);
+      } else {
+        texts[index] = event.text;
+      }
+    } else if (event.type === "delete") {
+      const index = indexById.get(event.messageId);
+      if (index !== undefined) texts[index] = null;
+    } else if (
+      proactive &&
+      (event.type === "outbound-delivery" ||
+        event.type === "outbound-attachment")
+    ) {
+      texts.push(event.text);
+    }
+  }
+  return texts.filter((text) => text !== null);
+}
+
+/** 1-based positions of the inbound messages that received a reaction. */
+function reactedPositions(events: readonly TranscriptEvent[]): number[] {
+  const reacted = new Set(
+    events.flatMap((e) => (e.type === "reaction" ? [e.targetMessageId] : [])),
+  );
+  const positions: number[] = [];
+  let inboundCount = 0;
+  for (const event of events) {
+    if (event.type !== "inbound") continue;
+    inboundCount += 1;
+    if (reacted.has(event.messageId)) positions.push(inboundCount);
+  }
+  return positions;
+}
+
 /** All text-bearing events carry a `text` field; this narrows to it. */
 function eventText(event: TranscriptEvent): string | null {
   return "text" in event && typeof event.text === "string" ? event.text : null;
@@ -284,7 +385,7 @@ function eventText(event: TranscriptEvent): string | null {
  * Checks one assertion against a turn's events, returning a list of human
  * readable failure messages (empty when the assertion holds).
  */
-function evaluateAssertion(
+export function evaluateAssertion(
   events: readonly TranscriptEvent[],
   assertion: ScenarioAssertion,
 ): string[] {
@@ -344,6 +445,30 @@ function evaluateAssertion(
       if (!present.has(wanted as TranscriptEvent["type"])) {
         failures.push(`expected an event of type "${wanted}"`);
       }
+    }
+  }
+  const orderedChecks: [string, string[] | undefined, string[]][] = [
+    ["delivered", assertion.delivered, deliveredTexts(events, true)],
+    ["bubbles", assertion.bubbles, deliveredTexts(events, false)],
+  ];
+  for (const [name, wanted, actual] of orderedChecks) {
+    if (wanted === undefined) continue;
+    const matches =
+      actual.length === wanted.length &&
+      wanted.every((text, i) => actual[i].includes(text));
+    if (!matches) {
+      failures.push(
+        `expected ${name} ${JSON.stringify(wanted)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  }
+  if (assertion.reactedTo !== undefined) {
+    const actual = reactedPositions(events);
+    const wanted = [...assertion.reactedTo].sort((a, b) => a - b);
+    if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
+      failures.push(
+        `expected reactions on inbound ${JSON.stringify(wanted)}, got ${JSON.stringify(actual)}`,
+      );
     }
   }
   return failures;

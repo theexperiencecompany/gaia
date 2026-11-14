@@ -12,7 +12,6 @@ The one ``app.models`` import, ``presence_models``, is itself an import-free lea
 """
 
 from collections.abc import Mapping
-from enum import StrEnum
 from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict
@@ -39,24 +38,18 @@ CONFIGURABLE_KEY = "configurable"
 ExecutionMode = Literal["interactive", "background"]
 
 
-class SubagentKind(StrEnum):
-    """Which delegation tool a subagent run came from — and so how it is rebuilt."""
+class StepTurnRef(TypedDict):
+    """The conversation step attempt a comms run belongs to, inherited by the work it dispatches."""
 
-    SPAWN = "spawn"
-
-
-class SubagentResumeItem(TypedDict):
-    """How to rebuild a background subagent run, in any process, from what its tool was given.
-
-    parent_configurable is the executor's configurable, persist-safe.
-    """
-
-    kind: SubagentKind
-    tool_call_id: str
-    task: str
-    context: str
-    inherited_tool_names: list[str]
-    parent_configurable: "AgentConfigurable"
+    #: The step claim's epoch; the run's own log writes are fenced on it.
+    epoch: int
+    #: The oldest log seq the attempt answers; a stop it asks for covers everything before it.
+    batch_start: int
+    #: The newest log seq the attempt answers; work it starts is caused through here. The run
+    #: moves it, and answers, forward in place as later inputs join the attempt.
+    cause_through: int
+    #: The ids of the user messages the attempt answers.
+    answers: list[str]
 
 
 class AgentConfigurable(TypedDict, total=False):
@@ -112,6 +105,12 @@ class AgentConfigurable(TypedDict, total=False):
     #: The live turn's bot message id (a resumed HIL pause reconciles onto it). On an
     #: executor run, the message its frames render into and its background subagents fold into.
     bot_message_id: str
+    #: The conversation runner's attempt id on a comms run it started; its pre-model hook
+    #: drains that attempt's feed. Absent on every other run.
+    comms_run: str
+    #: The step attempt of a comms run the conversation runtime started, and of the
+    #: executor it dispatched; absent on the legacy stream path.
+    conversation_step: StepTurnRef
     #: Onboarding preferences / writing style, established once at a run tree's
     #: root and inherited unchanged by every child agent. Absent when the root
     #: had none; the context sections that read them degrade to no section.
@@ -143,9 +142,6 @@ class AgentConfigurable(TypedDict, total=False):
     # --- run scope ----------------------------------------------------------
     selected_tool: str | None
     tool_category: str | None
-    #: True only for comms_narrator re-voicing a finished executor result. It never
-    #: dispatches: call_executor refuses, since the narrated run still holds the busy lock.
-    is_result_narration: bool
     subagent_id: str | None
     #: Shared VFS session, held constant across the executor and the
     #: subagents it spawns so all resolve paths against one workspace.
@@ -174,10 +170,6 @@ class AgentConfigurable(TypedDict, total=False):
     #: replay's own record of what already ran, carried verbatim to the
     #: executor since comms can't be trusted to transcribe it into its task.
     playbook_fallback: str | None
-    #: A pre-taken executor busy-lock the dispatch adopts instead of racing for
-    #: a fresh one, so a queued/workflow fire hands its reservation to the run
-    #: it starts. Keyed by ``WORKFLOW_LOCK_CONTEXT_KEY``.
-    executor_lock_reservation: str | None
 
     # --- tracing ------------------------------------------------------------
     #: Stashed here so child agents spawned via ``asyncio.create_task`` re-emit
@@ -186,12 +178,6 @@ class AgentConfigurable(TypedDict, total=False):
     langfuse_tags: list[str]
 
     # --- internal flags -----------------------------------------------------
-    #: Set only on a HIL resume re-dispatch, to tell a replayed call from a
-    #: fresh one. Keyed by ``HIL_RESUME_CONFIG_KEY``.
-    hil_resume_replay: bool
-    #: Set only on a background subagent's own run: the recipe the HIL gate files
-    #: on its approvals. Keyed by ``SUBAGENT_RESUME_CONFIG_KEY``.
-    subagent_resume: SubagentResumeItem
     #: DEV-ONLY: the DEV_MODEL_OPTIONS key picked for the executor in the dev
     #: model switcher, since the executor builds its own configurable.
     dev_executor_model: str
@@ -262,6 +248,7 @@ class AgentConfigurableView(BaseModel):
     workflow_notify_on_completion: bool = True
     langfuse_trace_id: str | None = None
     langfuse_tags: list[str] | None = None
+    conversation_step: StepTurnRef | None = None
 
 
 def read_agent_configurable(config: AgentRunConfig | None) -> AgentConfigurableView:
@@ -334,3 +321,25 @@ def get_session_id(config: AgentRunConfig | None) -> str | None:
         or read_run_metadata(config).conversation_id
         or configurable.thread_id
     )
+
+
+class ExecutorRunItem(TypedDict, total=False):
+    """The serialized run context stored between an executor turn and its re-dispatch.
+
+    Written by build_run_item into the Redis queue; read back by prepare_run_from_item.
+    total=False: every read supplies a default.
+    """
+
+    task: str
+    task_id: str | None
+    configurable: AgentConfigurable
+    conversation_id: str
+    user_message_id: str | None
+    # Original live turn's bot message id. Read back into ExecutorRun.
+    bot_message_id: str | None
+    # Workflow execution the run belongs to. It lives only on the workflow task's
+    # wide event, and a queue pop rebuilds the run elsewhere, so the
+    # item is the only carrier across; read into ExecutorRun for attribution.
+    workflow_execution_id: str | None
+    # ISO dispatch time (RunIdentity.dispatched_at), so a rebuilt run keeps it.
+    dispatched_at: str

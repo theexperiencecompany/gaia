@@ -44,8 +44,7 @@ export const useActiveConversation = (convoIdParam: string): void => {
         db.updateConversationFields(convoIdParam, { isUnread: false });
         chatApi.markAsRead(convoIdParam).catch(console.error);
       }
-      // Freshness sync happens in useStreamResume, sequenced after the
-      // live-turn discovery so it can't sweep an in-flight optimistic message.
+      // The freshness sync is useConversationSync's, mounted beside this hook.
     }
 
     return () => {

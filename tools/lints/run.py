@@ -42,6 +42,7 @@ if sys.version_info < REQUIRED_PYTHON:
 
 from _common import display, iter_python_files, report_rule
 import comment_slop
+import comms_graph_owner
 import docstring_slop
 import mutation_pragmas
 import no_service_classes
@@ -56,6 +57,7 @@ RULES = (
     no_service_classes,
     wide_events_logging,
     repository_boundaries,
+    comms_graph_owner,
     no_silent_fallback,
     tool_dump_boundary,
     docstring_slop,

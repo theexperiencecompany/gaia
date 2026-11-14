@@ -14,11 +14,11 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 import random
 from typing import NamedTuple, cast
+from uuid import uuid4
 
 from arq import Retry
 from arq.connections import ArqRedis
 
-from app.agents.core.background.session import TodoRun
 from app.agents.core.background.todo_run import (
     ExecutorBusyError,
     TodoRunCancelledError,
@@ -29,6 +29,7 @@ from app.agents.core.background.todo_run_delivery import (
     FinishedTodoRun,
     finish_todo_run,
     hand_unfinished_run_to_job,
+    report_form_of,
     report_unfinished_run,
 )
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
@@ -57,15 +58,17 @@ from app.constants.todos import (
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
-from app.models.message_models import TodoRunWake
+from app.models.conversation_log_models import TodoRun
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoUpdate
+from app.models.todo_wake_models import TodoRunWake
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
@@ -104,7 +107,11 @@ from app.workers.tasks.todo_run_settle import Settlement, settle
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.catalog.todos import TodosOpenStateRepaired
-from shared.py.analytics.context import analytics_context, worker_context
+from shared.py.analytics.context import (
+    analytics_context,
+    current_analytics_context,
+    worker_context,
+)
 from shared.py.wide_events import log
 
 #: The surface a paywalled tracked-todo run is attributed to in the funnel.
@@ -118,7 +125,7 @@ async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]
     an unset zone as UTC.
     """
     # The full context: narrowing to the fields read here would drop
-    # onboarding, which construct_langchain_messages needs.
+    # onboarding, which the run's context needs.
     user_data = await require_owner(user_id)
     return user_data, Timezone.parse(user_data.timezone)
 
@@ -763,6 +770,20 @@ def _wake(origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]) -> T
     )
 
 
+def _todo_run(doc: TodoDocument, trigger_type: TriggerType, wake: TodoRunWake) -> TodoRun:
+    """Name one run of the todo, attributed to whatever bound this job's analytics context."""
+    return TodoRun(
+        todo_id=doc.id,
+        run_id=str(uuid4()),
+        title=doc.title,
+        trigger_type=trigger_type,
+        runs_once=doc.runs_once,
+        wake=wake,
+        report_form=report_form_of(doc),
+        attribution=current_analytics_context().attribution,
+    )
+
+
 def _trigger_type(origin: TriggerOrigin | None) -> TriggerType:
     """Name what woke this run: its own schedule, or a watch that fired."""
     return TriggerType.SCHEDULED_TODO if origin is None else TriggerType.TODO_TRIGGER
@@ -803,14 +824,10 @@ async def _execute_on_executor(
         await run_todo_on_executor(
             TodoRunRequest(
                 user=user_data,
-                todo_run=TodoRun(
-                    todo_id=todo_id, trigger_type=_trigger_type(origin), runs_once=doc.runs_once
-                ),
-                todo_title=doc.title,
+                todo_run=_todo_run(doc, _trigger_type(origin), _wake(origin, coalesced)),
                 task=prompt,
                 conversation_id=conversation_id,
                 fresh_thread=True,
-                wake=_wake(origin, coalesced),
                 on_started=partial(
                     record_activity,
                     todo_id,
@@ -942,18 +959,16 @@ async def _resume_holding_lock(
         await run_todo_on_executor(
             TodoRunRequest(
                 user=user_data,
-                todo_run=TodoRun(
-                    todo_id=todo_id, trigger_type=_trigger_type(None), runs_once=doc.runs_once
+                todo_run=_todo_run(
+                    doc,
+                    _trigger_type(None),
+                    TodoRunWake(
+                        kind=TodoWakeKind.APPROVAL, trigger_names=[], approval_summary=receipt
+                    ),
                 ),
-                todo_title=doc.title,
                 task=message,
                 conversation_id=conversation_id,
                 fresh_thread=False,
-                wake=TodoRunWake(
-                    kind=TodoWakeKind.APPROVAL,
-                    trigger_names=[],
-                    approval_summary=receipt,
-                ),
             )
         )
         return f"resumed:{todo_id}"
@@ -985,8 +1000,7 @@ async def finish_tracked_todo_run(ctx: ArqJobContext, undone: FinishedTodoRun) -
     """
     # The envelope already puts the job id (the run's) and job_try on the event.
     log.set(todo_id=undone.todo_id)
-    user, _ = await _load_user_with_tz(undone.user_id)
-    left = await finish_todo_run(undone, user)
+    left = await finish_todo_run(undone)
     if left is None:
         return f"finished:{undone.todo_id}"
     if left.finish_entry != undone.finish_entry:
@@ -1024,8 +1038,9 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> No
 async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
     """Tell the user in-app that a run used up its attempts; a failed send is only logged."""
     try:
-        await notification_service.create_notification(
+        await notification_service.notify(
             NotificationRequest(
+                id=notification_id(doc.user_id, "todo_run_failed", doc.id, str(doc.scheduled_at)),
                 user_id=doc.user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.ERROR,

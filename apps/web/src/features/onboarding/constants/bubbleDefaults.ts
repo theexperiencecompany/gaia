@@ -27,6 +27,8 @@ const BASE_BUBBLE_DEFAULTS = {
   error: undefined,
   stopped: undefined,
   reaction: undefined,
+  bubbles: undefined,
+  timeline: undefined,
   disableActions: true,
 } as const;
 

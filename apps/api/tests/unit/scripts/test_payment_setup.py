@@ -18,8 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from dodopayments.types.price import OneTimePrice, RecurringPrice
 import pytest
 from scripts.payment_setup import (
-    ProductPrice,
-    build_plan_catalogue,
     catalogue_fields,
     deactivate_free_plan,
     fetch_product_price,
@@ -27,8 +25,9 @@ from scripts.payment_setup import (
     reconcile_plan,
     setup_payment_plans,
 )
+from scripts.plan_catalogue import ProductPrice, build_plan_catalogue
 
-from app.models.payment_models import PlanDuration, PlanTier
+from app.models.payment_models import PlanDocument, PlanDuration, PlanTier
 
 MONTHLY = ProductPrice(product_id="monthly-id", amount=3000, currency="USD")
 YEARLY = ProductPrice(product_id="yearly-id", amount=30000, currency="USD")
@@ -333,3 +332,10 @@ async def test_setup_accepts_the_advertised_monthly_price(
         patch("scripts.payment_setup.print_active_plans", new=AsyncMock()),
     ):
         assert await setup_payment_plans("pdt_m", "pdt_y", dry_run=True) is True
+
+
+def test_every_catalogue_row_loads_back_as_the_plan_the_api_reads() -> None:
+    """Regression (live test): the dev seed wrote a hand-made row without duration/created_at, so /payments/plans 500'd."""
+    for plan in build_plan_catalogue(MONTHLY, YEARLY):
+        stored = plan.model_dump(by_alias=True, exclude={"id"})
+        assert PlanDocument.model_validate({**stored, "_id": "row"}).name == plan.name

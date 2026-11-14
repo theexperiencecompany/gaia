@@ -20,7 +20,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import PutOp, SearchItem
 import pytest
 
-from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.core.subagents.integration_target import CustomMcpSubagent
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.models.integration_models import UserToolNamespaces
 from app.models.mcp_config import MCPConfig
@@ -92,7 +92,7 @@ class TestRetrieveToolsBindingMode:
                 new=AsyncMock(return_value=_fake_mcp_client({"posthog": mcp_tools})),
             ),
             patch(
-                "app.agents.tools.execute.resolver.get_mcp_client",
+                "app.services.mcp.mcp_client.get_mcp_client",
                 new=AsyncMock(return_value=_fake_mcp_client({"posthog": mcp_tools})),
             ),
             patch(
@@ -203,7 +203,7 @@ class TestRetrieveToolsCrossUserIsolation:
                 new=AsyncMock(side_effect=per_user_get),
             ),
             patch(
-                "app.agents.tools.execute.resolver.get_mcp_client",
+                "app.services.mcp.mcp_client.get_mcp_client",
                 new=AsyncMock(side_effect=per_user_get),
             ),
             patch(

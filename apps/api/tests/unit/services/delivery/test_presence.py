@@ -3,17 +3,18 @@
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
-import fakeredis.aioredis
-
 from app.constants.notifications import (
     PRESENCE_ACTIVE_WINDOW_SECONDS,
     PRESENCE_RETENTION_SECONDS,
 )
+from app.db.redis import AsyncRedisCommands
 from app.models.chat_models import ConversationSource
+from app.models.conversation_log_models import UserMessage
 from app.models.presence_models import PresenceSnapshot
 from app.services.delivery import presence as presence_module
 from app.services.delivery.presence import (
     active_surface,
+    presence_before,
     previous_surface,
     read_presence,
     record_turn_presence,
@@ -35,18 +36,14 @@ def _epoch() -> int:
 
 
 class TestRecordTurnPresence:
-    async def test_returns_the_state_before_this_turn(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
+    async def test_returns_the_state_before_this_turn(self, fake_redis: AsyncRedisCommands) -> None:
         await fake_redis.hset(KEY, mapping={"web": str(NOW - 1500)})
 
         before = await record_turn_presence(USER_ID, ConversationSource.TELEGRAM)
 
         assert before["last_seen"] == {"web": NOW - 1500}
 
-    async def test_stamps_this_turns_surface_at_now(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
+    async def test_stamps_this_turns_surface_at_now(self, fake_redis: AsyncRedisCommands) -> None:
         start = _epoch()
 
         await record_turn_presence(USER_ID, ConversationSource.TELEGRAM)
@@ -56,23 +53,21 @@ class TestRecordTurnPresence:
         assert start <= int(stored["telegram"]) <= _epoch()
 
     async def test_the_key_is_kept_for_the_retention_window_not_the_active_one(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
+        self, fake_redis: AsyncRedisCommands
     ) -> None:
         await record_turn_presence(USER_ID, ConversationSource.WEB)
 
         ttl = await fake_redis.ttl(KEY)
         assert PRESENCE_RETENTION_SECONDS - 5 <= ttl <= PRESENCE_RETENTION_SECONDS
 
-    async def test_a_second_turn_sees_the_first(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
+    async def test_a_second_turn_sees_the_first(self, fake_redis: AsyncRedisCommands) -> None:
         await record_turn_presence(USER_ID, ConversationSource.WEB)
 
         before = await record_turn_presence(USER_ID, ConversationSource.TELEGRAM)
 
         assert before["last_seen"].keys() == {"web"}
 
-    async def test_junk_fields_are_dropped(self, fake_redis: fakeredis.aioredis.FakeRedis) -> None:
+    async def test_junk_fields_are_dropped(self, fake_redis: AsyncRedisCommands) -> None:
         await fake_redis.hset(
             KEY,
             mapping={"carrier_pigeon": str(NOW), "slack": "yesterday", "discord": str(NOW - 30)},
@@ -85,7 +80,7 @@ class TestRecordTurnPresence:
 
 class TestRecordTurnPresenceStorage:
     async def test_the_reads_and_writes_run_in_one_transaction(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
+        self, fake_redis: AsyncRedisCommands
     ) -> None:
         with patch.object(fake_redis, "pipeline", wraps=fake_redis.pipeline) as pipeline:
             await record_turn_presence(USER_ID, ConversationSource.TELEGRAM)
@@ -93,7 +88,7 @@ class TestRecordTurnPresenceStorage:
         pipeline.assert_called_once_with(transaction=True)
 
     async def test_the_snapshot_is_captured_at_the_stamped_now(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
+        self, fake_redis: AsyncRedisCommands
     ) -> None:
         with patch.object(presence_module, "_now_epoch", return_value=NOW):
             before = await record_turn_presence(USER_ID, ConversationSource.TELEGRAM)
@@ -102,7 +97,7 @@ class TestRecordTurnPresenceStorage:
         assert await fake_redis.hgetall(KEY) == {"telegram": str(NOW)}
 
     async def test_the_key_is_kept_for_exactly_thirty_days(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
+        self, fake_redis: AsyncRedisCommands
     ) -> None:
         await record_turn_presence(USER_ID, ConversationSource.WEB)
 
@@ -128,24 +123,20 @@ def _epoch_of(year: int, month: int, day: int, hour: int, minute: int) -> int:
 
 
 class TestReadPresence:
-    async def test_reads_the_users_stamps(self, fake_redis: fakeredis.aioredis.FakeRedis) -> None:
+    async def test_reads_the_users_stamps(self, fake_redis: AsyncRedisCommands) -> None:
         await fake_redis.hset(KEY, mapping={"whatsapp": str(NOW - 30), "web": str(NOW - 60)})
 
         snapshot = await read_presence(USER_ID)
 
         assert snapshot["last_seen"] == {"whatsapp": NOW - 30, "web": NOW - 60}
 
-    async def test_the_snapshot_is_captured_at_now(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
+    async def test_the_snapshot_is_captured_at_now(self, fake_redis: AsyncRedisCommands) -> None:
         with patch.object(presence_module, "_now_epoch", return_value=NOW):
             snapshot = await read_presence(USER_ID)
 
         assert snapshot["captured_at"] == NOW
 
-    async def test_an_unknown_user_reads_empty(
-        self, fake_redis: fakeredis.aioredis.FakeRedis
-    ) -> None:
+    async def test_an_unknown_user_reads_empty(self, fake_redis: AsyncRedisCommands) -> None:
         assert (await read_presence(USER_ID))["last_seen"] == {}
 
 
@@ -204,3 +195,35 @@ class TestActiveSurface:
 
     def test_no_entries_is_none(self) -> None:
         assert active_surface(_snapshot(), NOW) is None
+
+
+class TestPresenceBeforeAMessage:
+    async def test_a_typed_message_stamps_its_surface_and_returns_the_presence_before_it(
+        self, fake_redis: AsyncRedisCommands
+    ) -> None:
+        await fake_redis.hset(KEY, mapping={"web": str(NOW - 1500)})
+
+        before = await presence_before(USER_ID, _said(ConversationSource.TELEGRAM))
+
+        assert before["last_seen"] == {"web": NOW - 1500}
+        assert (await fake_redis.hgetall(KEY)).keys() == {"web", "telegram"}
+
+    async def test_a_call_cannot_be_messaged_so_it_stamps_nothing(
+        self, fake_redis: AsyncRedisCommands
+    ) -> None:
+        await fake_redis.hset(KEY, mapping={"web": str(NOW - 1500)})
+
+        before = await presence_before(USER_ID, _said(ConversationSource.WEB, voice=True))
+
+        assert before["last_seen"] == {"web": NOW - 1500}
+        assert await fake_redis.hgetall(KEY) == {"web": str(NOW - 1500)}
+
+    async def test_a_turn_no_one_typed_stamps_nothing(self, fake_redis: AsyncRedisCommands) -> None:
+        await presence_before(USER_ID, None)
+        await presence_before(USER_ID, _said(ConversationSource.BACKGROUND))
+
+        assert await fake_redis.hgetall(KEY) == {}
+
+
+def _said(surface: ConversationSource, *, voice: bool = False) -> UserMessage:
+    return UserMessage(id="u1", text="hi", surface=surface, voice=voice)

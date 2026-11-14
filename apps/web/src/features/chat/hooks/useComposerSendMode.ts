@@ -1,30 +1,24 @@
 "use client";
 
+import { DISPLAY_STATE } from "@shared/conversation";
+import { useConversationDisplay } from "@/features/chat/live/useLiveChat";
 import { useChatStore } from "@/stores/chatStore";
-import { useActiveComposerLocked } from "@/stores/streamStore";
 
-export type ComposerSendMode = "send" | "stop" | "queue";
+export type ComposerSendMode = "send" | "stop";
 
 /**
- * Derives the composer send-button mode from whether the turn is "open" (spans
- * the initial response and the held window while a background executor runs
- * over the same SSE) and whether the composer has content.
+ * The send button's mode: Stop while GAIA is busy in this conversation and the
+ * composer is empty, Send otherwise. Typing always sends; nothing is held.
  *
  * Shared by `SendStopButton` and `ComposerRight` so they never drift apart.
  */
 export function useComposerSendMode(hasContent: boolean) {
-  const isStreaming = useActiveComposerLocked();
   const activeConversationId = useChatStore(
     (state) => state.activeConversationId,
   );
-
-  const canSteer =
-    activeConversationId != null && activeConversationId !== "new";
-  const showQueue = isStreaming && hasContent && !canSteer;
-  const showStop = isStreaming && !hasContent;
-  let mode: ComposerSendMode = "send";
-  if (showStop) mode = "stop";
-  else if (showQueue) mode = "queue";
-
-  return { isStreaming, showQueue, showStop, mode };
+  const isBusy =
+    useConversationDisplay(activeConversationId) !== DISPLAY_STATE.IDLE;
+  const showStop = isBusy && !hasContent;
+  const mode: ComposerSendMode = showStop ? "stop" : "send";
+  return { showStop, mode };
 }

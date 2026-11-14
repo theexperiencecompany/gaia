@@ -11,16 +11,16 @@
  *
  * Covered behaviors:
  * 1. platform property returns "telegram"
- * 2. group @mention path strips @botUsername and streams the cleaned content
+ * 2. group @mention path strips @botUsername and posts the cleaned content
  * 3. createCtxTarget.send — sends HTML text to the correct chat_id
  * 4. createCtxTarget.sendRich — formats rich message via richMessageToMarkdown
- * 5. handleTelegramStreaming — sends "Thinking..." then delegates to handleStreamingChat
- * 6. HTML fallback — edits/sends retry as plain text when Telegram rejects HTML
+ * 5. postTelegramMessage — posts the request and hands postAndFollow the chat's surface
+ * 6. conversation surface — native replies, HTML fallback, reactions, typing
  * 7. registerCommands — a slash command dispatches with the parsed subcommand args
  * 8. dispatchCommand — unknown command sends ephemeral error
  * 9. registerGaiaCommand — empty /gaia message sends usage hint
  * 10. extractTelegramMedia — pure mapping of grammY messages to media descriptors
- * 11. media routing — resolved "chat" outcome streams with attachments, "reply"
+ * 11. media routing — resolved "chat" outcome posts with attachments, "reply"
  *     outcome posts the plain reply
  */
 
@@ -31,6 +31,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 const mockBotOn = vi.fn();
+const mockBotUse = vi.fn();
 const mockBotCommand = vi.fn();
 const mockBotCatch = vi.fn();
 const mockBotStart = vi.fn();
@@ -45,6 +46,7 @@ const mockSetMessageReaction = vi.fn().mockResolvedValue(true);
 
 const mockBotInstance = {
   on: mockBotOn,
+  use: mockBotUse,
   command: mockBotCommand,
   catch: mockBotCatch,
   start: mockBotStart,
@@ -56,6 +58,7 @@ const mockBotInstance = {
     editMessageText: vi.fn().mockResolvedValue({}),
     sendMessage: vi.fn().mockResolvedValue({ message_id: 99 }),
     sendChatAction: vi.fn().mockResolvedValue({}),
+    deleteMessage: vi.fn().mockResolvedValue(true),
     setMessageReaction: mockSetMessageReaction,
   },
 };
@@ -137,7 +140,6 @@ vi.mock("@gaia/shared/bots", async () => {
 
 import {
   fetchBytesCapped,
-  handleStreamingChat,
   MEDIA_READ_TIMEOUT_MS,
   type ReactionOutcome,
   renderForPlatform,
@@ -152,6 +154,11 @@ import {
   TelegramAdapter,
 } from "../../telegram/src/adapter";
 import { captureBotEvents } from "../shared/helpers/capture-bot-event";
+import {
+  lastAuthHandler,
+  lastSurface,
+  postAndFollowSpy,
+} from "../shared/mocks/postAndFollow";
 
 /** A real-shaped one-tap link code: 22 urlsafe-base64 characters. */
 const LINK_CODE = "Ab3-_xY9zQ1234567890wE";
@@ -214,6 +221,34 @@ function makeCtx(
   };
 }
 
+/** Asserts postAndFollow received a request carrying these fields, a surface and an auth handler. */
+function expectPosted(request: Record<string, unknown>): void {
+  expect(postAndFollowSpy).toHaveBeenCalledWith(
+    expect.objectContaining(request),
+    expect.objectContaining({
+      send: expect.any(Function),
+      react: expect.any(Function),
+      startTyping: expect.any(Function),
+    }),
+    expect.any(Function),
+  );
+}
+
+type TelegramPoster = {
+  postTelegramMessage: (
+    ctx: unknown,
+    userId: string,
+    message: string,
+  ) => Promise<void>;
+};
+
+type TypingIndicator = {
+  startTypingIndicator: (
+    send: () => Promise<unknown>,
+    refreshMs: number,
+  ) => () => void;
+};
+
 /** Returns an adapter with bot internals pre-populated so initialize() is not needed. */
 function makeAdapter(): TelegramAdapter {
   const adapter = new TelegramAdapter();
@@ -263,7 +298,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
     vi.clearAllMocks();
   });
 
-  it("strips @botUsername from group message and streams the cleaned content", async () => {
+  it("strips @botUsername from group message and posts the cleaned content", async () => {
     expect(onHandler).toBeDefined();
 
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
@@ -275,26 +310,13 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
 
     await onHandler!(ctx); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
 
-    // handleStreamingChat must be called with the mention stripped
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(), // gaia client
-      expect.objectContaining({
-        message: "what should I do today?",
-        platform: "telegram",
-        platformUserId: "999",
-        channelId: "123456",
-      }),
-      expect.any(Function), // editMessage callback
-      expect.any(Function), // sendNewMessage callback
-      expect.any(Function), // onAuthError callback
-      expect.any(Function), // onGenericError callback
-      expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function), // onReaction
-      expect.any(Function), // onNoReply
-    );
+    expectPosted({
+      message: "what should I do today?",
+      platform: "telegram",
+      platformUserId: "999",
+      channelId: "123456",
+      isDm: false,
+    });
   });
 
   it("replies 'How can I help you?' when mention text is empty after stripping", async () => {
@@ -310,7 +332,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
     await onHandler!(ctx); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
 
     expect(replyFn).toHaveBeenCalledWith("How can I help you?");
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
   it("ignores group messages that do not mention the bot", async () => {
@@ -323,11 +345,11 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
 
     await onHandler!(ctx); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
 
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
     expect(replyFn).not.toHaveBeenCalled();
   });
 
-  it("routes private chat messages directly to handleTelegramStreaming", async () => {
+  it("posts private chat messages as a DM", async () => {
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
     const ctx = makeCtx({
       chatType: "private",
@@ -337,23 +359,19 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
 
     await onHandler!(ctx); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
 
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        message: "plan my day",
-        platform: "telegram",
-      }),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function), // onReaction
-      expect.any(Function), // onNoReply
-    );
+    expectPosted({ message: "plan my day", platform: "telegram", isDm: true });
+  });
+
+  it("handles a second message while the first one's post is still pending", async () => {
+    postAndFollowSpy.mockReturnValueOnce(new Promise<void>(() => undefined));
+
+    void onHandler!(makeCtx({ text: "do the work" })); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
+    await onHandler!(makeCtx({ text: "and then" })); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
+
+    expect(postAndFollowSpy.mock.calls.map(([req]) => req.message)).toEqual([
+      "do the work",
+      "and then",
+    ]);
   });
 
   it("skips messages that start with a command prefix '/'", async () => {
@@ -366,7 +384,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
 
     await onHandler!(ctx); // NOSONAR — non-null assertion needed; type includes undefined from find()?.[1]
 
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -389,7 +407,7 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
     const target = (
       adapter as unknown as {
         createCtxTarget: (
-          ctx: typeof ctx,
+          ctxParam: typeof ctx,
           userId: string,
         ) => {
           send: (
@@ -427,7 +445,7 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
     const target = (
       adapter as unknown as {
         createCtxTarget: (
-          ctx: typeof ctx,
+          ctxParam: typeof ctx,
           userId: string,
         ) => {
           send: (text: string) => Promise<{ id: string }>;
@@ -455,7 +473,7 @@ describe("TelegramAdapter - createCtxTarget.send", () => {
     const target = (
       adapter as unknown as {
         createCtxTarget: (
-          ctx: typeof ctx,
+          ctxParam: typeof ctx,
           userId: string,
         ) => {
           platform: string;
@@ -486,7 +504,7 @@ describe("TelegramAdapter - createCtxTarget.sendRich", () => {
     const target = (
       adapter as unknown as {
         createCtxTarget: (
-          ctx: typeof ctx,
+          ctxParam: typeof ctx,
           userId: string,
         ) => {
           sendRich: (msg: object) => Promise<{ id: string }>;
@@ -517,10 +535,10 @@ describe("TelegramAdapter - createCtxTarget.sendRich", () => {
 });
 
 // ---------------------------------------------------------------------------
-// handleTelegramStreaming — sends "Thinking..." before streaming
+// postTelegramMessage — posts the message and hands postAndFollow the chat
 // ---------------------------------------------------------------------------
 
-describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
+describe("TelegramAdapter - postTelegramMessage", () => {
   let adapter: TelegramAdapter;
 
   beforeEach(() => {
@@ -528,249 +546,184 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
     adapter = makeAdapter();
   });
 
-  it("sends 'Thinking...' via ctx.reply before invoking handleStreamingChat", async () => {
+  it("posts the request with the inbound message id and does not reply itself", async () => {
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
-    const ctx = makeCtx({ replyFn });
+    const ctx = {
+      ...makeCtx({ chatId: 77777, replyFn }),
+      msg: { message_id: 10 },
+    };
 
-    await (
-      adapter as unknown as {
-        handleTelegramStreaming: (
-          ctx: typeof ctx,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(ctx, "999", "tell me a joke");
-
-    expect(replyFn).toHaveBeenCalledWith("Thinking...");
-    expect(handleStreamingChat).toHaveBeenCalled();
-  });
-
-  it("calls handleStreamingChat with the correct request shape", async () => {
-    const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
-    const ctx = makeCtx({ chatId: 77777, replyFn });
-
-    await (
-      adapter as unknown as {
-        handleTelegramStreaming: (
-          ctx: typeof ctx,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(ctx, "555", "what is 2+2?");
-
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(), // gaia client
-      expect.objectContaining({
-        message: "what is 2+2?",
-        platform: "telegram",
-        platformUserId: "555",
-        channelId: "77777",
-      }),
-      expect.any(Function), // editMessage callback
-      expect.any(Function), // sendNewMessage callback
-      expect.any(Function), // onAuthError callback
-      expect.any(Function), // onGenericError callback
-      expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function), // onReaction
-      expect.any(Function), // onNoReply
+    await (adapter as unknown as TelegramPoster).postTelegramMessage(
+      ctx,
+      "555",
+      "what is 2+2?",
     );
+
+    expectPosted({
+      message: "what is 2+2?",
+      platform: "telegram",
+      platformUserId: "555",
+      channelId: "77777",
+      isDm: true,
+      platformMessageId: "10",
+    });
+    expect(replyFn).not.toHaveBeenCalled();
+    expect(mockBotInstance.api.sendMessage).not.toHaveBeenCalled();
   });
 
   it("returns early without doing anything when chat ID is missing", async () => {
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
+    const ctx = { ...makeCtx({ replyFn }), chat: undefined };
 
-    // Build a ctx where chat is undefined — adapter must not proceed
-    const ctx = {
-      chat: undefined,
-      from: {
-        id: 999,
-        first_name: "Alice",
-        last_name: undefined,
-        username: "aliceuser",
-      },
-      message: { text: "hello", message_id: 10 },
-      match: "",
-      reply: replyFn,
-      api: {
-        editMessageText: vi.fn(),
-        sendMessage: vi.fn(),
-        sendChatAction: vi.fn(),
-      },
-    };
-
-    await (
-      adapter as unknown as {
-        handleTelegramStreaming: (
-          ctx: typeof ctx,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(
-      ctx as unknown as ReturnType<typeof makeCtx>,
+    await (adapter as unknown as TelegramPoster).postTelegramMessage(
+      ctx,
       "999",
       "hello",
     );
 
     expect(replyFn).not.toHaveBeenCalled();
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 });
 
 // ---------------------------------------------------------------------------
-// HTML fallback — the audit-required test: must fail if fallback logic breaks
+// Conversation surface — what the follower renders the reply through
 // ---------------------------------------------------------------------------
 
-describe("TelegramAdapter - HTML fallback retry (editMessage callback)", () => {
+describe("TelegramAdapter - conversation surface", () => {
   let adapter: TelegramAdapter;
+  const api = mockBotInstance.api;
+  const htmlRejection = () =>
+    new Error("Bad Request: can't parse entities: Unsupported start tag");
 
   beforeEach(() => {
     vi.clearAllMocks();
     adapter = makeAdapter();
   });
 
-  // Drives one streaming turn through handleTelegramStreaming and returns the
-  // edit callback it handed to handleStreamingChat. Shared by the HTML-fallback
-  // tests, which differ only in the editMessageText mock and the message text.
-  async function streamAndCaptureEdit(
-    a: TelegramAdapter,
-    editMessageTextFn: ReturnType<typeof vi.fn>,
-    message: string,
-  ): Promise<(text: string) => Promise<void>> {
-    const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
-    const ctx = makeCtx({ chatId: 100, replyFn, editMessageTextFn });
-
-    let capturedEditCallback: ((text: string) => Promise<void>) | undefined;
-    vi.mocked(handleStreamingChat).mockImplementationOnce(
-      async (_gaia, _req, editMessage) => {
-        capturedEditCallback = editMessage;
-      },
+  /** Posts one message in a chat and returns the surface handed to postAndFollow. */
+  async function surfaceFor(
+    chatType: "private" | "group" = "private",
+  ): Promise<ReturnType<typeof lastSurface>> {
+    await (adapter as unknown as TelegramPoster).postTelegramMessage(
+      makeCtx({ chatId: 100, chatType }),
+      "999",
+      "hi",
     );
-
-    await (
-      a as unknown as {
-        handleTelegramStreaming: (
-          ctx: ReturnType<typeof makeCtx>,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(ctx, "999", message);
-
-    if (!capturedEditCallback) {
-      throw new Error("edit callback was not captured");
-    }
-    return capturedEditCallback;
+    return lastSurface();
   }
 
-  it("retries editMessageText as stripped plain text when Telegram rejects HTML", async () => {
-    const editMessageTextFn = vi
-      .fn()
-      .mockRejectedValueOnce(
-        new Error("Bad Request: can't parse entities: Unsupported start tag"),
-      )
+  it("sends a new message as HTML without a quote when there is nothing to reply to", async () => {
+    const surface = await surfaceFor();
+
+    await surface.send("<b>hello</b>", null);
+
+    expect(api.sendMessage).toHaveBeenCalledWith(100, "<b>hello</b>", {
+      parse_mode: "HTML",
+    });
+  });
+
+  it("answers the inbound message natively when given its id", async () => {
+    const surface = await surfaceFor();
+
+    await surface.send("on it", "123");
+
+    expect(api.sendMessage).toHaveBeenCalledWith(100, "on it", {
+      parse_mode: "HTML",
+      reply_parameters: { message_id: 123, allow_sending_without_reply: true },
+    });
+  });
+
+  it("resends as stripped plain text, keeping the quote, when Telegram rejects the HTML", async () => {
+    api.sendMessage
+      .mockRejectedValueOnce(htmlRejection())
+      .mockResolvedValueOnce({ message_id: 99 });
+    const surface = await surfaceFor();
+
+    await surface.send("<i>unclosed italic", "123");
+
+    const quote = {
+      reply_parameters: { message_id: 123, allow_sending_without_reply: true },
+    };
+    expect(api.sendMessage.mock.calls).toEqual([
+      [100, "<i>unclosed italic", { parse_mode: "HTML", ...quote }],
+      [100, "unclosed italic", quote],
+    ]);
+  });
+
+  it("edits the sent message as HTML and retries as plain text when Telegram rejects it", async () => {
+    api.editMessageText
+      .mockRejectedValueOnce(htmlRejection())
       .mockResolvedValueOnce({});
+    const surface = await surfaceFor();
+    const sent = await surface.send("first", null);
 
-    const editCb = await streamAndCaptureEdit(
-      adapter,
-      editMessageTextFn,
-      "stream me something",
-    );
+    await sent.edit("a <b>bold</b> & risky chunk");
 
-    // Simulate a streaming update with markup Telegram rejects.
-    await editCb("a <b>bold</b> & risky chunk");
-
-    // First attempt: with parse_mode: "HTML". Conversion happens inside
-    // handleStreamingChat (mocked here), so the adapter callback forwards the
-    // text it receives verbatim.
-    expect(editMessageTextFn).toHaveBeenNthCalledWith(
-      1,
-      100,
-      42,
-      "a <b>bold</b> & risky chunk",
-      { parse_mode: "HTML" },
-    );
-
-    // Second attempt (fallback): no parse_mode, tags stripped + entities decoded
-    // so the user still gets a readable message (opts omitted = undefined).
-    expect(editMessageTextFn).toHaveBeenNthCalledWith(
-      2,
-      100,
-      42,
-      "a bold & risky chunk",
-      undefined,
-    );
+    expect(api.editMessageText.mock.calls).toEqual([
+      [100, 99, "a <b>bold</b> & risky chunk", { parse_mode: "HTML" }],
+      [100, 99, "a bold & risky chunk", undefined],
+    ]);
   });
 
-  it("does NOT retry for 'message is not modified' errors (returns silently)", async () => {
-    const editMessageTextFn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("Bad Request: message is not modified"));
-
-    const editCb = await streamAndCaptureEdit(
-      adapter,
-      editMessageTextFn,
-      "same content twice",
+  it("treats 'message is not modified' as done without retrying", async () => {
+    api.editMessageText.mockRejectedValueOnce(
+      new Error("Bad Request: message is not modified"),
     );
+    const surface = await surfaceFor();
+    const sent = await surface.send("first", null);
 
-    await editCb("unchanged content");
+    await sent.edit("unchanged content");
 
-    // Only one attempt — must not retry for "not modified"
-    expect(editMessageTextFn).toHaveBeenCalledTimes(1);
+    expect(api.editMessageText).toHaveBeenCalledTimes(1);
   });
 
-  it("HTML fallback also applies to sendNewMessage (reply with new message)", async () => {
-    // sendNewMessage tries ctx.reply with parse_mode: "HTML" first; on "can't parse
-    // entities" it falls back to ctx.reply with tag-stripped plain text and no options.
-    const replyFn = vi
-      .fn()
-      .mockResolvedValueOnce({ message_id: 42 }) // Thinking...
-      .mockRejectedValueOnce(
-        new Error("Bad Request: can't parse entities: Unsupported start tag"),
-      )
-      .mockResolvedValueOnce({ message_id: 99 }); // plain fallback
-
-    const ctx = makeCtx({ chatId: 100, replyFn });
-
-    let capturedSendNewMessage:
-      | ((
-          text: string,
-        ) => Promise<((updated: string) => Promise<void>) | undefined>)
-      | undefined;
-
-    vi.mocked(handleStreamingChat).mockImplementationOnce(
-      async (_gaia, _req, _edit, sendNewMessage) => {
-        capturedSendNewMessage = sendNewMessage;
-      },
+  it("rethrows an edit failure that resending cannot fix", async () => {
+    api.editMessageText.mockRejectedValueOnce(
+      new Error("Too Many Requests: retry after 5"),
     );
+    const surface = await surfaceFor();
+    const sent = await surface.send("first", null);
 
-    await (
-      adapter as unknown as {
-        handleTelegramStreaming: (
-          ctx: typeof ctx,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(ctx, "999", "new content");
+    await expect(sent.edit("next")).rejects.toThrow("Too Many Requests");
+    expect(api.editMessageText).toHaveBeenCalledTimes(1);
+  });
 
-    expect(capturedSendNewMessage).toBeDefined();
+  it("deletes the sent message", async () => {
+    const surface = await surfaceFor();
+    const sent = await surface.send("first", null);
 
-    // Simulate a new streaming segment with markup Telegram rejects.
-    await capturedSendNewMessage!("<i>unclosed italic"); // NOSONAR — non-null assertion needed; variable typed as T | undefined
+    await sent.delete?.();
 
-    // Total calls: Thinking... + HTML attempt + plain fallback = 3
-    expect(replyFn).toHaveBeenCalledTimes(3);
+    expect(api.deleteMessage).toHaveBeenCalledWith(100, 99);
+  });
 
-    // The last reply call should be plain text with no parse_mode options.
-    const lastCall = replyFn.mock.calls[replyFn.mock.calls.length - 1];
-    expect(lastCall[0]).toBe("unclosed italic");
-    expect(lastCall[1]).toBeUndefined();
+  it("reacts in the chat it was posted from", async () => {
+    const react = vi
+      .spyOn(adapter as unknown as TelegramReactor, "reactToMessage")
+      .mockResolvedValue("attached");
+    const surface = await surfaceFor("group");
+
+    await expect(surface.react("10", "👍", "🔎")).resolves.toBe("attached");
+    expect(react).toHaveBeenCalledWith("100", "10", "👍", true, "🔎");
+  });
+
+  it("starts the typing action and hands back the indicator's stop", async () => {
+    const stop = vi.fn();
+    vi.spyOn(
+      adapter as unknown as TypingIndicator,
+      "startTypingIndicator",
+    ).mockImplementation((send) => {
+      void send();
+      return stop;
+    });
+    const surface = await surfaceFor();
+
+    const stopTyping = surface.startTyping();
+    expect(api.sendChatAction).toHaveBeenCalledWith(100, "typing");
+
+    stopTyping();
+    expect(stop).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -910,7 +863,7 @@ describe("TelegramAdapter - registerCommands command routing", () => {
     expect(sendMessageFn).not.toHaveBeenCalled();
     // No model turn runs behind it either: the opener turn skipped the per-pick
     // promises and lost the connect links.
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
     expect(helpExecute).not.toHaveBeenCalled();
   });
 
@@ -938,7 +891,7 @@ describe("TelegramAdapter - registerCommands command routing", () => {
     const sendMessageFn = vi.fn().mockResolvedValue({ message_id: 55 });
     await startHandler(makeCtx({ match: LINK_CODE, sendMessageFn }));
 
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
     // The only thing a refused code may produce is the explanation of why.
     expect(sendMessageFn).toHaveBeenCalledTimes(1);
     expect(String(sendMessageFn.mock.calls[0][1])).toContain(
@@ -992,7 +945,10 @@ describe("TelegramAdapter - dispatchCommand error recovery", () => {
 
     await (
       adapter as unknown as {
-        dispatchCommand: (name: string, target: typeof target) => Promise<void>;
+        dispatchCommand: (
+          name: string,
+          targetParam: typeof target,
+        ) => Promise<void>;
       }
     ).dispatchCommand("nonexistent", target);
 
@@ -1031,7 +987,10 @@ describe("TelegramAdapter - dispatchCommand error recovery", () => {
 
     await (
       adapter as unknown as {
-        dispatchCommand: (name: string, target: typeof target) => Promise<void>;
+        dispatchCommand: (
+          name: string,
+          targetParam: typeof target,
+        ) => Promise<void>;
       }
     ).dispatchCommand("broken", target);
 
@@ -1089,10 +1048,10 @@ describe("TelegramAdapter - /gaia command", () => {
     await gaiaHandler(ctx);
 
     expect(replyFn).toHaveBeenCalledWith("Usage: /gaia <your message>");
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
-  it("streams when /gaia is invoked with a message", async () => {
+  it("posts when /gaia is invoked with a message", async () => {
     const gaiaCall = vi
       .mocked(mockBotCommand)
       .mock.calls.find((c) => c[0] === "gaia");
@@ -1104,23 +1063,10 @@ describe("TelegramAdapter - /gaia command", () => {
 
     await gaiaHandler(ctx);
 
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        message: "remind me to call dentist",
-        platform: "telegram",
-      }),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function), // onReaction
-      expect.any(Function), // onNoReply
-    );
+    expectPosted({
+      message: "remind me to call dentist",
+      platform: "telegram",
+    });
   });
 });
 
@@ -1160,98 +1106,63 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
 
     await onHandler!(ctx);
 
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
-  it("onAuthError edits the loading message with the auth link as HTML (same pipeline as /auth)", async () => {
-    vi.clearAllMocks();
+  /** Posts one message from user 999 in chat 500 and returns the auth handler it handed postAndFollow. */
+  async function authHandlerFor(
+    chatType: "private" | "group",
+  ): Promise<(authUrl: string) => Promise<void>> {
     const adapter = makeAdapter();
-
-    const editMessageTextFn = vi.fn().mockResolvedValue({});
-    const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
-    const ctx = makeCtx({
-      chatId: 500,
-      chatType: "private",
-      replyFn,
-      editMessageTextFn,
-    });
-
-    let capturedAuthError: ((authUrl: string) => Promise<void>) | undefined;
-
-    vi.mocked(handleStreamingChat).mockImplementationOnce(
-      async (_gaia, _req, _edit, _send, onAuthError) => {
-        capturedAuthError = onAuthError;
-      },
+    await (adapter as unknown as TelegramPoster).postTelegramMessage(
+      makeCtx({ chatId: 500, chatType }),
+      "999",
+      "do something",
     );
+    return lastAuthHandler();
+  }
 
-    await (
-      adapter as unknown as {
-        handleTelegramStreaming: (
-          ctx: typeof ctx,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(ctx, "999", "do something");
+  const authUrl = "https://gaia.example.com/auth?token=abc";
 
-    expect(capturedAuthError).toBeDefined();
+  it("sends the auth link in a private chat as HTML (same pipeline as /auth)", async () => {
+    vi.clearAllMocks();
+    const onAuthError = await authHandlerFor("private");
 
-    await capturedAuthError!("https://gaia.example.com/auth?token=abc");
+    await onAuthError(authUrl);
 
-    // In a private chat the auth prompt is edited in place, through the SAME
-    // HTML pipeline as the /auth command — so it renders identically (bold +
-    // clickable link), with parse_mode HTML, not raw markdown.
-    expect(editMessageTextFn).toHaveBeenCalledWith(
-      500,
-      42,
-      expect.stringContaining("https://gaia.example.com/auth?token=abc"),
-      { parse_mode: "HTML" },
-    );
+    expect(mockBotInstance.api.sendMessage.mock.calls).toEqual([
+      [500, expect.stringContaining(authUrl), { parse_mode: "HTML" }],
+    ]);
   });
 
-  it("onGenericError callback edits the loading message with the error text", async () => {
+  it("DMs the auth link from a group and tells the group it did", async () => {
     vi.clearAllMocks();
-    const adapter = makeAdapter();
+    const onAuthError = await authHandlerFor("group");
 
-    const editMessageTextFn = vi.fn().mockResolvedValue({});
-    const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
-    const ctx = makeCtx({
-      chatId: 600,
-      chatType: "private",
-      replyFn,
-      editMessageTextFn,
-    });
+    await onAuthError(authUrl);
 
-    let capturedGenericError: ((errMsg: string) => Promise<void>) | undefined;
+    expect(mockBotInstance.api.sendMessage.mock.calls).toEqual([
+      [999, expect.stringContaining(authUrl), { parse_mode: "HTML" }],
+      [500, "I sent you a DM with the authentication link."],
+    ]);
+  });
 
-    vi.mocked(handleStreamingChat).mockImplementationOnce(
-      async (_gaia, _req, _edit, _send, _auth, onGenericError) => {
-        capturedGenericError = onGenericError;
-      },
+  it("points the group at a direct chat when Telegram refuses the DM, without leaking the link", async () => {
+    vi.clearAllMocks();
+    mockBotInstance.api.sendMessage.mockRejectedValueOnce(
+      new Error("Forbidden: bot can't initiate conversation with a user"),
     );
+    const onAuthError = await authHandlerFor("group");
 
-    await (
-      adapter as unknown as {
-        handleTelegramStreaming: (
-          ctx: typeof ctx,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(ctx, "999", "do something");
+    await onAuthError(authUrl);
 
-    expect(capturedGenericError).toBeDefined();
-
-    await capturedGenericError!("Something went wrong on our end.");
-
-    // Errors go through the same HTML pipeline (parse_mode HTML) so any
-    // `code`/bold in the formatted error renders instead of showing literally.
-    expect(editMessageTextFn).toHaveBeenCalledWith(
-      600,
-      42,
-      "Something went wrong on our end.",
-      { parse_mode: "HTML" },
+    const groupMessages = mockBotInstance.api.sendMessage.mock.calls.filter(
+      ([chatId]) => chatId === 500,
     );
+    expect(groupMessages).toEqual([
+      [500, expect.stringContaining("message me directly at @gaiabot")],
+    ]);
+    expect(String(groupMessages[0][1])).not.toContain(authUrl);
   });
 });
 
@@ -1478,7 +1389,7 @@ describe("TelegramAdapter - media message routing", () => {
     adapter = makeAdapter();
   });
 
-  it("streams a 'chat' outcome forwarding the uploaded attachment's fileId and data", async () => {
+  it("posts a 'chat' outcome forwarding the uploaded attachment's fileId and data", async () => {
     const attachment = {
       fileId: "uploaded-file-1",
       fileType: "image/jpeg",
@@ -1493,33 +1404,20 @@ describe("TelegramAdapter - media message routing", () => {
     const ctx = makePhotoCtx({ caption: "describe this image" });
     await invokeMediaHandler(ctx);
 
-    // The resolved chat turn is streamed with the attachment forwarded as both
+    // The resolved chat message is posted with the attachment forwarded as both
     // fileIds (for lookup) and fileData (full metadata) — the observable
     // contract the backend relies on.
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        message: "describe this image",
-        platform: "telegram",
-        platformUserId: "999",
-        channelId: "123456",
-        fileIds: ["uploaded-file-1"],
-        fileData: [attachment],
-      }),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function), // onReaction
-      expect.any(Function), // onNoReply
-    );
+    expectPosted({
+      message: "describe this image",
+      platform: "telegram",
+      platformUserId: "999",
+      channelId: "123456",
+      fileIds: ["uploaded-file-1"],
+      fileData: [attachment],
+    });
   });
 
-  it("posts a plain reply for a 'reply' outcome and does not stream", async () => {
+  it("posts a plain reply for a 'reply' outcome and does not post a message", async () => {
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
     setResolveOutcome({
       action: "reply",
@@ -1530,7 +1428,7 @@ describe("TelegramAdapter - media message routing", () => {
     await invokeMediaHandler(ctx);
 
     expect(replyFn).toHaveBeenCalledWith("I can't process videos yet.");
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
   it("passes the extracted media and a download thunk to resolveIncomingMedia", async () => {
@@ -1658,14 +1556,14 @@ describe("TelegramAdapter - media message routing", () => {
     const ctx = makePhotoCtx({ chatType: "group", caption: "just a photo" });
     await invokeMediaHandler(ctx);
 
-    // No mention → no resolution, no stream, no reply.
+    // No mention → no resolution, no post, no reply.
     const resolve = (
       adapter as unknown as {
         resolveIncomingMedia: ReturnType<typeof vi.fn>;
       }
     ).resolveIncomingMedia;
     expect(resolve).not.toHaveBeenCalled();
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -1704,7 +1602,7 @@ describe("TelegramAdapter - runtime errors", () => {
 });
 
 // ---------------------------------------------------------------------------
-// reactToMessage — the native reaction primitive, and the live turn using it
+// reactToMessage — the native reaction primitive the surface reacts through
 // ---------------------------------------------------------------------------
 
 type TelegramReactor = {
@@ -1780,80 +1678,5 @@ describe("TelegramAdapter - reactToMessage", () => {
 
     expect(attached).toBe("attach_failed");
     expect(mockBotInstance.api.sendMessage).not.toHaveBeenCalled();
-  });
-});
-
-describe("TelegramAdapter - live turn reaction", () => {
-  let adapter: TelegramAdapter;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    adapter = makeAdapter();
-  });
-
-  /** Streams one turn and returns the reaction hook it handed the shared streamer. */
-  async function streamAndTakeHook(
-    ctx: ReturnType<typeof makeCtx>,
-  ): Promise<(emoji: string) => Promise<ReactionOutcome>> {
-    await (
-      adapter as unknown as {
-        handleTelegramStreaming: (
-          c: typeof ctx,
-          userId: string,
-          message: string,
-        ) => Promise<void>;
-      }
-    ).handleTelegramStreaming(ctx, "999", "thanks!");
-    const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
-    return call?.[8] as (emoji: string) => Promise<ReactionOutcome>;
-  }
-
-  function liveCtx(deleteMessage: ReturnType<typeof vi.fn>) {
-    const ctx = makeCtx({
-      replyFn: vi.fn().mockResolvedValue({ message_id: 42 }),
-    });
-    return {
-      ...ctx,
-      msg: { message_id: 10 },
-      api: { ...ctx.api, deleteMessage },
-    };
-  }
-
-  it("reacts to the inbound message in place of the last reaction and keeps the placeholder for the reply", async () => {
-    const react = vi
-      .spyOn(adapter as unknown as TelegramReactor, "reactToMessage")
-      .mockResolvedValue("attached");
-    const deleteMessage = vi.fn().mockResolvedValue(true);
-
-    const hook = await streamAndTakeHook(liveCtx(deleteMessage));
-
-    await expect(hook("👍", "🔎")).resolves.toBe("attached");
-    expect(react).toHaveBeenCalledWith("123456", "10", "👍", false, "🔎");
-    expect(deleteMessage).not.toHaveBeenCalled();
-  });
-
-  it("keeps the placeholder for the text fallback when the reaction is refused", async () => {
-    vi.spyOn(
-      adapter as unknown as TelegramReactor,
-      "reactToMessage",
-    ).mockResolvedValue("attach_failed");
-    const deleteMessage = vi.fn().mockResolvedValue(true);
-
-    const hook = await streamAndTakeHook(liveCtx(deleteMessage));
-
-    await expect(hook("👍", null)).resolves.toBe("attach_failed");
-    expect(deleteMessage).not.toHaveBeenCalled();
-  });
-
-  it("falls back to text when the inbound message id is unknown", async () => {
-    const react = vi.spyOn(
-      adapter as unknown as TelegramReactor,
-      "reactToMessage",
-    );
-
-    const hook = await streamAndTakeHook(makeCtx());
-
-    await expect(hook("👍", null)).resolves.toBe("no_target");
-    expect(react).not.toHaveBeenCalled();
   });
 });

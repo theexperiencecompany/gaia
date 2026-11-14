@@ -11,6 +11,7 @@
  */
 
 import { type Channel, type ConsumeMessage, connect } from "amqplib";
+import type { ActiveBotConversation } from "../../api/generated";
 import {
   DELIVERY_FAILURE_KIND,
   type DeliveryFailure,
@@ -18,11 +19,10 @@ import {
   type ReportDeliveryFailure,
 } from "../delivery-failures";
 import type { OutboundNotifications, PlatformName } from "../types";
-import { segmentIntoBubbles } from "../utils/bubbles";
+import { BUBBLE_PAUSE_MS } from "../utils/bubbles";
 import { retryAfterMs } from "../utils/delivery-errors";
 import {
   BOT_FAILURE_REASON,
-  classifyBotFailure,
   isTransientBotFailure,
   recordBotFailure,
 } from "../utils/failure-reasons";
@@ -33,11 +33,11 @@ import {
   hashLogIdentifier,
 } from "../utils/logger";
 import { chunkResponse } from "../utils/text";
+import { sleep } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import {
   type OutboundAttachment,
   type OutboundMessageEnvelope,
-  type OutboundReaction,
   outboundMessageEnvelopeSchemaFor,
 } from "./envelope";
 import {
@@ -76,15 +76,10 @@ type DeliverFileFn = (
 ) => Promise<void>;
 
 /**
- * Attaches an emoji reaction to an existing platform message. `isChannel`
- * tells the adapter whether `destinationId` is a channel/group id or a user
- * id, same as the text path.
+ * Follows a bot conversation the server woke: something the bot renders was logged
+ * there. Resolves once the follow has started; the follow itself runs on.
  */
-export type DeliverReactionFn = (
-  destinationId: string,
-  reaction: OutboundReaction,
-  isChannel: boolean,
-) => Promise<void>;
+type FollowFn = (target: ActiveBotConversation) => Promise<void>;
 
 export class OutboundConsumer {
   private conn: Awaited<ReturnType<typeof connect>> | null = null;
@@ -98,7 +93,6 @@ export class OutboundConsumer {
   private readonly envelopeSchema: ReturnType<
     typeof outboundMessageEnvelopeSchemaFor
   >;
-  private readonly deliverReaction: DeliverReactionFn;
 
   /**
    * `gaiaApiUrl` is what makes a plain-http attachment URL acceptable: a dev or
@@ -111,23 +105,13 @@ export class OutboundConsumer {
     private readonly url: string,
     private readonly deliver: DeliverFn,
     private readonly deliverFile: DeliverFileFn,
+    private readonly follow: FollowFn,
     gaiaApiUrl: string | undefined,
     private readonly reportFailure: ReportDeliveryFailure,
-    deliverReaction?: DeliverReactionFn,
     private readonly notifications?: OutboundNotifications,
   ) {
     this.logger = createBotLogger(platform, "outbound-consumer");
     this.envelopeSchema = outboundMessageEnvelopeSchemaFor(gaiaApiUrl);
-    // Platforms without a native reaction path keep the old behavior: the
-    // emoji goes out as a text bubble. Explicit, logged at the call site.
-    this.deliverReaction =
-      deliverReaction ??
-      (async (destinationId, reaction, isChannel) => {
-        wideLog.warning("outbound_reaction_fallback_text", {
-          platform: this.platform,
-        });
-        await this.deliver(destinationId, reaction.emoji, isChannel);
-      });
   }
 
   async start(): Promise<void> {
@@ -288,9 +272,8 @@ export class OutboundConsumer {
     const channel = this.channel;
     if (!msg || !channel) return;
 
-    // IDEMPOTENCY: none in Phase 1. RabbitMQ is at-least-once and doesn't dedupe, but a
-    // redelivery is negligible with a SINGLE consumer per platform. Before running multiple
-    // workers, add a dedupe on `env.id` backed by SHARED state (e.g. Redis SETNX+TTL).
+    // A notification is published once per channel: the backend claims the send on the
+    // notification before publishing. A broker redelivery is still possible (at-least-once).
     await withWideEvent(
       "outbound_message",
       {
@@ -304,20 +287,13 @@ export class OutboundConsumer {
 
         wideLog.set({
           envelope_id: env.id,
+          notification_id: env.notification_id ?? null,
           destination_hash: hashLogIdentifier(env.destination_id),
           has_attachment: Boolean(env.attachment),
-          has_reaction: Boolean(env.reaction),
         });
 
-        if (env.reaction) {
-          await this.handleReaction(
-            channel,
-            msg,
-            env.id,
-            env.destination_id,
-            env.reaction,
-            env.is_channel,
-          );
+        if (env.follow) {
+          await this.handleFollow(channel, msg, env.id, env.follow);
           return;
         }
 
@@ -410,6 +386,32 @@ export class OutboundConsumer {
     return env;
   }
 
+  /** A wake: start following the conversation; its follower renders what was logged there. */
+  private async handleFollow(
+    channel: Channel,
+    msg: ConsumeMessage,
+    id: string,
+    target: ActiveBotConversation,
+  ): Promise<void> {
+    wideLog.set({ conversation_id: target.conversation_id });
+    try {
+      await this.follow(target);
+      this.settle(channel, () => channel.ack(msg));
+    } catch (err) {
+      const reason = recordBotFailure("conversation_wake_failed", err, {
+        envelope_id: id,
+      });
+      this.deadLetter(channel, msg, {
+        kind: DELIVERY_FAILURE_KIND.SEND_FAILED,
+        reason,
+        error_message: describeErrorForAlert(err),
+        destination_id: target.channel_id ?? target.platform_user_id,
+        is_channel: target.channel_id !== null,
+        envelope_id: id,
+      });
+    }
+  }
+
   /**
    * File attachment: hand the artifact reference to the platform's file sender
    * (it fetches the bytes and uploads them). No chunking/rendering.
@@ -448,45 +450,8 @@ export class OutboundConsumer {
   }
 
   /**
-   * Reaction path. One idempotent platform call — attaching the same emoji
-   * twice is a no-op upstream — so unlike the text path there is no partial
-   * state to protect: failure dead-letters for inspection, it never requeues
-   * (a redelivered reaction would double-attach nothing, but the ack already
-   * failed once and spamming retries at the user is worse than a DLQ entry).
-   */
-  private async handleReaction(
-    channel: Channel,
-    msg: ConsumeMessage,
-    id: string,
-    destinationId: string,
-    reaction: OutboundReaction,
-    isChannel: boolean,
-  ): Promise<void> {
-    try {
-      await this.deliverReaction(destinationId, reaction, isChannel);
-      wideLog.set({ redelivered: msg.fields.redelivered });
-      this.settle(channel, () => channel.ack(msg));
-    } catch (err) {
-      wideLog.error(
-        "outbound_reaction_failed",
-        { envelope_id: id, redelivered: msg.fields.redelivered },
-        err,
-      );
-      this.deadLetter(channel, msg, {
-        kind: DELIVERY_FAILURE_KIND.SEND_FAILED,
-        reason: classifyBotFailure(err),
-        error_message: describeErrorForAlert(err),
-        destination_id: destinationId,
-        is_channel: isChannel,
-        envelope_id: id,
-      });
-    }
-  }
-
-  /**
-   * Text path. The schema's refine guarantees text, text_parts, attachment, or
-   * reaction; a multi-bubble notification arrives as ordered `text_parts`
-   * (one logical message) and its bubbles MUST be sent in order, so they are
+   * Text path. The schema's refine guarantees text, text_parts, or attachment;
+   * a multi-bubble notification arrives as ordered `text_parts` (one logical message) and its bubbles MUST be sent in order, so they are
    * delivered sequentially within this single handle.
    */
   private async handleText(
@@ -592,9 +557,10 @@ export class OutboundConsumer {
     progress: { delivered: number },
   ): Promise<void> {
     const text = sources
-      .flatMap((source) => segmentIntoBubbles(source))
-      .map((bubble) => renderForPlatform(bubble, this.platform).trim())
-      .filter(Boolean)
+      .flatMap((bubble) => {
+        const rendered = renderForPlatform(bubble, this.platform).trim();
+        return rendered ? [rendered] : [];
+      })
       .join("\n\n");
     wideLog.set({ outbound_mode: "notification" });
     if (!text) return;
@@ -605,12 +571,9 @@ export class OutboundConsumer {
   }
 
   /**
-   * Segments each source into bubbles, chunks them by the platform limit, then renders each
-   * chunk so every sent message is valid platform markdown. Segmentation happens HERE (not
-   * only in the streamer) because these messages — executor replies, reminders, workflow
-   * results — never went through it and used to ship as one wall with `<NEW_MESSAGE_BREAK>`
-   * visible. Chunks are sized by RENDERED length, since markdown can expand when rendered
-   * (e.g. Telegram tables into `<pre>`) and overflow the platform's message limit.
+   * Sends each source as the bubbles the streamed reply would have been (the same splitter),
+   * a pause between bubbles, each cut to the platform limit by its rendered length and sent
+   * as valid platform markdown.
    */
   private async deliverSources(
     destinationId: string,
@@ -622,14 +585,19 @@ export class OutboundConsumer {
       renderForPlatform(chunk, this.platform);
     // Await each send before the next so the bubbles arrive in the published
     // order — never fan these out concurrently.
-    const bubbles = sources.flatMap((source) => segmentIntoBubbles(source));
-    for (const bubble of bubbles) {
-      for (const chunk of chunkResponse(bubble, this.platform, render)) {
+    const bubbles = sources.map((bubble) =>
+      chunkResponse(bubble, this.platform, render),
+    );
+    for (const chunks of bubbles) {
+      for (const [index, chunk] of chunks.entries()) {
         const rendered = render(chunk);
         // A chunk made up solely of strippable markup (e.g. a lone horizontal
         // rule) renders to nothing; platform send APIs reject empty text, so
         // skip it instead of throwing and dead-lettering the whole envelope.
         if (!rendered.trim()) continue;
+        if (progress.delivered > 0 && index === 0) {
+          await sleep(BUBBLE_PAUSE_MS);
+        }
         await sendHonouringRateLimit(() =>
           this.deliver(destinationId, rendered, isChannel),
         );
@@ -653,7 +621,7 @@ async function sendHonouringRateLimit(
     const waitMs = retryAfterMs(err);
     if (waitMs === null) throw err;
     wideLog.set({ rate_limited_wait_ms: waitMs });
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    await sleep(waitMs);
     await send();
   }
 }

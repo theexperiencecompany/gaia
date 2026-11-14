@@ -15,9 +15,9 @@ Each case is one rung of the ambiguity ladder or one ownership failure mode:
   claimed done.
 * **over_proactive**: nothing was asked. No follow-ups invented, short reply.
 
-Transport is the live chat-stream wire (the quality transport's frame parsing),
-plus what that wire cannot show: the executor's delivered answer, read back
-from the saved conversation, and the durable follow-ups, read back from
+Transport is the quality suite's send + events transport, waiting for the
+write-up of any work a message started (the executor's delivered answer), plus
+what the conversation cannot show: the durable follow-ups, read back from
 GET /todos (tracked label) and GET /reminders as a diff against what existed
 before the first turn.
 
@@ -45,10 +45,11 @@ from scripts.evals.core.cases import load_case_files
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
 from scripts.evals.core.dev_users import dev_client, provision
 from scripts.evals.core.gates import ExtraGates, score_gates
-from scripts.evals.core.live_chat import DELEGATION_TOOL, bot_messages_after
+from scripts.evals.core.live_chat import TurnOptions
 from scripts.evals.core.providers import EvalConfig, ProviderConfig, judge_model
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.scorers import (
+    EXECUTOR_HANDOFF_TOOL,
     CommunicateGate,
     DelegationGate,
     EndStateEquality,
@@ -60,8 +61,7 @@ from scripts.evals.core.types import Case, CaseRun, ProviderError
 from scripts.evals.suites.quality import (
     DEV_API_BASE,
     REACTION_KIND,
-    ChatStreamTransport,
-    TurnPayload,
+    ChatTransport,
     turns_for,
 )
 
@@ -75,7 +75,6 @@ ACTIVE_REMINDER_STATUSES = frozenset({"scheduled", "executing"})
 DELIVERED_KIND = "delivered"
 # Executor work (research, planning) outlives the comms default of 75s.
 DELIVERY_WAIT_S = float(os.environ.get("EVALS_OWNERSHIP_DELIVERY_WAIT_S", "240"))
-DELIVERY_POLL_S = 4.0
 _QUESTION = re.compile(r"[^?.!\n]*\?")
 
 Followup = dict[str, Any]
@@ -143,7 +142,7 @@ def executor_brief_gate(case: Case, run: CaseRun) -> float:
     terms = [str(t).lower() for t in brief.get("terms") or []]
     min_criteria = int(brief.get("min_criteria", 1))
     for call in run.tool_calls:
-        if call.get("name") != DELEGATION_TOOL:
+        if call.get("name") != EXECUTOR_HANDOFF_TOOL:
             continue
         args = call.get("args") or {}
         criteria = [str(c) for c in args.get("acceptance_criteria") or [] if str(c).strip()]
@@ -203,8 +202,12 @@ def followup_gate(case: Case, run: CaseRun) -> float:
     )
 
 
-class OwnershipTransport(ChatStreamTransport):
-    """Chat-stream turns, the delivered executor answer, and the durable follow-ups they left."""
+class OwnershipTransport(ChatTransport):
+    """Chat turns, the delivered executor answer, and the durable follow-ups they left."""
+
+    turn_options: ClassVar[TurnOptions] = TurnOptions(
+        timeout=TurnOptions.timeout + DELIVERY_WAIT_S, delivery_wait_seconds=DELIVERY_WAIT_S
+    )
 
     def __init__(self) -> None:
         super().__init__()
@@ -226,7 +229,7 @@ class OwnershipTransport(ChatStreamTransport):
         tool_calls: list[dict[str, Any]] = []
         final_turn_tool_calls: list[dict[str, Any]] = []
         raw: list[dict[str, Any]] = []
-        conversation_id: str | None = None
+        conversation_id = str(uuid.uuid4())
         error: str | None = None
         end_state: dict[str, Any] | None = None
         start = time.monotonic()
@@ -243,15 +246,8 @@ class OwnershipTransport(ChatStreamTransport):
                         | {f"{TRACKED_TODO_KIND}:{row['id']}" for row in await self._todos(client)}
                         | await self._workflow_ids(client)
                     )
-                    for index, turn_text in enumerate(turns):
-                        payload: TurnPayload = {
-                            "message": turn_text,
-                            "conversation_id": conversation_id,
-                            "messages": transcript + [{"role": "user", "content": turn_text}],
-                            "turn_id": f"own-{case.id[:44]}-{index}-{uuid.uuid4().hex[:8]}",
-                        }
-                        turn = await self._stream_turn(client, payload, provider, email)
-                        conversation_id = turn["conversation_id"] or conversation_id
+                    for turn_text in turns:
+                        turn = await self._stream_turn(client, conversation_id, turn_text)
                         transcript.append({"role": "user", "content": turn_text})
                         if turn["text"]:
                             transcript.append({"role": "assistant", "content": turn["text"]})
@@ -267,20 +263,12 @@ class OwnershipTransport(ChatStreamTransport):
                         final_turn_tool_calls = turn["tool_calls"]
                         raw.extend(turn["raw"])
                         error = error or turn["error"]
-                        delegated = any(c["name"] == DELEGATION_TOOL for c in turn["tool_calls"])
-                        if delegated and conversation_id:
-                            delivered = await self._await_result(
-                                client, conversation_id, turn_text, turn["text"]
+                        delivered = "\n".join(turn["delivered"])
+                        raw.append({"type": "delivered", "chars": len(delivered)})
+                        if delivered:
+                            transcript.append(
+                                {"role": "assistant", "content": delivered, "kind": DELIVERED_KIND}
                             )
-                            raw.append({"type": "delivered", "chars": len(delivered)})
-                            if delivered:
-                                transcript.append(
-                                    {
-                                        "role": "assistant",
-                                        "content": delivered,
-                                        "kind": DELIVERED_KIND,
-                                    }
-                                )
                     end_state = await self._end_state(client, case, seeded, before)
         except TimeoutError:
             error = f"case timed out after {deadline:.0f}s"
@@ -307,34 +295,6 @@ class OwnershipTransport(ChatStreamTransport):
             duration_s=time.monotonic() - start,
             error=error[:300] if error else None,
         )
-
-    async def _await_result(
-        self, client: httpx.AsyncClient, conversation_id: str, user_text: str, ack: str
-    ) -> str:
-        """Wait for the executor's result to land as a bot message after the streamed ack.
-
-        Not live_chat.await_delivery: it returns as soon as a tool card is saved,
-        which here is often before the result, and it assumes the ack is a saved
-        message, which a reaction-only ack is not.
-        """
-        deadline = time.monotonic() + DELIVERY_WAIT_S
-        last = ""
-        while time.monotonic() < deadline:
-            await asyncio.sleep(DELIVERY_POLL_S)
-            resp = await client.get(f"{API}/conversations/{conversation_id}")
-            resp.raise_for_status()
-            payload = resp.json()
-            messages = payload.get("conversation", payload).get("messages") or []
-            texts = [
-                text
-                for message in bot_messages_after(messages, user_text)
-                if (text := str(message.get("response") or "").strip()) and text != ack.strip()
-            ]
-            current = "\n".join(texts)
-            if current and current == last:
-                return current
-            last = current
-        return last
 
     async def _seed(
         self, client: httpx.AsyncClient, case: Case, provider: ProviderConfig

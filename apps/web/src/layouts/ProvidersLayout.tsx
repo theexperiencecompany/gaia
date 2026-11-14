@@ -6,10 +6,7 @@ import { type ReactNode, Suspense } from "react";
 import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
-import { useApprovalDecisionWebSocket } from "@/features/chat/hooks/useApprovalDecisionWebSocket";
-import { useBgMessageWebSocket } from "@/features/chat/hooks/useBgMessageWebSocket";
-import { useExecutorCancelWebSocket } from "@/features/chat/hooks/useExecutorCancelWebSocket";
-import { useExecutorStream } from "@/features/chat/hooks/useExecutorStream";
+import { useCalendarChangesWebSocket } from "@/features/calendar/hooks/useCalendarChangesWebSocket";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
@@ -30,8 +27,8 @@ const GlobalIntegrationModal = dynamic(
 );
 
 /**
- * The signed-in app's background requests: realtime sockets, notifications,
- * executor streams. All of them are paid-only, so they mount only once the
+ * The signed-in app's background requests: realtime sockets and notifications.
+ * All of them are paid-only, so they mount only once the
  * plan is read and allows them; an unpaid account on /onboarding fires none.
  */
 function PaidSessionEffects() {
@@ -44,23 +41,11 @@ function PaidSessionEffects() {
   // Subscribe to notification events — writes the shared query cache
   useNotificationWebSocket();
 
-  // Subscribe to background executor completion messages — inserts new
-  // bot messages delivered via WebSocket (executor notifications, queued task results)
-  useBgMessageWebSocket();
-
-  // Subscribe to queued executor SSE streams for live tool progress
-  useExecutorStream();
-
-  // Subscribe to agent-initiated executor cancellations — clears the stuck
-  // executor-pending loading indicator and finalizes in-flight tool cards
-  useExecutorCancelWebSocket();
-
-  // Subscribe to ledger approval decisions — settles open cards (and raises
-  // revoke tombstones) decided anywhere but this tab, with no reload
-  useApprovalDecisionWebSocket();
-
   // Subscribe to workflow generation events — updates todo store globally
   useTodoWorkflowGlobalListener();
+
+  // Calendar edits made anywhere (this page, another tab, GAIA's agent) re-read the cached events
+  useCalendarChangesWebSocket();
 
   return null;
 }

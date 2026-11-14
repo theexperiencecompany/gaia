@@ -8,23 +8,15 @@ from app.models.chat_models import (
     ConversationModel,
     ConversationSource,
     ConversationSyncItem,
-    ImageData,
-    MessageModel,
     SourceCategory,
     SystemPurpose,
-    UpdateMessagesRequest,
 )
 from app.models.memory_models import (
     CreateMemoryRequest,
     MemoryEntry,
     MemorySearchResult,
 )
-from app.models.message_models import (
-    FileData,
-    MessageRequestWithHistory,
-    ReplyToMessageData,
-    SelectedWorkflowData,
-)
+from app.models.message_models import FileData, SelectedWorkflowData
 from app.models.user_models import (
     NEEDS_MAX_SELECTION,
     PROFESSION_MAX_LENGTH,
@@ -35,6 +27,7 @@ from app.models.user_models import (
     UserUpdateResponse,
     role_of_need,
 )
+from shared.py.conversation_wire import ReplyToMessageData
 
 
 class TestConversationModel:
@@ -81,39 +74,6 @@ class TestConversationModel:
         for source in ConversationSource:
             m = ConversationModel(conversation_id="conv_src", source=source)
             assert m.source == source
-
-
-class TestMessageModel:
-    def test_valid_minimal(self):
-        m = MessageModel(type="user", response="Hello")
-        assert m.type == "user"
-        assert m.response == "Hello"
-        assert m.image_data is None
-        assert m.tool_data is None
-
-    def test_with_image_data(self):
-        m = MessageModel(
-            type="assistant",
-            response="Here is your image",
-            image_data=ImageData(url="https://img.com/1.png", prompt="a cat"),
-        )
-        assert m.image_data.url == "https://img.com/1.png"
-
-    def test_with_tool_data(self):
-        m = MessageModel(
-            type="assistant",
-            response="Done",
-            tool_data=[{"tool_name": "search", "data": {"query": "test"}, "timestamp": None}],
-        )
-        assert len(m.tool_data) == 1
-        assert m.tool_data[0]["tool_name"] == "search"
-
-    def test_missing_required_fields(self):
-        with pytest.raises(ValidationError):
-            MessageModel(type="user")
-
-        with pytest.raises(ValidationError):
-            MessageModel(response="Hello")
 
 
 class TestFileData:
@@ -164,33 +124,6 @@ class TestReplyToMessageData:
             ReplyToMessageData(id="msg_1")
 
 
-class TestMessageRequestWithHistory:
-    def test_valid(self):
-        m = MessageRequestWithHistory(
-            message="Hello",
-            messages=[{"role": "user", "content": "Hi"}],
-        )
-        assert m.message == "Hello"
-        assert len(m.messages) == 1
-        assert m.fileIds == []
-
-    def test_missing_messages(self):
-        with pytest.raises(ValidationError):
-            MessageRequestWithHistory(message="Hello")
-
-
-class TestUpdateMessagesRequest:
-    def test_valid(self):
-        r = UpdateMessagesRequest(
-            conversation_id="conv_1",
-            messages=[
-                MessageModel(type="user", response="Hey"),
-            ],
-        )
-        assert r.conversation_id == "conv_1"
-        assert len(r.messages) == 1
-
-
 class TestBatchSyncRequest:
     def test_valid(self):
         r = BatchSyncRequest(
@@ -217,27 +150,40 @@ class TestOnboardingRequest:
         """Q2 is "pick up to three": a fourth need is a client that skipped the cap."""
         with pytest.raises(ValidationError):
             OnboardingRequest(
-                profession="Founder", needs=["inbox", "calendar", "mornings", "reminders"]
+                profession="Founder",
+                needs=[
+                    OnboardingNeed.INBOX,
+                    OnboardingNeed.CALENDAR,
+                    OnboardingNeed.MORNINGS,
+                    OnboardingNeed.REMINDERS,
+                ],
             )
         # The stored shape is read back for users who picked up to seven under
         # the old Q2; it keeps their first picks rather than refusing to load.
         assert [
             n.value
             for n in OnboardingPreferences(
-                needs=["inbox", "calendar", "mornings", "reminders"]
+                needs=[
+                    OnboardingNeed.INBOX,
+                    OnboardingNeed.CALENDAR,
+                    OnboardingNeed.MORNINGS,
+                    OnboardingNeed.REMINDERS,
+                ]
             ).needs
         ] == ["inbox", "calendar", "mornings"]
 
     def test_a_role_need_is_accepted_for_its_role(self) -> None:
-        r = OnboardingRequest(profession="student", needs=["student_exams", "inbox"])
+        r = OnboardingRequest(
+            profession="student", needs=[OnboardingNeed.STUDENT_EXAMS, OnboardingNeed.INBOX]
+        )
         assert [n.value for n in r.needs] == ["student_exams", "inbox"]
 
     def test_a_role_need_is_rejected_for_another_role(self) -> None:
         """The student pair is only ever shown to students; a founder sending it is a replayed or hand-built request."""
         with pytest.raises(ValidationError, match="only offered to student"):
-            OnboardingRequest(profession="founder", needs=["student_exams"])
+            OnboardingRequest(profession="founder", needs=[OnboardingNeed.STUDENT_EXAMS])
         with pytest.raises(ValidationError, match="only offered to student"):
-            OnboardingRequest(profession="Plumber", needs=["student_exams"])
+            OnboardingRequest(profession="Plumber", needs=[OnboardingNeed.STUDENT_EXAMS])
 
     def test_every_role_pair_belongs_to_exactly_one_role(self) -> None:
         seen: list[OnboardingNeed] = []
@@ -253,7 +199,8 @@ class TestOnboardingRequest:
     def test_the_pick_cap_is_three(self) -> None:
         assert NEEDS_MAX_SELECTION == 3
         assert OnboardingRequest(
-            profession="Founder", needs=["inbox", "calendar", "mornings"]
+            profession="Founder",
+            needs=[OnboardingNeed.INBOX, OnboardingNeed.CALENDAR, OnboardingNeed.MORNINGS],
         ).needs
 
     def test_multiline_profession_rejected(self):
@@ -295,7 +242,7 @@ class TestOnboardingRequest:
     def test_profession_rejections_say_why(self, profession: str, message: str):
         """The message is what the wizard surfaces; a vague one is a support ticket."""
         with pytest.raises(ValidationError, match=message):
-            OnboardingRequest(profession=profession, needs=["inbox"])
+            OnboardingRequest(profession=profession, needs=[OnboardingNeed.INBOX])
         with pytest.raises(ValidationError, match=message):
             OnboardingPreferences(profession=profession)
 

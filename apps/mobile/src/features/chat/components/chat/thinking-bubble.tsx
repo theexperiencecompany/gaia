@@ -1,7 +1,4 @@
-import {
-  getRandomThinkingMessage,
-  getRelevantThinkingMessage,
-} from "@gaia/shared/utils";
+import { getRandomThinkingMessage } from "@gaia/shared/utils";
 import { PressableFeedback } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
@@ -19,32 +16,21 @@ import { Pulsing } from "../streaming/pulsing";
 interface ThinkingBubbleProps {
   thinkingContent: string;
   isStreaming?: boolean;
-  userMessage?: string;
   durationSeconds?: number;
 }
 
-function ThinkingIndicator({ userMessage }: { userMessage?: string }) {
+function ThinkingIndicator() {
   const { spacing, fontSize, moderateScale } = useResponsive();
-  const [message, setMessage] = useState(() =>
-    userMessage
-      ? getRelevantThinkingMessage(userMessage)
-      : getRandomThinkingMessage(),
-  );
+  const [message, setMessage] = useState(getRandomThinkingMessage);
 
   useEffect(() => {
     const interval = setInterval(
-      () => {
-        setMessage(
-          userMessage
-            ? getRelevantThinkingMessage(userMessage)
-            : getRandomThinkingMessage(),
-        );
-      },
+      () => setMessage(getRandomThinkingMessage()),
       // cosmetic jitter on the thinking-message rotation; nothing security-relevant
       2000 + Math.random() * 1000, // NOSONAR typescript:S2245
     );
     return () => clearInterval(interval);
-  }, [userMessage]);
+  }, []);
 
   return (
     <View
@@ -77,7 +63,6 @@ function ThinkingIndicator({ userMessage }: { userMessage?: string }) {
 export function ThinkingBubble({
   thinkingContent,
   isStreaming = false,
-  userMessage,
   durationSeconds,
 }: ThinkingBubbleProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -104,7 +89,7 @@ export function ThinkingBubble({
   if (isStreaming && !thinkingContent) {
     return (
       <View style={{ marginBottom: spacing.sm }}>
-        <ThinkingIndicator userMessage={userMessage} />
+        <ThinkingIndicator />
       </View>
     );
   }

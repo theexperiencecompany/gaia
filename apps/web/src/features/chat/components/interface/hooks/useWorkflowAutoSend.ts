@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { sendMessage } from "@/features/chat/stream/sendMessage";
+import { sendMessage } from "@/features/chat/live/sendMessage";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { useComposerStore } from "@/stores/composerStore";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
+
+const WORKFLOW_RUN_TEXT = "Run this workflow";
 
 /**
  * Runs a workflow the user picked outside the composer (sidebar, workflow
@@ -45,10 +47,8 @@ export const useWorkflowAutoSend = (): void => {
         return;
       }
 
-      sendMessage("Run this workflow", {
-        selectedWorkflow: workflow,
-        selectedTool: null,
-        selectedToolCategory: null,
+      sendMessage(WORKFLOW_RUN_TEXT, {
+        selected_workflow: workflow,
         conversationId: null,
       }).catch((error) => {
         console.error("Workflow auto-send failed", error);

@@ -13,13 +13,14 @@ the job that answers to the requester's own chat, where a bot run started in
 a group sends its updates and handoffs.
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from arq.constants import abort_jobs_ss
 from arq.jobs import Job, JobStatus
 from arq.utils import timestamp_ms
 
-from app.constants.browser import BrowserStopOutcome, JobEnding
+from app.constants.browser import BROWSER_JOB_STREAM_ID_PREFIX, BrowserStopOutcome, JobEnding
 from app.constants.chat import ConversationSource, SourceCategory
 from app.schemas.browser_job import BrowserJobState, BrowserJobStopped
 from app.services.browser.handoff import bot_chat_address, cancel_handoff
@@ -71,6 +72,21 @@ async def running_chat_jobs(
         ):
             running.append(state)
     return running
+
+
+def browser_job_task_id(job_id: str) -> str:
+    """Name a background job's logged work (and the stream its relay owns) after the job."""
+    return f"{BROWSER_JOB_STREAM_ID_PREFIX}{job_id}"
+
+
+async def stop_named_jobs(task_ids: Collection[str]) -> dict[str, BrowserStopOutcome]:
+    """Stop the background jobs these logged task ids name; return what each stop came to, by job id."""
+    job_ids = [
+        task_id.removeprefix(BROWSER_JOB_STREAM_ID_PREFIX)
+        for task_id in task_ids
+        if task_id.startswith(BROWSER_JOB_STREAM_ID_PREFIX)
+    ]
+    return {job_id: await stop_job(job_id) for job_id in job_ids}
 
 
 async def stop_chat_jobs(

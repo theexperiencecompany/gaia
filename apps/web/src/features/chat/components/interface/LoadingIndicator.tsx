@@ -9,7 +9,6 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 interface LoadingIndicatorProps {
   loadingText: string;
-  loadingTextKey: number;
   toolInfo?: {
     toolName?: string;
     toolCategory?: string;
@@ -39,7 +38,6 @@ function formatCategoryName(category: string): string {
 
 export function LoadingIndicator({
   loadingText,
-  loadingTextKey,
   toolInfo,
   noPadding = false,
   spinner,
@@ -51,6 +49,7 @@ export function LoadingIndicator({
 
   return (
     <m.div
+      data-testid="chat-loading-row"
       className={`flex items-center gap-4 text-sm font-medium pt-2 ${noPadding ? "" : "mt-3 pl-11.5"}`}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
@@ -82,7 +81,7 @@ export function LoadingIndicator({
         spinner || <WaveSpinnerSquare />}
       <AnimatePresence mode="wait">
         <m.span
-          key={loadingTextKey}
+          key={loadingText}
           variants={slideUp}
           initial="initial"
           animate="animate"

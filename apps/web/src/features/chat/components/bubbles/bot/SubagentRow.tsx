@@ -1,24 +1,22 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
-import { ToolsIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
 import { BrainIcon, ChevronDown } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { deriveStepKeys } from "./TextBubble/useSubagentSynthesis";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import {
-  type ApprovalOutcome,
+  type ApprovalReceipt,
   ToolCallRow,
   WaitingForApprovalPill,
 } from "./ToolCallRow";
 import { expandTransition } from "./toolCallDisplay";
 import type { EnrichedSubagentGroup } from "./UnifiedToolThread";
 
-export type { ApprovalOutcome };
+export type { ApprovalReceipt };
 
 // A step where the model reasoned (ToolCallEntry carrying `reasoning`).
 // Mirrors ToolCallRow's layout so thinking sits naturally between tool steps.
@@ -80,7 +78,7 @@ interface StepCallbacks {
   /** tool_call_ids blocked on a pending HIL approval. */
   pendingApprovalToolCallIds: Set<string>;
   /** Settled HIL outcomes (status + receipt/feedback) keyed by tool_call_id. */
-  approvalOutcomeByToolCallId?: Map<string, ApprovalOutcome>;
+  approvalOutcomeByToolCallId?: Map<string, ApprovalReceipt>;
 }
 
 // One timeline step: a thinking block when the entry carries `reasoning`, else a
@@ -118,13 +116,14 @@ function deriveSubagentSteps(
   pendingApprovalToolCallIds: Set<string>,
 ) {
   // spawn_subagent is excluded here; it renders as nested SubagentRows.
-  const visibleSteps = group.tool_calls.filter(
-    (tc) => tc.tool_name !== "spawn_subagent",
+  const visible = group.tool_calls.flatMap((tc, at) =>
+    tc.tool_name === "spawn_subagent" ? [] : [{ tc, key: group.step_keys[at] }],
   );
+  const visibleSteps = visible.map(({ tc }) => tc);
   return {
     visibleSteps,
-    // Keys come from stream-stable structure, never payload, so a growing reasoning delta keeps its `expanded` state.
-    stepKeys: deriveStepKeys(group.subagent_id, visibleSteps),
+    // The server keys steps by stream-stable structure, so a growing reasoning delta keeps its `expanded` state.
+    stepKeys: visible.map(({ key }) => key),
     awaitingApproval: visibleSteps.some(
       (tc) =>
         !!tc.tool_call_id && pendingApprovalToolCallIds.has(tc.tool_call_id),
@@ -136,15 +135,12 @@ function deriveSubagentSteps(
 
 function SubagentIcon({ group }: Readonly<{ group: EnrichedSubagentGroup }>) {
   return (
-    getToolCategoryIcon(
-      group.tool_category ?? "subagent",
-      { width: 21, height: 21 },
-      group.icon_url ?? undefined,
-    ) || (
-      <div className="p-1 bg-zinc-800 rounded-lg">
-        <ToolsIcon width={21} height={21} />
-      </div>
-    )
+    <IntegrationIcon
+      integrationId={group.tool_category ?? "subagent"}
+      iconUrl={group.icon_url}
+      size={21}
+      showBackground
+    />
   );
 }
 

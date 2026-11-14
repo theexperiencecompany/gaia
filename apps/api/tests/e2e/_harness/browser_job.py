@@ -41,13 +41,14 @@ from app.constants.browser import (
 )
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
-from app.models.chat_models import MessageModel
 from app.models.hil_models import HILPreferences
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
 from app.services.browser.tools import EngineSwitchFn, TakeoverFn
+from app.services.conversation.work_log import WorkReport
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
+from shared.py.conversation_wire import ToolDataEntry
 
 #: What the fake CDN hands back for a step screenshot, per step index.
 SHOT_URL_TEMPLATE = "https://cdn.test/shot-{index}.png"
@@ -344,7 +345,7 @@ class JobWorld:
         self.stream_id = stream_id
         self.enqueued: list[BrowserJobRequest] = []
         self.chunks: list[str] = []
-        #: What reached the job's own stream, folded into the turn's message.
+        #: What reached the job's own stream.
         self.job_chunks: list[str] = []
         #: What reached any other turn's stream, by stream id.
         self.other_streams: dict[str, list[str]] = {}
@@ -352,8 +353,8 @@ class JobWorld:
         self.bot_photos: list[str] = []
         #: Each executor run woken to tell an ending landed in its inbox, by conversation.
         self.woken: list[str] = []
-        #: What the job's stream saved into the turn's message: (message id, entries).
-        self.saved: list[tuple[str, list[dict[str, Any]]]] = []
+        #: What the job's logged work finished with: (task id, cards).
+        self.saved: list[tuple[str, list[ToolDataEntry]]] = []
         #: The conversation's executor inbox once the job settled: how its ending was told.
         self.told: list[InboxEntry] = []
         self.jobs: list[asyncio.Task[Any]] = []
@@ -642,15 +643,10 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
     async def _wake(conversation_id: str, user: object) -> None:
         world.woken.append(conversation_id)
 
-    async def _save(conversation_id: str, **kwargs: Any) -> bool:
-        world.saved.append((kwargs["message_id"], list(kwargs["entries"])))
-        return True
-
-    conversations = MagicMock()
-    conversations.get_message = AsyncMock(
-        return_value=MessageModel(type="bot", response="", tool_data=[])
-    )
-    conversations.append_message_tool_data = _save
+    async def _finished(
+        conversation_id: str, user_id: str, task_id: str, outcome: Any, report: WorkReport
+    ) -> None:
+        world.saved.append((task_id, list(report.tool_data)))
 
     return [
         patch(
@@ -665,7 +661,11 @@ def _delivery_patches(world: JobWorld, stream_id: str) -> list[AbstractContextMa
         ),
         # A woken executor run is a graph run of its own; that it was woken is the telling.
         patch("app.workers.tasks.browser_tasks.wake_executor_for_inbox", _wake),
-        patch("app.services.folded_cards.conversation_repository", conversations),
+        patch(
+            "app.agents.core.background.folded_stream.record_work_carried",
+            AsyncMock(return_value=True),
+        ),
+        patch("app.agents.core.background.folded_stream.record_work_finished", _finished),
     ]
 
 

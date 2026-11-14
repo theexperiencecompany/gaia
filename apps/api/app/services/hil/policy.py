@@ -6,29 +6,22 @@ This module answers two questions and nothing else, so the gate can stay about a
    destructive classification. This set is identical in both gating modes.
 2. **What happens to the gated set?** resolve_policy — ask (confirm with the
    user) or auto (let the intent judge decide). always_allow gates nothing.
-
-Plus one guard that belongs with the policy because it *suppresses* auto-approval:
-has_pausing_sibling — see its docstring for the double-execution it prevents.
 """
 
 from collections.abc import Mapping
 from typing import Literal
 
 from langchain.agents.middleware.types import ToolCallRequest
-from langchain_core.messages import ToolCall
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, ConfigDict
 
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.execute.resolver import resolve_tool
-from app.agents.tools.execute.unwrap import unwrap_execute_call
-from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
 from app.services.hil.preferences import get_hil_preferences
 from app.services.hil.tool_key import hil_tool_key, mcp_tool_identity
-from app.services.hil.utils import current_tool_calls, raw_tool_call, tool_of, unpack_tool_call
+from app.services.hil.utils import raw_tool_call, tool_of, unpack_tool_call
 from shared.py.wide_events import log
 
 # What the gate does with one call: allow it, ask (pause for the user), or auto
@@ -173,62 +166,6 @@ async def is_gated(
         destructive_hint=mcp_destructive_hint(tool),
         mcp_tool=mcp_tool,
     )
-
-
-class _DelegationArgs(BaseModel):
-    """The one argument of spawn_subagent that decides whether it can pause its parent."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    background: bool = True
-
-
-def _pauses_parent(name: str, args: Mapping[str, object] | None) -> bool:
-    """Whether a delegation sibling can bubble its child's gate up: only when it runs blocking."""
-    return (
-        name in HIL_PAUSING_TOOLS and _DelegationArgs.model_validate(args or {}).background is False
-    )
-
-
-async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_id: str) -> bool:
-    """Return whether another call in this AI message can pause the run.
-
-    A sibling that interrupt()s makes LangGraph replay the whole step, so a
-    handler that ran before the pause runs twice. Auto mode never auto-approves
-    alongside a pausing sibling, and ungated calls memoize by tool_call_id. A
-    sibling pauses either gated (via _real_tool) or exempt (HIL_PAUSING_TOOLS).
-    """
-    # Execute-proxied siblings are unwrapped to their real (name, args) here for
-    # the same reason unpack_tool_call unwraps the pending call: the guard must
-    # detect the DESTRUCTIVE sibling, not the harmless proxy wrapping it.
-    sibling_calls: list[ToolCall] = current_tool_calls(request.state)
-    siblings = [
-        unwrap_execute_call(str(call["name"]), call.get("args") or {})
-        for call in sibling_calls
-        if call.get("name") and call.get("id") != tool_call_id
-    ]
-    if not siblings:
-        return False
-    if any(_pauses_parent(name, args) for name, args in siblings):
-        return True
-
-    # Forced-ask siblings pause even when HIL is off, since the stamp isn't
-    # preference-driven — checked before the always_allow fast path below.
-    for name, args in siblings:
-        if await asks_every_time(name, args or None):
-            return True
-
-    prefs = await get_hil_preferences(user_id)
-    if prefs.mode == "always_allow":
-        # HIL is off, so no preference-driven gate can pause; account mutations
-        # already asked in the forced-gate scan above regardless of this mode.
-        return False
-    for name, args in siblings:
-        if name in HIL_EXEMPT_TOOLS:
-            continue
-        if await is_gated(prefs, name, await _real_tool(user_id, name), args=args or None):
-            return True
-    return False
 
 
 async def _preferences(user_id: str) -> HILPreferences:

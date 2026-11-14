@@ -16,7 +16,7 @@ from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.scorers import EXECUTOR_HANDOFF_TOOL
 from scripts.evals.core.types import Case, CaseRun
 from scripts.evals.suites import quality
-from scripts.evals.suites.quality import QUALITY_GATES, ChatStreamTransport
+from scripts.evals.suites.quality import QUALITY_GATES, ChatTransport
 
 HANDOFF: dict[str, object] = {
     "name": EXECUTOR_HANDOFF_TOOL,
@@ -79,7 +79,7 @@ async def test_transport_records_only_the_last_turns_calls() -> None:
         price_out_per_1m=0.0,
     )
     config = EvalConfig(providers={}, rotation_order=[], default_max_usd=0.0, judge={})
-    transport = ChatStreamTransport()
+    transport = ChatTransport()
     with (
         patch.object(transport, "_mint_user", AsyncMock(return_value="u@gaia.local")),
         patch.object(transport, "_stream_turn", AsyncMock(side_effect=records)),

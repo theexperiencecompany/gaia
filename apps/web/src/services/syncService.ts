@@ -1,156 +1,36 @@
+import { ConversationPageSchema } from "@shared/conversation";
 import {
   type Conversation,
   type ConversationSyncItem,
   chatApi,
   type SyncedConversation,
-  toClientMessages,
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
+import { applyConversationPage } from "@/features/chat/live/connection";
 import {
-  apiRowHasLiveApproval,
+  apiRowAwaitsApproval,
   isApprovalFlagStale,
 } from "@/features/chat/utils/approvalFlag";
-import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
 import type { RequestOrigin } from "@/lib/api/typed";
-import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
-import { compareMessageOrder } from "@/lib/db/messageOrder";
+import { db, type IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
-import {
-  hasAnyLiveTurn,
-  isConversationStreamingNow,
-  shouldBlockSyncForConversation,
-} from "@/stores/streamStore";
-import type { MessageType } from "@/types/features/convoTypes";
 import { fromRegistryEntries } from "@/types/features/toolDataTypes";
-
-// Carries forward non-empty local tool_data when the remote copy lacks it: executor tool cards
-// are produced client-side during streaming and saved locally on abort, so the backend's
-// cancelled/partial copy may not have caught up yet — a bare "remote wins" would delete them.
-const withPreservedToolData = (remote: IMessage, local: IMessage): IMessage => {
-  const remoteHasToolData =
-    Array.isArray(remote.tool_data) && remote.tool_data.length > 0;
-  const localHasToolData =
-    Array.isArray(local.tool_data) && local.tool_data.length > 0;
-  if (!remoteHasToolData && localHasToolData) {
-    return { ...remote, tool_data: local.tool_data };
-  }
-  return remote;
-};
-
-const sameMessageKey = (msg: IMessage): string =>
-  `${msg.createdAt.getTime()}|${msg.role}|${msg.content}`;
-
-const mergeMessageLists = (
-  localMessages: IMessage[],
-  remoteMessages: IMessage[],
-): IMessage[] => {
-  const messageMap = new Map<string, IMessage>();
-  const remoteIds = new Set(remoteMessages.map((msg) => msg.id));
-  const remoteCopies = new Set(remoteMessages.map(sameMessageKey));
-
-  // Start with local messages. A cached copy stored before its message had a server id
-  // (keyed by position) is the same message the server now returns under its real id.
-  localMessages.forEach((msg) => {
-    const supersededLegacyCopy =
-      !msg.messageId &&
-      !msg.optimistic &&
-      !remoteIds.has(msg.id) &&
-      remoteCopies.has(sameMessageKey(msg));
-    if (!supersededLegacyCopy) messageMap.set(msg.id, msg);
-  });
-
-  // Merge with remote messages - prefer remote for existing messages
-  remoteMessages.forEach((msg) => {
-    const existing = messageMap.get(msg.id);
-    if (!existing) {
-      // New message from remote
-      messageMap.set(msg.id, msg);
-    } else if (existing.optimistic) {
-      // Always replace optimistic messages with remote versions
-      messageMap.set(msg.id, msg);
-    } else if (existing.status === "sending") {
-      // CRITICAL: Only preserve "sending" status if we are ACTUALLY streaming this conversation.
-      // If we are not streaming (e.g. page refresh, crash recovery), this "sending" status is stale
-      // and MUST be overwritten by the remote message (which has the true final state).
-      if (isConversationStreamingNow(existing.conversationId)) {
-        return;
-      }
-      // Not streaming? Clean up stale "sending" message by overwriting from remote,
-      // but keep locally-retained tool cards the backend copy may still be missing.
-      messageMap.set(msg.id, withPreservedToolData(msg, existing));
-    } else {
-      // The remote copy is authoritative; the only exception is 'sending', handled above.
-      messageMap.set(msg.id, withPreservedToolData(msg, existing));
-    }
-  });
-
-  // No orphan sweep: the client's send id IS the persisted message id, so the server copy
-  // replaces the optimistic record above naturally. Sends the server never received stay
-  // visible and are marked failed by the turn lifecycle — never silently deleted.
-
-  return Array.from(messageMap.values()).toSorted(compareMessageOrder);
-};
-
-const mapApiMessagesToStored = (
-  messages: MessageType[],
-  conversationId: string,
-): IMessage[] =>
-  messages.map((message, index) => {
-    const createdAt = message.date ? new Date(message.date) : new Date();
-    const role = mapMessageRole(message.type);
-    const messageId =
-      message.message_id || `${conversationId}-${index}-${createdAt.getTime()}`;
-
-    return {
-      id: messageId,
-      conversationId,
-      content: message.response,
-      role,
-      status: message.loading || message.in_progress ? "sending" : "sent",
-      createdAt,
-      updatedAt: createdAt,
-      messageId: message.message_id,
-      seq: message.seq ?? undefined,
-      fileIds: message.fileIds,
-      fileData: message.fileData,
-      toolName: message.selectedTool ?? null,
-      toolCategory: message.toolCategory ?? null,
-      workflowId: message.selectedWorkflow?.id ?? null,
-      follow_up_actions: message.follow_up_actions ?? null,
-      image_data: message.image_data ?? null,
-      isConvoSystemGenerated: message.isConvoSystemGenerated,
-      error: message.error ?? null,
-      memory_data: message.memory_data ?? null,
-      tool_data: message.tool_data ?? null,
-      todo_progress: message.todo_progress ?? null,
-      pinned: message.pinned ?? false,
-      selectedCalendarEvent: message.selectedCalendarEvent,
-      selectedWorkflow: message.selectedWorkflow,
-      todoRunWake: message.todo_run_wake ?? null,
-      replyToMessageId: message.replyToMessage?.id ?? null,
-      replyToMessageData: message.replyToMessage ?? null,
-      stopped: message.stopped ?? null,
-      reaction: message.reaction ?? null,
-    } satisfies IMessage;
-  });
-
-const mapMessageRole = (
-  role: MessageType["type"],
-): "user" | "assistant" | "system" => {
-  switch (role) {
-    case "user":
-      return "user";
-    case "bot":
-      return "assistant";
-    default:
-      return "system";
-  }
-};
 
 const toTimestamp = (timestamp?: string): number => {
   if (!timestamp) return 0;
   const parsed = new Date(timestamp);
   return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+};
+
+/** Activity in the conversation on screen is already seen: mark it read on the server instead of lighting the dot. */
+const unreadUnlessViewed = (conversation: SyncedConversation): boolean => {
+  if (!conversation.is_unread) return false;
+  const { conversation_id: conversationId } = conversation;
+  if (useChatStore.getState().activeConversationId !== conversationId) {
+    return true;
+  }
+  chatApi.markAsRead(conversationId).catch(console.error);
+  return false;
 };
 
 const toStoredConversation = (
@@ -163,10 +43,11 @@ const toStoredConversation = (
   starred: conversation.starred ?? false,
   isSystemGenerated: conversation.is_system_generated ?? false,
   systemPurpose: conversation.system_purpose ?? null,
-  isUnread: conversation.is_unread ?? false,
-  hasLiveApproval: apiRowHasLiveApproval(conversation),
+  isUnread: unreadUnlessViewed(conversation),
+  awaitingApproval: apiRowAwaitsApproval(conversation),
   todoId: conversation.todo_id ?? null,
   source: conversation.source ?? undefined,
+  listed: conversation.listed,
   artifacts,
   createdAt: new Date(conversation.createdAt ?? 0),
   updatedAt: conversation.updatedAt
@@ -185,7 +66,7 @@ const identifyStaleConversations = (
     ]),
   );
   const localFlagMap = new Map(
-    localConversations.map((conv) => [conv.id, conv.hasLiveApproval]),
+    localConversations.map((conv) => [conv.id, conv.awaitingApproval]),
   );
 
   const staleItems: ConversationSyncItem[] = [];
@@ -255,11 +136,8 @@ const identifyDeletedConversations = (
     // Skip if conversation exists on remote
     if (remoteIds.has(local.id)) continue;
 
-    // A todo chat or bot DM is never in the remote list, by design: absent there is not deleted.
-    if (isUnlistedConversation(local)) continue;
-
-    // Skip if conversation is currently being streamed
-    if (isConversationStreamingNow(local.id)) continue;
+    // An unlisted chat is never in the remote list, by design: absent there is not deleted.
+    if (local.listed === false) continue;
 
     // Safety: Skip recently created/updated conversations
     // They might not have synced to the server yet, or might be beyond the pagination limit
@@ -278,55 +156,9 @@ const identifyDeletedConversations = (
 
 // DEBUG: surface cases where a sync merge would blank out or shrink an existing
 // bot message's content — the symptom of a known overwrite bug.
-const warnOnMessageContentLoss = (
-  mergedMessages: IMessage[],
-  localMessages: IMessage[],
-  conversationId: string,
-): void => {
-  // Index local messages once for O(1) lookups inside the loop.
-  const localsById = new Map(
-    localMessages.map((m): [string, IMessage] => [m.id, m]),
-  );
-
-  for (const merged of mergedMessages) {
-    if (merged.role !== "assistant") continue;
-
-    const local = localsById.get(merged.id);
-    if (local?.content && !merged.content) {
-      console.warn(
-        `[SyncService] ⚠️ SYNC OVERWRITING bot message ${merged.id} — local has content (${local.content.length} chars), merged is EMPTY. This is the bug!`,
-        {
-          conversationId,
-          localStatus: local.status,
-          mergedStatus: merged.status,
-        },
-      );
-    }
-    if (
-      local?.content &&
-      merged.content &&
-      local.content.length > merged.content.length
-    ) {
-      console.warn(
-        `[SyncService] ⚠️ SYNC SHRINKING bot message ${merged.id} — local: ${local.content.length} chars, merged: ${merged.content.length} chars`,
-        { conversationId },
-      );
-    }
-  }
-};
-
 export const batchSyncConversations = async (
   origin: RequestOrigin = {},
 ): Promise<void> => {
-  // CRITICAL: Skip sync while any turn streams to prevent data corruption —
-  // per-conversation guards above handle the fine-grained cases, this is the
-  // conservative whole-batch gate.
-  if (hasAnyLiveTurn()) {
-    console.debug("[SyncService] Skipped — stream in progress");
-    return;
-  }
-  console.debug("[SyncService] Starting batch sync (stream not active)");
-
   try {
     const [remoteConversations, localConversations] = await Promise.all([
       chatApi
@@ -335,11 +167,11 @@ export const batchSyncConversations = async (
       db.getAllConversations(),
     ]);
 
-    // An unlisted chat (todo chat, bot DM) is never in the list, so only asking about it by id
+    // An unlisted chat is never in the list, so only asking about it by id
     // shows a new message or its deletion. last_updated keeps the reply to what changed.
     const unlistedChatItems = localConversations.flatMap(
       (conv): ConversationSyncItem[] =>
-        isUnlistedConversation(conv)
+        conv.listed === false
           ? [
               {
                 conversation_id: conv.id,
@@ -366,7 +198,7 @@ export const batchSyncConversations = async (
 
     if (deletedConversationIds.length > 0) {
       // Delete conversations that no longer exist on the server
-      await db.deleteConversationsAndMessagesBulk(deletedConversationIds);
+      await db.deleteConversationsAndLogsBulk(deletedConversationIds);
     }
 
     if (staleItems.length === 0) {
@@ -377,7 +209,7 @@ export const batchSyncConversations = async (
       await chatApi.batchSyncConversations(staleItems, origin);
 
     if (missing.length > 0) {
-      await db.deleteConversationsAndMessagesBulk(missing);
+      await db.deleteConversationsAndLogsBulk(missing);
     }
 
     if (freshConversations.length === 0) {
@@ -385,87 +217,31 @@ export const batchSyncConversations = async (
     }
 
     await Promise.allSettled(
-      freshConversations.map(async (conversation) => {
-        const conversationId = conversation.conversation_id;
-        const messages = toClientMessages(conversation.messages);
-        const artifacts = fromRegistryEntries(
-          conversation.artifacts,
-          conversationId,
-        );
-
-        // Skip syncing if streaming or pending save (e.g., after abort)
-        if (shouldBlockSyncForConversation(conversationId)) return;
-
-        const mappedConversation = toStoredConversation(
-          conversation,
-          artifacts,
-        );
-
-        // Refresh the runtime lookup map from the server-authoritative registry.
-        // Safe from clobbering a live turn: streaming conversations are filtered
-        // out by shouldBlockSync above.
-        useChatStore
-          .getState()
-          .setConversationArtifacts(conversationId, artifacts);
-
-        const remoteMessages = mapApiMessagesToStored(messages, conversationId);
-        const localMessages =
-          await db.getMessagesForConversation(conversationId);
-        const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
-
-        warnOnMessageContentLoss(mergedMessages, localMessages, conversationId);
-
-        await Promise.allSettled([
-          db.putConversation(mappedConversation),
-          messages.length > 0
-            ? db.syncMessages(conversationId, mergedMessages)
-            : Promise.resolve(),
-        ]);
-      }),
+      freshConversations.map((conversation) =>
+        applySyncedConversation(conversation.conversation_id, conversation),
+      ),
     );
   } catch {
     // Ignore background sync errors to avoid impacting the UI
   }
 };
 
-/**
- * Merge an already-fetched conversation payload into IndexedDB. No-op while
- * the conversation streams or a save is pending — a live turn's messages must
- * never be overwritten by the server's not-yet-persisted copy.
- */
+/** Store a synced row's conversation fields and fold its newest page of entries into the live view. */
 export const applySyncedConversation = async (
   conversationId: string,
   conversation: SyncedConversation,
 ): Promise<void> => {
-  if (shouldBlockSyncForConversation(conversationId)) {
-    return;
-  }
-
-  const messages = toClientMessages(conversation.messages);
   const artifacts = fromRegistryEntries(conversation.artifacts, conversationId);
-  const mappedConversation = toStoredConversation(conversation, artifacts);
-
   // Refresh the runtime lookup map from the server-authoritative registry. The
   // store stamps session_id onto each entry so artifact fetch URLs resolve.
   useChatStore.getState().setConversationArtifacts(conversationId, artifacts);
-
-  // Map messages
-  const remoteMessages = mapApiMessagesToStored(messages, conversationId);
-  const localMessages = await db.getMessagesForConversation(conversationId);
-
-  const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
-
-  // Persist to IndexedDB
-  await Promise.allSettled([
-    db.putConversation(mappedConversation),
-    messages.length > 0
-      ? db.syncMessages(conversationId, mergedMessages)
-      : Promise.resolve(),
+  await Promise.all([
+    db.putConversation(toStoredConversation(conversation, artifacts)),
+    applyConversationPage(
+      conversationId,
+      ConversationPageSchema.parse(conversation),
+    ),
   ]);
-
-  console.debug(
-    `[SyncService] Synced conversation ${conversationId} with ${messages.length} messages`,
-  );
 };
 
 /**
@@ -475,11 +251,6 @@ export const applySyncedConversation = async (
 export const syncSingleConversation = async (
   conversationId: string,
 ): Promise<void> => {
-  // Skip sync if streaming or pending save to prevent overwriting in-flight data
-  if (shouldBlockSyncForConversation(conversationId)) {
-    return;
-  }
-
   try {
     // Use batch sync with a single conversation item
     // Sending undefined for last_updated forces backend to return the full conversation

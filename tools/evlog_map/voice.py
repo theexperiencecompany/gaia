@@ -3,14 +3,14 @@
 Mirrors ``collect_worker_registry``: the wiring is parsed, never hardcoded.
 ``agent.py`` names the functions LiveKit invokes via the ``WorkerOptions``
 call handed to ``cli.run_app`` (``entrypoint_fnc`` / ``prewarm_fnc``), and
-``llm.py`` supplies the per-turn coroutine: LiveKit calls ``chat()`` on the
-``LLM`` subclass, which returns an ``LLMStream`` subclass whose ``_run`` LiveKit
-drives as the turn's task. That coroutine owns the ``wide_task`` boundary, so it
-is the entry point, and deleting the boundary fails the scan instead of hiding
-from it.
+``conversation.py`` supplies the per-turn hook: the session has no LLM, so
+LiveKit calls ``on_user_turn_completed`` on the ``Agent`` subclass when the user
+finishes speaking. That hook owns the ``wide_task`` boundary, so it is the entry
+point, and deleting the boundary fails the scan instead of hiding from it.
 
 The registry maps each module's resolved path to the qualified names
-(``entrypoint``, ``_VoiceStream._run``) that are voice entry points there.
+(``entrypoint``, ``VoiceTurnAgent.on_user_turn_completed``) that are voice entry
+points there.
 """
 
 from __future__ import annotations
@@ -20,10 +20,8 @@ from pathlib import Path
 
 _WORKER_OPTIONS = "WorkerOptions"
 _WORKER_OPTION_ENTRY_KWARGS = ("entrypoint_fnc", "prewarm_fnc")
-_LLM_BASE = "LLM"
-_LLM_TURN_METHOD = "chat"
-_STREAM_BASE = "LLMStream"
-_STREAM_TURN_METHOD = "_run"
+_AGENT_BASE = "Agent"
+_TURN_HOOK = "on_user_turn_completed"
 
 
 def _call_name(node: ast.expr) -> str | None:
@@ -59,43 +57,36 @@ def _methods(cls: ast.ClassDef) -> dict[str, ast.FunctionDef | ast.AsyncFunction
     }
 
 
-def _turn_entries(llm_module: Path) -> frozenset[str]:
-    """Qualified name(s) of the per-turn coroutine in the LLM adapter module.
+def _turn_entries(turn_module: Path) -> frozenset[str]:
+    """Qualified name of the per-turn hook in the turn module.
 
-    LiveKit invokes ``chat()`` on the ``LLM`` subclass and drives ``_run`` on the
-    ``LLMStream`` subclass it returns; that ``_run`` carries the per-turn wide-event
-    boundary, so it is the scored entry point. When ``chat`` builds no same-file
-    stream, ``chat`` itself is the entry point.
+    The session has no LLM: LiveKit calls ``on_user_turn_completed`` on the ``Agent``
+    subclass when the user finishes speaking, and that hook carries the per-turn
+    wide-event boundary, so it is the scored entry point.
     """
-    tree = ast.parse(llm_module.read_text(encoding="utf-8"))
-    classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
-    llm_class = next((cls for cls in classes.values() if _subclasses(cls, _LLM_BASE)), None)
-    if llm_class is None:
-        raise ValueError(f"no {_LLM_BASE} subclass found in {llm_module} — adapter moved?")
-    chat = _methods(llm_class).get(_LLM_TURN_METHOD)
-    if chat is None:
-        raise ValueError(f"{llm_class.name} in {llm_module} has no {_LLM_TURN_METHOD}() method")
-
-    streams = {
-        name
-        for node in ast.walk(chat)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and (name := node.func.id) in classes
-        and _subclasses(classes[name], _STREAM_BASE)
-        and _STREAM_TURN_METHOD in _methods(classes[name])
-    }
-    entries = {f"{name}.{_STREAM_TURN_METHOD}" for name in streams}
-    return frozenset(entries) if entries else frozenset({f"{llm_class.name}.{_LLM_TURN_METHOD}"})
+    tree = ast.parse(turn_module.read_text(encoding="utf-8"))
+    agent = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and _subclasses(node, _AGENT_BASE)
+        ),
+        None,
+    )
+    if agent is None:
+        raise ValueError(f"no {_AGENT_BASE} subclass found in {turn_module} — turn hook moved?")
+    if _TURN_HOOK not in _methods(agent):
+        raise ValueError(f"{agent.name} in {turn_module} has no {_TURN_HOOK}() — turn hook moved?")
+    return frozenset({f"{agent.name}.{_TURN_HOOK}"})
 
 
 def _subclasses(cls: ast.ClassDef, base: str) -> bool:
     return any(isinstance(b, ast.Name) and b.id == base for b in cls.bases)
 
 
-def collect_voice_registry(agent_module: Path, llm_module: Path) -> dict[str, frozenset[str]]:
+def collect_voice_registry(agent_module: Path, turn_module: Path) -> dict[str, frozenset[str]]:
     """Voice entry points per module: resolved path → qualified function names."""
     return {
         agent_module.resolve().as_posix(): _worker_option_entries(agent_module),
-        llm_module.resolve().as_posix(): _turn_entries(llm_module),
+        turn_module.resolve().as_posix(): _turn_entries(turn_module),
     }

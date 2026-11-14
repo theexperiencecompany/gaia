@@ -1,7 +1,7 @@
 """A reaction the comms agent sends in place of a written acknowledgment reaches the transcript.
 
-Comms acknowledges handed-off work with a tap-back (a reaction frame) instead of a
-sentence. The transport used to drop that frame, so the judge saw no reply at all
+Comms acknowledges handed-off work with a tap-back (a reaction on the message) instead
+of a sentence. The transport used to drop it, so the judge saw no reply at all
 and graded "the reply is one short line" against silence.
 """
 
@@ -10,26 +10,20 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 from scripts.evals.core.cost import EvalCostTracker
+from scripts.evals.core.live_chat import NO_TEXT_REPLY, Turn
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.types import Case, CaseRun
 from scripts.evals.suites import quality
-from scripts.evals.suites.quality import ChatStreamTransport
+from scripts.evals.suites.quality import ChatTransport
 
 REACTION = "\U0001f6d2"
-REACTION_FRAME = {"reaction": {"message_id": "m1", "emoji": REACTION, "by": "chat_model"}}
 
 
-def test_a_reaction_frame_becomes_the_turns_reaction() -> None:
-    record = quality._parse_frames([REACTION_FRAME])
+def test_a_reaction_only_turn_records_the_reaction_and_no_text() -> None:
+    record = quality.turn_record(Turn(message="add milk", reaction=REACTION, reply=NO_TEXT_REPLY))
 
     assert record["reaction"] == REACTION
     assert record["text"] == ""
-
-
-def test_the_chat_models_reaction_replaces_the_instant_one_in_the_transcript() -> None:
-    instant = {"reaction": {"message_id": "m1", "emoji": "\U0001f44c", "by": "jev"}}
-
-    assert quality._parse_frames([instant, REACTION_FRAME])["reaction"] == REACTION
 
 
 async def test_transport_writes_the_reaction_into_the_transcript() -> None:
@@ -52,7 +46,7 @@ async def test_transport_writes_the_reaction_into_the_transcript() -> None:
         "follow_up_actions": None,
         "reaction": REACTION,
     }
-    transport = ChatStreamTransport()
+    transport = ChatTransport()
     with (
         patch.object(transport, "_mint_user", AsyncMock(return_value="u@gaia.local")),
         patch.object(transport, "_stream_turn", AsyncMock(return_value=turn)),

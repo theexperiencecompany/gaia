@@ -101,6 +101,7 @@ async def _run(args: argparse.Namespace) -> int:
             playbook,
             user=playbook_user,
             conversation_id=f"dry_run_{workflow.id}",
+            stream_id=f"dry_run_{workflow.id}",
             trigger=trigger,
             dry_run=DryRun(),
         )

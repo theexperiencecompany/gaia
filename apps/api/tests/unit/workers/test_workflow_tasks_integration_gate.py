@@ -9,6 +9,7 @@ limit wall speak once per window, is what turns a message per occurrence into
 one message.
 """
 
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -59,9 +60,7 @@ async def _run_task(
         patch(
             f"{PAUSE_MODULE}.WorkflowService.deactivate_workflow", new_callable=AsyncMock
         ) as deactivate,
-        patch(
-            f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
-        ) as notify,
+        patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify,
         patch(f"{MODULE}.enforce_cost_budget", new_callable=AsyncMock) as budget,
         patch(f"{MODULE}.create_execution", new_callable=AsyncMock) as create,
         patch(
@@ -82,6 +81,7 @@ async def _run_task(
 
 
 GMAIL = [IntegrationRef(id="gmail", name="Gmail")]
+FIRED_AT = datetime(2026, 11, 14, 9, 0, tzinfo=UTC)
 GMAIL_AND_NOTION = [*GMAIL, IntegrationRef(id="notion", name="Notion")]
 
 
@@ -153,12 +153,10 @@ class TestTheLimitNoticeSpeaksOncePerWindow:
                 new_callable=AsyncMock,
                 return_value=not already_sent,
             ),
-            patch(
-                f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
-            ) as notify,
+            patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify,
         ):
             error = RateLimitExceededException(feature="trigger_workflow_executions")
-            await _notify_workflow_failed(error, _workflow())
+            await _notify_workflow_failed(error, _workflow(), "exec_1")
         return notify
 
     async def test_the_first_wall_of_the_day_is_reported(self) -> None:
@@ -181,10 +179,8 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
 
     @staticmethod
     async def _sent(missing: list[IntegrationRef]) -> Any:
-        with patch(
-            f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
-        ) as notify:
-            await _notify_workflow_paused_for_integrations(_workflow(), missing)
+        with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
+            await _notify_workflow_paused_for_integrations(_workflow(), missing, FIRED_AT)
         return notify.await_args.args[0]
 
     async def test_it_names_the_workflow_and_every_integration_it_waits_on(self) -> None:
@@ -222,13 +218,13 @@ class TestTheNoticeTellsTheUserWhatToReconnect:
         """A notice that can't be delivered must not become a worker error, or the whole fire retries for nothing."""
         with (
             patch(
-                f"{MODULE}.notification_service.create_notification",
+                f"{MODULE}.notification_service.notify",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("mongo down"),
             ),
             patch(f"{MODULE}.log") as mock_log,
         ):
-            await _notify_workflow_paused_for_integrations(_workflow(), GMAIL)
+            await _notify_workflow_paused_for_integrations(_workflow(), GMAIL, FIRED_AT)
 
         mock_log.warning.assert_called_once()
         assert mock_log.warning.call_args.args == (
@@ -250,11 +246,12 @@ class TestTheLimitNoticeIsClaimedPerWorkflow:
                 new_callable=AsyncMock,
                 return_value=True,
             ) as claim,
-            patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
+            patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock),
         ):
             await _notify_workflow_failed(
                 RateLimitExceededException(feature="trigger_workflow_executions"),
                 _workflow(user_id="6812f0b3c9a14e2b7d5a91c9"),
+                "exec_1",
             )
 
         claim.assert_awaited_once_with("6812f0b3c9a14e2b7d5a91c9", "wf-1")

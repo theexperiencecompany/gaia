@@ -39,11 +39,9 @@ export interface paths {
         put?: never;
         /**
          * Post Approval Decision
-         * @description Apply a button decision and resume the paused run.
+         * @description Commit a button decision in the conversation log and wake the work it answers.
          *
-         *     ``resolve_approval`` raises :class:`ApprovalRequestNotFoundError` (410) or
-         *     :class:`ApprovalRequestForbiddenError` (403) — both ``AppError`` subclasses — so
-         *     late/duplicate or cross-user deliveries can't double-resolve a request.
+         *     An approval already decided commits nothing and says how it ended, so the client shows that instead of the tap.
          */
         post: operations["approvals_post_approval_decision"];
         delete?: never;
@@ -65,9 +63,7 @@ export interface paths {
          * Post Batch Decision
          * @description Decide several pending approvals in one submission (the batch review).
          *
-         *     Per-item outcomes: one already-decided or expired approval never fails the
-         *     rest. Only the first resolvable decision dispatches the paused executor; the
-         *     join round it wakes collects the remaining decisions durably.
+         *     Each item commits exactly once in the log; one already decided or expired never fails the rest.
          */
         post: operations["approvals_post_batch_decision"];
         delete?: never;
@@ -319,20 +315,20 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/bot/chat-stream": {
+    "/api/v1/bot/conversations/active": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
         /**
-         * Streaming Bot Chat
-         * @description Stream a chat response as Server-Sent Events.
+         * List Active Bot Conversations
+         * @description The platform's conversations still answering or working, with the seq to follow after.
          */
-        post: operations["bot_bot_chat_stream"];
+        get: operations["bot_list_active_conversations"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -419,6 +415,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bot/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a Bot Message
+         * @description Accept a message into the session's conversation; follow its events stream for the reply.
+         */
+        post: operations["bot_bot_send_message"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bot/redeem-link-code": {
         parameters: {
             query?: never;
@@ -473,6 +489,26 @@ export interface paths {
         get: operations["bot_get_settings"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bot/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Bot Conversation
+         * @description Stop everything the session's conversation is running, keeping the session.
+         */
+        post: operations["bot_stop_session"];
         delete?: never;
         options?: never;
         head?: never;
@@ -917,46 +953,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cancel-stream/{stream_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel Stream Endpoint
-         * @description Cancel a running stream owned by the requesting user.
-         */
-        post: operations["chat_cancel_stream_endpoint"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/chat-stream": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Chat Stream Endpoint
-         * @description Stream a chat turn. Continues in the background if the client disconnects.
-         */
-        post: operations["chat_chat_stream_endpoint"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/conversations": {
         parameters: {
             query?: never;
@@ -994,11 +990,7 @@ export interface paths {
         };
         /**
          * Get Conversation Endpoint
-         * @description Retrieve a specific conversation by its ID.
-         *
-         *     The stored document itself: ``ConversationDocument`` is ``extra="allow"``,
-         *     so stray/legacy top-level fields the row carries still reach the client
-         *     verbatim, while the declared fields give the schema its shape.
+         * @description Retrieve a conversation's head fields with the newest page of its screen.
          */
         get: operations["conversations_get_conversation_endpoint"];
         put?: never;
@@ -1008,6 +1000,26 @@ export interface paths {
          * @description Delete a specific conversation by its ID.
          */
         delete: operations["conversations_delete_conversation_endpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversation_id}/barge-in": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Barge In Endpoint
+         * @description Record that the user spoke over a voice reply and how much of it they heard.
+         */
+        post: operations["conversations_barge_in_endpoint"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1033,6 +1045,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conversations/{conversation_id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Entries Before Endpoint
+         * @description Page a conversation's log back from before_seq, never starting inside an open reply, task or approval.
+         */
+        get: operations["conversations_get_entries_before_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conversations/{conversation_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Conversation Events Endpoint
+         * @description Stream the conversation's screen as SSE: the newest page, then patches and live deltas.
+         */
+        get: operations["conversations_conversation_events_endpoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations/{conversation_id}/messages": {
         parameters: {
             query?: never;
@@ -1041,12 +1093,12 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
+        put?: never;
         /**
-         * Update Messages Endpoint
-         * @description Update the messages of a conversation.
+         * Send Message Endpoint
+         * @description Accept a message into a conversation the step runs; its reply arrives on the events stream.
          */
-        put: operations["conversations_update_messages_endpoint"];
-        post?: never;
+        post: operations["conversations_send_message_endpoint"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1113,6 +1165,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conversations/{conversation_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Conversation Endpoint
+         * @description Stop everything running for a conversation: its reply in flight, executor, subagents, approvals and browser job.
+         */
+        post: operations["conversations_stop_conversation_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations/{conversation_id}/unread": {
         parameters: {
             query?: never;
@@ -1144,7 +1216,7 @@ export interface paths {
         put?: never;
         /**
          * Batch Sync Conversations Endpoint
-         * @description Batch sync conversations - returns only stale conversations with messages.
+         * @description Return the conversations the client holds stale, each with its newest page of items.
          */
         post: operations["conversations_batch_sync_conversations_endpoint"];
         delete?: never;
@@ -1890,31 +1962,9 @@ export interface paths {
         };
         /**
          * Get My Integrations Endpoint
-         * @description The current user's full integration catalog (platform + their custom),
-         *     each with connection status and tool count. One call replaces the old
-         *     /config + /status + /users/me/integrations merge.
+         * @description The current user's full integration catalog (platform + their custom), each with its one connection status.
          */
         get: operations["integrations_get_my_integrations_endpoint"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/me/snapshot": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get My Integrations Snapshot Endpoint
-         * @description Return the workspace catalog without waiting for connection checks.
-         */
-        get: operations["integrations_get_my_integrations_snapshot_endpoint"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1995,26 +2045,6 @@ export interface paths {
          * @description Search public integrations using semantic search.
          */
         get: operations["integrations_search_integrations"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Integration Statuses Endpoint
-         * @description Refresh connection state independently from the fast catalog snapshot.
-         */
-        get: operations["integrations_get_integration_statuses_endpoint"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4478,30 +4508,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/stream/{stream_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Subscribe Executor Stream
-         * @description Subscribe to a background executor SSE stream by stream_id.
-         *
-         *     Used by the frontend to receive live tool events for queued executor tasks.
-         *     The stream_id is delivered via the `executor.stream_started` WebSocket event.
-         *     Verifies stream ownership before allowing subscription.
-         */
-        get: operations["chat_subscribe_executor_stream"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/support/rate-limit-status": {
         parameters: {
             query?: never;
@@ -5879,6 +5885,12 @@ export interface components {
             success: boolean;
         };
         /**
+         * ActionResult
+         * @description What happened to an approved action; none until it starts.
+         * @enum {string}
+         */
+        ActionResult: "executing" | "executed" | "failed" | "unknown";
+        /**
          * ActionStyle
          * @description Visual emphasis for a notification action button.
          * @enum {string}
@@ -5890,6 +5902,25 @@ export interface components {
          * @enum {string}
          */
         ActionType: "redirect" | "api_call" | "modal";
+        /**
+         * ActiveBotConversation
+         * @description A bot session's conversation still answering; a restarted bot follows its events after after_seq.
+         *
+         *     The log does not record what a platform delivered: after_seq is the newest settled reply's
+         *     seq, so the follower replays the reply in flight and everything after it.
+         */
+        ActiveBotConversation: {
+            /** After Seq */
+            after_seq: number;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Is Dm */
+            is_dm: boolean;
+            /** Platform User Id */
+            platform_user_id: string;
+        };
         /**
          * ActivityDay
          * @description One UTC day of the heatmap: actions plus the tokens they burned.
@@ -6010,6 +6041,12 @@ export interface components {
             success_message?: string | null;
         };
         /**
+         * ApprovalDecider
+         * @description Who approved or denied: the user, or auto mode's intent judge.
+         * @enum {string}
+         */
+        ApprovalDecider: "user" | "auto";
+        /**
          * ApprovalDecisionRequest
          * @description Body for a button approval decision (approve/deny, with scope and feedback).
          */
@@ -6027,20 +6064,124 @@ export interface components {
              * @enum {string}
              */
             scope?: "once" | "always_tool";
-            /** V */
-            v?: number | null;
         };
         /**
          * ApprovalDecisionResponse
          * @description Result of relaying an approval decision to the awaiting gate.
          */
         ApprovalDecisionResponse: {
+            action?: components["schemas"]["ActionResult"] | null;
+            outcome?: components["schemas"]["ApprovalOutcome"] | null;
             /** Reason */
             reason?: string | null;
-            /** Status */
-            status?: string | null;
             /** Success */
             success: boolean;
+        };
+        /**
+         * ApprovalOutcome
+         * @description How an approval ended; an approval with no outcome is still pending.
+         * @enum {string}
+         */
+        ApprovalOutcome: "approved" | "denied" | "expired" | "cancelled" | "withdrawn";
+        /**
+         * ApprovalRequested
+         * @description Live work paused on the user's approval: everything its card shows.
+         */
+        ApprovalRequested: {
+            /**
+             * Always Asks
+             * @default false
+             */
+            always_asks: boolean;
+            /** Approval Id */
+            approval_id: string;
+            /** Args Preview */
+            args_preview: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Auto Reason */
+            auto_reason: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * Gated Tool Name
+             * @default
+             */
+            gated_tool_name: string;
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /** Integration Name */
+            integration_name: string | null;
+            /**
+             * Kind
+             * @default approval_requested
+             * @constant
+             */
+            kind: "approval_requested";
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Task Id */
+            task_id: string;
+            /**
+             * Tool Call Id
+             * @default
+             */
+            tool_call_id: string;
+        };
+        /**
+         * ApprovalRequestEntry
+         * @description An approval card: the screen draws one per ApprovalRequested entry, ended by its decision entries.
+         */
+        ApprovalRequestEntry: {
+            data: components["schemas"]["ApprovalRequestEntryData"];
+            /** Timestamp */
+            timestamp: string;
+            /** Tool Category */
+            tool_category: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
+         * ApprovalRequestEntryData
+         * @description Inner ``data`` object of a HIL ``approval_request`` entry.
+         */
+        ApprovalRequestEntryData: {
+            action?: components["schemas"]["ActionResult"] | null;
+            /**
+             * Always Asks
+             * @default false
+             */
+            always_asks?: boolean;
+            /** Approval Id */
+            approval_id: string;
+            /** Args Preview */
+            args_preview: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Asked At */
+            asked_at?: string | null;
+            /** Auto Reason */
+            auto_reason: string | null;
+            decider?: components["schemas"]["ApprovalDecider"] | null;
+            /** Feedback */
+            feedback: string | null;
+            /** Gated Tool Name */
+            gated_tool_name: string;
+            /** Integration Name */
+            integration_name: string | null;
+            outcome: components["schemas"]["ApprovalOutcome"] | null;
+            /** Summary */
+            summary: string;
+            /** Timeout Seconds */
+            timeout_seconds: number;
+            /** Tool Call Id */
+            tool_call_id: string;
         };
         /**
          * ApprovePairingRequest
@@ -6070,8 +6211,7 @@ export interface components {
          * ArtifactRegistryEntry
          * @description One element of ``ConversationDocument.artifacts``.
          *
-         *     ``app.services.chat.artifacts_registry`` owns every write of this shape; the
-         *     conversation document stores it and mirrors it verbatim to the client.
+         *     The conversation document stores it and mirrors it verbatim to the client.
          *     ``mtime`` is a Unix timestamp, matching what every publisher in
          *     :mod:`app.services.artifact_events` stamps. ``body`` is present only for
          *     small textual artifacts inlined at write time.
@@ -6254,6 +6394,26 @@ export interface components {
             skipped_count: number;
         };
         /**
+         * BargeInAccepted
+         * @description The barge-in is durable at seq; a resend for the same reply returns the first seq.
+         */
+        BargeInAccepted: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Seq */
+            seq: number;
+        };
+        /**
+         * BargeInRequest
+         * @description The user spoke over a voice reply, having heard its text up to heard_through characters.
+         */
+        BargeInRequest: {
+            /** Heard Through */
+            heard_through: number;
+            /** Reply Id */
+            reply_id: string;
+        };
+        /**
          * BatchApprovalDecisionRequest
          * @description Body for deciding several pending approvals in one submission.
          */
@@ -6283,22 +6443,20 @@ export interface components {
             decision: "approve" | "deny";
             /** Feedback */
             feedback?: string | null;
-            /** V */
-            v?: number | null;
         };
         /**
          * BatchDecisionOutcome
          * @description Per-approval outcome of a batch decision.
          */
         BatchDecisionOutcome: {
+            action?: components["schemas"]["ActionResult"] | null;
             /** Approval Id */
             approval_id: string;
+            outcome?: components["schemas"]["ApprovalOutcome"] | null;
             /** Reason */
             reason?: string | null;
             /** Resolved */
             resolved: boolean;
-            /** Status */
-            status?: string | null;
         };
         /**
          * BatchEventCreateFailure
@@ -6398,10 +6556,6 @@ export interface components {
          * @description The conversations a client's sync request found stale.
          */
         BatchSyncResponse: {
-            /** Active Streams */
-            active_streams: {
-                [key: string]: string;
-            };
             /** Conversations */
             conversations: components["schemas"]["ConversationSyncRow"][];
             /** Missing */
@@ -6598,6 +6752,47 @@ export interface components {
             platform_user_id: string;
         };
         /**
+         * BotMessageAccepted
+         * @description A bot message accepted, with the token the bot follows the events stream with.
+         */
+        BotMessageAccepted: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Message Id */
+            message_id: string;
+            /** Seq */
+            seq: number;
+            /** Session Token */
+            session_token: string;
+        };
+        /**
+         * BotSessionRequest
+         * @description Names one bot session: a platform user in a DM or in one channel.
+         */
+        BotSessionRequest: {
+            /**
+             * Channel Id
+             * @description Channel/group ID (None for DM)
+             */
+            channel_id?: string | null;
+            /**
+             * Is Dm
+             * @description Whether this conversation is a direct message. Discord and Slack DM channel ids differ from the user id, so the server cannot tell a DM from a channel without this.
+             * @default false
+             */
+            is_dm?: boolean;
+            /**
+             * Platform
+             * @description Platform name (discord, slack, etc.)
+             */
+            platform: string;
+            /**
+             * Platform User Id
+             * @description User's ID on the platform
+             */
+            platform_user_id: string;
+        };
+        /**
          * BotSettingsResponse
          * @description Response model for user settings. When authenticated=False only that field is relevant.
          */
@@ -6680,6 +6875,12 @@ export interface components {
          */
         BrowserSessionStatus: "running" | "completed" | "failed" | "cancelled";
         /**
+         * BrowserStopOutcome
+         * @description What a stop came to, as the job's ending of record says.
+         * @enum {string}
+         */
+        BrowserStopOutcome: "stopped" | "already_ended";
+        /**
          * BrowserTaskFrame
          * @description One recap frame: a step screenshot plus what the agent was doing.
          */
@@ -6714,6 +6915,34 @@ export interface components {
             success: boolean;
             /** Task */
             task: string;
+        };
+        /**
+         * BubblesDelta
+         * @description The reply's bubbles as they now stand, replacing every one shown: text the model took back is gone.
+         */
+        BubblesDelta: {
+            /** Bubbles */
+            bubbles: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "bubbles";
+        };
+        /**
+         * BubbleTextDelta
+         * @description More text for one bubble of the reply; a bubble past the last opens it.
+         */
+        BubbleTextDelta: {
+            /** Bubble */
+            bubble: number;
+            /** Text */
+            text: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "bubble_text";
         };
         /**
          * BudgetWindow
@@ -7006,19 +7235,18 @@ export interface components {
             message: string;
         };
         /**
-         * CancelStreamResponse
-         * @description Outcome of a stream-cancellation request.
-         *
-         *     ``error`` is set only when the stream could not be cancelled at all (it was
-         *     never started, or already expired from Redis).
+         * CardsDelta
+         * @description The reply's cards as they now stand, with the timeline they fold to.
          */
-        CancelStreamResponse: {
-            /** Error */
-            error?: string | null;
-            /** Stream Id */
-            stream_id: string;
-            /** Success */
-            success: boolean;
+        CardsDelta: {
+            timeline: components["schemas"]["ToolTimeline"];
+            /** Tool Data */
+            tool_data: components["schemas"]["ToolDataEntry"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cards";
         };
         /**
          * ChangePasswordRequest
@@ -7483,129 +7711,31 @@ export interface components {
             description?: string | null;
         };
         /**
-         * ConversationDocument
-         * @description A conversation as the repository returns it: its head fields and, where read, its entries.
+         * ConversationEntriesPage
+         * @description A page of the conversation's screen, oldest first: the items its log page projects to.
          *
-         *     ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
-         *     ``metadata``) so a full-document read returns them verbatim, matching the
-         *     pre-repository behaviour.
+         *     state is the head's, so a page alone shows the loading row, live work and approvals;
+         *     cursor is the seq an older page is read before, set exactly when has_older.
          */
-        ConversationDocument: {
-            /** Artifacts */
-            artifacts?: components["schemas"]["ArtifactRegistryEntry"][];
-            /** Conversation Id */
-            conversation_id: string;
-            /** Createdat */
-            createdAt?: string | null;
+        ConversationEntriesPage: {
+            /** Cursor */
+            cursor: number | null;
             /**
-             * Description
-             * @default New Chat
-             */
-            description?: string;
-            /**
-             * Has Live Approval
+             * Has Older
              * @default false
              */
-            has_live_approval?: boolean;
-            /**
-             * Id
-             * @default
-             */
-            id?: string;
-            /**
-             * Is Onboarding Demo
-             * @default false
-             */
-            is_onboarding_demo?: boolean;
-            /**
-             * Is System Generated
-             * @default false
-             */
-            is_system_generated?: boolean | null;
-            /**
-             * Is Unread
-             * @default false
-             */
-            is_unread?: boolean | null;
-            /** Messages */
-            messages?: components["schemas"]["ConversationEntry"][];
-            source?: components["schemas"]["ConversationSource"] | null;
-            /** Starred */
-            starred?: boolean | null;
-            system_purpose?: components["schemas"]["SystemPurpose"] | null;
-            /** Todo Id */
-            todo_id?: string | null;
-            /** Updatedat */
-            updatedAt?: string | null;
-            /** User Id */
-            user_id: string;
-        } & {
-            [key: string]: unknown;
+            has_older: boolean;
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            state: components["schemas"]["StateFrame"];
         };
         /**
-         * ConversationEntry
-         * @description One message of a conversation's log with the seq its append committed it under: order is seq, never a date.
+         * ConversationEvent
+         * @description One frame on a conversation's events stream: the screen, a patch to it, or a live delta.
          */
-        ConversationEntry: {
-            /** Date */
-            date?: string | null;
-            /** Disclaimer */
-            disclaimer?: string | null;
-            /** Error */
-            error?: string | null;
-            /** File */
-            file?: string | null;
-            /**
-             * Filedata
-             * @default []
-             */
-            fileData?: components["schemas"]["FileData"][] | null;
-            /**
-             * Fileids
-             * @default []
-             */
-            fileIds?: string[] | null;
-            /** Filename */
-            filename?: string | null;
-            /** Filetype */
-            filetype?: string | null;
-            /** First Contact */
-            first_contact?: boolean | null;
-            /** Follow Up Actions */
-            follow_up_actions?: string[] | null;
-            image_data?: components["schemas"]["ImageData"] | null;
-            /** In Progress */
-            in_progress?: boolean | null;
-            /** Message Id */
-            message_id?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /** Pinned */
-            pinned?: boolean | null;
-            /** Platform Message Id */
-            platform_message_id?: string | null;
-            reaction?: components["schemas"]["MessageReaction"] | null;
-            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
-            /** Response */
-            response: string;
-            /** Selectedtool */
-            selectedTool?: string | null;
-            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
-            /** Seq */
-            seq: number;
-            /** Stopped */
-            stopped?: boolean | null;
-            /** Subtype */
-            subtype?: string | null;
-            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
-            /** Tool Data */
-            tool_data?: components["schemas"]["ToolDataEntry"][] | null;
-            /** Toolcategory */
-            toolCategory?: string | null;
-            /** Type */
-            type: string;
+        ConversationEvent: {
+            /** Frame */
+            frame: components["schemas"]["ScreenFrame"] | components["schemas"]["ScreenInsertFrame"] | components["schemas"]["ScreenUpdateFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
         };
         /**
          * ConversationListResponse
@@ -7626,17 +7756,17 @@ export interface components {
         };
         /**
          * ConversationMessageHit
-         * @description A single conversation message tagged with its conversation id — the shape of
-         *     the pinned-messages and message-search results.
+         * @description A message's screen item, as the conversation's screen shows it, tagged with its conversation id.
          */
         ConversationMessageHit: {
             /** Conversation Id */
             conversation_id: string;
-            message: components["schemas"]["ConversationEntry"];
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["NoticeItem"];
         };
         /**
          * ConversationModel
-         * @description A chat conversation and its display/system metadata.
+         * @description A conversation to create: its id and the display/system metadata it starts with.
          */
         ConversationModel: {
             /** Conversation Id */
@@ -7671,19 +7801,34 @@ export interface components {
          */
         ConversationSource: "web" | "mobile" | "desktop" | "telegram" | "discord" | "slack" | "whatsapp" | "imessage" | "workflow_system" | "background";
         /**
+         * ConversationStopResponse
+         * @description A conversation-level Stop: the work it stopped.
+         */
+        ConversationStopResponse: {
+            /**
+             * Conversation Id
+             * @description The conversation stopped; None when a bot chat had none yet.
+             */
+            conversation_id: string | null;
+            work: components["schemas"]["WorkCancelled"];
+        };
+        /**
          * ConversationSummary
          * @description The projected conversation-list row — every field the web list consumes,
          *     without the heavy ``messages`` array.
          */
         ConversationSummary: {
+            /**
+             * Awaiting Approval
+             * @default false
+             */
+            awaiting_approval: boolean;
             /** Conversation Id */
             conversation_id: string;
             /** Createdat */
             createdAt: string | null;
             /** Description */
             description: string | null;
-            /** Has Live Approval */
-            has_live_approval: boolean | null;
             /** Is System Generated */
             is_system_generated: boolean | null;
             /** Is Unread */
@@ -7711,34 +7856,59 @@ export interface components {
         };
         /**
          * ConversationSyncRow
-         * @description One batch-sync row — the conversation's client-visible fields plus its full
-         *     message history and artifact registry.
+         * @description One batch-sync row: the conversation's client-visible fields, its newest page of items and its artifacts.
          */
         ConversationSyncRow: {
             /** Artifacts */
             artifacts: components["schemas"]["ArtifactRegistryEntry"][];
+            /**
+             * Awaiting Approval
+             * @default false
+             */
+            awaiting_approval: boolean;
             /** Conversation Id */
             conversation_id: string;
             /** Createdat */
             createdAt: string | null;
+            /** Cursor */
+            cursor: number | null;
             /** Description */
             description: string;
-            /** Has Live Approval */
-            has_live_approval: boolean | null;
+            /**
+             * Has Older
+             * @default false
+             */
+            has_older: boolean;
             /** Is System Generated */
             is_system_generated: boolean | null;
             /** Is Unread */
             is_unread: boolean | null;
-            /** Messages */
-            messages: components["schemas"]["ConversationEntry"][];
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            /** Listed */
+            listed: boolean;
             source: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred: boolean | null;
+            state: components["schemas"]["StateFrame"];
             system_purpose: components["schemas"]["SystemPurpose"] | null;
             /** Todo Id */
             todo_id: string | null;
             /** Updatedat */
             updatedAt: string | null;
+        };
+        /**
+         * ConversationUpdatedFrame
+         * @description The conversation's own metadata changed: its title, once generated from the first message.
+         */
+        ConversationUpdatedFrame: {
+            /** Description */
+            description: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "conversation_updated";
         };
         /**
          * CreateCheckoutSessionRequest
@@ -8593,6 +8763,12 @@ export interface components {
          */
         DispatchErrorKind: "unknown_tool" | "invalid_args" | "internal_tool" | "out_of_scope" | "unknown_account" | "account_expired" | "timeout";
         /**
+         * DisplayState
+         * @description The one status a client shows for a conversation.
+         * @enum {string}
+         */
+        DisplayState: "idle" | "thinking" | "working" | "awaiting_approval";
+        /**
          * DodoWebhookAckResponse
          * @description Acknowledgement returned to Dodo once a webhook has been accepted.
          */
@@ -8779,6 +8955,12 @@ export interface components {
             /** Updated timezone offset in (+|-)HH:MM format */
             timezone_offset?: string | null;
         };
+        /**
+         * FailureReason
+         * @description Why a reply failed; a client words the line it shows under the reply from it.
+         * @enum {string}
+         */
+        FailureReason: "model_error" | "step_limit" | "server_restart";
         /**
          * FeaturePeriodUsage
          * @description One feature's usage within one window (day or month).
@@ -9004,17 +9186,17 @@ export interface components {
             collapsed_at?: string | null;
         };
         /**
-         * FoldedCards
-         * @description Cards a detached run closed before the message they fold into was saved; its save takes them.
+         * FollowUpsDelta
+         * @description The suggestions offered under the reply.
          */
-        FoldedCards: {
-            /** Cards */
-            cards?: components["schemas"]["ToolDataEntry"][];
+        FollowUpsDelta: {
+            /** Follow Up Actions */
+            follow_up_actions: string[];
             /**
-             * Since
-             * Format: date-time
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
-            since: string;
+            type: "follow_up_actions";
         };
         /**
          * GateAuthor
@@ -9940,19 +10122,6 @@ export interface components {
             /** Integrations */
             integrations: components["schemas"]["IntegrationConfigItem"][];
         };
-        /**
-         * IntegrationStatusesResponse
-         * @description Current connection status map, fetched independently of the catalog.
-         */
-        IntegrationStatusesResponse: {
-            /**
-             * Statuses
-             * @description Connection state keyed by integration id
-             */
-            statuses: {
-                [key: string]: boolean;
-            };
-        };
         /** IntegrationSuccessResponse */
         IntegrationSuccessResponse: {
             /** Integrationid */
@@ -10037,6 +10206,7 @@ export interface components {
             /** Id */
             id: string;
         };
+        JsonValue: unknown;
         /**
          * LabEventResponse
          * @description Accepted; the payload itself is never echoed back.
@@ -10168,6 +10338,16 @@ export interface components {
             username: string | null;
         };
         /**
+         * LiveTask
+         * @description One live background task, shown as one work bubble.
+         */
+        LiveTask: {
+            /** Awaiting Approval */
+            awaiting_approval: boolean;
+            /** Task Id */
+            task_id: string;
+        };
+        /**
          * LiveViewTokenResponse
          * @description A short-lived takeover token for opening the cross-origin live view.
          */
@@ -10179,6 +10359,63 @@ export interface components {
             expires_in: number;
             /** Token */
             token: string;
+        };
+        /**
+         * LoadedConversation
+         * @description A conversation as a load returns it: its head's fields and the newest page of its screen.
+         */
+        LoadedConversation: {
+            /** Artifacts */
+            artifacts: components["schemas"]["ArtifactRegistryEntry"][];
+            /** Conversation Id */
+            conversation_id: string;
+            /** Createdat */
+            createdAt: string | null;
+            /** Cursor */
+            cursor: number | null;
+            /**
+             * Description
+             * @default New Chat
+             */
+            description: string;
+            /**
+             * Has Older
+             * @default false
+             */
+            has_older: boolean;
+            /**
+             * Id
+             * @default
+             */
+            id: string;
+            /**
+             * Is Onboarding Demo
+             * @default false
+             */
+            is_onboarding_demo: boolean;
+            /**
+             * Is System Generated
+             * @default false
+             */
+            is_system_generated: boolean | null;
+            /**
+             * Is Unread
+             * @default false
+             */
+            is_unread: boolean | null;
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            source: components["schemas"]["ConversationSource"] | null;
+            /** Starred */
+            starred: boolean | null;
+            state: components["schemas"]["StateFrame"];
+            system_purpose: components["schemas"]["SystemPurpose"] | null;
+            /** Todo Id */
+            todo_id: string | null;
+            /** Updatedat */
+            updatedAt: string | null;
+            /** User Id */
+            user_id: string;
         };
         /**
          * LoginRequest
@@ -10942,14 +11179,16 @@ export interface components {
             tree: components["schemas"]["MemoryTreeNode"][];
         };
         /**
-         * MessageDict
-         * @description One chat turn as {role, content} for LLM history payloads.
+         * MessageAccepted
+         * @description The message is durable at seq; its reply arrives on the conversation's events stream.
          */
-        MessageDict: {
-            /** Content */
-            content: string;
-            /** Role */
-            role: string;
+        MessageAccepted: {
+            /** Conversation Id */
+            conversation_id: string;
+            /** Message Id */
+            message_id: string;
+            /** Seq */
+            seq: number;
         };
         /** MessageFeedbackRequest */
         MessageFeedbackRequest: {
@@ -10977,78 +11216,6 @@ export interface components {
             trace_id?: string | null;
         };
         /**
-         * MessageModel
-         * @description A single chat message with its content, attachments and tool data.
-         */
-        MessageModel: {
-            /** Date */
-            date?: string | null;
-            /** Disclaimer */
-            disclaimer?: string | null;
-            /** Error */
-            error?: string | null;
-            /** File */
-            file?: string | null;
-            /**
-             * Filedata
-             * @default []
-             */
-            fileData?: components["schemas"]["FileData"][] | null;
-            /**
-             * Fileids
-             * @default []
-             */
-            fileIds?: string[] | null;
-            /** Filename */
-            filename?: string | null;
-            /** Filetype */
-            filetype?: string | null;
-            /** First Contact */
-            first_contact?: boolean | null;
-            /** Follow Up Actions */
-            follow_up_actions?: string[] | null;
-            image_data?: components["schemas"]["ImageData"] | null;
-            /** In Progress */
-            in_progress?: boolean | null;
-            /** Message Id */
-            message_id?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /** Pinned */
-            pinned?: boolean | null;
-            /** Platform Message Id */
-            platform_message_id?: string | null;
-            reaction?: components["schemas"]["MessageReaction"] | null;
-            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
-            /** Response */
-            response: string;
-            /** Selectedtool */
-            selectedTool?: string | null;
-            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
-            /** Stopped */
-            stopped?: boolean | null;
-            /** Subtype */
-            subtype?: string | null;
-            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
-            /** Tool Data */
-            tool_data?: components["schemas"]["ToolDataEntry"][] | null;
-            /** Toolcategory */
-            toolCategory?: string | null;
-            /** Type */
-            type: string;
-        };
-        /**
-         * MessageReaction
-         * @description GAIA's one emoji reaction on a user message.
-         */
-        MessageReaction: {
-            by: components["schemas"]["ReactionBy"];
-            /** Emoji */
-            emoji: string;
-        };
-        /**
          * MessageRequest
          * @description Minimal chat request with a single message.
          */
@@ -11057,70 +11224,14 @@ export interface components {
             message: string;
         };
         /**
-         * MessageRequestWithHistory
-         * @description Chat-stream request carrying the full message history and attachments.
-         */
-        MessageRequestWithHistory: {
-            /** Comms Model */
-            comms_model?: string | null;
-            /** Conversation Id */
-            conversation_id?: string | null;
-            /** Executor Model */
-            executor_model?: string | null;
-            /**
-             * Filedata
-             * @default []
-             */
-            fileData?: components["schemas"]["FileData"][] | null;
-            /**
-             * Fileids
-             * @default []
-             */
-            fileIds?: string[] | null;
-            /**
-             * Is Onboarding Demo
-             * @default false
-             */
-            is_onboarding_demo?: boolean;
-            /**
-             * Is Retry
-             * @default false
-             */
-            is_retry?: boolean;
-            /** Message */
-            message: string;
-            /** Messages */
-            messages: components["schemas"]["MessageDict"][];
-            /** Platform Message Id */
-            platform_message_id?: string | null;
-            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
-            selectedCalendarEvent?: components["schemas"]["SelectedCalendarEventData"] | null;
-            /** Selectedtool */
-            selectedTool?: string | null;
-            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
-            /** Toolcategory */
-            toolCategory?: string | null;
-            /** Turn Id */
-            turn_id?: string | null;
-            /**
-             * Use Default Models
-             * @default true
-             */
-            use_default_models?: boolean;
-            /**
-             * Voice Mode
-             * @default false
-             */
-            voice_mode?: boolean;
-        };
-        /**
          * MessageSearchResult
          * @description A message hit from keyword search, with its highlighting snippet.
          */
         MessageSearchResult: {
             /** Conversation Id */
             conversation_id: string;
-            message: components["schemas"]["ConversationEntry"];
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["NoticeItem"];
             /** Snippet */
             snippet: string;
         };
@@ -11268,9 +11379,7 @@ export interface components {
         };
         /**
          * MyIntegrationsResponse
-         * @description The full integration catalog personalized for one user (platform + their
-         *     own custom integrations), each carrying connection status. Replaces the
-         *     client-side merge of /config + /status + /users/me/integrations.
+         * @description The full integration catalog personalized for one user (platform + their own custom), each with its connection status.
          */
         MyIntegrationsResponse: {
             /** Integrations */
@@ -11321,6 +11430,33 @@ export interface components {
             plaintext: string;
             /** Snippet */
             snippet: string;
+        };
+        /**
+         * NoticeItem
+         * @description A proactive message delivered outside a reply.
+         */
+        NoticeItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Bubbles */
+            bubbles: string[];
+            /** Follow Up Actions */
+            follow_up_actions: string[];
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "notice";
+            /** Seq */
+            seq: number;
+            timeline: components["schemas"]["ToolTimeline"];
+            /** Tool Data */
+            tool_data: components["schemas"]["ToolDataEntry"][];
         };
         /**
          * NotificationAction
@@ -11468,13 +11604,17 @@ export interface components {
             /** Channels */
             channels?: components["schemas"]["ChannelConfig"][];
             content: components["schemas"]["NotificationContent"];
+            /** Conversation Id */
+            conversation_id?: string | null;
             /**
              * Created At
              * Format: date-time
              */
             created_at?: string;
             /** Id */
-            id?: string;
+            id: string;
+            /** Message */
+            message?: string | null;
             /** Metadata */
             metadata?: {
                 [key: string]: unknown;
@@ -11529,7 +11669,7 @@ export interface components {
          * @description Originating system or feature that produced the notification.
          * @enum {string}
          */
-        NotificationSourceEnum: "ai_email_draft" | "ai_calendar_event" | "ai_todo_suggestion" | "ai_reminder" | "ai_todo_added" | "ai_agent" | "email_trigger" | "background_job" | "workflow_completed" | "workflow_failed" | "system_workflows_provisioned" | "usage_limit" | "integration_expired" | "todo_trigger";
+        NotificationSourceEnum: "ai_email_draft" | "ai_calendar_event" | "ai_todo_suggestion" | "ai_reminder" | "ai_todo_added" | "ai_agent" | "email_trigger" | "background_job" | "workflow_completed" | "workflow_failed" | "system_workflows_provisioned" | "usage_limit" | "integration_expired" | "todo_trigger" | "approval";
         /**
          * NotificationStatus
          * @description Lifecycle state of a notification record.
@@ -12821,6 +12961,15 @@ export interface components {
             start_hour: number;
         };
         /**
+         * Reaction
+         * @description An emoji on a user message; a field updated in place, never a state change.
+         */
+        Reaction: {
+            by: components["schemas"]["ReactionBy"];
+            /** Emoji */
+            emoji: string;
+        };
+        /**
          * ReactionBy
          * @description Which mind put a reaction on a message: the instant classifier or the chat model.
          * @enum {string}
@@ -13148,6 +13297,78 @@ export interface components {
             user_id: string;
         };
         /**
+         * ReplyDeltaFrame
+         * @description Streamed content of one comms attempt; reply_id is None until its reply entry exists.
+         */
+        ReplyDeltaFrame: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Index */
+            index: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reply_delta";
+            /** Payload */
+            payload: components["schemas"]["BubbleTextDelta"] | components["schemas"]["BubblesDelta"] | components["schemas"]["CardsDelta"] | components["schemas"]["FollowUpsDelta"];
+            /** Reply Id */
+            reply_id: string | null;
+        };
+        /**
+         * ReplyFile
+         * @description A session artifact a reply delivers, addressed by its path under the session's artifacts/.
+         */
+        ReplyFile: {
+            /** Content Type */
+            content_type: string | null;
+            /** Path */
+            path: string;
+        };
+        /**
+         * ReplyItem
+         * @description GAIA's reply: its bubbles and own cards; outcome is None while it is still being written.
+         */
+        ReplyItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Bubbles */
+            bubbles: string[];
+            failure: components["schemas"]["FailureReason"] | null;
+            /** Files */
+            files: components["schemas"]["ReplyFile"][];
+            /** Follow Up Actions */
+            follow_up_actions: string[];
+            /** Id */
+            id: string;
+            image: components["schemas"]["ImageData"] | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "reply";
+            /** Narrates */
+            narrates: string[];
+            outcome: components["schemas"]["ReplyOutcome"] | null;
+            /** Pinned */
+            pinned: boolean;
+            quote: components["schemas"]["ReplyToMessageData"] | null;
+            /** Seq */
+            seq: number;
+            timeline: components["schemas"]["ToolTimeline"];
+            /** Tool Data */
+            tool_data: components["schemas"]["ToolDataEntry"][];
+        };
+        /**
+         * ReplyOutcome
+         * @description How a finished reply ended.
+         * @enum {string}
+         */
+        ReplyOutcome: "answered" | "stopped" | "truncated" | "failed" | "silent";
+        /**
          * ReplyToMessageData
          * @description Data for the message being replied to.
          */
@@ -13161,33 +13382,6 @@ export interface components {
              * @enum {string}
              */
             role: "user" | "assistant";
-        };
-        /**
-         * ResetSessionRequest
-         * @description Request model for resetting a bot session (starting a new conversation).
-         */
-        ResetSessionRequest: {
-            /**
-             * Channel Id
-             * @description Channel/group ID (None for DM)
-             */
-            channel_id?: string | null;
-            /**
-             * Is Dm
-             * @description Whether this conversation is a direct message. Discord and Slack DM channel ids differ from the user id, so the server cannot tell a DM from a channel without this.
-             * @default false
-             */
-            is_dm?: boolean;
-            /**
-             * Platform
-             * @description Platform name (discord, slack, etc.)
-             */
-            platform: string;
-            /**
-             * Platform User Id
-             * @description User's ID on the platform
-             */
-            platform_user_id: string;
         };
         /**
          * ResetSessionResponse
@@ -13220,6 +13414,19 @@ export interface components {
              * @description Whether the workflow was reset
              */
             success: boolean;
+        };
+        /**
+         * RetractFrame
+         * @description Everything an uncommitted reply attempt streamed is withdrawn; work is never retracted.
+         */
+        RetractFrame: {
+            /** Attempt Id */
+            attempt_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "retract";
         };
         /** SandboxExecuteRequest */
         SandboxExecuteRequest: {
@@ -13288,6 +13495,45 @@ export interface components {
          * @enum {string}
          */
         ScheduleRejection: "wrong_field_count" | "unparseable" | "too_frequent" | "never_fires";
+        /**
+         * ScreenFrame
+         * @description The newest page of the screen; a client replaces what it holds from the first item's seq on.
+         */
+        ScreenFrame: {
+            /** Items */
+            items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen";
+        };
+        /**
+         * ScreenInsertFrame
+         * @description An item became visible; its seq is its position, before every item with a higher one.
+         */
+        ScreenInsertFrame: {
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen_insert";
+        };
+        /**
+         * ScreenUpdateFrame
+         * @description An item already shown changed in place; it keeps its position.
+         */
+        ScreenUpdateFrame: {
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "screen_update";
+        };
         /**
          * SearchIntegrationItem
          * @description Integration item in search results.
@@ -13529,6 +13775,34 @@ export interface components {
             message_id: string | null;
             /** Status */
             status: string;
+        };
+        /**
+         * SendMessageRequest
+         * @description A user message sent into a conversation; message_id is minted by the client and makes a resend a no-op.
+         */
+        SendMessageRequest: {
+            /** File Ids */
+            file_ids?: string[];
+            /** Message Id */
+            message_id: string;
+            /** Reply To */
+            reply_to?: string | null;
+            reply_to_message?: components["schemas"]["ReplyToMessageData"] | null;
+            /** Retry Of */
+            retry_of?: string | null;
+            selected_calendar_event?: components["schemas"]["SelectedCalendarEventData"] | null;
+            /** Selected Tool */
+            selected_tool?: string | null;
+            selected_workflow?: components["schemas"]["SelectedWorkflowDataInput"] | null;
+            /** Text */
+            text: string;
+            /** Tool Category */
+            tool_category?: string | null;
+            /**
+             * Voice
+             * @default false
+             */
+            voice?: boolean;
         };
         /**
          * SetToolOverrideRequest
@@ -13969,6 +14243,22 @@ export interface components {
              * @description True to star, False to unstar
              */
             starred: boolean;
+        };
+        /**
+         * StateFrame
+         * @description The conversation's display state after an append.
+         */
+        StateFrame: {
+            display: components["schemas"]["DisplayState"];
+            /** Head */
+            head: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "state";
+            /** Work */
+            work: components["schemas"]["LiveTask"][];
         };
         /**
          * StaticReminderPayload
@@ -14460,6 +14750,34 @@ export interface components {
          */
         SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "other";
         /**
+         * TimelineCard
+         * @description A card rendered on its own below the thread; a grouped tool's calls arrive as one card.
+         */
+        TimelineCard: {
+            card: components["schemas"]["ToolDataEntry"];
+            /** Key */
+            key: string;
+        };
+        /**
+         * TimelineStep
+         * @description One row of the tool thread, keyed stably across the stream.
+         *
+         *     data is the tool-call entry, or the subagent group with its handoff_input, handoff_output and
+         *     step_keys (one per tool call, in order) filled in.
+         */
+        TimelineStep: {
+            data: components["schemas"]["JsonValue"];
+            /** Key */
+            key: string;
+            kind: components["schemas"]["TimelineStepKind"];
+        };
+        /**
+         * TimelineStepKind
+         * @description What one row of a tool timeline shows: a tool call, or a subagent's group of them.
+         * @enum {string}
+         */
+        TimelineStepKind: "tool" | "subagent";
+        /**
          * TodoCanvasResponse
          * @description A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.
          */
@@ -14875,6 +15193,27 @@ export interface components {
          */
         TodoWakeKind: "schedule" | "trigger" | "approval";
         /**
+         * TodoWokeItem
+         * @description What woke a tracked todo's run; its write-up is its own item.
+         */
+        TodoWokeItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "todo_woke";
+            /** Seq */
+            seq: number;
+            wake: components["schemas"]["TodoRunWake"];
+        };
+        /**
          * TodoWorkflowGenerationResponse
          * @description Result of asking for a todo's workflow to be generated.
          */
@@ -14945,22 +15284,10 @@ export interface components {
         };
         /**
          * ToolDataEntry
-         * @description Unified structure for tool execution data.
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
          *
-         *     Every key an emitter can stamp must be declared here. This TypedDict is the
-         *     element type of ``MessageModel.tool_data``, and Pydantic drops undeclared
-         *     keys on ``model_dump()`` — which is how a message reaches Mongo. An emitted
-         *     key missing from this shape therefore survives the live SSE frame (the
-         *     frontend parses those against its own loose schema) and silently vanishes
-         *     from the stored turn, so the bug only ever appears on reload.
-         *
-         *     ``data`` is deliberately open: every tool owns the shape it puts here (a
-         *     calendar option list, an email thread, a rendered artifact), so the only
-         *     honest constraint is "JSON the frontend's per-tool card knows how to read".
-         *     Everything around it is closed.
-         *
-         *     The frontend mirror is ``ToolDataEntrySchema`` in
-         *     ``libs/shared/ts/src/chat/schema.ts``.
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
          */
         ToolDataEntry: {
             /** Data */
@@ -15029,6 +15356,22 @@ export interface components {
             total_count: number;
         };
         /**
+         * ToolTimeline
+         * @description What an item's cards show, in order: the tool thread, then the cards rendered on their own.
+         */
+        ToolTimeline: {
+            /**
+             * Cards
+             * @default []
+             */
+            cards: components["schemas"]["TimelineCard"][];
+            /**
+             * Steps
+             * @default []
+             */
+            steps: components["schemas"]["TimelineStep"][];
+        };
+        /**
          * TranscribeAudioResponse
          * @description Response model for a transcribed bot audio clip.
          */
@@ -15043,9 +15386,8 @@ export interface components {
          * TriageEmailSummary
          * @description The fields of an important email that actually reach the client.
          *
-         *     Deliberately not :class:`EmailSummary`: both the persisted triage subdoc and
-         *     the ``triage_ready`` WebSocket payload drop ``snippet``, and the frontend
-         *     types exactly these three.
+         *     Deliberately not :class:`EmailSummary`: the persisted triage subdoc drops
+         *     ``snippet``, and the frontend types exactly these three.
          *
          *     Defaulted for the same reason as :class:`PersistedTriageSummary` — these
          *     entries are read back out of a persisted subdoc, and the write path always
@@ -15407,33 +15749,6 @@ export interface components {
             content: string;
         };
         /**
-         * UpdateMessagesRequest
-         * @description Request to replace the messages of a conversation.
-         */
-        UpdateMessagesRequest: {
-            /** Conversation Id */
-            conversation_id: string;
-            /** Messages */
-            messages: components["schemas"]["MessageModel"][];
-        };
-        /**
-         * UpdateMessagesResponse
-         * @description Append acknowledgement carrying the ids the appended messages were stored
-         *     under — the client reconciles its optimistic records against these.
-         */
-        UpdateMessagesResponse: {
-            /** Conversation Id */
-            conversation_id: string;
-            /** Message */
-            message: string;
-            /** Message Ids */
-            message_ids: string[];
-            /** Message Seqs */
-            message_seqs: number[];
-            /** Modified Count */
-            modified_count: number;
-        };
-        /**
          * UpdateProjectRequest
          * @description Model for updating projects - all fields optional
          */
@@ -15661,6 +15976,99 @@ export interface components {
              * @description Why the switch is locked, shown beside it; null when available
              */
             unavailable_reason: string | null;
+        };
+        /**
+         * UserItem
+         * @description A message the user sent, with GAIA's reaction to it.
+         */
+        UserItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "user";
+            message: components["schemas"]["UserMessage"];
+            /** Seq */
+            seq: number;
+        };
+        /**
+         * UserMessage
+         * @description A message the user sent from any surface.
+         */
+        UserMessage: {
+            /**
+             * File Ids
+             * @default []
+             */
+            file_ids: string[];
+            /**
+             * Files
+             * @default []
+             */
+            files: components["schemas"]["FileData"][];
+            /**
+             * First Contact
+             * @default false
+             */
+            first_contact: boolean;
+            /**
+             * Id
+             * @description Producer-minted idempotency key
+             */
+            id: string;
+            /**
+             * Imported
+             * @default false
+             */
+            imported: boolean;
+            /**
+             * Kind
+             * @default user_message
+             * @constant
+             */
+            kind: "user_message";
+            /**
+             * Pinned
+             * @default false
+             */
+            pinned: boolean;
+            /** Platform Message Id */
+            platform_message_id: string | null;
+            /** Posthog Session Id */
+            posthog_session_id: string | null;
+            reaction: components["schemas"]["Reaction"] | null;
+            /** Reply To */
+            reply_to: string | null;
+            reply_to_message: components["schemas"]["ReplyToMessageData"] | null;
+            /** Retry Of */
+            retry_of: string | null;
+            /**
+             * Revision
+             * @default 0
+             */
+            revision: number;
+            selected_calendar_event: components["schemas"]["SelectedCalendarEventData"] | null;
+            /** Selected Tool */
+            selected_tool: string | null;
+            selected_workflow: components["schemas"]["SelectedWorkflowDataOutput"] | null;
+            surface: components["schemas"]["ConversationSource"];
+            /** Text */
+            text: string;
+            todo_run_wake: components["schemas"]["TodoRunWake"] | null;
+            /** Tool Category */
+            tool_category: string | null;
+            /**
+             * Voice
+             * @default false
+             */
+            voice: boolean;
         };
         /**
          * UserSubscriptionStatus
@@ -15908,6 +16316,56 @@ export interface components {
             web?: components["schemas"]["SearchResultItem"][];
         };
         /**
+         * WorkCancelled
+         * @description Everything one stop cancelled; all empty when the conversation was idle.
+         */
+        WorkCancelled: {
+            /**
+             * Approval Ids
+             * @description Pending approvals closed, barrier and ledger.
+             */
+            approval_ids: string[];
+            /**
+             * Browser Jobs
+             * @description Browser jobs reached, with what each stop came to.
+             */
+            browser_jobs: {
+                [key: string]: components["schemas"]["BrowserStopOutcome"];
+            };
+            /**
+             * Executor Spared
+             * @description An executor task kept running because the stop did not name it.
+             * @default false
+             */
+            executor_spared: boolean;
+            /**
+             * Executor Stopped
+             * @description A running executor task was stopped.
+             * @default false
+             */
+            executor_stopped: boolean;
+            /**
+             * Executor Task Id
+             * @description Task id of the stopped executor run; None for a lock without one.
+             */
+            executor_task_id: string | null;
+            /**
+             * Pending Task Ids
+             * @description Queued executor requests dropped by id.
+             */
+            pending_task_ids: string[];
+            /**
+             * Replay Ids
+             * @description Workflow playbook replays stopped, by stream id.
+             */
+            replay_ids: string[];
+            /**
+             * Subagent Ids
+             * @description Running subagents stopped.
+             */
+            subagent_ids: string[];
+        };
+        /**
          * WorkflowCreator
          * @description The public-facing creator card built by ``format_creator``.
          *
@@ -16038,6 +16496,27 @@ export interface components {
              * @default 0
              */
             total: number;
+        };
+        /**
+         * WorkflowFiredItem
+         * @description The workflow card that started a run; the run's reply is its own item.
+         */
+        WorkflowFiredItem: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "workflow_fired";
+            /** Seq */
+            seq: number;
+            workflow: components["schemas"]["SelectedWorkflowDataOutput"];
         };
         /**
          * WorkflowListResponse
@@ -16386,6 +16865,46 @@ export interface components {
              */
             user_id: string;
         };
+        /**
+         * WorkItem
+         * @description One piece of work from its hand-off to its result, with every task handed to it.
+         */
+        WorkItem: {
+            /** Approvals */
+            approvals: components["schemas"]["ApprovalRequestEntry"][];
+            /** Asked Seq */
+            asked_seq: number;
+            /** Asking */
+            asking: components["schemas"]["ApprovalRequested"][];
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            handoff: components["schemas"]["ToolDataEntry"] | null;
+            /** Id */
+            id: string;
+            image: components["schemas"]["ImageData"] | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "work";
+            /** Seq */
+            seq: number;
+            status: components["schemas"]["WorkStatus"];
+            /** Task Id */
+            task_id: string;
+            timeline: components["schemas"]["ToolTimeline"];
+            /** Tool Data */
+            tool_data: components["schemas"]["ToolDataEntry"][];
+        };
+        /**
+         * WorkStatus
+         * @description Where a piece of work stands: live, or how it ended.
+         * @enum {string}
+         */
+        WorkStatus: "running" | "awaiting_approval" | "done" | "failed" | "cancelled" | "lost";
         /** WritingStyleEditRequest */
         WritingStyleEditRequest: {
             /** Edited Summary */
@@ -16439,16 +16958,23 @@ export interface components {
 }
 export type ActionConfig = components['schemas']['ActionConfig'];
 export type ActionExecutionResponse = components['schemas']['ActionExecutionResponse'];
+export type ActionResult = components['schemas']['ActionResult'];
 export type ActionStyle = components['schemas']['ActionStyle'];
 export type ActionType = components['schemas']['ActionType'];
+export type ActiveBotConversation = components['schemas']['ActiveBotConversation'];
 export type ActivityDay = components['schemas']['ActivityDay'];
 export type AddIntegrationResponse = components['schemas']['AddIntegrationResponse'];
 export type AddUserIntegrationRequest = components['schemas']['AddUserIntegrationRequest'];
 export type AddUserIntegrationResponse = components['schemas']['AddUserIntegrationResponse'];
 export type AgentType = components['schemas']['AgentType'];
 export type ApiCallConfig = components['schemas']['ApiCallConfig'];
+export type ApprovalDecider = components['schemas']['ApprovalDecider'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
+export type ApprovalOutcome = components['schemas']['ApprovalOutcome'];
+export type ApprovalRequested = components['schemas']['ApprovalRequested'];
+export type ApprovalRequestEntry = components['schemas']['ApprovalRequestEntry'];
+export type ApprovalRequestEntryData = components['schemas']['ApprovalRequestEntryData'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
@@ -16456,6 +16982,8 @@ export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConf
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
 export type AuthoredGateView = components['schemas']['AuthoredGateView'];
+export type BargeInAccepted = components['schemas']['BargeInAccepted'];
+export type BargeInRequest = components['schemas']['BargeInRequest'];
 export type BatchApprovalDecisionRequest = components['schemas']['BatchApprovalDecisionRequest'];
 export type BatchApprovalDecisionResponse = components['schemas']['BatchApprovalDecisionResponse'];
 export type BatchDecisionItem = components['schemas']['BatchDecisionItem'];
@@ -16486,13 +17014,18 @@ export type Body_user_update_user_name = components['schemas']['Body_user_update
 export type Body_user_update_user_timezone = components['schemas']['Body_user_update_user_timezone'];
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
+export type BotMessageAccepted = components['schemas']['BotMessageAccepted'];
+export type BotSessionRequest = components['schemas']['BotSessionRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
 export type BrowserImportRequest = components['schemas']['BrowserImportRequest'];
 export type BrowserImportResponse = components['schemas']['BrowserImportResponse'];
 export type BrowserLoginResponse = components['schemas']['BrowserLoginResponse'];
 export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus'];
+export type BrowserStopOutcome = components['schemas']['BrowserStopOutcome'];
 export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
 export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
+export type BubblesDelta = components['schemas']['BubblesDelta'];
+export type BubbleTextDelta = components['schemas']['BubbleTextDelta'];
 export type BudgetWindow = components['schemas']['BudgetWindow'];
 export type BuiltInEngine = components['schemas']['BuiltInEngine'];
 export type BuiltInOption = components['schemas']['BuiltInOption'];
@@ -16513,7 +17046,7 @@ export type CalendarListResponse = components['schemas']['CalendarListResponse']
 export type CalendarPreferencesResponse = components['schemas']['CalendarPreferencesResponse'];
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
-export type CancelStreamResponse = components['schemas']['CancelStreamResponse'];
+export type CardsDelta = components['schemas']['CardsDelta'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];
 export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus'];
@@ -16540,15 +17073,17 @@ export type ConnectIntegrationRequest = components['schemas']['ConnectIntegratio
 export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrationResponse'];
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
 export type ConversationDescriptionHit = components['schemas']['ConversationDescriptionHit'];
-export type ConversationDocument = components['schemas']['ConversationDocument'];
-export type ConversationEntry = components['schemas']['ConversationEntry'];
+export type ConversationEntriesPage = components['schemas']['ConversationEntriesPage'];
+export type ConversationEvent = components['schemas']['ConversationEvent'];
 export type ConversationListResponse = components['schemas']['ConversationListResponse'];
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
 export type ConversationModel = components['schemas']['ConversationModel'];
 export type ConversationSource = components['schemas']['ConversationSource'];
+export type ConversationStopResponse = components['schemas']['ConversationStopResponse'];
 export type ConversationSummary = components['schemas']['ConversationSummary'];
 export type ConversationSyncItem = components['schemas']['ConversationSyncItem'];
 export type ConversationSyncRow = components['schemas']['ConversationSyncRow'];
+export type ConversationUpdatedFrame = components['schemas']['ConversationUpdatedFrame'];
 export type CreateCheckoutSessionRequest = components['schemas']['CreateCheckoutSessionRequest'];
 export type CreateConversationResponse = components['schemas']['CreateConversationResponse'];
 export type CreateCustomIntegrationRequest = components['schemas']['CreateCustomIntegrationRequest'];
@@ -16594,6 +17129,7 @@ export type DiscoveredSkillInfo = components['schemas']['DiscoveredSkillInfo'];
 export type DiscoverSkillsResponse = components['schemas']['DiscoverSkillsResponse'];
 export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
+export type DisplayState = components['schemas']['DisplayState'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
@@ -16603,6 +17139,7 @@ export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
 export type EventDeleteResponse = components['schemas']['EventDeleteResponse'];
 export type EventUpdateRequest = components['schemas']['EventUpdateRequest'];
+export type FailureReason = components['schemas']['FailureReason'];
 export type FeaturePeriodUsage = components['schemas']['FeaturePeriodUsage'];
 export type FeatureSpec = components['schemas']['FeatureSpec'];
 export type FeatureStage = components['schemas']['FeatureStage'];
@@ -16617,7 +17154,7 @@ export type FirstStepKey = components['schemas']['FirstStepKey'];
 export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollapseRequest'];
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
-export type FoldedCards = components['schemas']['FoldedCards'];
+export type FollowUpsDelta = components['schemas']['FollowUpsDelta'];
 export type GateAuthor = components['schemas']['GateAuthor'];
 export type GateEdit = components['schemas']['GateEdit'];
 export type GateSkipRecord = components['schemas']['GateSkipRecord'];
@@ -16671,13 +17208,13 @@ export type IntegrationInfo = components['schemas']['IntegrationInfo'];
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
-export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolApproval = components['schemas']['IntegrationToolApproval'];
 export type IntegrationToolsResponse = components['schemas']['IntegrationToolsResponse'];
 export type InviteCreatedResponse = components['schemas']['InviteCreatedResponse'];
 export type InviteResponse = components['schemas']['InviteResponse'];
+export type JsonValue = components['schemas']['JsonValue'];
 export type LabEventResponse = components['schemas']['LabEventResponse'];
 export type LinearCommentAddedConfig = components['schemas']['LinearCommentAddedConfig'];
 export type LinearIssueCreatedConfig = components['schemas']['LinearIssueCreatedConfig'];
@@ -16686,7 +17223,9 @@ export type LinkedUsersResponse = components['schemas']['LinkedUsersResponse'];
 export type LinkPlatformRequest = components['schemas']['LinkPlatformRequest'];
 export type LinkPlatformResponse = components['schemas']['LinkPlatformResponse'];
 export type LinkTokenInfoResponse = components['schemas']['LinkTokenInfoResponse'];
+export type LiveTask = components['schemas']['LiveTask'];
 export type LiveViewTokenResponse = components['schemas']['LiveViewTokenResponse'];
+export type LoadedConversation = components['schemas']['LoadedConversation'];
 export type LoginRequest = components['schemas']['LoginRequest'];
 export type LogoutResponse = components['schemas']['LogoutResponse'];
 export type ManagedAt = components['schemas']['ManagedAt'];
@@ -16728,13 +17267,10 @@ export type MemorySearchResult = components['schemas']['MemorySearchResult'];
 export type MemorySourceType = components['schemas']['MemorySourceType'];
 export type MemoryTreeNode = components['schemas']['MemoryTreeNode'];
 export type MemoryTreeResponse = components['schemas']['MemoryTreeResponse'];
-export type MessageDict = components['schemas']['MessageDict'];
+export type MessageAccepted = components['schemas']['MessageAccepted'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
-export type MessageModel = components['schemas']['MessageModel'];
-export type MessageReaction = components['schemas']['MessageReaction'];
 export type MessageRequest = components['schemas']['MessageRequest'];
-export type MessageRequestWithHistory = components['schemas']['MessageRequestWithHistory'];
 export type MessageSearchResult = components['schemas']['MessageSearchResult'];
 export type MintPlatformLinkCodeResponse = components['schemas']['MintPlatformLinkCodeResponse'];
 export type MobileLoginUrlResponse = components['schemas']['MobileLoginUrlResponse'];
@@ -16745,6 +17281,7 @@ export type MyIntegrationsResponse = components['schemas']['MyIntegrationsRespon
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
+export type NoticeItem = components['schemas']['NoticeItem'];
 export type NotificationAction = components['schemas']['NotificationAction'];
 export type NotificationActionView = components['schemas']['NotificationActionView'];
 export type NotificationChannelView = components['schemas']['NotificationChannelView'];
@@ -16821,6 +17358,7 @@ export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResp
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
 export type QuietHours = components['schemas']['QuietHours'];
+export type Reaction = components['schemas']['Reaction'];
 export type ReactionBy = components['schemas']['ReactionBy'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
 export type RecordedCall = components['schemas']['RecordedCall'];
@@ -16837,10 +17375,14 @@ export type RegistrationPolicy = components['schemas']['RegistrationPolicy'];
 export type RegistrationPolicyRequest = components['schemas']['RegistrationPolicyRequest'];
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
+export type ReplyDeltaFrame = components['schemas']['ReplyDeltaFrame'];
+export type ReplyFile = components['schemas']['ReplyFile'];
+export type ReplyItem = components['schemas']['ReplyItem'];
+export type ReplyOutcome = components['schemas']['ReplyOutcome'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
-export type ResetSessionRequest = components['schemas']['ResetSessionRequest'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
+export type RetractFrame = components['schemas']['RetractFrame'];
 export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
 export type SandboxExecuteResponse = components['schemas']['SandboxExecuteResponse'];
 export type SandboxToolSchemaRequest = components['schemas']['SandboxToolSchemaRequest'];
@@ -16849,6 +17391,9 @@ export type SaveSocialProfilesResponse = components['schemas']['SaveSocialProfil
 export type SaveWritingStyleResponse = components['schemas']['SaveWritingStyleResponse'];
 export type ScheduledTaskStatus = components['schemas']['ScheduledTaskStatus'];
 export type ScheduleRejection = components['schemas']['ScheduleRejection'];
+export type ScreenFrame = components['schemas']['ScreenFrame'];
+export type ScreenInsertFrame = components['schemas']['ScreenInsertFrame'];
+export type ScreenUpdateFrame = components['schemas']['ScreenUpdateFrame'];
 export type SearchIntegrationItem = components['schemas']['SearchIntegrationItem'];
 export type SearchIntegrationsResponse = components['schemas']['SearchIntegrationsResponse'];
 export type SearchMode = components['schemas']['SearchMode'];
@@ -16863,6 +17408,7 @@ export type SelfPairResponse = components['schemas']['SelfPairResponse'];
 export type SendDraftResponse = components['schemas']['SendDraftResponse'];
 export type SendEmailForm = components['schemas']['SendEmailForm'];
 export type SendEmailWithAttachmentsResponse = components['schemas']['SendEmailWithAttachmentsResponse'];
+export type SendMessageRequest = components['schemas']['SendMessageRequest'];
 export type SetToolOverrideRequest = components['schemas']['SetToolOverrideRequest'];
 export type SetupStatusResponse = components['schemas']['SetupStatusResponse'];
 export type SetupWizardResponse = components['schemas']['SetupWizardResponse'];
@@ -16885,6 +17431,7 @@ export type StarredVoicesResponse = components['schemas']['StarredVoicesResponse
 export type StartPairingRequest = components['schemas']['StartPairingRequest'];
 export type StartPairingResponse = components['schemas']['StartPairingResponse'];
 export type StarVoiceRequest = components['schemas']['StarVoiceRequest'];
+export type StateFrame = components['schemas']['StateFrame'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
@@ -16912,6 +17459,9 @@ export type SupportRequestType = components['schemas']['SupportRequestType'];
 export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
+export type TimelineCard = components['schemas']['TimelineCard'];
+export type TimelineStep = components['schemas']['TimelineStep'];
+export type TimelineStepKind = components['schemas']['TimelineStepKind'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
@@ -16924,6 +17474,7 @@ export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
 export type TodoWakeKind = components['schemas']['TodoWakeKind'];
+export type TodoWokeItem = components['schemas']['TodoWokeItem'];
 export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflowGenerationResponse'];
 export type TodoWorkflowGenerationStatus = components['schemas']['TodoWorkflowGenerationStatus'];
 export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];
@@ -16933,6 +17484,7 @@ export type ToolDataEntry = components['schemas']['ToolDataEntry'];
 export type ToolInfo = components['schemas']['ToolInfo'];
 export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse'];
 export type ToolsListResponse = components['schemas']['ToolsListResponse'];
+export type ToolTimeline = components['schemas']['ToolTimeline'];
 export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResponse'];
 export type TriageEmailSummary = components['schemas']['TriageEmailSummary'];
 export type TriggerConfig = components['schemas']['TriggerConfig'];
@@ -16955,8 +17507,6 @@ export type UpdateHoloCardColorsResponse = components['schemas']['UpdateHoloCard
 export type UpdateInstructionsRequest = components['schemas']['UpdateInstructionsRequest'];
 export type UpdateIntegrationAccountRequest = components['schemas']['UpdateIntegrationAccountRequest'];
 export type UpdateMemoryRequest = components['schemas']['UpdateMemoryRequest'];
-export type UpdateMessagesRequest = components['schemas']['UpdateMessagesRequest'];
-export type UpdateMessagesResponse = components['schemas']['UpdateMessagesResponse'];
 export type UpdateProjectRequest = components['schemas']['UpdateProjectRequest'];
 export type UpdateReminderRequest = components['schemas']['UpdateReminderRequest'];
 export type UpdateTimezoneResponse = components['schemas']['UpdateTimezoneResponse'];
@@ -16971,6 +17521,8 @@ export type UsageHistoryEntry = components['schemas']['UsageHistoryEntry'];
 export type UsageSummary = components['schemas']['UsageSummary'];
 export type UserFeatureFlagListResponse = components['schemas']['UserFeatureFlagListResponse'];
 export type UserFeatureFlagResponse = components['schemas']['UserFeatureFlagResponse'];
+export type UserItem = components['schemas']['UserItem'];
+export type UserMessage = components['schemas']['UserMessage'];
 export type UserSubscriptionStatus = components['schemas']['UserSubscriptionStatus'];
 export type UserUpdateResponse = components['schemas']['UserUpdateResponse'];
 export type ValidationIssue = components['schemas']['ValidationIssue'];
@@ -16980,11 +17532,13 @@ export type VoiceOption = components['schemas']['VoiceOption'];
 export type VoiceSelectionResponse = components['schemas']['VoiceSelectionResponse'];
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
+export type WorkCancelled = components['schemas']['WorkCancelled'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
 export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionRequest'];
 export type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse'];
 export type WorkflowExecutionsResponse = components['schemas']['WorkflowExecutionsResponse'];
+export type WorkflowFiredItem = components['schemas']['WorkflowFiredItem'];
 export type WorkflowListResponse = components['schemas']['WorkflowListResponse'];
 export type WorkflowMessageResponse = components['schemas']['WorkflowMessageResponse'];
 export type WorkflowResponse = components['schemas']['WorkflowResponse'];
@@ -16993,6 +17547,8 @@ export type WorkflowStepInput = components['schemas']['WorkflowStepInput'];
 export type WorkflowStepOutput = components['schemas']['WorkflowStepOutput'];
 export type WorkflowTriggerResponse = components['schemas']['WorkflowTriggerResponse'];
 export type WorkflowWithIntegrations = components['schemas']['WorkflowWithIntegrations'];
+export type WorkItem = components['schemas']['WorkItem'];
+export type WorkStatus = components['schemas']['WorkStatus'];
 export type WritingStyleEditRequest = components['schemas']['WritingStyleEditRequest'];
 export type WritingStyleExampleBlocks = components['schemas']['WritingStyleExampleBlocks'];
 export type WritingStyleRegenerateRequest = components['schemas']['WritingStyleRegenerateRequest'];
@@ -17758,18 +18314,16 @@ export interface operations {
             };
         };
     };
-    bot_bot_chat_stream: {
+    bot_list_active_conversations: {
         parameters: {
-            query?: never;
+            query: {
+                platform: components["schemas"]["ConversationSource"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BotChatRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Client Error */
             "4XX": {
@@ -17794,7 +18348,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ActiveBotConversation"][];
+                };
             };
             /** @description Unprocessable Entity */
             422: {
@@ -18007,6 +18563,57 @@ export interface operations {
             };
         };
     };
+    bot_bot_send_message: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotMessageAccepted"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     bot_redeem_link_code: {
         parameters: {
             query?: never;
@@ -18094,7 +18701,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ResetSessionRequest"];
+                "application/json": components["schemas"]["BotSessionRequest"];
             };
         };
         responses: {
@@ -18173,6 +18780,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BotSettingsResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_stop_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotSessionRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationStopResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -19525,107 +20183,6 @@ export interface operations {
             };
         };
     };
-    chat_cancel_stream_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                stream_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CancelStreamResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    chat_chat_stream_endpoint: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description Browser timezone fallback */
-                "x-timezone"?: string;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MessageRequestWithHistory"];
-            };
-        };
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     conversations_get_conversations_endpoint: {
         parameters: {
             query?: {
@@ -19811,7 +20368,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConversationDocument"];
+                    "application/json": components["schemas"]["LoadedConversation"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -19861,6 +20418,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationActionResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_barge_in_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BargeInRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BargeInAccepted"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -19927,18 +20537,21 @@ export interface operations {
             };
         };
     };
-    conversations_update_messages_endpoint: {
+    conversations_get_entries_before_endpoint: {
         parameters: {
-            query?: never;
+            query: {
+                /** @description Return entries with a seq below this one */
+                before_seq: number;
+                /** @description Page size */
+                limit?: number;
+            };
             header?: never;
-            path?: never;
+            path: {
+                conversation_id: string;
+            };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateMessagesRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Client Error */
             "4XX": {
@@ -19964,7 +20577,110 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UpdateMessagesResponse"];
+                    "application/json": components["schemas"]["ConversationEntriesPage"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_conversation_events_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationEvent"];
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_send_message_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendMessageRequest"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageAccepted"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -20121,6 +20837,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StarConversationResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    conversations_stop_conversation_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationStopResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -22245,53 +23010,6 @@ export interface operations {
             };
         };
     };
-    integrations_get_my_integrations_snapshot_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MyIntegrationsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     integrations_get_public_integration: {
         parameters: {
             query?: never;
@@ -22491,53 +23209,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchIntegrationsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    integrations_get_integration_statuses_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationStatusesResponse"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -29033,53 +29704,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SkillTargetsResponse"];
                 };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    chat_subscribe_executor_stream: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                stream_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Unprocessable Entity */
             422: {

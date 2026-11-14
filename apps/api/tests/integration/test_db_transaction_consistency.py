@@ -14,7 +14,6 @@ data state and the documents handed to the repository, not mock call counts.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -23,12 +22,8 @@ from uuid import uuid4
 from fastapi import HTTPException
 import pytest
 
-from app.models.chat_models import (
-    ConversationModel,
-    MessageModel,
-    UpdateMessagesRequest,
-)
-from app.models.conversation_models import ConversationDocument, UpdateMessagesResponse
+from app.models.chat_models import ConversationModel
+from app.models.conversation_models import ConversationDocument
 from app.models.todo_models import (
     BulkUpdateRequest,
     Priority,
@@ -44,7 +39,6 @@ from app.services.conversation_service import (
     create_conversation_service,
     delete_all_conversations,
     delete_conversation,
-    update_messages,
 )
 from app.services.todos.todo_service import TodoService
 from app.utils.errors import AppError
@@ -114,7 +108,6 @@ class TestConversationCreationConsistency:
         document = captured["document"]
         assert document.user_id == USER_ID
         assert document.conversation_id == conv_id
-        assert document.messages == []
         assert document.createdAt is not None
 
     async def test_create_conversation_unacknowledged_raises(self) -> None:
@@ -126,14 +119,12 @@ class TestConversationCreationConsistency:
                 "app.services.conversation_service.conversation_repository.create",
                 AsyncMock(side_effect=AppError(message="inserted document could not be read back")),
             ),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(AppError, match="could not be read back"),
         ):
             await create_conversation_service(conversation, FAKE_USER)
 
-        assert exc_info.value.status_code == 500
-
     async def test_create_conversation_db_error_raises(self) -> None:
-        """A repository exception during create must propagate as HTTPException 500."""
+        """A repository exception during create propagates unchanged to the error handler."""
         conversation = ConversationModel(conversation_id=str(uuid4()), description="DB down")
 
         with (
@@ -141,12 +132,9 @@ class TestConversationCreationConsistency:
                 "app.services.conversation_service.conversation_repository.create",
                 AsyncMock(side_effect=Exception("connection refused")),
             ),
-            pytest.raises(HTTPException) as exc_info,
+            pytest.raises(Exception, match="connection refused"),
         ):
             await create_conversation_service(conversation, FAKE_USER)
-
-        assert exc_info.value.status_code == 500
-        assert "connection refused" in exc_info.value.detail
 
     async def test_create_conversation_requires_user_id(self) -> None:
         """An empty user_id must raise 403."""
@@ -323,130 +311,6 @@ class TestTodoCreationWithSubtasks:
 
 
 @pytest.mark.integration
-class TestConcurrentConversationUpdates:
-    """Verify that concurrent message additions both succeed (last-write-wins is fine)."""
-
-    async def test_concurrent_message_updates_both_succeed(self) -> None:
-        """Two concurrent update_messages calls on the same conversation must both complete."""
-        conv_id = str(uuid4())
-        append_count = 0
-
-        async def mock_append(conversation_id: str, **kwargs: Any) -> list[str]:
-            nonlocal append_count
-            await asyncio.sleep(0.01)  # simulate slight latency
-            append_count += 1
-            return [str(uuid4())]
-
-        msg_a = MessageModel(type="user", response="Message A")
-        msg_b = MessageModel(type="user", response="Message B")
-        req_a = UpdateMessagesRequest(conversation_id=conv_id, messages=[msg_a])
-        req_b = UpdateMessagesRequest(conversation_id=conv_id, messages=[msg_b])
-
-        with patch(
-            "app.services.conversation_service.conversation_repository.append_messages",
-            AsyncMock(side_effect=mock_append),
-        ):
-            results = await asyncio.gather(
-                update_messages(req_a, FAKE_USER),
-                update_messages(req_b, FAKE_USER),
-            )
-
-        assert append_count == 2
-        assert all(r.message == "Messages updated" for r in results)
-
-    async def test_concurrent_update_one_fails_one_succeeds(self) -> None:
-        """If one of two concurrent updates targets a missing conversation, the other still succeeds."""
-        conv_id = str(uuid4())
-        call_count = 0
-
-        async def alternating_append(conversation_id: str, **kwargs: Any) -> list[str] | None:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return None  # conversation not found
-            return [str(uuid4())]
-
-        msg_a = MessageModel(type="user", response="Will fail")
-        msg_b = MessageModel(type="user", response="Will succeed")
-        req_a = UpdateMessagesRequest(conversation_id=conv_id, messages=[msg_a])
-        req_b = UpdateMessagesRequest(conversation_id=conv_id, messages=[msg_b])
-
-        with patch(
-            "app.services.conversation_service.conversation_repository.append_messages",
-            AsyncMock(side_effect=alternating_append),
-        ):
-            results = await asyncio.gather(
-                update_messages(req_a, FAKE_USER),
-                update_messages(req_b, FAKE_USER),
-                return_exceptions=True,
-            )
-
-        exceptions = [r for r in results if isinstance(r, HTTPException)]
-        successes = [r for r in results if isinstance(r, UpdateMessagesResponse)]
-        assert len(exceptions) == 1
-        assert len(successes) == 1
-        assert exceptions[0].status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# Message delegation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestMessageOrdering:
-    """Verify the service forwards messages to the repository in order and surfaces its ids.
-
-    Insertion ordering and id assignment now live inside the repository and are
-    asserted end-to-end against real Mongo in
-    tests/contracts/test_conversations_repository.py::TestMessages::test_append_returns_ids_and_persists.
-    """
-
-    async def test_forwards_all_messages_in_order(self) -> None:
-        """Every message must reach append_messages, in the request's order."""
-        conv_id = str(uuid4())
-        captured: dict[str, list[MessageModel]] = {}
-
-        async def capture_append(
-            conversation_id: str, *, user_id: str, messages: list[MessageModel], **kwargs: Any
-        ) -> list[str]:
-            captured["messages"] = messages
-            return [str(uuid4()) for _ in messages]
-
-        messages = [MessageModel(type="user", response=f"msg-{i}") for i in range(5)]
-        request = UpdateMessagesRequest(conversation_id=conv_id, messages=messages)
-
-        with patch(
-            "app.services.conversation_service.conversation_repository.append_messages",
-            AsyncMock(side_effect=capture_append),
-        ):
-            await update_messages(request, FAKE_USER)
-
-        assert [m.response for m in captured["messages"]] == [f"msg-{i}" for i in range(5)]
-
-    async def test_returns_message_ids_from_repository(self) -> None:
-        """The ids the repository assigns must be surfaced in the response."""
-        conv_id = str(uuid4())
-        assigned_ids = [str(uuid4())]
-
-        messages = [MessageModel(type="bot", response="hello")]
-        request = UpdateMessagesRequest(conversation_id=conv_id, messages=messages)
-
-        with patch(
-            "app.services.conversation_service.conversation_repository.append_messages",
-            AsyncMock(return_value=assigned_ids),
-        ):
-            result = await update_messages(request, FAKE_USER)
-
-        assert result.message_ids == assigned_ids
-
-
-# ---------------------------------------------------------------------------
-# Partial failure handling
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
 class TestPartialFailureHandling:
     """Verify services handle repository-level failures gracefully."""
 
@@ -457,7 +321,7 @@ class TestPartialFailureHandling:
 
         with (
             patch("app.services.conversation_service.conversation_repository.create", mock_create),
-            pytest.raises(HTTPException),
+            pytest.raises(Exception, match="disk full"),
         ):
             await create_conversation_service(conversation, FAKE_USER)
 

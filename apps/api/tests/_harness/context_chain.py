@@ -12,6 +12,7 @@ External reads are pinned by fake_context_sources and fenced beneath it,
 so a new read fails loudly instead of reaching a real store.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -28,7 +29,12 @@ from app.agents.context.assemble import assemble_context
 from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import PromptSlot, slot_of
 from app.agents.context.tiers import AgentTier
-from app.agents.core.messages import MessageScope, construct_langchain_messages
+from app.agents.core.messages import (
+    MessageAttachments,
+    MessageScope,
+    build_turn_context,
+    human_content,
+)
 from app.agents.core.nodes.pre_model_hooks import (
     comms_pre_model_hooks,
     worker_pre_model_hooks,
@@ -245,7 +251,7 @@ async def _seed_comms(
             {"preferences": user.preferences, "writing_style": user.writing_style}
         ),
     )
-    return await construct_langchain_messages(
+    return await comms_turn_messages(
         query=query,
         scope=MessageScope(
             user_id=user.user_id,
@@ -358,3 +364,16 @@ async def seed_only(
     ):
         _, configurable = await build_configurable(tier, resolved_user, configurable_overrides)
         return await seed_context(tier, user=resolved_user, query=query, configurable=configurable)
+
+
+async def comms_turn_messages(
+    query: str, scope: MessageScope | None = None, attachments: MessageAttachments | None = None
+) -> list[AnyMessage]:
+    """Lay out one user turn's comms input as the step does: its context, the framed words, the clock."""
+    scope = scope or MessageScope()
+    attachments = attachments or MessageAttachments()
+    context, content = await asyncio.gather(
+        build_turn_context(query, scope), human_content(scope, attachments, query.strip())
+    )
+    presence = [context.presence] if context.presence is not None else []
+    return [*context.chain, *presence, HumanMessage(content=content), context.clock]

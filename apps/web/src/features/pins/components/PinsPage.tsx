@@ -2,6 +2,7 @@
 
 import { Input } from "@heroui/input";
 import { PinIcon } from "@icons";
+import { itemText } from "@shared/conversation";
 import { useEffect, useMemo, useState } from "react";
 import Spinner from "@/components/ui/spinner";
 import { PinCard } from "@/features/pins/components/PinCard";
@@ -18,7 +19,7 @@ export default function Pins() {
   const filteredResults = useMemo(() => {
     if (!searchQuery.trim()) return fetchedResults;
     return fetchedResults.filter((result) =>
-      result.message.response.toLowerCase().includes(searchQuery.toLowerCase()),
+      itemText(result.item).toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [fetchedResults, searchQuery]);
 
@@ -37,9 +38,9 @@ export default function Pins() {
                 <div className="grid grid-cols-1 gap-4 pt-10 pb-24 sm:grid-cols-3 sm:pb-20">
                   {filteredResults.map((result) => (
                     <PinCard
-                      key={result.message.message_id}
+                      key={result.item.id}
                       conversation_id={result.conversation_id}
-                      message={result.message}
+                      item={result.item}
                     />
                   ))}
                 </div>

@@ -42,7 +42,7 @@ class LogTag:
     MAIL: Final[str] = "[MAIL]"  # services/mail
 
     # --- Product domains ---
-    CHAT: Final[str] = "[CHAT]"  # services/chat
+    CHAT: Final[str] = "[CHAT]"
     WORKFLOW: Final[str] = "[WORKFLOW]"  # services/workflow, system_workflows, utils
     ONBOARDING: Final[str] = "[ONBOARDING]"  # services/onboarding
     TODO: Final[str] = "[TODO]"  # services/todos

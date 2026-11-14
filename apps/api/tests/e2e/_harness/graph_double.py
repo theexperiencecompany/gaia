@@ -1,6 +1,6 @@
 """A compiled-graph stand-in that replays a scripted LangGraph event stream.
 
-execute_graph_streaming is the translator between LangGraph's three stream
+payloads_for_stream_event is the translator between LangGraph's three stream
 modes and the chat SSE vocabulary. Driving it needs a graph whose astream
 emits an exact, chosen sequence of events — including sequences a real run only
 produces under conditions a test cannot arrange (a pre-model hook replaying a
@@ -14,7 +14,7 @@ path — is the real production function.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 from typing import Any
 
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, ToolMessage
@@ -112,7 +112,7 @@ class ScriptedGraph:
         # each one actually passed.
         self.astream_kwargs = {"initial_state": initial_state, **kwargs}
 
-        async def _gen() -> AsyncIterator[Event]:
+        async def _gen() -> AsyncGenerator[Event, None]:
             for event in self.events:
                 self.yielded += 1
                 yield event

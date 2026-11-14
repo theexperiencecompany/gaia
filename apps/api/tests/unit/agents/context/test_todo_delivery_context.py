@@ -4,7 +4,7 @@ Regression for the live desk run whose briefing (FYI and Today sections) was ans
 with SILENCE, "nothing new needs your attention", although the desk's Standing rule
 says every briefing with content is delivered whole. The rule reached the decision;
 it read as one more input that the routine-check default outweighed. No model runs
-here: what is pinned is the request the real delivery path builds, after comms'
+here: what is pinned is the request the step builds for the run, after comms'
 pre-model hooks.
 """
 
@@ -13,25 +13,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AnyMessage, HumanMessage
 import pytest
 from tests._harness.context_chain import ContextSeed, effective_context, text_of
+from tests.unit.services.conversation.log_helpers import todo_run as typed_todo_run
 
 from app.agents.context.tiers import AgentTier
-from app.agents.core.background import comms_narrator, todo_run_delivery
-from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
-from app.agents.core.graph_manager import GraphManager
+from app.agents.core.background import todo_run_delivery
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE
+from app.constants.conversation import WORK_DONE_NOTE
 from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.todo_models import TodoDocument
-from app.models.user_models import AuthenticatedUser
-from app.models.workflow_models import TriggerType
-from app.services.delivery.chat_channel import InApp
 from app.services.tracked_todo_service import starting_canvas
 
 pytestmark = pytest.mark.unit
 
-USER = AuthenticatedUser(user_id="6812f0b3c9a14e2b7d5a91ce")
+USER_ID = "6812f0b3c9a14e2b7d5a91ce"
 DESK = TodoDocument(
     id="66f838cc8829054e5f10e401",
-    user_id=USER.user_id,
+    user_id=USER_ID,
     title=INBOX_DESK_TITLE,
     notify_on_run=True,
     recurrence=INBOX_DESK_RECURRENCE,
@@ -52,40 +49,14 @@ SHORT_DEFAULT = "keep it short"
 
 
 async def _delivered_request() -> HumanMessage:
-    """Run the desk's real delivery up to the comms call and return the message it hands comms."""
-    graph_run = AsyncMock(return_value=("<SILENCE>nothing new</SILENCE>", []))
+    """Build what the step hands comms for the desk's run: its write-up note, then the finished work."""
     repo = MagicMock(get_by_id=AsyncMock(return_value=DESK))
-    with (
-        patch.object(todo_run_delivery, "todo_repository", repo),
-        patch.object(todo_run_delivery, "record_run_finished", AsyncMock(return_value=True)),
-        patch.object(todo_run_delivery, "capture", MagicMock()),
-        # Resolved alongside the narration: a real lookup would reach Mongo.
-        patch.object(
-            todo_run_delivery,
-            "resolve_proactive_target",
-            AsyncMock(return_value=InApp(reason="no_chat_app")),
-        ),
-        patch.object(GraphManager, "get_graph", AsyncMock()),
-        patch.object(
-            comms_narrator, "build_agent_config", AsyncMock(return_value={"configurable": {}})
-        ),
-        patch.object(comms_narrator, "execute_graph_silent", graph_run),
-    ):
-        await todo_run_delivery.deliver_todo_run_result(
-            ExecutorRun(
-                stream_id="s1",
-                conversation_id="run-conv",
-                user=USER,
-                kind=RunKind.LIVE,
-                task_id="t1",
-                user_message_id=None,
-            ),
-            TodoRun(todo_id=DESK.id, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=False),
-            BRIEFING,
-            "final",
-        )
-    (message,) = graph_run.await_args.args[1]["messages"]
-    return message
+    run = typed_todo_run().model_copy(
+        update={"todo_id": DESK.id, "title": DESK.title, "runs_once": False}
+    )
+    with patch.object(todo_run_delivery, "todo_repository", repo):
+        note = await todo_run_delivery.write_up_note(run)
+    return HumanMessage(content=f"{note}\n{WORK_DONE_NOTE.format(report=BRIEFING)}")
 
 
 async def _comms_context() -> str:

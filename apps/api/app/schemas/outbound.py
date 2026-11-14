@@ -15,6 +15,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, model_validator
 
 from app.config.settings import settings
+from app.models.conversation_send_models import ActiveBotConversation
 
 
 def _is_own_api(url: str) -> bool:
@@ -55,21 +56,6 @@ class OutboundAttachment(BaseModel):
         return self
 
 
-class OutboundReaction(BaseModel):
-    """A native emoji reaction the bot should attach to an existing platform
-    message (a comms ``<EMOJI>…</EMOJI>`` answer to a background update).
-
-    ``target_platform_message_id`` is the platform-native id of the message to
-    react to (WhatsApp wamid, Telegram message_id, Discord id, Slack ts),
-    recorded from the inbound turn. The consumer falls back to sending the
-    emoji as a text bubble when the platform cannot attach it."""
-
-    target_platform_message_id: str = Field(min_length=1)
-    emoji: str = Field(min_length=1)
-    #: The reaction GAIA already has on that message, which the new one replaces.
-    replaces_emoji: str | None = Field(default=None, min_length=1)
-
-
 class OutboundMessageEnvelope(BaseModel):
     """Shape of a bot-facing message queued to the delivery bus."""
 
@@ -86,7 +72,10 @@ class OutboundMessageEnvelope(BaseModel):
     text: str | None = Field(default=None, min_length=1)
     text_parts: list[str] | None = None
     attachment: OutboundAttachment | None = None
-    reaction: OutboundReaction | None = None
+    # A bot conversation the bot must follow now: something it renders was just logged there.
+    follow: ActiveBotConversation | None = None
+    # The notification this message delivers; the consumer sends one message per id.
+    notification_id: str | None = None
     enqueued_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
@@ -95,7 +84,7 @@ class OutboundMessageEnvelope(BaseModel):
             not self.text
             and not self.text_parts
             and self.attachment is None
-            and self.reaction is None
+            and self.follow is None
         ):
-            raise ValueError("envelope requires text, text_parts, attachment, or reaction")
+            raise ValueError("envelope requires text, text_parts, attachment, or follow")
         return self

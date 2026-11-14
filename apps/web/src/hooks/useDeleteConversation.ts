@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
-import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
+import { db, type IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 
 type ChatStoreState = ReturnType<typeof useChatStore.getState>;
@@ -10,20 +10,14 @@ const selectRemoveConversation = (state: ChatStoreState) =>
   state.removeConversation;
 const selectUpsertConversation = (state: ChatStoreState) =>
   state.upsertConversation;
-const selectSetMessagesForConversation = (state: ChatStoreState) =>
-  state.setMessagesForConversation;
 
-// Best-effort restore of the deleted conversation into IndexedDB during
-// rollback. If local persistence fails we proceed with the store update only.
+// Best-effort restore of the deleted conversation's row into IndexedDB during rollback; its log
+// refetches on the next open. If local persistence fails we proceed with the store update only.
 async function restoreConversationCache(
   conversation: IConversation,
-  messages: IMessage[],
 ): Promise<void> {
   try {
     await db.putConversation(conversation);
-    if (messages.length > 0) {
-      await db.putMessagesBulk(messages);
-    }
   } catch {
     // If local persistence fails during rollback we proceed with store update only
   }
@@ -49,22 +43,17 @@ function resolveDeletionFailure(
 export const useDeleteConversation = () => {
   const removeConversation = useChatStore(selectRemoveConversation);
   const upsertConversation = useChatStore(selectUpsertConversation);
-  const setMessagesForConversation = useChatStore(
-    selectSetMessagesForConversation,
-  );
 
   return useCallback(
     async (conversationId: string) => {
       const snapshot = useChatStore.getState();
       const conversation: IConversation | undefined =
         snapshot.conversations.find((item) => item.id === conversationId);
-      const messages: IMessage[] =
-        snapshot.messagesByConversation[conversationId] ?? [];
 
       removeConversation(conversationId);
 
       const [dbResult, apiResult] = await Promise.allSettled([
-        db.deleteConversationAndMessages(conversationId),
+        db.deleteConversationAndLog(conversationId),
         chatApi.deleteConversation(conversationId),
       ]);
 
@@ -80,11 +69,8 @@ export const useDeleteConversation = () => {
             : undefined;
 
       if (conversation) {
-        await restoreConversationCache(conversation, messages);
+        await restoreConversationCache(conversation);
         upsertConversation(conversation);
-        if (messages.length > 0) {
-          setMessagesForConversation(conversationId, messages);
-        }
       }
 
       const failure = resolveDeletionFailure(
@@ -94,6 +80,6 @@ export const useDeleteConversation = () => {
       );
       if (failure) throw failure;
     },
-    [removeConversation, setMessagesForConversation, upsertConversation],
+    [removeConversation, upsertConversation],
   );
 };

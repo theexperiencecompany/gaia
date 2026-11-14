@@ -45,7 +45,7 @@ export interface Integration {
   name: string;
   description: string;
   category: IntegrationCategoryValue;
-  status: "connected" | "not_connected" | "created" | "expired" | "error";
+  status: "connected" | "not_connected" | "created" | "expired";
   /** ISO timestamp of when the upstream grant died. Only set when `status` is `expired`. */
   expiredAt?: string;
   displayPriority?: number;

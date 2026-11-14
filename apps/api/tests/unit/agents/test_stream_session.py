@@ -13,10 +13,8 @@ from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
     RunKind,
-    TodoRun,
     claim_tool_output,
     create_session,
-    get_or_create_session,
     get_session,
     mark_executor_spawned,
     note_tool_output_owner,
@@ -25,9 +23,6 @@ from app.agents.core.background.session import (
     teardown_session,
 )
 from app.models.user_models import AuthenticatedUser
-from app.models.workflow_models import TriggerType
-
-TODO_RUN = TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True)
 
 
 @pytest.fixture(autouse=True)
@@ -45,8 +40,7 @@ class TestSessionRegistry:
         assert created.executor_spawned is False
 
     def test_create_overwrites_existing_session(self) -> None:
-        # register_executor_capture semantics: a new turn on the same stream id
-        # starts from a clean slate (fresh done-event, empty collector).
+        # A new run on the same stream id starts from a clean slate (fresh done-event, empty collector).
         first = create_session("s1", RunKind.LIVE)
         first.tool_events.append({"tool_data": {"x": 1}})
         second = create_session("s1", RunKind.LIVE)
@@ -67,14 +61,17 @@ class TestSessionRegistry:
         teardown_session("s1")  # must not raise
         assert get_session("s1") is None
 
-    def test_get_or_create_auto_vivifies_missing_session(self) -> None:
-        # Parity with the old dicts' setdefault behavior: touching state for an
-        # unregistered stream must work (and not crash callers like handoff).
-        session = get_or_create_session("ghost")
-        assert get_session("ghost") is session
-
 
 class TestExecutorLifecycleFlags:
+    def test_spawning_opens_a_live_session_when_none_is_registered(self) -> None:
+        mark_executor_spawned("fresh")
+
+        session = get_session("fresh")
+        assert session is not None
+        assert session.kind is RunKind.LIVE
+        assert session.executor_spawned is True
+        teardown_session("fresh")
+
     def test_spawned_flag_lifecycle(self) -> None:
         session = create_session("s1", RunKind.LIVE)
         assert session.executor_spawned is False
@@ -91,52 +88,8 @@ class TestExecutorLifecycleFlags:
         signal_executor_done("missing")  # must not raise
 
 
-class TestOwnershipRule:
-    """The single source of truth that prevents duplicate/lost tool cards.
-
-    Live runs: the comms path attaches executor tool_data — the executor must
-    NOT self-persist. Queued and workflow runs have no comms consumer, so the
-    executor self-persists. Exactly one owner per stream.
-    """
-
-    @pytest.mark.parametrize(
-        ("kind", "workflow_id", "owns"),
-        [
-            (RunKind.LIVE, None, False),
-            (RunKind.QUEUED, None, True),
-            (RunKind.LIVE, "wf-1", True),
-            (RunKind.QUEUED, "wf-1", True),
-        ],
-    )
-    def test_executor_owns_tool_data_truth_table(self, kind, workflow_id, owns) -> None:
-        run = ExecutorRun(
-            stream_id="s1",
-            conversation_id="conv-1",
-            user=AuthenticatedUser(user_id="u1"),
-            kind=kind,
-            task_id="t1",
-            user_message_id=None,
-            workflow_id=workflow_id,
-        )
-        assert run.executor_owns_tool_data is owns
-
-    @pytest.mark.parametrize(("todo_run", "owns"), [(None, False), (TODO_RUN, True)])
-    def test_a_tracked_todos_live_run_streams_into_and_keeps_its_own_message(
-        self, todo_run, owns
-    ) -> None:
-        """No comms turn sits in front of a todo's run: nothing else would render or keep its cards."""
-        run = ExecutorRun(
-            stream_id="s1",
-            conversation_id="todo-chat",
-            user=AuthenticatedUser(user_id="u1"),
-            kind=RunKind.LIVE,
-            task_id="t1",
-            user_message_id=None,
-            todo_run=todo_run,
-        )
-        assert run.owns_stream is owns
-        assert run.executor_owns_tool_data is owns
-        assert run.render_message_id == ("t1" if owns else None)
+class TestExecutorRun:
+    """The run context an executor run is built with."""
 
     def test_is_queued_reflects_kind_not_stream_id(self) -> None:
         # The id prefix is cosmetic; behavior must key on RunKind only.
@@ -186,7 +139,6 @@ class TestOwnershipRule:
         )
         assert run.workflow_id is None
         assert run.workflow_notify_on_completion is True
-        assert run.executor_owns_tool_data is False
 
 
 class TestToolOutputOwnership:

@@ -158,18 +158,10 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
 
 
 class MyIntegrationsResponse(ResponseModel):
-    """The full integration catalog personalized for one user (platform + their
-    own custom integrations), each carrying connection status. Replaces the
-    client-side merge of /config + /status + /users/me/integrations."""
+    """The full integration catalog personalized for one user (platform + their own custom), each with its connection status."""
 
     integrations: list[MyIntegrationItem] = Field(default_factory=list)
     total: int = 0
-
-
-class IntegrationStatusesResponse(ResponseModel):
-    """Current connection status map, fetched independently of the catalog."""
-
-    statuses: dict[str, bool] = Field(description="Connection state keyed by integration id")
 
 
 class IntegrationToolsResponse(CamelModel, ResponseModel):

@@ -151,7 +151,7 @@ export function SidebarContent() {
   const router = useRouter();
   const pathname = usePathname();
   const { closeSidebar } = useSidebar();
-  const { setActiveChatId, clearActiveMessages } = useChatContext();
+  const { setActiveChatId } = useChatContext();
   const [chatSearch, setChatSearch] = useState("");
 
   const inTodos = pathname.startsWith("/todos");
@@ -168,10 +168,9 @@ export function SidebarContent() {
 
   const handleNewChat = useCallback(() => {
     closeSidebar();
-    clearActiveMessages();
     setActiveChatId(null);
     router.replace("/");
-  }, [closeSidebar, clearActiveMessages, router, setActiveChatId]);
+  }, [closeSidebar, router, setActiveChatId]);
 
   return (
     <SafeAreaView

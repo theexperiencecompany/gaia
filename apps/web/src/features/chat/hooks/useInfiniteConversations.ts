@@ -2,8 +2,9 @@ import { useCallback, useRef, useState } from "react";
 
 import { type Conversation, chatApi } from "@/features/chat/api/chatApi";
 import { CONVERSATIONS_PAGE_SIZE } from "@/features/chat/constants";
-import { apiRowHasLiveApproval } from "@/features/chat/utils/approvalFlag";
+import { apiRowAwaitsApproval } from "@/features/chat/utils/approvalFlag";
 import { db } from "@/lib/db/chatDb";
+import { useChatStore } from "@/stores/chatStore";
 
 interface InfiniteConversationsState {
   isLoadingMore: boolean;
@@ -39,9 +40,14 @@ export const useInfiniteConversations = () => {
       );
 
       if (response.conversations.length > 0) {
-        // Convert API conversations to IConversation format and store in IndexedDB
+        // Convert API conversations to IConversation format and store in IndexedDB,
+        // keeping what only a sync row carries (hasOlder, artifacts, todoId).
+        const stored = new Map(
+          useChatStore.getState().conversations.map((conv) => [conv.id, conv]),
+        );
         const mappedConversations = response.conversations.map(
           (conv: Conversation) => ({
+            ...stored.get(conv.conversation_id),
             id: conv.conversation_id,
             title: conv.description || "Untitled conversation",
             description: conv.description ?? "",
@@ -50,7 +56,7 @@ export const useInfiniteConversations = () => {
             isSystemGenerated: conv.is_system_generated ?? false,
             systemPurpose: conv.system_purpose ?? null,
             isUnread: conv.is_unread ?? false,
-            hasLiveApproval: apiRowHasLiveApproval(conv),
+            awaitingApproval: apiRowAwaitsApproval(conv),
             createdAt: new Date(conv.createdAt ?? 0),
             updatedAt: conv.updatedAt
               ? new Date(conv.updatedAt)

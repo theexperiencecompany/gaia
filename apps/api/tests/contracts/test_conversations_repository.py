@@ -16,16 +16,15 @@ import pytest
 from app.db.mongodb import indexes
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.cache import CachePolicy
+from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import (
-    ConversationSource,
-    MessageModel,
-    MessageReaction,
-    ReactionBy,
-    SavedSubagentGroup,
-    SystemPurpose,
-)
+from app.models.chat_models import ConversationSource, SystemPurpose
+from app.models.conversation_log_models import Entry, Reply, UserMessage
 from app.models.conversation_models import ConversationDocument, ConversationSearchResults
+from app.models.conversation_screen_models import UserItem
+from app.services.conversation.mongo_log import MongoConversationLog
+from shared.py.conversation_wire import ReplyItem, ToolDataEntry
+from tests.helpers import shown_items
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
 pytestmark = pytest.mark.usefixtures("entries_collection")
@@ -50,45 +49,23 @@ def _doc(**overrides: object) -> ConversationDocument:
     return ConversationDocument.model_validate(data)
 
 
-def _subagent_group(subagent_id: str) -> dict[str, object]:
-    return {
-        "tool_name": "subagent_group",
-        "data": {
-            "subagent_id": subagent_id,
-            "tool_calls": [{"tool_call_id": f"{subagent_id}-before"}],
-            "completed_at": None,
-            "duration_ms": None,
-        },
-    }
+def _log() -> MongoConversationLog:
+    return MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
 
 
-async def _seed_subagent_group(repo: ConversationRepository, doc: ConversationDocument) -> str:
-    await repo.create(doc)
-    ids = await repo.append_messages(
-        doc.conversation_id,
-        user_id=doc.user_id,
-        messages=[MessageModel(type="bot", response="r")],
-    )
-    assert ids is not None
-    assert await repo.append_message_tool_data(
-        doc.conversation_id,
-        user_id=doc.user_id,
-        message_id=list(ids)[0],
-        entries=[_subagent_group("row-1")],
-    )
-    return list(ids)[0]
+async def _say(doc: ConversationDocument, *entries: Entry) -> None:
+    """Append each entry to the conversation's log, as the step and the send route do."""
+    for entry in entries:
+        await _log().append(doc.conversation_id, doc.user_id, entry)
 
 
-async def _seed_user_message(repo: ConversationRepository) -> tuple[ConversationDocument, str]:
-    doc = _doc()
-    await repo.create(doc)
-    ids = await repo.append_messages(
-        doc.conversation_id,
-        user_id=doc.user_id,
-        messages=[MessageModel(type="user", response="book it")],
-    )
-    assert ids is not None
-    return doc, next(iter(ids))
+def _asked(text: str) -> UserMessage:
+    return UserMessage(id=f"u-{uuid.uuid4().hex}", text=text, surface=ConversationSource.WEB)
+
+
+def _replied(text: str, *, cards: tuple[ToolDataEntry, ...] = ()) -> Reply:
+    reply_id = f"r-{uuid.uuid4().hex}"
+    return Reply(id=f"o-{reply_id}", reply_id=reply_id, attempt_id="a1", text=text, tool_data=cards)
 
 
 @pytest.fixture
@@ -109,14 +86,13 @@ class TestConversationCrud:
         assert fetched.createdAt == doc.createdAt
         assert fetched.id == ""
 
-    async def test_create_with_messages_raises_and_writes_nothing(self, repo):
-        doc = _doc(messages=[{"type": "user", "response": "hi", "seq": 1}])
-        with pytest.raises(ValueError) as refused:
-            await repo.create(doc)
-        assert str(refused.value) == (
-            "create() writes only the head; append the messages with append_messages()"
-        )
-        assert await repo.get(doc.conversation_id, user_id=doc.user_id) is None
+    async def test_create_drops_an_old_embedded_messages_array(self, repo, raw_collection):
+        doc = _doc(messages=[{"type": "user", "response": "hi"}])
+        await repo.create(doc)
+        stored = await raw_collection.find_one({"conversation_id": doc.conversation_id})
+        assert stored is not None
+        assert "messages" not in stored
+        assert stored["log_head"] == 0
 
     async def test_get_missing_returns_none(self, repo):
         assert await repo.get(_cid(), user_id=_uid()) is None
@@ -242,66 +218,27 @@ class TestListSummaries:
         ]
 
 
-class TestLiveApprovalFlag:
-    async def test_marking_a_sourceless_run_stamps_background_and_the_flag(self, repo):
+class TestBackgroundSource:
+    async def test_marking_a_sourceless_run_stamps_background_and_hides_it(self, repo):
         doc = _doc()
         await repo.create(doc)
 
-        assert await repo.mark_background_with_live_approval(
-            doc.conversation_id, user_id=doc.user_id
-        )
+        assert await repo.mark_background(doc.conversation_id, user_id=doc.user_id)
 
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        assert fetched.has_live_approval is True
         assert fetched.source == ConversationSource.BACKGROUND
+        assert await repo.list_active_summaries(doc.user_id, skip=0, limit=10) == []
 
     async def test_marking_never_overwrites_a_real_channel(self, repo):
         doc = _doc(source=ConversationSource.WEB)
         await repo.create(doc)
 
-        await repo.mark_background_with_live_approval(doc.conversation_id, user_id=doc.user_id)
+        assert not await repo.mark_background(doc.conversation_id, user_id=doc.user_id)
 
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
         assert fetched.source == ConversationSource.WEB
-        assert fetched.has_live_approval is True
-
-    async def test_marked_background_run_surfaces_in_the_sidebar(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-
-        await repo.mark_background_with_live_approval(doc.conversation_id, user_id=doc.user_id)
-
-        active = await repo.list_active_summaries(doc.user_id, skip=0, limit=10)
-        assert [s.conversation_id for s in active] == [doc.conversation_id]
-
-    async def test_marking_touches_only_the_named_conversation(self, repo):
-        user = _uid()
-        target, sibling = _doc(user_id=user), _doc(user_id=user)
-        await repo.create(target)
-        await repo.create(sibling)
-
-        await repo.mark_background_with_live_approval(target.conversation_id, user_id=user)
-
-        untouched = await repo.get(sibling.conversation_id, user_id=user)
-        assert untouched is not None
-        assert untouched.has_live_approval is False
-        assert untouched.source is None
-
-    async def test_marking_is_refused_for_another_user(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-
-        marked = await repo.mark_background_with_live_approval(
-            doc.conversation_id, user_id="attacker"
-        )
-
-        assert marked is False
-        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert fetched.has_live_approval is False
-        assert fetched.source is None
 
     async def test_marking_stamps_only_the_callers_row_of_a_shared_id(self, repo):
         shared = _cid()
@@ -309,58 +246,14 @@ class TestLiveApprovalFlag:
         await repo.create(theirs)
         await repo.create(mine)
 
-        await repo.mark_background_with_live_approval(shared, user_id=mine.user_id)
-        await repo.refresh_live_approval_flag(shared, user_id=mine.user_id, live=False)
+        await repo.mark_background(shared, user_id=mine.user_id)
 
         other = await repo.get(shared, user_id=theirs.user_id)
         assert other is not None
         assert other.source is None
-        assert other.has_live_approval is False
 
     async def test_marking_a_missing_conversation_reports_false(self, repo):
-        assert await repo.mark_background_with_live_approval(_cid(), user_id=_uid()) is False
-
-    async def test_refresh_rewrites_the_flag_both_ways(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-
-        assert await repo.refresh_live_approval_flag(
-            doc.conversation_id, user_id=doc.user_id, live=True
-        )
-        raised = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert await repo.refresh_live_approval_flag(
-            doc.conversation_id, user_id=doc.user_id, live=False
-        )
-        lowered = await repo.get(doc.conversation_id, user_id=doc.user_id)
-
-        assert raised is not None and raised.has_live_approval is True
-        assert lowered is not None and lowered.has_live_approval is False
-
-    async def test_refresh_touches_only_the_named_conversation(self, repo):
-        user = _uid()
-        target, sibling = _doc(user_id=user), _doc(user_id=user)
-        await repo.create(target)
-        await repo.create(sibling)
-
-        await repo.refresh_live_approval_flag(target.conversation_id, user_id=user, live=True)
-
-        untouched = await repo.get(sibling.conversation_id, user_id=user)
-        assert untouched is not None and untouched.has_live_approval is False
-
-    async def test_refresh_is_refused_for_another_user(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-
-        refreshed = await repo.refresh_live_approval_flag(
-            doc.conversation_id, user_id="attacker", live=True
-        )
-
-        assert refreshed is False
-        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None and fetched.has_live_approval is False
-
-    async def test_refresh_of_a_missing_conversation_reports_false(self, repo):
-        assert await repo.refresh_live_approval_flag(_cid(), user_id=_uid(), live=True) is False
+        assert await repo.mark_background(_cid(), user_id=_uid()) is False
 
 
 class _CachedConversationRepository(ConversationRepository):
@@ -375,47 +268,15 @@ class TestInPlaceWritesUnderACachePolicy:
         return _CachedConversationRepository()
 
     async def test_marking_evicts_the_cached_conversation(self, cached_repo):
-        # A real channel skips the source stamp, so the flag write's eviction stands alone.
-        doc = _doc(source=ConversationSource.WEB)
-        await cached_repo.create(doc)
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
-
-        await cached_repo.mark_background_with_live_approval(
-            doc.conversation_id, user_id=doc.user_id
-        )
-
-        fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert fetched.has_live_approval is True
-
-    async def test_refreshing_evicts_the_cached_conversation(self, cached_repo):
         doc = _doc()
         await cached_repo.create(doc)
         assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
 
-        await cached_repo.refresh_live_approval_flag(
-            doc.conversation_id, user_id=doc.user_id, live=True
-        )
+        await cached_repo.mark_background(doc.conversation_id, user_id=doc.user_id)
 
         fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        assert fetched.has_live_approval is True
-
-    async def test_extending_a_subagent_group_evicts_the_cached_conversation(self, cached_repo):
-        doc = _doc()
-        mid = await _seed_subagent_group(cached_repo, doc)
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
-
-        await cached_repo.extend_subagent_group(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=mid,
-            group=SavedSubagentGroup(subagent_id="row-1", duration_ms=1200),
-        )
-
-        fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None and fetched.messages[0].tool_data is not None
-        assert fetched.messages[0].tool_data[0]["data"]["duration_ms"] == 1200
+        assert fetched.source == ConversationSource.BACKGROUND
 
     async def test_deleting_a_todos_chats_evicts_the_cached_chat(self, cached_repo):
         doc = _doc(todo_id="todo-1")
@@ -428,253 +289,58 @@ class TestInPlaceWritesUnderACachePolicy:
 
 
 class TestMessages:
-    async def test_append_returns_ids_and_persists(self, repo):
+    async def test_an_exchange_reads_back_as_its_messages(self, repo):
         doc = _doc()
         await repo.create(doc)
-        ids = await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[
-                MessageModel(type="user", response="hi"),
-                MessageModel(type="bot", response="hello"),
-            ],
-        )
-        assert ids is not None and len(ids) == 2
+        asked, replied = _asked("hi"), _replied("hello")
+        await _say(doc, asked, replied)
+
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        assert [m.response for m in fetched.messages] == ["hi", "hello"]
-        assert [m.message_id for m in fetched.messages] == list(ids)
+        [user, reply] = shown_items(fetched)
+        assert isinstance(user, UserItem) and isinstance(reply, ReplyItem)
+        assert [(user.id, (user.message.text,)), (reply.id, reply.bubbles)] == [
+            (asked.id, ("hi",)),
+            (replied.reply_id, ("hello",)),
+        ]
 
-    async def test_a_tool_data_entry_holding_a_model_is_stored_as_its_dump(self, repo):
+    async def test_a_pinned_reply_is_listed_as_the_item_its_chat_shows(self, repo):
         doc = _doc()
         await repo.create(doc)
-        group = SavedSubagentGroup.model_validate(_subagent_group("row-1")["data"])
-        message = MessageModel(
-            type="bot", response="x", tool_data=[{"tool_name": "subagent_group", "data": group}]
-        )
-        [mid] = (
-            await repo.append_messages(doc.conversation_id, user_id=doc.user_id, messages=[message])
-            or []
-        )
-
-        saved = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
-        assert saved is not None and saved.tool_data is not None
-        assert saved.tool_data[0]["data"] == group.model_dump()
-
-    async def test_append_missing_conversation_returns_none(self, repo):
-        assert (
-            await repo.append_messages(
-                _cid(), user_id=_uid(), messages=[MessageModel(type="user", response="x")]
-            )
-            is None
-        )
-
-    async def test_pin_and_list_and_get_message(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-        ids = await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="bot", response="pin me")],
-        )
-        assert ids is not None
-        mid = list(ids)[0]
-        assert await repo.set_message_pinned(
+        replied = _replied("pin me")
+        await _say(doc, _asked("hi"), replied)
+        mid = replied.reply_id
+        assert await conversation_log_repository.set_pinned(
             doc.conversation_id, user_id=doc.user_id, message_id=mid, pinned=True
         )
-        one = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
-        assert one is not None and one.pinned is True
+        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None
+        [one] = [item for item in shown_items(fetched) if item.id == mid]
+        assert isinstance(one, ReplyItem) and one.pinned is True
 
         pinned = await repo.list_pinned_messages(doc.user_id)
-        assert [(h.conversation_id, h.message.message_id) for h in pinned] == [
-            (doc.conversation_id, mid)
-        ]
+        assert [(h.conversation_id, h.item) for h in pinned] == [(doc.conversation_id, one)]
 
-    async def test_a_reaction_set_only_if_unset_never_replaces_one_already_there(self, repo):
-        doc, mid = await _seed_user_message(repo)
-        chat_model = MessageReaction(emoji="👍", by=ReactionBy.CHAT_MODEL)
-        jev = MessageReaction(emoji="👌", by=ReactionBy.JEV)
-
-        assert await repo.set_message_reaction(
-            doc.conversation_id, user_id=doc.user_id, message_id=mid, reaction=chat_model
-        )
-        assert not await repo.set_message_reaction(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=mid,
-            reaction=jev,
-            only_if_unset=True,
-        )
-
-        saved = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
-        assert saved is not None and saved.reaction == chat_model
-
-    async def test_a_reaction_without_the_guard_replaces_the_one_there(self, repo):
-        doc, mid = await _seed_user_message(repo)
-        jev = MessageReaction(emoji="👌", by=ReactionBy.JEV)
-        chat_model = MessageReaction(emoji="👍", by=ReactionBy.CHAT_MODEL)
-
-        assert await repo.set_message_reaction(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=mid,
-            reaction=jev,
-            only_if_unset=True,
-        )
-        assert await repo.set_message_reaction(
-            doc.conversation_id, user_id=doc.user_id, message_id=mid, reaction=chat_model
-        )
-
-        saved = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
-        assert saved is not None and saved.reaction == chat_model
-
-    async def test_a_reaction_advances_updated_at_so_clients_sync_it(self, repo, raw_collection):
-        doc, mid = await _seed_user_message(repo)
-        stale = datetime(2020, 1, 1, tzinfo=UTC)
-        await raw_collection.update_one(
-            {"conversation_id": doc.conversation_id}, {"$set": {"updatedAt": stale}}
-        )
-
-        assert await repo.set_message_reaction(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=mid,
-            reaction=MessageReaction(emoji="👍", by=ReactionBy.CHAT_MODEL),
-        )
-
-        after = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert after is not None and after.updatedAt is not None
-        assert after.updatedAt > stale
-
-    async def test_tool_data_and_follow_up_writes(self, repo):
+    async def test_a_reload_keeps_every_key_emitters_stamp_on_a_cards_entry(self, repo):
+        """tool_category/mcp_ui/mcp_server_url/subagent_id are invisible live but break a reload when dropped."""
         doc = _doc()
         await repo.create(doc)
-        ids = await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="bot", response="r")],
-        )
-        assert ids is not None
-        mid = list(ids)[0]
-        assert await repo.append_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=mid,
-            entries=[{"tool_name": "weather", "data": {"t": 1}, "timestamp": "2026-01-01"}],
-        )
-        assert await repo.set_message_follow_up_actions(
-            doc.conversation_id, user_id=doc.user_id, message_id=mid, actions=["do x"]
-        )
-        msg = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
-        assert msg is not None
-        assert msg.tool_data is not None and msg.tool_data[0]["tool_name"] == "weather"
-        assert msg.follow_up_actions == ["do x"]
-
-    async def test_a_resumed_subagent_extends_its_saved_row_in_place(self, repo):
-        """Array-filtered: the one group gets the calls, a sibling group and other cards are untouched."""
-        doc = _doc()
-        await repo.create(doc)
-        ids = await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="bot", response="r")],
-        )
-        assert ids is not None
-        mid = list(ids)[0]
-        assert await repo.append_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=mid,
-            entries=[
-                _subagent_group("row-1"),
-                _subagent_group("row-2"),
-                {"tool_name": "weather", "data": {}},
-            ],
-        )
-
-        assert await repo.extend_subagent_group(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=mid,
-            group=SavedSubagentGroup(
-                subagent_id="row-1",
-                tool_calls=[{"tool_call_id": "row-1-after"}],
-                completed_at="2026-09-23T10:05:00Z",
-                duration_ms=1200,
-            ),
-        )
-
-        msg = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
-        assert msg is not None and msg.tool_data is not None
-        groups = {
-            e["data"]["subagent_id"]: e["data"] for e in msg.tool_data if "subagent_id" in e["data"]
+        card: ToolDataEntry = {
+            "tool_name": "tool_calls_data",
+            "data": {"tool_name": "gmail_send", "tool_call_id": "tc-1"},
+            "timestamp": "2026-01-01",
+            "tool_category": "gmail",
+            "subagent_id": "sa-1",
+            "mcp_ui": {"resource_uri": "ui://card"},
+            "mcp_server_url": "https://mcp.example.com",
         }
-        assert [c["tool_call_id"] for c in groups["row-1"]["tool_calls"]] == [
-            "row-1-before",
-            "row-1-after",
-        ]
-        assert groups["row-1"]["completed_at"] == "2026-09-23T10:05:00Z"
-        assert groups["row-1"]["duration_ms"] == 1200
-        assert [c["tool_call_id"] for c in groups["row-2"]["tool_calls"]] == ["row-2-before"]
-        assert groups["row-2"]["completed_at"] is None
-        assert len(msg.tool_data) == 3
+        replied = _replied("r", cards=(card,))
+        await _say(doc, _asked("send it"), replied)
 
-    async def test_extending_a_row_the_message_does_not_hold_matches_nothing(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-        ids = await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="bot", response="r")],
-        )
-        assert ids is not None
-
-        assert not await repo.extend_subagent_group(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=list(ids)[0],
-            group=SavedSubagentGroup(subagent_id="missing"),
-        )
-
-    async def test_extending_is_refused_for_another_user(self, repo):
-        doc = _doc()
-        mid = await _seed_subagent_group(repo, doc)
-
-        extended = await repo.extend_subagent_group(
-            doc.conversation_id,
-            user_id="attacker",
-            message_id=mid,
-            group=SavedSubagentGroup(subagent_id="row-1", tool_calls=[{"tool_call_id": "pwned"}]),
-        )
-
-        assert extended is False
-        msg = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
-        assert msg is not None and msg.tool_data is not None
-        assert msg.tool_data[0]["data"]["tool_calls"] == [{"tool_call_id": "row-1-before"}]
-
-    async def test_append_preserves_every_key_emitters_stamp_on_tool_data(self, repo):
-        """append_messages must not drop tool_category/mcp_ui/mcp_server_url/subagent_id, invisible live but breaking on reload."""
-        doc = _doc()
-        await repo.create(doc)
-        message = MessageModel(type="bot", response="r")
-        message.tool_data = [
-            {
-                "tool_name": "tool_calls_data",
-                "data": {"tool_name": "gmail_send", "tool_call_id": "tc-1"},
-                "timestamp": "2026-01-01",
-                "tool_category": "gmail",
-                "subagent_id": "sa-1",
-                "mcp_ui": {"resource_uri": "ui://card"},
-                "mcp_server_url": "https://mcp.example.com",
-            }
-        ]
-        ids = await repo.append_messages(
-            doc.conversation_id, user_id=doc.user_id, messages=[message]
-        )
-        assert ids is not None
-
-        stored = await repo.get_message(doc.conversation_id, list(ids)[0], user_id=doc.user_id)
-        assert stored is not None and stored.tool_data is not None
+        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert fetched is not None
+        [stored] = [item for item in shown_items(fetched) if item.id == replied.reply_id]
+        assert isinstance(stored, ReplyItem)
         entry = stored.tool_data[0]
         assert entry.get("tool_category") == "gmail"
         assert entry.get("subagent_id") == "sa-1"
@@ -684,297 +350,11 @@ class TestMessages:
     async def test_find_owner_of_message(self, repo):
         doc = _doc()
         await repo.create(doc)
-        ids = await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="bot", response="owned")],
-        )
-        assert ids is not None
-        found = await repo.find_owner_of_message(doc.user_id, list(ids)[0])
+        replied = _replied("owned")
+        await _say(doc, _asked("hi"), replied)
+        found = await repo.find_owner_of_message(doc.user_id, replied.reply_id)
         assert found == doc.conversation_id
         assert await repo.find_owner_of_message(doc.user_id, "no-such") is None
-
-
-class TestMessageSettlementWrites:
-    """set_message_response / set_message_tool_data / set_message_approval_status — in-place writes that settle an already-persisted turn."""
-
-    @staticmethod
-    async def _seed(repo) -> tuple[ConversationDocument, str, str]:
-        """Build a conversation with a tool_data-less user message and a bot message.
-
-        The leading user message is load-bearing for the approval-status
-        filter: it has no tool_data at all, the shape a messages.$[]
-        positional filter chokes on.
-        """
-        doc = _doc()
-        await repo.create(doc)
-        ids = await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[
-                MessageModel(type="user", response="do the thing"),
-                MessageModel(type="bot", response=""),
-            ],
-        )
-        assert ids is not None and len(ids) == 2
-        return doc, list(ids)[0], list(ids)[1]
-
-    async def test_set_response_writes_only_the_named_message(self, repo):
-        doc, user_mid, bot_mid = await self._seed(repo)
-
-        assert await repo.set_message_response(
-            doc.conversation_id, user_id=doc.user_id, message_id=bot_mid, response="the answer"
-        )
-
-        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert [m.response for m in fetched.messages] == ["do the thing", "the answer"]
-        assert [m.message_id for m in fetched.messages] == [user_mid, bot_mid]
-
-    async def test_set_response_on_an_unknown_message_returns_false(self, repo):
-        doc, _user_mid, _bot_mid = await self._seed(repo)
-        assert (
-            await repo.set_message_response(
-                doc.conversation_id, user_id=doc.user_id, message_id="no-such", response="x"
-            )
-            is False
-        )
-
-    async def test_set_response_is_refused_for_another_user(self, repo):
-        doc, _user_mid, bot_mid = await self._seed(repo)
-
-        assert (
-            await repo.set_message_response(
-                doc.conversation_id, user_id="attacker", message_id=bot_mid, response="pwned"
-            )
-            is False
-        )
-        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
-        assert stored is not None and stored.response == ""
-
-    async def test_set_tool_data_replaces_rather_than_appends(self, repo):
-        """Distinguished from append_message_tool_data: delivery re-persists the whole frame list, so a stale entry must not survive the write."""
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.append_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[{"tool_name": "stale", "data": {}, "timestamp": "2026-01-01"}],
-        )
-
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[{"tool_name": "fresh", "data": {"ok": True}, "timestamp": "2026-01-02"}],
-        )
-
-        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
-        assert stored is not None and stored.tool_data is not None
-        assert [e["tool_name"] for e in stored.tool_data] == ["fresh"]
-
-    async def test_set_tool_data_on_an_unknown_message_returns_false(self, repo):
-        doc, _user_mid, _bot_mid = await self._seed(repo)
-        assert (
-            await repo.set_message_tool_data(
-                doc.conversation_id, user_id=doc.user_id, message_id="no-such", entries=[]
-            )
-            is False
-        )
-
-    async def test_set_tool_data_is_refused_for_another_user(self, repo):
-        doc, _user_mid, bot_mid = await self._seed(repo)
-
-        assert (
-            await repo.set_message_tool_data(
-                doc.conversation_id,
-                user_id="attacker",
-                message_id=bot_mid,
-                entries=[{"tool_name": "injected", "data": {}, "timestamp": "2026-01-01"}],
-            )
-            is False
-        )
-        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
-        assert stored is not None
-        assert not stored.tool_data
-
-    async def test_approval_status_settles_only_the_named_frame(self, repo):
-        """Two approval cards on one message: settling a1 must not touch a2."""
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a1", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                },
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a2", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                },
-            ],
-        )
-
-        assert (
-            await repo.set_message_approval_status(
-                doc.conversation_id, user_id=doc.user_id, approval_id="a1", status="approved"
-            )
-            is True
-        )
-
-        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
-        assert stored is not None and stored.tool_data is not None
-        by_id = {e["data"]["approval_id"]: e["data"]["status"] for e in stored.tool_data}
-        assert by_id == {"a1": "approved", "a2": "pending"}
-
-    @pytest.mark.regression
-    async def test_approval_status_for_an_unknown_id_reports_failure(self, repo):
-        """Regression: filtering on the conversation alone made matched > 0 mean "conversation exists", true even for a stale approval_id."""
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a1", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                }
-            ],
-        )
-
-        assert (
-            await repo.set_message_approval_status(
-                doc.conversation_id, user_id=doc.user_id, approval_id="nope", status="approved"
-            )
-            is False
-        )
-
-    async def test_approval_status_for_an_unknown_id_settles_nothing(self, repo):
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a1", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                }
-            ],
-        )
-
-        await repo.set_message_approval_status(
-            doc.conversation_id, user_id=doc.user_id, approval_id="nope", status="approved"
-        )
-
-        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
-        assert stored is not None and stored.tool_data is not None
-        assert stored.tool_data[0]["data"]["status"] == "pending"
-
-    async def test_approval_status_on_a_missing_conversation_returns_false(self, repo):
-        assert (
-            await repo.set_message_approval_status(
-                _cid(), user_id=_uid(), approval_id="a1", status="approved"
-            )
-            is False
-        )
-
-    async def test_approval_status_is_refused_for_another_user(self, repo):
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a1", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                }
-            ],
-        )
-
-        assert (
-            await repo.set_message_approval_status(
-                doc.conversation_id, user_id="attacker", approval_id="a1", status="approved"
-            )
-            is False
-        )
-        stored = await repo.get_message(doc.conversation_id, bot_mid, user_id=doc.user_id)
-        assert stored is not None and stored.tool_data is not None
-        assert stored.tool_data[0]["data"]["status"] == "pending"
-
-    async def test_settlement_writes_never_advance_updated_at(self, repo):
-        """Bumping updatedAt here would reshuffle the sidebar's recency ordering behind the user's back."""
-        doc, _user_mid, bot_mid = await self._seed(repo)
-        assert await repo.set_starred(doc.conversation_id, user_id=doc.user_id, starred=True)
-        before = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert before is not None and before.updatedAt is not None
-
-        assert await repo.set_message_response(
-            doc.conversation_id, user_id=doc.user_id, message_id=bot_mid, response="answer"
-        )
-        assert await repo.set_message_tool_data(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            message_id=bot_mid,
-            entries=[
-                {
-                    "tool_name": "approval_request",
-                    "data": {"approval_id": "a1", "status": "pending"},
-                    "timestamp": "2026-01-01",
-                }
-            ],
-        )
-        assert await repo.set_message_approval_status(
-            doc.conversation_id, user_id=doc.user_id, approval_id="a1", status="approved"
-        )
-
-        after = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert after is not None
-        assert after.updatedAt == before.updatedAt
-
-
-class TestLegacyReadTolerance:
-    async def test_get_reads_legacy_message_missing_timestamp_and_legacy_tool_field(
-        self, repo, raw_collection, entries_collection
-    ):
-        # A migrated entry is the legacy message verbatim: a tool_data entry that
-        # predates the timestamp field, plus a legacy per-tool field to convert.
-        cid, uid = _cid(), _uid()
-        await raw_collection.insert_one(
-            {
-                "user_id": uid,
-                "conversation_id": cid,
-                "description": "legacy",
-                "createdAt": datetime.now(UTC).isoformat(),
-                "log_head": 1,
-            }
-        )
-        await entries_collection.insert_one(
-            {
-                "user_id": uid,
-                "conversation_id": cid,
-                "seq": 1,
-                "id": "legacy-1",
-                "at": datetime.now(UTC),
-                "type": "bot",
-                "response": "r",
-                "tool_data": [{"tool_name": "old", "data": {}}],  # no timestamp
-                "weather_data": {"temp": 5},  # legacy per-tool field
-            }
-        )
-        fetched = await repo.get(cid, user_id=uid)
-        assert fetched is not None
-        tool_names = {e["tool_name"] for e in (fetched.messages[0].tool_data or [])}
-        assert "old" in tool_names and "weather_data" in tool_names  # legacy field folded in
 
 
 class TestTrackedTodoChats:
@@ -996,15 +376,10 @@ class TestTrackedTodoChats:
             user_id=user,
             todo_id="todo-3",
             source=ConversationSource.BACKGROUND,
-            has_live_approval=True,
         )
         for doc in (chat, todo_chat, starred_todo_chat, approval_todo_chat):
             await repo.create(doc)
-        await repo.append_messages(
-            todo_chat.conversation_id,
-            user_id=user,
-            messages=[MessageModel(type="bot", response="the deploy is green")],
-        )
+        await _say(todo_chat, _asked("go"), _replied("the deploy is green"))
 
         active = await repo.list_active_summaries(user, skip=0, limit=10)
         assert [s.conversation_id for s in active] == [chat.conversation_id]
@@ -1138,13 +513,15 @@ class TestSearchAndSweeps:
         user = _uid()
         doc = _doc(user_id=user, description="grocery list")
         await repo.create(doc)
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=user,
-            messages=[MessageModel(type="bot", response="the weather is sunny")],
-        )
+        replied = _replied("the weather is sunny")
+        await _say(doc, _asked("go"), replied)
+        fetched = await repo.get(doc.conversation_id, user_id=user)
+        assert fetched is not None
+        [shown] = [item for item in shown_items(fetched) if item.id == replied.reply_id]
         by_message = await repo.search(user, pattern="weather")
-        assert [h.conversation_id for h in by_message.messages] == [doc.conversation_id]
+        assert [(h.conversation_id, h.item) for h in by_message.messages] == [
+            (doc.conversation_id, shown)
+        ]
         by_desc = await repo.search(user, pattern="grocery")
         assert [h.conversation_id for h in by_desc.conversations] == [doc.conversation_id]
 
@@ -1237,11 +614,7 @@ class TestActivitySignal:
     async def test_an_appended_conversation_counts_via_updatedat(self, repo):
         doc = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
         await repo.create(doc)
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="user", response="hi")],
-        )
+        await _say(doc, _asked("hi"))
 
         cutoff = datetime.now(UTC) - timedelta(days=1)
         assert await repo.has_activity_since(doc.user_id, cutoff) is True
@@ -1257,11 +630,7 @@ class TestActivitySignal:
         """Regression: every run of a tracked todo saves its report in the todo's chat, so a user whose todos ran never went dormant."""
         doc = _doc(todo_id="todo-1")
         await repo.create(doc)
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="bot", response="the deploy is green")],
-        )
+        await _say(doc, _asked("go"), _replied("the deploy is green"))
 
         cutoff = datetime.now(UTC) - timedelta(days=1)
         assert await repo.has_activity_since(doc.user_id, cutoff) is False
@@ -1297,85 +666,3 @@ async def test_owners_of_maps_each_existing_conversation_to_its_owner(repo):
     owners = await repo.owners_of([a_conv.conversation_id, b_conv.conversation_id, _cid()])
 
     assert owners == {a_conv.conversation_id: alice, b_conv.conversation_id: bob}
-
-
-def _reply_entry(
-    user_id: str, conversation_id: str, *, at: datetime, in_progress: bool
-) -> dict[str, object]:
-    """Return a reply entry as a died turn leaves it: opened and in progress at the given time."""
-    return {
-        "user_id": user_id,
-        "conversation_id": conversation_id,
-        "seq": 1,
-        "id": f"{conversation_id}-1",
-        "at": at,
-        "type": "bot",
-        "response": "partial",
-        "in_progress": in_progress,
-    }
-
-
-class TestUnfinishedReplySweep:
-    """The maintenance sweep's reads and writes of in-progress reply entries."""
-
-    async def test_list_unfinished_reply_owners_returns_only_stale_in_progress_replies(
-        self, repo, entries_collection
-    ):
-        opened_before = datetime.now(UTC)
-        await entries_collection.insert_many(
-            [
-                _reply_entry("u1", "c1", at=opened_before - timedelta(hours=1), in_progress=True),
-                _reply_entry("u2", "c2", at=opened_before + timedelta(hours=1), in_progress=True),
-                _reply_entry("u3", "c3", at=opened_before - timedelta(hours=1), in_progress=False),
-            ]
-        )
-
-        assert await repo.list_unfinished_reply_owners(opened_before=opened_before) == {
-            ("u1", "c1")
-        }
-
-    async def test_fail_unfinished_replies_returns_zero_when_given_no_owners(self, repo):
-        assert (
-            await repo.fail_unfinished_replies(
-                opened_before=datetime.now(UTC), error="interrupted", owners=set()
-            )
-            == 0
-        )
-
-    async def test_fail_unfinished_replies_settles_only_the_owners_it_is_given(
-        self, repo, entries_collection
-    ):
-        opened_before = datetime.now(UTC)
-        for user_id, conversation_id in (("u1", "c1"), ("u2", "c2"), ("u3", "c3")):
-            await entries_collection.insert_one(
-                _reply_entry(
-                    user_id,
-                    conversation_id,
-                    at=opened_before - timedelta(hours=1),
-                    in_progress=True,
-                )
-            )
-
-        failed = await repo.fail_unfinished_replies(
-            opened_before=opened_before,
-            error="interrupted",
-            owners={("u1", "c1"), ("u2", "c2")},
-        )
-
-        assert failed == 2
-        by_conversation = {
-            entry["conversation_id"]: entry
-            for entry in await entries_collection.find({}).to_list(length=None)
-        }
-        assert (by_conversation["c1"]["error"], by_conversation["c1"].get("in_progress")) == (
-            "interrupted",
-            None,
-        )
-        assert (by_conversation["c2"]["error"], by_conversation["c2"].get("in_progress")) == (
-            "interrupted",
-            None,
-        )
-        assert (by_conversation["c3"].get("error"), by_conversation["c3"]["in_progress"]) == (
-            None,
-            True,
-        )

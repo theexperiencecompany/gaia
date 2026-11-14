@@ -19,6 +19,8 @@ from app.config.settings import settings
 from app.config.workos import get_async_workos_client
 from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
 from app.constants.auth import (
+    AGENT_TOKEN_PATHS,
+    BOT_API_KEY_HEADER,
     DEV_USER_HEADER,
     DEV_USER_MISSING_HINT,
     WOS_SESSION_COOKIE,
@@ -132,8 +134,8 @@ class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     """Authenticate WorkOS session cookies; populate request.state.user.
 
-    Handles cookie refresh and an agent-token fallback for the chat-stream
-    endpoint. Unauthenticated requests still pass through — route handlers
+    Handles cookie refresh and an agent-token fallback for the voice worker's
+    conversation routes. Unauthenticated requests still pass through — route handlers
     are responsible for enforcing auth via :func:get_current_user.
     """
 
@@ -222,9 +224,6 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         self._exclude_prefix: list[str] = [
             p for p in self.exclude_paths if p not in self._exclude_exact
         ]
-        # Routes that also accept an "Authorization: Bearer <agent JWT>" in
-        # addition to a WorkOS session cookie.
-        self.agent_only_paths = ["/api/v1/chat-stream"]
         self.user_cache_expiry = 3600
         self.dev_bypass_email = (
             settings.DEV_AUTH_BYPASS_EMAIL if settings.deployment.dev_tools else None
@@ -250,7 +249,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             self._publish_user(request)
             return await call_next(request)
 
-        if self.dev_bypass_email:
+        # A bot names its user with its own token, so it authenticates exactly as in production.
+        if self.dev_bypass_email and BOT_API_KEY_HEADER not in request.headers:
             return await self._dispatch_dev_bypass(request, call_next)
 
         # Self-host mode: authenticate via the local session JWT instead of
@@ -317,12 +317,12 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     async def _authenticate_agent_token(self, request: Request, *, auth_provider: str) -> None:
         """Resolve an agent bearer token onto request.state, if it carries one.
 
-        One implementation serves both dispatch branches: voice and desktop
-        clients present an AGENT_SECRET-signed JWT instead of a browser cookie,
-        but only on the agent-only paths. auth_provider names which session
+        One implementation serves both dispatch branches: the voice worker
+        presents an AGENT_SECRET-signed JWT instead of a browser cookie, honoured
+        only on AGENT_TOKEN_PATHS. auth_provider names which session
         system the request would otherwise have used.
         """
-        if request.state.authenticated or request.url.path not in self.agent_only_paths:
+        if request.state.authenticated or not AGENT_TOKEN_PATHS.fullmatch(request.url.path):
             return
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):

@@ -5,9 +5,8 @@ import { Input } from "@heroui/input";
 import { Cancel01Icon } from "@icons";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useConversation } from "@/features/chat/hooks/useConversation";
-import { sendMessage } from "@/features/chat/stream/sendMessage";
+import { sendMessage } from "@/features/chat/live/sendMessage";
 import { useElectron } from "@/hooks/useElectron";
-import { useIsInitialResponseStreaming } from "@/stores/streamStore";
 import { usePopupDismissGuard } from "../hooks/usePopupEscapeDismiss";
 import type { PopupAgentState } from "../hooks/usePopupVoice";
 import PopupOrb from "./PopupOrb";
@@ -24,7 +23,7 @@ interface PopupComposerProps {
 /**
  * The Siri-style pill: the window's liquid glass is the field itself —
  * glowing orb on the left, the shared send/stop button on the right.
- * Sends through the real chat-stream pipeline.
+ * Sends through the real conversation send pipeline.
  */
 export default function PopupComposer({
   active,
@@ -33,7 +32,6 @@ export default function PopupComposer({
 }: Readonly<PopupComposerProps>) {
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const isStreaming = useIsInitialResponseStreaming();
   const { dismissPopup } = useElectron();
   const dismissIfIdle = usePopupDismissGuard();
   const { convoMessages } = useConversation();
@@ -51,11 +49,11 @@ export default function PopupComposer({
   }, [messageCount, disabled]);
 
   const handleSend = () => {
-    if (!hasContent || isStreaming) return;
+    if (!hasContent) return;
     const content = text;
     setText("");
     // No client-side paid-only pre-check here: a free user's send gets a 402
-    // from chat-stream, and `PopupPaywallNotice` renders that block in the
+    // from the send route, and `PopupPaywallNotice` renders that block in the
     // feed window (this pill has no room for it). See sync.ts.
     sendMessage(content).catch((error) => {
       console.error("Popup send failed", error);

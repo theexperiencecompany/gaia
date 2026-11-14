@@ -91,15 +91,8 @@ async def _decide(
     answer: dict[str, Any] | Exception,
     call: JudgedCall | None = None,
     history: AutoHistory | None = None,
-    fallback: Any = None,
 ) -> IntentDecision:
-    judge = JevIntentJudge(
-        fallback=fallback
-        if fallback is not None
-        else AsyncMock(
-            **{"decide.return_value": None},
-        ),
-    )
+    judge = JevIntentJudge()
     with patch(f"{CLIENT_MODULE}.jev_http_client", _client(answer)):
         with _openrouter_key("or-key"):
             return await judge.decide(
@@ -399,38 +392,6 @@ class TestVetoes:
         assert d.outcome == "accept"
 
 
-class TestFallback:
-    async def test_transport_failure_runs_the_fallback_not_an_allow(self) -> None:
-        fallback = AsyncMock(**{"decide.return_value": IntentDecision("ask", "llm says ask")})
-        d = await _decide(ConnectionError("down"), fallback=fallback)
-        assert d.outcome == "ask"
-        assert d.reason == "llm says ask"
-        fallback.decide.assert_awaited_once()
-
-    async def test_malformed_answer_runs_the_fallback(self) -> None:
-        fallback = AsyncMock()
-        await _decide({"answers": {}}, fallback=fallback)
-        fallback.decide.assert_awaited_once()
-
-    async def test_unknown_choice_runs_the_fallback(self) -> None:
-        fallback = AsyncMock()
-        await _decide(_answer("maybe", 1.0), fallback=fallback)
-        fallback.decide.assert_awaited_once()
-
-    async def test_missing_api_key_runs_the_fallback(self) -> None:
-        fallback = AsyncMock()
-        judge = JevIntentJudge(fallback=fallback)
-        with _openrouter_key(None):
-            await judge.decide(
-                user_id="u",
-                user_messages=["send it"],
-                call=_call(),
-                prior_calls=[],
-                history=AutoHistory(),
-            )
-        fallback.decide.assert_awaited_once()
-
-
 class TestWire:
     async def test_state_names_its_evidence_fields(self) -> None:
         """The criteria reference these names; a renamed field blinds the judge."""
@@ -721,7 +682,7 @@ class TestTheJudgeAroundTheWire:
     async def test_the_users_and_assistants_turns_reach_jev(self) -> None:
         client = _sequence_client(_answer("unclear", 0.5))
         with _jev(client):
-            await JevIntentJudge(fallback=AsyncMock()).decide(
+            await JevIntentJudge().decide(
                 user_id="u",
                 user_messages=["draft it", "send it"],
                 call=_call(),
@@ -734,46 +695,12 @@ class TestTheJudgeAroundTheWire:
         assert state["user_messages"] == ["draft it", "send it"]
         assert state["assistant_turns"] == ["Your draft is ready."]
 
-    async def test_a_failure_is_reported_and_the_fallback_gets_the_whole_call(self) -> None:
-        fallback = AsyncMock(**{"decide.return_value": IntentDecision("ask", "llm")})
-        prior = [PriorCall(name="FIND", args={})]
-        history = AutoHistory(approved_recent=1)
-        with (
-            _jev(_sequence_client(ConnectionError("down"))),
-            patch(f"{MODULE}.log") as log,
-        ):
-            decision = await JevIntentJudge(fallback=fallback).decide(
-                user_id="u",
-                user_messages=["send it"],
-                call=_call(),
-                prior_calls=prior,
-                history=history,
-                assistant_turns=["ready"],
-            )
-
-        assert decision == IntentDecision("ask", "llm")
-        fallback.decide.assert_awaited_once_with(
-            user_id="u",
-            user_messages=["send it"],
-            call=_call(),
-            prior_calls=prior,
-            history=history,
-            assistant_turns=["ready"],
-        )
-        log.warning.assert_called_once()
-        assert "JEV judge failed; falling back" in log.warning.call_args.args[0]
-        assert log.warning.call_args.kwargs == {
-            "tool_name": "send_email",
-            "error": "down",
-            "error_type": "ConnectionError",
-        }
-
     async def _decide_with_forbid(
         self, forbid: dict[str, Any] | Exception
     ) -> tuple[IntentDecision, AsyncMock]:
         client = _sequence_client(_answer("authorized", 0.9), forbid)
         with _jev(client):
-            decision = await JevIntentJudge(fallback=AsyncMock()).decide(
+            decision = await JevIntentJudge().decide(
                 user_id="u",
                 user_messages=FORBID_TURNS,
                 call=_call(),
@@ -818,7 +745,7 @@ class TestTheJudgeAroundTheWire:
     async def test_no_forbid_language_skips_the_second_question(self) -> None:
         client = _sequence_client(_answer("authorized", 0.9))
         with _jev(client):
-            decision = await JevIntentJudge(fallback=AsyncMock()).decide(
+            decision = await JevIntentJudge().decide(
                 user_id="u",
                 user_messages=["draft an email to bob@example.com about the deck"],
                 call=_call(),

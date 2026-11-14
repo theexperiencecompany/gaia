@@ -121,6 +121,9 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 ```text
 [[tool:<name> <json-args>]]   one scripted tool call — repeatable, ordered
 [[say:<text>]]                the final assistant reply — at most one, terminal
+[[fail:<message>]]            break the final call after streaming the say text
+[[wait:<ms>]]                 hold the next step (tool call or reply) this long
+[[pace:<ms>]]                 stream the say text one word per chunk, this far apart
 ```
 
 - A message with **no** directives → the canned reply `ok (llm-stub)`.
@@ -131,6 +134,8 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 - **Nesting works.** A tool directive's args end where its JSON value ends, not at the first `]]`, so args may contain a literal `]]` — including a whole nested directive, at any depth. That is how you script a hand-off: `[[tool:handoff {"subagent_id":"gmail","task":"[[tool:GMAIL_FETCH_MESSAGES {\"max_results\":3}]]"}]]`. JSON-encode the args (`json.dumps`) and the escaping takes care of itself.
 - **Limitation:** a `[[say:…]]` body is plain text and ends at the first `]]`, so say text cannot contain that sequence. Put nested scripts in tool args.
 - **A directive opened but never closed → HTTP 500**, not a silent fall-through to the canned reply.
+- **Timing.** A wait belongs to the next tool directive after it, or to the reply when no tool follows; waits add up; a non-integer or negative count → HTTP 500. Each tier waits only on steps it emits itself: comms forwards executor tools at once and the executor waits on them, so `[[tool:create_todo {"title":"a"}]] [[wait:10000]] [[tool:create_todo {"title":"b"}]] [[say:Done]]` gets a quick reply and keeps background work running ~10s between the two todos — the window to send a second message into. A wait before the say is honoured by every tier that says it. `[[wait:3000]] [[say:hi]]` holds the first model output; `[[pace:200]] [[say:a long reply]]` streams it slowly for a mid-text send.
+- **Results are re-voiced.** A result payload (`<executor_result>`, `<executor_error>`, `<browser_*>`) handed to a tier after its newest script is answered with its own text, so a background run's result bubble reads the executor's say text.
 
 Example message that files a todo then replies: `add a todo [[tool:create_todo {"title":"buy milk"}]] [[say:Added it.]]`
 
@@ -142,17 +147,20 @@ Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1)
 
 All routes under `/api/v1`. Under the bypass, add `-H 'X-Dev-User: <email>'` to act as a specific seeded user; omit it to be `DEV_AUTH_BYPASS_EMAIL`.
 
-**Chat (streaming turn).** `POST /api/v1/chat-stream` (`app/api/v1/endpoints/chat.py:99`). Body is `MessageRequestWithHistory` (`app/models/message_models.py`): `messages` is a list of `{role, content}`; `conversation_id` optional (server mints one if absent); `turn_id` optional idempotency key (duplicate → 409). Response is SSE (`text/event-stream`); the stream id is on the `X-Stream-Id` response header, and the turn **continues in the background and persists to Mongo even if you disconnect**.
+**Chat (send a message, follow its events).** `POST /api/v1/conversations/{id}/messages` (`app/api/v1/endpoints/conversations.py`). Body is `SendMessageRequest` (`app/models/conversation_send_models.py`): a client-minted `message_id` (a resend is a no-op) and `text`; the conversation id is client-minted too and is created on its first message. It returns 202 with the message's `seq`; the reply arrives on the conversation's events stream and **persists to Mongo whether or not anyone is listening**.
 
 ```bash
-curl -sN -X POST "http://localhost:${API_PORT:-8000}/api/v1/chat-stream" \
+CONV=$(uuidgen)
+curl -s -X POST "http://localhost:${API_PORT:-8000}/api/v1/conversations/$CONV/messages" \
   -H 'content-type: application/json' -H 'X-Dev-User: alice@gaia.local' \
-  -d '{"messages":[{"role":"user","content":"[[say:hello from sim]]"}]}'
-# SSE frames stream as `data: ...`; grab X-Stream-Id from the response headers (-D -) to reattach/cancel.
+  -d "{\"message_id\":\"$(uuidgen)\",\"text\":\"[[say:hello from sim]]\"}"
+curl -sN "http://localhost:${API_PORT:-8000}/api/v1/conversations/$CONV/events?after=0" \
+  -H 'X-Dev-User: alice@gaia.local'
+# SSE `data:` lines are ConversationEvent frames; the reply is done at its reply_settled entry.
 ```
 
-- Reattach to a live/finished stream: `GET /api/v1/stream/{stream_id}` (replays the event log).
-- Cancel: `POST /api/v1/cancel-stream/{stream_id}`.
+- Resume: `after=<seq>` replays the log after it; `after=<stream id>` (the frame's `id:`) resumes exactly after that frame.
+- Stop: `POST /api/v1/conversations/{id}/stop`.
 
 **Todos.** `GET /api/v1/todos` (list), `POST /api/v1/todos` (create) (`app/api/v1/endpoints/todos.py`):
 
@@ -177,7 +185,7 @@ mongosh 'mongodb://localhost:27017/GAIA' --quiet --eval \
 
 ## 5. Drive the executor in isolation
 
-The full chain is comms → executor. §4's `/chat-stream` always enters at comms; this dev-only route (same mount gate as the rest of `/dev`, §2) enters at the executor, so you can test it without scripting the comms hop above it. Integrations, including MCP servers, are activated inside the executor with `activate_integration`; there is no per-integration subagent to enter. Responses are plain JSON — the agent's final message — not SSE.
+The full chain is comms → executor. §4's send always enters at comms; this dev-only route (same mount gate as the rest of `/dev`, §2) enters at the executor, so you can test it without scripting the comms hop above it. Integrations, including MCP servers, are activated inside the executor with `activate_integration`; there is no per-integration subagent to enter. Responses are plain JSON — the agent's final message — not SSE.
 
 ```bash
 # run the EXECUTOR directly (skips comms entirely)
@@ -236,6 +244,7 @@ Details:
 - `--emulate <platform>` pulls that platform's real `PLATFORM_LIMITS` / `STREAMING_DEFAULTS` / markdown converter from `libs/shared/ts/src/bots/` — the only residual is a conformance-locked `supportsEdit` map (`apps/bots/harness/src/emulation.ts`).
 - Requires the same `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`, `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET`) and a running API (real LLM, or the `--sim` stub via §3). Set `RABBITMQ_URL` to record proactive `outbound-delivery` events through the real outbound consumer (a loud warning prints when it is unset).
 - Transcript is JSONL events (`inbound`, `send`, `edit`, `typing`, `ephemeral`, `rich`, `split`, `outbound-delivery`, `reaction`) with final rendered payloads — assert on that, not on logs. Types: `apps/bots/harness/src/transcript.types.ts`.
+- A scenario turn is one `send` or a `burst` of messages at `afterMs` gaps, sent without waiting for each other's replies; every platform posts each one at once and the turn ends once the conversation is idle with every reply shown. Inbound events are recorded on arrival. Order assertions: `delivered` (every message's final text in first-appearance order, proactive deliveries included), `bubbles` (the same without proactive deliveries) and `reactedTo` (which inbound positions got a reaction). Example: `scenarios/burst-during-work.yaml`.
 - A golden conformance suite (`apps/bots/__tests__/harness/conformance.test.ts`, wired into `mise test:bots`) drives the harness and the real adapter with only the SDK faked and fails CI if their output diverges. WhatsApp webhook replay lives in `apps/bots/__tests__/whatsapp/webhook-replay.e2e.test.ts`. See `apps/bots/CLAUDE.md`.
 
 ---
@@ -261,7 +270,7 @@ Every way to test or simulate GAIA, in one table — this skill covers the live-
 
 | Surface | Command | Docs |
 |---|---|---|
-| Chat via comms (SSE, full chain) | `curl POST /api/v1/chat-stream` (§4) | this skill |
+| Chat via comms (full chain) | `curl POST /api/v1/conversations/{id}/messages` + `/events` (§4) | this skill |
 | Executor directly | `curl POST /api/v1/dev/executor` (§5) | this skill |
 | Browser (scripted) | `mise e2e:web` / `E2E_SIM=1 mise e2e:web` (§6) | this skill, `apps/web/e2e/` |
 | Bots (emulated platforms) | `pnpm nx run bot-harness:sim -- send\|run` (§7) | this skill, `apps/bots/CLAUDE.md` |

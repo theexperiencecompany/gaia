@@ -11,30 +11,26 @@ import type {
   ApprovalDecision,
   ApprovalRequestData,
   ApprovalScope,
-  ApprovalStatus,
 } from "@shared/chat";
-import { formatApprovalAge, RECONFIRM_AGE_SECONDS } from "@shared/chat";
-import { flattenArgsPreview, statusAfterDecision } from "@shared/utils";
-import { useMemo, useRef, useState } from "react";
+import {
+  approvalAgeSeconds,
+  formatApprovalAge,
+  RECONFIRM_AGE_SECONDS,
+} from "@shared/chat";
+import { endAfterDecision, flattenArgsPreview } from "@shared/utils";
+import { useMemo, useState } from "react";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { toast } from "@/lib/toast";
 
 interface ApprovalRequestSectionProps {
   data: ApprovalRequestData;
-  onDecided: (status: ApprovalStatus, feedback: string | null) => void;
   /** A batch decision ("Approve all"/"Decline all") is in flight — lock this card
    * so a per-card click can't send a second, conflicting decision for the same id. */
   disabled?: boolean;
-  /** The conversation owning this card — clears that stream's gate instead of
-   * the active one (a sheet or background card can outlive the active chat). */
-  conversationId?: string;
 }
 
-// Statuses a stale tap settles to locally (the real verdict, not the tap);
-// `pending`/`unknown` keep the retry toast, `executing` is a ledger transient.
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   const { rows, omitted } = useMemo(() => flattenArgsPreview(args), [args]);
   if (rows.length === 0) return null;
@@ -71,21 +67,16 @@ type Phase = "idle" | "reconfirm" | "submitting";
 
 export default function ApprovalRequestSection({
   data,
-  onDecided,
   disabled = false,
-  conversationId,
 }: ApprovalRequestSectionProps) {
   const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
   const [feedback, setFeedback] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
-  // A stale-v tap committed nothing; the next submit omits v so the CAS —
-  // not the version check — decides. v is an optimization, never a gate. Read
-  // and written only inside submit, never in render — a ref, not state.
-  const versionConflict = useRef(false);
-  const markApprovalDecided = useMarkApprovalDecided();
+  const [openedAt] = useState(() => Date.now());
   const locked = submitting !== null || disabled || phase === "submitting";
 
-  const needsReconfirm = (data.age_seconds ?? 0) >= RECONFIRM_AGE_SECONDS;
+  const ageSeconds = approvalAgeSeconds(data.asked_at, openedAt);
+  const needsReconfirm = (ageSeconds ?? 0) >= RECONFIRM_AGE_SECONDS;
 
   const submit = async (
     decision: ApprovalDecision,
@@ -103,24 +94,15 @@ export default function ApprovalRequestSection({
         decision,
         feedback: attachedFeedback ?? undefined,
         scope,
-        v: versionConflict.current
-          ? undefined
-          : (data.ledger_version ?? undefined),
       });
-      // Settle locally: the resolved frame (websocket broadcast or reload) flips
-      // the card to the real outcome — executed, failed, unknown. Reaching the
+      // The server's screen ends the card with the action's result; reaching the
       // catch means the submit genuinely failed.
-      const settled = statusAfterDecision(decision, outcome);
-      if (settled === null) {
-        // Stale version: drop it so the next tap hits the CAS directly.
-        versionConflict.current = true;
+      if (endAfterDecision(decision, outcome) === null) {
         setSubmitting(null);
         setPhase("idle");
-        toast.error("That approval already moved — tap again to confirm");
+        toast.error("That approval was already decided");
         return;
       }
-      markApprovalDecided(conversationId);
-      onDecided(settled, attachedFeedback);
     } catch {
       toast.error("Couldn't submit your decision, please try again");
       setSubmitting(null);
@@ -138,13 +120,13 @@ export default function ApprovalRequestSection({
     void submit("approve");
   };
 
-  if (data.status !== "pending") return null;
+  if (data.outcome != null) return null;
 
   if (phase === "reconfirm") {
     return (
       <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
         <div className="text-sm leading-snug text-zinc-100">
-          {`Asked ${formatApprovalAge(data.age_seconds).replace("asked ", "")} ago — still want this?`}
+          {`Asked ${formatApprovalAge(ageSeconds).replace("asked ", "")} ago — still want this?`}
         </div>
         <div className="mt-1 text-xs text-zinc-400">{data.summary}</div>
         <div className="mt-3 flex items-center gap-2">
@@ -179,19 +161,13 @@ export default function ApprovalRequestSection({
           <div className="text-sm leading-snug text-zinc-100">
             {formatToolName(data.gated_tool_name)}
           </div>
-          {data.age_seconds != null && (
+          {ageSeconds != null && (
             <div className="mt-0.5 text-[11px] text-zinc-500">
-              {formatApprovalAge(data.age_seconds)}
+              {formatApprovalAge(ageSeconds)}
             </div>
           )}
         </div>
       </div>
-
-      {data.rationale?.trim() && (
-        <div className="mt-2 text-xs leading-snug text-zinc-400">
-          {data.rationale.trim()}
-        </div>
-      )}
 
       <ArgsPreview args={data.args_preview} />
 

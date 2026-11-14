@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.notifications import CHANNEL_TYPE_PUSH
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -27,7 +28,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.services.delivery.chat_channel import ChatChannel, InApp, InAppReason
+from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget
 from app.utils.notification.orchestrator import NotificationOrchestrator
 
 # ---------------------------------------------------------------------------
@@ -139,7 +140,8 @@ class TestOrchestratorInit:
     def test_default_components_registered(self) -> None:
         """Default channel adapters and action handlers are registered."""
         orch = NotificationOrchestrator(storage=MagicMock())
-        assert "inapp" in orch.channel_adapters
+        assert "conversation" in orch.channel_adapters
+        assert "push" in orch.channel_adapters
         assert "telegram" in orch.channel_adapters
         assert "discord" in orch.channel_adapters
         assert "api_call" in orch.action_handlers
@@ -170,353 +172,7 @@ class TestOrchestratorInit:
 
 
 # ---------------------------------------------------------------------------
-# create_notification
-# ---------------------------------------------------------------------------
-
-
-class TestCreateNotification:
-    """Tests for NotificationOrchestrator.create_notification."""
-
-    async def test_creates_and_saves_notification(self) -> None:
-        """Notification record is saved and delivery is attempted."""
-        storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
-
-        # Stub delivery to be a no-op
-        orch._deliver_notification = AsyncMock()  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
-
-        request = _make_request()
-        result = await orch.create_notification(request)
-
-        assert result is not None
-        assert result.id == request.id
-        assert result.user_id == request.user_id
-        assert result.status == NotificationStatus.PENDING
-        storage.save_notification.assert_awaited_once()
-        orch._deliver_notification.assert_awaited_once()
-
-    async def test_notification_record_fields(self) -> None:
-        """The record preserves the original request and timestamps."""
-        storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
-        orch._deliver_notification = AsyncMock()  # type: ignore[method-assign]  # instance method stubbed with unittest.mock
-
-        request = _make_request(user_id="user-42", notification_id="n-42")
-        record = await orch.create_notification(request)
-
-        assert record is not None
-        assert record.original_request is request
-        assert record.created_at == request.created_at
-
-
-# ---------------------------------------------------------------------------
-# _deliver_notification
-# ---------------------------------------------------------------------------
-
-
-class TestDeliverNotification:
-    """Tests for the internal _deliver_notification pipeline."""
-
-    async def test_delivers_via_matching_channel_adapter(self) -> None:
-        """When a channel adapter can handle the request it is invoked."""
-        storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
-
-        success_status = ChannelDeliveryStatus(
-            channel_type="inapp",
-            status=NotificationStatus.DELIVERED,
-            delivered_at=datetime.now(UTC),
-        )
-
-        orch.channel_adapters["inapp"] = _mock_channel_adapter(
-            channel_type="inapp",
-            can_handle=True,
-            transform_return={"title": "test"},
-            deliver_return=success_status,
-        )
-
-        request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
-        record = _make_record(request=request)
-
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
-            ws.broadcast_to_user = AsyncMock()
-            await orch._deliver_notification(record)
-
-        storage.update_notification.assert_awaited_once()
-        call_args = storage.update_notification.call_args
-        updates = call_args[0][1]
-        assert updates["status"] == NotificationStatus.DELIVERED.value
-
-    async def test_overall_status_failed_when_no_channel_succeeds(self) -> None:
-        """If all channels fail, overall status is FAILED."""
-        storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
-
-        fail_status = ChannelDeliveryStatus(
-            channel_type="inapp",
-            status=NotificationStatus.FAILED,
-            error_message="boom",
-        )
-        orch.channel_adapters["inapp"] = _mock_channel_adapter(
-            channel_type="inapp",
-            can_handle=True,
-            deliver_return=fail_status,
-        )
-
-        request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
-        record = _make_record(request=request)
-
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
-            ws.broadcast_to_user = AsyncMock()
-            await orch._deliver_notification(record)
-
-        updates = storage.update_notification.call_args[0][1]
-        assert updates["status"] == NotificationStatus.FAILED.value
-        assert updates["delivered_at"] is None
-
-    async def test_skipped_channels_do_not_count_as_delivered(self) -> None:
-        """A channel with status DELIVERED but skipped=True is not counted."""
-        storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
-
-        skipped_status = ChannelDeliveryStatus(
-            channel_type="inapp",
-            status=NotificationStatus.DELIVERED,
-            skipped=True,
-        )
-        orch.channel_adapters["inapp"] = _mock_channel_adapter(
-            channel_type="inapp",
-            can_handle=True,
-            deliver_return=skipped_status,
-        )
-
-        request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
-        record = _make_record(request=request)
-
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
-            ws.broadcast_to_user = AsyncMock()
-            await orch._deliver_notification(record)
-
-        updates = storage.update_notification.call_args[0][1]
-        assert updates["status"] == NotificationStatus.FAILED.value
-
-    async def test_adapter_exception_treated_as_error(self) -> None:
-        """If an adapter raises, it is caught and does not crash delivery."""
-        storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
-
-        adapter = _mock_channel_adapter(channel_type="inapp", can_handle=True)
-        adapter.transform.side_effect = RuntimeError("adapter died")
-        orch.channel_adapters["inapp"] = adapter
-
-        request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
-        record = _make_record(request=request)
-
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
-            ws.broadcast_to_user = AsyncMock()
-            # Should not raise
-            await orch._deliver_notification(record)
-
-    async def test_no_delivery_tasks_when_adapter_cannot_handle(self) -> None:
-        """If no adapter can handle the request, nothing is delivered."""
-        storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
-
-        orch.channel_adapters["inapp"] = _mock_channel_adapter(
-            channel_type="inapp", can_handle=False
-        )
-
-        request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
-        record = _make_record(request=request)
-
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
-            ws.broadcast_to_user = AsyncMock()
-            await orch._deliver_notification(record)
-
-        # No delivery tasks → update_notification never called
-        storage.update_notification.assert_not_awaited()
-
-    async def test_websocket_broadcast_after_delivery(self) -> None:
-        """A notification.delivered event is broadcast via websocket."""
-        storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
-
-        success_status = ChannelDeliveryStatus(
-            channel_type="inapp",
-            status=NotificationStatus.DELIVERED,
-            delivered_at=datetime.now(UTC),
-        )
-        orch.channel_adapters["inapp"] = _mock_channel_adapter(
-            channel_type="inapp",
-            can_handle=True,
-            deliver_return=success_status,
-        )
-
-        request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
-        record = _make_record(request=request)
-
-        with patch("app.utils.notification.orchestrator.websocket_manager") as ws:
-            ws.broadcast_to_user = AsyncMock()
-            await orch._deliver_notification(record)
-
-            ws.broadcast_to_user.assert_awaited_once()
-            call_args = ws.broadcast_to_user.call_args
-            assert call_args[0][0] == request.user_id
-            payload = call_args[0][1]
-            assert payload["type"] == "notification.delivered"
-            assert "notification" in payload
-
-
-# ---------------------------------------------------------------------------
-# Auto-injection of channels
-# ---------------------------------------------------------------------------
-
-
-class TestDefaultChannels:
-    """A notification naming no channel goes in-app and to the one preferred chat platform, never all linked."""
-
-    @staticmethod
-    def _orch_with_every_adapter_succeeding(storage: AsyncMock) -> NotificationOrchestrator:
-        orch = NotificationOrchestrator(storage=storage)
-        for key in list(orch.channel_adapters.keys()):
-            orch.channel_adapters[key] = _mock_channel_adapter(
-                channel_type=key,
-                can_handle=True,
-                transform_return={"text": "test"},
-                deliver_return=ChannelDeliveryStatus(
-                    channel_type=key,
-                    status=NotificationStatus.DELIVERED,
-                    delivered_at=datetime.now(UTC),
-                ),
-            )
-        return orch
-
-    async def test_in_app_plus_the_preferred_platform_only(self) -> None:
-        storage = AsyncMock()
-        orch = self._orch_with_every_adapter_succeeding(storage)
-        record = _make_record(request=_make_request(channels=[]))
-
-        with (
-            patch("app.utils.notification.orchestrator.websocket_manager") as ws,
-            patch(
-                "app.utils.notification.orchestrator.resolve_proactive_target",
-                AsyncMock(
-                    return_value=ChatChannel(
-                        source=ConversationSource.TELEGRAM,
-                        platform_user_id="tg-1",
-                        basis="priority",
-                    )
-                ),
-            ) as resolve,
-        ):
-            ws.broadcast_to_user = AsyncMock()
-            await orch._deliver_notification(record)
-
-        resolve.assert_awaited_once_with(record.user_id)
-        updates = storage.update_notification.call_args[0][1]
-        assert sorted(ch["channel_type"] for ch in updates["channels"]) == ["inapp", "telegram"]
-
-    @pytest.mark.parametrize("reason", ["active_in_app", "no_chat_app"])
-    async def test_a_target_in_the_app_means_in_app_only(self, reason: InAppReason) -> None:
-        storage = AsyncMock()
-        orch = self._orch_with_every_adapter_succeeding(storage)
-        record = _make_record(request=_make_request(channels=[]))
-
-        with (
-            patch("app.utils.notification.orchestrator.websocket_manager") as ws,
-            patch(
-                "app.utils.notification.orchestrator.resolve_proactive_target",
-                AsyncMock(return_value=InApp(reason=reason)),
-            ),
-        ):
-            ws.broadcast_to_user = AsyncMock()
-            await orch._deliver_notification(record)
-
-        updates = storage.update_notification.call_args[0][1]
-        assert [ch["channel_type"] for ch in updates["channels"]] == ["inapp"]
-
-    async def test_a_failed_lookup_is_in_app_only_and_on_the_wide_event(self) -> None:
-        orch = NotificationOrchestrator(storage=MagicMock())
-        with (
-            patch(
-                "app.utils.notification.orchestrator.resolve_proactive_target",
-                AsyncMock(side_effect=RuntimeError("db down")),
-            ),
-            patch("app.utils.notification.orchestrator.log") as log,
-        ):
-            assert await orch._default_channels("user-1") == ["inapp"]
-
-        log.warning.assert_called_once()
-        assert log.warning.call_args.kwargs["error_type"] == "RuntimeError"
-
-    async def test_explicit_channels_are_delivered_as_named_and_nothing_is_resolved(self) -> None:
-        storage = AsyncMock()
-        orch = NotificationOrchestrator(storage=storage)
-        orch.channel_adapters["inapp"] = _mock_channel_adapter(
-            channel_type="inapp", can_handle=True
-        )
-        record = _make_record(request=_make_request(channels=[ChannelConfig(channel_type="inapp")]))
-
-        with (
-            patch("app.utils.notification.orchestrator.websocket_manager") as ws,
-            patch(
-                "app.utils.notification.orchestrator.resolve_proactive_target", AsyncMock()
-            ) as resolve,
-        ):
-            ws.broadcast_to_user = AsyncMock()
-            await orch._deliver_notification(record)
-
-        resolve.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# _deliver_via_channel
-# ---------------------------------------------------------------------------
-
-
-class TestDeliverViaChannel:
-    """Tests for _deliver_via_channel error handling."""
-
-    async def test_returns_success_from_adapter(self) -> None:
-        """On successful delivery, returns the adapter's status."""
-        storage = MagicMock()
-        orch = NotificationOrchestrator(storage=storage)
-
-        expected = ChannelDeliveryStatus(
-            channel_type="inapp",
-            status=NotificationStatus.DELIVERED,
-            delivered_at=datetime.now(UTC),
-        )
-        adapter = AsyncMock()
-        adapter.channel_type = "inapp"
-        adapter.transform.return_value = {"title": "t"}
-        adapter.deliver.return_value = expected
-
-        request = _make_request()
-        record = _make_record(request=request)
-        result = await orch._deliver_via_channel(record, adapter)
-
-        assert result is expected
-
-    async def test_exception_returns_pending_status_with_error(self) -> None:
-        """An exception in the adapter returns PENDING with error message."""
-        orch = NotificationOrchestrator(storage=MagicMock())
-
-        adapter = AsyncMock()
-        adapter.channel_type = "inapp"
-        adapter.transform.side_effect = ValueError("transform broke")
-
-        request = _make_request()
-        record = _make_record(request=request)
-        result = await orch._deliver_via_channel(record, adapter)
-
-        assert result.channel_type == "inapp"
-        assert result.status == NotificationStatus.PENDING
-        assert "transform broke" in (result.error_message or "")
-
-
-# ---------------------------------------------------------------------------
-# execute_action
+# notify
 # ---------------------------------------------------------------------------
 
 
@@ -1025,3 +681,98 @@ class TestSerializeNotification:
         data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["channels"] == []
+
+
+TELEGRAM_ACTIVE = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
+)
+TELEGRAM_BY_ORDER = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="priority"
+)
+ORCHESTRATOR = "app.utils.notification.orchestrator"
+
+
+class TestRouting:
+    """Channels are chosen once: the inbox, the fact's own chat unless the user is active elsewhere, their chat app; push only for an approval."""
+
+    @pytest.mark.parametrize(
+        ("target", "set_in", "expected"),
+        [
+            # Active on the chat app it was set in: that chat only, never a second DM.
+            (TELEGRAM_ACTIVE, ConversationSource.TELEGRAM, ["inapp", "conversation"]),
+            # Active on a chat app after setting it on the web: the chat app only.
+            (TELEGRAM_ACTIVE, ConversationSource.WEB, ["inapp", "telegram"]),
+            # Nobody active and its chat is the first chat app: delivered there once.
+            (TELEGRAM_BY_ORDER, ConversationSource.TELEGRAM, ["inapp", "conversation"]),
+            # Nobody active, set on the web: its chat and the first chat app.
+            (
+                TELEGRAM_BY_ORDER,
+                ConversationSource.WEB,
+                ["inapp", "conversation", "telegram"],
+            ),
+            # Active in the app, set in a web chat stored without a source: that chat.
+            (InApp(reason="active_in_app"), None, ["inapp", "conversation"]),
+            # Active in the app after setting it on a chat app: no chat message at all.
+            (InApp(reason="active_in_app"), ConversationSource.TELEGRAM, ["inapp"]),
+            # No chat app: back into the chat it was set in.
+            (
+                InApp(reason="no_chat_app"),
+                ConversationSource.TELEGRAM,
+                ["inapp", "conversation"],
+            ),
+        ],
+    )
+    async def test_a_fact_with_a_conversation_reaches_the_one_place_the_user_is(
+        self, target: ProactiveTarget, set_in: ConversationSource | None, expected: list[str]
+    ) -> None:
+        request = _make_request().model_copy(update={"channels": [], "conversation_id": "conv-1"})
+        with (
+            patch(
+                f"{ORCHESTRATOR}.resolve_proactive_target", AsyncMock(return_value=target)
+            ) as resolve,
+            patch(
+                f"{ORCHESTRATOR}.conversation_repository.get_source",
+                AsyncMock(return_value=set_in),
+            ) as source,
+        ):
+            channels, routed = await NotificationOrchestrator(storage=MagicMock())._route(request)
+
+        assert (channels, routed) == (expected, target)
+        resolve.assert_awaited_once_with("user-1")
+        source.assert_awaited_once_with("conv-1", user_id="user-1")
+
+    async def test_named_channels_are_sent_as_named_and_nothing_is_resolved(self) -> None:
+        request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
+        with patch(f"{ORCHESTRATOR}.resolve_proactive_target", AsyncMock()) as resolve:
+            channels, routed = await NotificationOrchestrator(storage=MagicMock())._route(request)
+
+        assert (channels, routed) == (["inapp"], None)
+        resolve.assert_not_awaited()
+
+    async def test_only_an_approval_request_reaches_the_phone(self) -> None:
+        named = _make_request(channels=[ChannelConfig(channel_type="push")])
+        routed = _make_request(channels=[])
+        orchestrator = NotificationOrchestrator(storage=MagicMock())
+        with patch(
+            f"{ORCHESTRATOR}.resolve_proactive_target", AsyncMock(return_value=TELEGRAM_ACTIVE)
+        ):
+            assert (await orchestrator._route(named))[0] == []
+            assert CHANNEL_TYPE_PUSH not in (await orchestrator._route(routed))[0]
+            approval = {"source": NotificationSourceEnum.APPROVAL}
+            assert (await orchestrator._route(named.model_copy(update=approval)))[0] == [
+                CHANNEL_TYPE_PUSH
+            ]
+            assert (
+                CHANNEL_TYPE_PUSH
+                in (await orchestrator._route(routed.model_copy(update=approval)))[0]
+            )
+
+    async def test_a_failed_lookup_still_reaches_the_inbox(self) -> None:
+        request = _make_request().model_copy(update={"channels": []})
+        with patch(
+            f"{ORCHESTRATOR}.resolve_proactive_target",
+            AsyncMock(side_effect=ConnectionError("down")),
+        ):
+            channels, routed = await NotificationOrchestrator(storage=MagicMock())._route(request)
+
+        assert (channels, routed) == (["inapp"], InApp(reason="no_chat_app"))

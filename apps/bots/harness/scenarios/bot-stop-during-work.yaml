@@ -1,0 +1,26 @@
+# /stop while background work runs: the work stops and the session stays. The
+# executor holds between its two todos ([[wait:...]]); /stop lands in that hold,
+# so its result is never delivered, and the next message continues the same
+# conversation instead of starting a fresh one the way /new does.
+#
+# Every bot posts a message and returns at once, so /stop is handled the moment
+# it arrives on every platform, Telegram included.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/bot-stop-during-work.yaml
+name: bot stop during work
+emulate: telegram
+user: bot-stop-scenario@gaia.local
+turns:
+  - burst:
+      - send: 'stock up [[tool:call_executor {"acceptance_criteria":["both todos created"],"desired_outcome":"a stocked pantry","time_horizon":"one_shot","task":"stock up [[tool:create_todo {\"title\":\"stop-1\"}]] [[wait:20000]] [[tool:create_todo {\"title\":\"stop-2\"}]] [[say:Pantry stocked.]]"}]] [[say:On it.]]'
+      - send: "/stop"
+        afterMs: 12000
+    # Past the executor's hold, so a result the stop missed would land here.
+    settleMs: 40000
+    expect:
+      - delivered: ["On it."]
+      - eventTypes: [ephemeral]
+  - send: "anything else [[say:Still with you.]]"
+    expect:
+      - bubbles: ["Still with you."]

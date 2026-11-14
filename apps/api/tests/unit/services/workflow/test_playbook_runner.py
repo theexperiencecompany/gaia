@@ -60,7 +60,8 @@ from app.models.workflow_execution_models import (
     build_result_digest,
 )
 from app.override.langgraph_bigtool.create_agent import create_agent as real_create_agent
-from app.services.hil.prompts import UNPAUSABLE_DENIAL_TEMPLATE
+from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.work_log import record_work_carried
 from app.services.workflow.playbook.dry_run import DRY_RUN_READ_TOOLS, DryRun
 from app.services.workflow.playbook.evaluator import (
     NO_ITEM,
@@ -104,6 +105,8 @@ GATE = "app.services.hil.gate"
 #: A real ObjectId: the gated tool call captures analytics, and UserId refuses anything else.
 USER_ID = make_user_id()
 USER = PlaybookUser(email="ada@example.com", name="Ada", timezone="Europe/Berlin")
+from tests.unit.services.conversation.log_helpers import user
+from tests.unit.services.conversation.runtime_doubles import Runtime
 
 
 class _Recorder:
@@ -276,6 +279,7 @@ async def _run(
             playbook,
             user=USER,
             conversation_id="conv_1",
+            stream_id="playbook_test",
             trigger={"to": "team@example.com"},
             dry_run=seams.dry_run,
         )
@@ -372,25 +376,6 @@ async def test_a_replayed_tool_resolves_the_run_user() -> None:
     assert recorder.calls[0][1]["user"] == USER_ID
 
 
-@pytest.mark.usefixtures("hil_barrier_mode")
-async def test_a_gated_call_is_refused_without_invoking_the_tool() -> None:
-    """The real gate, in the real graph: a background run cannot ask, so it refuses."""
-    recorder = _Recorder()
-    registry = _FakeRegistry(_tools(recorder))
-
-    result, _ = await _run(_playbook(AGENDA_STEPS), registry, policy="ask")
-
-    assert recorder.calls == []
-    assert result.ok is False
-    assert "list_events" in (result.failure or "")
-    assert "approval gate" in (result.failure or "")
-    # The gate's own words, not the runner's: proof the refusal came from
-    # production HIL inside the graph rather than from a check the runner kept.
-    assert UNPAUSABLE_DENIAL_TEMPLATE.format(tool="list_events") in (result.failure or "")
-    # Nothing was attempted, so nothing may reach the trace the next run reads.
-    assert result.trace == []
-
-
 async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the_tool() -> None:
     """The real ledger gate, in the real graph: the call is queued for the user and the replay stops."""
     recorder = _Recorder()
@@ -399,11 +384,18 @@ async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the
     ledger.find_live = AsyncMock(return_value=None)
     ledger.find_latest_denied = AsyncMock(return_value=None)
     ledger.register = AsyncMock(return_value="ap_ledger01")
+    runtime = Runtime()
+    install_runtime_ports(runtime.ports)
+    await runtime.log.append("conv_1", USER_ID, user("m1"))
+    # A replay runs as logged work in its conversation; the gate files its approval under it.
+    assert await record_work_carried(
+        "conv_1", USER_ID, "playbook_test", detached=True, exclusive=True
+    )
     with (
         patch(f"{GATE}.approval_ledger_repository", ledger),
         patch(f"{GATE}.recall_declined_call", AsyncMock(return_value=None)),
         patch(f"{GATE}._integration_name_for", AsyncMock(return_value=None)),
-        patch(f"{GATE}.publish_ledger_request", AsyncMock()) as publish,
+        patch(f"{GATE}.announce_approval", AsyncMock()) as publish,
     ):
         result, _ = await _run(_playbook(AGENDA_STEPS), registry, policy="ask")
 
@@ -412,7 +404,7 @@ async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the
     assert "refused by the approval gate: PENDING ap_ledger01" in (result.failure or "")
     assert ledger.register.await_args.args[0].tool_name == "list_events"
     # A background replay has no live watcher to hold the card for.
-    assert publish.await_args.kwargs["live"] is False
+    assert publish.await_args.kwargs["background"] is True
     assert result.trace == []
 
 

@@ -11,7 +11,6 @@ import uuid
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
 from app.constants.todos import GAIA_TRACKED_LABEL, REOPENED_IN_THE_APP_DETAIL, TodoActivityEvent
-from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
 from app.db.repositories.todos import todo_repository
@@ -46,6 +45,7 @@ from app.models.trigger_subscription_models import TriggerSubscription
 from app.services.analytics_service import capture
 from app.services.conversation_service import delete_todo_conversations
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
+from app.services.hil.pending import pending_approvals_by_owner
 from app.services.todo_activity import record_activity
 from app.services.todos.errors import (
     ExternalRefReopenedTwiceError,
@@ -111,22 +111,15 @@ async def _get_workflow_categories_for_todos(
 async def _get_pending_approvals_for_todos(
     todos: list[TodoDocument],
 ) -> dict[str, PendingApprovalRef]:
-    """Oldest live approval parked per todo, for the list/detail jump link.
-
-    One query per page, not per row (same shape as the workflow-categories
-    enrichment above). Cross-domain read via the ledger repository.
-    """
+    """Oldest approval each todo's run still waits on, for the list/detail jump link."""
     todo_ids = [todo.id for todo in todos if todo.id]
     if not todo_ids:
         return {}
-    rows = await approval_ledger_repository.list_live_by_owners("todo", todo_ids)
-    refs: dict[str, PendingApprovalRef] = {}
-    for row in rows:
-        if row.owner_id not in refs:
-            refs[row.owner_id] = PendingApprovalRef(
-                approval_id=row.approval_id, conversation_id=row.conversation_id
-            )
-    return refs
+    waiting = await pending_approvals_by_owner("todo", todo_ids)
+    return {
+        owner: PendingApprovalRef(approval_id=row.approval_id, conversation_id=row.conversation_id)
+        for owner, row in waiting.items()
+    }
 
 
 async def todo_responses(user_id: str, todos: list[TodoDocument]) -> list[TodoResponse]:

@@ -1,7 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { SIM_ENABLED } from "./harness";
-
-const COMPOSER_PLACEHOLDER = "What can I do for you today?";
+import { COMPOSER_PLACEHOLDER, SIM_ENABLED } from "./harness";
 
 /** Enough scripted tool calls to hold turn 1's stream open for seconds. */
 const LONG_TASK = `stock the pantry ${Array.from(
@@ -15,10 +13,9 @@ const STEER_MESSAGE = "also add oat milk [[say:Steered in.]]";
  * Mid-turn steering through the real UI path, against the sim stack only
  * (no model cost, fully deterministic).
  *
- * The second POST must START before the first POST's response FINISHES —
- * that ordering is exactly what the old client queue made impossible (it
- * held the send until the turn ended). The backend then folds the steered
- * turn into the live run.
+ * The second message must be sent before the first one's answer lands:
+ * nothing holds a send behind a running reply. The server folds it into the
+ * conversation.
  */
 test.describe("steer", () => {
   test("a mid-turn send posts while the first turn still streams", async ({
@@ -36,33 +33,18 @@ test.describe("steer", () => {
     await expect(composer).toBeVisible();
 
     const started = new Map<string, number>();
-    const finished = new Map<string, number>();
     page.on("request", (request) => {
       if (
-        request.url().includes("/chat-stream") &&
-        request.method() === "POST"
-      ) {
-        try {
-          const body = JSON.parse(request.postData() ?? "{}") as {
-            turn_id?: string;
-          };
-          if (body.turn_id) started.set(body.turn_id, Date.now());
-        } catch {
-          // Non-JSON body — not a chat turn we can correlate.
-        }
-      }
-    });
-    page.on("requestfinished", (req) => {
-      const url = req.url();
-      if (!url.includes("/chat-stream")) return;
-      try {
-        const body = JSON.parse(req.postData() ?? "{}") as {
-          turn_id?: string;
-        };
-        if (body.turn_id) finished.set(body.turn_id, Date.now());
-      } catch {
-        // Ignore uncorrelated finishes.
-      }
+        !/\/conversations\/[^/]+\/messages$/.test(
+          new URL(request.url()).pathname,
+        ) ||
+        request.method() !== "POST"
+      )
+        return;
+      const body = JSON.parse(request.postData() ?? "{}") as {
+        message_id?: string;
+      };
+      if (body.message_id) started.set(body.message_id, Date.now());
     });
 
     await composer.fill(LONG_TASK);
@@ -81,13 +63,13 @@ test.describe("steer", () => {
     await expect
       .poll(() => started.size, { timeout: 30_000 })
       .toBeGreaterThanOrEqual(2);
+    expect(
+      await page.getByText("Pantry stocked.").count(),
+      "the second message is sent while the first is still being answered",
+    ).toBe(0);
 
     const [first, second] = [...started.keys()];
-    expect(second, "steer is its own turn").not.toBe(first);
-    expect(
-      started.get(second),
-      "second POST starts while the first still streams",
-    ).toBeLessThan(finished.get(first) ?? Number.POSITIVE_INFINITY);
+    expect(second, "the second send is its own message").not.toBe(first);
 
     // Both answers render in the same conversation.
     await expect(

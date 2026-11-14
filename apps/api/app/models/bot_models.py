@@ -3,12 +3,11 @@
 Pydantic models for bot chat, sessions, and related operations.
 """
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.constants.platform_links import Platform
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.models.message_models import FileData
-from app.models.stream_events import ReactionPayload
 from app.schemas.common import ResponseModel
 
 # Shared field docs — the same platform identity fields recur across the
@@ -25,9 +24,9 @@ class BotChatRequest(BaseModel):
     message: str = Field(..., description="User's message text", min_length=1, max_length=32768)
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
     platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
-    channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
+    channel_id: str | None = Field(default=None, description="Channel/group ID (None for DM)")
     is_dm: bool = Field(
-        False,
+        default=False,
         description=(
             "Whether this conversation is a direct message. Discord and Slack DM "
             "channel ids differ from the user id, so the server cannot tell a DM "
@@ -35,18 +34,18 @@ class BotChatRequest(BaseModel):
         ),
     )
     file_ids: list[str] | None = Field(
-        None,
+        default=None,
         description="IDs of files attached to this message (uploaded via /api/v1/upload).",
     )
     file_data: list[FileData] | None = Field(
-        None,
+        default=None,
         description=(
             "Full metadata for attached files. Mirrors the web chat payload so "
             "the agent can resolve URL/filename without an extra DB lookup."
         ),
     )
     platform_message_id: str | None = Field(
-        None,
+        default=None,
         description=(
             "Platform-native id of the user's message (WhatsApp wamid, Telegram "
             "message_id, Discord id, Slack ts). Persisted on the saved user "
@@ -158,8 +157,8 @@ class RedeemLinkCodeResponse(BaseModel):
     )
 
 
-class ResetSessionRequest(BaseModel):
-    """Request model for resetting a bot session (starting a new conversation)."""
+class BotSessionRequest(BaseModel):
+    """Names one bot session: a platform user in a DM or in one channel."""
 
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
     platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
@@ -281,51 +280,3 @@ class BotSessionUpdate(BaseModel):
     """Bot sessions are claimed via an atomic upsert, never typed-updated."""
 
     model_config = ConfigDict(extra="forbid")
-
-
-class BotStreamToolCard(BaseModel):
-    """A web stream payload's ``tool_data`` card, as far as bot translation reads it.
-
-    ``data`` stays free-form JSON: an approval card's ``data`` is forwarded to
-    the bot verbatim, and only a rate-limit card's is read further
-    (``BotRateLimitCardData``).
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    tool_name: JsonValue = None
-    data: JsonValue = None
-
-
-class BotRateLimitCardData(BaseModel):
-    """The ``data`` of a ``rate_limit_data`` card (``build_rate_limit_card``) a bot notice reads."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    feature: JsonValue = None
-    current_plan: JsonValue = None
-    message: str | None = None
-
-
-class BotWebStreamPayload(BaseModel):
-    """One parsed web SSE ``data:`` payload, as the bot stream translates it.
-
-    Every field is optional because a payload carries one frame kind; which
-    keys were *present* (``model_fields_set``) is what picks the bot frame, so
-    an explicit ``null`` still counts. Keys bots never read are ignored.
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    keepalive: JsonValue = None
-    tool_data: JsonValue = None
-    message_boundary: JsonValue = None
-    response: str | None = None
-    error: str | None = None
-    reaction: ReactionPayload | None = None
-    conversation_description: JsonValue = None
-    user_message_id: JsonValue = None
-    bot_message_id: JsonValue = None
-    stream_id: JsonValue = None
-    tool_output: JsonValue = None
-    follow_up_actions: JsonValue = None

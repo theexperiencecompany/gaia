@@ -1,5 +1,5 @@
 """
-Service tests: call real construct_langchain_messages().
+Service tests: call real comms_turn_messages().
 
 Mock only: the context-assembly module (needs the memory engine/Redis/Mongo).
 Real: create_system_message, format_files_list, format_reply_context,
@@ -17,15 +17,15 @@ from app.agents.context.assemble import AssembledContext
 from app.agents.core.messages import (
     MessageAttachments,
     MessageScope,
-    construct_langchain_messages,
 )
+from tests._harness.context_chain import comms_turn_messages
 
 _EMPTY_DYNAMIC = AssembledContext(stable=SystemMessage(content=""), volatile=None)
 
 
 @pytest.mark.service
 class TestConstructMessagesReal:
-    """Call real construct_langchain_messages with minimal mocking."""
+    """Call real comms_turn_messages with minimal mocking."""
 
     async def test_basic_message_produces_system_and_human(self):
         """A simple message must produce at least a SystemMessage and HumanMessage."""
@@ -35,7 +35,7 @@ class TestConstructMessagesReal:
                 new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):
-            messages = await construct_langchain_messages(
+            messages = await comms_turn_messages(
                 query="Hello",
                 scope=MessageScope(user_id="test-user", user_name="Test"),
             )
@@ -55,7 +55,7 @@ class TestConstructMessagesReal:
                 new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):
-            messages = await construct_langchain_messages(
+            messages = await comms_turn_messages(
                 query="Search for cats",
                 scope=MessageScope(user_id="test-user", user_name="Test"),
                 attachments=MessageAttachments(selected_tool="web_search"),
@@ -72,7 +72,7 @@ class TestConstructMessagesReal:
                 new=AsyncMock(return_value=_EMPTY_DYNAMIC),
             ),
         ):
-            messages = await construct_langchain_messages(
+            messages = await comms_turn_messages(
                 query="What can you do?",
                 scope=MessageScope(user_id="test-user"),
             )

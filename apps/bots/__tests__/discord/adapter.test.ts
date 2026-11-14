@@ -94,7 +94,7 @@ vi.mock("discord.js", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Mock @gaia/shared so we control handleStreamingChat.
+// Mock @gaia/shared so we control postAndFollow.
 // ---------------------------------------------------------------------------
 
 vi.mock("@gaia/shared/bots", async () => {
@@ -107,6 +107,10 @@ vi.mock("@gaia/shared/bots", async () => {
   const { platformIdentity } = await vi.importActual<
     typeof import("@gaia/shared/analytics")
   >("@gaia/shared/analytics");
+  const { postAndFollowSpy } = await import("../shared/mocks/postAndFollow");
+  const { ArrivalOrder } = await import(
+    "../../../../libs/shared/ts/src/bots/adapter/arrival-order"
+  );
   const BaseBotAdapter = class {
     platform = "discord";
     gaia = {};
@@ -162,6 +166,16 @@ vi.mock("@gaia/shared/bots", async () => {
         }
       }
     }
+    /** The real arrival order, so handler ordering is production's. */
+    protected readonly arrivals = new ArrivalOrder();
+
+    /** Records the post, in arrival order; tests drive the surface and auth handler it was handed. */
+    protected postAndFollow(
+      ...args: Parameters<typeof postAndFollowSpy>
+    ): Promise<void> {
+      return this.arrivals.post(() => postAndFollowSpy(...args));
+    }
+
     protected buildContext(
       userId: string,
       channelId?: string,
@@ -222,7 +236,6 @@ vi.mock("@gaia/shared/bots", async () => {
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),
-    handleStreamingChat: vi.fn().mockResolvedValue(undefined),
     STREAMING_DEFAULTS: {
       discord: { editIntervalMs: 1200, streaming: false, platform: "discord" },
     },
@@ -230,6 +243,8 @@ vi.mock("@gaia/shared/bots", async () => {
     // renderForPlatform is mocked as identity — conversion is exercised in the
     // shared formatters tests, not at the adapter level (which mocks @gaia/shared).
     renderForPlatform: vi.fn((t: string) => t),
+    buildAuthLinkMessage: actual.buildAuthLinkMessage,
+    wideLog: { warning: vi.fn() },
     parseTextArgs: vi.fn((text: string) => ({
       subcommand: text.split(" ")[0],
     })),
@@ -241,13 +256,14 @@ vi.mock("@gaia/shared/bots", async () => {
 // Now import the real adapter (which will use the mocks above).
 // ---------------------------------------------------------------------------
 
-import {
-  handleStreamingChat,
-  type OutboundFile,
-  type ReactionOutcome,
-} from "@gaia/shared/bots";
+import type { OutboundFile, ReactionOutcome } from "@gaia/shared/bots";
 import { DiscordAdapter } from "../../discord/src/adapter";
 import { captureBotEvents } from "../shared/helpers/capture-bot-event";
+import {
+  lastAuthHandler,
+  lastSurface,
+  postAndFollowSpy,
+} from "../shared/mocks/postAndFollow";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -414,7 +430,7 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
     expect(interaction.deferReply).not.toHaveBeenCalled();
   });
 
-  it("routes /gaia command to handleGaiaInteraction (uses handleStreamingChat)", async () => {
+  it("routes /gaia command to handleGaiaInteraction (posts and follows)", async () => {
     const interaction = makeChatInteraction({
       commandName: "gaia",
       optionString: "What is 2+2?",
@@ -426,24 +442,17 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
       }
     ).handleInteraction(interaction);
 
-    // The /gaia path must defer and then delegate to handleStreamingChat.
+    // The /gaia path must defer and then post the message and follow its reply.
     expect(interaction.deferReply).toHaveBeenCalled();
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(), // gaia client
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         message: "What is 2+2?",
         platform: "discord",
         platformUserId: "user-123",
         channelId: "channel-abc",
       }),
-      expect.any(Function), // editReply callback
-      expect.any(Function), // followUp callback
-      expect.any(Function), // auth error callback
-      expect.any(Function), // generic error callback
-      expect.objectContaining({ platform: "discord" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.objectContaining({ send: expect.any(Function) }),
+      expect.any(Function),
     );
   });
 
@@ -636,7 +645,7 @@ describe("DiscordAdapter - extractInteractionArgs", () => {
 describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
   /**
    * These tests call the real handleMentionMessage method and assert on
-   * what content reaches handleStreamingChat — the actual production behavior.
+   * what content reaches postAndFollow — the actual production behavior.
    *
    * BOT_ID matches the Client mock: user.id = "bot-user-id"
    */
@@ -648,7 +657,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
     adapter = new DiscordAdapter();
   });
 
-  it("strips <@botId> mention before passing content to handleStreamingChat", async () => {
+  it("strips <@botId> mention before passing content to postAndFollow", async () => {
     const message = makeGuildMessage({
       content: `<@${BOT_ID}> remind me to call dentist`,
       botId: BOT_ID,
@@ -663,22 +672,14 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       }
     ).handleMentionMessage(message, BOT_ID);
 
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({ message: "remind me to call dentist" }),
+      expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function), // onReaction
     );
   });
 
-  it("strips <@!botId> nickname mention before passing to handleStreamingChat", async () => {
+  it("strips <@!botId> nickname mention before passing to postAndFollow", async () => {
     const message = makeGuildMessage({
       content: `<@!${BOT_ID}> what time is it?`,
       botId: BOT_ID,
@@ -693,18 +694,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       }
     ).handleMentionMessage(message, BOT_ID);
 
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({ message: "what time is it?" }),
+      expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function), // onReaction
     );
   });
 
@@ -724,10 +717,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
     ).handleMentionMessage(message, BOT_ID);
 
     expect(message.reply).toHaveBeenCalledWith("How can I help you?");
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
-  it("leaves unrelated content unchanged when passed to handleStreamingChat", async () => {
+  it("leaves unrelated content unchanged when passed to postAndFollow", async () => {
     const message = makeGuildMessage({
       content: `<@${BOT_ID}> remind me about something`,
       botId: BOT_ID,
@@ -742,18 +735,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       }
     ).handleMentionMessage(message, BOT_ID);
 
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({ message: "remind me about something" }),
+      expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function), // onReaction
     );
   });
 });
@@ -783,7 +768,7 @@ describe("DiscordAdapter - mention with empty content", () => {
     ).handleMentionMessage(message, "bot-id");
 
     expect(message.reply).toHaveBeenCalledWith("How can I help you?");
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -831,7 +816,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
     expect(sendDMWelcomeSpy).not.toHaveBeenCalled();
   });
 
-  it("delegates non-empty DM content to handleStreamingChat", async () => {
+  it("delegates non-empty DM content to postAndFollow", async () => {
     vi.clearAllMocks();
     const adapter = new DiscordAdapter();
 
@@ -853,22 +838,14 @@ describe("DiscordAdapter - DM welcome flow", () => {
       }
     ).handleDMMessage(message);
 
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         message: "What is the weather today?",
         platform: "discord",
         platformUserId: "user-dm",
       }),
+      expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.objectContaining({ platform: "discord" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
-      expect.any(Function), // onReaction
     );
   });
 
@@ -889,7 +866,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
     const handleDM = (m: ReturnType<typeof makeBlankMessage>) =>
       (
         adapter as unknown as {
-          handleDMMessage: (m: typeof m) => Promise<void>;
+          handleDMMessage: (mParam: typeof m) => Promise<void>;
         }
       ).handleDMMessage(m);
 
@@ -902,7 +879,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
 
     // On the repeat DM (welcome already sent) the only reply is the blank prompt.
     expect(send).toHaveBeenCalledWith("How can I help you?");
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -938,7 +915,7 @@ describe("DiscordAdapter - context menu interaction", () => {
     expect(interaction.editReply).toHaveBeenCalledWith({
       content: "That message has no text content to work with.",
     });
-    expect(handleStreamingChat).not.toHaveBeenCalled();
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
   });
 
   function makeContextMenuInteraction(commandName: string, content: string) {
@@ -956,7 +933,7 @@ describe("DiscordAdapter - context menu interaction", () => {
     };
   }
 
-  it("calls handleStreamingChat for 'Summarize with GAIA' with non-empty content", async () => {
+  it("posts 'Summarize with GAIA' with non-empty content", async () => {
     vi.clearAllMocks();
     const adapter = new DiscordAdapter();
 
@@ -971,20 +948,13 @@ describe("DiscordAdapter - context menu interaction", () => {
       }
     ).handleContextMenuInteraction(interaction);
 
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringContaining("Summarize the following message"),
         platform: "discord",
       }),
+      expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.objectContaining({ platform: "discord" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
     );
   });
 
@@ -1002,11 +972,11 @@ describe("DiscordAdapter - context menu interaction", () => {
       }
     ).handleContextMenuInteraction(interaction);
 
-    const request = vi.mocked(handleStreamingChat).mock.calls[0][1];
+    const request = postAndFollowSpy.mock.calls[0][0];
     expect(request).not.toHaveProperty("platformMessageId");
   });
 
-  it("calls handleStreamingChat for 'Add as Todo' with non-empty content", async () => {
+  it("posts 'Add as Todo' with non-empty content", async () => {
     vi.clearAllMocks();
     const adapter = new DiscordAdapter();
 
@@ -1021,20 +991,13 @@ describe("DiscordAdapter - context menu interaction", () => {
       }
     ).handleContextMenuInteraction(interaction);
 
-    expect(handleStreamingChat).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(postAndFollowSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringContaining("Add this as a todo item"),
         platform: "discord",
       }),
+      expect.objectContaining({ send: expect.any(Function) }),
       expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.any(Function),
-      expect.objectContaining({ platform: "discord" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
     );
   });
 });
@@ -1074,7 +1037,10 @@ describe("DiscordAdapter - dispatchCommand unknown command", () => {
 
     await (
       adapter as unknown as {
-        dispatchCommand: (name: string, target: typeof target) => Promise<void>;
+        dispatchCommand: (
+          name: string,
+          targetParam: typeof target,
+        ) => Promise<void>;
       }
     ).dispatchCommand("nonexistent", target);
 
@@ -1123,8 +1089,8 @@ describe("DiscordAdapter - dispatchCommand args forwarding", () => {
       adapter as unknown as {
         dispatchCommand: (
           name: string,
-          target: typeof target,
-          args: typeof args,
+          targetParam: typeof target,
+          argsParam: typeof args,
         ) => Promise<void>;
       }
     ).dispatchCommand("todo", target, args);
@@ -1173,7 +1139,7 @@ describe("DiscordAdapter - dispatchCommand error propagation", () => {
         adapter as unknown as {
           dispatchCommand: (
             name: string,
-            target: typeof target,
+            targetParam: typeof target,
             args: Record<string, unknown>,
           ) => Promise<void>;
         }
@@ -1535,18 +1501,6 @@ describe("DiscordAdapter - live turn reactions", () => {
     vi.clearAllMocks();
   });
 
-  /** The reaction hook the adapter handed to its last handleStreamingChat call. */
-  function lastReactionHook(): (
-    emoji: string,
-    replaces: string | null,
-  ) => Promise<ReactionOutcome> {
-    const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
-    return call?.[8] as (
-      emoji: string,
-      replaces: string | null,
-    ) => Promise<ReactionOutcome>;
-  }
-
   function spyReact(adapter: DiscordAdapter) {
     return vi
       .spyOn(adapter as unknown as DiscordReactor, "reactToMessage")
@@ -1564,7 +1518,9 @@ describe("DiscordAdapter - live turn reactions", () => {
       }
     ).handleMentionMessage(message, "bot-id");
 
-    await expect(lastReactionHook()("👍", null)).resolves.toBe("attached");
+    await expect(lastSurface().react("msg-in", "👍", null)).resolves.toBe(
+      "attached",
+    );
     expect(react).toHaveBeenCalledWith(
       "channel-abc",
       "msg-in",
@@ -1577,18 +1533,7 @@ describe("DiscordAdapter - live turn reactions", () => {
   it("reacts to a DM through the author's DM channel", async () => {
     const adapter = new DiscordAdapter();
     const react = spyReact(adapter);
-    const message = {
-      id: "dm-msg",
-      content: "thanks!",
-      author: { id: "user-dm", bot: false },
-      guild: null,
-      channelId: "dm-channel",
-      partial: false,
-      channel: {
-        send: vi.fn().mockResolvedValue({ edit: vi.fn() }),
-        sendTyping: vi.fn().mockResolvedValue(undefined),
-      },
-    };
+    const message = makeDmMessage("thanks!");
 
     await (
       adapter as unknown as {
@@ -1596,7 +1541,320 @@ describe("DiscordAdapter - live turn reactions", () => {
       }
     ).handleDMMessage(message);
 
-    await expect(lastReactionHook()("👍", null)).resolves.toBe("attached");
-    expect(react).toHaveBeenCalledWith("user-dm", "dm-msg", "👍", false, null);
+    await expect(lastSurface().react("dm-msg", "👍", "🔎")).resolves.toBe(
+      "attached",
+    );
+    expect(react).toHaveBeenCalledWith("user-dm", "dm-msg", "👍", false, "🔎");
+  });
+});
+
+/** A DM Message mock whose channel send resolves to an editable message. */
+function makeDmMessage(content: string) {
+  const sentEdit = vi.fn().mockResolvedValue(undefined);
+  return {
+    id: "dm-msg",
+    content,
+    author: { id: "user-dm", bot: false },
+    guild: null,
+    channelId: "dm-channel",
+    partial: false,
+    sentEdit,
+    channel: {
+      send: vi.fn().mockResolvedValue({ edit: sentEdit }),
+      sendTyping: vi.fn().mockResolvedValue(undefined),
+    },
+  };
+}
+
+describe("DiscordAdapter - channel surface", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function followDm(content: string) {
+    const adapter = new DiscordAdapter();
+    const message = makeDmMessage(content);
+    await (
+      adapter as unknown as {
+        handleDMMessage: (m: typeof message) => Promise<void>;
+      }
+    ).handleDMMessage(message);
+    message.channel.send.mockClear();
+    return message;
+  }
+
+  it("posts the DM with the user's message id so the reply can quote it", async () => {
+    await followDm("hello");
+
+    expect(postAndFollowSpy.mock.calls[0][0]).toMatchObject({
+      message: "hello",
+      isDm: true,
+      platformMessageId: "dm-msg",
+    });
+  });
+
+  it("answers a quoted message natively without failing when it is gone", async () => {
+    const message = await followDm("hello");
+
+    await lastSurface().send("the answer", "123");
+
+    expect(message.channel.send).toHaveBeenCalledExactlyOnceWith({
+      content: "the answer",
+      reply: { messageReference: "123", failIfNotExists: false },
+    });
+  });
+
+  it("sends an unquoted message without a reply reference", async () => {
+    const message = await followDm("hello");
+
+    await lastSurface().send("the answer", null);
+
+    expect(message.channel.send).toHaveBeenCalledExactlyOnceWith({
+      content: "the answer",
+    });
+  });
+
+  it("edits the message it sent", async () => {
+    const message = await followDm("hello");
+
+    const sent = await lastSurface().send("draft", null);
+    await sent.edit("final");
+
+    expect(message.sentEdit).toHaveBeenCalledWith("final");
+  });
+
+  it("starts the typing indicator in the channel", async () => {
+    const message = await followDm("hello");
+    message.channel.sendTyping.mockClear();
+
+    lastSurface().startTyping();
+
+    expect(message.channel.sendTyping).toHaveBeenCalledOnce();
+  });
+
+  it("sends the auth link into the DM when the account is not linked", async () => {
+    const message = await followDm("hello");
+
+    await lastAuthHandler()("https://gaia.test/link");
+
+    expect(message.channel.send).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining("https://gaia.test/link"),
+    );
+  });
+
+  it("tells the user the post failed when postAndFollow throws", async () => {
+    postAndFollowSpy.mockRejectedValueOnce(new Error("refused"));
+    const adapter = new DiscordAdapter();
+    const message = makeDmMessage("hello");
+
+    await (
+      adapter as unknown as {
+        handleDMMessage: (m: typeof message) => Promise<void>;
+      }
+    ).handleDMMessage(message);
+
+    expect(message.channel.send).toHaveBeenCalledWith("Error: refused");
+  });
+});
+
+describe("DiscordAdapter - mention auth prompt", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function followMention(authorSend: ReturnType<typeof vi.fn>) {
+    const adapter = new DiscordAdapter();
+    const message = {
+      ...makeGuildMessage({ content: "<@bot-id> hi" }),
+      id: "msg-in",
+      author: { id: "user-123", bot: false, send: authorSend },
+    };
+    await (
+      adapter as unknown as {
+        handleMentionMessage: (m: typeof message, b: string) => Promise<void>;
+      }
+    ).handleMentionMessage(message, "bot-id");
+    return message;
+  }
+
+  it("DMs the link and points the channel at the DMs", async () => {
+    const authorSend = vi.fn().mockResolvedValue(undefined);
+    const message = await followMention(authorSend);
+
+    await lastAuthHandler()("https://gaia.test/link");
+
+    expect(authorSend).toHaveBeenCalledWith(
+      expect.stringContaining("https://gaia.test/link"),
+    );
+    expect(message.reply).toHaveBeenCalledWith(
+      "To use GAIA here, please link your account. Check your DMs for the link.",
+    );
+  });
+
+  it("asks the user to open their DMs when the DM is refused", async () => {
+    const authorSend = vi.fn().mockRejectedValue(new Error("DMs closed"));
+    const message = await followMention(authorSend);
+
+    await lastAuthHandler()("https://gaia.test/link");
+
+    expect(message.reply).toHaveBeenCalledWith(
+      "To use GAIA here, please link your account. Enable DMs from server members and try again, or use /auth in a private message.",
+    );
+  });
+});
+
+describe("DiscordAdapter - interaction surface", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function makeFollowUps() {
+    const followUpEdit = vi.fn().mockResolvedValue(undefined);
+    const followUp = vi.fn().mockResolvedValue({ edit: followUpEdit });
+    return { followUp, followUpEdit };
+  }
+
+  async function followGaia(userSend: ReturnType<typeof vi.fn>) {
+    const adapter = new DiscordAdapter();
+    const base = makeChatInteraction({
+      commandName: "gaia",
+      optionString: "hi",
+    });
+    const { followUp, followUpEdit } = makeFollowUps();
+    const interaction = {
+      ...base,
+      followUp,
+      user: { ...base.user, send: userSend },
+    };
+    await (
+      adapter as unknown as {
+        handleInteraction: (i: typeof interaction) => Promise<void>;
+      }
+    ).handleInteraction(interaction);
+    return { interaction, followUpEdit };
+  }
+
+  it("fills the deferred /gaia reply first, then sends follow-ups", async () => {
+    const { interaction, followUpEdit } = await followGaia(vi.fn());
+
+    const first = await lastSurface().send("first", null);
+    await first.edit("first, edited");
+    const second = await lastSurface().send("second", null);
+    await second.edit("second, edited");
+
+    expect(interaction.editReply.mock.calls).toEqual([
+      [{ content: "first" }],
+      [{ content: "first, edited" }],
+    ]);
+    expect(interaction.followUp).toHaveBeenCalledExactlyOnceWith({
+      content: "second",
+    });
+    expect(followUpEdit).toHaveBeenCalledWith({ content: "second, edited" });
+  });
+
+  it("sends every bubble as a follow-up under a context-menu header", async () => {
+    const adapter = new DiscordAdapter();
+    const { followUp } = makeFollowUps();
+    const interaction = {
+      commandName: "Summarize with GAIA",
+      targetMessage: { content: "a long message", id: "target" },
+      user: { id: "user-ctx" },
+      channelId: "channel-ctx",
+      guild: { id: "guild-1" },
+      deferReply: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue(undefined),
+      followUp,
+    };
+    await (
+      adapter as unknown as {
+        handleContextMenuInteraction: (i: typeof interaction) => Promise<void>;
+      }
+    ).handleContextMenuInteraction(interaction);
+
+    await lastSurface().send("summary text", null);
+
+    expect(interaction.editReply.mock.calls).toEqual([
+      [{ content: "**Summary**" }],
+    ]);
+    expect(followUp).toHaveBeenCalledExactlyOnceWith({
+      content: "summary text",
+    });
+    expect(postAndFollowSpy.mock.calls[0][0]).toMatchObject({ isDm: false });
+  });
+
+  it("DMs the /gaia auth link and says so in the public reply", async () => {
+    const userSend = vi.fn().mockResolvedValue(undefined);
+    const { interaction } = await followGaia(userSend);
+
+    await lastAuthHandler()("https://gaia.test/link");
+
+    expect(userSend).toHaveBeenCalledWith(
+      expect.stringContaining("https://gaia.test/link"),
+    );
+    expect(interaction.editReply).toHaveBeenCalledWith({
+      content:
+        "To use GAIA, please authenticate first. Check your DMs for the link.",
+    });
+    expect(interaction.followUp).not.toHaveBeenCalled();
+  });
+
+  it("falls back to an ephemeral /gaia auth link when the DM is refused", async () => {
+    const { interaction } = await followGaia(
+      vi.fn().mockRejectedValue(new Error("DMs closed")),
+    );
+
+    await lastAuthHandler()("https://gaia.test/link");
+
+    expect(interaction.followUp).toHaveBeenCalledWith({
+      content: expect.stringContaining("https://gaia.test/link"),
+      ephemeral: true,
+    });
+    expect(interaction.editReply).toHaveBeenCalledWith({
+      content:
+        "To use GAIA, please authenticate first. An ephemeral link has been sent above.",
+    });
+  });
+});
+
+describe("DiscordAdapter - arrival order", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("posts a DM whose welcome is slow before a second DM that arrived after it", async () => {
+    const adapter = new DiscordAdapter();
+    const on = vi.fn();
+    (adapter as unknown as { client: unknown }).client = {
+      once: vi.fn(),
+      on,
+      user: { id: "bot-user-id" },
+    };
+    await (
+      adapter as unknown as { registerEvents: () => Promise<void> }
+    ).registerEvents();
+    const onMessage = on.mock.calls.find(
+      ([event]) => event === "messageCreate",
+    )?.[1] as (m: ReturnType<typeof makeDmMessage>) => Promise<void>;
+    let finishWelcome: () => void = () => undefined;
+    vi.spyOn(
+      adapter as unknown as { sendDMWelcome: () => Promise<void> },
+      "sendDMWelcome",
+    ).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWelcome = resolve;
+        }),
+    );
+
+    const first = onMessage(makeDmMessage("one"));
+    const second = onMessage(makeDmMessage("two"));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(postAndFollowSpy).not.toHaveBeenCalled();
+
+    finishWelcome();
+    await Promise.all([first, second]);
+    expect(
+      postAndFollowSpy.mock.calls.map(([request]) => request.message),
+    ).toEqual(["one", "two"]);
   });
 });

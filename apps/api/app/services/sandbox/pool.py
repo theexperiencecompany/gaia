@@ -35,7 +35,6 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.services.providers.provider_credentials_service import (
     resolve as resolve_e2b_config,
 )
-from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.errors import SandboxAcquisitionError
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage.metrics import set_sandbox_pool_size
@@ -56,7 +55,6 @@ class PooledSandbox:
     last_canary_ts: str | None = None
     # monotonic timestamp of the last sandbox kill-timer refresh (set_timeout)
     timeout_refreshed_at: float = 0.0
-    watcher: ArtifactWatcher | None = None
     template_id: str | None = None
 
 

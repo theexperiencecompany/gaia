@@ -150,18 +150,6 @@ class Settings(BrowserHostSettings):
     # script can be written without a get_tool_schema call. App-wide, not per user.
     # Off by default: discovery docs carry args only and never read the observed-shape store.
     ENABLE_INLINE_TOOL_RETURNS: bool = False
-    # Executor-free HIL ledger — gated calls register PENDING and return
-    # instead of parking the run on an interrupt. On by default; off keeps the
-    # interrupt-and-resume barrier.
-    ENABLE_HIL_LEDGER: bool = True
-    # JEV choice judge for auto mode — a structured decision call classifies first
-    # (49/50 on the calibration set, zero dangerous accepts), LLM intent judge as
-    # the transport-failure fallback. On by default; a JEV outage never opens the gate.
-    ENABLE_HIL_JEV_JUDGE: bool = True
-    # JEV reply classifier for bot users' chat answers to pending approvals —
-    # one structured decision call per reply (hil-reply calibration: 0 dangerous
-    # approves vs the LLM's 2), LLM classifier as the transport-failure fallback.
-    ENABLE_HIL_JEV_REPLY: bool = True
     # Trigger gates skip a run JEV is sure its event does not need. The kill switch:
     # off still evaluates and records every gate, but every run goes ahead.
     ENABLE_TRIGGER_GATES: bool = True
@@ -540,10 +528,6 @@ class Settings(BrowserHostSettings):
     E2B_DEFAULT_BASH_TIMEOUT: int = 120
     E2B_SANDBOX_EVICT_DAYS: int = 14
     E2B_WARM_POOL_TARGET_RATIO: float = 2.0  # Phase 2
-    # Artifact detection mechanism — decided empirically by
-    # scripts/probe_artifact_detection.py (Phase 0). "watch_dir" uses E2B
-    # envd's native recursive watch; "accesslog" tails JuiceFS .accesslog.
-    ARTIFACT_DETECTION_MODE: Literal["watch_dir", "accesslog"] = "watch_dir"
     ARTIFACT_WATCHER_INODE_CACHE_SIZE: int = 4096  # accesslog mode only
 
     # ----------------------------------------------

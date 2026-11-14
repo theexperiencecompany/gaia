@@ -8,12 +8,12 @@
  * from {@link renderForPlatform}. If the shared value changes, the harness
  * changes with it; there is nothing to drift.
  *
- * The single residual is {@link PlatformEmulation.supportsEdit}: whether a
- * platform can edit a delivered message in place, or must send a fresh one. That
- * bit lives in each real adapter's send wiring (grammY `editMessageText`, Slack
- * `chat.update`, Discord `message.edit`) rather than in any shared table, so it
- * is declared here — and the conformance suite pins every entry to the real
- * adapter, failing CI the moment it diverges.
+ * Two residuals live in each real adapter's wiring rather than in any shared
+ * table, so they are declared here: {@link PlatformEmulation.supportsEdit},
+ * whether a platform can edit a delivered message in place (grammY
+ * `editMessageText`, Slack `chat.update`, Discord `message.edit`) — pinned to
+ * the real adapter by the conformance suite — and
+ * {@link PlatformEmulation.supportsDelete}, whether it can take one back.
  */
 
 import {
@@ -40,11 +40,25 @@ export interface PlatformEmulation {
    * edit; whatsapp always sends new via `sendWhatsAppText`.
    */
   supportsEdit: boolean;
+  /**
+   * Whether the adapter can take back a bubble it streamed (grammY `deleteMessage`,
+   * Slack `chat.delete`): the live platforms, whose retracted bubbles are deleted.
+   */
+  supportsDelete: boolean;
 }
 
 /** Residual capability map — see {@link PlatformEmulation.supportsEdit}. */
 const SUPPORTS_EDIT: Record<PlatformName, boolean> = {
   discord: true,
+  slack: true,
+  telegram: true,
+  whatsapp: false,
+  imessage: false,
+};
+
+/** Residual capability map — see {@link PlatformEmulation.supportsDelete}. */
+const SUPPORTS_DELETE: Record<PlatformName, boolean> = {
+  discord: false,
   slack: true,
   telegram: true,
   whatsapp: false,
@@ -70,6 +84,7 @@ export function resolveEmulation(platform: PlatformName): PlatformEmulation {
     streaming,
     render: (text: string) => renderForPlatform(text, platform),
     supportsEdit: SUPPORTS_EDIT[platform],
+    supportsDelete: SUPPORTS_DELETE[platform],
   };
 }
 

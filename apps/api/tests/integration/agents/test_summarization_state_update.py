@@ -158,7 +158,7 @@ GAIA_TRIGGER_MESSAGES = 10
 
 
 def _gaia_shaped_turn(turn: int) -> list[BaseMessage]:
-    """One request as construct_langchain_messages shapes it: prompt slots around the user turn."""
+    """One request as comms_turn_messages shapes it: prompt slots around the user turn."""
     return [
         SystemMessage(content=STATIC_PROMPT, id=f"static{turn}"),
         mark(SystemMessage(content="dynamic context", id=f"dyn{turn}"), DYNAMIC_CONTEXT_MARKER),

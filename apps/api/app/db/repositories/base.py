@@ -16,7 +16,7 @@ from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ValidationError
 from pymongo import ReturnDocument, UpdateOne
 from pymongo.errors import BulkWriteError
 
@@ -29,27 +29,9 @@ from app.db.repositories.cache import (
     query_arg_hash,
     read_generation,
 )
+from app.models.document_models import MongoDocument, UserScopedDocument
 from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfiguredError
 from shared.py.wide_events import log
-
-
-class MongoDocument(BaseModel):
-    """Base for every repository document model — carries the string id.
-
-    ``extra="ignore"`` so a legacy document with stray fields still reads (the
-    write side is fully controlled by the update model's ``extra="forbid"``).
-    """
-
-    model_config = ConfigDict(extra="ignore")
-
-    id: str = ""
-
-
-class UserScopedDocument(MongoDocument):
-    """A document owned by a user — the base for user-scoped repositories."""
-
-    user_id: str
-
 
 TDoc = TypeVar("TDoc", bound=MongoDocument)
 TUserDoc = TypeVar("TUserDoc", bound=UserScopedDocument)
@@ -118,6 +100,9 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     # timestamps in a shape the base must not touch (e.g. legacy ISO strings) turns
     # this off and writes those fields itself.
     auto_stamp_timestamps: ClassVar[bool] = True
+    # Whether create reads the inserted document back. An append-only ledger nothing reads by id
+    # turns it off: the row it returns is the one it wrote, under the id Mongo assigned.
+    reads_back_inserts: ClassVar[bool] = True
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -229,7 +214,11 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             data["_id"] = doc.id
         collection = get_async_collection(self.collection_name)
         result = await collection.insert_one(data)
-        stored = await collection.find_one({"_id": result.inserted_id})
+        stored = (
+            await collection.find_one({"_id": result.inserted_id})
+            if self.reads_back_inserts
+            else {**data, "_id": result.inserted_id}
+        )
         if stored is None:
             raise AppError(message="inserted document could not be read back")
         created = self._to_model(stored)
@@ -573,29 +562,6 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         await self._cache_store(scope, doc)
         await self._invalidate(scope)
         return doc
-
-    async def _apply_pipeline_update_unfetched(
-        self,
-        filter_: Mapping[str, object],
-        pipeline: Sequence[Mapping[str, object]],
-        *,
-        scope: str | None,
-        doc_id: str | None = None,
-        extra_filter: Mapping[str, object] | None = None,
-    ) -> int:
-        """Apply an aggregation-pipeline update via update_one, without reading it back.
-
-        For a write that must read the document it changes in the same atomic update.
-        scope None marks a write no cached read shows, so nothing is invalidated.
-        """
-        result = await get_async_collection(self.collection_name).update_one(
-            {**dict(filter_), **(extra_filter or {})}, [dict(stage) for stage in pipeline]
-        )
-        if result.matched_count and scope is not None:
-            if doc_id is not None:
-                await self._cache_evict(scope, doc_id)
-            await self._invalidate(scope)
-        return result.matched_count
 
     async def _find_one_projected(
         self,

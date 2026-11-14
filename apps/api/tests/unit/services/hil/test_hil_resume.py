@@ -15,7 +15,6 @@ import pytest
 
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
-from app.models.hil_models import LedgerState
 from app.services.hil import resume as resume_module
 from app.services.hil.resume import (
     _resume_todo,
@@ -25,6 +24,7 @@ from app.services.hil.resume import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilResumed
+from shared.py.approvals import ApprovalOutcome
 
 MODULE = "app.services.hil.resume"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
@@ -37,7 +37,8 @@ def _row(**overrides: Any) -> MagicMock:
     row.user_id = USER_ID
     row.tool_name = "GMAIL_SEND_EMAIL"
     row.summary = "Send briefing"
-    row.state = LedgerState.APPROVED
+    row.outcome = ApprovalOutcome.APPROVED
+    row.action = None
     row.owner_run_type = ""
     row.owner_id = ""
     for key, value in overrides.items():

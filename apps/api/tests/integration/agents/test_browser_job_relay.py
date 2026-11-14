@@ -1,9 +1,10 @@
-"""A background job's cards fold into the message of the turn that started it, on a stream of their own.
+"""A background job is logged work of its own: started when its relay opens, finished with its cards.
 
 Real code under test: relay_job_cards and follow_job_cards, the job feed, the
-detached stream's session and its close (folded_stream), over fakeredis. Faked:
-the SSE publish, the websocket announce and the conversation repository, so the
-frames and the saved entries asserted here are the ones the client really gets.
+detached stream's session and its close (folded_stream), the work log through
+the conversation reducer, and the named-work cancel, over fakeredis. Faked: the
+SSE publish and the in-memory log store, so the frames and entries asserted here
+are what the client and the log really get.
 """
 
 import asyncio
@@ -16,31 +17,34 @@ import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background import executor_queue, folded_stream, redis_writer as rw
-from app.constants.browser import BROWSER_TASK_EVENT, BrowserSessionStatus
+from app.agents.core.background.work_cancel import cancel_named_work
+from app.constants.browser import BROWSER_TASK_EVENT, BrowserSessionStatus, JobEnding
 from app.constants.log_tags import LogTag
-from app.models.chat_models import MessageModel
+from app.models.conversation_log_models import WorkFinished, WorkOutcome, WorkStarted
 from app.schemas.browser import BrowserResultSnapshot, BrowserSessionSnapshot, BrowserStepSnapshot
 from app.schemas.browser_job import BrowserJobFinished, BrowserJobRequest, BrowserJobStopped
-from app.services import folded_cards
 from app.services.browser.job_events import JOB_TERMINAL_FRAME, publish_job_event
 from app.services.browser.job_relay import follow_job_cards, relay_job_cards
 from app.services.browser.job_runner import publish_frame_to_job
-from app.services.browser.jobs import claim_conversation_slot, record_ending
+from app.services.browser.jobs import claim_conversation_slot, done_state, record_ending
+from app.services.conversation.runtime import install_runtime_ports
+from app.services.conversation.work_log import record_user_stop
 from tests.helpers import captured_wide_event
+from tests.unit.services.conversation.log_helpers import user
+from tests.unit.services.conversation.runtime_doubles import CONVERSATION, USER, Runtime
 
 pytestmark = pytest.mark.integration
 
 JOB_ID = "job-1"
-CONVERSATION = "conv-1"
-MESSAGE_ID = "bot-msg-1"
+TASK_ID = f"browser_{JOB_ID}"
 REQUEST = BrowserJobRequest(
     job_id=JOB_ID,
     tool_call_id="call-1",
-    user_id="u1",
+    user_id=USER,
     conversation_id=CONVERSATION,
     task="book",
     in_background=True,
-    message_id=MESSAGE_ID,
+    message_id="bot-msg-1",
 )
 RESULT = BrowserResultSnapshot(status=BrowserSessionStatus.COMPLETED, success=True, summary="ok")
 
@@ -53,13 +57,19 @@ async def redis(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[fakeredis.aior
     await client.aclose()
 
 
+@pytest.fixture
+async def runtime() -> Runtime:
+    runtime = Runtime()
+    install_runtime_ports(runtime.ports)
+    await runtime.log.append(CONVERSATION, USER, user("u1"))
+    return runtime
+
+
 class Client:
-    """What the user's client and the conversation store saw of the relay."""
+    """What the user's client saw of the relay's stream."""
 
     def __init__(self) -> None:
-        self.announced: list[dict[str, Any]] = []
         self.chunks: dict[str, list[str]] = {}
-        self.saved: list[dict[str, Any]] = []
 
     def frames(self) -> list[dict[str, Any]]:
         [stream] = self.chunks.values()
@@ -67,30 +77,16 @@ class Client:
 
 
 @pytest.fixture
-def client(monkeypatch: pytest.MonkeyPatch) -> Client:
+def client(monkeypatch: pytest.MonkeyPatch, runtime: Runtime) -> Client:
     seen = Client()
 
     async def _publish_chunk(stream_id: str, chunk: str) -> None:
         seen.chunks.setdefault(stream_id, []).append(chunk)
 
-    async def _broadcast(_user_id: str, payload: dict[str, Any]) -> None:
-        seen.announced.append(payload)
-
-    async def _append(conversation_id: str, **kwargs: Any) -> bool:
-        seen.saved.append({"conversation_id": conversation_id, **kwargs})
-        return True
-
     manager = MagicMock()
     manager.publish_chunk = _publish_chunk
     monkeypatch.setattr(rw, "stream_manager", manager)
     monkeypatch.setattr(executor_queue, "StreamManager", AsyncMock())
-    monkeypatch.setattr(executor_queue.websocket_manager, "broadcast_to_user", _broadcast)
-    conversations = MagicMock()
-    conversations.get_message = AsyncMock(
-        return_value=MessageModel(type="bot", response="", tool_data=[])
-    )
-    conversations.append_message_tool_data = _append
-    monkeypatch.setattr(folded_cards, "conversation_repository", conversations)
     streams = MagicMock()
     streams.is_cancelled = AsyncMock(return_value=False)
     monkeypatch.setattr(folded_stream, "stream_manager", streams)
@@ -117,27 +113,48 @@ async def _publish_cards(*, end: bool) -> None:
         await publish_job_event(JOB_ID, JOB_TERMINAL_FRAME)
 
 
-async def test_the_cards_fold_into_the_starting_turns_message_and_are_saved_there(
-    client: Client,
+async def test_the_job_is_logged_work_whose_finish_carries_its_cards_and_wakes_nothing(
+    client: Client, runtime: Runtime
 ) -> None:
-    """Live on a stream of the job's own, folded into the turn's message; saved there when the job ends, so a reload shows them."""
     await _publish_cards(end=True)
 
     await relay_job_cards(REQUEST)
 
-    [announce] = client.announced
-    assert (announce["bot_message_id"], announce["kind"], announce["task_id"]) == (
-        MESSAGE_ID,
-        "subagent",
-        JOB_ID,
-    )
-    [stream_id] = client.chunks
-    assert stream_id == announce["stream_id"]
-    kinds = [frame["tool_data"]["data"]["kind"] for frame in client.frames()]
-    assert kinds == ["session", "step", "result"]
-    [saved] = client.saved
-    assert (saved["conversation_id"], saved["message_id"]) == (CONVERSATION, MESSAGE_ID)
-    assert [entry["data"]["kind"] for entry in saved["entries"]] == ["session", "step", "result"]
+    assert [frame["tool_data"]["data"]["kind"] for frame in client.frames()] == [
+        "session",
+        "step",
+        "result",
+    ]
+    [_, started, ended] = await runtime.entries()
+    assert isinstance(started.entry, WorkStarted)
+    assert (started.entry.task_id, started.entry.detached) == (TASK_ID, True)
+    assert isinstance(ended.entry, WorkFinished)
+    assert (ended.entry.task_id, ended.entry.outcome) == (TASK_ID, WorkOutcome.DONE)
+    assert [card["data"]["kind"] for card in ended.entry.tool_data] == ["session", "step", "result"]
+    state = await runtime.log.state(CONVERSATION, USER)
+    assert (state.work, state.finished_work) == ((), ())
+
+
+async def test_a_stop_while_the_job_runs_cancels_it(client: Client, runtime: Runtime) -> None:
+    await claim_conversation_slot(CONVERSATION, JOB_ID)
+    await _publish_cards(end=False)
+    relaying = asyncio.create_task(relay_job_cards(REQUEST))
+    for _ in range(50):
+        await asyncio.sleep(0)
+    live = await runtime.log.state(CONVERSATION, USER)
+    assert [work.task_id for work in live.work] == [TASK_ID]
+
+    await record_user_stop(CONVERSATION, USER, "s1")
+    [cancel] = [call.argument for call in runtime.effects.calls if call.name == "cancel_work"]
+    assert isinstance(cancel, tuple)
+    assert TASK_ID in cancel
+    cancelled = await cancel_named_work(CONVERSATION, USER, cancel, approval_ids=())
+
+    assert list(cancelled.browser_jobs) == [JOB_ID]
+    ending = await done_state(JOB_ID)
+    assert ending is not None
+    assert ending.ending is JobEnding.STOPPED
+    relaying.cancel()
 
 
 async def test_a_job_still_running_is_followed_until_its_feed_closes(client: Client) -> None:

@@ -37,7 +37,7 @@ class TriggerGateDecided(ServerEvent):
         "jev_malformed",
         "jev_unconfigured",
     ]
-    urgent_choice: Literal["incident", "service_down", "meeting"] | None = None
+    urgent_choice: Literal["incident", "service_down", "meeting", "can_wait"] | None = None
     enforced: bool
     latency_ms: int | None = None
 

@@ -1,14 +1,12 @@
 import type {
   ActionExecutionResponse,
   NotificationActionView,
-  NotificationContent,
 } from "@shared/api/generated";
 
 export type {
   ApiCallConfig,
   BulkActionRequest,
   ModalConfig,
-  NotificationContent,
   NotificationView,
   PaginatedNotificationsResponse,
   RedirectConfig,
@@ -85,49 +83,6 @@ export interface ModalProps {
 
 export type NotificationAction = NotificationActionView;
 
-export interface NotificationMetadata {
-  // Source tracking
-  source?: "system" | "user" | "integration" | "workflow";
-  source_id?: string;
-
-  // Entity relationships
-  reminder_id?: string;
-  todo_id?: string;
-  calendar_event_id?: string;
-  email_id?: string;
-  project_id?: string;
-
-  // Context information
-  trigger_event?: string;
-  user_action?: string;
-  integration_name?: string;
-
-  // Delivery tracking
-  delivery_attempts?: number;
-  last_attempt_at?: string;
-  failure_reason?: string;
-
-  // Grouping and categorization
-  category?: string;
-  tags?: string[];
-  group_key?: string;
-
-  // Custom tracking
-  analytics?: {
-    campaign_id?: string;
-    utm_source?: string;
-    utm_medium?: string;
-    utm_campaign?: string;
-  };
-
-  // Timestamps
-  created_at?: string;
-  updated_at?: string;
-
-  // Allow for additional custom fields
-  [key: string]: string | number | boolean | string[] | object | undefined;
-}
-
 export interface ActionResultData {
   // Entity results
   created_entity?: {
@@ -172,34 +127,8 @@ export interface ActionResultData {
   };
 }
 
-export interface NotificationUpdate {
-  // Status changes
-  status?: SharedNotificationStatus;
-  read_at?: string;
-  archived_at?: string;
-  snoozed_until?: string;
-
-  // Content updates
-  content?: Partial<NotificationContent>;
-
-  // Action updates
-  disable_actions?: string[]; // Action IDs to disable
-  add_actions?: NotificationAction[];
-
-  // Visual updates
-  highlight?: boolean;
-  badge_count?: number;
-
-  // Metadata updates
-  metadata?: Partial<NotificationMetadata>;
-
-  // Expiration
-  expires_at?: string;
-  auto_archive_after?: number; // minutes
-}
-
 // The API's action result, with `data` narrowed to what an executed action carries.
-export type ActionResult = Omit<ActionExecutionResponse, "data"> & {
+export type NotificationActionResult = Omit<ActionExecutionResponse, "data"> & {
   data?: ActionResultData | null;
 };
 

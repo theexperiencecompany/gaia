@@ -97,14 +97,14 @@ class TestThreadClaim:
         refused = _sub("s2", thread="notion-mcp_executor_conv-1")
         assert not await reg.claim(refused)
         assert [s.subagent_id for s in await reg.live()] == ["s1"]
-        assert await reg.holds_thread("notion-mcp_executor_conv-1")
+        assert await redis.exists(f"{RUNNING_SUBAGENT_THREAD_PREFIX}notion-mcp_executor_conv-1")
 
     async def test_the_thread_frees_when_its_run_deregisters(self, redis) -> None:
         reg = RunningSubagents(CONV)
         first = _sub("s1", thread="spawn_conv-1_call-1")
         assert await reg.claim(first)
         await reg.deregister(first)
-        assert not await reg.holds_thread("spawn_conv-1_call-1")
+        assert not await redis.exists(f"{RUNNING_SUBAGENT_THREAD_PREFIX}spawn_conv-1_call-1")
         assert await reg.claim(_sub("s1", thread="spawn_conv-1_call-1"))
 
     async def test_a_claimed_thread_lapses_so_a_dead_run_cannot_hold_it(self, redis) -> None:
@@ -218,6 +218,14 @@ class TestStopAll:
             await reg.stop_all()
 
         cancel.assert_not_called()
+
+    async def test_a_run_already_stopped_is_not_reported_stopped_again(self) -> None:
+        """A second Stop finds the first one's runs still unwinding; it stopped none of them."""
+        reg = RunningSubagents(CONV)
+        assert await reg.claim(_run("done", "subagent_done", dispatched_by="turn"))
+        await stream_manager.cancel_stream("subagent_done")
+
+        assert await reg.stop_all() == []
 
     async def test_a_record_written_before_runs_carried_streams_still_decodes(self) -> None:
         reg = RunningSubagents(CONV)

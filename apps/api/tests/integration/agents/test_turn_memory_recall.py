@@ -16,7 +16,7 @@ import fakeredis.aioredis
 import pytest
 
 from app.agents.context.slots import PromptSlot
-from app.agents.core.messages import MessageScope, construct_langchain_messages
+from app.agents.core.messages import MessageScope
 from app.agents.core.subagents.subagent_runner import (
     compose_executor_brief,
     prepare_executor_execution,
@@ -24,11 +24,11 @@ from app.agents.core.subagents.subagent_runner import (
 from app.constants.memory import MemoryKind
 from app.db.redis import redis_cache
 from app.helpers.agent_helpers import AgentIdentity, AgentTurn, build_agent_config
-from app.memory import retrieval
+from app.memory import chroma_store, pg_store, retrieval
 from app.models import agent_models
 from app.models.agent_models import AgentConfigurable
 from app.models.memory_db_models import MemoryRecord
-from tests._harness.context_chain import message_in_slot, text_of
+from tests._harness.context_chain import comms_turn_messages, message_in_slot, text_of
 from tests._harness.context_sources import ContextSources, fake_context_sources
 
 CONFIDENT_LOGIT = 5.0
@@ -80,20 +80,14 @@ class MemoryStores:
     def patches(self) -> Iterator[AbstractContextManager[object]]:
         yield patch.object(retrieval, "embed_query", new=self.embed)
         yield patch.object(
-            retrieval.chroma_store,
+            chroma_store,
             "query_similar",
             new=AsyncMock(return_value=[(str(self.row.id), WEAK_COSINE)]),
         )
-        yield patch.object(retrieval.pg_store, "fts_search", new=AsyncMock(return_value=[]))
-        yield patch.object(
-            retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[self.row])
-        )
-        yield patch.object(
-            retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-        )
-        yield patch.object(
-            retrieval.pg_store, "get_memories_for_entities", new=AsyncMock(return_value=[])
-        )
+        yield patch.object(pg_store, "fts_search", new=AsyncMock(return_value=[]))
+        yield patch.object(pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[self.row]))
+        yield patch.object(pg_store, "get_entities_for_memories", new=AsyncMock(return_value={}))
+        yield patch.object(pg_store, "get_memories_for_entities", new=AsyncMock(return_value=[]))
         yield patch.object(retrieval, "rerank", new=self.rerank)
 
 
@@ -125,7 +119,7 @@ async def _run_turn(stores: MemoryStores, request: str, task: str) -> str:
             )
         )
 
-        await construct_langchain_messages(
+        await comms_turn_messages(
             query=request,
             scope=MessageScope(user_id=user_id, conversation_id="conv-1"),
         )

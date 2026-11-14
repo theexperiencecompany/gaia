@@ -120,6 +120,7 @@ ignore_decorators = [
   "@app.post",      # bare-FastAPI route handlers (embedding sidecar)
   "@app.websocket", # Starlette websocket handlers — registered via decorator (browser host)
   "@app.middleware", # Starlette HTTP middleware — registered via decorator (browser host)
+  "@override",      # typing.override: a base-class hook the framework dispatches to
 ]
 ignore_names = [
   "model_config",   # Pydantic v2 config attribute (set on every model)
@@ -497,7 +498,6 @@ unfixable = [
 # so the main ruff lane treats such a noqa as unused (RUF100). PLR0911/0912 are
 # reducible and stay enforced (update_tracked_todo was refactored to satisfy them).
 "apps/api/app/agents/tools/reminder_tool.py" = ["PLR0913"]  # @tool args are the model-facing tool schema, not reducible complexity
-"apps/api/app/agents/core/background/result_delivery.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/agents/tools/core/registry.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/api/v1/endpoints/todos.py" = ["ARG001", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/patches/composio_langchain_patch.py" = ["ANN401", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
@@ -505,7 +505,6 @@ unfixable = [
 "apps/api/app/services/composio/proxy_client.py" = ["ANN401", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/services/workflow/trigger_search.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/services/workflow/workflow_subagent.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
-"apps/api/app/utils/agent_utils.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/utils/workflow_utils.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/workers/tasks/maintenance_sweep_tasks.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 # ARG001: Composio's Modifier.apply() always calls before/after/schema hooks
@@ -681,6 +680,9 @@ warn_no_return = true
 no_implicit_optional = true
 ignore_missing_imports = true  # third-party stubs absent; per-module strictness grows via overrides
 follow_imports = "silent"  # silent: follow imports without surfacing their errors — staged-strict tradeoff
+# gaia-shared is an import-hook editable install mypy cannot follow; without its source on
+# the path every shared.* type reads as Any.
+mypy_path = "$MYPY_CONFIG_FILE_DIR/libs"
 show_error_codes = true
 enable_error_code = ["ignore-without-code"]
 show_column_numbers = true

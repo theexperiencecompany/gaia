@@ -1,4 +1,5 @@
-import type { ApprovalStatus, ToolDataEntry } from "@gaia/shared/chat";
+import type { ApprovalEnd, ToolDataEntry } from "@gaia/shared/chat";
+import { approvalLabel } from "@gaia/shared/chat";
 import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -221,15 +222,9 @@ function WaitingForApprovalPill() {
   );
 }
 
-const APPROVAL_CHIP: Partial<
-  Record<ApprovalStatus, { label: string; color: string }>
-> = {
-  ...APPROVAL_CHIP_META,
-};
-
 /** A settled HIL decision rides its tool's own row as a small chip. */
-function ApprovalOutcomeChip({ status }: { status: ApprovalStatus }) {
-  const chip = APPROVAL_CHIP[status];
+function ApprovalOutcomeChip({ end }: { end: ApprovalEnd }) {
+  const chip = approvalLabel(end, APPROVAL_CHIP_META);
   if (!chip) return null;
   return (
     <View
@@ -544,7 +539,7 @@ function ActivityRow({
               </Text>
               {awaitingApproval ? <WaitingForApprovalPill /> : null}
               {settledStatus ? (
-                <ApprovalOutcomeChip status={settledStatus} />
+                <ApprovalOutcomeChip end={settledStatus} />
               ) : null}
             </View>
             {preview ? (

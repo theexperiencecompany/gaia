@@ -18,7 +18,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.db.repositories.base import MongoDocument
+from app.models.document_models import MongoDocument
 from app.models.scheduler_models import (
     BaseScheduledTask,
     DeactivationReason,

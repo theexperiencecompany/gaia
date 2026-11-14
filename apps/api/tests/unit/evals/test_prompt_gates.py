@@ -87,11 +87,7 @@ def test_banned_phrases_come_from_the_prompt_including_ones_that_wrap() -> None:
 
 def test_dashes_and_tags_come_from_the_prompt() -> None:
     assert set(banned_dashes()) == {EM_DASH, EN_DASH}
-    assert set(channel_tags()) == {
-        "<executor_result>",
-        "<executor_error>",
-        "<returned_to_frontend>",
-    }
+    assert set(channel_tags()) == {"<server_restart>"}
 
 
 def test_internal_terms_drop_only_the_ordinary_english_ones() -> None:
@@ -228,21 +224,21 @@ def test_internal_machinery_does_not_fire_on_ordinary_words() -> None:
 
 def test_internal_tags_catches_a_leaked_channel_tag() -> None:
     value, why = internal_tags(
-        _run(("user", "any mail?"), ("assistant", "<executor_result> you have 3 unread"))
+        _run(("user", "any mail?"), ("assistant", "<server_restart> you have 3 unread"))
     )
 
     assert value == 0.0
-    assert "<executor_result>" in why
+    assert "<server_restart>" in why
 
 
 def test_internal_tags_catches_a_leaked_closing_tag() -> None:
     """A model that echoes only the closing tag has still leaked the plumbing — the opening-tag-only check this replaces scored it 1.0."""
     value, why = internal_tags(
-        _run(("user", "any mail?"), ("assistant", "you have 3 unread</executor_result>"))
+        _run(("user", "any mail?"), ("assistant", "you have 3 unread</server_restart>"))
     )
 
     assert value == 0.0
-    assert "<executor_result>" in why
+    assert "<server_restart>" in why
 
 
 def test_internal_tags_passes_a_clean_reply() -> None:

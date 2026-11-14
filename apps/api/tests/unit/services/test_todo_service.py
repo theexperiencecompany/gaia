@@ -141,8 +141,8 @@ def _owners_are_users():
 def _no_pending_approvals():
     """Neutralize the cross-domain ledger read; no live approvals by default."""
     with patch(
-        "app.services.todos.todo_service.approval_ledger_repository.list_live_by_owners",
-        new=AsyncMock(return_value=[]),
+        "app.services.todos.todo_service.pending_approvals_by_owner",
+        new=AsyncMock(return_value={}),
     ):
         yield
 
@@ -648,8 +648,8 @@ class TestGetTodo:
             owner_id=FAKE_TODO_ID, approval_id="ap_1", conversation_id="conv-9"
         )
         with patch(
-            "app.services.todos.todo_service.approval_ledger_repository.list_live_by_owners",
-            new=AsyncMock(return_value=[live_row]),
+            "app.services.todos.todo_service.pending_approvals_by_owner",
+            new=AsyncMock(return_value={FAKE_TODO_ID: live_row}),
         ):
             result = await TodoService.get_todo(FAKE_TODO_ID, FAKE_USER_ID)
         assert result.pending_approval == PendingApprovalRef(

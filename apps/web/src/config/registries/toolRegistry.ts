@@ -24,7 +24,6 @@ import type {
   CalendarEditOptions,
   CalendarFetchData,
   CalendarListFetchData,
-  CalendarOptions,
 } from "@/types/features/calendarTypes";
 import type { ScreenshotData } from "@/types/features/desktopToolTypes";
 import type {
@@ -142,7 +141,6 @@ const TOOL_REGISTRY = {
   email_sent_data: null as unknown as EmailSentData[],
   contacts_data: null as unknown as ContactData[],
   people_search_data: null as unknown as PeopleSearchData[],
-  calendar_options: null as unknown as CalendarOptions[],
   calendar_delete_options: null as unknown as CalendarDeleteOptions[],
   calendar_edit_options: null as unknown as CalendarEditOptions[],
   calendar_fetch_data: null as unknown as CalendarFetchData[],
@@ -197,21 +195,3 @@ export const TOOLS_MESSAGE_SCHEMA: ToolsMessageSchema = {
   tool_data: undefined,
 };
 export type ToolsMessageData = ToolsMessageSchema;
-
-// Tools that should merge multiple calls into one component
-// Add any tool name here - its data will be accumulated into an array
-export const GROUPED_TOOLS = new Set<ToolName>([
-  "approval_request",
-  "search_results",
-  "reddit_data",
-  "integration_connection_required",
-  "integration_list_data",
-  "device_approval_required",
-  "rate_limit_data",
-  "email_fetch_data",
-  "email_compose_data",
-  "email_sent_data",
-  "artifact_data",
-  "memory_data",
-  "browser_task_data",
-]);

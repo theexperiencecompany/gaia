@@ -6,7 +6,6 @@ from shared.py.analytics.catalog.base import ServerEvent, WebEvent
 from shared.py.analytics.catalog.properties import Emoji, Identifier
 
 __all__ = [
-    "ChatBackgroundUpdateResolved",
     "ChatComposerPlusMenuClicked",
     "ChatConversationCreated",
     "ChatConversationDeleted",
@@ -27,6 +26,7 @@ __all__ = [
     "ChatToolsButtonClicked",
     "ChatTurnReacted",
     "ChatVoiceModeToggled",
+    "ChatWorkStopped",
     "ImageDescribed",
     "ImageGenerated",
     "SessionArtifactPinned",
@@ -73,7 +73,6 @@ class _ChatTurnEnded(ServerEvent):
 
     stream_id: Identifier
     conversation_id: Identifier
-    voice_mode: bool
     is_new_conversation: bool
     delegated: bool
     queued: bool
@@ -97,15 +96,17 @@ class ChatMessageCancelled(_ChatTurnEnded):
     budget_per_user_day: ClassVar[int] = 10
 
 
-class ChatBackgroundUpdateResolved(ServerEvent):
-    """Comms resolved a background executor update as a message, a one-emoji react, or silence."""
+class ChatWorkStopped(ServerEvent):
+    """The user stopped a conversation: its reply in flight and the background work it had running."""
 
-    event: ClassVar[str] = "chat:background_update_resolved"
-    budget_per_user_day: ClassVar[int] = 100
+    event: ClassVar[str] = "chat:work_stopped"
+    budget_per_user_day: ClassVar[int] = 20
 
-    outcome: Identifier
-    emoji: Emoji | None = None
-    delivery: Literal["message", "reaction", "badge", "fallback_text"] | None = None
+    executor_stopped: bool
+    pending_tasks: int
+    subagents: int
+    approvals: int
+    browser_jobs: int
 
 
 class ChatTurnReacted(ServerEvent):

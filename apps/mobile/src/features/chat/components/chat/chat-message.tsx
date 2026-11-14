@@ -2,14 +2,11 @@ import {
   SUBAGENT_GROUP_TOOL_NAME,
   TOOL_CALLS_DATA_TOOL_NAME,
 } from "@gaia/shared/chat";
-import {
-  parseOpenUISegments,
-  parseThinkingFromText,
-  splitMessageByBreaks,
-} from "@gaia/shared/utils";
+import { SEND_NOT_DELIVERED, STOPPED_NOTE } from "@gaia/shared/conversation";
+import { parseOpenUISegments, parseThinkingFromText } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { PressableFeedback } from "heroui-native";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import { MessageBubble } from "@/components/ui/message-bubble";
@@ -20,21 +17,17 @@ import type { Message } from "../../types";
 import { OpenUIRenderer } from "../openui/OpenUIRenderer";
 import { ActivityBlock } from "../streaming/activity-block";
 import { buildTimeline } from "../streaming/activity-format";
-import { FailedResponse } from "./failed-response";
+import { FailedResponse, MessageNote } from "./failed-response";
 import { FollowUpActions } from "./follow-up-actions";
 import { ImageBubble } from "./image-bubble";
 import { LinkPreviewCard } from "./link-preview-card";
-import { MemoryIndicator } from "./memory-indicator";
-import type { MessageActionConfig } from "./message-action-sheet";
+import type { MessageLongPress } from "./message-action-sheet";
 import { MessageReactions } from "./message-reactions";
 import { MessageReplyQuote } from "./message-reply-quote";
+import { TodoRunWakeIndicator, WorkflowRunIndicator } from "./run-indicator";
 import { ThinkingBubble } from "./thinking-bubble";
-import { TodoRunWakeIndicator } from "./todo-run-wake-indicator";
 
 const EMOJI_ONLY_REGEX = /^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\s]+$/u;
-
-/** Shape accepted by MemoryIndicator, derived from the component itself. */
-type MemoryIndicatorData = Parameters<typeof MemoryIndicator>[0]["memoryData"];
 
 // Gap scale token (decisions §5).
 const GAP_SM = 4;
@@ -52,14 +45,12 @@ interface ChatMessageProps {
   message: Message;
   onFollowUpAction?: (action: string) => void;
   onReply?: (message: Message) => void;
-  onLongPress?: (config: MessageActionConfig) => void;
-  /** Re-run this failed turn (wired to useChat.retryLastMessage). */
+  onLongPress?: (config: MessageLongPress) => void;
+  /** Resend a send that failed, or ask again for a failed reply (useChat.retryMessage). */
   onRetry?: () => void;
   isLoading?: boolean;
   isLastMessage?: boolean;
   loadingMessage?: string;
-  progressToolName?: string | null;
-  progressMessage?: string | null;
 }
 
 type BubbleGrouping = "none" | "first" | "last" | "middle";
@@ -83,23 +74,22 @@ function emojiFontSize(count: number): number | null {
 /** Long-press handler shared by the sent and received message layouts. */
 function useMessageLongPress(
   message: Message,
-  onLongPress?: (config: MessageActionConfig) => void,
+  onLongPress?: (config: MessageLongPress) => void,
   onReply?: (message: Message) => void,
 ) {
-  return useCallback(() => {
+  return () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     if (onLongPress) {
       onLongPress({
         messageId: message.id,
-        conversationId: (message.metadata?.conversation_id as string) ?? "",
         content: message.text ?? "",
         isUser: message.isUser,
-        isPinned: message.metadata?.is_pinned as boolean | undefined,
+        isPinned: message.pinned,
       });
     } else {
       onReply?.(message);
     }
-  }, [onLongPress, onReply, message]);
+  };
 }
 
 interface MessagePart {
@@ -107,7 +97,10 @@ interface MessagePart {
   index: number;
 }
 
-function useMessageParts(text: string | undefined): {
+function useMessageParts(
+  text: string | undefined,
+  bubbles: readonly string[] | undefined,
+): {
   parsedContent: ReturnType<typeof parseThinkingFromText>;
   messageParts: MessagePart[];
 } {
@@ -116,7 +109,7 @@ function useMessageParts(text: string | undefined): {
     () => parseThinkingFromText(text ?? ""),
     [text],
   );
-  const messageParts = splitMessageByBreaks(parsedContent.cleanText)
+  const messageParts = (bubbles ?? [parsedContent.cleanText])
     .filter(Boolean)
     .map((part, index) => ({ part, index }));
   return { parsedContent, messageParts };
@@ -161,7 +154,11 @@ function UserChatMessage({
   message,
   handleLongPress,
   messageParts,
-}: ChatMessageLayoutProps & { messageParts: MessagePart[] }) {
+  onRetry,
+}: ChatMessageLayoutProps & {
+  messageParts: MessagePart[];
+  onRetry?: () => void;
+}) {
   const { spacing } = useResponsive();
 
   return (
@@ -184,6 +181,9 @@ function UserChatMessage({
           {message.todoRunWake && (
             <TodoRunWakeIndicator wake={message.todoRunWake} />
           )}
+          {message.firedWorkflow && (
+            <WorkflowRunIndicator workflow={message.firedWorkflow} />
+          )}
           {message.replyToMessage && (
             <MessageReplyQuote
               replyToMessage={message.replyToMessage}
@@ -198,7 +198,15 @@ function UserChatMessage({
               total={messageParts.length}
             />
           ))}
-          <MessageReactions reactions={message.reactions} align="end" />
+          <MessageReactions reaction={message.reaction} align="end" />
+          {message.sendFailed ? (
+            <MessageNote
+              text={SEND_NOT_DELIVERED}
+              alert
+              align="end"
+              onRetry={onRetry}
+            />
+          ) : null}
         </View>
       </PressableFeedback>
     </Animated.View>
@@ -311,12 +319,10 @@ function AIMainContent({
 }
 
 function hasFooterContent(message: ChatMessageLayoutProps["message"]): boolean {
-  return (
-    !!message.memoryData || !!message.followUpActions?.length || !!message.error
-  );
+  return !!message.followUpActions?.length || !!message.error;
 }
 
-/** Memory pill, follow-up chips and the failure row under an AI message. */
+/** Follow-up chips and the failure row under an AI message. */
 function AIMessageFooter({
   message,
   failed,
@@ -332,11 +338,6 @@ function AIMessageFooter({
 }) {
   return (
     <>
-      {message.memoryData ? (
-        <MemoryIndicator
-          memoryData={message.memoryData as MemoryIndicatorData}
-        />
-      ) : null}
       {message.followUpActions?.length ? (
         <FollowUpActions
           actions={message.followUpActions}
@@ -440,7 +441,6 @@ function AIChatMessage({
   isLoading,
   isLastMessage,
   loadingMessage,
-  progressMessage,
   onFollowUpAction,
   onRetry,
 }: ChatMessageLayoutProps & {
@@ -448,9 +448,8 @@ function AIChatMessage({
   messageParts: MessagePart[];
   isLoading: boolean;
   isLastMessage: boolean;
-  /** Contextual loading label from the screen ("Thinking about X..."). */
+  /** The loading row's words: a playful thinking line, the status, or the newest tool progress. */
   loadingMessage: string;
-  progressMessage: string | null;
   onFollowUpAction?: (action: string) => void;
   /** Re-run the failed turn (only meaningful when message.error is set). */
   onRetry?: () => void;
@@ -490,8 +489,7 @@ function AIChatMessage({
             hasStreamedText={hasStreamedText}
             failed={failed}
             thinkingLabel={
-              progressMessage ??
-              (loadingMessage !== "Thinking..." ? loadingMessage : null)
+              loadingMessage !== "Thinking..." ? loadingMessage : null
             }
           />
         )}
@@ -519,11 +517,9 @@ function AIChatMessage({
           isLastMessage={isLastMessage}
         />
 
-        <MessageReactions
-          reactions={message.reactions}
-          align="start"
-          style={{ paddingHorizontal: spacing.md, marginTop: GAP_SM }}
-        />
+        {message.stopped ? (
+          <MessageNote text={STOPPED_NOTE} alert={false} />
+        ) : null}
 
         <AILinkPreview text={message.text ?? ""} isLoading={isLoading} />
 
@@ -548,9 +544,11 @@ export function ChatMessage({
   isLoading = false,
   isLastMessage = false,
   loadingMessage = "Thinking...",
-  progressMessage = null,
 }: ChatMessageProps) {
-  const { parsedContent, messageParts } = useMessageParts(message.text);
+  const { parsedContent, messageParts } = useMessageParts(
+    message.text,
+    message.bubbles,
+  );
   const handleLongPress = useMessageLongPress(message, onLongPress, onReply);
 
   if (message.isUser) {
@@ -559,6 +557,7 @@ export function ChatMessage({
         message={message}
         handleLongPress={handleLongPress}
         messageParts={messageParts}
+        onRetry={onRetry}
       />
     );
   }
@@ -572,7 +571,6 @@ export function ChatMessage({
       isLoading={isLoading}
       isLastMessage={isLastMessage}
       loadingMessage={loadingMessage}
-      progressMessage={progressMessage}
       onFollowUpAction={onFollowUpAction}
       onRetry={onRetry}
     />

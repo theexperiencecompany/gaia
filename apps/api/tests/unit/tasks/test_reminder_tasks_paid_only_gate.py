@@ -19,8 +19,10 @@ import pytest
 from app.decorators import entitlements
 from app.models.payment_models import PlanType
 from app.models.reminder_models import ReminderModel, ReminderStatus, StaticReminderPayload
+from app.services.delivery.chat_channel import InApp
 from app.services.reminder_service import reminder_scheduler
 from app.tasks.reminder_tasks import PAYWALL_FEATURE_REMINDER, execute_reminder_by_agent
+from app.utils.notification.orchestrator import Notified
 from shared.py.analytics.catalog.reminders import ReminderCompleted
 
 pytestmark = pytest.mark.unit
@@ -32,13 +34,15 @@ REMINDER_ID = "6812f0b3c9a14e2b7d5a91dd"
 
 
 def _reminder(repeat: str | None = None) -> ReminderModel:
-    return ReminderModel(
-        id=REMINDER_ID,
-        user_id=USER_ID,
-        agent="static",
-        repeat=repeat,
-        scheduled_at=datetime.now(UTC),
-        payload=StaticReminderPayload(title="Water the plants", body="Now"),
+    return ReminderModel.model_validate(
+        {
+            "_id": REMINDER_ID,
+            "user_id": USER_ID,
+            "agent": "static",
+            "repeat": repeat,
+            "scheduled_at": datetime.now(UTC),
+            "payload": StaticReminderPayload(title="Water the plants", body="Now"),
+        }
     )
 
 
@@ -55,15 +59,14 @@ def lapsed_user():
 async def test_free_user_reminder_does_not_fire() -> None:
     with (
         patch(
-            f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
+            f"{MODULE}.notification_service.notify",
+            AsyncMock(return_value=Notified(record=MagicMock(), target=InApp("no_chat_app"))),
         ) as notify,
-        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)) as deliver,
         patch(f"{MODULE}.capture") as capture,
     ):
         await execute_reminder_by_agent(_reminder())
 
     notify.assert_not_awaited()
-    deliver.assert_not_awaited()
     captured = [type(call.args[1]) for call in capture.call_args_list]
     assert ReminderCompleted not in captured
 
@@ -72,8 +75,10 @@ async def test_free_user_reminder_does_not_fire() -> None:
 async def test_the_block_reaches_the_funnel_under_the_blocked_users_own_id() -> None:
     """Unable to use require_active_subscription (it raises), so the paywall event must be fired here with an explicit user_id since a worker has no request context to attribute it."""
     with (
-        patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
+        patch(
+            f"{MODULE}.notification_service.notify",
+            AsyncMock(return_value=Notified(record=MagicMock(), target=InApp("no_chat_app"))),
+        ),
         patch(f"{MODULE}.capture_paywall_block") as block,
     ):
         await execute_reminder_by_agent(_reminder())
@@ -84,8 +89,10 @@ async def test_the_block_reaches_the_funnel_under_the_blocked_users_own_id() -> 
 async def test_a_paying_users_reminder_is_never_captured_as_blocked() -> None:
     with (
         patch(f"{MODULE}.is_paid", AsyncMock(return_value=True)),
-        patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
+        patch(
+            f"{MODULE}.notification_service.notify",
+            AsyncMock(return_value=Notified(record=MagicMock(), target=InApp("no_chat_app"))),
+        ),
         patch(f"{MODULE}.capture_paywall_block") as block,
     ):
         await execute_reminder_by_agent(_reminder())
@@ -97,8 +104,10 @@ async def test_a_paying_users_reminder_is_never_captured_as_blocked() -> None:
 async def test_the_skip_is_recorded_on_the_wide_event_with_both_ids() -> None:
     """log.warning writes both ids into the wide event's warnings[] so "why did my reminder stop?" is answerable from Loki."""
     with (
-        patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
+        patch(
+            f"{MODULE}.notification_service.notify",
+            AsyncMock(return_value=Notified(record=MagicMock(), target=InApp("no_chat_app"))),
+        ),
         patch(f"{MODULE}.log") as mock_log,
     ):
         await execute_reminder_by_agent(_reminder())
@@ -124,9 +133,9 @@ async def test_a_user_who_just_paid_fires_off_the_row_not_the_stale_cache() -> N
         ),
         patch("app.decorators.entitlements.invalidate_plan_cache", new_callable=AsyncMock),
         patch(
-            f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock
+            f"{MODULE}.notification_service.notify",
+            AsyncMock(return_value=Notified(record=MagicMock(), target=InApp("no_chat_app"))),
         ) as notify,
-        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
         patch(f"{MODULE}.capture"),
     ):
         await execute_reminder_by_agent(_reminder())
@@ -139,8 +148,10 @@ async def test_the_gate_asks_about_the_reminders_own_owner() -> None:
     is_active = AsyncMock(return_value=True)
     with (
         patch(f"{MODULE}.is_paid", is_active),
-        patch(f"{MODULE}.notification_service.create_notification", new_callable=AsyncMock),
-        patch(f"{MODULE}._deliver_reminder_to_platforms", AsyncMock(return_value=None)),
+        patch(
+            f"{MODULE}.notification_service.notify",
+            AsyncMock(return_value=Notified(record=MagicMock(), target=InApp("no_chat_app"))),
+        ),
         patch(f"{MODULE}.capture"),
     ):
         await execute_reminder_by_agent(_reminder())

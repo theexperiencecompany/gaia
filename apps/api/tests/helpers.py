@@ -25,7 +25,7 @@ import socket
 import sys
 import time
 from types import ModuleType, SimpleNamespace
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 import zoneinfo
 
@@ -46,6 +46,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Tool
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import Field
 import pytest
+from redis.asyncio.client import PubSub
 import respx
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -56,16 +57,25 @@ from workos.session import SessionModule
 
 from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
+from app.constants.chat import ConversationSource
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
+from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
+from app.models.conversation_log_models import LoggedEntry, Reply, ReplySettled, UserMessage
+from app.models.conversation_models import LogPage
+from app.models.conversation_screen_models import NoticeItem, ScreenItem, UserItem, WorkItem
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
 from app.models.user_models import AuthenticatedUser, UserDocument
+from app.services.conversation.mongo_log import MongoConversationLog
+from app.services.conversation.screen import project_screen
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.timezone import Timezone
+from shared.py.approvals import ActionResult, ApprovalOutcome
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, ReplyItem, ReplyOutcome, ToolDataEntry
 from shared.py.wide_events import log, log_context
 
 #: A well-formed user id with no users row behind it.
@@ -113,11 +123,8 @@ def pick_free_port() -> int:
 
 
 # The mutation lane runs a copy of apps/api outside the repo and says where the repo is.
-LLM_STUB_DIR = (
-    Path(os.environ.get("GAIA_REPO_ROOT") or Path(__file__).resolve().parents[3])
-    / "tools"
-    / "llm-stub"
-)
+REPO_ROOT = Path(os.environ.get("GAIA_REPO_ROOT") or Path(__file__).resolve().parents[3])
+LLM_STUB_DIR = REPO_ROOT / "tools" / "llm-stub"
 
 
 def load_llm_stub_module(name: str) -> ModuleType:
@@ -145,6 +152,33 @@ _TEST_REDIS_STRIPE_BASE = _TEST_REDIS_DB_BLOCK_START - (
     _TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE
 )
 _TEST_REDIS_DB_BLOCK_SIZE = _TEST_REDIS_STRIPE - (_TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE)
+
+
+class LedgerFacts(TypedDict):
+    """A ledger row's outcome and action, as ledger_facts sets them."""
+
+    outcome: ApprovalOutcome | None
+    action: ActionResult | None
+
+
+def ledger_facts(ended: ApprovalOutcome | ActionResult | None) -> LedgerFacts:
+    """Return a ledger row's outcome and action for one fact: an action result implies approved."""
+    if isinstance(ended, ActionResult):
+        return {"outcome": ApprovalOutcome.APPROVED, "action": ended}
+    return {"outcome": ended, "action": None}
+
+
+async def published_broadcasts(pubsub: PubSub) -> list[dict[str, object]]:
+    """Every WebSocket broadcast that reached the subscribed channel within a second."""
+    published: list[dict[str, object]] = []
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + 1
+    while loop.time() < deadline:
+        # The subscribe ack also reads as None, so None never means the channel is done.
+        message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=0.1)
+        if message is not None:
+            published.append(json.loads(message["data"]))
+    return published
 
 
 def worker_redis_url(base_url: str) -> str:
@@ -356,13 +390,38 @@ def local_timezone(tz_name: str) -> Iterator[None]:
 async def stored_conversation(
     conversations: AsyncIOMotorCollection, conversation_id: str
 ) -> dict[str, Any] | None:
-    """Read a stored conversation's head with its messages, as the repository assembles them from entries."""
+    """Read a stored conversation's head with its screen items, as a load projects them from its entries."""
     head = await conversations.find_one({"conversation_id": conversation_id})
     if head is None:
         return None
     doc = await conversation_repository.get(conversation_id, user_id=head["user_id"])
-    messages = [] if doc is None else [m.model_dump(exclude_none=True) for m in doc.messages]
-    return {**head, "messages": messages}
+    items = [] if doc is None else [item.model_dump(mode="json") for item in shown_items(doc)]
+    return {**head, "items": items}
+
+
+def shown_items(page: LogPage) -> list[ScreenItem]:
+    """Project a read page of entries into the screen items a load serves."""
+    return project_screen(page.entries)
+
+
+def item_text(item: ScreenItem) -> str:
+    """Return the words an item shows: the user's message, a reply's or a notice's bubbles, else none."""
+    match item:
+        case UserItem(message=message):
+            return message.text
+        case ReplyItem(bubbles=bubbles) | NoticeItem(bubbles=bubbles):
+            return NEW_MESSAGE_BREAKER.join(bubbles)
+        case _:
+            return ""
+
+
+def item_cards(item: ScreenItem) -> tuple[ToolDataEntry, ...]:
+    """Return the cards an item shows."""
+    match item:
+        case ReplyItem(tool_data=cards) | WorkItem(tool_data=cards) | NoticeItem(tool_data=cards):
+            return cards
+        case _:
+            return ()
 
 
 def worker_mongo_db_name(base_name: str | None = None) -> str:
@@ -407,7 +466,7 @@ GraphStreamEvent = tuple[tuple[str, ...], str, Any]
 class ScriptedGraph:
     """A graph whose astream replays exactly the events handed to it.
 
-    Drives the real graph drivers (execute_graph_streaming / _silent) over shapes a
+    Drives the real stream translator (payloads_for_stream_event) over shapes a
     real model wire never produces: an id-less message, a tool call announced
     before its text, arguments that never parse, a retraction mid-node.
     """
@@ -969,3 +1028,39 @@ def hostile_jwts(claims: Mapping[str, object], secret: str) -> dict[str, str]:
         "tampered_payload": f"{header}.{_b64url_json({**claims, 'sub': 'intruder'})}.{signature}",
         "garbage": "not-a-jwt",
     }
+
+
+async def log_history(
+    conversation_id: str, user_id: str, messages: Sequence[Mapping[str, str]]
+) -> None:
+    """Log a finished exchange: each user message, then each bot reply settled as answering them.
+
+    messages are what a client reads back: type ("user" or "bot"), response, and message_id.
+    """
+    log = MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC))
+    asked: list[LoggedEntry] = []
+    for message in messages:
+        message_id = message.get("message_id") or f"m-{ObjectId()}"
+        if message["type"] == "user":
+            said = UserMessage(
+                id=message_id, text=message["response"], surface=ConversationSource.WEB
+            )
+            asked.append((await log.append(conversation_id, user_id, said)).logged)
+            continue
+        reply = Reply(
+            id=f"reply:{message_id}",
+            reply_id=message_id,
+            attempt_id=f"attempt:{message_id}",
+            text=message["response"],
+        )
+        opened = (await log.append(conversation_id, user_id, reply)).logged
+        settle = ReplySettled(
+            id=f"settle:{message_id}",
+            reply_id=message_id,
+            outcome=ReplyOutcome.ANSWERED,
+            answers=tuple(logged.entry.id for logged in asked),
+            through=asked[-1].seq if asked else opened.seq,
+            quote_target=None,
+        )
+        await log.append(conversation_id, user_id, settle)
+        asked = []
