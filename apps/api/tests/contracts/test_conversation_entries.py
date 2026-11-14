@@ -403,6 +403,18 @@ async def test_cross_conversation_reads_see_flushed_and_outbox_entries(
     }
 
 
+async def test_a_bounded_cross_conversation_read_takes_at_most_its_limit_from_the_collection(
+    repo: ConversationRepository, held: _HeldFlushes
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    cid = await _chat(repo, uid)
+    await repo.append(cid, user_id=uid, entries=[_message("u1", "a"), _message("u2", "b")])
+    await held.run_all()
+
+    assert len(await repo._find_entries(uid, {"type": "user"})) == 2
+    assert len(await repo._find_entries(uid, {"type": "user"}, limit=1)) == 1
+
+
 async def test_search_skips_a_todos_chat_and_an_unmigrated_chat_never_blocks_the_others(
     repo: ConversationRepository,
     held: HeldFlushes,

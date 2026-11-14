@@ -25,7 +25,7 @@ from app.db.repositories.conversation_entries_migration import (
 )
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import MessageModel, MessageReaction, ReactionBy
-from app.models.conversation_models import StoredEntry
+from app.models.conversation_models import LegacyMessage, StoredEntry
 from app.scripts import migrate_conversation_entries as script
 from app.utils.errors import UnmigratedConversationError
 
@@ -312,6 +312,12 @@ def test_an_element_hashes_the_same_whatever_its_key_order_and_a_date_hashes_as_
     assert field_hashes({"a": 1}) != field_hashes({"a": 2})
     assert field_hashes({"a": {"x": 1, "y": 2}}) == field_hashes({"a": {"y": 2, "x": 1}})
     assert set(field_hashes({"a": 1, "message_id": "m"})) == {"a"}
+
+
+def test_a_legacy_element_is_stored_with_only_the_fields_it_holds() -> None:
+    element = LegacyMessage.model_validate({"type": "bot", "response": "hi"})
+
+    assert element.stored() == {"type": "bot", "response": "hi"}
 
 
 def test_an_entry_is_dated_by_its_element_and_a_naive_or_missing_date_reads_as_utc() -> None:
@@ -939,6 +945,18 @@ async def test_folding_is_a_dry_run_unless_applied_and_a_rerun_changes_nothing(
 
     assert (again.action, again.copied, again.folded) == (MigrationAction.UNCHANGED, 0, 0)
     assert await _read_ids(ref) == ["m1"]
+
+
+async def test_folding_a_conversation_with_no_acks_leaves_its_head_untouched(
+    migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_message(1)])
+    await migration.migrate(ref, apply=True)
+    before = await raw_collection.find_one(_head(ref))
+
+    assert await migration.fold_reaction_acks(ref, apply=True) == 0
+
+    assert await raw_collection.find_one(_head(ref)) == before
 
 
 async def test_an_ack_the_old_build_wrote_after_the_first_pass_is_folded_by_the_second(
