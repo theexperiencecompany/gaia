@@ -33,8 +33,10 @@ from app.models.conversation_log_models import (
 )
 from shared.py.approvals import ApprovalOutcome
 
-#: Decisions the user made: the decision path starts the work that carries them out or reports the skip.
-USER_DECISIONS = frozenset({ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED})
+#: Decisions the decision path hands on: it starts the work that carries them out or reports the skip.
+CONTINUED_DECISIONS = frozenset(
+    {ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED, ApprovalOutcome.EXPIRED}
+)
 
 
 def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Rejected:
@@ -199,7 +201,7 @@ def _decide_approval(state: ConversationState, entry: ApprovalDecided) -> Transi
         )
         for item in state.work
     )
-    continued = entry.outcome in USER_DECISIONS
+    continued = entry.outcome in CONTINUED_DECISIONS
     work = tuple(
         item for item in released if not (item.ended and continued and not item.pending_approvals)
     )

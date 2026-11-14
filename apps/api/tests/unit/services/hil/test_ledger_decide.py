@@ -448,7 +448,7 @@ class TestConversationFlagSync:
 
         assert outcome.committed is True
         deliver.assert_awaited_once()
-        assert deliver.await_args.args[1] == "DENIED"
+        assert deliver.await_args.args[1] is ApprovalOutcome.DENIED
         assert "nope" in str(deliver.await_args.args[2])
         wake.assert_not_awaited()
 
@@ -462,7 +462,7 @@ class TestConversationFlagSync:
             ),
             pytest.raises(RuntimeError, match="redis down"),
         ):
-            await _deliver_verdict(_row(), "DENIED", "nope")
+            await _deliver_verdict(_row(), ApprovalOutcome.DENIED, "nope")
 
     async def test_reconcile_heals_stalled_only(self) -> None:
         """Orphaned APPROVED rows are left alone: the ticket lives in model context and only a redeem runs the envelope — never re-nudge."""

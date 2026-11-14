@@ -3079,6 +3079,37 @@ async def test_an_expired_approval_shows_expired_from_the_log_and_refuses_a_late
 
 
 @pytest.mark.service
+async def test_an_expired_approval_resumes_its_parked_work_once_with_the_expiry(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    model = gated("I need your approval to send it", "It expired, so nothing was sent")
+    rig = await rig_for(model)
+    approval_id = await _parked_on_a_ledger_approval(
+        rig, model, expires_at=datetime.now(UTC) - timedelta(hours=1)
+    )
+    spawned = _Spawned(rig, finish_with="Expired.")
+
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        decided, _ = await _settled_by_sweeps(rig)
+        await asyncio.gather(*spawned.finishing)
+        await rig.settle()
+        await _settled_by_sweeps(rig)
+
+    finished = await rig.of(WorkFinished)
+    assert [(d.approval_id, d.outcome) for d in decided] == [(approval_id, "expired")]
+    assert len(spawned.task_ids) == 1
+    assert [(f.task_id, f.outcome, f.report) for f in finished] == [
+        ("t1", WorkOutcome.DONE, "Approve the send?"),
+        (spawned.task_ids[0], WorkOutcome.DONE, "Expired."),
+    ]
+    assert _approval_card(await rig.entries()).data.outcome is ApprovalOutcome.EXPIRED
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert state.work == ()
+    assert [reply.text for reply in await rig.of(Reply)][-1] == "It expired, so nothing was sent"
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
 async def test_a_workflow_approval_waits_for_the_user_and_resumes_the_workflow_once(
     rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
 ) -> None:
