@@ -8,7 +8,6 @@ import type {
   ScreenInsertFrame,
   ScreenUpdateFrame,
   StateFrame,
-  WorkDeltaFrame,
 } from "../api/generated";
 import { ToolDataEntrySchema } from "../chat/schema";
 import type { ChatStreamEvent } from "../chat/streaming";
@@ -26,7 +25,6 @@ export const FRAME_KIND = {
   SCREEN_INSERT: "screen_insert",
   SCREEN_UPDATE: "screen_update",
   REPLY_DELTA: "reply_delta",
-  WORK_DELTA: "work_delta",
   RETRACT: "retract",
   STATE: "state",
   CONVERSATION_UPDATED: "conversation_updated",
@@ -169,12 +167,6 @@ const ReplyDeltaFields = z.object({
   index,
 }) satisfies z.ZodType<Omit<ReplyDeltaFrame, "payload">>;
 
-const WorkDeltaFields = z.object({
-  kind: z.literal(FRAME_KIND.WORK_DELTA),
-  task_id: z.string(),
-  index,
-}) satisfies z.ZodType<Omit<WorkDeltaFrame, "payload">>;
-
 const RetractFrameSchema = z.object({
   kind: z.literal(FRAME_KIND.RETRACT),
   attempt_id: z.string(),
@@ -202,7 +194,6 @@ export const ConversationFrameSchema = z.discriminatedUnion("kind", [
   ScreenInsertFrameSchema,
   ScreenUpdateFrameSchema,
   ReplyDeltaFields.extend({ payload: deltaPayload }),
-  WorkDeltaFields.extend({ payload: deltaPayload }),
   RetractFrameSchema,
   StateFrameSchema,
   ConversationUpdatedFrameSchema,

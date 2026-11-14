@@ -1,36 +1,31 @@
 """Turn one comms run's raw graph stream events into the events the conversation step consumes.
 
-The visible frames come from the same translator the chat stream uses
-(frames_for_stream_event); this module only decodes those frames into typed
-payloads and adds what the step needs beside them: when the model node
-returned, when the silent summarization call ran, and how the run ended.
+The visible payloads come from the one graph translator (payloads_for_stream_event); this
+module adds what the step needs beside them: when the model node returned, when the silent
+summarization call ran, and how the run ended.
 """
 
 from collections.abc import Mapping
-import json
 from typing import cast
 
-from pydantic import TypeAdapter, ValidationError
+from pydantic import ValidationError
 
 from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.core.held_replies import last_ai_message
 from app.constants.comms import CommsDirectiveKind
-from app.constants.streaming import SSE_DATA_PREFIX
-from app.helpers.agent_helpers import (
-    StreamAccumulators,
-    flush_held_frames,
-    frames_for_stream_event,
-)
 from app.models.agent_models import StreamChunkMetadata
 from app.models.conversation_frame_models import (
     FollowUpActionsEvent,
     StreamPayload,
-    StreamPayloadType,
     ToolDataEvent,
 )
 from app.models.stream_events import MainResponseCompleteFrame
 from app.models.tool_data_models import ToolDataEntry
-from app.services.chat.chunks import normalize_custom_event
+from app.services.conversation.graph_payloads import (
+    GraphStreamState,
+    flush_held_payloads,
+    payloads_for_stream_event,
+)
 from app.services.conversation.ports import (
     Answered,
     Finished,
@@ -48,33 +43,7 @@ from app.utils.multimodal import extract_text_content
 
 #: The comms graph node that runs the model.
 _MODEL_NODE = "agent"
-_PAYLOADS: TypeAdapter[StreamPayload] = TypeAdapter(StreamPayload)
-_PAYLOAD_KEYS = frozenset(StreamPayloadType)
 GraphEvent = tuple[tuple[str, ...], str, object]
-
-
-def payload_from_frame(frame: str) -> StreamPayload | None:
-    """Decode one chat stream frame into its typed payload, or None for a frame the conversation stream does not carry."""
-    if not frame.startswith(SSE_DATA_PREFIX):
-        return None
-    data = json.loads(frame.removeprefix(SSE_DATA_PREFIX))
-    if not isinstance(data, dict):
-        return None
-    key = _payload_key(data)
-    if key is None:
-        return None
-    return _PAYLOADS.validate_python({"type": key, key: data[key]})
-
-
-def payloads_from_event(data: dict[str, object]) -> list[StreamPayload]:
-    """Decode one raw executor stream event into its payloads: one per card when it carries several."""
-    normalized = normalize_custom_event(data)
-    key = _payload_key(normalized)
-    if key is None:
-        return []
-    value = normalized[key]
-    values = value if key == StreamPayloadType.TOOL_DATA and isinstance(value, list) else [value]
-    return [_PAYLOADS.validate_python({"type": key, key: item}) for item in values]
 
 
 def _marks_answer_complete(payload: object) -> bool:
@@ -85,16 +54,12 @@ def _marks_answer_complete(payload: object) -> bool:
         return False
 
 
-def _payload_key(data: Mapping[str, object]) -> str | None:
-    return next((key for key in data if key in _PAYLOAD_KEYS), None)
-
-
 class CommsEventMapper:
     """The per-run state of the translation: held text, cards shown, and the model's last answer."""
 
     def __init__(self, user_id: str) -> None:
         self._user_id = user_id
-        self._frames = StreamAccumulators()
+        self._graph = GraphStreamState()
         self._summarized = False
         self._answered = False
         self._cards: list[ToolDataEntry] = []
@@ -110,8 +75,10 @@ class CommsEventMapper:
         if top_level and mode == "messages" and self._is_summary_call(payload):
             self._summarized = True
             out.append(Summarized())
-        async for frame in frames_for_stream_event(event, self._frames, True, None, self._user_id):
-            out.extend(self._streamed(frame))
+        async for streamed in payloads_for_stream_event(
+            event, self._graph, True, None, self._user_id
+        ):
+            out.append(self._streamed(streamed))
         if top_level and mode == "updates":
             out.extend(self._model_output(payload))
         if top_level and mode == "custom" and _marks_answer_complete(payload):
@@ -123,16 +90,12 @@ class CommsEventMapper:
         if self._final_reported:
             return []
         self._final_reported = True
-        tail = [
-            event for frame in flush_held_frames(self._frames) for event in self._streamed(frame)
-        ]
+        tail = [self._streamed(payload) for payload in flush_held_payloads(self._graph)]
         return [*tail, Answered(outcome=self._outcome())]
 
     def finish(self) -> list[RunEvent]:
         """Return the frames still owed once the stream ended, then the run's outcome."""
-        tail = [
-            event for frame in flush_held_frames(self._frames) for event in self._streamed(frame)
-        ]
+        tail = [self._streamed(payload) for payload in flush_held_payloads(self._graph)]
         return [*tail, Finished(outcome=self._outcome())]
 
     def _is_summary_call(self, payload: object) -> bool:
@@ -144,15 +107,12 @@ class CommsEventMapper:
         _chunk, metadata = cast(tuple[object, StreamChunkMetadata], payload)
         return bool(metadata.get("silent"))
 
-    def _streamed(self, frame: str) -> list[RunEvent]:
-        payload = payload_from_frame(frame)
-        if payload is None:
-            return []
+    def _streamed(self, payload: StreamPayload) -> RunEvent:
         if isinstance(payload, ToolDataEvent):
             self._cards.append(payload.tool_data)
         elif isinstance(payload, FollowUpActionsEvent):
             self._follow_ups = tuple(payload.follow_up_actions)
-        return [Streamed(payload=payload)]
+        return Streamed(payload=payload)
 
     def _model_output(self, payload: object) -> list[RunEvent]:
         if not isinstance(payload, Mapping) or _MODEL_NODE not in payload:

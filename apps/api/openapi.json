@@ -4387,8 +4387,7 @@
                 "screen": "#/components/schemas/ScreenFrame",
                 "screen_insert": "#/components/schemas/ScreenInsertFrame",
                 "screen_update": "#/components/schemas/ScreenUpdateFrame",
-                "state": "#/components/schemas/StateFrame",
-                "work_delta": "#/components/schemas/WorkDeltaFrame"
+                "state": "#/components/schemas/StateFrame"
               },
               "propertyName": "kind"
             },
@@ -4404,9 +4403,6 @@
               },
               {
                 "$ref": "#/components/schemas/ReplyDeltaFrame"
-              },
-              {
-                "$ref": "#/components/schemas/WorkDeltaFrame"
               },
               {
                 "$ref": "#/components/schemas/RetractFrame"
@@ -8665,6 +8661,27 @@
           "prompt"
         ],
         "title": "ImageData",
+        "type": "object"
+      },
+      "ImageEvent": {
+        "additionalProperties": false,
+        "description": "The image a run's image tool generated, tagged.",
+        "properties": {
+          "image_data": {
+            "$ref": "#/components/schemas/ImageData"
+          },
+          "type": {
+            "const": "image_data",
+            "default": "image_data",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "image_data"
+        ],
+        "title": "ImageEvent",
         "type": "object"
       },
       "ImageToTextResponse": {
@@ -16392,6 +16409,7 @@
             "discriminator": {
               "mapping": {
                 "follow_up_actions": "#/components/schemas/FollowUpActionsEvent",
+                "image_data": "#/components/schemas/ImageEvent",
                 "message_boundary": "#/components/schemas/MessageBoundaryEvent",
                 "reasoning": "#/components/schemas/ReasoningEvent",
                 "response": "#/components/schemas/ResponseEvent",
@@ -16430,6 +16448,9 @@
               },
               {
                 "$ref": "#/components/schemas/TodoProgressEvent"
+              },
+              {
+                "$ref": "#/components/schemas/ImageEvent"
               }
             ],
             "title": "Payload"
@@ -23383,81 +23404,6 @@
           "replay_ids"
         ],
         "title": "WorkCancelled",
-        "type": "object"
-      },
-      "WorkDeltaFrame": {
-        "additionalProperties": false,
-        "description": "Streamed content of one background task.",
-        "properties": {
-          "index": {
-            "minimum": 0.0,
-            "title": "Index",
-            "type": "integer"
-          },
-          "kind": {
-            "const": "work_delta",
-            "default": "work_delta",
-            "title": "Kind",
-            "type": "string"
-          },
-          "payload": {
-            "discriminator": {
-              "mapping": {
-                "follow_up_actions": "#/components/schemas/FollowUpActionsEvent",
-                "message_boundary": "#/components/schemas/MessageBoundaryEvent",
-                "reasoning": "#/components/schemas/ReasoningEvent",
-                "response": "#/components/schemas/ResponseEvent",
-                "subagent_end": "#/components/schemas/SubagentEndEvent",
-                "subagent_start": "#/components/schemas/SubagentStartEvent",
-                "todo_progress": "#/components/schemas/TodoProgressEvent",
-                "tool_data": "#/components/schemas/ToolDataEvent",
-                "tool_output": "#/components/schemas/ToolOutputEvent"
-              },
-              "propertyName": "type"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/ResponseEvent"
-              },
-              {
-                "$ref": "#/components/schemas/ReasoningEvent"
-              },
-              {
-                "$ref": "#/components/schemas/ToolDataEvent"
-              },
-              {
-                "$ref": "#/components/schemas/ToolOutputEvent"
-              },
-              {
-                "$ref": "#/components/schemas/MessageBoundaryEvent"
-              },
-              {
-                "$ref": "#/components/schemas/SubagentStartEvent"
-              },
-              {
-                "$ref": "#/components/schemas/SubagentEndEvent"
-              },
-              {
-                "$ref": "#/components/schemas/FollowUpActionsEvent"
-              },
-              {
-                "$ref": "#/components/schemas/TodoProgressEvent"
-              }
-            ],
-            "title": "Payload"
-          },
-          "task_id": {
-            "title": "Task Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "task_id",
-          "index",
-          "payload"
-        ],
-        "title": "WorkDeltaFrame",
         "type": "object"
       },
       "WorkFinished": {

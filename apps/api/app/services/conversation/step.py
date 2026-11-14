@@ -24,7 +24,6 @@ from app.models.conversation_frame_models import (
     RetractFrame,
     StreamPayload,
     ToolDataEvent,
-    ToolOutputEvent,
     state_frame,
 )
 from app.models.conversation_log_models import (
@@ -75,10 +74,10 @@ from app.services.conversation.reply_files import reply_files
 from app.services.conversation.screen import handoff_call_id
 from app.services.conversation.step_view import StepView
 from app.services.conversation.todo_wake import nothing_to_report
+from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation.verdict import merge_group, quote_target, verdict
 from app.utils.hot_path import first_text_gate, first_text_shown
 from app.utils.liveness import keep_proving
-from app.utils.stream_utils import with_tool_output
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
 from shared.py.wide_events import log
@@ -917,23 +916,14 @@ def _narrated(attempt: _Attempt) -> tuple[str, ...]:
 
 
 def _fold(reply: Reply, payload: StreamPayload) -> Reply:
-    """Return reply with one more shown delta folded in: text, a tool card, its output, or follow-ups."""
+    """Return reply with one more shown delta folded in: text, follow-ups, or what its cards show."""
     match payload:
         case ResponseEvent(response=response):
             return reply.model_copy(update={"text": reply.text + response})
-        case ToolDataEvent(tool_data=card):
-            return reply.model_copy(update={"tool_data": (*reply.tool_data, card)})
-        case ToolOutputEvent(tool_output=output) if output.subagent_id is None:
-            return reply.model_copy(
-                update={
-                    "tool_data": with_tool_output(
-                        reply.tool_data, output.tool_call_id, output.output
-                    )
-                }
-            )
         case FollowUpActionsEvent(follow_up_actions=actions):
             return reply.model_copy(update={"follow_up_actions": tuple(actions)})
-    return reply
+    cards = fold_cards([payload], seed=reply.tool_data).tool_data
+    return reply if cards == reply.tool_data else reply.model_copy(update={"tool_data": cards})
 
 
 def _empty_reply(attempt: _Attempt) -> Reply:

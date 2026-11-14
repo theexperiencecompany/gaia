@@ -1,22 +1,31 @@
 """The patches that carry a client's screen from one projection of the log to the next.
 
-Each logged entry re-projects the whole log with project_screen and diffs the result: one
-projection serves loads and live streams, so no incremental second copy of its rules can drift.
+Each logged entry or published work card re-projects the whole log with project_screen, folds
+running work's cards onto its item, and diffs the result: one projection serves loads and live
+streams, so no incremental second copy of its rules can drift.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
-from app.models.conversation_frame_models import EntryFrame, EntryUpdatedFrame, WorkDeltaFrame
+from app.models.conversation_frame_models import (
+    EntryFrame,
+    EntryUpdatedFrame,
+    StreamPayload,
+    WorkDeltaFrame,
+)
 from app.models.conversation_log_models import LoggedEntry, WorkStarted
 from app.models.conversation_screen_models import (
     ScreenInsertFrame,
     ScreenItem,
     ScreenPatch,
     ScreenUpdateFrame,
+    WorkItem,
 )
-from app.services.conversation.screen import project_screen, work_root
+from app.services.conversation.screen import LIVE_WORK, Positioned, project_screen, work_root
+from app.services.conversation.tool_cards import fold_cards
+from app.services.conversation.work_deltas import work_payloads
 
 
 class ScreenItemMoved(Exception):
@@ -43,21 +52,77 @@ def screen_patches(shown: Sequence[ScreenItem], screen: Sequence[ScreenItem]) ->
 
 
 class ScreenTracker:
-    """A conversation's log as one reader has it, and the screen it projects to."""
+    """A conversation's log as one reader has it, and the screen it projects to with its live work's cards."""
 
-    def __init__(self, entries: Sequence[LoggedEntry]) -> None:
-        self._entries = {logged.seq: logged for logged in entries}
+    def __init__(
+        self,
+        conversation_id: str,
+        entries: Sequence[Positioned],
+        work: Mapping[str, Sequence[StreamPayload]],
+    ) -> None:
+        self._conversation_id = conversation_id
+        self._entries = {
+            logged.seq: LoggedEntry(seq=logged.seq, at=logged.at, entry=logged.entry)
+            for logged in entries
+        }
         self._started = {
             logged.entry.task_id: logged.entry
             for logged in entries
             if isinstance(logged.entry, WorkStarted)
         }
-        self.items = project_screen(entries)
+        self._work = {task_id: list(payloads) for task_id, payloads in work.items()}
+        self.items = self._project()
 
-    def on_its_item(self, delta: WorkDeltaFrame) -> WorkDeltaFrame:
-        """Return delta addressed to the work item it streams into: the task's, or the one it was handed to."""
+    @classmethod
+    async def load(cls, conversation_id: str, entries: Sequence[Positioned]) -> ScreenTracker:
+        """Return the tracker for entries, holding what each running task's work has published so far."""
+        live = {
+            item.task_id
+            for item in project_screen(entries)
+            if isinstance(item, WorkItem) and item.status in LIVE_WORK
+        }
+        started = {
+            logged.entry.task_id: logged.entry
+            for logged in entries
+            if isinstance(logged.entry, WorkStarted)
+        }
+        work = {
+            task_id: await work_payloads(conversation_id, task_id)
+            for task_id in started
+            if work_root(started, task_id) in live
+        }
+        return cls(conversation_id, entries, work)
+
+    def _project(self) -> list[ScreenItem]:
+        entries = [self._entries[seq] for seq in sorted(self._entries)]
+        return [self._with_live_cards(item) for item in project_screen(entries)]
+
+    def _with_live_cards(self, item: ScreenItem) -> ScreenItem:
+        if not isinstance(item, WorkItem) or item.status not in LIVE_WORK:
+            return item
+        chain = [task for task in self._started if work_root(self._started, task) == item.task_id]
+        live = fold_cards(payload for task in chain for payload in self._work.get(task, ()))
+        return item.model_copy(update={"tool_data": live.tool_data, "image": live.image})
+
+    async def on_work(self, delta: WorkDeltaFrame) -> list[ScreenPatch]:
+        """Take one published card of running work and return the update to its item."""
+        held = self._work.setdefault(delta.task_id, [])
+        if delta.index < len(held):
+            return []
+        if delta.index == len(held):
+            held.append(delta.payload)
+        else:
+            # A gap: this reader missed frames, so the task's record is the truth.
+            self._work[delta.task_id] = await work_payloads(self._conversation_id, delta.task_id)
         root = work_root(self._started, delta.task_id)
-        return delta if root == delta.task_id else delta.model_copy(update={"task_id": root})
+        patches: list[ScreenPatch] = []
+        for index, item in enumerate(self.items):
+            if isinstance(item, WorkItem) and item.task_id == root:
+                updated = self._with_live_cards(item)
+                if updated != item:
+                    self.items[index] = updated
+                    patches.append(ScreenUpdateFrame(item=updated))
+        return patches
 
     def take(self, frame: EntryFrame | EntryUpdatedFrame) -> list[ScreenPatch]:
         """Take a logged or amended entry and return the patches it makes to the screen."""
@@ -65,7 +130,10 @@ class ScreenTracker:
         self._entries[frame.seq] = LoggedEntry(seq=frame.seq, at=at, entry=frame.entry)
         if isinstance(frame.entry, WorkStarted):
             self._started[frame.entry.task_id] = frame.entry
-        screen = project_screen([self._entries[seq] for seq in sorted(self._entries)])
+        return self._repatch()
+
+    def _repatch(self) -> list[ScreenPatch]:
+        screen = self._project()
         patches = screen_patches(self.items, screen)
         self.items = screen
         return patches

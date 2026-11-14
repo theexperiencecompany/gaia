@@ -31,6 +31,8 @@ from app.models.conversation_screen_models import (
     ScreenItem,
     ScreenItemKind,
     ScreenPatch,
+    ScreenUpdateFrame,
+    WorkItem,
     WorkStatus,
 )
 from app.models.conversation_send_models import ConversationEvent
@@ -77,7 +79,7 @@ class _Log:
 
     entries: list[LoggedEntry] = field(default_factory=list)
     screens: list[list[ScreenItem]] = field(default_factory=list)
-    tracker: ScreenTracker = field(default_factory=lambda: ScreenTracker([]))
+    tracker: ScreenTracker = field(default_factory=lambda: ScreenTracker("c1", [], {}))
     patched: list[ScreenItem] = field(default_factory=list)
     patches: list[ScreenPatch] = field(default_factory=list)
 
@@ -442,17 +444,22 @@ def test_a_projection_that_moves_a_shown_item_fails_loudly() -> None:
         screen_patches([first, second], [second])
 
 
-def test_a_handed_over_tasks_delta_streams_into_the_work_item_it_joined() -> None:
+async def test_a_handed_over_tasks_cards_show_on_the_work_item_it_joined() -> None:
     tracker = ScreenTracker(
+        "c1",
         [
             logged(1, user("u1")),
             logged(2, WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))),
-        ]
+        ],
+        {},
     )
     joined = WorkStarted(id="work:t2", task_id="t2", cause_through=1, answers=(), joins="t1")
     tracker.take(EntryFrame(seq=3, at=logged(3, joined).at, entry=joined))
     delta = WorkDeltaFrame(task_id="t2", index=0, payload=ToolDataEvent(tool_data=_card("x")))
-    assert tracker.on_its_item(delta).task_id == "t1"
+    (patch,) = await tracker.on_work(delta)
+    assert isinstance(patch, ScreenUpdateFrame)
+    assert isinstance(patch.item, WorkItem)
+    assert (patch.item.task_id, patch.item.tool_data) == ("t1", (_card("x"),))
     assert [item.id for item in tracker.items] == ["u1", "work:t1"]
 
 

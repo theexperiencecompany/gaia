@@ -2,7 +2,7 @@ import {
   applyStreamEvent,
   createTurnAccumulator,
 } from "../chat/turnAccumulator";
-import { SCREEN_ITEM_KIND, WORK_STATUS } from "./entries";
+import { LIVE_WORK_STATUS, SCREEN_ITEM_KIND } from "./entries";
 import { DISPLAY_STATE, FRAME_KIND } from "./frames";
 import type {
   ConversationFrame,
@@ -14,15 +14,7 @@ import type {
 } from "./types";
 
 // The parsed frame, whose payload is the stream event the accumulator folds.
-type DeltaFrame = Extract<
-  ConversationFrame,
-  { kind: "reply_delta" | "work_delta" }
->;
-
-const LIVE_WORK: ReadonlySet<string> = new Set([
-  WORK_STATUS.RUNNING,
-  WORK_STATUS.AWAITING_APPROVAL,
-]);
+type DeltaFrame = Extract<ConversationFrame, { kind: "reply_delta" }>;
 
 export const EMPTY_CONVERSATION_VIEW: ConversationView = {
   items: [],
@@ -46,7 +38,7 @@ function endedStream(item: ScreenItem): string | null {
   if (item.kind === SCREEN_ITEM_KIND.REPLY)
     return item.outcome === null ? null : item.id;
   if (item.kind === SCREEN_ITEM_KIND.WORK)
-    return LIVE_WORK.has(item.status) ? null : item.task_id;
+    return LIVE_WORK_STATUS.has(item.status) ? null : item.task_id;
   return null;
 }
 
@@ -72,10 +64,8 @@ function withItems(
     ...view,
     items,
     closed,
-    drafts: view.drafts.filter((draft) =>
-      draft.source === "reply"
-        ? !(draft.replyId && closed[draft.replyId])
-        : !closed[draft.taskId],
+    drafts: view.drafts.filter(
+      (draft) => !(draft.replyId && closed[draft.replyId]),
     ),
     pending: view.pending.filter((send) => !shown.has(send.id)),
   };
@@ -88,25 +78,18 @@ function update(view: ConversationView, item: ScreenItem): ConversationView {
 }
 
 const sameStream = (frame: DeltaFrame) => (draft: StreamDraft) =>
-  frame.kind === FRAME_KIND.REPLY_DELTA
-    ? draft.source === "reply" && draft.attemptId === frame.attempt_id
-    : draft.source === "work" && draft.taskId === frame.task_id;
+  draft.attemptId === frame.attempt_id;
 
 function newDraft(frame: DeltaFrame): StreamDraft {
-  const fresh = { nextIndex: 0, content: createTurnAccumulator() };
-  return frame.kind === FRAME_KIND.REPLY_DELTA
-    ? {
-        source: "reply",
-        attemptId: frame.attempt_id,
-        replyId: frame.reply_id,
-        ...fresh,
-      }
-    : { source: "work", taskId: frame.task_id, ...fresh };
+  return {
+    attemptId: frame.attempt_id,
+    replyId: frame.reply_id,
+    nextIndex: 0,
+    content: createTurnAccumulator(),
+  };
 }
 
 function isClosed(view: ConversationView, frame: DeltaFrame): boolean {
-  if (frame.kind === FRAME_KIND.WORK_DELTA)
-    return Boolean(view.closed[frame.task_id]);
   return Boolean(
     view.closed[frame.attempt_id] ||
       (frame.reply_id && view.closed[frame.reply_id]),
@@ -125,10 +108,11 @@ function applyDelta(view: ConversationView, frame: DeltaFrame): FrameOutcome {
     nextIndex: draft.nextIndex + 1,
     content: applyStreamEvent(draft.content, frame.payload),
   };
-  const updated: StreamDraft =
-    draft.source === "reply" && frame.kind === FRAME_KIND.REPLY_DELTA
-      ? { ...draft, ...advanced, replyId: frame.reply_id ?? draft.replyId }
-      : { ...draft, ...advanced };
+  const updated: StreamDraft = {
+    ...draft,
+    ...advanced,
+    replyId: frame.reply_id ?? draft.replyId,
+  };
   const drafts = existing
     ? view.drafts.map((current) => (current === existing ? updated : current))
     : [...view.drafts, updated];
@@ -140,9 +124,7 @@ function retract(view: ConversationView, attemptId: string): ConversationView {
   return {
     ...view,
     closed: { ...view.closed, [attemptId]: true },
-    drafts: view.drafts.filter(
-      (draft) => draft.source !== "reply" || draft.attemptId !== attemptId,
-    ),
+    drafts: view.drafts.filter((draft) => draft.attemptId !== attemptId),
   };
 }
 
@@ -159,7 +141,6 @@ export function applyFrame(
     case FRAME_KIND.SCREEN_UPDATE:
       return applied(update(view, frame.item));
     case FRAME_KIND.REPLY_DELTA:
-    case FRAME_KIND.WORK_DELTA:
       return applyDelta(view, frame);
     case FRAME_KIND.RETRACT:
       return applied(retract(view, frame.attempt_id));

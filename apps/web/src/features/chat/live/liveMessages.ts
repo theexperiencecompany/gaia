@@ -1,5 +1,6 @@
 import {
   type ConversationView,
+  LIVE_WORK_STATUS,
   replyFailureMessage,
   SCREEN_ITEM_KIND,
   type ScreenItem,
@@ -15,10 +16,6 @@ import type { LocalSend } from "./liveConversationStore";
 const STOPPED_WORK: ReadonlySet<string> = new Set([
   WORK_STATUS.CANCELLED,
   WORK_STATUS.LOST,
-]);
-const LIVE_WORK: ReadonlySet<string> = new Set([
-  WORK_STATUS.RUNNING,
-  WORK_STATUS.AWAITING_APPROVAL,
 ]);
 // Far above any one conversation's rows, so a visible row is never evicted.
 const MAX_CACHED_ROWS = 2000;
@@ -101,18 +98,17 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): MessageType {
       }));
     }
     case SCREEN_ITEM_KIND.WORK: {
-      const streamed = draft?.content.toolData;
-      return stableRow(item.id, [item, streamed], () => ({
+      return stableRow(item.id, [item], () => ({
         type: "bot",
         response: "",
         message_id: item.id,
         seq: item.seq,
         tool_data: cards([
           ...(item.handoff ? [item.handoff] : []),
-          ...(streamed ?? item.tool_data),
+          ...item.tool_data,
         ]),
         image_data: item.image ?? undefined,
-        in_progress: LIVE_WORK.has(item.status),
+        in_progress: LIVE_WORK_STATUS.has(item.status),
         stopped: STOPPED_WORK.has(item.status),
       }));
     }

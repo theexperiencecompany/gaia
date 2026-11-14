@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import cast
 from uuid import uuid4
@@ -32,9 +33,11 @@ from app.models.conversation_models import (
     SystemConversationCreated,
     UpdateDescriptionResponse,
 )
+from app.models.conversation_screen_models import ScreenItem
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
-from app.services.conversation.screen import project_screen
+from app.services.conversation.screen import Positioned
+from app.services.conversation.screen_patches import ScreenTracker
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
@@ -171,6 +174,11 @@ async def get_conversations(
     )
 
 
+async def _screen(conversation_id: str, entries: Sequence[Positioned]) -> list[ScreenItem]:
+    """Return the screen entries project to, running work showing the cards it has published."""
+    return (await ScreenTracker.load(conversation_id, entries)).items
+
+
 async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> LoadedConversation:
     """Fetch a conversation with the newest page of its log."""
     user_id = user.user_id
@@ -180,7 +188,7 @@ async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> Loa
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
-    return document.model_copy(update={"items": project_screen(document.entries)})
+    return document.model_copy(update={"items": await _screen(conversation_id, document.entries)})
 
 
 async def get_entries_before(
@@ -195,7 +203,7 @@ async def get_entries_before(
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
-    return page.model_copy(update={"items": project_screen(page.entries)})
+    return page.model_copy(update={"items": await _screen(conversation_id, page.entries)})
 
 
 async def star_conversation(
@@ -466,7 +474,7 @@ async def batch_sync_conversations(
                 createdAt=document.createdAt,
                 updatedAt=document.updatedAt,
                 entries=document.entries,
-                items=project_screen(document.entries),
+                items=await _screen(document.conversation_id, document.entries),
                 state=document.state,
                 has_older=document.has_older,
                 cursor=document.cursor,

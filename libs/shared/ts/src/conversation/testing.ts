@@ -113,20 +113,6 @@ export const toolCallCard = (callId: string, message: string) => ({
   timestamp: AT,
 });
 
-export const workCardDelta = (
-  taskId: string,
-  index: number,
-  message: string,
-): ConversationFrame => ({
-  kind: "work_delta",
-  task_id: taskId,
-  index,
-  payload: {
-    type: "tool_data",
-    entry: toolCallCard(`${taskId}-${index}`, message),
-  },
-});
-
 export const retractFrame = (attemptId: string): ConversationFrame => ({
   kind: "retract",
   attempt_id: attemptId,

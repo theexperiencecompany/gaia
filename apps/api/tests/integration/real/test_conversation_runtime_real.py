@@ -85,7 +85,7 @@ from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_config import AgentConfigurable, StepTurnRef, agent_configurable
 from app.models.agent_models import AgentRunnableConfig
-from app.models.chat_models import ImageData
+from app.models.chat_models import ImageData, SourceCategory
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
@@ -122,7 +122,9 @@ from app.models.conversation_log_models import (
 from app.models.conversation_screen_models import (
     ScreenFrame,
     ScreenInsertFrame,
+    ScreenItem,
     ScreenUpdateFrame,
+    WorkItem,
 )
 from app.models.conversation_send_models import SendMessageRequest
 from app.models.hil_models import ApprovalProposal, HILApprovalRecord
@@ -142,7 +144,7 @@ from app.models.work_cancel_models import WorkCancelled
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow, WorkflowStep
 from app.schemas.browser import NewHandoff
-from app.services import analytics_service, conversation_stop_service
+from app.services import analytics_service, conversation_service, conversation_stop_service
 from app.services.browser.handoff import create_pending_handoff
 from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.checkpoint_thread_reset import ThreadReset
@@ -170,7 +172,6 @@ from app.services.conversation.event_stream import (
     RedisStreamFrames,
     StreamedFrame,
     follow,
-    latest_frame_id,
     read_frames,
 )
 from app.services.conversation.integration_log import (
@@ -643,7 +644,7 @@ async def _frames_until_settled(
     rig: Rig, connected: asyncio.Event | None = None
 ) -> list[StreamedFrame]:
     seen: list[StreamedFrame] = []
-    async for streamed in follow(rig.ports.log, rig.conversation_id, rig.user_id, "0"):
+    async for streamed in follow(rig.ports.log, rig.conversation_id, rig.user_id, 0):
         if connected is not None:
             connected.set()
         if streamed is None:
@@ -779,7 +780,7 @@ async def _resumed_after(rig: Rig, seq: int) -> list[StreamedFrame]:
     """Every frame a client resuming after seq is sent before it waits for new ones."""
     seen: list[StreamedFrame] = []
     with patch.object(event_stream, "read_frames", partial(read_frames, block_ms=1)):
-        async for streamed in follow(rig.ports.log, rig.conversation_id, rig.user_id, str(seq)):
+        async for streamed in follow(rig.ports.log, rig.conversation_id, rig.user_id, seq):
             if streamed is None:
                 return seen
             seen.append(streamed)
@@ -992,7 +993,7 @@ async def test_a_reply_settles_before_its_follow_up_suggestions_are_made(
         return FollowUpActions(actions=["Ask more"])
 
     with patch(f"{FollowUpActions.__module__}.ainvoke_structured", side_effect=suggest_slowly):
-        before = await latest_frame_id(rig.conversation_id)
+        before = (await rig.entries())[-1].seq
         await rig.send("m2", "and again")
         # The follow-up call is still held, so the reply can only settle without it.
         async with asyncio.timeout(_SETTLE_SECONDS):
@@ -1322,7 +1323,8 @@ async def test_executor_cards_stream_as_work_deltas_and_stay_on_the_finished_wor
     work = [s.frame for s in streamed if isinstance(s.frame, WorkDeltaFrame)]
     shown = [f.payload.tool_data["tool_name"] for f in work if isinstance(f.payload, ToolDataEvent)]
     task_reply = [reply for reply in await rig.of(Reply) if reply.narrates == ("t1",)]
-    assert [(f.task_id, f.index) for f in work] == [("t1", 0), ("t1", 1), ("t1", 2), ("t1", 3)]
+    # Thinking is recorded as one block, ended by the next card.
+    assert [(f.task_id, f.index) for f in work] == [("t1", index) for index in range(5)]
     assert shown == ["search_flights", "flight_list", "price_chart", "booking"]
     # The cards stay with the work; the reply narrating it carries only its own words.
     assert [(r.text, r.tool_data) for r in task_reply] == [("3 flights found", ())]
@@ -2834,3 +2836,135 @@ async def test_a_reload_mid_reply_longer_than_the_streams_retention_sees_all_its
     assert len(deltas) == 3 * EVENTS_STREAM_MAXLEN
     # Once nothing is open, retention applies again.
     assert len(after) < 3 * EVENTS_STREAM_MAXLEN
+
+
+def _call(call_id: str, name: str, subagent_id: str | None = None) -> ToolDataEntry:
+    card: ToolDataEntry = {
+        "tool_name": "tool_calls_data",
+        "data": {"tool_call_id": call_id, "tool_name": name},
+    }
+    if subagent_id is not None:
+        card["subagent_id"] = subagent_id
+    return card
+
+
+def _executor_run(rig: Rig, task_id: str) -> ExecutorRun:
+    return ExecutorRun(
+        stream_id=f"stream-{task_id}",
+        conversation_id=rig.conversation_id,
+        user=AuthenticatedUser(user_id=rig.user_id),
+        kind=RunKind.LIVE,
+        task_id=task_id,
+        user_message_id=None,
+        workflow_id=None,
+        source_category=SourceCategory.UI,
+    )
+
+
+async def _finish_work(rig: Rig, task_id: str, text: str) -> None:
+    """End the task's run as the executor does, in a process that holds none of its session."""
+    outcome = executor_runner.TerminalOutcome(
+        result_text=text, result_type="final", was_cancelled=False
+    )
+    await executor_runner._log_work_finished(_executor_run(rig, task_id), outcome, stopped=False)
+    await rig.settle()
+
+
+async def _reloaded(rig: Rig) -> list[ScreenItem]:
+    loaded = await conversation_service.get_conversation(
+        rig.conversation_id, AuthenticatedUser(user_id=rig.user_id)
+    )
+    return list(loaded.items)
+
+
+def _patched(shown: list[ScreenItem], frame: object) -> list[ScreenItem]:
+    if isinstance(frame, ScreenInsertFrame):
+        later = [at for at, item in enumerate(shown) if item.seq > frame.item.seq]
+        if later:
+            return [*shown[: later[0]], frame.item, *shown[later[0] :]]
+        return [*shown, frame.item]
+    if isinstance(frame, ScreenUpdateFrame):
+        return [frame.item if item.id == frame.item.id else item for item in shown]
+    return shown
+
+
+@pytest.mark.service
+async def test_work_resumed_in_another_process_keeps_every_card_it_showed_after_reload(
+    rig_for: RigFactory,
+) -> None:
+    """Regression: finished work took its cards from its process's session, so a run resumed elsewhere after an approval lost them."""
+    model = gated("on it", "booked")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "book me a flight")
+    await rig.settle()
+    paused = WorkDeltas(rig.conversation_id, "t1")
+    paused({"tool_data": _call("tc-1", "search_flights")})
+    paused({"tool_output": {"tool_call_id": "tc-1", "output": "3 flights"}})
+    await paused.drain()
+    resumed = WorkDeltas(rig.conversation_id, "t1")
+    resumed({"tool_data": _call("tc-2", "book_flight")})
+    await resumed.drain()
+    await _finish_work(rig, "t1", "booked")
+    (finished,) = await rig.of(WorkFinished)
+    (work,) = [item for item in await _reloaded(rig) if isinstance(item, WorkItem)]
+    shown = [(card["data"]["tool_call_id"], card["data"].get("output")) for card in work.tool_data]
+    assert shown == [("tc-1", "3 flights"), ("tc-2", None)]
+    assert work.tool_data == finished.tool_data
+
+
+@pytest.mark.service
+async def test_a_tool_heavy_turn_shows_the_same_screen_live_and_on_reload(
+    rig_for: RigFactory,
+) -> None:
+    model = gated("looking into it", "here is what I found")
+    rig = await rig_for(model)
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "research my trip")
+    await rig.settle()
+    events: list[dict[str, object]] = [
+        {"todo_progress": {"source": "executor", "todos": [{"id": "1", "status": "in_progress"}]}},
+        {"tool_data": _call("tc-1", "search_web")},
+        {"reasoning": {"content": "comparing "}},
+        {"reasoning": {"content": "prices"}},
+        {"tool_output": {"tool_call_id": "tc-1", "output": "5 results"}},
+        {
+            "subagent_start": {
+                "subagent_id": "sa-1",
+                "subagent_name": "flights",
+                "agent_type": "spawned",
+                "started_at": "2026-11-14T00:00:00+00:00",
+            }
+        },
+        {"tool_data": _call("tc-2", "search_flights", subagent_id="sa-1")},
+        {"tool_output": {"tool_call_id": "tc-2", "output": "2 flights", "subagent_id": "sa-1"}},
+        {"subagent_end": {"subagent_id": "sa-1", "duration_ms": 1500}},
+    ]
+    with patch.object(event_stream, "read_frames", partial(read_frames, block_ms=1)):
+        frames = event_stream.follow_screen(rig.ports.log, rig.conversation_id, rig.user_id)
+        opened = await anext(frames)
+        assert isinstance(opened, ScreenFrame)
+        shown = list(opened.items)
+        while (frame := await anext(frames)) is not None:
+            shown = _patched(shown, frame)
+        deltas = WorkDeltas(rig.conversation_id, "t1")
+        for event in events:
+            deltas(event)
+        await deltas.drain()
+        while (frame := await anext(frames)) is not None:
+            shown = _patched(shown, frame)
+        (live,) = [item for item in shown if isinstance(item, WorkItem)]
+        assert [card["tool_name"] for card in live.tool_data] == [
+            "todo_progress",
+            "tool_calls_data",
+            "tool_calls_data",
+            "subagent_group",
+        ]
+        assert shown == await _reloaded(rig)
+        await _finish_work(rig, "t1", "here is what I found")
+        while (frame := await anext(frames)) is not None:
+            shown = _patched(shown, frame)
+        await frames.aclose()
+    (settled,) = [item for item in shown if isinstance(item, WorkItem)]
+    assert settled.tool_data == live.tool_data
+    assert shown == await _reloaded(rig)

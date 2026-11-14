@@ -409,19 +409,20 @@ class TestABackgroundRunOwnsItsStream:
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
         cards: list[ToolDataEntry] = [{"tool_name": "search", "data": {"q": "x"}}]
-        with (
-            patch(
-                f"{MODULE}.execute_subagent_stream",
-                new=AsyncMock(return_value=SubagentOutcome(text="done")),
-            ),
-            patch(f"{FOLDED}.drain_executor_tool_data", return_value=cards),
-        ):
+
+        async def _run(**kwargs: Any) -> SubagentOutcome:
+            kwargs["stream_writer"]({"tool_data": cards[0]})
+            return SubagentOutcome(text="done")
+
+        with patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(side_effect=_run)):
             await delegate(_delegation(), background=True, probe_parked=False)
             await _drain()
 
         _, ended = await _logged(client_edges)
         assert isinstance(ended, WorkFinished)
-        assert list(ended.tool_data) == cards
+        # Its own subagent group opens the record, the card it showed follows.
+        assert [card["tool_name"] for card in ended.tool_data] == ["subagent_group", "search"]
+        assert ended.tool_data[1] == cards[0]
 
     async def test_cards_that_cannot_be_logged_do_not_cost_the_run_its_result(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder

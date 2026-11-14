@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, assert_never
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
@@ -18,11 +18,15 @@ from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
+    BargeIn,
     Entry,
+    IntegrationConnected,
+    IntegrationNeeded,
     Notice,
     Reply,
     ReplyOutcome,
     ReplySettled,
+    StopRequested,
     TodoWoke,
     UserMessage,
     WorkFinished,
@@ -47,6 +51,8 @@ from shared.py.analytics.catalog.hil import ApprovalOutcome
 #: The card a tool call streams; a hand-off is one whose call is call_executor.
 TOOL_CALL_CARD = "tool_calls_data"
 _STOPPED_WORK = frozenset({WorkOutcome.CANCELLED, WorkOutcome.LOST})
+#: A work item whose cards are still being published.
+LIVE_WORK = frozenset({WorkStatus.RUNNING, WorkStatus.AWAITING_APPROVAL})
 
 
 class _CardData(BaseModel):
@@ -228,8 +234,21 @@ def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
             return WorkflowFiredItem(id=fired.id, seq=seq, at=at, workflow=fired.run.workflow)
         case TodoWoke() as woke:
             return TodoWokeItem(id=woke.id, seq=seq, at=at, wake=woke.run.wake)
-        case _:
+        # Shown through the items they change, or not at all.
+        case (
+            WorkStarted()
+            | StopRequested()
+            | BargeIn()
+            | ApprovalRequested()
+            | ApprovalDecided()
+            | WorkFinished()
+            | ReplySettled()
+            | IntegrationNeeded()
+            | IntegrationConnected()
+        ):
             return None
+        case unhandled:
+            assert_never(unhandled)
 
 
 def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkItem:

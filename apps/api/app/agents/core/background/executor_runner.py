@@ -24,8 +24,7 @@ from langsmith import traceable
 
 from app.agents.core.background.confirmation_gate import record_confirmation_asked
 from app.agents.core.background.executor_capture import (
-    drain_executor_image,
-    drain_executor_tool_data,
+    session_approval_cards,
 )
 from app.agents.core.background.executor_channel import ExecutorInbox, decide_drain
 from app.agents.core.background.executor_progress import ProgressRecorder, StreamWriter
@@ -81,12 +80,14 @@ from app.models.agent_models import (
     AgentConfigurableView,
     run_analytics_context,
 )
-from app.models.chat_models import ImageData, ToolDataEntry
+from app.models.chat_models import ToolDataEntry
+from app.models.conversation_frame_models import ToolDataEvent
 from app.models.conversation_log_models import WorkOutcome
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.browser.job_stop import stop_browser_job
-from app.services.conversation.work_deltas import WorkDeltas
+from app.services.conversation.tool_cards import fold_cards
+from app.services.conversation.work_deltas import WorkDeltas, work_cards
 from app.services.conversation.work_log import (
     WorkReport,
     record_approval_requested,
@@ -524,10 +525,9 @@ async def _finalize_executor_run(
         bool(run.stream_id) and not finished and await StreamManager.is_cancelled(run.stream_id)
     )
 
-    # Snapshot the cards WorkFinished carries BEFORE signalling done: a waiting todo
-    # run tears the session down the moment done_event fires.
-    tool_data = drain_executor_tool_data(run.stream_id)
-    image = drain_executor_image(run.stream_id)
+    # Snapshot the approval cards BEFORE signalling done: a waiting todo run tears the
+    # session down the moment done_event fires.
+    approval_cards = session_approval_cards(run.stream_id)
 
     # Held approval cards go live here, before the done signal so the session is
     # still alive; failure only skips the live push, never finalize — the drain
@@ -576,8 +576,7 @@ async def _finalize_executor_run(
             result_text=result_text,
             result_type=result_type,
             was_cancelled=was_cancelled,
-            tool_data=tool_data,
-            image=image,
+            approval_cards=approval_cards,
             review=review,
         )
 
@@ -708,8 +707,7 @@ class TerminalOutcome:
     result_text: str
     result_type: str
     was_cancelled: bool
-    tool_data: list[ToolDataEntry]
-    image: ImageData | None = None
+    approval_cards: tuple[ToolDataEntry, ...] = ()
     review: OutcomeReview = NOT_REVIEWED
 
 
@@ -730,6 +728,12 @@ async def _log_work_finished(
         return
     review = outcome.review
     ended_as = _work_outcome(outcome, stopped=stopped)
+    # The work's own record, so a run resumed in another process keeps every card it showed.
+    published = await work_cards(run.conversation_id, [run.task_id])
+    cards = fold_cards(
+        (ToolDataEvent(tool_data=card) for card in outcome.approval_cards),
+        seed=published.tool_data,
+    )
     try:
         await record_work_finished(
             run.conversation_id,
@@ -738,10 +742,10 @@ async def _log_work_finished(
             ended_as,
             WorkReport(
                 WORK_STOPPED_REPORT if ended_as is WorkOutcome.CANCELLED else outcome.result_text,
-                outcome.tool_data,
+                cards.tool_data,
                 note=outcome_delivery_note(review.declared, review.problem),
                 nothing_for_user=review.nothing_for_user,
-                image=outcome.image,
+                image=published.image,
             ),
             continued_by_decision=run.active_todo_id is None and run.workflow_execution_id is None,
         )

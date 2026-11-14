@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
 from app.models.conversation_frame_models import MessageBoundaryEvent, ResponseEvent
-from app.services.conversation.comms_events import CommsEventMapper, GraphEvent, payload_from_frame
+from app.services.conversation.comms_events import CommsEventMapper, GraphEvent
 from app.services.conversation.ports import (
     Answered,
     Finished,
@@ -27,15 +27,11 @@ def answer(text: str) -> GraphEvent:
     return ((), "updates", {"agent": {"messages": [AIMessage(content=text, id="m1")]}})
 
 
-def test_a_response_frame_decodes_to_its_typed_payload() -> None:
-    assert payload_from_frame('data: {"response": "hi"}\n\n') == ResponseEvent(response="hi")
-
-
-@pytest.mark.parametrize(
-    "frame", ['data: {"model_fallback": {"model": "x"}}\n\n', "nostream: {}", "data: [1]\n\n"]
-)
-def test_frames_the_conversation_stream_does_not_carry_decode_to_none(frame: str) -> None:
-    assert payload_from_frame(frame) is None
+async def test_a_hooks_raw_tool_payload_reaches_the_step_as_a_card() -> None:
+    mapper = CommsEventMapper("u-1")
+    events = await mapper.map(((), "custom", {"email_fetch_data": [{"id": "e1"}]}))
+    (card,) = [e.payload.tool_data for e in events if isinstance(e, Streamed)]
+    assert (card["tool_name"], card["data"]) == ("email_fetch_data", [{"id": "e1"}])
 
 
 async def test_the_silent_call_before_the_answer_is_the_summary_and_is_reported_once() -> None:

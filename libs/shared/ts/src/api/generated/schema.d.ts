@@ -7804,7 +7804,7 @@ export interface components {
          */
         ConversationEvent: {
             /** Frame */
-            frame: components["schemas"]["ScreenFrame"] | components["schemas"]["ScreenInsertFrame"] | components["schemas"]["ScreenUpdateFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["WorkDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
+            frame: components["schemas"]["ScreenFrame"] | components["schemas"]["ScreenInsertFrame"] | components["schemas"]["ScreenUpdateFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
         };
         /**
          * ConversationListResponse
@@ -9815,6 +9815,18 @@ export interface components {
             prompt: string;
             /** Url */
             url: string;
+        };
+        /**
+         * ImageEvent
+         * @description The image a run's image tool generated, tagged.
+         */
+        ImageEvent: {
+            image_data: components["schemas"]["ImageData"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "image_data";
         };
         /**
          * ImageToTextResponse
@@ -13634,7 +13646,7 @@ export interface components {
              */
             kind: "reply_delta";
             /** Payload */
-            payload: components["schemas"]["ResponseEvent"] | components["schemas"]["ReasoningEvent"] | components["schemas"]["ToolDataEvent"] | components["schemas"]["ToolOutputEvent"] | components["schemas"]["MessageBoundaryEvent"] | components["schemas"]["SubagentStartEvent"] | components["schemas"]["SubagentEndEvent"] | components["schemas"]["FollowUpActionsEvent"] | components["schemas"]["TodoProgressEvent"];
+            payload: components["schemas"]["ResponseEvent"] | components["schemas"]["ReasoningEvent"] | components["schemas"]["ToolDataEvent"] | components["schemas"]["ToolOutputEvent"] | components["schemas"]["MessageBoundaryEvent"] | components["schemas"]["SubagentStartEvent"] | components["schemas"]["SubagentEndEvent"] | components["schemas"]["FollowUpActionsEvent"] | components["schemas"]["TodoProgressEvent"] | components["schemas"]["ImageEvent"];
             /** Reply Id */
             reply_id: string | null;
         };
@@ -16897,23 +16909,6 @@ export interface components {
             subagent_ids: string[];
         };
         /**
-         * WorkDeltaFrame
-         * @description Streamed content of one background task.
-         */
-        WorkDeltaFrame: {
-            /** Index */
-            index: number;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "work_delta";
-            /** Payload */
-            payload: components["schemas"]["ResponseEvent"] | components["schemas"]["ReasoningEvent"] | components["schemas"]["ToolDataEvent"] | components["schemas"]["ToolOutputEvent"] | components["schemas"]["MessageBoundaryEvent"] | components["schemas"]["SubagentStartEvent"] | components["schemas"]["SubagentEndEvent"] | components["schemas"]["FollowUpActionsEvent"] | components["schemas"]["TodoProgressEvent"];
-            /** Task Id */
-            task_id: string;
-        };
-        /**
          * WorkFinished
          * @description Background work ended.
          */
@@ -17887,6 +17882,7 @@ export type HILPreferencesResponse = components['schemas']['HILPreferencesRespon
 export type HistoryFeatureUsage = components['schemas']['HistoryFeatureUsage'];
 export type HistoryUsagePeriod = components['schemas']['HistoryUsagePeriod'];
 export type ImageData = components['schemas']['ImageData'];
+export type ImageEvent = components['schemas']['ImageEvent'];
 export type ImageToTextResponse = components['schemas']['ImageToTextResponse'];
 export type ImportedCookie = components['schemas']['ImportedCookie'];
 export type ImportedLocalStorageItem = components['schemas']['ImportedLocalStorageItem'];
@@ -18256,7 +18252,6 @@ export type VoiceSelectionResponse = components['schemas']['VoiceSelectionRespon
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
 export type WorkCancelled = components['schemas']['WorkCancelled'];
-export type WorkDeltaFrame = components['schemas']['WorkDeltaFrame'];
 export type WorkFinished = components['schemas']['WorkFinished'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];

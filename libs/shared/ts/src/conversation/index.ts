@@ -6,7 +6,12 @@ export {
   SEND_NOT_DELIVERED,
   STOPPED_NOTE,
 } from "./copy";
-export { FAILURE_REASON, SCREEN_ITEM_KIND, WORK_STATUS } from "./entries";
+export {
+  FAILURE_REASON,
+  LIVE_WORK_STATUS,
+  SCREEN_ITEM_KIND,
+  WORK_STATUS,
+} from "./entries";
 export type {
   ConversationFrame,
   FrameParseError,

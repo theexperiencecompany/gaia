@@ -180,6 +180,12 @@ export const WORK_STATUS = {
   LOST: "lost",
 } as const satisfies Record<string, WorkItem["status"]>;
 
+/** Work whose cards are still streaming onto its item. */
+export const LIVE_WORK_STATUS: ReadonlySet<string> = new Set([
+  WORK_STATUS.RUNNING,
+  WORK_STATUS.AWAITING_APPROVAL,
+]);
+
 const itemPlace = { id, seq: z.number().int().min(1), at: z.string() };
 
 const UserItemSchema = z.object({

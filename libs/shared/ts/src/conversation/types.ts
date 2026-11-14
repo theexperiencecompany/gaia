@@ -15,22 +15,14 @@ export type { ConversationFrame } from "./frames";
 /** One item of the screen the server projects from the log, as the stream delivers it. */
 export type ScreenItem = z.infer<typeof ScreenItemSchema>;
 
-/** What one reply attempt or one piece of work has streamed and its item does not show yet. */
-export type StreamDraft =
-  | {
-      source: "reply";
-      attemptId: string;
-      /** Null until the server names the reply the attempt writes. */
-      replyId: string | null;
-      nextIndex: number;
-      content: TurnAccumulator;
-    }
-  | {
-      source: "work";
-      taskId: string;
-      nextIndex: number;
-      content: TurnAccumulator;
-    };
+/** What one reply attempt has streamed and its item does not show yet; work's cards come on its item. */
+export interface StreamDraft {
+  attemptId: string;
+  /** Null until the server names the reply the attempt writes. */
+  replyId: string | null;
+  nextIndex: number;
+  content: TurnAccumulator;
+}
 
 /** A message this device sent that the server's screen does not show yet. */
 export interface PendingSend {
@@ -44,7 +36,7 @@ export interface ConversationView {
   items: readonly ScreenItem[];
   /** In the order their first delta arrived. */
   drafts: readonly StreamDraft[];
-  /** Attempts, replies and work whose streams ended: a late delta for one is dropped. */
+  /** Attempts, replies and work whose streams ended: a late reply delta is dropped. */
   closed: Readonly<Record<string, true>>;
   /** In send order. */
   pending: readonly PendingSend[];

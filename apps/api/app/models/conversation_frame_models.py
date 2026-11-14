@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, Field
 
+from app.models.chat_models import ImageData
 from app.models.conversation_log_models import (
     WIRE_CONFIG,
     ConversationState,
@@ -51,6 +52,7 @@ class StreamPayloadType(StrEnum):
     SUBAGENT_END = "subagent_end"
     FOLLOW_UP_ACTIONS = "follow_up_actions"
     TODO_PROGRESS = "todo_progress"
+    IMAGE_DATA = "image_data"
 
 
 class ResponseEvent(ResponseFrame):
@@ -131,6 +133,15 @@ class SubagentEndEvent(BaseModel):
     subagent_end: SubagentEndPayload
 
 
+class ImageEvent(BaseModel):
+    """The image a run's image tool generated, tagged."""
+
+    model_config = WIRE_CONFIG
+
+    type: Literal[StreamPayloadType.IMAGE_DATA] = StreamPayloadType.IMAGE_DATA
+    image_data: ImageData
+
+
 StreamPayload = Annotated[
     ResponseEvent
     | ReasoningEvent
@@ -140,7 +151,8 @@ StreamPayload = Annotated[
     | SubagentStartEvent
     | SubagentEndEvent
     | FollowUpActionsEvent
-    | TodoProgressEvent,
+    | TodoProgressEvent
+    | ImageEvent,
     Field(discriminator="type"),
 ]
 

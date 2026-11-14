@@ -146,9 +146,6 @@ export class ConversationFollower {
       case FRAME_KIND.STATE:
         this.renderTyping();
         return;
-      case FRAME_KIND.WORK_DELTA:
-        // Tool cards and progress are web-only; a bot hears about work in its reply.
-        return;
       case FRAME_KIND.CONVERSATION_UPDATED:
         // A chat platform shows no conversation title.
         return;
@@ -190,9 +187,16 @@ export class ConversationFollower {
           )
             await this.askApproval();
           break;
-        // A notice was sent on the outbound queue when it was logged.
-        default:
+        // A notice was sent on the outbound queue when it was logged; a fired
+        // workflow or woken todo shows nothing on a chat platform of its own.
+        case SCREEN_ITEM_KIND.NOTICE:
+        case SCREEN_ITEM_KIND.WORKFLOW_FIRED:
+        case SCREEN_ITEM_KIND.TODO_WOKE:
           break;
+        default: {
+          const unhandled: never = item;
+          return unhandled;
+        }
       }
     }
   }

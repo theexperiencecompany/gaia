@@ -59,6 +59,7 @@ from app.models.agent_models import (
 )
 from app.models.hil_models import HilInterruptPayload, HilResumeDecision
 from app.models.stream_events import SubagentAgentType
+from app.services.conversation.work_deltas import WorkDeltas
 from app.services.hil.approvals_store import get_approval, mark_resumed
 from app.utils.agent_utils import (
     IntegrationMetadata,
@@ -380,7 +381,8 @@ async def _execute_on_own_stream(
         configurable["stream_id"] = stream_id
         configurable[SUBAGENT_RESUME_CONFIG_KEY] = item
 
-    writer = make_redis_stream_writer(stream_id)
+    deltas = WorkDeltas(delegation.conversation_id, stream_id)
+    writer = deltas.wrap(make_redis_stream_writer(stream_id))
     _emit_start(writer, delegation)
     start_time = time.monotonic()
     outcome: SubagentOutcome | None = None
@@ -396,6 +398,8 @@ async def _execute_on_own_stream(
         # A pause is not an ending: the row stays open until the resumed run closes it.
         if outcome is None or not outcome.paused:
             _emit_end(writer, delegation, start_time)
+        # The run's cards are on its record before its work is logged as finished.
+        await deltas.drain()
     return outcome
 
 

@@ -26,10 +26,12 @@ from app.models.conversation_frame_models import (
     EntryUpdatedFrame,
     OutputFrame,
     ReplyDeltaFrame,
+    RetractFrame,
     WorkDeltaFrame,
     state_frame,
 )
 from app.models.conversation_log_models import (
+    CommsPhase,
     ConversationState,
     LoggedEntry,
     Reply,
@@ -61,7 +63,7 @@ def _key(conversation_id: str) -> str:
     return f"{EVENTS_KEY_PREFIX}{conversation_id}"
 
 
-# Trims to the retention only while no reply is open, so a reload mid-reply replays every delta it showed.
+# Trims to the retention only while no reply is being written, so a reload mid-reply replays every delta it showed.
 _PUBLISH = """
 if ARGV[4] == 'open' then
   redis.call('SET', KEYS[2], '1', 'EX', ARGV[3])
@@ -83,12 +85,14 @@ def _open_key(conversation_id: str) -> str:
 
 
 def _reply_mark(frame: OutputFrame) -> str:
-    """Return open when frame opens a reply, settle when it settles one, else empty."""
-    if isinstance(frame, EntryFrame) and isinstance(frame.entry, Reply):
-        return "open"
-    if isinstance(frame, EntryFrame) and isinstance(frame.entry, ReplySettled):
-        return "settle"
-    return ""
+    """Return open while a reply is being written (drafting or open), settle once it ended, else empty."""
+    match frame:
+        case ReplyDeltaFrame() | EntryFrame(entry=Reply()):
+            return "open"
+        case EntryFrame(entry=ReplySettled()) | RetractFrame():
+            return "settle"
+        case _:
+            return ""
 
 
 class RedisStreamFrames:
@@ -153,25 +157,22 @@ def _log_frames(entries: Sequence[LoggedEntry], state: ConversationState) -> lis
 
 
 async def follow(
-    log: ConversationLog, conversation_id: str, user_id: str, after: str
+    log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
 ) -> AsyncGenerator[StreamedFrame | None]:
-    """Yield every frame after the cursor once, then follow live; after is a stream id or a seq.
+    """Yield every frame after entry after_seq once, then follow live.
 
     None follows every read that drained or timed out, so the caller can check its client is still there.
-    A seq replays the log after it, then from the stream only what the log cannot say: the open
-    reply's and live work's deltas, and updates to entries the client already had.
+    The log after after_seq is replayed first, then from the stream only what the log cannot say: the
+    deltas of the reply being written and of live work, and updates to entries the client already had.
     """
-    cursor, covered = after, 0
-    if not _is_stream_id(after):
-        after_seq = int(after or 0)
-        # Taken before the log read, so a frame published after it is followed live, never lost.
-        cursor = await latest_frame_id(conversation_id)
-        entries, state = await _log_after(log, conversation_id, user_id, after_seq)
-        for replayed in _log_frames(entries, state):
-            yield replayed
-        for unlogged in await _unlogged_frames(conversation_id, cursor, state, after_seq):
-            yield unlogged
-        covered = entries[-1].seq if entries else after_seq
+    # Taken before the log read, so a frame published after it is followed live, never lost.
+    cursor = await latest_frame_id(conversation_id)
+    entries, state = await _log_after(log, conversation_id, user_id, after_seq)
+    for replayed in _log_frames(entries, state):
+        yield replayed
+    for unlogged in await _unlogged_frames(conversation_id, cursor, state, after_seq):
+        yield unlogged
+    covered = entries[-1].seq if entries else after_seq
     while True:
         for streamed in await read_frames(conversation_id, cursor):
             if streamed.stream_id is not None:
@@ -197,20 +198,42 @@ async def _unlogged_frames(
         ),
         -1,
     )
+    unseen = [streamed.frame for streamed in frames[seen + 1 :]]
+    writing = state.open_reply or _drafting(unseen, state)
     live_tasks = {work.task_id for work in state.work}
     return [
-        streamed
-        for streamed in frames[seen + 1 :]
-        if _unlogged(streamed.frame, state.open_reply, live_tasks, after_seq)
+        StreamedFrame(stream_id=None, frame=frame)
+        for frame in unseen
+        if _unlogged(frame, writing, live_tasks, after_seq)
     ]
 
 
+def _drafting(frames: Sequence[OutputFrame], state: ConversationState) -> str | None:
+    """Return the reply a running attempt is drafting with no entry yet: its deltas only the stream holds."""
+    if state.comms is CommsPhase.IDLE:
+        return None
+    deltas = [frame for frame in frames if isinstance(frame, ReplyDeltaFrame)]
+    if not deltas:
+        return None
+    last = deltas[-1]
+    ended = any(
+        (isinstance(frame, RetractFrame) and frame.attempt_id == last.attempt_id)
+        or (
+            isinstance(frame, EntryFrame)
+            and isinstance(frame.entry, ReplySettled)
+            and frame.entry.reply_id == last.reply_id
+        )
+        for frame in frames
+    )
+    return None if ended else last.reply_id
+
+
 def _unlogged(
-    frame: OutputFrame, open_reply: str | None, live_tasks: set[str], after_seq: int
+    frame: OutputFrame, writing: str | None, live_tasks: set[str], after_seq: int
 ) -> bool:
     match frame:
         case ReplyDeltaFrame(reply_id=reply_id):
-            return reply_id is not None and reply_id == open_reply
+            return reply_id is not None and reply_id == writing
         case WorkDeltaFrame(task_id=task_id):
             return task_id in live_tasks
         case EntryUpdatedFrame(seq=seq):
@@ -227,9 +250,9 @@ async def follow_screen(
     A reconnect is a fresh call: the screen it opens with is how a client heals any gap.
     """
     entries = await log.read_after(conversation_id, user_id, 0)
-    tracker = ScreenTracker(entries)
+    tracker = await ScreenTracker.load(conversation_id, entries)
     yield ScreenFrame(items=tuple(tracker.items[-CONVERSATION_READ_LIMIT:]))
-    head = str(entries[-1].seq if entries else 0)
+    head = entries[-1].seq if entries else 0
     async for streamed in follow(log, conversation_id, user_id, head):
         if streamed is None:
             yield None
@@ -239,13 +262,10 @@ async def follow_screen(
             for patch in tracker.take(frame):
                 yield patch
         elif isinstance(frame, WorkDeltaFrame):
-            yield tracker.on_its_item(frame)
+            for patch in await tracker.on_work(frame):
+                yield patch
         else:
             yield frame
-
-
-def _is_stream_id(cursor: str) -> bool:
-    return "-" in cursor
 
 
 async def event_lines(

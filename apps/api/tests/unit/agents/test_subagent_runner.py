@@ -20,7 +20,6 @@ from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background import redis_writer as rw
-from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import RunKind, StreamSession, create_session
 from app.agents.core.background.subagent_channel import SubagentCancel
@@ -1631,40 +1630,6 @@ class TestReasoningStreamsPerDeltaButPersistsPerBlock:
             assert _published_reasoning(stream_manager) == ["a", "b", "c", "d"]
             # Persistence: the tool call is the only boundary, so two blocks.
             assert _collected_reasoning(session) == ["abc", "d"]
-
-    @pytest.mark.asyncio
-    async def test_the_entries_that_reach_tool_data_are_two_as_well(self):
-        """What is persisted is the DRAINED shape; the entry count has to survive absorb_collector_event too."""
-        with _real_stream_writer() as (writer, _stream_manager, _session):
-
-            async def _fake_astream(*args, **kwargs):
-                yield ("messages", (_thinking("a"), {}))
-                yield ("messages", (_thinking("b"), {}))
-                yield ("messages", (_thinking("c"), {}))
-                yield ("updates", {"agent": {"messages": []}})
-                yield ("messages", (_thinking("d"), {}))
-
-            mock_graph = MagicMock()
-            mock_graph.astream = _fake_astream
-            ctx = _make_ctx(subagent_graph=mock_graph)
-
-            with (
-                patch("app.agents.core.subagents.subagent_runner.log"),
-                patch(
-                    "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
-                    new_callable=AsyncMock,
-                    return_value=[("tc-1", {"name": "web_search"})],
-                ),
-            ):
-                await execute_subagent_stream(ctx, stream_writer=writer)
-
-            reasoning_entries = [
-                entry["data"]["reasoning"]
-                for entry in drain_executor_tool_data("s-reasoning")
-                if entry.get("tool_category") == "reasoning"
-            ]
-
-        assert reasoning_entries == ["abc", "d"]
 
     @pytest.mark.asyncio
     async def test_thinking_with_no_tool_after_it_is_one_entry_not_dropped(self):

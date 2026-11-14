@@ -12,7 +12,6 @@ from httpx import AsyncClient
 import pytest
 from redis.asyncio import Redis
 
-from app.agents.core.background import folded_stream
 from app.agents.core.background.folded_stream import close_folded_stream, open_folded_stream
 from app.agents.core.background.running_registry import RunningSubagents
 from app.agents.core.background.work_cancel import cancel_named_work
@@ -38,6 +37,7 @@ from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
+from app.services.conversation.work_deltas import WorkDeltas
 from app.services.conversation.work_log import record_user_stop
 from app.services.onboarding.first_conversation import FirstConversation
 from app.utils.seeding_utils import seed_first_conversation
@@ -202,9 +202,10 @@ async def test_a_detached_runs_cards_sit_where_it_started_until_a_reply_answers_
     user_id = str(ObjectId())
     conversation_id = await _chat(user_id, _turn("look it up"))
     cards: list[ToolDataEntry] = [{"tool_name": "browser", "data": {"step": 1}}]
-    monkeypatch.setattr(folded_stream, "drain_executor_tool_data", lambda _stream: cards)
-
     assert await open_folded_stream("job-1", conversation_id=conversation_id, user_id=user_id)
+    deltas = WorkDeltas(conversation_id, "job-1")
+    deltas({"tool_data": cards[0]})
+    await deltas.drain()
     await mongo_log.append(
         conversation_id, user_id, UserMessage(id="u2", text="later", surface=ConversationSource.WEB)
     )

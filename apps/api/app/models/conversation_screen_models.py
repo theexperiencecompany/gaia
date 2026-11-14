@@ -12,7 +12,6 @@ from app.models.conversation_frame_models import (
     ReplyDeltaFrame,
     RetractFrame,
     StateFrame,
-    WorkDeltaFrame,
 )
 from app.models.conversation_log_models import (
     WIRE_CONFIG,
@@ -151,13 +150,12 @@ class ScreenUpdateFrame(BaseModel):
 
 ScreenPatch = ScreenInsertFrame | ScreenUpdateFrame
 
-# What a client receives: the screen, its patches, and the raw deltas of what is still being written.
+# What a client receives: the screen, its patches, and the deltas of the reply still being written.
 ScreenStreamFrame = Annotated[
     ScreenFrame
     | ScreenInsertFrame
     | ScreenUpdateFrame
     | ReplyDeltaFrame
-    | WorkDeltaFrame
     | RetractFrame
     | StateFrame
     | ConversationUpdatedFrame,
