@@ -125,17 +125,23 @@ def dump_playbook(body: PlaybookBody) -> str:
 
 
 async def validate_playbook(
-    body: PlaybookBody, sources: Sequence[RecordedResult] | None = None
+    body: PlaybookBody,
+    sources: Sequence[RecordedResult] | None = None,
+    *,
+    space: ToolSpace | None = None,
+    empty_is_data: bool = False,
 ) -> PlaybookValidation:
     """Check a parsed playbook against the tools it would actually reach.
 
-    Fatal always: unknown tool, bad arg, or forward step reference. sources[i]
-    is the recorded call the i-th step was built from; with them, an empty or
-    failed call and a bad $steps shape are refused.
+    Fatal always: unknown tool, bad arg, or forward step reference. space defaults to
+    the executor's registry. sources[i] is the recorded call the i-th step was built
+    from; with them, a failed call, a bad $steps shape and, unless empty_is_data (a
+    watch whose quiet day is a real answer), an empty call are refused.
     """
-    registry = await get_tool_registry()
-    walk = _Walk(sources=None if sources is None else iter(sources))
-    _check_steps(body.steps, "steps", ToolSpace(tools=registry.get_tool_dict()), walk)
+    if space is None:
+        space = ToolSpace(tools=(await get_tool_registry()).get_tool_dict())
+    walk = _Walk(sources=None if sources is None else iter(sources), empty_is_data=empty_is_data)
+    _check_steps(body.steps, "steps", space, walk)
     if walk.sources is not None and next(walk.sources, None) is not None:
         raise ValueError(f"{len(sources or ())} sources for {walk.taken} tool steps")
     return PlaybookValidation(valid=not walk.issues, issues=walk.issues)
@@ -156,6 +162,8 @@ class _Walk:
     #: the step. A ``$steps`` reference is checked against this, so it can only
     #: ever read a step that ran before it — the same rule the replay enforces.
     step_results: dict[str, StepResult] = field(default_factory=dict)
+    #: Whether a frozen call that returned nothing is still worth freezing.
+    empty_is_data: bool = False
 
 
 def _check_steps(
@@ -268,13 +276,15 @@ def _check_source(
     call = _take_source(walk, path)
     if step.id:
         walk.step_results[step.id] = StepResult(value=call.result)
-    refusal = _result_refusal(tool_name, call, path)
+    refusal = _result_refusal(tool_name, call, path, empty_is_data=walk.empty_is_data)
     if refusal is not None:
         walk.issues.append(refusal)
     return call
 
 
-def _result_refusal(tool_name: str, call: RecordedResult, where: str) -> PlaybookIssue | None:
+def _result_refusal(
+    tool_name: str, call: RecordedResult, where: str, *, empty_is_data: bool
+) -> PlaybookIssue | None:
     """Why the call this step froze is not worth freezing, or None.
 
     The error envelope is tested first: a tool that reports its own failure
@@ -292,12 +302,12 @@ def _result_refusal(tool_name: str, call: RecordedResult, where: str) -> Playboo
     # Not a list length: a write tool answers with the record it just made, and
     # that record's own empty attributes are not the call returning nothing.
     # See carries_no_data.
-    if carries_no_data(call.result):
+    if not empty_is_data and carries_no_data(call.result):
         return PlaybookIssue(
             kind=PlaybookRefusal.EMPTY_RESULT,
             where=where,
             problem=f"{tool_name} returned no items in this run (args: "
-            f"{_rendered_args(call.args)}); freeze a call that produced data — widen the args "
+            f"{rendered_args(call.args)}); freeze a call that produced data — widen the args "
             "or decline the playbook",
         )
     return None
@@ -322,7 +332,8 @@ def _envelope_error(result: object) -> str:
     return "the call reported success: false"
 
 
-def _rendered_args(args: Mapping[str, object]) -> str:
+def rendered_args(args: Mapping[str, object]) -> str:
+    """Return a call's args as a message quotes them, cut short past their budget."""
     # ensure_ascii=False and ensure_ascii=None are byte-identical to json (it
     # only tests truthiness), so that mutation is provably equivalent and exempt.
     rendered = json.dumps(dict(args), default=str, ensure_ascii=False)  # pragma: no mutate

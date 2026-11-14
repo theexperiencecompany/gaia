@@ -703,6 +703,14 @@ class TestSelfManagedIntegrationConnection:
 class TestDisconnectIntegration:
     """disconnect_integration: cleanup for different managed_by types."""
 
+    @pytest.fixture(autouse=True)
+    def _forget_integration(self) -> Iterator[AsyncMock]:
+        with patch(
+            "app.services.integrations.integration_connection_service.forget_integration",
+            new_callable=AsyncMock,
+        ) as forget:
+            yield forget
+
     async def test_disconnect_composio_integration(self) -> None:
         """Disconnecting a Composio integration revokes every account the user holds on it."""
 

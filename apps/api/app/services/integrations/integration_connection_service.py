@@ -30,6 +30,7 @@ from app.schemas.integrations.responses import (
     IntegrationsConfigResponse,
     IntegrationSuccessResponse,
 )
+from app.services.briefing.scouts.lifecycle import forget_integration
 from app.services.composio.auth_config_resolver import auth_config_id_for
 from app.services.composio.composio_service import get_composio_service
 from app.services.integrations.custom_crud import delete_custom_integration
@@ -587,6 +588,7 @@ async def disconnect_integration(user_id: str, integration_id: str) -> Integrati
         raise ValueError(f"Integration {integration_id} disconnect not supported")
 
     await _invalidate_caches(user_id, integration_id, resolved.managed_by)
+    await forget_integration(user_id, integration_id)
 
     # Reflect the reduced connected set in the user's workspace VFS.
     schedule_user_integrations_sync(user_id)

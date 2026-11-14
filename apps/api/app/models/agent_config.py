@@ -149,6 +149,9 @@ class AgentConfigurable(TypedDict, total=False):
     #: True only for comms_narrator re-voicing a finished executor result. It never
     #: dispatches: call_executor refuses, since the narrated run still holds the busy lock.
     is_result_narration: bool
+    #: True for a run that may only read (a brief scout): the HIL gate refuses every call
+    #: to a tool whose own metadata does not declare it read-only.
+    read_only: bool
     subagent_id: str | None
     #: Shared VFS session, held constant across the executor and the
     #: subagents it spawns so all resolve paths against one workspace.

@@ -14,9 +14,12 @@ from langchain_core.tools import BaseTool
 
 @dataclass(frozen=True, slots=True)
 class ToolSpace:
-    """Where a step's tool is looked up: the executor's registry."""
+    """Where a step's tool is looked up: the executor's registry, or a scout's own tools."""
 
     tools: Mapping[str, BaseTool]
+    #: A replay in this space runs as a read-only run: the HIL gate refuses every tool
+    #: whose metadata does not declare it read-only.
+    read_only: bool = False
 
 
 def tool_space_denial(tool_name: str, space: ToolSpace) -> str | None:

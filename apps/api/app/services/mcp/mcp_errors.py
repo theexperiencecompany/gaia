@@ -41,6 +41,17 @@ class StepUpAuthRequiredError(Exception):
         super().__init__(f"Step-up authorization required for {integration_id}: {required_scopes}")
 
 
+class MCPIntegrationNotFoundError(ValueError):
+    """Raised when an integration id resolves to no MCP integration (a stale connection record).
+
+    Subclasses ValueError to keep the existing caller contract.
+    """
+
+    def __init__(self, integration_id: str) -> None:
+        self.integration_id = integration_id
+        super().__init__(f"MCP integration {integration_id} not found")
+
+
 class MCPAuthorizationRequiredError(ValueError):
     """Raised when an authenticated MCP has no usable access token."""
 

@@ -180,6 +180,30 @@ def parse_result(text: str) -> object:
     return value
 
 
+class _ToolEnvelope(BaseModel):
+    """The failure fields of a tool's JSON envelope; a tool may set any, all or none.
+
+    object, not bool/str: only a literal False success means failure, and
+    error/message are quoted whatever their type, so nothing may be coerced.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    success: object = None
+    error: object = None
+    message: object = None
+
+
+def envelope_failure(value: object) -> str | None:
+    """Return what a JSON envelope says went wrong, or None when it reports no failure."""
+    if not isinstance(value, dict):
+        return None
+    envelope = _ToolEnvelope.model_validate(value)
+    if envelope.success is not False and not envelope.error:
+        return None
+    return str(envelope.error or envelope.message or "the tool reported success=false")
+
+
 def carries_no_data(value: object) -> bool:
     """Whether a tool's result came back with nothing in it.
 

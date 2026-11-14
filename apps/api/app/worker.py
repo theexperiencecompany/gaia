@@ -21,6 +21,7 @@ from app.constants.notifications import (
 )
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
+from app.constants.scouts import LEARN_SCOUT_TASK
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     PROVISION_INBOX_DESK_TASK,
@@ -75,6 +76,7 @@ from app.workers.tasks.proactive_delivery_tasks import (
     record_proactive_delivery,
 )
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
+from app.workers.tasks.scout_tasks import learn_scout_task
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
     execute_tracked_todo,
@@ -128,6 +130,8 @@ _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
 # Named from the constant its per-occurrence job ids are built from.
 _execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKED_TODO_TASK)
 _provision_inbox_desk = func(arq_task(provision_inbox_desk_task), name=PROVISION_INBOX_DESK_TASK)
+# Named from the constant the connect path enqueues by.
+_learn_scout = func(arq_task(learn_scout_task), name=LEARN_SCOUT_TASK)
 _resume_waiter = func(
     arq_task(resume_waiter), name=RESUME_WAITER_TASK, max_tries=RESUME_WAITER_MAX_TRIES
 )
@@ -227,6 +231,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _sync_workflows_for_subscription_state,
     _sync_paid_person_properties,
     _provision_inbox_desk,
+    _learn_scout,
     _resume_waiter,
     _record_delivery_failure,
     _refresh_delivery_incident,

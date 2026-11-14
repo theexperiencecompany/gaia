@@ -23,8 +23,10 @@ from tests.helpers import captured_wide_event
 import time_machine
 
 from app.agents.prompts.briefing_prompts import (
+    VoiceSituation,
     build_briefing_voice_prompt,
     build_weekly_digest_prompt,
+    voice_unreadable_note,
 )
 from app.constants.briefing import (
     FIRST_WEEK_DAYS,
@@ -46,6 +48,7 @@ from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import (
@@ -63,6 +66,13 @@ from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationStatus,
 )
+from app.models.scout_models import (
+    ScoutOutcome,
+    ScoutResult,
+    Signal,
+    SignalImportance,
+    SignalMemoryDocument,
+)
 from app.models.short_link_models import ShortLinkTargetType
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.user_models import (
@@ -76,6 +86,7 @@ from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.link_tokens import link_token_problems
+from app.services.briefing.scouts import service as scout_service
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
@@ -185,6 +196,10 @@ class World:
         default_factory=lambda: UserDocument(id=_USER, timezone=_TZ, email="a@b.c", name="Ada")
     )
     chat: ChatChannel | None = _CHAT
+    scouts: list[ScoutResult] = field(default_factory=list)
+    memory: list[SignalMemoryDocument] = field(default_factory=list)
+    shown: AsyncMock = field(default_factory=AsyncMock)
+    seen: AsyncMock = field(default_factory=AsyncMock)
     #: The context and repository reads the run makes, by name, as patched.
     reads: dict[str, AsyncMock] = field(default_factory=dict)
 
@@ -194,6 +209,61 @@ def _seam(
 ) -> None:
     monkeypatch.setattr(owner, name, mock)
     w.reads[name] = mock
+
+
+def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
+    """Patch what the run gathers its context from (work, goals, dormancy, apps) and the scouts."""
+    _seam(monkeypatch, w, chat_sync, "format_replies_block", AsyncMock(return_value="No replies."))
+    _seam(monkeypatch, w, context, "format_goal_block", AsyncMock(return_value=("Ship v2", True)))
+    _seam(
+        monkeypatch, w, context, "get_yesterday_payload", AsyncMock(return_value=sentinel.yesterday)
+    )
+    _seam(monkeypatch, w, context, "format_lookback_block", AsyncMock(return_value="-"))
+    _seam(
+        monkeypatch,
+        w,
+        context,
+        "compute_winback_state",
+        AsyncMock(return_value=context.WinbackState(unacknowledged=0, last_was_winback=False)),
+    )
+    _seam(monkeypatch, w, context, "gather_tracked_work", AsyncMock(side_effect=lambda *_: w.work))
+    _seam(monkeypatch, w, context, "user_open_todo_summary", AsyncMock(return_value=(0, [])))
+    _seam(
+        monkeypatch,
+        w,
+        context,
+        "gather_completed_since",
+        AsyncMock(return_value=context.CompletedWork(user=[_todo("u1", "Gym")])),
+    )
+    _seam(monkeypatch, w, dormancy, "record_idle_day", AsyncMock(return_value=0))
+    _seam(monkeypatch, w, dormancy, "latest_activity_since", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        service,
+        "activity_status_of",
+        AsyncMock(side_effect=lambda user_id: w.activity if user_id == _USER else None),
+    )
+    monkeypatch.setattr(
+        service,
+        "get_connected_integrations_named",
+        AsyncMock(
+            side_effect=lambda user_id: [{"id": a.lower(), "name": a} for a in w.connected_apps]
+            if user_id == _USER
+            else []
+        ),
+    )
+
+    monkeypatch.setattr(
+        scout_service,
+        "run_scouts",
+        AsyncMock(side_effect=lambda user: w.scouts if user.id == _USER else []),
+    )
+    monkeypatch.setattr(
+        signal_memory_repository,
+        "find_for",
+        AsyncMock(side_effect=lambda user_id, signals: list(w.memory) if user_id == _USER else []),
+    )
+    monkeypatch.setattr(signal_memory_repository, "record_seen", w.seen)
+    monkeypatch.setattr(signal_memory_repository, "mark_shown", w.shown)
 
 
 @pytest.fixture
@@ -271,44 +341,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
         AsyncMock(side_effect=lambda *_, **__: list(w.held)),
     )
     monkeypatch.setattr(pending_brief_items_repository, "consume", w.consume)
-    _seam(monkeypatch, w, chat_sync, "format_replies_block", AsyncMock(return_value="No replies."))
-    _seam(monkeypatch, w, context, "format_goal_block", AsyncMock(return_value=("Ship v2", True)))
-    _seam(
-        monkeypatch, w, context, "get_yesterday_payload", AsyncMock(return_value=sentinel.yesterday)
-    )
-    _seam(monkeypatch, w, context, "format_lookback_block", AsyncMock(return_value="-"))
-    _seam(
-        monkeypatch,
-        w,
-        context,
-        "compute_winback_state",
-        AsyncMock(return_value=context.WinbackState(unacknowledged=0, last_was_winback=False)),
-    )
-    _seam(monkeypatch, w, context, "gather_tracked_work", AsyncMock(side_effect=lambda *_: w.work))
-    _seam(monkeypatch, w, context, "user_open_todo_summary", AsyncMock(return_value=(0, [])))
-    _seam(
-        monkeypatch,
-        w,
-        context,
-        "gather_completed_since",
-        AsyncMock(return_value=context.CompletedWork(user=[_todo("u1", "Gym")])),
-    )
-    _seam(monkeypatch, w, dormancy, "record_idle_day", AsyncMock(return_value=0))
-    _seam(monkeypatch, w, dormancy, "latest_activity_since", AsyncMock(return_value=None))
-    monkeypatch.setattr(
-        service,
-        "activity_status_of",
-        AsyncMock(side_effect=lambda user_id: w.activity if user_id == _USER else None),
-    )
-    monkeypatch.setattr(
-        service,
-        "get_connected_integrations_named",
-        AsyncMock(
-            side_effect=lambda user_id: [{"id": a.lower(), "name": a} for a in w.connected_apps]
-            if user_id == _USER
-            else []
-        ),
-    )
+    _patch_context_reads(monkeypatch, w)
 
     async def set_bag(user_id: str, bag: BriefingBag, state: ShuffleBag) -> None:
         assert user_id == _USER
@@ -909,6 +942,80 @@ class TestTheProseMatchesTheItems:
         _assert_nothing_sent(world)
 
 
+_RAW_NEWLINE_PARAGRAPHS = SimpleNamespace(
+    message=_fenced({**_VOICE, "message": f"{_FACTS_SHOWN}<para>That is the day."}).replace(
+        "<para>", "\n\n"
+    )
+)
+_MOOD_LEFT_OUT = SimpleNamespace(
+    message=_fenced({key: value for key, value in _VOICE.items() if key != "mood"})
+)
+
+
+@pytest.mark.unit
+class TestAnUnreadableVoiceIsRetried:
+    """Regression: 2 of 3 live daily runs failed with "No valid voice JSON" and no retry."""
+
+    async def test_a_message_with_raw_newlines_between_paragraphs_is_read(
+        self, world: World
+    ) -> None:
+        """The live failing reply wrote its paragraphs with literal newlines inside the string."""
+        world.agent.return_value = _RAW_NEWLINE_PARAGRAPHS
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.agent.await_count == 1
+        assert _stored_payload(world).message.endswith("\n\nThat is the day.")
+
+    async def test_an_unreadable_reply_is_retried_once_with_its_problem_named(
+        self, world: World
+    ) -> None:
+        world.agent.side_effect = [_MOOD_LEFT_OUT, SimpleNamespace(message=_fenced(_VOICE))]
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.agent.await_count == 2
+        first = world.agent.await_args_list[0].kwargs["request"].message
+        retry = world.agent.await_args_list[1].kwargs["request"].message
+        assert retry == f"{first}\n\n{voice_unreadable_note(['mood: Field required'])}"
+        assert _stored_payload(world).headline == _VOICE["headline"]
+
+    async def test_an_unreadable_reply_is_logged_by_length_and_problems_never_its_text(
+        self, world: World
+    ) -> None:
+        world.agent.side_effect = [_MOOD_LEFT_OUT, SimpleNamespace(message=_fenced(_VOICE))]
+
+        async with captured_wide_event() as event:
+            await service.run_daily_briefing(_USER)
+
+        first = world.agent.await_args_list[0].kwargs["request"].message
+        assert {
+            "msg": "briefing.voice_unreadable",
+            "raw_length": len(_message_written(first, _MOOD_LEFT_OUT.message)),
+            "problems": ["mood: Field required"],
+        } in event["warnings"]
+
+    def test_the_failure_lists_every_problem_joined(self) -> None:
+        error = service.VoiceUnreadableError(["first problem", "second problem"])
+
+        assert str(error) == "No valid voice JSON in agent output: first problem; second problem"
+
+    async def test_a_reply_unreadable_twice_fails_naming_the_shape_not_the_text(
+        self, world: World
+    ) -> None:
+        cut_short = SimpleNamespace(message='```json\n{"headline": "Arjun needs the redlines\n```')
+        world.agent.side_effect = [_MOOD_LEFT_OUT, cut_short]
+
+        with pytest.raises(service.VoiceUnreadableError) as err:
+            await service.run_daily_briefing(_USER)
+
+        assert err.value.problems == [
+            "invalid JSON: Unterminated string starting at (char 13 of 38)"
+        ]
+        assert "Arjun" not in str(err.value)
+        _assert_nothing_sent(world)
+
+
 def _wrote(message: str) -> SimpleNamespace:
     return SimpleNamespace(message=_fenced({**_VOICE, "message": message}))
 
@@ -1117,9 +1224,7 @@ class TestTheDailyRunWiring:
             prompt_args["blocks"].lookback,
             prompt_args["blocks"].replies,
         ) == ("Ship v2", "-", "No replies.")
-        assert prompt_args["situation"].is_first_briefing is False
-        assert prompt_args["situation"].winback is False
-        assert prompt_args["situation"].wind_down is None
+        assert prompt_args["situation"] == VoiceSituation()
 
     async def test_a_users_first_brief_is_voiced_as_their_first(
         self, world: World, monkeypatch: pytest.MonkeyPatch
@@ -1218,6 +1323,7 @@ class TestTheDailyRunWiring:
                 mood="packed",
                 item_count=2,
                 channel_count=3,
+                signal_count=0,
                 stamp_collected=False,
             ),
         )
@@ -1877,15 +1983,14 @@ class TestTheAgentOutput:
 
         assert _stored_payload(world).headline == "Your morning, sorted"
 
-    async def test_a_missing_voice_names_the_start_of_what_came_back(self, world: World) -> None:
-        raw = "y" * 400
-        world.agent.return_value = SimpleNamespace(message=raw)
+    async def test_a_missing_voice_names_why_without_echoing_the_reply(self, world: World) -> None:
+        world.agent.return_value = SimpleNamespace(message="y" * 400)
 
         with pytest.raises(service.BriefingGenerationError) as err:
             await service.run_daily_briefing(_USER)
 
         assert str(err.value) == (
-            f"No valid voice JSON in agent output (first 300 chars): {raw[:300]!r}"
+            "No valid voice JSON in agent output: invalid JSON: Expecting value (char 0 of 400)"
         )
 
     async def test_a_lede_alone_contradicting_the_items_is_sent_back(
@@ -2025,3 +2130,97 @@ class TestTheWeeklyRunWiring:
         finally:
             run.cancel()
         _assert_nothing_sent(world)
+
+
+_LOGIN = Signal(
+    integration_id="linear",
+    app="Linear",
+    external_id="ENG-12",
+    kind="issue assigned to you",
+    title="Fix the login redirect",
+    importance=SignalImportance.HIGH,
+    url="https://linear.app/acme/issue/ENG-12",
+    state="In Progress",
+)
+_DOCS = Signal(
+    integration_id="linear",
+    app="Linear",
+    external_id="ENG-40",
+    kind="issue assigned to you",
+    title="Refresh the onboarding docs",
+    url="https://linear.app/acme/issue/ENG-40",
+    state="Todo",
+)
+
+
+def _scouted(*signals: Signal) -> list[ScoutResult]:
+    return [ScoutResult(integration_id="linear", outcome=ScoutOutcome.REPLAYED, signals=[*signals])]
+
+
+def _saying(text: str) -> SimpleNamespace:
+    return SimpleNamespace(message=_fenced({**_VOICE, "message": f"{_FACTS_SHOWN} {text}"}))
+
+
+class TestSignalsInTheBrief:
+    """What the scouts found reaches the writer with its memory, and is remembered as shown."""
+
+    async def test_signals_reach_the_writer_grouped_per_app_with_their_memory(
+        self, world: World
+    ) -> None:
+        world.scouts = _scouted(_LOGIN, _DOCS)
+        world.memory = [
+            SignalMemoryDocument(
+                user_id=_USER,
+                integration_id="linear",
+                external_id="ENG-12",
+                first_seen=_NOW - timedelta(days=3),
+                times_shown=1,
+                last_shown=_NOW - timedelta(days=2),
+                last_state="Todo",
+            )
+        ]
+        world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) still needs you.")
+
+        await service.run_daily_briefing(_USER)
+
+        prompt = _prompt(world)
+        assert "[ACROSS THEIR APPS] 2 item(s) in 1 app(s)\n[Linear] 2 item(s)\n" in prompt
+        assert (
+            "- important | issue assigned to you: Fix the login redirect | state: In Progress"
+            " | link: https://linear.app/acme/issue/ENG-12 | first seen 3 days ago, mentioned"
+            " 1 time(s), last 2 days ago, moved from Todo to In Progress"
+        ) in prompt
+        assert "- other | issue assigned to you: Refresh the onboarding docs" in prompt
+        assert "first seen today, created date unknown" in prompt
+
+    async def test_a_day_with_only_signals_is_pushed_and_counted(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(context, "gather_calendar", AsyncMock(return_value=[]))
+        world.scouts = _scouted(_DOCS)
+        world.agent.return_value = _saying("Refresh the onboarding docs when you can.")
+
+        await service.run_daily_briefing(_USER)
+
+        world.post.assert_awaited_once()
+        assert world.capture.call_args.args[1].signal_count == 1
+
+    async def test_only_the_signals_the_message_spoke_of_are_marked_shown(
+        self, world: World
+    ) -> None:
+        world.scouts = _scouted(_LOGIN, _DOCS)
+        world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) is yours today.")
+
+        await service.run_daily_briefing(_USER)
+
+        world.shown.assert_awaited_once_with(_USER, [_LOGIN], _NOW)
+        world.seen.assert_awaited_once_with(_USER, [_LOGIN, _DOCS], _NOW)
+
+    async def test_a_message_that_skips_an_important_signal_is_rejected(self, world: World) -> None:
+        world.scouts = _scouted(_LOGIN)
+
+        with pytest.raises(service.BriefingGenerationError, match="Fix the login redirect"):
+            await service.run_daily_briefing(_USER)
+
+        _assert_nothing_sent(world)
+        world.shown.assert_not_awaited()

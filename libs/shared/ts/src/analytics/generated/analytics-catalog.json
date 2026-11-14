@@ -1372,6 +1372,10 @@
             "title": "Channel Count",
             "type": "integer"
           },
+          "signal_count": {
+            "title": "Signal Count",
+            "type": "integer"
+          },
           "stamp_collected": {
             "title": "Stamp Collected",
             "type": "boolean"
@@ -1383,6 +1387,7 @@
           "mood",
           "item_count",
           "channel_count",
+          "signal_count",
           "stamp_collected"
         ],
         "title": "BriefingSent",

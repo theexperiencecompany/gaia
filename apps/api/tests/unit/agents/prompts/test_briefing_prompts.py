@@ -6,6 +6,8 @@ ordinary morning, changes what the model tells the user with nothing else notici
 an active user told the briefs are about to stop, or a dormant one never warned.
 """
 
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 import pytest
@@ -18,6 +20,7 @@ from app.agents.prompts.briefing_prompts import (
     build_weekly_digest_prompt,
     reader_line,
     voice_correction_note,
+    voice_unreadable_note,
 )
 
 _GOAL = "Raising a seed round [mentioned 2026-10-01]"
@@ -130,7 +133,22 @@ def _prompt(
             offer_lighter_cadence=offer_lighter_cadence,
         ),
         recent_openings=recent_openings or [],
+        max_message_chars=1500,
     )
+
+
+@pytest.mark.regression
+def test_the_prompt_states_the_length_cap_the_message_is_checked_against() -> None:
+    """The writer was never told the cap, so a busy day ran over it on both attempts."""
+    prompt = build_briefing_voice_prompt(
+        date_local="Tuesday, October 14",
+        blocks=_BLOCKS,
+        situation=VoiceSituation(),
+        recent_openings=[],
+        max_message_chars=2100,
+    )
+
+    assert "``message`` stays under 2100 characters" in prompt
 
 
 def test_an_ordinary_morning_goes_straight_from_goal_memory_to_the_goal_guidance() -> None:
@@ -215,6 +233,18 @@ def test_the_correction_note_lists_each_problem_on_its_own_line_between_header_a
     ]
 
 
+def test_the_unreadable_note_lists_each_problem_on_its_own_line_between_header_and_retry() -> None:
+    note = voice_unreadable_note(["mood: Field required", "lede: Field required"])
+
+    assert note.splitlines() == [
+        "## YOUR LAST REPLY COULD NOT BE READ",
+        "It was not the voice JSON object:",
+        "- mood: Field required",
+        "- lede: Field required",
+        "Return the whole JSON again in one ```json fence, with every field of the schema.",
+    ]
+
+
 def test_recent_openings_are_listed_for_the_model_to_avoid() -> None:
     prompt = _prompt(recent_openings=["Priya replied overnight.", "Big day for the raise."])
 
@@ -233,11 +263,13 @@ def test_without_recent_briefs_no_openings_block_is_added() -> None:
 
 
 @pytest.mark.parametrize(
-    "prompt",
-    [_prompt(), build_weekly_digest_prompt(date_local="2026-10-18", week_summary_block="-")],
+    "build",
+    [_prompt, partial(build_weekly_digest_prompt, date_local="2026-10-18", week_summary_block="-")],
     ids=["daily", "weekly"],
 )
-def test_daily_and_weekly_share_one_message_voice(prompt: str) -> None:
+def test_daily_and_weekly_share_one_message_voice(build: Callable[[], str]) -> None:
+    prompt = build()
+
     assert "## THE MESSAGE (``message``)" in prompt
     assert '"message": "<the brief as a text, see THE MESSAGE>"' in prompt
 

@@ -63,8 +63,9 @@ NOT_A_TOOL: dict[tuple[str, str], str] = {
     ("services/mcp/custom_mcp_index.py", "store"): "a LangGraph store batch write",
     ("db/chroma/index_warmup.py", "store"): "a LangGraph store batch write",
     ("utils/file_utils.py", "with_llm_retry(self.llm)"): "an LLM summarising file chunks",
-    ("services/workflow/playbook/runner.py", "builder.compile()"): (
-        "a playbook replay graph; its tools run in its DynamicToolNode, which records them"
+    ("services/workflow/playbook/tool_graph.py", "graph"): (
+        "a playbook replay or scout learn graph; its tools run in its DynamicToolNode, which "
+        "records them"
     ),
 }
 

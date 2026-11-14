@@ -9,7 +9,6 @@ The expected JSON block format lives in the subagent prompt
 (app/agents/prompts/subagent_prompts.py); this module validates it.
 """
 
-import re
 from typing import Literal, Self, TypedDict
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
@@ -18,6 +17,7 @@ from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
 from app.models.trigger_gate_models import GateCondition
 from app.models.workflow_models import TriggerType
+from app.utils.markdown_utils import json_blocks
 from shared.py.wide_events import log
 
 # The assistant speaks "scheduled"; every other layer (TriggerConfig, the REST
@@ -223,24 +223,13 @@ def _result_from_payload(candidate: str, response: str) -> ParseResult | None:
     return None
 
 
-def _json_candidates(response: str) -> list[str]:
-    """Every substring of the reply that might be the structured output.
-
-    Fenced blocks first (what the prompt asks for), then the whole reply: the
-    model sometimes emits a bare JSON object with no fence, and without this
-    fallback that raw JSON is handed to the user verbatim as the "question".
-    """
-    fenced = re.findall(r"```(?:json)?\s*\n?(.*?)\n?```", response, re.DOTALL)
-    return [*fenced, response]
-
-
 def parse_subagent_response(response: str) -> ParseResult:
     """Extract the workflow assistant's structured output from its reply.
 
     Falls back to treating the whole reply as a clarifying message when it
     carries no recognizable JSON payload.
     """
-    for candidate in _json_candidates(response):
+    for candidate in json_blocks(response):
         result = _result_from_payload(candidate, response)
         if result is not None:
             return result

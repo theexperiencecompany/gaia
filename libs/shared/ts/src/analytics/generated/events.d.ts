@@ -443,6 +443,7 @@ export interface EventProperties {
     "mood": string;
     "item_count": number;
     "channel_count": number;
+    "signal_count": number;
     "stamp_collected": boolean;
   };
   "browser:engine_switched": {
