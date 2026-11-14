@@ -30,16 +30,11 @@ export {
 export type { ToolFixture } from "./fixtures";
 export { getFixture, TOOL_FIXTURES } from "./fixtures";
 export type {
-  ChatStreamEvent,
   StreamToolDataEntry,
-  StreamToolOutput,
-  SubagentEndPayload,
-  SubagentStartPayload,
   TodoProgressSnapshot,
 } from "./streaming";
 export {
   extractToolProgressMessage,
-  parseChatStreamEvent,
   TOOL_CALLS_DATA_TOOL_NAME,
 } from "./streaming";
 export type {
