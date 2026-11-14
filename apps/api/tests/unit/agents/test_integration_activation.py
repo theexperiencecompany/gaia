@@ -21,7 +21,7 @@ from app.agents.core.subagents.integration_activation import (
     _mcp_preload_names,
     activate_integration,
 )
-from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.core.subagents.integration_target import CustomMcpSubagent
 from app.agents.prompts.user_instructions_prompts import USER_INSTRUCTIONS_HEADER
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.constants.integrations import ConnectMode

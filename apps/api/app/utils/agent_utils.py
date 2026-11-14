@@ -7,7 +7,7 @@ from typing import Any, cast
 from langchain_core.messages import ToolCall
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.agents.core.subagents.integration_resolution import get_integration_target
+from app.agents.core.subagents.integration_target import get_integration_target
 from app.agents.tools.core.registry import UNKNOWN_TOOL_CATEGORY, ToolRegistry, get_tool_registry
 from app.agents.tools.execute.unwrap import (
     ExecuteCallArgs,
@@ -16,9 +16,11 @@ from app.agents.tools.execute.unwrap import (
 )
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
 from app.constants.browser import BROWSER_TOOL_CATEGORY
+from app.constants.cache import CUSTOM_INT_METADATA_CACHE_PREFIX, CUSTOM_INT_METADATA_TTL
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
+from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.models.chat_models import ToolDataEntry
 from app.models.oauth_models import OAuthIntegration
@@ -415,12 +417,6 @@ async def _integration_display(integration_id: str) -> tuple[str | None, str | N
     platform = get_integration_by_id(integration_id)
     if platform is not None:
         return platform.icon_url, platform.name
-    from app.constants.cache import (
-        CUSTOM_INT_METADATA_CACHE_PREFIX,
-        CUSTOM_INT_METADATA_TTL,
-    )
-    from app.db.redis import get_cache, set_cache
-
     cache_key = f"{CUSTOM_INT_METADATA_CACHE_PREFIX}:{integration_id}"
     cached = await get_cache(cache_key, IntegrationDisplayMetadata)
     if cached:

@@ -20,7 +20,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import PutOp, SearchItem
 import pytest
 
-from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.core.subagents.integration_target import CustomMcpSubagent
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.models.integration_models import UserToolNamespaces
 from app.models.mcp_config import MCPConfig

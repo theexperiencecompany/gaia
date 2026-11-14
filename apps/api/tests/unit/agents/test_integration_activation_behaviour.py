@@ -12,7 +12,7 @@ from app.agents.core.subagents.integration_activation import (
     _connect_and_activate,
     _overview_section,
 )
-from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.core.subagents.integration_target import CustomMcpSubagent
 from app.agents.core.subagents.registry import all_subagents
 from app.constants.mcp import MCP_PRELOAD_ALL_MAX
 from app.models.subagent_models import Subagent
