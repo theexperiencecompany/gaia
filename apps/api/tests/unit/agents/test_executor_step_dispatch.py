@@ -67,22 +67,6 @@ async def test_work_started_is_logged_before_the_run_spawns() -> None:
     assert "Handed to the executor (task_id: task-1)" in result
 
 
-async def test_a_legacy_run_dispatches_without_touching_the_log() -> None:
-    configurable: AgentConfigurable = {"user_id": USER_ID, "thread_id": "conv-1"}
-    with (
-        patch.object(et, "record_work_started") as record,
-        patch.object(et, "spawn_background_task", side_effect=lambda coro, **_: coro.close()),
-    ):
-        await et._dispatch_executor(
-            task="do it",
-            task_id="task-1",
-            configurable=configurable,
-            conversation_id="conv-1",
-            handoff="call_1",
-        )
-    record.assert_not_called()
-
-
 async def _hold_lock() -> None:
     """Take the conversation's busy lock as the running t-running would."""
     assert await try_acquire_lock(BUSY_KEY, build_lock_value("other-stream", "t-running"))

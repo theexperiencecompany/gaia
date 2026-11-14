@@ -42,10 +42,16 @@ def _row(approval_id: str) -> ApprovalLedgerDocument:
 
 
 @pytest.fixture
-def ledger() -> Iterator[dict[str, ApprovalLedgerDocument]]:
-    rows = {approval_id: _row(approval_id) for approval_id in CREATED}
+def log_state() -> AsyncMock:
+    """Serve the conversation log's state read, folded from ENTRIES."""
     state, _ = fold(ENTRIES)
-    ports = SimpleNamespace(log=SimpleNamespace(state=AsyncMock(return_value=state)))
+    return AsyncMock(return_value=state)
+
+
+@pytest.fixture
+def ledger(log_state: AsyncMock) -> Iterator[dict[str, ApprovalLedgerDocument]]:
+    rows = {approval_id: _row(approval_id) for approval_id in CREATED}
+    ports = SimpleNamespace(log=SimpleNamespace(state=log_state))
     with (
         patch(f"{MODULE}.runtime_ports", return_value=ports),
         patch(
@@ -67,11 +73,12 @@ def _screen_order() -> list[str]:
 
 
 async def test_pending_approvals_number_in_the_order_the_screen_asks_them(
-    ledger: dict[str, ApprovalLedgerDocument],
+    ledger: dict[str, ApprovalLedgerDocument], log_state: AsyncMock
 ) -> None:
     pending = await pending_approvals("c1", "u1")
 
     assert [row.approval_id for row in pending] == _screen_order() == ["email", "pay"]
+    log_state.assert_awaited_once_with("c1", "u1")
 
 
 async def test_a_pending_approval_without_a_ledger_row_fails_instead_of_shifting_the_numbers(

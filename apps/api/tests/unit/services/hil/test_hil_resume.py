@@ -71,7 +71,9 @@ class TestResumeAfterApproval:
     async def test_an_unknown_owner_type_raises(self) -> None:
         with patch(f"{MODULE}.approval_ledger_repository") as repo:
             repo.claim_resume = AsyncMock(return_value=True)
-            with pytest.raises(UnknownResumeOwnerError):
+            with pytest.raises(
+                UnknownResumeOwnerError, match=r"^approval ap_bg1 names unknown owner 'cron'$"
+            ):
                 await resume_owner_after_approval(_row(owner_run_type="cron", owner_id="x"))
 
     async def test_a_resume_failure_raises_to_the_tap(self) -> None:
@@ -141,7 +143,10 @@ class TestResumeWorkflow:
                 new=AsyncMock(return_value=False),
             ),
             patch(f"{MODULE}.get_last_run_brief", new=AsyncMock(return_value="")),
-            pytest.raises(ResumeNotQueuedError),
+            pytest.raises(
+                ResumeNotQueuedError,
+                match=r"^the workflow resume for approval ap_bg1 was not queued$",
+            ),
         ):
             await _resume_workflow(_row(owner_run_type="workflow", owner_id="wf-7"))
 

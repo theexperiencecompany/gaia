@@ -1439,7 +1439,10 @@ class TestTheInboxWake:
     async def test_no_redis_raises_instead_of_dropping_the_wake(self, seams: LedgerSeams) -> None:
         seams.redis.client = None
 
-        with pytest.raises(LedgerWakeUndeliveredError):
+        with pytest.raises(
+            LedgerWakeUndeliveredError,
+            match=r"^no Redis client: the UNKNOWN wake for ap_1 cannot be sent$",
+        ):
             await _wake_agent(_doc(), "UNKNOWN", None)
 
         seams.inbox.assert_not_called()
@@ -1449,6 +1452,11 @@ class TestTheInboxWake:
 
         with pytest.raises(RuntimeError, match="redis down"):
             await _wake_agent(_doc(), "UNKNOWN", None)
+
+    async def test_a_wake_with_no_result_is_the_decision_alone(self, seams: LedgerSeams) -> None:
+        await _wake_agent(_doc(), "UNKNOWN", None)
+
+        assert _inbox_lines(seams)[0][1] == "DECISIONS: ap_1=UNKNOWN Send it"
 
     async def test_a_long_result_is_clipped_in_the_wake(self, seams: LedgerSeams) -> None:
         await _wake_agent(_doc(), "UNKNOWN", "x" * 600)

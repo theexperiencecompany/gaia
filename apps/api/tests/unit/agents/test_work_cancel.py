@@ -10,7 +10,7 @@ from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_progress import progress_key
 from app.agents.core.background.run_stop import stop_requested
 from app.agents.core.background.work_cancel import cancel_named_work
-from app.constants.agents import AgentTag
+from app.constants.agents import PLAYBOOK_REPLAY_STREAM_ID_PREFIX, AgentTag
 from app.constants.browser import BrowserStopOutcome
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
 from app.models.work_cancel_models import WorkCancelled
@@ -188,3 +188,12 @@ async def test_naming_only_queued_work_spares_the_run(pending_approvals: Approva
     assert work == WorkCancelled(executor_spared=True, pending_task_ids=["queued-task"])
     assert not await stop_requested(EXECUTOR_STREAM)
     pending_approvals.ledger.assert_not_awaited()
+
+
+async def test_a_named_playbook_replay_is_told_to_stop(no_approvals: ApprovalSeams) -> None:
+    replay = f"{PLAYBOOK_REPLAY_STREAM_ID_PREFIX}wf-1"
+
+    work = await cancel_named_work(CONVERSATION, USER, [replay], approval_ids=[])
+
+    assert work.replay_ids == [replay]
+    assert await stop_requested(replay)

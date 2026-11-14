@@ -158,6 +158,7 @@ def test_allowlist_snapshot(gated_app: FastAPI) -> None:
         "/api/v1/blogs/slug",
         "/api/v1/bot/auth-status/platform/platform_user_id",
         "/api/v1/bot/conversations/active",
+        "/api/v1/bot/conversations/conversation_id/delivered",
         "/api/v1/bot/create-link-token",
         "/api/v1/bot/delivery-failures",
         "/api/v1/bot/link-token-info/token",

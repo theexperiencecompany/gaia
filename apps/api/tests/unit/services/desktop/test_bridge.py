@@ -75,8 +75,15 @@ class TestRequestDesktopAction:
         pubsub.subscribe.assert_awaited_once_with(f"{DESKTOP_RESULT_CHANNEL_PREFIX}{request_id}")
         user_id, message = broadcast.await_args.args
         assert user_id == "u1"
-        assert message["type"] == DESKTOP_TOOL_REQUEST_MESSAGE
-        assert message["request"]["request_id"] == request_id
+        assert message == {
+            "type": DESKTOP_TOOL_REQUEST_MESSAGE,
+            "request": {
+                "request_id": request_id,
+                "tool": "read_clipboard",
+                "params": {},
+                "timeout_ms": int(bridge.DESKTOP_TOOL_TIMEOUT_SECONDS) * 1000,
+            },
+        }
         pubsub.get_message.assert_awaited_with(
             ignore_subscribe_messages=True, timeout=bridge._PUBSUB_POLL_SECONDS
         )
