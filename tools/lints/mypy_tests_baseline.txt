@@ -355,7 +355,6 @@ apps/api/tests/unit/services/test_device_server_lifecycle.py	misc
 apps/api/tests/unit/services/test_device_server_lifecycle.py	valid-type
 apps/api/tests/unit/services/test_email_delivery.py	arg-type
 apps/api/tests/unit/services/test_file_service.py	list-item
-apps/api/tests/unit/services/test_integration_inference_service.py	misc
 apps/api/tests/unit/services/test_lab_hooks.py	attr-defined
 apps/api/tests/unit/services/test_lab_hooks.py	list-item
 apps/api/tests/unit/services/test_lab_keepwarm.py	misc

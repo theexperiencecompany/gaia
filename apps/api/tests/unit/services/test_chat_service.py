@@ -12,9 +12,9 @@ All external dependencies (Redis/stream_manager, MongoDB, agent, LLM) are
 mocked so tests exercise service logic only.
 """
 
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Iterator, Sequence
 import contextlib
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import json
 import time
 from typing import Any
@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage
 from prometheus_client import REGISTRY
 import pytest
+import time_machine
 
 from app.agents.core.background.session import (
     RunKind,
@@ -34,6 +35,7 @@ from app.core.stream_manager import stream_manager as _stream_manager
 from app.models.chat_models import ConversationModel, MessageKind
 from app.models.message_models import MessageRequestWithHistory, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser
+from app.services.chat import stream as chat_stream
 from app.services.chat.chunks import (
     extract_response_text as _extract_response_text,
     extract_tool_data,
@@ -69,7 +71,12 @@ from shared.py.analytics.context import (
     current_analytics_context,
 )
 from shared.py.wide_events import log as _log
-from tests.helpers import ScriptedGraph, agent_update_event, message_chunk_event
+from tests.helpers import (
+    GraphStreamEvent,
+    ScriptedGraph,
+    agent_update_event,
+    message_chunk_event,
+)
 
 
 def _created_conversation(conversation_id: str, description: str) -> ConversationModel:
@@ -451,6 +458,29 @@ class TestSaveBotReply:
 # ---------------------------------------------------------------------------
 # run_chat_stream_background — top-level orchestrator
 # ---------------------------------------------------------------------------
+
+
+#: What the follow-up node writes as it starts, before follow-ups generate.
+_GRAPH_COMPLETION_EVENT: GraphStreamEvent = ((), "custom", {"main_response_complete": True})
+#: The same completion as the graph driver forwards it to the consume loop.
+_COMPLETION_CHUNK = f"data: {json.dumps({'main_response_complete': True})}\n\n"
+
+
+def _data(payload: dict[str, object]) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+def _nostream(complete_message: str) -> str:
+    return f"nostream: {json.dumps({'complete_message': complete_message})}"
+
+
+def _boundary(message_id: str, *, discarded: bool) -> str:
+    return _data({"message_boundary": {"message_id": message_id, "discarded": discarded}})
+
+
+async def _yielding(*chunks: str) -> AsyncGenerator[str, None]:
+    for chunk in chunks:
+        yield chunk
 
 
 def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
@@ -1998,6 +2028,7 @@ class TestRunChatStreamBackground:
         user: AuthenticatedUser,
         *reply_pieces: str,
         stream_manager: MagicMock | None = None,
+        after_reply: Sequence[GraphStreamEvent] = (),
     ) -> tuple[list[tuple[str, dict[str, Any]]], AsyncMock, MagicMock]:
         """Run one turn whose comms reply streams as reply_pieces; return the JSON frames published, the save and the capture.
 
@@ -2013,6 +2044,7 @@ class TestRunChatStreamBackground:
             [
                 *(message_chunk_event(message_id="m1", content=piece) for piece in reply_pieces),
                 agent_update_event(AIMessage(id="m1", content="".join(reply_pieces))),
+                *after_reply,
             ]
         )
         sm = stream_manager or _make_stream_manager_mock()
@@ -2044,6 +2076,180 @@ class TestRunChatStreamBackground:
         ]
         return frames, save, capture
 
+    async def _run_agent(
+        self, user: AuthenticatedUser, agent_stream: AsyncGenerator[str, None]
+    ) -> tuple[list[tuple[str, dict[str, Any]]], AsyncMock]:
+        """Run one turn whose agent yields agent_stream; return the JSON frames published after init, and the save."""
+        body = MessageRequestWithHistory(
+            message="Booked it",
+            messages=[{"role": "user", "content": "Booked it"}],
+            conversation_id="conv_existing_123",
+            turn_id="umsg_1",
+        )
+        sm = _make_stream_manager_mock()
+        save = AsyncMock()
+        with (
+            _patch_stream_manager(sm),
+            patch("app.services.chat.stream.call_agent", new=MagicMock(return_value=agent_stream)),
+            patch("app.services.chat.stream.save_bot_reply", new=save),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.capture"),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_turn",
+                body=body,
+                user=user,
+                conversation_id="conv_existing_123",
+            )
+        frames = [
+            (call.args[0], json.loads(call.args[1][len("data: ") :]))
+            for call in sm.publish_chunk.call_args_list
+            if call.args[1].startswith("data: {")
+        ]
+        return frames[1:], save
+
+    async def test_a_completion_before_anything_shows_is_released_after_the_reaction(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, _ = await self._run_agent(
+            test_user, _yielding(_COMPLETION_CHUNK, _nostream("<EMOJI>😎</EMOJI>"))
+        )
+
+        assert frames == [
+            ("stream_turn", {"emoji_ack": {"emoji": "😎", "reacts_to_message_id": "umsg_1"}}),
+            ("stream_turn", {"main_response_complete": True}),
+            ("stream_turn", {"main_response_complete": True}),
+        ]
+
+    async def test_a_held_completion_is_released_once(self, test_user: AuthenticatedUser) -> None:
+        frames, _ = await self._run_agent(
+            test_user,
+            _yielding(_COMPLETION_CHUNK, _nostream("Booked."), _nostream("Booked.")),
+        )
+
+        assert frames == [
+            ("stream_turn", {"main_response_complete": True}),
+            ("stream_turn", {"main_response_complete": True}),
+        ]
+
+    async def test_a_completion_after_text_shows_is_forwarded_as_it_arrives(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, _ = await self._run_agent(
+            test_user,
+            _yielding(_data({"response": "Booked."}), _COMPLETION_CHUNK, _nostream("Booked.")),
+        )
+
+        assert [frame for _, frame in frames] == [
+            {"response": "Booked."},
+            {"main_response_complete": True},
+            {"main_response_complete": True},
+        ]
+
+    async def test_a_completion_after_a_retracted_preamble_is_still_held_for_the_reaction(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """The preamble left the screen, so a completion forwarded then would stop the spinner on nothing."""
+        frames, _ = await self._run_agent(
+            test_user,
+            _yielding(
+                _data({"response": "Let me check."}),
+                _boundary("m1", discarded=True),
+                _COMPLETION_CHUNK,
+                _nostream("<EMOJI>👍</EMOJI>"),
+            ),
+        )
+
+        assert [next(iter(frame)) for _, frame in frames] == [
+            "response",
+            "message_boundary",
+            "emoji_ack",
+            "main_response_complete",
+            "main_response_complete",
+        ]
+
+    async def test_a_custom_frame_with_a_null_completion_flag_streams_through(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, save = await self._run_agent(
+            test_user,
+            _yielding(_data({"main_response_complete": None}), _nostream("Booked.")),
+        )
+
+        assert frames[0] == ("stream_turn", {"main_response_complete": None})
+        assert save.await_args.kwargs["reply"].complete_message == "Booked."
+
+    async def test_chunks_after_the_final_text_are_still_handled(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """Follow-up actions generate after comms' final text arrives."""
+        follow_ups = ["Add it to my calendar"]
+        frames, save = await self._run_agent(
+            test_user,
+            _yielding(_nostream("Booked."), _data({"follow_up_actions": follow_ups})),
+        )
+
+        assert ("stream_turn", {"follow_up_actions": follow_ups}) in frames
+        assert save.await_args.kwargs["reply"].follow_up_actions == follow_ups
+
+    async def test_a_reply_is_dated_by_its_first_text_not_earlier_frames_or_later_text(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        start = datetime(2026, 11, 11, 18, 0, tzinfo=UTC)
+        with time_machine.travel(start, tick=False) as clock:
+
+            async def agent() -> AsyncGenerator[str, None]:
+                yield _data({"keepalive": True})
+                clock.shift(timedelta(seconds=10))
+                yield _data({"response": "Booked"})
+                clock.shift(timedelta(seconds=10))
+                yield _data({"response": " it."})
+                clock.shift(timedelta(seconds=10))
+                yield _nostream("Booked it.")
+
+            _, save = await self._run_agent(test_user, agent())
+
+        assert save.await_args.kwargs["reply"].bot_timestamp == start + timedelta(seconds=10)
+
+    async def test_a_reply_that_opens_with_a_card_is_dated_by_the_card(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """A raw tool field only becomes a card once normalised, and still counts as shown."""
+        start = datetime(2026, 11, 11, 18, 0, tzinfo=UTC)
+        with time_machine.travel(start, tick=False) as clock:
+
+            async def agent() -> AsyncGenerator[str, None]:
+                yield _data({"keepalive": True})
+                clock.shift(timedelta(seconds=10))
+                yield _data({"calendar_options": [{"id": 1, "title": "Standup"}]})
+                clock.shift(timedelta(seconds=10))
+                yield _data({"response": "Pick a slot."})
+                clock.shift(timedelta(seconds=10))
+                yield _nostream("Pick a slot.")
+
+            _, save = await self._run_agent(test_user, agent())
+
+        assert save.await_args.kwargs["reply"].bot_timestamp == start + timedelta(seconds=10)
+
+    async def test_a_reply_is_dated_by_the_text_it_kept_not_a_retracted_attempt(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        start = datetime(2026, 11, 11, 18, 0, tzinfo=UTC)
+        with time_machine.travel(start, tick=False) as clock:
+
+            async def agent() -> AsyncGenerator[str, None]:
+                yield _data({"response": "Let me check."})
+                yield _boundary("m1", discarded=True)
+                clock.shift(timedelta(seconds=10))
+                yield _data({"response": "Booked."})
+                yield _boundary("m2", discarded=False)
+                clock.shift(timedelta(seconds=10))
+                yield _nostream("Booked.")
+
+            _, save = await self._run_agent(test_user, agent())
+
+        assert save.await_args.kwargs["reply"].bot_timestamp == start + timedelta(seconds=10)
+
     async def test_a_react_turn_tells_the_client_to_fold_the_reply_into_a_reaction(
         self, test_user: AuthenticatedUser
     ) -> None:
@@ -2056,6 +2262,49 @@ class TestRunChatStreamBackground:
         # Sent before the completion frame, so the client never closes the turn as an empty bubble.
         order = [next(iter(frame)) for _, frame in frames]
         assert order.index("emoji_ack") < order.index("main_response_complete")
+
+    @pytest.mark.regression
+    async def test_a_reaction_lands_before_the_graphs_early_completion_frame(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """The follow-up node announces completion before follow-ups generate; the web client dropped its spinner there and showed nothing until the reaction came seconds later."""
+        frames, _, _ = await self._run_turn(
+            test_user, "<EMOJI>😎</EMOJI>", after_reply=[_GRAPH_COMPLETION_EVENT]
+        )
+
+        order = [next(iter(frame)) for _, frame in frames]
+        first_completion = order.index("main_response_complete")
+        assert order.index("emoji_ack") < first_completion
+
+    @pytest.mark.regression
+    async def test_a_reply_is_dated_when_it_first_showed_not_when_its_turn_ended(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        """Dated at completion, a reply sorted below a message the user sent after reading it (prod 49ad837c)."""
+        shown_at = datetime(2026, 11, 11, 18, 36, 30, tzinfo=UTC)
+        sm = _make_stream_manager_mock()
+        with time_machine.travel(shown_at, tick=False) as clock:
+
+            async def publish(stream_id: str, chunk: str) -> None:
+                if '"response"' in chunk:
+                    clock.shift(timedelta(seconds=30))
+
+            sm.publish_chunk.side_effect = publish
+            _, save, _ = await self._run_turn(
+                test_user, "Want me to connect it?", stream_manager=sm
+            )
+
+        assert save.await_args.kwargs["reply"].bot_timestamp == shown_at
+
+    async def test_a_text_reply_forwards_the_graphs_early_completion_frame(
+        self, test_user: AuthenticatedUser
+    ) -> None:
+        frames, _, _ = await self._run_turn(
+            test_user, "Booked your 9am flight.", after_reply=[_GRAPH_COMPLETION_EVENT]
+        )
+
+        completions = [frame for _, frame in frames if "main_response_complete" in frame]
+        assert len(completions) == 2
 
     @pytest.mark.regression
     async def test_a_reaction_acknowledging_a_hand_off_lands_before_the_work_finishes(
@@ -2427,3 +2676,21 @@ class TestAFreshStreamState:
 
         assert state.saved is False
         assert state.attached is False
+        assert state.held_completion is False
+
+
+class TestPublishAnswer:
+    async def test_a_held_completion_is_released_once_and_left_unheld(self) -> None:
+        state = _StreamState()
+        state.complete_message = "Booked."
+        state.held_completion = True
+        sm = _make_stream_manager_mock()
+
+        with _patch_stream_manager(sm):
+            await chat_stream._publish_answer("stream_a", state)
+            await chat_stream._publish_answer("stream_a", state)
+
+        assert [call.args for call in sm.publish_chunk.call_args_list] == [
+            ("stream_a", _COMPLETION_CHUNK)
+        ]
+        assert state.held_completion is False

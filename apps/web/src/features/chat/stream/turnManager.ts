@@ -18,7 +18,7 @@ import { v4 as uuidv4 } from "uuid";
 import { db } from "@/lib/db/chatDb";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import { useChatStore } from "@/stores/chatStore";
-import { PENDING_KEY_PREFIX } from "@/stores/streamStore";
+import { PENDING_KEY_PREFIX, steerSessionKey } from "@/stores/streamStore";
 import { buildSendArgsFromRecord } from "./messageRecord";
 import { TurnSession } from "./turnSession";
 import type { SendArgs } from "./types";
@@ -99,7 +99,7 @@ class TurnManager {
   /** Start a turn, or steer the live one when this conversation is mid-turn.
    *
    *  A mid-turn send starts immediately as a steering session (same POST, same
-   *  bubbles, no shared-slot ownership — see TurnSession's `steering` flag);
+   *  bubbles, its own UI slot — see TurnSession's `steering` flag);
    *  the backend folds it into the live run's next reasoning step. Only a
    *  not-yet-created conversation still queues — no id, nothing to fold into.
    */
@@ -108,7 +108,10 @@ class TurnManager {
 
     if (this.sessions.has(key)) {
       if (!key.startsWith(PENDING_KEY_PREFIX)) {
-        const steerKey = `${key}:steer:${args.options.optimisticUserId ?? uuidv4()}`;
+        const steerKey = steerSessionKey(
+          key,
+          args.options.optimisticUserId ?? uuidv4(),
+        );
         streamLog("lifecycle", "send:steer", {
           turnKey: steerKey,
           conversationId: args.options.conversationId,

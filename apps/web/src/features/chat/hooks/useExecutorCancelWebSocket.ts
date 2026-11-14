@@ -11,6 +11,8 @@ interface ExecutorCancelledEvent {
   type: "executor.cancelled";
   conversation_id: string;
   cancelled?: string[];
+  /** Everything was stopped: the running executor and every steer's pending work. */
+  cancel_all?: boolean;
 }
 
 /**
@@ -22,13 +24,13 @@ interface ExecutorCancelledEvent {
  */
 export function useExecutorCancelWebSocket() {
   const handleCancelled = useCallback((raw: unknown) => {
-    const { conversation_id } = raw as ExecutorCancelledEvent;
+    const { conversation_id, cancel_all } = raw as ExecutorCancelledEvent;
     if (!conversation_id) return;
 
-    const state = useStreamStore.getState();
-    if (state.sessions[conversation_id]?.phase === "awaiting_executor") {
-      state.endSession(conversation_id);
-    }
+    // A targeted cancel cannot say which wait it ended, so it ends the oldest.
+    const store = useStreamStore.getState();
+    if (cancel_all) store.endAllAwaitingSessions(conversation_id);
+    else store.endAwaitingSession(conversation_id);
   }, []);
 
   useEffect(() => {

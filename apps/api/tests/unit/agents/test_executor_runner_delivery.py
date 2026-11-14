@@ -13,7 +13,7 @@ Two invariants, both owned by result_delivery.py:
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import time
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
@@ -1252,7 +1252,7 @@ class TestMergeResumedResultFailurePaths:
     async def _merge(
         self, *, existing, set_response=True, set_tool_data=True, new_cards=None, calls=None
     ):
-        bot_message = MessageModel(type="bot", response="new text", date="2026-01-01")
+        bot_message = MessageModel(type="bot", response="new text", date="2026-03-03")
         bot_message.message_id = "orig-msg-1"
         with (
             patch.object(
@@ -1274,7 +1274,12 @@ class TestMergeResumedResultFailurePaths:
                 _run(RunKind.QUEUED, bot_message_id="orig-msg-1"), bot_message, new_cards
             )
         if calls is not None:
-            calls.update(get_message=get_msg, set_response=set_resp, set_tool_data=set_td)
+            calls.update(
+                get_message=get_msg,
+                set_response=set_resp,
+                set_tool_data=set_td,
+                bot_message=bot_message,
+            )
         return merged
 
     async def test_a_missing_original_message_returns_none(self) -> None:
@@ -1297,6 +1302,16 @@ class TestMergeResumedResultFailurePaths:
         )
 
         assert [e["tool_name"] for e in merged] == ["old_tool"]
+
+    @pytest.mark.regression
+    async def test_a_merged_result_keeps_the_original_messages_place(self) -> None:
+        """The push carried the resume's own time under the original id, so the turn jumped below everything sent while approval was pending."""
+        existing = MessageModel(type="bot", response="old", date="2026-01-01")
+        calls: dict[str, object] = {}
+
+        await self._merge(existing=existing, calls=calls)
+
+        assert cast(MessageModel, calls["bot_message"]).date == "2026-01-01"
 
     async def test_a_successful_merge_returns_original_plus_new_cards(self) -> None:
         existing = MessageModel(type="bot", response="old", date="2026-01-01")

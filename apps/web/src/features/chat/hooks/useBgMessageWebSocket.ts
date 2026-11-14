@@ -113,12 +113,8 @@ export function useBgMessageWebSocket() {
     // End the awaiting-executor session AFTER the result message is in the
     // store, so loading hands off to the rendered result in the same frame — no
     // flash of "loading gone" before the result appears.
-    const stream = useStreamStore.getState();
-    if (
-      isBotReply &&
-      stream.sessions[conversation_id]?.phase === "awaiting_executor"
-    ) {
-      stream.endSession(conversation_id);
+    if (isBotReply) {
+      useStreamStore.getState().endAwaitingSession(conversation_id);
     }
     streamLog("ws", "conversation.new_message", {
       conversationId: conversation_id,

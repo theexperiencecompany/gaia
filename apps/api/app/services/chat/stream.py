@@ -60,6 +60,7 @@ from app.models.stream_events import (
     EmojiAckPayload,
     ErrorFrame,
     MainResponseCompleteFrame,
+    MessageBoundaryPayload,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
@@ -72,6 +73,7 @@ from app.services.chat.persistence import (
     save_user_message,
     user_message_content_from,
 )
+from app.services.chat.reply_visibility import ReplyVisibility
 from app.services.chat.state import (
     aggregate_usage_metadata,
     inject_todo_progress,
@@ -236,6 +238,7 @@ class _StreamState:
         "e2e_full_ms",
         "error",
         "follow_up_actions",
+        "held_completion",
         "is_cancelled",
         "message_kind",
         "queued",
@@ -251,7 +254,13 @@ class _StreamState:
         "turn_completed_at",
         "usage_metadata",
         "user_message_id",
+        "visibility",
     )
+
+    @property
+    def reply_date(self) -> datetime | None:
+        """The saved reply's date: when it first showed, else when its turn completed."""
+        return self.visibility.first_shown_at or self.turn_completed_at
 
     def __init__(self, turn_id: str | None = None) -> None:
         self.complete_message: str = ""
@@ -284,10 +293,14 @@ class _StreamState:
         # badge. Unmutated: _persist_turn overwrites both before anything reads them.
         self.message_kind: MessageKind = MessageKind.TEXT  # pragma: no mutate
         self.reacts_to_message_id: str | None = None  # pragma: no mutate
+        # The graph announced completion before anything visible streamed; it is
+        # released once comms' final text says whether the answer is a reaction.
+        self.held_completion: bool = False
         # When comms finished — stamped before any voice-mode executor wait so
         # the saved user/comms messages keep timestamps EARLIER than a delegated
         # executor's answer (saved mid-wait). The frontend sorts by createdAt.
         self.turn_completed_at: datetime | None = None
+        self.visibility: ReplyVisibility = ReplyVisibility()
         # Monotonic stamps (never logged raw) and their ms derivations. A None
         # ms means the span never happened — never zero-filled.
         self.t0_perf: float | None = None
@@ -398,9 +411,6 @@ async def _run_chat_stream(
         # so its array position is correct even if a concurrent stream finishes
         # while we wait for the executor below.
         await _persist_turn(stream_id, body, user, conversation_id, state)
-        # Before the executor wait: a reaction acknowledging a hand-off lands now,
-        # not beside the result the work produces minutes later.
-        await _publish_emoji_ack(stream_id, state)
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         # A stop pressed during the executor wait arrives after the consume
         # loop's check: re-read it here or the turn closes as completed.
@@ -730,6 +740,13 @@ async def _consume_agent_stream(
         if chunk.startswith("nostream: "):
             state.complete_message, was_cancelled = _parse_complete_message(chunk)
             state.is_cancelled = state.is_cancelled or was_cancelled
+            await _publish_answer(stream_id, state)
+            continue
+
+        if state.visibility.first_shown_at is None and _is_completion_frame(chunk):
+            # Nothing visible yet, so the answer may be a reaction: a client told the
+            # turn is complete now would show nothing until the reaction arrives.
+            state.held_completion = True
             continue
 
         await _dispatch_stream_chunk(chunk, stream_id, turn, state)
@@ -761,10 +778,15 @@ async def _dispatch_stream_chunk(
         if frames is not None and frames.reasoning is not None:
             absorb_reasoning_delta(frames.reasoning, state.tool_entries)
 
-    if state.ttft_perf is None and extract_response_text(chunk):
+    if extract_response_text(chunk):
+        state.visibility.saw_text()
         # Init/description/keepalive/tool frames carry no "response"
         # key — this is first reply text, not first byte.
-        state.ttft_perf = time.perf_counter()
+        if state.ttft_perf is None:
+            state.ttft_perf = time.perf_counter()
+    if '"message_boundary"' in chunk:
+        _settle_visibility(chunk, state.visibility)
+    cards_before = len(state.tool_entries)
     try:
         state.follow_up_actions, _ = await process_data_chunk(
             stream_id,
@@ -784,6 +806,9 @@ async def _dispatch_stream_chunk(
             conversation_id=turn.conversation_id,
         )
         await stream_manager.publish_chunk(stream_id, chunk)
+    # Counted after normalisation, so a raw tool field (calendar_options) counts as the card it becomes.
+    if len(state.tool_entries) > cards_before:
+        state.visibility.saw_card()
 
 
 def _data_frame_payload(chunk: str) -> dict[str, object] | None:
@@ -949,25 +974,63 @@ async def _handle_stream_error(
     return user_error
 
 
-async def _publish_emoji_ack(stream_id: str, state: _StreamState) -> None:
-    """Attach the turn's emoji ack as a reaction badge; the frame is all the client learns of it."""
-    # Unmutated: resolve_turn_emoji_ack sets kind and target together, so and/or agree.
-    if (
-        state.message_kind is not MessageKind.EMOJI_ACK  # pragma: no mutate
-        or not state.reacts_to_message_id
-    ):
-        return
-    await stream_manager.publish_chunk(
-        stream_id,
-        format_sse_data(
-            EmojiAckFrame(
-                emoji_ack=EmojiAckPayload(
-                    emoji=state.complete_message,
-                    reacts_to_message_id=state.reacts_to_message_id,
-                )
-            ).model_dump()
-        ),
+class _BoundaryChunk(BaseModel):
+    """A ``data:`` chunk, read only for the message boundary it announces."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    message_boundary: MessageBoundaryPayload | None = None
+
+
+def _settle_visibility(chunk: str, visibility: ReplyVisibility) -> None:
+    payload = _data_frame_payload(chunk)
+    boundary = _BoundaryChunk.model_validate(payload).message_boundary if payload else None
+    if boundary is not None:
+        visibility.settle(discarded=boundary.discarded)
+
+
+class _CompletionChunk(BaseModel):
+    """A ``data:`` chunk, read only for whether it announces the answer complete."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    # Untyped: a custom frame carrying any other value is not a completion, and must not fail the turn.
+    main_response_complete: object = None
+
+
+def _is_completion_frame(chunk: str) -> bool:
+    payload = _data_frame_payload(chunk) if chunk.startswith("data: ") else None
+    return (
+        payload is not None
+        and _CompletionChunk.model_validate(payload).main_response_complete is True
     )
+
+
+async def _publish_answer(stream_id: str, state: _StreamState) -> None:
+    """Publish a reaction answer, then any completion the graph announced before it was known.
+
+    Runs as comms' final text arrives, before the executor wait, so a reaction
+    acknowledging a hand-off lands with the ask, not beside the result.
+    """
+    emoji, kind, target = resolve_turn_emoji_ack(state.complete_message, state.user_message_id)
+    # Unmutated: resolve_turn_emoji_ack sets kind and target together, so and/or agree.
+    if kind is MessageKind.EMOJI_ACK and target:  # pragma: no mutate
+        await stream_manager.publish_chunk(
+            stream_id,
+            format_sse_data(
+                EmojiAckFrame(
+                    emoji_ack=EmojiAckPayload(emoji=emoji, reacts_to_message_id=target)
+                ).model_dump()
+            ),
+        )
+    if state.held_completion:
+        state.held_completion = False
+        await stream_manager.publish_chunk(
+            stream_id,
+            format_sse_data(
+                MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True)
+            ),
+        )
 
 
 def resolve_turn_emoji_ack(
@@ -1050,7 +1113,7 @@ async def _persist_turn(
             reply=BotReply(
                 complete_message="",
                 bot_message_id=state.bot_message_id,
-                bot_timestamp=state.turn_completed_at,
+                bot_timestamp=state.reply_date,
                 error=TURN_REPLY_NOT_SAVED,
             ),
         )
@@ -1092,7 +1155,7 @@ async def _save_reply(
             bot_message_id=state.bot_message_id,
             tool_data=state.tool_data,
             metadata=state.usage_metadata,
-            bot_timestamp=state.turn_completed_at,
+            bot_timestamp=state.reply_date,
             error=state.error or None,
             follow_up_actions=state.follow_up_actions or None,
             kind=state.message_kind,

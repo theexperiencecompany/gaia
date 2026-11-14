@@ -19,6 +19,12 @@ interface IntegrationStatusUpdateMessage {
 
 export type IntegrationStatusHandler = (message: unknown) => void;
 
+/** Mark the integration catalog, status map and tool list stale. */
+export function invalidateIntegrationCaches(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+  queryClient.invalidateQueries({ queryKey: toolKeys.all });
+}
+
 /**
  * Refresh the integration caches when the backend says a connection changed.
  *
@@ -33,33 +39,35 @@ export function createIntegrationStatusHandler(
     const message = msg as IntegrationStatusUpdateMessage;
     if (!message.data?.integration_id) return;
 
-    queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-    queryClient.invalidateQueries({ queryKey: toolKeys.all });
+    invalidateIntegrationCaches(queryClient);
   };
 }
 
 /**
- * Subscribe to status broadcasts, returning the teardown for that exact handler.
+ * Subscribe to status broadcasts and socket (re)connects, returning the teardown for those exact handlers.
  *
- * The pairing is the point: unsubscribing a different reference leaks the
- * original, and a leaked handler multiplies invalidations on every navigation.
+ * A broadcast sent while the socket was down is never replayed, so every connect
+ * refreshes the caches. The pairing is the point: unsubscribing a different
+ * reference leaks the original, and a leaked handler multiplies invalidations.
  */
 export function subscribeToIntegrationStatus(
   handler: IntegrationStatusHandler,
+  onConnect: () => void,
 ): () => void {
   wsManager.on(INTEGRATION_STATUS_UPDATE, handler);
+  wsManager.onConnect(onConnect);
   return () => {
     wsManager.off(INTEGRATION_STATUS_UPDATE, handler);
+    wsManager.offConnect(onConnect);
   };
 }
 
 /**
- * Keeps an open integrations page honest when a connection dies elsewhere.
+ * Keeps every open page's integration and tool caches honest, app-wide.
  *
- * The backend broadcasts `integration_status_update` when it marks an
- * integration expired (Composio revoked the grant, or a tool call hit a dead
- * account). Without this the page keeps showing "Connected" until a manual
- * refresh — the exact failure this feature exists to remove.
+ * The backend broadcasts `integration_status_update` on connect, again once an
+ * MCP's tools are stored (they are discovered after the connect returns), and
+ * when it marks an integration expired. Mounted once in the app shell.
  */
 export function useIntegrationStatusWebSocket(): void {
   const queryClient = useQueryClient();
@@ -67,6 +75,13 @@ export function useIntegrationStatusWebSocket(): void {
     () => createIntegrationStatusHandler(queryClient),
     [queryClient],
   );
+  const onConnect = useMemo(
+    () => () => invalidateIntegrationCaches(queryClient),
+    [queryClient],
+  );
 
-  useEffect(() => subscribeToIntegrationStatus(handler), [handler]);
+  useEffect(
+    () => subscribeToIntegrationStatus(handler, onConnect),
+    [handler, onConnect],
+  );
 }
