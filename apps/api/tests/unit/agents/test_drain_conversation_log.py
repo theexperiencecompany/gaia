@@ -57,6 +57,20 @@ async def test_a_closed_feed_drains_nothing() -> None:
     assert await drain_conversation_log_hook(state(), config("r1"), InMemoryStore()) == state()
 
 
+def test_closing_a_feed_never_opened_is_a_no_op() -> None:
+    close_feed("never-opened")
+
+
+async def test_a_state_with_no_messages_yet_takes_the_fed_ones() -> None:
+    open_feed("r1")
+    feed("r1", [JOINED])
+    try:
+        drained = await drain_conversation_log_hook(cast(State, {}), config("r1"), InMemoryStore())
+    finally:
+        close_feed("r1")
+    assert drained["messages"] == [JOINED]
+
+
 def test_a_queued_run_never_carries_the_attempt_feed() -> None:
     queued = safe_configurable(cast(AgentConfigurable, {"thread_id": "t", "comms_run": "r1"}))
     assert queued == {"thread_id": "t"}

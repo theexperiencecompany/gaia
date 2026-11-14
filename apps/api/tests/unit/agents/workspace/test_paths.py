@@ -46,7 +46,10 @@ def test_a_name_that_sanitizes_away_raises(filename: str) -> None:
         ("/workspace/sessions/c1/user-uploaded/a", (MountRole.USER_UPLOADED, "c1")),
         ("/workspace/sessions/c1/artifacts/a", (MountRole.ARTIFACTS, "c1")),
         ("/workspace/sessions/c1/other/a", (MountRole.SCRATCH, "c1")),
+        ("/workspace/sessions/c1/artifacts", (MountRole.ARTIFACTS, "c1")),
         ("/workspace/sessions/c1", (MountRole.UNKNOWN, None)),
+        # As long as "/workspace/": a slice past the root prefix would read "skills".
+        ("/elsewhere/skills/a.md", (MountRole.UNKNOWN, None)),
         ("/workspace", (MountRole.UNKNOWN, None)),
         ("/workspace/elsewhere/a", (MountRole.UNKNOWN, None)),
         ("/tmp/a", (MountRole.UNKNOWN, None)),

@@ -188,8 +188,10 @@ class TestConnectAccount:
             ),
         ):
             async with captured_wide_event() as event:
-                with pytest.raises(AuthConfigNotFoundError, match=GMAIL_AC):
+                with pytest.raises(AuthConfigNotFoundError, match=GMAIL_AC) as raised:
                     await svc.connect_account("gmail", "user1", "tok")
+
+        assert (raised.value.integration_name, raised.value.auth_config_id) == ("Gmail", GMAIL_AC)
 
         (logged,) = event["errors"]
         assert logged["provider"] == "gmail"
