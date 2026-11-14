@@ -12,6 +12,7 @@ from tests.factories import make_user_id
 
 from app.constants.briefing import (
     BRIEFING_RHYTHM_WORKFLOW_KEYS,
+    DUE_TODO_CANDIDATES_LIMIT,
     BriefAction,
     BriefItemSource,
     BriefOutcome,
@@ -51,6 +52,7 @@ from app.services.briefing.candidates.failed_runs import failed_run_candidates
 from app.services.briefing.candidates.held import held_candidates
 from app.services.briefing.candidates.reminders import reminder_candidates
 from app.services.briefing.candidates.tracked import (
+    due_todo_candidates,
     gaia_work_candidates,
     user_done_candidates,
     waiting_candidates,
@@ -183,6 +185,58 @@ class TestTrackedTodos:
             ("File the VAT return", "lookback", "u3", 1),
         ]
         assert {c.outcome for c in found} == {BriefOutcome.FINISHED}
+
+
+def _own_todo(todo_id: str, title: str, **fields: Any) -> TodoDocument:
+    return TodoDocument(id=todo_id, user_id=USER_ID, title=title, **fields)
+
+
+class TestDueTodos:
+    async def test_the_users_own_todos_due_by_the_cutoff_are_theirs_to_attend_to(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        overdue = NOW - timedelta(days=3)
+        listing = AsyncMock(
+            return_value=[
+                _own_todo("o1", "File the VAT return", description="Q3", due_date=overdue),
+                _own_todo("o2", "Renew the passport", due_date=NOW),
+            ]
+        )
+        monkeypatch.setattr(todo_repository, "list_open_user_todos", listing)
+        cutoff = NOW + timedelta(hours=20)
+
+        found = await due_todo_candidates(USER_ID, cutoff, TrackedWork())
+
+        assert [(c.title, c.detail, c.due_at, c.todo_id) for c in found] == [
+            ("File the VAT return", "Q3", overdue, "o1"),
+            ("Renew the passport", None, NOW, "o2"),
+        ]
+        assert {(c.state, c.action, c.app) for c in found} == {("you", BriefAction.ATTEND, "GAIA")}
+        assert listing.await_args.args == (USER_ID,)
+        assert listing.await_args.kwargs == {
+            "limit": DUE_TODO_CANDIDATES_LIMIT,
+            "due_before": cutoff,
+        }
+
+    async def test_a_todo_already_tracked_by_id_or_subject_is_left_to_its_tracked_candidate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        listing = AsyncMock(
+            return_value=[
+                _own_todo("b1", "Approve the Priya reply", due_date=NOW),
+                _own_todo("u9", "draft the  MEMO", due_date=NOW),
+                _own_todo("u1", "Call the bank", due_date=NOW),
+            ]
+        )
+        monkeypatch.setattr(todo_repository, "list_open_user_todos", listing)
+        work = TrackedWork(
+            blocked=[_todo("b1", "Approve the Priya reply", WAITING_FOR_APPROVAL_LABEL)],
+            running=[_todo("r1", "Draft the memo")],
+        )
+
+        found = await due_todo_candidates(USER_ID, NOW, work)
+
+        assert [c.todo_id for c in found] == ["u1"]
 
 
 def _held(
