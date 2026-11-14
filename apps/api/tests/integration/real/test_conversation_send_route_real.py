@@ -296,11 +296,11 @@ async def test_a_retried_notice_in_a_bot_chat_is_logged_once_and_wakes_its_bot_o
             assert status.status == NotificationStatus.DELIVERED
 
     notices = [
-        logged
+        (logged.seq, logged.entry)
         for logged in await runtime_ports().log.read_after(bot_chat, user.user_id, 0)
         if isinstance(logged.entry, Notice)
     ]
-    assert [logged.entry.text for logged in notices] == ["Your reminder: call the bank"]
+    assert [notice.text for _, notice in notices] == ["Your reminder: call the bank"]
     [(queue, body)] = [call.args for call in publisher.publish_outbound.call_args_list]
     envelope = OutboundMessageEnvelope.model_validate_json(body)
     assert queue == OUTBOUND_QUEUES[ConversationSource.TELEGRAM]
@@ -314,7 +314,7 @@ async def test_a_retried_notice_in_a_bot_chat_is_logged_once_and_wakes_its_bot_o
         platform_user_id=platform_user_id,
         channel_id=None,
         is_dm=True,
-        after_seq=notices[0].seq - 1,
+        after_seq=notices[0][0] - 1,
     )
 
 

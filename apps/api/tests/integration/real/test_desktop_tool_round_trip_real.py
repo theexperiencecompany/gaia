@@ -71,7 +71,7 @@ async def test_a_desktop_tool_resumes_with_the_result_its_desktop_app_posted(des
     config = {"configurable": {"conversation_source": "desktop", "user_id": USER_ID}}
 
     async with asyncio.timeout(5):
-        result = await tool_coroutine(read_clipboard)(config=config)
+        result = await tool_coroutine(read_clipboard, str)(config=config)
 
     assert result == "Clipboard contents:\ncopied on the desktop"
     assert [request["tool"] for request in desktop.requests] == ["read_clipboard"]

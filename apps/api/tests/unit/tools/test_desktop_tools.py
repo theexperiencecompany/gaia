@@ -56,7 +56,7 @@ async def _screenshot(query: str) -> str | list[ContentBlock]:
 class TestDesktopGating:
     async def test_non_desktop_source_is_refused(self) -> None:
         with patch(f"{MODULE}.request_desktop_action", AsyncMock()) as action:
-            result = await tool_coroutine(read_clipboard)(config=_config("web"))
+            result = await tool_coroutine(read_clipboard, str)(config=_config("web"))
 
         assert result == _NOT_DESKTOP_ERROR
         action.assert_not_called()
@@ -65,7 +65,7 @@ class TestDesktopGating:
         config = _desktop_config()
         config["configurable"].pop("user_id")
         with patch(f"{MODULE}.request_desktop_action", AsyncMock()) as action:
-            result = await tool_coroutine(read_clipboard)(config=config)
+            result = await tool_coroutine(read_clipboard, str)(config=config)
 
         assert result == _MISSING_CONTEXT_ERROR
         action.assert_not_called()
@@ -77,7 +77,7 @@ class TestReadClipboard:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"text": "copied!"})),
         ):
-            result = await tool_coroutine(read_clipboard)(config=_desktop_config())
+            result = await tool_coroutine(read_clipboard, str)(config=_desktop_config())
 
         assert result == "Clipboard contents:\ncopied!"
 
@@ -86,7 +86,7 @@ class TestReadClipboard:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"text": ""})),
         ):
-            result = await tool_coroutine(read_clipboard)(config=_desktop_config())
+            result = await tool_coroutine(read_clipboard, str)(config=_desktop_config())
 
         assert result == "The clipboard is empty (or contains non-text content)."
 
@@ -95,7 +95,7 @@ class TestReadClipboard:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=False, error="app not open")),
         ):
-            result = await tool_coroutine(read_clipboard)(config=_desktop_config())
+            result = await tool_coroutine(read_clipboard, str)(config=_desktop_config())
 
         assert result == "Could not read the clipboard: app not open"
 
@@ -106,7 +106,7 @@ class TestWriteClipboard:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True)),
         ) as action:
-            result = await tool_coroutine(write_clipboard)(config=_desktop_config(), text="hi")
+            result = await tool_coroutine(write_clipboard, str)(config=_desktop_config(), text="hi")
 
         assert result == "Copied to the user's clipboard."
         action.assert_awaited_once()
@@ -118,7 +118,7 @@ class TestWriteClipboard:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=False, error="nope")),
         ):
-            result = await tool_coroutine(write_clipboard)(config=_desktop_config(), text="hi")
+            result = await tool_coroutine(write_clipboard, str)(config=_desktop_config(), text="hi")
 
         assert result == "Could not write to the clipboard: nope"
 
@@ -129,7 +129,9 @@ class TestOpenApp:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True)),
         ):
-            result = await tool_coroutine(open_app)(config=_desktop_config(), app_name="Safari")
+            result = await tool_coroutine(open_app, str)(
+                config=_desktop_config(), app_name="Safari"
+            )
 
         assert result == "Opened Safari on the user's computer."
 
@@ -138,7 +140,9 @@ class TestOpenApp:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=False, error="no such app")),
         ):
-            result = await tool_coroutine(open_app)(config=_desktop_config(), app_name="Safari")
+            result = await tool_coroutine(open_app, str)(
+                config=_desktop_config(), app_name="Safari"
+            )
 
         assert result == "Could not open 'Safari': no such app"
 
@@ -149,7 +153,7 @@ class TestOpenUrl:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True)),
         ):
-            result = await tool_coroutine(open_url)(
+            result = await tool_coroutine(open_url, str)(
                 config=_desktop_config(), url="https://gaia.local"
             )
 
@@ -160,7 +164,7 @@ class TestOpenUrl:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=False, error="blocked")),
         ):
-            result = await tool_coroutine(open_url)(
+            result = await tool_coroutine(open_url, str)(
                 config=_desktop_config(), url="https://gaia.local"
             )
 
@@ -184,7 +188,7 @@ class TestListWindows:
                 )
             ),
         ):
-            result = await tool_coroutine(list_windows)(config=_desktop_config())
+            result = await tool_coroutine(list_windows, str)(config=_desktop_config())
 
         assert "- Safari: GAIA" in result
         assert "- Notes: (untitled)" in result
@@ -195,7 +199,7 @@ class TestListWindows:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=True, data={"windows": []})),
         ):
-            result = await tool_coroutine(list_windows)(config=_desktop_config())
+            result = await tool_coroutine(list_windows, str)(config=_desktop_config())
 
         assert result == "No open windows were reported."
 
@@ -204,7 +208,7 @@ class TestListWindows:
             f"{MODULE}.request_desktop_action",
             AsyncMock(return_value=DesktopToolOutcome(ok=False, error="bridge down")),
         ):
-            result = await tool_coroutine(list_windows)(config=_desktop_config())
+            result = await tool_coroutine(list_windows, str)(config=_desktop_config())
 
         assert result == "Could not list windows: bridge down"
 

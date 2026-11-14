@@ -3,7 +3,11 @@
 from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
-from app.models.conversation_frame_models import MessageBoundaryEvent, ResponseEvent
+from app.models.conversation_frame_models import (
+    MessageBoundaryEvent,
+    ResponseEvent,
+    ToolDataEvent,
+)
 from app.services.conversation.comms_events import CommsEventMapper, GraphEvent
 from app.services.conversation.ports import (
     Answered,
@@ -31,7 +35,11 @@ def answer(text: str) -> GraphEvent:
 async def test_a_hooks_raw_tool_payload_reaches_the_step_as_a_card() -> None:
     mapper = CommsEventMapper("u-1")
     events = await mapper.map(((), "custom", {"email_fetch_data": [{"id": "e1"}]}))
-    (card,) = [e.payload.tool_data for e in events if isinstance(e, Streamed)]
+    (card,) = [
+        e.payload.tool_data
+        for e in events
+        if isinstance(e, Streamed) and isinstance(e.payload, ToolDataEvent)
+    ]
     assert (card["tool_name"], card["data"]) == ("email_fetch_data", [{"id": "e1"}])
 
 

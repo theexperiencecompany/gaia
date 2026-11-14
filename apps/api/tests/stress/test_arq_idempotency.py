@@ -22,7 +22,7 @@ import pytest
 from app.memory.ingestion import RetainResult
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import Reply, UserMessage
-from app.models.conversation_models import LoadedConversation
+from app.models.conversation_models import StoredConversation
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import backfill_user_memories
 from tests.factories import make_loaded_conversation
@@ -69,7 +69,7 @@ class _Backend:
         self.consolidate = consolidate
 
 
-def _conversation(cid: str, content: str) -> LoadedConversation:
+def _conversation(cid: str, content: str) -> StoredConversation:
     return make_loaded_conversation(
         cid,
         "user-1",
@@ -83,7 +83,7 @@ def _conversation(cid: str, content: str) -> LoadedConversation:
 
 @contextmanager
 def _backend(
-    user: UserDocument, conversations: list[LoadedConversation], *, facts: int = 2
+    user: UserDocument, conversations: list[StoredConversation], *, facts: int = 2
 ) -> Iterator[_Backend]:
     user_repo = _FakeUserRepository(user)
     convo_repo = MagicMock()

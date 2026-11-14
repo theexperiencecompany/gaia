@@ -274,7 +274,7 @@ async def event_lines(
     user_id: str,
     disconnected: Callable[[], Awaitable[bool]],
     stopping: asyncio.Event,
-) -> AsyncIterator[str]:
+) -> AsyncGenerator[str]:
     """Render the conversation's screen frames as SSE until the client goes or the process stops.
 
     A client cut off by a stopping process reconnects and opens on a fresh screen; the

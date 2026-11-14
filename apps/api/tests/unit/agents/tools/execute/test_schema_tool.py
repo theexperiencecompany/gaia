@@ -5,6 +5,7 @@ import json
 from typing import Annotated
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import InjectedToolCallId, StructuredTool, tool
 from langgraph.prebuilt import InjectedState
 from pymongo.errors import ServerSelectionTimeoutError
@@ -19,7 +20,7 @@ from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.tools.execute.schema_tool"
 INFO = "app.agents.tools.execute.tool_info"
-CONFIG = {"configurable": {"user_id": "u1"}}
+CONFIG: RunnableConfig = {"configurable": {"user_id": "u1"}}
 
 
 def _info(**overrides: object) -> ToolContract:
@@ -128,8 +129,12 @@ def _observed(schema: dict[str, object], calls: int) -> ToolOutputShapeDocument:
     )
 
 
-PROVIDER = {"type": "object", "properties": {"data": {"type": "object"}}, "required": ["data"]}
-OBSERVED = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+PROVIDER: dict[str, object] = {
+    "type": "object",
+    "properties": {"data": {"type": "object"}},
+    "required": ["data"],
+}
+OBSERVED: dict[str, object] = {"type": "object", "properties": {"ok": {"type": "boolean"}}}
 
 
 @pytest.mark.unit
@@ -289,7 +294,11 @@ class TestArgsSchemaOf:
         }
         schema = _args_schema_of(tool)
         assert schema["required"] == cleaned
-        assert schema["properties"]["required"]["required"] == cleaned
+        properties = schema["properties"]
+        assert isinstance(properties, dict)
+        nested = properties["required"]
+        assert isinstance(nested, dict)
+        assert nested["required"] == cleaned
 
     def test_args_the_runtime_injects_are_not_shown_to_the_model(self) -> None:
         @tool

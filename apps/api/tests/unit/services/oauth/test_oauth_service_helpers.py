@@ -11,7 +11,7 @@ from bson import ObjectId
 from tests.helpers import captured_wide_event
 
 from app.constants.log_tags import LogTag
-from app.models.user_models import BioStatus, UserDocument
+from app.models.user_models import BioStatus, OnboardingSubdocument, UserDocument
 from app.services.email.signup_delivery import signup_email_job_id
 from app.services.oauth.oauth_service import (
     _handle_gmail_connection,
@@ -188,7 +188,9 @@ class TestRefreshBioStatusForReconnect:
 
     @staticmethod
     def _no_gmail_user() -> UserDocument:
-        return UserDocument(onboarding={"completed": True, "bio_status": BioStatus.NO_GMAIL})
+        return UserDocument(
+            onboarding=OnboardingSubdocument(completed=True, bio_status=BioStatus.NO_GMAIL)
+        )
 
     async def test_a_no_gmail_bio_goes_back_to_processing(self, mock_user_repo):
         await _refresh_bio_status_for_reconnect(self.USER_ID, self._no_gmail_user())

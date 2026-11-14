@@ -5350,6 +5350,18 @@
             "description": "Short optional display description (1-2 sentences)",
             "title": "Description"
           },
+          "draft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The chat draft this workflow was created from, so what waited on it resumes.",
+            "title": "Draft Id"
+          },
           "generate_immediately": {
             "default": false,
             "description": "Generate steps immediately vs background",
@@ -5491,6 +5503,7 @@
       "CredentialProviderName": {
         "description": "A provider the credential store can hold, in display order.",
         "enum": [
+          "cloudflare",
           "openrouter",
           "gemini",
           "ollama",

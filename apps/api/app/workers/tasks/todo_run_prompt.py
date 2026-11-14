@@ -26,15 +26,18 @@ from app.agents.prompts.todo_prompts import (
     TRIGGERED_RELEVANCE_GUIDANCE,
     WAKE_REASON_TEXT,
 )
+from app.agents.prompts.wait_prompts import WAIT_MET_WAKE_REASON
 from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     MAX_HOLD_CHECK_AHEAD,
     MAX_HOLD_CHECKS,
     TRIGGER_EVENTS_PROMPT_MAX_CHARS,
 )
+from app.constants.waits import WAIT_MET_TRIGGER
 from app.models.quiet_hours_models import QuietHours
 from app.models.todo_models import ExternalRefSource, TodoDocument, TodoRunContext
 from app.models.trigger_subscription_models import TriggerOrigin
+from app.models.wait_models import WaitMetPayload
 from app.services.agent_lab.lab_runs import SANDBOX_RUN_TRIGGER
 from app.services.canvas_markdown import bounded_canvas
 from app.services.hil.utils import untrusted_fence
@@ -99,10 +102,33 @@ def opening_parts(
     local_now: datetime,
     quiet_hours: QuietHours,
 ) -> list[str]:
-    """Open the run prompt with what woke it; trigger payloads share one untrusted fence."""
+    """Open the run prompt with what woke it; trigger payloads share one untrusted fence.
+
+    A wait-met wake is GAIA's own note on what the user did, so it is guidance outside the fence.
+    """
     title = doc.title
     if origin is None:
         return [f"Execute the following scheduled task: {title}"]
+    wakes = [origin, *coalesced]
+    notes = [
+        WaitMetPayload.model_validate(wake.payload).message
+        for wake in wakes
+        if wake.trigger_name == WAIT_MET_TRIGGER
+    ]
+    events = [wake for wake in wakes if wake.trigger_name != WAIT_MET_TRIGGER]
+    if not events:
+        return [*notes, f"The task: {title}"]
+    return [*notes, *_event_parts(doc, events[0], events[1:], local_now, quiet_hours)]
+
+
+def _event_parts(
+    doc: TodoDocument,
+    origin: TriggerOrigin,
+    coalesced: Sequence[TriggerOrigin],
+    local_now: datetime,
+    quiet_hours: QuietHours,
+) -> list[str]:
+    title = doc.title
     quiet_now = quiet_hours.contains(local_now)
     bypass_note = _quiet_hours_note(origin, coalesced, quiet_now)
     fence = untrusted_fence()
@@ -191,10 +217,16 @@ def build_execution_prompt(
         prompt_parts.append(f"{label}:\n{tail}")
     if context.learnings:
         prompt_parts.append(context.learnings)
-    if origin is None and not doc.recurrence:
-        prompt_parts.append(TODO_REARM_BRIEF.format(why=wake_text(doc)))
-    else:
+    # Only a recurrence or a watch wakes the todo again; a met wait is a one-off like a scheduled check.
+    watched = origin is not None and any(
+        wake.trigger_name != WAIT_MET_TRIGGER for wake in [origin, *coalesced]
+    )
+    # A wait-met run of a todo that also has a watch still has that watch to wake it.
+    if doc.recurrence or watched or (origin is not None and not doc.runs_once):
         prompt_parts.append(TODO_WAKES_AGAIN_BRIEF)
+    else:
+        why = wake_text(doc) if origin is None else WAIT_MET_WAKE_REASON
+        prompt_parts.append(TODO_REARM_BRIEF.format(why=why))
     prompt_parts.append(delivery_guidance(doc))
     return "\n\n".join(prompt_parts)
 

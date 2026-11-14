@@ -49,14 +49,15 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        result = await tool_coroutine(generate_image)(
+        result = await tool_coroutine(generate_image, dict[str, object])(
             prompt="A beautiful sunset over the ocean",
             config=_make_config(),
         )
 
         assert result["status"] == "success"
-        assert "instructions" in result
-        assert "DO NOT" in result["instructions"]
+        instructions = result["instructions"]
+        assert isinstance(instructions, str)
+        assert "DO NOT" in instructions
         mock_generate.assert_awaited_once_with(
             message="A beautiful sunset over the ocean",
             user_id=FAKE_USER_ID,
@@ -74,7 +75,9 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        result = await tool_coroutine(generate_image)(prompt="A cat", config={"metadata": {}})
+        result = await tool_coroutine(generate_image, dict[str, object])(
+            prompt="A cat", config={"metadata": {}}
+        )
 
         assert result["status"] == "error"
         mock_generate.assert_not_awaited()
@@ -96,7 +99,7 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        await tool_coroutine(generate_image)(
+        await tool_coroutine(generate_image, dict[str, object])(
             prompt="A cat",
             config=_make_config(),
         )
@@ -129,13 +132,15 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        result = await tool_coroutine(generate_image)(
+        result = await tool_coroutine(generate_image, dict[str, object])(
             prompt="A cat",
             config=_make_config(),
         )
 
         assert result["status"] == "error"
-        assert "API rate limit exceeded" in result["message"]
+        message = result["message"]
+        assert isinstance(message, str)
+        assert "API rate limit exceeded" in message
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.api_generate_image", new_callable=AsyncMock)
@@ -151,7 +156,7 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        await tool_coroutine(generate_image)(
+        await tool_coroutine(generate_image, dict[str, object])(
             prompt="A cat",
             config=_make_config(),
         )
@@ -171,7 +176,9 @@ class TestGenerateImage:
 
         from app.agents.tools.image_tool import generate_image
 
-        result = await tool_coroutine(generate_image)(prompt="A cat", config={"metadata": {}})
+        result = await tool_coroutine(generate_image, dict[str, object])(
+            prompt="A cat", config={"metadata": {}}
+        )
 
         assert result == {
             "status": "error",

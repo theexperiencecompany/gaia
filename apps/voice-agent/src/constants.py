@@ -27,6 +27,8 @@ CONVERSATION_ID_TOPIC = "conversation-id"
 CONVERSATION_DESCRIPTION_TOPIC = "conversation-description"
 # The events stream dropped (a deploy, a network blip): wait this long before following again.
 FOLLOW_RECONNECT_DELAY_S = 1.0
+# Spoken when a reply of this session fails: the reason is provider plumbing, not something to read aloud.
+VOICE_ERROR_REPLY = "Sorry, something went wrong on my end. Please try again in a moment."
 
 SENTENCE_ENDINGS = (".", "!", "?")
 

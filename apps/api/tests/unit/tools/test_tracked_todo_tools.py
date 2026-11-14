@@ -537,7 +537,7 @@ class TestUpdateTrackedTodoValidation:
                 AsyncMock(return_value="Asia/Kolkata"),
             ) as user_tz,
         ):
-            result = await tool_coroutine(update_tracked_todo)(
+            result = await tool_coroutine(update_tracked_todo, str)(
                 config=_config(), todo_id="t1", scheduled_at=""
             )
         assert result == (
@@ -793,7 +793,7 @@ class TestCreateTrackedTodoValidation:
                 AsyncMock(return_value="Asia/Kolkata"),
             ),
         ):
-            result = await tool_coroutine(create_tracked_todo)(config=_config(), title="t")
+            result = await tool_coroutine(create_tracked_todo, str)(config=_config(), title="t")
 
         assert result == (
             "Not created: an open tracked todo needs a next step, so it can never be forgotten.\n"
@@ -1782,7 +1782,7 @@ class TestUpdateTrackedTodoSuccess:
                 new_callable=AsyncMock,
             ) as waiting_logged,
         ):
-            result = await tool_coroutine(update_tracked_todo)(
+            result = await tool_coroutine(update_tracked_todo, str)(
                 config=config,
                 todo_id="t1",
                 scheduled_at="2d",
@@ -2792,7 +2792,7 @@ class TestListTrackedTodos:
             updated_at=datetime(2026, 9, 30, 9, tzinfo=UTC),
         )
         with patch(_LIST_ACTIVE, new_callable=AsyncMock, return_value=[doc]):
-            result = await tool_coroutine(list_tracked_todos)(config=_config())
+            result = await tool_coroutine(list_tracked_todos, str)(config=_config())
 
         assert result == (
             "Active tracked todos (1):\n\n"

@@ -10,6 +10,7 @@ from typing import cast
 from livekit import rtc
 from livekit.agents.llm import ChatItem, ChatMessage
 from livekit.agents.voice import SpeechHandle
+from src import constants
 from src.conversation import ConversationEvent, VoiceConversation, parse_event
 
 from shared.py.conversation_wire import (
@@ -78,7 +79,7 @@ class RecordingApi(VoiceConversation):
         self.drained.set()
 
 
-def entry(seq: int, kind: str, reply_id: str) -> str:
+def entry(seq: int, kind: str, reply_id: str, outcome: ReplyOutcome = ReplyOutcome.ANSWERED) -> str:
     """Return a reply item patch: inserted as the reply opens, updated with its outcome as it settles."""
     opened = kind == "reply"
     item = ReplyItem(
@@ -92,7 +93,7 @@ def entry(seq: int, kind: str, reply_id: str) -> str:
         image=None,
         pinned=False,
         quote=None,
-        outcome=None if opened else ReplyOutcome.ANSWERED,
+        outcome=None if opened else outcome,
         failure=None,
         narrates=(),
         retry_target=None,
@@ -165,6 +166,32 @@ def test_a_reply_heard_to_its_end_or_never_cut_off_posts_nothing() -> None:
         finished.end(interrupted=False, played=FIRST)
         await asyncio.sleep(0)
         assert barge_ins(conversation) == []
+
+    asyncio.run(scenario())
+
+
+def test_a_failed_reply_is_followed_by_one_spoken_apology() -> None:
+    async def scenario() -> None:
+        conversation = RecordingApi()
+        failed = entry(3, "reply_settled", "r1", ReplyOutcome.FAILED)
+        await follow(conversation, entry(2, "reply", "r1"), delta("r1", 0, FIRST), failed, failed)
+        reply, apology = spoken(conversation).speeches
+        assert [chunk async for chunk in reply.text] == [FIRST]
+        assert [chunk async for chunk in apology.text] == [constants.VOICE_ERROR_REPLY]
+
+    asyncio.run(scenario())
+
+
+def test_a_reply_that_fails_before_any_text_is_answered_with_the_apology_alone() -> None:
+    async def scenario() -> None:
+        conversation = RecordingApi()
+        await follow(
+            conversation,
+            entry(2, "reply", "r1"),
+            entry(3, "reply_settled", "r1", ReplyOutcome.FAILED),
+        )
+        [apology] = spoken(conversation).speeches
+        assert [chunk async for chunk in apology.text] == [constants.VOICE_ERROR_REPLY]
 
     asyncio.run(scenario())
 
