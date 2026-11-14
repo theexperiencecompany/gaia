@@ -340,6 +340,10 @@ class Pause:
     actions: tuple[Action, ...]
 
 
+# Seconds a run whose script ended waits to be cancelled; the step cancels it within milliseconds.
+SILENT_RUN_LIMIT_SECONDS = 5
+
+
 class UnscriptedRunError(Exception):
     """A run started after every script was played."""
 
@@ -421,7 +425,9 @@ class ScriptedRun:
     async def _play(self) -> None:
         try:
             if not await self._perform():
-                await asyncio.Event().wait()
+                # A run the step never cancels fails here, not at the per-test timeout.
+                await asyncio.sleep(SILENT_RUN_LIMIT_SECONDS)
+                self._emit(UnscriptedRunError("the script ended and nothing cancelled the run"))
         except asyncio.CancelledError:
             if not self._swallow:
                 raise
