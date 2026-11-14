@@ -2,7 +2,7 @@
  * The chat prompt for approvals the work waits on. A bot has no approve/deny
  * buttons, so the user answers in words and the server's classifier reads the
  * answer; several open approvals are numbered oldest first, as the classifier
- * numbers them.
+ * numbers them. Every word of what is asked comes from the server's description.
  */
 
 import type { ScreenItem } from "../../conversation/types";
@@ -14,6 +14,17 @@ type ApprovalRequestedEntry = Extract<
 
 const MS_PER_MINUTE = 60_000;
 
+/** Every fixed string of the bot approval prompt, in one place. */
+const APPROVAL_PROMPT_COPY = {
+  single: (action: string) => `**GAIA wants to ${action}**`,
+  singleReply: (confirm: string) =>
+    `Reply **yes** to ${confirm}, or **no** to cancel.`,
+  several: (count: number) => `**${count} things need your OK:**`,
+  severalReply:
+    'Reply **yes** to all, **no** to all, or pick some: "yes 1 and 3".',
+  expires: (within: string) => `This expires in ${within}.`,
+} as const;
+
 /** The approval window is hours, so "360 minutes" is not a usable way to say it. */
 function formatExpiry(ms: number): string {
   const minutes = Math.max(1, Math.round(ms / MS_PER_MINUTE));
@@ -22,26 +33,45 @@ function formatExpiry(ms: number): string {
   return hours === 1 ? "1 hour" : `${hours} hours`;
 }
 
+/** Lower-case the first letter so the action reads inside a sentence ("send an email"). */
+function inSentence(action: string): string {
+  return action.charAt(0).toLowerCase() + action.slice(1);
+}
+
+function singlePrompt(approval: ApprovalRequestedEntry, now: number): string {
+  const { action, confirm, details } = approval.description;
+  const facts = [
+    APPROVAL_PROMPT_COPY.single(inSentence(action)),
+    ...details.map(({ label, value }) => `${label}: ${value}`),
+  ];
+  const expiry = approval.expires_at
+    ? [
+        APPROVAL_PROMPT_COPY.expires(
+          formatExpiry(Date.parse(approval.expires_at) - now),
+        ),
+      ]
+    : [];
+  return [
+    facts.join("\n"),
+    ...expiry,
+    APPROVAL_PROMPT_COPY.singleReply(confirm),
+  ].join("\n\n");
+}
+
+function severalPrompt(open: readonly ApprovalRequestedEntry[]): string {
+  const numbered = open.map(
+    (approval, index) => `${index + 1}. ${approval.description.headline}`,
+  );
+  return [
+    `${APPROVAL_PROMPT_COPY.several(open.length)}\n${numbered.join("\n")}`,
+    APPROVAL_PROMPT_COPY.severalReply,
+  ].join("\n\n");
+}
+
 /** Markdown asking about every open approval, oldest first; now is the clock the expiry counts from. */
 export function formatApprovalPrompt(
   open: readonly ApprovalRequestedEntry[],
   now: number,
 ): string {
-  if (open.length === 1) {
-    const [only] = open;
-    const expiry = only.expires_at
-      ? ` This expires in ${formatExpiry(Date.parse(only.expires_at) - now)}.`
-      : "";
-    return (
-      `**Approval needed:** ${only.summary}\n` +
-      `Reply **yes** to approve or **no** to decline.${expiry}`
-    );
-  }
-  const numbered = open
-    .map((approval, index) => `${index + 1}. ${approval.summary}`)
-    .join("\n");
-  return (
-    `**Approvals needed:**\n${numbered}\n` +
-    "Reply **yes** to approve all, **no** to decline all, or say which numbers you mean."
-  );
+  return open.length === 1 ? singlePrompt(open[0], now) : severalPrompt(open);
 }

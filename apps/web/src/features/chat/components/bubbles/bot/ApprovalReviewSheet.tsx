@@ -150,7 +150,7 @@ export default function ApprovalReviewSheet({
                       className="rounded-2xl bg-zinc-900 p-3"
                     >
                       <div className="text-sm leading-snug text-zinc-100">
-                        {item.summary}
+                        {item.description.headline}
                       </div>
                       {item.asked_at && (
                         <div className="mt-0.5 text-[11px] text-zinc-500">

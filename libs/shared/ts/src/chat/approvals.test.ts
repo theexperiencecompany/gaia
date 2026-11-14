@@ -11,7 +11,12 @@ const base: ApprovalRequestData = {
   tool_call_id: "call-1",
   gated_tool_name: "send_email",
   integration_name: "gmail",
-  summary: "Send email",
+  description: {
+    action: "Send email",
+    headline: "Send email",
+    confirm: "send it",
+    details: [],
+  },
   args_preview: {},
   outcome: null,
   feedback: null,

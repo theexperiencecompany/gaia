@@ -33,6 +33,7 @@ from app.models.conversation_screen_models import (
     WorkStatus,
 )
 from app.models.conversation_send_models import ConversationEvent
+from app.models.hil_models import ApprovalDescription, ApprovalDetail
 from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
 from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
 from shared.py.conversation_wire import (
@@ -544,6 +545,31 @@ def test_a_work_items_approval_card_is_drawn_in_its_timeline_and_ends_with_its_d
     [card] = [entry.card for entry in ended.timeline.cards]
     [answered] = card["data"]
     assert (answered["outcome"], answered["decider"]) == ("approved", "user")
+
+
+def test_an_approval_card_carries_the_calls_plain_description_for_every_surface() -> None:
+    described = ApprovalDescription(
+        action="Pay an invoice",
+        headline="Pay invoice INV-7 to Acme",
+        confirm="pay it",
+        details=[
+            ApprovalDetail(label="Amount", value="$120"),
+            ApprovalDetail(label="Payee", value="Acme"),
+        ],
+    )
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    log = [
+        logged(1, user("u1")),
+        logged(2, started),
+        logged(3, asked("ask:a1", "t1", "a1", described)),
+    ]
+    [_, waiting] = project_screen(log)
+    assert waiting.kind is ScreenItemKind.WORK
+    [card] = [entry.card for entry in waiting.timeline.cards]
+    [shown] = card["data"]
+    assert shown["description"] == described.model_dump(mode="json")
+    [request] = waiting.asking
+    assert request.description == described
 
 
 def _artifact(path: str) -> ToolDataEntry:

@@ -6,7 +6,6 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Protocol, TypeAlias
 
-from app.constants.hil import ApprovalDecision
 from app.models.conversation_frame_models import OutputFrame, StreamPayload
 from app.models.conversation_log_models import (
     Batch,
@@ -251,8 +250,8 @@ class ApprovalReplies(Protocol):
 
     async def resolve(
         self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
-    ) -> ApprovalDecision | None:
-        """Return the decision the message gives, read against the turns before it; None when it is not an answer."""
+    ) -> str | None:
+        """Return the acknowledgement of the answer the message gives, read against the turns before it; None when it is not one."""
         ...
 
 

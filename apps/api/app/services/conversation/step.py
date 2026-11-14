@@ -13,7 +13,6 @@ from app.constants.conversation import (
     RUNNER_ALIVE_BEATS_PER_TTL,
     RUNNER_ALIVE_TTL_SECONDS,
 )
-from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryFrame,
@@ -410,12 +409,11 @@ async def _answered_as_approval(
         return False
     history = await _turns_before(ports, claim, first.seq)
     # The resolver logs each approval's own decision; the step only acknowledges the reply.
-    decision = await ports.approvals.resolve(
+    text = await ports.approvals.resolve(
         claim.conversation_id, claim.user_id, message.text, history
     )
-    if decision is None:
+    if text is None:
         return False
-    text = HIL_ACK_APPROVED if decision == "approve" else HIL_ACK_DENIED
     ack = Reply(
         id=f"{attempt_id}:reply", reply_id=f"r{attempt_id}", attempt_id=attempt_id, text=text
     )

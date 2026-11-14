@@ -53,6 +53,7 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, JsonValue
 
+from app.models.hil_models import ApprovalDescription
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 
 # ---------------------------------------------------------------------------
@@ -96,7 +97,7 @@ class ApprovalRequestEntryData(BaseModel):
     tool_call_id: str
     gated_tool_name: str
     integration_name: str | None
-    summary: str
+    description: ApprovalDescription
     # The gated call's own arguments — arbitrary LLM-authored JSON, no fixed schema.
     args_preview: dict[str, JsonValue]
     # How the approval ended (None while pending), who decided, and what the action did.

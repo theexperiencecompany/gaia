@@ -6,7 +6,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from app.constants.hil import DECISION_OUTCOME, ApprovalDecision
+from app.constants.hil import (
+    DECISION_OUTCOME,
+    HIL_ACK_APPROVED,
+    HIL_ACK_DENIED,
+    ApprovalDecision,
+)
 from app.models.conversation_frame_models import OutputFrame
 from app.models.conversation_log_models import (
     ApprovalDecided,
@@ -564,11 +569,13 @@ class ScriptedApprovals:
 
     async def resolve(
         self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
-    ) -> ApprovalDecision | None:
+    ) -> str | None:
         self.asked.append(message_text)
         self.histories.append(history)
-        if self.decision is None or self.ports is None:
-            return self.decision
+        if self.decision is None:
+            return None
+        if self.ports is None:
+            return _ACK[self.decision]
         state = await self.ports.log.state(conversation_id, user_id)
         pending = sorted(approval for item in state.work for approval in item.pending_approvals)
         decisions = [self.each.get(approval, self.decision) for approval in pending]
@@ -580,7 +587,10 @@ class ScriptedApprovals:
                 decider=ApprovalDecider.USER,
             )
             await accept(self.ports, conversation_id, user_id, entry)
-        return "approve" if "approve" in decisions else "deny"
+        return _ACK["approve" if "approve" in decisions else "deny"]
+
+
+_ACK: dict[ApprovalDecision, str] = {"approve": HIL_ACK_APPROVED, "deny": HIL_ACK_DENIED}
 
 
 CONVERSATION = "c1"

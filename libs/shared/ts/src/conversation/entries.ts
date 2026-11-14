@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type {
+  ApprovalDescription,
   ApprovalOutcome,
   ApprovalRequestEntry,
   ApprovalRequested,
@@ -156,12 +157,19 @@ const UserMessageSchema = z.object({
   revision,
 }) satisfies z.ZodType<UserMessage>;
 
+const ApprovalDescriptionSchema = z.object({
+  action: z.string(),
+  headline: z.string(),
+  confirm: z.string(),
+  details: z.array(z.object({ label: z.string(), value: z.string() })),
+}) satisfies z.ZodType<ApprovalDescription>;
+
 const ApprovalRequestedSchema = z.object({
   kind: z.literal(ENTRY_KIND.APPROVAL_REQUESTED),
   id,
   task_id: z.string(),
   approval_id: z.string(),
-  summary: z.string().default(""),
+  description: ApprovalDescriptionSchema,
   expires_at: z.iso.datetime({ offset: true }).nullable().default(null),
   tool_call_id: z.string().default(""),
   gated_tool_name: z.string().default(""),
@@ -188,7 +196,7 @@ const ApprovalCardSchema = z.object({
     tool_call_id: z.string(),
     gated_tool_name: z.string(),
     integration_name: z.string().nullable(),
-    summary: z.string(),
+    description: ApprovalDescriptionSchema,
     args_preview: z.record(z.string(), z.unknown()),
     outcome: z.enum(APPROVAL_OUTCOMES).nullable(),
     decider: z.enum(["user", "auto"]).nullable().optional(),

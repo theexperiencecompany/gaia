@@ -7,6 +7,7 @@ from pydantic import AwareDatetime, BaseModel, Field, JsonValue, model_validator
 
 from app.constants.chat import ConversationSource
 from app.models.chat_models import ReactionBy
+from app.models.hil_models import ApprovalDescription
 from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.todo_wake_models import TodoRunWake
 from app.models.workflow_models import TriggerType
@@ -230,7 +231,8 @@ class ApprovalRequested(_Entry):
     kind: Literal[EntryKind.APPROVAL_REQUESTED] = EntryKind.APPROVAL_REQUESTED
     task_id: str
     approval_id: str
-    summary: str = ""
+    # The gated call in plain words; its headline is the one line a list shows.
+    description: ApprovalDescription
     # When the request lapses (None: it never does).
     expires_at: AwareDatetime | None = None
     tool_call_id: str = ""

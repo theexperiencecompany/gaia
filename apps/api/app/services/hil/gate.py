@@ -182,7 +182,8 @@ async def _decide_ledger(
         deny_note = _prior_denial_note(denied)
 
         integration_name = await _integration_name_for(request, context.user_id, call.name)
-        summary = describe_call(call.name, call.args, integration_name, call.account).headline
+        description = describe_call(call.name, call.args, integration_name, call.account)
+        summary = description.headline
         # Owner is the worker thread, stable across runs: subagent threads read
         # "<integration>_<conversation>", the executor "executor_<...>", so a
         # later turn of the same worker can revoke what it proposed.
@@ -214,7 +215,7 @@ async def _decide_ledger(
                 id=f"approval:{ap_id}",
                 task_id=task_id,
                 approval_id=ap_id,
-                summary=summary,
+                description=description,
                 expires_at=datetime.now(UTC) + timedelta(seconds=HIL_APPROVAL_TIMEOUT_SECONDS),
                 tool_call_id=call.id,
                 gated_tool_name=call.name,

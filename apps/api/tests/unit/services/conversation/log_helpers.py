@@ -30,6 +30,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
+from app.models.hil_models import ApprovalDescription, ApprovalDetail
 from app.models.message_models import SelectedWorkflowData
 from app.models.todo_wake_models import TodoRunWake
 from app.models.workflow_models import TriggerType
@@ -117,8 +118,24 @@ def started(entry_id: str, task_id: str, cause_through: int) -> WorkStarted:
     return WorkStarted(id=entry_id, task_id=task_id, cause_through=cause_through)
 
 
-def asked(entry_id: str, task_id: str, approval_id: str) -> ApprovalRequested:
-    return ApprovalRequested(id=entry_id, task_id=task_id, approval_id=approval_id)
+SEND_EMAIL = ApprovalDescription(
+    action="Send an email",
+    headline='Send an email to sam@x.com: "Q3 numbers"',
+    confirm="send it",
+    details=[ApprovalDetail(label="To", value="sam@x.com")],
+)
+
+
+def described(headline: str) -> ApprovalDescription:
+    return ApprovalDescription(action=headline, headline=headline, confirm="do it", details=[])
+
+
+def asked(
+    entry_id: str, task_id: str, approval_id: str, description: ApprovalDescription = SEND_EMAIL
+) -> ApprovalRequested:
+    return ApprovalRequested(
+        id=entry_id, task_id=task_id, approval_id=approval_id, description=description
+    )
 
 
 def decided(entry_id: str, approval_id: str) -> ApprovalDecided:

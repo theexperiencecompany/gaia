@@ -19,6 +19,7 @@ from app.models.hil_models import (
     ApprovalProposal,
 )
 from app.services.hil import gate
+from app.services.hil.describe import describe_call
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
 from app.services.hil.jev_judge import JevIntentJudge
@@ -461,7 +462,7 @@ class TestLedgerRegistration:
                 id="approval:ap_abc1234567",
                 task_id="t1",
                 approval_id="ap_abc1234567",
-                summary=GATED_SUMMARY,
+                description=describe_call(GATED_TOOL, GATED_ARGS, "Gmail"),
                 expires_at=datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
                 + timedelta(seconds=HIL_APPROVAL_TIMEOUT_SECONDS),
                 tool_call_id="call-1",

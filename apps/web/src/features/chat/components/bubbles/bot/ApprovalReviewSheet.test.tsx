@@ -23,7 +23,12 @@ const card = (id: string, integration: string): ApprovalRequestData => ({
   tool_call_id: `call-${id}`,
   gated_tool_name: "GMAIL_SEND_EMAIL",
   integration_name: integration,
-  summary: `Send ${id}`,
+  description: {
+    action: `Send ${id}`,
+    headline: `Send ${id}`,
+    confirm: "send it",
+    details: [],
+  },
   args_preview: { to: "b@x" },
   outcome: null,
   feedback: null,

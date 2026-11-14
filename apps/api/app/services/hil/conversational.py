@@ -14,6 +14,7 @@ error leaves approvals pending, never approves.
 
 from collections.abc import Sequence
 import contextlib
+from dataclasses import dataclass
 from typing import assert_never
 
 from app.constants.hil import (
@@ -58,6 +59,14 @@ LEDGER_ACTION_TEXT: dict[ActionResult, str] = {
 }
 
 
+@dataclass(frozen=True)
+class ApprovalReplyOutcome:
+    """What a reply did to the pending approvals, and the rows it decided."""
+
+    action: DecisionAction
+    decided: tuple[ApprovalLedgerDocument, ...] = ()
+
+
 def ledger_outcome_text(outcome: ApprovalOutcome | None, action: ActionResult | None) -> str:
     """One line of ground truth for a ledger row."""
     if action is not None:
@@ -75,11 +84,11 @@ async def resolve_pending_from_message(
     user_id: str,
     message: str,
     history: list[MessageDict] | None = None,
-) -> DecisionAction | None:
+) -> ApprovalReplyOutcome | None:
     """Resolve the conversation's pending approval(s) from message; history is recent turns for the classifier.
 
-    Returns "approve" when anything was approved, "deny" when only declined, "unrelated"
-    when the reply is a new request (they stay pending), None when it decided nothing.
+    The action is "approve" when anything was approved, "deny" when only declined, "unrelated"
+    when the reply is a new request (they stay pending); None when it decided nothing.
     """
     pending = await pending_approvals(conversation_id, user_id)
     if not pending:
@@ -94,7 +103,7 @@ async def _resolve_single(
     user_id: str,
     message: str,
     history: list[MessageDict] | None,
-) -> DecisionAction | None:
+) -> ApprovalReplyOutcome | None:
     action_detail = build_action_detail(record.summary, record.args)
     result = await interpret_decision_message(message, action_detail, history)
     if result is None:
@@ -103,11 +112,11 @@ async def _resolve_single(
         # (matches the batch path's fail-toward-pending behavior).
         return None
     if result.action == "unrelated":
-        return "unrelated"
+        return ApprovalReplyOutcome(action="unrelated")
 
     action, feedback = no_arg_edit(result.action, result.feedback)
     await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
-    return action
+    return ApprovalReplyOutcome(action=action, decided=(record,))
 
 
 async def _resolve_batch(
@@ -115,7 +124,7 @@ async def _resolve_batch(
     user_id: str,
     message: str,
     history: list[MessageDict] | None,
-) -> DecisionAction | None:
+) -> ApprovalReplyOutcome | None:
     """Apply a per-item classification of message to the pending batch.
 
     Each decision commits through decide_ledger, one by one.
@@ -123,33 +132,31 @@ async def _resolve_batch(
     action_details = [build_action_detail(r.summary, r.args) for r in pending]
     result = await interpret_batch_decision_message(message, action_details, history)
     if result.unrelated:
-        return "unrelated"
+        return ApprovalReplyOutcome(action="unrelated")
 
     approved, denied = await _apply_decisions(pending, user_id, result.decisions)
-    if approved:
-        return "approve"
-    if denied:
-        return "deny"
-    return None
+    if not (approved or denied):
+        return None
+    return ApprovalReplyOutcome(
+        action="approve" if approved else "deny", decided=(*approved, *denied)
+    )
 
 
 async def _apply_decisions(
     pending: list[ApprovalLedgerDocument],
     user_id: str,
     decisions: list[BatchItemDecision],
-) -> tuple[int, int]:
-    """Dispatch every in-range decision onto its pending item; returns (approved, denied)."""
-    approved = denied = 0
+) -> tuple[list[ApprovalLedgerDocument], list[ApprovalLedgerDocument]]:
+    """Dispatch every in-range decision onto its pending item; returns the approved and denied rows."""
+    approved: list[ApprovalLedgerDocument] = []
+    denied: list[ApprovalLedgerDocument] = []
     for decision in decisions:
         if decision.action == "leave" or not 1 <= decision.index <= len(pending):
             continue
         record = pending[decision.index - 1]
         action, feedback = no_arg_edit(decision.action, decision.feedback)
         await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
-        if action == "approve":
-            approved += 1
-        else:
-            denied += 1
+        (approved if action == "approve" else denied).append(record)
     return approved, denied
 
 

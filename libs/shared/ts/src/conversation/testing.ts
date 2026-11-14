@@ -1,4 +1,4 @@
-import type { UserItem, WorkItem } from "../api/generated";
+import type { ApprovalDescription, UserItem, WorkItem } from "../api/generated";
 import founderFrames from "./fixtures/c41f18c5.frames.json";
 import { parseConversationEvent } from "./frames";
 import type {
@@ -172,14 +172,21 @@ export function userItemWith(
 export const approvalAsked = (
   taskId: string,
   approvalId: string,
-  summary: string,
+  headline: string,
   expiresAt: string | null = null,
+  described: Partial<ApprovalDescription> = {},
 ): WorkItem["asking"][number] => ({
   kind: "approval_requested",
   id: `${approvalId}:asked`,
   task_id: taskId,
   approval_id: approvalId,
-  summary,
+  description: {
+    action: headline,
+    headline,
+    confirm: "do it",
+    details: [],
+    ...described,
+  },
   expires_at: expiresAt,
   tool_call_id: `call-${approvalId}`,
   gated_tool_name: "GMAIL_SEND_EMAIL",

@@ -77,7 +77,7 @@ from app.services.conversation.work_log import (
 )
 from app.utils import background_tasks
 from tests.browser_factories import make_browser_job_state
-from tests.unit.services.conversation.log_helpers import user
+from tests.unit.services.conversation.log_helpers import SEND_EMAIL, user
 from tests.unit.services.conversation.runtime_doubles import RecordingEffects, Runtime
 from tests.work_cancel_fakes import (
     BROWSER_JOB,
@@ -238,7 +238,7 @@ async def stopping(
                 id=f"approval:{approval_id}",
                 task_id=running,
                 approval_id=approval_id,
-                summary="",
+                description=SEND_EMAIL,
                 expires_at=None,
             ),
         )

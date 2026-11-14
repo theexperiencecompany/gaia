@@ -111,18 +111,20 @@ class TestNothingPending:
 class TestSingleApproval:
     async def test_a_confident_yes_approves_it(self, decide: AsyncMock) -> None:
         with _pending(_row("ap_1", "Send email")), serve_jev(jev_reply_body(("approve", 0.99))):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes send it")
+            outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes send it")
 
-        assert action == "approve"
+        assert outcome is not None
+        assert outcome.action == "approve"
         assert _decided(decide) == [("ap_1", "approve", None)]
         assert decide.await_args.kwargs["via"] == "chat"
 
     async def test_a_decline_carries_the_reply_verbatim(self, decide: AsyncMock) -> None:
         reply = "no, send it to alice@example.com instead"
         with _pending(_row("ap_1", "Send email")), serve_jev(jev_reply_body(("deny", 0.97))):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, reply)
+            outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, reply)
 
-        assert action == "deny"
+        assert outcome is not None
+        assert outcome.action == "deny"
         assert _decided(decide) == [("ap_1", "deny", reply)]
 
     async def test_an_approve_under_the_line_decides_nothing(self, decide: AsyncMock) -> None:
@@ -137,11 +139,12 @@ class TestSingleApproval:
             _pending(_row("ap_1", "Send email")),
             serve_jev(jev_reply_body(("unrelated", 0.95))),
         ):
-            action = await resolve_pending_from_message(
+            outcome = await resolve_pending_from_message(
                 CONVERSATION_ID, USER_ID, "what's the weather"
             )
 
-        assert action == "unrelated"
+        assert outcome is not None
+        assert outcome.action == "unrelated"
         decide.assert_not_awaited()
 
     async def test_a_failing_classifier_leaves_the_approval_pending(
@@ -161,9 +164,12 @@ class TestBatch:
             _pending(older, newer),
             serve_jev(jev_reply_body(("approve", 0.99), ("deny", 0.97))),
         ):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes to A, not B")
+            outcome = await resolve_pending_from_message(
+                CONVERSATION_ID, USER_ID, "yes to A, not B"
+            )
 
-        assert action == "approve"
+        assert outcome is not None
+        assert outcome.action == "approve"
         assert _decided(decide) == [("ap_1", "approve", None), ("ap_2", "deny", "yes to A, not B")]
 
     async def test_a_failing_classifier_decides_none_of_them(self, decide: AsyncMock) -> None:
@@ -206,9 +212,10 @@ class TestMovingOnLeavesEveryApprovalPending:
         pending_rows = [_row(approval_id, f"Send {approval_id}") for approval_id in rows]
         verdicts = [("unrelated", 0.95)] * len(rows)
         with _pending(*pending_rows), serve_jev(jev_reply_body(*verdicts)):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "weather?")
+            outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "weather?")
 
-        assert action == "unrelated"
+        assert outcome is not None
+        assert outcome.action == "unrelated"
         decide.assert_not_awaited()
 
 

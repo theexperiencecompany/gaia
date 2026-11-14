@@ -204,7 +204,7 @@ class _Log:
                 tool_call_id=request.tool_call_id,
                 gated_tool_name=request.gated_tool_name,
                 integration_name=request.integration_name,
-                summary=request.summary,
+                description=request.description,
                 args_preview=request.args_preview,
                 outcome=outcome,
                 decider=None if decision is None else decision.decider,

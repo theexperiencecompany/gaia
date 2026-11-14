@@ -248,7 +248,7 @@ from shared.py.conversation_wire import (
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
 from tests.helpers import item_text, shown_items
-from tests.unit.services.conversation.log_helpers import workflow_run
+from tests.unit.services.conversation.log_helpers import described, workflow_run
 from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
 from tests.unit.services.conversation.test_comms_runner import (
     TEST_ATTRIBUTION,
@@ -582,7 +582,7 @@ async def test_a_stop_cancels_only_the_work_before_it_and_reports_what_it_cancel
             id="approval:a1",
             task_id="t1",
             approval_id="a1",
-            summary="Book it",
+            description=described("Book it"),
             expires_at=None,
         ),
     )
@@ -1168,7 +1168,7 @@ async def _paused_on(rig: Rig, model: GatedModel, expires_at: datetime | None) -
             id="approval:a1",
             task_id="t1",
             approval_id="a1",
-            summary="Send it",
+            description=described("Send it"),
             expires_at=expires_at,
         ),
     )
@@ -1231,7 +1231,7 @@ async def test_an_approval_holds_the_work_until_the_user_decides(
             id="approval:a1",
             task_id="t1",
             approval_id="a1",
-            summary="Send the invoice",
+            description=described("Send the invoice"),
             expires_at=None,
         ),
     )
@@ -1247,7 +1247,7 @@ async def test_an_approval_holds_the_work_until_the_user_decides(
     assert waiting.display is DisplayState.AWAITING_APPROVAL
     assert [work.pending_approvals for work in decided.work] == [()]
     assert len(await rig.of(ApprovalDecided)) == 1
-    assert [(a.summary, a.expires_at) for a in await rig.of(ApprovalRequested)] == [
+    assert [(a.description.headline, a.expires_at) for a in await rig.of(ApprovalRequested)] == [
         ("Send the invoice", None)
     ]
 
@@ -1280,7 +1280,7 @@ async def test_work_that_ended_on_a_pending_approval_waits_for_it_and_a_stop_clo
             id=f"approval:{approval_id}",
             task_id="t1",
             approval_id=approval_id,
-            summary="Create it",
+            description=described("Create it"),
             expires_at=None,
         ),
     )
@@ -1564,7 +1564,7 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
             id=f"approval:{approval_id}",
             task_id="t1",
             approval_id=approval_id,
-            summary="Send the invoice",
+            description=described("Send the invoice"),
             expires_at=None,
         ),
     )
@@ -1625,7 +1625,7 @@ async def test_an_agent_withdrawing_its_approval_reaches_the_log_and_every_devic
             id=f"approval:{approval_id}",
             task_id="t1",
             approval_id=approval_id,
-            summary="Send it",
+            description=described("Send it"),
             expires_at=None,
         ),
     )
@@ -2997,7 +2997,7 @@ async def _parked_on_a_ledger_approval(
             id=f"approval:{approval_id}",
             task_id="t1",
             approval_id=approval_id,
-            summary="Send the invoice",
+            description=described("Send the invoice"),
             expires_at=expires_at,
             gated_tool_name="GMAIL_SEND_EMAIL",
             args_preview={"to": "acme@example.com"},
@@ -3125,7 +3125,7 @@ async def test_an_approval_pending_across_a_restart_is_still_asked_and_still_dec
         )
 
     card = _approval_card(reloaded or [])
-    assert (card.data.outcome, card.data.summary, card.data.args_preview) == (
+    assert (card.data.outcome, card.data.description.headline, card.data.args_preview) == (
         None,
         "Send the invoice",
         {"to": "acme@example.com"},

@@ -174,3 +174,6 @@ APPROVAL_TOOL_CATEGORY = "hil"
 # starting a new turn.
 HIL_ACK_APPROVED = "Got it, going ahead."
 HIL_ACK_DENIED = "Understood, I will not do that."
+# The same acks when the reply decided exactly one action, named in plain words.
+HIL_ACK_APPROVED_ONE = "Got it, I'll {action}."
+HIL_ACK_DENIED_ONE = "Understood, I won't {action}."

@@ -353,10 +353,27 @@ describe("a failed reply", () => {
   });
 });
 
+const SAM_EMAIL = {
+  action: "Send an email",
+  confirm: "send it",
+  details: [
+    { label: "To", value: "sam@x.com" },
+    { label: "Subject", value: '"Q3 numbers"' },
+  ],
+};
+const PICK_SOME =
+  'Reply *yes* to all, *no* to all, or pick some: "yes 1 and 3".';
+
 describe("an approval the work waits on", () => {
   const asking = (...approvals: ReturnType<typeof approvalAsked>[]) =>
     updateFrame(workItem("t1", 2, "awaiting_approval", approvals));
-  const sam = approvalAsked("t1", "ap1", "Send email to Sam");
+  const sam = approvalAsked(
+    "t1",
+    "ap1",
+    'Send an email to sam@x.com: "Q3 numbers"',
+    null,
+    SAM_EMAIL,
+  );
   const flight = approvalAsked("t1", "ap2", "Book the 9am flight");
   const invoice = approvalAsked("t1", "ap3", "Pay the invoice");
 
@@ -370,7 +387,13 @@ describe("an approval the work waits on", () => {
     );
     follower.expect(1);
     const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
-    const expiring = approvalAsked("t1", "ap1", "Send email to Sam", expiresAt);
+    const expiring = approvalAsked(
+      "t1",
+      "ap1",
+      'Send an email to sam@x.com: "Q3 numbers"',
+      expiresAt,
+      SAM_EMAIL,
+    );
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11"), workItem("t1", 2, "running")]),
       asking(expiring),
@@ -383,7 +406,7 @@ describe("an approval the work waits on", () => {
 
     expect(sent(calls)).toEqual([
       {
-        text: "*Approval needed:* Send email to Sam\nReply *yes* to approve or *no* to decline. This expires in 2 hours.",
+        text: '*GAIA wants to send an email*\nTo: sam@x.com\nSubject: "Q3 numbers"\n\nThis expires in 2 hours.\n\nReply *yes* to send it, or *no* to cancel.',
         replyTo: null,
       },
     ]);
@@ -407,9 +430,9 @@ describe("an approval the work waits on", () => {
     ]);
 
     expect(sent(calls).map(({ text }) => text)).toEqual([
-      "*Approval needed:* Send email to Sam\nReply *yes* to approve or *no* to decline.",
-      "*Approvals needed:*\n1. Send email to Sam\n2. Book the 9am flight\nReply *yes* to approve all, *no* to decline all, or say which numbers you mean.",
-      "*Approvals needed:*\n1. Book the 9am flight\n2. Pay the invoice\nReply *yes* to approve all, *no* to decline all, or say which numbers you mean.",
+      '*GAIA wants to send an email*\nTo: sam@x.com\nSubject: "Q3 numbers"\n\nReply *yes* to send it, or *no* to cancel.',
+      `*2 things need your OK:*\n1. Send an email to sam@x.com: "Q3 numbers"\n2. Book the 9am flight\n\n${PICK_SOME}`,
+      `*2 things need your OK:*\n1. Book the 9am flight\n2. Pay the invoice\n\n${PICK_SOME}`,
     ]);
   });
 
@@ -475,7 +498,7 @@ describe("an approval logged after the follow's floor on work started before it"
     ]);
 
     expect(sent(calls).map(({ text }) => text)).toEqual([
-      "*Approval needed:* Send email to Sam\nReply *yes* to approve or *no* to decline.",
+      "*GAIA wants to send email to Sam*\n\nReply *yes* to do it, or *no* to cancel.",
     ]);
   });
   it("is asked, once", async () => {
@@ -495,7 +518,7 @@ describe("an approval logged after the follow's floor on work started before it"
     ]);
 
     expect(sent(calls).map(({ text }) => text)).toEqual([
-      "*Approval needed:* Send email to Sam\nReply *yes* to approve or *no* to decline.",
+      "*GAIA wants to send email to Sam*\n\nReply *yes* to do it, or *no* to cancel.",
     ]);
   });
 });
@@ -527,7 +550,7 @@ describe("numbered approvals across two pieces of work", () => {
         .map(({ text }) => text)
         .at(-1),
     ).toBe(
-      "*Approvals needed:*\n1. Send email to Sam\n2. Pay the invoice\nReply *yes* to approve all, *no* to decline all, or say which numbers you mean.",
+      `*2 things need your OK:*\n1. Send email to Sam\n2. Pay the invoice\n\n${PICK_SOME}`,
     );
   });
 });

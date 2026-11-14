@@ -16,7 +16,6 @@ from app.db.repositories.conversation_entries import (
 )
 from app.models.conversation_log_models import (
     ApprovalDecided,
-    ApprovalRequested,
     Entry,
     LoggedEntry,
     Reply,
@@ -29,6 +28,7 @@ from app.models.conversation_log_models import (
 from app.models.conversation_models import ConversationHead, StoredEntry
 from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.conversation_wire import ReplyOutcome
+from tests.unit.services.conversation.log_helpers import asked
 
 
 def test_a_stored_row_carries_its_commit_time() -> None:
@@ -64,7 +64,7 @@ def test_a_page_names_the_opener_of_everything_it_completes() -> None:
     page = _page(
         _settle("r1"),
         WorkFinished(id="work:t1:finished", task_id="t1", outcome=WorkOutcome.DONE, report=""),
-        ApprovalRequested(id="approval:p1", task_id="t2", approval_id="p1"),
+        asked("approval:p1", "t2", "p1"),
         ApprovalDecided(
             id="approval:p2:decided",
             approval_id="p2",
@@ -85,7 +85,7 @@ def test_a_page_holding_its_openers_names_none() -> None:
     page = _page(
         Reply(id="o-r1", reply_id="r1", attempt_id="a1"),
         WorkStarted(id="work:t1", task_id="t1", cause_through=1),
-        ApprovalRequested(id="approval:p1", task_id="t1", approval_id="p1"),
+        asked("approval:p1", "t1", "p1"),
         ApprovalDecided(
             id="approval:p1:decided",
             approval_id="p1",

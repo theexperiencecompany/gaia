@@ -21,7 +21,8 @@ import { endAfterDecision, flattenArgsPreview } from "@shared/utils";
 import { useMemo, useState } from "react";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { formatToolName } from "@/features/chat/utils/chatUtils";
+import { APPROVAL_COPY } from "@/features/chat/constants/approvalCopy";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { toast } from "@/lib/toast";
 
 interface ApprovalRequestSectionProps {
@@ -31,12 +32,13 @@ interface ApprovalRequestSectionProps {
   disabled?: boolean;
 }
 
+/** Every argument of the call, for anyone who wants more than the plain-language facts. */
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   const { rows, omitted } = useMemo(() => flattenArgsPreview(args), [args]);
   if (rows.length === 0) return null;
   let lastGroup: string | null = null;
   return (
-    <div className="mt-3 space-y-2 rounded-2xl bg-zinc-900 p-3">
+    <div className="mt-2 space-y-2 rounded-2xl bg-zinc-900 p-3">
       {rows.map((row) => {
         const showGroup = row.group !== null && row.group !== lastGroup;
         lastGroup = row.group;
@@ -72,11 +74,20 @@ export default function ApprovalRequestSection({
   const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
   const [feedback, setFeedback] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
+  const [showAllArgs, setShowAllArgs] = useState(false);
   const [openedAt] = useState(() => Date.now());
   const locked = submitting !== null || disabled || phase === "submitting";
 
   const ageSeconds = approvalAgeSeconds(data.asked_at, openedAt);
   const needsReconfirm = (ageSeconds ?? 0) >= RECONFIRM_AGE_SECONDS;
+  const { description } = data;
+  const integrationIcon = data.integration_name
+    ? getToolCategoryIcon(data.integration_name, {
+        width: 20,
+        height: 20,
+        showBackground: false,
+      })
+    : null;
 
   const submit = async (
     decision: ApprovalDecision,
@@ -100,11 +111,11 @@ export default function ApprovalRequestSection({
       if (endAfterDecision(decision, outcome) === null) {
         setSubmitting(null);
         setPhase("idle");
-        toast.error("That approval was already decided");
+        toast.error(APPROVAL_COPY.alreadyDecided);
         return;
       }
     } catch {
-      toast.error("Couldn't submit your decision, please try again");
+      toast.error(APPROVAL_COPY.submitFailed);
       setSubmitting(null);
       setPhase("idle");
     }
@@ -128,7 +139,7 @@ export default function ApprovalRequestSection({
         <div className="text-sm leading-snug text-zinc-100">
           {`Asked ${formatApprovalAge(ageSeconds).replace("asked ", "")} ago — still want this?`}
         </div>
-        <div className="mt-1 text-xs text-zinc-400">{data.summary}</div>
+        <div className="mt-1 text-xs text-zinc-400">{description.headline}</div>
         <div className="mt-3 flex items-center gap-2">
           <Button
             color="primary"
@@ -138,10 +149,10 @@ export default function ApprovalRequestSection({
               onApproveTap();
             }}
           >
-            Yes, still approve
+            {APPROVAL_COPY.reconfirmApprove}
           </Button>
           <Button variant="flat" size="sm" onPress={() => setPhase("idle")}>
-            Back
+            {APPROVAL_COPY.back}
           </Button>
         </div>
       </div>
@@ -151,15 +162,26 @@ export default function ApprovalRequestSection({
   return (
     <div className="w-full max-w-md rounded-2xl bg-zinc-800 p-4 text-white">
       <div className="flex items-start gap-2.5">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-400/10">
-          <ShieldAlertIcon width={17} height={17} className="text-amber-400" />
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-zinc-900">
+          {integrationIcon ?? (
+            <ShieldAlertIcon
+              width={17}
+              height={17}
+              className="text-amber-400"
+            />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-xs font-medium text-amber-400">
-            Needs approval
+            {APPROVAL_COPY.needsApproval}
+            {data.integration_name && (
+              <span className="font-normal text-zinc-500">
+                {APPROVAL_COPY.inIntegration(data.integration_name)}
+              </span>
+            )}
           </div>
           <div className="text-sm leading-snug text-zinc-100">
-            {formatToolName(data.gated_tool_name)}
+            {description.headline}
           </div>
           {ageSeconds != null && (
             <div className="mt-0.5 text-[11px] text-zinc-500">
@@ -169,14 +191,44 @@ export default function ApprovalRequestSection({
         </div>
       </div>
 
-      <ArgsPreview args={data.args_preview} />
+      {data.auto_reason?.trim() && (
+        <div className="mt-2 text-xs leading-snug text-zinc-400">
+          {data.auto_reason.trim()}
+        </div>
+      )}
+
+      {description.details.length > 0 && (
+        <div className="mt-3 space-y-2 rounded-2xl bg-zinc-900 p-3">
+          {description.details.map((detail) => (
+            <div key={detail.label} className="text-xs">
+              <div className="mb-0.5 text-[11px] text-zinc-500">
+                {detail.label}
+              </div>
+              <div className="break-words text-zinc-200">{detail.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {description.details.length === 0 || showAllArgs ? (
+        <ArgsPreview args={data.args_preview} />
+      ) : (
+        <Button
+          className="mt-1 px-0 text-zinc-500"
+          size="sm"
+          variant="light"
+          onPress={() => setShowAllArgs(true)}
+        >
+          {APPROVAL_COPY.showAllDetails}
+        </Button>
+      )}
 
       <div className="mt-3 flex items-center gap-2">
         <Input
           className="flex-1"
           size="sm"
           variant="flat"
-          placeholder="Tell GAIA why (optional)"
+          placeholder={APPROVAL_COPY.feedbackPlaceholder}
           value={feedback}
           onValueChange={setFeedback}
           isDisabled={locked}
@@ -187,7 +239,7 @@ export default function ApprovalRequestSection({
           isDisabled={locked}
           onPress={onApproveTap}
         >
-          Approve
+          {APPROVAL_COPY.approve}
         </Button>
         <Button
           variant="flat"
@@ -195,7 +247,7 @@ export default function ApprovalRequestSection({
           isDisabled={locked}
           onPress={() => submit("deny")}
         >
-          Deny
+          {APPROVAL_COPY.deny}
         </Button>
         {!data.always_asks && (
           <Dropdown placement="bottom-end">
@@ -205,17 +257,18 @@ export default function ApprovalRequestSection({
                 size="sm"
                 variant="light"
                 isDisabled={locked}
-                aria-label="More approval options"
+                aria-label={APPROVAL_COPY.moreOptions}
               >
                 <MoreHorizontalIcon width={18} />
               </Button>
             </DropdownTrigger>
-            <DropdownMenu aria-label="Approval options">
+            <DropdownMenu aria-label={APPROVAL_COPY.optionsMenu}>
               <DropdownItem
                 key="always"
+                description={APPROVAL_COPY.alwaysAllowHint}
                 onPress={() => submit("approve", "always_tool")}
               >
-                Always allow this tool
+                {APPROVAL_COPY.alwaysAllow(description.action)}
               </DropdownItem>
             </DropdownMenu>
           </Dropdown>

@@ -6119,6 +6119,30 @@ export interface components {
             success: boolean;
         };
         /**
+         * ApprovalDescription
+         * @description A gated call in plain words, rendered the same by web cards and bot prompts.
+         */
+        ApprovalDescription: {
+            /** Action */
+            action: string;
+            /** Confirm */
+            confirm: string;
+            /** Details */
+            details: components["schemas"]["ApprovalDetail"][];
+            /** Headline */
+            headline: string;
+        };
+        /**
+         * ApprovalDetail
+         * @description One labelled fact about a gated call, e.g. To: bob@x.com.
+         */
+        ApprovalDetail: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: string;
+        };
+        /**
          * ApprovalOutcome
          * @description How an approval ended; an approval with no outcome is still pending.
          * @enum {string}
@@ -6142,6 +6166,7 @@ export interface components {
             };
             /** Auto Reason */
             auto_reason: string | null;
+            description: components["schemas"]["ApprovalDescription"];
             /** Expires At */
             expires_at: string | null;
             /**
@@ -6162,11 +6187,6 @@ export interface components {
              * @constant
              */
             kind: "approval_requested";
-            /**
-             * Summary
-             * @default
-             */
-            summary: string;
             /** Task Id */
             task_id: string;
             /**
@@ -6210,6 +6230,7 @@ export interface components {
             /** Auto Reason */
             auto_reason: string | null;
             decider?: components["schemas"]["ApprovalDecider"] | null;
+            description: components["schemas"]["ApprovalDescription"];
             /** Feedback */
             feedback: string | null;
             /** Gated Tool Name */
@@ -6217,8 +6238,6 @@ export interface components {
             /** Integration Name */
             integration_name: string | null;
             outcome: components["schemas"]["ApprovalOutcome"] | null;
-            /** Summary */
-            summary: string;
             /** Tool Call Id */
             tool_call_id: string;
         };
@@ -17075,6 +17094,8 @@ export type ApiCallConfig = components['schemas']['ApiCallConfig'];
 export type ApprovalDecider = components['schemas']['ApprovalDecider'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
+export type ApprovalDescription = components['schemas']['ApprovalDescription'];
+export type ApprovalDetail = components['schemas']['ApprovalDetail'];
 export type ApprovalOutcome = components['schemas']['ApprovalOutcome'];
 export type ApprovalRequested = components['schemas']['ApprovalRequested'];
 export type ApprovalRequestEntry = components['schemas']['ApprovalRequestEntry'];

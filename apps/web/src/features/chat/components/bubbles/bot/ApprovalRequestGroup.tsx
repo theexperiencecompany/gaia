@@ -23,7 +23,7 @@ function RevokedTombstone({ item }: { item: ApprovalRequestData }) {
   if (!visible) return null;
   return (
     <div className="w-full rounded-2xl bg-zinc-800/60 p-3 text-xs text-zinc-500">
-      Agent withdrew: {item.summary} — no action needed.
+      Agent withdrew: {item.description.headline} — no action needed.
     </div>
   );
 }

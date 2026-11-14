@@ -53,6 +53,7 @@ from shared.py.conversation_wire import (
     ToolDataEntry,
     ToolTimeline,
 )
+from tests.unit.services.conversation.log_helpers import SEND_EMAIL
 
 pytestmark = pytest.mark.unit
 
@@ -131,7 +132,7 @@ def approval_card(outcome: ApprovalOutcome | None) -> ApprovalRequestEntry:
             tool_call_id="tc1",
             gated_tool_name="send_email",
             integration_name=None,
-            summary="send it",
+            description=SEND_EMAIL,
             args_preview={},
             outcome=outcome,
             decider=None if outcome is None else ApprovalDecider.USER,
@@ -281,7 +282,7 @@ class TestDelegation:
 
 class TestApprovals:
     def test_an_approval_the_turns_work_asks_is_pending_until_decided(self) -> None:
-        asked = ApprovalRequested(id="ar", task_id=TASK, approval_id="ap1")
+        asked = ApprovalRequested(id="ar", task_id=TASK, approval_id="ap1", description=SEND_EMAIL)
         reader = read(
             shown(user()),
             insert(

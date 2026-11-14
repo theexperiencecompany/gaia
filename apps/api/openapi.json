@@ -503,6 +503,57 @@
         "title": "ApprovalDecisionResponse",
         "type": "object"
       },
+      "ApprovalDescription": {
+        "description": "A gated call in plain words, rendered the same by web cards and bot prompts.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "confirm": {
+            "title": "Confirm",
+            "type": "string"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalDetail"
+            },
+            "title": "Details",
+            "type": "array"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "headline",
+          "confirm",
+          "details"
+        ],
+        "title": "ApprovalDescription",
+        "type": "object"
+      },
+      "ApprovalDetail": {
+        "description": "One labelled fact about a gated call, e.g. To: bob@x.com.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "ApprovalDetail",
+        "type": "object"
+      },
       "ApprovalOutcome": {
         "description": "How an approval ended; an approval with no outcome is still pending.",
         "enum": [
@@ -605,6 +656,9 @@
               }
             ]
           },
+          "description": {
+            "$ref": "#/components/schemas/ApprovalDescription"
+          },
           "feedback": {
             "anyOf": [
               {
@@ -641,10 +695,6 @@
               }
             ]
           },
-          "summary": {
-            "title": "Summary",
-            "type": "string"
-          },
           "tool_call_id": {
             "title": "Tool Call Id",
             "type": "string"
@@ -655,7 +705,7 @@
           "tool_call_id",
           "gated_tool_name",
           "integration_name",
-          "summary",
+          "description",
           "args_preview",
           "outcome",
           "feedback",
@@ -694,6 +744,9 @@
               }
             ],
             "title": "Auto Reason"
+          },
+          "description": {
+            "$ref": "#/components/schemas/ApprovalDescription"
           },
           "expires_at": {
             "anyOf": [
@@ -735,11 +788,6 @@
             "title": "Kind",
             "type": "string"
           },
-          "summary": {
-            "default": "",
-            "title": "Summary",
-            "type": "string"
-          },
           "task_id": {
             "title": "Task Id",
             "type": "string"
@@ -755,7 +803,7 @@
           "kind",
           "task_id",
           "approval_id",
-          "summary",
+          "description",
           "expires_at",
           "tool_call_id",
           "gated_tool_name",

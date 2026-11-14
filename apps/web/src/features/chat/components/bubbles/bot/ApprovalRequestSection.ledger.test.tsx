@@ -22,8 +22,16 @@ const card = (
   tool_call_id: "call-1",
   gated_tool_name: "GMAIL_SEND_EMAIL",
   integration_name: "gmail",
-  summary: "Send email",
-  args_preview: { to: "b@x" },
+  description: {
+    action: "Send an email",
+    headline: 'Send an email to b@x: "Q3 numbers"',
+    confirm: "send it",
+    details: [
+      { label: "To", value: "b@x" },
+      { label: "Subject", value: '"Q3 numbers"' },
+    ],
+  },
+  args_preview: { to: "b@x", thread_id: "th_42" },
   outcome: null,
   feedback: null,
   auto_reason: null,
@@ -38,6 +46,52 @@ describe("ApprovalRequestSection ledger UX", () => {
     vi.mocked(chatApi.postApprovalDecision)
       .mockReset()
       .mockResolvedValue({ success: true });
+  });
+
+  it("leads with the server's headline and labelled details, raw arguments behind a tap", () => {
+    render(
+      <ApprovalRequestSection
+        data={card({ auto_reason: "GAIA isn't sure you asked for this." })}
+      />,
+    );
+    expect(
+      screen.getByText('Send an email to b@x: "Q3 numbers"'),
+    ).toBeDefined();
+    expect(screen.getByText("Subject")).toBeDefined();
+    expect(screen.getByText('"Q3 numbers"')).toBeDefined();
+    expect(
+      screen.getByText("GAIA isn't sure you asked for this."),
+    ).toBeDefined();
+    expect(screen.queryByText("th_42")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /show all details/i }));
+    expect(screen.getByText("th_42")).toBeDefined();
+  });
+
+  it("shows every argument when the server has no labelled details", () => {
+    render(
+      <ApprovalRequestSection
+        data={card({
+          description: {
+            action: "Run a tool",
+            headline: "Run a tool",
+            confirm: "do it",
+            details: [],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("th_42")).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /show all details/i }),
+    ).toBeNull();
+  });
+
+  it("names the action it will stop asking about", () => {
+    render(<ApprovalRequestSection data={card()} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /more approval options/i }),
+    );
+    expect(screen.getByText("Don't ask again to send an email")).toBeDefined();
   });
 
   it("shows how long ago the card was asked", () => {
