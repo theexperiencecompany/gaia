@@ -145,3 +145,5 @@ CHAT_CAPTION_MAX_CHARS = 1024
 # edition from content.rich_content when metadata.kind names one of these.
 NOTIFICATION_KIND_BRIEFING_DAILY = "briefing_daily"
 NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly"
+# A quiet day's plain note: no edition, so every channel renders it as a plain notification.
+NOTIFICATION_KIND_BRIEFING_NOTE = "briefing_note"

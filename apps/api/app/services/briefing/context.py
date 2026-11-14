@@ -6,16 +6,21 @@ blocks. Every block is plain text — the agent turns it into the payload.
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
+from enum import StrEnum
 from zoneinfo import ZoneInfo
+
+from fastapi import HTTPException
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_RHYTHM_WORKFLOW_KEYS,
+    LOOKBACK_MAX_DAYS,
     WEEK_LIST_LIMIT,
     WINBACK_THRESHOLD,
 )
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
+from app.constants.memory import MemoryKind
 from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, NEEDS_USER_LABELS
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
@@ -27,8 +32,8 @@ from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_models import (
     BriefingEvent,
     BriefingKind,
+    BriefingModel,
     BriefingMood,
-    BriefingPayload,
     BriefingWeek,
     BriefingWeekDay,
 )
@@ -36,8 +41,11 @@ from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.models.user_models import UserDocument
 from app.services.briefing import dormancy
+from app.services.briefing.candidates.subjects import subject_key
 from app.services.calendar_service import get_calendar_events
 from app.services.integrations.user_integrations import get_connected_integration_ids
+from app.utils.errors import IntegrationNotConnectedError
+from shared.py.wide_events import log
 
 # Open tracked todos the brief reports on (in progress / waiting on the user / failed).
 _TRACKED_WORK_LIMIT = 20
@@ -51,6 +59,10 @@ class UserClock:
     now_local: datetime
     date_str: str
     day_of_year: int
+
+    def day_of(self, moment: datetime) -> date:
+        """Return the user's local day a moment falls on; a naive moment is UTC, as Mongo stores it."""
+        return _aware(moment).astimezone(self.tz).date()
 
 
 @dataclass
@@ -75,6 +87,15 @@ class CompletedWork:
     user: list[TodoDocument] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class OpenSubjects:
+    """How many open things GAIA's tracked work holds in each state, each subject once."""
+
+    running: int = 0
+    blocked: int = 0
+    failed: int = 0
+
+
 @dataclass
 class TrackedWork:
     """GAIA's tracked todos by state — the deterministic world the brief reports."""
@@ -84,6 +105,8 @@ class TrackedWork:
     #: Waiting on the user (NEEDS_USER_LABELS): the inbox desk's threads they owe a reply, approvals.
     blocked: list[TodoDocument] = field(default_factory=list)
     failed: list[TodoDocument] = field(default_factory=list)
+    #: Every open subject by state, however many: the lists above stop at a read limit.
+    open_subjects: OpenSubjects = field(default_factory=lambda: OpenSubjects())
 
     @property
     def is_empty(self) -> bool:
@@ -105,22 +128,40 @@ def resolve_clock(user_timezone: str | None) -> UserClock:
     )
 
 
+def due_on(due_at: datetime, clock: UserClock) -> str:
+    """Say a due date the way the brief does, on the user's own day: today, or its weekday and date."""
+    day = clock.day_of(due_at)
+    return "today" if day.isoformat() == clock.date_str else day.strftime("%a %b %-d")
+
+
 def day_start_utc(clock: UserClock, days_ago: int = 0) -> datetime:
     day = clock.now_local.date() - timedelta(days=days_ago)
     return datetime.combine(day, time.min, tzinfo=clock.tz).astimezone(UTC)
 
 
-async def get_yesterday_payload(
-    user_id: str, before_date: str, kind: BriefingKind = BRIEFING_KIND_DAILY
-) -> BriefingPayload | None:
-    """Latest daily briefing payload strictly before before_date (today).
+async def last_brief(
+    user_id: str, clock: UserClock, kind: BriefingKind = BRIEFING_KIND_DAILY
+) -> BriefingModel | None:
+    """Return the latest brief of kind before today; a same-day re-run looks past its own."""
+    return await briefing_repository.get_before_date(user_id, kind=kind, before_date=clock.date_str)
 
-    Excludes today so a same-day re-run compares against the real prior brief.
+
+def lookback_since(clock: UserClock, last: BriefingModel | None) -> datetime:
+    """Return when the look-back starts: the last brief, at most LOOKBACK_MAX_DAYS back.
+
+    With no brief before, it starts at yesterday's local midnight.
     """
-    briefing = await briefing_repository.get_before_date(
-        user_id, kind=kind, before_date=before_date
-    )
-    return briefing.payload if briefing else None
+    if last is None:
+        return day_start_utc(clock, days_ago=1)
+    return max(_aware(last.created_at), day_start_utc(clock, days_ago=LOOKBACK_MAX_DAYS))
+
+
+def _when_sent(last: BriefingModel, clock: UserClock) -> str:
+    """Name the last brief's day as the user would: yesterday, or its weekday and date."""
+    day = date.fromisoformat(last.date)
+    if day == clock.now_local.date() - timedelta(days=1):
+        return "yesterday"
+    return day.strftime("on %A %b %-d")
 
 
 # Users type junk into onboarding ("nothing", "n/a"); junk is not a goal.
@@ -149,7 +190,10 @@ async def stated_goals(user_id: str, user: UserDocument) -> list[StatedGoal]:
     result = await memory_engine.recall(
         user_id, "what is the user currently working on and their goals", limit=5
     )
-    for entry in result.memories:
+    # A weak fallback recall is whatever memory sat nearest, and an experience is something
+    # that happened: neither is what the user works toward.
+    recalled = result.memories if result.has_confident_match else []
+    for entry in (e for e in recalled if e.kind is MemoryKind.FACT):
         statement = entry_to_note(entry).strip()
         if statement and statement not in {g.statement for g in goals}:
             terms = tuple(entity.name for entity in entry.entities)
@@ -181,16 +225,33 @@ async def gather_tracked_work(user_id: str, since: datetime) -> TrackedWork:
     for doc in await todo_repository.list_completed_since(user_id, since=since):
         if is_gaia_tracked(doc):
             work.completed.append(doc)
-    for doc in await todo_repository.list_active_tracked(user_id, limit=_TRACKED_WORK_LIMIT):
-        if doc.external_ref is not None and doc.external_ref.source is ExternalRefSource.INBOX_DESK:
-            continue
-        if FAILED_LABEL in doc.labels:
-            work.failed.append(doc)
-        elif NEEDS_USER_LABELS.intersection(doc.labels):
-            work.blocked.append(doc)
-        else:
-            work.running.append(doc)
+    # Every open one is read so the totals are whole; the brief reports on the newest.
+    everything = [
+        doc
+        for doc in await todo_repository.list_active_tracked(user_id, limit=0)
+        if doc.external_ref is None or doc.external_ref.source is not ExternalRefSource.INBOX_DESK
+    ]
+    whole = _by_state(everything)
+    work.running, work.blocked, work.failed = _by_state(everything[:_TRACKED_WORK_LIMIT])
+    work.open_subjects = OpenSubjects(*(len({subject_key(doc) for doc in docs}) for docs in whole))
     return work
+
+
+def _by_state(
+    docs: list[TodoDocument],
+) -> tuple[list[TodoDocument], list[TodoDocument], list[TodoDocument]]:
+    """Split open tracked todos into running, waiting on the user, and failed."""
+    running: list[TodoDocument] = []
+    blocked: list[TodoDocument] = []
+    failed: list[TodoDocument] = []
+    for doc in docs:
+        if FAILED_LABEL in doc.labels:
+            failed.append(doc)
+        elif NEEDS_USER_LABELS.intersection(doc.labels):
+            blocked.append(doc)
+        else:
+            running.append(doc)
+    return running, blocked, failed
 
 
 async def gather_completed_since(user_id: str, since: datetime) -> CompletedWork:
@@ -200,20 +261,13 @@ async def gather_completed_since(user_id: str, since: datetime) -> CompletedWork
     return work
 
 
-async def user_open_todo_summary(user_id: str) -> tuple[int, list[str]]:
-    """Count + first titles of the user's own open todos, for the brief's facts.
-
-    The voice pass gets these so an empty day can't be voiced as "all clear"
-    while the user's own list still has work in it.
-    """
-    docs = await todo_repository.list_open_user_todos(user_id, limit=50)
-    titles = [d.title or "untitled" for d in docs]
-    return len(titles), titles[:5]
-
-
 async def format_lookback_block(
-    user_id: str, yesterday_payload: BriefingPayload | None, since: datetime
+    user_id: str, last: BriefingModel | None, since: datetime, clock: UserClock
 ) -> str:
+    """Return what the last brief planned, then what got done and ran since it.
+
+    A brief older than LOOKBACK_MAX_DAYS is named by its date but not quoted: its plan is stale.
+    """
     completed = await gather_completed_since(user_id, since)
     briefing_workflows = await workflow_repository.find_system_workflows(
         user_id, BRIEFING_RHYTHM_WORKFLOW_KEYS
@@ -226,15 +280,20 @@ async def format_lookback_block(
     )
 
     parts: list[str] = []
-    if yesterday_payload:
-        planned = [item.text for section in yesterday_payload.sections for item in section.items]
+    if last is None:
+        parts.append("No prior briefing — this is the first look-back.")
+    elif _aware(last.created_at) < since:
+        parts.append(
+            f"The last brief went out {_when_sent(last, clock)}, over {LOOKBACK_MAX_DAYS} days "
+            f"ago; what it said is stale, so this looks back over the last {LOOKBACK_MAX_DAYS} days."
+        )
+    else:
+        planned = [item.text for section in last.payload.sections for item in section.items]
         if planned:
             parts.append(
-                "Yesterday you told the user you'd focus on:\n"
+                f"Your last brief, {_when_sent(last, clock)}, told the user you'd focus on:\n"
                 + "\n".join(f"- {p}" for p in planned if p)
             )
-    else:
-        parts.append("No prior briefing — this is the first look-back.")
 
     if completed.gaia or completed.user:
         done = [f"- GAIA finished: {d.title or 'untitled'}" for d in completed.gaia]
@@ -301,34 +360,96 @@ def _to_event(event: GoogleCalendarEventResource, tz: ZoneInfo) -> BriefingEvent
     return None
 
 
-async def calendar_connected(user_id: str) -> bool:
-    """Report whether the user has a calendar connected, so an empty read means an empty day."""
-    return GOOGLE_CALENDAR_INTEGRATION_ID in await get_connected_integration_ids(user_id)
+class CalendarGap(StrEnum):
+    """Why a brief has no calendar to read."""
+
+    NOT_CONNECTED = "not_connected"
+    #: A connected calendar did not answer: nothing can be said about the day's events.
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class CalendarUnread:
+    """The calendar a brief could not read, and why; never the same as an empty one."""
+
+    gap: CalendarGap
 
 
 async def read_calendar(
     user_id: str, start: datetime, end: datetime
-) -> list[GoogleCalendarEventResource]:
-    """Return the user's calendar events from start to end, as Google sends them.
+) -> list[GoogleCalendarEventResource] | CalendarUnread:
+    """Return the user's calendar events from start to end as Google sends them, declined ones left out.
 
-    Empty when no calendar is connected; a connected calendar that fails to answer raises.
+    A connected calendar that fails to answer, even for one of its calendars, is unavailable.
     """
-    if not await calendar_connected(user_id):
-        return []
-    response = await get_calendar_events(
-        user_id, time_min=start.isoformat(), time_max=end.isoformat(), fetch_all=True
-    )
-    return response.events
+    if GOOGLE_CALENDAR_INTEGRATION_ID not in await get_connected_integration_ids(user_id):
+        return CalendarUnread(CalendarGap.NOT_CONNECTED)
+    try:
+        response = await get_calendar_events(
+            user_id, time_min=start.isoformat(), time_max=end.isoformat(), fetch_all=True
+        )
+    except (IntegrationNotConnectedError, HTTPException) as exc:
+        log.warning("briefing.calendar_unavailable", error_type=type(exc).__name__)
+        return CalendarUnread(CalendarGap.UNAVAILABLE)
+    if response.calendars_failed:
+        log.warning(
+            "briefing.calendar_unavailable", calendars_failed=len(response.calendars_failed)
+        )
+        return CalendarUnread(CalendarGap.UNAVAILABLE)
+    return [event for event in response.events if not event.declined_by_user]
+
+
+@dataclass(frozen=True)
+class DayCalendar:
+    """One read of the calendar: today's events, or why it went unread, and the week behind them."""
+
+    today: list[BriefingEvent] | CalendarUnread
+    #: The series window's events as Google sent them; none when the calendar went unread.
+    week: list[GoogleCalendarEventResource]
+
+    @property
+    def events(self) -> list[BriefingEvent]:
+        """Return today's events; none when the calendar went unread."""
+        return self.today if isinstance(self.today, list) else []
+
+    @property
+    def tally(self) -> int | CalendarGap:
+        """Return how many events today holds, or why the calendar went unread."""
+        return len(self.today) if isinstance(self.today, list) else self.today.gap
+
+
+async def read_day_calendar(
+    user_id: str, clock: UserClock, start: datetime, end: datetime
+) -> DayCalendar:
+    """Read the calendar once over start to end and take today's events from it."""
+    raw = await read_calendar(user_id, start, end)
+    if isinstance(raw, CalendarUnread):
+        return DayCalendar(today=raw, week=[])
+    return DayCalendar(today=events_on(raw, clock, clock.now_local.date(), 1), week=raw)
+
+
+def events_on(
+    raw: list[GoogleCalendarEventResource], clock: UserClock, first: date, days: int
+) -> list[BriefingEvent]:
+    """Return the events starting on the days local days from first, ordered by start (all-day first)."""
+    last = first + timedelta(days=days)
+    events = [
+        e
+        for e in (_to_event(event, clock.tz) for event in raw)
+        if e is not None and first <= date.fromisoformat(e.date) < last
+    ]
+    return sorted(events, key=lambda e: (e.date, e.start or ""))
 
 
 async def gather_calendar(
     user_id: str, clock: UserClock, *, days: int, days_ahead: int = 0
-) -> list[BriefingEvent]:
-    """Return the user's calendar events over days local days from days_ahead, ordered by start (all-day first)."""
+) -> list[BriefingEvent] | CalendarUnread:
+    """Return the user's calendar events over days local days from days_ahead, or why it went unread."""
     start = day_start_utc(clock, days_ago=-days_ahead)
     raw = await read_calendar(user_id, start, start + timedelta(days=days))
-    events = [e for e in (_to_event(event, clock.tz) for event in raw) if e]
-    return sorted(events, key=lambda e: (e.date, e.start or ""))
+    if isinstance(raw, CalendarUnread):
+        return raw
+    return events_on(raw, clock, clock.now_local.date() + timedelta(days=days_ahead), days)
 
 
 def week_start_utc(clock: UserClock) -> datetime:
@@ -336,23 +457,22 @@ def week_start_utc(clock: UserClock) -> datetime:
     return day_start_utc(clock, days_ago=clock.now_local.weekday())
 
 
-async def gather_week(user_id: str, clock: UserClock, completed: CompletedWork) -> BriefingWeek:
-    """Count this week's completions (gathered since week_start_utc) by owner and day.
-
-    Also includes the calendar for the seven days ahead.
-    """
+def count_week(
+    clock: UserClock, completed: CompletedWork, ahead: list[BriefingEvent] | CalendarUnread
+) -> BriefingWeek:
+    """Count this week's completions (gathered since week_start_utc) by owner and day, beside the week ahead."""
     monday = clock.now_local.date() - timedelta(days=clock.now_local.weekday())
     days = [BriefingWeekDay(you=0, gaia=0) for _ in range(7)]
     for docs, by_gaia in ((completed.gaia, True), (completed.user, False)):
         for doc in reversed(docs):
             if doc.completed_at is None:
                 continue
-            index = (_aware(doc.completed_at).astimezone(clock.tz).date() - monday).days
+            index = (clock.day_of(doc.completed_at) - monday).days
             if not 0 <= index < len(days):
                 continue
             if by_gaia:
                 days[index].gaia += 1
             else:
                 days[index].you += 1
-    ahead = await gather_calendar(user_id, clock, days=7, days_ahead=1)
-    return BriefingWeek(days=days, ahead=ahead[:WEEK_LIST_LIMIT])
+    listed = ahead[:WEEK_LIST_LIMIT] if isinstance(ahead, list) else []
+    return BriefingWeek(days=days, ahead=listed)

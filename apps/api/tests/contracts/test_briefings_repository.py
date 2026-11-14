@@ -12,7 +12,7 @@ import re
 from pymongo.errors import DuplicateKeyError
 import pytest
 
-from app.constants.briefing import BRIEFING_KIND_DAILY, BRIEFING_KIND_WEEKLY
+from app.constants.briefing import BRIEFING_KIND_DAILY, BRIEFING_KIND_WEEKLY, BriefForm
 from app.db.repositories.briefings import BriefingsRepository
 from app.db.repositories.cache import CachePolicy
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload, EditionRender
@@ -49,7 +49,7 @@ async def _upsert(
     kind: BriefingKind,
     payload: BriefingPayload,
     *,
-    edition: EditionRender,
+    edition: EditionRender | None,
 ) -> BriefingModel:
     """Store the brief the way store_brief does: under the id briefing_id_for gives."""
     briefing_id = await repo.briefing_id_for(user_id, date, kind)
@@ -277,6 +277,27 @@ class TestBriefingsReads:
         recent = await repo.list_recent(user_id, limit=10)
         assert [b.user_id for b in recent] == [user_id, user_id]
         assert recent[0].id == newest.id
+
+    async def test_the_archive_lists_editions_and_leaves_quiet_notes_out(self, repo):
+        """A quiet day's note has no edition to show: the archive is editions only."""
+        user_id = "u-quiet"
+        edition = await _upsert(
+            repo, user_id, "2026-08-05", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
+        )
+        note = await _upsert(
+            repo,
+            user_id,
+            "2026-08-06",
+            BRIEFING_KIND_DAILY,
+            _payload(form=BriefForm.QUIET_NOTE),
+            edition=None,
+        )
+
+        assert [b.id for b in await repo.list_recent(user_id, limit=10, editions_only=True)] == [
+            edition.id
+        ]
+        assert [b.id for b in await repo.list_recent(user_id, limit=10)] == [note.id, edition.id]
+        assert note.edition_image_url is None
 
     async def test_list_recent_orders_by_brief_date_not_write_time(self, repo, raw_collection):
         """A backfilled brief is written after newer days but still lists by its own date."""

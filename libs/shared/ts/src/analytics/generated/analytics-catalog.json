@@ -1503,6 +1503,11 @@
             "title": "Kind",
             "type": "string"
           },
+          "form": {
+            "enum": ["edition", "quiet_note"],
+            "title": "Form",
+            "type": "string"
+          },
           "family": {
             "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Family",
@@ -1556,6 +1561,7 @@
         },
         "required": [
           "kind",
+          "form",
           "family",
           "mood",
           "item_count",

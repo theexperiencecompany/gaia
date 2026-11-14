@@ -7073,6 +7073,12 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * BriefForm
+         * @description What a stored brief is: a drawn edition, or the plain note a quiet day sends instead.
+         * @enum {string}
+         */
+        BriefForm: "edition" | "quiet_note";
+        /**
          * BriefingEdition
          * @description One daily edition family, and where the user put it.
          */
@@ -7193,6 +7199,8 @@ export interface components {
             caption: string;
             /** Date */
             date: string;
+            /** @default edition */
+            form: components["schemas"]["BriefForm"];
             /**
              * Generated At
              * @description User-local generation time, e.g. "6:02 AM".
@@ -7732,6 +7740,8 @@ export interface components {
          *     ``GET /calendar/events``).
          */
         CalendarEventsResponse: {
+            /** Calendars Failed */
+            calendars_failed?: string[];
             /** Calendars Truncated */
             calendars_truncated: string[];
             /** Events */
@@ -14671,7 +14681,7 @@ export interface components {
          * @description Why a scout contributed nothing to this brief.
          * @enum {string}
          */
-        ScoutSkipReason: "failed" | "budget" | "backoff" | "no_read_only_tools" | "unknown_integration";
+        ScoutSkipReason: "failed" | "budget" | "backoff" | "source_failed" | "no_read_only_tools" | "unknown_integration";
         /**
          * SearchIntegrationItem
          * @description Integration item in search results.
@@ -17975,6 +17985,7 @@ export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
 export type BriefAction = components['schemas']['BriefAction'];
 export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
 export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
+export type BriefForm = components['schemas']['BriefForm'];
 export type BriefingEdition = components['schemas']['BriefingEdition'];
 export type BriefingEditions = components['schemas']['BriefingEditions'];
 export type BriefingEditionsUpdate = components['schemas']['BriefingEditionsUpdate'];

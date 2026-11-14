@@ -18,6 +18,8 @@ __all__ = [
 BriefingKindName = Literal["daily", "weekly"]
 #: The kinds of block a composed brief holds.
 BriefBlockKindName = Literal["lead", "items", "chart", "quote", "progress", "note"]
+#: Whether a brief went out as a drawn edition or as the plain note a quiet day sends.
+BriefFormName = Literal["edition", "quiet_note"]
 
 
 class BriefingSent(ServerEvent):
@@ -27,6 +29,7 @@ class BriefingSent(ServerEvent):
     budget_per_user_day: ClassVar[int] = 4
 
     kind: BriefingKindName
+    form: BriefFormName
     family: Identifier
     mood: Identifier
     item_count: int

@@ -36,6 +36,13 @@ What is noise:
 - A failed run that recovered, a one-off sync blip, a retry nobody needs to see.
 - A chart of a flat or tiny series, or one that repeats a list already in the brief.
 
+A todo of the user's own with no due date (state "on their list, undated") is only still open,
+never urgent and never the lead: place one when the day has room or a reason for it, in a quiet
+group headed as what it is ("Still on your list"), never as decisions or anything waiting.
+An item marked "already shown, still open" is no news: an earlier brief showed it as it stands.
+Place it only when it matters more today (it came due, it has waited too long), framed as still
+open; never lead with it when anything new needs the user.
+
 ## The blocks
 - lead: at most one, and only as block 1. The one thing most worth starting the day on, something
   the user acts on (its item carries an action), and only when GAIA can concretely help with it. offer is what GAIA does when they say "Let's do it": one
@@ -87,7 +94,7 @@ What is noise:
 
 ## What code holds you to (a composition that breaks a rule is sent back once)
 - Every id is one listed below, and each id is placed at most once. A calendar event can only be
-  the lead: the edition draws the day's calendar itself.
+  the lead: the edition draws the day's calendar itself. An undated todo on their list never leads.
 - line and spark draw a time series of at least {min_trend} days (line may draw several sharing
   their days, spark one); bar draws one series of at most {max_bars} points; stacked_bar stacks
   two or more series of one unit that share their days or categories.

@@ -67,6 +67,8 @@ class BriefOutcome(StrEnum):
     FAILED = "failed"
 
 
+# Title of the in-app note that releases what was held when no daily brief will carry it.
+HELD_RELEASE_TITLE: Final[str] = "While you were away"
 #: What the lead's section is headed: the composition gives the lead no heading of its own.
 LEAD_HEADING: Final[str] = "First up"
 #: Section numerals, in reading order, for the editions that number their sections.
@@ -119,6 +121,14 @@ NO_CALENDAR_CONNECTED: Final[str] = (
     "No calendar is connected, so nothing is known about the user's schedule: "
     "never say it is empty, open or clear."
 )
+#: How an undated todo of the user's own reads in the pool and the facts: background, not news.
+BACKLOG_STATE: Final[str] = "on their list, undated"
+#: How an item an earlier brief already showed, unchanged, is marked: still open, not news.
+REPEAT_MARK: Final[str] = "already shown, still open"
+CALENDAR_UNAVAILABLE: Final[str] = (
+    "The user's calendar could not be read this time, so nothing is known about their "
+    "schedule: never say it is empty, open or clear; say once that it could not be read."
+)
 # Longest render that fits (Chromium, real renderers, worst of 20 skin seeds): headline 3 lines
 # of gradient's 46px h1, the tightest family; lede 3 lines, caption 1, of the classic edition.
 MAX_BRIEF_HEADLINE_CHARS: Final[int] = 52
@@ -150,12 +160,35 @@ MAX_VOICE_ATTEMPTS: Final[int] = 2
 # The user's own todos due today or overdue the daily brief weighs as candidates.
 DUE_TODO_CANDIDATES_LIMIT: Final[int] = 20
 
+# Their oldest open todos with no due date, offered for GAIA to show or skip.
+UNDATED_TODO_CANDIDATES_LIMIT: Final[int] = 3
+
+# Days a daily brief looks back at most, however long ago the last one went out.
+LOOKBACK_MAX_DAYS: Final[int] = 7
+
 # Events the weekly recap carries from the week ahead.
 WEEK_LIST_LIMIT: Final[int] = 5
 
 # Consecutive unacknowledged briefings (no open, no activity) that flip a run into
 # winback mode. At/above this the run sends one adaptive winback then backs off.
 WINBACK_THRESHOLD: Final[int] = 3
+
+
+class BriefForm(StrEnum):
+    """What a stored brief is: a drawn edition, or the plain note a quiet day sends instead."""
+
+    EDITION = "edition"
+    QUIET_NOTE = "quiet_note"
+
+
+#: A quiet day's note: nothing placed and nothing on the calendar, so no edition, no filler.
+QUIET_NOTE_HEADLINE: Final[str] = "Nothing needs you today"
+QUIET_NOTE_DAY: Final[str] = "Nothing new needs you today, and your calendar is clear."
+QUIET_NOTE_NO_CALENDAR: Final[str] = "Nothing new needs you today."
+QUIET_NOTE_CALENDAR_UNREAD: Final[str] = (
+    "Nothing new needs you today. I couldn't read your calendar, so check it before you plan."
+)
+QUIET_NOTE_WATCH: Final[str] = "I'll flag anything that comes in."
 
 
 class BriefingFrequency(StrEnum):

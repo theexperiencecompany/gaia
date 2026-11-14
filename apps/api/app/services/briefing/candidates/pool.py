@@ -12,11 +12,12 @@ from app.services.briefing.candidates.approvals import approval_candidates
 from app.services.briefing.candidates.calendar import calendar_candidates
 from app.services.briefing.candidates.failed_runs import failed_run_candidates
 from app.services.briefing.candidates.held import held_candidates
+from app.services.briefing.candidates.memory import remember_candidates
 from app.services.briefing.candidates.reminders import reminder_candidates
 from app.services.briefing.candidates.subjects import same_text_key
 from app.services.briefing.candidates.tracked import (
-    due_todo_candidates,
     gaia_work_candidates,
+    own_todo_candidates,
     user_done_candidates,
     waiting_candidates,
 )
@@ -38,8 +39,8 @@ class GatheredCandidates:
 
     @property
     def has_news(self) -> bool:
-        """Whether anything besides the calendar is in the pool."""
-        return any(not c.is_event for c in self.pool.values())
+        """Whether the pool holds anything the user has not been told: no event, backlog or repeat."""
+        return any(c.is_news for c in self.pool.values())
 
 
 @dataclass(frozen=True)
@@ -116,7 +117,7 @@ def _unavailable(scouts: ScoutSignals) -> list[UnreadSource]:
 async def gather_candidates(
     user_id: str, clock: UserClock, since: datetime, now: datetime, sources: CandidateSources
 ) -> GatheredCandidates:
-    """Run every producer, needs-you sources first, and number what they found."""
+    """Run every producer, needs-you sources first, remember each find, and number them."""
     work = sources.work
     day_start = day_start_utc(clock)
     day_end = day_start_utc(clock, days_ago=-1)
@@ -125,14 +126,15 @@ async def gather_candidates(
         *waiting_candidates(work),
         *await approval_candidates(user_id, now, open_todo_ids),
         *await reminder_candidates(user_id, day_start, day_end),
-        *await due_todo_candidates(user_id, day_end, work),
+        *await own_todo_candidates(user_id, day_end, work),
         *await failed_run_candidates(user_id, since),
-        *app_signal_candidates(sources.scouts.remembered, now),
+        *app_signal_candidates(sources.scouts.remembered, clock),
         *await held_candidates(user_id, sources.held),
         *gaia_work_candidates(work),
         *calendar_candidates(sources.calendar, clock.date_str),
     ]
-    pool, duplicates = _numbered(_one_per_thing(candidates))
+    remembered = await remember_candidates(user_id, _one_per_thing(candidates), now)
+    pool, duplicates = _numbered(remembered)
     return GatheredCandidates(pool, duplicates, _unavailable(sources.scouts))
 
 

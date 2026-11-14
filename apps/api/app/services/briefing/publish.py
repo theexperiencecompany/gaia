@@ -8,9 +8,17 @@ from dataclasses import dataclass
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
+    DAILY_KICKER,
+    QUIET_NOTE_CALENDAR_UNREAD,
+    QUIET_NOTE_DAY,
+    QUIET_NOTE_HEADLINE,
+    QUIET_NOTE_NO_CALENDAR,
+    QUIET_NOTE_WATCH,
+    BriefForm,
 )
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
+    NOTIFICATION_KIND_BRIEFING_NOTE,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
 from app.db.repositories.briefings import briefing_repository
@@ -21,12 +29,12 @@ from app.models.briefing_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
-from app.services.briefing.context import UserClock
+from app.services.briefing.context import CalendarGap, UserClock
 from app.services.briefing.delivery import deliver_brief
 from app.services.briefing.edition_draws import BagDraw, draw_stamp_or_artwork, persist_draws
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.postmarks import new_stamp
-from app.services.briefing.store import store_brief
+from app.services.briefing.store import store_brief, store_note
 from app.utils.user_display import display_name
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingSent
@@ -53,6 +61,9 @@ class Push:
     pool: PoolCounts
     signal_count: int = 0
 
+
+#: The family a quiet note reports: it is drawn in none.
+QUIET_NOTE_FAMILY = "none"
 
 _NOTIFICATION_KINDS: dict[BriefingKind, str] = {
     BRIEFING_KIND_DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -89,6 +100,7 @@ async def publish_brief(
         UserId(user.id),
         BriefingSent(
             kind=kind,
+            form=BriefForm.EDITION.value,
             family=payload.template_family,
             mood=payload.mood,
             item_count=sum(len(s.items) for s in payload.sections),
@@ -103,4 +115,63 @@ async def publish_brief(
         ),
     )
     log.info("briefing.sent", user_id=user.id, kind=kind, channels=channels, pushed=push)
+    return stored.briefing
+
+
+def quiet_note(clock: UserClock, calendar: CalendarGap | None) -> BriefingPayload:
+    """Write a quiet day's note: nothing needs the user, said once, and what GAIA keeps watching."""
+    situation = {
+        None: QUIET_NOTE_DAY,
+        CalendarGap.NOT_CONNECTED: QUIET_NOTE_NO_CALENDAR,
+        CalendarGap.UNAVAILABLE: QUIET_NOTE_CALENDAR_UNREAD,
+    }[calendar]
+    return BriefingPayload(
+        form=BriefForm.QUIET_NOTE,
+        kicker=DAILY_KICKER,
+        date=clock.date_str,
+        headline=QUIET_NOTE_HEADLINE,
+        lede="",
+        caption="",
+        mood="idle",
+        template_family="",
+        message=f"{situation}\n{QUIET_NOTE_WATCH}",
+    )
+
+
+async def publish_quiet_note(
+    user: UserDocument, clock: UserClock, payload: BriefingPayload, pool: PoolCounts
+) -> BriefingModel:
+    """Store and deliver a quiet day's note: no edition is drawn, rendered or spent."""
+    stored = await store_note(user.id, clock.date_str, BRIEFING_KIND_DAILY, payload)
+    channels = await deliver_brief(
+        user, stored, payload, NOTIFICATION_KIND_BRIEFING_NOTE, push=True
+    )
+    await briefing_repository.set_delivered_channels(
+        user.id, clock.date_str, BRIEFING_KIND_DAILY, channels
+    )
+    capture(
+        UserId(user.id),
+        BriefingSent(
+            kind=BRIEFING_KIND_DAILY,
+            form=BriefForm.QUIET_NOTE.value,
+            family=QUIET_NOTE_FAMILY,
+            mood=payload.mood,
+            item_count=0,
+            channel_count=len(channels),
+            signal_count=0,
+            stamp_collected=False,
+            block_kinds=[],
+            chart_count=0,
+            pool_item_count=pool.items,
+            series_count=pool.series,
+            source_count=0,
+        ),
+    )
+    log.info(
+        "briefing.sent",
+        user_id=user.id,
+        kind=BRIEFING_KIND_DAILY,
+        channels=channels,
+        form="quiet_note",
+    )
     return stored.briefing

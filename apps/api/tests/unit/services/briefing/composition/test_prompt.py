@@ -2,6 +2,8 @@
 
 from datetime import date
 
+from tests.helpers import user_clock
+
 from app.agents.prompts.brief_composition_prompts import COMPOSITION_EXAMPLES
 from app.constants.briefing import BriefAction, BriefOutcome
 from app.services.briefing.composition.prompt import composition_prompt
@@ -10,10 +12,8 @@ from app.services.briefing.fact_pool.render import context_block
 
 _CONTEXT = PoolContext(
     reader="Ada",
-    timezone="Asia/Kolkata",
-    today=date(2026, 11, 11),
-    calendar_events=0,
-    calendar_connected=True,
+    clock=user_clock("Asia/Kolkata", date(2026, 11, 11)),
+    calendar=0,
     calendar_span="today",
     recent_openings=[],
 )

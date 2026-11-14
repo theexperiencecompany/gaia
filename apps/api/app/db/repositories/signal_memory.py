@@ -1,13 +1,13 @@
-"""Repository for signal_memory: what the brief remembers about each signal it has seen."""
+"""Repository for signal_memory: what the brief remembers about each item it has seen."""
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 
 from app.db.repositories.base import UserScopedRepository
-from app.models.scout_models import Signal, SignalMemoryDocument, SignalMemoryUpdate
+from app.models.scout_models import Sighted, SignalMemoryDocument, SignalMemoryUpdate
 
 
-def _key(signal: Signal) -> dict[str, object]:
+def _key(signal: Sighted) -> dict[str, object]:
     return {"integration_id": signal.integration_id, "external_id": signal.external_id}
 
 
@@ -18,12 +18,14 @@ class SignalMemoryRepository(UserScopedRepository[SignalMemoryDocument, SignalMe
     uses_object_id = True
     cache_policy = None
 
-    async def find_for(self, user_id: str, signals: Sequence[Signal]) -> list[SignalMemoryDocument]:
+    async def find_for(
+        self, user_id: str, signals: Sequence[Sighted]
+    ) -> list[SignalMemoryDocument]:
         if not signals:
             return []
         return await self._find({"user_id": user_id, "$or": [_key(s) for s in signals]})
 
-    async def record_seen(self, user_id: str, signals: Sequence[Signal], at: datetime) -> None:
+    async def record_seen(self, user_id: str, signals: Sequence[Sighted], at: datetime) -> None:
         """Remember each signal's state as of now; the first sighting also stamps first_seen."""
         for signal in signals:
             key = {"user_id": user_id, **_key(signal)}
@@ -36,7 +38,7 @@ class SignalMemoryRepository(UserScopedRepository[SignalMemoryDocument, SignalMe
             await self._apply_raw_update_unfetched(key, update, scope=user_id, upsert=True)
             # pragma: no mutate end
 
-    async def mark_shown(self, user_id: str, signals: Sequence[Signal], at: datetime) -> None:
+    async def mark_shown(self, user_id: str, signals: Sequence[Sighted], at: datetime) -> None:
         if not signals:
             return
         await self._raw_collection().update_many(

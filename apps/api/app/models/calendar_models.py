@@ -94,6 +94,15 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     calendarId: str | None = None
     calendarTitle: str | None = None
 
+    @property
+    def declined_by_user(self) -> bool:
+        """Whether the calendar's owner declined it: Google marks their own attendee row self."""
+        attendees = (self.model_extra or {}).get("attendees") or []
+        return any(
+            isinstance(a, dict) and a.get("self") and a.get("responseStatus") == "declined"
+            for a in attendees
+        )
+
 
 class GoogleCalendarEventsPage(BaseModel):
     """One page of Google's ``events.list`` response.
@@ -170,6 +179,8 @@ class CalendarEventsResponse(BaseModel):
     selected_calendars: list[str] = Field(serialization_alias="selectedCalendars")
     has_more: bool
     calendars_truncated: list[str]
+    #: Selected calendars whose events could not be read; their events are missing.
+    calendars_failed: list[str] = Field(default_factory=list)
 
 
 class CalendarEventPageResponse(BaseModel):

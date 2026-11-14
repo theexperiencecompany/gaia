@@ -10,10 +10,15 @@ from app.models.playbook_models import PlaybookBody, PlaybookStep
 from app.models.scout_models import Signal, SignalSource
 from app.services.briefing.scouts.extract import extract_signals
 from app.services.briefing.scouts.tools import ScoutIntegration
-from app.services.workflow.playbook.evaluator import PlaybookUser
+from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.services.workflow.playbook.runner import replay_calls
 from app.services.workflow.playbook.tool_space import ToolSpace
 from app.utils.errors import AppError
+
+
+@dataclass
+class ScoutSourceFailed(AppError):
+    """The app did not answer a frozen call: an outage, a rate limit or a dead sign-in."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +65,7 @@ async def watch(
 ) -> list[Signal]:
     """Replay the frozen calls and return the signals their results hold.
 
-    Raises AppError when a call fails and PlaceholderError when a result changed shape.
+    Raises ScoutSourceFailed when a call fails and PlaceholderError when a result changed shape.
     """
     integration = frozen.integration
     replay = await replay_calls(
@@ -69,10 +74,16 @@ async def watch(
         conversation_id=f"scout-{integration.integration_id}-{user_id}-{uuid4().hex[:6]}",
         space=read_only_space(tools),
     )
+    if replay.failure is not None and replay.moved_shape:
+        raise PlaceholderError(
+            message=f"scout replay for {integration.integration_id} no longer fits its results",
+            why=replay.failure,
+            fix="relearn the scout against the app's current results",
+        )
     if replay.failure is not None:
-        raise AppError(
+        raise ScoutSourceFailed(
             message=f"scout replay for {integration.integration_id} stopped",
             why=replay.failure,
-            fix="relearn the scout against the app's current tools",
+            fix="the scout keeps its calls and replays them on the next brief",
         )
     return extract_signals(integration, frozen.sources, replay.values)

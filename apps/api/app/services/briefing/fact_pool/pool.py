@@ -6,7 +6,7 @@ here. The composition places these by id, and nothing outside the pool can be pl
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 
 from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
 from app.db.repositories.email_verdicts import email_verdict_repository
@@ -18,7 +18,7 @@ from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.scout_models import Signal
 from app.models.todo_models import ExternalRefSource, TodoDocument
-from app.services.briefing.context import StatedGoal
+from app.services.briefing.context import CalendarGap, StatedGoal, UserClock
 from app.services.briefing.fact_pool.calendar_series import calendar_series
 from app.services.briefing.fact_pool.goals import goal_states
 from app.services.briefing.fact_pool.mail_series import (
@@ -42,12 +42,10 @@ class PoolContext:
     """Who the brief is for and the shape of their day, which the composition reads beside the pool."""
 
     reader: str
-    timezone: str
-    today: date
-    #: Whether a calendar is connected: without one, no event count says anything about the day.
-    calendar_connected: bool
-    #: The calendar events the brief's span holds, and the span: "today", "in the week ahead".
-    calendar_events: int
+    clock: UserClock
+    #: The calendar events the brief's span holds, or why its calendar went unread.
+    calendar: int | CalendarGap
+    #: The span the calendar covers: "today", "in the week ahead".
     calendar_span: str
     #: The opening line of each recent brief, newest first, so today's opens differently.
     recent_openings: list[str] = field(default_factory=list)
