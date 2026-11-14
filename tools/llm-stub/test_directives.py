@@ -25,6 +25,7 @@ from directives import (
     VERBATIM_REQUEST_HEADER,
     DirectiveError,
     FailDirective,
+    NarrateDirective,
     PaceDirective,
     SayDirective,
     SayResponse,
@@ -919,3 +920,48 @@ def test_an_unpaced_reply_streams_its_usual_pieces_without_sleeping():
     lines, elapsed = asyncio.run(collect())
     assert "".join(_content_pieces(lines)) == "one two three"
     assert elapsed < 0.05
+
+
+# --------------------------------------------------------------------------- #
+# Narration: text the front door streams with its hand-off, then retracts
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_narrate_directive():
+    assert parse_directives("[[narrate:On it.]] [[say:done]]") == [
+        NarrateDirective(text="On it."),
+        SayDirective(text="done"),
+    ]
+
+
+def test_the_front_door_streams_narration_with_its_hand_off():
+    script = '[[pace:20]] [[narrate:On it, checking.]] [[tool:create_reminder {"title": "x"}]] [[say:Done.]]'
+    assert resolve_response([_user(script)], COMMS_TOOLS) == ToolCallResponse(
+        name=CALL_EXECUTOR_TOOL,
+        args={"task": script, **SCRIPTED_HAND_OFF_ARGS},
+        text="On it, checking.",
+        pace_ms=20,
+    )
+
+
+def test_the_executor_never_narrates():
+    script = '[[narrate:On it.]] [[tool:create_reminder {"title": "x"}]] [[say:Done.]]'
+    assert resolve_response([_user(script)], EXECUTOR_TOOLS) == ToolCallResponse(
+        name="create_reminder", args={"title": "x"}
+    )
+
+
+def test_narration_streams_word_by_word_before_the_tool_call():
+    async def collect() -> list[str]:
+        response = ToolCallResponse(
+            name=CALL_EXECUTOR_TOOL, args={"task": "t"}, text="Let me look.", pace_ms=5
+        )
+        return [line async for line in sse_lines("m", response, 5)]
+
+    lines = asyncio.run(collect())
+    chunks = [json.loads(line[len("data: ") :]) for line in lines if line != "data: [DONE]\n\n"]
+    deltas = [c["choices"][0]["delta"] for c in chunks if c["choices"]]
+    first_call = next(i for i, d in enumerate(deltas) if d.get("tool_calls"))
+    assert _content_pieces(lines) == ["Let ", "me ", "look."]
+    assert all("tool_calls" not in d for d in deltas[:first_call] if "content" in d)
+    assert max(i for i, d in enumerate(deltas) if "content" in d) < first_call

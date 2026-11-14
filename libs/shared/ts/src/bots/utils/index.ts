@@ -17,7 +17,20 @@
  * ./text so sibling modules can import them without a barrel import cycle.
  */
 
-export { segmentIntoBubbles } from "./bubbles";
+export {
+  initialDeliveryState,
+  LIVE_PREVIEW_SHARE,
+  PLACEHOLDER_SLOT,
+  stepDelivery,
+} from "./bubble-delivery";
+export type {
+  DeliveryConfig,
+  DeliveryEvent,
+  DeliveryOp,
+  DeliveryState,
+  MessageSlot,
+} from "./bubble-delivery.types";
+export { BUBBLE_PAUSE_MS, deliverableBubbles } from "./bubbles";
 export {
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
@@ -98,6 +111,7 @@ export { readStreamBytesCapped } from "./stream-bytes";
 export type {
   MessageEditor,
   NewMessageSender,
+  SentBubble,
   StreamingOptions,
 } from "./streaming";
 export { handleStreamingChat, STREAMING_DEFAULTS } from "./streaming";

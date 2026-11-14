@@ -11,6 +11,7 @@
  */
 
 import { type Channel, type ConsumeMessage, connect } from "amqplib";
+import { splitMessageByBreaks } from "../../utils/messageBubbles";
 import {
   DELIVERY_FAILURE_KIND,
   type DeliveryFailure,
@@ -18,7 +19,7 @@ import {
   type ReportDeliveryFailure,
 } from "../delivery-failures";
 import type { OutboundNotifications, PlatformName } from "../types";
-import { segmentIntoBubbles } from "../utils/bubbles";
+import { BUBBLE_PAUSE_MS, deliverableBubbles } from "../utils/bubbles";
 import { retryAfterMs } from "../utils/delivery-errors";
 import {
   BOT_FAILURE_REASON,
@@ -32,7 +33,7 @@ import {
   createBotLogger,
   hashLogIdentifier,
 } from "../utils/logger";
-import { chunkResponse } from "../utils/text";
+import { sleep } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import {
   type OutboundAttachment,
@@ -592,9 +593,12 @@ export class OutboundConsumer {
     progress: { delivered: number },
   ): Promise<void> {
     const text = sources
-      .flatMap((source) => segmentIntoBubbles(source))
-      .map((bubble) => renderForPlatform(bubble, this.platform).trim())
-      .filter(Boolean)
+      .flatMap((source) =>
+        splitMessageByBreaks(source).flatMap((bubble) => {
+          const rendered = renderForPlatform(bubble, this.platform).trim();
+          return rendered ? [rendered] : [];
+        }),
+      )
       .join("\n\n");
     wideLog.set({ outbound_mode: "notification" });
     if (!text) return;
@@ -605,12 +609,9 @@ export class OutboundConsumer {
   }
 
   /**
-   * Segments each source into bubbles, chunks them by the platform limit, then renders each
-   * chunk so every sent message is valid platform markdown. Segmentation happens HERE (not
-   * only in the streamer) because these messages — executor replies, reminders, workflow
-   * results — never went through it and used to ship as one wall with `<NEW_MESSAGE_BREAK>`
-   * visible. Chunks are sized by RENDERED length, since markdown can expand when rendered
-   * (e.g. Telegram tables into `<pre>`) and overflow the platform's message limit.
+   * Sends each source as the bubbles the streamed reply would have been (the same splitter),
+   * a pause between bubbles, each cut to the platform limit by its rendered length and sent
+   * as valid platform markdown.
    */
   private async deliverSources(
     destinationId: string,
@@ -622,14 +623,19 @@ export class OutboundConsumer {
       renderForPlatform(chunk, this.platform);
     // Await each send before the next so the bubbles arrive in the published
     // order — never fan these out concurrently.
-    const bubbles = sources.flatMap((source) => segmentIntoBubbles(source));
-    for (const bubble of bubbles) {
-      for (const chunk of chunkResponse(bubble, this.platform, render)) {
+    const bubbles = sources.flatMap((source) =>
+      deliverableBubbles(source, this.platform, render),
+    );
+    for (const chunks of bubbles) {
+      for (const [index, chunk] of chunks.entries()) {
         const rendered = render(chunk);
         // A chunk made up solely of strippable markup (e.g. a lone horizontal
         // rule) renders to nothing; platform send APIs reject empty text, so
         // skip it instead of throwing and dead-lettering the whole envelope.
         if (!rendered.trim()) continue;
+        if (progress.delivered > 0 && index === 0) {
+          await sleep(BUBBLE_PAUSE_MS);
+        }
         await sendHonouringRateLimit(() =>
           this.deliver(destinationId, rendered, isChannel),
         );
@@ -653,7 +659,7 @@ async function sendHonouringRateLimit(
     const waitMs = retryAfterMs(err);
     if (waitMs === null) throw err;
     wideLog.set({ rate_limited_wait_ms: waitMs });
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    await sleep(waitMs);
     await send();
   }
 }

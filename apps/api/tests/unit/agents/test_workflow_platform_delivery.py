@@ -28,7 +28,7 @@ from tests.helpers import captured_wide_event
 
 MODULE = "app.agents.core.background.workflow_platform_delivery"
 
-USER: dict = {"user_id": "user-1", "email": "u@gaia.local"}
+USER = AuthenticatedUser(user_id="user-1", email="u@gaia.local")
 USER_ID = "user-1"
 TEXT = f"Report is ready.{NEW_MESSAGE_BREAKER}It has 3 pages."
 
@@ -201,17 +201,14 @@ class TestDeliverWorkflowResultToPlatforms:
         # A proactive delivery is a DM; on Discord and Slack a channel-keyed
         # session would be a different conversation than the user's DM thread.
         assert session.await_args.kwargs["is_dm"] is True
-        # The full text is persisted as the bot message, split into ordered bubbles.
+        # The full text is persisted as the bot message and published whole: the bot
+        # splits it into the same bubbles a streamed reply would be.
         update.assert_awaited_once()
         request = update.await_args.args[0]
         assert request.messages[0].response == TEXT
         assert request.messages[0].message_id
         publish.assert_awaited_once()
-        assert publish.await_args.args == (
-            ConversationSource.TELEGRAM,
-            USER_ID,
-            ["Report is ready.", "It has 3 pages."],
-        )
+        assert publish.await_args.args == (ConversationSource.TELEGRAM, USER_ID, [TEXT])
         # The channel already resolved the account id; the publisher must not
         # read the user document again to recompute it.
         assert publish.await_args.kwargs == {"destination_override": "tg-123"}
@@ -471,7 +468,7 @@ class TestDeliveredResultsReachTheSessionThread:
 
 
 class TestVariantBreakTokens:
-    async def test_new_line_break_variant_splits_bubbles_and_never_ships_literally(self) -> None:
+    async def test_new_line_break_variant_is_never_recorded_literally(self) -> None:
         """The model sometimes emits <NEW_LINE_BREAK> instead of the canonical <NEW_MESSAGE_BREAK>."""
         variant = "<NEW_LINE_BREAK>"
         text = f"Report is ready.{variant}It has 3 pages."
@@ -483,6 +480,7 @@ class TestVariantBreakTokens:
                 f"{MODULE}.publish_outbound_message",
                 AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as publish,
+            patch(f"{MODULE}.record_platform_delivery", AsyncMock()) as record,
         ):
             await deliver_result_to_platforms(
                 user=USER,
@@ -492,8 +490,8 @@ class TestVariantBreakTokens:
                 target=TELEGRAM,
             )
 
-        bubbles = publish.await_args.args[2]
-        assert bubbles == ["Report is ready.", "It has 3 pages."]
-        for bubble in bubbles:
-            assert "NEW_LINE" not in bubble
-            assert "<NEW" not in bubble
+        # The bot splits the reply into bubbles itself, with the streamed reply's splitter.
+        assert publish.await_args.args[2] == [text]
+        recorded = record.await_args.args[1]
+        assert recorded.endswith("Report is ready.\n\nIt has 3 pages.")
+        assert "NEW_LINE" not in recorded

@@ -84,8 +84,11 @@ import { WhatsAppAdapter } from "../../whatsapp/src/adapter";
 // Scripted GAIA client — the only faked GAIA seam.
 // ---------------------------------------------------------------------------
 
+/** A scripted frame: streamed text, a message boundary, or a pause long enough for a preview. */
+type StreamFrame = string | { discarded: boolean } | { waitMs: number };
+
 interface StreamScript {
-  chunks?: string[];
+  chunks?: StreamFrame[];
   error?: string;
   authUrl?: string;
   /** The turn resolves to this emoji ack instead of a text reply. */
@@ -103,14 +106,21 @@ function makeGaia(script: StreamScript) {
         onChunk: (t: string) => void | Promise<void>,
         onDone: (full: string, conv: string) => void | Promise<void>,
         onError: (e: Error) => void | Promise<void>,
+        _onApproval?: unknown,
+        onBoundary?: (discarded: boolean) => void | Promise<void>,
       ) => {
         if (script.error) {
           await onError(new Error(script.error));
           return "";
         }
-        const chunks = script.chunks ?? [];
-        for (const chunk of chunks) await onChunk(chunk);
-        await onDone(chunks.join(""), "conv-1");
+        for (const frame of script.chunks ?? []) {
+          if (typeof frame === "string") await onChunk(frame);
+          else if ("waitMs" in frame) {
+            await new Promise((resolve) => setTimeout(resolve, frame.waitMs));
+          } else await onBoundary?.(frame.discarded);
+        }
+        const text = (script.chunks ?? []).filter((f) => typeof f === "string");
+        await onDone(text.join(""), "conv-1");
         return "conv-1";
       },
     ),
@@ -199,6 +209,8 @@ function reduceTranscript(recorder: TranscriptRecorder): Canonical {
       ops.push({ op: "create", id: event.messageId, text: event.text });
     else if (event.type === "edit")
       ops.push({ op: "update", id: event.messageId, text: event.text });
+    else if (event.type === "delete")
+      ops.push({ op: "delete", id: event.messageId });
     else if (event.type === "ephemeral")
       ops.push({ op: "aux", text: event.text });
     else if (event.type === "reaction")
@@ -514,6 +526,26 @@ describe("gaia-sim conformance: harness output matches the real adapter", () => 
       expect(real.bubbles.length).toBeGreaterThan(1);
       expect(harness.bubbles).toEqual(real.bubbles);
     });
+
+    it("retracted preamble — both leave only the reply on screen", async () => {
+      const script = {
+        chunks: [
+          "Sure thing, give me a moment.<NEW_MESSAGE_BREAK>",
+          "Let me look into your calendar",
+          { waitMs: 2100 },
+          { discarded: true },
+          "All set, it is on your list.",
+          { discarded: false },
+        ],
+      };
+      const harness = await driveHarness(platform, script);
+      const real = await REAL_DRIVERS[platform](script);
+
+      expect(real.bubbles).toEqual([
+        renderForPlatform("All set, it is on your list.", platform),
+      ]);
+      expect(harness.bubbles).toEqual(real.bubbles);
+    }, 10_000);
 
     it("auth prompt — both deliver the same rendered link message", async () => {
       const script = { error: "not_authenticated" };

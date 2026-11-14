@@ -424,7 +424,7 @@ export class ImessageAdapter extends BaseBotAdapter {
         async (newText: string) => {
           const sent = await this.sendImessageText(space, newText);
           lastEditFn = sent.edit;
-          return sent.edit;
+          return { edit: sent.edit };
         },
         async (authUrl: string) => {
           await this.sendImessageText(

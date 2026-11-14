@@ -444,7 +444,6 @@ export class SlackAdapter extends BaseBotAdapter {
       return;
     }
 
-    let currentTs = ts;
     const removePlaceholder = async (): Promise<void> => {
       try {
         await client.chat.delete({ channel: channelId, ts });
@@ -471,7 +470,7 @@ export class SlackAdapter extends BaseBotAdapter {
       async (text: string) => {
         await client.chat.update({
           channel: channelId,
-          ts: currentTs,
+          ts,
           text,
         });
       },
@@ -480,15 +479,19 @@ export class SlackAdapter extends BaseBotAdapter {
           channel: channelId,
           text,
         });
-        if ((newMessage as { ts?: string }).ts) {
-          currentTs = (newMessage as { ts: string }).ts;
-        }
-        return async (updatedText: string) => {
-          await client.chat.update({
-            channel: channelId,
-            ts: currentTs,
-            text: updatedText,
-          });
+        const sentTs = newMessage.ts;
+        if (!sentTs) throw new Error("chat.postMessage returned no ts");
+        return {
+          edit: async (updatedText: string) => {
+            await client.chat.update({
+              channel: channelId,
+              ts: sentTs,
+              text: updatedText,
+            });
+          },
+          delete: async () => {
+            await client.chat.delete({ channel: channelId, ts: sentTs });
+          },
         };
       },
       async (authUrl: string) => {
@@ -502,7 +505,7 @@ export class SlackAdapter extends BaseBotAdapter {
         if (channelId.startsWith("D")) {
           await client.chat.update({
             channel: channelId,
-            ts: currentTs,
+            ts,
             text: authMessage,
           });
           return;
@@ -511,7 +514,7 @@ export class SlackAdapter extends BaseBotAdapter {
         // deliver the link as an ephemeral only the requesting user can see.
         await client.chat.update({
           channel: channelId,
-          ts: currentTs,
+          ts,
           text: "🔒 Authentication required. Check the private message below to link your account.",
         });
         await client.chat.postEphemeral({
@@ -523,7 +526,7 @@ export class SlackAdapter extends BaseBotAdapter {
       async (errMsg: string) => {
         await client.chat.update({
           channel: channelId,
-          ts: currentTs,
+          ts,
           text: errMsg,
         });
       },
