@@ -21,7 +21,8 @@ source "$(dirname "$0")/lib/log.sh"
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
-API_PORT=8000
+# Off 8000: the per-job ChromaDB container publishes there.
+API_PORT=18400
 WEB_PORT=3000
 LLM_STUB_PORT=9797
 DEV_USER="dev@gaia.local"
@@ -83,7 +84,13 @@ cmd_up() {
   export OPENROUTER_BASE_URL="http://localhost:$LLM_STUB_PORT/api/v1"
   export NEXT_PUBLIC_API_BASE_URL="http://localhost:$API_PORT/api/v1/"
   export FRONTEND_URL="http://localhost:$WEB_PORT"
+  export HOST="http://localhost:$API_PORT"
   export LLM_STUB_PORT WEB_PORT API_PORT
+  # Fixture keys, as tests/offline_env.py provisions them: the auth middleware
+  # builds a WorkOS client the bypass never calls, and agent/MCP tokens need a key.
+  export WORKOS_API_KEY="sk_test_fake" WORKOS_CLIENT_ID="client_fake" WORKOS_COOKIE_PASSWORD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  export MCP_ENCRYPTION_KEY="dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==" # pragma: allowlist secret
+  export AGENT_SECRET="test-agent-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" # pragma: allowlist secret
 
   local stub api worker web
   stub=$(_start llm-stub "$REPO_ROOT" uv run tools/llm-stub/server.py)
