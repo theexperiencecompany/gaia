@@ -55,7 +55,7 @@ from app.models.hil_models import HILApprovalRecord, HilInterruptPayload
 from app.services.conversation.runtime import install_runtime_ports
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 from shared.py.wide_events import log
 from tests.helpers import WideEventRecorder, captured_wide_event
 from tests.unit.services.conversation.log_helpers import user

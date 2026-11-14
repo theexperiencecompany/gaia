@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.core.stream_manager import stream_manager
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request
 

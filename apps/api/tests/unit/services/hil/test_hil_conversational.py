@@ -49,7 +49,7 @@ from app.services.hil.resolution import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
 )
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from tests.helpers import ledger_facts
 
 from .conftest import CONVERSATION_ID, USER_ID, jev_reply_body, make_record, serve_jev

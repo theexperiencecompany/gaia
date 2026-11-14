@@ -11,7 +11,7 @@ from typing import Final, Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME
-from shared.py.analytics.catalog.hil import ApprovalOutcome, DecidedOutcome
+from shared.py.approvals import ApprovalOutcome, DecidedOutcome
 
 # What a user decides on a pending approval, and the outcome each decision ends it with.
 ApprovalDecision = Literal["approve", "deny"]

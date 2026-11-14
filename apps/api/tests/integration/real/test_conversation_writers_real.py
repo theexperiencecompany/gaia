@@ -41,7 +41,7 @@ from app.services.conversation.runtime import install_runtime_ports, runtime_por
 from app.services.conversation.work_log import record_user_stop
 from app.services.onboarding.first_conversation import FirstConversation
 from app.utils.seeding_utils import seed_first_conversation
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from tests.conftest import FAKE_USER
 from tests.helpers import shown_messages
 from tests.unit.services.conversation.log_helpers import asked, finished, started

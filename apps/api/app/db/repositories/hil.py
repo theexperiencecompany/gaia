@@ -23,7 +23,7 @@ from app.models.hil_models import (
     HILToolRiskRecord,
     HILToolRiskUpdate,
 )
-from shared.py.analytics.catalog.hil import DECIDED_OUTCOMES, ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import DECIDED_OUTCOMES, ApprovalDecider, ApprovalOutcome
 
 
 class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate]):

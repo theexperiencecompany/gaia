@@ -20,7 +20,7 @@ from app.models.agent_config import SubagentResumeItem
 from app.models.agent_models import ExecutorRunItem
 from app.models.hil_models import HILApprovalRecord, HILApprovalUpdate
 from app.services.hil.utils import GatedApproval
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 
 
 def approval_id_for(conversation_id: str, tool_call_id: str) -> str:

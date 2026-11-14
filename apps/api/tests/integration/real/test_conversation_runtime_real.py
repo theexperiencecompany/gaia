@@ -215,7 +215,6 @@ from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.chat import ChatMessageCancelled, ChatMessageCompleted
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.analytics.context import (
     AnalyticsContext,
@@ -223,6 +222,7 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
 from tests.helpers import shown_messages

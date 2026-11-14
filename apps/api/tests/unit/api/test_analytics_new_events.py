@@ -41,10 +41,7 @@ from shared.py.analytics.catalog.chat import (
     ImageGenerated,
 )
 from shared.py.analytics.catalog.devices import DeviceApproved, DeviceRevoked
-from shared.py.analytics.catalog.hil import (
-    ApprovalDecided,
-    ApprovalOutcome,
-)
+from shared.py.analytics.catalog.hil import ApprovalDecided
 from shared.py.analytics.catalog.integrations import (
     IntegrationConnectInitiated,
     IntegrationCustomDeleted,
@@ -83,6 +80,7 @@ from shared.py.analytics.catalog.workflows import (
     WorkflowUnpublished,
     WorkflowUpdated,
 )
+from shared.py.approvals import ApprovalOutcome
 
 pytestmark = pytest.mark.unit
 

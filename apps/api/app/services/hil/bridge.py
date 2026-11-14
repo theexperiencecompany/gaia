@@ -52,12 +52,8 @@ from app.services.hil.utils import GatedApproval, GatedCall
 from app.services.latency_metrics import observe_hil_pause
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import (
-    ActionResult,
-    ApprovalDecider,
-    ApprovalOutcome,
-    HilCardShown,
-)
+from shared.py.analytics.catalog.hil import HilCardShown
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log, spawn_logged_task
 
 

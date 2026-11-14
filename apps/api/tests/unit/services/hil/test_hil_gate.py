@@ -32,7 +32,7 @@ from app.services.hil.gate import (
 from app.services.hil.intent import IntentDecision, JudgedCall
 from app.services.hil.prompts import AUTO_REJECT_TEMPLATE
 from app.services.hil.utils import GatedCall
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,

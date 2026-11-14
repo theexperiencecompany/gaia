@@ -43,12 +43,8 @@ from app.services.hil.bridge import (
 from app.services.hil.utils import GatedApproval, GatedCall
 from app.utils.general_utils import ELLIPSIS
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import (
-    ActionResult,
-    ApprovalDecider,
-    ApprovalOutcome,
-    HilCardShown,
-)
+from shared.py.analytics.catalog.hil import HilCardShown
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from tests.helpers import ledger_facts
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_record, tools_that_always_ask

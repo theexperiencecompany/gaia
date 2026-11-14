@@ -43,13 +43,8 @@ from app.services.hil.resolution import (
     ApprovalRequestNotFoundError,
 )
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import (
-    ActionResult,
-    ApprovalDecider,
-    ApprovalOutcome,
-    HilDecisionSubmitted,
-    HilRevoked,
-)
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilRevoked
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from tests.helpers import ledger_facts
 
 from .conftest import tools_that_always_ask

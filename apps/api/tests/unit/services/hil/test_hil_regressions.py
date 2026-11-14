@@ -32,7 +32,7 @@ from app.services.hil.resolution import (
     sweep_approvals,
 )
 from app.utils.errors import AppError
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,

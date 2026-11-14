@@ -17,7 +17,7 @@ from app.models.hil_models import ApprovalProposal
 from app.services.hil import gate
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall
 from app.services.hil.utils import GatedCall, unpack_tool_call
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,
