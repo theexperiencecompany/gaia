@@ -27,7 +27,7 @@ lane without grepping the workflow first.
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
-| What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `indexnow` |
+| What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `tighten`, `indexnow` |
 
 `.py` concepts decide (parse API results, route, pack, classify); `.sh`
 concepts orchestrate (containers, polling, ordered commands) — "Bash for glue,
@@ -44,7 +44,7 @@ Release and deploy are two concepts, not one: `release.sh` publishes artifacts
 
 `baselines/` holds the ratchet files for the gates that landed on a tree
 that already violated them (`checks.mjs api-schema-types`,
-`api-client-imports`, and `smoke-web.sh squirrel`'s per-rule finding counts). Each line is one known violation, each file has a header
+`api-client-imports`, and `smoke-web.sh squirrel`'s per-page findings). Each line is one known violation, each file has a header
 saying what would remove it, and the gate fails on anything NOT listed while
 reporting a line that no longer matches as merely removable — so a baseline can
 be emptied without reddening the PR that empties it.
@@ -73,11 +73,14 @@ regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
 `cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and
 Render template generator behind `checks.mjs deploy-templates`; Python for
 PyYAML, run through the apps/api environment), `seo_audit.py` (the sitemap
-crawler behind `smoke-web.sh audit`), `squirrel.py` (squirrelscan's effective
-config and the per-rule ratchet against `baselines/squirrel-build.txt` and
-`squirrel-live.txt` behind
-`smoke-web.sh squirrel`), `origin_proxy.py` (the HTTPS proxy that serves a local
-build to squirrel as https://heygaia.io, since squirrel cannot remap a host),
+crawler behind `smoke-web.sh audit`), `squirrel.py` (the pages a squirrelscan run
+audits, the one ignore list of squirrel's own bugs, `drop` for applying a run's fixes, and the per-page, per-check,
+per-item baseline in `baselines/squirrel-build.txt` and `squirrel-live.txt`, read
+from squirrel's own crawl database behind `smoke-web.sh squirrel`; it reuses
+`indexnow.py`'s diff mapping), `origin_proxy.py` (the HTTPS proxy that serves a local
+build to squirrel as https://heygaia.io, since squirrel cannot remap a host, and
+serves a chosen page list as the sitemap, since squirrel audits sitemap pages and
+not the URL it is given),
 `indexnow.py` (the changed-page submitter behind
 `smoke-web.sh indexnow`, which reuses `seo_audit.py`'s sitemap reader) and
 `mutation_matrix.py` (the AST detector behind `mutation.py matrix`),
