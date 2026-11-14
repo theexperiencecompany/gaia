@@ -1,4 +1,4 @@
-"""Expo push: the notification wakes the user's phones, with approve/deny buttons for an approval."""
+"""Expo push: an approval request wakes the user's phones, with approve and deny buttons."""
 
 import httpx
 from pydantic import BaseModel, Field
@@ -39,7 +39,7 @@ class PushMessage(BaseModel):
 
     title: str
     body: str
-    category_id: str | None
+    category_id: str
     data: dict[str, object]
 
 
@@ -50,17 +50,16 @@ class PushChannelAdapter(ChannelAdapter[PushMessage]):
     def channel_type(self) -> str:
         return CHANNEL_TYPE_PUSH
 
-    def can_handle(self, notification: NotificationRequest) -> bool:  # noqa: ARG002 -- polymorphic interface; implementations keep the full signature
-        """Return True: a user with no registered phone is a skip, decided when sending."""
-        return True
+    def can_handle(self, notification: NotificationRequest) -> bool:
+        """Return True for an approval request only: the phone is woken for nothing else."""
+        return notification.source is NotificationSourceEnum.APPROVAL
 
     async def transform(self, notification: NotificationRequest) -> PushMessage:
         """Carry the notification id and its metadata, so a tap opens what it is about."""
-        approval = notification.source is NotificationSourceEnum.APPROVAL
         return PushMessage(
             title=notification.content.title,
             body=notification.content.body,
-            category_id=APPROVAL_PUSH_CATEGORY if approval else None,
+            category_id=APPROVAL_PUSH_CATEGORY,
             data={"notification_id": notification.id, **notification.metadata},
         )
 

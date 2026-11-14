@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.notifications import CHANNEL_TYPE_PUSH
 from app.models.chat_models import ConversationSource
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -692,32 +693,32 @@ ORCHESTRATOR = "app.utils.notification.orchestrator"
 
 
 class TestRouting:
-    """Channels are chosen once: the inbox, the fact's own chat unless the user is active elsewhere, their chat app, push."""
+    """Channels are chosen once: the inbox, the fact's own chat unless the user is active elsewhere, their chat app; push only for an approval."""
 
     @pytest.mark.parametrize(
         ("target", "set_in", "expected"),
         [
             # Active on the chat app it was set in: that chat only, never a second DM.
-            (TELEGRAM_ACTIVE, ConversationSource.TELEGRAM, ["inapp", "conversation", "push"]),
+            (TELEGRAM_ACTIVE, ConversationSource.TELEGRAM, ["inapp", "conversation"]),
             # Active on a chat app after setting it on the web: the chat app only.
-            (TELEGRAM_ACTIVE, ConversationSource.WEB, ["inapp", "telegram", "push"]),
+            (TELEGRAM_ACTIVE, ConversationSource.WEB, ["inapp", "telegram"]),
             # Nobody active and its chat is the first chat app: delivered there once.
-            (TELEGRAM_BY_ORDER, ConversationSource.TELEGRAM, ["inapp", "conversation", "push"]),
+            (TELEGRAM_BY_ORDER, ConversationSource.TELEGRAM, ["inapp", "conversation"]),
             # Nobody active, set on the web: its chat and the first chat app.
             (
                 TELEGRAM_BY_ORDER,
                 ConversationSource.WEB,
-                ["inapp", "conversation", "telegram", "push"],
+                ["inapp", "conversation", "telegram"],
             ),
             # Active in the app, set in a web chat stored without a source: that chat.
-            (InApp(reason="active_in_app"), None, ["inapp", "conversation", "push"]),
+            (InApp(reason="active_in_app"), None, ["inapp", "conversation"]),
             # Active in the app after setting it on a chat app: no chat message at all.
-            (InApp(reason="active_in_app"), ConversationSource.TELEGRAM, ["inapp", "push"]),
+            (InApp(reason="active_in_app"), ConversationSource.TELEGRAM, ["inapp"]),
             # No chat app: back into the chat it was set in.
             (
                 InApp(reason="no_chat_app"),
                 ConversationSource.TELEGRAM,
-                ["inapp", "conversation", "push"],
+                ["inapp", "conversation"],
             ),
         ],
     )
@@ -738,14 +739,32 @@ class TestRouting:
         source.assert_awaited_once_with("conv-1", user_id="user-1")
 
     async def test_named_channels_are_sent_as_named_and_nothing_is_resolved(self) -> None:
-        request = _make_request(channels=[ChannelConfig(channel_type="push")])
+        request = _make_request(channels=[ChannelConfig(channel_type="inapp")])
         with patch(f"{ORCHESTRATOR}.resolve_proactive_target", AsyncMock()) as resolve:
             channels, routed = await NotificationOrchestrator(storage=MagicMock())._route(request)
 
-        assert (channels, routed) == (["push"], None)
+        assert (channels, routed) == (["inapp"], None)
         resolve.assert_not_awaited()
 
-    async def test_a_failed_lookup_still_reaches_the_inbox_and_the_phone(self) -> None:
+    async def test_only_an_approval_request_reaches_the_phone(self) -> None:
+        named = _make_request(channels=[ChannelConfig(channel_type="push")])
+        routed = _make_request(channels=[])
+        orchestrator = NotificationOrchestrator(storage=MagicMock())
+        with patch(
+            f"{ORCHESTRATOR}.resolve_proactive_target", AsyncMock(return_value=TELEGRAM_ACTIVE)
+        ):
+            assert (await orchestrator._route(named))[0] == []
+            assert CHANNEL_TYPE_PUSH not in (await orchestrator._route(routed))[0]
+            approval = {"source": NotificationSourceEnum.APPROVAL}
+            assert (await orchestrator._route(named.model_copy(update=approval)))[0] == [
+                CHANNEL_TYPE_PUSH
+            ]
+            assert (
+                CHANNEL_TYPE_PUSH
+                in (await orchestrator._route(routed.model_copy(update=approval)))[0]
+            )
+
+    async def test_a_failed_lookup_still_reaches_the_inbox(self) -> None:
         request = _make_request().model_copy(update={"channels": []})
         with patch(
             f"{ORCHESTRATOR}.resolve_proactive_target",
@@ -753,4 +772,4 @@ class TestRouting:
         ):
             channels, routed = await NotificationOrchestrator(storage=MagicMock())._route(request)
 
-        assert (channels, routed) == (["inapp", "push"], InApp(reason="no_chat_app"))
+        assert (channels, routed) == (["inapp"], InApp(reason="no_chat_app"))
