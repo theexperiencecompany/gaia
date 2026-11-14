@@ -31,6 +31,7 @@ from pydantic_core import to_jsonable_python
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.execute.dispatch import _validate_args
 from app.constants.hil import (
+    AUTO_ASK_NOTE,
     HIL_APPROVAL_TIMEOUT_SECONDS,
     HIL_EXEMPT_TOOLS,
     HIL_STATUS_KWARG,
@@ -48,11 +49,8 @@ from app.models.hil_models import (
 from app.services.analytics_service import capture
 from app.services.conversation.work_log import record_approval_requested, work_of_run
 from app.services.hil.bridge import (
-    GateVerdict,
     announce_approval,
     build_summary,
-    recall_declined_call,
-    remember_declined_call,
 )
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import (
@@ -73,16 +71,12 @@ from app.services.hil.policy import (
 )
 from app.services.hil.preferences import get_hil_preferences
 from app.services.hil.prompts import (
-    AUTO_REJECT_TEMPLATE,
-    DENIED_TEMPLATE,
     GATE_ERROR_TEMPLATE,
-    TIMEOUT_TEMPLATE,
 )
 from app.services.hil.tool_key import hil_tool_key, mcp_tool_identity
 from app.services.hil.utils import (
     GatedApproval,
     GatedCall,
-    approval_window_label,
     configurable_of,
     prior_tool_calls,
     recent_assistant_turns,
@@ -94,7 +88,7 @@ from app.services.integrations.integration_resolver import IntegrationResolver
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted
-from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 from shared.py.wide_events import log
 
 Handler = Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]]
@@ -164,23 +158,14 @@ async def _decide_ledger(
 ) -> ToolMessage | None:
     """Ledger verdict: register PENDING and return, or clear an auto-aligned call.
 
-    Executor-free path: dedup against live rows, surface reject memory, refuse
-    same-run nag re-issues, else register and hand the model a pending id. Any
-    failure fails closed (deny), never open. Returns None only for the
-    auto-aligned case (the tool may run).
+    Executor-free path: dedup against live rows, refuse same-run nag re-issues,
+    else register and hand the model a pending id. Any failure fails closed
+    (deny), never open. Returns None only for the auto-aligned case.
     """
     try:
-        declined = await recall_declined_call(context.stream_id, call.name, call.args)
-        if declined is not None:
-            log.info(f"{LogTag.HIL} auto-denying : declined earlier this turn", name=call.name)
-            return (
-                _auto_reject_message(call, declined.feedback or "")
-                if declined.decider is ApprovalDecider.AUTO
-                else _refusal_message(call, declined)
-            )
         auto = await _auto_ledger_verdict(request, context, call, policy)
-        if auto.settled:
-            return auto.message
+        if auto.runs:
+            return None
         auto_note = auto.note
         invalid = await _invalid_args_message(request, context.user_id, call)
         if invalid is not None:
@@ -235,7 +220,7 @@ async def _decide_ledger(
                 gated_tool_name=call.name,
                 integration_name=integration_name,
                 args_preview=to_jsonable_python(call.args),
-                auto_reason=auto_note.strip() or None,
+                auto_reason=AUTO_ASK_NOTE if auto.asked else None,
                 always_asks=await asks_every_time(call.name, call.args),
             ),
         )
@@ -355,16 +340,12 @@ async def _judge(
         prior_calls=prior_tool_calls(request.state, call.id),
         assistant_turns=recent_assistant_turns(request.state),
     )
-    if decision.outcome != "ask":
-        # A settled auto decision has no card and no ledger row; this is its only record.
+    if decision.outcome == "accept":
+        # An auto-run call has no card and no ledger row; this is its only record.
         capture(
             UserId(context.user_id),
             HilDecisionSubmitted(
-                decision=ApprovalOutcome.APPROVED
-                if decision.outcome == "accept"
-                else ApprovalOutcome.DENIED,
-                tool_name=call.name,
-                via="auto",
+                decision=ApprovalOutcome.APPROVED, tool_name=call.name, via="auto"
             ),
         )
     return decision
@@ -410,53 +391,19 @@ async def _auto_history(user_id: str, tool_name: str) -> AutoHistory:
 # --- what a blocked call tells the model (text lives in prompts.py) ---------------------
 
 
-def _auto_reject_message(call: GatedCall, reason: str) -> ToolMessage:
-    """Tell the model auto mode declined the call — refused, not asked."""
-    return _tool_message(call, AUTO_REJECT_TEMPLATE.format(tool=call.name, reason=reason), "denied")
-
-
-async def _auto_reject(context: GateContext, call: GatedCall, reason: str) -> ToolMessage:
-    """Refuse with the reason and arm decline memory against a retry.
-
-    The memory write is best-effort: losing it degrades to re-judging the
-    retry, never to running it — the refusal itself is the decision.
-    """
-    try:
-        await remember_declined_call(context.stream_id, call.name, call.args, reason, auto=True)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} decline memory write failed; the retry will re-judge",
-            tool_name=call.name,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-    return _auto_reject_message(call, reason)
-
-
-def _refusal_message(call: GatedCall, outcome: GateVerdict) -> ToolMessage:
-    """Tell the model a denied or expired call did not run, and why."""
-    timed_out = outcome.outcome is ApprovalOutcome.EXPIRED
-    template = TIMEOUT_TEMPLATE if timed_out else DENIED_TEMPLATE
-    feedback = f" The user said: {outcome.feedback!r}." if outcome.feedback else ""
-    status: HILToolMessageStatus = "timeout" if timed_out else "denied"
-    # Each template uses only the fields it needs; format ignores the rest.
-    content = template.format(tool=call.name, feedback=feedback, waited=approval_window_label())
-    return _tool_message(call, content, status)
-
-
 @dataclass(frozen=True)
 class _AutoVerdict:
-    """Auto mode's conclusion: either it settled the call, or it left a note for the ask."""
+    """Auto mode's conclusion: run the call, or ask (asked) with a model-facing note."""
 
-    settled: bool = False
-    message: ToolMessage | None = None
+    runs: bool = False
+    asked: bool = False
     note: str = ""
 
 
 async def _auto_ledger_verdict(
     request: ToolCallRequest, context: GateContext, call: GatedCall, policy: GatingPolicy
 ) -> _AutoVerdict:
-    """Let auto mode settle a ledger-path call, or say why it still needs the user."""
+    """Let auto mode run a ledger-path call, or say why it still needs the user."""
     if policy != "auto":
         return _AutoVerdict()
     integration_name = await _integration_name_for(request, context.user_id, call.name)
@@ -468,22 +415,9 @@ async def _auto_ledger_verdict(
             call_name=call.name,
             reason=decision.reason,
         )
-        return _AutoVerdict(settled=True)
-    if decision.outcome == "reject":
-        log.info(
-            f"{LogTag.HIL} auto-rejected (ledger path)",
-            call_name=call.name,
-            reason=decision.reason,
-        )
-        return _AutoVerdict(
-            settled=True, message=await _auto_reject(context, call, decision.reason)
-        )
-    note = (
-        f" Auto mode wasn't sure: {decision.reason}"
-        if decision.outcome == "ask" and decision.reason
-        else ""
-    )
-    return _AutoVerdict(note=note)
+        return _AutoVerdict(runs=True)
+    note = f" Auto mode wasn't sure: {decision.reason}" if decision.reason else ""
+    return _AutoVerdict(asked=True, note=note)
 
 
 def _live_envelope_message(
@@ -572,20 +506,21 @@ class ApprovalDestination(StrEnum):
     """Where a pending approval surfaces for the user, independent of its prose."""
 
     CHAT = "chat"
-    APPROVALS_TAB = "approvals_tab"
+    CONVERSATION = "conversation"
 
 
 _DESTINATION_WORDING: dict[ApprovalDestination, str] = {
     ApprovalDestination.CHAT: "their chat when this run ends",
-    ApprovalDestination.APPROVALS_TAB: (
-        "the Approvals tab (this run has no watcher; nothing here will wake it)"
+    ApprovalDestination.CONVERSATION: (
+        "this conversation, which shows in their chat list while it waits "
+        "(this run has no watcher; nothing here will wake it)"
     ),
 }
 
 
 def _approval_destination(*, background: bool) -> ApprovalDestination:
     """Return the destination contract a pending approval is rendered from."""
-    return ApprovalDestination.APPROVALS_TAB if background else ApprovalDestination.CHAT
+    return ApprovalDestination.CONVERSATION if background else ApprovalDestination.CHAT
 
 
 def _pending_guidance(approval_id: str, *, background: bool = False) -> str:
@@ -594,7 +529,7 @@ def _pending_guidance(approval_id: str, *, background: bool = False) -> str:
     Shared by the fresh-register and live-dedup branches so the two never
     drift: the approval's lifecycle is identical whichever branch produced it.
     Background runs get the park wording: nobody is watching this stream, so
-    the approval lives in the Approvals tab and durable work resumes off it.
+    the card waits in its conversation and durable work resumes off it.
     """
     where = _DESTINATION_WORDING[_approval_destination(background=background)]
     return (

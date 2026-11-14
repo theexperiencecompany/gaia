@@ -81,32 +81,6 @@ JEV_QUESTION: dict[str, object] = {
 }
 
 
-# Focused forbid check: runs only on accept-path tripwire hits, versioned and
-# journaled with the main question; a decomposed opinion, not a second guess.
-JEV_FORBID_QUESTION: dict[str, object] = {
-    "type": "choice",
-    "instructions": (
-        "Read earlier_turns for a standing rule against pending_action, then read "
-        "latest_turns for lift language. Which one describes the situation?"
-    ),
-    "criteria": {
-        JevChoice.FORBIDDEN: (
-            "An earlier turn forbids this exact action ('never email Alice', "
-            "'do not pay anyone', 'keep the layoff news private', 'cancel that', "
-            "'don't touch the archive') and no later turn lifts it. A lift needs "
-            "explicit language ('actually, go ahead', 'never mind that', 'yes do "
-            "it' confirming this action) — a bare re-issue of the forbidden act, "
-            "or a temporary 'not yet', is not a lift."
-        ),
-        JevChoice.PERMITTED: (
-            "No earlier turn forbids this action, or a later turn clearly lifts "
-            "the rule, or the only limits are temporary manner/timing notes that "
-            "this call does not violate."
-        ),
-    },
-}
-
-
 # JEV reply question: what a bot user's chat reply means for ONE pending action,
 # asked once per action in a single call. {number} is the action's position in
 # state.pending_actions. Tuned through the hil-reply calibration suite.
@@ -157,41 +131,6 @@ JEV_REPLY_CRITERIA: dict[ReplyChoice, str] = {
 
 
 # --- what a blocked call tells the agent -----------------------------------------------
-
-# A decline ENDS the run and its final text reaches the user as a completed result, so
-# the template forces a CLOSED report (never a question or half-done "let me redo it").
-# Feedback is carried only as NEXT-turn context, since there's no channel to reply now.
-DENIED_TEMPLATE = (
-    "The user declined to run `{tool}`. The action was NOT performed.{feedback} "
-    "This ends the run. Do not retry the same call, and do not use another tool to produce "
-    "the same effect. A decline is not an obstacle to route around. Give a final report, "
-    "not a question: state plainly that the action did not happen, include anything you did "
-    "complete or prepare, and if they said what they wanted changed, note it as the open "
-    "item for next time. Do not ask the user for more input or pose a follow-up question. "
-    "This run cannot receive a reply, so a question would just hang unanswered."
-)
-
-# An expiry is not a dead end, so this nudges toward surfacing real work already done —
-# but preparing the REVERSIBLE version (a draft) is help, while producing the same
-# irreversible effect through another (still-gated) tool routes around the gate.
-TIMEOUT_TEMPLATE = (
-    "The approval request for `{tool}` expired. The user did not respond within {waited}. "
-    "The action was NOT performed. Do not retry it unchanged, and do not use another tool "
-    "to produce the same effect. This needs the user's approval, not a workaround. Report "
-    "whatever you did complete or prepare; preparing a reversible version (leaving a draft "
-    "rather than sending) is fine. Say how long you waited, what is left, and that it only "
-    "needs their go-ahead."
-)
-
-# Auto mode declined on its own: the judge's verdict was reject, so no card was
-# ever shown. Like GATE_ERROR it must never read as a decision the user made —
-# the recovery is the user asking explicitly, which re-proposes through a card.
-AUTO_REJECT_TEMPLATE = (
-    "Auto-approve declined to run `{tool}`: {reason} The action was NOT "
-    "performed and the user was NOT asked. Do not retry it in this run, and do "
-    "not use another tool to produce the same effect. If the user explicitly "
-    "asks for this action, say you held off and why."
-)
 
 # A gate that cannot determine whether a call is safe must not run it — but the refusal
 # has to read as a system failure, never as a decision the user made. The model must not

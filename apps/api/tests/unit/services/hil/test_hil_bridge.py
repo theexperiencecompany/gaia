@@ -5,11 +5,6 @@
   strict and a verbatim retry re-prompts the user for something they just refused.
 """
 
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
 from app.constants.hil import (
     APPROVAL_REQUEST_TOOL_NAME,
     HIL_SUMMARY_MAX_ARG_CHARS,
@@ -18,15 +13,13 @@ from app.constants.hil import (
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.bridge import (
     build_summary,
-    recall_declined_call,
-    remember_declined_call,
 )
 from app.services.hil.utils import GatedCall
 from app.utils.general_utils import ELLIPSIS
-from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from tests.helpers import ledger_facts
 
-from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID
+from .conftest import CONVERSATION_ID, USER_ID
 
 MODULE = "app.services.hil.bridge"
 
@@ -34,108 +27,6 @@ TOOL_CALL = GatedCall(id="call-1", name="send_email", args={"to": "bob@example.c
 
 SEPARATOR = ": "  # the colon + space between the browser-task lead-in and its task
 ARG_SEPARATOR = "; "  # between a tool label and its arguments, which carry their own colons
-
-
-class TestDeclineMemory:
-    """Keyed on stream, tool and arguments: too loose auto-denies a correction, too strict re-asks a refusal."""
-
-    @pytest.fixture(autouse=True)
-    def redis(self):
-        store: dict[str, Any] = {}
-
-        async def _set(key: str, value: Any, ttl: int | None = None) -> None:
-            store[key] = value
-
-        async def _get(key: str) -> Any:
-            return store.get(key)
-
-        with patch(f"{MODULE}.redis_cache") as cache:
-            cache.redis = MagicMock()
-            cache.set = AsyncMock(side_effect=_set)
-            cache.get = AsyncMock(side_effect=_get)
-            yield cache
-
-    async def test_the_same_call_is_recalled_with_the_users_own_words(self) -> None:
-        args = {"to": "bob@example.com", "subject": "deck"}
-        await remember_declined_call(STREAM_ID, "send_email", args, "wrong person")
-
-        outcome = await recall_declined_call(STREAM_ID, "send_email", args)
-
-        assert outcome is not None
-        assert outcome.outcome == "denied"
-        assert outcome.feedback == "wrong person"
-
-    async def test_a_corrected_retry_is_not_auto_denied(self) -> None:
-        # THE reason the key includes the arguments: "send it to Alice instead" is a
-        # DIFFERENT call. Auto-denying it would make the correction impossible to carry out.
-        await remember_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"}, "no")
-
-        assert (
-            await recall_declined_call(STREAM_ID, "send_email", {"to": "alice@example.com"}) is None
-        )
-
-    async def test_the_same_arguments_in_a_different_order_are_the_same_call(self) -> None:
-        # Dict ordering is an artefact of how the model emitted the JSON, not a difference
-        # in what is being done. Keying on it would re-prompt for an identical retry.
-        await remember_declined_call(
-            STREAM_ID, "send_email", {"to": "bob@example.com", "subject": "deck"}, "no"
-        )
-
-        outcome = await recall_declined_call(
-            STREAM_ID, "send_email", {"subject": "deck", "to": "bob@example.com"}
-        )
-
-        assert outcome is not None
-
-    async def test_another_tool_with_the_same_arguments_is_a_different_call(self) -> None:
-        await remember_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"}, "no")
-
-        assert (
-            await recall_declined_call(STREAM_ID, "delete_email", {"to": "bob@example.com"}) is None
-        )
-
-    async def test_a_later_turn_is_not_bound_by_an_earlier_decline(self) -> None:
-        # The memory is per-stream (per turn) on purpose: a genuinely new request later
-        # must be able to ask again rather than inherit a refusal.
-        await remember_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"}, "no")
-
-        assert (
-            await recall_declined_call("stream-2", "send_email", {"to": "bob@example.com"}) is None
-        )
-
-    async def test_a_call_never_declined_is_not_recalled(self) -> None:
-        assert (
-            await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"}) is None
-        )
-
-    async def test_an_auto_refusal_round_trips_its_provenance(self) -> None:
-        # The retry message differs ("auto declined" vs "the user declined"), so
-        # the provenance must survive the Redis round trip.
-        await remember_declined_call(
-            STREAM_ID, "send_email", {"to": "bob@example.com"}, "stop spamming", auto=True
-        )
-
-        outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"})
-
-        assert outcome is not None
-        assert outcome.decider is ApprovalDecider.AUTO
-        assert outcome.feedback == "stop spamming"
-
-    async def test_a_user_decline_still_reads_as_user_made(self) -> None:
-        await remember_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"}, "no")
-
-        outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob@example.com"})
-
-        assert outcome is not None
-        assert outcome.decider is ApprovalDecider.USER
-
-    async def test_unserializable_arguments_do_not_crash_the_gate(self) -> None:
-        # Tool args come from an LLM and are only loosely typed. A key derivation that
-        # raises here would fail the gate closed on every call carrying an odd value.
-        args = {"when": object()}
-        await remember_declined_call(STREAM_ID, "send_email", args, "no")
-
-        assert await recall_declined_call(STREAM_ID, "send_email", args) is not None
 
 
 class TestSummary:
@@ -317,19 +208,6 @@ class TestBrowserTaskSummary:
 
         assert summary == f"Start a browser task{SEPARATOR}{'y' * 140}"
         assert ELLIPSIS not in summary
-
-
-class TestDeclineMemoryLegacyRecord:
-    async def test_a_record_without_provenance_reads_as_the_users_own_decline(self) -> None:
-        with patch(f"{MODULE}.redis_cache") as cache:
-            cache.redis = MagicMock()
-            cache.get = AsyncMock(return_value={"feedback": "no"})
-
-            outcome = await recall_declined_call(STREAM_ID, "send_email", {"to": "bob"})
-
-        assert outcome is not None
-        assert outcome.decider is ApprovalDecider.USER
-        assert outcome.feedback == "no"
 
 
 def _card_frame(approval_id: str, *, held: bool = False, **data: object) -> dict[str, object]:

@@ -9737,7 +9737,7 @@ export interface components {
         HILPreferencesResponse: {
             /**
              * Mode
-             * @default always_allow
+             * @default auto
              * @enum {string}
              */
             mode: "always_allow" | "always_ask" | "auto";

@@ -21,8 +21,8 @@ DECISION_OUTCOME: Final[dict[ApprovalDecision, DecidedOutcome]] = {
     "deny": ApprovalOutcome.DENIED,
 }
 
-# The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
-# default mode is a HILPreferences field default, so it lives with the model).
+# The default mode is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (a
+# HILPreferences field default, so it lives with the model).
 
 HIL_JUDGE_MAX_TURN_CHARS = 800
 
@@ -75,11 +75,10 @@ class JevFailure(StrEnum):
 
 
 HIL_JEV_ACCEPT_LINE = 0.50
-HIL_JEV_REJECT_FLOOR = 0.50
 
-
-# The forbid double-check itself failed; the verdict asks rather than trusting either way.
-JEV_FORBID_CHECK_FAILED = "unclear-forbid"
+# The note on a card auto mode raised instead of running the call. The judge's own
+# reason names tool slugs and scores, so it stays model-facing; the user reads this.
+AUTO_ASK_NOTE = "GAIA isn't sure you asked for this, so it's checking with you first."
 
 
 class JevChoice(StrEnum):
@@ -88,7 +87,6 @@ class JevChoice(StrEnum):
     AUTHORIZED = "authorized"
     FORBIDDEN = "forbidden"
     UNCLEAR = "unclear"
-    PERMITTED = "permitted"
 
 
 # JEV reply classifier: an approve under the line leaves the action pending.
@@ -136,10 +134,6 @@ HIL_APPROVAL_TIMEOUT_SECONDS = 6 * 60 * 60
 # How long unread executor inbox work lives: an approval ticket handed over waits
 # as long as the user may take to answer, plus one busy run.
 EXECUTOR_INBOX_TTL = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
-
-# Keyed by stream_id (unique per turn), so this only suppresses re-asks within
-# the same turn — a genuinely new request in a later turn still prompts.
-HIL_DECLINE_MEMORY_TTL_SECONDS = 1800
 
 # Background-dispatch claims (one per delegating tool call), keyed by conversation
 # (never stream_id — it changes on resume): a node replay after the executor's

@@ -150,10 +150,6 @@ DESKTOP_RELEASE_CACHE_TTL = THIRTY_MINUTES_TTL
 # plus this grace, so it always outlives the wait. The tool deletes the key as
 # soon as it resolves, so this only bounds the orphaned-on-crash case.
 DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
-# Remembers a declined call for the rest of the turn (keyed by stream_id) so a
-# retrying agent is auto-denied instead of re-prompting the user for the same
-# action.
-HIL_DECLINED_PREFIX = "hil:declined:"
 # One workflow's "out of runs / budget" notice, keyed by user+workflow. The
 # daily wall it reports is worth exactly one message, not one per fire (a production thread ran to six).
 WORKFLOW_LIMIT_NOTICE_PREFIX = "workflow:limit-notice:"

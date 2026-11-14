@@ -7,45 +7,25 @@ in the same turn.
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-import hashlib
 import json
-from typing import cast
 
 from pydantic import BaseModel, ConfigDict
 
-from app.constants.cache import HIL_DECLINED_PREFIX
 from app.constants.hil import (
     HIL_CLASSIFIER_MAX_ARG_CHARS,
     HIL_CLASSIFIER_MAX_ARGS,
     HIL_CLASSIFIER_MAX_DETAIL_CHARS,
-    HIL_DECLINE_MEMORY_TTL_SECONDS,
     HIL_SUMMARY_MAX_ARG_CHARS,
     HIL_SUMMARY_MAX_ARGS,
 )
-from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
-from app.models.hil_models import DeclinedCallRecord
 from app.services.analytics_service import capture
 from app.services.hil.notify import notify_approval_pending
 from app.services.hil.utils import GatedApproval
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilCardShown
-from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log, spawn_logged_task
-
-
-@dataclass
-class GateVerdict:
-    """How an earlier decision on the same call ended, optional feedback, and scope."""
-
-    outcome: ApprovalOutcome
-    feedback: str | None = None
-    scope: str = "once"
-    # AUTO when the refusal came from auto mode, never from the user — the
-    # retry message must not claim the user declined something they never saw.
-    decider: ApprovalDecider = ApprovalDecider.USER
 
 
 async def announce_approval(approval: GatedApproval, *, background: bool, has_owner: bool) -> None:
@@ -80,45 +60,6 @@ async def announce_approval(approval: GatedApproval, *, background: bool, has_ow
         user={"id": approval.user_id},
         conversation_id=approval.conversation_id,
         approval_id=approval.approval_id,
-    )
-
-
-async def remember_declined_call(
-    stream_id: str,
-    tool_name: str,
-    args: Mapping[str, object],
-    feedback: str | None,
-    auto: bool = False,
-) -> None:
-    """Record that this exact call was declined for the rest of the turn."""
-    if not redis_cache.redis:
-        return
-    record: DeclinedCallRecord = {"feedback": feedback, "auto": auto}
-    await redis_cache.set(
-        _declined_key(stream_id, tool_name, args),
-        record,
-        ttl=HIL_DECLINE_MEMORY_TTL_SECONDS,
-    )
-
-
-async def recall_declined_call(
-    stream_id: str, tool_name: str, args: Mapping[str, object]
-) -> GateVerdict | None:
-    """Return the prior decline for this exact call in this turn, if any.
-
-    Lets the gate auto-deny a retry with the user's original feedback and never re-prompt.
-    """
-    if not redis_cache.redis:
-        return None
-    raw = await redis_cache.get(_declined_key(stream_id, tool_name, args))
-    if not raw:
-        return None
-    # Correct by construction: the only writer is ``remember_declined_call`` above.
-    record: DeclinedCallRecord = cast(DeclinedCallRecord, raw)
-    return GateVerdict(
-        outcome=ApprovalOutcome.DENIED,
-        feedback=record.get("feedback"),
-        decider=ApprovalDecider.AUTO if record.get("auto", False) else ApprovalDecider.USER,
     )
 
 
@@ -188,13 +129,3 @@ def _summary_arg_parts(args: Mapping[str, object]) -> list[str]:
         if isinstance(value, (str, int, float, bool)):
             parts.append(f"{key}: {clip_text(str(value), HIL_SUMMARY_MAX_ARG_CHARS)}")
     return parts
-
-
-def _declined_key(stream_id: str, tool_name: str, args: Mapping[str, object]) -> str:
-    return f"{HIL_DECLINED_PREFIX}{stream_id}:{tool_name}:{_args_hash(args)}"
-
-
-def _args_hash(args: Mapping[str, object]) -> str:
-    # md5 over the canonical args — a cache key, not a security boundary.
-    payload = json.dumps(args or {}, sort_keys=True, default=str)
-    return hashlib.md5(payload.encode(), usedforsecurity=False).hexdigest()  # nosec B324

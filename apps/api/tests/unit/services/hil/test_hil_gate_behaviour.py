@@ -101,7 +101,6 @@ class TestLedgerPathResolvesForTheRunsUser:
         ledger = _ledger()
         with (
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
-            patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=None)),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}.announce_approval", new=AsyncMock()) as publish,
         ):
@@ -125,7 +124,7 @@ class TestLedgerPathResolvesForTheRunsUser:
                 _execute_request(), _context(), _call(), "auto"
             )
 
-        assert verdict.settled is True
+        assert verdict.runs is True
         assert judged.await_args.args[3] == SUMMARY
 
 

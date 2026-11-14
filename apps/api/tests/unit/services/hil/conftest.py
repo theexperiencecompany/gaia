@@ -151,8 +151,6 @@ class GateSeams:
     """
 
     policy: AsyncMock
-    recall: AsyncMock
-    remember: AsyncMock
     ledger: MagicMock
     tool: BaseTool
     gated_tool: AsyncMock
@@ -203,8 +201,6 @@ def gate_seams(logged_work: AsyncMock) -> Iterator[GateSeams]:
     with (
         patch(f"{GATE_MODULE}.resolve_policy", new=AsyncMock(return_value="ask")) as policy,
         patch(f"{GATE_MODULE}.asks_every_time", new=AsyncMock(return_value=False)),
-        patch(f"{GATE_MODULE}.recall_declined_call", new=AsyncMock(return_value=None)) as recall,
-        patch(f"{GATE_MODULE}.remember_declined_call", new=AsyncMock()) as remember,
         patch(f"{GATE_MODULE}.approval_ledger_repository", new=ledger),
         patch(f"{GATE_MODULE}.get_tool_registry", new=AsyncMock(return_value=_fake_registry())),
         patch(
@@ -220,8 +216,6 @@ def gate_seams(logged_work: AsyncMock) -> Iterator[GateSeams]:
     ):
         yield GateSeams(
             policy=policy,
-            recall=recall,
-            remember=remember,
             ledger=ledger,
             tool=tool,
             gated_tool=gated,
