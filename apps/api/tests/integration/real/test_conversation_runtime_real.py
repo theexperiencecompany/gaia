@@ -513,8 +513,9 @@ async def test_work_started_after_a_message_joined_the_attempt_answers_that_mess
         ("t1", m2_seq, ("m1", "m2"))
     ]
     assert {"m1", "m2"} <= set(write_up.answers)
-    # m2 is answered too, so nothing unanswered sits between the write-up and what it answers.
-    assert write_up.quote_target is None
+    # The attempt's card-only reply sits between, so the late write-up quotes the newest
+    # message it answers: m2, not m1, because m2 is answered too.
+    assert write_up.quote_target == "m2"
 
 
 @pytest.mark.service
