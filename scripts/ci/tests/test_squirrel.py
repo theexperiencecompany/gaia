@@ -270,6 +270,8 @@ def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
         _row("/contact", "content/word-count", "word-count"),
         _row("/marketplace/googlesheets", "content/placeholder-contact", "placeholder-contact", [{"id": "email"}]),
         _row("/marketplace/googlesheets", "content/keyword-stuffing", "keyword-stuffing", [{"id": "google"}]),
+        _row("/automate/github-linear", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/images/icons/linear.svg"}]),
+        _row("/ja/automate/github-linear", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/images/icons/slack.svg"}]),
     ],
 )  # fmt: skip
 def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -> None:
@@ -292,6 +294,8 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
     [
         _row("/About", "url/lowercase", "lowercase"),
         _row("/pt-br/compare", "url/lowercase", "lowercase"),
+        _row("/a", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/images/hero.webp"}]),
+        _row("/automate", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/images/icons/slack.svg"}]),
         _row("/de/compare/asana", "content/word-count", "word-count"),
         _row("/de/compare/asana", "core/meta-title", "meta-title"),
         _row("/ja/compare/asana", "core/canonical", "canonical"),

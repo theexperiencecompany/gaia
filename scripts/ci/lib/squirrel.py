@@ -75,6 +75,7 @@ SHORT_PAGES = frozenset({"/download", "/contact"})
 WIKI_LINK = re.compile(r"^\[\[[^\[\]'\"]+\]\]$")
 # One integration's page; the paginated hub (/marketplace/page/N) is ours and stays checked.
 MARKETPLACE_DETAIL = re.compile(r"^/marketplace/[^/]+$")
+AUTOMATE_COMBO = re.compile(r"^/automate/[^/]+$")
 # The checks an integration page fails on its tools' synced docs, not on our copy.
 SYNCED_DOC_RULES = frozenset(
     {"content/placeholder-contact", "content/placeholder-text", "content/keyword-stuffing"}
@@ -165,6 +166,11 @@ def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
     return seen.finding.rule == "content/word-count" and (index or listing)
 
 
+def _lazy_below_fold_icons(seen: Observed, _pages: frozenset[str]) -> bool:
+    on_combo = bool(AUTOMATE_COMBO.match(SITE_LOCALE.sub("", seen.finding.page)))
+    return on_combo and seen.finding.rule == "perf/lazy-above-fold"
+
+
 # Only squirrel's own bugs, and one design decision: everything else is a finding.
 IGNORED = (
     Ignore(
@@ -207,6 +213,16 @@ IGNORED = (
         "/ja/for 49 words, /contact 59, /marketplace 178, /blog 188, /download 193; #1701 "
         "shortened their intros on purpose",
         _hub_word_count,
+    ),
+    Ignore(
+        "squirrel's lazy-above-fold rule takes the first three visible <img> in DOM order as "
+        "above the fold, with no layout; a combo page has no image in its hero, so the first "
+        "three are app icons far below it",
+        "squirrelscan 0.0.133 rule source: first 3 <img> outside aria-hidden/hidden/footer, "
+        "flagged when loading=lazy. /automate/github-linear: the first icon sits at y=3537 on a "
+        "390x844 viewport (unstyled static HTML, so a lower bound), after the hero, intro, use "
+        "cases, steps and FAQ; eager there would spend bandwidth on the LCP's competition",
+        _lazy_below_fold_icons,
     ),
 )
 
