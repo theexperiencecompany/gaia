@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
-import { integrationKeys } from "@/features/integrations/api/queryKeys";
+import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKeys";
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
@@ -30,7 +30,7 @@ export function useAddIntegration(integration: PublicIntegrationResponse) {
     onConnected: () => {
       toast.success(`Successfully added ${integration.name}!`);
       setIsAdded(true);
-      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
+      invalidateIntegrationCaches(queryClient);
       goToIntegration();
     },
   });
