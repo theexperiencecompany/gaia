@@ -3,7 +3,7 @@ import { Button } from "@heroui/button";
 import { ChatBotIcon, Mail01Icon, StarIcon } from "@icons";
 import { DISPLAY_STATE } from "@shared/conversation";
 import Link from "next/link";
-import React, { type FC, useState } from "react";
+import React, { memo, useState } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import { useConversationDisplay } from "@/features/chat/live/useLiveChat";
 import { usePathname } from "@/i18n/navigation";
@@ -24,7 +24,9 @@ interface ChatTabProps {
   hasPendingApproval?: boolean;
 }
 
-export const ChatTab: FC<ChatTabProps> = ({
+// Memoized: the sidebar lists every conversation, and a send reorders the list,
+// which re-rendered every row and its dropdown before the turn could paint.
+export const ChatTab = memo(function ChatTab({
   name,
   id,
   starred,
@@ -32,7 +34,7 @@ export const ChatTab: FC<ChatTabProps> = ({
   systemPurpose,
   isUnread = false,
   hasPendingApproval = false,
-}) => {
+}: ChatTabProps) {
   const pathname = usePathname();
   const [buttonHovered, setButtonHovered] = useState(false);
 
@@ -124,4 +126,4 @@ export const ChatTab: FC<ChatTabProps> = ({
       </div>
     </div>
   );
-};
+});
