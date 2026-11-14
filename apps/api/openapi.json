@@ -1997,6 +1997,15 @@
         "title": "BriefDeliveryWorkflowsConflict",
         "type": "object"
       },
+      "BriefForm": {
+        "description": "What a stored brief is: a drawn edition, or the plain note a quiet day sends instead.",
+        "enum": [
+          "edition",
+          "quiet_note"
+        ],
+        "title": "BriefForm",
+        "type": "string"
+      },
       "BriefOutcome": {
         "description": "The state a reported brief item reached; set only on items that need nothing from the reader.",
         "enum": [
@@ -2368,6 +2377,10 @@
             "title": "Date",
             "type": "string"
           },
+          "form": {
+            "$ref": "#/components/schemas/BriefForm",
+            "default": "edition"
+          },
           "generated_at": {
             "anyOf": [
               {
@@ -2584,6 +2597,7 @@
           "recipient_name",
           "generated_at",
           "link",
+          "form",
           "calendar",
           "tallies",
           "week",
@@ -3595,6 +3609,13 @@
       "CalendarEventsResponse": {
         "description": "Response for the multi-calendar reads (``POST /calendar/events/query`` and\n``GET /calendar/events``).",
         "properties": {
+          "calendars_failed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Calendars Failed",
+            "type": "array"
+          },
           "calendars_truncated": {
             "items": {
               "type": "string"

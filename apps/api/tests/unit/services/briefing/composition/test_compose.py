@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from tests.helpers import user_clock
 
 from app.agents.llm.client import StructuredCallOptions
 from app.agents.llm.exceptions import MalformedStructuredOutputError
@@ -22,10 +23,8 @@ from app.utils.errors import AppError
 USER = "64f1c0ffee0000000000abcd"
 _CONTEXT = PoolContext(
     reader="Ada",
-    timezone="Asia/Kolkata",
-    today=date(2026, 11, 11),
-    calendar_events=1,
-    calendar_connected=True,
+    clock=user_clock("Asia/Kolkata", date(2026, 11, 11)),
+    calendar=1,
     calendar_span="today",
     recent_openings=["Maya is waiting on the term sheet."],
 )

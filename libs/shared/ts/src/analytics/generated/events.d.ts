@@ -439,6 +439,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "kind": "daily" | "weekly";
+    "form": "edition" | "quiet_note";
     "family": string;
     "mood": string;
     "item_count": number;

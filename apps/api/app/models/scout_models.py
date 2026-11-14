@@ -8,6 +8,7 @@ with no model, and each frozen result is read into signals by the paths the lear
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import NamedTuple, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -225,6 +226,25 @@ class SignalMemoryDocument(UserScopedDocument):
     times_shown: int = 0
     last_shown: datetime | None = None
     last_state: str | None = None
+
+
+class Sighted(Protocol):
+    """Anything signal memory remembers: its key, and the state it was seen in."""
+
+    @property
+    def integration_id(self) -> str: ...
+    @property
+    def external_id(self) -> str: ...
+    @property
+    def state(self) -> str | None: ...
+
+
+class Sighting(NamedTuple):
+    """One brief item as signal memory keys it: GAIA's own work under GAIA's source."""
+
+    integration_id: str
+    external_id: str
+    state: str | None
 
 
 class SignalMemoryUpdate(BaseModel):

@@ -26,8 +26,9 @@ class StoredBrief:
     """A stored brief, its hosted edition and the link that edition encodes."""
 
     briefing: BriefingModel
-    image: HostedEditionImage
-    link: str
+    #: None for a quiet day's note, which has no edition and nothing to open.
+    image: HostedEditionImage | None
+    link: str | None
 
 
 async def store_brief(
@@ -58,3 +59,14 @@ async def store_brief(
         ),
     )
     return StoredBrief(briefing=briefing, image=image, link=link)
+
+
+async def store_note(
+    user_id: str, date: str, kind: BriefingKind, payload: BriefingPayload
+) -> StoredBrief:
+    """Store a quiet day's note: no edition is rendered and no link is minted."""
+    briefing_id = await briefing_repository.briefing_id_for(user_id, date, kind)
+    briefing = await briefing_repository.upsert_briefing(
+        user_id, date, kind, payload, briefing_id=briefing_id, edition=None
+    )
+    return StoredBrief(briefing=briefing, image=None, link=None)

@@ -39,7 +39,7 @@ def composition_prompt(pool: FactPool, kind: BriefingKind, facts: str) -> str:
     """Return the prompt that composes the kind of brief over the pool, laid out as facts."""
     context = pool.context
     return COMPOSITION_PROMPT.format(
-        frame=_FRAMES[kind].format(reader=context.reader, today=context.today.isoformat()),
+        frame=_FRAMES[kind].format(reader=context.reader, today=context.clock.date_str),
         reader=context.reader,
         criteria="\n".join(f"- {app}: {text}" for app, text in pool.criteria.items())
         or "- (no app wrote criteria)",

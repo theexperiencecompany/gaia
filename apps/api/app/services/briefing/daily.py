@@ -17,19 +17,25 @@ from app.constants.briefing import (
     UNNAMED_READER,
     BriefingRunOutcome,
 )
+from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
-from app.db.repositories.signal_memory import signal_memory_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.models.briefing_models import (
+    BriefingEvent,
     BriefingPayload,
     BriefingTallies,
+    UnreadSource,
 )
+from app.models.calendar_models import GoogleCalendarEventResource
+from app.models.scout_models import ScoutSkipReason
 from app.models.user_models import UserDocument
 from app.services.briefing import chat_sync, context, dormancy
 from app.services.briefing.artifacts import gather_artifacts
+from app.services.briefing.candidates.app_names import integration_name
+from app.services.briefing.candidates.memory import mark_placed_shown
 from app.services.briefing.candidates.pool import (
     CandidateSources,
     GatheredCandidates,
@@ -39,7 +45,7 @@ from app.services.briefing.composition.compose import compose_brief
 from app.services.briefing.edition_draws import draw_edition
 from app.services.briefing.errors import BriefingGenerationError
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext, PoolReads, build_fact_pool
-from app.services.briefing.fact_pool.window import daily_window
+from app.services.briefing.fact_pool.window import SeriesWindow, daily_window
 from app.services.briefing.facts import (
     TODAY,
     FactSources,
@@ -62,7 +68,13 @@ from app.services.briefing.prose import (
     voiced_payload,
     written_brief,
 )
-from app.services.briefing.publish import PoolCounts, Push, publish_brief
+from app.services.briefing.publish import (
+    PoolCounts,
+    Push,
+    publish_brief,
+    publish_quiet_note,
+    quiet_note,
+)
 from app.services.briefing.schedule import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
 from app.services.briefing.scouts.service import ScoutSignals, scout_signals
@@ -75,16 +87,12 @@ from app.services.briefing.sections import (
     log_composition,
     sources_shown,
 )
-from app.services.briefing.slots import (
-    figures_in,
-    referenced_facts,
-)
+from app.services.briefing.slots import figures_in
 from app.services.integrations.user_integrations import (
     ConnectedIntegration,
     get_connected_integrations_named,
 )
 from app.services.user_activity.status import activity_status_of
-from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
 from shared.py.wide_events import log
 
@@ -122,23 +130,36 @@ def _is_empty_day(payload: BriefingPayload) -> bool:
     return not payload.blocks and not payload.calendar
 
 
+def _is_quiet_day(
+    laid: Laid, today: list[BriefingEvent] | context.CalendarUnread, ladder: dormancy.IdleLadder
+) -> bool:
+    """Say whether today gets the quiet note: nothing placed, no event, and nothing the ladder says."""
+    no_events = not today if isinstance(today, list) else True
+    return (
+        not laid.blocks
+        and no_events
+        and ladder.wind_down is None
+        and ladder.goal_question is dormancy.GoalQuestion.ASKED
+    )
+
+
 async def _composed_day(
     user: UserDocument,
-    clock: context.UserClock,
+    window: SeriesWindow,
     gathered: GatheredCandidates,
     scouts: ScoutSignals,
-    goals: list[context.StatedGoal],
+    reads: tuple[list[context.StatedGoal], list[GoogleCalendarEventResource]],
     pool_context: PoolContext,
 ) -> tuple[FactPool, Laid]:
     """Build today's fact pool over the week ending today, compose the brief over it and lay it out."""
-    window = daily_window(clock)
+    goals, calendar = reads
     pool = await build_fact_pool(
         user.id,
         window,
         PoolReads(
             items=gathered.pool,
             signals=[r.signal for r in scouts.remembered],
-            calendar=await context.read_calendar(user.id, window.start, window.end),
+            calendar=calendar,
             goals=goals,
             criteria=scouts.criteria,
         ),
@@ -187,28 +208,26 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     work = await context.gather_tracked_work(user_id, since)
     artifacts = gather_artifacts(work)
     open_count = await todo_repository.count_open_user_todos(user_id)
-    has_calendar = await context.calendar_connected(user_id)
-    calendar = await context.gather_calendar(user_id, clock, days=1)
+    window = daily_window(clock)
+    day = await context.read_day_calendar(user_id, clock, window.start, window.end)
     completed = await context.gather_completed_since(user_id, since)
     held = await pending_brief_items_repository.list_for_user(user_id, sort=[("created_at", 1)])
     seen_at = datetime.now(UTC)
     scouts = await scout_signals(user, seen_at)
     gathered = await gather_candidates(
-        user_id, clock, since, seen_at, CandidateSources(work, held, scouts, calendar)
+        user_id, clock, since, seen_at, CandidateSources(work, held, scouts, day.events)
     )
     recent = await _recent_lines(user_id)
     pool, laid = await _composed_day(
         user,
-        clock,
+        window,
         gathered,
         scouts,
-        goals,
+        (goals, day.week),
         PoolContext(
             reader=display_first_name(user) or UNNAMED_READER,
-            timezone=user.timezone or Timezone.utc().value,
-            today=clock.now_local.date(),
-            calendar_events=len(calendar),
-            calendar_connected=has_calendar,
+            clock=clock,
+            calendar=day.tally,
             calendar_span=TODAY_SPAN,
             recent_openings=recent.openings,
         ),
@@ -219,8 +238,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         FactSources(
             artifacts=artifacts,
             open_todos=open_count,
-            calendar=calendar,
-            calendar_connected=has_calendar,
+            calendar=day.today,
             event_ids=event_ids(gathered.pool),
             span=TODAY,
             todos_note=user_todos_note(open_count),
@@ -235,6 +253,12 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     ladder = await dormancy.climb_idle_ladder(
         user, dstate, clock.date_str, has_news=gathered.has_news, has_goal=has_goal
     )
+    if not winback.is_winback and not is_first and _is_quiet_day(laid, day.today, ladder):
+        gap = day.today.gap if isinstance(day.today, context.CalendarUnread) else None
+        await publish_quiet_note(user, clock, quiet_note(clock, gap), PoolCounts.of(pool))
+        await _settle(user, ladder, gathered)
+        return BriefingRunOutcome.SENT
+
     # A user who stopped coming back is offered fewer briefs, never silently dropped.
     offer_lighter = await activity_status_of(user_id) == ActivityStatus.IDLE
 
@@ -245,7 +269,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         lookback=lookback_block,
         replies=await chat_sync.format_replies_block(user_id, since),
         setup=await _setup_block(user, first_week=ladder.first_week, offer_lighter=offer_lighter),
-        signals=signals_block(remembered, seen_at),
+        signals=signals_block(remembered, clock),
     )
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
@@ -283,12 +307,12 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     ).model_copy(
         update={
             "stats": work_stats(work),
-            "calendar": calendar,
+            "calendar": day.events,
             "tallies": BriefingTallies(
                 done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
             ),
             "sources_read": sources_shown(laid, gathered.pool),
-            "sources_unavailable": gathered.sources_unavailable,
+            "sources_unavailable": [*gathered.sources_unavailable, *_calendar_unread(day.today)],
             "blocks": edition.drawn,
             "undrawn": edition.undrawn,
             "uncomposed": laid.uncomposed,
@@ -308,13 +332,35 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             pool=PoolCounts.of(pool),
         ),
     )
-    spoken = referenced_facts(voice.message)
-    await signal_memory_repository.mark_shown(
-        user_id, [item.signal for i, item in remembered if i in spoken], datetime.now(UTC)
+    await mark_placed_shown(
+        user_id, [c for picked in laid.chosen.picked for _, c in picked], datetime.now(UTC)
     )
+    await _settle(user, ladder, gathered)
+    return BriefingRunOutcome.SENT
+
+
+async def _settle(
+    user: UserDocument, ladder: dormancy.IdleLadder, gathered: GatheredCandidates
+) -> None:
+    """Close a sent run: clear the held results it accounted for, the bootstrap and the ladder's rung."""
     carried = carried_ids(gathered.pool, gathered.duplicate_held_ids)
     if carried:
-        await pending_brief_items_repository.consume(user_id, carried)
+        await pending_brief_items_repository.consume(user.id, carried)
     await clear_bootstrap(user)
-    await dormancy.leave_idle_ladder(user_id, ladder)
-    return BriefingRunOutcome.SENT
+    await dormancy.leave_idle_ladder(user.id, ladder)
+
+
+def _calendar_unread(
+    calendar: list[BriefingEvent] | context.CalendarUnread,
+) -> list[UnreadSource]:
+    """Name the calendar as a source the brief could not read, when a connected one did not answer."""
+    if (
+        isinstance(calendar, context.CalendarUnread)
+        and calendar.gap is context.CalendarGap.UNAVAILABLE
+    ):
+        return [
+            UnreadSource(
+                app=integration_name(GOOGLE_CALENDAR_INTEGRATION_ID), reason=ScoutSkipReason.FAILED
+            )
+        ]
+    return []

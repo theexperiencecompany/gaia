@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.briefing_models import BriefingItemKind
-from app.models.scout_models import Signal, SignalImportance
+from app.models.scout_models import Signal, SignalImportance, SignalMemoryDocument
 
 
 class BriefCandidate(BaseModel):
@@ -47,3 +47,21 @@ class BriefCandidate(BaseModel):
     ref: str | None = None
     #: The other sources that found the same thing, folded into this one item.
     also_in: list[str] = Field(default_factory=list)
+    #: GAIA's own id for what it is when it is no todo or outside thing ("approval:<id>").
+    seen_as: str | None = None
+    #: An undated todo of the user's own: on their list, not news, so it never leads.
+    backlog: bool = False
+    #: What earlier briefs remember of it, as it stood before today; None the first time.
+    memory: SignalMemoryDocument | None = None
+    #: Whether its state changed since an earlier brief saw it.
+    moved: bool = False
+
+    @property
+    def is_repeat(self) -> bool:
+        """Whether an earlier brief already showed it, unchanged: still open, not news."""
+        return self.memory is not None and self.memory.times_shown > 0 and not self.moved
+
+    @property
+    def is_news(self) -> bool:
+        """Whether it is something the user has not been told: no event, backlog or repeat."""
+        return not (self.is_event or self.backlog or self.is_repeat)

@@ -30,10 +30,13 @@ def _ledger_app(row: ApprovalLedgerDocument) -> tuple[str, str]:
     return integration.id, integration.name
 
 
-def _candidate(source: str, app: str, summary: str, tool_name: str) -> BriefCandidate:
+def _candidate(
+    source: str, app: str, summary: str, tool_name: str, approval_id: str
+) -> BriefCandidate:
     return BriefCandidate(
         source=source,
         app=app,
+        seen_as=f"approval:{approval_id}",
         state="you",
         title=summary.strip() or f"Approve {tool_name}",
         detail="waiting for your approval",
@@ -50,9 +53,11 @@ async def approval_candidates(
         if row.owner_id and row.owner_id in covered_todo_ids:
             continue
         source, app = _ledger_app(row)
-        candidates.append(_candidate(source, app, row.summary, row.tool_name))
+        candidates.append(_candidate(source, app, row.summary, row.tool_name, row.approval_id))
     for record in await hil_approval_repository.list_pending_for_user(user_id, now):
         app = record.integration_name or GAIA_APP_NAME
         source = GAIA_SOURCE if record.integration_name is None else app
-        candidates.append(_candidate(source, app, record.summary, record.tool_name))
+        candidates.append(
+            _candidate(source, app, record.summary, record.tool_name, record.approval_id)
+        )
     return candidates

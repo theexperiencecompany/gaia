@@ -6897,6 +6897,12 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * BriefForm
+         * @description What a stored brief is: a drawn edition, or the plain note a quiet day sends instead.
+         * @enum {string}
+         */
+        BriefForm: "edition" | "quiet_note";
+        /**
          * BriefingEvent
          * @description One calendar event on the user's own clock, read from their calendar.
          */
@@ -6988,6 +6994,8 @@ export interface components {
             caption: string;
             /** Date */
             date: string;
+            /** @default edition */
+            form: components["schemas"]["BriefForm"];
             /**
              * Generated At
              * @description User-local generation time, e.g. "6:02 AM".
@@ -7527,6 +7535,8 @@ export interface components {
          *     ``GET /calendar/events``).
          */
         CalendarEventsResponse: {
+            /** Calendars Failed */
+            calendars_failed?: string[];
             /** Calendars Truncated */
             calendars_truncated: string[];
             /** Events */
@@ -17540,6 +17550,7 @@ export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
 export type BriefAction = components['schemas']['BriefAction'];
 export type BriefDeliveryWorkflow = components['schemas']['BriefDeliveryWorkflow'];
 export type BriefDeliveryWorkflowsConflict = components['schemas']['BriefDeliveryWorkflowsConflict'];
+export type BriefForm = components['schemas']['BriefForm'];
 export type BriefingEvent = components['schemas']['BriefingEvent'];
 export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];

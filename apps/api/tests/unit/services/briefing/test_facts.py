@@ -1,19 +1,23 @@
 """The facts the voice is shown: one line per item and event, the figures its prose may quote and its slots."""
 
-from dataclasses import replace
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.constants.briefing import NO_CALENDAR_CONNECTED, BriefAction
+from app.constants.briefing import (
+    CALENDAR_UNAVAILABLE,
+    NO_CALENDAR_CONNECTED,
+    BriefAction,
+    BriefOutcome,
+)
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, ChartBlock, ChartKind, SectionBlock
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.models.briefing_models import BriefingEvent, BriefingItem, BriefingSection
-from app.models.scout_models import Signal
+from app.models.scout_models import Signal, SignalMemoryDocument
 from app.services.briefing.artifacts import ArtifactFact
-from app.services.briefing.context import UserClock
+from app.services.briefing.context import CalendarGap, CalendarUnread, UserClock
 from app.services.briefing.facts import TODAY, WEEK_AHEAD, BriefSpan, FactSources, build_facts
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import BriefFact, CountSlot, SeriesField
@@ -45,7 +49,7 @@ def _sources(
     *,
     artifacts: dict[str, ArtifactFact] | None = None,
     open_todos: int = 0,
-    calendar: list[BriefingEvent] | None = None,
+    calendar: list[BriefingEvent] | CalendarUnread | None = None,
     event_ids: list[int] | None = None,
     span: BriefSpan = TODAY,
     blocks: list[BriefBlock] | None = None,
@@ -53,8 +57,7 @@ def _sources(
     return FactSources(
         artifacts=artifacts or {},
         open_todos=open_todos,
-        calendar=calendar or [],
-        calendar_connected=True,
+        calendar=[] if calendar is None else calendar,
         event_ids=event_ids or [],
         span=span,
         todos_note=None,
@@ -180,12 +183,111 @@ class TestTheCalendarAndTheCharts:
         ]
 
     def test_with_no_calendar_connected_the_note_says_so_not_that_it_is_empty(self) -> None:
-        unconnected = replace(_sources(), calendar_connected=False)
+        unconnected = _sources(calendar=CalendarUnread(CalendarGap.NOT_CONNECTED))
 
         facts = build_facts(Chosen(sections=[], picked=[]), unconnected, _CLOCK)
 
         assert facts.block.splitlines()[-1] == NO_CALENDAR_CONNECTED
         assert TODAY.empty not in facts.block
+
+    def test_a_calendar_that_did_not_answer_is_never_an_empty_day(self) -> None:
+        """Regression: a calendar read that failed told the voice the day was free."""
+        unread = _sources(calendar=CalendarUnread(CalendarGap.UNAVAILABLE))
+
+        facts = build_facts(Chosen(sections=[], picked=[]), unread, _CLOCK)
+
+        assert facts.block.splitlines()[-1] == CALENDAR_UNAVAILABLE
+        assert TODAY.empty not in facts.block
+
+
+class TestEachCountClaimsOnlyItsOwn:
+    def test_only_held_results_are_while_away_and_an_event_or_backlog_never_waits(self) -> None:
+        """Regression: every placed note was counted as come in while away, a calendar lead too."""
+        held = BriefCandidate(
+            source="gaia", app="GAIA", state="note", title="Digest: 3 papers", held_id="h1"
+        )
+        signal = BriefCandidate(source="linear", app="Linear", state="you", title="ENG-12 merged")
+        event = BriefCandidate(
+            source="googlecalendar",
+            app="Google Calendar",
+            state="note",
+            title="Board",
+            is_event=True,
+        )
+        backlog = BriefCandidate(
+            source="gaia", app="GAIA", state="you", title="Plan Q1", backlog=True
+        )
+        waiting = BriefCandidate(source="gmail", app="Gmail", state="you", title="Reply to Maya")
+        placed = [
+            (BriefingItem(text="Board", kind="you", action=BriefAction.ATTEND), event),
+            (BriefingItem(text="Digest", kind="note", outcome=BriefOutcome.FINISHED), held),
+            (BriefingItem(text="ENG-12", kind="note", outcome=BriefOutcome.CHANGED), signal),
+            (BriefingItem(text="Plan Q1", kind="you", action=BriefAction.ATTEND), backlog),
+            (BriefingItem(text="Maya", kind="you", action=BriefAction.REPLY), waiting),
+        ]
+
+        facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
+
+        assert facts.values.counts == {CountSlot.NEEDS_YOU: 1, CountSlot.WHILE_AWAY: 1}
+        assert "- fact 4 | On their list, undated: Plan Q1" in facts.block
+
+
+class TestARepeatIsSaidAsStillOpen:
+    _SHOWN = SignalMemoryDocument(
+        user_id="u1",
+        integration_id="gaia",
+        external_id="todo:t1",
+        first_seen=datetime(2026, 11, 8, 3, tzinfo=UTC),
+        times_shown=3,
+        last_shown=datetime(2026, 11, 10, 3, tzinfo=UTC),
+        last_state="you",
+    )
+
+    def test_a_signal_is_left_to_its_own_block_and_the_items_after_it_still_get_lines(
+        self,
+    ) -> None:
+        signal = Signal(
+            integration_id="linear", app="Linear", external_id="E-1", kind="issue", title="E-1"
+        )
+        app_item = BriefCandidate(
+            source="linear", app="Linear", state="you", title="E-1", signal=signal
+        )
+        shown = BriefCandidate(
+            source="gaia", app="GAIA", state="you", title="Approve the MSA", memory=self._SHOWN
+        )
+        placed = [
+            (BriefingItem(text="E-1", kind="you", action=BriefAction.REVIEW), app_item),
+            (BriefingItem(text="Approve the MSA", kind="you", action=BriefAction.APPROVE), shown),
+        ]
+
+        facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
+
+        assert "fact 1 |" not in facts.block
+        assert (
+            "- fact 2 | Waiting on you: Approve the MSA | already shown, still open"
+            " (first seen 3 days ago, mentioned 3 time(s), last yesterday)"
+        ) in facts.block
+
+    def test_a_repeat_with_a_deliverable_is_said_as_still_open_too(self) -> None:
+        shown = BriefCandidate(
+            source="gaia",
+            app="GAIA",
+            state="gaia",
+            title="Investor list",
+            todo_id="t1",
+            memory=self._SHOWN.model_copy(update={"last_state": "gaia"}),
+        )
+        item = BriefingItem(
+            text="Investor list", kind="gaia", todo_id="t1", outcome=BriefOutcome.STARTED
+        )
+
+        facts = build_facts(
+            _chosen((item, shown)),
+            _sources(artifacts={"t1": ArtifactFact(snippet="12 vetted", chars=900, action=False)}),
+            _CLOCK,
+        )
+
+        assert "already shown, still open (first seen 3 days ago" in facts.block
 
 
 class TestTheEmptyBriefAndTheLead:

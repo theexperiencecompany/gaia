@@ -153,7 +153,10 @@ plain beats cute.
 
 LEAD WITH WHAT NEEDS THE USER. Scan the facts for the one thing only the user
 can do and pick the one with the most leverage toward the goal; the headline or
-lede puts it in front of them. Finished work is the supporting cast, never the
+lede puts it in front of them. A fact "On their list, undated" is background: at
+most a passing mention in the message, never the headline or lede, never called a
+decision or something waiting. A fact marked "already shown, still open" is not
+news: say it is still open, never as if it just arrived. Finished work is the supporting cast, never the
 opener, whenever something is waiting on them. If nothing needs the user, open
 on the biggest finished result instead.
 
