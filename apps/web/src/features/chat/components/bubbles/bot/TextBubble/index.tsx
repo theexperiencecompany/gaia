@@ -10,7 +10,6 @@ import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
-import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
   DEFAULT_PART_CHOREOGRAPHY,
@@ -18,7 +17,6 @@ import {
   type PartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
-import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
 import { ChatItemBoundary } from "../ChatItemBoundary";
@@ -367,10 +365,7 @@ export default function TextBubble({
 }) {
   const baseId = useId();
 
-  // Parse thinking content from text
-  const parsedContent = React.useMemo(() => {
-    return parseThinkingFromText(text?.toString() || "");
-  }, [text]);
+  const displayText = text?.toString() ?? "";
 
   // Single ordered timeline of tool calls + subagent groups (emission order)
   // and the remaining tool_data entries that render via TOOL_RENDERERS.
@@ -420,10 +415,6 @@ export default function TextBubble({
 
   return (
     <>
-      {parsedContent.thinking && (
-        <ThinkingBubble thinkingContent={parsedContent.thinking} />
-      )}
-
       {timeline.length > 0 && (
         <ChatItemBoundary
           key={`${baseId}-unified-tools`}
@@ -474,13 +465,9 @@ export default function TextBubble({
       })}
 
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
-        // Gate on CLEANED display text, not raw `text`: mid-stream it can
-        // hold non-visible content (thinking residue, a stray char) while
-        // rendered text is empty, which would flash an empty bubble + tail.
-        parsedContent.cleanText.trim().length > 0 &&
+        // Mid-stream the text can be whitespace only, which would flash an empty bubble + tail.
+        displayText.trim().length > 0 &&
         (() => {
-          // Use cleaned text without thinking tags
-          const displayText = parsedContent.cleanText || "";
           // Preserve :::openui fences when splitting so they aren't mangled.
           const textParts = splitMessageByBreaks(displayText);
 
@@ -562,7 +549,7 @@ export default function TextBubble({
           onRetry={onRetry}
           partial={
             shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) ||
-            !!parsedContent.cleanText.trim()
+            !!displayText.trim()
           }
         />
       )}

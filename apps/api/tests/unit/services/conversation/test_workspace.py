@@ -15,8 +15,8 @@ an "unhandled exception in task" warning instead of a test failure.
 
 from unittest.mock import AsyncMock, patch
 
-from app.services.chat import workspace
-from app.services.chat.workspace import schedule_last_active_touch
+from app.services.conversation import workspace
+from app.services.conversation.workspace import schedule_last_active_touch
 from app.services.storage import JuiceFSUnavailable
 
 

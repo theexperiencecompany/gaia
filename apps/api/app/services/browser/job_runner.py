@@ -90,7 +90,6 @@ from app.services.browser.session import (
     browser_session,
 )
 from app.services.browser.tasks import BrowserTaskRecord, record_browser_task
-from app.services.chat.chunks import normalize_custom_event
 from app.services.feature_flags import is_enabled
 from app.utils.agent_utils import (
     SubagentStartDetails,
@@ -99,6 +98,7 @@ from app.utils.agent_utils import (
     format_subagent_start_event,
 )
 from app.utils.background_tasks import spawn_background_task
+from app.utils.tool_events import normalize_custom_event
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserTaskFinished
 from shared.py.wide_events import log

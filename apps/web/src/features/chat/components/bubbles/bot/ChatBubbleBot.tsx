@@ -9,7 +9,6 @@ import {
   resolvePartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
-import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import { BotBubbleAvatar, BotBubbleFooter } from "./BotBubbleChrome";
 import { describeBotBubbleContent } from "./botBubbleContent";
@@ -75,10 +74,7 @@ export default function ChatBubbleBot(
   const logoDelay = useMemo(
     () =>
       itShouldShowTextBubble
-        ? logoDelayFor(
-            parseThinkingFromText(text?.toString() || "").cleanText,
-            partChoreography.staggerSeconds,
-          )
+        ? logoDelayFor(text?.toString() ?? "", partChoreography.staggerSeconds)
         : 0,
     [text, itShouldShowTextBubble, partChoreography.staggerSeconds],
   );

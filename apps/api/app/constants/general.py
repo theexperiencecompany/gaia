@@ -4,7 +4,6 @@ General Constants.
 Centralized general-purpose constants.
 """
 
-ORCHESTRATOR_MAX_ITERATIONS = 10
 # The canonical bubble-break sentinel the comms prompt tells the model to emit.
 # Recognizing the near-miss spellings it actually emits (and splitting on them)
 # is ``app.utils.message_breaks`` — this is only the token we ask for.
@@ -43,7 +42,6 @@ EXECUTOR_THREAD_PREFIX = "executor_"
 # executor tier drives with the worker driver without being a delegated worker.
 EXECUTOR_INTEGRATION_ID = "executor"
 
-MAX_EMAILS_PER_PLATFORM = 20
 DEDUPLICATION_SIMILARITY_THRESHOLD = 0.9
 
 # The DeltaChannel-backed state key (app/override/langgraph_bigtool/utils.py).

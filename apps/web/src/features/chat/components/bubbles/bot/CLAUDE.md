@@ -10,9 +10,8 @@ For design tokens and the card styling contract: `DESIGN.md` (repo root). For th
 
 `TextBubble` renders, in order:
 
-1. **Thinking** — `parseThinkingFromText` strips `<thinking>` content into a `ThinkingBubble`; `cleanText` is what gets bubbled.
-2. **Tool cards** — `tool_data[]` entries are matched against `TOOL_RENDERERS` and rendered **outside** any bubble (see gotchas). `todo_progress` is special-cased before the map.
-3. **Text** — `cleanText` is split into parts, each part further split into markdown vs OpenUI segments.
+1. **Tool cards** — `tool_data[]` entries are matched against `TOOL_RENDERERS` and rendered **outside** any bubble (see gotchas). `todo_progress` is special-cased before the map.
+2. **Text** — the reply text is split into parts, each part further split into markdown vs OpenUI segments.
 
 Two distinct paths produce visual blocks. Know which one applies:
 
@@ -25,7 +24,7 @@ A tool lives in exactly one path. If a tool has a `TOOL_RENDERERS` entry, the ba
 
 ## Text segmentation
 
-`cleanText` is split into parts by `splitMessageByBreaks` (`libs/shared/ts/src/utils/messageBubbles.ts`), the one splitter the bots use too, so a reply is the same bubbles live, after a reload and on every platform. A break inside a code block or `:::openui` block never splits it. Each part is then run through `parseOpenUISegments`:
+The reply text is split into parts by `splitMessageByBreaks` (`libs/shared/ts/src/utils/messageBubbles.ts`), the one splitter the bots use too, so a reply is the same bubbles live, after a reload and on every platform. A break inside a code block or `:::openui` block never splits it. Each part is then run through `parseOpenUISegments`:
 
 - **Pure-markdown part** → one `imessage-bubble imessage-from-them` bubble with `MarkdownRenderer` inside. Grouping classes (`imessage-grouped-first/middle/last`) chain consecutive bubbles. Emoji-only parts drop the bubble and scale up the glyph.
 - **Mixed part (markdown + openui)** → markdown segments each get their own compact bubble; openui segments render at the same DOM level as tool cards (no bubble wrapper).

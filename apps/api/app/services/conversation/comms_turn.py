@@ -30,11 +30,11 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkflowRun,
 )
-from app.services.chat.workspace import schedule_last_active_touch
 from app.services.conversation.comms_runner import CommsTurn, step_turn_ref
 from app.services.conversation.reply_analytics import spoken_context
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.todo_wake import todo_runs_reported
+from app.services.conversation.workspace import schedule_last_active_touch
 from app.services.delivery.presence import presence_before
 from app.utils.auth_utils import require_owner
 from app.utils.user_preferences_utils import onboarding_preferences

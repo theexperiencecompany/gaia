@@ -113,14 +113,13 @@ Mock external I/O (network, database, filesystem). Never mock the logic under te
 
 ```python
 # WRONG — mocks the function being tested, tests nothing
-with patch("app.services.chat_service.run_chat_stream") as mock:
-    mock.return_value = "response"
-    result = run_chat_stream(msg)  # just calls the mock
+with patch("app.services.conversation.send.send_message") as mock:
+    mock.return_value = accepted
+    result = await send_message(...)  # just calls the mock
 
-# RIGHT — mocks the dependency, tests the real function
-with patch("app.services.chat_service.llm_client.invoke") as mock_llm:
-    mock_llm.return_value = AIMessage(content="hello")
-    result = run_chat_stream(msg)  # runs real logic, fake LLM
+# RIGHT — fakes the dependency, runs the real graph
+async with build_executor_graph(chat_llm=create_fake_llm(["hello"]), ...) as graph:
+    result = await graph.ainvoke(...)  # runs real logic, fake LLM
 ```
 
 **Law 2b: Patch Module Singletons, Not Individual Functions**

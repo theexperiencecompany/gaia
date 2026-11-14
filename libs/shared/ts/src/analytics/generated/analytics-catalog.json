@@ -5358,7 +5358,6 @@
                   "workflow_autosend",
                   "workflow_activation",
                   "api_402",
-                  "chat_stream_402",
                   "composer_notice",
                   "rate_limit_card",
                   "rate_limit_toast",

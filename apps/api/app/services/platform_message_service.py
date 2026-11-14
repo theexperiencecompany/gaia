@@ -1,13 +1,9 @@
 """Deliver agent-generated chat messages to a user's linked bot platform.
 
-The web UI receives background/proactive bot messages over a WebSocket
-(conversation.new_message). Bot users have no such socket — their only
-inbound path is a request/response SSE turn that has already closed by the
-time a background executor finishes. This service is the bot-side equivalent
-of that push: it publishes the message to the originating platform's outbound
-RabbitMQ queue, which the bot process consumes and sends to the user's stored
-platform_links identity. All platform formatting and sending live in the
-bots — there is no Python copy.
+A bot user has no open conversation stream to receive a background message on, so this
+publishes it to the originating platform's outbound RabbitMQ queue, which the bot process
+consumes and sends to the user's stored platform_links identity. All platform formatting
+and sending live in the bots; there is no Python copy.
 """
 
 from dataclasses import dataclass

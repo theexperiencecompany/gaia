@@ -1,10 +1,4 @@
-"""Shared SSE sub-chunk publishers for the chat stream.
-
-Both the live chat dispatcher (app.services.chat.chunks) and the LangGraph
-stream processor (app.utils.stream_utils) split a parsed data: chunk into
-the same set of side-effecting publishes. These helpers are the single source of
-truth for that behavior so the two call sites cannot drift.
-"""
+"""The todo_progress snapshot a tool streams, as the turn accumulates it per source."""
 
 from pydantic import BaseModel, ConfigDict, Field
 
