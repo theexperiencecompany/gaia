@@ -10,11 +10,8 @@ from app.db.repositories.todos import todo_repository
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_models import PendingBriefItemDocument
 from app.services.briefing.candidates.app_names import integration_name
+from app.services.briefing.held import first_line, held_text
 from app.services.todos.inbox_desk import INBOX_DESK_REF
-
-
-def _first_line(text: str) -> str | None:
-    return next((line.strip() for line in text.splitlines() if line.strip()), None)
 
 
 async def held_candidates(
@@ -29,7 +26,7 @@ async def held_candidates(
         from_desk = (
             desk is not None and doc.source is BriefItemSource.TODO and doc.source_id == desk.id
         )
-        first = _first_line(doc.text)
+        first = first_line(doc.text)
         if from_desk:
             # The desk writes each finding as one self-contained line.
             candidates.append(
@@ -47,7 +44,7 @@ async def held_candidates(
                 source=GAIA_SOURCE,
                 app=GAIA_APP_NAME,
                 state="note",
-                title=f"{doc.source_title}: {first}" if first else doc.source_title,
+                title=held_text(doc),
                 held_id=doc.id,
                 outcome=BriefOutcome.FINISHED,
             )

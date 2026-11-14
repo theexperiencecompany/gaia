@@ -2,16 +2,22 @@
 
 Scouts are a Pro feature. Each scout replays its frozen calls with no model; every row
 they return is then judged with the rest of the brief's candidates by the criteria each
-scout learned. A replay that fails, a result whose shape moved, or a changed tool list
-relearns that scout once; a learn that fails waits out a backoff. One scout failing is a
-typed skipped result and an error on the wide event, never a failed brief.
+scout learned. A result whose shape moved or a changed tool list relearns that scout once;
+an app that does not answer keeps its scout until it has failed several briefs in a row. A
+learn that fails waits out a backoff and never discards a working scout. One scout
+failing is a typed skipped result and an error on the wide event, never a failed brief.
 """
 
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from app.constants.scouts import SCOUT_CONCURRENCY, SCOUT_RELEARN_BACKOFF, SCOUT_TURN_TIMEOUT
+from app.constants.scouts import (
+    SCOUT_CONCURRENCY,
+    SCOUT_RELEARN_BACKOFF,
+    SCOUT_REPLAY_FAILURES_BEFORE_RELEARN,
+    SCOUT_TURN_TIMEOUT,
+)
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.scouts import scouts_repository
 from app.models.payment_models import PlanType
@@ -26,19 +32,18 @@ from app.models.scout_models import (
 from app.models.user_models import UserDocument
 from app.services.briefing.scouts.learn import learn_scout
 from app.services.briefing.scouts.memory import remember
-from app.services.briefing.scouts.spend import may_learn
+from app.services.briefing.scouts.spend import reserve_learn
 from app.services.briefing.scouts.tools import (
     ScoutIntegration,
     ScoutTools,
     scout_integrations,
     scout_tools,
 )
-from app.services.briefing.scouts.watch import FrozenWatch, watch
+from app.services.briefing.scouts.watch import FrozenWatch, ScoutSourceFailed, watch
 from app.services.mcp.mcp_errors import MCPIntegrationNotFoundError
 from app.services.payments.payment_service import payment_service
 from app.services.user_activity.status import activity_status_of
-from app.services.workflow.playbook.evaluator import PlaybookUser
-from app.utils.errors import AppError
+from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
@@ -63,15 +68,15 @@ def _skipped(integration: ScoutIntegration, reason: ScoutSkipReason) -> ScoutRes
 async def _record_failed_learn(
     user_id: str, tools: ScoutTools, stale: ScoutDocument | None, now: datetime
 ) -> None:
-    """Store a learn that froze nothing as a scout waiting out its backoff before the next."""
-    streak = (
-        stale.failed_learns
-        if stale is not None
-        and stale.status is ScoutStatus.LEARN_FAILED
-        and stale.tool_fingerprint == tools.fingerprint
-        else 0
-    ) + 1
+    """Back off the next learn; a working scout keeps its frozen calls, any other waits failed."""
+    same = stale if stale is not None and stale.tool_fingerprint == tools.fingerprint else None
+    streak = (same.failed_learns if same is not None else 0) + 1
     wait = SCOUT_RELEARN_BACKOFF[min(streak, len(SCOUT_RELEARN_BACKOFF)) - 1]
+    if same is not None and same.status is ScoutStatus.WATCHING:
+        await scouts_repository.replace(
+            same.model_copy(update={"failed_learns": streak, "next_learn_at": now + wait})
+        )
+        return
     await scouts_repository.replace(
         ScoutDocument(
             user_id=user_id,
@@ -92,14 +97,17 @@ async def _learn(
     stale: ScoutDocument | None = None,
 ) -> ScoutResult:
     """Learn the scout once; a learn that freezes nothing, or raises, starts or extends a backoff."""
-    if not await may_learn(user.id):
+    spend = await reserve_learn(user.id)
+    if spend is None:
         return _skipped(integration, ScoutSkipReason.BUDGET)
     now = datetime.now(UTC)
     try:
-        learned = await learn_scout(_playbook_user(user), user.id, integration, tools)
+        learned = await learn_scout(_playbook_user(user), user.id, integration, tools, spend)
     except Exception:
         await _record_failed_learn(user.id, tools, stale, now)
         raise
+    finally:
+        await spend.release()
     if learned.scout is None:
         await _record_failed_learn(user.id, tools, stale, now)
     else:
@@ -113,15 +121,51 @@ async def _learn(
     )
 
 
+async def _relearn(
+    user: UserDocument, integration: ScoutIntegration, tools: ScoutTools, scout: ScoutDocument
+) -> ScoutResult:
+    """Learn a stored scout again, unless its last failed learn is still backing off."""
+    if scout.next_learn_at is not None and datetime.now(UTC) < scout.next_learn_at:
+        return _skipped(integration, ScoutSkipReason.BACKOFF)
+    return await _learn(user, integration, tools, scout)
+
+
+async def _source_failed(
+    user: UserDocument,
+    integration: ScoutIntegration,
+    tools: ScoutTools,
+    scout: ScoutDocument,
+    exc: ScoutSourceFailed,
+) -> ScoutResult:
+    """Keep the scout through an app that did not answer; relearn once it has failed for briefs."""
+    scout = scout.model_copy(update={"failed_replays": scout.failed_replays + 1})
+    await scouts_repository.replace(scout)
+    log.warning(
+        "briefing.scout_source_failed",
+        integration_id=integration.integration_id,
+        failed_replays=scout.failed_replays,
+        reason=exc.why,
+    )
+    if scout.failed_replays >= SCOUT_REPLAY_FAILURES_BEFORE_RELEARN:
+        return await _relearn(user, integration, tools, scout)
+    return ScoutResult(
+        integration_id=integration.integration_id,
+        app=integration.name,
+        outcome=ScoutOutcome.SKIPPED,
+        skip_reason=ScoutSkipReason.SOURCE_FAILED,
+        error=exc.why,
+    )
+
+
 async def _replay(
     user: UserDocument, integration: ScoutIntegration, tools: ScoutTools, scout: ScoutDocument
 ) -> ScoutResult:
-    """Replay a watching scout; a failed replay or a moved result shape relearns it once.
+    """Replay a watching scout; a moved result shape relearns it, an app that fails keeps it.
 
     A scout frozen with no criteria (before they existed) relearns: its rows cannot be judged.
     """
     if scout.playbook is None or not scout.criteria.strip():
-        return await _learn(user, integration, tools)
+        return await _relearn(user, integration, tools, scout)
     try:
         signals = await watch(
             _playbook_user(user),
@@ -129,14 +173,21 @@ async def _replay(
             FrozenWatch(integration, scout.playbook, scout.sources),
             tools.read_only,
         )
-    except AppError as exc:
+    except ScoutSourceFailed as exc:
+        return await _source_failed(user, integration, tools, scout, exc)
+    except PlaceholderError as exc:
         log.warning(
             "briefing.scout_relearn",
             integration_id=integration.integration_id,
             reason=str(exc),
             error_type=type(exc).__name__,
         )
-        return await _learn(user, integration, tools)
+        return await _relearn(user, integration, tools, scout)
+    cleared = scout.model_copy(
+        update={"failed_replays": 0, "failed_learns": 0, "next_learn_at": None}
+    )
+    if cleared != scout:
+        await scouts_repository.replace(cleared)
     return ScoutResult(
         integration_id=integration.integration_id,
         app=integration.name,
@@ -165,9 +216,7 @@ async def _run_scout(user: UserDocument, integration: ScoutIntegration) -> Scout
             outcome=ScoutOutcome.NOTHING_TO_WATCH,
         )
     if scout.status is ScoutStatus.LEARN_FAILED:
-        if scout.next_learn_at is not None and datetime.now(UTC) < scout.next_learn_at:
-            return _skipped(integration, ScoutSkipReason.BACKOFF)
-        return await _learn(user, integration, tools, scout)
+        return await _relearn(user, integration, tools, scout)
     return await _replay(user, integration, tools, scout)
 
 

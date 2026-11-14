@@ -67,6 +67,8 @@ class BriefOutcome(StrEnum):
     FAILED = "failed"
 
 
+# Title of the in-app note that releases what was held when no daily brief will carry it.
+HELD_RELEASE_TITLE: Final[str] = "While you were away"
 #: What the lead's section is headed: the composition gives the lead no heading of its own.
 LEAD_HEADING: Final[str] = "First up"
 #: Section numerals, in reading order, for the editions that number their sections.

@@ -56,6 +56,7 @@ from app.constants.log_tags import LogTag
 from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import TodoActivityEvent, TodoWakeKind
 from app.db.repositories.pending_brief_items import pending_brief_items_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.chat_models import ConversationSource
 from app.models.message_models import TodoRunWake
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
@@ -163,11 +164,7 @@ def _seams(
         patch.object(trd, "deliver_result_to_platforms", seams.send),
         patch.object(trd, "resolve_proactive_target", seams.target),
         patch.object(trd, "todo_repository", seams.repo),
-        patch.object(
-            trd,
-            "workflow_repository",
-            MagicMock(find_system_workflow=seams.find_system_workflow),
-        ),
+        patch.object(workflow_repository, "find_system_workflow", seams.find_system_workflow),
         patch.object(pending_brief_items_repository, "create", seams.hold),
         patch.object(todo_activity, "append_activity", seams.activity),
         patch.object(trd, "capture", seams.capture),

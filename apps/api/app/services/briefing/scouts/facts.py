@@ -15,6 +15,9 @@ from app.services.briefing.context import UserClock
 from app.utils.timezone import as_utc
 
 SIGNALS_HEADER = "[ACROSS THEIR APPS]"
+#: A scout reads one page of an app, capped at SCOUT_SIGNAL_CEILING, and the judge keeps
+#: only what matters: a count here is what the brief shows, never how many the app holds.
+SHOWN_NOT_TOTAL = "Counts are of the items shown here, not each app's total: an app may hold more."
 
 
 def _days_ago(then: datetime, clock: UserClock) -> str:
@@ -91,9 +94,12 @@ def signals_block(remembered: Sequence[tuple[int, RememberedSignal]], clock: Use
         ),
     )
     apps = {r.signal.integration_id for _, r in remembered}
-    lines = [f"{SIGNALS_HEADER} {len(remembered)} item(s) in {len(apps)} app(s)"]
+    lines = [
+        f"{SIGNALS_HEADER} {len(remembered)} item(s) shown from {len(apps)} app(s). "
+        f"{SHOWN_NOT_TOTAL}"
+    ]
     for app, items in groupby(ordered, key=lambda pair: pair[1].signal.app):
         group = list(items)
-        lines.append(f"[{app}] {len(group)} item(s)")
+        lines.append(f"[{app}] {len(group)} item(s) shown")
         lines.extend(_line(fact_id, item, clock) for fact_id, item in group)
     return "\n".join(lines)

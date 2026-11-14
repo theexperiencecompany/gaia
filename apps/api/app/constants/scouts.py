@@ -32,7 +32,12 @@ SIGNAL_NEW_WITHIN: Final = timedelta(days=1)
 #: What one user's scouts may spend in a UTC day before the rest are skipped. Scouts book
 #: here, never into the user's own allowance, so the brief writer is never starved by them.
 SCOUT_DAILY_COST_CEILING_USD: Final[float] = 0.05
-#: Redis tally of that spend, per user per UTC day.
+#: The slice of that ceiling one learn reserves before it starts: a brief's worth of
+#: concurrent learns fits the day, and each later connection waits its turn in order.
+SCOUT_LEARN_RESERVATION_USD: Final[float] = SCOUT_DAILY_COST_CEILING_USD / SCOUT_CONCURRENCY
+#: The tally counts whole micro-dollars, so concurrent increments add up exactly.
+SCOUT_SPEND_MICROS_PER_USD: Final[int] = 1_000_000
+#: Redis tally of that spend, in micro-dollars, per user per UTC day.
 SCOUT_SPEND_KEY: Final[str] = "scouts:spend:{user_id}:{day}"
 SCOUT_SPEND_TTL_SECONDS: Final[int] = 2 * 24 * 60 * 60
 
@@ -42,6 +47,10 @@ SCOUT_RELEARN_BACKOFF: Final[tuple[timedelta, ...]] = (
     timedelta(days=3),
     timedelta(days=7),
 )
+
+#: Briefs in a row a working scout's app may fail to answer before the scout learns again:
+#: an outage or rate limit passes, while calls the app now refuses for good never will.
+SCOUT_REPLAY_FAILURES_BEFORE_RELEARN: Final[int] = 3
 
 #: The ARQ task a newly connected integration enqueues so the next brief already scouts it.
 LEARN_SCOUT_TASK: Final[str] = "learn_scout"

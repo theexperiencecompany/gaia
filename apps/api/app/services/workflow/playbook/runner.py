@@ -172,6 +172,8 @@ class _StepFailure:
     position: int
     label: str
     reason: str
+    #: A placeholder found nothing in an earlier result: the body no longer fits what came back.
+    moved_shape: bool = False
 
 
 @dataclass
@@ -224,6 +226,8 @@ class CallReplay:
     values: dict[str, object]
     #: Addressed to the caller, as run_playbook reports it; None when every step ran.
     failure: str | None = None
+    #: The stop was a result the body no longer fits, not a call that failed to answer.
+    moved_shape: bool = False
 
 
 async def _new_run(
@@ -281,6 +285,7 @@ async def replay_calls(
         trace=run.trace,
         values={step_id: result.value for step_id, result in run.steps.items()},
         failure=_failure_text(failure, run.completed) if failure is not None else None,
+        moved_shape=failure is not None and failure.moved_shape,
     )
 
 
@@ -426,7 +431,7 @@ async def _replay_one(
         filled = fill_ask_slots(step.args, run.asks, key_prefix=prefix)
         args = resolve_args(filled, _context(run, item=item))
     except PlaceholderError as exc:
-        return _StepFailure(position, tool_name, exc.message)
+        return _StepFailure(position, tool_name, exc.message, moved_shape=True)
 
     call = _StepCall(step=step, position=position, tool_name=tool_name, args=args)
     answered = await _call_step(playbook, run, space, call)
@@ -535,7 +540,7 @@ async def _for_each_items(
         try:
             raw = resolve_value(source, _context(run))
         except PlaceholderError as exc:
-            return _NO_ITEMS, _StepFailure(run.position, step.tool, exc.message)
+            return _NO_ITEMS, _StepFailure(run.position, step.tool, exc.message, moved_shape=True)
 
     if raw is None:
         return _NO_ITEMS, None
@@ -545,6 +550,7 @@ async def _for_each_items(
             step.tool,
             f"for_each needs a list to repeat over, but {source!r} resolved to "
             f"{type(raw).__name__}",
+            moved_shape=True,
         )
     # max_items is guaranteed by the model validator; the cap is applied here so
     # a source that grew past it costs the ceiling, never the whole list.
