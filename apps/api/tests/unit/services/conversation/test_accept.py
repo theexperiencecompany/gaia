@@ -89,3 +89,14 @@ async def test_a_stop_hands_back_what_its_cancel_cancelled_for_the_users_convers
     assert accepted.cancelled == WorkCancelled(pending_task_ids=["t1"])
     assert EffectCall("cancel_work", ("t1",)) in rt.effects.calls
     assert set(rt.effects.addressed) == {(CONVERSATION, USER)}
+
+
+async def test_an_entry_that_changes_nothing_shown_publishes_alone_to_its_conversation() -> None:
+    rt = Runtime()
+    await accept(rt.ports, CONVERSATION, USER, user("u1"))
+    rt.frames.published.clear()
+    rt.frames.conversations.clear()
+    accepted = await accept(rt.ports, CONVERSATION, USER, user("u2"))
+    logged = accepted.appended.logged
+    assert rt.frames.published == [EntryFrame(seq=logged.seq, at=logged.at, entry=user("u2"))]
+    assert rt.frames.conversations == [CONVERSATION]

@@ -25,6 +25,8 @@ NEVER_MIGRATED_HEADS: dict[str, object] = {
 }
 #: Message-shaped entries carry the old type field (user or bot); no log entry has one.
 MESSAGE_SHAPED: dict[str, object] = {"type": {"$exists": True}}
+#: The guard reads only ids: the row model ignores every other key, so the projection only trims the read.
+_ID_ONLY = {"_id": 0, "conversation_id": 1}  # pragma: no mutate — projection
 
 
 def unmigrated(subject: str) -> UnmigratedConversationError:
@@ -43,14 +45,15 @@ class ConversationMigrationGuard(ConversationRepository):
     async def first_unmigrated(self) -> str | None:
         """Name one conversation the new build cannot serve: an array no pass marked, or message-shaped entries."""
         with store_errors("migration check"):  # pragma: no mutate — error label only
-            head = await self._raw_collection().find_one(
-                NEVER_MIGRATED_HEADS, {"_id": 0, "conversation_id": 1}
-            )
+            # pragma: no mutate start — the projection only trims the read
+            head = await self._raw_collection().find_one(NEVER_MIGRATED_HEADS, _ID_ONLY)
+            # pragma: no mutate end
             if head is not None:
                 return _ConversationIdRow.model_validate(head).conversation_id
-            entry = await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).find_one(
-                MESSAGE_SHAPED, {"_id": 0, "conversation_id": 1}
-            )
+            entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+            # pragma: no mutate start — the projection only trims the read
+            entry = await entries.find_one(MESSAGE_SHAPED, _ID_ONLY)
+            # pragma: no mutate end
         return None if entry is None else _ConversationIdRow.model_validate(entry).conversation_id
 
 

@@ -27,6 +27,7 @@ from app.services.conversation.work_log import (
     record_work_started,
     work_of_run,
 )
+from shared.py.conversation_wire import ImageData, ToolDataEntry
 from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import asked, stop, user
 from tests.unit.services.conversation.runtime_doubles import (
@@ -125,33 +126,51 @@ async def test_finished_work_is_logged_with_its_report_under_the_users_conversat
 ) -> None:
     await accept(rt.ports, CONVERSATION, USER, user("u1"))
     assert await record_work_carried(CONVERSATION, USER, "t1")
-    report = WorkReport(text="done it", note="checked", nothing_for_user=True)
-    await record_work_finished(CONVERSATION, USER, "t1", WorkOutcome.DONE, report)
+    shown: ToolDataEntry = {"tool_name": "weather", "data": {"city": "Pune"}}
+    image = ImageData(url="https://img", prompt="a map")
+    report = WorkReport(
+        text="done it", tool_data=[shown], note="checked", nothing_for_user=True, image=image
+    )
+    await record_work_finished(
+        CONVERSATION, USER, "t1", WorkOutcome.DONE, report, continued_by_decision=True
+    )
     assert (await rt.entries())[-1].entry == WorkFinished(
         id="work:t1:finished",
         task_id="t1",
         outcome=WorkOutcome.DONE,
         report="done it",
+        tool_data=(shown,),
         note="checked",
         nothing_for_user=True,
+        image=image,
+        continued_by_decision=True,
     )
+
+
+async def test_lost_work_is_logged_under_its_own_id_so_a_late_result_is_never_its_duplicate(
+    rt: Runtime,
+) -> None:
+    await accept(rt.ports, CONVERSATION, USER, user("u1"))
+    assert await record_work_carried(CONVERSATION, USER, "t1")
+    await record_work_finished(CONVERSATION, USER, "t1", WorkOutcome.LOST, WorkReport(text=""))
+    assert (await rt.entries())[-1].entry.id == "work:t1:lost"
 
 
 async def test_carried_work_with_no_cause_is_caused_by_everything_logged(rt: Runtime) -> None:
     await accept(rt.ports, CONVERSATION, USER, user("u1"))
     await accept(rt.ports, CONVERSATION, USER, user("u2"))
-    assert await record_work_carried(CONVERSATION, USER, "t1", detached=True)
+    assert await record_work_carried(CONVERSATION, USER, "t1", detached=True, exclusive=True)
     assert (await rt.entries())[-1].entry == WorkStarted(
-        id="work:t1", task_id="t1", cause_through=2, detached=True
+        id="work:t1", task_id="t1", cause_through=2, detached=True, exclusive=True
     )
 
 
 async def test_carried_work_answering_a_cause_names_it(rt: Runtime) -> None:
     cause = (await accept(rt.ports, CONVERSATION, USER, user("u1"))).appended.logged
     await accept(rt.ports, CONVERSATION, USER, user("u2"))
-    assert await record_work_carried(CONVERSATION, USER, "t1", cause, exclusive=True)
+    assert await record_work_carried(CONVERSATION, USER, "t1", cause, detached=True, exclusive=True)
     assert (await rt.entries())[-1].entry == WorkStarted(
-        id="work:t1", task_id="t1", cause_through=1, answers=("u1",), exclusive=True
+        id="work:t1", task_id="t1", cause_through=1, answers=("u1",), detached=True, exclusive=True
     )
 
 
