@@ -67,6 +67,7 @@ from gaia_gh import (
 SCHEMA_VERSION = 2
 MAX_CHECK_PAGES = 6  # 100/page -> up to 600 check runs; plenty for any PR
 MAX_PARALLEL_FETCHES = 8
+VERDICT_RELIST_ATTEMPTS = 3
 VERDICT_PREFIX = "verdict-"
 FALLBACK_TAIL_LINES = 40  # kept in --json; the human render shows the last SHOWN_TAIL_LINES
 SHOWN_TAIL_LINES = 20
@@ -395,18 +396,22 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
     Artifacts are downloadable while the run is still in progress — unlike job
     logs, which only materialise once the whole run completes.
     """
-    endpoint = repo.api(f"actions/runs/{run_id}/artifacts")
-    rc, out, err = gh(["api", f"{endpoint}?per_page=100"], repo.timeout_s)
-    if rc != 0:
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
-    wanted = [
-        a
-        for a in json.loads(out).get("artifacts", [])
-        if a.get("name", "").startswith(VERDICT_PREFIX) and not a.get("expired")
-    ]
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
-        blobs = list(pool.map(lambda a: cached_artifact(repo, a["id"]), wanted))
+    # A lane's verdict upload overwrites its artifact under a new id, so one listed
+    # mid-run can be gone by the time it is read: list again and read its replacement.
+    for _ in range(VERDICT_RELIST_ATTEMPTS):
+        wanted = [
+            a
+            for a in list_run_artifacts(repo, run_id)
+            if a.get("name", "").startswith(VERDICT_PREFIX) and not a.get("expired")
+        ]
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
+            fetched = list(pool.map(lambda a: cached_artifact(repo, a["id"]), wanted))
+        if all(blob is not None for blob in fetched):
+            break
+    else:
+        eprint(f"ci:remote: run {run_id}'s verdict artifacts kept being replaced while read")
+        sys.exit(2)
+    blobs = [blob for blob in fetched if blob is not None]
 
     verdicts: list[Verdict] = []
     for artifact, blob in zip(wanted, blobs, strict=True):
@@ -421,16 +426,31 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
     return verdicts
 
 
-def cached_artifact(repo: Repo, artifact_id: int) -> bytes:
+def list_run_artifacts(repo: Repo, run_id: int) -> list[dict]:
+    endpoint = repo.api(f"actions/runs/{run_id}/artifacts")
+    rc, out, err = gh(["api", f"{endpoint}?per_page=100"], repo.timeout_s)
+    if rc != 0:
+        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
+        sys.exit(classify_failure(err, rc))
+    return json.loads(out).get("artifacts", [])
+
+
+def cached_artifact(repo: Repo, artifact_id: int) -> bytes | None:
     if artifact_id not in repo.artifacts:
-        repo.artifacts[artifact_id] = fetch_artifact(repo, artifact_id)
+        blob = fetch_artifact(repo, artifact_id)
+        if blob is None:
+            return None
+        repo.artifacts[artifact_id] = blob
     return repo.artifacts[artifact_id]
 
 
-def fetch_artifact(repo: Repo, artifact_id: int) -> bytes:
+def fetch_artifact(repo: Repo, artifact_id: int) -> bytes | None:
+    """Return an artifact's zip, or None when it is gone (HTTP 404)."""
     endpoint = repo.api(f"actions/artifacts/{artifact_id}/zip")
     rc, blob, err = gh_bytes(["api", endpoint], repo.timeout_s)
     if rc != 0:
+        if "HTTP 404" in err:
+            return None
         eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
         sys.exit(classify_failure(err, rc))
     return blob
@@ -535,14 +555,9 @@ def fetch_run_shards(repo: Repo, run_id: int) -> list[Shard]:
     change to go read) or mutmut dying with nothing to show — two failures
     that need opposite reactions and read identically in a job log.
     """
-    endpoint = repo.api(f"actions/runs/{run_id}/artifacts")
-    rc, out, err = gh(["api", f"{endpoint}?per_page=100"], repo.timeout_s)
-    if rc != 0:
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
     found = [
         a
-        for a in json.loads(out).get("artifacts", [])
+        for a in list_run_artifacts(repo, run_id)
         if a.get("name", "").startswith(MUTATION_LOG_PREFIX) and not a.get("expired")
     ]
     # `gh run rerun --failed` uploads a SECOND `mutation-log-2` into the same
@@ -555,10 +570,13 @@ def fetch_run_shards(repo: Repo, run_id: int) -> list[Shard]:
     wanted = list(newest.values())
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
         blobs = list(pool.map(lambda a: fetch_artifact(repo, a["id"]), wanted))
-    return [
-        read_shard(artifact["name"], run_id, blob)
-        for artifact, blob in zip(wanted, blobs, strict=True)
-    ]
+    shards: list[Shard] = []
+    for artifact, blob in zip(wanted, blobs, strict=True):
+        if blob is None:
+            eprint(f"ci:remote: run {run_id}'s artifact {artifact['name']} is gone (HTTP 404)")
+            sys.exit(2)
+        shards.append(read_shard(artifact["name"], run_id, blob))
+    return shards
 
 
 def read_shard(name: str, run_id: int, blob: bytes) -> Shard:
