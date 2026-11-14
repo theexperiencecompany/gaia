@@ -25,7 +25,7 @@ import socket
 import sys
 import time
 from types import ModuleType, SimpleNamespace
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 import zoneinfo
 
@@ -157,9 +157,14 @@ _TEST_REDIS_STRIPE_BASE = _TEST_REDIS_DB_BLOCK_START - (
 _TEST_REDIS_DB_BLOCK_SIZE = _TEST_REDIS_STRIPE - (_TEST_REDIS_DB_BLOCK_START % _TEST_REDIS_STRIPE)
 
 
-def ledger_facts(
-    ended: ApprovalOutcome | ActionResult | None,
-) -> dict[str, ApprovalOutcome | ActionResult | None]:
+class LedgerFacts(TypedDict):
+    """A ledger row's outcome and action, as ledger_facts sets them."""
+
+    outcome: ApprovalOutcome | None
+    action: ActionResult | None
+
+
+def ledger_facts(ended: ApprovalOutcome | ActionResult | None) -> LedgerFacts:
     """Return a ledger row's outcome and action for one fact: an action result implies approved."""
     if isinstance(ended, ActionResult):
         return {"outcome": ApprovalOutcome.APPROVED, "action": ended}

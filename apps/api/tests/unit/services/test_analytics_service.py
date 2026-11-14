@@ -211,7 +211,7 @@ class TestCapture:
 class TestCaptureRefusesUntypedInput:
     """A raw name or id must fail loud, even with no client configured, so local runs catch it."""
 
-    def test_a_raw_event_name_cannot_be_captured(self, mock_posthog_none: MagicMock) -> None:
+    def test_a_raw_event_name_cannot_be_captured(self, mock_posthog_none):
         with pytest.raises(TypeError, match="catalog event model"):
             capture(USER_1, "user:logged_out")
 

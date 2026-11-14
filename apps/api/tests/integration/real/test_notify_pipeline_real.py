@@ -246,7 +246,9 @@ async def test_a_pending_approval_pushes_once_and_never_prompts_the_bot(
     (push,) = delivered.pushes
     (message,) = push
     assert message["categoryId"] == "hil_approval"
-    assert message["data"]["approval_id"] == "approval-1"
+    data = message["data"]
+    assert isinstance(data, dict)
+    assert data["approval_id"] == "approval-1"
     assert delivered.bot_messages == []
     assert delivered.socket_events == []
     assert len(await _notifications(mongo_db, str(LINKED_OID))) == 1
@@ -267,6 +269,8 @@ async def test_an_integration_expiry_raises_one_notification(
             await announce_account_expiry(str(LINKED_OID), "gmail", expired, [], None)
 
     (stored,) = await _notifications(mongo_db, str(LINKED_OID))
-    assert stored["original_request"]["source"] == "integration_expired"
+    request = stored["original_request"]
+    assert isinstance(request, dict)
+    assert request["source"] == "integration_expired"
     assert delivered.bot_messages == []
     assert len(delivered.socket_events) == 1

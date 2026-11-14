@@ -49,6 +49,7 @@ from app.services.browser.job_runner import execute_browser_job
 from app.services.browser.jobs import put_job_state
 from app.services.browser.ledger import RunLedger
 from app.services.conversation.work_deltas import WorkDeltas, work_cards
+from app.services.platform_link_service import PlatformLinkService
 
 pytestmark = pytest.mark.integration
 
@@ -321,7 +322,7 @@ def queue(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         outbound_mod, "get_rabbitmq_publisher", AsyncMock(return_value=_Publisher())
     )
     monkeypatch.setattr(
-        outbound_mod.PlatformLinkService,
+        PlatformLinkService,
         "get_linked_platforms",
         AsyncMock(return_value={"discord": {"platformUserId": DM_ID}}),
     )

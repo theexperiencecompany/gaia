@@ -34,13 +34,15 @@ REMINDER_ID = "6812f0b3c9a14e2b7d5a91dd"
 
 
 def _reminder(repeat: str | None = None) -> ReminderModel:
-    return ReminderModel(
-        id=REMINDER_ID,
-        user_id=USER_ID,
-        agent="static",
-        repeat=repeat,
-        scheduled_at=datetime.now(UTC),
-        payload=StaticReminderPayload(title="Water the plants", body="Now"),
+    return ReminderModel.model_validate(
+        {
+            "_id": REMINDER_ID,
+            "user_id": USER_ID,
+            "agent": "static",
+            "repeat": repeat,
+            "scheduled_at": datetime.now(UTC),
+            "payload": StaticReminderPayload(title="Water the plants", body="Now"),
+        }
     )
 
 

@@ -893,7 +893,7 @@ class TestInitComposioService:
     snapshot instead of awaiting resolve().
     """
 
-    _STORED: ClassVar[dict[str, str | None]] = ProviderConfig(
+    _STORED: ClassVar[ProviderConfig] = ProviderConfig(
         api_key="stored-key",
     )
 

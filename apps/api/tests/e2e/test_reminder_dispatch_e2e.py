@@ -60,7 +60,7 @@ def _make_reminder(**overrides) -> ReminderModel:
         "source_conversation_id": "conv-1",
     }
     data.update(overrides)
-    return ReminderModel(**data)
+    return ReminderModel.model_validate(data)
 
 
 class _MemoryReminderStore:

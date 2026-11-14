@@ -195,6 +195,7 @@ from app.services.conversation_stop_service import press_stop
 from app.services.delivery.chat_channel import ChatChannel
 from app.services.hil import ledger_decide
 from app.services.hil.gate import GateContext, read_gate_context
+from app.services.notification_service import notification_service
 from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
@@ -219,7 +220,11 @@ from app.workers.tasks.workflow_tasks import (
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.base import ServerEvent
-from shared.py.analytics.catalog.chat import ChatMessageCancelled, ChatMessageCompleted
+from shared.py.analytics.catalog.chat import (
+    ChatMessageCancelled,
+    ChatMessageCompleted,
+    ChatWorkStopped,
+)
 from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.analytics.context import (
     AnalyticsContext,
@@ -609,7 +614,9 @@ async def test_a_stop_cancels_only_the_work_before_it_and_reports_what_it_cancel
     assert (stopped.work.executor_stopped, stopped.work.executor_task_id) == (True, "t1")
     assert await real_redis.get(lock) == "stream-2:t2"
     assert [work.task_id for work in state.work] == ["t2"]
-    assert [(e.executor_stopped, e.pending_tasks, e.approvals) for e in captured] == [(True, 0, 0)]
+    stops = [e for e in captured if isinstance(e, ChatWorkStopped)]
+    assert stops == captured
+    assert [(e.executor_stopped, e.pending_tasks, e.approvals) for e in stops] == [(True, 0, 0)]
 
 
 @pytest.mark.service
@@ -2036,7 +2043,7 @@ async def _todo_rig(
     with (
         patch.object(todo_run, "run_executor_background", executor),
         patch.object(todo_run_delivery, "todo_repository", repo),
-        patch.object(todo_run_delivery.notification_service, "notify", delivery.sent),
+        patch.object(notification_service, "notify", delivery.sent),
         patch.object(todo_run_delivery, "record_run_finished", delivery.finished),
     ):
         yield rig, delivery

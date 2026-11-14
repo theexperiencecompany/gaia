@@ -284,12 +284,14 @@ class _Sim:
         if self.reply is not None and self.reply[0] is not None:
             return
         _, reply_id, attempt_id = self._reply_ids()
-        reply = Reply(
-            id=f"{attempt_id}:reply",
-            reply_id=reply_id,
-            attempt_id=attempt_id,
-            narrates=tuple(self.finished),
-            **update,
+        reply = Reply.model_validate(
+            {
+                "id": f"{attempt_id}:reply",
+                "reply_id": reply_id,
+                "attempt_id": attempt_id,
+                "narrates": tuple(self.finished),
+                **update,
+            }
         )
         self.reply = (self.log.append(reply), reply_id, attempt_id)
 

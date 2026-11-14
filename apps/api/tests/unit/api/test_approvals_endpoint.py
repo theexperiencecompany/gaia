@@ -129,7 +129,10 @@ class TestPostBatchDecision:
         mock_batch.return_value = [
             BatchDecisionOutcome(approval_id="ap_1", resolved=True),
             BatchDecisionOutcome(
-                approval_id="ap_2", resolved=False, reason="not_found", outcome="expired"
+                approval_id="ap_2",
+                resolved=False,
+                reason="not_found",
+                outcome=ApprovalOutcome.EXPIRED,
             ),
         ]
         resp = await client.post(

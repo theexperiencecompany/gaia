@@ -95,7 +95,6 @@ def reply(
         outcome=outcome,
         failure=None,
         narrates=(),
-        retry_target=None,
         files=(),
     )
     return item.model_copy(update=over)
@@ -117,7 +116,6 @@ def work(
         tool_data=(),
         timeline=ToolTimeline(),
         image=None,
-        retry_target=None,
     )
     return item.model_copy(update={"asked_seq": seq if over.get("asking") else 0, **over})
 
