@@ -13,6 +13,8 @@ SCOUT_LEARN_RECURSION_LIMIT: Final[int] = 24
 SCOUT_LEARN_TIMEOUT: Final = timedelta(seconds=120)
 #: Wall clock one scout gets, learn or replay, before it is skipped so the next scout still runs.
 SCOUT_TURN_TIMEOUT: Final = timedelta(minutes=5)
+#: Scouts one brief runs at once; each holds an app connection, so the rest wait their turn.
+SCOUT_CONCURRENCY: Final[int] = 4
 #: Safety ceiling on read-only tools bound onto one learn run (provider caps sit near 128);
 #: past it the tools most relevant to SCOUT_TOOL_QUERY are bound.
 SCOUT_MAX_BOUND_TOOLS: Final[int] = 100
