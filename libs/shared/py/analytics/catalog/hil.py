@@ -49,7 +49,8 @@ class HilDecisionSubmitted(ServerEvent):
     event: ClassVar[str] = "hil:decision_submitted"
     budget_per_user_day: ClassVar[int] = 10
 
-    outcome: DecidedOutcome
+    # Named decision, not outcome: the live "HIL decisions submitted, by decision" insight breaks down on it.
+    decision: DecidedOutcome
     tool_name: Identifier
     via: HilDecisionVia
     # Absent on an auto decision, which settles the call before any ledger row exists.

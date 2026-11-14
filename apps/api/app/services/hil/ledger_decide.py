@@ -189,7 +189,7 @@ async def _commit_decision(
         UserId(user_id),
         HilDecisionSubmitted(
             approval_id=approval_id,
-            outcome=target,
+            decision=target,
             tool_name=row.tool_name,
             via=via,
             card_age_seconds=card_age_seconds,

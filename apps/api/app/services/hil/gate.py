@@ -363,7 +363,7 @@ async def _judge(
         capture(
             UserId(context.user_id),
             HilDecisionSubmitted(
-                outcome=ApprovalOutcome.APPROVED
+                decision=ApprovalOutcome.APPROVED
                 if decision.outcome == "accept"
                 else ApprovalOutcome.DENIED,
                 tool_name=call.name,

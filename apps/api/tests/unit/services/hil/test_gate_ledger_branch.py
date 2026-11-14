@@ -720,8 +720,8 @@ class TestLedgerAutoMode:
 
         [sent] = [c.kwargs for c in posthog.capture.call_args_list]
         assert (sent["event"], sent["distinct_id"]) == ("hil:decision_submitted", USER_ID)
-        decided = {key: sent["properties"].get(key) for key in ("outcome", "tool_name", "via")}
-        assert decided == {"outcome": decision, "tool_name": GATED_TOOL, "via": "auto"}
+        decided = {key: sent["properties"].get(key) for key in ("decision", "tool_name", "via")}
+        assert decided == {"decision": decision, "tool_name": GATED_TOOL, "via": "auto"}
 
     async def test_an_unsure_judge_decides_nothing(self, gate_seams: GateSeams) -> None:
         gate_seams.policy.return_value = "auto"
