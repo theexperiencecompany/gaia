@@ -3920,10 +3920,6 @@
             ],
             "title": "In Progress"
           },
-          "kind": {
-            "$ref": "#/components/schemas/MessageKind",
-            "default": "text"
-          },
           "message_id": {
             "anyOf": [
               {
@@ -3969,16 +3965,15 @@
             ],
             "title": "Platform Message Id"
           },
-          "reacts_to_message_id": {
+          "reaction": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/MessageReaction"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reacts To Message Id"
+            ]
           },
           "replyToMessage": {
             "anyOf": [
@@ -10851,15 +10846,6 @@
         "title": "MessageFeedbackResponse",
         "type": "object"
       },
-      "MessageKind": {
-        "description": "What a bot message IS beyond its text, set when comms' intent is known at\ncreation and would otherwise be unrecoverable from the body alone (a deliberate\none-emoji acknowledgement reads identically to a coincidental one-emoji reply).",
-        "enum": [
-          "text",
-          "emoji_ack"
-        ],
-        "title": "MessageKind",
-        "type": "string"
-      },
       "MessageModel": {
         "description": "A single chat message with its content, attachments and tool data.",
         "properties": {
@@ -11006,10 +10992,6 @@
             ],
             "title": "In Progress"
           },
-          "kind": {
-            "$ref": "#/components/schemas/MessageKind",
-            "default": "text"
-          },
           "message_id": {
             "anyOf": [
               {
@@ -11055,16 +11037,15 @@
             ],
             "title": "Platform Message Id"
           },
-          "reacts_to_message_id": {
+          "reaction": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/MessageReaction"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reacts To Message Id"
+            ]
           },
           "replyToMessage": {
             "anyOf": [
@@ -11168,6 +11149,24 @@
           "response"
         ],
         "title": "MessageModel",
+        "type": "object"
+      },
+      "MessageReaction": {
+        "description": "GAIA's one emoji reaction on a user message.",
+        "properties": {
+          "by": {
+            "$ref": "#/components/schemas/ReactionBy"
+          },
+          "emoji": {
+            "title": "Emoji",
+            "type": "string"
+          }
+        },
+        "required": [
+          "emoji",
+          "by"
+        ],
+        "title": "MessageReaction",
         "type": "object"
       },
       "MessageRequest": {
@@ -14952,6 +14951,15 @@
         ],
         "title": "QuietHours",
         "type": "object"
+      },
+      "ReactionBy": {
+        "description": "Which mind put a reaction on a message: the instant classifier or the chat model.",
+        "enum": [
+          "jev",
+          "chat_model"
+        ],
+        "title": "ReactionBy",
+        "type": "string"
       },
       "ReadinessResponse": {
         "description": "``GET /health/ready``: whether every backing service answered a real request.",

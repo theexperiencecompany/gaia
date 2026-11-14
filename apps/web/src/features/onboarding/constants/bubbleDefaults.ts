@@ -25,10 +25,8 @@ const BASE_BUBBLE_DEFAULTS = {
   todo_progress: undefined,
   replyToMessage: undefined,
   error: undefined,
-  kind: undefined,
-  reacts_to_message_id: undefined,
   stopped: undefined,
-  reactions: undefined,
+  reaction: undefined,
   disableActions: true,
 } as const;
 

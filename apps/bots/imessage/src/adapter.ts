@@ -437,10 +437,10 @@ export class ImessageAdapter extends BaseBotAdapter {
         },
         STREAMING_DEFAULTS.imessage,
         await this.analyticsFor(handle),
-        async (emoji: string) => {
+        async (emoji: string, replaces: string | null) => {
           // Media turns carry no inbound message id, so there is nothing to react to.
           if (!messageId) return REACTION_OUTCOME.NO_TARGET;
-          return this.reactToMessage(handle, messageId, emoji, false);
+          return this.reactToMessage(handle, messageId, emoji, false, replaces);
         },
       );
     } catch (err) {
@@ -740,7 +740,9 @@ export class ImessageAdapter extends BaseBotAdapter {
     platformMessageId: string,
     emoji: string,
     _isChannel: boolean,
+    _replaces: string | null,
   ): Promise<ReactionOutcome> {
+    // A sender has one tapback per iMessage, so a new one replaces the last.
     // The SDK maps the six classic tapbacks to native kinds and sends any other
     // emoji as an emoji reaction, so no emoji is refused here.
     try {

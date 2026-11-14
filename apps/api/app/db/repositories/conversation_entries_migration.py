@@ -7,6 +7,12 @@ a later pass merges, by id, what the old build wrote since: new elements are app
 through the one seq allocator, and only the fields the old build changed are rewritten.
 Every write is conditional on the array's server-side fingerprint, so a write the old
 build makes meanwhile is never lost: the pass reports RACED and the next one takes it.
+
+Each stored emoji_ack message, whichever build wrote it, is then folded into a reaction
+on the user message it answered: kept with empty text when it carries cards, removed when
+it does not (its id recorded on the head so a later pass does not copy it again), kept as
+plain text when its target is gone. A head whose acks fold advances updatedAt, so synced
+clients refetch it.
 """
 
 from __future__ import annotations
@@ -20,22 +26,47 @@ import json
 
 from bson import ObjectId
 
-from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION, USER_MESSAGE_TYPE
 from app.db.repositories.conversation_entries import (
     EMBEDDED_FINGERPRINT,
     LOG_HEAD_FIELD,
     MIGRATED_FINGERPRINT_FIELD,
     MIGRATION_FIELDS_FIELD,
+    OUTBOX_FIELD,
     UNMIGRATED_HEADS,
     store_errors,
 )
 from app.db.repositories.conversations import ConversationRepository
+from app.models.chat_models import MessageReaction, ReactionBy
 from app.models.conversation_models import (
     ConversationHead,
     HeadRefRow,
     LegacyMessage,
+    RetiredAckFields,
     StoredEntry,
 )
+
+#: The retired kind of a bot message that was a one-emoji reaction, and the field naming its target.
+_EMOJI_ACK_KIND = "emoji_ack"
+_ACK_TARGET_FIELD = "reacts_to_message_id"
+#: On a head: the ids of the ack messages folded away, which the embedded array may still hold.
+FOLDED_ACKS_FIELD = "migration_folded_acks"
+_RETIRED_ACK: dict[str, object] = {"kind": "", _ACK_TARGET_FIELD: ""}
+#: Heads with an ack still waiting in the outbox, which a scan of the collection cannot see.
+_ACK_IN_OUTBOX: dict[str, object] = {
+    "$expr": {
+        "$in": [
+            _EMOJI_ACK_KIND,
+            {
+                "$map": {
+                    "input": {"$objectToArray": {"$ifNull": [f"${OUTBOX_FIELD}", {}]}},
+                    "in": "$$this.v.kind",
+                }
+            },
+        ]
+    }
+}
+_ACKS_FOUND = "_acks"
 
 #: A scan reads only what a HeadRef holds, never the embedded array it is about to copy.
 _HEAD_REF_STAGE: dict[str, object] = {
@@ -49,7 +80,11 @@ _HEAD_REF_STAGE: dict[str, object] = {
 _BY_HEAD_ID: dict[str, object] = {"$sort": {"_id": 1}}
 _BY_SEQ: list[tuple[str, int]] = [("seq", 1)]
 _FINGERPRINT = "_fingerprint"
-_UNSET_EMBEDDED: dict[str, object] = {"messages": "", MIGRATED_FINGERPRINT_FIELD: ""}
+_UNSET_EMBEDDED: dict[str, object] = {
+    "messages": "",
+    MIGRATED_FINGERPRINT_FIELD: "",
+    FOLDED_ACKS_FIELD: "",
+}
 _ID_FIELD = "message_id"
 
 
@@ -71,6 +106,7 @@ class MigrationOutcome:
     copied: int = 0
     rewritten: int = 0
     identified: int = 0
+    folded: int = 0
     reason: str = ""
 
 
@@ -139,6 +175,11 @@ def entry_at(date: object) -> datetime:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
+def _is_ack(message: LegacyMessage | StoredEntry) -> bool:
+    fields = message.stored() if isinstance(message, LegacyMessage) else message.message_fields()
+    return RetiredAckFields.model_validate(fields).kind == _EMOJI_ACK_KIND
+
+
 def _of(ref: HeadRef) -> dict[str, str]:
     """Match the entries of ref's conversation."""
     return {"user_id": ref.user_id, "conversation_id": ref.conversation_id}
@@ -197,8 +238,68 @@ class ConversationEntriesMigration(ConversationRepository):
         match: dict[str, object] = {"messages.0": {"$exists": True}}
         return await self._scan(match, after_head_id=after_head_id, batch=batch)
 
+    async def heads_with_acks(self, *, after_head_id: str | None, batch: int) -> list[HeadRef]:
+        """Return the next batch of heads with an emoji_ack entry, stored or in the outbox, whatever build wrote it."""
+        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).name
+        match: dict[str, object] = (
+            {} if after_head_id is None else {"_id": {"$gt": ObjectId(after_head_id)}}
+        )
+        pipeline: list[Mapping[str, object]] = [
+            {"$match": match},
+            _BY_HEAD_ID,
+            {
+                "$lookup": {
+                    "from": entries,
+                    "localField": "conversation_id",
+                    "foreignField": "conversation_id",
+                    "let": {"owner": "$user_id"},
+                    "pipeline": [
+                        {
+                            "$match": {
+                                "kind": _EMOJI_ACK_KIND,
+                                "$expr": {"$eq": ["$user_id", "$$owner"]},
+                            }
+                        },
+                        # only whether one exists is read
+                        {"$limit": 1},  # pragma: no mutate
+                        {"$project": {"_id": 1}},  # pragma: no mutate
+                    ],
+                    "as": _ACKS_FOUND,
+                }
+            },
+            {"$match": {"$or": [{f"{_ACKS_FOUND}.0": {"$exists": True}}, _ACK_IN_OUTBOX]}},
+            {"$limit": batch},
+            _HEAD_REF_STAGE,
+        ]
+        with store_errors("migration scan"):  # pragma: no mutate — error label only
+            rows = await self._aggregate(pipeline, HeadRefRow)
+        return [HeadRef(row.head_id, row.conversation_id, row.user_id) for row in rows]
+
+    async def fold_reaction_acks(self, ref: HeadRef, *, apply: bool) -> int:
+        """Fold each stored emoji_ack message into its target's reaction; return how many there were."""
+        await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
+        acks = [entry for entry in await self._stored(ref) if _is_ack(entry)]
+        if apply and acks:
+            for ack in acks:
+                await self._fold_ack(ref, ack)
+            with store_errors("fold reactions"):  # pragma: no mutate — error label only
+                await self._raw_collection().update_one(
+                    {"_id": ObjectId(ref.head_id)},
+                    # Mongo stamps a date for either boolean
+                    {"$currentDate": {"updatedAt": True}},  # pragma: no mutate
+                )
+        return len(acks)
+
     async def migrate(self, ref: HeadRef, *, apply: bool) -> MigrationOutcome:
-        """Copy or merge one conversation's embedded array into its entries (only report when not apply)."""
+        """Copy or merge one conversation's embedded array into its entries and fold its acks (report only unless apply)."""
+        outcome = await self._migrate(ref, apply=apply)
+        if outcome.action is MigrationAction.RACED or outcome.reason:
+            return outcome
+        if apply:
+            outcome.folded = await self.fold_reaction_acks(ref, apply=True)
+        return outcome
+
+    async def _migrate(self, ref: HeadRef, *, apply: bool) -> MigrationOutcome:
         read = await self._embedded_head(ref)
         if read is None:
             return MigrationOutcome(
@@ -234,12 +335,19 @@ class ConversationEntriesMigration(ConversationRepository):
         report.fingerprint = read.fingerprint
         if read.head.migrated_fingerprint != read.fingerprint:
             report.mismatches.append("written by the old build since its last pass: run --apply")
+        report.mismatches.extend(
+            f"entry {entry.id} is still an emoji_ack message: run --apply"
+            for entry in entries
+            if _is_ack(entry)
+        )
+        folded = set(read.head.migration_folded_acks)
         seqs: list[int] = []
         for element in elements:
             key = element.message_id or ""  # pragma: no mutate — a None id is never an entry id
             entry = by_id.get(key)
             if entry is None:
-                report.mismatches.append(f"{element.message_id} has no entry")
+                if element.message_id not in folded:
+                    report.mismatches.append(f"{element.message_id} has no entry")
                 continue
             seqs.append(entry.seq)
             if entry.migration_fields != field_hashes(element.stored()):
@@ -323,12 +431,19 @@ class ConversationEntriesMigration(ConversationRepository):
 
     async def _plan(self, ref: HeadRef, head: ConversationHead) -> MigrationOutcome:
         """Report what a pass would do, writing nothing."""
+        acks = sum(_is_ack(e) for e in head.messages)
         if head.log_head is None:
             return MigrationOutcome(
-                ref.conversation_id, MigrationAction.COPIED, copied=len(head.messages)
+                ref.conversation_id,
+                MigrationAction.COPIED,
+                copied=len(head.messages),
+                folded=acks,
             )
         by_id = {entry.id: entry for entry in await self._stored(ref)}
-        fresh = [e for e in head.messages if e.message_id not in by_id]
+        folded = set(head.migration_folded_acks)
+        fresh = [
+            e for e in head.messages if e.message_id not in by_id and e.message_id not in folded
+        ]
         changed = [
             e
             for e in head.messages
@@ -336,7 +451,11 @@ class ConversationEntriesMigration(ConversationRepository):
             and by_id[e.message_id].migration_fields != field_hashes(e.stored())
         ]
         return MigrationOutcome(
-            ref.conversation_id, MigrationAction.MERGED, copied=len(fresh), rewritten=len(changed)
+            ref.conversation_id,
+            MigrationAction.MERGED,
+            copied=len(fresh),
+            rewritten=len(changed),
+            folded=acks,
         )
 
     async def _apply(self, ref: HeadRef, read: _EmbeddedHead) -> MigrationOutcome:
@@ -381,7 +500,10 @@ class ConversationEntriesMigration(ConversationRepository):
         head = read.head
         await self.flush_outbox(ref.conversation_id, user_id=ref.user_id)
         by_id = {entry.id: entry for entry in await self._stored(ref)}
-        fresh = [e for e in head.messages if e.message_id not in by_id]
+        folded = set(head.migration_folded_acks)
+        fresh = [
+            e for e in head.messages if e.message_id not in by_id and e.message_id not in folded
+        ]
         changed = [
             e
             for e in head.messages
@@ -416,6 +538,32 @@ class ConversationEntriesMigration(ConversationRepository):
         return MigrationOutcome(
             ref.conversation_id, MigrationAction.MERGED, copied=len(fresh), rewritten=len(changed)
         )
+
+    async def _fold_ack(self, ref: HeadRef, ack: StoredEntry) -> None:
+        fields = RetiredAckFields.model_validate(ack.message_fields())
+        emoji = fields.response.strip()
+        at_seq = {**_of(ref), "seq": ack.seq}
+        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+        with store_errors("fold reactions"):  # pragma: no mutate — error label only
+            reacted = False
+            if emoji:
+                reaction = MessageReaction(emoji=emoji, by=ReactionBy.CHAT_MODEL)
+                target = await entries.update_one(
+                    {**_of(ref), "id": fields.reacts_to_message_id, "type": USER_MESSAGE_TYPE},
+                    {"$set": {"reaction": reaction.model_dump()}},
+                )
+                reacted = target.matched_count > 0
+            if not reacted:
+                # Nothing to react to: the ack stays, as the plain message it reads as.
+                await entries.update_one(at_seq, {"$unset": _RETIRED_ACK})
+            elif fields.tool_data:
+                await entries.update_one(at_seq, {"$set": {"response": ""}, "$unset": _RETIRED_ACK})
+            else:
+                # Recorded before the delete, so a crash between leaves an ack the next pass folds again.
+                await self._raw_collection().update_one(
+                    {"_id": ObjectId(ref.head_id)}, {"$addToSet": {FOLDED_ACKS_FIELD: ack.id}}
+                )
+                await entries.delete_one(at_seq)
 
 
 conversation_entries_migration = ConversationEntriesMigration()

@@ -159,6 +159,7 @@ async def publish_outbound_reaction(
     *,
     destination_override: str | None = None,
     is_channel: bool = False,
+    replaces_emoji: str | None = None,
 ) -> OutboundResult:
     """Enqueue a native emoji reaction to an existing platform message.
 
@@ -180,6 +181,7 @@ async def publish_outbound_reaction(
         reaction=OutboundReaction(
             target_platform_message_id=target_platform_message_id,
             emoji=emoji,
+            replaces_emoji=replaces_emoji,
         ),
         is_channel=is_channel,
     )

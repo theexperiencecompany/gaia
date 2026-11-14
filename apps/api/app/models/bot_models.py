@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 from app.constants.platform_links import Platform
 from app.db.repositories.base import MongoDocument
 from app.models.message_models import FileData
-from app.models.stream_events import EmojiAckPayload
+from app.models.stream_events import ReactionPayload
 from app.schemas.common import ResponseModel
 
 # Shared field docs — the same platform identity fields recur across the
@@ -322,7 +322,7 @@ class BotWebStreamPayload(BaseModel):
     message_boundary: JsonValue = None
     response: str | None = None
     error: str | None = None
-    emoji_ack: EmojiAckPayload | None = None
+    reaction: ReactionPayload | None = None
     conversation_description: JsonValue = None
     user_message_id: JsonValue = None
     bot_message_id: JsonValue = None

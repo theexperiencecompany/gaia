@@ -133,13 +133,18 @@ tool_fields = [
 ]
 
 
-class MessageKind(StrEnum):
-    """What a bot message IS beyond its text, set when comms' intent is known at
-    creation and would otherwise be unrecoverable from the body alone (a deliberate
-    one-emoji acknowledgement reads identically to a coincidental one-emoji reply)."""
+class ReactionBy(StrEnum):
+    """Which mind put a reaction on a message: the instant classifier or the chat model."""
 
-    TEXT = "text"
-    EMOJI_ACK = "emoji_ack"  # comms acknowledged a background update with a single emoji
+    JEV = "jev"
+    CHAT_MODEL = "chat_model"
+
+
+class MessageReaction(BaseModel):
+    """GAIA's one emoji reaction on a user message."""
+
+    emoji: str
+    by: ReactionBy
 
 
 class MessageModel(BaseModel):
@@ -147,7 +152,6 @@ class MessageModel(BaseModel):
 
     type: str
     response: str
-    kind: MessageKind = MessageKind.TEXT
     date: str | None = None
     image_data: ImageData | None = None
     disclaimer: str | None = None
@@ -179,10 +183,8 @@ class MessageModel(BaseModel):
     # Set by the pin-message endpoint on the embedded message; absent on most
     # messages, so it reads back as None unless the user pinned this one.
     pinned: bool | None = None
-    # GAIA id of the message an emoji-ack reacts to. Set only when kind is
-    # EMOJI_ACK; the web client renders the emoji as a reaction badge on this
-    # message instead of a new bubble. None everywhere else.
-    reacts_to_message_id: str | None = None
+    # Set only on a user message GAIA reacted to; one reaction per message.
+    reaction: MessageReaction | None = None
     # Platform-native id (WhatsApp wamid, Telegram message_id, Discord id, Slack
     # ts). Set only on user messages that arrived through a bot, so a later
     # background reaction can anchor to the exact platform message. Else None.

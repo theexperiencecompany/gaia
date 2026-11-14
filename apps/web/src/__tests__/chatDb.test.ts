@@ -24,7 +24,8 @@ vi.mock("dexie", () => {
   class FakeDexie {
     open = open;
     version() {
-      return { stores: () => undefined };
+      const version = { stores: () => version, upgrade: () => version };
+      return version;
     }
     table(name: string) {
       return name === "conversations" ? conversations : messages;

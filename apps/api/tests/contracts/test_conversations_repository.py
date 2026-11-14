@@ -20,6 +20,8 @@ from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import (
     ConversationSource,
     MessageModel,
+    MessageReaction,
+    ReactionBy,
     SavedSubagentGroup,
     SystemPurpose,
 )
@@ -75,6 +77,18 @@ async def _seed_subagent_group(repo: ConversationRepository, doc: ConversationDo
         entries=[_subagent_group("row-1")],
     )
     return list(ids)[0]
+
+
+async def _seed_user_message(repo: ConversationRepository) -> tuple[ConversationDocument, str]:
+    doc = _doc()
+    await repo.create(doc)
+    ids = await repo.append_messages(
+        doc.conversation_id,
+        user_id=doc.user_id,
+        messages=[MessageModel(type="user", response="book it")],
+    )
+    assert ids is not None
+    return doc, next(iter(ids))
 
 
 @pytest.fixture
@@ -475,6 +489,62 @@ class TestMessages:
         assert [(h.conversation_id, h.message.message_id) for h in pinned] == [
             (doc.conversation_id, mid)
         ]
+
+    async def test_a_reaction_set_only_if_unset_never_replaces_one_already_there(self, repo):
+        doc, mid = await _seed_user_message(repo)
+        chat_model = MessageReaction(emoji="👍", by=ReactionBy.CHAT_MODEL)
+        jev = MessageReaction(emoji="👌", by=ReactionBy.JEV)
+
+        assert await repo.set_message_reaction(
+            doc.conversation_id, user_id=doc.user_id, message_id=mid, reaction=chat_model
+        )
+        assert not await repo.set_message_reaction(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=mid,
+            reaction=jev,
+            only_if_unset=True,
+        )
+
+        saved = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
+        assert saved is not None and saved.reaction == chat_model
+
+    async def test_a_reaction_without_the_guard_replaces_the_one_there(self, repo):
+        doc, mid = await _seed_user_message(repo)
+        jev = MessageReaction(emoji="👌", by=ReactionBy.JEV)
+        chat_model = MessageReaction(emoji="👍", by=ReactionBy.CHAT_MODEL)
+
+        assert await repo.set_message_reaction(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=mid,
+            reaction=jev,
+            only_if_unset=True,
+        )
+        assert await repo.set_message_reaction(
+            doc.conversation_id, user_id=doc.user_id, message_id=mid, reaction=chat_model
+        )
+
+        saved = await repo.get_message(doc.conversation_id, mid, user_id=doc.user_id)
+        assert saved is not None and saved.reaction == chat_model
+
+    async def test_a_reaction_advances_updated_at_so_clients_sync_it(self, repo, raw_collection):
+        doc, mid = await _seed_user_message(repo)
+        stale = datetime(2020, 1, 1, tzinfo=UTC)
+        await raw_collection.update_one(
+            {"conversation_id": doc.conversation_id}, {"$set": {"updatedAt": stale}}
+        )
+
+        assert await repo.set_message_reaction(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            message_id=mid,
+            reaction=MessageReaction(emoji="👍", by=ReactionBy.CHAT_MODEL),
+        )
+
+        after = await repo.get(doc.conversation_id, user_id=doc.user_id)
+        assert after is not None and after.updatedAt is not None
+        assert after.updatedAt > stale
 
     async def test_tool_data_and_follow_up_writes(self, repo):
         doc = _doc()

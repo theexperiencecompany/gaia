@@ -47,14 +47,15 @@ from app.constants.executor import (
 )
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
-from app.constants.websocket import WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS
+from app.constants.websocket import REACTION_WS_EVENT, WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.conversations import conversation_repository
 from app.models.agent_models import CommsDirective
 from app.models.chat_models import (
     ConversationSource,
-    MessageKind,
     MessageModel,
+    MessageReaction,
+    ReactionBy,
     ToolDataEntry,
     UpdateMessagesRequest,
 )
@@ -63,6 +64,7 @@ from app.models.hil_models import HILApprovalStatus
 from app.models.message_models import ReplyToMessageData, TodoRunWake
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
+from app.services.conversation.reaction import reaction_frame
 from app.services.conversation_service import update_messages
 from app.services.hil.approvals_store import get_approval
 from app.services.latency_metrics import observe_delivery_narration, observe_delivery_persist
@@ -353,18 +355,22 @@ async def _narrate_and_deliver(
     directive = interpret_comms_output(notification_text)
     is_react = directive.kind is CommsDirectiveKind.REACT
 
-    message_kind = MessageKind.TEXT
     if directive.kind is CommsDirectiveKind.SILENCE:
         log.set(comms_delivery="silenced", silence_reason=directive.payload)
         _capture_resolution(run, directive)
         return None, None
     # A reply's payload is its text without any directive bubble written beside it.
     notification_text = directive.payload
-    if is_react:
-        log.set(comms_delivery="reacted")
-        message_kind = MessageKind.EMOJI_ACK
-    else:
-        log.set(comms_delivery="message")
+    log.set(comms_delivery="reacted" if is_react else "message")
+    reacted = (
+        await _react_to_request(run, conversation_source, notification_text) if is_react else None
+    )
+    if reacted is not None:
+        _capture_resolution(run, directive, reacted)
+        # The reaction answers; the run's cards still need a message, with no text of its own.
+        if not tool_data:
+            return None, None
+        notification_text = ""
 
     # A HIL-resumed run reconciles onto the ORIGINAL message (run.bot_message_id);
     # QUEUED is load-bearing because every live run carries bot_message_id but only
@@ -375,8 +381,6 @@ async def _narrate_and_deliver(
         notification_text,
         tool_data,
         is_hil_resume=is_hil_resume,
-        kind=message_kind,
-        reacts_to=run.user_message_id if is_react else None,
     )
 
     show_reply_quote, user_msg_content = await _attach_reply_quote(
@@ -424,38 +428,71 @@ async def _narrate_and_deliver(
             notification_text=notification_text,
             result_type=result_type,
         )
-        _capture_resolution(run, directive, "fallback_text" if is_react else "message")
-        return None if is_react else notification_text, bot_message.message_id
-
-    # Deliver over exactly one transport, by the conversation's source: bot
-    # conversations to their platform API, web/mobile/system to WebSocket (the
-    # web list excludes bot sources, so a WebSocket push there would be dropped).
-    if is_bot_platform(conversation_source):
-        delivered, transport = await _deliver_to_platform(
-            run, conversation_source, notification_text, is_react=is_react
+    else:
+        await _deliver_over_conversation_transport(
+            conversation_source,
+            target,
+            saved,
+            _Reply(text=notification_text, tool_data=tool_data, result_type=result_type),
+            is_react=is_react,
         )
+    if reacted is None:
+        # A reaction with nothing to react to went out as a message of its own.
+        _capture_resolution(run, directive, "fallback_text" if is_react else "message")
+    # A reaction has no speakable text: voice must not read the emoji aloud.
+    return None if is_react else notification_text, bot_message.message_id
+
+
+@dataclass(frozen=True)
+class _Reply:
+    """What one delivered message says: its text, its cards and the result type behind it."""
+
+    text: str
+    tool_data: list[ToolDataEntry] | None
+    result_type: str
+
+
+async def _deliver_over_conversation_transport(
+    conversation_source: ConversationSource | None,
+    target: _DeliveryTarget,
+    saved: ConversationEntry,
+    reply: _Reply,
+    *,
+    is_react: bool,
+) -> None:
+    """Send the saved message over exactly one transport, chosen by the conversation's source.
+
+    Bot conversations go to their platform API, web/mobile/system to the WebSocket
+    (the web list excludes bot sources, so a WebSocket push there would be dropped).
+    """
+    if is_bot_platform(conversation_source):
+        if not reply.text:
+            # A reaction's cards: the platform already shows the reaction and renders no cards.
+            return
+        delivered = await deliver_message_to_platform(
+            conversation_source,
+            target.user_id,
+            reply.text,
+            conversation_id=target.conversation_id,
+        )
+        transport = "platform"
     else:
         await _broadcast_and_defer_follow_ups(
             target=target,
             bot_message=saved,
-            notification_text=notification_text,
-            tool_data=tool_data,
-            result_type=result_type,
+            notification_text=reply.text,
+            tool_data=reply.tool_data,
+            result_type=reply.result_type,
             is_react=is_react,
         )
         delivered, transport = True, "websocket"
-
     _log_delivery_verdict(
         target=target,
-        message_id=bot_message.message_id,
+        message_id=saved.message_id,
         conversation_source=conversation_source,
         transport=transport,
         delivered=delivered,
     )
-    _capture_resolution(run, directive, _react_delivery(transport) if is_react else "message")
-    # A reaction has no speakable text: voice must not read the emoji aloud,
-    # so it resolves to None here (the ack itself is saved and routed above).
-    return None if is_react else notification_text, bot_message.message_id
 
 
 def _capture_resolution(
@@ -473,13 +510,6 @@ def _capture_resolution(
         ),
         dedupe=run.analytics_dedupe,
     )
-
-
-def _react_delivery(transport: str) -> Literal["reaction", "badge", "fallback_text"]:
-    """How a REACT ack actually reached the user, by the transport that carried it."""
-    if transport == "reaction":
-        return "reaction"
-    return "badge" if transport == "websocket" else "fallback_text"
 
 
 async def _deliver_workflow_result(
@@ -523,46 +553,52 @@ async def _deliver_workflow_result(
     )
 
 
-async def _deliver_to_platform(
-    run: ExecutorRun,
-    conversation_source: ConversationSource | None,
-    notification_text: str,
-    *,
-    is_react: bool,
-) -> tuple[bool, str]:
-    """Send the update over the conversation's bot platform; returns (delivered, transport)."""
+async def _react_to_request(
+    run: ExecutorRun, conversation_source: ConversationSource | None, emoji: str
+) -> Literal["reaction", "badge", "fallback_text"] | None:
+    """Put comms' emoji on the user message that asked for this run; None when there is none to react to.
+
+    Returns how the user sees it: a native platform reaction, the web badge, or
+    the emoji sent as text when the platform cannot attach it.
+    """
+    if not run.user_message_id:
+        return None
     user_id = run.user.user_id
-    # None takes the same branches: every falsy path reassigns it before the return.
-    delivered = False  # pragma: no mutate
-    transport = "platform"
-    if is_react:
-        # Native reaction anchored to the user's message; falls back to the
-        # one-emoji text bubble when there is no recorded platform id or the
-        # publish fails, so the acknowledgment is never lost.
-        platform_message_id = await _lookup_platform_message_id(
-            run.conversation_id, run.user_message_id, user_id
-        )
-        if platform_message_id is not None:
-            delivered = await deliver_reaction_to_platform(
-                conversation_source,
-                user_id,
-                platform_message_id,
-                notification_text,
-                conversation_id=run.conversation_id,
-            )
-            if delivered:
-                transport = "reaction"
-                log.set(platform_reaction="attached")
-        if not delivered:
-            log.set(platform_reaction="fallback_text")
-    if not delivered:
-        delivered = await deliver_message_to_platform(
-            conversation_source,
+    asked = await conversation_repository.get_message(
+        run.conversation_id, run.user_message_id, user_id=user_id
+    )
+    if asked is None:
+        return None
+    reaction = MessageReaction(emoji=emoji, by=ReactionBy.CHAT_MODEL)
+    await conversation_repository.set_message_reaction(
+        run.conversation_id, user_id=user_id, message_id=run.user_message_id, reaction=reaction
+    )
+    if not is_bot_platform(conversation_source):
+        await _broadcast_message(
             user_id,
-            notification_text,
-            conversation_id=run.conversation_id,
+            {
+                "type": REACTION_WS_EVENT,
+                "conversation_id": run.conversation_id,
+                **reaction_frame(run.user_message_id, reaction).model_dump(),
+            },
         )
-    return delivered, transport
+        return "badge"
+    if asked.platform_message_id and await deliver_reaction_to_platform(
+        conversation_source,
+        user_id,
+        asked.platform_message_id,
+        emoji,
+        conversation_id=run.conversation_id,
+        replaces_emoji=asked.reaction.emoji if asked.reaction else None,
+    ):
+        log.set(platform_reaction="attached")
+        return "reaction"
+    # No recorded platform id, or the publish failed: the emoji goes as text so the ack is never lost.
+    log.set(platform_reaction="fallback_text")
+    await deliver_message_to_platform(
+        conversation_source, user_id, emoji, conversation_id=run.conversation_id
+    )
+    return "fallback_text"
 
 
 async def _broadcast_and_defer_follow_ups(
@@ -652,16 +688,12 @@ def _build_bot_message(
     tool_data: list[ToolDataEntry] | None,
     *,
     is_hil_resume: bool,
-    kind: MessageKind = MessageKind.TEXT,
-    reacts_to: str | None = None,
 ) -> MessageModel:
     """Build the bot message this run's result is saved and delivered as."""
     bot_message = MessageModel(
         type="bot",
         response=notification_text,
         date=datetime.now(UTC).isoformat(),
-        kind=kind,
-        reacts_to_message_id=reacts_to,
     )
     bot_message.message_id = (
         (run.bot_message_id if is_hil_resume else None)
@@ -1224,14 +1256,9 @@ async def _broadcast_bot_message(
         "message_id": bot_message.message_id,
         "seq": bot_message.seq,
         "date": bot_message.date,
-        "kind": bot_message.kind.value,
     }
     if bot_message.error:
         ws_payload["error"] = bot_message.error
-    # An emoji-ack renders as a reaction badge on the message it answers,
-    # not a new bubble — the client needs the target GAIA message id.
-    if bot_message.kind is MessageKind.EMOJI_ACK and bot_message.reacts_to_message_id:
-        ws_payload["reacts_to_message_id"] = bot_message.reacts_to_message_id
     if tool_data:
         ws_payload["tool_data"] = tool_data
     if follow_up_actions:
@@ -1272,29 +1299,6 @@ async def _broadcast_message(user_id: str, ws_event: dict[str, object]) -> None:
             )
             if attempt == 0:
                 await asyncio.sleep(WEBSOCKET_BROADCAST_RETRY_DELAY_SECONDS)
-
-
-async def _lookup_platform_message_id(
-    conversation_id: str,
-    user_message_id: str | None,
-    user_id: str,
-) -> str | None:
-    """Return the platform-native id of a user message, for anchoring a reaction.
-
-    Returns None when there is no triggering user message (scheduled runs) or the
-    turn predates platform-id recording — the caller falls back to a text bubble.
-    """
-    if not user_message_id:
-        return None
-    try:
-        message = await conversation_repository.get_message(
-            conversation_id, user_message_id, user_id=user_id
-        )
-        if message is not None:
-            return message.platform_message_id
-    except Exception as e:
-        log.warning(f"{LogTag.AGENT} _lookup_platform_message_id: failed", error=str(e))
-    return None
 
 
 async def _lookup_user_message_content(

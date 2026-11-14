@@ -10,6 +10,8 @@ against the literal it replaced.
 from collections.abc import Mapping
 import json
 
+from app.models.stream_events import ReactionPayload
+
 # The single generic keepalive the transport (not the agent) emits: an SSE
 # comment line, which every client ignores while still resetting proxy and
 # client inactivity timers. Not a `data:` frame, so it has no JSON body.
@@ -61,9 +63,9 @@ def message_boundary_frame(boundary: object) -> str:
     return sse_frame({"message_boundary": boundary})
 
 
-def emoji_ack_frame(emoji: str, reacts_to_message_id: str) -> str:
-    """Forward a comms emoji ack, the whole outcome of a turn that streamed no text."""
-    return sse_frame({"emoji_ack": {"emoji": emoji, "reacts_to_message_id": reacts_to_message_id}})
+def reaction_frame(reaction: ReactionPayload) -> str:
+    """Forward a reaction GAIA put on the user's message, which the bot sets on the inbound platform message."""
+    return sse_frame({"reaction": reaction.model_dump()})
 
 
 def error_frame(error_code: str) -> str:

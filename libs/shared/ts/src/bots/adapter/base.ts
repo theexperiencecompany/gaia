@@ -455,15 +455,19 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Attaches `emoji` natively to an existing platform message — the one reaction
-   * primitive, used by live turns and the outbound consumer alike. This default
-   * is for platforms with no reaction API.
+   * Attaches `emoji` natively to an existing platform message in place of
+   * `replaces`, GAIA's earlier reaction there — the one reaction primitive, used
+   * by live turns and the outbound consumer alike. Where a platform keeps one
+   * reaction per sender, setting one replaces the other; where reactions add up,
+   * the adapter removes `replaces` first. This default is for platforms with no
+   * reaction API.
    */
   protected reactToMessage(
     _destinationId: string,
     _platformMessageId: string,
     _emoji: string,
     _isChannel: boolean,
+    _replaces: string | null,
   ): Promise<ReactionOutcome> {
     return Promise.resolve(REACTION_OUTCOME.PLATFORM_UNSUPPORTED);
   }
@@ -482,6 +486,7 @@ export abstract class BaseBotAdapter {
       reaction.target_platform_message_id,
       reaction.emoji,
       isChannel,
+      reaction.replaces_emoji ?? null,
     );
     if (outcome !== REACTION_OUTCOME.ATTACHED) {
       wideLog.warning("outbound_reaction_fallback_text", {

@@ -27,7 +27,7 @@ function frames(...payloads: object[]): string {
 }
 
 const REACTION_TURN = frames(
-  { emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } },
+  { reaction: { message_id: "u1", emoji: "😅", by: "chat_model" } },
   { done: true, conversation_id: "c1" },
 );
 
@@ -145,7 +145,7 @@ describe("a live turn answered with a reaction", () => {
   it("counts a reaction as the reply when the stream closes without a done frame", async () => {
     const screen = await runTurn(
       "whatsapp",
-      frames({ emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } }),
+      frames({ reaction: { message_id: "u1", emoji: "😅", by: "chat_model" } }),
       async () => REACTION_OUTCOME.ATTACHED,
     );
 
@@ -255,7 +255,7 @@ describe("a live turn that hands work off and says nothing", () => {
     expect(screen.messages).toEqual(["Here it is."]);
   });
 
-  it("counts an attached reaction as the reply", async () => {
+  it("clears what the adapter showed when an attached reaction is the whole reply", async () => {
     const noReply = vi.fn().mockResolvedValue(undefined);
 
     await runTurn(
@@ -266,6 +266,6 @@ describe("a live turn that hands work off and says nothing", () => {
       noReply,
     );
 
-    expect(noReply).not.toHaveBeenCalled();
+    expect(noReply).toHaveBeenCalledOnce();
   });
 });

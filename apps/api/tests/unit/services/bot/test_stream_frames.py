@@ -8,15 +8,16 @@ key is a production break that no route test would notice.
 
 import json
 
+from app.models.stream_events import ReactionPayload
 from app.services.bot.stream_frames import (
     approval_frame,
     comment_keepalive_frame,
     done_frame,
-    emoji_ack_frame,
     error_frame,
     keepalive_frame,
     message_boundary_frame,
     notice_frame,
+    reaction_frame,
     session_token_frame,
     sse_frame,
     stream_error_frame,
@@ -65,11 +66,11 @@ class TestByteIdentityWithTheOldLiterals:
         payload = json.dumps({"message_boundary": data["message_boundary"]})
         assert message_boundary_frame(data["message_boundary"]) == f"data: {payload}\n\n"
 
-    def test_emoji_ack_frame(self):
-        ack = {"emoji": "😎", "reacts_to_message_id": "umsg-1"}
+    def test_reaction_frame(self):
+        reaction = {"emoji": "😎", "by": "jev", "message_id": "umsg-1"}
         assert (
-            emoji_ack_frame(emoji=ack["emoji"], reacts_to_message_id=ack["reacts_to_message_id"])
-            == f"data: {json.dumps({'emoji_ack': ack})}\n\n"
+            reaction_frame(ReactionPayload.model_validate(reaction))
+            == f"data: {json.dumps({'reaction': reaction})}\n\n"
         )
 
     def test_error_frame_for_a_refusal_code(self):
