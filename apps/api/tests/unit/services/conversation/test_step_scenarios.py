@@ -66,7 +66,6 @@ from tests.unit.services.conversation.runtime_doubles import (
     Action,
     Cancelled,
     Do,
-    EffectCall,
     Fail,
     Pause,
     RecordingFrames,
@@ -1062,9 +1061,7 @@ class StepScenarios:
         [ended] = [e for e in posthog_turns if e["event"] == "chat:message_completed"]
         assert cast(dict[str, object], ended["properties"])["$session_id"] == "0190f00d-sess"
 
-    async def test_a_file_the_run_made_is_saved_on_the_reply_and_sent_to_a_bot_once(
-        self, rt: Runtime
-    ) -> None:
+    async def test_a_file_the_run_made_is_saved_on_the_reply(self, rt: Runtime) -> None:
         made = Streamed(payload=ToolDataEvent(tool_data=FILE_CARD))
         rt.runner.script([text("here it is"), made, made, Finished(Replied("here it is"))])
         await send(rt, user("u1"))
@@ -1075,14 +1072,6 @@ class StepScenarios:
             if isinstance(logged.entry, Reply)
         ]
         assert FILE_CARD in reply.tool_data
-        assert rt.effects.calls[-1] == EffectCall("deliver_files", ("out/report.pdf",))
-        assert [c for c in rt.effects.calls if c.name == "deliver_files"] == [rt.effects.calls[-1]]
-
-    async def test_a_reply_with_no_file_sends_none(self, rt: Runtime) -> None:
-        rt.runner.script([text("hi"), card(), Finished(Replied("hi"))])
-        await send(rt, user("u1"))
-        await run(rt)
-        assert [c for c in rt.effects.calls if c.name == "deliver_files"] == []
 
     async def test_a_reply_that_dispatched_work_counts_as_delegated(
         self, rt: Runtime, posthog_turns: list[dict[str, object]]

@@ -15,6 +15,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, model_validator
 
 from app.config.settings import settings
+from app.models.conversation_send_models import ActiveBotConversation
 
 
 def _is_own_api(url: str) -> bool:
@@ -71,12 +72,19 @@ class OutboundMessageEnvelope(BaseModel):
     text: str | None = Field(default=None, min_length=1)
     text_parts: list[str] | None = None
     attachment: OutboundAttachment | None = None
+    # A bot conversation the bot must follow now: something it renders was just logged there.
+    follow: ActiveBotConversation | None = None
     # The notification this message delivers; the consumer sends one message per id.
     notification_id: str | None = None
     enqueued_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
     def _require_text_or_attachment(self) -> Self:
-        if not self.text and not self.text_parts and self.attachment is None:
-            raise ValueError("envelope requires text, text_parts, or attachment")
+        if (
+            not self.text
+            and not self.text_parts
+            and self.attachment is None
+            and self.follow is None
+        ):
+            raise ValueError("envelope requires text, text_parts, attachment, or follow")
         return self

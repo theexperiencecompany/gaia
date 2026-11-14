@@ -12,9 +12,8 @@ from datetime import UTC, datetime
 from app.agents.core.background.work_cancel import cancel_named_work
 from app.config.settings import settings
 from app.constants.conversation import STEP_DRAIN_GRACE_SECONDS, STEP_TICK_SECONDS
-from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
-from app.models.chat_models import ConversationSource, ReactionBy
+from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import EntryUpdatedFrame
 from app.models.conversation_log_models import (
     CancelWork,
@@ -27,15 +26,14 @@ from app.models.work_cancel_models import WorkCancelled
 from app.services.analytics_service import capture
 from app.services.conversation.ack import decide_reaction
 from app.services.conversation.approval_replies import HilApprovalReplies
+from app.services.conversation.bot_wake import BotWakingFrames
 from app.services.conversation.comms_runner import CommsGraphRunner
 from app.services.conversation.comms_turn import build_comms_turn
 from app.services.conversation.event_stream import RedisStreamFrames
 from app.services.conversation.mongo_log import MongoConversationLog
-from app.services.conversation.ports import ConversationAnalyticsEvent, RuntimePorts
-from app.services.conversation.reply_files import ReplyFile
+from app.services.conversation.ports import ConversationAnalyticsEvent, Frames, RuntimePorts
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.step import advance
-from app.services.outbound_delivery import publish_outbound_file
 from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import Dedupe, UserId
@@ -71,7 +69,7 @@ class RuntimeEffects:
     def __init__(
         self,
         log: MongoConversationLog,
-        frames: RedisStreamFrames,
+        frames: Frames,
         ports: Callable[[], RuntimePorts],
     ) -> None:
         self._log = log
@@ -101,23 +99,6 @@ class RuntimeEffects:
         spawn_background_task(
             self._react(conversation_id, user_id, message_id), name="conversation_instant_reaction"
         )
-
-    async def deliver_files(
-        self, conversation_id: str, user_id: str, files: tuple[ReplyFile, ...]
-    ) -> None:
-        """Queue each file to the bot session's platform; a web or voice conversation shows them on the reply."""
-        session = await bot_session_repository.get_by_conversation_id(conversation_id)
-        if session is None:
-            return
-        for file in files:
-            await publish_outbound_file(
-                ConversationSource(session.platform),
-                user_id,
-                conversation_id,
-                file.path,
-                file.path.rsplit("/", 1)[-1],
-                content_type=file.content_type,
-            )
 
     async def reset_workflow_threads(self, conversation_id: str) -> None:
         """Clear the fire's threads when resets are on; the previous run reaches it as its recorded trace."""
@@ -180,7 +161,7 @@ def _previous_reply_text(recent: Sequence[LoggedEntry], message_id: str) -> str:
 def build_runtime_ports() -> RuntimePorts:
     """Build the production ports: the Mongo log, the comms graph runner, the Redis frames stream."""
     log = MongoConversationLog(conversation_log_repository, _now)
-    frames = RedisStreamFrames()
+    frames = BotWakingFrames(RedisStreamFrames())
     return RuntimePorts(
         log=log,
         runner=CommsGraphRunner(build_comms_turn),

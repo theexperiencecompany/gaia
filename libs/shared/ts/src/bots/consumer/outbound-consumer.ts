@@ -11,6 +11,7 @@
  */
 
 import { type Channel, type ConsumeMessage, connect } from "amqplib";
+import type { ActiveBotConversation } from "../../api/generated";
 import { splitMessageByBreaks } from "../../utils/messageBubbles";
 import {
   DELIVERY_FAILURE_KIND,
@@ -74,6 +75,12 @@ type DeliverFileFn = (
   isChannel: boolean,
 ) => Promise<void>;
 
+/**
+ * Follows a bot conversation the server woke: something the bot renders was logged
+ * there. Resolves once the follow has started; the follow itself runs on.
+ */
+type FollowFn = (target: ActiveBotConversation) => Promise<void>;
+
 export class OutboundConsumer {
   private conn: Awaited<ReturnType<typeof connect>> | null = null;
   private channel: Channel | null = null;
@@ -98,6 +105,7 @@ export class OutboundConsumer {
     private readonly url: string,
     private readonly deliver: DeliverFn,
     private readonly deliverFile: DeliverFileFn,
+    private readonly follow: FollowFn,
     gaiaApiUrl: string | undefined,
     private readonly reportFailure: ReportDeliveryFailure,
     private readonly notifications?: OutboundNotifications,
@@ -284,6 +292,11 @@ export class OutboundConsumer {
           has_attachment: Boolean(env.attachment),
         });
 
+        if (env.follow) {
+          await this.handleFollow(channel, msg, env.id, env.follow);
+          return;
+        }
+
         if (env.attachment) {
           await this.handleAttachment(
             channel,
@@ -371,6 +384,32 @@ export class OutboundConsumer {
     }
 
     return env;
+  }
+
+  /** A wake: start following the conversation; its follower renders what was logged there. */
+  private async handleFollow(
+    channel: Channel,
+    msg: ConsumeMessage,
+    id: string,
+    target: ActiveBotConversation,
+  ): Promise<void> {
+    wideLog.set({ conversation_id: target.conversation_id });
+    try {
+      await this.follow(target);
+      this.settle(channel, () => channel.ack(msg));
+    } catch (err) {
+      const reason = recordBotFailure("conversation_wake_failed", err, {
+        envelope_id: id,
+      });
+      this.deadLetter(channel, msg, {
+        kind: DELIVERY_FAILURE_KIND.SEND_FAILED,
+        reason,
+        error_message: describeErrorForAlert(err),
+        destination_id: target.channel_id ?? target.platform_user_id,
+        is_channel: target.channel_id !== null,
+        envelope_id: id,
+      });
+    }
   }
 
   /**

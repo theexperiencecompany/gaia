@@ -15,7 +15,7 @@ from app.constants.notifications import (
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.notifications import notification_repository
-from app.models.chat_models import ConversationSource
+from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.notification.notification_models import (
     ActionResult,
     BulkActions,
@@ -36,7 +36,6 @@ from app.services.delivery.chat_channel import (
     is_active_place,
     resolve_proactive_target,
 )
-from app.services.platform_message_service import is_bot_platform
 from app.utils.notification.actions import (
     ActionHandler,
     ApiCallActionHandler,
@@ -91,7 +90,7 @@ def _lands_in_conversation(target: ProactiveTarget, source: ConversationSource |
     if isinstance(target, ChatChannel):
         return source is target.source
     # Web chats are stored without a source; anything not a chat app's conversation is an app chat.
-    return not is_bot_platform(source)
+    return source not in BOT_CONVERSATION_SOURCES
 
 
 class NotificationOrchestrator:

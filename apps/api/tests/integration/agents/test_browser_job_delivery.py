@@ -28,6 +28,7 @@ from app.constants.browser import (
     HandoffStatus,
 )
 from app.constants.chat import SourceCategory
+from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.bot_models import BotSessionDocument
 from app.models.chat_models import ConversationSource
 from app.schemas.browser import (
@@ -40,7 +41,7 @@ from app.schemas.browser import (
     BrowserStepSnapshot,
 )
 from app.schemas.browser_job import BrowserJobRequest, BrowserJobState, BrowserJobStatus
-from app.services import outbound_delivery as outbound_mod, platform_message_service
+from app.services import outbound_delivery as outbound_mod
 from app.services.browser import (
     bot_delivery as bot_mod,
     job_runner as jr,
@@ -360,7 +361,7 @@ async def test_a_run_asked_for_in_a_group_keeps_its_live_link_and_photos_in_the_
     """The live link drives the user's browser and a step photo can show a signed-in page, so a group that asked sees neither; only the final answer goes back there."""
     monkeypatch.setattr(jr, "BrowserTaskRunner", _ScriptedBrowserWithHandoff)
     monkeypatch.setattr(
-        platform_message_service.bot_session_repository,
+        bot_session_repository,
         "get_by_conversation_id",
         AsyncMock(return_value=_bot_session(GROUP_CHANNEL_ID)),
     )

@@ -24,6 +24,7 @@ const { connection, channel, connect } = vi.hoisted(() => {
 
 vi.mock("amqplib", () => ({ connect }));
 
+import type { ActiveBotConversation } from "../../../../../libs/shared/ts/src/api/generated";
 import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
 import { OutboundConsumer } from "../../../../../libs/shared/ts/src/bots/consumer/outbound-consumer";
 import type { OutboundNotifications } from "../../../../../libs/shared/ts/src/bots/types";
@@ -55,12 +56,15 @@ async function startAndCaptureHandler(
   ) => Promise<void> = async () => undefined,
   gaiaApiUrl = "https://api.gaia.test",
   notifications?: OutboundNotifications,
+  follow: (target: ActiveBotConversation) => Promise<void> = async () =>
+    undefined,
 ): Promise<Handler> {
   const consumer = new OutboundConsumer(
     platform,
     "amqp://test",
     deliver,
     deliverFile,
+    follow,
     gaiaApiUrl,
     reportFailure,
     notifications,
@@ -875,6 +879,7 @@ describe("OutboundConsumer lifecycle", () => {
     const consumer = new OutboundConsumer(
       "telegram",
       "amqp://test",
+      async () => undefined,
       async () => undefined,
       async () => undefined,
       "https://api.gaia.test",

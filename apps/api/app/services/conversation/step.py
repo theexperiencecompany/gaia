@@ -72,7 +72,6 @@ from app.services.conversation.ports import (
     Unsettled,
 )
 from app.services.conversation.reply_analytics import capture_reply_ended, spoken_context
-from app.services.conversation.reply_files import reply_files
 from app.services.conversation.step_view import StepView
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group, quote_target, verdict
@@ -1032,14 +1031,6 @@ async def _settle(
         appended.logged.at,
         since,
     )
-    replies = [
-        logged.entry
-        for logged in since
-        if isinstance(logged.entry, Reply) and logged.entry.reply_id == settled.reply_id
-    ]
-    files = reply_files(replies[-1]) if replies else ()
-    if files:
-        await ports.effects.deliver_files(claim.conversation_id, claim.user_id, files)
 
 
 async def _amend_seen(

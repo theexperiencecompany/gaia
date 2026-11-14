@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -15,20 +15,27 @@ from redis.asyncio import Redis
 
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
 from app.constants.analytics import POSTHOG_SESSION_HEADER
+from app.constants.outbound import OUTBOUND_QUEUES
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationSource
 from app.models.conversation_frame_models import ConversationUpdatedFrame, StateFrame
-from app.models.conversation_log_models import BargeIn, DisplayState, UserMessage
+from app.models.conversation_log_models import BargeIn, DisplayState, Notice, UserMessage
+from app.models.conversation_send_models import ActiveBotConversation
+from app.models.notification.notification_models import NotificationStatus
 from app.models.user_models import AuthenticatedUser
+from app.schemas.outbound import OutboundMessageEnvelope
 from app.services.bot_service import BotService
-from app.services.conversation.composition import RuntimeEffects
+from app.services.conversation.bot_wake import BotWakingFrames
 from app.services.conversation.event_stream import RedisStreamFrames
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
-from app.services.conversation.reply_files import ReplyFile
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
 from app.services.conversation.send import submit_bot_message
+from app.utils.notification.channels.conversation import (
+    ConversationChannelAdapter,
+    ConversationPayload,
+)
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.wide_events import _spawned_tasks
 from tests.conftest import FAKE_USER
@@ -254,31 +261,50 @@ async def test_a_bot_message_is_counted_once_after_it_is_accepted_and_never_on_a
     assert (event.source, event.stream_id, event.is_retry) == ("telegram", "telegram:902", False)
 
 
-async def test_a_reply_file_is_queued_to_the_bot_platform_and_never_for_a_web_chat(
+async def test_a_retried_notice_in_a_bot_chat_is_logged_once_and_wakes_its_bot_once(
     sends: Sends,
 ) -> None:
     user = AuthenticatedUser(user_id=FAKE_USER.user_id)
+    platform_user_id = f"tg-{uuid4().hex[:8]}"
     bot_chat = await BotService.get_or_create_session(
-        "telegram", f"tg-{uuid4().hex[:8]}", None, user, is_dm=True
+        "telegram", platform_user_id, None, user, is_dm=True
     )
-    effects = RuntimeEffects(
-        MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC)),
-        RedisStreamFrames(),
-        runtime_ports,
+    install_runtime_ports(replace(runtime_ports(), frames=BotWakingFrames(RedisStreamFrames())))
+    publisher = AsyncMock()
+    payload = ConversationPayload(
+        conversation_id=bot_chat,
+        notification_id=f"n-{uuid4().hex[:8]}",
+        text="Your reminder: call the bank",
+        origin="reminder",
     )
-    files = (ReplyFile("out/report.pdf", "application/pdf"),)
     with patch(
-        "app.services.conversation.composition.publish_outbound_file", new_callable=AsyncMock
-    ) as queued:
-        await effects.deliver_files(bot_chat, user.user_id, files)
-        await effects.deliver_files(f"web-{uuid4().hex[:8]}", user.user_id, files)
-    queued.assert_awaited_once_with(
-        ConversationSource.TELEGRAM,
-        user.user_id,
-        bot_chat,
-        "out/report.pdf",
-        "report.pdf",
-        content_type="application/pdf",
+        "app.services.outbound_delivery.get_rabbitmq_publisher",
+        AsyncMock(return_value=publisher),
+    ):
+        for _ in range(2):  # the ARQ job retried after the Notice was already logged
+            status = await ConversationChannelAdapter().deliver(payload, user.user_id)
+            assert status.status == NotificationStatus.DELIVERED
+
+    notices = [
+        logged
+        for logged in await runtime_ports().log.read_after(bot_chat, user.user_id, 0)
+        if isinstance(logged.entry, Notice)
+    ]
+    assert [logged.entry.text for logged in notices] == ["Your reminder: call the bank"]
+    [(queue, body)] = [call.args for call in publisher.publish_outbound.call_args_list]
+    envelope = OutboundMessageEnvelope.model_validate_json(body)
+    assert queue == OUTBOUND_QUEUES[ConversationSource.TELEGRAM]
+    assert (envelope.text, envelope.attachment, envelope.destination_id) == (
+        None,
+        None,
+        platform_user_id,
+    )
+    assert envelope.follow == ActiveBotConversation(
+        conversation_id=bot_chat,
+        platform_user_id=platform_user_id,
+        channel_id=None,
+        is_dm=True,
+        after_seq=notices[0].seq - 1,
     )
 
 

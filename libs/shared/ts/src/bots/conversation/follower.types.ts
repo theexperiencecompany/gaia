@@ -33,8 +33,28 @@ export interface ConversationSurface {
   startTyping: () => () => void;
 }
 
+/** A session artifact a reply carries, addressed by its path under the session's artifacts/. */
+export interface ReplyFile {
+  conversationId: string;
+  path: string;
+  contentType: string | null;
+}
+
+/**
+ * The surface a follower renders to: the adapter's chat, plus what the base adapter
+ * adds for every platform, files and notices that may arrive outside a reply.
+ */
+export interface FollowSurface extends ConversationSurface {
+  /** Uploads a file a reply carries. */
+  sendFile: (file: ReplyFile) => Promise<void>;
+  /** Sends a notice's rendered bubbles; where proactive messages are restricted they go as one. */
+  sendNotice: (bubbles: string[]) => Promise<void>;
+}
+
 /** What a follower reports when it closes, for the follow's wide event. */
 export interface FollowSummary {
   repliesDelivered: number;
   reactionsPlaced: number;
+  noticesDelivered: number;
+  filesDelivered: number;
 }

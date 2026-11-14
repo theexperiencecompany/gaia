@@ -12,12 +12,14 @@
  * - a user message's reaction becomes a native reaction on it;
  * - an approval the work waits on is asked in chat, with every approval still
  *   open numbered;
+ * - a notice is sent as it is logged, and a settled reply's files are uploaded;
  * - the typing indicator runs while GAIA is thinking or working.
  *
  * Entries at or below the floor (the seq the follow started after) are history:
  * the stream also replays them, and they were delivered by an earlier follow.
  */
 
+import { z } from "zod";
 import { ENTRY_KIND } from "../../conversation/entries";
 import { DISPLAY_STATE, FRAME_KIND } from "../../conversation/frames";
 import type {
@@ -28,14 +30,16 @@ import type {
   Reply,
 } from "../../conversation/types";
 import { applyFrame, EMPTY_CONVERSATION_VIEW } from "../../conversation/view";
+import { deliverableBubbles } from "../utils/bubbles";
 import { REPLY_FAILURE_LINE } from "../utils/error-lines";
 import { PLATFORM_MARKDOWN } from "../utils/formatters";
 import { createBotLogger } from "../utils/logger";
 import { REACTION_OUTCOME } from "../utils/reaction-outcome";
 import { formatApprovalPrompt } from "./approval-prompt";
 import type {
-  ConversationSurface,
   FollowSummary,
+  FollowSurface,
+  ReplyFile,
   StreamingOptions,
 } from "./follower.types";
 import { ReplyDelivery } from "./reply-delivery";
@@ -44,6 +48,15 @@ const logger = createBotLogger("shared", "conversation-follower");
 
 type UserMessageEntry = Extract<Entry, { kind: "user_message" }>;
 type ReplySettledEntry = Extract<Entry, { kind: "reply_settled" }>;
+type NoticeEntry = Extract<Entry, { kind: "notice" }>;
+
+/** The card a coding tool emits for each file it writes under the session's artifacts/. */
+const ARTIFACT_CARD = "artifact_data";
+const ArtifactWrittenSchema = z.object({
+  event: z.literal("upsert"),
+  path: z.string().min(1),
+  content_type: z.string().nullish(),
+});
 
 /** Display states during which the user should see GAIA typing. */
 const TYPING_DISPLAYS: ReadonlySet<string> = new Set([
@@ -79,12 +92,15 @@ export class ConversationFollower {
   readonly summary: FollowSummary = {
     repliesDelivered: 0,
     reactionsPlaced: 0,
+    noticesDelivered: 0,
+    filesDelivered: 0,
   };
 
   constructor(
     private readonly floor: number,
     private readonly options: StreamingOptions,
-    private readonly surface: ConversationSurface,
+    private readonly surface: FollowSurface,
+    private readonly conversationId: string,
   ) {}
 
   /** A message posted into this conversation: the follow stays until it is answered. */
@@ -175,7 +191,9 @@ export class ConversationFollower {
       case ENTRY_KIND.APPROVAL_REQUESTED:
         await this.askApproval();
         return;
-      // A notice was sent on the outbound queue when it was logged.
+      case ENTRY_KIND.NOTICE:
+        await this.sendNotice(entry);
+        return;
       default:
         return;
     }
@@ -195,6 +213,37 @@ export class ConversationFollower {
     // A chat model's reaction is its whole answer: one the platform cannot attach is sent as text.
     if (reaction.by === "chat_model") {
       await this.surface.send(reaction.emoji, null);
+    }
+  }
+
+  private async sendNotice(notice: NoticeEntry): Promise<void> {
+    const { platform } = this.options;
+    const bubbles = deliverableBubbles(
+      notice.text,
+      platform,
+      PLATFORM_MARKDOWN[platform],
+    ).flat();
+    if (bubbles.length === 0) return;
+    await this.surface.sendNotice(bubbles);
+    this.summary.noticesDelivered += 1;
+  }
+
+  /** Upload each file the reply's run wrote, once per path, in the order written. */
+  private async sendFiles(reply: Reply): Promise<void> {
+    const files = new Map<string, ReplyFile>();
+    for (const card of reply.tool_data) {
+      if (card.tool_name !== ARTIFACT_CARD) continue;
+      const written = ArtifactWrittenSchema.safeParse(card.data);
+      if (!written.success || files.has(written.data.path)) continue;
+      files.set(written.data.path, {
+        conversationId: this.conversationId,
+        path: written.data.path,
+        contentType: written.data.content_type ?? null,
+      });
+    }
+    for (const file of files.values()) {
+      await this.surface.sendFile(file);
+      this.summary.filesDelivered += 1;
     }
   }
 
@@ -264,6 +313,7 @@ export class ConversationFollower {
     }
     await delivery.end();
     if (delivery.opened) this.summary.repliesDelivered += 1;
+    if (reply) await this.sendFiles(reply);
     if (settled.failure) {
       const { platform } = this.options;
       await this.surface.send(

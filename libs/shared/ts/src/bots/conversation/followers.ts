@@ -15,7 +15,7 @@ import { getHttpStatus, sanitizeErrorForLog } from "../utils/logger";
 import { sleep } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ConversationFollower } from "./follower";
-import type { ConversationSurface, StreamingOptions } from "./follower.types";
+import type { FollowSurface, StreamingOptions } from "./follower.types";
 
 /** Opens one connection to a conversation's events stream. */
 export type ConversationEventSource = (
@@ -38,6 +38,8 @@ interface Followed {
 
 export class ConversationFollowers {
   private readonly active = new Map<string, Followed>();
+  /** The newest seq a follow of each conversation started from or delivered, so a late wake repeats nothing. */
+  private readonly reached = new Map<string, number>();
   private readonly runs = new Set<Promise<void>>();
 
   constructor(
@@ -53,7 +55,7 @@ export class ConversationFollowers {
     ctx: BotUserContext,
     conversationId: string,
     seq: number,
-    surface: ConversationSurface,
+    surface: FollowSurface,
   ): void {
     const running = this.active.get(conversationId);
     if (running) {
@@ -64,26 +66,34 @@ export class ConversationFollowers {
   }
 
   /**
-   * Follow a conversation a restarted bot finds still answering, after afterSeq
-   * (the newest reply already settled), until it is idle; nothing when one runs.
+   * Follow a conversation after afterSeq until it is idle: one a restarted bot finds
+   * still answering, or one the server woke for something logged there. Nothing when
+   * a follow runs, and never from before what an earlier follow here reached.
    */
   resume(
     ctx: BotUserContext,
     conversationId: string,
     afterSeq: number,
-    surface: ConversationSurface,
+    surface: FollowSurface,
   ): void {
     if (this.active.has(conversationId)) return;
-    this.start(ctx, conversationId, afterSeq, surface);
+    const reached = this.reached.get(conversationId) ?? afterSeq;
+    this.start(ctx, conversationId, Math.max(afterSeq, reached), surface);
   }
 
   private start(
     ctx: BotUserContext,
     conversationId: string,
     floor: number,
-    surface: ConversationSurface,
+    surface: FollowSurface,
   ): ConversationFollower {
-    const follower = new ConversationFollower(floor, this.options, surface);
+    this.reach(conversationId, floor);
+    const follower = new ConversationFollower(
+      floor,
+      this.options,
+      surface,
+      conversationId,
+    );
     const followed = { follower, abort: new AbortController() };
     this.active.set(conversationId, followed);
     const run = this.run(ctx, conversationId, floor, followed).finally(() => {
@@ -91,6 +101,11 @@ export class ConversationFollowers {
     });
     this.runs.add(run);
     return follower;
+  }
+
+  private reach(conversationId: string, seq: number): void {
+    const reached = this.reached.get(conversationId) ?? 0;
+    if (seq > reached) this.reached.set(conversationId, seq);
   }
 
   /** Settles once every follow running now has ended. */
@@ -152,6 +167,7 @@ export class ConversationFollowers {
           abort.signal,
         )) {
           await follower.apply(event.frame);
+          if ("seq" in event.frame) this.reach(conversationId, event.frame.seq);
           if (event.streamId) cursor = event.streamId;
           failures = 0;
           if (follower.finished) {

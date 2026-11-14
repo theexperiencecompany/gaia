@@ -47,6 +47,8 @@ export {
 export type {
   ConversationEventSource,
   ConversationSurface,
+  FollowSurface,
+  ReplyFile,
   SentBubble,
   StreamingOptions,
 } from "./conversation";

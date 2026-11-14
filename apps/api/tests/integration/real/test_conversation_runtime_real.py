@@ -38,7 +38,6 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from app.agents.context.slots import TIME_CONTEXT_MARKER, PromptSlot, mark, slot_of
 from app.agents.core.background import (
     executor_runner,
-    result_delivery,
     todo_run,
     todo_run_delivery,
 )
@@ -54,7 +53,6 @@ from app.agents.core.background.executor_runner import (
     deliver_to_executor,
     wake_executor_for_inbox,
 )
-from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.session import ExecutorRun, RunIdentity, RunKind
 from app.agents.core.background.todo_run import TodoRunRequest, run_todo_on_executor
 from app.agents.core.background.todo_run_delivery import report_form_of
@@ -202,6 +200,10 @@ from app.services.workflow.playbook.runner import PlaybookNarration
 from app.services.workflow.playbook.scripted_model import ScriptedCall
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import ConversationIdTakenError
+from app.utils.notification.channels.conversation import (
+    ConversationChannelAdapter,
+    ConversationPayload,
+)
 from app.utils.notification.orchestrator import Notified
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import (
@@ -2327,28 +2329,23 @@ async def _unread(rig: Rig) -> bool | None:
 
 
 @pytest.mark.service
-async def test_a_delivered_reminder_is_one_notice_shown_once_with_its_cards(
+async def test_a_delivered_reminder_is_one_notice_shown_once(
     rig_for: RigFactory,
 ) -> None:
     rig = await rig_for(gated())
-    card = _card("reminder")
-    with patch.object(result_delivery, "deliver_message_to_platform", AsyncMock()) as to_platform:
-        await deliver_message_to_conversation(
-            conversation_id=rig.conversation_id,
-            user_id=rig.user_id,
-            notification_id="stretch",
-            text="time to stretch",
-            origin="reminder",
-            tool_data=[card],
-        )
+    payload = ConversationPayload(
+        conversation_id=rig.conversation_id,
+        notification_id="stretch",
+        text="time to stretch",
+        origin="reminder",
+    )
+    for _ in range(2):  # a retried notification job
+        await ConversationChannelAdapter().deliver(payload, rig.user_id)
     (notice,) = await rig.of(Notice)
     stored = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
-    assert (notice.text, notice.tool_data) == ("time to stretch", (card,))
+    assert notice.text == "time to stretch"
     assert stored is not None
-    assert [(m.type, m.response, m.tool_data) for m in shown_messages(stored)] == [
-        ("bot", "time to stretch", [card])
-    ]
-    to_platform.assert_not_awaited()
+    assert [(m.type, m.response) for m in shown_messages(stored)] == [("bot", "time to stretch")]
     assert await _unread(rig) is True
 
 

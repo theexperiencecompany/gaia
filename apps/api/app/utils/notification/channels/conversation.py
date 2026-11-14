@@ -1,10 +1,13 @@
-"""The conversation a fact belongs to: logged there as a Notice, sent first when it is a chat app's."""
+"""The conversation a fact belongs to: logged there as a Notice, which every device and bot reads off its events."""
 
 from dataclasses import dataclass
 
-from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.constants.notifications import CHANNEL_TYPE_CONVERSATION
+from app.models.conversation_log_models import Notice
 from app.models.notification.notification_models import ChannelDeliveryStatus, NotificationRequest
+from app.services.conversation.log import accept
+from app.services.conversation.runtime import runtime_ports
+from app.utils.errors import ConversationNotFoundError
 from app.utils.notification.channels.base import ChannelAdapter
 from app.utils.notification.channels.external import notice_origin, render_notification_text
 
@@ -42,14 +45,14 @@ class ConversationChannelAdapter(ChannelAdapter[ConversationPayload]):
         )
 
     async def deliver(self, content: ConversationPayload, user_id: str) -> ChannelDeliveryStatus:
-        """Log the Notice, after the chat app took it when the conversation is a chat app's."""
-        delivered = await deliver_message_to_conversation(
-            conversation_id=content.conversation_id,
-            user_id=user_id,
-            notification_id=content.notification_id,
-            text=content.text,
-            origin=content.origin,
+        """Log the Notice under the notification's id, so a retried notification logs it once."""
+        if not content.text.strip():
+            return self._skipped("conversation: nothing to say")
+        notice = Notice(
+            id=f"notice:{content.notification_id}", text=content.text, origin=content.origin
         )
-        if not delivered:
-            return self._error("conversation: not delivered")
+        try:
+            await accept(runtime_ports(), content.conversation_id, user_id, notice)
+        except ConversationNotFoundError:
+            return self._skipped("conversation: deleted")
         return self._success()

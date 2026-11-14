@@ -12,7 +12,7 @@ import {
   type ConversationEventSource,
   ConversationFollower,
   ConversationFollowers,
-  type ConversationSurface,
+  type FollowSurface,
   REACTION_OUTCOME,
   type StreamingOptions,
 } from "@gaia/shared/bots";
@@ -35,6 +35,7 @@ import {
 } from "../../../../../libs/shared/ts/src/conversation/testing";
 import type {
   ConversationFrame,
+  Entry,
   Reaction,
 } from "../../../../../libs/shared/ts/src/conversation/types";
 
@@ -44,13 +45,21 @@ type Call =
   | { op: "edit"; id: string; text: string }
   | { op: "delete"; id: string }
   | { op: "react"; target: string; emoji: string; replaces: string | null }
-  | { op: "typing"; state: "start" | "stop" };
+  | { op: "typing"; state: "start" | "stop" }
+  | { op: "notice"; bubbles: string[] }
+  | { op: "file"; path: string };
 
 /** A platform that records every call, editable and deletable like Telegram. */
-function recorder(): { surface: ConversationSurface; calls: Call[] } {
+function recorder(): { surface: FollowSurface; calls: Call[] } {
   const calls: Call[] = [];
   let next = 1;
-  const surface: ConversationSurface = {
+  const surface: FollowSurface = {
+    sendNotice: async (bubbles) => {
+      calls.push({ op: "notice", bubbles });
+    },
+    sendFile: async (file) => {
+      calls.push({ op: "file", path: file.path });
+    },
     send: async (text, replyTo) => {
       const id = `m${next++}`;
       calls.push({ op: "send", id, text, replyTo });
@@ -181,7 +190,7 @@ describe.each([
 
   it("answers a message sent during work while the work keeps running", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, options, surface);
+    const follower = new ConversationFollower(0, options, surface, "c1");
     follower.expect(1);
     await feed(follower, [
       entryFrame(1, inbound("u1", "11")),
@@ -204,7 +213,7 @@ describe.each([
 
   it("puts the reaction on the user's message before the reply, and replaces it later", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, options, surface);
+    const follower = new ConversationFollower(0, options, surface, "c1");
     follower.expect(1);
     await feed(follower, [
       entryFrame(1, inbound("u1", "11")),
@@ -230,7 +239,7 @@ describe.each([
 
   it("stops typing and sends nothing more when stopped mid-work", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, options, surface);
+    const follower = new ConversationFollower(0, options, surface, "c1");
     follower.expect(1);
     await feed(follower, [
       entryFrame(1, inbound("u1", "11")),
@@ -253,7 +262,7 @@ describe.each([
 
   it("keeps typing while work a later message joined runs, and stops when it ends", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, options, surface);
+    const follower = new ConversationFollower(0, options, surface, "c1");
     follower.expect(1);
     await feed(follower, [
       entryFrame(1, inbound("u1", "11")),
@@ -343,7 +352,7 @@ describe("a late result's native quote", () => {
 
   it("answers the original request natively on a platform that sends replies once final", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, NON_EDITING, surface);
+    const follower = new ConversationFollower(0, NON_EDITING, surface, "c1");
     follower.expect(1);
     follower.expect(5);
     await feed(follower, lateResult(true));
@@ -358,7 +367,7 @@ describe("a late result's native quote", () => {
 
   it("answers it natively on an editing platform when the result arrives whole", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, EDITING, surface);
+    const follower = new ConversationFollower(0, EDITING, surface, "c1");
     follower.expect(1);
     follower.expect(5);
     await feed(follower, lateResult(false));
@@ -371,7 +380,7 @@ describe("a late result's native quote", () => {
 
   it("quotes it on the first bubble an editing platform streams", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, EDITING, surface);
+    const follower = new ConversationFollower(0, EDITING, surface, "c1");
     follower.expect(1);
     follower.expect(5);
     await feed(follower, lateResult(true));
@@ -407,7 +416,7 @@ describe.each([
     ["server_restart", "🔌 Connection interrupted. Please try again."],
   ] as const)("says why for %s", async (failure, line) => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, options, surface);
+    const follower = new ConversationFollower(0, options, surface, "c1");
     follower.expect(1);
     await feed(follower, failed(failure, ""));
 
@@ -417,7 +426,7 @@ describe.each([
 
   it("keeps what was said before the failure and adds the failure line", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, options, surface);
+    const follower = new ConversationFollower(0, options, surface, "c1");
     follower.expect(1);
     await feed(follower, failed("model_error", "Let me look"));
 
@@ -438,7 +447,7 @@ describe("an approval the work waits on", () => {
 
   it("asks once, as a yes/no prompt with its expiry, and not again on replay", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, NON_EDITING, surface);
+    const follower = new ConversationFollower(0, NON_EDITING, surface, "c1");
     follower.expect(1);
     const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
     const asked = entryFrame(
@@ -463,7 +472,7 @@ describe("an approval the work waits on", () => {
 
   it("numbers every approval still open when another one arrives", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(0, NON_EDITING, surface);
+    const follower = new ConversationFollower(0, NON_EDITING, surface, "c1");
     follower.expect(1);
     await feed(follower, [
       ...working,
@@ -486,7 +495,7 @@ describe("an approval the work waits on", () => {
 
   it("does not ask for an approval from before the follow", async () => {
     const { surface, calls } = recorder();
-    const follower = new ConversationFollower(5, NON_EDITING, surface);
+    const follower = new ConversationFollower(5, NON_EDITING, surface, "c1");
     follower.expect(6);
     await feed(follower, [
       ...working,
@@ -498,34 +507,107 @@ describe("an approval the work waits on", () => {
   });
 });
 
-describe("a notice the outbound queue already delivered", () => {
+describe("a notice and a reply's files", () => {
+  const artifact = (path: string) => ({
+    tool_name: "artifact_data",
+    tool_category: "coding",
+    data: {
+      event: "upsert",
+      session_id: "c1",
+      path,
+      size_bytes: 10,
+      mtime: 1,
+      content_type: "application/pdf",
+    },
+  });
+
   it.each([
     ["editing", EDITING],
     ["non-editing", NON_EDITING],
   ])(
-    "sends no second platform message on a %s platform",
+    "sends a notice logged in an idle conversation once on a %s platform, a replay included",
     async (_family, options) => {
       const { surface, calls } = recorder();
-      const follower = new ConversationFollower(0, options, surface);
-      follower.expect(1);
-      await feed(follower, [
-        entryFrame(1, inbound("u1", "11")),
-        ...answer(2, "r1", "Noted.", ["u1"], 1),
+      const follower = new ConversationFollower(3, options, surface, "c1");
+      const frames = [
         entryFrame(4, notice("n1", "Your reminder: call the bank")),
         stateFrame(4, "idle"),
-      ]);
+      ];
+      await feed(follower, frames);
+      await feed(follower, frames);
 
-      expect(sent(calls)).toHaveLength(1);
-      expect(screen(calls)).toEqual(["Noted."]);
+      expect(calls.filter((call) => call.op === "notice")).toEqual([
+        { op: "notice", bubbles: ["Your reminder: call the bank"] },
+      ]);
+      expect(follower.finished).toBe(true);
     },
   );
+
+  it("uploads each file a settled reply wrote once, after its text", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(0, NON_EDITING, surface, "c1");
+    follower.expect(1);
+    const opened = replyEntry("r1", "a-r1", "Here is the report.");
+    if (opened.kind !== "reply") throw new Error("reply() builds a reply");
+    const written: Entry = {
+      ...opened,
+      tool_data: [artifact("out/report.pdf"), artifact("out/report.pdf")],
+    };
+    await feed(follower, [
+      entryFrame(1, inbound("u1", "11")),
+      entryFrame(2, written),
+      entryFrame(3, replySettled("r1", ["u1"], 1)),
+      entryFrame(3, replySettled("r1", ["u1"], 1)),
+      stateFrame(3, "idle"),
+    ]);
+
+    expect(
+      calls.flatMap((call) =>
+        call.op === "send" || call.op === "file"
+          ? [call.op === "send" ? call.text : call.path]
+          : [],
+      ),
+    ).toEqual(["Here is the report.", "out/report.pdf"]);
+  });
+});
+
+describe("a follow the server woke", () => {
+  it("repeats nothing a follow already delivered when the wake comes late", async () => {
+    const { surface, calls } = recorder();
+    const frames = [
+      entryFrame(1, inbound("u1", "11")),
+      stateFrame(1, "thinking"),
+      ...answer(2, "r1", "Done.", ["u1"], 1),
+      entryFrame(4, notice("n1", "Heads up")),
+      stateFrame(4, "idle"),
+    ];
+    const source: ConversationEventSource = async function* (_ctx, _id, after) {
+      for (const frame of frames) {
+        if (!("seq" in frame) || frame.seq > Number(after))
+          yield { streamId: null, frame };
+      }
+    };
+    const followers = new ConversationFollowers(source, NON_EDITING);
+    const ctx = { platform: NON_EDITING.platform, platformUserId: "7" };
+
+    followers.follow(ctx, "c1", 1, surface);
+    await followers.idle();
+    // The wakes for the reply and the notice, consumed after that follow ended.
+    followers.resume(ctx, "c1", 1, surface);
+    await followers.idle();
+    followers.resume(ctx, "c1", 3, surface);
+    await followers.idle();
+
+    expect(screen(calls)).toEqual(["Done."]);
+    expect(calls.filter((call) => call.op === "notice")).toHaveLength(1);
+  });
 });
 
 describe("history the follow started after", () => {
   it("renders nothing for a reply settled before the posted message", async () => {
     const { surface, calls } = recorder();
     // The stream also replays frames from before the floor (seq 3 here).
-    const follower = new ConversationFollower(3, EDITING, surface);
+    const follower = new ConversationFollower(3, EDITING, surface, "c1");
     follower.expect(4);
     await feed(follower, [
       ...answer(2, "old", "An old answer.", ["u0"], 1),

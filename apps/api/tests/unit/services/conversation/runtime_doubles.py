@@ -40,7 +40,6 @@ from app.services.conversation.ports import (
     Unsettled,
 )
 from app.services.conversation.reducer import reduce
-from app.services.conversation.reply_files import ReplyFile
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.hil import ApprovalDecider
 from shared.py.analytics.context import AnalyticsContext
@@ -505,11 +504,6 @@ class RecordingEffects:
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:
         self._record(EffectCall("start_ack", message_id))
-
-    async def deliver_files(
-        self, conversation_id: str, user_id: str, files: tuple[ReplyFile, ...]
-    ) -> None:
-        self._record(EffectCall("deliver_files", tuple(file.path for file in files)))
 
     async def reset_workflow_threads(self, conversation_id: str) -> None:
         self._record(EffectCall("reset_workflow_threads"))

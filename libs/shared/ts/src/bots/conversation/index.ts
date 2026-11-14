@@ -2,6 +2,8 @@ export { STREAMING_DEFAULTS } from "./delivery-options";
 export { ConversationFollower } from "./follower";
 export type {
   ConversationSurface,
+  FollowSurface,
+  ReplyFile,
   SentBubble,
   StreamingOptions,
 } from "./follower.types";

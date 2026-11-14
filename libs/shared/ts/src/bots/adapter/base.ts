@@ -46,7 +46,10 @@ import { loadConfig } from "../config";
 import type { OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
 import { STREAMING_DEFAULTS } from "../conversation/delivery-options";
-import type { ConversationSurface } from "../conversation/follower.types";
+import type {
+  ConversationSurface,
+  FollowSurface,
+} from "../conversation/follower.types";
 import { ConversationFollowers } from "../conversation/followers";
 import {
   createDeliveryFailureReporter,
@@ -312,6 +315,7 @@ export abstract class BaseBotAdapter {
       (id, text, isChannel) => this.deliverOutbound(id, text, isChannel),
       (id, attachment, isChannel) =>
         this.deliverOutboundFile(id, attachment, isChannel),
+      (target) => this.followTarget(target),
       this.config.gaiaApiUrl,
       this.reportDeliveryFailure,
       this.outboundNotifications,
@@ -743,7 +747,11 @@ export abstract class BaseBotAdapter {
           },
           accepted.conversation_id,
           accepted.seq,
-          this.reportingReactions(surface, request.platformUserId),
+          this.followSurface(
+            surface,
+            request.platformUserId,
+            request.isDm || !request.channelId ? null : request.channelId,
+          ),
         );
       },
     );
@@ -769,16 +777,7 @@ export abstract class BaseBotAdapter {
         let resumed = 0;
         for (const target of active) {
           try {
-            const surface = await this.resumeSurface(target);
-            this.followers.resume(
-              {
-                platform: this.platform,
-                platformUserId: target.platform_user_id,
-              },
-              target.conversation_id,
-              target.after_seq,
-              this.reportingReactions(surface, target.platform_user_id),
-            );
+            await this.followTarget(target);
             resumed += 1;
           } catch (error) {
             recordBotFailure("conversation_resume_failed", error, {
@@ -791,13 +790,58 @@ export abstract class BaseBotAdapter {
     );
   }
 
-  /** The surface with each reaction the platform accepted captured as bot:reaction_delivered. */
-  private reportingReactions(
+  /** Follows a conversation the server listed or woke, after its after_seq, on the chat it lives in. */
+  private async followTarget(target: ActiveBotConversation): Promise<void> {
+    const surface = await this.resumeSurface(target);
+    this.followers.resume(
+      { platform: this.platform, platformUserId: target.platform_user_id },
+      target.conversation_id,
+      target.after_seq,
+      this.followSurface(
+        surface,
+        target.platform_user_id,
+        target.is_dm ? null : target.channel_id,
+      ),
+    );
+  }
+
+  /**
+   * The adapter's surface as a follower renders to it: files and notices go to the
+   * channel, or the user's DM when channelId is null, through the same platform
+   * sends a backend message uses; a reaction the platform accepted is captured as
+   * bot:reaction_delivered.
+   */
+  private followSurface(
     surface: ConversationSurface,
     platformUserId: string,
-  ): ConversationSurface {
+    channelId: string | null,
+  ): FollowSurface {
+    const destination = channelId ?? platformUserId;
+    const isChannel = channelId !== null;
     return {
       ...surface,
+      sendFile: (file) =>
+        this.deliverOutboundFile(
+          destination,
+          {
+            conversation_id: file.conversationId,
+            path: file.path,
+            filename: file.path.split("/").pop() ?? file.path,
+            content_type: file.contentType,
+          },
+          isChannel,
+        ),
+      sendNotice: async (bubbles) => {
+        const notifications = this.outboundNotifications;
+        if (
+          notifications &&
+          (await notifications.windowClosed(destination, isChannel))
+        ) {
+          await notifications.deliver(destination, bubbles.join("\n\n"));
+          return;
+        }
+        for (const bubble of bubbles) await surface.send(bubble, null);
+      },
       react: async (platformMessageId, emoji, replaces) => {
         const outcome = await surface.react(platformMessageId, emoji, replaces);
         if (outcome === REACTION_OUTCOME.ATTACHED) {

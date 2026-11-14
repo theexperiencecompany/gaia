@@ -58,6 +58,7 @@ async function startAndCaptureHandler(
     "amqp://test",
     deliver,
     deliverFile,
+    async () => undefined,
     "https://api.gaia.test",
     vi.fn(),
   );
