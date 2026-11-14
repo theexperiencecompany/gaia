@@ -25,6 +25,7 @@ from app.services.briefing.artifacts import gather_artifacts
 from app.services.briefing.candidates.judge import select_candidates
 from app.services.briefing.candidates.pool import (
     gather_week_candidates,
+    sources_shown,
 )
 from app.services.briefing.errors import BriefingGenerationError
 from app.services.briefing.facts import (
@@ -41,6 +42,7 @@ from app.services.briefing.sections import (
     chosen_sections,
     event_ids,
     log_selection,
+    picked_ids,
 )
 from app.utils.auth_utils import build_user_context
 from app.utils.timezone import Timezone
@@ -82,8 +84,9 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         kind=BRIEFING_KIND_WEEKLY,
     )
     log_selection(len(gathered.pool), selection)
+    chosen = chosen_sections(selection, gathered.pool, WEEKLY_SECTION_TITLES)
     facts = build_facts(
-        chosen_sections(selection, gathered.pool, WEEKLY_SECTION_TITLES),
+        chosen,
         FactSources(
             artifacts=gather_artifacts(
                 context.TrackedWork(completed=[*completed.gaia, *completed.user])
@@ -132,7 +135,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
                 done_by_you=sum(d.you for d in week.days),
                 done_by_gaia=sum(d.gaia for d in week.days),
             ),
-            "sources_read": gathered.sources_read,
+            "sources_read": sources_shown(gathered.pool, picked_ids(chosen)),
         }
     )
     await publish_brief(

@@ -41,6 +41,11 @@ def chosen_sections(
     )
 
 
+def picked_ids(chosen: Chosen) -> set[int]:
+    """Return the pool id of every item the brief's sections show."""
+    return {i for picked in chosen.picked for i, _ in picked}
+
+
 def carried_ids(selection: BriefSelection, pool: CandidatePool, duplicates: list[str]) -> list[str]:
     """Return the held results this brief accounts for: kept, dropped by the judge, or said twice.
 

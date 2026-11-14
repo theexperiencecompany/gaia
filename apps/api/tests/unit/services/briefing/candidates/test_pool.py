@@ -22,6 +22,7 @@ from app.services.briefing.candidates.pool import (
     CandidateSources,
     gather_candidates,
     gather_week_candidates,
+    sources_shown,
 )
 from app.services.briefing.context import CompletedWork, TrackedWork, UserClock, day_start_utc
 from app.services.briefing.scouts.service import ScoutSignals
@@ -169,7 +170,6 @@ class TestGatherCandidates:
             USER_ID, CLOCK, SINCE, NOW, CandidateSources(TrackedWork(), [], scouts, [])
         )
 
-        assert gathered.sources_read == ["Linear", "Notion", "Gmail"]
         assert gathered.sources_unavailable == [
             UnreadSource(app="GitHub", reason=ScoutSkipReason.BUDGET)
         ]
@@ -246,7 +246,6 @@ class TestGatherWeekCandidates:
             "Investor update",
             "Offsite",
         ]
-        assert gathered.sources_read == ["Calendar"]
         assert gathered.sources_unavailable == []
 
     async def test_a_held_duplicate_in_the_week_is_reported_for_clearing(
@@ -258,3 +257,22 @@ class TestGatherWeekCandidates:
         gathered = await gather_week_candidates(USER_ID, SINCE, CompletedWork(), [])
 
         assert gathered.duplicate_held_ids == ["h9"]
+
+
+class TestSourcesShown:
+    def test_only_the_apps_behind_what_the_brief_shows_are_named(self) -> None:
+        pool = {
+            1: _candidate("Fix the redirect", source="linear", app="Linear", state="you"),
+            2: _candidate("Reply to Dan", source="gmail", app="Gmail", state="you"),
+            3: _candidate("Draft the spec", source="notion", app="Notion", state="you"),
+            4: _candidate(
+                "Standup", source="calendar", app="Google Calendar", kind=CandidateKind.EVENT
+            ),
+            5: _candidate("Filed VAT"),
+            6: _candidate("Reply to Ana", source="gmail", app="Gmail", state="you"),
+        }
+
+        assert sources_shown(pool, {6, 2, 5}) == ["Gmail", "Google Calendar"]
+
+    def test_a_brief_showing_nothing_names_no_app(self) -> None:
+        assert sources_shown({1: _candidate("Fix it", source="linear", app="Linear")}, set()) == []

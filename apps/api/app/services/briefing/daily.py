@@ -32,6 +32,7 @@ from app.services.briefing.candidates.judge import select_candidates
 from app.services.briefing.candidates.pool import (
     CandidateSources,
     gather_candidates,
+    sources_shown,
 )
 from app.services.briefing.edition_draws import draw_from_bag
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
@@ -60,6 +61,7 @@ from app.services.briefing.sections import (
     chosen_signals,
     event_ids,
     log_selection,
+    picked_ids,
 )
 from app.services.briefing.slots import (
     referenced_facts,
@@ -229,7 +231,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             "tallies": BriefingTallies(
                 done_by_you=len(completed.user), done_by_gaia=len(completed.gaia)
             ),
-            "sources_read": gathered.sources_read,
+            "sources_read": sources_shown(gathered.pool, picked_ids(chosen)),
             "sources_unavailable": gathered.sources_unavailable,
         }
     )

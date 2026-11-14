@@ -7,7 +7,6 @@ from app.constants.briefing import GAIA_SOURCE
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent, UnreadSource
-from app.models.scout_models import ScoutOutcome
 from app.services.briefing.candidates.app_signals import app_signal_candidates
 from app.services.briefing.candidates.approvals import approval_candidates
 from app.services.briefing.candidates.calendar import calendar_candidates
@@ -28,7 +27,7 @@ from app.services.briefing.scouts.service import ScoutSignals
 
 @dataclass(frozen=True)
 class GatheredCandidates:
-    """The numbered pool, the held results it folded into another candidate, and what was read.
+    """The numbered pool, the held results it folded into another candidate, and what went unread.
 
     duplicate_held_ids are held results saying what another candidate already says: the
     brief accounts for them, so they are cleared with it.
@@ -36,7 +35,6 @@ class GatheredCandidates:
 
     pool: dict[int, BriefCandidate]
     duplicate_held_ids: list[str]
-    sources_read: list[str]
     sources_unavailable: list[UnreadSource]
 
     @property
@@ -71,19 +69,23 @@ def _numbered(candidates: list[BriefCandidate]) -> tuple[dict[int, BriefCandidat
     return pool, duplicates
 
 
-def _apps_in(pool: CandidatePool) -> list[str]:
-    return [c.app for c in pool.values() if c.source != GAIA_SOURCE]
+def sources_shown(pool: CandidatePool, shown: set[int]) -> list[str]:
+    """Name the apps behind what the brief shows: the items it picked and its calendar events."""
+    return list(
+        dict.fromkeys(
+            c.app
+            for i, c in pool.items()
+            if (i in shown or c.kind is CandidateKind.EVENT) and c.source != GAIA_SOURCE
+        )
+    )
 
 
-def _sources(scouts: ScoutSignals, pool: CandidatePool) -> tuple[list[str], list[UnreadSource]]:
-    read = [r.app for r in scouts.results if r.outcome is not ScoutOutcome.SKIPPED]
-    read += _apps_in(pool)
-    unavailable = [
+def _unavailable(scouts: ScoutSignals) -> list[UnreadSource]:
+    return [
         UnreadSource(app=r.app, reason=r.skip_reason)
         for r in scouts.results
         if r.skip_reason is not None
     ]
-    return list(dict.fromkeys(read)), unavailable
 
 
 async def gather_candidates(
@@ -106,8 +108,7 @@ async def gather_candidates(
         *calendar_candidates(sources.calendar),
     ]
     pool, duplicates = _numbered(candidates)
-    read, unavailable = _sources(sources.scouts, pool)
-    return GatheredCandidates(pool, duplicates, read, unavailable)
+    return GatheredCandidates(pool, duplicates, _unavailable(sources.scouts))
 
 
 async def gather_week_candidates(
@@ -121,4 +122,4 @@ async def gather_week_candidates(
         *calendar_candidates(ahead),
     ]
     pool, duplicates = _numbered(candidates)
-    return GatheredCandidates(pool, duplicates, list(dict.fromkeys(_apps_in(pool))), [])
+    return GatheredCandidates(pool, duplicates, [])

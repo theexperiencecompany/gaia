@@ -2787,7 +2787,7 @@ class TestEverySourceReachesItsSection:
             ),
         ]
         assert payload.sections[0].items[2].url == _LOGIN.url
-        assert payload.sources_read == ["Linear", "Gmail", "Google Calendar"]
+        assert payload.sources_read == ["Gmail", "Linear", "Google Calendar"]
         assert [(u.app, u.reason) for u in payload.sources_unavailable] == [
             ("Notion", ScoutSkipReason.FAILED)
         ]
