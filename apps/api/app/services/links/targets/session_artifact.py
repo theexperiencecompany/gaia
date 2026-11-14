@@ -7,6 +7,7 @@ snapshot; opening the link reads the snapshot alone.
 import asyncio
 
 from app.constants.short_links import MAX_SNAPSHOT_BYTES, MAX_VIEW_TEXT_BYTES
+from app.db.repositories.short_links import short_link_repository
 from app.models.short_link_models import (
     LinkSnapshot,
     PublicSessionArtifact,
@@ -104,10 +105,20 @@ async def _preview(
     )
 
 
+async def _in_conversation(owner_id: str, conversation_id: str) -> list[str]:
+    """Read the linked files from the links: a deleted chat's workspace may already be gone."""
+    return await short_link_repository.live_target_ids_under(
+        owner_id,
+        ShortLinkTargetType.SESSION_ARTIFACT,
+        session_artifact_target_id(conversation_id, ""),
+    )
+
+
 SPEC = LinkTargetSpec(
     type=ShortLinkTargetType.SESSION_ARTIFACT,
     kind_line="A file GAIA made, shared with you.",
     project=_project,
     preview=_preview,
     source=_source,
+    in_conversation=_in_conversation,
 )

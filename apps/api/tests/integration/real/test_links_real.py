@@ -22,8 +22,12 @@ from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
 from app.constants.short_links import MAX_RESOLVE_MISSES
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.todos import todo_repository
+from app.models.conversation_models import ConversationDocument
+from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
     LinkAccess,
     ReportReason,
@@ -58,6 +62,7 @@ REPORTERS = [
 ]
 TODO = "todo_deliverable"
 SESSION = "session_artifact"
+OPENUI = "openui_artifact"
 ORIGIN_TEMPLATE = "http://{content_id}.u.test/api/v1/usercontent/{content_id}"
 BROWSER = "Mozilla/5.0 (Macintosh) Safari/605.1.15"
 PNG = bytes.fromhex(
@@ -81,16 +86,19 @@ def viewer(test_app: FastAPI) -> Iterator[Viewer]:
     test_app.dependency_overrides.pop(get_optional_user, None)
 
 
+_COLLECTIONS = ("short_links", "link_reports", "todos", "artifacts", "conversations")
+
+
 @pytest.fixture(autouse=True)
 async def _clean(mongo_db, real_redis) -> AsyncIterator[None]:
-    for name in ("short_links", "link_reports", "todos"):
+    for name in _COLLECTIONS:
         await mongo_db[name].delete_many({})
     from app.db.mongodb import indexes
 
     with patch.object(indexes, "get_async_collection", lambda name: mongo_db[name]):
         await indexes.create_short_link_indexes()
     yield
-    for name in ("short_links", "link_reports", "todos"):
+    for name in _COLLECTIONS:
         await mongo_db[name].delete_many({})
 
 
@@ -165,6 +173,21 @@ def workspace(tmp_path: Path) -> Iterator[Workspace]:
     mod = "app.services.links.targets.session_artifact"
     with patch(f"{mod}.stat_artifact", stat), patch(f"{mod}.resolve_session_path", resolve):
         yield Workspace(root)
+
+
+async def _artifact(conversation_id: str) -> str:
+    artifact = await openui_artifact_repository.create(
+        OpenUIArtifact(
+            user_id=OWNER.user_id,
+            conversation_id=conversation_id,
+            kind=ArtifactKind.REPORT,
+            title="Q3 revenue",
+            program='root = Report("Q3 revenue", [])',
+            brief_hash="b",
+            model="m",
+        )
+    )
+    return artifact.id
 
 
 async def _todo(title: str = "Reply to Acme") -> str:
@@ -827,6 +850,40 @@ class TestReportsAndTakedown:
         await abuse.restore(await _stored(slug))
 
         assert (await _open(client, slug)).status_code == 200
+
+
+class TestDeletingTheSource:
+    async def test_deleting_a_chat_kills_the_links_to_its_files_and_artifacts(
+        self,
+        client: AsyncClient,
+        viewer: Viewer,
+        workspace: Workspace,
+        content_origin: None,
+        mongo_db,
+    ) -> None:
+        await conversation_repository.create(
+            ConversationDocument(
+                user_id=OWNER.user_id, conversation_id="conv-1", createdAt="2026-11-01T00:00:00Z"
+            )
+        )
+        file_slug = (await _share(client, SESSION, workspace.write("chart.png", PNG)))["slug"]
+        cid = (await _stored(file_slug)).snapshot.content_id
+        artifact_id = await _artifact("conv-1")
+        artifact_slug = (await _share(client, OPENUI, artifact_id))["slug"]
+        elsewhere_slug = (await _share(client, OPENUI, await _artifact("conv-2")))["slug"]
+
+        with patch("app.services.conversation_service.capture"):
+            deleted = await client.delete("/api/v1/conversations/conv-1")
+
+        assert deleted.status_code == 200, deleted.text
+        for slug in (file_slug, artifact_slug):
+            gone = await _open(client, slug)
+            assert (gone.status_code, gone.json()["code"]) == (410, "link_target_deleted")
+            assert (await _stored(slug)).revoked_reason is RevokeReason.TARGET_DELETED
+        with pytest.raises(FileNotFoundError):
+            await link_content.read_snapshot(OWNER.user_id, cid)
+        assert await mongo_db["artifacts"].count_documents({"conversation_id": "conv-1"}) == 0
+        assert (await _open(client, elsewhere_slug)).status_code == 200
 
 
 class TestBackfill:

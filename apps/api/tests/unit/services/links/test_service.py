@@ -46,6 +46,8 @@ from app.services.links.service import (
     live_share_link,
     optional_short_link,
     resolve,
+    revoke_conversation_links,
+    revoke_deleted_targets,
     rotate,
     share,
     update_settings,
@@ -772,6 +774,42 @@ class TestUpdateSettings:
             await update_settings(OWNER, "s1", LinkSettingsUpdate(access=LinkAccess.PUBLIC))
 
         assert raised.value.message == "Link not found"
+
+
+class TestDeletedTargets:
+    async def test_each_live_link_dies_as_target_deleted_and_drops_its_bytes(self, store: Store):
+        pinned = _link("file", target_type=SESSION, target_id=FILE_ID, snapshot=OLD)
+        page = _link("page", target_type=SESSION, target_id="conv-1/a.md")
+        raced = _link("raced", target_type=SESSION, target_id="conv-1/b.png", snapshot=FRESH)
+        ids = [FILE_ID, "conv-1/a.md", "conv-1/b.png"]
+        store.links.live_for_targets = AsyncMock(return_value=[pinned, page, raced])
+        # "raced" died between the read and the revoke: its bytes are someone else's to drop.
+        store.links.revoke = AsyncMock(
+            side_effect=lambda _u, slug, _r: None if slug == "raced" else pinned
+        )
+
+        revoked = await revoke_deleted_targets(OWNER, SESSION, ids)
+
+        assert revoked == 2
+        store.links.live_for_targets.assert_awaited_once_with(OWNER, SESSION, ids)
+        assert store.links.revoke.await_args_list == [
+            call(OWNER, slug, RevokeReason.TARGET_DELETED) for slug in ("file", "page", "raced")
+        ]
+        store.delete_snapshot.assert_awaited_once_with(OWNER, OLD)
+
+    async def test_a_conversation_revokes_what_each_type_finds_inside_it(self, store: Store):
+        inside = AsyncMock(return_value=[FILE_ID])
+        registry = {
+            TODO: REGISTRY[TODO],
+            SESSION: replace(REGISTRY[SESSION], in_conversation=inside),
+        }
+        store.links.live_for_targets = AsyncMock(return_value=[])
+
+        with patch(f"{_SVC}.REGISTRY", registry):
+            await revoke_conversation_links(OWNER, "conv-1")
+
+        inside.assert_awaited_once_with(OWNER, "conv-1")
+        store.links.live_for_targets.assert_awaited_once_with(OWNER, SESSION, [FILE_ID])
 
 
 class TestRotate:

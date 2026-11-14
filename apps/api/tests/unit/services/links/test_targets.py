@@ -402,6 +402,17 @@ class TestSessionArtifactSource:
         assert REGISTRY[target_type].source is None
 
 
+class TestSessionArtifactsInAConversation:
+    async def test_are_the_linked_files_under_its_folder(self):
+        with patch(f"{_SESSION_MOD}.short_link_repository") as links:
+            links.live_target_ids_under = AsyncMock(return_value=["conv-1/a.png"])
+
+            found = await REGISTRY[SESSION].in_conversation("owner-1", "conv-1")
+
+        assert found == ["conv-1/a.png"]
+        links.live_target_ids_under.assert_awaited_once_with("owner-1", SESSION, "conv-1/")
+
+
 def _snapshot(**overrides: object) -> LinkSnapshot:
     data: dict[str, object] = {
         "filename": "notes.md",

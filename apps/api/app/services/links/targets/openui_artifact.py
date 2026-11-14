@@ -36,4 +36,5 @@ SPEC = LinkTargetSpec(
     kind_line="A report or dashboard GAIA made, shared with you.",
     project=_project,
     preview=_preview,
+    in_conversation=openui_artifact_repository.ids_in_conversation,
 )
