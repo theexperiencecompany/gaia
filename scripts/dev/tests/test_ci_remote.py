@@ -284,6 +284,31 @@ def test_the_verdict_is_preferred_and_the_job_log_is_not_fetched(
     assert "verdict artifact" in capsys.readouterr().out
 
 
+def test_a_verdict_artifact_replaced_while_it_is_read_is_read_from_its_replacement(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(FakeGh(checks=[FAILED_CHECK], zip_blobs={56: verdict_zip(VERDICT)}))
+    replacement = [{"id": 56, "name": "verdict-mutation-shard-3", "expired": False}]
+    fake.artifacts = [{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}]
+    fake_text = fake.text
+
+    def relisted(args: list[str], timeout_s: int, stdin_text: str | None = None):
+        listed = fake_text(args, timeout_s, stdin_text)
+        if "/artifacts" in (args[1] if len(args) > 1 else ""):
+            fake.artifacts = replacement
+        return listed
+
+    def replaced(args: list[str], timeout_s: int) -> tuple[int, bytes, str]:
+        if args[-1].endswith("/artifacts/55/zip"):
+            return 1, b"", "gh: Not Found (HTTP 404)"
+        return fake.binary(args, timeout_s)
+
+    monkeypatch.setattr(ci_remote, "gh", relisted)
+    monkeypatch.setattr(ci_remote, "gh_bytes", replaced)
+    run_cli(monkeypatch, ["--verbose"])
+    assert "verdict artifact" in capsys.readouterr().out
+
+
 def test_a_lane_with_no_verdict_falls_back_to_the_job_log_and_says_so(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
