@@ -25,6 +25,7 @@ interface PageProps {
 const OG_SITE_NAME = "GAIA";
 const OG_IMAGE_WIDTH = 1200;
 const OG_IMAGE_HEIGHT = 630;
+const HTTP_TOO_MANY_REQUESTS = 429;
 
 async function linkApiFetch(path: string): Promise<Response> {
   const apiBaseUrl = getServerApiBaseUrl();
@@ -39,15 +40,22 @@ async function linkApiFetch(path: string): Promise<Response> {
   });
 }
 
-/** What a preview may show for the link, by its access level and state; `cache` dedupes it per render. */
-const fetchLinkMeta = cache(async (slug: string): Promise<LinkPreviewMeta> => {
-  const response = await linkApiFetch(`/l/${encodeURIComponent(slug)}/meta`);
-  if (!response.ok) {
-    // Never the slug: it is a working link, and this message reaches Sentry.
-    throw new Error(`Short link meta failed with ${response.status}`);
-  }
-  return (await response.json()) as LinkPreviewMeta;
-});
+/**
+ * What a preview may show for the link, by its access level and state; `cache`
+ * dedupes it per render. Null when the viewer is refused for opening too many
+ * links: the page itself says so, from the resolve's own refusal.
+ */
+const fetchLinkMeta = cache(
+  async (slug: string): Promise<LinkPreviewMeta | null> => {
+    const response = await linkApiFetch(`/l/${encodeURIComponent(slug)}/meta`);
+    if (response.status === HTTP_TOO_MANY_REQUESTS) return null;
+    if (!response.ok) {
+      // Never the slug: it is a working link, and this message reaches Sentry.
+      throw new Error(`Short link meta failed with ${response.status}`);
+    }
+    return (await response.json()) as LinkPreviewMeta;
+  },
+);
 
 /**
  * Open the link as an anonymous viewer: this server never sees the viewer's
@@ -74,6 +82,9 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const meta = await fetchLinkMeta(slug);
+  if (!meta) {
+    return { title: OG_SITE_NAME, robots: { index: false, follow: false } };
+  }
   // The generated card lives on whichever host served this page: the site-wide
   // metadataBase is GAIA Cloud's, which would point a self-host's previews there.
   const requestHeaders = await headers();

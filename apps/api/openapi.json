@@ -33168,7 +33168,7 @@
     },
     "/api/v1/l/{slug}/opened": {
       "post": {
-        "description": "Count the link as opened, sent by the viewer's browser once the page shows.\n\nNot the resolve: public pages resolve during SSR, where neither the viewer's\nsession nor their browser is visible, and unfurl bots resolve them too.",
+        "description": "Open the link from the viewer's browser once the page shows: what they see, counted as an open.\n\nNot the resolve: public pages resolve during SSR, where neither the viewer's\nsession nor their browser is visible, and unfurl bots resolve them too.",
         "operationId": "short_links_record_open_route",
         "parameters": [
           {
@@ -33182,7 +33182,14 @@
           }
         ],
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkEnvelope"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "401": {

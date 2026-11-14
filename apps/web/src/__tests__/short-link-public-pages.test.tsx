@@ -112,6 +112,7 @@ describe("a heygaia.link that doesn't open", () => {
         "link_removed",
         "link_revoked",
         "link_target_deleted",
+        "rate_limit_exceeded",
       ].sort(),
     );
   });

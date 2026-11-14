@@ -14,6 +14,7 @@ x-backend-environment: &backend_environment
   PYTHONPATH: /app/apps/api
   JUICEFS_HOST_MOUNT_PATH: /mnt/jfs
   MEMORY_MODEL_CACHE_DIR: /models
+  INTERNAL_API_TOKEN: ${SERVICE_PASSWORD_64_INTERNALAPI}
   ENV: selfhost
   AUTH_MODE: local
   MONGO_DB: mongodb://mongo:27017/gaia
@@ -133,6 +134,7 @@ services:
     image: ghcr.io/theexperiencecompany/gaia-web:${GAIA_VERSION:-latest}
     environment:
       - API_BASE_URL_INTERNAL=http://gaia-backend:8000/api/v1/
+      - INTERNAL_API_TOKEN=${SERVICE_PASSWORD_64_INTERNALAPI}
     depends_on:
       gaia-backend:
         condition: service_healthy

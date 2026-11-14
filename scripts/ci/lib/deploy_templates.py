@@ -112,7 +112,12 @@ _INTERPOLATION_RE = re.compile(r"\$\{(\w+):-([^}]*)\}")
 
 def _machine_secrets() -> list[str]:
     secrets = json.loads(MACHINE_SECRETS.read_text())
-    return [*secrets["always"], *secrets["freshInstallOnly"]]
+    return [*secrets["always"], *secrets["freshInstallOnly"], *secrets["webServer"]]
+
+
+def _web_server_secrets() -> set[str]:
+    """Return the secrets the web app's server shares with the backend."""
+    return set(json.loads(MACHINE_SECRETS.read_text())["webServer"])
 
 
 def _resolve_image(image: str, keep: set[str]) -> str:
@@ -182,6 +187,7 @@ COOLIFY_SECRETS = {
     "GAIA_BOT_API_KEY": "${SERVICE_PASSWORD_64_BOTAPIKEY}",
     "SANDBOX_EXECUTE_TOKEN_SECRET": "${SERVICE_PASSWORD_64_SANDBOXEXECUTETOKEN}",
     "INSTANCE_SECRET": "${SERVICE_PASSWORD_64_INSTANCE}",
+    "INTERNAL_API_TOKEN": "${SERVICE_PASSWORD_64_INTERNALAPI}",
 }
 
 #: What `gaia up` writes into apps/api/.env for a self-host install, with the
@@ -222,10 +228,14 @@ def _coolify_env(name: str, service: YamlMap, shared_env: Anchored) -> Merged | 
         own = {
             k: v
             for k, v in env.items()
-            if k not in HOST_GATEWAY_ENV and shared_env.get(k, object()) != v
+            if k not in HOST_GATEWAY_ENV
+            and k not in COOLIFY_SECRETS
+            and shared_env.get(k, object()) != v
         }
         return Merged(shared_env, own)
-    env = {**env, **COOLIFY_SERVICE_ENV.get(name, {})}
+    # A secret the web server shares with the backend is the backend's own generated value.
+    secrets = {key: COOLIFY_SECRETS[key] for key in env if key in COOLIFY_SECRETS}
+    env = {**env, **secrets, **COOLIFY_SERVICE_ENV.get(name, {})}
     return [key if value is None else f"{key}={value}" for key, value in env.items()]
 
 
@@ -361,6 +371,8 @@ RENDER_DISKS = {
     "chroma_data": ("chroma-data", 5),
 }
 RENDER_DATASTORES = ("mongo", "rabbitmq", "chromadb")
+#: The env group holding the secrets the backend shares with the web app's server.
+RENDER_WEB_SERVER_GROUP = "gaia-web-server"
 #: Every compose service, as a Render service or Render's own managed one.
 RENDER_SERVICES = {
     "proxy",
@@ -426,12 +438,19 @@ def _render_app_group(services: YamlMap, secrets: list[str]) -> list[Any]:
         {"key": "CLOUDINARY_API_KEY", "sync": False},
         {"key": "CLOUDINARY_API_SECRET", "sync": False},
     ]
-    first, *rest = ({"key": name, "generateValue": True} for name in secrets)
+    shared = _web_server_secrets()
+    first, *rest = ({"key": name, "generateValue": True} for name in secrets if name not in shared)
     group.append(
         Note("Machine secrets. Generated once; never rotate them after first boot.", first)
     )
     group.extend(rest)
     return group
+
+
+def _render_web_server_group(secrets: list[str]) -> list[Any]:
+    """List the secrets the backend and the web app's server must hold alike, for a group both link."""
+    shared = _web_server_secrets()
+    return [{"key": name, "generateValue": True} for name in secrets if name in shared]
 
 
 def _render_app_env(services: YamlMap, name: str) -> list[Any]:
@@ -458,7 +477,7 @@ def _render_app_env(services: YamlMap, name: str) -> list[Any]:
             wiring.append(Note(comment, {"key": key, "sync": False}))
         else:
             wiring.append({"key": key, **_from_service("pserv", "gaia-backend", envVarKey=key)})
-    return [{"fromGroup": "gaia-app"}, *own, *wiring]
+    return [{"fromGroup": "gaia-app"}, {"fromGroup": RENDER_WEB_SERVER_GROUP}, *own, *wiring]
 
 
 def _render_datastore(services: YamlMap, name: str) -> YamlMap:
@@ -515,11 +534,12 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
                 "image": _render_image(services["gaia-web"]),
                 "plan": RENDER_PLANS["gaia-web"],
                 "envVars": [
+                    {"fromGroup": RENDER_WEB_SERVER_GROUP},
                     Note(
                         "http://<gaia-backend internal address>/api/v1/ — fill in after the\n"
                         "first deploy (Render cannot compose a URL from a private hostname).",
                         {"key": "API_BASE_URL_INTERNAL", "sync": False},
-                    )
+                    ),
                 ],
             },
             {
@@ -557,7 +577,10 @@ def build_render(compose: YamlMap, secrets: list[str]) -> tuple[str, YamlMap]:
         ]
     )
     document = Spaced(
-        envVarGroups=[{"name": "gaia-app", "envVars": _render_app_group(services, secrets)}],
+        envVarGroups=[
+            {"name": "gaia-app", "envVars": _render_app_group(services, secrets)},
+            {"name": RENDER_WEB_SERVER_GROUP, "envVars": _render_web_server_group(secrets)},
+        ],
         services=render_services,
         databases=[
             {

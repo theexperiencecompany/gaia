@@ -15,15 +15,14 @@ vi.mock("next/headers", () => ({
 vi.mock("@/features/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isAuthenticated: false }),
 }));
-const resolveLinkInBrowser = vi.hoisted(() =>
+const openLinkInBrowser = vi.hoisted(() =>
   vi.fn(() => new Promise(() => undefined)),
 );
 vi.mock("@/features/short-links/api/linkViewerApi", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@/features/short-links/api/linkViewerApi")
   >()),
-  resolveLinkInBrowser,
-  recordShortLinkOpen: () => Promise.resolve(),
+  openLinkInBrowser,
 }));
 
 import ShortLinkPage, { generateMetadata } from "@/app/[locale]/l/[slug]/page";
@@ -43,7 +42,7 @@ const fetchMock = vi.fn<typeof fetch>();
 beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
-  resolveLinkInBrowser.mockClear();
+  openLinkInBrowser.mockClear();
   userAgent = "Mozilla/5.0 (Macintosh)";
   host = "gaia.example.org";
 });
@@ -52,6 +51,19 @@ afterEach(() => {
 });
 
 describe("generateMetadata", () => {
+  it.each(["link_lookup_locked", "rate_limit_exceeded"])(
+    "previews nothing for a viewer refused with %s, leaving the page to say why",
+    async (code) => {
+      fetchMock.mockResolvedValue(respond(429, { message: "slow down", code }));
+
+      const metadata = await generateMetadata({ params });
+
+      expect(metadata.title).toBe("GAIA");
+      expect(metadata.robots).toEqual({ index: false, follow: false });
+      expect(metadata.openGraph).toBeUndefined();
+    },
+  );
+
   it("indexes only an indexable link and points the preview at the generated card", async () => {
     fetchMock.mockResolvedValue(
       respond(200, {
@@ -128,7 +140,7 @@ describe("ShortLinkPage", () => {
         name: "This link was removed for breaking GAIA's terms.",
       }),
     ).toBeTruthy();
-    expect(resolveLinkInBrowser).not.toHaveBeenCalled();
+    expect(openLinkInBrowser).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -144,13 +156,13 @@ describe("ShortLinkPage", () => {
     "hands a %s link to the browser, where only its owner still opens it",
     async (code, copy) => {
       fetchMock.mockResolvedValue(respond(410, { message: "gone", code }));
-      resolveLinkInBrowser.mockRejectedValueOnce(
+      openLinkInBrowser.mockRejectedValueOnce(
         new ApiError("gone", 410, { envelope: { message: "gone", code } }),
       );
 
       render(await ShortLinkPage({ params }));
 
-      expect(resolveLinkInBrowser).toHaveBeenCalledWith(SLUG);
+      expect(openLinkInBrowser).toHaveBeenCalledWith(SLUG);
       expect(await screen.findByRole("heading", { name: copy })).toBeTruthy();
     },
   );
@@ -162,7 +174,7 @@ describe("ShortLinkPage", () => {
 
     render(await ShortLinkPage({ params }));
 
-    expect(resolveLinkInBrowser).toHaveBeenCalledWith(SLUG);
+    expect(openLinkInBrowser).toHaveBeenCalledWith(SLUG);
   });
 
   it("tells a viewer locked out for guessing links to wait", async () => {
@@ -175,6 +187,20 @@ describe("ShortLinkPage", () => {
     expect(
       screen.getByRole("heading", {
         name: "Too many links that don't exist were opened from here. Try again in an hour.",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("tells a viewer over the rate limit to wait a minute", async () => {
+    fetchMock.mockResolvedValue(
+      respond(429, { message: "slow down", code: "rate_limit_exceeded" }),
+    );
+
+    render(await ShortLinkPage({ params }));
+
+    expect(
+      screen.getByRole("heading", {
+        name: "Too many links were opened from here. Try again in a minute.",
       }),
     ).toBeTruthy();
   });

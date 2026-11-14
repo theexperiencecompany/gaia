@@ -144,6 +144,10 @@ services:
       # A custom MCP server added as localhost runs on the machine hosting GAIA,
       # which these containers reach as host.docker.internal (extra_hosts below).
       LOOPBACK_HOST_ALIAS: host.docker.internal
+      # Shared with gaia-web, from the .env beside this file (`gaia up` writes it):
+      # the web server's page fetches name each visitor instead of all counting
+      # as the web container's one address.
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
     # The image CMD runs uvicorn with --proxy-headers --forwarded-allow-ips *.
     # That trust is safe here because port 8000 is never published: the only
     # peers are containers on gaia_network, and the bundled proxy (Caddy)
@@ -238,6 +242,8 @@ services:
       # Browsers call the same-origin /api/v1/ baked into the image; server-side
       # (SSR) fetches reach the API directly over the private network.
       API_BASE_URL_INTERNAL: http://gaia-backend:8000/api/v1/
+      # The same token gaia-backend reads; see its environment.
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-}
     expose:
       - "3000"
     restart: on-failure

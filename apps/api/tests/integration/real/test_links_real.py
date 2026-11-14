@@ -534,14 +534,17 @@ class TestOpens:
         captured.clear()
 
         viewer.user = OWNER
-        await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
+        as_owner = await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
         viewer.user = None
         await client.post(
             f"/api/v1/l/{slug}/opened", headers={"user-agent": "Slackbot-LinkExpanding 1.0"}
         )
         viewer.user = GRANTEE
-        await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
+        as_grantee = await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
 
+        # One browser call both counts the open and tells the owner apart.
+        assert (as_owner.json()["is_owner"], as_grantee.json()["is_owner"]) == (True, False)
+        assert as_grantee.json()["view"]["title"] == "Reply to Acme"
         assert _names(captured) == ["ShortLinkOpened"]
         assert captured[0][1].viewer_signed_in is True
         assert captured[0][1].access == "unlisted"

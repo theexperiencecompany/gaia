@@ -22,7 +22,6 @@ from app.models.short_link_models import (
     LinkEnvelope,
     LinkSettings,
     LinkViewer,
-    LinkViewerKind,
     PublicTodoDeliverable,
     ShortLink,
     ShortLinkTargetType,
@@ -68,21 +67,32 @@ def no_lockout():
         yield miss
 
 
-class TestRecordOpen:
-    """POST /l/{slug}/opened, which the viewer's browser sends once the page shows."""
+_ENVELOPE = LinkEnvelope(
+    access=LinkAccess.UNLISTED,
+    target_type=TODO,
+    view=PublicTodoDeliverable(target_type=TODO, title="Plan", completed=True, content="Done"),
+    content=None,
+    downloadable=False,
+    is_owner=False,
+    owner_target_id=None,
+)
 
-    async def test_a_signed_out_viewer_is_counted_by_address_and_browser(
-        self, unauthed_client: AsyncClient, known_slug: AsyncMock
+
+class TestRecordOpen:
+    """POST /l/{slug}/opened: the viewer's browser opens the link once the page shows."""
+
+    async def test_a_signed_out_viewer_gets_the_view_counted_by_address_and_browser(
+        self, unauthed_client: AsyncClient, no_lockout: AsyncMock, known_slug: AsyncMock
     ) -> None:
-        with patch(
-            f"{_ENDPOINT}.record_open", AsyncMock(return_value=LinkViewerKind.RECIPIENT)
-        ) as record:
+        with patch(f"{_ENDPOINT}.record_open", AsyncMock(return_value=_ENVELOPE)) as record:
             async with captured_wide_event() as event:
                 response = await unauthed_client.post(
                     f"{BASE}/{SLUG}/opened", headers={"user-agent": "Safari/605"}
                 )
 
-        assert response.status_code == 204
+        assert response.status_code == 200
+        assert response.json() == _ENVELOPE.model_dump(mode="json")
+        assert response.headers["cache-control"] == "private, no-store"
         known_slug.assert_awaited_once_with(SLUG)
         ((link, viewer), _) = record.await_args
         assert link == _LINK
@@ -90,29 +100,26 @@ class TestRecordOpen:
         assert event["short_link"] == {
             "operation": "opened",
             "slug_hash": hash_short_link_slug(SLUG),
-            "viewer_kind": "recipient",
         }
         assert SLUG not in str(event)
 
     async def test_a_signed_in_viewer_is_named_with_their_email(
-        self, client: AsyncClient, test_app: FastAPI, known_slug: AsyncMock
+        self, client: AsyncClient, test_app: FastAPI, no_lockout: AsyncMock, known_slug: AsyncMock
     ) -> None:
         test_app.dependency_overrides[get_optional_user] = lambda: FAKE_USER
         try:
-            with patch(
-                f"{_ENDPOINT}.record_open", AsyncMock(return_value=LinkViewerKind.OWNER)
-            ) as record:
+            with patch(f"{_ENDPOINT}.record_open", AsyncMock(return_value=_ENVELOPE)) as record:
                 response = await client.post(f"{BASE}/{SLUG}/opened")
         finally:
             del test_app.dependency_overrides[get_optional_user]
 
-        assert response.status_code == 204
+        assert response.status_code == 200
         ((_, viewer), _) = record.await_args
         assert (viewer.user_id, viewer.email) == (FAKE_USER.user_id, FAKE_USER.email)
         assert viewer.signed_in_as == FAKE_USER.email
 
     async def test_a_denial_answers_with_its_code(
-        self, unauthed_client: AsyncClient, known_slug: AsyncMock
+        self, unauthed_client: AsyncClient, no_lockout: AsyncMock, known_slug: AsyncMock
     ) -> None:
         denied = LinkDeniedError.for_denial(LinkDenial.EXPIRED)
         with patch(f"{_ENDPOINT}.record_open", AsyncMock(side_effect=denied)):
@@ -121,13 +128,20 @@ class TestRecordOpen:
         assert response.status_code == 410
         assert response.json()["code"] == "link_expired"
 
+    async def test_an_unknown_slug_counts_toward_the_lockout(
+        self, unauthed_client: AsyncClient, no_lockout: AsyncMock
+    ) -> None:
+        with patch(f"{_ENDPOINT}.get_link", AsyncMock(return_value=None)):
+            response = await unauthed_client.post(f"{BASE}/{SLUG}/opened")
+
+        assert (response.status_code, response.json()["code"]) == (404, "link_not_found")
+        no_lockout.assert_awaited_once_with("127.0.0.1", SLUG)
+
     async def test_a_viewer_sending_no_user_agent_is_counted_with_an_empty_one(
-        self, unauthed_client: AsyncClient, known_slug: AsyncMock
+        self, unauthed_client: AsyncClient, no_lockout: AsyncMock, known_slug: AsyncMock
     ) -> None:
         del unauthed_client.headers["user-agent"]
-        with patch(
-            f"{_ENDPOINT}.record_open", AsyncMock(return_value=LinkViewerKind.RECIPIENT)
-        ) as record:
+        with patch(f"{_ENDPOINT}.record_open", AsyncMock(return_value=_ENVELOPE)) as record:
             await unauthed_client.post(f"{BASE}/{SLUG}/opened")
 
         ((_, viewer), _) = record.await_args
@@ -162,21 +176,10 @@ class TestResolveOpens:
     async def test_an_open_link_answers_with_its_envelope_uncached(
         self, unauthed_client: AsyncClient, known_slug: AsyncMock
     ) -> None:
-        envelope = LinkEnvelope(
-            access=LinkAccess.UNLISTED,
-            target_type=TODO,
-            view=PublicTodoDeliverable(
-                target_type=TODO, title="Plan", completed=True, content="Done"
-            ),
-            content=None,
-            downloadable=False,
-            is_owner=False,
-            owner_target_id=None,
-        )
         with (
             patch(f"{_ENDPOINT}.abuse.refuse_when_locked_out", AsyncMock()) as lockout,
             patch(f"{_ENDPOINT}.abuse.record_miss", AsyncMock()) as miss,
-            patch(f"{_ENDPOINT}.resolve", AsyncMock(return_value=envelope)) as resolve,
+            patch(f"{_ENDPOINT}.resolve", AsyncMock(return_value=_ENVELOPE)) as resolve,
         ):
             async with captured_wide_event() as event:
                 response = await unauthed_client.get(
@@ -184,7 +187,7 @@ class TestResolveOpens:
                 )
 
         assert response.status_code == 200
-        assert response.json() == envelope.model_dump(mode="json")
+        assert response.json() == _ENVELOPE.model_dump(mode="json")
         assert response.headers["cache-control"] == "private, no-store"
         assert response.headers["vary"] == "Cookie"
         lockout.assert_awaited_once_with("127.0.0.1")

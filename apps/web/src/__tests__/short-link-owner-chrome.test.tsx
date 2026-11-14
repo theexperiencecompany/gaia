@@ -3,13 +3,12 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const resolveLinkInBrowser = vi.hoisted(() => vi.fn());
+const openLinkInBrowser = vi.hoisted(() => vi.fn());
 vi.mock("@/features/short-links/api/linkViewerApi", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@/features/short-links/api/linkViewerApi")
   >()),
-  resolveLinkInBrowser,
-  recordShortLinkOpen: () => Promise.resolve(),
+  openLinkInBrowser,
 }));
 
 vi.mock("@/features/auth/hooks/useAuth", () => ({
@@ -105,11 +104,11 @@ describe("PublicLinkView chrome", () => {
 
 describe("OpenLinkView", () => {
   beforeEach(() => {
-    resolveLinkInBrowser.mockReset();
+    openLinkInBrowser.mockReset();
   });
 
   it("gives the owner the share controls once their browser reads the link", async () => {
-    resolveLinkInBrowser.mockResolvedValue(envelope(true));
+    openLinkInBrowser.mockResolvedValue(envelope(true));
 
     render(<OpenLinkView slug="abcdefghijk" envelope={envelope(false)} />);
 
@@ -118,15 +117,15 @@ describe("OpenLinkView", () => {
         "todo_deliverable:todo-123",
       ),
     );
-    expect(resolveLinkInBrowser).toHaveBeenCalledWith("abcdefghijk");
+    expect(openLinkInBrowser).toHaveBeenCalledWith("abcdefghijk");
   });
 
   it("keeps the server's view for a reader who is not the owner", async () => {
-    resolveLinkInBrowser.mockResolvedValue(envelope(false));
+    openLinkInBrowser.mockResolvedValue(envelope(false));
 
     render(<OpenLinkView slug="abcdefghijk" envelope={envelope(false)} />);
 
-    await waitFor(() => expect(resolveLinkInBrowser).toHaveBeenCalled());
+    await waitFor(() => expect(openLinkInBrowser).toHaveBeenCalled());
     expect(screen.queryByTestId("share")).toBeNull();
     expect(screen.getByText("Trip plan")).toBeTruthy();
   });

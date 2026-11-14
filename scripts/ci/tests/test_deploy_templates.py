@@ -43,16 +43,41 @@ def _render(compose: dict[str, Any], secrets: list[str]) -> dict[str, Any]:
     return _load(dt.render_yaml(*dt.build_render(compose, secrets)))
 
 
+def _render_groups_of(render: dict[str, Any], service: str) -> list[list[dict[str, Any]]]:
+    """Return the env vars of every Render env group a service links."""
+    groups = {group["name"]: group["envVars"] for group in render["envVarGroups"]}
+    entry = next(s for s in render["services"] if s["name"] == service)
+    return [groups[var["fromGroup"]] for var in entry["envVars"] if "fromGroup" in var]
+
+
 def test_every_cli_machine_secret_reaches_both_templates(
     compose: dict[str, Any], secrets: list[str]
 ) -> None:
     coolify_env = _coolify(compose, secrets)["services"]["gaia-backend"]["environment"]
-    render_group = _render(compose, secrets)["envVarGroups"][0]["envVars"]
+    render_backend = [
+        var
+        for group in _render_groups_of(_render(compose, secrets), "gaia-backend")
+        for var in group
+    ]
 
-    assert "GAIA_BOT_API_KEY" in secrets
+    assert {"GAIA_BOT_API_KEY", "INTERNAL_API_TOKEN"} <= set(secrets)
     for name in secrets:
         assert coolify_env[name].startswith("${SERVICE_PASSWORD_64_")
-        assert {"key": name, "generateValue": True} in render_group
+        assert {"key": name, "generateValue": True} in render_backend
+
+
+def test_the_web_server_holds_the_backends_own_rate_limit_token(
+    compose: dict[str, Any], secrets: list[str]
+) -> None:
+    coolify = _coolify(compose, secrets)["services"]
+    render = _render(compose, secrets)
+    token = {"key": "INTERNAL_API_TOKEN", "generateValue": True}
+
+    backend_token = coolify["gaia-backend"]["environment"]["INTERNAL_API_TOKEN"]
+    assert f"INTERNAL_API_TOKEN={backend_token}" in coolify["gaia-web"]["environment"]
+    web_groups = _render_groups_of(render, "gaia-web")
+    assert web_groups == [[token]]
+    assert web_groups[0] in _render_groups_of(render, "gaia-backend")
 
 
 def test_a_secret_coolify_cannot_map_fails_the_generator(

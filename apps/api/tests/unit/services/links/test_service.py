@@ -45,6 +45,7 @@ from app.services.links.service import (
     link_response,
     live_share_link,
     optional_short_link,
+    record_open,
     resolve,
     revoke_conversation_links,
     revoke_deleted_targets,
@@ -60,6 +61,7 @@ from shared.py.analytics.catalog.short_links import (
     ShortLinkAccessChanged,
     ShortLinkCreated,
     ShortLinkDenied,
+    ShortLinkOpened,
     ShortLinkRotated,
 )
 from tests.helpers import captured_wide_event
@@ -1025,6 +1027,52 @@ class TestResolve:
             OWNER, FILE_ID, FRESH.model_copy(update={"content_id": None})
         )
         assert (envelope.content, envelope.downloadable, envelope.is_owner) == (None, False, True)
+
+
+class TestRecordOpen:
+    async def test_a_recipients_browser_gets_the_view_and_one_open_a_day(
+        self, specs: Specs, frozen: None
+    ) -> None:
+        viewer = LinkViewer(user_id="u-ana", email=None, ip=IP, user_agent=UA)
+
+        with patch(f"{_SVC}.capture") as capture:
+            async with captured_wide_event() as event:
+                envelope = await record_open(_link("s1"), viewer)
+
+        assert (envelope.view, envelope.is_owner, envelope.owner_target_id) == (VIEW, False, None)
+        capture.assert_called_once_with(
+            UserId(OWNER),
+            ShortLinkOpened(target_type=TODO.value, access="unlisted", viewer_signed_in=True),
+            _denied_dedupe("s1", "u-ana", "opened"),
+        )
+        assert event["short_link"] == {"viewer_kind": "recipient"}
+
+    @pytest.mark.parametrize(
+        ("viewer", "kind"),
+        [
+            (AS_OWNER, "owner"),
+            (LinkViewer(user_id=None, email=None, ip=IP, user_agent="Slackbot 1.0"), "unfurl_bot"),
+        ],
+    )
+    async def test_the_owner_and_unfurl_bots_are_never_counted(
+        self, specs: Specs, frozen: None, viewer: LinkViewer, kind: str
+    ) -> None:
+        with patch(f"{_SVC}.capture") as capture:
+            async with captured_wide_event() as event:
+                envelope = await record_open(_link("s1"), viewer)
+
+        capture.assert_not_called()
+        assert envelope.is_owner is (kind == "owner")
+        assert event["short_link"] == {"viewer_kind": kind}
+
+    async def test_a_viewer_the_link_does_not_open_for_gets_its_denial(
+        self, specs: Specs, frozen: None
+    ) -> None:
+        with patch(f"{_SVC}.capture"), pytest.raises(LinkDeniedError) as raised:
+            await record_open(_link("s1", access=LinkAccess.OWNER), RECIPIENT)
+
+        assert raised.value.code == "link_sign_in_required"
+        specs.todo_project.assert_not_awaited()
 
 
 class TestLinkResponse:

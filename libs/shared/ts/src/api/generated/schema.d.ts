@@ -2281,7 +2281,7 @@ export interface paths {
         put?: never;
         /**
          * Record Open Route
-         * @description Count the link as opened, sent by the viewer's browser once the page shows.
+         * @description Open the link from the viewer's browser once the page shows: what they see, counted as an open.
          *
          *     Not the resolve: public pages resolve during SSR, where neither the viewer's
          *     session nor their browser is visible, and unfurl bots resolve them too.
@@ -24852,11 +24852,13 @@ export interface operations {
                 };
             };
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LinkEnvelope"];
+                };
             };
             /** @description Sign in to open this. */
             401: {
