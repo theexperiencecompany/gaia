@@ -12,7 +12,7 @@ from app.models.scout_models import (
     SignalImportance,
     SignalMemoryDocument,
 )
-from app.services.briefing.scouts.facts import signals_block
+from app.services.briefing.scouts.facts import memory_note, signals_block
 from app.services.briefing.scouts.memory import remember
 
 USER_ID = "64f1c0ffee0000000000abcd"
@@ -104,7 +104,7 @@ class TestTheFactsBlock:
         assert signals_block(remembered, NOW).splitlines() == [
             "[ACROSS THEIR APPS] 3 item(s) in 2 app(s)",
             "[Jira] 1 item(s)",
-            "- other | issue: Issue 1 | state: Todo | new today",
+            "- other | issue: Issue 1 | state: Todo | first seen today, created date unknown",
             "[Linear] 2 item(s)",
             "- important | issue: Issue 9 | state: Todo | first seen yesterday, never mentioned,"
             " moved from Backlog to Todo",
@@ -147,3 +147,39 @@ class TestTheFactsBlock:
 
     def test_no_signals_is_no_block(self) -> None:
         assert signals_block([], NOW) == ""
+
+
+class TestWhatIsNew:
+    """A first sighting is new only when the app dates the item's creation inside the last day."""
+
+    def test_an_old_item_seen_for_the_first_time_is_not_new(self) -> None:
+        signal = _signal("110").model_copy(
+            update={
+                "created_at": datetime(2025, 6, 18, 9, 0, tzinfo=UTC),
+                "updated_at": datetime(2025, 6, 18, 9, 30, tzinfo=UTC),
+            }
+        )
+
+        note = memory_note(RememberedSignal(signal=signal), NOW)
+
+        assert note == (
+            "first seen today, created 2025-06-18 (491 days ago), last updated 491 days ago"
+        )
+
+    def test_an_item_created_within_the_day_is_new(self) -> None:
+        signal = _signal("7").model_copy(update={"created_at": NOW - timedelta(hours=20)})
+
+        assert memory_note(RememberedSignal(signal=signal), NOW) == "new: created yesterday"
+
+    def test_an_item_the_app_does_not_date_is_never_called_new(self) -> None:
+        assert (
+            memory_note(RememberedSignal(signal=_signal("8")), NOW)
+            == "first seen today, created date unknown"
+        )
+
+    def test_an_item_created_a_full_day_ago_is_not_new(self) -> None:
+        signal = _signal("9").model_copy(update={"created_at": NOW - timedelta(days=1)})
+
+        assert memory_note(RememberedSignal(signal=signal), NOW) == (
+            "first seen today, created 2026-10-21 (yesterday)"
+        )

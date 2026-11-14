@@ -22,6 +22,8 @@ SOURCE = SignalSource(
         due_at="due",
         state="state",
         people="author",
+        created_at="created",
+        updated_at="updated",
     ),
 )
 
@@ -47,8 +49,38 @@ class TestReadingItems:
             "people": ["ana"],
             "url": "https://gh/7",
             "state": "open",
+            "created_at": None,
+            "updated_at": None,
         }
         assert signal.due_at == datetime(2026, 10, 30, tzinfo=UTC)
+
+    def test_the_items_own_creation_and_update_times_are_carried(self) -> None:
+        dated = SOURCE.model_copy(
+            update={
+                "fields": SOURCE.fields.model_copy(
+                    update={"created_at": "created_at", "updated_at": "updated_at"}
+                )
+            }
+        )
+        values = {
+            "reviews": {
+                "items": [
+                    _pr(110, created_at="2025-06-18T09:00:00Z", updated_at="2025-06-19T10:30:00")
+                ]
+            }
+        }
+
+        [signal] = extract_signals(GITHUB, [dated], values)
+
+        assert (signal.created_at, signal.updated_at) == (
+            datetime(2025, 6, 18, 9, 0, tzinfo=UTC),
+            datetime(2025, 6, 19, 10, 30, tzinfo=UTC),
+        )
+
+    def test_an_undated_source_carries_no_creation_time(self) -> None:
+        [signal] = extract_signals(GITHUB, [SOURCE], {"reviews": {"items": [_pr(1)]}})
+
+        assert (signal.created_at, signal.updated_at) == (None, None)
 
     def test_every_replayed_item_starts_normal_whatever_its_due_date(self) -> None:
         """Replay reset importance to due-date; the judge decides it now."""
@@ -165,6 +197,14 @@ class TestAMovedShape:
                 "due_at is a str, not the value the scout learned",
             ),
             (
+                {"reviews": {"items": [_pr(1, created="a while back")]}},
+                "created_at is a str, not the value the scout learned",
+            ),
+            (
+                {"reviews": {"items": [_pr(1, updated="lately")]}},
+                "updated_at is a str, not the value the scout learned",
+            ),
+            (
                 {"reviews": {"items": [_pr(1, html_url={"href": "x"})]}},
                 "url is a dict, not the value the scout learned",
             ),
@@ -183,6 +223,8 @@ class TestAMovedShape:
             "person with no name",
             "people not all names",
             "due not a date",
+            "created not a date",
+            "updated not a date",
             "url not text",
             "state not text",
         ],

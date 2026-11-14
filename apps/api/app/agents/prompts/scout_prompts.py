@@ -31,7 +31,9 @@ When you are done, your ENTIRE final message is one JSON object in a ```json fen
         "url": "<path to its link, or null>",
         "due_at": "<path to its due date, or null>",
         "state": "<path to its status, or null>",
-        "people": "<path to the person or people involved, or null>"
+        "people": "<path to the person or people involved, or null>",
+        "created_at": "<path to when the item was created, or null>",
+        "updated_at": "<path to when the item last changed, or null>"
       }}
     }}
   ],
@@ -45,7 +47,9 @@ When you are done, your ENTIRE final message is one JSON object in a ```json fen
       "due_at": "<ISO 8601 or null>",
       "people": ["<name>"],
       "url": "<link or null>",
-      "state": "<status or null>"
+      "state": "<status or null>",
+      "created_at": "<ISO 8601 or null>",
+      "updated_at": "<ISO 8601 or null>"
     }}
   ]
 }}

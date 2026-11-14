@@ -277,7 +277,9 @@ Voice these in the message, grouped by app. An important item gets its own line,
 concretely, linked to its link when it has one. The rest of an app's items share one line
 ("plus 3 more open in Linear"), linking the ones you name. Use each item's memory: an item
 mentioned yesterday and unchanged gets a short "still" or is left out; one that moved gets
-the move; a new one is news. Never invent an item, a link, a date or a person not shown here.
+the move; one marked new is news. An item only first seen today is not new to them (the app
+dates it earlier, or not at all): never call it new, just assigned or today's. Never invent an
+item, a link, a date or a person not shown here.
 """
 
 
