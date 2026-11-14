@@ -2,10 +2,10 @@
 conversation endpoints' response shapes.
 
 The persistence models describe the document as it is actually stored and read
-back — distinct from the API *request* models, which live in ``chat_models``. The
-embedded ``messages`` array reuses ``MessageModel``; a before-validator runs the
-legacy tool-data normalization at the read boundary so the rest of the app never
-sees an un-normalized message.
+back — distinct from the API *request* models, which live in ``chat_models``.
+Messages are ``MessageModel`` entries read from conversation_entries; a
+before-validator runs the legacy tool-data normalization at the read boundary so
+the rest of the app never sees an un-normalized message.
 
 The response models at the bottom of this file live here rather than alongside
 the requests in ``chat_models`` because they are built from the persistence
@@ -63,7 +63,7 @@ class FoldedCards(BaseModel):
 
 
 class ConversationDocument(UserScopedDocument):
-    """A conversation and its embedded message history as stored in MongoDB.
+    """A conversation as the repository returns it: its head fields and, where read, its entries.
 
     ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
     ``metadata``) so a full-document read returns them verbatim, matching the
@@ -86,6 +86,7 @@ class ConversationDocument(UserScopedDocument):
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
+    # Assembled from conversation_entries by the reads that need history; never stored on the head.
     messages: list[MessageModel] = Field(default_factory=list)
     # Conversation-level artifact registry: one entry per agent-written file,
     # deduped by path; services/chat/artifacts_registry.py owns every write.
@@ -199,12 +200,95 @@ class _ConversationOwnerRow(_ConversationIdRow):
     user_id: str
 
 
-class _MessageProjectionRow(BaseModel):
-    """Positional ``messages.$`` projection — a one-element messages slice."""
+class ConversationEntry(BaseModel):
+    """One message of a conversation's log, at the seq its append committed it under."""
+
+    seq: int
+    message: MessageModel
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def _normalize_message(cls, value: object) -> object:
+        return convert_legacy_tool_data(value) if isinstance(value, dict) else value
+
+
+class StoredEntry(BaseModel):
+    """One conversation_entries document, or one value of a head's outbox: its keys, then the message as stored."""
+
+    model_config = ConfigDict(extra="allow")
+
+    conversation_id: str
+    user_id: str
+    seq: int
+    id: str
+    at: datetime | None = None
+    content_hash: str | None = None
+    migration_fields: dict[str, str] | None = None
+
+    def message_fields(self) -> dict[str, object]:
+        """Return the stored message's own fields: everything but the entry's keys and Mongo's _id."""
+        return {key: value for key, value in (self.model_extra or {}).items() if key != "_id"}
+
+    def document(self) -> dict[str, object]:
+        """Return the entry exactly as it was read, to write it elsewhere unchanged."""
+        return {
+            key: value for key, value in self.model_dump(exclude_unset=True).items() if key != "_id"
+        }
+
+
+class EntryKey(BaseModel):
+    """Which entry holds a seq: the id, seq and committed-content hash of a stored entry, projected."""
 
     model_config = ConfigDict(extra="ignore")
 
-    messages: list[MessageModel] = Field(default_factory=list)
+    id: str
+    seq: int
+    content_hash: str | None = None
+
+
+class EmbeddedState(BaseModel):
+    """What a head read reports of the embedded messages array without shipping it."""
+
+    count: int = 0
+    fingerprint: int | None = None
+
+
+class LegacyMessage(BaseModel):
+    """One element of the embedded messages array the entries migration copies, in whatever shape the old build wrote."""
+
+    model_config = ConfigDict(extra="allow")
+
+    message_id: str | None = None
+    date: object = None
+
+    def stored(self) -> dict[str, object]:
+        """Return the element exactly as it is stored in the array."""
+        return self.model_dump(exclude_unset=True)
+
+
+class ConversationHead(BaseModel):
+    """A conversations document as the entry log reads it: identity, log_head, outbox and migration state."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    conversation_id: str
+    user_id: str
+    log_head: int | None = None
+    outbox: dict[int, StoredEntry] = Field(default_factory=dict)
+    migrated_fingerprint: int | None = None
+    embedded: EmbeddedState | None = Field(default=None, alias="_embedded")
+    existing: list[EntryKey] = Field(default_factory=list)
+    messages: list[LegacyMessage] = Field(default_factory=list)
+
+
+class HeadRefRow(BaseModel):
+    """A head as a migration scan lists it: its _id as text, and identity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    head_id: str
+    conversation_id: str
+    user_id: str
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ from pymongo.errors import OperationFailure
 
 from app.constants.auth import InstanceRole
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.constants.payments import CLAIMED_STATUS
@@ -271,9 +272,33 @@ CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
 }
 
 
+# A conversation's entries: one seq and one id per entry (the protocol's two uniqueness
+# guarantees), then one index per cross-conversation read the repository makes.
+CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
+    (
+        [("user_id", 1), ("conversation_id", 1), ("seq", 1)],
+        {"unique": True, "name": "user_conversation_seq_unique"},
+    ),
+    (
+        [("user_id", 1), ("conversation_id", 1), ("id", 1)],
+        {"unique": True, "name": "user_conversation_id_unique"},
+    ),
+    # find_owner_of_message
+    ([("user_id", 1), ("id", 1)], {"name": "user_entry_id"}),
+    # has_sent_message
+    ([("user_id", 1), ("type", 1)], {"name": "user_entry_type"}),
+    # list_pinned_messages
+    (
+        [("user_id", 1), ("at", 1)],
+        {"name": "user_pinned_at", "partialFilterExpression": {"pinned": True}},
+    ),
+]
+
+
 async def create_conversation_indexes() -> None:
-    """Create indexes for conversations collection."""
+    """Create indexes for the conversations heads and their conversation_entries."""
     conversations_collection = get_async_collection("conversations")
+    entries_collection = get_async_collection(CONVERSATION_ENTRIES_COLLECTION)
     try:
         # Create all conversation indexes concurrently
         await asyncio.gather(
@@ -285,16 +310,16 @@ async def create_conversation_indexes() -> None:
             conversations_collection.create_index(
                 [("user_id", 1), ("starred", 1), ("createdAt", -1)]
             ),
-            # For message pinning operations (nested array queries)
-            conversations_collection.create_index([("user_id", 1), ("messages.message_id", 1)]),
-            # For message pinning aggregations
-            conversations_collection.create_index([("user_id", 1), ("messages.pinned", 1)]),
             # For "active since <date>" range queries (e.g. the cost/usage dashboard).
             # updatedAt is the only activity timestamp stored as a real BSON date —
             # createdAt is an ISO string and can't be range-queried efficiently.
             conversations_collection.create_index([("updatedAt", -1)]),
             conversations_collection.create_index(
                 CONVERSATION_TODO_BINDING_KEYS, **CONVERSATION_TODO_BINDING_OPTIONS
+            ),
+            *(
+                entries_collection.create_index(keys, **options)
+                for keys, options in CONVERSATION_ENTRY_INDEXES
             ),
         )
 

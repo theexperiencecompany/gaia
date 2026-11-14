@@ -7484,7 +7484,7 @@ export interface components {
         };
         /**
          * ConversationDocument
-         * @description A conversation and its embedded message history as stored in MongoDB.
+         * @description A conversation as the repository returns it: its head fields and, where read, its entries.
          *
          *     ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
          *     ``metadata``) so a full-document read returns them verbatim, matching the

@@ -13,7 +13,6 @@ import uuid
 
 import pytest
 
-from app.constants import chat as chat_constants
 from app.db.mongodb import indexes
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.cache import CachePolicy
@@ -25,6 +24,9 @@ from app.models.chat_models import (
     SystemPurpose,
 )
 from app.models.conversation_models import ConversationDocument, ConversationSearchResults
+
+# Every test here writes entries, so each needs the collection with its unique indexes.
+pytestmark = pytest.mark.usefixtures("entries_collection")
 
 
 def _uid() -> str:
@@ -443,20 +445,6 @@ class TestMessages:
             )
             is None
         )
-
-    async def test_append_respects_max_messages_slice(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-        for i in range(3):
-            await repo.append_messages(
-                doc.conversation_id,
-                user_id=doc.user_id,
-                messages=[MessageModel(type="user", response=f"m{i}")],
-                max_messages=2,
-            )
-        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert [m.response for m in fetched.messages] == ["m1", "m2"]  # oldest sliced off
 
     async def test_pin_and_list_and_get_message(self, repo):
         doc = _doc()
@@ -877,9 +865,9 @@ class TestMessageSettlementWrites:
 
 class TestLegacyReadTolerance:
     async def test_get_reads_legacy_message_missing_timestamp_and_legacy_tool_field(
-        self, repo, raw_collection
+        self, repo, raw_collection, entries_collection
     ):
-        # Seed a raw doc bypassing the repository: a message whose tool_data entry
+        # A migrated entry is the legacy message verbatim: a tool_data entry that
         # predates the timestamp field, plus a legacy per-tool field to convert.
         cid, uid = _cid(), _uid()
         await raw_collection.insert_one(
@@ -888,14 +876,20 @@ class TestLegacyReadTolerance:
                 "conversation_id": cid,
                 "description": "legacy",
                 "createdAt": datetime.now(UTC).isoformat(),
-                "messages": [
-                    {
-                        "type": "bot",
-                        "response": "r",
-                        "tool_data": [{"tool_name": "old", "data": {}}],  # no timestamp
-                        "weather_data": {"temp": 5},  # legacy per-tool field
-                    }
-                ],
+                "log_head": 1,
+            }
+        )
+        await entries_collection.insert_one(
+            {
+                "user_id": uid,
+                "conversation_id": cid,
+                "seq": 1,
+                "id": "legacy-1",
+                "at": datetime.now(UTC),
+                "type": "bot",
+                "response": "r",
+                "tool_data": [{"tool_name": "old", "data": {}}],  # no timestamp
+                "weather_data": {"temp": 5},  # legacy per-tool field
             }
         )
         fetched = await repo.get(cid, user_id=uid)
@@ -1022,10 +1016,12 @@ class TestWorkflowAndOnboarding:
         assert await repo.set_workflow_binding(
             doc.conversation_id, user_id=doc.user_id, workflow_id="wf1", workflow_title="Nightly"
         )
-        found = await repo.find_workflow_conversation(doc.user_id, "wf1")
-        assert found is not None and found.conversation_id == doc.conversation_id
-        assert found.source is ConversationSource.WORKFLOW_SYSTEM
-        assert await repo.find_workflow_conversation(doc.user_id, "missing") is None
+        assert await repo.find_workflow_conversation_id(doc.user_id, "wf1") == doc.conversation_id
+        assert (
+            await repo.get_source(doc.conversation_id, user_id=doc.user_id)
+            is ConversationSource.WORKFLOW_SYSTEM
+        )
+        assert await repo.find_workflow_conversation_id(doc.user_id, "missing") is None
 
     async def test_is_workflow_execution_only_for_a_workflows_own_conversation(self, repo):
         # The workflow thread reset keys on this: an email or reminder run is
@@ -1222,136 +1218,3 @@ async def test_owners_of_maps_each_existing_conversation_to_its_owner(repo):
     owners = await repo.owners_of([a_conv.conversation_id, b_conv.conversation_id, _cid()])
 
     assert owners == {a_conv.conversation_id: alice, b_conv.conversation_id: bob}
-
-
-class TestHistoryTrimming:
-    """A conversation is one Mongo document, so history is trimmed — never silently losing what the user kept."""
-
-    async def _seed(
-        self, repo: ConversationRepository, count: int
-    ) -> tuple[ConversationDocument, list[str]]:
-        doc = _doc()
-        await repo.create(doc)
-        ids: list[str] = []
-        for index in range(count):
-            added = await repo.append_messages(
-                doc.conversation_id,
-                user_id=doc.user_id,
-                messages=[MessageModel(type="user", response=f"m{index}")],
-            )
-            assert added is not None
-            ids.extend(added)
-        return doc, ids
-
-    async def test_trimming_keeps_the_newest_messages(self, repo):
-        doc, _ids = await self._seed(repo, 5)
-
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="user", response="m5")],
-            max_messages=3,
-        )
-
-        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert stored is not None
-        assert [message.response for message in stored.messages] == ["m3", "m4", "m5"]
-
-    @pytest.mark.regression
-    async def test_trimming_keeps_a_pinned_message_outside_the_window(self, repo):
-        # Read off the module, not imported: a module-level import of a constant this
-        # PR adds cannot collect on base, and a collection ERROR is not the red to prove.
-        doc, ids = await self._seed(repo, 5)
-        await repo.set_message_pinned(
-            doc.conversation_id, user_id=doc.user_id, message_id=ids[0], pinned=True
-        )
-
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="user", response="m5")],
-            max_messages=3,
-        )
-
-        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert stored is not None
-        assert [message.response for message in stored.messages] == ["m0", "m3", "m4", "m5"]
-        assert stored.messages[0].pinned is True
-
-    async def test_a_cap_above_a_short_history_drops_nothing(self, repo):
-        doc, _ids = await self._seed(repo, 4)
-
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="user", response="m4")],
-            max_messages=10,
-        )
-
-        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert stored is not None
-        assert [message.response for message in stored.messages] == [
-            "m0",
-            "m1",
-            "m2",
-            "m3",
-            "m4",
-        ]
-
-    async def test_a_pinned_message_is_not_duplicated_when_no_trimming_is_needed(self, repo):
-        doc, ids = await self._seed(repo, 3)
-        await repo.set_message_pinned(
-            doc.conversation_id, user_id=doc.user_id, message_id=ids[0], pinned=True
-        )
-
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="user", response="m3")],
-            max_messages=10,
-        )
-
-        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert stored is not None
-        assert [message.response for message in stored.messages] == ["m0", "m1", "m2", "m3"]
-
-    async def test_pins_retained_across_many_trims_stay_bounded(self, repo):
-        """Pins outlive the window, so the pin count needs its own ceiling."""
-        doc = _doc()
-        await repo.create(doc)
-        kept = chat_constants.CONVERSATION_MAX_RETAINED_PINS + 10
-        pinned_ids: list[str] = []
-        for index in range(kept):
-            added = await repo.append_messages(
-                doc.conversation_id,
-                user_id=doc.user_id,
-                messages=[MessageModel(type="user", response=f"p{index}")],
-            )
-            assert added is not None
-            pinned_ids.extend(added)
-
-        for message_id in pinned_ids:
-            await repo.set_message_pinned(
-                doc.conversation_id, user_id=doc.user_id, message_id=message_id, pinned=True
-            )
-
-        # Each append trims to the window, so every pin here lives outside it.
-        for index in range(3):
-            await repo.append_messages(
-                doc.conversation_id,
-                user_id=doc.user_id,
-                messages=[MessageModel(type="user", response=f"tail{index}")],
-                max_messages=3,
-            )
-
-        stored = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert stored is not None
-        pinned = [message.response for message in stored.messages if message.pinned]
-        assert len(pinned) == chat_constants.CONVERSATION_MAX_RETAINED_PINS
-        # The newest pins survive; the oldest fall out with the messages carrying them.
-        assert pinned[0] == f"p{kept - chat_constants.CONVERSATION_MAX_RETAINED_PINS}"
-        assert [message.response for message in stored.messages][-3:] == [
-            "tail0",
-            "tail1",
-            "tail2",
-        ]
