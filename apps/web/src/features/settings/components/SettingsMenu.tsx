@@ -36,6 +36,7 @@ import { ChevronRight, Github } from "@/components/shared/icons";
 import { getLinkByLabel } from "@/config/appConfig";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { DEFAULT_SETTINGS_PATH } from "@/features/settings/config/sectionKeys";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { WhatsNewTimelineMenu } from "@/features/whats-new/components/WhatsNewTimelineMenu";
@@ -405,7 +406,7 @@ export default function SettingsMenu({
           key: "settings",
           label: "Settings",
           icon: Settings01Icon,
-          action: () => router.push("/settings"),
+          action: () => router.push(DEFAULT_SETTINGS_PATH),
         },
         {
           key: "logout",

@@ -7,6 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { expandCanonicalRedirects } from "./canonical-redirects.mjs";
 import { NEXT_SECURITY_HEADER_RULES } from "./security-headers.mjs";
+import { settingsRedirects } from "./settings-redirects.mjs";
 import { POSTHOG_HOST } from "./third-party-origins.mjs";
 import { vanityRedirects } from "./vanity-redirects.mjs";
 
@@ -291,7 +292,11 @@ const nextConfig = {
   // pairs mirror the canonicalSlug/canonicalPath markers in public/data (see
   // canonical-redirects.mjs). Runs before routing/middleware, per locale prefix.
   async redirects() {
-    return [...expandCanonicalRedirects(), ...vanityRedirects()];
+    return [
+      ...expandCanonicalRedirects(),
+      ...vanityRedirects(),
+      ...settingsRedirects(),
+    ];
   },
 };
 

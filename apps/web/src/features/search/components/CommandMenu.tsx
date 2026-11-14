@@ -17,10 +17,10 @@ import React, {
 import { getLinkByLabel } from "@/config/appConfig";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
+import { DEFAULT_SETTINGS_PATH } from "@/features/settings/config/sectionKeys";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { track } from "@/lib/analytics";
-
 import { searchApi } from "../api/searchApi";
 import {
   ANIMATION_CONFIG,
@@ -250,7 +250,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       // Command+, for settings
       if (isOpen && e.key === "," && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        nav.push("/settings");
+        nav.push(DEFAULT_SETTINGS_PATH);
         changeOpen(false);
       }
     };
