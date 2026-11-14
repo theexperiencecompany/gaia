@@ -6,16 +6,22 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
 import pytest
 
+from app.agents.core.background.session import RunKind, create_session, teardown_session
 from app.agents.tools.core.registry import ToolRegistry
 from app.models.conversation_frame_models import (
     MessageBoundaryEvent,
+    ReasoningEvent,
     ResponseEvent,
     StreamPayload,
     ToolDataEvent,
     ToolOutputEvent,
 )
-from app.models.stream_events import MessageBoundaryPayload
-from app.services.conversation.graph_payloads import GraphStreamState, payloads_for_stream_event
+from app.models.stream_events import MessageBoundaryPayload, ReasoningPayload, ToolOutputPayload
+from app.services.conversation.graph_payloads import (
+    GraphStreamState,
+    flush_held_payloads,
+    payloads_for_stream_event,
+)
 from app.services.conversation.reply_text import ReplyText
 from app.utils.errors import ShownReplyRetriedError
 
@@ -355,3 +361,91 @@ async def test_only_a_non_todo_tool_result_streams_its_output(
     payloads = await _stream([((), "messages", (result, _NODE_RUN))], None)
 
     assert any(isinstance(p, ToolOutputEvent) for p in payloads) is streamed
+
+
+def _boundary_of(message_id: str) -> MessageBoundaryEvent:
+    return MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id=message_id))
+
+
+async def test_what_a_message_held_back_while_streaming_is_said_when_its_node_ends() -> None:
+    state = GraphStreamState()
+    # An emoji alone may end as a reaction, so it stays held until its message is whole.
+    assert await _payloads(state, _chunk("m1", "\U0001f44d")) == []
+    ended = await _payloads(state, _node_end(AIMessage(id="m1", content="\U0001f44d")))
+    assert ended == [ResponseEvent(response="\U0001f44d"), _boundary_of("m1")]
+    assert state.complete_message == "\U0001f44d"
+
+
+async def test_a_message_with_no_id_is_said_whole_when_its_node_ends() -> None:
+    state = GraphStreamState()
+    unnamed = ((), "messages", (AIMessageChunk(content="\U0001f44d"), _NODE_RUN))
+    assert await _payloads(state, unnamed) == []
+    ended = await _payloads(state, _node_end(AIMessage(content="\U0001f44d")))
+    assert ended == [ResponseEvent(response="\U0001f44d"), _boundary_of("")]
+
+
+async def test_a_node_message_that_never_streamed_only_closes_its_bubble() -> None:
+    state = GraphStreamState()
+    ended = await _payloads(state, _node_end(AIMessage(id="m9", content="said elsewhere")))
+    assert ended == [_boundary_of("m9")]
+    assert state.complete_message == ""
+
+
+async def test_an_executor_nodes_text_is_never_the_reply() -> None:
+    state = GraphStreamState()
+    events = [_chunk("m1", "working on it"), _node_end(AIMessage(id="m1", content="working on it"))]
+    payloads = [
+        payload
+        for event in events
+        async for payload in payloads_for_stream_event(event, state, False, None, None)
+    ]
+    assert payloads == []
+    assert state.complete_message == ""
+
+
+async def test_comms_thinking_streams_as_its_own_block() -> None:
+    state = GraphStreamState()
+    thinking = AIMessageChunk(
+        id="m1", content="", additional_kwargs={"reasoning_content": "weighing it"}
+    )
+    assert await _payloads(state, ((), "messages", (thinking, _NODE_RUN))) == [
+        ReasoningEvent(reasoning=ReasoningPayload(content="weighing it"))
+    ]
+
+
+async def test_a_retried_call_names_what_the_user_saw() -> None:
+    state = GraphStreamState()
+    await _payloads(state, _chunk("m1", "Your flight "))
+    with pytest.raises(ShownReplyRetriedError) as retried:
+        await _payloads(state, _chunk("m2", "Your flight leaves"))
+    assert retried.value.message == "a model call was retried after the user saw part of its reply"
+
+
+async def test_a_tool_result_streams_once_per_stream_however_often_it_arrives() -> None:
+    result = ToolMessage(content="ok", tool_call_id="c1", name="search")
+    event = ((), "messages", (result, _NODE_RUN))
+    create_session("s1", RunKind.LIVE)
+    try:
+        state = GraphStreamState()
+        payloads = [
+            payload
+            for _ in range(2)
+            async for payload in payloads_for_stream_event(event, state, True, "s1", None)
+        ]
+    finally:
+        teardown_session("s1")
+    assert payloads == [
+        ToolOutputEvent(tool_output=ToolOutputPayload(tool_call_id="c1", output="ok"))
+    ]
+
+
+async def test_a_stream_mode_it_does_not_read_yields_nothing() -> None:
+    state = GraphStreamState()
+    assert await _payloads(state, ((), "values", {"messages": []})) == []
+
+
+async def test_text_a_cancelled_run_never_closed_is_owed_and_kept() -> None:
+    state = GraphStreamState()
+    await _payloads(state, _chunk("m1", "\U0001f44d"))
+    assert flush_held_payloads(state) == [ResponseEvent(response="\U0001f44d")]
+    assert state.complete_message == "\U0001f44d"

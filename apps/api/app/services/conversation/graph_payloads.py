@@ -255,7 +255,11 @@ async def _updates(
             yield card
     # The node finished, so its message is whole: a preamble before a hand-off is said, and stays.
     closing = last_ai_message(messages)
-    closing_text = "" if closing is None else _finish_visible_text(state, closing.id or "")
+    closing_text = (
+        _finish_visible_text(state, closing.id or "")
+        if closing is not None
+        else ""  # pragma: no mutate — without a closing message settle returns no boundary, so none is said
+    )
     state.complete_message, boundary_id = state.held.settle(
         messages, state.complete_message, reply_tier=is_comms
     )
@@ -279,7 +283,8 @@ async def _tool_message_payloads(
     ):
         return
     # claim_tool_output dedups: the run that announced the call wins over the executor's own driver.
-    if claim_tool_output(stream_id or "", chunk.tool_call_id):
+    # With no stream there is no session to dedup in, and the claim is always granted.
+    if stream_id is None or claim_tool_output(stream_id, chunk.tool_call_id):
         yield ToolOutputEvent(
             tool_output=ToolOutputPayload(
                 tool_call_id=chunk.tool_call_id, output=extract_text_content(chunk.content)
