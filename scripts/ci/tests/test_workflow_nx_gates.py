@@ -157,6 +157,11 @@ def _run_commands_targets() -> dict[str, dict[str, Any]]:
         ("uv.lock", "voice-agent:docker:build"),
         ("apps/bots/Dockerfile", "bot-discord:docker:build"),
         ("libs/shared/ts/src/index.ts", "bot-slack:docker:build"),
+        # The screen-over-time suite: the chat on web, the conversation runtime on the API.
+        ("apps/web/src/features/chat/live/connection.ts", "web:e2e-screen"),
+        ("libs/shared/ts/src/conversation/view.ts", "web:e2e-screen"),
+        ("apps/api/app/services/conversation/step.py", "web:e2e-screen"),
+        ("apps/web/e2e/screen-over-time.spec.ts", "web:e2e-screen"),
         # A deleted file is a change: a per-file-ignores entry for it goes stale.
         ("apps/api/app/gone_module.py", "ci:ignore-staleness"),
     ],
@@ -177,6 +182,8 @@ def test_detect_selects(path: str, task: str) -> None:
         ("scripts/ci/deploy.sh", "ci:desktop-package"),
         ("apps/api/CLAUDE.md", "api:docker:build"),
         ("pnpm-lock.yaml", "api:docker:build"),
+        ("apps/web/src/features/landing/components/LazyMotionProvider.tsx", "web:e2e-screen"),
+        ("apps/api/app/services/mail/email_verdict.py", "web:e2e-screen"),
     ],
 )
 def test_detect_leaves_out(path: str, task: str) -> None:
