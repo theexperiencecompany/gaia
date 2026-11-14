@@ -53,7 +53,7 @@ async def _run_with(
         patch.object(
             er, "prepare_executor_execution", AsyncMock(return_value=prepared or (ctx, None))
         ),
-        patch.object(er, "make_redis_stream_writer", lambda _sid: None),
+        patch.object(er, "make_session_writer", lambda _sid: None),
         patch.object(
             er,
             "execute_subagent_stream",

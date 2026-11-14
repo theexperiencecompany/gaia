@@ -37,7 +37,7 @@ def google() -> Iterator[AsyncMock]:
 async def test_deleting_an_event_pushes_one_calendar_change(google, broadcast_channel) -> None:
     await calendar_service.delete_calendar_event(EventDeleteRequest(event_id="evt_1"), USER)
 
-    assert await published_broadcasts(broadcast_channel) == [
+    assert await published_broadcasts(broadcast_channel, USER) == [
         {"user_id": USER, "message": {"type": CALENDAR_CHANGED_EVENT}}
     ]
 
@@ -48,7 +48,7 @@ async def test_an_update_reads_then_writes_and_pushes_once(google, broadcast_cha
     )
 
     assert [request.args[0].method for request in google.await_args_list] == ["GET", "PUT"]
-    assert await published_broadcasts(broadcast_channel) == [
+    assert await published_broadcasts(broadcast_channel, USER) == [
         {"user_id": USER, "message": {"type": CALENDAR_CHANGED_EVENT}}
     ]
 
@@ -58,7 +58,7 @@ async def test_a_read_pushes_nothing(google, broadcast_channel) -> None:
 
     await calendar_service.list_calendars(USER)
 
-    assert await published_broadcasts(broadcast_channel) == []
+    assert await published_broadcasts(broadcast_channel, USER) == []
 
 
 async def test_a_refused_write_pushes_nothing(google, broadcast_channel) -> None:
@@ -67,4 +67,4 @@ async def test_a_refused_write_pushes_nothing(google, broadcast_channel) -> None
     with pytest.raises(HTTPException):
         await calendar_service.delete_calendar_event(EventDeleteRequest(event_id="evt_1"), USER)
 
-    assert await published_broadcasts(broadcast_channel) == []
+    assert await published_broadcasts(broadcast_channel, USER) == []

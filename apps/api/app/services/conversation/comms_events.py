@@ -36,6 +36,7 @@ from app.services.conversation.ports import (
     Silent,
     Streamed,
     Summarized,
+    ToolsRan,
 )
 from app.utils.agent_utils import NodeMessagesUpdate
 from app.utils.multimodal import extract_text_content
@@ -43,6 +44,8 @@ from shared.py.conversation_wire import ToolDataEntry
 
 #: The comms graph node that runs the model.
 _MODEL_NODE = "agent"
+#: The comms graph node that runs the model's tool calls.
+_TOOLS_NODE = "tools"
 GraphEvent = tuple[tuple[str, ...], str, object]
 
 
@@ -81,6 +84,8 @@ class CommsEventMapper:
             out.append(self._streamed(streamed))
         if top_level and mode == "updates":
             out.extend(self._model_output(payload))
+            if isinstance(payload, Mapping) and _TOOLS_NODE in payload:
+                out.append(ToolsRan())
         if top_level and mode == "custom" and _marks_answer_complete(payload):
             out.extend(self._answer_final())
         return out

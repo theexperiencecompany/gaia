@@ -25,6 +25,7 @@ from langchain_core.messages import ToolMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from app.agents.core.background.run_stop import stop_requested
 from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.middleware.factory import (
     AccountingOptions,
@@ -43,7 +44,6 @@ from app.agents.workspace.offload import OffloadInfo, read_offload
 from app.constants.agents import PLAYBOOK_SUSPECT_BASELINE_WINDOW
 from app.constants.hil import HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
 from app.db.repositories.workflow_executions import workflow_executions_repository
 from app.models.agent_models import AgentConfigurable
 from app.models.playbook_models import (
@@ -497,7 +497,7 @@ async def _call_step(
     # before it already had their side effects, and only a result that carries
     # the trace lets the worker hand the rest to the agent without repeating them.
     configurable: AgentConfigurable = run.configurable
-    if await stream_manager.is_cancelled(configurable["stream_id"]):
+    if await stop_requested(configurable["stream_id"]):
         run.stopped = True
         return _StepFailure(call.position, call.tool_name, "the replay was stopped")
     if run.dry_run is not None and not run.dry_run.runs(call.tool_name, call.args):

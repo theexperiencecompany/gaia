@@ -32,13 +32,12 @@ from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_lock_value,
     build_run_item,
-    close_detached_stream,
     keep_alive,
     prepare_run_from_item,
     reclaim_dead_lock,
     release_lock_if_owned,
 )
-from app.agents.core.background.redis_writer import make_redis_stream_writer
+from app.agents.core.background.run_stop import stop_requested
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
@@ -47,6 +46,7 @@ from app.agents.core.background.session import (
     signal_executor_done,
     teardown_session,
 )
+from app.agents.core.background.session_writer import make_session_writer
 from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview, review_run
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -65,7 +65,6 @@ from app.constants.executor import (
     EXECUTOR_STEP_LIMIT_MESSAGE,
 )
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import StreamManager
 from app.models.agent_models import (
     AgentConfigurable,
     AgentConfigurableView,
@@ -182,9 +181,7 @@ async def _run_executor(
                     observe_executor_ttft(ttft_ms / 1000.0, queued=queued)
                 timing_fields = _timing_fields(queue_wait_ms, ttft_ms, active_ms)
                 log.set(executor={"queued": queued, **timing_fields})
-                run_cancelled = bool(run.stream_id) and await StreamManager.is_cancelled(
-                    run.stream_id
-                )
+                run_cancelled = bool(run.stream_id) and await stop_requested(run.stream_id)
                 observe_executor_active(
                     active_ms / 1000.0, status=_active_status(result_type, run_cancelled)
                 )
@@ -324,7 +321,7 @@ async def _execute_executor(
     """Run the executor agent graph once. Never raises on error.
 
     Errors return as _ExecutorResult(text, "error"). Tool events stream to the
-    session's collector via make_redis_stream_writer. The executor inherits comms'
+    session's collector via make_session_writer. The executor inherits comms'
     model/provider/reasoning from configurable (free -> Gemini, paid -> MiniMax M3).
     """
     ctx: SubagentExecutionContext | None = None
@@ -398,7 +395,7 @@ async def _nothing_to_drain() -> None:
 
 def _stream_writer(run: ExecutorRun) -> tuple[StreamWriter, Callable[[], Awaitable[None]]]:
     """Return the run's stream writer and what drains it; a step-dispatched run also publishes its cards."""
-    writer = make_redis_stream_writer(run.stream_id)
+    writer = make_session_writer(run.stream_id)
     if not run.task_id:
         return writer, _nothing_to_drain
     deltas = WorkDeltas(run.conversation_id, run.task_id)
@@ -419,9 +416,7 @@ async def _finalize_executor_run(
     the cancel landed (stopped False, a final result) is delivered whatever the flag says.
     """
     finished = result_type == "final" and not stopped
-    was_cancelled = (
-        bool(run.stream_id) and not finished and await StreamManager.is_cancelled(run.stream_id)
-    )
+    was_cancelled = bool(run.stream_id) and not finished and await stop_requested(run.stream_id)
 
     # Snapshot the approval cards BEFORE signalling done: a waiting todo run tears the
     # session down the moment done_event fires.
@@ -467,7 +462,7 @@ async def _finalize_executor_run(
     # exception would strand it for the full 30-min TTL. Ownership-checked.
     try:
         await release_lock_if_owned(run.conversation_id, run.stream_id, run.task_id)
-        await _close_run_stream(run, was_cancelled)
+        teardown_session(run.stream_id)
     except Exception as e:
         log.error(
             f"{LogTag.AGENT} Executor finalize lock release / stream close failed",
@@ -582,14 +577,6 @@ async def _log_work_finished(
             conversation_id=run.conversation_id,
             task_id=run.task_id,
         )
-
-
-async def _close_run_stream(run: ExecutorRun, was_cancelled: bool) -> None:
-    """Tear down the run's session once its cards are drained; a queued run also closes the stream it owns."""
-    if not run.is_queued:
-        teardown_session(run.stream_id)
-        return
-    await close_detached_stream(run.stream_id, cancelled=was_cancelled)
 
 
 def _spawn_detached_run(prepared: PreparedQueuedTask, conversation_id: str) -> None:
@@ -728,7 +715,7 @@ async def _start_executor_run(
         return False
     if not await record_work_carried(conversation_id, user.user_id, task_id):
         await release_lock_if_owned(conversation_id, prepared.run.stream_id, task_id)
-        await close_detached_stream(prepared.run.stream_id, cancelled=True)
+        teardown_session(prepared.run.stream_id)
         return False
     # Equivalent under mutation: the spawn reads conversation_id only for its log.info.
     _spawn_detached_run(prepared, conversation_id)  # pragma: no mutate

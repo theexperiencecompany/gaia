@@ -86,9 +86,11 @@
         "tool_data": [],
         "timeline": {
           "steps": [],
-          "cards": []
+          "cards": [],
+          "progress": null
         },
-        "image": null
+        "image": null,
+        "retry_target": "u2"
       }
     }
   },
@@ -161,9 +163,18 @@
               }
             }
           ],
-          "cards": []
+          "cards": [],
+          "progress": {
+            "message": "Working on it",
+            "tool_name": "call_executor",
+            "tool_category": "",
+            "integration_name": null,
+            "icon_url": null,
+            "show_category": true
+          }
         },
-        "image": null
+        "image": null,
+        "retry_target": "u2"
       }
     }
   },
@@ -232,9 +243,18 @@
               }
             }
           ],
-          "cards": []
+          "cards": [],
+          "progress": {
+            "message": "Working on it",
+            "tool_name": "call_executor",
+            "tool_category": "",
+            "integration_name": null,
+            "icon_url": null,
+            "show_category": true
+          }
         },
-        "image": null
+        "image": null,
+        "retry_target": "u2"
       }
     }
   },
@@ -250,7 +270,8 @@
         "tool_data": [],
         "timeline": {
           "steps": [],
-          "cards": []
+          "cards": [],
+          "progress": null
         },
         "follow_up_actions": [],
         "image": null,
@@ -259,6 +280,7 @@
         "outcome": null,
         "failure": null,
         "narrates": ["c4f22a9a"],
+        "retry_target": null,
         "files": []
       }
     }
@@ -275,7 +297,8 @@
         "tool_data": [],
         "timeline": {
           "steps": [],
-          "cards": []
+          "cards": [],
+          "progress": null
         },
         "follow_up_actions": [],
         "image": null,
@@ -288,6 +311,7 @@
         "outcome": "answered",
         "failure": null,
         "narrates": ["c4f22a9a"],
+        "retry_target": "u2",
         "files": []
       }
     }

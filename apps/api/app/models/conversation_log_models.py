@@ -408,7 +408,8 @@ class LiveWork(BaseModel):
     task_id: str
     cause_through: int
     answers: tuple[str, ...]
-    pending_approvals: frozenset[str]
+    # In the order they were asked: with work in start order, the order a reply numbers them.
+    pending_approvals: tuple[str, ...]
     # Tasks handed to this work while it ran (WorkStarted.joins); a Stop that ends it ends them.
     joined: tuple[str, ...] = ()
     detached: bool = False
@@ -458,6 +459,11 @@ class ConversationState(BaseModel):
         if any(item.pending_approvals for item in self.work):
             return DisplayState.AWAITING_APPROVAL
         return DisplayState.WORKING if self.work else DisplayState.IDLE
+
+    @property
+    def asking(self) -> tuple[str, ...]:
+        """Return the pending approvals in the one order every surface numbers them: the screen's."""
+        return tuple(approval for item in self.work for approval in item.pending_approvals)
 
 
 class KickStep(BaseModel):

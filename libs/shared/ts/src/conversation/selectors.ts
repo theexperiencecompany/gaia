@@ -1,8 +1,4 @@
-import type { ConversationMessageHit } from "../api/generated";
-import {
-  extractToolProgressMessage,
-  type StreamToolDataEntry,
-} from "../chat/streaming";
+import type { ConversationMessageHit, ToolProgress } from "../api/generated";
 import { LIVE_WORK_STATUS, SCREEN_ITEM_KIND } from "./entries";
 import { DISPLAY_STATE } from "./frames";
 import type {
@@ -26,8 +22,8 @@ export type ScreenRow =
 export interface LoadingRow {
   visible: boolean;
   status: DisplayState;
-  /** The newest draft's tool progress line, shown under the status. */
-  detail: string | null;
+  /** The server's progress line for the newest streaming tool call, shown under the status. */
+  progress: ToolProgress | null;
 }
 
 function streamKey(item: ScreenItem): string | null {
@@ -59,28 +55,25 @@ export function screenRows(view: ConversationView): ScreenRow[] {
   return rows;
 }
 
-/** The cards streaming now: the newest reply draft's, else the newest running work's. */
-function newestCards(view: ConversationView): readonly StreamToolDataEntry[] {
+/** The progress the server states for what streams now: the newest reply draft's, else the newest running work's. */
+function newestProgress(view: ConversationView): ToolProgress | null {
   const draft = view.drafts.at(-1);
-  if (draft) return draft.content.toolData;
+  if (draft) return draft.content.timeline.progress;
   const work = view.items.findLast(
     (item) =>
       item.kind === SCREEN_ITEM_KIND.WORK && LIVE_WORK_STATUS.has(item.status),
   );
-  return work?.kind === SCREEN_ITEM_KIND.WORK
-    ? (work.tool_data as StreamToolDataEntry[])
-    : [];
+  return work?.kind === SCREEN_ITEM_KIND.WORK ? work.timeline.progress : null;
 }
 
-/** The loading row: the server's display state, with the newest streaming cards' progress line. */
+/** The loading row: the server's display state, with the progress it states for what streams now. */
 export function loadingRow(view: ConversationView): LoadingRow {
   const visible = view.display !== DISPLAY_STATE.IDLE;
-  const progress = visible
-    ? newestCards(view)
-        .map(extractToolProgressMessage)
-        .findLast((message) => message !== null)
-    : undefined;
-  return { visible, status: view.display, detail: progress ?? null };
+  return {
+    visible,
+    status: view.display,
+    progress: visible ? newestProgress(view) : null,
+  };
 }
 
 /**
@@ -102,20 +95,31 @@ export function sendingLoadingRow(
 ): LoadingRow {
   const row = loadingRow(view);
   if (row.visible || !awaitingServerState(view, sends)) return row;
-  return { visible: true, status: DISPLAY_STATE.THINKING, detail: null };
+  return { visible: true, status: DISPLAY_STATE.THINKING, progress: null };
 }
 
-/** The user message a retry resends: the message itself, or the newest one before the reply. */
+function retryTarget(item: ScreenItem | undefined): string | null {
+  switch (item?.kind) {
+    case SCREEN_ITEM_KIND.USER:
+      return item.id;
+    case SCREEN_ITEM_KIND.REPLY:
+    case SCREEN_ITEM_KIND.WORK:
+      return item.retry_target;
+    default:
+      return null;
+  }
+}
+
+/** The user message a retry of an item resends: a user item's own, or the one the server names as its retry target. */
 export function messageToRetry(
   view: ConversationView,
   itemId: string,
 ): UserMessage | null {
-  const at = view.items.findIndex((item) => item.id === itemId);
-  if (at === -1) return null;
-  const asked = view.items
-    .slice(0, at + 1)
-    .findLast((item) => item.kind === SCREEN_ITEM_KIND.USER);
-  return asked?.kind === SCREEN_ITEM_KIND.USER ? asked.message : null;
+  const targetId = retryTarget(
+    view.items.find((candidate) => candidate.id === itemId),
+  );
+  const target = view.items.find((candidate) => candidate.id === targetId);
+  return target?.kind === SCREEN_ITEM_KIND.USER ? target.message : null;
 }
 
 /** The words a pinned or searched item shows: the user's message, or a reply's or notice's bubbles. */

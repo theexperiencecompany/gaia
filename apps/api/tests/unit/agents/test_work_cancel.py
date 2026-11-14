@@ -1,4 +1,4 @@
-"""cancel_named_work and stop_unlogged_work: a Stop reaches exactly the work it covers, and what the log never held."""
+"""cancel_named_work: a Stop reaches exactly the work it covers."""
 
 from collections.abc import Iterator
 from unittest.mock import AsyncMock
@@ -8,14 +8,16 @@ import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_progress import progress_key
-from app.agents.core.background.work_cancel import cancel_named_work, stop_unlogged_work
+from app.agents.core.background.run_stop import stop_requested
+from app.agents.core.background.work_cancel import cancel_named_work
 from app.constants.agents import AgentTag
 from app.constants.browser import BrowserStopOutcome
 from app.constants.cache import EXECUTOR_BUSY_PREFIX, EXECUTOR_BUSY_TTL
-from app.core.stream_manager import stream_manager
 from app.models.work_cancel_models import WorkCancelled
+from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser import job_stop
-from app.services.browser.jobs import job_cancel_requested
+from app.services.browser.jobs import job_cancel_requested, put_job_state, set_latest_job
+from tests.browser_factories import make_browser_job_state
 from tests.helpers import captured_wide_event
 from tests.work_cancel_fakes import (
     APPROVAL,
@@ -71,27 +73,32 @@ async def test_a_stops_cancel_reaches_the_named_run_its_queued_work_and_its_appr
         pending_task_ids=["queued-task"],
         approval_ids=APPROVALS,
     )
-    assert await stream_manager.is_cancelled(EXECUTOR_STREAM)
+    assert await stop_requested(EXECUTOR_STREAM)
     assert await fake_redis.get(f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}") is None
     # Neither the subagent an earlier turn left running nor the browser job is named.
-    assert not await stream_manager.is_cancelled(SUBAGENT_STREAM)
+    assert not await stop_requested(SUBAGENT_STREAM)
     assert not await job_cancel_requested(BROWSER_JOB)
     pending_approvals.ledger.assert_awaited_once_with(CONVERSATION, USER, APPROVALS)
 
 
-async def test_the_rest_of_a_stop_reaches_the_subagents_and_browser_job_no_run_holds(
+async def test_stopping_the_run_stops_the_browser_job_it_waits_on(
     no_approvals: ApprovalSeams,
 ) -> None:
     await seed_live_work(CONVERSATION)
-
-    work = await stop_unlogged_work(CONVERSATION, None)
-
-    assert work == WorkCancelled(
-        subagent_ids=["s1"], browser_jobs={BROWSER_JOB: BrowserStopOutcome.STOPPED}
+    await set_latest_job(CONVERSATION, "job-of-the-run")
+    await put_job_state(
+        make_browser_job_state(
+            "job-of-the-run",
+            status=BrowserJobStatus.RUNNING,
+            conversation_id=CONVERSATION,
+            in_background=False,
+        )
     )
-    assert await stream_manager.is_cancelled(SUBAGENT_STREAM)
-    assert await job_cancel_requested(BROWSER_JOB)
-    assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)
+
+    work = await cancel_named_work(CONVERSATION, USER, [EXECUTOR_TASK], approval_ids=[])
+
+    assert work.browser_jobs == {"job-of-the-run": BrowserStopOutcome.STOPPED}
+    assert await job_cancel_requested("job-of-the-run")
 
 
 async def test_the_next_run_is_told_the_work_was_stopped_and_what_to_do_instead(
@@ -154,7 +161,7 @@ async def test_the_subagents_the_stopped_run_dispatched_are_counted_as_stopped(
     work = await cancel_named_work(CONVERSATION, USER, [EXECUTOR_TASK], approval_ids=[])
 
     assert work.subagent_ids == ["own"]
-    assert await stream_manager.is_cancelled(own)
+    assert await stop_requested(own)
 
 
 async def test_the_stop_is_recorded_on_the_wide_event(no_approvals: ApprovalSeams) -> None:
@@ -179,5 +186,5 @@ async def test_naming_only_queued_work_spares_the_run(pending_approvals: Approva
     work = await cancel_named_work(CONVERSATION, USER, ["queued-task"], approval_ids=[])
 
     assert work == WorkCancelled(executor_spared=True, pending_task_ids=["queued-task"])
-    assert not await stream_manager.is_cancelled(EXECUTOR_STREAM)
+    assert not await stop_requested(EXECUTOR_STREAM)
     pending_approvals.ledger.assert_not_awaited()

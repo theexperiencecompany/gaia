@@ -294,15 +294,21 @@ export const chatApi = {
 
   /**
    * Deliver the result of a desktop-executed tool action back to the
-   * backend, where the awaiting agent tool picks it up via Redis.
+   * backend, where the awaiting agent tool picks it up via Redis. A 410 means
+   * another window or device of this user answered first, which is success.
    */
   postDesktopToolResult: async (result: DesktopToolResult): Promise<void> => {
-    // The agent asked for this tool run; the user did nothing.
-    await api.post("/api/v1/desktop/tool-result", {
-      body: result,
-      silent: true,
-      background: true,
-    });
+    try {
+      // The agent asked for this tool run; the user did nothing.
+      await api.post("/api/v1/desktop/tool-result", {
+        body: result,
+        silent: true,
+        background: true,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === HTTP_GONE) return;
+      throw error;
+    }
   },
 
   /**

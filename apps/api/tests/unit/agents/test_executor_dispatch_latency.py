@@ -27,7 +27,6 @@ from app.agents.core.background.executor_runner import _ExecutorResult, run_exec
 from app.agents.core.background.session import ExecutorRun, RunKind, get_session, teardown_session
 from app.agents.tools import executor_tool as et
 from app.constants.general import CALL_EXECUTOR_NAME
-from app.core.stream_manager import StreamManager
 from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
 from shared.py.analytics.catalog.agents import AgentRunCompleted, AgentRunStarted
@@ -53,6 +52,7 @@ def _configurable(stream_id: str) -> AgentConfigurable:
         "bot_message_id": "bmsg-1",
         "user_id": USER_ID,
         "thread_id": "conv-1",
+        "conversation_step": {"epoch": 1, "batch_start": 1, "cause_through": 1, "answers": []},
     }
 
 
@@ -104,6 +104,7 @@ class TestDispatchLatency:
 
         with (
             patch.object(et, "try_acquire_lock", AsyncMock(return_value=True)),
+            patch.object(et, "record_work_started", AsyncMock(return_value=True)),
             patch.object(ExecutorRun, "from_configurable", new=classmethod(_capture_from_config)),
             patch.object(et, "spawn_background_task"),
         ):
@@ -157,7 +158,8 @@ class TestDispatchLatency:
         with (
             patch.object(et, "try_acquire_lock", side_effect=_flaky_acquire),
             patch.object(et, "redis_cache", _mock_redis("dying-stream:old-task")),
-            patch.object(StreamManager, "is_cancelled", AsyncMock(return_value=True)),
+            patch.object(et, "stop_requested", AsyncMock(return_value=True)),
+            patch.object(et, "record_work_started", AsyncMock(return_value=True)),
             patch.object(et, "spawn_background_task"),
             patch.object(et, "log") as mock_log,
             patch.object(et, "time", new=fake_time),
@@ -216,7 +218,7 @@ class TestExecutorRunLatency:
             ),
             patch.object(er, "record_work_finished", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
-            patch.object(er, "_close_run_stream", AsyncMock()),
+            patch.object(er, "teardown_session"),
             patch("app.services.analytics_service.capture") as mock_capture,
         ):
             await run_executor_background(
@@ -468,9 +470,9 @@ class TestBackgroundRunExactWiring:
             patch.object(er, "_finalize_executor_run", AsyncMock()),
             patch.object(er, "record_work_finished", AsyncMock()),
             patch.object(er, "release_lock_if_owned", AsyncMock()),
-            patch.object(er, "_close_run_stream", AsyncMock()),
+            patch.object(er, "teardown_session"),
             patch("app.services.analytics_service.capture", MagicMock()),
-            patch.object(StreamManager, "is_cancelled", is_cancelled_mock),
+            patch.object(er, "stop_requested", is_cancelled_mock),
             patch.object(time, "perf_counter", side_effect=list(perf_values)),
         ):
             yield SimpleNamespace(execute=execute, is_cancelled=is_cancelled_mock)

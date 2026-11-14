@@ -23,6 +23,7 @@ from app.agents.context.assemble import assemble_context
 from app.agents.context.presence_note import presence_note_message
 from app.agents.context.section_context import SectionContext, SectionScope
 from app.agents.context.tiers import AgentTier
+from app.agents.core.background.run_stop import stop_requested
 from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
 from app.agents.core.background.subagent_channel import SubagentCancel
 from app.agents.core.graph_manager import (
@@ -56,7 +57,6 @@ from app.constants.general import (
 from app.constants.graphs import GraphName
 from app.constants.llm import BUDGET_STOP_METADATA_KEY, EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread, build_agent_config
 from app.helpers.message_helpers import (
     build_current_time_message,
@@ -532,7 +532,7 @@ async def execute_subagent_stream(
 async def _stream_cancelled(ctx: SubagentExecutionContext) -> bool:
     """Whether the user stopped this run's stream, or the turn that dispatched it."""
     for stream_id in (ctx.stream_id, ctx.parent_stream_id):
-        if stream_id and await stream_manager.is_cancelled(stream_id):
+        if stream_id and await stop_requested(stream_id):
             return True
     return False
 

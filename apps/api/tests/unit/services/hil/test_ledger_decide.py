@@ -18,6 +18,7 @@ from app.constants.cache import (
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
+from app.constants.hil import ApprovalDecision
 from app.constants.log_tags import LogTag
 from app.models.conversation_log_models import ApprovalDecided
 from app.models.execute_models import DispatchError, DispatchErrorKind
@@ -29,12 +30,14 @@ from app.services.hil import ledger_decide
 from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
+    LedgerWakeUndeliveredError,
     ToolAlwaysAsksError,
 )
 from app.services.hil.ledger_decide import (
     STALLED_EXECUTING_MINUTES,
     LedgerDecision,
     RedeemResult,
+    _wake_agent,
     cancel_ledger_approvals,
     decide_ledger,
     decide_ledger_batch,
@@ -151,7 +154,6 @@ def _row(**overrides: Any) -> MagicMock:
     row.outcome = None
     row.action = None
     row.v = 3
-    row.blocked_by = []
     row.decided_at = None
     row.feedback = None
     row.owner_run_type = ""
@@ -200,7 +202,6 @@ class TestDecideLedger:
 
         assert outcome.committed is True
         assert outcome.outcome == ApprovalOutcome.APPROVED
-        assert outcome.queued is False
         repo.settle.assert_awaited_once_with(
             "ap_abc",
             ApprovalOutcome.APPROVED,
@@ -209,7 +210,7 @@ class TestDecideLedger:
         )
         deliver.assert_awaited_once()
 
-    async def test_approve_delivery_failure_falls_back_to_wake(self) -> None:
+    async def test_approve_delivery_failure_reaches_the_tap(self) -> None:
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import decide_ledger
 
@@ -221,12 +222,9 @@ class TestDecideLedger:
                 "_deliver_ticket",
                 new=AsyncMock(side_effect=RuntimeError("redis down")),
             ),
-            patch.object(ledger_decide, "_wake_agent", new=AsyncMock()) as wake,
+            pytest.raises(RuntimeError, match="redis down"),
         ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
-
-        assert outcome.committed is True
-        wake.assert_awaited_once_with(repo.get_by_approval_id.return_value, "APPROVED", None)
+            await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
 
     async def test_deny_commits_without_delivery(self) -> None:
         from app.services.hil.ledger_decide import decide_ledger
@@ -249,20 +247,6 @@ class TestDecideLedger:
             decided_by=USER_ID,
             feedback="nope",
         )
-        deliver.assert_not_awaited()
-
-    async def test_blocked_approval_stays_queued_without_delivery(self) -> None:
-        from app.services.hil.ledger_decide import decide_ledger
-
-        repo = _repo(_row(blocked_by=["ap_dep"]))
-        with (
-            patch(f"{MODULE}.approval_ledger_repository", new=repo),
-            patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
-        ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
-
-        assert outcome.committed is True
-        assert outcome.queued is True
         deliver.assert_not_awaited()
 
     async def test_unknown_id_raises_not_found(self) -> None:
@@ -448,35 +432,17 @@ class TestConversationFlagSync:
         assert "nope" in str(deliver.await_args.args[2])
         wake.assert_not_awaited()
 
-    async def test_deny_delivery_failure_falls_back_to_wake(self) -> None:
+    async def test_deny_delivery_failure_raises(self) -> None:
         from app.services.hil.ledger_decide import _deliver_verdict
 
-        row = _row()
         with (
             patch(
                 "app.agents.core.background.executor_runner.deliver_to_executor",
                 new=AsyncMock(side_effect=RuntimeError("redis down")),
             ),
-            patch(f"{MODULE}._wake_agent", new=AsyncMock()) as wake,
+            pytest.raises(RuntimeError, match="redis down"),
         ):
-            await _deliver_verdict(row, "DENIED", "nope")
-
-        wake.assert_awaited_once_with(row, "DENIED", "nope")
-
-    async def test_queued_approve_wakes_with_blockers(self) -> None:
-        from app.services.hil.ledger_decide import decide_ledger
-
-        row = _row(blocked_by=["ap_dep"])
-        with (
-            patch(f"{MODULE}.approval_ledger_repository", new=_repo(row)),
-            patch(f"{MODULE}._deliver_ticket", new=AsyncMock()) as deliver,
-            patch(f"{MODULE}._wake_agent", new=AsyncMock()) as wake,
-        ):
-            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
-
-        assert outcome.queued is True
-        deliver.assert_not_awaited()
-        wake.assert_awaited_once_with(row, "QUEUED", "waiting on ap_dep")
+            await _deliver_verdict(_row(), "DENIED", "nope")
 
     async def test_reconcile_heals_stalled_only(self) -> None:
         """Orphaned APPROVED rows are left alone: the ticket lives in model context and only a redeem runs the envelope — never re-nudge."""
@@ -488,7 +454,6 @@ class TestConversationFlagSync:
         orphan = _row(approval_id="ap_orphan")
         orphan.outcome = ApprovalOutcome.APPROVED
         orphan.action = None
-        orphan.blocked_by = []
         repo = _repo()
         repo.list_stalled_executing = AsyncMock(return_value=[stalled])
         repo.settle = AsyncMock(return_value=True)
@@ -907,37 +872,42 @@ class TestApproveDeliversToExecutor:
 
 @pytest.mark.unit
 class TestApproveResumesBackgroundOwner:
-    async def test_approve_with_todo_owner_resumes(self) -> None:
-        """A background todo parked on this approval re-enqueues; the tap never waits on it and never fails for it."""
+    @pytest.mark.parametrize("owner_run_type", ["todo", "workflow"])
+    async def test_approving_a_background_owners_approval_starts_exactly_one_continuation(
+        self, owner_run_type: str
+    ) -> None:
+        """The owner's resume carries the ticket; no second, ownerless ticket run starts beside it."""
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import decide_ledger
 
-        row = _row(owner_run_type="todo", owner_id="todo-9")
+        row = _row(owner_run_type=owner_run_type, owner_id="owner-9")
         repo = _repo(row)
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
-            patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
+            patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as deliver,
             patch.object(ledger_decide, "resume_owner_after_approval", new=AsyncMock()) as resume,
         ):
             outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
 
         assert outcome.committed is True
         resume.assert_awaited_once_with(row)
+        deliver.assert_not_awaited()
 
-    async def test_approve_without_owner_dispatches_to_a_no_op(self) -> None:
+    async def test_approving_a_live_runs_approval_delivers_only_the_ticket(self) -> None:
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import decide_ledger
 
-        repo = _repo(_row())
+        row = _row()
+        repo = _repo(row)
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
-            patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
+            patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()) as deliver,
             patch.object(ledger_decide, "resume_owner_after_approval", new=AsyncMock()) as resume,
         ):
             await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
 
-        # Dispatch is unconditional; the no-owner row returns before any claim.
-        resume.assert_awaited_once()
+        deliver.assert_awaited_once_with(row)
+        resume.assert_not_awaited()
 
     async def test_deny_records_todo_skip_and_resumes_nothing(self) -> None:
         from app.services.hil import ledger_decide
@@ -1117,7 +1087,8 @@ class TestTicketCarriesAge:
     async def test_old_approve_commits_and_task_names_age(self) -> None:
         """No server refuse: a 3-day-old approve commits like any other, and the ticket wake carries the age so the model judges freshness."""
         from app.services.hil import ledger_decide
-        from app.services.hil.ledger_decide import _ticket_task, decide_ledger
+        from app.services.hil.ledger_decide import decide_ledger
+        from app.services.hil.ticket import approval_ticket
 
         old = _row()
         old.created_at = datetime.now(UTC) - timedelta(days=3)
@@ -1132,7 +1103,7 @@ class TestTicketCarriesAge:
         deliver.assert_awaited_once()
         claimed_row = deliver.await_args.args[0]
         assert claimed_row.approval_id == "ap_abc"
-        task = _ticket_task(old)
+        task = approval_ticket(old)
         assert task.startswith("APPROVAL_READY ap_abc")
         assert "72h" in task
         assert 'execute(tool_name="approve"' in task
@@ -1416,24 +1387,17 @@ class TestDecideLedgerOutcomes:
 
         assert "Send it (unknown age)." in seams.deliver.await_args.args[2]
 
-    async def test_a_failed_ticket_delivery_is_reported_and_wakes_the_inbox(
-        self, seams: LedgerSeams
+    @pytest.mark.parametrize("kind", ["approve", "deny"])
+    async def test_a_failed_delivery_raises_to_the_tap_and_wakes_nothing(
+        self, seams: LedgerSeams, kind: ApprovalDecision
     ) -> None:
         seams.rows["ap_1"] = _doc()
         seams.deliver.side_effect = RuntimeError("redis down")
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
+        with pytest.raises(RuntimeError, match="redis down"):
+            await decide_ledger("ap_1", user_id=USER_ID, kind=kind, via="card")
 
-        errors = _warned(seams.log.error)
-        assert errors[
-            f"{LogTag.HIL} Ledger ticket delivery failed; falling back to inbox wake"
-        ] == {
-            "approval_id": "ap_1",
-            "error_type": "RuntimeError",
-        }
-        assert _inbox_lines(seams) == [
-            ("conv-1", "DECISIONS: ap_1=APPROVED Send it", AgentTag.HIL_DECISION)
-        ]
+        assert _inbox_lines(seams) == []
 
     async def test_a_deny_settles_the_card_and_tells_the_agent_why(
         self, seams: LedgerSeams
@@ -1469,78 +1433,27 @@ class TestDecideLedgerOutcomes:
             f"DECISION ap_1=DENIED Send it :: {'n' * 500}{_DENY_TAIL}"
         )
 
-    async def test_a_failed_verdict_delivery_is_reported_and_wakes_the_inbox(
-        self, seams: LedgerSeams
-    ) -> None:
-        seams.rows["ap_1"] = _doc()
-        seams.deliver.side_effect = RuntimeError("redis down")
-
-        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="nope", via="card")
-
-        errors = _warned(seams.log.error)
-        assert errors[
-            f"{LogTag.HIL} Ledger verdict delivery failed; falling back to inbox wake"
-        ] == {
-            "approval_id": "ap_1",
-            "outcome": "DENIED",
-            "error_type": "RuntimeError",
-        }
-        assert _inbox_lines(seams) == [
-            ("conv-1", "DECISIONS: ap_1=DENIED Send it :: nope", AgentTag.HIL_DECISION)
-        ]
-
-    async def test_a_queued_approve_names_its_blockers_in_the_wake(
-        self, seams: LedgerSeams
-    ) -> None:
-        seams.rows["ap_1"] = _doc(blocked_by=["ap_a", "ap_b"])
-
-        outcome = await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
-
-        assert outcome.queued is True
-        assert _inbox_lines(seams) == [
-            (
-                "conv-1",
-                "DECISIONS: ap_1=QUEUED Send it :: waiting on ap_a,ap_b",
-                AgentTag.HIL_DECISION,
-            )
-        ]
-        seams.deliver.assert_not_awaited()
-
 
 @pytest.mark.unit
 class TestTheInboxWake:
-    async def test_no_redis_is_a_loud_drop(self, seams: LedgerSeams) -> None:
-        seams.rows["ap_1"] = _doc(blocked_by=["ap_a"])
+    async def test_no_redis_raises_instead_of_dropping_the_wake(self, seams: LedgerSeams) -> None:
         seams.redis.client = None
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
+        with pytest.raises(LedgerWakeUndeliveredError):
+            await _wake_agent(_doc(), "UNKNOWN", None)
 
         seams.inbox.assert_not_called()
-        errors = _warned(seams.log.error)
-        assert errors[
-            f"{LogTag.HIL} Ledger wake dropped: no Redis client; agent will not learn this outcome"
-        ] == {"approval_id": "ap_1", "outcome": "QUEUED"}
 
-    async def test_a_failed_append_is_reported(self, seams: LedgerSeams) -> None:
-        seams.rows["ap_1"] = _doc(blocked_by=["ap_a"])
+    async def test_a_failed_append_raises(self, seams: LedgerSeams) -> None:
         seams.inbox.return_value.append.side_effect = RuntimeError("redis down")
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
-
-        errors = _warned(seams.log.error)
-        assert errors[f"{LogTag.HIL} Ledger wake failed; outcome lives on the row only"] == {
-            "approval_id": "ap_1",
-            "outcome": "QUEUED",
-            "error_type": "RuntimeError",
-        }
+        with pytest.raises(RuntimeError, match="redis down"):
+            await _wake_agent(_doc(), "UNKNOWN", None)
 
     async def test_a_long_result_is_clipped_in_the_wake(self, seams: LedgerSeams) -> None:
-        seams.rows["ap_1"] = _doc(blocked_by=["x" * 600])
+        await _wake_agent(_doc(), "UNKNOWN", "x" * 600)
 
-        await decide_ledger("ap_1", user_id=USER_ID, kind="approve", via="card")
-
-        text = _inbox_lines(seams)[0][1]
-        assert text == f"DECISIONS: ap_1=QUEUED Send it :: {('waiting on ' + 'x' * 600)[:500]}"
+        assert _inbox_lines(seams)[0][1] == f"DECISIONS: ap_1=UNKNOWN Send it :: {'x' * 500}"
 
 
 @pytest.mark.unit
@@ -1882,11 +1795,10 @@ class TestTheTicketReachesARunWhateverHeldTheConversation:
     _OLD = EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
 
     async def _approve(self) -> MagicMock:
-        from app.agents.core.background import executor_queue as eq, executor_runner as er
+        from app.agents.core.background import executor_runner as er
         from app.services.hil.ledger_decide import _deliver_ticket
 
         with (
-            patch.object(eq, "StreamManager", AsyncMock()),
             patch.object(er, "_spawn_detached_run") as spawn,
             patch.object(er, "record_work_carried", AsyncMock(return_value=True)),
         ):

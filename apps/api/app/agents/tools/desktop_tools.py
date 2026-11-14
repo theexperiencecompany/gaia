@@ -36,7 +36,7 @@ _NOT_DESKTOP_ERROR = (
     "Desktop tools are only available when chatting from the GAIA desktop app. "
     "This conversation did not originate there, so this action cannot run."
 )
-_MISSING_CONTEXT_ERROR = "Desktop tool failed: no active stream context."
+_MISSING_CONTEXT_ERROR = "Desktop tool failed: the run has no user to reach."
 
 
 class _ScreenshotData(BaseModel):
@@ -75,7 +75,7 @@ async def _run_desktop_action(
     """Validate the run context and execute one action on the desktop.
 
     Returns an error string (for the LLM) when the conversation is not a
-    desktop session or the stream context is missing.
+    desktop session or the run carries no user.
     """
     configurable = read_agent_configurable(config)
     source = ConversationSource.coerce(configurable.conversation_source)
@@ -85,16 +85,12 @@ async def _run_desktop_action(
         )
         return _NOT_DESKTOP_ERROR
 
-    stream_id = configurable.stream_id
     user_id = configurable.user_id
-    if not stream_id or not user_id:
-        log.warning(
-            f"{LogTag.TOOL} Desktop tool missing stream_id/user_id in config", tool_name=tool_name
-        )
+    if not user_id:
+        log.warning(f"{LogTag.TOOL} Desktop tool missing user_id in config", tool_name=tool_name)
         return _MISSING_CONTEXT_ERROR
 
     return await request_desktop_action(
-        stream_id=stream_id,
         user_id=user_id,
         tool=tool_name,
         params=params,

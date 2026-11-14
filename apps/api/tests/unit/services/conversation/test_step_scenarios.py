@@ -44,6 +44,7 @@ from app.services.conversation.ports import (
     StepLimitReached,
     Streamed,
     Summarized,
+    ToolsRan,
 )
 from app.services.conversation.step import advance
 from shared.py.conversation_wire import FailureReason, ReplyDeltaFrame, ReplyOutcome, ToolDataEntry
@@ -265,6 +266,7 @@ class StepScenarios:
                 text("on it"),
                 Do(arrive(rt, user("u2"))),
                 ModelOutput(True),
+                ToolsRan(),
                 text("both"),
                 Finished(Replied("on it")),
             ]
@@ -298,6 +300,31 @@ class StepScenarios:
         ]
         await assert_quiet(rt)
 
+    async def test_a_shown_tool_calls_result_card_stays_with_it_above_the_absorbed_message(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script(
+            [
+                card(),
+                Do(arrive(rt, user("u2"))),
+                ModelOutput(True),
+                card(),
+                ToolsRan(),
+                text("both done"),
+                ModelOutput(False),
+                Finished(Replied("both done")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        cards, answer = await replies(rt)
+        assert (cards.text, cards.tool_data) == ("", (CARD, CARD))
+        assert (answer.text, answer.tool_data) == ("both done", ())
+        assert await answered(rt) == [
+            (ReplyOutcome.ANSWERED, ("u1",)),
+            (ReplyOutcome.ANSWERED, ("u2",)),
+        ]
+
     async def test_cards_shown_before_a_message_arrives_stay_above_it_and_the_answer_follows_it(
         self, rt: Runtime
     ) -> None:
@@ -309,6 +336,7 @@ class StepScenarios:
                 Do(arrive(rt, user("u2"))),
                 card(),
                 ModelOutput(True),
+                ToolsRan(),
                 text("PDEU is a university"),
                 ModelOutput(False),
                 Finished(Replied("PDEU is a university")),
@@ -562,7 +590,7 @@ class StepScenarios:
         assert (await replies(rt))[-1].text == HIL_ACK_APPROVED
         assert (await answered(rt))[-1] == (ReplyOutcome.ANSWERED, ("u6",))
         state = await rt.log.state(CONVERSATION, USER)
-        assert [item.pending_approvals for item in state.work] == [frozenset()]
+        assert [item.pending_approvals for item in state.work] == [()]
         await assert_quiet(rt)
 
     async def test_a_mixed_typed_answer_logs_each_approval_once_with_its_own_decision(

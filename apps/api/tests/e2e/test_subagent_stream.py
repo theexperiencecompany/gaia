@@ -2,7 +2,7 @@
 
 Drives the real execute_subagent_stream, the driver every handoff and provider subagent runs
 through. It is not an SSE producer: it calls a stream_writer with plain dicts that
-background/redis_writer.py serializes verbatim, so the writer payloads ARE the frames and
+background/session_writer.py collects verbatim, so the writer payloads ARE the frames and
 Transcript asserts on them the same way.
 
 Two contracts live here and nothing else covers either. Subagent routing: every frame a subagent
@@ -460,7 +460,7 @@ class TestRunShape:
         written: list[dict[str, Any]] = []
 
         with patch(
-            "app.agents.core.subagents.subagent_runner.stream_manager.is_cancelled",
+            "app.agents.core.subagents.subagent_runner.stop_requested",
             new=AsyncMock(side_effect=[False, True]),
         ):
             outcome = await execute_subagent_stream(

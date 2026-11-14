@@ -14,6 +14,7 @@ from collections.abc import Collection
 from dataclasses import asdict
 import json
 
+from app.agents.core.background.run_stop import request_stop, stop_requested
 from app.agents.core.background.subagent_channel import SubagentCancel
 from app.constants.cache import (
     RUNNING_SUBAGENT_THREAD_PREFIX,
@@ -21,7 +22,6 @@ from app.constants.cache import (
     RUNNING_SUBAGENTS_TTL,
 )
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import RunningSubagent
 from shared.py.wide_events import log
@@ -112,14 +112,10 @@ class RunningSubagents:
                 stopped.extend(await self.stop_dispatched_by(subagent.stream_id))
         return stopped
 
-    async def stop_all(self) -> list[RunningSubagent]:
-        """Stop every live run in the conversation; return the ones this call stopped."""
-        return [subagent for subagent in await self.live() if await _stop(subagent)]
-
 
 async def stop_stream(conversation_id: str, stream_id: str) -> list[RunningSubagent]:
     """Stop a stream and every subagent it dispatched, however deep; the one way to stop a run."""
-    await stream_manager.cancel_stream(stream_id)
+    await request_stop(stream_id)
     return await RunningSubagents(conversation_id).stop_dispatched_by(stream_id)
 
 
@@ -130,9 +126,9 @@ async def _stop(subagent: RunningSubagent) -> bool:
         # thread's cancel flag is the stop that replica still reads.
         await SubagentCancel(subagent.subagent_thread_id).request()
         return True
-    if await stream_manager.is_cancelled(subagent.stream_id):
+    if await stop_requested(subagent.stream_id):
         return False
-    await stream_manager.cancel_stream(subagent.stream_id)
+    await request_stop(subagent.stream_id)
     log.info(
         f"{LogTag.AGENT} Stopped a running subagent",
         subagent_id=subagent.subagent_id,

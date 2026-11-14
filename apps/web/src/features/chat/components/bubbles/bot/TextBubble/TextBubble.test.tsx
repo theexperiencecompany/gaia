@@ -50,6 +50,7 @@ const turn = (over: Partial<ChatBubbleBotProps>) =>
   ({
     message_id: "bot-1",
     text: "Looking into dentists",
+    bubbles: ["Looking into dentists"],
     ...over,
   }) as ChatBubbleBotProps;
 

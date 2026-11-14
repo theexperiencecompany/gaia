@@ -65,6 +65,7 @@ from app.services.conversation.ports import (
     StepLimitReached,
     Streamed,
     Summarized,
+    ToolsRan,
     Unsettled,
 )
 from app.services.conversation.reply_analytics import capture_reply_ended, spoken_context
@@ -136,6 +137,8 @@ class _Attempt:
     segment: int = 0
     # Waking entries after covers, of the batch's group, not past a Stop.
     joiners: tuple[LoggedEntry, ...] = ()
+    # Joiners absorbed while text showed: their segment opens once the tool calls already shown return.
+    absorbed: tuple[LoggedEntry, ...] = ()
     # A Stop or another group's input ended the run of joinable entries.
     closed: bool = False
     deltas: int = 0
@@ -476,9 +479,12 @@ async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Endi
             decision = await _decide(ports, attempt)
             if decision is not Verdict.CONTINUE:
                 return decision
+            if isinstance(signal, Finished):
+                await _open_absorbed_segment(ports, attempt)
             if isinstance(signal, Finished | _Crashed):
                 return signal
             if isinstance(signal, Answered):
+                await _open_absorbed_segment(ports, attempt)
                 attempt.answered = await _finish(ports, attempt, signal.outcome)
             elif not isinstance(signal, _Tick):
                 await _handle(ports, attempt, run, signal)
@@ -568,7 +574,7 @@ async def _handle(
     ports: RuntimePorts,
     attempt: _Attempt,
     run: CommsRun,
-    event: Streamed | Summarized | ModelOutput,
+    event: Streamed | Summarized | ModelOutput | ToolsRan,
 ) -> None:
     match event:
         case Summarized():
@@ -578,9 +584,12 @@ async def _handle(
             if has_tool_calls and attempt.joiners:
                 await run.absorb(attempt.joiners)
                 if isinstance(attempt.progress, _Showing):
-                    await _next_segment(ports, attempt)
-                attempt.covers = (*attempt.covers, *attempt.joiners)
+                    attempt.absorbed = (*attempt.absorbed, *attempt.joiners)
+                else:
+                    attempt.covers = (*attempt.covers, *attempt.joiners)
                 attempt.joiners = ()
+        case ToolsRan():
+            await _open_absorbed_segment(ports, attempt)
         case Streamed(payload=payload):
             await _show(ports, attempt, payload)
 
@@ -590,10 +599,12 @@ def _commit_quietly(attempt: _Attempt) -> None:
         attempt.progress = _Quiet(reason=CommitReason.MODEL_OUTPUT)
 
 
-async def _next_segment(ports: RuntimePorts, attempt: _Attempt) -> None:
-    """Settle the text the user already read where it stands, answering what it covered; the rest answers below the absorbed messages."""
+async def _open_absorbed_segment(ports: RuntimePorts, attempt: _Attempt) -> None:
+    """Settle the text the user already read where it stands; the rest answers below the absorbed messages."""
+    if not attempt.absorbed:
+        return
     await _conclude(ports, attempt, _base_reply(attempt), ReplyOutcome.ANSWERED)
-    attempt.covers = ()
+    attempt.covers, attempt.absorbed = attempt.absorbed, ()
     attempt.segment += 1
     attempt.reply_id = f"r{attempt.attempt_id}"
     attempt.progress = _Quiet(reason=CommitReason.MODEL_OUTPUT)

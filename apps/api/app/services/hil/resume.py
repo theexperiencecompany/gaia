@@ -1,17 +1,18 @@
 """Resume driver: wake a background owner parked on a decided approval.
 
-Live runs resume through the executor inbox (ticket redeem). Background runs
-have no live run to wake, so an approval must RE-ENQUEUE the owning work and a
-denial must leave a trace where the owner actually looks:
+Live runs get the ticket through the executor inbox. Background runs have no
+live run to wake, so an approval RE-ENQUEUES the owning work carrying the ticket
+(that resume is the one continuation), and a denial leaves a trace where the
+owner actually looks:
 
 - Tracked todos: log the grant on the todo's activity and re-enqueue the todo
-  in its parked conversation; a denial is recorded on the same log, which its
-  next run reads.
-- Workflows: re-queue with the receipt in the trigger context, so the run
-  continues with the approval in context and the trace in its conversation.
+  in its parked conversation, which redeems the ticket; a denial is recorded on
+  the same log, which its next run reads.
+- Workflows: re-queue with the ticket in the trigger context, so the run
+  redeems it and continues with the trace in its conversation.
 
-Every resume costs a fresh human tap, so no count cap is needed. Everything
-here is best-effort: a resume failure must never fail the tap that approved.
+Every resume costs a fresh human tap, so no count cap is needed; one that
+cannot be enqueued raises to the tap.
 """
 
 from app.constants.log_tags import LogTag
@@ -19,6 +20,8 @@ from app.constants.todos import TodoActivityEvent
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.analytics_service import capture
+from app.services.hil.errors import ResumeNotQueuedError, UnknownResumeOwnerError
+from app.services.hil.ticket import approval_ticket
 from app.services.todo_activity import record_activity
 from app.services.workflow.execution_service import get_last_run_brief
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -30,40 +33,16 @@ from shared.py.wide_events import log
 
 
 async def resume_owner_after_approval(row: ApprovalLedgerDocument) -> None:
-    """Re-enqueue the background owner parked on this approved row. Never raises."""
-    if not row.owner_run_type or not row.owner_id:
+    """Re-enqueue the background owner parked on this approved row, once per approval."""
+    if not await approval_ledger_repository.claim_resume(row.approval_id):
         return
-    try:
-        if not await approval_ledger_repository.claim_resume(row.approval_id):
-            return
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} resume claim failed; skipping resume",
-            approval_id=row.approval_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return
-    try:
-        if row.owner_run_type == "todo":
+    match row.owner_run_type:
+        case "todo":
             await _resume_todo(row)
-        elif row.owner_run_type == "workflow":
+        case "workflow":
             await _resume_workflow(row)
-        else:
-            log.warning(
-                f"{LogTag.HIL} unknown resume owner; skipping",
-                approval_id=row.approval_id,
-                owner_run_type=row.owner_run_type,
-            )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} owner resume failed; the approval itself stands",
-            approval_id=row.approval_id,
-            owner_run_type=row.owner_run_type,
-            owner_id=row.owner_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+        case _:
+            raise UnknownResumeOwnerError(row.approval_id, row.owner_run_type)
 
 
 async def record_owner_deny(row: ApprovalLedgerDocument, feedback: str | None) -> None:
@@ -105,11 +84,11 @@ async def _resume_todo(row: ApprovalLedgerDocument) -> None:
 
 
 async def _resume_workflow(row: ApprovalLedgerDocument) -> None:
-    """Re-queue the workflow with the receipt in its trigger context.
+    """Re-queue the workflow with the ticket in its trigger context.
 
     Re-enters through the normal queue (deterministic job id dedups a racing
-    re-fire), carrying the approval receipt plus the prior execution's trace so
-    the agent continues past the granted step instead of redoing it.
+    re-fire), carrying the ticket plus the prior execution's trace so the agent
+    redeems the granted step instead of redoing the run.
     """
 
     brief = ""
@@ -122,16 +101,18 @@ async def _resume_workflow(row: ApprovalLedgerDocument) -> None:
             error=str(e),
             error_type=type(e).__name__,
         )
-    await WorkflowQueueService.queue_workflow_execution(
+    queued = await WorkflowQueueService.queue_workflow_execution(
         row.owner_id,
         row.user_id,
         {
             "resume_from_approval": row.approval_id,
             "approval_summary": row.summary,
-            "approval_result": "granted",
+            "approval_ticket": approval_ticket(row),
             "prior_run_brief": brief,
         },
     )
+    if not queued:
+        raise ResumeNotQueuedError(row.approval_id, row.owner_run_type)
     capture(
         UserId(row.user_id),
         HilResumed(approval_id=row.approval_id, owner_run_type="workflow"),

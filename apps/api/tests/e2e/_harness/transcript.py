@@ -132,7 +132,7 @@ class Transcript:
 
         Subagents and the background executor do not yield SSE — they call a
         writer, which serializes each dict as data: {json}\\n\\n verbatim
-        (background/redis_writer.py). So a writer payload *is* a frame, and
+        (background/session_writer.py). So a writer payload *is* a frame, and
         the same assertions apply on both sides of that boundary.
         """
         return cls._build([f"{DATA_PREFIX}{json.dumps(p)}\n\n" for p in payloads])

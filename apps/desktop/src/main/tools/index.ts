@@ -1,9 +1,11 @@
 /**
  * Desktop tool dispatcher — the privileged half of the desktop tool bridge.
  *
- * The renderer relays `desktop_tool_request` frames from the chat SSE
- * stream here over IPC; this module routes each action to its handler and
+ * The renderer relays `desktop_tool_request` messages from the user's
+ * WebSocket here over IPC; this module routes each action to its handler and
  * returns a serializable result the renderer POSTs back to the backend.
+ * Every window of the app receives the same message, so one request id runs
+ * once: later relays share the first run's result.
  *
  * @module tools
  */
@@ -17,13 +19,29 @@ import { listWindows, openApp, openUrl } from "./apps";
 import { readClipboardText, writeClipboardText } from "./clipboard";
 import { captureScreenshot } from "./screenshot";
 
-export async function dispatchDesktopTool(
+const runs = new Map<string, Promise<DesktopToolResult>>();
+
+export function dispatchDesktopTool(
   request: DesktopToolRequest,
+): Promise<DesktopToolResult> {
+  const requestId =
+    typeof request?.request_id === "string" ? request.request_id : "";
+  const running = runs.get(requestId);
+  if (running) return running;
+  const run = runDesktopTool(request, requestId);
+  if (requestId) {
+    runs.set(requestId, run);
+    void run.finally(() => runs.delete(requestId));
+  }
+  return run;
+}
+
+async function runDesktopTool(
+  request: DesktopToolRequest,
+  requestId: string,
 ): Promise<DesktopToolResult> {
   // request arrives from the wire — read identity defensively so a malformed
   // frame still yields a serializable result instead of throwing past it.
-  const requestId =
-    typeof request?.request_id === "string" ? request.request_id : "";
   const toolName = typeof request?.tool === "string" ? request.tool : "unknown";
   try {
     const data = await executeAction(request);

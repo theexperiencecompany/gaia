@@ -8,17 +8,21 @@ from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.conversation.runtime import runtime_ports
+from app.services.hil.errors import ApprovalRequestNotFoundError
 
 
 async def pending_approvals(conversation_id: str, user_id: str) -> list[ApprovalLedgerDocument]:
-    """Return the envelopes of the approvals the conversation's log has pending, oldest first."""
-    state = await runtime_ports().log.state(conversation_id, user_id)
-    pending = sorted({approval for work in state.work for approval in work.pending_approvals})
-    rows = await asyncio.gather(*map(approval_ledger_repository.get_by_approval_id, pending))
-    return sorted(
-        (row for row in rows if row is not None),
-        key=lambda row: (row.created_at or datetime.min.replace(tzinfo=UTC), row.approval_id),
-    )
+    """Return the envelopes of the approvals the conversation's log has pending, in the screen's order.
+
+    A typed "yes to 2" indexes this list, so a pending approval with no ledger row raises
+    rather than shifting every number after it.
+    """
+    asking = (await runtime_ports().log.state(conversation_id, user_id)).asking
+    rows = await asyncio.gather(*map(approval_ledger_repository.get_by_approval_id, asking))
+    found = [row for row in rows if row is not None]
+    if len(found) != len(asking):
+        raise ApprovalRequestNotFoundError()
+    return found
 
 
 async def pending_approvals_by_owner(

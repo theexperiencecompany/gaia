@@ -148,6 +148,11 @@ class ModelOutput:
 
 
 @dataclass(frozen=True)
+class ToolsRan:
+    """The tool calls of the model's last output returned: every card they show has streamed."""
+
+
+@dataclass(frozen=True)
 class Replied:
     """The run ended with a reply; saved only when it streamed nothing, else the shown deltas are."""
 
@@ -185,7 +190,7 @@ class Finished:
     outcome: RunOutcome
 
 
-RunEvent = Streamed | Summarized | ModelOutput | Answered | Finished
+RunEvent = Streamed | Summarized | ModelOutput | ToolsRan | Answered | Finished
 
 
 class CommsRun(Protocol):

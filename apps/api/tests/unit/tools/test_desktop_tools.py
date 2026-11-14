@@ -1,7 +1,7 @@
 """Behavior tests for app.agents.tools.desktop_tools.
 
 Locks: desktop-only gating (a non-desktop source is refused with the
-not-desktop error), the stream/user context guard, the bridge outcome shapes
+not-desktop error), the user context guard, the bridge outcome shapes
 (error strings for the LLM on failure), screenshot persistence with graceful
 degradation when the workspace write fails, and the window list formatting.
 """
@@ -24,7 +24,6 @@ from app.utils.image_codec import InlineImage
 
 MODULE = "app.agents.tools.desktop_tools"
 
-STREAM_ID = "stream-1"
 USER_ID = "user-1"
 
 
@@ -32,7 +31,6 @@ def _config(source: str = "desktop") -> dict[str, Any]:
     return {
         "configurable": {
             "conversation_source": source,
-            "stream_id": STREAM_ID,
             "user_id": USER_ID,
             "conversation_id": "conv-1",
         }
@@ -49,15 +47,6 @@ class TestDesktopGating:
             result = await read_clipboard.coroutine(config=_config("web"))
 
         assert result == _NOT_DESKTOP_ERROR
-        action.assert_not_called()
-
-    async def test_missing_stream_context_is_refused(self) -> None:
-        config = _desktop_config()
-        config["configurable"].pop("stream_id")
-        with patch(f"{MODULE}.request_desktop_action", AsyncMock()) as action:
-            result = await read_clipboard.coroutine(config=config)
-
-        assert result == _MISSING_CONTEXT_ERROR
         action.assert_not_called()
 
     async def test_missing_user_id_is_refused(self) -> None:

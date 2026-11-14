@@ -25,26 +25,24 @@ from app.agents.core.background.executor_queue import (
     try_acquire_lock,
 )
 from app.agents.core.background.executor_runner import run_executor_background
+from app.agents.core.background.run_stop import stop_requested
 from app.agents.core.background.session import (
     ExecutorRun,
     RunIdentity,
     RunKind,
     mark_executor_spawned,
 )
-from app.agents.core.background.work_cancel import cancel_named_work, stop_unlogged_work
+from app.agents.core.background.work_cancel import cancel_named_work
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.constants.agents import TimeHorizon
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
-from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import StreamManager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.ownership_models import ExecutorIntent
 from app.models.work_cancel_models import WorkCancelled
 from app.services.browser.chat_task import stop_report
-from app.services.browser.job_stop import requester_chat
 from app.services.conversation.work_log import (
     approvals_awaited_by,
     record_gaia_stop,
@@ -83,7 +81,7 @@ async def _acquire_lock_through_redirect(
     # that cross-process release, so polling is the correct mechanism here.
     while waited < REDIRECT_CANCEL_WAIT_S:  # NOSONAR python:S7484
         if not saw_cancel:
-            saw_cancel = await StreamManager.is_cancelled(held_stream_id)
+            saw_cancel = await stop_requested(held_stream_id)
         # Try the lock on every poll: cancel_executor deletes the busy key
         # without calling cancel_stream for empty/"1" stream ids, so
         # is_cancelled() may never flip though the holder is gone.
@@ -252,11 +250,15 @@ async def _dispatch_executor(
     if not acquired and await reclaim_dead_lock(conversation_id):
         acquired = await try_acquire_lock(lock_key, lock_value)
 
+    held_value = None if acquired else await redis_cache.client.get(lock_key)
+    if not acquired and held_value is None:
+        # Freed between the acquire and the read (a concurrent cancel): there is no run to hand to.
+        acquired = await try_acquire_lock(lock_key, lock_value)
+
     if not acquired:
         # The lock is held: same stream_id means a duplicate call_executor in one
         # turn (reject it — the first dispatch covers the turn); a different one
         # means a new request while busy, handed to the live run's inbox.
-        held_value = await redis_cache.client.get(lock_key)
         held_stream_id, held_task_id = (
             parse_lock_value(decode_raw_item(held_value)) if held_value else ("", "")
         )
@@ -297,9 +299,8 @@ async def _dispatch_executor(
         else:
             # The executor is mid-run on a different turn: hand this to that run,
             # whose drain hook reads the inbox before every model call.
-            step = configurable.get("conversation_step")
-            if step is not None and not await record_work_started(
-                step,
+            if not await record_work_started(
+                configurable["conversation_step"],
                 conversation_id,
                 configurable.get("user_id", ""),
                 task_id,
@@ -323,9 +324,12 @@ async def _dispatch_executor(
     # warmup hit get_all_connected_tools() on every executor call and
     # dominated cold-start latency.
 
-    step = configurable.get("conversation_step")
-    if step is not None and not await record_work_started(
-        step, conversation_id, configurable.get("user_id", ""), task_id, handoff=handoff
+    if not await record_work_started(
+        configurable["conversation_step"],
+        conversation_id,
+        configurable.get("user_id", ""),
+        task_id,
+        handoff=handoff,
     ):
         await release_lock_if_owned(conversation_id, stream_id, task_id)
         return _NOT_STARTED_STOPPED
@@ -420,12 +424,8 @@ async def cancel_executor(
                 conversation_id, user_id, task_ids, approval_ids=approvals, redirect=message
             )
         else:
-            requester = requester_chat(
-                user_id, ConversationSource.coerce(configurable.get("conversation_source"))
-            )
             step = configurable["conversation_step"]
-            logged = await record_gaia_stop(step, conversation_id, user_id, uuid4().hex)
-            work = logged.combined_with(await stop_unlogged_work(conversation_id, requester))
+            work = await record_gaia_stop(step, conversation_id, user_id, uuid4().hex)
             if message:
                 await ExecutorInbox(conversation_id).append(str(uuid4()), message)
     except Exception as e:
