@@ -1,9 +1,12 @@
 """Hold one user's scouts under their own daily cost ceiling, apart from the user's allowance.
 
-A learn run's accounting books each model call here (ScoutSpend is the run's ledger), never
-into the user's budget windows, so the brief writer that runs after the scouts is never
-starved by them. The tally is per user per UTC day; a run that fails or times out has
-still booked every call it made, so failed learns count toward the ceiling too.
+A learn reserves its slice of the day's ceiling before it starts, in one atomic increment,
+so learns that start together can never overrun it: the ones past the ceiling hand their
+slice straight back and wait for tomorrow. The run's accounting books each model call into
+its reservation (ScoutSpend is the run's ledger), never into the user's budget windows, so
+the brief writer that runs after the scouts is never starved by them. A call that costs
+more than the slice books the difference; the learn's unspent slice is handed back when it
+ends, failed or not. The tally is whole micro-dollars per user per UTC day.
 """
 
 from dataclasses import dataclass
@@ -11,11 +14,21 @@ from datetime import UTC, datetime
 
 from app.constants.scouts import (
     SCOUT_DAILY_COST_CEILING_USD,
+    SCOUT_LEARN_RESERVATION_USD,
     SCOUT_SPEND_KEY,
+    SCOUT_SPEND_MICROS_PER_USD,
     SCOUT_SPEND_TTL_SECONDS,
 )
 from app.db.redis import AsyncRedisCommands, redis_cache
 from app.utils.errors import AppError
+
+
+def _micros(usd: float) -> int:
+    return round(usd * SCOUT_SPEND_MICROS_PER_USD)
+
+
+_CEILING = _micros(SCOUT_DAILY_COST_CEILING_USD)
+_RESERVATION = _micros(SCOUT_LEARN_RESERVATION_USD)
 
 
 def _key(user_id: str) -> str:
@@ -33,21 +46,38 @@ def _client() -> AsyncRedisCommands:
     return client
 
 
-async def may_learn(user_id: str) -> bool:
-    """Whether today's scout spend is still under the scout ceiling."""
-    raw = await _client().get(_key(user_id))
-    return raw is None or float(raw) < SCOUT_DAILY_COST_CEILING_USD
+async def _add(key: str, micros: int) -> int:
+    pipe = _client().pipeline()
+    pipe.incrby(key, micros)
+    pipe.expire(key, SCOUT_SPEND_TTL_SECONDS)
+    total, _ttl_set = await pipe.execute()
+    return int(total)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class ScoutSpend:
-    """One user's scout tally for today, as the ledger a learn run's accounting books into."""
+    """One learn's reserved slice of today's scout tally, as the ledger its accounting books into."""
 
-    user_id: str
+    key: str
+    booked: int = 0
 
     async def book(self, cost_usd: float) -> None:
-        key = _key(self.user_id)
-        pipe = _client().pipeline()
-        pipe.incrbyfloat(key, cost_usd)
-        pipe.expire(key, SCOUT_SPEND_TTL_SECONDS)
-        await pipe.execute()
+        """Add a call's cost; only what runs past the reservation reaches the tally."""
+        over_before = max(self.booked - _RESERVATION, 0)
+        self.booked += _micros(cost_usd)
+        extra = max(self.booked - _RESERVATION, 0) - over_before
+        if extra:
+            await _add(self.key, extra)
+
+    async def release(self) -> None:
+        """Hand back the part of the reservation the learn did not spend."""
+        await _add(self.key, -max(_RESERVATION - self.booked, 0))
+
+
+async def reserve_learn(user_id: str) -> ScoutSpend | None:
+    """Reserve one learn's slice of today's ceiling; None when it would take the tally past it."""
+    key = _key(user_id)
+    if await _add(key, _RESERVATION) > _CEILING:
+        await _add(key, -_RESERVATION)
+        return None
+    return ScoutSpend(key)

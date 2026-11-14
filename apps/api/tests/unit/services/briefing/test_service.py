@@ -135,6 +135,7 @@ from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
 from app.services.briefing.scouts import service as scout_service
+from app.services.briefing.scouts.facts import SHOWN_NOT_TOTAL
 from app.services.cost_budget import DAILY_BUDGET_STOP_FREE
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
@@ -3269,7 +3270,10 @@ class TestSignalsInTheBrief:
         await daily.run_daily_briefing(_USER)
 
         prompt = _prompt(world)
-        assert "[ACROSS THEIR APPS] 2 item(s) in 1 app(s)\n[Linear] 2 item(s)\n" in prompt
+        assert (
+            f"[ACROSS THEIR APPS] 2 item(s) shown from 1 app(s). {SHOWN_NOT_TOTAL}\n"
+            "[Linear] 2 item(s) shown\n"
+        ) in prompt
         assert (
             "- fact 1 | important | issue assigned to you: Fix the login redirect"
             " | state: In Progress | linkable | first seen 3 days ago, mentioned"
