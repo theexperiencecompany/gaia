@@ -5,6 +5,7 @@ schedules, budgets the prompt is held to, and the deterministic hue rotation. Sh
 workflow-execution branch so nothing hardcodes these values.
 """
 
+from datetime import timedelta
 from enum import StrEnum
 from typing import Final, Literal
 
@@ -165,6 +166,8 @@ ENABLED_BRIEFING_KEYS: Final[dict[BriefingFrequency, frozenset[str]]] = {
 # (brief, weekly digest) until a reactivation signal.
 IDLE_WARN_DAYS: Final[int] = 2
 IDLE_DORMANT_DAYS: Final[int] = 3
+#: How long a goal question waits before a brief asks about the same goal again.
+GOAL_QUESTION_REASK: Final = timedelta(days=7)
 # A new account's first days never wind down: the brief helps them get started instead.
 FIRST_WEEK_DAYS: Final[int] = 7
 

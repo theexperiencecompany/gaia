@@ -169,9 +169,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         clock,
     )
 
-    # Idle ladder: nothing to report (no candidate beyond the calendar, no goal
-    # knowledge) escalates from the goal question to a plain warning to one
-    # goodbye, then dormancy. A new account's first week never climbs it.
+    # Idle ladder: nothing to report and no goal (or an ignored goal question) escalates
+    # to a plain warning, one goodbye, then dormancy; the ladder also says whether today
+    # asks about the goal. A new account's first week never climbs it.
     ladder = await dormancy.climb_idle_ladder(
         user, dstate, clock.date_str, has_news=gathered.has_news, has_goal=has_goal
     )
@@ -196,6 +196,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             wind_down=ladder.wind_down,
             first_week=ladder.first_week,
             offer_lighter_cadence=offer_lighter,
+            goal_asked_recently=ladder.goal_question is dormancy.GoalQuestion.ASKED,
         ),
         recent_openings=await _recent_openings(user_id),
     )
