@@ -33,14 +33,17 @@ from app.utils.composio_hooks.gmail_hooks import (
     _stream_compose_preview,
     gmail_compose_before_hook,
     gmail_create_draft_after_hook,
-    gmail_draft_detail_after_hook,
     gmail_drafts_after_hook,
     gmail_get_contacts_after_hook,
     gmail_modify_labels_before_hook,
     gmail_send_draft_after_hook,
     gmail_thread_after_hook,
 )
-from app.utils.composio_hooks.registry import ComposioHookRegistry, HookAbortError
+from app.utils.composio_hooks.registry import (
+    ComposioHookRegistry,
+    HookAbortError,
+    master_after_execute_hook,
+)
 from app.utils.errors import AppError
 
 HOOKS = "app.utils.composio_hooks.gmail_hooks"
@@ -689,7 +692,6 @@ class TestTemplatedAfterHooks:
         ("hook", "tool", "seam"),
         [
             (gmail_drafts_after_hook, "GMAIL_LIST_DRAFTS", "process_list_drafts_response"),
-            (gmail_draft_detail_after_hook, "GMAIL_GET_DRAFT", "draft_template"),
         ],
     )
     def test_payload_is_transformed_by_its_template(self, hook, tool, seam):
@@ -699,15 +701,51 @@ class TestTemplatedAfterHooks:
         template.assert_called_once_with(raw)
         assert result == {"shaped": True}
 
+
+DECK_ATTACHMENT = {
+    "filename": "GAIA Pitch Deck.pdf",
+    "mimeType": "application/pdf",
+    "attachmentId": "ANGjdJ8-deck",
+    "size": 8593296,
+}
+
+
+class TestNativeReadbacks:
+    """Regression for the Vee draft: GAIA's reshaped readback dropped attachmentList, so an attached PDF read back as missing."""
+
+    @pytest.mark.regression
     @pytest.mark.parametrize(
-        ("hook", "tool"),
+        ("tool", "data"),
         [
-            (gmail_draft_detail_after_hook, "GMAIL_GET_DRAFT"),
+            (
+                "GMAIL_GET_DRAFT",
+                {
+                    "id": "r-1238965973267170134",
+                    "message": {
+                        "messageId": "1a1cfc1eb506c73b",
+                        "threadId": "1a1a34444ecd63e7",
+                        "labelIds": ["DRAFT"],
+                        "messageText": "Hi Vee and Boardy,",
+                        "attachmentList": [DECK_ATTACHMENT],
+                    },
+                },
+            ),
+            (
+                "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+                {
+                    "messageId": "1a1cfc1eb506c73b",
+                    "threadId": "1a1a34444ecd63e7",
+                    "labelIds": ["DRAFT"],
+                    "messageText": "Hi Vee and Boardy,",
+                    "attachmentList": [DECK_ATTACHMENT],
+                },
+            ),
         ],
     )
-    def test_error_payload_is_returned_untouched(self, hook, tool):
-        raw = {"error": "Not found", "id": "x1"}
-        assert hook(tool, "gmail", {"data": raw}) is raw
+    def test_readback_reaches_the_agent_as_composio_returned_it(self, tool, data):
+        response = {"data": data, "successful": True, "error": None}
+        result = master_after_execute_hook(tool, "gmail", response)
+        assert result == {"data": data, "successful": True, "error": None}
 
 
 class TestModifyLabelsProgress:

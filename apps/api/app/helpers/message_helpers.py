@@ -208,6 +208,8 @@ async def format_workflow_execution_message(
     accounts = _event_accounts(trigger.trigger_data)
     if accounts:
         fallback_section += TRIGGERED_ACCOUNT_SECTION.format(accounts=", ".join(accounts))
+    if trigger.wait_met:
+        fallback_section += f"\n\n{trigger.wait_met}"
     if isinstance(trigger.quiet_hours, QuietHoursBypass):
         fallback_section += "\n\n" + QUIET_HOURS_BYPASS_NOTE.format(
             reason=trigger.quiet_hours.reason

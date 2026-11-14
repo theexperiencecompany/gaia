@@ -27,6 +27,7 @@ from shared.py.conversation_wire import (
     ReplyDelta,
     ReplyDeltaFrame,
     ReplyItem,
+    ReplyOutcome,
     ScreenFrame,
     ScreenInsertFrame,
     ScreenItemHeader,
@@ -39,6 +40,7 @@ from src.constants import (
     FOLLOW_RECONNECT_DELAY_S,
     FRONTEND_STREAM_TOPIC,
     SSE_DATA_PREFIX,
+    VOICE_ERROR_REPLY,
     VOICE_SYSTEM_PROMPT,
     LogTag,
 )
@@ -179,6 +181,8 @@ class VoiceConversation:
         speech = self._speeches.get(item.id)
         if item.outcome is not None and speech is not None and not speech.settled:
             self._spoken(speech, speech.finish())
+            if item.outcome is ReplyOutcome.FAILED:
+                self._apologise(item)
 
     def _delta(self, reply_id: str, index: int, payload: ReplyDelta) -> None:
         """Speak what the delta adds: a new bubble follows the last one after the break the reply's text joins them with."""
@@ -214,6 +218,18 @@ class VoiceConversation:
         self._speaking.add(speech.reply_id)
         handle = self.speaker.say(speech.chunks())
         handle.add_done_callback(lambda done: self._on_speech_done(speech, done))
+
+    def _apologise(self, reply: ReplyItem) -> None:
+        """Say the reply failed, after whatever of it was spoken; every device shows the failure from the events stream."""
+        if self.speaker is None:
+            raise RuntimeError("a reply failed before the voice session could speak")
+        log.error(
+            f"{LogTag.VOICE} reply failed",
+            phase="reply_failed",
+            reply_id=reply.id,
+            failure=reply.failure,
+        )
+        self.speaker.say(_one_utterance(VOICE_ERROR_REPLY))
 
     def _on_speech_done(self, speech: ReplySpeech, handle: SpeechHandle) -> None:
         """Report a barge-in when the user cut the reply off before its end."""
@@ -293,6 +309,10 @@ class VoiceConversation:
     async def _send_room_text(self, text: str, topic: str) -> None:
         if self.room.local_participant is not None:
             await self.room.local_participant.send_text(text, topic=topic)
+
+
+async def _one_utterance(text: str) -> AsyncIterator[str]:
+    yield text
 
 
 def heard_text(items: list[ChatItem]) -> str:

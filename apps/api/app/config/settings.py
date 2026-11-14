@@ -456,6 +456,9 @@ class Settings(BrowserHostSettings):
     OPENAI_API_KEY: str | None = None
     GOOGLE_API_KEY: str | None = None
     OPENROUTER_API_KEY: str | None = None
+    # Cloudflare Workers AI; set together, they put every LLM role on it (see OVERRIDE_PROVIDER).
+    CLOUDFLARE_AI_ACCOUNT_ID: str | None = None
+    CLOUDFLARE_AI_API_TOKEN: str | None = None
 
     # Weather Services
     OPENWEATHER_API_KEY: str | None = None

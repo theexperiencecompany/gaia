@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents.core.background.executor_queue import (
     build_lock_value,
@@ -40,6 +40,7 @@ from app.constants.cache import (
     WORKFLOW_FIRE_ADMISSION_TTL,
 )
 from app.constants.log_tags import LogTag
+from app.constants.waits import WAIT_MET_CONTEXT_KEY
 from app.core.websocket_manager import get_websocket_manager
 from app.db.redis import redis_cache
 from app.db.repositories.playbooks import playbook_repository
@@ -184,6 +185,8 @@ class _FireStamp(BaseModel):
     quiet_hours: QuietHoursStamp | None = None
     # Minted by the request that started the fire (a manual run), so the id it answered with is the one stored.
     execution_id: str | None = None
+    # GAIA's note on what the user just did for this workflow; only the agent can read it.
+    wait_met: str | None = Field(default=None, validation_alias=WAIT_MET_CONTEXT_KEY)
 
 
 class _RateLimitDetail(BaseModel):
@@ -821,6 +824,12 @@ async def _run_workflow(fire: _Fire) -> tuple[str, list[RecordedCall], str]:
     # side effect. Real consumption is metered separately by enforce_cost_budget.
     workflow, workflow_id, context, user = fire.workflow, fire.workflow_id, fire.context, fire.user
     await enforce_tiered_limit(workflow.user_id, "trigger_workflow_executions")
+
+    if _FireStamp.model_validate(context).wait_met:
+        log.set_ns("playbook", mode="agent", reason="wait_met", llm_calls=0)
+        return *await execute_workflow_as_chat(
+            workflow, user, context, execution_id=fire.execution_id
+        ), AGENT_RUN_SUMMARY
 
     # A playbook is an optimisation, never a precondition: if this read fails
     # the workflow must still run, so the failure costs only the replay —

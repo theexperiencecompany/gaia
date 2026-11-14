@@ -2,7 +2,6 @@
 
 import asyncio
 from dataclasses import dataclass, field
-from functools import partial
 import os
 from pathlib import Path
 import time
@@ -31,8 +30,9 @@ from shared.py.analytics.catalog.voice import VoiceSessionEnded, VoiceSessionSta
 from shared.py.analytics.context import analytics_context
 from shared.py.logging import configure_file_logging
 from shared.py.secrets import inject_infisical_secrets
+from shared.py.voice import voice_agent_name
 from shared.py.wide_events import ModelContext, VoiceContext, get_trace_id, log, log_context
-from src.config import bootstrap_settings
+from src.config import bootstrap_settings, get_settings
 from src.constants import (
     MIN_ENDPOINTING_DELAY_S,
     PROMETHEUS_METRICS_PORT,
@@ -261,119 +261,104 @@ def _register_session_logging(
 
 
 @dataclass
-class _ConfiguredSession:
-    """What participant metadata configures: the conversation, the TTS voice, and the identity it logs under."""
+class _ParticipantCredentials:
+    """Apply one session's agent token, backend URL, TTS voice and conversation id from metadata."""
 
     conversation: VoiceConversation
     tts: elevenlabs.TTS
     identity: dict[str, Any]
-    # The entrypoint's, so each credential event joins the session's start event.
     trace_id: str
-    # Credential tasks still running, kept referenced so they are not collected mid-run.
-    tasks: set[asyncio.Task[None]] = field(default_factory=set)
-    # Join and metadata_changed both carry the voice; it is applied only when it changes.
+    # Repeated metadata events (join + metadata_changed) must not re-apply the same voice.
     applied_voice_id: str | None = None
+    tasks: set[asyncio.Task[None]] = field(default_factory=set)
 
-
-async def _apply_participant_credentials(
-    md: str | None,
-    origin: str,
-    who: str,
-    *,
-    session: _ConfiguredSession,
-) -> None:
-    """Apply agent token, TTS voice, and conversation id from participant metadata."""
-    meta = extract_meta_data(md)
-    token, conv_id, voice_id = meta.agent_token, meta.conversation_id, meta.voice_id
-    if token:
-        session.conversation.agent_token = token
-        log.debug(
-            f"{LogTag.AGENT} token set",
-            phase="token_set",
-            participant=who,
-            origin=origin,
-            **session.identity,
-        )
-    if meta.backend_url and meta.backend_url != session.conversation.base_url:
-        # Multi-backend deployments (staging previews) run ONE shared agent;
-        # each session's metadata names the API that minted it.
-        session.conversation.set_backend_url(meta.backend_url)
-        log.info(
-            f"{LogTag.AGENT} backend url set",
-            phase="backend_url_set",
-            backend_url=meta.backend_url,
-            participant=who,
-            **session.identity,
-        )
-    if voice_id and voice_id != session.applied_voice_id:
-        # User-selected ElevenLabs voice (set in Settings → Voice), carried
-        # in the participant metadata minted by /token. Applies to all
-        # synthesis from the next utterance on.
-        session.applied_voice_id = voice_id
-        session.tts.update_options(voice_id=voice_id)
-        log.info(
-            f"{LogTag.AGENT} voice set",
-            phase="voice_set",
-            voice_id=voice_id,
-            participant=who,
-            **session.identity,
-        )
-    if conv_id:
-        await session.conversation.set_conversation_id(conv_id)
-        log.debug(
-            f"{LogTag.AGENT} conversation id set",
-            phase="conv_id_set",
-            conversation_id=conv_id,
-            participant=who,
-            **session.identity,
-        )
-
-
-def _spawn_credential_task(
-    md: str | None, origin: str, who: str, *, session: _ConfiguredSession
-) -> None:
-    """Run a credential coroutine in its own wide event, kept alive in tasks.
-
-    This work applies the session's agent token, backend URL, TTS voice and
-    conversation id — if it fails the session talks to the wrong backend or
-    none at all — and it is spawned from room callbacks that fire long after
-    the entrypoint's event emitted. Its own boundary (carrying the
-    entrypoint's trace_id) makes a credential failure one queryable event
-    instead of a lone real-time line.
-    """
-
-    async def _run() -> None:
-        async with log_context(
-            "voice_credentials",
-            trace_id=session.trace_id or None,
-            origin=origin,
-            **session.identity,
-        ):
-            log.set(
-                voice=VoiceContext(
-                    operation="credentials",
-                    room=session.identity["room"],
-                    participant=who,
-                )
+    async def apply(self, md: str | None, origin: str, who: str) -> None:
+        """Apply whatever credentials this participant metadata carries."""
+        meta = extract_meta_data(md)
+        token, conv_id, voice_id = meta.agent_token, meta.conversation_id, meta.voice_id
+        if token:
+            self.conversation.agent_token = token
+            log.debug(
+                f"{LogTag.AGENT} token set",
+                phase="token_set",
+                participant=who,
+                origin=origin,
+                **self.identity,
             )
-            await _apply_participant_credentials(md, origin, who, session=session)
+        if meta.backend_url and meta.backend_url != self.conversation.base_url:
+            # Multi-backend deployments (staging previews) run ONE shared agent;
+            # each session's metadata names the API that minted it.
+            self.conversation.set_backend_url(meta.backend_url)
+            log.info(
+                f"{LogTag.AGENT} backend url set",
+                phase="backend_url_set",
+                backend_url=meta.backend_url,
+                participant=who,
+                **self.identity,
+            )
+        if voice_id and voice_id != self.applied_voice_id:
+            # User-selected ElevenLabs voice (set in Settings → Voice), carried
+            # in the participant metadata minted by /token. Applies to all
+            # synthesis from the next utterance on.
+            self.applied_voice_id = voice_id
+            self.tts.update_options(voice_id=voice_id)
+            log.info(
+                f"{LogTag.AGENT} voice set",
+                phase="voice_set",
+                voice_id=voice_id,
+                participant=who,
+                **self.identity,
+            )
+        if conv_id:
+            await self.conversation.set_conversation_id(conv_id)
+            log.debug(
+                f"{LogTag.AGENT} conversation id set",
+                phase="conv_id_set",
+                conversation_id=conv_id,
+                participant=who,
+                **self.identity,
+            )
 
-    task: asyncio.Task[None] = asyncio.create_task(_run())
-    session.tasks.add(task)
+    def spawn(self, md: str | None, origin: str, who: str) -> None:
+        """Run apply in its own wide event, kept alive in tasks.
 
-    def _done(t: asyncio.Task[None]) -> None:
-        # The boundary above already emitted the queryable failure event; this
-        # keeps the traceback (which the event does not carry) and retrieves
-        # the exception so asyncio does not report it as never-retrieved.
-        session.tasks.discard(t)
-        if not t.cancelled() and t.exception():
+        It is spawned from room callbacks that fire long after the entrypoint's
+        event emitted, and a failure leaves the session on the wrong backend or
+        none at all — its own boundary (carrying the entrypoint's trace_id)
+        makes that one queryable event instead of a lone real-time line.
+        """
+
+        async def _run() -> None:
+            async with log_context(
+                "voice_credentials",
+                trace_id=self.trace_id or None,
+                origin=origin,
+                **self.identity,
+            ):
+                log.set(
+                    voice=VoiceContext(
+                        operation="credentials",
+                        room=self.identity["room"],
+                        participant=who,
+                    )
+                )
+                await self.apply(md, origin, who)
+
+        task: asyncio.Task[None] = asyncio.create_task(_run())
+        self.tasks.add(task)
+        task.add_done_callback(self._on_task_done)
+
+    def _on_task_done(self, task: asyncio.Task[None]) -> None:
+        # The boundary in spawn already emitted the queryable failure event; this
+        # keeps the traceback and retrieves the exception so asyncio does not
+        # report it as never-retrieved.
+        self.tasks.discard(task)
+        if not task.cancelled() and task.exception():
             log.error(
                 f"{LogTag.AGENT} Background credential task failed",
-                exc_info=t.exception(),
-                **session.identity,
+                exc_info=task.exception(),
+                **self.identity,
             )
-
-    task.add_done_callback(_done)
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -445,11 +430,8 @@ async def entrypoint(ctx: JobContext) -> None:
 
         _register_session_logging(ctx, session, identity, session_trace_id, analytics, user)
 
-        spawn_credentials = partial(
-            _spawn_credential_task,
-            session=_ConfiguredSession(
-                conversation=conversation, tts=tts, identity=identity, trace_id=session_trace_id
-            ),
+        credentials = _ParticipantCredentials(
+            conversation=conversation, tts=tts, identity=identity, trace_id=session_trace_id
         )
 
         @ctx.room.on("participant_connected")
@@ -460,11 +442,11 @@ async def entrypoint(ctx: JobContext) -> None:
                 participant=p.identity,
                 **identity,
             )
-            spawn_credentials(getattr(p, "metadata", None), "participant_connected", p.identity)
+            credentials.spawn(getattr(p, "metadata", None), "participant_connected", p.identity)
 
         @ctx.room.on("participant_metadata_changed")
         def _on_participant_metadata_changed(p: rtc.Participant, _old_md: str, new_md: str) -> None:
-            spawn_credentials(new_md, "participant_metadata_changed", p.identity)
+            credentials.spawn(new_md, "participant_metadata_changed", p.identity)
 
         # session.start() runs ctx.connect() CONCURRENTLY with its own setup
         # (RoomIO, STT, noise cancellation, agent track) — the previous serial
@@ -492,7 +474,7 @@ async def entrypoint(ctx: JobContext) -> None:
                 participant=p.identity,
                 **identity,
             )
-            spawn_credentials(getattr(p, "metadata", None), "existing_participant", p.identity)
+            credentials.spawn(getattr(p, "metadata", None), "existing_participant", p.identity)
 
         log.info(
             f"{LogTag.AGENT} session start",
@@ -508,6 +490,9 @@ def _run_worker_cli() -> None:
         WorkerOptions(
             entrypoint_fnc=entrypoint,
             prewarm_fnc=prewarm,
+            # Named → explicit dispatch only: the worker joins just the rooms
+            # its API minted for this name, never another environment's.
+            agent_name=voice_agent_name(get_settings().ENV),
             # Worker metrics (lk_agents_active_job_count, lk_agents_worker_load,
             # ...) at :{port}/metrics for the Prometheus scrape job. The
             # multiproc dir aggregates metrics from forked job processes.

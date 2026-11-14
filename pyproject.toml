@@ -23,19 +23,20 @@ exclude-dependencies = ["patchright", "unclecode-litellm"]
 # fixed only in 13.0.0. GAIA uses fastembed's text embedding and reranking,
 # which never touch its PIL image path, so lift the cap rather than ship them.
 # livekit-agents 1.7-1.8.6 caps opentelemetry <1.45, but CVE-2026-114603
-# (unbounded tracestate parsing) is fixed only in 1.45.1, and 1.8.7+ needs
-# openai>=3, which browser-use 0.11.13 rules out. livekit uses only the stable
-# tracer/exporter API, so lift the cap; drop these once livekit allows 1.45.
+# (unbounded tracestate parsing) is fixed only in 1.45.1 and CVE-2026-126360
+# only in 1.45.2, and 1.8.7+ needs openai>=3, which browser-use 0.11.13 rules
+# out. livekit uses only the stable tracer/exporter API, so lift the cap; drop
+# these once livekit allows 1.45.
 override-dependencies = [
   "pillow>=13.0.0",
-  "opentelemetry-api>=1.45.1",
-  "opentelemetry-sdk>=1.45.1",
-  "opentelemetry-exporter-otlp>=1.45.1",
+  "opentelemetry-api>=1.45.2",
+  "opentelemetry-sdk>=1.45.2",
+  "opentelemetry-exporter-otlp>=1.45.2",
 ]
 constraint-dependencies = [
   "aiohttp>=3.14.4",
   "anyio>=4.14.2",
-  "soupsieve>=2.9.0",
+  "soupsieve>=4.0",
   "pyjwt>=2.15.1",
   "urllib3>=2.8.0",
   "cryptography>=50.0.0",

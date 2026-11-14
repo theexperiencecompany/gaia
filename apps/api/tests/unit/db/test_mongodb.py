@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.db.mongodb import indexes
 from app.db.mongodb.indexes import (
     create_conversation_indexes,
     create_payment_indexes,
@@ -402,7 +403,27 @@ _INDEX_CREATORS = [
     "create_provider_credential_indexes",
     "create_tool_output_shapes_indexes",
     "create_email_verdict_indexes",
+    "create_wait_indexes",
 ]
+
+
+class TestCreateWaitIndexes:
+    @patch("app.db.mongodb.indexes.get_async_collection")
+    async def test_one_wait_per_waiter_and_an_unanswered_ask_expires(
+        self, mock_get_collection: MagicMock
+    ) -> None:
+        collection = MagicMock()
+        collection.create_index = AsyncMock()
+        mock_get_collection.return_value = collection
+
+        await indexes.create_wait_indexes()
+
+        mock_get_collection.assert_called_once_with("waits")
+        collection.create_index.assert_any_await(
+            [("user_id", 1), ("condition", 1), ("subject_id", 1), ("waiter", 1), ("waiter_id", 1)],
+            unique=True,
+        )
+        collection.create_index.assert_any_await("created_at", expireAfterSeconds=7 * 24 * 3600)
 
 
 class TestCreatePlaybookIndexes:

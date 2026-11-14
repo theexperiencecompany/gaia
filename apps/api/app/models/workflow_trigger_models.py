@@ -3,6 +3,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
+from app.constants.waits import WAIT_MET_CONTEXT_KEY
 from app.models.trigger_gate_models import QuietHoursStamp
 
 
@@ -38,3 +39,4 @@ class WorkflowTriggerContext(BaseModel):
     # Provider payload of a trigger-fired run: open shape, read via _event_accounts.
     trigger_data: dict[str, object] = Field(default_factory=dict)
     quiet_hours: QuietHoursStamp | None = None
+    wait_met: str | None = Field(default=None, validation_alias=WAIT_MET_CONTEXT_KEY)
