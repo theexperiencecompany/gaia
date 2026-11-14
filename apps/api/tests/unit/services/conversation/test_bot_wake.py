@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.conversation_frame_models import EntryFrame
+from app.models.conversation_log_models import Entry
 from app.services.conversation.bot_wake import BotWakingFrames
 from tests.unit.services.conversation.log_helpers import notice, user
 from tests.unit.services.conversation.runtime_doubles import RecordingFrames
@@ -16,7 +17,7 @@ WAKE = "app.services.conversation.bot_wake"
 AT = datetime(2026, 11, 14, tzinfo=UTC)
 
 
-def _frame(seq: int, entry: object) -> EntryFrame:
+def _frame(seq: int, entry: Entry) -> EntryFrame:
     return EntryFrame(seq=seq, at=AT, entry=entry)
 
 

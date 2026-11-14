@@ -25,9 +25,8 @@ async def test_the_report_is_recorded_on_the_conversations_session_for_its_platf
     request = MagicMock()
     with (
         patch.object(endpoint, "require_bot_api_key", new=AsyncMock()) as key,
-        patch.object(
-            endpoint.bot_session_repository,
-            "record_delivered",
+        patch(
+            "app.api.v1.endpoints.bot_conversations.bot_session_repository.record_delivered",
             new=AsyncMock(return_value=recorded),
         ) as record,
         patch.object(endpoint, "log") as logger,
@@ -53,8 +52,9 @@ async def test_a_report_without_the_bot_key_records_nothing() -> None:
         patch.object(
             endpoint, "require_bot_api_key", new=AsyncMock(side_effect=PermissionError("no key"))
         ),
-        patch.object(
-            endpoint.bot_session_repository, "record_delivered", new=AsyncMock()
+        patch(
+            "app.api.v1.endpoints.bot_conversations.bot_session_repository.record_delivered",
+            new=AsyncMock(),
         ) as record,
         pytest.raises(PermissionError),
     ):
