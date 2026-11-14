@@ -7,7 +7,7 @@ from dataclasses import dataclass, field, replace
 import itertools
 from typing import cast
 
-from app.constants.chat import BOT_CONVERSATION_SOURCES, EMPTY_RESPONSE_FALLBACK
+from app.constants.chat import BOT_CONVERSATION_SOURCES
 from app.constants.conversation import (
     CLASSIFIER_LOOKBACK_SEQS,
     RUNNER_ALIVE_BEATS_PER_TTL,
@@ -739,7 +739,7 @@ async def _stop(ports: RuntimePorts, attempt: _Attempt) -> None:
 
 
 async def _truncate(ports: RuntimePorts, attempt: _Attempt) -> None:
-    """Cut the reply to what the user heard before speaking over it; it still answered its inputs."""
+    """Note how much of the reply the user heard before speaking over it; it still answered its inputs."""
     progress = attempt.progress
     if isinstance(progress, _Drafting):
         await _conclude(ports, attempt, progress.reply, ReplyOutcome.TRUNCATED)
@@ -757,19 +757,18 @@ async def _truncate(ports: RuntimePorts, attempt: _Attempt) -> None:
     ]
     shown = progress.reply.text
     heard = min(barges[-1].heard_through, len(shown)) if barges else len(shown)
-    await _conclude(ports, attempt, _heard_part(progress.reply, heard), ReplyOutcome.TRUNCATED)
+    await _conclude(ports, attempt, _heard(progress.reply, heard), ReplyOutcome.TRUNCATED)
 
 
-def _heard_part(reply: Reply, heard_through: int) -> Reply:
-    return reply.model_copy(
-        update={"text": reply.text[:heard_through], "heard_through": heard_through}
-    )
+def _heard(reply: Reply, heard_through: int) -> Reply:
+    """Return the reply noting what the user heard; its shown text never shrinks."""
+    return reply.model_copy(update={"heard_through": heard_through})
 
 
 async def _cut_spoken_over(
     ports: RuntimePorts, claim: StepClaim, entries: Sequence[LoggedEntry]
 ) -> list[LoggedEntry]:
-    """Cut each settled reply the user spoke over to what they heard; a barge-in that cut nothing off is ignored."""
+    """Note what the user heard of each settled reply they spoke over; a barge-in that cut nothing off is ignored."""
     replies = {
         logged.entry.reply_id: logged for logged in entries if isinstance(logged.entry, Reply)
     }
@@ -783,9 +782,7 @@ async def _cut_spoken_over(
             and reply.heard_through is None
             and barge.heard_through < len(reply.text)
         ):
-            replies[barge.reply_id] = await _amend(
-                ports, claim, _heard_part(reply, barge.heard_through)
-            )
+            replies[barge.reply_id] = await _amend(ports, claim, _heard(reply, barge.heard_through))
     cut = {logged.seq: logged for logged in replies.values()}
     return [cut.get(logged.seq, logged) for logged in entries]
 
@@ -809,8 +806,8 @@ async def _finish(ports: RuntimePorts, attempt: _Attempt, outcome: RunOutcome) -
     """Settle a finished run and return its stored reply; a reaction-only answer settles silently with no visible bubble."""
     if isinstance(outcome, Reacted):
         await _react(ports, attempt, outcome.emoji)
-    reply, settled_as = _final_reply(attempt, outcome)
-    return await _conclude(ports, attempt, reply, settled_as)
+    reply, settled_as, failure = _final_reply(attempt, outcome)
+    return await _conclude(ports, attempt, reply, settled_as, failure)
 
 
 async def _add_follow_ups(
@@ -827,11 +824,10 @@ async def _add_follow_ups(
     )
 
 
-def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOutcome]:
-    """Save what was shown; a run's Replied content is used only when nothing it streamed stayed.
-
-    A reply whose slot opened never ends empty: the user saw it there, so it never vanishes.
-    """
+def _final_reply(
+    attempt: _Attempt, outcome: RunOutcome
+) -> tuple[Reply, ReplyOutcome, FailureReason | None]:
+    """Save what was shown; a run's Replied content is used only when nothing it streamed stayed."""
     filled = _base_reply(attempt)
     streamed = isinstance(attempt.progress, _Showing | _Drafting)
     if isinstance(outcome, Replied) and not (streamed and (filled.text or filled.tool_data)):
@@ -843,11 +839,11 @@ def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOu
             }
         )
     if filled.text or filled.tool_data:
-        return filled, ReplyOutcome.ANSWERED
-    if attempt.slot is None and (isinstance(outcome, Reacted) or not _asked(attempt)):
-        return filled, ReplyOutcome.SILENT
-    # A user who asked never gets nothing back.
-    return filled.model_copy(update={"text": EMPTY_RESPONSE_FALLBACK}), ReplyOutcome.ANSWERED
+        return filled, ReplyOutcome.ANSWERED, None
+    if isinstance(outcome, Reacted) or not _asked(attempt):
+        return filled, ReplyOutcome.SILENT, None
+    # A user who asked never gets nothing back: an empty answer fails, with its Retry.
+    return filled, ReplyOutcome.FAILED, FailureReason.MODEL_ERROR
 
 
 def _asked(attempt: _Attempt) -> bool:
@@ -1027,19 +1023,9 @@ async def _put_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> Lo
     """Store the segment's final reply; once it is shown, clients are carried to the stored text."""
     if not isinstance(attempt.progress, _Showing):
         return await _append_opening(ports, attempt, await _opening_reply(ports, attempt, reply))
-    reply = _kept_in_slot(reply)
-    # A spoken-over reply is cut by its heard_through, which clients apply themselves.
-    if reply.heard_through is None and reply.text != attempt.text.text:
+    if reply.text != attempt.text.text:
         await _publish_delta(ports, attempt, BubblesDelta(bubbles=_bubbles(reply.text)))
     return await _amend_seen(ports, attempt, reply)
-
-
-def _kept_in_slot(reply: Reply) -> Reply:
-    """Return the shown reply, holding the fallback text where a take-back would leave it empty: it never vanishes."""
-    if reply.text or reply.tool_data or reply.image:
-        return reply
-    # No one spoke over the fallback, so it carries no heard cut.
-    return reply.model_copy(update={"text": EMPTY_RESPONSE_FALLBACK, "heard_through": None})
 
 
 async def _append_opening(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> LoggedEntry:

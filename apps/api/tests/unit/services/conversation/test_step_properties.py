@@ -49,6 +49,7 @@ from app.services.conversation.reducer import reduce
 from app.services.conversation.screen import handoff_call_id, project_screen
 from app.services.conversation.screen_patches import screen_patches
 from app.services.conversation.step import advance
+from app.utils.errors import ShownReplyRetriedError
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
     BubblesDelta,
@@ -252,7 +253,7 @@ RUN_STEPS = (
     "output_c1",
     "output_c2",
     "boundary",
-    "retract",
+    "retry",
 )
 RUN_ENDS = ("replied", "empty", "reacted", "silent", "fail", "answered")
 
@@ -287,6 +288,10 @@ _FIXED_ITEMS: dict[str, tuple[ScriptItem, ...]] = {
 }
 
 
+def _shows_text(item: ScriptItem) -> bool:
+    return isinstance(item, Streamed) and isinstance(item.payload, ResponseEvent)
+
+
 def _script(world: World, plan: Sequence[tuple[str, str]]) -> list[ScriptItem]:
     items: list[ScriptItem] = []
     for step, kind in plan:
@@ -300,11 +305,14 @@ def _script(world: World, plan: Sequence[tuple[str, str]]) -> list[ScriptItem]:
                 items.append(Pause((world.action(kind),)))
             case "fail":
                 items.append(Fail(RuntimeError("model down")))
-            case "boundary" | "retract":
-                boundary = MessageBoundaryPayload(
-                    message_id=f"m{len(items)}", discarded=step == "retract"
-                )
+            case "boundary":
+                boundary = MessageBoundaryPayload(message_id=f"m{len(items)}")
                 items.append(Streamed(payload=MessageBoundaryEvent(message_boundary=boundary)))
+            case "retry" if any(_shows_text(item) for item in items):
+                # A model call retried after its text showed: the run fails as shown, never retracting.
+                items.append(Fail(ShownReplyRetriedError(message="retried after text showed")))
+            case "retry":
+                pass
             case _:
                 items.extend(_FIXED_ITEMS[step])
     return items
@@ -457,8 +465,6 @@ def _assert_saved_replies_keep_everything_shown(
         deltas = sorted(shown[reply.attempt_id], key=lambda frame: frame.index)
         assert [frame.index for frame in deltas] == list(range(len(deltas)))
         text, cards = _streamed(deltas)
-        if reply.heard_through is not None:
-            text = text[: reply.heard_through]
         own = tuple(card for card in reply.tool_data if handoff_call_id(card) is None)
         assert (reply.text, own) == (text, cards), reply.reply_id
 
@@ -495,6 +501,8 @@ def _assert_every_live_screen_keeps_its_items_and_reloads_the_same(
         # A killed step's frame may be missing until recovery republishes it: fold only the unbroken run.
         unbroken = list(takewhile(view.__contains__, count(1)))
         _assert_every_reply_sits_below_what_it_answers([view[seq] for seq in unbroken])
+        if isinstance(frame.entry, Reply) and isinstance(held_reply := held and held.entry, Reply):
+            assert frame.entry.text.startswith(held_reply.text), "a shown reply's text shrank"
         screen = project_screen(prefix)
         screen_patches(shown, screen)
         shown = screen
@@ -551,8 +559,8 @@ _A_STOP_WITH_A_NEW_ASK_BELOW = [
     ("text", ""),
     ("replied", ""),
 ]
-# Its only text taken back and nothing after: the reply already shown keeps its slot.
-_A_PREAMBLE_TAKEN_BACK = [("text", ""), ("retract", ""), ("replied", "")]
+# A model call retried after its text showed: the shown reply fails as it stood.
+_RETRIED_AFTER_TEXT_SHOWED = [("text", ""), ("retry", ""), ("replied", "")]
 
 
 @settings(max_examples=STEP_EXAMPLES)
@@ -560,17 +568,17 @@ _A_PREAMBLE_TAKEN_BACK = [("text", ""), ("retract", ""), ("replied", "")]
 @example(op_list=[AppendOp("user")], plans=[_CARDS_THEN_A_NEW_ASK], approves=False)
 @example(op_list=[AppendOp("user")], plans=[_RESULTS_OUT_OF_ORDER_AFTER_A_NEW_ASK], approves=False)
 @example(op_list=[AppendOp("user")], plans=[_TEXT_THEN_A_NEW_ASK], approves=False)
-@example(op_list=[AppendOp("user")], plans=[_A_PREAMBLE_TAKEN_BACK], approves=False)
+@example(op_list=[AppendOp("user")], plans=[_RETRIED_AFTER_TEXT_SHOWED], approves=False)
 @example(op_list=[AppendOp("user")], plans=[_A_STOP_WITH_A_NEW_ASK_BELOW], approves=False)
 @example(
     op_list=[AppendOp("user"), AdvanceOp(15, False), AppendOp("user")],
     plans=[_A_STOP_WITH_A_NEW_ASK_BELOW],
     approves=False,
 )
-@example(op_list=[AppendOp("fire")], plans=[_A_PREAMBLE_TAKEN_BACK], approves=False)
+@example(op_list=[AppendOp("fire")], plans=[_RETRIED_AFTER_TEXT_SHOWED], approves=False)
 @example(
     op_list=[AppendOp("user")],
-    plans=[[("text", ""), ("retract", ""), ("fail", "")]],
+    plans=[[("text", ""), ("retry", ""), ("fail", "")]],
     approves=False,
 )
 def test_any_interleaving_answers_every_input_once_with_one_run_at_a_time(

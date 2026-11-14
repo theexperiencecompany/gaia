@@ -219,7 +219,7 @@ _PAYLOADS: list[StreamPayload] = [
     ReasoningEvent(reasoning=ReasoningPayload(content="thinking")),
     ToolDataEvent(tool_data={"tool_name": "search", "data": {"q": "x"}, "tool_category": "web"}),
     ToolOutputEvent(tool_output=ToolOutputPayload(tool_call_id="c1", output="ok")),
-    MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1", discarded=True)),
+    MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id="m1")),
     SubagentStartEvent(
         subagent_start=SubagentStartPayload(
             subagent_id="s1", subagent_name="gmail", agent_type="spawned", started_at="now"

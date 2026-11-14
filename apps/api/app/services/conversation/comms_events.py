@@ -53,7 +53,8 @@ def _written_by_model(event: GraphEvent) -> bool:
     if namespace:
         return False
     if mode == "updates":
-        return isinstance(payload, Mapping) and _MODEL_NODE in payload
+        # Only the model node's update streams anything (payloads_for_stream_event reads no other).
+        return True
     if mode == "messages":
         # LangGraph's messages mode yields (chunk, metadata) pairs (Type Safety item 12).
         chunk, _metadata = cast(tuple[object, StreamChunkMetadata], payload)

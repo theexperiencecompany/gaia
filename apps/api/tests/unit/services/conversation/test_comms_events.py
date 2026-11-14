@@ -10,6 +10,7 @@ from app.models.conversation_frame_models import (
     ResponseEvent,
     ToolDataEvent,
 )
+from app.services.conversation import graph_payloads
 from app.services.conversation.comms_events import CommsEventMapper, GraphEvent
 from app.services.conversation.ports import (
     Answered,
@@ -197,3 +198,30 @@ async def test_text_still_held_when_the_stream_ends_is_streamed_before_the_outco
     ]
     assert "".join(texts) == "hi <"
     assert len(owed) == 2
+
+
+async def test_a_card_a_running_tool_shows_is_not_the_models_own_output() -> None:
+    mapper = CommsEventMapper("u-1")
+    events = await mapper.map((("tools:1",), "custom", {"email_fetch_data": [{"id": "e1"}]}))
+    assert [event.by_model for event in events if isinstance(event, Streamed)] == [False]
+
+
+async def test_a_tool_calls_card_is_named_for_the_runs_own_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    named = AsyncMock(return_value=None)
+    monkeypatch.setattr(graph_payloads, "format_tool_call_entry", named)
+    calling = AIMessage(content="", id="m1", tool_calls=[{"name": "t", "args": {}, "id": "c1"}])
+    await CommsEventMapper("u-1").map(((), "updates", {"agent": {"messages": [calling]}}))
+    named.assert_awaited_once_with(calling.tool_calls[0], user_id="u-1")
+
+
+async def test_text_held_when_the_answer_is_final_streams_before_it() -> None:
+    mapper = CommsEventMapper("u-1")
+    # The half-written tag stays held until the answer is final.
+    assert await mapper.map(token("hi <")) == [Streamed(payload=ResponseEvent(response="hi "))]
+    final = await mapper.map(((), "custom", {"main_response_complete": True}))
+    assert final == [
+        Streamed(payload=ResponseEvent(response="<")),
+        Answered(outcome=Silent()),
+    ]

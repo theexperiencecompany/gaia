@@ -5,15 +5,25 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from app.agents.core.interruption import INTERRUPTION_MARKER, INTERRUPTION_SOURCE
 from app.constants.conversation import (
     BARGE_IN_NOTE,
+    INTEGRATION_CONNECTED_NOTE,
     LOG_SEQ,
     NOTICE_DELIVERED_NOTE,
     REACTION_NOTE,
     SERVER_RESTART_NOTE,
     WORK_DONE_NOTE,
     WORK_UNFINISHED_NOTE,
+    WORKFLOW_RUN_REQUEST,
 )
 from app.models.chat_models import ReactionBy
-from app.models.conversation_log_models import Batch, LoggedEntry, Reaction, Reply, WorkOutcome
+from app.models.conversation_log_models import (
+    Batch,
+    IntegrationConnected,
+    LoggedEntry,
+    Reaction,
+    Reply,
+    WorkFinished,
+    WorkOutcome,
+)
 from app.services.conversation.comms_input import (
     AS_TYPED,
     absorbed_messages,
@@ -24,6 +34,7 @@ from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.log_helpers import (
     barge,
     finished,
+    fired,
     logged,
     notice,
     replied,
@@ -93,8 +104,10 @@ def test_a_settled_answer_and_an_open_reply_show_the_model_nothing() -> None:
 
 
 def test_a_reply_the_user_spoke_over_tells_the_model_only_its_heard_part_was_heard() -> None:
-    cut = Reply(id="o", reply_id="r1", attempt_id="a1", text="Your flight", heard_through=11)
-    [note] = entry_messages(logged(2, cut))
+    spoken_over = Reply(
+        id="o", reply_id="r1", attempt_id="a1", text="Your flight leaves at 9", heard_through=11
+    )
+    [note] = entry_messages(logged(2, spoken_over))
     assert (note.id, note.content) == ("log:o", BARGE_IN_NOTE.format(heard="Your flight"))
     assert entry_messages(logged(3, barge("b", "r1", 11))) == []
 
@@ -150,3 +163,82 @@ def test_a_user_message_reads_as_its_reframed_content_when_it_has_one() -> None:
     [plain] = entry_messages(logged(5, user("u2")), {"u1": "other"})
     assert message.content == "text of u1\n\nFiles: invoice.pdf"
     assert plain.content == "text of u2"
+
+
+def test_a_workflow_fire_reads_as_its_run_request_or_what_was_said_for_it() -> None:
+    [request] = entry_messages(logged(3, fired("wf")))
+    [said] = entry_messages(logged(3, fired("wf")), {"wf": "Run the brief, with files"})
+    assert (request.id, request.content, request.additional_kwargs) == (
+        "log:wf",
+        WORKFLOW_RUN_REQUEST.format(title="Morning brief"),
+        {LOG_SEQ: 3},
+    )
+    assert said.content == "Run the brief, with files"
+
+
+def test_what_was_said_for_a_message_reaches_both_the_attempt_and_an_absorbed_input() -> None:
+    reframed = {"u1": "text of u1\n\nFiles: a.pdf"}
+    [attempt] = attempt_messages(batch(logged(1, user("u1"))), [], [], reframed)
+    absorbed, _ = absorbed_messages([logged(1, user("u1"))], reframed)
+    assert [attempt.content, absorbed[0].content] == [reframed["u1"]] * 2
+
+
+def test_detached_work_that_delivered_its_own_result_says_nothing_and_any_other_work_reports() -> (
+    None
+):
+    def done(**fields: object) -> WorkFinished:
+        return WorkFinished.model_validate(
+            {"id": "f1", "task_id": "t1", "outcome": WorkOutcome.DONE, "report": "", **fields}
+        )
+
+    assert entry_messages(logged(2, done(nothing_for_user=True))) == []
+    [unflagged] = entry_messages(logged(2, done()))
+    [reported] = entry_messages(logged(2, done(report="sent", nothing_for_user=True)))
+    [noted] = entry_messages(logged(2, done(note="checked", nothing_for_user=True)))
+    assert [unflagged.content, reported.content, noted.content] == [
+        WORK_DONE_NOTE.format(report=""),
+        WORK_DONE_NOTE.format(report="sent"),
+        WORK_DONE_NOTE.format(report="checked"),
+    ]
+
+
+def test_a_works_report_and_its_reviews_note_read_as_two_paragraphs() -> None:
+    work = finished("f1", "t1").model_copy(update={"note": "the review adds this"})
+    [message] = entry_messages(logged(2, work))
+    assert message.content == WORK_DONE_NOTE.format(report="report\n\nthe review adds this")
+
+
+def test_a_connected_integration_tells_the_model_to_carry_on() -> None:
+    connected = IntegrationConnected(
+        id="ic1", integration_id="gmail", integration_name="Gmail", needed_id="in1"
+    )
+    [note] = entry_messages(logged(4, connected))
+    assert note.content == INTEGRATION_CONNECTED_NOTE.format(integration="Gmail")
+
+
+def test_a_thread_holding_the_stops_own_marker_does_not_say_it_again() -> None:
+    [marker] = entry_messages(logged(2, stop("s2", 1)))
+    thread: list[AnyMessage] = [
+        HumanMessage(content="text of u1", id="log:u1", additional_kwargs={LOG_SEQ: 1}),
+        marker,
+    ]
+    context = [logged(1, user("u1")), logged(2, stop("s2", 1))]
+    assert ids(attempt_messages(batch(logged(3, user("u3"))), context, thread, AS_TYPED)) == [
+        "log:u1",
+        "log:u3",
+    ]
+
+
+def test_an_interruption_before_the_stops_inputs_does_not_record_the_stop() -> None:
+    thread: list[AnyMessage] = [
+        HumanMessage(
+            content=INTERRUPTION_MARKER, additional_kwargs={"lc_source": INTERRUPTION_SOURCE}
+        ),
+        HumanMessage(content="text of u1", id="log:u1", additional_kwargs={LOG_SEQ: 1}),
+    ]
+    context = [logged(1, user("u1")), logged(2, stop("s2", 1))]
+    assert ids(attempt_messages(batch(logged(3, user("u3"))), context, thread, AS_TYPED)) == [
+        "log:u1",
+        "log:s2",
+        "log:u3",
+    ]

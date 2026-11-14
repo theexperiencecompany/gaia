@@ -116,8 +116,8 @@ def _note_text(logged: LoggedEntry) -> str | None:
             note = WORK_DONE_NOTE.format(report=_reported(finished))
         case WorkFinished(outcome=outcome) as finished if outcome is not WorkOutcome.CANCELLED:
             note = WORK_UNFINISHED_NOTE.format(outcome=outcome, report=_reported(finished))
-        case Reply(heard_through=int(), text=heard):
-            note = BARGE_IN_NOTE.format(heard=heard)
+        case Reply(heard_through=int() as heard_through, text=text):
+            note = BARGE_IN_NOTE.format(heard=text[:heard_through])
         case Notice(text=text):
             note = NOTICE_DELIVERED_NOTE.format(text=text)
         case IntegrationConnected(integration_name=name):
