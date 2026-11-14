@@ -31,7 +31,6 @@ import {
   generateFAQSchema,
   generateHowToSchema,
   generatePageMetadata,
-  generatePersonSchema,
   generateProOffer,
   generateWebPageSchema,
   siteConfig,
@@ -140,9 +139,10 @@ export default async function IntegrationPage({ params }: Props) {
 
   const breadcrumbSchema = generateBreadcrumbSchema(breadcrumbItems);
 
+  // The page's own title and description, so two integrations sharing a name stay two pages.
   const webPageSchema = generateWebPageSchema(
-    `${integration.name} AI Integration - Automate ${integration.name} with AI`,
-    `Automate ${integration.name} with GAIA AI assistant. Connect ${integration.name} to your AI-powered workflow with ${integration.toolCount || 0} available tools.`,
+    generateIntegrationTitle(integration),
+    generateIntegrationDescription(integration),
     pageUrl,
     breadcrumbItems,
     integration.publishedAt
@@ -156,6 +156,7 @@ export default async function IntegrationPage({ params }: Props) {
   const integrationSchema = {
     "@context": "https://schema.org" as const,
     "@type": "SoftwareApplication" as const,
+    "@id": `${pageUrl}#integration`,
     name: `${integration.name} AI Integration`,
     description: integration.description,
     url: pageUrl,
@@ -163,9 +164,6 @@ export default async function IntegrationPage({ params }: Props) {
     applicationSubCategory: categoryLabel,
     operatingSystem: "Web",
     offers: generateProOffer(),
-    ...(integration.creator?.name && {
-      author: generatePersonSchema({ name: integration.creator.name }),
-    }),
     ...(integration.toolCount && {
       featureList: integration.tools
         ?.map((t: { name: string }) => t.name.replace(/_/g, " "))

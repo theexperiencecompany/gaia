@@ -29,7 +29,7 @@ interface DesktopLoginClientProps {
  *
  * A polished, centered login page for the desktop app. On GAIA Cloud it opens
  * the system browser for OAuth and waits for the deep link callback, and offers
- * connecting to a self-hosted server instead. Located in (landing) to avoid
+ * connecting to a self-hosted server instead. Located in (unindexed) to avoid
  * sidebar layout.
  */
 export function DesktopLoginClient({

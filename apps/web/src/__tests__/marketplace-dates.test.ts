@@ -1,4 +1,4 @@
-/** A marketplace page tells the sitemap and its own WebPage schema the same modification date, and names its creator as one Person entity. */
+/** A marketplace page tells the sitemap and its own WebPage schema the same modification date, and declares no Person for a creator without a profile. */
 import type * as NextIntlServer from "next-intl/server";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -94,14 +94,13 @@ describe("marketplace page dates", () => {
     );
   });
 
-  it("names the creator as a Person with a stable @id", async () => {
+  it("declares the integration as its own entity, with no Person for a creator who has no profile", async () => {
     const app = (await pageSchemas()).find(
       (schema) => schema["@type"] === "SoftwareApplication",
     );
-    expect(app?.author).toMatchObject({
-      "@type": "Person",
-      "@id": "https://heygaia.io/#person-vinit-thakkar",
-      name: "Vinit Thakkar",
-    });
+    expect(app?.["@id"]).toBe(
+      `https://heygaia.io/marketplace/${SLUG}#integration`,
+    );
+    expect(app?.author).toBeUndefined();
   });
 });

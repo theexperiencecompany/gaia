@@ -18,7 +18,14 @@ import { useBotLinks } from "./useBotLinks";
  */
 export function useBotCards(): BotConfig[] {
   const links = useBotLinks();
-  if (!isSelfhostWeb()) return BOTS;
+  if (!isSelfhostWeb()) {
+    return BOTS.map((bot): BotConfig => {
+      const href = links?.[bot.id];
+      return bot.primaryAction && href
+        ? { ...bot, primaryAction: { ...bot.primaryAction, href } }
+        : bot;
+    });
+  }
   return SELFHOST_BOT_PLATFORMS.map((platform): BotConfig => {
     const href = links?.[platform];
     const copy = SELFHOST_BOT_COPY[platform];

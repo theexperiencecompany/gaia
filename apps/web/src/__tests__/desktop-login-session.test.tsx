@@ -35,7 +35,7 @@ vi.mock("@/features/auth/api/authApi", () => ({
   authApi: { fetchUserInfo: () => fetchUserInfo() },
 }));
 
-import { DesktopLoginClient } from "@/app/[locale]/(landing)/desktop-login/desktop-login-client";
+import { DesktopLoginClient } from "@/app/[locale]/(unindexed)/desktop-login/desktop-login-client";
 
 function settingsWith(selfHostOrigin: string | null) {
   return { settings: { selfHostOrigin }, icons: [] };

@@ -5,14 +5,23 @@ const {
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
   getAllCommunityWorkflowsServer,
+  listedCommunity,
 } = vi.hoisted(() => ({
   getExploreWorkflowsServer: vi.fn(),
   getPublicWorkflowServer: vi.fn(),
   getAllCommunityWorkflowsServer: vi.fn(),
+  listedCommunity: vi.fn(),
 }));
 
 vi.mock("@/app/[locale]/(landing)/use-cases/[slug]/client", () => ({
   default: () => null,
+}));
+
+vi.mock("@/app/[locale]/(landing)/use-cases/client", () => ({
+  default: (props: { communityWorkflows: unknown[] }) => {
+    listedCommunity(props.communityWorkflows);
+    return null;
+  },
 }));
 
 vi.mock("@/features/workflows/lib/serverWorkflowsApi", () => ({
@@ -21,7 +30,9 @@ vi.mock("@/features/workflows/lib/serverWorkflowsApi", () => ({
   getAllCommunityWorkflowsServer,
 }));
 
+import { renderToStaticMarkup } from "react-dom/server";
 import { generateMetadata } from "@/app/[locale]/(landing)/use-cases/[slug]/page";
+import UseCasesPage from "@/app/[locale]/(landing)/use-cases/page";
 import { getSiteUrl } from "@/lib/seo";
 import { getSitemapEntries, SITEMAP_IDS } from "@/lib/sitemapData";
 
@@ -52,6 +63,7 @@ beforeEach(() => {
   getAllCommunityWorkflowsServer
     .mockReset()
     .mockResolvedValue([copy, original]);
+  listedCommunity.mockReset();
   getPublicWorkflowServer
     .mockReset()
     .mockImplementation(async (slug: string) =>
@@ -80,5 +92,27 @@ describe("community copies of an official template", () => {
     expect(entries.map((e) => e.url)).toEqual([
       `${getSiteUrl()}/use-cases/${original.slug}`,
     ]);
+  });
+
+  it("are left out of the community listing, which already shows the template", async () => {
+    const html = renderToStaticMarkup(await UseCasesPage());
+
+    expect(listedCommunity).toHaveBeenCalledWith([original]);
+    expect(html).not.toContain(`/use-cases/${copy.slug}`);
+    expect(html).toContain(`/use-cases/${original.slug}`);
+  });
+
+  it("never crowd an older original out of the listing", async () => {
+    const copies = Array.from({ length: 8 }, (_, i) => ({
+      ...copy,
+      id: `wf_copy_${i}`,
+      slug: `${copy.slug}-${i}`,
+    }));
+    const newestFirst = [...copies, original];
+    getAllCommunityWorkflowsServer.mockResolvedValue(newestFirst);
+
+    renderToStaticMarkup(await UseCasesPage());
+
+    expect(listedCommunity).toHaveBeenCalledWith([original]);
   });
 });
