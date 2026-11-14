@@ -242,7 +242,11 @@ export function CreatorAvatar({
   return (
     <Tooltip closeDelay={0} delay={0}>
       <Tooltip.Trigger>{avatar}</Tooltip.Trigger>
-      <Tooltip.Content placement="left" showArrow>
+      <Tooltip.Content
+        className={overlayVariants({ surface: "foreground" })}
+        placement="left"
+        showArrow
+      >
         {`Created by ${displayName}`}
       </Tooltip.Content>
     </Tooltip>

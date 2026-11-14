@@ -29,7 +29,7 @@ export const tabsVariants = tv({
       },
       light: {
         base: "gap-0",
-        tabList: "w-fit min-w-0 gap-2 rounded-xl p-1",
+        tabList: "w-fit min-w-0 gap-2 rounded-xl bg-transparent p-1",
         tabIndicator:
           "rounded-lg bg-zinc-700 shadow-[0_0_5px_0_rgb(0_0_0/0.05),0_2px_10px_0_rgb(0_0_0/0.2),inset_0_0_1px_0_rgb(255_255_255/0.15)]",
         tabPanel: "mt-0 px-1 py-3",
@@ -44,19 +44,19 @@ export const tabsVariants = tv({
     },
     size: {
       sm: {
-        tab: "h-7 w-full rounded-lg px-3 py-1 text-xs font-normal text-zinc-400",
+        tab: "h-7 w-full rounded-lg px-3 py-1 text-xs font-normal text-muted",
       },
       md: {
-        tab: "h-8 w-full rounded-lg px-3 py-1 text-sm font-normal text-zinc-400",
+        tab: "h-8 w-full rounded-lg px-3 py-1 text-sm font-normal text-muted",
       },
       lg: {
         tabList: "rounded-2xl",
-        tab: "h-9 w-full rounded-xl px-3 py-1 text-base font-normal text-zinc-400",
+        tab: "h-9 w-full rounded-xl px-3 py-1 text-base font-normal text-muted",
         tabIndicator: "rounded-xl",
       },
     },
     color: {
-      default: { tab: "data-[selected=true]:text-foreground" },
+      default: { tab: "data-[selected=true]:text-default-foreground" },
       accent: {
         base: "gaia-tabs-accent",
         tab: "data-[selected=true]:text-accent-foreground",
@@ -77,6 +77,11 @@ export const tabsVariants = tv({
     },
   },
   compoundVariants: [
+    {
+      variant: "underlined",
+      color: "default",
+      class: { tab: "data-[selected=true]:text-foreground" },
+    },
     {
       variant: "underlined",
       color: "accent",
