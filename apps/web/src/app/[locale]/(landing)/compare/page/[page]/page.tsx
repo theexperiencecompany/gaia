@@ -1,4 +1,4 @@
-import "../../../../../styles/marketing.css";
+import "../../../../../styles/content.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";

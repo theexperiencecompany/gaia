@@ -29,7 +29,6 @@
 @import "@heroui/styles/components/skeleton.css" layer(components);
 @import "@heroui/styles/components/spinner.css" layer(components);
 @import "@heroui/styles/components/surface.css" layer(components);
-@import "@heroui/styles/components/table.css" layer(components);
 @import "@heroui/styles/components/tabs.css" layer(components);
 @import "@heroui/styles/components/textarea.css" layer(components);
 @import "@heroui/styles/components/textfield.css" layer(components);
@@ -69,12 +68,10 @@
 @source "../../../lib/faq.ts";
 @source "../../../lib/feature-data.ts";
 @source "../../../lib/firstInteraction.ts";
-@source "../../../lib/hubMetadata.ts";
 @source "../../../lib/hubPagination.ts";
 @source "../../../lib/imageDimensions.ts";
 @source "../../../lib/page-faqs.ts";
 @source "../../../lib/queryClient.ts";
-@source "../../../lib/relatedInGroup.ts";
 @source "../../../lib/selfhost.ts";
 @source "../../../lib/seo.ts";
 @source "../../../lib/serverApiBaseUrl.ts";
@@ -112,15 +109,9 @@
 @source "../../../components/navigation/NavbarLinks.tsx";
 @source "../../../components/navigation/NavbarMenu.tsx";
 @source "../../../components/navigation/SkipToContentLink.tsx";
-@source "../../../components/seo/CategoryHubPage.tsx";
-@source "../../../components/seo/ComparisonTable.tsx";
-@source "../../../components/seo/DocsGuidesSection.tsx";
 @source "../../../components/seo/FAQAccordion.tsx";
-@source "../../../components/seo/HubPagination.tsx";
 @source "../../../components/seo/JsonLd.tsx";
-@source "../../../components/seo/LinkCard.tsx";
 @source "../../../components/seo/PageBreadcrumbs.tsx";
-@source "../../../components/seo/ProseParagraphs.tsx";
 @source "../../../components/seo/RelatedComparisonsGrid.tsx";
 @source "../../../components/seo/SiteLink.tsx";
 @source "../../../components/shared/accordionVariants.ts";
@@ -185,8 +176,6 @@
 @source "../../../lib/api/server.ts";
 @source "../../../lib/api/typed.ts";
 @source "../../../lib/db/chatDb.ts";
-@source "../../../lib/docs-links/automate-links.ts";
-@source "../../../lib/docs-links/index.ts";
 @source "../../../lib/electron/api.ts";
 @source "../../../types/features/toolDataTypes.ts";
 @source "../../../utils/date/dateUtils.ts";
@@ -209,8 +198,6 @@
 @source "../../../components/ui/holo-card/stampShape.ts";
 @source "../../../components/ui/holo-card/utils.ts";
 @source "../../../features/about/components/About.tsx";
-@source "../../../features/alternatives/data/alternativesData.ts";
-@source "../../../features/alternatives/data/getTranslatedAlternative.ts";
 @source "../../../features/auth/api/authApi.ts";
 @source "../../../features/auth/api/serverSetupStatusApi.ts";
 @source "../../../features/auth/components/AuthShell.tsx";
@@ -250,8 +237,6 @@
 @source "../../../features/chat/utils/loadingHints.ts";
 @source "../../../features/chat/utils/toolIcons.tsx";
 @source "../../../features/chat/utils/unlistedConversation.ts";
-@source "../../../features/comparisons/data/categories.ts";
-@source "../../../features/comparisons/data/comparisonCategories.ts";
 @source "../../../features/comparisons/data/comparisonsData.ts";
 @source "../../../features/comparisons/data/getTranslatedComparison.ts";
 @source "../../../features/contact/components/ContactForm.tsx";
@@ -362,10 +347,6 @@
 @source "../../../features/workflows/triggers/utils.ts";
 @source "../../../features/workflows/utils/creator.ts";
 @source "../../../features/workflows/utils/cronUtils.ts";
-@source "../../../lib/docs-links/data/alternative-links.ts";
-@source "../../../lib/docs-links/data/compare-links.ts";
-@source "../../../lib/docs-links/data/learn-links.ts";
-@source "../../../lib/docs-links/data/marketplace-links.ts";
 @source "../../[locale]/(landing)/about/page.tsx";
 @source "../../[locale]/(landing)/agency-owners/AgencyClient.tsx";
 @source "../../[locale]/(landing)/bots/page.tsx";
@@ -373,10 +354,6 @@
 @source "../../[locale]/(landing)/cli/cliContent.ts";
 @source "../../[locale]/(landing)/cli/InstallPageClient.tsx";
 @source "../../[locale]/(landing)/cli/page.tsx";
-@source "../../[locale]/(landing)/compare/ComparisonCardGrid.tsx";
-@source "../../[locale]/(landing)/compare/Hub.tsx";
-@source "../../[locale]/(landing)/compare/metadata.ts";
-@source "../../[locale]/(landing)/compare/page.tsx";
 @source "../../[locale]/(landing)/contact/page.tsx";
 @source "../../[locale]/(landing)/download/page.tsx";
 @source "../../[locale]/(landing)/engineering-managers/EngineeringManagerClient.tsx";
@@ -474,8 +451,6 @@
 @source "../../[locale]/(landing)/brand/components/BrandGuidelines.tsx";
 @source "../../[locale]/(landing)/brand/components/DownloadAll.tsx";
 @source "../../[locale]/(landing)/brand/components/DownloadAsset.tsx";
-@source "../../[locale]/(landing)/compare/[slug]/CompareLinkSections.tsx";
-@source "../../[locale]/(landing)/compare/[slug]/page.tsx";
 @source "../../[locale]/(landing)/features/[slug]/page.tsx";
 @source "../../[locale]/(landing)/for/[persona]/page.tsx";
 @source "../../[locale]/(landing)/use-cases/[slug]/client.tsx";
@@ -571,5 +546,3 @@
 @source "../../../features/landing/components/features/demos/VoiceDemo.tsx";
 @source "../../../features/landing/components/features/demos/workflowDemoData.ts";
 @source "../../../features/landing/components/features/demos/WorkflowsDemo.tsx";
-@source "../../[locale]/(landing)/compare/category/[category]/page.tsx";
-@source "../../[locale]/(landing)/compare/page/[page]/page.tsx";
