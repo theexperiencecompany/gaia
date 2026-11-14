@@ -63,14 +63,12 @@ export async function ComparisonsHub({ locale, page }: ComparisonsHubProps) {
   const pageSlugs = new Set(
     hubPageSlice(orderedComparisons, currentPage).map((c) => c.slug),
   );
-  const pageSections = categories
-    .map((category) => ({
-      category,
-      items: category.items.filter((comparison) =>
-        pageSlugs.has(comparison.slug),
-      ),
-    }))
-    .filter(({ items }) => items.length > 0);
+  const pageSections = categories.flatMap((category) => {
+    const items = category.items.filter((comparison) =>
+      pageSlugs.has(comparison.slug),
+    );
+    return items.length > 0 ? [{ category, items }] : [];
+  });
 
   return (
     <>

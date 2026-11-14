@@ -117,9 +117,10 @@ export default async function AlternativesHubPage({ params }: PageProps) {
     list.push(alt);
     byCategory.set(alt.category, list);
   }
-  const pageCategories = CATEGORY_ORDER.map(
-    (category) => [category, byCategory.get(category) ?? []] as const,
-  ).filter(([, items]) => items.length > 0);
+  const pageCategories = CATEGORY_ORDER.flatMap((category) => {
+    const items = byCategory.get(category) ?? [];
+    return items.length > 0 ? [[category, items] as const] : [];
+  });
 
   const webPageSchema = generateWebPageSchema(
     t("hub_meta_title"),
