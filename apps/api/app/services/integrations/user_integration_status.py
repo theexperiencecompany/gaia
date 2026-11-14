@@ -12,16 +12,18 @@ from pymongo.errors import PyMongoError
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
 from app.constants.log_tags import LogTag
+from app.constants.waits import WaitCondition
 from app.core.websocket_manager import websocket_manager
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.integration_models import UserIntegrationStatus
 from app.services.integrations_fs import schedule_user_integrations_sync
+from app.services.wait_service import report_wait_met
 from shared.py.wide_events import log
 
 
 async def publish_connected(user_id: str, integration_id: str) -> None:
-    """Reflect a newly connected integration in the workspace VFS and on any open page."""
+    """Reflect a newly connected integration in the workspace VFS, on any open page, and to anything waiting on it."""
     schedule_user_integrations_sync(user_id)
     # Best-effort: a missed push catches up on the next catalog read, so a
     # broadcast failure (Redis down) must not fail the connect.
@@ -40,6 +42,7 @@ async def publish_connected(user_id: str, integration_id: str) -> None:
             error=str(e),
             error_type=type(e).__name__,
         )
+    await report_wait_met(user_id, WaitCondition.INTEGRATION_CONNECTED, integration_id)
 
 
 @CacheInvalidator(key_patterns=USER_INTEGRATION_CACHE_PATTERNS)

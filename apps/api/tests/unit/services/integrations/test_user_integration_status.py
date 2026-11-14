@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.constants.waits import WaitCondition
+from app.services.integrations import user_integration_status
 from app.services.integrations.user_integration_status import reconnect_or_unknown
 
 MODULE = "app.services.integrations.user_integration_status"
@@ -43,3 +45,15 @@ class TestReconnectOrUnknown:
     async def test_any_other_failure_still_raises(self) -> None:
         with pytest.raises(RuntimeError, match="bug"):
             await reconnect_or_unknown(_raise(RuntimeError("bug")), "gmail")
+
+
+class TestPublishConnected:
+    async def test_a_connect_meets_everything_waiting_on_that_integration(self) -> None:
+        with (
+            patch(f"{MODULE}.schedule_user_integrations_sync"),
+            patch(f"{MODULE}.websocket_manager.broadcast_to_user", AsyncMock()),
+            patch(f"{MODULE}.report_wait_met", AsyncMock()) as report,
+        ):
+            await user_integration_status.publish_connected("user-1", "gmail")
+
+        report.assert_awaited_once_with("user-1", WaitCondition.INTEGRATION_CONNECTED, "gmail")

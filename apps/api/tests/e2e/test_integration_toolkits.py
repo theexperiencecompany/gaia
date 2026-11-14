@@ -245,7 +245,6 @@ class TestGmailFetchMessages:
             "snippet": "snippet for m1",
             "time": "Mon, 03 Aug 2026 10:00:00 +0000",
             "isRead": False,
-            "hasAttachment": False,
             "labels": ["INBOX", "UNREAD"],
         }
         assert streamed == [

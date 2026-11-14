@@ -48,6 +48,8 @@ class AgentTag(StrEnum):
     BROWSER_RESULT = "browser_result"
     #: A browser job a stop ended: the thread learns it ended, and no run wakes for it.
     BROWSER_STOPPED = "browser_stopped"
+    #: Something the user was asked to do is done, told to the chat that asked.
+    WAIT_MET = "wait_met"
 
 
 #: Entries that only inform: they wait for the next run's drain and never start one.

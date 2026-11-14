@@ -75,6 +75,11 @@ async def block_integration(stream_id: str, integration_id: str) -> bool:
     return bool(added)
 
 
+async def unblock_integration(stream_id: str, integration_id: str) -> None:
+    """Let a run use an integration again once the user connected the one it showed a card for."""
+    await redis_cache.client.srem(_blocked_key(stream_id), integration_id)
+
+
 async def is_integration_blocked(stream_id: str, integration_id: str) -> bool:
     """Whether this run already showed the user a connect card for the integration."""
     return bool(await redis_cache.client.sismember(_blocked_key(stream_id), integration_id))

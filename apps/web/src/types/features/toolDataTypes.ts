@@ -98,6 +98,8 @@ export type WorkflowDraftData = {
   integration_ids?: string[] | null;
   /** Which events are worth a run, as GAIA drafted it; null when every event is */
   runs_only_when?: string | null;
+  /** Sent back on create, so the chat that drafted it picks back up once it is set up */
+  draft_id?: string;
 };
 
 // Define workflow created data for when a workflow is automatically created
