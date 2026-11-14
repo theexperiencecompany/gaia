@@ -77,6 +77,7 @@ from tests.unit.services.conversation.runtime_doubles import (
     Pause,
     RecordingFrames,
     Runtime,
+    ScriptItem,
     Started,
 )
 
@@ -322,16 +323,21 @@ class StepScenarios:
         assert rt.frames.conversations == {CONVERSATION}
         await assert_quiet(rt)
 
-    @pytest.mark.parametrize("ending", ["finished", "answered"])
-    async def test_a_run_that_ends_right_after_an_absorb_settles_the_read_text_above_the_message(
-        self, rt: Runtime, ending: str
+    @pytest.mark.parametrize(
+        "after_absorb",
+        [
+            [Finished(Replied("done"))],
+            [Answered(Replied("done")), Finished(Replied("done"))],
+            [ModelOutput(True), text("done"), Finished(Replied("done"))],
+        ],
+        ids=["finished", "answered", "model-output"],
+    )
+    async def test_the_first_signal_after_an_absorb_settles_the_read_text_above_the_message(
+        self, rt: Runtime, after_absorb: list[ScriptItem]
     ) -> None:
-        final = (
-            [Finished(Replied("done"))]
-            if ending == "finished"
-            else [Answered(Replied("done")), Finished(Replied("done"))]
+        rt.runner.script(
+            [text("on it"), Do(arrive(rt, user("u2"))), ModelOutput(True), *after_absorb]
         )
-        rt.runner.script([text("on it"), Do(arrive(rt, user("u2"))), ModelOutput(True), *final])
         await send(rt, user("u1"))
         # A missed segment leaves u2 waking, and the next attempt's unscripted run waits forever.
         await asyncio.wait_for(run(rt), timeout=10)

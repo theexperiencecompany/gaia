@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 import itertools
 import json
-from pathlib import Path
 
 from hypothesis import given, settings, strategies as st
 import pytest
@@ -44,6 +43,7 @@ from shared.py.conversation_wire import (
     ToolDataEntry,
     ToolProgress,
 )
+from tests.helpers import REPO_ROOT
 from tests.unit.services.conversation.log_helpers import asked, decided, logged, notice, user
 
 
@@ -495,9 +495,7 @@ async def test_a_handed_over_tasks_cards_show_on_the_work_item_it_joined() -> No
 
 
 # The clients' tests replay these frames: the server's own serialization of the founder's conversation.
-_FOUNDER_FRAMES = (
-    Path(__file__).parents[6] / "libs/shared/ts/src/conversation/fixtures/c41f18c5.frames.json"
-)
+_FOUNDER_FRAMES = REPO_ROOT / "libs/shared/ts/src/conversation/fixtures/c41f18c5.frames.json"
 
 
 def test_the_founder_conversations_patches_are_the_frames_the_clients_replay() -> None:
