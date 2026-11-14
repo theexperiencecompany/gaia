@@ -313,10 +313,11 @@ class StepScenarios:
         assert first.attempt_id != second.attempt_id
         # Each segment streams as its own draft, so settling the first never swallows the second's deltas.
         deltas = [f for f in rt.frames.published if isinstance(f, ReplyDeltaFrame)]
-        assert [(f.attempt_id, f.index) for f in deltas] == [
-            (first.attempt_id, 0),
-            (second.attempt_id, 0),
+        assert [(f.attempt_id, f.index, f.reply_id) for f in deltas] == [
+            (first.attempt_id, 0, first.reply_id),
+            (second.attempt_id, 0, second.reply_id),
         ]
+        assert rt.frames.conversations == {CONVERSATION}
         await assert_quiet(rt)
 
     async def test_a_shown_tool_calls_result_card_stays_with_it_above_the_absorbed_message(

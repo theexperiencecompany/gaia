@@ -13,6 +13,7 @@ Session state and the routing logic under test are real.
 import asyncio
 from collections.abc import Iterator, Mapping
 from contextlib import ExitStack, contextmanager
+import dataclasses
 from dataclasses import replace
 import time
 from types import SimpleNamespace
@@ -45,6 +46,8 @@ from app.agents.core.background.session import (
     RunIdentity,
     RunKind,
     create_session,
+    get_session,
+    teardown_session,
 )
 from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
@@ -908,3 +911,44 @@ async def test_a_stopped_run_reports_that_the_user_stopped_it() -> None:
     report = record.await_args.args[4]
     assert record.await_args.args[3] is WorkOutcome.CANCELLED
     assert report.text == WORK_STOPPED_REPORT
+
+
+class TestWhatAStopCancels:
+    async def test_a_finished_answer_is_not_cancelled_by_a_late_stop(self, boundaries) -> None:
+        boundaries.stop_requested.return_value = True
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), "the answer", "final")
+
+        assert boundaries.logged.await_args.args[1].was_cancelled is False
+
+    async def test_a_stopped_run_is_cancelled_when_its_own_stream_was_told_to_stop(
+        self, boundaries
+    ) -> None:
+        boundaries.stop_requested.return_value = True
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), "partial", "final", stopped=True)
+
+        assert boundaries.logged.await_args.args[1].was_cancelled is True
+        boundaries.stop_requested.assert_awaited_once_with("s1")
+
+    async def test_finalizing_drops_the_runs_session(self, boundaries) -> None:
+        create_session("s1", RunKind.LIVE)
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), "the answer", "final")
+
+        assert get_session("s1") is None
+
+
+def test_a_run_with_no_task_writes_its_frames_into_its_own_session() -> None:
+    create_session("s-writer", RunKind.QUEUED)
+    run = dataclasses.replace(_run(RunKind.QUEUED, stream_id="s-writer"), task_id=None)
+
+    write, _ = er._stream_writer(run)
+    write({"progress": "Looking"})
+
+    session = get_session("s-writer")
+    assert session is not None
+    assert session.tool_events == [{"progress": "Looking"}]
+    teardown_session("s-writer")

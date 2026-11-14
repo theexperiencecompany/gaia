@@ -474,9 +474,11 @@ class ScriptedRunner:
 @dataclass
 class RecordingFrames:
     published: list[OutputFrame] = field(default_factory=list)
+    conversations: set[str] = field(default_factory=set)
 
     async def publish(self, conversation_id: str, *frames: OutputFrame) -> None:
         self.published.extend(frames)
+        self.conversations.add(conversation_id)
 
 
 @dataclass(frozen=True)

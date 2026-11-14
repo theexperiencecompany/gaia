@@ -21,6 +21,7 @@ from app.agents.tools.desktop_tools import (
     take_screenshot,
     write_clipboard,
 )
+from app.constants.log_tags import LogTag
 from app.services.desktop.bridge import DesktopToolOutcome
 from app.utils.image_codec import InlineImage
 from app.utils.multimodal import ContentBlock
@@ -64,10 +65,16 @@ class TestDesktopGating:
     async def test_missing_user_id_is_refused(self) -> None:
         config = _desktop_config()
         config["configurable"].pop("user_id")
-        with patch(f"{MODULE}.request_desktop_action", AsyncMock()) as action:
+        with (
+            patch(f"{MODULE}.request_desktop_action", AsyncMock()) as action,
+            patch(f"{MODULE}.log") as logger,
+        ):
             result = await tool_coroutine(read_clipboard)(config=config)
 
         assert result == _MISSING_CONTEXT_ERROR
+        logger.warning.assert_called_once_with(
+            f"{LogTag.TOOL} Desktop tool missing user_id in config", tool_name="read_clipboard"
+        )
         action.assert_not_called()
 
 

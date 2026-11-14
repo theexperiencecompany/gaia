@@ -11,6 +11,7 @@ from app.constants.outbound import (
     OUTBOUND_TTL_SECONDS_DEFAULT,
     OUTBOUND_TTL_SECONDS_GREETING,
 )
+from app.models.bot_models import BotDelivery, BotSessionDocument
 from app.models.chat_models import ConversationSource
 from app.services import outbound_delivery as od
 from app.services.platform_link_service import PlatformLinkService
@@ -623,3 +624,30 @@ class TestALostOutboundMessageIsAlerted:
 
         assert ok is od.OutboundResult.SKIPPED
         report.assert_not_awaited()
+
+
+def _session(platform: str, delivery: BotDelivery | None) -> BotSessionDocument:
+    return BotSessionDocument(
+        session_key=f"{platform}:556677",
+        conversation_id="conv-1",
+        platform=platform,
+        platform_user_id="556677",
+        delivery=delivery,
+    )
+
+
+class TestPublishConversationWake:
+    async def test_a_session_with_no_delivery_cursor_raises_instead_of_waking_from_nothing(
+        self,
+    ) -> None:
+        with pytest.raises(ValueError, match="has none"):
+            await od.publish_conversation_wake(_session("telegram", None))
+
+    async def test_a_platform_with_no_outbound_queue_is_skipped(self) -> None:
+        with patch.object(od, "get_rabbitmq_publisher", new_callable=AsyncMock) as publisher:
+            result = await od.publish_conversation_wake(
+                _session("web", BotDelivery(delivered_seq=0))
+            )
+
+        assert result == od.OutboundResult.SKIPPED
+        publisher.assert_not_awaited()
