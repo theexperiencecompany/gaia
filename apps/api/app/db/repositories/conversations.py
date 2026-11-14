@@ -131,33 +131,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             }
         )
 
-    async def has_activity_since(self, user_id: str, since: datetime) -> bool:
-        """Whether the user touched any conversation at or after since.
-
-        The transport-agnostic usage signal (unlike users.last_active_at,
-        which only a WorkOS web login bumps). updatedAt is a BSON date and
-        createdAt an ISO string; Mongo does not compare across BSON types, so
-        each is compared against its own type rather than one shared filter.
-        """
-        return (
-            await self._count(
-                {
-                    "user_id": user_id,
-                    # Excludes system-generated conversations: counting a workflow's
-                    # own updatedAt bumps would let a user's automation vouch for
-                    # them as "active" forever, defeating the dormancy sweep.
-                    "is_system_generated": {"$ne": True},
-                    # Same for a tracked todo's chat, bumped by every run's report.
-                    "todo_id": None,
-                    "$or": [
-                        {"updatedAt": {"$gte": since}},
-                        {"createdAt": {"$gte": since.isoformat()}},
-                    ],
-                }
-            )
-            > 0
-        )
-
     async def has_sent_message(self, user_id: str) -> bool:
         """Whether the user has ever sent a message, from any surface.
 
@@ -622,6 +595,27 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return None if row is None else ConversationSource.coerce(row.source)
 
+    async def get_recent_follow_up_actions(
+        self, user_id: str, conversation_id: str, *, window: int
+    ) -> list[str]:
+        """Return the follow-up actions shown in the trailing window of messages.
+
+        Deduped in first-seen order, so the generator can avoid repeating a suggestion.
+        """
+        row = await self._find_one_projected(
+            {"conversation_id": conversation_id, "user_id": user_id},
+            {"messages": {"$slice": -window}},
+            _MessageProjectionRow,
+        )
+        if row is None:
+            return []
+        seen: list[str] = []
+        for message in row.messages:
+            for action in message.follow_up_actions or []:
+                if action not in seen:
+                    seen.append(action)
+        return seen
+
     async def owner_ids(self, conversation_id: str) -> set[str]:
         """Every user holding a conversation under this id; more than one means they share its agent thread."""
         return set(await self._distinct("user_id", {"conversation_id": conversation_id}))
@@ -849,13 +843,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             _ConversationOwnerRow,
         )
         return {row.conversation_id: row.user_id for row in rows}
-
-    async def active_user_ids_since(self, cutoff: datetime) -> list[str]:
-        """User ids with a conversation updated since cutoff — the workspace sync sweep's active-user set.
-
-        Intentionally unscoped (a maintenance sweep).
-        """
-        return await self._distinct("user_id", {"updatedAt": {"$gte": cutoff}})
 
     # ---- internal helpers ----
 

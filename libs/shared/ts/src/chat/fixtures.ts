@@ -768,6 +768,7 @@ const workflowDraftFixture: WorkflowDraftData = {
     "Give me a morning brief: today's calendar, the 3 most important unread emails, and any overdue tasks.",
   trigger_type: "scheduled",
   cron_expression: "0 8 * * 1-5",
+  delivery: "brief",
 };
 
 const workflowCreatedFixture: WorkflowCreatedData = {

@@ -21,7 +21,6 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.api.v1.middleware import timeout as timeout_middleware
-from app.api.v1.middleware.auth import WorkOSAuthMiddleware
 from app.core.app_factory import create_app
 from app.models.payment_models import PlanType, UserSubscriptionStatus
 from app.schemas.errors import ERROR_RESPONSES, ErrorEnvelope
@@ -143,10 +142,13 @@ def free_plan():
 async def authed_stack(restore_timeout_default):
     # Only the WorkOS SSO round trip is stubbed — the one step no automated
     # test can perform — so the paywall gate reads what the real auth path wrote.
-    with patch.object(
-        WorkOSAuthMiddleware,
-        "_authenticate_session",
-        new=AsyncMock(return_value=(make_authenticated_user(user_id=PROBE_USER_ID), None)),
+    # The activity write is stubbed too: it needs the Mongo this tier runs without.
+    with (
+        patch(
+            "app.api.v1.middleware.auth.authenticate_workos_session",
+            new=AsyncMock(return_value=(make_authenticated_user(user_id=PROBE_USER_ID), None)),
+        ),
+        patch("app.api.v1.middleware.auth.record_activity", new=AsyncMock()),
     ):
         async with _client(_build_app()) as client:
             client.cookies.set("wos_session", "probe-session")

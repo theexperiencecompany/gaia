@@ -5,6 +5,7 @@ import json
 import pytest
 
 from app.constants.trigger_gates import TRIGGER_GATE_CONDITION_MAX_CHARS
+from app.constants.workflows import WorkflowDelivery
 from app.services.workflow.subagent_output import parse_subagent_response
 
 pytestmark = pytest.mark.unit
@@ -33,7 +34,10 @@ class TestRunsOnlyWhen:
         assert result.mode == "finalized"
         assert result.draft is not None
         assert (
-            result.draft.to_stream_payload("draft-1")["workflow_draft"]["runs_only_when"] == BILLING
+            result.draft.to_stream_payload(WorkflowDelivery.NOW, "draft-1")["workflow_draft"][
+                "runs_only_when"
+            ]
+            == BILLING
         )
 
     @pytest.mark.parametrize("fields", [{}, {"runs_only_when": None}], ids=["omitted", "null"])
@@ -42,7 +46,12 @@ class TestRunsOnlyWhen:
 
         assert result.mode == "finalized"
         assert result.draft is not None
-        assert result.draft.to_stream_payload("draft-1")["workflow_draft"]["runs_only_when"] is None
+        assert (
+            result.draft.to_stream_payload(WorkflowDelivery.NOW, "draft-1")["workflow_draft"][
+                "runs_only_when"
+            ]
+            is None
+        )
 
     def test_a_condition_on_a_scheduled_draft_is_sent_back_for_correction(self) -> None:
         result = parse_subagent_response(
@@ -119,8 +128,23 @@ class TestReplyParsing:
         assert result.message == reply
 
 
+def test_the_stream_payload_carries_the_agents_delivery() -> None:
+    result = parse_subagent_response(_reply())
+
+    assert result.draft is not None
+    frame = result.draft.to_stream_payload(WorkflowDelivery.BRIEF, "draft-1")
+
+    assert frame["workflow_draft"]["delivery"] == "brief"
+    assert frame["workflow_draft"]["suggested_title"] == "Billing replies"
+
+
 def test_the_stream_payload_carries_the_draft_id_the_create_sends_back() -> None:
     result = parse_subagent_response(_reply())
 
     assert result.draft is not None
-    assert result.draft.to_stream_payload("draft-1")["workflow_draft"]["draft_id"] == "draft-1"
+    assert (
+        result.draft.to_stream_payload(WorkflowDelivery.NOW, "draft-1")["workflow_draft"][
+            "draft_id"
+        ]
+        == "draft-1"
+    )

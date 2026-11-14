@@ -1,6 +1,5 @@
 """Unit tests for the dormancy sweep ARQ task."""
 
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,13 +9,10 @@ from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflo
 
 _MOD = "app.workers.tasks.workflow_dormancy_tasks"
 
-_CUTOFF = datetime(2026, 7, 12, tzinfo=UTC)
-
 
 def _result(**overrides) -> DormancySweepResult:
     defaults = {
         "dry_run": False,
-        "cutoff": _CUTOFF,
         "dormant_users": 3,
         "workflows_paused": 7,
         "failures": 1,
@@ -58,7 +54,6 @@ class TestSweepDormantUserWorkflowsTask:
         assert event["dormant_users"] == 3
         assert event["workflows_paused"] == 7
         assert event["pause_failures"] == 1
-        assert event["cutoff"] == _CUTOFF.isoformat()
 
     async def test_a_sweep_that_paused_nothing_still_reports(self):
         with patch(

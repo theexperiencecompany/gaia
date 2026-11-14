@@ -112,9 +112,7 @@ def prepare_knowledge_items(sections: list[tuple[str, str]], min_length: int = 5
                         "metadata": {
                             "source": "content.md",
                             "section": clean_header,
-                            "parent_section": current_h1["header"]
-                            if current_h1["header"]
-                            else None,
+                            "parent_section": current_h1["header"] or None,
                             "section_index": idx,
                             "level": "h2",
                         },
@@ -138,9 +136,7 @@ def prepare_knowledge_items(sections: list[tuple[str, str]], min_length: int = 5
                         "metadata": {
                             "source": "content.md",
                             "section": clean_header,
-                            "parent_section": current_h2["header"]
-                            if current_h2["header"]
-                            else current_h1["header"],
+                            "parent_section": current_h2["header"] or current_h1["header"],
                             "section_index": idx,
                             "level": "h3",
                         },

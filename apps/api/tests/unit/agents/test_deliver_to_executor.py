@@ -59,7 +59,7 @@ def _seams(*, busy: list[bool], started: bool):
 
     stack = patch.object(er, "reclaim_dead_lock", _free_after_reclaim)
     start = patch.object(er, "_start_executor_run", new_callable=AsyncMock, return_value=started)
-    append = patch.object(er.ExecutorInbox, "append", new_callable=AsyncMock)
+    append = patch.object(ExecutorInbox, "append", new_callable=AsyncMock)
     return stack, start, append
 
 
@@ -121,7 +121,9 @@ class TestTheRealLockAndInbox:
         self, fake_redis
     ) -> None:
         await fake_redis.set(
-            f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}", build_lock_value("stream-a", "task-a")
+            f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION}",
+            build_lock_value("stream-a", "task-a"),
+            ex=EXECUTOR_BUSY_TTL,
         )
         old_run = ExecutorRun(
             stream_id="stream-a",
@@ -141,9 +143,7 @@ class TestTheRealLockAndInbox:
             return await real_append(inbox, entry_id, text, tag)
 
         with (
-            patch.object(eq, "StreamManager", AsyncMock()),
-            patch.object(eq, "websocket_manager", AsyncMock()),
-            patch.object(er, "_spawn_detached_run") as spawn,
+            _real_lifecycle() as h,
             patch.object(ExecutorInbox, "append", finalize_the_old_run_then_append),
         ):
             await er.deliver_to_executor(
@@ -151,9 +151,9 @@ class TestTheRealLockAndInbox:
             )
             pending = await ExecutorInbox(CONVERSATION).read()
 
-        spawn.assert_called_once()
-        assert spawn.call_args.args[0].task == EXECUTOR_CARRY_TASK
-        assert spawn.call_args.args[0].run.workflow_execution_id == "exec-1"
+        h.spawn.assert_called_once()
+        assert h.spawn.call_args.args[0].task == EXECUTOR_CARRY_TASK
+        assert h.spawn.call_args.args[0].run.workflow_execution_id == "exec-1"
         # Left in the inbox on purpose: the new run's drain hook injects it and
         # retires it only once the thread holds it.
         assert [entry.text for entry in pending] == [TASK]

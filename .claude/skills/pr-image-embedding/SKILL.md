@@ -38,11 +38,13 @@ code diff.
 4. **Check each URL serves an image** before you embed it:
 
    ```bash
-   curl -s -o /dev/null -w "%{http_code} %{content_type}\n" \
+   /usr/bin/curl -s -o /dev/null -w "%{http_code} %{content_type}\n" \
      https://raw.githubusercontent.com/theexperiencecompany/gaia/pr-assets/<pr-number>-<topic>/<file>.png
    ```
 
-   Expect `200 image/png`.
+   Expect `200 image/png`. Use `/usr/bin/curl`, not bare `curl`: this
+   environment aliases `curl` to `curlie`, which changes the request and
+   reports misleading codes (a plain GET coming back 403/422 is the tell).
 
 5. **Reference it by raw URL** in the PR body:
 

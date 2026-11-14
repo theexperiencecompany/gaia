@@ -14,6 +14,11 @@ from app.constants.delivery_alerts import (
     REFRESH_DELIVERY_INCIDENT_TASK,
 )
 from app.constants.email import SIGNUP_EMAIL_TASK
+from app.constants.notifications import (
+    DEFERRED_CHAT_MESSAGE_TASK,
+    PROACTIVE_RECORD_MAX_TRIES,
+    PROACTIVE_RECORD_TASK,
+)
 from app.constants.onboarding import INTELLIGENCE_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
 from app.constants.todos import (
@@ -22,6 +27,7 @@ from app.constants.todos import (
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_TASK,
 )
+from app.constants.user_activity import REACTIVATE_USER_TASK
 from app.constants.waits import RESUME_WAITER_MAX_TRIES, RESUME_WAITER_TASK
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.browser_worker import browser_reaper_cron
@@ -63,6 +69,10 @@ from app.workers.tasks.inbox_desk_tasks import (
 )
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
+from app.workers.tasks.proactive_delivery_tasks import (
+    deliver_deferred_chat_message,
+    record_proactive_delivery,
+)
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
 from app.workers.tasks.tracked_todo_tasks import (
@@ -72,6 +82,7 @@ from app.workers.tasks.tracked_todo_tasks import (
     safety_net_check_orphaned_todos,
 )
 from app.workers.tasks.trigger_dispatch_tasks import dispatch_todo_subscriptions
+from app.workers.tasks.user_tasks import reactivate_user_task
 from app.workers.tasks.wait_tasks import resume_waiter
 from app.workers.tasks.workflow_dormancy_tasks import sweep_dormant_user_workflows
 
@@ -91,6 +102,8 @@ _process_reminder = arq_task(process_reminder)
 _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
 _sweep_hil_approvals = arq_task(sweep_hil_approvals)
 _check_inactive_users = arq_task(check_inactive_users)
+# Named from the constant record_activity enqueues by, so the two cannot drift.
+_reactivate_user = func(arq_task(reactivate_user_task), name=REACTIVATE_USER_TASK)
 _process_workflow_generation_task = arq_task(process_workflow_generation_task)
 _execute_workflow_by_id = arq_task(execute_workflow_by_id)
 _regenerate_workflow_steps = arq_task(regenerate_workflow_steps)
@@ -143,6 +156,16 @@ _finish_tracked_todo_run = func(
     name=TODO_RUN_FINISH_TASK,
     max_tries=TODO_RUN_FINISH_MAX_TRIES,
 )
+# Named from the constant post_to_platform_chat schedules quiet-hours deliveries by.
+_deliver_deferred_chat_message = func(
+    arq_task(deliver_deferred_chat_message), name=DEFERRED_CHAT_MESSAGE_TASK
+)
+# Named from the constant thread_record hands a held checkpoint write to; bounded tries.
+_record_proactive_delivery = func(
+    arq_task(record_proactive_delivery),
+    name=PROACTIVE_RECORD_TASK,
+    max_tries=PROACTIVE_RECORD_MAX_TRIES,
+)
 # Named from the constant the webhook enqueues by, so the two cannot drift.
 _sync_workflows_for_subscription_state = func(
     arq_task(sync_workflows_for_subscription_state),
@@ -160,6 +183,9 @@ _refresh_delivery_incident = func(
     arq_task(refresh_delivery_incident_task), name=REFRESH_DELIVERY_INCIDENT_TASK
 )
 
+# The arq entry point (arq app.worker.WorkerSettings) and the task list it registers.
+__all__ = ["TASK_FUNCTIONS", "WorkerSettings"]
+
 # Every job on the default queue. Browser jobs have their own worker
 # (app.workers.browser_worker), started from the worker lifecycle.
 TASK_FUNCTIONS: list[WorkerFunction] = [
@@ -167,6 +193,7 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _process_reminder,
     _cleanup_expired_reminders,
     _check_inactive_users,
+    _reactivate_user,
     _run_nurture_sequence_task,
     _process_workflow_generation_task,
     _execute_workflow_by_id,
@@ -182,6 +209,8 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _execute_tracked_todo,
     _resume_tracked_todo,
     _finish_tracked_todo_run,
+    _deliver_deferred_chat_message,
+    _record_proactive_delivery,
     _dispatch_todo_subscriptions,
     _backfill_active_users,
     _backfill_user_memories,
@@ -277,8 +306,8 @@ WorkerSettings.cron_jobs = [
     # Recovery safety net: re-enqueue due scheduled tasks whose ARQ job was lost
     # (Redis eviction/flush). Idempotent via the deterministic _job_id.
     cron(cast(WorkerCoroutine, _rescan_pending_scheduled_tasks), minute={0, 30}, second=0),
-    # Seed long-term memory for recently-active pre-launch users (capped per
-    # run; the marker makes it resume and pick up returning users).
+    # Seed long-term memory for active pre-launch users (capped per run; the
+    # marker makes it resume and pick up returning users).
     cron(
         _backfill_active_users,
         hour=4,  # Daily at 04:00 UTC (low traffic)
@@ -293,8 +322,8 @@ WorkerSettings.cron_jobs = [
         minute=0,
         second=0,
     ),
-    # Pause workflows owned by users who stopped using GAIA — they otherwise fire
-    # (and bill) forever. Undone on the user's next login, not by this sweep.
+    # Pause workflows owned by dormant users — they otherwise fire (and bill)
+    # forever. Undone by the user's next activity (reactivate_user), not by this sweep.
     cron(
         cast(WorkerCoroutine, _sweep_dormant_user_workflows),
         hour=6,  # Daily at 06:00 UTC

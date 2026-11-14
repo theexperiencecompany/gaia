@@ -54,11 +54,15 @@ from app.constants.cache import (
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
+from app.constants.llm import LLMProviderName
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable
+from app.models.executor_activity_models import ExecutorActivity, ExecutorActivitySnapshot
 from app.models.user_models import AuthenticatedUser
 from shared.py.analytics import Dedupe
+from shared.py.wide_events import log
 from tests.helpers import captured_wide_event
 
 CONVERSATION = "conv-1"
@@ -73,7 +77,7 @@ def _clean_registry():
 
 
 @pytest.fixture
-async def redis() -> fakeredis.aioredis.FakeRedis:
+async def redis() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
     """Provide the real redis_cache wrapper over a fake server, exactly as production reaches it — decode_responses=True included, since the lock is compared as a string."""
     client = fakeredis.aioredis.FakeRedis(decode_responses=True)
     with patch.object(redis_cache, "redis", client):
@@ -386,7 +390,7 @@ class TestSafeConfigurable:
             # THE model selection. Dropping it made a re-dispatched run resolve a
             # fresh lane instead of continuing the one the user's turn started on.
             "lane": {
-                "provider": "openrouter",
+                "provider": LLMProviderName.OPENROUTER,
                 "model": "deepseek/deepseek-v4-flash-0731",
                 "reasoning": {"effort": "low"},
                 # The OpenRouter first-party pin. Dropping it load-balances the
@@ -428,7 +432,7 @@ class TestSafeConfigurable:
     def test_warns_and_drops_a_value_that_cannot_be_serialized(self) -> None:
         configurable = {"thread_id": "t", "model_kwargs": {"provider": object()}}
 
-        with patch.object(eq.log, "warning") as warn:
+        with patch.object(log, "warning") as warn:
             kept = safe_configurable(cast(AgentConfigurable, configurable))
 
         assert kept == {"thread_id": "t"}
@@ -591,7 +595,7 @@ class TestPrepareRunFromItem:
                     "user_name": "Uno",
                     "workflow_id": "wf-1",
                     "workflow_title": "Digest",
-                    "workflow_notify_on_completion": False,
+                    "workflow_delivery": WorkflowDelivery.SILENT,
                 }
             ),
             claim=LockClaim.SEIZE,
@@ -605,7 +609,7 @@ class TestPrepareRunFromItem:
         assert run.user_message_id == "msg-1"
         assert run.workflow_id == "wf-1"
         assert run.workflow_title == "Digest"
-        assert run.workflow_notify_on_completion is False
+        assert run.workflow_delivery is WorkflowDelivery.SILENT
         # No comms consumer attaches this run's cards, so it self-persists.
         assert run.executor_owns_tool_data is True
 
@@ -891,16 +895,16 @@ class TestLivenessRenewal:
 
 class TestReadExecutorActivity:
     async def test_no_lock_reads_idle(self, redis) -> None:
-        assert await eq.read_executor_activity(CONVERSATION) == eq.ExecutorActivitySnapshot(
-            eq.ExecutorActivity.IDLE
+        assert await eq.read_executor_activity(CONVERSATION) == ExecutorActivitySnapshot(
+            ExecutorActivity.IDLE
         )
 
     async def test_a_live_holder_reads_running_with_its_task_and_holder(self, redis) -> None:
         await redis.set(BUSY_KEY, "s1:t1", ex=EXECUTOR_BUSY_TTL)
         await hold_run_alive(CONVERSATION, "s1:t1")
 
-        assert await eq.read_executor_activity(CONVERSATION) == eq.ExecutorActivitySnapshot(
-            eq.ExecutorActivity.RUNNING, "t1", "s1:t1"
+        assert await eq.read_executor_activity(CONVERSATION) == ExecutorActivitySnapshot(
+            ExecutorActivity.RUNNING, "t1", "s1:t1"
         )
 
     async def test_a_live_holder_of_an_old_lock_still_reads_running(self, redis) -> None:
@@ -911,14 +915,14 @@ class TestReadExecutorActivity:
 
         snapshot = await eq.read_executor_activity(CONVERSATION)
 
-        assert snapshot.activity is eq.ExecutorActivity.RUNNING
+        assert snapshot.activity is ExecutorActivity.RUNNING
 
     async def test_a_dead_holder_reads_dead_with_its_task_and_holder(self, redis) -> None:
         age = EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS + 5
         await redis.set(BUSY_KEY, "s1:t1", ex=EXECUTOR_BUSY_TTL - age)
 
-        assert await eq.read_executor_activity(CONVERSATION) == eq.ExecutorActivitySnapshot(
-            eq.ExecutorActivity.DEAD, "t1", "s1:t1"
+        assert await eq.read_executor_activity(CONVERSATION) == ExecutorActivitySnapshot(
+            ExecutorActivity.DEAD, "t1", "s1:t1"
         )
 
     async def test_extend_names_a_run_without_a_task_id_by_its_stream(self, redis) -> None:

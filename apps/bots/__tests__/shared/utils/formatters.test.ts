@@ -26,29 +26,25 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 // formatWorkflow
 // ---------------------------------------------------------------------------
 describe("formatWorkflow", () => {
-  const base: Workflow = {
+  const base = {
     id: "wf-1",
-    name: "My Workflow",
+    title: "My Workflow",
     description: "Does things",
-    status: "active",
-  };
+    activated: true,
+  } as Workflow;
 
-  it("shows check emoji for active workflow", () => {
-    const result = formatWorkflow({ ...base, status: "active" });
+  it("shows check emoji for an activated workflow", () => {
+    const result = formatWorkflow({ ...base, activated: true });
     expect(result).toContain("\u2705");
   });
 
-  it("shows pencil emoji for draft workflow", () => {
-    const result = formatWorkflow({ ...base, status: "draft" });
-    expect(result).toContain("\uD83D\uDCDD");
-  });
-
-  it("shows pause emoji for paused/inactive workflow", () => {
-    const result = formatWorkflow({ ...base, status: "inactive" });
+  it("shows pause emoji for a deactivated workflow", () => {
+    const result = formatWorkflow({ ...base, activated: false });
     expect(result).toContain("\u23F8");
+    expect(result).not.toContain("\u2705");
   });
 
-  it("includes name, ID, and description", () => {
+  it("includes title, ID, and description", () => {
     const result = formatWorkflow(base);
     expect(result).toContain("**My Workflow**");
     expect(result).toContain("`wf-1`");
@@ -72,10 +68,10 @@ describe("formatWorkflowList", () => {
   });
 
   it("formats multiple workflows joined by double newlines", () => {
-    const workflows: Workflow[] = [
-      { id: "1", name: "A", description: "d1", status: "active" },
-      { id: "2", name: "B", description: "d2", status: "draft" },
-    ];
+    const workflows = [
+      { id: "1", title: "A", description: "d1", activated: true },
+      { id: "2", title: "B", description: "d2", activated: false },
+    ] as Workflow[];
     const result = formatWorkflowList(workflows);
     expect(result).toContain("**A**");
     expect(result).toContain("**B**");

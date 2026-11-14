@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@heroui/button";
+import { Tab, Tabs } from "@heroui/tabs";
+import { CheckmarkCircle02Icon } from "@icons";
+import { useCallback, useEffect, useState } from "react";
 import NotificationsHeader from "@/components/layout/headers/NotificationsHeader";
-import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { NotificationConnectBanner } from "@/features/notification/components/NotificationConnectBanner";
+import { NotificationModalHost } from "@/features/notification/components/NotificationModalHost";
 import { NotificationsList } from "@/features/notification/components/NotificationsList";
+import { UnreadCountChip } from "@/features/notification/components/UnreadCountChip";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useHeader } from "@/hooks/layout/useHeader";
 import {
   type ModalConfig,
-  type ModalProps,
   NotificationStatus,
 } from "@/types/features/notificationTypes";
 
@@ -17,8 +20,6 @@ const INAPP_CHANNEL = "inapp";
 
 export default function NotificationsPage() {
   const [modalConfig, setModalConfig] = useState<ModalConfig | null>(null);
-  // `props` is untyped on the wire; the component name is what makes it an EmailPreview payload.
-  const modalProps = modalConfig?.props as ModalProps | undefined;
   const [selectedTab, setSelectedTab] = useState<string>("unread");
   const { setHeader } = useHeader();
 
@@ -46,19 +47,15 @@ export default function NotificationsPage() {
       channel_type: INAPP_CHANNEL,
     });
 
-  // Handle modal opening from notification actions
   const handleModalOpen = (config: ModalConfig) => {
     setModalConfig(config);
   };
 
-  // Handle modal closing
   const handleModalClose = () => {
     setModalConfig(null);
   };
 
-  // Handle email sent callback to refresh notifications
   const handleEmailSent = () => {
-    // Refresh notifications after email is sent
     refreshNotifications();
   };
 
@@ -67,73 +64,75 @@ export default function NotificationsPage() {
     await markAllAsRead(INAPP_CHANNEL);
   }, [canMarkAllAsRead, markAllAsRead]);
 
-  // Keep a ref so the header's onMarkAllAsRead always calls the latest version
-  // without adding handleMarkAllAsRead to the setHeader effect's dep array
-  // (which would cause an infinite loop via setHeader → re-render → new callback → setHeader…)
-  const handleMarkAllAsReadRef = useRef(handleMarkAllAsRead);
   useEffect(() => {
-    handleMarkAllAsReadRef.current = handleMarkAllAsRead;
-  });
-
-  // Set the header with tab state
-  useEffect(() => {
-    setHeader(
-      <NotificationsHeader
-        selectedTab={selectedTab}
-        onTabChange={setSelectedTab}
-        unreadCount={unreadNotifications.length}
-        showMarkAllAsRead={canMarkAllAsRead}
-        onMarkAllAsRead={() => handleMarkAllAsReadRef.current()}
-      />,
-    );
-
+    setHeader(<NotificationsHeader />);
     return () => {
       setHeader(null);
     };
-  }, [selectedTab, unreadNotifications.length, canMarkAllAsRead, setHeader]);
+  }, [setHeader]);
+
+  const isUnreadTab = selectedTab === "unread";
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-primary-bg">
-      <div className="shrink-0 px-6 pt-6">
-        <NotificationConnectBanner variant="full" />
-      </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
-        {selectedTab === "unread" ? (
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-5 px-6 py-6">
+          <NotificationConnectBanner variant="full" />
+
+          <div className="flex items-center justify-between">
+            <Tabs
+              aria-label="Notifications"
+              selectedKey={selectedTab}
+              onSelectionChange={(key) => setSelectedTab(key as string)}
+            >
+              <Tab
+                key="unread"
+                title={
+                  <div className="flex items-center gap-1.5">
+                    <span>Unread</span>
+                    <UnreadCountChip count={unreadNotifications.length} />
+                  </div>
+                }
+              />
+              <Tab key="all" title="All" />
+            </Tabs>
+
+            {canMarkAllAsRead && (
+              <Button
+                size="sm"
+                variant="light"
+                className="text-zinc-400"
+                startContent={<CheckmarkCircle02Icon className="size-4" />}
+                onPress={handleMarkAllAsRead}
+              >
+                Mark all as read
+              </Button>
+            )}
+          </div>
+
           <NotificationsList
-            notifications={unreadNotifications}
-            loading={unreadLoading}
-            emptyMessage="No unread notifications"
-            emptyDescription="All caught up! You're up to date with everything."
+            notifications={isUnreadTab ? unreadNotifications : allNotifications}
+            loading={isUnreadTab ? unreadLoading : allLoading}
+            emptyMessage={
+              isUnreadTab ? "No unread notifications" : "No notifications yet"
+            }
+            emptyDescription={
+              isUnreadTab
+                ? "All caught up! You're up to date with everything."
+                : "Notifications will appear here when you receive them."
+            }
             onRefresh={refreshNotifications}
             onMarkAsRead={markAsRead}
             onModalOpen={handleModalOpen}
           />
-        ) : (
-          <NotificationsList
-            notifications={allNotifications}
-            loading={allLoading}
-            emptyMessage="No notifications yet"
-            emptyDescription="Notifications will appear here when you receive them."
-            onRefresh={refreshNotifications}
-            onMarkAsRead={markAsRead}
-            onModalOpen={handleModalOpen}
-          />
-        )}
+        </div>
       </div>
 
-      {modalConfig?.component === "EmailPreviewModal" && modalProps && (
-        <EmailPreviewModal
-          isOpen={true}
-          onClose={handleModalClose}
-          subject={modalProps.subject || ""}
-          body={modalProps.body || ""}
-          recipients={modalProps.recipients || []}
-          mode={modalProps.mode === "view" ? "view" : "edit"}
-          onEmailSent={handleEmailSent}
-          notificationId={modalProps.notificationId}
-          actionId={modalProps.actionId}
-        />
-      )}
+      <NotificationModalHost
+        config={modalConfig}
+        onClose={handleModalClose}
+        onEmailSent={handleEmailSent}
+      />
     </div>
   );
 }

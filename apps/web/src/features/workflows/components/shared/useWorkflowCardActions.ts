@@ -1,5 +1,6 @@
 "use client";
 
+import { ONE_CLICK_WORKFLOW_DELIVERY } from "@gaia/shared";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
@@ -115,6 +116,7 @@ export function useWorkflowCardActions({
           }),
         // Only generate if no steps exist
         generate_immediately: !formattedSteps || formattedSteps.length === 0,
+        delivery: ONE_CLICK_WORKFLOW_DELIVERY,
       };
 
       const result = await createWorkflow(workflowRequest);

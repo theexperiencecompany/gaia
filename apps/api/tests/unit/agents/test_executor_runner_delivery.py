@@ -10,6 +10,7 @@ Two invariants, both owned by result_delivery.py:
   the user already saw, or resurrects an approval they already decided.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import time
@@ -24,6 +25,7 @@ import pytest
 from app.agents.core.background import (
     executor_runner as er,
     result_delivery as rd,
+    workflow_completion,
     workflow_platform_delivery as wpd,
 )
 from app.agents.core.background.session import (
@@ -44,8 +46,11 @@ from app.constants.executor import (
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES
+from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.pending_brief_items import pending_brief_items_repository
 from app.models.chat_models import ConversationSource, MessageKind, MessageModel, ToolDataEntry
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.message_models import ReplyToMessageData
@@ -190,7 +195,9 @@ class TestAWorkflowAnswerCarriesItsFollowUpsInline:
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
             patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
             patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)),
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock),
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ),
         ):
             await rd.deliver_result(
                 _run(workflow=True), result_text="done", result_type="final", tool_data=None
@@ -370,7 +377,9 @@ class TestWorkflowResultReachesThePlatformDelivery:
                 wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
             ) as deliver,
             patch.object(wpd, "capture") as capture,
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ) as notify,
         ):
             await rd.deliver_result(
                 _run(workflow=True), result_text="done", result_type="final", tool_data=None
@@ -390,7 +399,6 @@ class TestWorkflowResultReachesThePlatformDelivery:
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
         assert kwargs["user"] == AuthenticatedUser(user_id=USER_ID)
-        assert kwargs["user_id"] == USER_ID
         assert kwargs["origin"] == ('workflow "Morning digest" (id wf-1), tracked todo (id todo-9)')
         assert kwargs["target"] is NO_CHAT_APP
         notify.assert_awaited_once()  # the in-app badge still fires alongside
@@ -412,7 +420,9 @@ class TestWorkflowResultReachesThePlatformDelivery:
             patch.object(
                 wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
             ) as deliver,
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ) as notify,
         ):
             async with captured_wide_event() as event:
                 narrated, message_id = await rd.deliver_result(
@@ -498,7 +508,12 @@ class TestPersistCancelledRun:
         [
             (None, CONVERSATION_MAX_MESSAGES),
             (
-                TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
+                TodoRun(
+                    todo_id="todo-1",
+                    trigger_type=TriggerType.SCHEDULED_TODO,
+                    message_class=ProactiveMessageClass.ROUTINE,
+                    runs_once=True,
+                ),
                 TODO_CONVERSATION_MAX_MESSAGES,
             ),
         ],
@@ -758,6 +773,22 @@ class TestDeliverResultToolDataOwnership:
             await rd.deliver_result(run, "traceback...", "error", tool_data=None)
 
         follow_ups.assert_not_awaited()
+
+    async def test_final_result_follow_ups_dedupe_against_the_conversation(self) -> None:
+        """The executor path keys the already-shown-suggestions read on the conversation."""
+        with patch.object(
+            rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=["Next"]
+        ) as follow_ups:
+            actions = await rd._build_follow_up_actions(
+                msg_type="final",
+                notification_text="done",
+                user_msg_content="do it",
+                user_id=USER_ID,
+                conversation_id="conv-1",
+            )
+
+        assert actions == ["Next"]
+        assert follow_ups.await_args.kwargs["conversation_id"] == "conv-1"
 
 
 # ---------------------------------------------------------------------------
@@ -1030,21 +1061,20 @@ class TestApprovalId:
         assert rd._approval_id(_approval_card("a1", "pending")) == "a1"
 
     def test_an_ordinary_tool_card_is_not_an_approval(self) -> None:
-        entry: ToolDataEntry = {"tool_name": "web_search_tool", "data": {"approval_id": "a1"}}
+        entry = ToolDataEntry(tool_name="web_search_tool", data={"approval_id": "a1"})
         assert rd._approval_id(entry) is None
 
     def test_a_non_dict_payload_is_not_an_approval(self) -> None:
-        assert rd._approval_id({"tool_name": APPROVAL_REQUEST_TOOL_NAME, "data": "a1"}) is None
+        assert (
+            rd._approval_id(ToolDataEntry(tool_name=APPROVAL_REQUEST_TOOL_NAME, data="a1")) is None
+        )
 
     def test_a_non_string_id_is_rejected(self) -> None:
-        entry: ToolDataEntry = {
-            "tool_name": APPROVAL_REQUEST_TOOL_NAME,
-            "data": {"approval_id": 17},
-        }
+        entry = ToolDataEntry(tool_name=APPROVAL_REQUEST_TOOL_NAME, data={"approval_id": 17})
         assert rd._approval_id(entry) is None
 
     def test_a_card_with_no_id_at_all_is_rejected(self) -> None:
-        entry: ToolDataEntry = {"tool_name": APPROVAL_REQUEST_TOOL_NAME, "data": {}}
+        entry = ToolDataEntry(tool_name=APPROVAL_REQUEST_TOOL_NAME, data={})
         assert rd._approval_id(entry) is None
 
 
@@ -1055,8 +1085,8 @@ class TestMergeToolData:
     """
 
     def test_ordinary_cards_append_after_the_existing_ones(self) -> None:
-        existing: list[ToolDataEntry] = [{"tool_name": "old_tool", "data": {}}]
-        new: list[ToolDataEntry] = [{"tool_name": "new_tool", "data": {}}]
+        existing = [ToolDataEntry(tool_name="old_tool", data={})]
+        new = [ToolDataEntry(tool_name="new_tool", data={})]
 
         merged = rd._merge_tool_data(existing, new)
 
@@ -1122,9 +1152,9 @@ class TestMergeToolData:
         assert merged[0]["data"]["status"] == "approved"
 
     def test_the_existing_list_is_not_mutated(self) -> None:
-        existing: list[ToolDataEntry] = [{"tool_name": "old_tool", "data": {}}]
+        existing = [ToolDataEntry(tool_name="old_tool", data={})]
 
-        rd._merge_tool_data(existing, [{"tool_name": "new_tool", "data": {}}])
+        rd._merge_tool_data(existing, [ToolDataEntry(tool_name="new_tool", data={})])
 
         assert [e["tool_name"] for e in existing] == ["old_tool"]
 
@@ -1154,7 +1184,7 @@ class TestReconcileApprovalStatuses:
         assert entry["data"]["status"] == "pending", "reconciling mutated the caller's entry"
 
     async def test_an_ordinary_card_is_passed_through_untouched(self) -> None:
-        entry: ToolDataEntry = {"tool_name": "web_search_tool", "data": {"status": "pending"}}
+        entry = ToolDataEntry(tool_name="web_search_tool", data={"status": "pending"})
         with patch.object(rd, "get_approval", new=AsyncMock()) as get:
             out = await rd._reconcile_approval_statuses([entry])
 
@@ -1474,7 +1504,7 @@ class TestMergeToolDataBookkeeping:
     """The upsert index has to keep pointing at the right slot as the list grows, or it overwrites an unrelated card."""
 
     def test_an_approval_first_seen_in_the_new_batch_indexes_its_own_slot(self) -> None:
-        existing: list[ToolDataEntry] = [{"tool_name": "old_tool", "data": {"keep": "me"}}]
+        existing = [ToolDataEntry(tool_name="old_tool", data={"keep": "me"})]
 
         merged = rd._merge_tool_data(
             existing, [_approval_card("a1", "pending"), _approval_card("a1", "approved")]
@@ -1489,7 +1519,7 @@ class TestMergeToolDataBookkeeping:
         """The replayed frame is rarely last — dropping out of the loop at it loses every card produced afterwards."""
         merged = rd._merge_tool_data(
             [_approval_card("a1", "approved")],
-            [_approval_card("a1", "pending"), {"tool_name": "later_tool", "data": {}}],
+            [_approval_card("a1", "pending"), ToolDataEntry(tool_name="later_tool", data={})],
         )
 
         assert [e.get("tool_name") for e in merged] == [
@@ -2269,45 +2299,6 @@ class TestDeliveryPreamble:
         )
 
 
-class TestWorkflowNotificationRef:
-    """The workflow identity handed to the notification dispatcher.
-
-    It decides what the user is told finished and whether they are told
-    at all, and the run it was read off is gone by then.
-    """
-
-    async def _deliver_workflow(self, *, notify_on_completion: bool):
-        run = replace(_run(workflow=True), workflow_notify_on_completion=notify_on_completion)
-        with (
-            patch.object(
-                rd, "narrate_executor_result", new_callable=AsyncMock, return_value="voiced"
-            ),
-            patch.object(rd, "_safe_inline_follow_ups", new_callable=AsyncMock, return_value=[]),
-            patch.object(rd, "update_messages", new_callable=AsyncMock),
-            patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
-            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)),
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
-        ):
-            await rd.deliver_result(run, result_text="done", result_type="final", tool_data=None)
-        return notify
-
-    async def test_a_notifying_workflow_is_named_in_full(self) -> None:
-        notify = await self._deliver_workflow(notify_on_completion=True)
-
-        assert notify.await_args.kwargs["workflow"] == rd._WorkflowRef(
-            workflow_id="wf-1", workflow_title="Morning digest", notify_on_completion=True
-        )
-
-    async def test_a_silent_workflow_stays_silent_through_the_hand_off(self) -> None:
-        """notify_on_completion defaults to True on _WorkflowRef, so a lost flag here starts notifying against the user's setting."""
-        notify = await self._deliver_workflow(notify_on_completion=False)
-
-        assert notify.await_args.kwargs["workflow"] == rd._WorkflowRef(
-            workflow_id="wf-1", workflow_title="Morning digest", notify_on_completion=False
-        )
-
-
 class TestRunBoundaryCarriesTheOriginatingSurface:
     """The executor run stamps the turn's surface on its own wide event.
 
@@ -2319,7 +2310,7 @@ class TestRunBoundaryCarriesTheOriginatingSurface:
     """
 
     @staticmethod
-    async def _boundary_fields(configurable: dict[str, object]) -> dict[str, object]:
+    async def _boundary_fields(configurable: dict[str, object]) -> Mapping[str, object]:
         from app.agents.core.background.executor_runner import _ExecutorResult
 
         run = ExecutorRun(
@@ -2690,7 +2681,9 @@ class _Delivered:
     spawn: MagicMock
     capture: MagicMock
     to_platforms: AsyncMock
-    notify: AsyncMock
+    completed: AsyncMock
+    failed: AsyncMock
+    held: AsyncMock
 
 
 @dataclass(frozen=True)
@@ -2744,11 +2737,16 @@ async def _deliver_run(
             patch.object(rd, "_broadcast_message", new_callable=AsyncMock) as ws,
             patch.object(rd, "_spawn_deferred_follow_ups") as spawn,
             patch.object(rd, "capture") as capture,
-            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
             patch.object(
-                wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)
+                workflow_completion, "deliver_workflow_result", new_callable=AsyncMock
             ) as to_platforms,
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock) as notify,
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
+            ) as completed,
+            patch.object(pending_brief_items_repository, "create", new_callable=AsyncMock) as held,
+            patch.object(
+                rd, "send_workflow_failure_notification", new_callable=AsyncMock
+            ) as failed,
         ):
             returned = await rd.deliver_result(
                 run, result_text="raw", result_type=result_type, tool_data=tool_data
@@ -2765,7 +2763,9 @@ async def _deliver_run(
         spawn=spawn,
         capture=capture,
         to_platforms=to_platforms,
-        notify=notify,
+        completed=completed,
+        failed=failed,
+        held=held,
     )
 
 
@@ -2861,16 +2861,22 @@ class TestInlineFollowUpsOnlyWhereNothingWaits:
 
 
 class TestAWorkflowResult:
-    async def test_a_finished_workflow_reaches_the_platforms_and_the_badge(self) -> None:
+    async def test_a_now_workflow_reaches_the_platforms_and_the_badge(self) -> None:
         delivered = await _deliver_run(
             _run(workflow=True), _Seams(comms_text="Digest ready.", source=None)
         )
 
         assert delivered.to_platforms.await_args.kwargs["notification_text"] == "Digest ready."
-        notify = delivered.notify.await_args.kwargs
-        assert notify["msg_type"] == "final"
-        assert notify["target"].conversation_id == "conv-1"
-        assert notify["target"].user_id == USER_ID
+        assert delivered.to_platforms.await_args.kwargs["origin"] == rd._delivery_origin(
+            _run(workflow=True)
+        )
+        assert delivered.completed.await_args.kwargs == {
+            "workflow_id": "wf-1",
+            "workflow_title": "Morning digest",
+            "conversation_id": "conv-1",
+            "user_id": USER_ID,
+        }
+        delivered.held.assert_not_awaited()
         assert delivered.returned == ("Digest ready.", _saved(delivered).message_id)
         assert delivered.capture.call_args.args[1] == ChatBackgroundUpdateResolved(
             outcome="reply", delivery="message"
@@ -2882,14 +2888,77 @@ class TestAWorkflowResult:
         )
 
         delivered.to_platforms.assert_not_awaited()
-        assert delivered.notify.await_args.kwargs["msg_type"] == "error"
+        delivered.completed.assert_not_awaited()
+        assert delivered.failed.await_args.kwargs == {
+            "workflow_id": "wf-1",
+            "workflow_title": "Morning digest",
+            "user_id": USER_ID,
+        }
 
-    async def test_a_silent_workflow_posts_nothing_to_platforms(self) -> None:
-        run = replace(_run(workflow=True), workflow_notify_on_completion=False)
+    @pytest.mark.parametrize("delivery", [WorkflowDelivery.BRIEF, WorkflowDelivery.SILENT])
+    async def test_a_failed_workflow_notifies_whatever_its_delivery(
+        self, delivery: WorkflowDelivery
+    ) -> None:
+        run = replace(_run(workflow=True), workflow_delivery=delivery)
+
+        delivered = await _deliver_run(
+            run, _Seams(comms_text="It failed.", source=None), result_type="error"
+        )
+
+        delivered.failed.assert_awaited_once()
+        delivered.held.assert_not_awaited()
+
+    async def test_a_silent_workflow_pushes_nothing_and_holds_nothing(self) -> None:
+        run = replace(_run(workflow=True), workflow_delivery=WorkflowDelivery.SILENT)
 
         delivered = await _deliver_run(run, _Seams(comms_text="Digest ready.", source=None))
 
         delivered.to_platforms.assert_not_awaited()
+        delivered.completed.assert_not_awaited()
+        delivered.held.assert_not_awaited()
+        assert delivered.returned == ("Digest ready.", _saved(delivered).message_id)
+
+    async def test_a_brief_workflow_is_held_for_the_brief_instead_of_pushed(self) -> None:
+        run = replace(_run(workflow=True), workflow_delivery=WorkflowDelivery.BRIEF)
+
+        delivered = await _deliver_run(run, _Seams(comms_text="Digest ready.", source=None))
+
+        delivered.to_platforms.assert_not_awaited()
+        delivered.completed.assert_not_awaited()
+        item = delivered.held.await_args.args[0]
+        assert (item.user_id, item.workflow_id, item.workflow_title) == (
+            USER_ID,
+            "wf-1",
+            "Morning digest",
+        )
+        assert (item.conversation_id, item.text) == ("conv-1", "Digest ready.")
+        assert delivered.event["workflow_delivery"] == "brief"
+
+    @pytest.mark.parametrize("delivery", list(WorkflowDelivery))
+    async def test_a_run_with_nothing_to_report_reaches_nobody(
+        self, delivery: WorkflowDelivery
+    ) -> None:
+        run = replace(_run(workflow=True), workflow_delivery=delivery)
+
+        delivered = await _deliver_run(
+            run, _Seams(comms_text="<SILENCE>nothing new</SILENCE>", source=None)
+        )
+
+        delivered.to_platforms.assert_not_awaited()
+        delivered.completed.assert_not_awaited()
+        delivered.held.assert_not_awaited()
+        assert delivered.returned == (None, None)
+
+    @pytest.mark.parametrize("message_class", list(ProactiveMessageClass))
+    async def test_the_runs_quiet_hours_class_reaches_the_delivery(
+        self, message_class: ProactiveMessageClass
+    ) -> None:
+        """A run the gate let through quiet hours as urgent must not be held at delivery."""
+        run = replace(_run(workflow=True), workflow_message_class=message_class)
+
+        delivered = await _deliver_run(run, _Seams(comms_text="Digest ready.", source=None))
+
+        assert delivered.to_platforms.await_args.kwargs["message_class"] is message_class
 
     async def test_a_workflow_react_falls_back_to_the_text_ack(self) -> None:
         delivered = await _deliver_run(
@@ -3001,11 +3070,9 @@ class TestWorkflowNotificationIsTraceable:
             patch.object(rd, "generate_follow_up_actions", new_callable=AsyncMock, return_value=[]),
             patch.object(rd, "update_messages", new_callable=AsyncMock),
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None),
-            patch.object(wpd, "resolve_proactive_target", AsyncMock(return_value=NO_CHAT_APP)),
-            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None)),
-            patch(
-                "app.services.workflow.notifications.send_workflow_completion_notification",
-                new_callable=AsyncMock,
+            patch.object(workflow_completion, "deliver_workflow_result", new_callable=AsyncMock),
+            patch.object(
+                workflow_completion, "send_workflow_completion_notification", new_callable=AsyncMock
             ) as completion,
             patch.object(rd, "log") as log_mock,
         ):
@@ -3022,6 +3089,6 @@ class TestWorkflowNotificationIsTraceable:
         dispatched = [
             call.kwargs
             for call in log_mock.info.call_args_list
-            if "workflow notification dispatched" in call.args[0]
+            if "workflow result routed" in call.args[0]
         ]
         assert dispatched == [{"workflow_id": "wf-1", "message_id": message_id}]

@@ -8510,6 +8510,19 @@
             ],
             "default": null,
             "title": "Is Todo Workflow"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "enum": ["now", "brief", "silent"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Delivery"
           }
         },
         "required": ["origin"],
@@ -8757,7 +8770,21 @@
       "properties": {
         "additionalProperties": false,
         "description": "A user edited a workflow.",
-        "properties": {},
+        "properties": {
+          "delivery": {
+            "anyOf": [
+              {
+                "enum": ["now", "brief", "silent"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Delivery"
+          }
+        },
         "title": "WorkflowUpdated",
         "type": "object"
       }

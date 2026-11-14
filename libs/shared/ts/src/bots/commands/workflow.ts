@@ -10,11 +10,12 @@
  */
 
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { parseTextArgs, sendChunked } from "../utils";
 import {
   dispatchWorkflowSubcommand,
   handleWorkflowCreate,
 } from "../utils/commands";
+import { sendChunked } from "../utils/delivery";
+import { parseTextArgs } from "../utils/text";
 
 /** `/workflow` command definition with subcommands. */
 export const workflowCommand: BotCommand = {
@@ -28,7 +29,7 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotWorkflow ID",
+          description: "Workflow ID",
           required: true,
           type: "string",
         },
@@ -40,7 +41,7 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotWorkflow ID",
+          description: "Workflow ID",
           required: true,
           type: "string",
         },
@@ -52,7 +53,7 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "BotWorkflow ID",
+          description: "Workflow ID",
           required: true,
           type: "string",
         },
@@ -64,13 +65,13 @@ export const workflowCommand: BotCommand = {
       options: [
         {
           name: "name",
-          description: "BotWorkflow name",
+          description: "Workflow name",
           required: true,
           type: "string",
         },
         {
           name: "description",
-          description: "BotWorkflow description",
+          description: "Workflow description",
           required: true,
           type: "string",
         },

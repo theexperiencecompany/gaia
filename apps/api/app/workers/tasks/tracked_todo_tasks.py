@@ -33,6 +33,7 @@ from app.agents.core.background.todo_run_delivery import (
 )
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
 from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import (
     EXECUTE_TRACKED_TODO_TASK,
     FAILED_LABEL,
@@ -54,6 +55,7 @@ from app.constants.todos import (
     TodoWakeKind,
     WaitingOn,
 )
+from app.constants.user_activity import ActivityStatus
 from app.db.repositories.todos import todo_repository
 from app.decorators import enforce_cost_budget
 from app.decorators.entitlements import capture_paywall_block, is_paid
@@ -90,6 +92,7 @@ from app.services.triggers.todo_trigger_window import (
     trigger_window_end,
 )
 from app.services.triggers.trigger_gate import GateHold, quiet_hours_hold
+from app.services.user_activity.status import activity_status_of
 from app.services.user_service import get_quiet_hours
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.cron_utils import CronError, get_next_run_time
@@ -483,13 +486,34 @@ async def _owner_ready_to_run(
 async def _withheld_result(
     doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
 ) -> str | None:
-    """Return the result of a fire the todo's pause or its owner's lapsed plan withholds, or None."""
+    """Return the result of a fire the todo's pause, its owner's lapsed plan or absence withholds, or None."""
     if doc.pause_reason is not None:
         log.info("tracked_todo.execute_paused", todo_id=doc.id, pause_reason=doc.pause_reason)
         await _hold_events_while_paused(doc.id, origin, coalesced)
         return f"paused:{doc.id}"
     if not await is_paid(doc.user_id):
-        return await _pause_unpaid(doc, origin, coalesced)
+        log.warning(
+            "tracked_todo.paused_subscription_required", todo_id=doc.id, user_id=doc.user_id
+        )
+        capture_paywall_block(doc.user_id, PAYWALL_FEATURE_TRACKED_TODO)
+        await _pause_for_owner(
+            doc,
+            DeactivationReason.SUBSCRIPTION_LAPSED,
+            "paused: runs need an active subscription, and resume when it starts",
+            origin,
+            coalesced,
+        )
+        return f"paused:{doc.id} (subscription required)"
+    if await activity_status_of(doc.user_id) is ActivityStatus.DORMANT:
+        log.info("tracked_todo.paused_owner_dormant", todo_id=doc.id, user_id=doc.user_id)
+        await _pause_for_owner(
+            doc,
+            DeactivationReason.USER_DORMANT,
+            "paused: you have been away a while; runs resume when you are back",
+            origin,
+            coalesced,
+        )
+        return f"paused:{doc.id} (owner dormant)"
     return None
 
 
@@ -508,25 +532,22 @@ async def _hold_events_while_paused(
             )
 
 
-async def _pause_unpaid(
-    doc: TodoDocument, origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
-) -> str:
-    """Pause a todo whose owner is not paid, so the paywall blocks it once rather than every fire."""
-    log.warning("tracked_todo.paused_subscription_required", todo_id=doc.id, user_id=doc.user_id)
-    capture_paywall_block(doc.user_id, PAYWALL_FEATURE_TRACKED_TODO)
+async def _pause_for_owner(
+    doc: TodoDocument,
+    reason: DeactivationReason,
+    note: str,
+    origin: TriggerOrigin | None,
+    coalesced: Sequence[TriggerOrigin],
+) -> None:
+    """Pause a todo for its owner's state, so it is withheld once rather than every fire.
+
+    resume_paused_for(reason) undoes it and replays the trigger events held meanwhile.
+    """
     await todo_repository.update(
-        doc.id,
-        user_id=doc.user_id,
-        update=TodoUpdate(pause_reason=DeactivationReason.SUBSCRIPTION_LAPSED),
+        doc.id, user_id=doc.user_id, update=TodoUpdate(pause_reason=reason)
     )
-    await record_activity(
-        doc.id,
-        doc.user_id,
-        TodoActivityEvent.RUN_SKIPPED,
-        "paused: runs need an active subscription, and resume when it starts",
-    )
+    await record_activity(doc.id, doc.user_id, TodoActivityEvent.RUN_SKIPPED, note)
     await _hold_events_while_paused(doc.id, origin, coalesced)
-    return f"paused:{doc.id} (subscription required)"
 
 
 async def _give_up_occurrence(
@@ -748,6 +769,16 @@ def _woken_by(origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]) 
     return f"run on {1 + len(coalesced)} events ({names})"
 
 
+def _message_class(
+    origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]
+) -> ProactiveMessageClass:
+    """URGENT when an event the trigger gate let through quiet hours woke the run."""
+    events = [origin, *coalesced] if origin else []
+    if any(event.quiet_hours_bypass for event in events):
+        return ProactiveMessageClass.URGENT
+    return ProactiveMessageClass.ROUTINE
+
+
 def _wake(origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]) -> TodoRunWake:
     """Say what woke a run, for the user's side of the todo's chat."""
     if origin is None:
@@ -804,7 +835,10 @@ async def _execute_on_executor(
             TodoRunRequest(
                 user=user_data,
                 todo_run=TodoRun(
-                    todo_id=todo_id, trigger_type=_trigger_type(origin), runs_once=doc.runs_once
+                    todo_id=todo_id,
+                    trigger_type=_trigger_type(origin),
+                    message_class=_message_class(origin, coalesced),
+                    runs_once=doc.runs_once,
                 ),
                 todo_title=doc.title,
                 task=prompt,
@@ -943,7 +977,10 @@ async def _resume_holding_lock(
             TodoRunRequest(
                 user=user_data,
                 todo_run=TodoRun(
-                    todo_id=todo_id, trigger_type=_trigger_type(None), runs_once=doc.runs_once
+                    todo_id=todo_id,
+                    trigger_type=_trigger_type(None),
+                    message_class=ProactiveMessageClass.ROUTINE,
+                    runs_once=doc.runs_once,
                 ),
                 todo_title=doc.title,
                 task=message,

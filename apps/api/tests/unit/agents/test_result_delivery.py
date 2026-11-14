@@ -18,6 +18,7 @@ from app.agents.core.background.result_delivery import (
     record_todo_run_wake,
 )
 from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import TODO_CONVERSATION_MAX_MESSAGES, TodoWakeKind
 from app.models.chat_models import ConversationSource, ToolDataEntry
 from app.models.message_models import TodoRunWake
@@ -316,7 +317,12 @@ def _todo_run() -> ExecutorRun:
         task_id="task-1",
         user_message_id=None,
         bot_message_id="placeholder-1",
-        todo_run=TodoRun(todo_id="todo-1", trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
+        todo_run=TodoRun(
+            todo_id="todo-1",
+            trigger_type=TriggerType.SCHEDULED_TODO,
+            message_class=ProactiveMessageClass.ROUTINE,
+            runs_once=True,
+        ),
     )
 
 

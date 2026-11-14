@@ -22,6 +22,7 @@ from sentry_sdk.types import Event
 import time_machine
 
 from app.constants.trigger_gates import GateAuthor
+from app.constants.workflows import WorkflowDelivery
 from app.db.redis import redis_cache
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.trigger_gate_models import AuthoredGate, TriggerGate
@@ -51,6 +52,7 @@ def _workflow(
     trigger_name: str | None = "gmail_new_message",
 ) -> Workflow:
     return Workflow(
+        delivery=WorkflowDelivery.NOW,
         id=workflow_id,
         user_id=USER_ID,
         title="Draft replies",
@@ -273,7 +275,7 @@ async def _fire_at(
     """
     with (
         patch(
-            "app.services.triggers.trigger_gate.get_profile_timezone",
+            "app.services.user_service.get_profile_timezone",
             AsyncMock(return_value=Timezone.parse(zone)),
         ),
         time_machine.travel(at, tick=False),
@@ -355,7 +357,7 @@ class TestQuietHours:
 
         with (
             patch(
-                "app.services.triggers.trigger_gate.get_profile_timezone",
+                "app.services.user_service.get_profile_timezone",
                 AsyncMock(return_value=Timezone.parse(KOLKATA)),
             ),
             time_machine.travel(datetime(2026, 10, 1, 21, 0, tzinfo=UTC), tick=False),

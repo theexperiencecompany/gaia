@@ -50,6 +50,7 @@ from app.constants import todos as todo_constants
 from app.constants.agents import AgentTag
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
 from app.constants.todos import TodoActivityEvent, TodoWakeKind
 from app.models.chat_models import ConversationSource
 from app.models.message_models import TodoRunWake
@@ -169,7 +170,12 @@ def _no_backoff() -> AbstractContextManager[AsyncMock]:
 def _request() -> TodoRunRequest:
     return TodoRunRequest(
         user=USER,
-        todo_run=TodoRun(todo_id=TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True),
+        todo_run=TodoRun(
+            todo_id=TODO_ID,
+            trigger_type=TriggerType.SCHEDULED_TODO,
+            message_class=ProactiveMessageClass.ROUTINE,
+            runs_once=True,
+        ),
         todo_title="Watch the staging deploy",
         task="Execute the following scheduled task: Watch the staging deploy",
         conversation_id="run-conv-1",
@@ -197,7 +203,7 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         seams.send.assert_awaited_once()
         sent = seams.send.await_args.kwargs
         assert sent["notification_text"] == NARRATED
-        assert sent["user_id"] == USER.user_id
+        assert sent["message_class"] is ProactiveMessageClass.ROUTINE
         assert (sent["user"].user_id, sent["user"].email) == (USER.user_id, USER.email)
         assert sent["origin"] == f'tracked todo "Watch the staging deploy" (id {TODO_ID})'
         assert sent["target"] is TELEGRAM
@@ -309,7 +315,10 @@ class TestTheExecutorsResultIsWhatReachesTheUser:
         # The todo's title stands in for the user's words for the approval judge.
         assert "Tracked todo: Watch the staging deploy" in configurable["user_messages"]
         assert run.todo_run == TodoRun(
-            todo_id=TODO_ID, trigger_type=TriggerType.SCHEDULED_TODO, runs_once=True
+            todo_id=TODO_ID,
+            trigger_type=TriggerType.SCHEDULED_TODO,
+            message_class=ProactiveMessageClass.ROUTINE,
+            runs_once=True,
         )
         assert (run.kind, run.conversation_id, run.user_message_id) == (
             RunKind.LIVE,

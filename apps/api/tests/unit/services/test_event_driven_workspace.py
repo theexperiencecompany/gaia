@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.user_activity import ActivityStatus
 from app.models.user_models import UserDocument
 from app.services.integrations import user_integrations
 from app.services.integrations.user_integration_status import update_user_integration_status
@@ -32,6 +33,7 @@ from app.services.integrations_fs import sync_user_integrations
 from app.services.oauth.oauth_service import store_user_info
 from app.services.storage import juicefs
 from app.services.workspace_sync import (
+    WorkspaceSyncResult,
     init_system_subtree,
     resync_stale_user_workspaces,
     sync_stale_user_workspaces,
@@ -82,16 +84,28 @@ def wsync():
             new_callable=AsyncMock,
             return_value={"gmail"},
         ) as connected,
-        patch(f"{WS}._active_user_ids", new_callable=AsyncMock) as active_ids,
-        patch(f"{WS}._all_user_ids", new_callable=AsyncMock) as all_ids,
+        patch(f"{WS}.user_repository") as users,
     ):
+        by_status: dict[ActivityStatus, list[str]] = {}
+        users.find_by_activity_status = AsyncMock(
+            side_effect=lambda status: [
+                SimpleNamespace(id=uid) for uid in by_status.get(status, [])
+            ]
+        )
+        users.list_all_ids = AsyncMock()
+
+        def set_active(ids: list[str]) -> None:
+            by_status[ActivityStatus.ACTIVE] = ids
+
         yield SimpleNamespace(
             is_mounted=is_mounted,
             read_marker=read_marker,
             provision=provision,
             connected=connected,
-            active_ids=active_ids,
-            all_ids=all_ids,
+            by_status=by_status,
+            find_by_status=users.find_by_activity_status,
+            all_ids=users.list_all_ids,
+            set_active=set_active,
         )
 
 
@@ -102,50 +116,50 @@ async def _run_sync(**kwargs):
 async def test_no_mount_short_circuits(wsync):
     wsync.is_mounted.return_value = False
     result = await _run_sync()
-    assert result == {"scanned": 0, "synced": 0, "skipped": 0}
-    wsync.active_ids.assert_not_called()
+    assert result == WorkspaceSyncResult(scanned=0, synced=0, skipped=0)
+    wsync.find_by_status.assert_not_called()
     wsync.provision.assert_not_called()
 
 
 async def test_all_stale_provisioned(wsync):
-    wsync.active_ids.return_value = ["u1", "u2"]
+    wsync.set_active(["u1", "u2"])
     wsync.read_marker.side_effect = ["OLD", "OLD"]
     result = await _run_sync()
-    assert result == {"scanned": 2, "synced": 2, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=2, synced=2, skipped=0)
     assert wsync.provision.await_count == 2
 
 
 async def test_current_marker_skipped(wsync):
-    wsync.active_ids.return_value = ["u1", "u2"]
+    wsync.set_active(["u1", "u2"])
     wsync.read_marker.side_effect = ["HASH_CURRENT", "HASH_CURRENT"]
     result = await _run_sync()
-    assert result == {"scanned": 2, "synced": 0, "skipped": 2}
+    assert result == WorkspaceSyncResult(scanned=2, synced=0, skipped=2)
     wsync.provision.assert_not_called()
 
 
 async def test_mixed_stale_and_current(wsync):
-    wsync.active_ids.return_value = ["fresh", "stale"]
+    wsync.set_active(["fresh", "stale"])
     wsync.read_marker.side_effect = ["HASH_CURRENT", "OLD"]
     result = await _run_sync()
-    assert result == {"scanned": 2, "synced": 1, "skipped": 1}
+    assert result == WorkspaceSyncResult(scanned=2, synced=1, skipped=1)
     wsync.provision.assert_awaited_once_with("stale", {"gmail"})
 
 
 async def test_force_ignores_marker(wsync):
-    wsync.active_ids.return_value = ["u1", "u2"]
+    wsync.set_active(["u1", "u2"])
     # read_marker must never be consulted when force=True
     wsync.read_marker.side_effect = AssertionError("marker read despite force")
     result = await _run_sync(force=True)
-    assert result == {"scanned": 2, "synced": 2, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=2, synced=2, skipped=0)
 
 
 async def test_one_user_failure_does_not_abort_batch(wsync):
-    wsync.active_ids.return_value = ["bad", "good"]
+    wsync.set_active(["bad", "good"])
     wsync.read_marker.side_effect = ["OLD", "OLD"]
     wsync.provision.side_effect = [RuntimeError("boom"), None]
     result = await _run_sync()
     # 'bad' raised, 'good' still provisioned; neither aborts the run.
-    assert result == {"scanned": 2, "synced": 1, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=2, synced=1, skipped=0)
     assert wsync.provision.await_count == 2
 
 
@@ -153,20 +167,31 @@ async def test_active_only_false_uses_all_users(wsync):
     wsync.all_ids.return_value = ["a", "b", "c"]
     wsync.read_marker.side_effect = ["OLD", "OLD", "OLD"]
     result = await _run_sync(active_only=False)
-    assert result["scanned"] == 3
+    assert result.scanned == 3
     wsync.all_ids.assert_awaited_once()
-    wsync.active_ids.assert_not_called()
+    wsync.find_by_status.assert_not_called()
+
+
+async def test_active_only_syncs_active_and_idle_but_never_dormant(wsync):
+    wsync.by_status[ActivityStatus.ACTIVE] = ["active"]
+    wsync.by_status[ActivityStatus.IDLE] = ["idle"]
+    wsync.by_status[ActivityStatus.DORMANT] = ["dormant"]
+    wsync.read_marker.side_effect = ["OLD", "OLD"]
+    result = await _run_sync()
+    assert result == WorkspaceSyncResult(scanned=2, synced=2, skipped=0)
+    provisioned = [c.args[0] for c in wsync.provision.await_args_list]
+    assert provisioned == ["active", "idle"]
 
 
 async def test_empty_user_set(wsync):
-    wsync.active_ids.return_value = []
+    wsync.set_active([])
     result = await _run_sync()
-    assert result == {"scanned": 0, "synced": 0, "skipped": 0}
+    assert result == WorkspaceSyncResult(scanned=0, synced=0, skipped=0)
     wsync.provision.assert_not_called()
 
 
 async def test_provision_receives_connected_ids(wsync):
-    wsync.active_ids.return_value = ["u1"]
+    wsync.set_active(["u1"])
     wsync.read_marker.side_effect = ["OLD"]
     wsync.connected.return_value = {"slack", "notion"}
     await _run_sync()

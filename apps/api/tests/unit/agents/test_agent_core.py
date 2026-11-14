@@ -25,6 +25,9 @@ from app.constants.agents import (
 )
 from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.llm import DEV_MODEL_OPTIONS
+from app.constants.notifications import ProactiveMessageClass
+from app.constants.trigger_gates import QUIET_HOURS_CONTEXT_KEY
+from app.constants.workflows import WorkflowDelivery
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentLane,
@@ -1724,7 +1727,8 @@ class TestTheWorkflowKeysTheRunStashes:
         trigger = {
             "workflow_id": "wf-1",
             "workflow_title": "Daily digest",
-            "workflow_notify_on_completion": False,
+            "workflow_delivery": WorkflowDelivery.SILENT,
+            QUIET_HOURS_CONTEXT_KEY: {"kind": "bypass", "reason": "the service is down"},
             PLAYBOOK_FALLBACK_CONTEXT_KEY: "hash_drift at step 3",
             WORKFLOW_LOCK_CONTEXT_KEY: ":fire-task-1",
         }
@@ -1757,7 +1761,9 @@ class TestTheWorkflowKeysTheRunStashes:
             "model": "gpt-4o",
             "workflow_id": "wf-1",
             "workflow_title": "Daily digest",
-            "workflow_notify_on_completion": False,
+            "workflow_delivery": WorkflowDelivery.SILENT,
+            # Let through quiet hours as urgent: its result is not held at delivery.
+            "workflow_message_class": ProactiveMessageClass.URGENT,
             "playbook_fallback": "hash_drift at step 3",
             # The claim its fire took on this conversation, carried through so
             # call_executor adopts it instead of queueing the run behind it. Read
@@ -1798,7 +1804,8 @@ class TestTheWorkflowKeysTheRunStashes:
             "model": "gpt-4o",
             "workflow_id": "wf-1",
             "workflow_title": "",
-            "workflow_notify_on_completion": True,
+            "workflow_delivery": WorkflowDelivery.NOW,
+            "workflow_message_class": ProactiveMessageClass.ROUTINE,
             "playbook_fallback": None,
             "executor_lock_reservation": None,
         }

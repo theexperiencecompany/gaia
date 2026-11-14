@@ -101,8 +101,9 @@ def _follow_up_node_io_patches(
 ) -> list:
     """Return patches mocking only follow_up_actions_node's I/O boundaries.
 
-    The structured LLM call, the integrations lookup, and the stream writer
-    are mocked; the node's internal slicing/prompt/guard logic runs for real.
+    The structured LLM call, the integrations lookup, the previous-suggestions
+    Mongo read, and the stream writer are mocked; the node's internal
+    slicing/prompt/guard logic runs for real.
     """
     if writer_fn is None:
         writer_fn = lambda _: None  # noqa: E731  # default no-op writer for an optional hook parameter
@@ -123,7 +124,13 @@ def _follow_up_node_io_patches(
             new_callable=AsyncMock,
             return_value=capabilities,
         ),
-        # I/O boundary 3: LangGraph stream context
+        # I/O boundary 3: MongoDB read of suggestions already shown in this thread
+        patch(
+            "app.agents.core.nodes.follow_up_actions_node.conversation_repository.get_recent_follow_up_actions",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        # I/O boundary 4: LangGraph stream context
         patch(
             "app.agents.core.nodes.follow_up_actions_node.current_stream_writer",
             return_value=writer_fn,

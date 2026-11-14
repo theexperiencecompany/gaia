@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.constants.notifications import NotificationChannel
 from app.models.integration_models import (
     IntegrationAccount,
     UserIntegrationDocument,
@@ -293,7 +293,7 @@ class TestTheAnnouncement:
         request = announce_seams["notify"].create_notification.await_args.args[0]
         assert request.user_id == USER_ID
         assert request.type == NotificationType.WARNING
-        assert [c.channel_type for c in request.channels] == [CHANNEL_TYPE_INAPP]
+        assert [c.channel_type for c in request.channels] == [NotificationChannel.INAPP]
         (action,) = request.content.actions
         assert action.label == "Reconnect"
         assert action.style == ActionStyle.PRIMARY

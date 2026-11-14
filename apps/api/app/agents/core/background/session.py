@@ -16,6 +16,8 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
+from app.constants.workflows import WorkflowDelivery
 from app.models.agent_models import AgentConfigurable, AgentConfigurableView
 from app.models.chat_models import SourceCategory
 from app.models.user_models import AuthenticatedUser
@@ -75,6 +77,8 @@ class TodoRun:
 
     todo_id: str
     trigger_type: TriggerType
+    #: URGENT when an event the trigger gate let through quiet hours woke the run.
+    message_class: ProactiveMessageClass
     #: Read when the run starts: a run that completes its todo tears its watches
     #: down, so the todo read at delivery would look like one that runs once.
     runs_once: bool
@@ -150,7 +154,8 @@ class ExecutorRun:
     #: own boundary can carry it and the ledger can attribute its calls to the run.
     workflow_execution_id: str | None = None
     workflow_title: str = ""
-    workflow_notify_on_completion: bool = True
+    workflow_delivery: WorkflowDelivery = WorkflowDelivery.NOW
+    workflow_message_class: ProactiveMessageClass = ProactiveMessageClass.ROUTINE
     active_todo_id: str | None = None
     #: Set only on a tracked todo's own scheduled/triggered run: it executes in its
     #: todo's chat, which keeps its report, and its result goes through todo delivery.
@@ -193,7 +198,8 @@ class ExecutorRun:
             workflow_id=view.workflow_id,
             workflow_execution_id=workflow_execution_id or current_workflow_execution_id(),
             workflow_title=view.workflow_title,
-            workflow_notify_on_completion=view.workflow_notify_on_completion,
+            workflow_delivery=view.workflow_delivery,
+            workflow_message_class=view.workflow_message_class,
             active_todo_id=view.active_todo_id,
             source_category=SourceCategory(view.source_category or SourceCategory.BG.value),
             t_dispatch_perf=identity.t_dispatch_perf,

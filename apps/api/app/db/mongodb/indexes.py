@@ -125,6 +125,7 @@ async def create_all_indexes() -> None:
             create_llm_call_indexes(),
             create_playbook_indexes(),
             create_tool_output_shapes_indexes(),
+            create_pending_brief_item_indexes(),
             create_email_verdict_indexes(),
             create_wait_indexes(),
         ]
@@ -167,6 +168,7 @@ async def create_all_indexes() -> None:
             "llm_calls",
             "playbooks",
             "tool_output_shapes",
+            "pending_brief_items",
             "email_verdicts",
             "waits",
         ]
@@ -767,6 +769,21 @@ async def create_processed_webhook_indexes() -> None:
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating processed webhook indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_pending_brief_item_indexes() -> None:
+    """Index pending_brief_items for the brief's per-user, oldest-first read."""
+    try:
+        await get_async_collection("pending_brief_items").create_index(
+            [("user_id", 1), ("created_at", 1)]
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating pending brief item indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

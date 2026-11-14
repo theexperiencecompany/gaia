@@ -12,6 +12,7 @@ from collections.abc import Callable
 from uuid import uuid4
 
 from app.constants.execute import EXECUTE_TOOL_NAME
+from app.constants.workflows import WorkflowDelivery
 from app.models.playbook_models import AskSlot, ForEachStep, PlaybookBody, ToolStep
 from app.models.trigger_configs import CalendarEventStartingSoonConfig
 from app.models.workflow_models import (
@@ -39,6 +40,8 @@ def _meeting_prep() -> CreateWorkflowRequest:
         is_system_workflow=True,
         source_integration="googlecalendar",
         system_workflow_key="calendar:meeting_prep",
+        # A pre-meeting brief is only useful before the meeting starts.
+        delivery=WorkflowDelivery.NOW,
         trigger_config=TriggerConfig(
             type=TriggerType.INTEGRATION,
             trigger_name="calendar_event_starting_soon",
@@ -101,6 +104,7 @@ def _meeting_reminder() -> CreateWorkflowRequest:
         is_system_workflow=True,
         source_integration="googlecalendar",
         system_workflow_key="calendar:meeting_reminder",
+        delivery=WorkflowDelivery.NOW,
         trigger_config=TriggerConfig(
             type=TriggerType.INTEGRATION,
             trigger_name="calendar_event_starting_soon",

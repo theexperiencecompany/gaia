@@ -31,8 +31,6 @@ apps/api/app/agents/tools/coding/query_json_tool.py	TB001
 apps/api/app/agents/tools/coding/query_json_tool.py	TB002
 apps/api/app/agents/tools/discovery_tools.py	TB001
 apps/api/app/agents/tools/discovery_tools.py	TB002
-apps/api/app/agents/tools/workflow_shared_tools.py	TB001	deferred-until=2026-11-08; touched for the get_user_id import move (run-owner fix) and for search_triggers reading TriggerSearchResult attributes; the remaining dict[str, Any] tool returns and string-key reads belong to the other workflow tools, and typing them is its own change (decided 2026-10-08, reason refreshed 2026-10-15)
-apps/api/app/agents/tools/workflow_shared_tools.py	TB002	deferred-until=2026-11-08; touched for the get_user_id import move (run-owner fix) and for search_triggers reading TriggerSearchResult attributes; the remaining dict[str, Any] tool returns and string-key reads belong to the other workflow tools, and typing them is its own change (decided 2026-10-08, reason refreshed 2026-10-15)
 apps/api/app/api/v1/endpoints/device_ws.py	TB002
 apps/api/app/api/v1/endpoints/platform_auth.py	TB001
 apps/api/app/api/v1/endpoints/platform_auth.py	TB002
@@ -58,7 +56,6 @@ apps/api/app/models/composio_schemas/slack_tools.py	TB002
 apps/api/app/schemas/desktop_schemas.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB001
 apps/api/app/scripts/backfill_public_workflow_descriptions.py	TB002
-apps/api/app/scripts/sync_user_workspaces.py	TB002
 apps/api/app/services/_vfs_scheduler.py	TB002
 apps/api/app/services/chat/artifact_forwarder.py	TB001
 apps/api/app/services/chat/artifact_forwarder.py	TB002
@@ -86,7 +83,6 @@ apps/api/app/services/nurture/predicates.py	TB002
 apps/api/app/services/onboarding/inbox_scan_cache.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB001
 apps/api/app/services/onboarding/inbox_triage_service.py	TB002
-apps/api/app/services/onboarding/onboarding_service.py	TB001	deferred-until=2026-11-08; _serialize_user feeds OnboardingResponse.user, a free-form object in the API contract; typing it changes openapi.json and the web types, a contract change kept out of the analytics catalog PR that only touched this file's capture (decided 2026-10-08)
 apps/api/app/services/photon/photon_client.py	TB001
 apps/api/app/services/photon/photon_client.py	TB002
 apps/api/app/services/storage/metrics.py	TB002
@@ -106,8 +102,6 @@ apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB001
 apps/api/app/workers/tasks/checkpoint_retention_tasks.py	TB002
 apps/api/app/workers/tasks/cleanup_tasks.py	TB001
 apps/api/app/workers/tasks/device_tasks.py	TB001
-apps/api/app/workers/tasks/memory_backfill_tasks.py	TB001
-apps/api/app/workers/tasks/memory_backfill_tasks.py	TB002
 apps/api/app/workers/tasks/memory_email_tasks.py	TB001
 apps/api/app/workers/tasks/memory_email_tasks.py	TB002
 apps/api/app/workers/tasks/memory_sweep_tasks.py	TB001
@@ -120,5 +114,3 @@ apps/api/app/workers/tasks/signup_email_tasks.py	TB001
 apps/api/app/workers/tasks/trigger_dispatch_tasks.py	TB001
 apps/api/app/workers/tasks/usage_badge_tasks.py	TB001
 apps/api/app/workers/tasks/usage_badge_tasks.py	TB002
-apps/api/app/workers/tasks/user_tasks.py	TB001
-apps/api/app/workers/tasks/workflow_dormancy_tasks.py	TB001

@@ -12,11 +12,12 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 import pytest
 
-from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.constants.notifications import NotificationChannel, ProactiveMessageClass
 from app.models.chat_models import ConversationSource
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.user_models import AuthenticatedUser
 from app.services.delivery.chat_channel import ChatChannel, InApp, ProactiveTarget
+from app.services.outbound_delivery import OutboundResult
 from app.tasks.reminder_tasks import (
     _deliver_reminder_to_platforms,
     _execute_static_reminder,
@@ -29,9 +30,9 @@ from shared.py.analytics.catalog.reminders import ReminderCompleted
 from shared.py.wide_events import log
 
 
-def _user_context(**fields: object) -> Callable[[str], AuthenticatedUser]:
+def _user_context(email: str | None = None) -> Callable[[str], AuthenticatedUser]:
     """Fake load_user_context: answer for whichever user id it is asked for."""
-    return lambda user_id: AuthenticatedUser(user_id=user_id, **fields)
+    return lambda user_id: AuthenticatedUser(user_id=user_id, email=email)
 
 
 MODULE = "app.tasks.reminder_tasks"
@@ -62,9 +63,9 @@ def target() -> Iterator[AsyncMock]:
 def _reminder(**overrides) -> ReminderModel:
     payload = overrides.pop("payload", StaticReminderPayload(title="Water the plants", body="Now"))
     return ReminderModel(
-        id=REMINDER_ID,
+        _id=REMINDER_ID,
         user_id=USER_ID,
-        agent="static",
+        agent=AgentType.STATIC,
         payload=payload,
         **overrides,
     )
@@ -104,7 +105,7 @@ async def test_static_reminder_sends_notification() -> None:
     assert notification.content.title == "Water the plants"
     # The in-app badge must NOT auto-inject the external platforms: the chat-platform
     # copy is delivered (and recorded) by _deliver_reminder_to_platforms instead.
-    assert [c.channel_type for c in notification.channels] == [CHANNEL_TYPE_INAPP]
+    assert [c.channel_type for c in notification.channels] == [NotificationChannel.INAPP]
     log_info.assert_called_once()
 
 
@@ -253,7 +254,8 @@ class TestReminderReachesChatPlatforms:
 
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
-        assert kwargs["user_id"] == USER_ID
+        assert kwargs["user"].user_id == USER_ID
+        assert kwargs["message_class"] is ProactiveMessageClass.USER_TIMED
         # The origin names the reminder (title + machine id) so the langgraph
         # record it produces can be backtracked to this reminder.
         assert kwargs["origin"] == f'reminder "Water the plants" (id {REMINDER_ID})'
@@ -350,7 +352,8 @@ class TestDeliverReminderToPlatforms:
         deliver.assert_awaited_once()
         kwargs = deliver.await_args.kwargs
         assert kwargs["user"].user_id == USER_ID
-        assert kwargs["user_id"] == USER_ID
+        assert kwargs["user"].user_id == USER_ID
+        assert kwargs["message_class"] is ProactiveMessageClass.USER_TIMED
         assert kwargs["origin"] == f'reminder "Water the plants" (id {REMINDER_ID})'
         assert kwargs["notification_text"] == "**Water the plants**\nNow"
         assert kwargs["target"] is TELEGRAM_BY_ORDER
@@ -511,8 +514,8 @@ class TestAReminderGoesToTheOnePlaceTheUserIsActive:
                 AsyncMock(return_value=set_in if delivered_into_chat else None),
             ) as into_chat,
             patch(
-                f"{PLATFORM_MODULE}._post_workflow_message",
-                AsyncMock(side_effect=lambda **kwargs: kwargs["channel"].source),
+                f"{PLATFORM_MODULE}.post_to_platform_chat",
+                AsyncMock(return_value=OutboundResult.PUBLISHED),
             ) as dm,
         ):
             await _deliver_reminder_to_platforms(reminder)
@@ -582,7 +585,7 @@ class TestAReminderGoesToTheOnePlaceTheUserIsActive:
             patch(
                 f"{MODULE}.deliver_message_to_conversation", AsyncMock(return_value=None)
             ) as into_chat,
-            patch(f"{PLATFORM_MODULE}._post_workflow_message", AsyncMock()) as dm,
+            patch(f"{PLATFORM_MODULE}.post_to_platform_chat", AsyncMock()) as dm,
         ):
             await _deliver_reminder_to_platforms(_reminder(source_conversation_id="conv-42"))
 

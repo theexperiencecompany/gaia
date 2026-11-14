@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.user_activity import ActivityStatus
 from app.models.user_models import AuthenticatedUser
 
 
@@ -13,6 +14,25 @@ def _subscription_active_by_default():
     with patch(
         "app.workers.tasks.workflow_tasks.is_paid",
         AsyncMock(return_value=True),
+    ):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _owners_are_active_by_default():
+    """Default every tracked-todo owner to active; the dormancy tests patch the same seams."""
+    # create=True: the regression lane runs these suites against a base without the seams.
+    with (
+        patch(
+            "app.workers.tasks.tracked_todo_tasks.activity_status_of",
+            AsyncMock(return_value=ActivityStatus.ACTIVE),
+            create=True,
+        ),
+        patch(
+            "app.workers.tasks.maintenance_sweep_tasks.user_repository.find_by_activity_status",
+            AsyncMock(return_value=[]),
+            create=True,
+        ),
     ):
         yield
 

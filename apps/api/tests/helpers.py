@@ -192,9 +192,11 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
         patch(f"{gate}.is_trigger_gates_enforced", AsyncMock(return_value=True)) as enforced,
         patch("app.models.trigger_gate_models.ENFORCED_GATE_KINDS", frozenset(GateKind)),
         patch(f"{gate}.capture", MagicMock()) as capture,
-        patch(f"{gate}.get_profile_timezone", AsyncMock(return_value=tz)) as profile_tz,
         patch(
-            f"{gate}.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)
+            "app.services.user_service.get_profile_timezone", AsyncMock(return_value=tz)
+        ) as profile_tz,
+        patch(
+            "app.services.user_service.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)
         ) as quiet_hours,
         patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
         patch(f"{gate}.workflow_repository.remember_gate_skip", AsyncMock()) as workflow_skips,
@@ -702,6 +704,27 @@ async def drain_at_most_once_sends() -> None:
     await asyncio.gather(
         *(task for task in asyncio.all_tasks() if task.get_name() == AT_MOST_ONCE_TASK_NAME)
     )
+
+
+def quiet_hours_excluding_now() -> dict[str, int | bool]:
+    """Return a UTC quiet-hours window starting two hours from now, so a send is never held.
+
+    A plain mapping rather than a QuietHours: UserDocument coerces it, and the
+    regression lane can still build it against a base revision without the model.
+    """
+    hour = datetime.now(UTC).hour
+    return {"enabled": True, "start_hour": (hour + 2) % 24, "end_hour": (hour + 3) % 24}
+
+
+def tamper_signature(token: str) -> str:
+    """Corrupt the signature segment of a dot-separated signed token.
+
+    Edits the first character: the last base64url one carries padding bits a
+    decoder discards, so changing it can leave the signature bytes unchanged.
+    """
+    head, _, signature = token.rpartition(".")
+    replacement = "B" if signature[0] == "A" else "A"
+    return f"{head}.{replacement}{signature[1:]}"
 
 
 CREDENTIAL_STORE_SECRET = "unit-test-instance-secret"

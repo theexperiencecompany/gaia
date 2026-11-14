@@ -34,7 +34,6 @@ from app.agents.core.background import (
     executor_runner as er,
     result_delivery as rd,
     running_registry,
-    workflow_platform_delivery as wpd,
 )
 from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_capture import (
@@ -77,7 +76,6 @@ from app.models.agent_models import InboxEntry
 from app.models.chat_models import SourceCategory
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
-from app.services.delivery.chat_channel import InApp
 from app.services.hil import bridge
 from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder, captured_wide_event
@@ -451,19 +449,7 @@ class TestBackgroundRunCardsSurviveTheCommsDrain:
         stack.enter_context(
             patch.object(rd, "_get_conversation_source", new_callable=AsyncMock, return_value=None)
         )
-        stack.enter_context(
-            patch.object(wpd, "deliver_result_to_platforms", AsyncMock(return_value=None))
-        )
-        stack.enter_context(
-            patch.object(
-                wpd,
-                "resolve_proactive_target",
-                AsyncMock(return_value=InApp(reason="no_chat_app")),
-            )
-        )
-        stack.enter_context(
-            patch.object(rd, "_dispatch_workflow_notification", new_callable=AsyncMock)
-        )
+        stack.enter_context(patch.object(rd, "deliver_workflow_completion", new_callable=AsyncMock))
         return stack.enter_context(patch.object(rd, "update_messages", new_callable=AsyncMock))
 
     async def test_a_workflow_run_saves_the_cards_it_produced(self) -> None:

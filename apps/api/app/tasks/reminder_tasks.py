@@ -4,6 +4,7 @@ import asyncio
 
 from app.agents.core.background.result_delivery import deliver_message_to_conversation
 from app.agents.core.background.workflow_platform_delivery import deliver_result_to_platforms
+from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.conversations import conversation_repository
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.chat_models import ConversationSource
@@ -126,9 +127,10 @@ async def _deliver_reminder_to_platforms(reminder: ReminderModel) -> ProactiveTa
 
         await deliver_result_to_platforms(
             user=user,
-            user_id=reminder.user_id,
             notification_text=text,
             origin=origin,
+            # The user set this reminder for now: quiet hours do not hold it.
+            message_class=ProactiveMessageClass.USER_TIMED,
             target=target,
             exclude_source=delivered_source,
         )

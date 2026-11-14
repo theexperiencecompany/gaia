@@ -263,7 +263,7 @@ class WorkflowService:
                     else AuthoredGate(condition=request.runs_only_when, author=GateAuthor.GAIA)
                 ),
                 activated=False,  # Start in pending state
-                notify_on_completion=request.notify_on_completion,
+                delivery=request.delivery,
                 user_id=user_id,
                 is_todo_workflow=is_todo_workflow,
                 source_todo_id=source_todo_id,

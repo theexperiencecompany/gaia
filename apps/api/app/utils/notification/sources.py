@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from app.constants.notifications import CHANNEL_TYPE_INAPP
+from app.constants.notifications import NotificationChannel
 from app.models.notification.notification_models import (
     ChannelConfig,
     NotificationAction,
@@ -34,7 +34,7 @@ class AIProactiveNotificationSource:
             source=NotificationSourceEnum.AI_REMINDER,
             type=NotificationType.INFO,
             priority=1,
-            channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
+            channels=[ChannelConfig(channel_type=NotificationChannel.INAPP)],
             content=NotificationContent(
                 title=title,
                 body=body,

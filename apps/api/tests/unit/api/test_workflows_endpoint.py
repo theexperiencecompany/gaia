@@ -8,6 +8,7 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
@@ -100,6 +101,7 @@ def _make_workflow(**overrides) -> Workflow:
             }
         ],
         "trigger_config": {"type": "manual", "enabled": True},
+        "delivery": WorkflowDelivery.NOW,
         "activated": True,
         "is_public": False,
         "slug": None,
@@ -124,6 +126,7 @@ def _create_workflow_payload(**overrides) -> dict:
         "title": "My Workflow",
         "prompt": "Do the thing for me",
         "trigger_config": {"type": "manual", "enabled": True},
+        "delivery": "now",
     }
     base.update(overrides)
     return base
@@ -243,6 +246,7 @@ class TestCreateWorkflow:
                 trigger_type="manual",
                 steps_count=1,
                 generated_immediately=False,
+                delivery="now",
             ),
         )
         assert type(mock_capture.call_args.args[1].trigger_type) is str
@@ -285,6 +289,7 @@ class TestCreateWorkflow:
                 trigger_type="manual",
                 steps_count=0,
                 generated_immediately=False,
+                delivery="now",
             ),
         )
 
@@ -317,6 +322,7 @@ class TestCreateWorkflow:
                 trigger_type="schedule",
                 steps_count=1,
                 generated_immediately=False,
+                delivery="now",
             ),
         )
         assert type(mock_capture.call_args.args[1].trigger_type) is str
@@ -327,6 +333,7 @@ class TestCreateWorkflow:
             json={
                 "prompt": "Do something",
                 "trigger_config": {"type": "manual", "enabled": True},
+                "delivery": "now",
             },
         )
         assert response.status_code == 422
@@ -337,8 +344,15 @@ class TestCreateWorkflow:
             json={
                 "title": "My Workflow",
                 "trigger_config": {"type": "manual", "enabled": True},
+                "delivery": "now",
             },
         )
+        assert response.status_code == 422
+
+    async def test_create_workflow_missing_delivery_returns_422(self, client: AsyncClient):
+        payload = _create_workflow_payload()
+        del payload["delivery"]
+        response = await client.post(BASE_URL, json=payload)
         assert response.status_code == 422
 
     async def test_create_workflow_empty_title_returns_422(self, client: AsyncClient):

@@ -25,7 +25,9 @@ from app.models.notification.notification_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.settings import SettingsNotificationsToggled
+from shared.py.analytics.catalog.settings import (
+    SettingsNotificationsToggled,
+)
 
 NOTIF_BASE = "/api/v1/notifications"
 ANALYTICS_PATCH = "app.api.v1.endpoints.notification.capture"
@@ -274,6 +276,40 @@ class TestUpdateChannelPreferences:
         assert data["telegram"] is False
         assert data["discord"] is True
         mock_schedule_sync.assert_called_once_with(FAKE_USER_ID)
+
+    @patch(
+        "app.api.v1.endpoints.notification.fetch_channel_preferences",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.notification.user_repository.set_channel_preferences",
+        new_callable=AsyncMock,
+    )
+    async def test_update_imessage_preference_persists_and_is_returned(
+        self,
+        mock_set_prefs: AsyncMock,
+        mock_fetch: AsyncMock,
+        client: AsyncClient,
+    ):
+        """Both channels are honoured by delivery, so dropping them hid the user's choice."""
+        mock_fetch.return_value = {
+            "telegram": True,
+            "discord": True,
+            "whatsapp": True,
+            "slack": True,
+            "imessage": False,
+            "email": False,
+        }
+        with patch("app.api.v1.endpoints.notification.schedule_account_sync"):
+            response = await client.put(
+                f"{NOTIF_BASE}/preferences/channels",
+                json={"imessage": False, "email": False},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["imessage"] is False
+        assert response.json()["email"] is False
+        mock_set_prefs.assert_awaited_once_with(FAKE_USER_ID, {"imessage": False, "email": False})
 
     @patch(
         "app.api.v1.endpoints.notification.fetch_channel_preferences",

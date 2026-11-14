@@ -14,6 +14,8 @@ from app.agents.llm.lane import AgentRole, ModelLane
 from app.agents.llm.ttft import LLMTtftCallback
 from app.constants.llm import LLM_LABEL_METADATA_KEY, LLMProviderName
 from app.constants.log_tags import LogTag
+from app.constants.notifications import ProactiveMessageClass
+from app.constants.workflows import WorkflowDelivery
 from app.helpers.agent_helpers import (
     AgentIdentity,
     AgentLane,
@@ -615,7 +617,8 @@ class TestBuildAgentConfig:
                     base_configurable={
                         "workflow_id": "wf_123",
                         "workflow_title": "Inbox Triage",
-                        "workflow_notify_on_completion": False,
+                        "workflow_delivery": WorkflowDelivery.SILENT,
+                        "workflow_message_class": ProactiveMessageClass.URGENT,
                     },
                 ),
             )
@@ -632,7 +635,8 @@ class TestBuildAgentConfig:
 
         assert child["workflow_id"] == "wf_123"
         assert child["workflow_title"] == "Inbox Triage"
-        assert child["workflow_notify_on_completion"] is False
+        assert child["workflow_delivery"] is WorkflowDelivery.SILENT
+        assert child["workflow_message_class"] is ProactiveMessageClass.URGENT
         assert "workflow_id" not in top_level
 
     async def test_usage_metadata_callback(self):
@@ -1659,7 +1663,7 @@ class TestBuildAgentConfigWorkflowInheritance:
         configurable = config["configurable"]
         assert configurable["workflow_id"] == "wf_123"
         assert configurable["workflow_title"] == ""
-        assert configurable["workflow_notify_on_completion"] is True
+        assert configurable["workflow_delivery"] is WorkflowDelivery.NOW
 
 
 class TestBuildAgentConfigPresence:

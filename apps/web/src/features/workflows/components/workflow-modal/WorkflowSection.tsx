@@ -5,8 +5,6 @@ import { cn } from "@/lib/utils";
 
 interface WorkflowSectionProps {
   label?: string;
-  /** Optional one-line helper under the label */
-  description?: string;
   /** Right-aligned action (e.g. an AI generate button) */
   action?: ReactNode;
   children: ReactNode;
@@ -20,7 +18,6 @@ interface WorkflowSectionProps {
  */
 export default function WorkflowSection({
   label,
-  description,
   action,
   children,
   className,
@@ -37,7 +34,6 @@ export default function WorkflowSection({
           {action}
         </div>
       )}
-      {description && <p className="text-xs text-zinc-500">{description}</p>}
       {children}
     </section>
   );

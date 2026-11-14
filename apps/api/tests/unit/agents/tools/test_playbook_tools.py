@@ -30,6 +30,7 @@ from app.agents.tools.playbook_tools import (
     write_playbook,
 )
 from app.constants.log_tags import LogTag
+from app.constants.workflows import WorkflowDelivery
 from app.models.playbook_models import (
     DeclineKind,
     PlaybookDocument,
@@ -115,6 +116,7 @@ def _write_playbook_call_schema() -> type[BaseModel]:
 
 def _workflow() -> WorkflowDocument:
     return WorkflowDocument(
+        delivery=WorkflowDelivery.NOW,
         id=WORKFLOW_ID,
         user_id=USER_ID,
         title="Daily agenda",

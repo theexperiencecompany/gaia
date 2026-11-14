@@ -22,7 +22,6 @@ apps/api/tests/contracts/test_folded_cards.py	list-item
 apps/api/tests/contracts/test_notifications_repository.py	arg-type
 apps/api/tests/contracts/test_user_instructions_repository.py	assignment
 apps/api/tests/contracts/test_user_integrations_repository.py	arg-type
-apps/api/tests/contracts/test_workflows_repository_reset_schedule.py	attr-defined
 apps/api/tests/e2e/_harness/agent_lab.py	attr-defined
 apps/api/tests/e2e/_harness/background.py	attr-defined
 apps/api/tests/e2e/_harness/graph_double.py	attr-defined
@@ -39,7 +38,6 @@ apps/api/tests/e2e/test_hil_spawn_e2e.py	call-overload
 apps/api/tests/e2e/test_hil_spawn_e2e.py	var-annotated
 apps/api/tests/e2e/test_memory_context_e2e.py	arg-type
 apps/api/tests/e2e/test_memory_context_e2e.py	attr-defined
-apps/api/tests/e2e/test_platform_delivery_recording_e2e.py	attr-defined
 apps/api/tests/e2e/test_reminder_dispatch_e2e.py	arg-type
 apps/api/tests/e2e/test_todo_trigger_dispatch_e2e.py	arg-type
 apps/api/tests/e2e/test_user_instructions_e2e.py	attr-defined
@@ -96,8 +94,6 @@ apps/api/tests/stress/test_arq_idempotency.py	misc
 apps/api/tests/stress/test_link_code_race.py	call-arg
 apps/api/tests/unit/agents/context/test_context_harness.py	attr-defined
 apps/api/tests/unit/agents/context/test_todo_feedback_context.py	arg-type
-apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	arg-type
-apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	attr-defined
 apps/api/tests/unit/agents/nodes/test_memory_node.py	arg-type
 apps/api/tests/unit/agents/test_active_integrations.py	misc
 apps/api/tests/unit/agents/test_call_record.py	arg-type
@@ -106,13 +102,9 @@ apps/api/tests/unit/agents/test_delegation.py	assignment
 apps/api/tests/unit/agents/test_delegation.py	attr-defined
 apps/api/tests/unit/agents/test_delegation.py	list-item
 apps/api/tests/unit/agents/test_delegation.py	typeddict-item
-apps/api/tests/unit/agents/test_deliver_to_executor.py	attr-defined
 apps/api/tests/unit/agents/test_email_processor.py	arg-type
 apps/api/tests/unit/agents/test_email_processor.py	list-item
 apps/api/tests/unit/agents/test_email_processor.py	method-assign
-apps/api/tests/unit/agents/test_executor_queue.py	attr-defined
-apps/api/tests/unit/agents/test_executor_queue.py	misc
-apps/api/tests/unit/agents/test_executor_queue.py	typeddict-item
 apps/api/tests/unit/agents/test_github_discovery.py	arg-type
 apps/api/tests/unit/agents/test_held_replies.py	arg-type
 apps/api/tests/unit/agents/test_hil_approval_middleware.py	arg-type
@@ -129,7 +121,6 @@ apps/api/tests/unit/agents/test_subagent_landing_wake.py	attr-defined
 apps/api/tests/unit/agents/test_subagent_landing_wake.py	typeddict-item
 apps/api/tests/unit/agents/test_vision_describe.py	arg-type
 apps/api/tests/unit/agents/test_vision_describe.py	attr-defined
-apps/api/tests/unit/agents/test_workflow_platform_delivery.py	arg-type
 apps/api/tests/unit/agents/tools/coding/test_edit_tool.py	arg-type
 apps/api/tests/unit/agents/tools/coding/test_edit_tool.py	misc
 apps/api/tests/unit/agents/tools/coding/test_edit_tool.py	return-value
@@ -162,7 +153,6 @@ apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_instructions.py	misc
 apps/api/tests/unit/app/test_main_smoke.py	arg-type
 apps/api/tests/unit/app/test_main_smoke.py	attr-defined
-apps/api/tests/unit/app/test_worker_smoke.py	attr-defined
 apps/api/tests/unit/browser_host/test_cdp_mux.py	attr-defined
 apps/api/tests/unit/browser_host/test_memory.py	attr-defined
 apps/api/tests/unit/browser_host/test_metrics.py	attr-defined
@@ -238,16 +228,11 @@ apps/api/tests/unit/middleware/test_request_timeout.py	arg-type
 apps/api/tests/unit/middleware/test_unhandled_exception_middleware.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	arg-type
 apps/api/tests/unit/models/composio_schemas/test_github_tools.py	call-arg
-apps/api/tests/unit/models/test_agent_config.py	typeddict-item
 apps/api/tests/unit/models/test_auth_models.py	call-arg
 apps/api/tests/unit/models/test_integration_request_ssrf.py	call-arg
 apps/api/tests/unit/models/test_payment_models.py	arg-type
 apps/api/tests/unit/models/test_payment_models.py	call-arg
-apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	arg-type
-apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	attr-defined
-apps/api/tests/unit/models/test_recurring_schedule_entry_points.py	call-arg
 apps/api/tests/unit/models/test_schema_validation.py	list-item
-apps/api/tests/unit/models/test_workflow_models.py	arg-type
 apps/api/tests/unit/patches/test_browser_use_run_lock_patch.py	attr-defined
 apps/api/tests/unit/patches/test_composio_input_patch.py	attr-defined
 apps/api/tests/unit/patches/test_langchain_merge_dicts_model_name_patch.py	attr-defined
@@ -279,7 +264,6 @@ apps/api/tests/unit/scripts/analytics_ops/test_backfill_paid_status.py	index
 apps/api/tests/unit/scripts/analytics_ops/test_merge_email_persons.py	attr-defined
 apps/api/tests/unit/scripts/analytics_ops/test_merge_email_persons.py	index
 apps/api/tests/unit/scripts/analytics_ops/test_reconcile.py	arg-type
-apps/api/tests/unit/scripts/test_archive_system_owned_runs.py	attr-defined
 apps/api/tests/unit/scripts/test_backfill_true_cost.py	attr-defined
 apps/api/tests/unit/scripts/test_loki.py	no-redef
 apps/api/tests/unit/scripts/test_migrate_hooked_tool_envelope.py	arg-type
@@ -287,7 +271,6 @@ apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	arg-type
 apps/api/tests/unit/scripts/test_repair_comms_message_breaks.py	list-item
 apps/api/tests/unit/scripts/test_reset_admin_password.py	arg-type
 apps/api/tests/unit/scripts/test_save_provider.py	arg-type
-apps/api/tests/unit/scripts/test_sync_user_workspaces.py	attr-defined
 apps/api/tests/unit/services/browser/jev/test_gateway.py	attr-defined
 apps/api/tests/unit/services/browser/test_capability_code.py	arg-type
 apps/api/tests/unit/services/browser/test_capability_code.py	assignment
@@ -312,11 +295,6 @@ apps/api/tests/unit/services/chat/test_stream_presence.py	attr-defined
 apps/api/tests/unit/services/chat/test_workspace.py	attr-defined
 apps/api/tests/unit/services/composio/test_toolkit_enablement.py	arg-type
 apps/api/tests/unit/services/composio/test_wrap_tool_output_schema.py	arg-type
-apps/api/tests/unit/services/delivery/test_chat_channel.py	arg-type
-apps/api/tests/unit/services/delivery/test_chat_channel.py	attr-defined
-apps/api/tests/unit/services/delivery/test_chat_channel.py	dict-item
-apps/api/tests/unit/services/delivery/test_chat_channel.py	syntax
-apps/api/tests/unit/services/delivery/test_chat_channel.py	typeddict-item
 apps/api/tests/unit/services/delivery/test_presence.py	misc
 apps/api/tests/unit/services/delivery_alerts/test_alerting.py	attr-defined
 apps/api/tests/unit/services/delivery_alerts/test_dead_letter_tap.py	arg-type
@@ -365,7 +343,6 @@ apps/api/tests/unit/services/test_marketplace_service.py	arg-type
 apps/api/tests/unit/services/test_marketplace_service.py	call-arg
 apps/api/tests/unit/services/test_mcp_tool_result.py	arg-type
 apps/api/tests/unit/services/test_mcp_tool_result.py	index
-apps/api/tests/unit/services/test_nurture_service.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
 apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
@@ -402,8 +379,6 @@ apps/api/tests/unit/storage/test_user_todos_vfs.py	typeddict-item
 apps/api/tests/unit/storage/test_vfs_common.py	arg-type
 apps/api/tests/unit/storage/test_vfs_common.py	typeddict-item
 apps/api/tests/unit/storage/test_vfs_common.py	typeddict-unknown-key
-apps/api/tests/unit/tasks/test_reminder_tasks.py	arg-type
-apps/api/tests/unit/tasks/test_reminder_tasks.py	call-arg
 apps/api/tests/unit/tasks/test_reminder_tasks_paid_only_gate.py	arg-type
 apps/api/tests/unit/tasks/test_reminder_tasks_paid_only_gate.py	call-arg
 apps/api/tests/unit/test_wide_event_isolation.py	attr-defined
@@ -420,8 +395,6 @@ apps/api/tests/unit/tools/test_browser_chat_tools.py	arg-type
 apps/api/tests/unit/tools/test_browser_chat_tools.py	attr-defined
 apps/api/tests/unit/tools/test_context_tool.py	attr-defined
 apps/api/tests/unit/tools/test_desktop_tools.py	attr-defined
-apps/api/tests/unit/tools/test_discovery_tools.py	arg-type
-apps/api/tests/unit/tools/test_discovery_tools.py	syntax
 apps/api/tests/unit/tools/test_download_tool.py	attr-defined
 apps/api/tests/unit/tools/test_file_tools.py	attr-defined
 apps/api/tests/unit/tools/test_file_tools.py	union-attr

@@ -1,8 +1,8 @@
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Clock01Icon, InformationCircleIcon } from "@icons";
+import { to12Hour, to24Hour } from "@shared/utils";
 import { useEffect, useMemo, useState } from "react";
-
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
 import { useCronValidation } from "../hooks/useCronValidation";
 import {
@@ -91,20 +91,6 @@ const initializeCustomCron = (cronExpression?: string): string => {
 // narrow trigger width (truncates "Custom", "Month", "Wednesday", …) — min-width
 // beats HeroUI's inline trigger-width style on the popover.
 const SELECT_CLASSNAMES = { popoverContent: "min-w-fit" } as const;
-
-// Helper to convert 24h to 12h for display
-const to12Hour = (hour24: number): { hour12: number; ampm: "AM" | "PM" } => {
-  if (hour24 === 0) return { hour12: 12, ampm: "AM" };
-  if (hour24 === 12) return { hour12: 12, ampm: "PM" };
-  if (hour24 < 12) return { hour12: hour24, ampm: "AM" };
-  return { hour12: hour24 - 12, ampm: "PM" };
-};
-
-// Helper to convert 12h to 24h for storage
-const to24Hour = (hour12: number, ampm: "AM" | "PM"): number => {
-  if (ampm === "AM") return hour12 === 12 ? 0 : hour12;
-  return hour12 === 12 ? 12 : hour12 + 12;
-};
 
 // =============================================================================
 // PRESENTATIONAL PIECES (stateless — state lives in ScheduleBuilder)

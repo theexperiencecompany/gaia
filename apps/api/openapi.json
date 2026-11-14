@@ -2788,11 +2788,21 @@
         "type": "object"
       },
       "ChannelPreferences": {
-        "description": "User notification channel preferences.",
+        "description": "User notification channel preferences.\n\nOne field per ``USER_CONFIGURABLE_CHANNELS`` member; the fields are spelled out\nso FastAPI and mypy see real types, and a unit test pins the set against the\nenum so the two cannot drift.",
         "properties": {
           "discord": {
             "default": true,
             "title": "Discord",
+            "type": "boolean"
+          },
+          "email": {
+            "default": true,
+            "title": "Email",
+            "type": "boolean"
+          },
+          "imessage": {
+            "default": true,
+            "title": "Imessage",
             "type": "boolean"
           },
           "slack": {
@@ -2815,13 +2825,15 @@
           "telegram",
           "discord",
           "whatsapp",
-          "slack"
+          "slack",
+          "imessage",
+          "email"
         ],
         "title": "ChannelPreferences",
         "type": "object"
       },
       "ChannelPreferencesUpdate": {
-        "description": "Request body for updating channel preferences.",
+        "description": "Request body for updating channel preferences; omitted channels are untouched.",
         "properties": {
           "discord": {
             "anyOf": [
@@ -2833,6 +2845,28 @@
               }
             ],
             "title": "Discord"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "imessage": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Imessage"
           },
           "slack": {
             "anyOf": [
@@ -4708,6 +4742,10 @@
       "CreateWorkflowRequest": {
         "description": "Request model for creating a new workflow.",
         "properties": {
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowDelivery",
+            "description": "How a finished run's result reaches the user. Required: every creator (the user, the agent from the user's intent, a system definition) decides it explicitly."
+          },
           "description": {
             "anyOf": [
               {
@@ -4785,12 +4823,6 @@
             "title": "Is System Workflow",
             "type": "boolean"
           },
-          "notify_on_completion": {
-            "default": true,
-            "description": "Whether GAIA sends the automatic completion notification when a run finishes.",
-            "title": "Notify On Completion",
-            "type": "boolean"
-          },
           "prompt": {
             "description": "Detailed execution instructions for the AI",
             "minLength": 1,
@@ -4865,7 +4897,8 @@
         "required": [
           "title",
           "prompt",
-          "trigger_config"
+          "trigger_config",
+          "delivery"
         ],
         "title": "CreateWorkflowRequest",
         "type": "object"
@@ -12159,6 +12192,10 @@
             "title": "Id",
             "type": "string"
           },
+          "message_class": {
+            "$ref": "#/components/schemas/ProactiveMessageClass",
+            "default": "routine"
+          },
           "metadata": {
             "additionalProperties": true,
             "title": "Metadata",
@@ -12880,17 +12917,8 @@
             "type": "boolean"
           },
           "user": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Updated user data",
-            "title": "User"
+            "$ref": "#/components/schemas/OnboardingUser",
+            "description": "Updated user data"
           }
         },
         "required": [
@@ -12978,6 +13006,24 @@
         ],
         "title": "OnboardingStep",
         "type": "string"
+      },
+      "OnboardingUser": {
+        "description": "The user an onboarding write updated: its id and the onboarding state it left.",
+        "properties": {
+          "onboarding": {
+            "$ref": "#/components/schemas/OnboardingStatusResponse"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "onboarding"
+        ],
+        "title": "OnboardingUser",
+        "type": "object"
       },
       "PaginatedNotificationsResponse": {
         "description": "Response model for paginated notifications",
@@ -13763,6 +13809,16 @@
           "none"
         ],
         "title": "Priority",
+        "type": "string"
+      },
+      "ProactiveMessageClass": {
+        "description": "What a message GAIA sends on its own initiative is, which decides if quiet hours hold it.",
+        "enum": [
+          "routine",
+          "user_timed",
+          "urgent"
+        ],
+        "title": "ProactiveMessageClass",
         "type": "string"
       },
       "ProjectCreate": {
@@ -18210,7 +18266,7 @@
           },
           "notify_on_run": {
             "default": true,
-            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.",
+            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.",
             "title": "Notify On Run",
             "type": "boolean"
           },
@@ -18417,7 +18473,7 @@
           },
           "notify_on_run": {
             "default": true,
-            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's notify_on_completion; unrelated to the todo being marked completed.",
+            "description": "Deliver this tracked todo's run result to the user's chat platform when a scheduled or triggered run finishes. The tracked-todo equivalent of a workflow's delivery mode; unrelated to the todo being marked completed.",
             "title": "Notify On Run",
             "type": "boolean"
           },
@@ -20450,6 +20506,16 @@
             ],
             "title": "Activated"
           },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowDelivery"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "description": {
             "anyOf": [
               {
@@ -20509,17 +20575,6 @@
               }
             ],
             "title": "Integration Ids"
-          },
-          "notify_on_completion": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notify On Completion"
           },
           "prompt": {
             "anyOf": [
@@ -21289,6 +21344,16 @@
         "title": "WorkflowCreator",
         "type": "object"
       },
+      "WorkflowDelivery": {
+        "description": "How a finished workflow run's result reaches the user.\n\nFailures always notify, whatever the mode: a broken workflow needs the user\nnow. A run whose narration decides there is nothing worth reporting reaches\nnobody in any mode.",
+        "enum": [
+          "now",
+          "brief",
+          "silent"
+        ],
+        "title": "WorkflowDelivery",
+        "type": "string"
+      },
       "WorkflowExecution": {
         "description": "A single workflow execution record.",
         "properties": {
@@ -21774,6 +21839,10 @@
             ],
             "description": "Why the workflow is not activated. None means the user turned it off themselves \u2014 only system-paused workflows may be resumed automatically."
           },
+          "delivery": {
+            "$ref": "#/components/schemas/WorkflowDelivery",
+            "description": "How a finished run's result reaches the user: pushed now, held for the next brief, or kept silent in the workflow's conversation. Failures always notify."
+          },
           "description": {
             "default": "",
             "description": "Short display description for cards/UI (1-2 sentences)",
@@ -21926,12 +21995,6 @@
             ],
             "description": "Required integrations the user has not connected yet.",
             "title": "Missing Integrations"
-          },
-          "notify_on_completion": {
-            "default": true,
-            "description": "Whether GAIA sends the automatic completion notification when a run finishes. When False the run is silent (failures still notify) and the agent only notifies if the workflow's own instructions ask it to.",
-            "title": "Notify On Completion",
-            "type": "boolean"
           },
           "occurrence_count": {
             "default": 0,
@@ -22119,7 +22182,7 @@
           "gate",
           "activated",
           "deactivated_reason",
-          "notify_on_completion",
+          "delivery",
           "last_executed_at",
           "is_public",
           "is_explore",

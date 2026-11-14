@@ -7,8 +7,10 @@ real, so a dropped field or a broken cap goes red here.
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import AsyncMock, patch
+
+from langchain_core.runnables import RunnableConfig
 
 from app.agents.tools.discovery_tools import (
     MAX_DISCOVERY_RESULTS,
@@ -20,7 +22,7 @@ from app.models.workflow_models import PublicWorkflowRow
 from app.schemas.integrations.responses import CommunityIntegrationItem, MyIntegrationItem
 
 _USER = "user1"
-_CONFIG: dict[str, Any] = {"configurable": {"user_id": _USER}}
+_CONFIG: RunnableConfig = {"configurable": {"user_id": _USER}}
 _FRONTEND = "https://app.example.com"
 
 
@@ -30,14 +32,14 @@ def _mine(
     description: str,
     *,
     connected: bool = False,
-    source: str = "platform",
+    source: Literal["platform", "custom"] = "platform",
 ) -> MyIntegrationItem:
     return MyIntegrationItem(
         id=integration_id,
         name=name,
         description=description,
         category="productivity",
-        source=source,  # type: ignore[arg-type] -- the literal is what the test varies
+        source=source,
         managed_by="composio",
         status="connected" if connected else "not_connected",
     )
@@ -199,6 +201,7 @@ def _row(title: str, description: str, **extra: Any) -> PublicWorkflowRow:
             "prompt": "do the thing",
             "steps": [{"title": "step", "category": "gmail", "description": "d"}],
             "trigger_config": {"type": "manual"},
+            "delivery": "now",
             **extra,
         }
     )

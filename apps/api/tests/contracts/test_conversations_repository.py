@@ -420,6 +420,36 @@ class TestMessages:
         assert [m.response for m in fetched.messages] == ["hi", "hello"]
         assert [m.message_id for m in fetched.messages] == ids
 
+    async def test_recent_follow_up_actions_reads_only_the_trailing_window_deduped(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[
+                MessageModel(type="bot", response="old", follow_up_actions=["outside window"]),
+                MessageModel(type="bot", response="a", follow_up_actions=["Draft", "Plan"]),
+                MessageModel(type="user", response="q"),
+                MessageModel(type="bot", response="b", follow_up_actions=["Plan", "Send"]),
+            ],
+        )
+
+        assert await repo.get_recent_follow_up_actions(
+            doc.user_id, doc.conversation_id, window=3
+        ) == ["Draft", "Plan", "Send"]
+
+    async def test_recent_follow_up_actions_is_scoped_to_the_owner(self, repo):
+        doc = _doc()
+        await repo.create(doc)
+        await repo.append_messages(
+            doc.conversation_id,
+            user_id=doc.user_id,
+            messages=[MessageModel(type="bot", response="a", follow_up_actions=["Draft"])],
+        )
+
+        assert await repo.get_recent_follow_up_actions(_uid(), doc.conversation_id, window=5) == []
+        assert await repo.get_recent_follow_up_actions(doc.user_id, _cid(), window=5) == []
+
     async def test_a_tool_data_entry_holding_a_model_is_stored_as_its_dump(self, repo):
         doc = _doc()
         await repo.create(doc)
@@ -1134,82 +1164,10 @@ class TestSearchAndSweeps:
         assert never.conversation_id in found
         assert seen.conversation_id not in found
 
-    async def test_all_conversation_ids_and_active_users(self, repo):
-        user = _uid()
-        doc = _doc(user_id=user)
+    async def test_all_conversation_ids(self, repo):
+        doc = _doc(user_id=_uid())
         await repo.create(doc)
-        await repo.set_starred(doc.conversation_id, user_id=user, starred=True)  # sets updatedAt
         assert doc.conversation_id in await repo.all_conversation_ids()
-        since = datetime.now(UTC) - timedelta(minutes=5)
-        assert user in await repo.active_user_ids_since(since)
-
-
-class TestActivitySignal:
-    """has_activity_since — the dormancy sweep's transport-agnostic usage signal.
-
-    Against real Mongo specifically: the bug this pins is a BSON type mismatch,
-    which every mocked collection in the unit tier happily reports as a match.
-    """
-
-    async def test_a_conversation_created_since_the_cutoff_counts(self, repo):
-        """The createdAt ISO string must still match a date $gte comparison, not silently read as no activity."""
-        doc = _doc()
-        await repo.create(doc)
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(doc.user_id, cutoff) is True
-
-    async def test_an_appended_conversation_counts_via_updatedat(self, repo):
-        doc = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
-        await repo.create(doc)
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="user", response="hi")],
-        )
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(doc.user_id, cutoff) is True
-
-    async def test_an_untouched_old_conversation_does_not_count(self, repo):
-        doc = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
-        await repo.create(doc)
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(doc.user_id, cutoff) is False
-
-    async def test_a_tracked_todos_chat_does_not_count(self, repo):
-        """Regression: every run of a tracked todo saves its report in the todo's chat, so a user whose todos ran never went dormant."""
-        doc = _doc(todo_id="todo-1")
-        await repo.create(doc)
-        await repo.append_messages(
-            doc.conversation_id,
-            user_id=doc.user_id,
-            messages=[MessageModel(type="bot", response="the deploy is green")],
-        )
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(doc.user_id, cutoff) is False
-        # Nor is it a chat the user had: nurture's "used chat" and the new-user guidance read this.
-        assert await repo.count_non_onboarding(doc.user_id) == 0
-
-    async def test_a_system_generated_conversation_does_not_count(self, repo):
-        """A system-generated conversation's own updatedAt must not count, or a user's automation vouches for them as active forever."""
-        doc = _doc()
-        doc.is_system_generated = True
-        await repo.create(doc)
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(doc.user_id, cutoff) is False
-
-    async def test_another_users_activity_does_not_count(self, repo):
-        mine = _doc(createdAt=(datetime.now(UTC) - timedelta(days=400)).isoformat())
-        theirs = _doc()
-        await repo.create(mine)
-        await repo.create(theirs)
-
-        cutoff = datetime.now(UTC) - timedelta(days=1)
-        assert await repo.has_activity_since(mine.user_id, cutoff) is False
 
 
 async def test_owners_of_maps_each_existing_conversation_to_its_owner(repo):
