@@ -10,12 +10,15 @@ interface IntegrationRichContentProps {
   readonly integration: PublicIntegrationResponse;
   readonly comparisonSlug?: string;
   readonly alternativeSlug?: string;
+  /** The marketplace directory page that lists this integration. */
+  readonly directoryHref: string;
 }
 
 export function IntegrationRichContent({
   integration,
   comparisonSlug,
   alternativeSlug,
+  directoryHref,
 }: IntegrationRichContentProps) {
   const howItWorks = integration.content?.howItWorks ?? [];
   const faqs = integration.content?.faqs ?? [];
@@ -83,7 +86,7 @@ export function IntegrationRichContent({
         </p>
         <Button
           as={Link}
-          href="/marketplace"
+          href={directoryHref}
           variant="flat"
           color="primary"
           endContent={

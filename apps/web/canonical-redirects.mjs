@@ -18,6 +18,8 @@ const CANONICAL_REDIRECT_PAIRS = [
   // /automate reverse-order combos
   ["/automate/teams-slack", "/automate/slack-teams"],
   ["/automate/trello-notion", "/automate/notion-trello"],
+  // An app with one combo has no app page (comboAppGroups): its old page goes to that combo
+  ["/automate/with/google-docs", "/automate/google-docs-slack"],
   // /compare vs /alternative-to same-tool pairs
   ["/alternative-to/superhuman", "/compare/superhuman"],
   ["/compare/limitless-ai", "/alternative-to/limitless-ai"],

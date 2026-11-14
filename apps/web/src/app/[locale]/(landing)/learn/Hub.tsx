@@ -3,6 +3,10 @@ import { HubPagination } from "@/components/seo/HubPagination";
 import JsonLd from "@/components/seo/JsonLd";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { getAllTranslatedGlossaryTerms } from "@/features/glossary/data/getTranslatedGlossary";
+import {
+  glossaryCategoryGroups,
+  glossaryCategoryPath,
+} from "@/features/glossary/data/glossaryCategories";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { hubPageCount, hubPageSlice } from "@/lib/hubPagination";
 import {
@@ -11,28 +15,7 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
-
-const CATEGORY_KEYS: Record<string, string> = {
-  "ai-concepts": "category_ai_concepts",
-  productivity: "category_productivity",
-  automation: "category_automation",
-  email: "category_email",
-  calendar: "category_calendar",
-  "task-management": "category_task_management",
-  "knowledge-management": "category_knowledge_management",
-  development: "category_development",
-};
-
-const CATEGORY_ORDER = [
-  "ai-concepts",
-  "productivity",
-  "automation",
-  "email",
-  "calendar",
-  "task-management",
-  "knowledge-management",
-  "development",
-];
+import { GlossaryTermGrid } from "./GlossaryTermGrid";
 
 interface LearnHubProps {
   readonly locale: string;
@@ -73,9 +56,8 @@ export async function LearnHub({ locale, page }: LearnHubProps) {
 
   // Page through the hub's usual category order so each page is a contiguous
   // chunk of the list it has always shown.
-  const orderedTerms = CATEGORY_ORDER.flatMap((categoryKey) =>
-    allTerms.filter((term) => term.category === categoryKey),
-  );
+  const categories = glossaryCategoryGroups(allTerms, t);
+  const orderedTerms = categories.flatMap((category) => category.items);
 
   // Only the current page's terms are serialized: the full list is paged so
   // neither the HTML nor the RSC flight payload carries every card.
@@ -97,34 +79,29 @@ export async function LearnHub({ locale, page }: LearnHubProps) {
           </p>
         </header>
 
-        {CATEGORY_ORDER.map((categoryKey) => {
+        {categories.map((category) => {
           const terms = pageTerms.filter(
-            (term) => term.category === categoryKey,
+            (term) => term.category === category.slug,
           );
           if (terms.length === 0) return null;
 
           return (
-            <section key={categoryKey} className="mb-14">
-              <h2 className="mb-6 text-2xl font-semibold text-white">
-                {t(CATEGORY_KEYS[categoryKey] as Parameters<typeof t>[0])}
-              </h2>
-
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {terms.map((term) => (
-                  <SiteLink
-                    key={term.slug}
-                    href={`/learn/${term.slug}`}
-                    className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                  >
-                    <h3 className="mb-2 text-lg font-semibold text-white transition-colors group-hover:text-primary">
-                      {term.term}
-                    </h3>
-                    <p className="line-clamp-3 text-sm leading-relaxed text-zinc-400">
-                      {term.definition}
-                    </p>
-                  </SiteLink>
-                ))}
+            <section key={category.slug} id={category.slug} className="mb-14">
+              <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+                <h2 className="text-2xl font-semibold text-white">
+                  {category.label}
+                </h2>
+                <SiteLink
+                  href={glossaryCategoryPath(category.slug)}
+                  className="text-sm text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+                >
+                  {t("all_category_terms", {
+                    count: category.items.length,
+                    category: category.label,
+                  })}
+                </SiteLink>
               </div>
+              <GlossaryTermGrid terms={terms} />
             </section>
           );
         })}

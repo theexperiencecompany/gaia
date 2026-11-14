@@ -69,7 +69,10 @@ export function appPagePath(appSlug: string): string {
   return `/automate/with/${appSlug}`;
 }
 
-/** Every app with its combos, the apps with the most combos first. */
+/** An app with one combo gets no page of its own: the page would only repeat that combo. */
+const MIN_APP_PAGE_COMBOS = 2;
+
+/** Every app with a page, with its combos, the apps with the most combos first. */
 export function comboAppGroups(
   combos: readonly IntegrationCombo[],
 ): ComboAppGroup[] {
@@ -81,14 +84,16 @@ export function comboAppGroups(
       byApp.set(app.slug, group);
     }
   }
-  return [...byApp]
-    .map(([slug, group]) => ({
+  const groups: ComboAppGroup[] = [];
+  for (const [slug, group] of byApp) {
+    if (group.combos.length < MIN_APP_PAGE_COMBOS) continue;
+    groups.push({
       slug,
       name: group.name,
       combos: [...group.combos].sort((a, b) => a.slug.localeCompare(b.slug)),
-    }))
-    .sort(
-      (a, b) =>
-        b.combos.length - a.combos.length || a.name.localeCompare(b.name),
-    );
+    });
+  }
+  return groups.sort(
+    (a, b) => b.combos.length - a.combos.length || a.name.localeCompare(b.name),
+  );
 }

@@ -5,6 +5,7 @@ import ComparisonTable from "@/components/seo/ComparisonTable";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { LinkCard } from "@/components/seo/LinkCard";
 import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { ProseParagraphs } from "@/components/seo/ProseParagraphs";
 import { SiteLink } from "@/components/seo/SiteLink";
@@ -357,29 +358,23 @@ function AlternativeArticle({
         <h2 className="mb-6 text-3xl font-semibold text-white">
           {t("common.explore_more")}
         </h2>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <SiteLink
+        <div className="grid gap-4 sm:grid-cols-3">
+          <LinkCard
+            href="/alternative-to"
+            title={t("alternatives.hub_title")}
+            description={t("alternatives.hub_subtitle")}
+            clamp
+          />
+          <LinkCard
             href="/compare"
-            className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-          >
-            <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-              {t("alternatives.gaia_vs_competitors")}
-            </h3>
-            <p className="text-sm leading-relaxed text-zinc-400">
-              {t("alternatives.gaia_vs_competitors_desc")}
-            </p>
-          </SiteLink>
-          <SiteLink
+            title={t("alternatives.gaia_vs_competitors")}
+            description={t("alternatives.gaia_vs_competitors_desc")}
+          />
+          <LinkCard
             href="/for"
-            className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-          >
-            <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-              {t("alternatives.gaia_for_role")}
-            </h3>
-            <p className="text-sm leading-relaxed text-zinc-400">
-              {t("alternatives.gaia_for_role_desc")}
-            </p>
-          </SiteLink>
+            title={t("alternatives.gaia_for_role")}
+            description={t("alternatives.gaia_for_role_desc")}
+          />
         </div>
       </section>
     </article>
