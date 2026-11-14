@@ -1,0 +1,34 @@
+diff --git a/dist/chunk-KQW2TNLT.mjs b/dist/chunk-KQW2TNLT.mjs
+index 5d97d2cd54dbc73351d5c73658f9f866bb563771..5b0703187b5817fff7f5aa17830914e7f5a6310e 100644
+--- a/dist/chunk-KQW2TNLT.mjs
++++ b/dist/chunk-KQW2TNLT.mjs
+@@ -268,7 +268,11 @@ function useInput(originalProps) {
+         "aria-readonly": dataAttr(originalProps.isReadOnly),
+         onChange: chain(inputProps.onChange, onChange),
+         onKeyDown: chain(inputProps.onKeyDown, props2.onKeyDown, handleKeyDown),
+-        ref: domRef
++        ref: domRef,
++        "aria-describedby": (() => {
++          const ids = (inputProps["aria-describedby"] || "").split(" ").filter(Boolean).filter((id) => (description || id !== descriptionProps.id) && (errorMessage || id !== errorMessageProps.id));
++          return ids.length ? ids.join(" ") : void 0;
++        })()
+       };
+     },
+     [
+diff --git a/dist/use-input.js b/dist/use-input.js
+index 5e2b6e84a9e20a695f6927f34d4a9e17410879f2..05fba5adf14c00c6b354f179cfc5028c488e0ecf 100644
+--- a/dist/use-input.js
++++ b/dist/use-input.js
+@@ -284,7 +284,11 @@ function useInput(originalProps) {
+         "aria-readonly": (0, import_shared_utils.dataAttr)(originalProps.isReadOnly),
+         onChange: (0, import_shared_utils.chain)(inputProps.onChange, onChange),
+         onKeyDown: (0, import_shared_utils.chain)(inputProps.onKeyDown, props2.onKeyDown, handleKeyDown),
+-        ref: domRef
++        ref: domRef,
++        "aria-describedby": (() => {
++          const ids = (inputProps["aria-describedby"] || "").split(" ").filter(Boolean).filter((id) => (description || id !== descriptionProps.id) && (errorMessage || id !== errorMessageProps.id));
++          return ids.length ? ids.join(" ") : void 0;
++        })()
+       };
+     },
+     [

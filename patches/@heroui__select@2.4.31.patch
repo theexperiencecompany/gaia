@@ -1,0 +1,17 @@
+diff --git a/dist/chunk-ZO7XS5CB.mjs b/dist/chunk-ZO7XS5CB.mjs
+index 7ef4e385829f47234dd7fdb81d27525eae8e1191..9bf40d57ed8261bcf423becf6d0417ecbd12c188 100644
+--- a/dist/chunk-ZO7XS5CB.mjs
++++ b/dist/chunk-ZO7XS5CB.mjs
+@@ -240,7 +240,11 @@ function useSelect(originalProps) {
+             enabled: shouldFilterDOMProps
+           }),
+           filterDOMProps(props2)
+-        )
++        ),
++        "aria-describedby": (() => {
++          const ids = (buttonProps["aria-describedby"] || "").split(" ").filter(Boolean).filter((id) => hasValue || id !== valueProps.id);
++          return ids.length ? ids.join(" ") : void 0;
++        })()
+       };
+     },
+     [
