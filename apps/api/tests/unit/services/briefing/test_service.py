@@ -2191,7 +2191,7 @@ class TestSignalsInTheBrief:
             " 1 time(s), last 2 days ago, moved from Todo to In Progress"
         ) in prompt
         assert "- other | issue assigned to you: Refresh the onboarding docs" in prompt
-        assert "new today" in prompt
+        assert "first seen today, created date unknown" in prompt
 
     async def test_a_day_with_only_signals_is_pushed_and_counted(
         self, world: World, monkeypatch: pytest.MonkeyPatch

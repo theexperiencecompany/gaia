@@ -26,6 +26,8 @@ SCOUT_TOOL_QUERY: Final[str] = (
 
 #: Safety ceiling on signals one scout may hand the brief: a runaway list, not a quota.
 SCOUT_SIGNAL_CEILING: Final[int] = 50
+#: How recently an app must say an item was created for a brief to call its first sighting new.
+SIGNAL_NEW_WITHIN: Final = timedelta(days=1)
 
 #: What one user's scouts may spend in a UTC day before the rest are skipped. Scouts book
 #: here, never into the user's own allowance, so the brief writer is never starved by them.
