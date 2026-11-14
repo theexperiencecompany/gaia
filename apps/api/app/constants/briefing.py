@@ -164,6 +164,14 @@ BRIEFING_RUN_SUMMARIES: Final[dict[BriefingRunOutcome, str]] = {
 # and each surface is served a delivery transformation capped at this width.
 EDITION_DELIVERY_MAX_WIDTH_PX: Final[int] = 1080
 
+# Every edition template marks the top of its first body block, after the header, with
+# this attribute: the gap where the folded letter's front panel ends.
+FOLD_MARKER_SELECTOR: Final[str] = "[data-fold]"
+
+# An edition laid on a desk marks its paper element with this attribute; its box
+# is recorded so the letter and the unfold show the paper alone.
+PAPER_MARKER_SELECTOR: Final[str] = "[data-paper]"
+
 
 # A desk family's edition is transparent around its paper; a JPG has no alpha, so it is
 # flattened onto Air Mail's desk base instead of Cloudinary's default white.

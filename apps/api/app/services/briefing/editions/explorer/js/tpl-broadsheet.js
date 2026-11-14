@@ -40,9 +40,9 @@
     name: "The Broadsheet",
     axes: {
       masthead: [
-        { id: "didot", label: "Didot", stack: "Didot, 'Bodoni 72', 'Hoefler Text', Georgia, serif", ratio: 0.5 },
-        { id: "bodoni", label: "Bodoni 72", stack: "'Bodoni 72', Didot, 'Hoefler Text', Georgia, serif", ratio: 0.5 },
-        { id: "hoefler", label: "Hoefler Text", stack: "'Hoefler Text', 'Iowan Old Style', Georgia, serif", ratio: 0.52 },
+        { id: "didot", label: "Didot", stack: "Didot, 'Bodoni 72', 'Hoefler Text', Georgia, serif", ratio: 0.6 },
+        { id: "bodoni", label: "Bodoni 72", stack: "'Bodoni 72', Didot, 'Hoefler Text', Georgia, serif", ratio: 0.6 },
+        { id: "hoefler", label: "Hoefler Text", stack: "'Hoefler Text', 'Iowan Old Style', Georgia, serif", ratio: 0.62 },
       ],
       tone: [
         { id: "warm", label: "warm foxed stock", paper: "#ece2c8", ink: "#211b10", soft: "#463c25", rule: "#2a2213", hair: "rgba(42,34,19,.45)", fox: "rgba(120,86,30,.10)" },
@@ -153,7 +153,7 @@ ${grain("bs-g", 0.75)}
 <hr class="dbl">
 <div class="dateline bk"><span>Vol. I</span><span>·</span><span>${esc(ed.weekday)}, ${esc(ed.month)} ${ed.day}, ${ed.year}</span><span>·</span><span>One edition daily</span></div>
 <div class="lead"><div class="kick bk">Front page</div><h2>${esc(ed.deck)}</h2><p class="deck bk">${esc(leadDeck(needs.length, c.today.length, c.overnight.length))}</p><hr class="short"></div>
-${sections.join(orn)}
+${EXPLORER.fold(sections).join(orn)}
 ${figs}
 <div class="imprint bk">Edition No. ${ed.editionNo} · Generated ${esc(ed.time)} by GAIA · Printed for a readership of one</div>
 </article>`;

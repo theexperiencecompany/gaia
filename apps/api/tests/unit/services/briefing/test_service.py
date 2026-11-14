@@ -59,6 +59,7 @@ from app.models.briefing_models import (
     BriefingTallies,
     BriefingWeek,
     BriefingWeekDay,
+    EditionRender,
     NewStamp,
 )
 from app.models.chat_models import ConversationSource
@@ -87,6 +88,7 @@ from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.link_tokens import link_token_problems
 from app.services.briefing.scouts import service as scout_service
+from app.services.briefing.voice_check import message_char_limit
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.services.notification_service import notification_service
 from app.services.outbound_delivery import OutboundResult
@@ -105,7 +107,10 @@ _WEEK_START = datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
 _EVENT = BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia")
 _CHAT = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="priority")
 _EDITION = HostedEditionImage(
-    display_url="https://cdn.example/f_auto/brief", chat_url="https://cdn.example/f_jpg/brief"
+    display_url="https://cdn.example/f_auto/brief",
+    chat_url="https://cdn.example/f_jpg/brief",
+    fold=0.3,
+    paper=(0.1, 0.2, 0.9, 0.8),
 )
 _BRIEF_ID = "brief_abc123"
 _BRIEF_LINK = "https://heygaia.link/briefabc123"
@@ -200,6 +205,7 @@ class World:
     memory: list[SignalMemoryDocument] = field(default_factory=list)
     shown: AsyncMock = field(default_factory=AsyncMock)
     seen: AsyncMock = field(default_factory=AsyncMock)
+    brief_message: AsyncMock = field(default_factory=AsyncMock)
     #: The context and repository reads the run makes, by name, as patched.
     reads: dict[str, AsyncMock] = field(default_factory=dict)
 
@@ -271,13 +277,13 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     w = World(
         agent=AsyncMock(return_value=SimpleNamespace(message=_fenced(_VOICE))),
         upsert=AsyncMock(
-            side_effect=lambda user_id, date, kind, payload, *, edition_image_url: BriefingModel(
+            side_effect=lambda user_id, date, kind, payload, *, edition: BriefingModel(
                 id=_BRIEF_ID,
                 user_id=user_id,
                 date=date,
                 kind=kind,
                 payload=payload,
-                edition_image_url=edition_image_url,
+                edition_image_url=edition.image_url,
             )
         ),
         mint=AsyncMock(return_value=_BRIEF_LINK),
@@ -321,6 +327,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(service, "optional_short_link", w.mint)
     _seam(monkeypatch, w, briefing_repository, "has_daily_briefing", AsyncMock(return_value=True))
     monkeypatch.setattr(notification_service, "create_notification", w.notify)
+    monkeypatch.setattr(service, "post_brief_message", w.brief_message)
     monkeypatch.setattr(
         service,
         "resolve_proactive_target",
@@ -408,7 +415,9 @@ class TestDailyBrief:
         assert [i.todo_id for s in payload.sections for i in s.items] == ["b1", "c1"]
         message = _facts_shown(_prompt(world))
         assert payload.message == message
-        assert world.upsert.await_args.kwargs["edition_image_url"] == _EDITION.display_url
+        assert world.upsert.await_args.kwargs["edition"] == EditionRender(
+            image_url=_EDITION.display_url, fold=0.3, paper=[0.1, 0.2, 0.9, 0.8]
+        )
         request = world.notify.await_args.args[0]
         assert request.metadata["edition_image_url"] == _EDITION.display_url
         # One URL, minted for the persisted brief, behind the email image and the chat post.
@@ -417,6 +426,11 @@ class TestDailyBrief:
         assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
         assert request.metadata["kind"] == NOTIFICATION_KIND_BRIEFING_DAILY
+        # GAIA's Briefings-conversation message carries the same folded card the notification does.
+        user_id, text, card = world.brief_message.await_args.args
+        assert (user_id, text, card.briefing_id, card.kind) == (_USER, message, _BRIEF_ID, "daily")
+        assert (card.needs_you_count, card.edition_image_url) == (1, _EDITION.display_url)
+        assert request.metadata["needs_you_count"] == card.needs_you_count
         assert request.content.body == message
         assert request.content.rich_content == payload.model_dump()
         world.host_image.assert_awaited_once()
@@ -2204,6 +2218,35 @@ class TestSignalsInTheBrief:
 
         world.post.assert_awaited_once()
         assert world.capture.call_args.args[1].signal_count == 1
+
+    async def test_a_headline_may_say_something_needs_you_when_an_app_signal_does(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(context, "gather_calendar", AsyncMock(return_value=[]))
+        world.scouts = _scouted(_DOCS)
+        world.agent.return_value = SimpleNamespace(
+            message=_fenced(
+                {
+                    **_VOICE,
+                    "lede": "One thing needs you today.",
+                    "message": f"{_FACTS_SHOWN} Refresh the onboarding docs when you can.",
+                }
+            )
+        )
+
+        await service.run_daily_briefing(_USER)
+
+        world.post.assert_awaited_once()
+
+    async def test_the_message_room_grows_with_each_app_signal(self, world: World) -> None:
+        world.scouts = _scouted(_LOGIN, _DOCS)
+        world.agent.return_value = _saying(f"[{_LOGIN.title}]({_LOGIN.url}) still needs you.")
+
+        await service.run_daily_briefing(_USER)
+
+        assert world.voice_prompt.call_args.kwargs["max_message_chars"] == message_char_limit(2)
+        assert message_char_limit(2) > message_char_limit(0)
+        assert f"stays under {message_char_limit(2)} characters" in _prompt(world)
 
     async def test_only_the_signals_the_message_spoke_of_are_marked_shown(
         self, world: World

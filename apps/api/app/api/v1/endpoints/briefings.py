@@ -6,10 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.repositories.briefings import briefing_repository
-from app.models.briefing_models import BriefingListResponse, BriefingModel, PostmarksResponse
+from app.models.briefing_models import BriefingListResponse, BriefingView, PostmarksResponse
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.briefing.postmarks import collected_postmarks
+from app.services.briefing.view import briefing_view
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.briefings import BriefingOpened, BriefingPostmarksViewed
 from shared.py.wide_events import log
@@ -26,7 +27,7 @@ async def list_briefings(
     user_id = user.user_id
     log.set(user={"id": user_id}, briefing={"operation": "list", "limit": limit})
     briefings = await briefing_repository.list_recent(user_id, limit=limit)
-    return BriefingListResponse(briefings=briefings)
+    return BriefingListResponse(briefings=[briefing_view(b) for b in briefings])
 
 
 @router.get("/postmarks")
@@ -47,7 +48,7 @@ async def get_postmarks(
 async def get_briefing(
     briefing_id: str,
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-) -> BriefingModel:
+) -> BriefingView:
     """Return one of the user's briefs; the first open marks it and emits briefing:opened."""
     user_id = user.user_id
     log.set(user={"id": user_id}, briefing={"operation": "get", "id": briefing_id})
@@ -59,4 +60,4 @@ async def get_briefing(
         if opened is not None:
             capture(UserId(user_id), BriefingOpened(kind=briefing.kind))
             briefing = opened
-    return briefing
+    return briefing_view(briefing)

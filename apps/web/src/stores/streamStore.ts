@@ -43,7 +43,7 @@ export interface TurnUiState {
   toolInfo?: ActiveToolInfo;
 }
 
-/** Loading UI owned by non-turn flows (voice agent, file upload). */
+/** Loading UI owned by non-turn flows (the voice agent). */
 interface AuxLoadingState {
   active: boolean;
   text: string;
@@ -395,7 +395,7 @@ const useActiveTurn = (): TurnUiState | null => {
 
 /** Loading indicator state for the active conversation: turn spinner, the
  *  executor-await bridge, a detached background run, or auxiliary
- *  (voice/upload) loading. */
+ *  (voice) loading. */
 export const useActiveLoading = (): {
   isLoading: boolean;
   loadingText: string;

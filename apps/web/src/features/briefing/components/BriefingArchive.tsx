@@ -1,18 +1,88 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Link } from "@heroui/link";
 import { Skeleton } from "@heroui/skeleton";
+import type { BriefingView } from "@shared/api/generated";
+import {
+  endOfWeek,
+  format,
+  isSameWeek,
+  parseISO,
+  startOfWeek,
+  subWeeks,
+} from "date-fns";
+
+import { cn } from "@/lib/utils";
 
 import { useBriefingsQuery } from "../hooks/useBriefingsQuery";
-import { BriefingEdition } from "./BriefingEdition";
+import type { FoldedBriefSummary } from "./BriefCard";
+import { BriefingFold } from "./BriefingFold";
+
+const WEEK_OPTIONS = { weekStartsOn: 1 } as const;
+const GRID_CLASSES = "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4";
 
 export interface BriefingArchiveProps {
   limit?: number;
   className?: string;
 }
 
-/** The latest brief in full (its edition, then its items); every earlier one links to its page. */
+interface WeekGroup {
+  start: Date;
+  briefings: BriefingView[];
+}
+
+function foldedBriefOf(briefing: BriefingView): FoldedBriefSummary {
+  return {
+    headline: briefing.payload.headline,
+    date: briefing.date,
+    kind: briefing.kind,
+    lede: briefing.payload.lede,
+    imageUrl: briefing.edition_image_url,
+    editionFold: briefing.edition_fold,
+    editionPaper: briefing.edition_paper,
+    editionName: briefing.edition_name,
+    stampCityName: briefing.stamp_city_name,
+    needsYouCount: briefing.needs_you_count,
+  };
+}
+
+/** Briefs bucketed by Monday-start week, newest week first; the weekly recap leads its week. */
+function groupByWeek(briefings: BriefingView[]): WeekGroup[] {
+  const groups = new Map<number, WeekGroup>();
+  for (const briefing of briefings) {
+    const start = startOfWeek(parseISO(briefing.date), WEEK_OPTIONS);
+    const group = groups.get(start.getTime()) ?? { start, briefings: [] };
+    group.briefings.push(briefing);
+    groups.set(start.getTime(), group);
+  }
+  return [...groups.values()].map((group) => ({
+    ...group,
+    briefings: [...group.briefings].sort(
+      (a, b) => Number(b.kind === "weekly") - Number(a.kind === "weekly"),
+    ),
+  }));
+}
+
+function weekTitle(start: Date, now: Date): string | null {
+  if (isSameWeek(start, now, WEEK_OPTIONS)) return "This week";
+  if (isSameWeek(start, subWeeks(now, 1), WEEK_OPTIONS)) return "Last week";
+  return null;
+}
+
+function WeekHeader({ start }: { start: Date }) {
+  const range = `${format(start, "MMM d")} – ${format(endOfWeek(start, WEEK_OPTIONS), "MMM d")}`;
+  const title = weekTitle(start, new Date());
+  return (
+    <h2 className="mb-2.5 flex items-baseline justify-between text-sm font-medium text-zinc-200">
+      {title ?? range}
+      {title && (
+        <span className="text-xs font-normal text-zinc-500">{range}</span>
+      )}
+    </h2>
+  );
+}
+
+/** Every brief folded to a letter card, grouped by week, newest first; each unfolds above the page. */
 export function BriefingArchive({
   limit = 30,
   className,
@@ -26,8 +96,11 @@ export function BriefingArchive({
 
   if (isLoading) {
     return (
-      <div className={className}>
-        <Skeleton className="h-[60vh] w-full rounded-2xl" />
+      <div className={cn(GRID_CLASSES, className)}>
+        <Skeleton className="aspect-square w-full rounded-2xl" />
+        <Skeleton className="aspect-square w-full rounded-2xl" />
+        <Skeleton className="aspect-square w-full rounded-2xl" />
+        <Skeleton className="aspect-square w-full rounded-2xl" />
       </div>
     );
   }
@@ -47,32 +120,30 @@ export function BriefingArchive({
     return <p className="text-sm text-zinc-500">No past briefings yet.</p>;
   }
 
-  const [latest, ...earlier] = briefings;
   return (
-    <div className={className}>
-      <BriefingEdition
-        payload={latest.payload}
-        imageUrl={latest.edition_image_url}
-      />
-      {earlier.length > 0 && (
-        <div className="mt-4 rounded-2xl bg-zinc-800 p-4">
-          <p className="mb-3 text-sm font-semibold text-zinc-100">Earlier</p>
-          <div className="space-y-2">
-            {earlier.map((briefing) => (
-              <Link
-                key={briefing.id}
-                href={`/brief/${briefing.id}`}
-                className="block rounded-2xl bg-zinc-900 p-3 transition-colors hover:bg-white/5"
-              >
-                <p className="text-sm font-medium text-zinc-200">
-                  {briefing.payload.headline}
-                </p>
-                <p className="text-xs text-zinc-500">{briefing.date}</p>
-              </Link>
-            ))}
+    <div className={cn("flex flex-col gap-8", className)}>
+      {groupByWeek(briefings).map((group) => (
+        <section key={group.start.getTime()}>
+          <WeekHeader start={group.start} />
+          <div className={GRID_CLASSES}>
+            {group.briefings.map((briefing) => {
+              const isWeekly = briefing.kind === "weekly";
+              return (
+                <div
+                  key={briefing.id}
+                  className={cn(isWeekly && "col-span-full")}
+                >
+                  <BriefingFold
+                    brief={foldedBriefOf(briefing)}
+                    variant={isWeekly ? "feature" : "card"}
+                    payload={briefing.payload}
+                  />
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
+        </section>
+      ))}
     </div>
   );
 }

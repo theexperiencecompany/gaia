@@ -105,14 +105,14 @@
       const clip = `<svg class="clip" viewBox="0 0 26 74" aria-hidden="true"><path d="M8 66 V12 a5 5 0 0 1 10 0 V58 a8 8 0 0 1 -16 0 V18" fill="none" stroke="#8d939b" stroke-width="2.4" stroke-linecap="round"/><path d="M8 66 V12 a5 5 0 0 1 10 0" fill="none" stroke="#e9edf1" stroke-width=".8" stroke-linecap="round" transform="translate(-.6 -.4)"/></svg>`;
       return `<article class="t-memo" style="--desk:${skin.desk.desk}; --deskB:${skin.desk.deskB}; --paper:${skin.paper.paper}; --rule:${skin.paper.rule}; --face:${skin.face.stack}; --size:${skin.face.size}; --ink:${skin.stamp.ink}">
 ${inkMask("mm-ink")}
-<div class="sheet">${grain("mm-g", 0.85)}
+<div class="sheet" data-paper>${grain("mm-g", 0.85)}
   <i class="hole" style="top:150px"></i><i class="hole" style="bottom:150px"></i>${clip}
   <div class="title">MEMORANDUM</div>
   <div class="stamp">RECEIVED<b>${esc(ed.time)}</b></div>
   <div class="head"><div class="head ghost" aria-hidden="true">${head}</div>${head}</div>
   <div class="typed-rule" aria-hidden="true"></div>
   <p class="deck">${esc(ed.deck)}</p>
-  ${sections.join("")}
+  ${EXPLORER.fold(sections).join("")}
   <p class="end">###</p>
   <p class="colo">EDITION NO. ${ed.editionNo} -- TYPED ${esc(ed.time)} BY GAIA</p>
 </div></article>`;
@@ -204,7 +204,7 @@ ${grain("al-g", 0.7)}<i class="spot" style="top:12%; left:8%; width:9px; height:
 <div class="c"><div class="eyebrow sc">The Almanac</div><h1>The ${esc(ed.weekday)} Brief</h1><p class="sub">Being a faithful account of the day's business</p><p class="for sc">for the ${ord(ed.day)} day of ${esc(ed.month)}, anno ${ed.year} — No. ${ed.editionNo}</p></div>
 ${fleuron}
 <p class="deck">${esc(ed.deck)}</p>
-${secs.join("")}
+${EXPLORER.fold(secs).join("")}
 ${calc}
 ${plate}
 ${fleuron}

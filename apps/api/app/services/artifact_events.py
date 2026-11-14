@@ -23,9 +23,9 @@ ARTIFACT_CHANNEL_PREFIX = "artifacts:"
 
 
 class ArtifactFileEvent(TypedDict):
-    """A file appeared or changed — upsert from the sandbox, upload host-side."""
+    """A file GAIA wrote appeared or changed in the session's artifacts/."""
 
-    event: Literal["upsert", "upload"]
+    event: Literal["upsert"]
     session_id: str
     path: str
     size_bytes: int
@@ -33,8 +33,8 @@ class ArtifactFileEvent(TypedDict):
     content_type: str | None
     body: NotRequired[str]
     # The artifact's public heygaia.link, present only when the tool that wrote
-    # the file this turn attached one. Watcher rescans and user uploads never
-    # carry it — the owner shares those from the file card.
+    # the file this turn attached one. Watcher rescans never carry it; the
+    # owner shares those from the file card.
     short_url: NotRequired[str]
 
 
@@ -50,7 +50,7 @@ ArtifactEvent = ArtifactFileEvent | ArtifactRemoveEvent
 class ArtifactEventMessage(TypedDict):
     """An ArtifactEvent as subscribers receive it, stamped with user_id and ts."""
 
-    event: Literal["upsert", "upload", "remove"]
+    event: Literal["upsert", "remove"]
     session_id: str
     path: str
     user_id: str
@@ -105,25 +105,6 @@ def upsert_event(
 def remove_event(session_id: str, path: str) -> ArtifactRemoveEvent:
     """Return an artifacts/ file-removed-or-renamed event."""
     return {"event": "remove", "session_id": session_id, "path": path}
-
-
-def upload_event(
-    session_id: str,
-    path: str,
-    *,
-    size_bytes: int,
-    content_type: str | None,
-    mtime: float | None = None,
-) -> ArtifactFileEvent:
-    """Return a user-upload-landed event, for uploads written host-side into user-uploaded/ (cross-mount)."""
-    return {
-        "event": "upload",
-        "session_id": session_id,
-        "path": path,
-        "size_bytes": size_bytes,
-        "mtime": mtime if mtime is not None else time.time(),
-        "content_type": content_type,
-    }
 
 
 async def publish_artifact_event(user_id: str, payload: ArtifactEvent) -> None:

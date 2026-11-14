@@ -281,6 +281,7 @@ class TestDevRouterMounting:
                 todos_created=3,
                 conversations_created=2,
                 postmarks_created=12,
+                editions_created=5,
                 platforms_linked=["telegram"],
                 platform_user_ids={"telegram": "dev-telegram-u1"},
                 pro=True,
@@ -296,6 +297,7 @@ class TestDevRouterMounting:
                         "conversations": 2,
                         "platform_links": ["telegram"],
                         "postmarks": 12,
+                        "editions": 5,
                         "pro": True,
                     },
                 )
@@ -305,8 +307,19 @@ class TestDevRouterMounting:
         assert body["todos_created"] == 3
         assert body["conversations_created"] == 2
         assert body["postmarks_created"] == 12
+        assert body["editions_created"] == 5
         assert body["pro"] is True
-        mock_seed.assert_awaited_once_with(DEV_EMAIL, 3, 2, ["telegram"], postmarks=12, pro=True)
+        mock_seed.assert_awaited_once_with(
+            SeedDevDataRequest(
+                email=DEV_EMAIL,
+                todos=3,
+                conversations=2,
+                platform_links=["telegram"],
+                postmarks=12,
+                editions=5,
+                pro=True,
+            )
+        )
 
     async def test_seed_wide_event_records_the_requested_counts(self):
         seeded = SeedDevDataResponse(
@@ -315,6 +328,7 @@ class TestDevRouterMounting:
             todos_created=3,
             conversations_created=2,
             postmarks_created=12,
+            editions_created=0,
             platforms_linked=[],
             platform_user_ids={},
             pro=False,
@@ -326,7 +340,9 @@ class TestDevRouterMounting:
         ):
             async with captured_wide_event() as event:
                 await seed_dev_user_data(
-                    SeedDevDataRequest(email=DEV_EMAIL, todos=3, conversations=2, postmarks=12)
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL, todos=3, conversations=2, postmarks=12, editions=4
+                    )
                 )
 
         assert event["dev"] == {
@@ -335,6 +351,7 @@ class TestDevRouterMounting:
             "todos": 3,
             "conversations": 2,
             "postmarks": 12,
+            "editions": 4,
             "user_id": "u1",
         }
 
@@ -439,7 +456,7 @@ class TestDevServiceLogic:
                 "get_by_email",
                 new_callable=AsyncMock,
                 return_value=user,
-            ),
+            ) as mock_get_by_email,
             patch.object(user_repository, "complete_onboarding", mock_complete),
             patch.object(
                 dev_service.TodoService, "create_todo", new_callable=AsyncMock
@@ -450,15 +467,20 @@ class TestDevServiceLogic:
             patch.object(PlatformLinkService, "ensure_linkable", new_callable=AsyncMock),
             patch.object(PlatformLinkService, "link_account", new_callable=AsyncMock) as mock_link,
             patch.object(dev_service, "seed_dev_postmarks", new_callable=AsyncMock) as mock_stamps,
+            patch.object(dev_service, "seed_dev_editions", new_callable=AsyncMock) as mock_editions,
         ):
             result = await dev_service.seed_dev_data(
-                DEV_EMAIL,
-                todos=3,
-                conversations=2,
-                platform_links=["telegram", "slack"],
-                postmarks=4,
+                SeedDevDataRequest(
+                    email=DEV_EMAIL,
+                    todos=3,
+                    conversations=2,
+                    platform_links=["telegram", "slack"],
+                    postmarks=4,
+                    editions=3,
+                )
             )
 
+        mock_get_by_email.assert_awaited_once_with(DEV_EMAIL)
         assert mock_todo.await_count == 3
         assert [c.args[0].title for c in mock_todo.await_args_list] == [
             "Sample todo 1",
@@ -474,6 +496,8 @@ class TestDevServiceLogic:
         assert result.user_id == str(oid)
         mock_stamps.assert_awaited_once_with(user, 4)
         assert result.postmarks_created == 4
+        mock_editions.assert_awaited_once_with(user, 3)
+        assert result.editions_created == 3
 
         # Seeding marks onboarding complete via the gated repository method.
         assert mock_complete.await_args.args[0] == str(oid)
@@ -517,7 +541,9 @@ class TestDevServiceLogic:
             ) as mock_invalidate,
         ):
             result = await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=0, conversations=0, platform_links=[], pro=True
+                SeedDevDataRequest(
+                    email=DEV_EMAIL, todos=0, conversations=0, platform_links=[], pro=True
+                )
             )
 
         assert result.pro is True
@@ -577,7 +603,9 @@ class TestDevServiceLogic:
             patch.object(PlatformLinkService, "unlink_account", side_effect=unlink_account),
         ):
             return await dev_service.seed_dev_data(
-                DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram"]
+                SeedDevDataRequest(
+                    email=DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram"]
+                )
             )
 
     async def test_seed_links_the_seeded_identity_the_harness_injects_as(self):
@@ -639,7 +667,9 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=1, conversations=0, platform_links=["myspace"]
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL, todos=1, conversations=0, platform_links=["myspace"]
+                    )
                 )
 
         assert exc.value.status_code == 400
@@ -675,7 +705,9 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=2, conversations=1, platform_links=["telegram"]
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL, todos=2, conversations=1, platform_links=["telegram"]
+                    )
                 )
 
         assert exc.value.status_code == 409
@@ -713,7 +745,12 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=0, conversations=0, platform_links=["telegram", "slack"]
+                    SeedDevDataRequest(
+                        email=DEV_EMAIL,
+                        todos=0,
+                        conversations=0,
+                        platform_links=["telegram", "slack"],
+                    )
                 )
 
         assert exc.value.code == LINK_CONFLICT_PLATFORM_TAKEN
@@ -728,7 +765,7 @@ class TestDevServiceLogic:
         ):
             with pytest.raises(AppError) as exc:
                 await dev_service.seed_dev_data(
-                    DEV_EMAIL, todos=1, conversations=0, platform_links=[]
+                    SeedDevDataRequest(email=DEV_EMAIL, todos=1, conversations=0, platform_links=[])
                 )
 
         assert exc.value.status_code == 404

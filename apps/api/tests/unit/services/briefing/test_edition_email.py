@@ -15,7 +15,11 @@ from pydantic import ValidationError
 import pytest
 
 from app.config.settings import settings
-from app.constants.briefing import EditionDeliveryFormat
+from app.constants.briefing import (
+    FOLD_MARKER_SELECTOR,
+    PAPER_MARKER_SELECTOR,
+    EditionDeliveryFormat,
+)
 from app.constants.files import BlobKind
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -31,6 +35,7 @@ from app.services.briefing.edition_email import (
     render_edition_email,
 )
 from app.services.briefing.editions import EXPLORER_RENDERER
+from app.services.briefing.render import RenderedImage
 
 USER_ID = "user-abc"
 IMAGE_URL = "https://cdn.example.com/edition.png"
@@ -97,6 +102,8 @@ def make_payload(**overrides: Any) -> BriefingPayload:
 class Harness:
     def __init__(self) -> None:
         self.image = b"edition-png-bytes"
+        self.fold: float | None = 0.31
+        self.paper: tuple[float, float, float, float] | None = None
         self.image_url = IMAGE_URL
         self.render_calls: list[dict[str, Any]] = []
         self.image_calls: list[dict[str, Any]] = []
@@ -116,11 +123,11 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
 
         return render
 
-    async def fake_render_html_to_image(html: str, options: Any) -> bytes:
+    async def fake_render_html_to_image(html: str, options: Any) -> RenderedImage:
         h.image_calls.append({"html": html, "options": options})
         if h.render_error is not None:
             raise h.render_error
-        return h.image
+        return RenderedImage(image=h.image, fold=h.fold, paper=h.paper)
 
     async def fake_upload(owner_id: str, public_id: str, content: bytes, **kwargs: Any) -> str:
         h.upload_calls.append(
@@ -219,6 +226,24 @@ class TestImageAndUpload:
         assert (options.clip_selector, options.trim_margin_px) == ("#root > article", 16)
         assert (options.clip_bleed_px, options.omit_background) == (48, True)
 
+    async def test_the_render_is_asked_for_the_fold_and_paper_boxes_by_their_markers(
+        self, harness: Harness
+    ) -> None:
+        await host(make_payload())
+
+        options = harness.image_calls[0]["options"]
+        assert options.fold_selector == FOLD_MARKER_SELECTOR
+        assert options.paper_selector == PAPER_MARKER_SELECTOR
+
+    async def test_the_paper_the_render_measured_is_what_hosting_returns(
+        self, harness: Harness
+    ) -> None:
+        harness.paper = (0.02, 0.03, 0.97, 0.9)
+
+        hosted = await host(make_payload())
+
+        assert hosted.paper == (0.02, 0.03, 0.97, 0.9)
+
     async def test_a_full_bleed_family_is_its_whole_page(self, harness: Harness) -> None:
         await host(make_payload(template_family="swiss"))
 
@@ -250,6 +275,7 @@ class TestImageAndUpload:
         assert await host(make_payload()) == HostedEditionImage(
             display_url=f"{base}/c_limit,f_auto,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
             chat_url=f"{base}/b_rgb:23262a,c_limit,f_jpg,q_auto,w_1080/v1/briefing/editions/{RENDER_KEY}",
+            fold=0.31,
         )
 
     async def test_render_failure_propagates_and_nothing_is_uploaded(
