@@ -1,14 +1,13 @@
 "use client";
 
 import { Accordion, AccordionItem } from "@heroui/accordion";
-import { ToolsIcon } from "@icons";
 import { useMemo, useState } from "react";
 import { ChevronDown } from "@/components/shared/icons";
 import type {
   SubagentGroupData,
   ToolCallEntry,
 } from "@/config/registries/toolRegistry";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { type ApprovalReceipt, StepRow, SubagentRow } from "./SubagentRow";
 import { deriveTimelineItemKeys } from "./TextBubble/useSubagentSynthesis";
 
@@ -58,14 +57,13 @@ function StackedIcons({
   return (
     <div className="flex min-h-8 items-center -space-x-2">
       {display.map((d, i) => {
-        const icon = getToolCategoryIcon(
-          d.category,
-          { width: 21, height: 21 },
-          d.iconUrl,
-        ) || (
-          <div className="p-1 bg-zinc-800 rounded-lg text-zinc-400 backdrop-blur">
-            <ToolsIcon width={21} height={21} />
-          </div>
+        const icon = (
+          <IntegrationIcon
+            integrationId={d.category}
+            iconUrl={d.iconUrl}
+            size={21}
+            showBackground
+          />
         );
         let rotate = "0deg";
         if (display.length > 1) {

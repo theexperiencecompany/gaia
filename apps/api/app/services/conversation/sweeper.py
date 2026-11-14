@@ -34,7 +34,7 @@ from app.services.conversation.work_log import (
 from app.services.hil.approvals_store import get_approval
 from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.hil.resolution import cancel_conversation_approvals
-from shared.py.analytics.catalog.hil import ApprovalOutcome, UndecidedOutcome
+from shared.py.approvals import ApprovalOutcome, UndecidedOutcome
 from shared.py.wide_events import log
 
 

@@ -36,7 +36,7 @@ from app.services.hil.resolution import (
     sweep_approvals,
 )
 from app.services.hil.resume_slot import claim_resume_dispatch, release_resume_dispatch
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 
 from .conftest import CONVERSATION_ID, USER_ID, make_record, tools_that_always_ask
 

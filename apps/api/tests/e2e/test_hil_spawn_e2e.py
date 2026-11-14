@@ -42,7 +42,7 @@ from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
 from app.models.agent_models import AnyAgentMiddleware
 from app.models.hil_models import HILPreferences
 from app.services.hil.approvals_store import list_pending_for_conversation, mark_decided
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 from tests.helpers import PassthroughFakeLLM
 
 pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("hil_barrier_mode")]

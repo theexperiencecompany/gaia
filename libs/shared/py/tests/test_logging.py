@@ -83,7 +83,7 @@ class TestConfigureLoguru:
     def test_configures_extra_with_default_logger_name(self, mock_logger: MagicMock):
         configure_loguru()
         mock_logger.configure.assert_called_once_with(
-            extra={"logger_name": "APP", "worker": "main"},
+            extra={"logger_name": "APP", "worker": "main", "fields": ""},
             patcher=logging_mod._worker_name_patcher,
         )
 
@@ -458,3 +458,25 @@ class TestTextShape:
     def test_without_a_key_only_the_length_is_recorded(self) -> None:
         # An unkeyed digest of a short phrase is reversed by hashing guesses.
         assert logging_mod.text_shape("123456789", None) == {"length": 9}
+
+
+class TestReadableSinksCarryFields:
+    @pytest.mark.parametrize("format_name", ["console", "file"])
+    def test_a_log_lines_structured_fields_appear_in_the_readable_line(self, format_name: str):
+        from loguru import logger
+
+        out = io.StringIO()
+        sink_id = logger.add(
+            out, format=LOG_CONFIG["format"][format_name], colorize=False, level="ERROR"
+        )
+        try:
+            logger.patch(logging_mod._worker_name_patcher).bind(logger_name="T").error(
+                "Error connecting for", provider="gmail", error="Auth config not found"
+            )
+        finally:
+            logger.remove(sink_id)
+
+        line = out.getvalue()
+        assert "provider='gmail'" in line
+        assert "error='Auth config not found'" in line
+        assert "logger_name" not in line

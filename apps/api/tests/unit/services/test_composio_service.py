@@ -17,6 +17,7 @@ from app.constants.integrations import (
     GMAIL_INTEGRATION_ID,
 )
 from app.services.composio import auth_config_resolver
+from app.services.composio.error_detail import AuthConfigNotFoundError
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import log
@@ -162,6 +163,37 @@ class TestConnectAccount:
         ):
             with pytest.raises(RuntimeError, match="boom"):
                 await svc.connect_account("gmail", "user1", "tok")
+
+    @pytest.mark.asyncio
+    async def test_an_auth_config_missing_from_the_project_says_which_integration_and_why(self):
+        svc = _make_service()
+        request = httpx.Request(
+            "POST", "https://backend.composio.dev/api/v3/connected_accounts/link"
+        )
+        response = httpx.Response(404, request=request, headers={"x-request-id": "req_42"})
+        svc.composio.connected_accounts.link.side_effect = composio_client.NotFoundError(
+            "Auth config not found (Auth_Config_NotFound)",
+            response=response,
+            body={"error": {"slug": "Auth_Config_NotFound", "message": "Auth config not found"}},
+        )
+
+        with (
+            patch.object(settings, "COMPOSIO_AUTH_CONFIG_OVERRIDES", {"gmail": GMAIL_AC}),
+            patch(
+                "app.services.composio.composio_service.settings",
+                MagicMock(COMPOSIO_REDIRECT_URI="https://example.com/cb"),
+            ),
+        ):
+            async with captured_wide_event() as event:
+                with pytest.raises(AuthConfigNotFoundError, match=GMAIL_AC):
+                    await svc.connect_account("gmail", "user1", "tok")
+
+        (logged,) = event["errors"]
+        assert logged["provider"] == "gmail"
+        assert logged["composio_error_slug"] == "Auth_Config_NotFound"
+        assert logged["composio_request_id"] == "req_42"
+        assert logged["composio_status"] == 404
+        assert logged["error_type"] == "NotFoundError"
 
 
 class TestReauthorizeAccount:

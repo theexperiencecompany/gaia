@@ -221,12 +221,11 @@ export async function stopConversation(conversationId: string): Promise<void> {
 /** Follow a conversation's events after seq `after`, handing each data line over raw; resolves when the stream ends. */
 export function subscribeToConversationEvents(
   conversationId: string,
-  after: number,
   onData: (raw: string) => void,
   signal: AbortSignal,
 ): Promise<void> {
   return readEventStream(
-    `/conversations/${encodeURIComponent(conversationId)}/events?after=${after}`,
+    `/conversations/${encodeURIComponent(conversationId)}/events`,
     onData,
     signal,
   );

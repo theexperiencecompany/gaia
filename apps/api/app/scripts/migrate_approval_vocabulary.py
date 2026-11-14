@@ -31,7 +31,7 @@ from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
 from app.models.conversation_log_models import EntryKind
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 
 LEDGER = "approval_ledger"
 RECORDS = "hil_approvals"

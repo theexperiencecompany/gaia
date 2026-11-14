@@ -1,16 +1,17 @@
-import type { LoggedEntry } from "@gaia/shared/conversation";
+import type { ScreenItem } from "@gaia/shared/conversation";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Conversation } from "@/features/chat/types/index";
 
-// v3: a conversation is its log. v1/v2 cached messages are dropped once and refetched.
-const LOG_PREFIX = "@chat_log_v3_";
+// v4: a conversation is the server's screen. Older caches are dropped once and refetched.
+const LOG_PREFIX = "@chat_screen_v4_";
 const RETIRED_MESSAGE_PREFIX = "@chat_messages_";
 const CONVERSATIONS_KEY = "@chat_conversations";
 const MAX_CONVERSATIONS = 50;
 
-/** A conversation's log as this device last saw it, and where an older page starts. */
+/** A conversation's screen as this device last saw it, its head, and where an older page starts. */
 export interface SavedLog {
-  entries: LoggedEntry[];
+  items: ScreenItem[];
+  head: number;
   olderBefore: number | null;
 }
 

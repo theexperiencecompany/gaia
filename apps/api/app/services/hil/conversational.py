@@ -54,7 +54,7 @@ from app.services.hil.resolution import (
     resolve_approval,
 )
 from app.utils.general_utils import clip_text
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log
 
 # Ground truth for a settled ledger row in the bot reply's words: the action's

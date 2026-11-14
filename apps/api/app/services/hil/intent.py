@@ -40,7 +40,7 @@ from app.services.hil.utils import (
     untrusted_fence,
 )
 from app.utils.log_identifiers import user_text_shape
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log
 
 _NO_REQUEST_REASON = "Could not check this against anything you asked for."

@@ -1,7 +1,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { GridIcon } from "@icons";
-import { formatToolName } from "@/features/chat/utils/chatUtils";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { getToolDisplayName } from "@shared/icons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 
 import { CategoryIntegrationStatus } from "./CategoryIntegrationStatus";
 
@@ -37,20 +37,18 @@ export function CategoryTabs({
             {category === "all" ? (
               <GridIcon size={16} strokeWidth={2} className="text-gray-400" />
             ) : (
-              // Tinted background like the list rows and the tool-call
-              // thread, at tab size.
-              getToolCategoryIcon(
-                category,
-                { size: 14, width: 16, height: 16 },
-                categoryDisplayMap[category]?.iconUrl,
-              )
+              <IntegrationIcon
+                integrationId={category}
+                iconUrl={categoryDisplayMap[category]?.iconUrl}
+                size={16}
+                showBackground
+              />
             )}
             <span>
               {category === "all"
                 ? "All"
-                : formatToolName(
-                    categoryDisplayMap[category]?.displayName || category,
-                  )}
+                : (categoryDisplayMap[category]?.displayName ??
+                  getToolDisplayName(category))}
             </span>
             <CategoryIntegrationStatus
               category={category}

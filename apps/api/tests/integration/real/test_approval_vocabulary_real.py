@@ -14,12 +14,8 @@ from app.db.repositories.approval_ledger import (
 )
 from app.models.hil_models import ApprovalProposal
 from app.services.hil import ledger_decide
-from shared.py.analytics.catalog.hil import (
-    ApprovalDecider,
-    ApprovalOutcome,
-    HilDecisionSubmitted,
-    HilRevoked,
-)
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilRevoked
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 
 USER_ID = "65f1a2b3c4d5e6f708192a3b"
 CONVERSATION_ID = "conv-vocabulary"

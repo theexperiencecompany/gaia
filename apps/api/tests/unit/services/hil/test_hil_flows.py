@@ -25,7 +25,7 @@ from app.services.hil.approvals_store import approval_id_for
 from app.services.hil.bridge import build_summary
 from app.services.hil.intent import IntentDecision
 from app.services.hil.utils import GatedApproval, GatedCall, approval_window_label
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,

@@ -62,15 +62,8 @@ from app.services.hil.resolution import (
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
 from app.services.hil.utils import GatedCall
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import (
-    ActionResult,
-    ApprovalDecider,
-    ApprovalOutcome,
-    HilDecisionSubmitted,
-    HilDecisionVia,
-    HilRevoked,
-    UndecidedOutcome,
-)
+from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilDecisionVia, HilRevoked
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome, UndecidedOutcome
 from shared.py.wide_events import log
 
 # A redeem that dies between claim and receipt leaves its action executing.

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.constants.hil import ApprovalDecision
 from app.models.agent_config import ExecutorRunItem, SubagentResumeItem
 from app.models.document_models import MongoDocument
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 
 # The three global approval modes. Launch switch: the default stays
 # ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.

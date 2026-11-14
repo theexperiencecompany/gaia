@@ -11,7 +11,7 @@ import {
   useWatch,
 } from "react-hook-form";
 import { TextMorph } from "torph/react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { MentionEditor } from "@/features/integrations/components/MentionEditor";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { getUserHomeTimezone } from "@/lib/timezone";
@@ -70,10 +70,12 @@ export default function WorkflowDescriptionField({
   const renderMentionIcon = (name: string) => {
     const integ = integrationByName.get(name);
     if (!integ) return null;
-    return getToolCategoryIcon(
-      integ.id,
-      { size: 14, width: 14, height: 14, showBackground: false },
-      integ.iconUrl,
+    return (
+      <IntegrationIcon
+        integrationId={integ.id}
+        iconUrl={integ.iconUrl}
+        size={14}
+      />
     );
   };
 

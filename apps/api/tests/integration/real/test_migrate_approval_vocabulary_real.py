@@ -21,7 +21,7 @@ from app.scripts.migrate_approval_vocabulary import (
     rewrite,
     verify,
 )
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider
+from shared.py.approvals import ActionResult, ApprovalDecider
 
 pytestmark = [pytest.mark.integration, pytest.mark.service]
 NOW = datetime(2026, 11, 1, tzinfo=UTC)

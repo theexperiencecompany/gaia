@@ -222,7 +222,6 @@ from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.chat import ChatMessageCancelled, ChatMessageCompleted
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.analytics.catalog.workflows import WorkflowExecuted
 from shared.py.analytics.context import (
     AnalyticsContext,
@@ -230,6 +229,7 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
 from tests.helpers import shown_messages
@@ -520,8 +520,15 @@ async def test_work_started_after_a_message_joined_the_attempt_answers_that_mess
         ("t1", m2_seq, ("m1", "m2"))
     ]
     assert {"m1", "m2"} <= set(write_up.answers)
-    # m2 is answered too, so nothing unanswered sits between the write-up and what it answers.
-    assert write_up.quote_target is None
+    # Absorbing m2 settles the cards already shown; "on it" opens the next segment below m2.
+    assert [(reply.text, bool(reply.tool_data)) for reply in await rig.of(Reply)] == [
+        ("", True),
+        ("on it", False),
+        ("both done", False),
+    ]
+    # The attempt's card-only reply sits between, so the late write-up quotes the newest
+    # message it answers: m2, not m1, because m2 is answered too.
+    assert write_up.quote_target == "m2"
 
 
 @pytest.mark.service
@@ -633,7 +640,7 @@ async def test_a_result_landing_with_a_new_ask_is_delivered_in_the_same_reply(
     await advance(rig.ports, rig.conversation_id, rig.user_id)
     replies = await rig.of(Reply)
     shown = "\n".join(humans(model.prompts[1]))
-    assert [reply.reply_id for reply in replies][1:] == ["t1"]
+    assert [settled.narrates for settled in await rig.of(ReplySettled)][1:] == [("t1",)]
     assert len(replies) == 2
     assert "3 flights found" in shown
     assert "also book a hotel" in shown
@@ -814,24 +821,27 @@ class _Budget:
     redis_before_text: int
 
 
-# Through submit_message: before the reply opens, accept 2, claim 1, unsettled 1, comms 1, reply head 1
-# (+ its own commit in the same ms). Was 29/14 Mongo, 27/14 Redis; work turn 46/23, 28/16.
-PLAIN_TURN = _Budget(mongo=24, mongo_before_text=7, redis=30, redis_before_text=17)
+# Through submit_message: before the reply opens, accept 2, claim 1, unsettled 1, comms 1.
+# Was 29/14 Mongo, 27/14 Redis; work turn 46/23, 28/16.
+PLAIN_TURN = _Budget(mongo=24, mongo_before_text=5, redis=30, redis_before_text=17)
 # The same turn with the attempt also logging the work it hands the executor before any text.
-WORK_TURN = _Budget(mongo=43, mongo_before_text=15, redis=31, redis_before_text=19)
+WORK_TURN = _Budget(mongo=43, mongo_before_text=13, redis=31, redis_before_text=19)
 
 
 @dataclass(frozen=True)
 class _MongoOp:
     collection: str
     op: str
-    at: datetime
+
+
+# A collection only the reply-opening mark reads, so its profiler row splits the turn exactly.
+_REPLY_OPENS_MARK = "reply_opens_mark"
 
 
 async def _profiled(
     mongo_db: AsyncIOMotorDatabase[dict[str, object]], turn: Callable[[], Awaitable[None]]
 ) -> list[_MongoOp]:
-    """Run turn with Mongo's profiler recording every operation, and return them in order."""
+    """Run turn with Mongo's profiler recording every operation, and return them in the order they finished."""
     await mongo_db.command("profile", 0)
     await mongo_db["system.profile"].drop()
     await mongo_db.command("profile", 2)
@@ -840,14 +850,34 @@ async def _profiled(
     finally:
         await mongo_db.command("profile", 0)
     ops = []
-    async for doc in mongo_db["system.profile"].find({}).sort("ts", 1):
+    # system.profile is capped: natural order is write order, exact where ms timestamps tie.
+    async for doc in mongo_db["system.profile"].find({}).sort("$natural", 1):
         collection = str(doc.get("ns", "")).split(".", 1)[-1]
         if collection.startswith("system.") or collection == "$cmd":
             continue
         command = doc.get("command")
         name = next(iter(command)) if isinstance(command, dict) and command else doc.get("op")
-        ops.append(_MongoOp(collection, str(name), cast(datetime, doc["ts"])))
+        ops.append(_MongoOp(collection, str(name)))
     return ops
+
+
+@contextmanager
+def _marking_reply_opens(
+    mongo_db: AsyncIOMotorDatabase[dict[str, object]], trips: list[float], marks: list[int]
+) -> Iterator[None]:
+    """Just before the turn's reply is appended, note the Redis trips so far and leave a mark in Mongo's profile."""
+    opening_reply = step_module._opening_reply
+
+    async def stamp_then_mark(*args: Any) -> Reply:
+        reply = await opening_reply(*args)
+        if not marks:
+            marks.append(len(trips))
+            # Synchronous, so nothing on the loop runs between the mark and the append.
+            mongo_db.delegate[_REPLY_OPENS_MARK].find_one({})
+        return reply
+
+    with patch.object(step_module, "_opening_reply", stamp_then_mark):
+        yield
 
 
 def _count_redis_trips(monkeypatch: pytest.MonkeyPatch) -> list[float]:
@@ -871,8 +901,8 @@ def _count_redis_trips(monkeypatch: pytest.MonkeyPatch) -> list[float]:
 @dataclass(frozen=True)
 class _Turn:
     spent: _Budget
-    ops: list[_MongoOp]
-    opened_at: datetime
+    before_text: list[_MongoOp]
+    after_text: list[_MongoOp]
 
 
 async def _measured_turn(
@@ -880,29 +910,31 @@ async def _measured_turn(
     mongo_db: AsyncIOMotorDatabase[dict[str, object]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> _Turn:
-    """Submit a second message, settle, and count what its turn cost before the reply opened and in all."""
+    """Submit a second message, settle, and count what its turn cost before its first text and in all."""
     await rig.send("m1", "hi")
     await rig.settle()
     trips: list[float] = []
+    marks: list[int] = []
 
     async def turn() -> None:
         counted = _count_redis_trips(monkeypatch)
-        with patch("app.services.conversation.send.capture"):
-            await rig.submit("m2", "and again")
-        await rig.settle()
+        with _marking_reply_opens(mongo_db, counted, marks):
+            with patch("app.services.conversation.send.capture"):
+                await rig.submit("m2", "and again")
+            await rig.settle()
         trips.extend(counted)
 
     ops = await _profiled(mongo_db, turn)
-    opened = next(
-        logged for logged in reversed(await rig.entries()) if isinstance(logged.entry, Reply)
-    )
+    [redis_before_text] = marks
+    [boundary] = [i for i, op in enumerate(ops) if op.collection == _REPLY_OPENS_MARK]
+    before_text, after_text = ops[:boundary], ops[boundary + 1 :]
     spent = _Budget(
-        mongo=len(ops),
-        mongo_before_text=len([op for op in ops if op.at <= opened.at]),
+        mongo=len(before_text) + len(after_text),
+        mongo_before_text=len(before_text),
         redis=len(trips),
-        redis_before_text=len([at for at in trips if at <= opened.at.timestamp()]),
+        redis_before_text=redis_before_text,
     )
-    return _Turn(spent=spent, ops=ops, opened_at=opened.at)
+    return _Turn(spent=spent, before_text=before_text, after_text=after_text)
 
 
 async def _all_flushed(rig: Rig, mongo_db: AsyncIOMotorDatabase[dict[str, object]]) -> list[str]:
@@ -935,9 +967,8 @@ async def test_a_plain_turn_stays_within_its_mongo_and_redis_budget(
     turn = await _measured_turn(rig, mongo_db, monkeypatch)
     _within(turn.spent, PLAIN_TURN)
     # The optional writes wait for the first text and still happen exactly once.
-    ledger = [op for op in turn.ops if op.collection == "llm_calls"]
-    assert [op.op for op in ledger] == ["insert"]
-    assert all(op.at >= turn.opened_at for op in ledger)
+    assert [op.op for op in turn.after_text if op.collection == "llm_calls"] == ["insert"]
+    assert not [op for op in turn.before_text if op.collection == "llm_calls"]
     assert await _all_flushed(rig, mongo_db) == [logged.entry.id for logged in await rig.entries()]
 
 
@@ -1132,8 +1163,8 @@ async def test_work_waiting_on_an_approval_no_store_holds_is_settled_once(
     assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
     assert state.work == ()
     assert state.display is DisplayState.IDLE
-    # The step tells the user in the task's own reply.
-    assert "t1" in [reply.reply_id for reply in await rig.of(Reply)]
+    # The step tells the user in a reply that narrates the task.
+    assert any("t1" in settled.narrates for settled in await rig.of(ReplySettled))
 
 
 @pytest.mark.service
@@ -1763,8 +1794,8 @@ async def test_an_approval_decided_after_its_turn_ended_runs_its_work_under_the_
     [started] = [w for w in await rig.of(WorkStarted) if w.task_id == task_id]
     assert started.cause_through == decided_seq
     replies = await rig.of(Reply)
-    assert [(r.reply_id, r.text) for r in replies][-1] == (task_id, "Sent the invoice to Acme")
-    assert [r.reply_id for r in replies].count(task_id) == 1
+    [narrator] = [s.reply_id for s in await rig.of(ReplySettled) if task_id in s.narrates]
+    assert [(r.reply_id, r.text) for r in replies][-1] == (narrator, "Sent the invoice to Acme")
     assert any("invoice sent" in text for text in humans(model.prompts[1]))
     # What a client (web or a bot) follows: the task's reply is entered once, never twice.
     frames = await read_frames(rig.conversation_id, "0", block_ms=1)
@@ -1773,7 +1804,7 @@ async def test_an_approval_decided_after_its_turn_ended_runs_its_work_under_the_
         for f in frames
         if isinstance(f.frame, EntryFrame) and isinstance(f.frame.entry, Reply)
     ]
-    assert opened.count(task_id) == 1
+    assert opened.count(narrator) == 1
 
 
 @pytest.mark.service
@@ -1912,9 +1943,8 @@ async def test_a_todo_wake_gets_one_write_up_in_its_chat_and_that_write_up_is_wh
     replies = await rig.of(Reply)
     assert woke.run.run_id == "run_acme"
     assert started.answers == (woke.id,)
-    assert [(r.reply_id, r.text) for r in replies] == [
-        (started.task_id, "Acme accepted the quote and asked for the invoice")
-    ]
+    assert [r.text for r in replies] == ["Acme accepted the quote and asked for the invoice"]
+    assert [s.narrates for s in await rig.of(ReplySettled)] == [(started.task_id,)]
     assert [answers for _o, answers in await rig.answered()] == [
         (f"work:{started.task_id}:finished", woke.id)
     ]

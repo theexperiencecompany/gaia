@@ -23,10 +23,8 @@ from app.services.hil.resume import (
     resume_owner_after_approval,
 )
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import (
-    ApprovalOutcome,
-    HilResumed,
-)
+from shared.py.analytics.catalog.hil import HilResumed
+from shared.py.approvals import ApprovalOutcome
 
 MODULE = "app.services.hil.resume"
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"

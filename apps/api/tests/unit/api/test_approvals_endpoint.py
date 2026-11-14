@@ -19,7 +19,7 @@ from app.services.hil.resolution import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
 )
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from tests.helpers import ledger_facts
 
 APPROVALS_BASE = "/api/v1/approvals"
