@@ -41,6 +41,17 @@ _RESOLVER_MOD = "app.agents.tools.execute.resolver"
 _DISPATCH_MOD = "app.agents.tools.execute.dispatch"
 
 
+def _run_identity() -> dict[str, str]:
+    """Return a live run's identity; the HIL gate refuses a tool call without stream and conversation ids."""
+    conversation_id = str(uuid4())
+    return {
+        "thread_id": conversation_id,
+        "conversation_id": conversation_id,
+        "stream_id": str(uuid4()),
+        "user_id": str(ObjectId()),
+    }
+
+
 def _stub_tool(name: str):
     async def _stub(query: str = "") -> str:
         return f"stub:{name}"
@@ -137,13 +148,16 @@ class TestActivationThroughRealExecutorGraph:
                 new=AsyncMock(return_value=ActivatedTools(1, ["helper_tool"], [], "")),
             ),
             patch(f"{_ACTIVATION_MOD}._activation_context", new=AsyncMock(return_value="")),
+            # The stub helper has no registry classification; this user lets every call run.
+            patch(
+                "app.services.hil.policy.get_hil_preferences",
+                new=AsyncMock(return_value=HILPreferences(mode="always_allow")),
+            ),
         ):
             async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content="send an email")]},
-                    config={
-                        "configurable": {"thread_id": str(uuid4()), "user_id": str(ObjectId())}
-                    },
+                    config={"configurable": _run_identity()},
                 )
 
         activation = _tool_message_for(result, "a1")
@@ -206,9 +220,7 @@ class TestActivationThroughRealExecutorGraph:
             async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content="send an email")]},
-                    config={
-                        "configurable": {"thread_id": str(uuid4()), "user_id": str(ObjectId())}
-                    },
+                    config={"configurable": _run_identity()},
                 )
 
         activation = _tool_message_for(result, "a1")
@@ -294,7 +306,9 @@ class TestActivationThroughRealExecutorGraph:
                 f"{_RESOLVER_MOD}.get_tool_registry",
                 new=AsyncMock(return_value=resolver_registry),
             ),
-            patch(f"{_RESOLVER_MOD}.get_mcp_client", new=AsyncMock(return_value=mcp_client)),
+            patch(
+                "app.services.mcp.mcp_client.get_mcp_client", new=AsyncMock(return_value=mcp_client)
+            ),
             patch(f"{_DISPATCH_MOD}.record_observed_shape", new=AsyncMock()),
             patch(f"{_DISPATCH_MOD}.capture"),
             patch(
@@ -305,9 +319,7 @@ class TestActivationThroughRealExecutorGraph:
             async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
                 result = await graph.ainvoke(
                     {"messages": [HumanMessage(content="find the attention paper")]},
-                    config={
-                        "configurable": {"thread_id": str(uuid4()), "user_id": str(ObjectId())}
-                    },
+                    config={"configurable": _run_identity()},
                 )
 
         activation = _tool_message_for(result, "a1")
