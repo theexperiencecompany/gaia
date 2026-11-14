@@ -21,38 +21,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import fakeredis.aioredis
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from hypothesis import HealthCheck, settings as _hypothesis_settings
 from posthog import Posthog
 import pytest
 from starlette.types import Receive, Scope, Send
 
-# "ci" (PRs, queue) is derandomized so the queue reproduces the PR's verdict; "ci-full"
-# (master) explores, seeded per commit by pytest.sh's --hypothesis-seed.
-# differing_executors: mutmut's in-process runner reinstantiates the @given class.
-_hypothesis_settings.register_profile(
-    "ci",
-    max_examples=25,
-    deadline=None,
-    derandomize=True,
-    database=None,
-    suppress_health_check=[HealthCheck.differing_executors],
-)
-_hypothesis_settings.register_profile(
-    "ci-full",
-    max_examples=200,
-    deadline=None,
-    # Explicit: under CI=true a new profile inherits Hypothesis's built-in "ci", which derandomizes.
-    derandomize=False,
-    database=None,
-    suppress_health_check=[HealthCheck.differing_executors],
-)
-_hypothesis_settings.register_profile(
-    "default",
-    max_examples=200,
-    deadline=None,
-    suppress_health_check=[HealthCheck.differing_executors],
-)
-_hypothesis_settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
+from tests.hypothesis_profiles import load_profile as load_hypothesis_profile
+
+load_hypothesis_profile()
 
 # ---------------------------------------------------------------------------
 # Environment setup — runs at import time, before any app module is loaded.

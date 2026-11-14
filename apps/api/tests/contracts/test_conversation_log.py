@@ -40,6 +40,7 @@ from app.utils.errors import ConversationStoreError
 from shared.py.conversation_wire import ReplyItem, ReplyOutcome
 from tests.contracts.conftest import HeldFlushes
 from tests.helpers import shown_items
+from tests.hypothesis_profiles import property_examples
 from tests.unit.services.conversation.log_helpers import (
     EMPTY,
     asked,
@@ -475,7 +476,7 @@ def _fold(entries: Sequence[LoggedEntry]) -> ConversationState:
 
 
 @settings(
-    max_examples=40,
+    max_examples=property_examples(40),
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )

@@ -56,6 +56,7 @@ from shared.py.conversation_wire import (
     ToolDataEntry,
 )
 from tests.helpers import REPO_ROOT
+from tests.hypothesis_profiles import property_examples
 from tests.unit.services.conversation.log_helpers import (
     asked,
     decided,
@@ -439,7 +440,7 @@ class _Sim:
         self.reply = None
 
 
-@settings(max_examples=300, deadline=None)
+@settings(max_examples=property_examples(300), deadline=None)
 @given(st.lists(st.tuples(_ACTIONS, st.integers(min_value=0, max_value=7)), max_size=40))
 def test_any_conversation_only_grows_at_the_end_and_reloads_to_what_was_shown(
     actions: list[tuple[str, int]],
