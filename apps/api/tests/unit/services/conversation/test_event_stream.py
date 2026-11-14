@@ -1,9 +1,11 @@
 """follow_screen: a follow opens on the newest page of the screen, at the log's head."""
 
+import asyncio
+
 import pytest
 
 from app.models.conversation_screen_models import ScreenFrame
-from app.services.conversation.event_stream import follow_screen
+from app.services.conversation.event_stream import event_lines, follow_screen
 from tests.unit.services.conversation.log_helpers import user
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
@@ -33,3 +35,21 @@ async def test_an_empty_conversation_opens_on_an_empty_screen_at_head_zero() -> 
     await frames.aclose()
 
     assert opening == ScreenFrame(items=(), head=0)
+
+
+async def test_a_client_leaving_mid_wait_closes_the_follow_without_an_aclose_race() -> None:
+    """Regression: cancelling the response while a frame was pending raised RuntimeError from aclose."""
+    runtime = Runtime()
+    await runtime.log.append(CONVERSATION, USER, user("u1"))
+    lines = event_lines(runtime.log, CONVERSATION, USER, _never_disconnected, asyncio.Event())
+    assert (await anext(lines)).startswith("data: ")
+    pending = asyncio.ensure_future(anext(lines))
+    await asyncio.sleep(0)
+    pending.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await pending
+
+
+async def _never_disconnected() -> bool:
+    return False
