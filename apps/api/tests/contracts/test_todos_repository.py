@@ -1610,6 +1610,24 @@ class TestBriefingReads:
         assert [t.id for t in found] == [newer.id, older.id]
         assert [t.id for t in await repo.list_open_user_todos(user_id, limit=1)] == [newer.id]
 
+    async def test_open_user_todos_due_before_a_cutoff_skip_later_and_undated_ones(
+        self, repo, make_doc
+    ):
+        user_id = "u-due"
+        cutoff = datetime(2026, 11, 15, 18, 30, tzinfo=UTC)
+        overdue = await repo.create(
+            make_doc(user_id=user_id, title="overdue", due_date=cutoff - timedelta(days=4))
+        )
+        today = await repo.create(
+            make_doc(user_id=user_id, title="today", due_date=cutoff - timedelta(hours=1))
+        )
+        await repo.create(make_doc(user_id=user_id, title="at cutoff", due_date=cutoff))
+        await repo.create(make_doc(user_id=user_id, title="undated"))
+
+        found = await repo.list_open_user_todos(user_id, limit=10, due_before=cutoff)
+
+        assert {t.id for t in found} == {overdue.id, today.id}
+
 
 async def test_running_tracked_todos_are_the_users_open_unpaused_tracked_ones(repo, make_doc):
     running = await repo.create(make_doc(user_id="u1", labels=[GAIA_TRACKED_LABEL], title="run"))

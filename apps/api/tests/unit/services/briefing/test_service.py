@@ -488,6 +488,7 @@ def world(monkeypatch: pytest.MonkeyPatch, checker: AsyncMock) -> Iterator[World
         (approval_ledger_repository, "list_pending_for_user"),
         (hil_approval_repository, "list_pending_for_user"),
         (reminder_repository, "find_scheduled_between"),
+        (todo_repository, "list_open_user_todos"),
     ):
         _seam(monkeypatch, w, owner, name, AsyncMock(return_value=[]))
     _seam(monkeypatch, w, workflow_executions_repository, "list_since", AsyncMock(return_value=[]))

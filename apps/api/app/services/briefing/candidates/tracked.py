@@ -1,7 +1,16 @@
-"""Todos as candidates: what waits on the user, what GAIA did or is doing, and what the user finished."""
+"""Todos as candidates: what waits on the user, what is due, what GAIA did or is doing, what got done."""
 
-from app.constants.briefing import GAIA_APP_NAME, GAIA_SOURCE, BriefAction, BriefOutcome
+from datetime import datetime
+
+from app.constants.briefing import (
+    DUE_TODO_CANDIDATES_LIMIT,
+    GAIA_APP_NAME,
+    GAIA_SOURCE,
+    BriefAction,
+    BriefOutcome,
+)
 from app.constants.integrations import GMAIL_INTEGRATION_ID
+from app.db.repositories.todos import todo_repository
 from app.models.brief_candidate_models import BriefCandidate, CandidateKind
 from app.models.briefing_models import BriefingItemKind
 from app.models.todo_models import ExternalRefSource, TodoDocument
@@ -53,6 +62,20 @@ def waiting_candidates(work: TrackedWork) -> list[BriefCandidate]:
     return _grouped(
         work.blocked, CandidateKind.NEEDS_YOU, "you", action=BriefAction.REVIEW
     ) + _grouped(work.failed, CandidateKind.NEEDS_YOU, "failed", action=BriefAction.RETRY)
+
+
+async def due_todo_candidates(
+    user_id: str, due_before: datetime, work: TrackedWork
+) -> list[BriefCandidate]:
+    """Return the user's own open todos due before the cutoff that no tracked todo already covers."""
+    tracked = [*work.completed, *work.running, *work.blocked, *work.failed]
+    tracked_ids = {doc.id for doc in tracked}
+    tracked_subjects = {subject_key(doc) for doc in tracked}
+    docs = await todo_repository.list_open_user_todos(
+        user_id, limit=DUE_TODO_CANDIDATES_LIMIT, due_before=due_before
+    )
+    due = [d for d in docs if d.id not in tracked_ids and subject_key(d) not in tracked_subjects]
+    return _grouped(due, CandidateKind.NEEDS_YOU, "you", action=BriefAction.ATTEND)
 
 
 def gaia_work_candidates(work: TrackedWork) -> list[BriefCandidate]:

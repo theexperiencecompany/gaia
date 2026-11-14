@@ -132,6 +132,9 @@ BRIEF_FAITHFULNESS_LABEL: Final[str] = "brief_faithfulness_check"
 #: The check judges, it does not write: the same draft gets the same verdict.
 BRIEF_FAITHFULNESS_TEMPERATURE: Final[float] = 0.0
 
+# The user's own todos due today or overdue the daily brief weighs as candidates.
+DUE_TODO_CANDIDATES_LIMIT: Final[int] = 20
+
 # Rows per list in the weekly edition (shipped, handled, the week ahead).
 WEEK_LIST_LIMIT: Final[int] = 5
 
