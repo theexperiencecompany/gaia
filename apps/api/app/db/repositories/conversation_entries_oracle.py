@@ -9,8 +9,12 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
-from app.constants.chat import BOT_MESSAGE_TYPE, USER_MESSAGE_TYPE
-from app.models.chat_models import MessageReaction
+from app.db.repositories.conversation_entries_legacy import (
+    BOT_MESSAGE_TYPE,
+    USER_MESSAGE_TYPE,
+    ConversationEntry,
+    MessageReaction,
+)
 from app.models.conversation_log_models import (
     LoggedEntry,
     Notice,
@@ -23,7 +27,6 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.models.conversation_models import ConversationEntry
 from shared.py.conversation_wire import ReplyOutcome, ReplyToMessageData
 
 _STOPPED_WORK = frozenset({WorkOutcome.CANCELLED, WorkOutcome.LOST})

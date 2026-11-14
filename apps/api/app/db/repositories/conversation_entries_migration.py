@@ -21,16 +21,10 @@ import json
 from bson import ObjectId
 from pydantic import ValidationError
 
-from app.constants.chat import (
-    BOT_MESSAGE_TYPE,
-    CONVERSATION_ENTRIES_COLLECTION,
-    USER_MESSAGE_TYPE,
-    ConversationSource,
-)
+from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION, ConversationSource
 from app.db.repositories.conversation_entries import (
     EMPTY_LOG_STATE,
     LOG_HEAD_FIELD,
-    MIGRATED_FINGERPRINT_FIELD,
     MIGRATION_FIELDS_FIELD,
     STATE_FIELD,
     EntryWindow,
@@ -38,10 +32,23 @@ from app.db.repositories.conversation_entries import (
     logged_of,
     store_errors,
     stored_at,
-    unmigrated,
+)
+from app.db.repositories.conversation_entries_legacy import (
+    BOT_MESSAGE_TYPE,
+    USER_MESSAGE_TYPE,
+    ConversationEntry,
+    EmbeddedHead,
+    HeadRefRow,
+    LegacyMessage,
+    LegacyShape,
+    NotKeptFields,
 )
 from app.db.repositories.conversation_entries_oracle import legacy_messages
-from app.db.repositories.conversations import ConversationRepository
+from app.db.repositories.conversation_migration_guard import (
+    MESSAGE_SHAPED,
+    MIGRATED_FINGERPRINT_FIELD,
+    ConversationMigrationGuard,
+)
 from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
     PINNABLE_KINDS,
@@ -55,16 +62,7 @@ from app.models.conversation_log_models import (
     Transition,
     UserMessage,
 )
-from app.models.conversation_models import (
-    ConversationEntry,
-    EmbeddedHead,
-    HeadRefRow,
-    LegacyMessage,
-    MessageShape,
-    NotKeptFields,
-    StoredEntry,
-    _ConversationIdRow,
-)
+from app.models.conversation_models import StoredEntry
 from app.services.conversation.reducer import reduce
 from shared.py.conversation_wire import FailureReason, ReplyOutcome
 
@@ -78,13 +76,6 @@ UNMIGRATED_HEADS: dict[str, object] = {
         {"$expr": {"$ne": [EMBEDDED_FINGERPRINT, f"${MIGRATED_FINGERPRINT_FIELD}"]}},
     ],
 }
-#: The startup check's indexed form: an embedded array no pass ever marked.
-NEVER_MIGRATED_HEADS: dict[str, object] = {
-    "messages.0": {"$exists": True},
-    MIGRATED_FINGERPRINT_FIELD: {"$exists": False},
-}
-#: Message-shaped entries carry the old type field (user or bot); no log entry has one.
-MESSAGE_SHAPED: dict[str, object] = {"type": {"$exists": True}}
 _ACK_KIND = "emoji_ack"
 #: The old message fields the log keeps nowhere; a pass counts the messages that carry one.
 NOT_KEPT_FIELDS = tuple(NotKeptFields.model_fields)
@@ -121,7 +112,6 @@ _HEAD_REF_STAGE: dict[str, object] = {
 _BY_HEAD_ID: dict[str, object] = {"$sort": {"_id": 1}}
 _ID_FIELD = "message_id"
 _FOUND = "_found"
-_UNSET_EMBEDDED: dict[str, object] = {"messages": "", MIGRATED_FINGERPRINT_FIELD: ""}
 
 
 class MigrationAction(StrEnum):
@@ -150,11 +140,10 @@ class MigrationOutcome:
 
 @dataclass
 class VerifyReport:
-    """One conversation's verify result; fingerprint is the embedded array's, which a drop requires unchanged."""
+    """One conversation's verify result."""
 
     conversation_id: str
     messages: int = 0
-    fingerprint: int | None = None
     mismatches: list[str] = field(default_factory=list)
 
     @property
@@ -184,7 +173,7 @@ class _Element:
 
     @property
     def is_user(self) -> bool:
-        return MessageShape.model_validate(self.fields).type == USER_MESSAGE_TYPE
+        return LegacyShape.model_validate(self.fields).type == USER_MESSAGE_TYPE
 
 
 @dataclass(frozen=True)
@@ -270,7 +259,7 @@ def entry_at(date: object) -> datetime | None:
 
 def _ack_target(element: _Element, users: set[str]) -> tuple[str, str] | None:
     """Return (target id, emoji) of an emoji_ack whose emoji and target both exist."""
-    shape = MessageShape.model_validate(element.fields)
+    shape = LegacyShape.model_validate(element.fields)
     if shape.kind != _ACK_KIND:
         return None
     emoji = (shape.response or "").strip()
@@ -320,7 +309,7 @@ def _element_entries(
 ) -> list[_Planned]:
     """Return the entries one old message becomes: none for a folded ack, a reply's settle after it."""
     message = ConversationEntry.model_validate({**element.fields, "seq": 0})
-    at = entry_at(MessageShape.model_validate(element.fields).date)
+    at = entry_at(LegacyShape.model_validate(element.fields).date)
     if element.is_user:
         return [_Planned(_user_message(message, surface, reactions), element.seq, at)]
     folded_ack = _ack_target(element, users) is not None
@@ -410,7 +399,7 @@ def _sources(
         fields = legacy.stored()
         if minted is not None and minted[n] is not None:
             fields[_ID_FIELD] = minted[n]
-        if MessageShape.model_validate(fields).message_id not in shaped_ids:
+        if LegacyShape.model_validate(fields).message_id not in shaped_ids:
             elements.append(_Element(fields))
     return elements, existing, shaped
 
@@ -476,7 +465,7 @@ def expected_messages(elements: Sequence[Mapping[str, object]]) -> list[dict[str
     reactions: dict[str, str] = {}
     folded: set[str] = set()
     for raw, m in parsed:
-        shape = MessageShape.model_validate(raw)
+        shape = LegacyShape.model_validate(raw)
         target, emoji = shape.reacts_to_message_id, str(m.response).strip()
         if shape.kind == _ACK_KIND and emoji and target in users:
             reactions[str(target)] = emoji
@@ -484,7 +473,7 @@ def expected_messages(elements: Sequence[Mapping[str, object]]) -> list[dict[str
     expected: list[dict[str, object]] = []
     for raw, m in parsed:
         payload = m.model_dump(mode="json")
-        dated = entry_at(MessageShape.model_validate(raw).date) is not None
+        dated = entry_at(LegacyShape.model_validate(raw).date) is not None
         if m.type == USER_MESSAGE_TYPE:
             if m.message_id in reactions:
                 payload["reaction"] = {"emoji": reactions[str(m.message_id)], "by": "chat_model"}
@@ -541,7 +530,7 @@ def _with_ids(minted: Sequence[str | None]) -> dict[str, object]:
     }
 
 
-class ConversationEntriesMigration(ConversationRepository):
+class ConversationEntriesMigration(ConversationMigrationGuard):
     """The entries migration's reads and writes of the conversations heads and their entries."""
 
     async def heads_to_migrate(self, *, after_head_id: str | None, batch: int) -> list[HeadRef]:
@@ -586,19 +575,6 @@ class ConversationEntriesMigration(ConversationRepository):
         with store_errors("migration scan"):  # pragma: no mutate — error label only
             rows = await self._aggregate(pipeline, HeadRefRow)
         return [HeadRef(row.head_id, row.conversation_id, row.user_id) for row in rows]
-
-    async def first_unmigrated(self) -> str | None:
-        """Name one conversation the new build cannot serve: an array no pass marked, or message-shaped entries."""
-        with store_errors("migration check"):  # pragma: no mutate — error label only
-            head = await self._raw_collection().find_one(
-                NEVER_MIGRATED_HEADS, {"_id": 0, "conversation_id": 1}
-            )
-            if head is not None:
-                return _ConversationIdRow.model_validate(head).conversation_id
-            entry = await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).find_one(
-                MESSAGE_SHAPED, {"_id": 0, "conversation_id": 1}
-            )
-        return None if entry is None else _ConversationIdRow.model_validate(entry).conversation_id
 
     async def migrate(self, ref: HeadRef, *, apply: bool) -> MigrationOutcome:
         """Rewrite one conversation's old messages as log entries (report only unless apply)."""
@@ -655,7 +631,6 @@ class ConversationEntriesMigration(ConversationRepository):
             report.mismatches.append("message-shaped entries remain: run --apply")
         if head.messages and head.migrated_fingerprint != head.fingerprint:
             report.mismatches.append("written since its last pass: run --apply")
-        report.fingerprint = head.fingerprint if head.messages else None
         if report.mismatches:
             return report
         log = {row.seq: logged_of(row) for row in stored}
@@ -670,24 +645,11 @@ class ConversationEntriesMigration(ConversationRepository):
             await self._compare_reads(ref, [m.stored() for m in head.messages], report)
         return report
 
-    async def drop_embedded(self, ref: HeadRef, *, verified: int) -> bool:
-        """Unset the embedded array, only while it is exactly the array a passing verify fingerprinted."""
-        with store_errors("drop embedded"):  # pragma: no mutate — error label only
-            result = await self._raw_collection().update_one(
-                {
-                    "_id": ObjectId(ref.head_id),
-                    MIGRATED_FINGERPRINT_FIELD: verified,
-                    "$expr": {"$eq": [EMBEDDED_FINGERPRINT, verified]},
-                },
-                {"$unset": _UNSET_EMBEDDED},
-            )
-        return result.modified_count > 0
-
     async def _compare_reads(
         self, ref: HeadRef, elements: Sequence[Mapping[str, object]], report: VerifyReport
     ) -> None:
         expected = expected_messages(elements)
-        shapes = [MessageShape.model_validate(e) for e in elements]
+        shapes = [LegacyShape.model_validate(e) for e in elements]
         dated = {str(shape.message_id) for shape in shapes if entry_at(shape.date) is not None}
         report.messages = len(expected)
 
@@ -855,13 +817,6 @@ def _difference(read: str, actual: Sequence[object], expected: Sequence[object])
         if got != want:
             return f"{read} differs at message {n}: read {got}, expected {want}"
     return f"{read} reads {len(actual)} messages, expected {len(expected)}"
-
-
-async def refuse_unmigrated_conversations() -> None:
-    """Refuse to boot while any conversation still needs the entries migration."""
-    conversation_id = await conversation_entries_migration.first_unmigrated()
-    if conversation_id is not None:
-        raise unmigrated(f"conversation {conversation_id}")
 
 
 conversation_entries_migration = ConversationEntriesMigration()

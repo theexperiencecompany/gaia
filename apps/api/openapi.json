@@ -816,7 +816,7 @@
         "type": "object"
       },
       "ArtifactRegistryEntry": {
-        "description": "One element of ``ConversationDocument.artifacts``.\n\n``app.services.chat.artifacts_registry`` owns every write of this shape; the\nconversation document stores it and mirrors it verbatim to the client.\n``mtime`` is a Unix timestamp, matching what every publisher in\n:mod:`app.services.artifact_events` stamps. ``body`` is present only for\nsmall textual artifacts inlined at write time.",
+        "description": "One element of ``ConversationDocument.artifacts``.\n\nThe conversation document stores it and mirrors it verbatim to the client.\n``mtime`` is a Unix timestamp, matching what every publisher in\n:mod:`app.services.artifact_events` stamps. ``body`` is present only for\nsmall textual artifacts inlined at write time.",
         "properties": {
           "body": {
             "title": "Body",
@@ -4311,7 +4311,7 @@
         "type": "object"
       },
       "ConversationModel": {
-        "description": "A chat conversation and its display/system metadata.",
+        "description": "A conversation to create: its id and the display/system metadata it starts with.",
         "properties": {
           "conversation_id": {
             "title": "Conversation Id",
@@ -9639,7 +9639,6 @@
         "type": "object"
       },
       "LoadedConversation": {
-        "additionalProperties": true,
         "description": "A conversation as a load returns it: its head's fields and the newest page of its screen.",
         "properties": {
           "artifacts": {
@@ -9823,8 +9822,6 @@
           "state",
           "has_older",
           "cursor",
-          "id",
-          "user_id",
           "conversation_id",
           "description",
           "is_system_generated",
@@ -9832,6 +9829,8 @@
           "is_unread",
           "source",
           "is_onboarding_demo",
+          "id",
+          "user_id",
           "starred",
           "todo_id",
           "artifacts",
@@ -26894,7 +26893,7 @@
     },
     "/api/v1/conversations/batch-sync": {
       "post": {
-        "description": "Batch sync conversations - returns only stale conversations with messages.",
+        "description": "Return the conversations the client holds stale, each with its newest page of items.",
         "operationId": "conversations_batch_sync_conversations_endpoint",
         "requestBody": {
           "content": {
@@ -27017,7 +27016,7 @@
         ]
       },
       "get": {
-        "description": "Retrieve a conversation with the newest page of its log, as the events stream's entries.\n\nThe head's own fields: ``ConversationDocument`` is ``extra=\"allow\"``,\nso stray/legacy top-level fields the row carries still reach the client\nverbatim, while the declared fields give the schema its shape.",
+        "description": "Retrieve a conversation's head fields with the newest page of its screen.",
         "operationId": "conversations_get_conversation_endpoint",
         "parameters": [
           {

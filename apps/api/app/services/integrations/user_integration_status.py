@@ -23,23 +23,10 @@ from shared.py.wide_events import log
 
 async def announce_integration_changed(user_id: str, integration_id: str) -> None:
     """Tell the user's open clients to re-read one integration's catalog entry, after its write succeeded."""
-    # Best-effort: a missed push catches up on the next catalog read, so a
-    # broadcast failure (Redis down) must not fail the write it reports.
-    try:
-        await websocket_manager.broadcast_to_user(
-            user_id=user_id,
-            message={
-                "type": INTEGRATION_STATUS_UPDATE_EVENT,
-                "data": {"integration_id": integration_id},
-            },
-        )
-    except Exception as e:
-        log.warning(
-            f"{LogTag.INTEGRATION} Failed to broadcast integration change",
-            integration_id=integration_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+    await websocket_manager.announce(
+        user_id,
+        {"type": INTEGRATION_STATUS_UPDATE_EVENT, "data": {"integration_id": integration_id}},
+    )
 
 
 async def publish_connected(user_id: str, integration_id: str) -> None:

@@ -224,7 +224,7 @@ def announce_seams() -> Iterator[dict[str, MagicMock]]:
         patch("app.services.integrations.user_integration_status.websocket_manager") as ws,
         patch(f"{MODULE}.notification_service") as notifications,
     ):
-        ws.broadcast_to_user = AsyncMock()
+        ws.announce = AsyncMock()
         notifications.notify = AsyncMock()
         yield {"ws": ws, "notify": notifications}
 
@@ -244,12 +244,9 @@ class TestTheAnnouncement:
     ) -> None:
         await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), [], None)
 
-        announce_seams["ws"].broadcast_to_user.assert_awaited_once_with(
-            user_id=USER_ID,
-            message={
-                "type": "integration_status_update",
-                "data": {"integration_id": INTEGRATION_ID},
-            },
+        announce_seams["ws"].announce.assert_awaited_once_with(
+            USER_ID,
+            {"type": "integration_status_update", "data": {"integration_id": INTEGRATION_ID}},
         )
 
     async def test_a_single_account_is_announced_by_integration_name(

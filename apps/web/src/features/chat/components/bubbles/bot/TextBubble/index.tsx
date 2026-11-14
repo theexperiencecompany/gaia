@@ -11,7 +11,6 @@ import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
-import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
   DEFAULT_PART_CHOREOGRAPHY,
@@ -19,7 +18,6 @@ import {
   type PartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
-import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
 import { ChatItemBoundary } from "../ChatItemBoundary";
@@ -368,10 +366,7 @@ export default function TextBubble({
 }) {
   const baseId = useId();
 
-  // Parse thinking content from text
-  const parsedContent = React.useMemo(() => {
-    return parseThinkingFromText(text?.toString() || "");
-  }, [text]);
+  const displayText = text?.toString() ?? "";
 
   // The server's timeline: the tool thread in emission order, then the cards
   // that render on their own, each under a key stable across the stream.
@@ -417,10 +412,6 @@ export default function TextBubble({
 
   return (
     <>
-      {parsedContent.thinking && (
-        <ThinkingBubble thinkingContent={parsedContent.thinking} />
-      )}
-
       {steps.length > 0 && (
         <ChatItemBoundary
           key={`${baseId}-unified-tools`}
@@ -471,9 +462,7 @@ export default function TextBubble({
       })}
 
       {shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
-        // Gate on CLEANED display text, not raw `text`: mid-stream it can
-        // hold non-visible content (thinking residue, a stray char) while
-        // rendered text is empty, which would flash an empty bubble + tail.
+        // Mid-stream a reply can have no bubbles yet, which would flash an empty bubble + tail.
         bubbles.length > 0 &&
         (() => {
           const textParts = bubbles;
@@ -556,7 +545,7 @@ export default function TextBubble({
           onRetry={onRetry}
           partial={
             shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) ||
-            !!parsedContent.cleanText.trim()
+            !!displayText.trim()
           }
         />
       )}

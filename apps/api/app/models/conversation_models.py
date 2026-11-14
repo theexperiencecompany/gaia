@@ -3,9 +3,8 @@ conversation endpoints' response shapes.
 
 The persistence models describe the document as it is actually stored and read
 back — distinct from the API *request* models, which live in ``chat_models``.
-Messages are ``ConversationEntry`` rows read from conversation_entries, each with
-its seq; a before-validator runs the legacy tool-data normalization at the read
-boundary so the rest of the app never sees an un-normalized message.
+A conversation's messages are its log's entries (conversation_log_models); the
+old embedded message shape is known only to the entries migration.
 
 The response models at the bottom of this file live here rather than alongside
 the requests in ``chat_models`` because they are built from the persistence
@@ -25,21 +24,16 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES
 from app.models.artifact_models import ArtifactRegistryEntry
-from app.models.chat_models import (
-    ConversationSource,
-    MessageModel,
-    SystemPurpose,
-)
+from app.models.chat_models import ConversationModel, ConversationSource, SystemPurpose
 from app.models.conversation_frame_models import EntryFrame, StateFrame
 from app.models.conversation_log_models import ConversationState
 from app.models.conversation_screen_models import ScreenItem, TextItem
 from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
-from app.utils.tool_data_utils import convert_legacy_tool_data
 
 
 def _coerce_source(value: object) -> object:
@@ -49,47 +43,21 @@ def _coerce_source(value: object) -> object:
     return value
 
 
-class ConversationEntry(MessageModel):
-    """One message of a conversation's log with the seq its append committed it under: order is seq, never a date."""
+class ConversationDocument(UserScopedDocument, ConversationModel):
+    """A conversation head as the repository returns it: the create request's fields and what the server keeps.
 
-    seq: int
-
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize(cls, value: object) -> object:
-        return convert_legacy_tool_data(value) if isinstance(value, dict) else value
-
-    @classmethod
-    def committed(cls, message: MessageModel, seq: int) -> ConversationEntry:
-        """The message as committed at seq."""
-        return cls.model_validate({**message.model_dump(), "seq": seq})
-
-
-class ConversationDocument(UserScopedDocument):
-    """A conversation as the repository returns it: its head fields and, where read, its entries.
-
-    ``extra="allow"`` preserves stray/legacy top-level fields (e.g. ``artifacts``,
-    ``metadata``) so a full-document read returns them verbatim, matching the
-    pre-repository behaviour.
+    Undeclared stored fields (the old embedded messages, the migration's marks) never reach a client.
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="ignore")
 
-    conversation_id: str
-    description: str = "New Chat"
-    is_system_generated: bool | None = False
-    system_purpose: SystemPurpose | None = None
-    is_unread: bool | None = False
-    source: ConversationSource | None = None
-    is_onboarding_demo: bool = False
     starred: bool | None = None
     # Derived on read from the log's state (never stored): live work awaits the user's approval.
     awaiting_approval: bool = Field(default=False, exclude=True)
     # The tracked todo whose chat this is: its runs execute here. Such a chat is
     # reached only from its todo, never listed (see _listed). Set once at creation.
     todo_id: str | None = None
-    # Conversation-level artifact registry: one entry per agent-written file,
-    # deduped by path; services/chat/artifacts_registry.py owns every write.
+    # Conversation-level artifact registry: one entry per agent-written file, deduped by path.
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     createdAt: str | None = None
     updatedAt: datetime | None = None
@@ -198,35 +166,14 @@ class _ConversationOwnerRow(_ConversationIdRow):
 
 
 class MessageShape(BaseModel):
-    """The fields that say what a stored message is and what it points at, read once from its raw fields."""
+    """The fields that say what a stored entry is and what it points at, read once from its raw fields."""
 
     model_config = ConfigDict(extra="ignore")
 
     kind: str | None = None
-    type: str | None = None
     reply_id: str | None = None
     task_id: str | None = None
     approval_id: str | None = None
-    reacts_to_message_id: str | None = None
-    response: str | None = None
-    date: object = None
-    message_id: str | None = None
-
-
-class NotKeptFields(BaseModel):
-    """Old message fields no client renders, so the log keeps them nowhere."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    disclaimer: object = None
-    subtype: object = None
-    file: object = None
-    filename: object = None
-    filetype: object = None
-    metadata: object = None
-
-    def carried(self) -> bool:
-        return any(value is not None for value in self.model_dump().values())
 
 
 class StoredEntry(BaseModel):
@@ -298,19 +245,6 @@ class EntryKey(BaseModel):
     seq: int
 
 
-class LegacyMessage(BaseModel):
-    """One element of the embedded messages array the entries migration copies, in whatever shape the old build wrote."""
-
-    model_config = ConfigDict(extra="allow")
-
-    message_id: str | None = None
-    date: object = None
-
-    def stored(self) -> dict[str, object]:
-        """Return the element exactly as it is stored in the array."""
-        return self.model_dump(exclude_unset=True)
-
-
 class StepHolder(BaseModel):
     """Who holds a conversation's step: its epoch, and the Redis key that proves it alive."""
 
@@ -332,31 +266,6 @@ class ConversationHead(BaseModel):
     state: ConversationState | None = None
     runner: StepHolder | None = None
     runner_epoch: int = 0
-
-
-class EmbeddedHead(BaseModel):
-    """A head as the entries migration reads it: the old embedded array, its fingerprint, and the log."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    conversation_id: str
-    user_id: str
-    source: str | None = None
-    log_head: int | None = None
-    state: ConversationState | None = None
-    messages: list[LegacyMessage] = Field(default_factory=list)
-    migrated_fingerprint: int | None = None
-    fingerprint: int = Field(alias="_fingerprint")
-
-
-class HeadRefRow(BaseModel):
-    """A head as a migration scan lists it: its _id as text, and identity."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    head_id: str
-    conversation_id: str
-    user_id: str
 
 
 # ---------------------------------------------------------------------------

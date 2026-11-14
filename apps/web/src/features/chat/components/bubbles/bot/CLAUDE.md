@@ -10,9 +10,8 @@ For design tokens and the card styling contract: `DESIGN.md` (repo root). For th
 
 `TextBubble` renders, in order:
 
-1. **Thinking** — `parseThinkingFromText` strips `<thinking>` content into a `ThinkingBubble`; `cleanText` is what gets bubbled.
-2. **Tool cards** — `tool_data[]` entries are matched against `TOOL_RENDERERS` and rendered **outside** any bubble (see gotchas). `todo_progress` is special-cased before the map.
-3. **Text** — `cleanText` is split into parts, each part further split into markdown vs OpenUI segments.
+1. **Tool cards** — `tool_data[]` entries are matched against `TOOL_RENDERERS` and rendered **outside** any bubble (see gotchas). `todo_progress` is special-cased before the map.
+2. **Text** — the reply text is split into parts, each part further split into markdown vs OpenUI segments.
 
 Two distinct paths produce visual blocks. Know which one applies:
 

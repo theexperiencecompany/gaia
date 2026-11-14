@@ -11,7 +11,7 @@ setup step that produced no visible card.
 
 import pytest
 
-from app.services.chat.chunks import normalize_custom_event
+from app.utils.tool_events import normalize_custom_event
 
 pytestmark = pytest.mark.unit
 

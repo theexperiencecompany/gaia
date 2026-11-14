@@ -1,32 +1,9 @@
-"""SSE chunk parsing and dispatch for the chat stream.
-
-The agent emits two flavors of chunk: plain data: {...} SSE frames (forwarded
-to the client) and nostream: {...} markers (consumed by the orchestrator and
-never sent on). process_data_chunk is the per-chunk dispatcher;
-extract_tool_data, normalize_custom_event, and extract_response_text are
-pure parsers reused by the dispatcher and the LangGraph stream processor.
-
-The chunk payload stays an open JSON object on purpose (arbitrary JSON,
-passed through when unrecognised); the keys this module acts on are read
-through the private models below.
-"""
+"""Wrap a custom stream event's per-tool fields into the unified tool_data shape."""
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter
-
 from app.models.chat_models import tool_fields
 from shared.py.conversation_wire import ToolDataEntry
-
-_JSON_OBJECT: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
-
-
-class _SubagentFrameId(BaseModel):
-    """A ``subagent_start``/``subagent_end`` frame, read only for its subagent id."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    subagent_id: str
 
 
 def normalize_custom_event(payload: dict[str, object]) -> dict[str, object]:

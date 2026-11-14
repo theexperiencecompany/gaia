@@ -247,8 +247,8 @@ apps/api/tests/unit/services/browser/test_storage_persistence.py	arg-type
 apps/api/tests/unit/services/browser/test_storage_persistence.py	attr-defined
 apps/api/tests/unit/services/browser/test_storage_persistence.py	list-item
 apps/api/tests/unit/services/browser/test_storage_persistence.py	return-value
-apps/api/tests/unit/services/chat/test_normalize_custom_event.py	arg-type
-apps/api/tests/unit/services/chat/test_workspace.py	attr-defined
+apps/api/tests/unit/utils/test_tool_events.py	arg-type
+apps/api/tests/unit/services/conversation/test_workspace.py	attr-defined
 apps/api/tests/unit/services/composio/test_toolkit_enablement.py	arg-type
 apps/api/tests/unit/services/composio/test_wrap_tool_output_schema.py	arg-type
 apps/api/tests/unit/services/delivery/test_chat_channel.py	arg-type

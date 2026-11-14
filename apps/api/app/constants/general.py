@@ -4,7 +4,6 @@ General Constants.
 Centralized general-purpose constants.
 """
 
-ORCHESTRATOR_MAX_ITERATIONS = 10
 # Upper bound for every 1-based `page` query parameter. Unbounded, `page`
 # converted to a Mongo skip can overflow BSON's int64 and 500. int32 max is the
 # largest bound that cannot overflow for any page size we accept.
@@ -38,7 +37,6 @@ EXECUTOR_THREAD_PREFIX = "executor_"
 # executor tier drives with the worker driver without being a delegated worker.
 EXECUTOR_INTEGRATION_ID = "executor"
 
-MAX_EMAILS_PER_PLATFORM = 20
 DEDUPLICATION_SIMILARITY_THRESHOLD = 0.9
 
 # The DeltaChannel-backed state key (app/override/langgraph_bigtool/utils.py).

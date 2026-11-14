@@ -74,12 +74,12 @@ from app.models.agent_models import (
 )
 from app.models.ownership_models import ExecutorIntent
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
-from app.services.chat.chunks import normalize_custom_event
 from app.services.files import FileService
 from app.services.latency_metrics import observe_subagent_run
 from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
 from app.utils.multimodal import extract_text_content
 from app.utils.stream_utils import extract_tool_entries_from_update
+from app.utils.tool_events import normalize_custom_event
 from shared.py.wide_events import log
 
 

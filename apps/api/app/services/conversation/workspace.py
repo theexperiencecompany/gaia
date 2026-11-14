@@ -7,8 +7,6 @@ doesn't reap an actively-used conversation. The heavy per-user materialization
 elsewhere: registration, integration connect/disconnect, and startup. Session
 dirs are created on demand by the write/bash tool paths, not at conversation
 creation — keeping JuiceFS off the first-message critical path.
-
-Artifact-event forwarding lives in :mod:app.services.chat.artifact_forwarder.
 """
 
 import asyncio
