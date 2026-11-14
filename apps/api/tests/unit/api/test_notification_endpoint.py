@@ -799,9 +799,13 @@ class TestGetNotification:
         assert response.status_code == 401
 
 
+PAID = "app.services.briefing.schedule.is_paid"
+
+
 class TestBriefingScheduleEndpoints:
     async def test_an_unset_user_reads_daily_at_8(self, client: AsyncClient) -> None:
         with (
+            patch(PAID, new_callable=AsyncMock, return_value=True),
             patch(
                 "app.api.v1.endpoints.notification.user_repository.get",
                 new_callable=AsyncMock,
@@ -814,7 +818,22 @@ class TestBriefingScheduleEndpoints:
         get.assert_awaited_once_with(FAKE_USER_ID)
         log.set.assert_any_call(user={"id": FAKE_USER_ID}, operation="read_briefing_schedule")
         assert response.status_code == 200
-        assert response.json() == {"frequency": "daily", "hour": 8}
+        assert response.json() == {"frequency": "daily", "hour": 8, "paused_for_plan": False}
+
+    async def test_a_free_users_schedule_reads_as_paused_for_the_plan(
+        self, client: AsyncClient
+    ) -> None:
+        with (
+            patch(PAID, new_callable=AsyncMock, return_value=False),
+            patch(
+                "app.api.v1.endpoints.notification.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(id=FAKE_USER_ID),
+            ),
+        ):
+            response = await client.get(f"{NOTIF_BASE}/preferences/briefing-schedule")
+
+        assert response.json() == {"frequency": "daily", "hour": 8, "paused_for_plan": True}
 
     async def test_a_missing_user_is_a_404(self, client: AsyncClient) -> None:
         with patch(
@@ -832,6 +851,7 @@ class TestBriefingScheduleEndpoints:
     ) -> None:
         wanted = BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS, hour=7)
         with (
+            patch(PAID, new_callable=AsyncMock, return_value=False),
             patch(
                 "app.api.v1.endpoints.notification.set_briefing_schedule",
                 new_callable=AsyncMock,
@@ -845,7 +865,7 @@ class TestBriefingScheduleEndpoints:
             )
 
         assert response.status_code == 200
-        assert response.json() == {"frequency": "weekdays", "hour": 7}
+        assert response.json() == {"frequency": "weekdays", "hour": 7, "paused_for_plan": True}
         setter.assert_awaited_once_with(
             FAKE_USER_ID, wanted, via="settings", workflow_deliveries={}
         )

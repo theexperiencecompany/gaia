@@ -32,6 +32,7 @@ from app.models.briefing_models import (
     BriefFreeDelivery,
     BriefingKind,
     BriefingSchedule,
+    BriefingScheduleState,
 )
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import UserDocument
@@ -109,6 +110,13 @@ def describe_briefing_schedule(user: UserDocument) -> str:
     """Say in plain words which briefs the user gets and when the daily one lands."""
     hour = daily_briefing_hour(user.briefing_schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
     return _FREQUENCY_DESCRIPTIONS[user.briefing_schedule.frequency].format(time=f"{hour:02d}:00")
+
+
+async def briefing_schedule_state(user: UserDocument) -> BriefingScheduleState:
+    """Return the user's schedule as it runs: paused while they are not on Pro."""
+    stored = user.briefing_schedule
+    paused = stored.frequency is not BriefingFrequency.OFF and not await is_paid(user.id)
+    return BriefingScheduleState(**stored.model_dump(), paused_for_plan=paused)
 
 
 def briefing_cron(key: str, user: UserDocument) -> str:

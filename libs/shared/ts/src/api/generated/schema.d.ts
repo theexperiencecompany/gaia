@@ -3023,12 +3023,12 @@ export interface paths {
         };
         /**
          * Read Briefing Schedule
-         * @description How often the user's briefs come, and the daily brief's hour on their clock.
+         * @description How often the user's briefs come, the daily brief's hour on their clock, and whether they run.
          */
         get: operations["notification_read_briefing_schedule"];
         /**
          * Update Briefing Schedule
-         * @description Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored.
+         * @description Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs.
          */
         put: operations["notification_update_briefing_schedule"];
         post?: never;
@@ -7141,10 +7141,10 @@ export interface components {
             week: components["schemas"]["BriefingWeek"] | null;
         };
         /**
-         * BriefingSchedule
-         * @description When the user wants their briefs: how often, and the daily brief's local hour.
+         * BriefingScheduleState
+         * @description The stored schedule and whether it runs: briefs on a schedule are a Pro feature.
          */
-        BriefingSchedule: {
+        BriefingScheduleState: {
             /** @default daily */
             frequency?: components["schemas"]["BriefingFrequency"];
             /**
@@ -7152,6 +7152,11 @@ export interface components {
              * @default 8
              */
             hour?: number;
+            /**
+             * Paused For Plan
+             * @description The schedule sends briefs, but none run: the user is not on Pro.
+             */
+            paused_for_plan: boolean;
         };
         /**
          * BriefingScheduleUpdate
@@ -17676,7 +17681,7 @@ export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
 export type BriefingListResponse = components['schemas']['BriefingListResponse'];
 export type BriefingPayload = components['schemas']['BriefingPayload'];
-export type BriefingSchedule = components['schemas']['BriefingSchedule'];
+export type BriefingScheduleState = components['schemas']['BriefingScheduleState'];
 export type BriefingScheduleUpdate = components['schemas']['BriefingScheduleUpdate'];
 export type BriefingSection = components['schemas']['BriefingSection'];
 export type BriefingStat = components['schemas']['BriefingStat'];
@@ -26521,7 +26526,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BriefingSchedule"];
+                    "application/json": components["schemas"]["BriefingScheduleState"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -26572,7 +26577,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BriefingSchedule"];
+                    "application/json": components["schemas"]["BriefingScheduleState"];
                 };
             };
             /** @description Briefs cannot turn off while workflows deliver to the brief */

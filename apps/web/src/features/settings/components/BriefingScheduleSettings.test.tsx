@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-import type { BriefingSchedule } from "@gaia/shared/types";
+import type { BriefingScheduleState } from "@gaia/shared/types";
 import type { QuietHours } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { quietHoursApi } from "@/features/settings/api/quietHoursApi";
 import { BriefingScheduleSettings } from "@/features/settings/components/BriefingScheduleSettings";
 import { NotificationsAPI } from "@/services/api/notifications";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 vi.mock("@/services/api/notifications", () => ({
   NotificationsAPI: {
@@ -15,13 +16,29 @@ vi.mock("@/services/api/notifications", () => ({
   },
 }));
 
+vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
+  useIsPaid: () => ({
+    isPaid: false,
+    isUnknown: false,
+    hasEverSubscribed: false,
+  }),
+}));
+
 vi.mock("@/features/settings/api/quietHoursApi", () => ({
   quietHoursApi: { fetch: vi.fn(), update: vi.fn() },
 }));
 
 const NIGHT: QuietHours = { enabled: true, start_hour: 22, end_hour: 8 };
 
-function renderSchedule(schedule: BriefingSchedule, quietHours: QuietHours) {
+function renderSchedule(
+  stored: Omit<BriefingScheduleState, "paused_for_plan">,
+  quietHours: QuietHours,
+  pausedForPlan = false,
+) {
+  const schedule: BriefingScheduleState = {
+    ...stored,
+    paused_for_plan: pausedForPlan,
+  };
   vi.mocked(NotificationsAPI.getBriefingSchedule).mockResolvedValue(schedule);
   vi.mocked(quietHoursApi.fetch).mockResolvedValue(quietHours);
   const client = new QueryClient({
@@ -75,5 +92,33 @@ describe("the daily brief hour against quiet hours", () => {
 
     await screen.findAllByText("6 AM");
     expect(screen.queryByText(QUIET_NOTE)).toBeNull();
+  });
+});
+
+describe("a schedule that does not run without Pro", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useUpgradeModalStore.getState().closeModal({ force: true });
+  });
+
+  it("says the briefs are paused and offers the upgrade", async () => {
+    renderSchedule({ frequency: "daily", hour: 8 }, NIGHT, true);
+
+    expect(await screen.findByText("Your briefs are paused")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
+
+    const modal = useUpgradeModalStore.getState();
+    expect([modal.open, modal.source, modal.dismissible]).toEqual([
+      true,
+      "settings_briefings",
+      true,
+    ]);
+  });
+
+  it("says nothing of the plan when the briefs run", async () => {
+    renderSchedule({ frequency: "daily", hour: 8 }, NIGHT);
+
+    await screen.findAllByText("8 AM");
+    expect(screen.queryByText("Your briefs are paused")).toBeNull();
   });
 });

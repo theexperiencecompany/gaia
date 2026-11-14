@@ -449,6 +449,30 @@ class TestWhatTheBriefHeld:
         seams.consume.assert_not_awaited()
 
 
+class TestBriefingScheduleState:
+    async def test_a_free_users_briefs_read_as_paused_for_the_plan(self, seams: Seams) -> None:
+        seams.is_paid.return_value = False
+        user = _user(DEFAULT_QUIET_HOURS, frequency=BriefingFrequency.WEEKDAYS)
+        user.briefing_schedule.hour = 7
+
+        state = await schedule.briefing_schedule_state(user)
+
+        assert state.paused_for_plan is True
+        assert (state.frequency, state.hour) == (BriefingFrequency.WEEKDAYS, 7)
+        seams.is_paid.assert_awaited_once_with(_USER)
+
+    async def test_a_paying_users_briefs_run(self, seams: Seams) -> None:
+        state = await schedule.briefing_schedule_state(_user(DEFAULT_QUIET_HOURS))
+
+        assert state.paused_for_plan is False
+
+    async def test_briefs_switched_off_are_not_paused_whatever_the_plan(self, seams: Seams) -> None:
+        seams.is_paid.return_value = False
+        user = _user(DEFAULT_QUIET_HOURS, frequency=BriefingFrequency.OFF)
+
+        assert (await schedule.briefing_schedule_state(user)).paused_for_plan is False
+
+
 class TestDescribeBriefingSchedule:
     @pytest.mark.parametrize(
         ("frequency", "hour", "text"),

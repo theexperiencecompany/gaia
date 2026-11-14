@@ -287,7 +287,7 @@ export {
 export type {
   ActivityDay,
   BriefingFrequency,
-  BriefingSchedule,
+  BriefingScheduleState,
   BudgetWindow,
   BulkMoveRequest,
   ChannelPlatform,

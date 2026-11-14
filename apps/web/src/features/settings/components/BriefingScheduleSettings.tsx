@@ -1,8 +1,11 @@
 "use client";
 
 import type { BriefingFrequency } from "@gaia/shared/types";
+import { Button } from "@heroui/button";
 import { Select, SelectItem } from "@heroui/select";
 import { formatHour12 } from "@shared/utils";
+import { paywallCopyFor } from "@/features/pricing/constants";
+import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { BriefsOffBlockedModal } from "@/features/settings/components/BriefsOffBlockedModal";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -12,6 +15,7 @@ import {
   formatHour,
   isQuietHour,
 } from "@/features/settings/utils/quietHoursAxis";
+import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
@@ -43,6 +47,8 @@ export function BriefingScheduleSettings() {
     keepBriefs,
   } = useBriefingScheduleSettings();
   const { hours: quietHours } = useQuietHours();
+  const { hasEverSubscribed } = useIsPaid();
+  const openUpgradeModal = useUpgradeModalStore((s) => s.openModal);
   const hasDailyBrief =
     schedule?.frequency !== undefined &&
     WITH_DAILY_BRIEF.has(schedule.frequency);
@@ -61,6 +67,26 @@ export function BriefingScheduleSettings() {
           : "How often GAIA briefs you. The weekly digest arrives Sunday evening."
       }
     >
+      {schedule?.paused_for_plan && (
+        <SettingsRow
+          label="Your briefs are paused"
+          description="Briefs on a schedule are part of GAIA Pro, so none are sent on the free plan."
+        >
+          <Button
+            size="sm"
+            color="primary"
+            className="font-medium text-black"
+            onPress={() =>
+              openUpgradeModal(undefined, {
+                dismissible: true,
+                source: "settings_briefings",
+              })
+            }
+          >
+            {paywallCopyFor(hasEverSubscribed).cta}
+          </Button>
+        </SettingsRow>
+      )}
       <SettingsRow label="Frequency">
         <Select
           size="sm"

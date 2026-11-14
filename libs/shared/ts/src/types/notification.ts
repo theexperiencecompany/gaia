@@ -2,7 +2,7 @@ import type { NotificationActionView } from "../api/generated";
 
 export type {
   BriefingFrequency,
-  BriefingSchedule,
+  BriefingScheduleState,
   ChannelPreferences,
 } from "../api/generated";
 export enum NotificationStatus {

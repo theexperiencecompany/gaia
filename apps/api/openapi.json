@@ -2637,8 +2637,8 @@
         "title": "BriefingPayload",
         "type": "object"
       },
-      "BriefingSchedule": {
-        "description": "When the user wants their briefs: how often, and the daily brief's local hour.",
+      "BriefingScheduleState": {
+        "description": "The stored schedule and whether it runs: briefs on a schedule are a Pro feature.",
         "properties": {
           "frequency": {
             "$ref": "#/components/schemas/BriefingFrequency",
@@ -2650,9 +2650,17 @@
             "minimum": 0.0,
             "title": "Hour",
             "type": "integer"
+          },
+          "paused_for_plan": {
+            "description": "The schedule sends briefs, but none run: the user is not on Pro.",
+            "title": "Paused For Plan",
+            "type": "boolean"
           }
         },
-        "title": "BriefingSchedule",
+        "required": [
+          "paused_for_plan"
+        ],
+        "title": "BriefingScheduleState",
         "type": "object"
       },
       "BriefingScheduleUpdate": {
@@ -34949,14 +34957,14 @@
     },
     "/api/v1/notifications/preferences/briefing-schedule": {
       "get": {
-        "description": "How often the user's briefs come, and the daily brief's hour on their clock.",
+        "description": "How often the user's briefs come, the daily brief's hour on their clock, and whether they run.",
         "operationId": "notification_read_briefing_schedule",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BriefingSchedule"
+                  "$ref": "#/components/schemas/BriefingScheduleState"
                 }
               }
             },
@@ -34999,7 +35007,7 @@
         ]
       },
       "put": {
-        "description": "Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored.",
+        "description": "Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs.",
         "operationId": "notification_update_briefing_schedule",
         "requestBody": {
           "content": {
@@ -35016,7 +35024,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BriefingSchedule"
+                  "$ref": "#/components/schemas/BriefingScheduleState"
                 }
               }
             },

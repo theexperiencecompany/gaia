@@ -330,3 +330,9 @@ class EditionDeliveryFormat(StrEnum):
     # Chat platforms download the file themselves and pick photo vs document by
     # its size, so they get one fixed, compact format.
     JPG = "jpg"
+
+
+# What the agent hears when a schedule it set will not run because the user is on the free plan.
+BRIEFS_PAUSED_FOR_PLAN_NOTE = (
+    "None of these run yet: briefs on a schedule need Pro, and the user is on the free plan."
+)

@@ -64,6 +64,14 @@ class BriefingSchedule(BaseModel):
     hour: int = Field(default=DAILY_BRIEFING_HOUR, ge=0, le=23)
 
 
+class BriefingScheduleState(BriefingSchedule):
+    """The stored schedule and whether it runs: briefs on a schedule are a Pro feature."""
+
+    paused_for_plan: bool = Field(
+        description="The schedule sends briefs, but none run: the user is not on Pro."
+    )
+
+
 #: Where a workflow's results can go once there is no brief to hold them.
 BriefFreeDelivery = Literal[WorkflowDelivery.NOW, WorkflowDelivery.SILENT]
 
