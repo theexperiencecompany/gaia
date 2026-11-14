@@ -369,7 +369,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "kind": "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
-    "reason": "validation" | "refused" | "timeout";
+    "reason": "validation" | "refused" | "timeout" | "truncated";
     "problem_count": number;
   };
   "artifact:pdf_exported": {

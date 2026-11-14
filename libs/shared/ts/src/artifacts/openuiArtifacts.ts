@@ -9,6 +9,13 @@ export const ARTIFACT_CARD_TOOL_NAME = "artifact_done";
 
 export type ArtifactCardStatus = "streaming" | "ready" | "failed";
 
+/** Why a failed artifact gave up: ArtifactFailureReason in apps/api/app/models/openui_artifact_models.py. */
+export type ArtifactFailureReason =
+  | "validation"
+  | "refused"
+  | "timeout"
+  | "truncated";
+
 export interface ArtifactCardData {
   stream_id: string;
   kind: string;
@@ -16,6 +23,8 @@ export interface ArtifactCardData {
   status: ArtifactCardStatus;
   /** Present once stored (status "ready"). */
   artifact_id?: string;
+  /** Present on a failure the tool caught (status "failed"). */
+  reason?: ArtifactFailureReason;
   /** The first draft as it streams; the stored program is fetched by artifact_id. */
   program?: string;
 }

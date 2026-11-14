@@ -13,6 +13,7 @@ import time
 from openai import APIError, AsyncOpenAI
 from openai.types.responses import (
     ResponseCompletedEvent,
+    ResponseIncompleteEvent,
     ResponseRefusalDeltaEvent,
     ResponseTextDeltaEvent,
     ResponseUsage,
@@ -38,6 +39,8 @@ ARTIFACT_PROMPTS: dict[ArtifactKind, str] = {
 
 # OpenAI's code for a request its safety system refused to serve.
 _REFUSED_PROMPT_CODE = "invalid_prompt"
+# The incomplete_details reason a reply its content filter stopped carries.
+_CONTENT_FILTER_REASON = "content_filter"
 
 
 class ArtifactModelNotConfiguredError(AppError):
@@ -46,6 +49,10 @@ class ArtifactModelNotConfiguredError(AppError):
 
 class ArtifactRefusedError(AppError):
     """The provider refused the request; the caller logs it in full and fails the tool."""
+
+
+class ArtifactTruncatedError(AppError):
+    """The reply stopped before its program was finished, at ARTIFACT_MAX_OUTPUT_TOKENS."""
 
 
 @dataclass(frozen=True)
@@ -123,6 +130,18 @@ def _meter(request: ArtifactRequest, usage: ResponseUsage | None, duration_ms: f
     )
 
 
+def _raise_incomplete(event: ResponseIncompleteEvent) -> None:
+    """Fail a reply the provider stopped early: its filter is a refusal, anything else a cut-off."""
+    details = event.response.incomplete_details
+    reason = details.reason if details else None
+    if reason == _CONTENT_FILTER_REASON:
+        raise ArtifactRefusedError(message="the artifact model's content filter stopped the reply")
+    raise ArtifactTruncatedError(
+        message="the artifact reply stopped before the program was finished",
+        meta={"reason": reason},
+    )
+
+
 def _refused(exc: APIError) -> bool:
     """Tell a flagged prompt apart, rejected up front (400) or mid-stream (an error event)."""
     return exc.code == _REFUSED_PROMPT_CODE
@@ -161,6 +180,9 @@ async def generate_reply(
                 raise ArtifactRefusedError(message="the artifact model refused the request")
             elif isinstance(event, ResponseCompletedEvent):
                 usage = event.response.usage
+            elif isinstance(event, ResponseIncompleteEvent):
+                usage = event.response.usage
+                _raise_incomplete(event)
     except APIError as exc:
         if _refused(exc):
             raise ArtifactRefusedError(message="the provider refused the artifact request") from exc

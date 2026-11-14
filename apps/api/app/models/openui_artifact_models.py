@@ -37,6 +37,7 @@ class ArtifactFailureReason(StrEnum):
     VALIDATION = "validation"
     REFUSED = "refused"
     TIMEOUT = "timeout"
+    TRUNCATED = "truncated"
 
 
 class OpenUIArtifact(UserScopedDocument):

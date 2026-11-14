@@ -225,6 +225,7 @@ class TestCreateArtifact:
 
         [done] = [c.args[0] for c in writer.call_args_list if ARTIFACT_DONE_EVENT in c.args[0]]
         assert done[ARTIFACT_DONE_EVENT]["status"] == "failed"
+        assert done[ARTIFACT_DONE_EVENT]["reason"] == "validation"
         assert "artifact_id" not in done[ARTIFACT_DONE_EVENT]
         link.assert_not_awaited()
         lines = result.splitlines()

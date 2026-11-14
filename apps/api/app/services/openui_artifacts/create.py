@@ -1,7 +1,7 @@
 """create_artifact's pipeline: write the program, validate it, repair it once, store it.
 
-A program that still fails after one repair, a provider refusal and a timeout all fail loud:
-nothing is stored and the caller gets ArtifactCreationError with the reason.
+A program that still fails after one repair, a refusal, a reply cut off at the output limit and
+a timeout all fail loud: nothing is stored and the caller gets ArtifactCreationError with the reason.
 """
 
 import asyncio
@@ -13,6 +13,7 @@ from app.constants.llm import ARTIFACT_MODEL_NAME
 from app.constants.openui_artifacts import (
     ARTIFACT_GENERATION_TIMEOUT_SECONDS,
     ARTIFACT_MAX_REPAIRS,
+    ARTIFACT_TRUNCATED_PROBLEM,
 )
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.models.openui_artifact_models import ArtifactFailureReason, OpenUIArtifact
@@ -20,6 +21,7 @@ from app.services.analytics_service import capture
 from app.services.openui_artifacts.generate import (
     ArtifactRefusedError,
     ArtifactRequest,
+    ArtifactTruncatedError,
     DeltaSink,
     repair_program,
     write_program,
@@ -106,6 +108,8 @@ async def create_openui_artifact(
             request_body=request.brief,
         )
         raise _fail(request, ArtifactFailureReason.REFUSED, []) from exc
+    except ArtifactTruncatedError as exc:
+        raise _fail(request, ArtifactFailureReason.TRUNCATED, [ARTIFACT_TRUNCATED_PROBLEM]) from exc
     validation = result.validation
     if not validation.ok:
         raise _fail(request, ArtifactFailureReason.VALIDATION, validation.problems)

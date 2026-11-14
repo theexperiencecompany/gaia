@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from openai.types.responses import (
     ResponseCompletedEvent,
+    ResponseIncompleteEvent,
     ResponseRefusalDeltaEvent,
     ResponseTextDeltaEvent,
 )
@@ -30,6 +31,7 @@ from app.services.openui_artifacts.generate import (
     ArtifactModelNotConfiguredError,
     ArtifactRefusedError,
     ArtifactRequest,
+    ArtifactTruncatedError,
     generate_reply,
     repair_input,
     repair_program,
@@ -47,16 +49,28 @@ def _delta(text: str) -> ResponseTextDeltaEvent:
     return ResponseTextDeltaEvent.model_construct(delta=text)
 
 
-def _completed(
-    input_tokens: int = 100, output_tokens: int = 40, cached: int = 30, reasoning: int = 5
-) -> ResponseCompletedEvent:
-    usage = SimpleNamespace(
+def _usage(input_tokens: int, output_tokens: int, cached: int, reasoning: int) -> SimpleNamespace:
+    return SimpleNamespace(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         input_tokens_details=SimpleNamespace(cached_tokens=cached),
         output_tokens_details=SimpleNamespace(reasoning_tokens=reasoning),
     )
+
+
+def _completed(
+    input_tokens: int = 100, output_tokens: int = 40, cached: int = 30, reasoning: int = 5
+) -> ResponseCompletedEvent:
+    usage = _usage(input_tokens, output_tokens, cached, reasoning)
     return ResponseCompletedEvent.model_construct(response=SimpleNamespace(usage=usage))
+
+
+def _incomplete(reason: str | None) -> ResponseIncompleteEvent:
+    response = SimpleNamespace(
+        usage=_usage(900, ARTIFACT_MAX_OUTPUT_TOKENS, 0, 2_000),
+        incomplete_details=SimpleNamespace(reason=reason),
+    )
+    return ResponseIncompleteEvent.model_construct(response=response)
 
 
 def _stream(*events: object) -> AsyncIterator[object]:
@@ -226,6 +240,37 @@ async def test_a_refusal_in_the_stream_fails_loud_and_the_call_is_still_closed(
         await generate_reply(REQUEST, "in")
 
     assert refused.value.message == "the artifact model refused the request"
+
+
+@pytest.mark.parametrize("reason", ["max_output_tokens", None])
+async def test_a_reply_cut_off_before_it_finished_fails_as_truncated_and_is_still_billed(
+    model: Calls, reason: str | None
+) -> None:
+    model.create.return_value = _stream(_delta("root = Artifact("), _incomplete(reason))
+
+    with pytest.raises(ArtifactTruncatedError) as truncated:
+        await generate_reply(REQUEST, "in")
+
+    assert truncated.value.message == "the artifact reply stopped before the program was finished"
+    assert truncated.value.meta == {"reason": reason}
+    assert model.meter.call_args.kwargs["usage"] == {
+        "input_tokens": 900,
+        "output_tokens": ARTIFACT_MAX_OUTPUT_TOKENS,
+        "cached_tokens": 0,
+        "reasoning_tokens": 2_000,
+    }
+
+
+async def test_a_reply_its_content_filter_stopped_is_a_refusal_and_is_still_billed(
+    model: Calls,
+) -> None:
+    model.create.return_value = _stream(_delta("root = "), _incomplete("content_filter"))
+
+    with pytest.raises(ArtifactRefusedError) as refused:
+        await generate_reply(REQUEST, "in")
+
+    assert refused.value.message == "the artifact model's content filter stopped the reply"
+    model.meter.assert_called_once()
 
 
 @pytest.mark.parametrize("key", [None, ""])

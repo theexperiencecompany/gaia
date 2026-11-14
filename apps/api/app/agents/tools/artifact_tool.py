@@ -79,7 +79,15 @@ async def create_artifact(
         artifact = await create_openui_artifact(request, title, batcher.push)
     except ArtifactCreationError as exc:
         batcher.flush()
-        writer({ARTIFACT_DONE_EVENT: {**card, "status": ArtifactStatus.FAILED.value}})
+        writer(
+            {
+                ARTIFACT_DONE_EVENT: {
+                    **card,
+                    "status": ArtifactStatus.FAILED.value,
+                    "reason": exc.reason.value,
+                }
+            }
+        )
         problems = "".join(f"\n- {p}" for p in exc.problems[:10])
         return f"The {kind.value} could not be made ({exc.reason.value}).{problems}"
     except Exception:

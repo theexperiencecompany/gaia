@@ -14,6 +14,12 @@ interface ArtifactCardProps {
   card: ArtifactCardData;
 }
 
+function failureMessage(card: ArtifactCardData): string {
+  return card.reason === "truncated"
+    ? `This ${card.kind} was too long to finish. Ask for a shorter one, or split it into parts.`
+    : `GAIA couldn't make this ${card.kind}.`;
+}
+
 /** An artifact in chat: its first draft as it streams, then the stored program, with an Open action. */
 export function ArtifactCard({ card }: ArtifactCardProps) {
   const artifactId =
@@ -51,7 +57,7 @@ export function ArtifactCard({ card }: ArtifactCardProps) {
       {card.status === "failed" ? (
         <p className="flex items-center gap-2 rounded-2xl bg-zinc-900 p-3 text-sm text-red-400">
           <Alert01Icon size={16} />
-          GAIA couldn't make this {card.kind}.
+          {failureMessage(card)}
         </p>
       ) : (
         <div className="relative max-h-[28rem] overflow-hidden rounded-2xl bg-zinc-900 [mask-image:linear-gradient(to_bottom,black_75%,transparent)]">

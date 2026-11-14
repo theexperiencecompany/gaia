@@ -15,6 +15,11 @@ ARTIFACT_PROMPTS_DIR = Path(__file__).resolve().parents[1] / "agents" / "prompts
 # One generation, repair included, gives up after this long and the tool reports a timeout.
 ARTIFACT_GENERATION_TIMEOUT_SECONDS = 120
 ARTIFACT_MAX_OUTPUT_TOKENS = 8_000
+# What the agent is told when a reply runs past ARTIFACT_MAX_OUTPUT_TOKENS, so it can retry smaller.
+ARTIFACT_TRUNCATED_PROBLEM = (
+    "the program ran past the output limit before it was finished; "
+    "make a shorter artifact with fewer sections, or split it into several"
+)
 ARTIFACT_MAX_REPAIRS = 1
 # Per-user abuse cap on create_artifact a day (rate limit feature artifact_creation).
 ARTIFACT_CREATION_DAILY_CAP = 200

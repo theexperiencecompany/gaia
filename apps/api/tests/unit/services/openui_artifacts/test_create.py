@@ -18,6 +18,7 @@ from app.services.openui_artifacts.create import ArtifactCreationError, create_o
 from app.services.openui_artifacts.generate import (
     ArtifactRefusedError,
     ArtifactRequest,
+    ArtifactTruncatedError,
     GeneratedReply,
 )
 from app.services.openui_artifacts.validate import ArtifactValidation
@@ -130,6 +131,31 @@ async def test_a_refusal_fails_loud_without_a_retry(capture: MagicMock, repo: Ma
     assert raised.value.reason is ArtifactFailureReason.REFUSED
     capture.assert_called_once_with(
         UserId(USER_ID), ArtifactFailed(kind="dashboard", reason="refused", problem_count=0)
+    )
+
+
+@pytest.mark.parametrize("stage", ["write_program", "repair_program"])
+async def test_a_reply_cut_off_at_the_output_limit_fails_as_truncated_and_says_how_to_fix_it(
+    capture: MagicMock, repo: MagicMock, stage: str
+) -> None:
+    cut_off = AsyncMock(side_effect=ArtifactTruncatedError(message="cut off"))
+    draft = AsyncMock(return_value=_reply("root = A"))
+    with (
+        patch(f"{_SVC}.write_program", cut_off if stage == "write_program" else draft),
+        patch(f"{_SVC}.repair_program", cut_off if stage == "repair_program" else AsyncMock()),
+        patch(f"{_SVC}.validate_program", AsyncMock(return_value=_verdict("root = A", ["p1"]))),
+        pytest.raises(ArtifactCreationError) as raised,
+    ):
+        await create_openui_artifact(REQUEST, "Atlas", AsyncMock())
+
+    repo.create.assert_not_awaited()
+    assert raised.value.reason is ArtifactFailureReason.TRUNCATED
+    assert raised.value.problems == [
+        "the program ran past the output limit before it was finished; "
+        "make a shorter artifact with fewer sections, or split it into several"
+    ]
+    capture.assert_called_once_with(
+        UserId(USER_ID), ArtifactFailed(kind="dashboard", reason="truncated", problem_count=1)
     )
 
 
