@@ -15,6 +15,7 @@ from app.services.conversation.ports import (
     Silent,
     Streamed,
     Summarized,
+    ToolsRan,
 )
 
 
@@ -69,6 +70,15 @@ async def test_a_namespaced_update_is_not_the_comms_model_returning() -> None:
         {"agent": {"messages": [AIMessage(content="x")]}},
     )
     assert ModelOutput(has_tool_calls=False) not in await mapper.map(nested)
+
+
+async def test_the_tools_node_returning_is_the_tool_calls_having_run() -> None:
+    mapper = CommsEventMapper("u-1")
+    tools: GraphEvent = ((), "updates", {"tools": {"messages": []}})
+    nested: GraphEvent = (("child:1",), "updates", {"tools": {"messages": []}})
+
+    assert await mapper.map(tools) == [ToolsRan()]
+    assert await mapper.map(nested) == []
 
 
 @pytest.mark.parametrize(

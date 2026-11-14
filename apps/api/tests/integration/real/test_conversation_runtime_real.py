@@ -840,10 +840,11 @@ class _Budget:
 
 
 # Through submit_message: before the reply opens, accept 2, claim 1, unsettled 1, comms 1.
-# Was 29/14 Mongo, 27/14 Redis; work turn 46/23, 28/16.
-PLAIN_TURN = _Budget(mongo=24, mongo_before_text=5, redis=30, redis_before_text=17)
-# The same turn with the attempt also logging the work it hands the executor before any text.
-WORK_TURN = _Budget(mongo=43, mongo_before_text=13, redis=31, redis_before_text=19)
+# Redis includes one list-push PUBLISH per sync-clock advance (message, reply, settle), off the writer's path.
+# Measured at the production tick, so no tick-driven hint read is counted.
+PLAIN_TURN = _Budget(mongo=24, mongo_before_text=5, redis=31, redis_before_text=17)
+# The same turn with the attempt also logging the work it hands the executor before any text (its push too).
+WORK_TURN = _Budget(mongo=43, mongo_before_text=13, redis=33, redis_before_text=20)
 
 
 @dataclass(frozen=True)
@@ -981,7 +982,7 @@ async def test_a_plain_turn_stays_within_its_mongo_and_redis_budget(
     mongo_db: AsyncIOMotorDatabase[dict[str, object]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    rig = await rig_for(gated("first answer", "second answer"))
+    rig = await rig_for(gated("first answer", "second answer"), tick=_production_tick)
     turn = await _measured_turn(rig, mongo_db, monkeypatch)
     _within(turn.spent, PLAIN_TURN)
     # The optional writes wait for the first text and still happen exactly once.
@@ -1015,7 +1016,7 @@ async def test_a_turn_that_hands_off_work_stays_within_its_mongo_and_redis_budge
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     model = gated("first answer", "on it")
-    rig = await rig_for(model)
+    rig = await rig_for(model, tick=_production_tick)
     started: list[bool] = []
 
     async def dispatch() -> None:
