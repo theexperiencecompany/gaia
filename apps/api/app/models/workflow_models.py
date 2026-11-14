@@ -421,6 +421,10 @@ class CreateWorkflowRequest(BaseModel):
             "from intent. Scopes the tool palette when generating steps."
         ),
     )
+    draft_id: str | None = Field(
+        default=None,
+        description="The chat draft this workflow was created from, so what waited on it resumes.",
+    )
 
     # System workflow fields — set by provisioner, not by regular API users
     is_system_workflow: bool = Field(

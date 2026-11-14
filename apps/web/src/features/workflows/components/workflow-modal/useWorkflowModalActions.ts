@@ -43,6 +43,8 @@ interface UseWorkflowModalActionsParams {
   /** Pre-built steps from a community/public workflow (create flow) */
   hasPredefinedSteps: boolean;
   predefinedSteps?: PublicWorkflowStep[];
+  /** The chat draft this modal was opened from (create flow) */
+  draftId?: string;
   /** Create-and-send immediately executes the workflow in chat after creation */
   createAndSend: boolean;
   onWorkflowSaved?: (workflowId: string) => void;
@@ -72,6 +74,7 @@ export function useWorkflowModalActions({
   triggerSchemas,
   hasPredefinedSteps,
   predefinedSteps,
+  draftId,
   createAndSend,
   onWorkflowSaved,
   onWorkflowDeleted,
@@ -281,6 +284,7 @@ export function useWorkflowModalActions({
         selectedIntegrationSlugs.length > 0
           ? selectedIntegrationSlugs
           : undefined,
+      draft_id: draftId,
     };
 
     const result = await createWorkflow(createRequest);
