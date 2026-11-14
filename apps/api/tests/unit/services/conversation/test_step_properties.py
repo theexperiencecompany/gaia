@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from itertools import count, pairwise
+from itertools import count, pairwise, takewhile
 
 from hypothesis import example, given, settings, strategies as st
 
@@ -11,8 +11,10 @@ from app.constants.chat import ConversationSource
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
+    MessageBoundaryEvent,
     ResponseEvent,
     ToolDataEvent,
+    ToolOutputEvent,
 )
 from app.models.conversation_log_models import (
     CommsPhase,
@@ -29,8 +31,10 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
+from app.models.stream_events import MessageBoundaryPayload, ToolOutputPayload
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
+    Answered,
     EntryRejected,
     Finished,
     ModelOutput,
@@ -42,7 +46,8 @@ from app.services.conversation.ports import (
     Summarized,
 )
 from app.services.conversation.reducer import reduce
-from app.services.conversation.screen import handoff_call_id
+from app.services.conversation.screen import handoff_call_id, project_screen
+from app.services.conversation.screen_patches import screen_patches
 from app.services.conversation.step import advance
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
@@ -53,7 +58,15 @@ from shared.py.conversation_wire import (
     ReplyOutcome,
     ToolDataEntry,
 )
-from tests.unit.services.conversation.log_helpers import EMPTY, asked, barge, fired, stop, user
+from tests.unit.services.conversation.log_helpers import (
+    EMPTY,
+    asked,
+    barge,
+    decided,
+    fired,
+    stop,
+    user,
+)
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
     USER,
@@ -74,10 +87,13 @@ APPEND_KINDS = (
     "barge",
     "work_start",
     "ask",
+    "decide",
+    "retry",
     "work_done",
     "work_cancelled",
 )
 QUIET_ROUNDS = 30
+STEP_EXAMPLES = 2000
 
 
 _STATELESS: dict[str, Callable[[int], Entry]] = {
@@ -157,11 +173,21 @@ class World:
             case "ask":
                 live = state.work[0].task_id if state.work else None
                 entry = asked(f"a{number}", live, f"ap{number}") if live else None
+            case "decide":
+                waiting = [approval for item in state.work for approval in item.pending_approvals]
+                entry = decided(f"d{number}", waiting[0]) if waiting else None
+            case "retry":
+                entry = await self._retry(number)
             case "work_start":
                 entry = await self._work_start(state, number)
             case _:
                 entry = self._work_end(state, number, kind)
         return entry
+
+    async def _retry(self, number: int) -> UserMessage | None:
+        entries = await self.rt.entries()
+        sent = [item.entry.id for item in entries if isinstance(item.entry, UserMessage)]
+        return user(f"y{number}").model_copy(update={"retry_of": sent[-1]}) if sent else None
 
     async def _work_start(self, state: ConversationState, number: int) -> WorkStarted | None:
         if state.head <= state.stopped_through:
@@ -212,44 +238,75 @@ OUTCOMES: dict[str, RunOutcome] = {
 }
 
 
+# call_/output_ steps of two parallel tool calls, ordered freely: results land out of order.
+RUN_STEPS = (
+    "text",
+    "card",
+    "tool_call",
+    "model",
+    "summary",
+    "do",
+    "pause",
+    "call_c1",
+    "call_c2",
+    "output_c1",
+    "output_c2",
+    "boundary",
+    "retract",
+)
+RUN_ENDS = ("replied", "empty", "reacted", "silent", "fail", "answered")
+
+
 @st.composite
 def scripts(draw: st.DrawFn, world_kinds: st.SearchStrategy[str]) -> list[tuple[str, str]]:
-    steps = draw(
-        st.lists(
-            st.tuples(
-                st.sampled_from(["text", "card", "tool_call", "model", "summary", "do", "pause"]),
-                world_kinds,
-            ),
-            max_size=5,
-        )
-    )
-    end = draw(st.sampled_from(["replied", "empty", "reacted", "silent", "fail"]))
+    steps = draw(st.lists(st.tuples(st.sampled_from(RUN_STEPS), world_kinds), max_size=7))
+    end = draw(st.sampled_from(RUN_ENDS))
     return [*steps, (end, "")]
+
+
+def _call_card(call: str) -> ToolDataEvent:
+    data = {"tool_name": "search", "tool_call_id": call}
+    return ToolDataEvent(tool_data={"tool_name": "tool_calls_data", "data": data})
+
+
+def _tool_result(call: str) -> Streamed:
+    # A running tool's result: it stays beside its call, above inputs handed since.
+    output = ToolOutputPayload(tool_call_id=call, output="done")
+    return Streamed(payload=ToolOutputEvent(tool_output=output), by_model=False)
+
+
+_FIXED_ITEMS: dict[str, tuple[ScriptItem, ...]] = {
+    "text": (Streamed(payload=ResponseEvent(response="word ")),),
+    "tool_call": (ModelOutput(has_tool_calls=True),),
+    "model": (ModelOutput(has_tool_calls=False),),
+    "summary": (Summarized(),),
+    **{f"call_{call}": (Streamed(payload=_call_card(call)),) for call in ("c1", "c2")},
+    **{f"output_{call}": (_tool_result(call),) for call in ("c1", "c2")},
+    "answered": (Answered(Replied("an answer")), Finished(Replied("an answer"))),
+    **{end: (Finished(outcome),) for end, outcome in OUTCOMES.items()},
+}
 
 
 def _script(world: World, plan: Sequence[tuple[str, str]]) -> list[ScriptItem]:
     items: list[ScriptItem] = []
     for step, kind in plan:
         match step:
-            case "text":
-                items.append(Streamed(payload=ResponseEvent(response="word ")))
             case "card":
                 card = ToolDataEvent(tool_data={"tool_name": "search", "data": {"n": len(items)}})
                 items.append(Streamed(payload=card))
-            case "tool_call":
-                items.append(ModelOutput(has_tool_calls=True))
-            case "model":
-                items.append(ModelOutput(has_tool_calls=False))
-            case "summary":
-                items.append(Summarized())
             case "do":
                 items.append(Do(world.action(kind)))
             case "pause":
                 items.append(Pause((world.action(kind),)))
             case "fail":
                 items.append(Fail(RuntimeError("model down")))
+            case "boundary" | "retract":
+                boundary = MessageBoundaryPayload(
+                    message_id=f"m{len(items)}", discarded=step == "retract"
+                )
+                items.append(Streamed(payload=MessageBoundaryEvent(message_boundary=boundary)))
             case _:
-                items.append(Finished(OUTCOMES[step]))
+                items.extend(_FIXED_ITEMS[step])
     return items
 
 
@@ -261,7 +318,9 @@ ops = st.lists(
     min_size=1,
     max_size=10,
 )
-run_plans = st.lists(scripts(st.sampled_from((*APPEND_KINDS, "lapse"))), max_size=6)
+# Half of a run's mid-run inputs are a user message: the input placement turns on.
+run_inputs = st.just("user") | st.sampled_from((*APPEND_KINDS, "lapse"))
+run_plans = st.lists(scripts(run_inputs), min_size=1, max_size=6)
 
 
 async def _play(
@@ -405,16 +464,41 @@ def _assert_saved_replies_keep_everything_shown(
 
 
 def _assert_every_reply_sits_below_what_it_answers(entries: Sequence[LoggedEntry]) -> None:
+    """Check every input a settled reply answers, a message or finished work, is logged above its slot."""
     replies = {item.entry.reply_id: item.seq for item in entries if isinstance(item.entry, Reply)}
-    asked = {item.entry.id: item.seq for item in entries if isinstance(item.entry, UserMessage)}
+    inputs = {item.entry.id: item.seq for item in _woken(entries)}
     for item in entries:
         settled = item.entry
         if not isinstance(settled, ReplySettled) or settled.reply_id not in replies:
             continue
-        newest = max((asked[a] for a in settled.answers if a in asked), default=0)
+        newest = max((inputs[a] for a in settled.answers if a in inputs), default=0)
         assert replies[settled.reply_id] > newest, (
             f"{settled.reply_id} sits above an input it answers"
         )
+
+
+def _assert_every_live_screen_keeps_its_items_and_reloads_the_same(
+    world: World, entries: Sequence[LoggedEntry]
+) -> None:
+    """Replay the frames as a client does: every prefix keeps the invariant and each shown item."""
+    view: dict[int, LoggedEntry] = {}
+    shown = project_screen([])
+    for frame in world.rt.frames.published:
+        if not isinstance(frame, EntryFrame | EntryUpdatedFrame):
+            continue
+        held = view.get(frame.seq)
+        if held is not None and _revision(frame.entry) <= _revision(held.entry):
+            continue
+        at = frame.at if isinstance(frame, EntryFrame) else view[frame.seq].at
+        view[frame.seq] = LoggedEntry(seq=frame.seq, at=at, entry=frame.entry)
+        prefix = [view[seq] for seq in sorted(view)]
+        # A killed step's frame may be missing until recovery republishes it: fold only the unbroken run.
+        unbroken = list(takewhile(view.__contains__, count(1)))
+        _assert_every_reply_sits_below_what_it_answers([view[seq] for seq in unbroken])
+        screen = project_screen(prefix)
+        screen_patches(shown, screen)
+        shown = screen
+    assert shown == project_screen(list(entries))
 
 
 def _assert_frames_reproduce_the_log(world: World, entries: Sequence[LoggedEntry]) -> None:
@@ -440,6 +524,17 @@ _CARDS_THEN_A_NEW_ASK = [
     ("text", ""),
     ("replied", ""),
 ]
+_RESULTS_OUT_OF_ORDER_AFTER_A_NEW_ASK = [
+    ("call_c1", ""),
+    ("call_c2", ""),
+    ("text", ""),
+    ("do", "user"),
+    ("tool_call", ""),
+    ("output_c2", ""),
+    ("output_c1", ""),
+    ("text", ""),
+    ("answered", ""),
+]
 _TEXT_THEN_A_NEW_ASK = [
     ("text", ""),
     ("do", "user"),
@@ -447,12 +542,37 @@ _TEXT_THEN_A_NEW_ASK = [
     ("text", ""),
     ("replied", ""),
 ]
+# A stop while a new ask waits below the shown text: the shown reply ends stopped, answering nothing.
+_A_STOP_WITH_A_NEW_ASK_BELOW = [
+    ("text", ""),
+    ("do", "user"),
+    ("tool_call", ""),
+    ("do", "stop"),
+    ("text", ""),
+    ("replied", ""),
+]
+# Its only text taken back and nothing after: the reply already shown keeps its slot.
+_A_PREAMBLE_TAKEN_BACK = [("text", ""), ("retract", ""), ("replied", "")]
 
 
-@settings(max_examples=300)
+@settings(max_examples=STEP_EXAMPLES)
 @given(op_list=ops, plans=run_plans, approves=st.booleans())
 @example(op_list=[AppendOp("user")], plans=[_CARDS_THEN_A_NEW_ASK], approves=False)
+@example(op_list=[AppendOp("user")], plans=[_RESULTS_OUT_OF_ORDER_AFTER_A_NEW_ASK], approves=False)
 @example(op_list=[AppendOp("user")], plans=[_TEXT_THEN_A_NEW_ASK], approves=False)
+@example(op_list=[AppendOp("user")], plans=[_A_PREAMBLE_TAKEN_BACK], approves=False)
+@example(op_list=[AppendOp("user")], plans=[_A_STOP_WITH_A_NEW_ASK_BELOW], approves=False)
+@example(
+    op_list=[AppendOp("user"), AdvanceOp(15, False), AppendOp("user")],
+    plans=[_A_STOP_WITH_A_NEW_ASK_BELOW],
+    approves=False,
+)
+@example(op_list=[AppendOp("fire")], plans=[_A_PREAMBLE_TAKEN_BACK], approves=False)
+@example(
+    op_list=[AppendOp("user")],
+    plans=[[("text", ""), ("retract", ""), ("fail", "")]],
+    approves=False,
+)
 def test_any_interleaving_answers_every_input_once_with_one_run_at_a_time(
     op_list: list[Op], plans: list[list[tuple[str, str]]], approves: bool
 ) -> None:
@@ -468,3 +588,4 @@ def test_any_interleaving_answers_every_input_once_with_one_run_at_a_time(
     _assert_frames_reproduce_the_log(world, entries)
     _assert_saved_replies_keep_everything_shown(world, entries)
     _assert_every_reply_sits_below_what_it_answers(entries)
+    _assert_every_live_screen_keeps_its_items_and_reloads_the_same(world, entries)

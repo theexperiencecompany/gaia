@@ -481,6 +481,18 @@ def test_reply_settled_answering_itself_or_later_is_rejected(through: int) -> No
     assert _reason(state, 3, settled("r", ["u1"], through)) is RejectReason.REPLY_ANSWERS_FUTURE
 
 
+def test_a_reply_answering_an_input_logged_below_its_slot_is_refused() -> None:
+    state, _ = fold([user("u1"), opened("o"), user("u2")])
+    above = settled("r", ["u1", "u2"], 3)
+    assert _reason(state, 4, above) is RejectReason.REPLY_ABOVE_ITS_INPUT
+
+
+def test_a_stopped_reply_settles_through_inputs_below_it_since_it_answers_none() -> None:
+    state, _ = fold([user("u1"), opened("o"), user("u2")])
+    stopped = settled("r", [], 3, outcome=ReplyOutcome.STOPPED)
+    assert _accept(state, 4, stopped).state.settled_through == 3
+
+
 # ---- comms phase owned by the step ----
 
 
