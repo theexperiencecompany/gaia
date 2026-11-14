@@ -3,6 +3,7 @@
 from collections import Counter
 from itertools import pairwise
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -10,12 +11,8 @@ from app.constants.briefing import EditionChoice
 from app.models.brief_composition_models import BriefBlock, ChartKind
 from app.models.briefing_models import BriefingPayload
 from app.models.user_models import ShuffleBag, UserDocument
-from app.services.briefing.edition_draws import draw_edition
-from app.services.briefing.editions import (
-    DAILY_FAMILY_WEIGHTS,
-    EXPLORER_RENDERER,
-    daily_family_weights,
-)
+from app.services.briefing.edition_draws import daily_family_weights, draw_edition
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS, EXPLORER_RENDERER
 from app.services.briefing.editions.capabilities import (
     edition_capabilities,
     families_drawing,
@@ -222,7 +219,13 @@ class TestEditionChoices:
         assert set(picks) == {"swiss", "memo"}
         assert all(a != b for a, b in pairwise(picks))
 
-    def test_when_every_edition_left_on_was_retired_every_daily_family_draws(self) -> None:
+    def test_when_every_edition_left_on_was_retired_every_daily_family_draws_loudly(
+        self,
+    ) -> None:
         choices = _only_on("retired") | {"retired": EditionChoice.FAVOURITE}
 
-        assert daily_family_weights(choices) == DAILY_FAMILY_WEIGHTS
+        with patch("app.services.briefing.edition_draws.log") as log:
+            weights = daily_family_weights(choices)
+
+        assert weights == DAILY_FAMILY_WEIGHTS
+        log.warning.assert_called_once_with("briefing.editions_all_retired", kept=sorted(choices))

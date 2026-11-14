@@ -5,9 +5,11 @@ from dataclasses import dataclass
 import random
 
 from app.constants.briefing import (
+    FAVOURITE_WEIGHT_FACTOR,
     POSTAL_FAMILY,
     ArtFamily,
     BriefingBag,
+    EditionChoice,
 )
 from app.db.repositories.users import user_repository
 from app.models.brief_composition_models import BriefBlock
@@ -15,7 +17,7 @@ from app.models.briefing_models import (
     BriefingPayload,
 )
 from app.models.user_models import ShuffleBag, UserDocument
-from app.services.briefing.editions import daily_family_weights
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
 from app.services.briefing.editions.capabilities import families_drawing, split_drawable
 from app.services.briefing.editions.stamps import hosted_stamp_weights
@@ -47,6 +49,24 @@ def draw_from_bag(
     state = (user.briefing_shuffle_bags or {}).get(bag)
     member, next_state = draw(state, weights, random.SystemRandom(), eligible=eligible)
     return BagDraw(bag=bag, member=member, next_state=next_state)
+
+
+def daily_family_weights(choices: Mapping[str, EditionChoice]) -> dict[str, int]:
+    """Return the user's daily bag: families turned off left out, each favourite at twice its weight.
+
+    Settings keep one family on, so the bag is empty only when every family left on was
+    since retired; the brief then draws from every daily family.
+    """
+    weights = {
+        family: weight
+        * (FAVOURITE_WEIGHT_FACTOR if choices.get(family) == EditionChoice.FAVOURITE else 1)
+        for family, weight in DAILY_FAMILY_WEIGHTS.items()
+        if choices.get(family) != EditionChoice.OFF
+    }
+    if weights:
+        return weights
+    log.warning("briefing.editions_all_retired", kept=sorted(choices))
+    return dict(DAILY_FAMILY_WEIGHTS)
 
 
 @dataclass(frozen=True)

@@ -42,7 +42,7 @@ async def set_edition_choices(
     unknown = sorted(set(choices) - set(DAILY_FAMILY_WEIGHTS))
     if unknown:
         raise create_error(
-            message=f"{', '.join(unknown)} is not a daily edition",
+            message=f"Not a daily edition: {', '.join(unknown)}",
             why="Only the daily edition families can be turned off or favourited",
             fix="Choose from the editions GET /notifications/preferences/briefing-editions lists",
             status_code=422,
