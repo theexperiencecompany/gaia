@@ -5,7 +5,7 @@
 // Core message types
 // ---------------------------------------------------------------------------
 
-import type { ToolDataEntry } from "../api/generated";
+import type { ToolDataEntry, ToolProgress } from "../api/generated";
 
 export type {
   RecurrenceData,
@@ -720,10 +720,9 @@ export interface MCPAppData {
 // Tool calls data (progress entries)
 // ---------------------------------------------------------------------------
 
-export interface ToolCallEntry {
-  tool_name: string;
-  tool_category: string;
-  message: string;
+/** One tool call of a run: the progress line the server states for it, plus the call itself. */
+export interface ToolCallEntry
+  extends Pick<ToolProgress, "tool_name" | "tool_category" | "message"> {
   show_category?: boolean;
   tool_call_id?: string;
   inputs?: Record<string, unknown>;

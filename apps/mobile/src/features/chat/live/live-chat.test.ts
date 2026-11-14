@@ -1,24 +1,26 @@
 import { ApiError } from "@gaia/shared";
+import type { ScreenItem } from "@gaia/shared/conversation";
 import { sendingLoadingRow } from "@gaia/shared/conversation";
 import {
-  notice,
-  reply,
-  replySettled,
-  todoWoke,
+  insertFrame,
+  liveTask,
+  noticeItem,
+  replyDelta,
+  replyItem,
+  stateFrame,
   toolCallCard,
-  userMessage,
-  workFinished,
-  workflowFired,
-  workStarted,
+  updateFrame,
+  userItem,
+  userItemWith,
+  workItem,
 } from "@gaia/shared/conversation/testing";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * A fake events endpoint: each subscription is a stream the test feeds frames to
- * and then ends, drops, or refuses with 404, recording the `after` it opened with.
+ * and then ends, drops, or refuses with 404.
  */
 interface OpenStream {
-  after: number;
   push: (frame: unknown) => void;
   drop: (error: Error) => void;
   aborted: () => boolean;
@@ -54,6 +56,10 @@ vi.mock("@/lib/sse-client", () => {
   return { EventStreamHttpError };
 });
 
+vi.mock("@/lib/db/chatDb", () => ({
+  chatDb: { getLog: async () => null, saveLog: async () => undefined },
+}));
+
 vi.mock("../api/queries", () => ({
   chatKeys: { conversations: () => ["chat", "conversations"] },
 }));
@@ -64,7 +70,6 @@ vi.mock("../api/chat-api", async () => {
     chatApi: {
       subscribeToConversationEvents: (
         conversationId: string,
-        after: number,
         onData: (raw: string) => void,
         signal: AbortSignal,
       ) =>
@@ -75,7 +80,6 @@ vi.mock("../api/chat-api", async () => {
           }
           signal.addEventListener("abort", () => resolve());
           server.streams.push({
-            after,
             push: (frame) => onData(JSON.stringify({ stream_id: null, frame })),
             drop: reject,
             aborted: () => signal.aborted,
@@ -121,37 +125,13 @@ const AT = "2026-11-12T10:00:00+00:00";
 const NOW = new Date("2026-11-12T12:00:00Z");
 const CONVERSATION = "conv-1";
 
-const entry = (seq: number, logged: unknown) => ({
-  kind: "entry",
-  seq,
-  at: AT,
-  entry: logged,
-});
-const state = (
-  head: number,
-  display: string,
-  work: { task_id: string; awaiting_approval: boolean }[] = [],
-) => ({ kind: "state", head, display, work });
-const replyText = (attemptId: string, index: number, text: string) => ({
-  kind: "reply_delta",
-  attempt_id: attemptId,
-  reply_id: null,
-  index,
-  payload: { type: "response", response: text },
-});
-const workCard = (taskId: string, index: number, message: string) => ({
-  kind: "work_delta",
-  task_id: taskId,
-  index,
-  payload: {
-    type: "tool_data",
-    tool_data: {
-      tool_name: "tool_calls_data",
-      tool_category: "gmail",
-      data: { tool_name: "send", tool_call_id: `${taskId}-${index}`, message },
-      timestamp: AT,
-    },
-  },
+const progress = (message: string) => ({
+  message,
+  tool_name: "send",
+  tool_category: "gmail",
+  integration_name: null,
+  icon_url: null,
+  show_category: true,
 });
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -162,6 +142,9 @@ const rows = (conversationId = CONVERSATION) => {
   return liveMessages(view, sends, NOW);
 };
 const loading = () => sendingLoadingRow(live().view, live().sends);
+const show = (...items: ScreenItem[]) => {
+  for (const item of items) lastStream().push(insertFrame(item));
+};
 
 let release: (() => void) | null = null;
 
@@ -181,16 +164,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("the mobile chat rendered from the conversation's events", () => {
+describe("the mobile chat rendered from the conversation's screen", () => {
   it("shows a streaming reply under the message it answers, then its saved text once settled", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    expect(lastStream().after).toBe(0);
 
-    lastStream().push(entry(1, userMessage("m1", "hi")));
-    lastStream().push(state(1, "thinking"));
-    lastStream().push(replyText("a1", 0, "Hel"));
-    lastStream().push(replyText("a1", 1, "lo"));
+    show(userItem("m1", 1, "hi"));
+    lastStream().push(stateFrame(1, "thinking"));
+    lastStream().push(replyDelta("a1", "r1", 0, "Hel"));
+    lastStream().push(replyDelta("a1", "r1", 1, "lo"));
 
     expect(rows().map((row) => [row.isUser, row.text, row.inProgress])).toEqual(
       [
@@ -200,9 +182,8 @@ describe("the mobile chat rendered from the conversation's events", () => {
     );
     expect(loading().visible).toBe(true);
 
-    lastStream().push(entry(2, reply("r1", "a1", "Hello there")));
-    lastStream().push(entry(3, replySettled("r1", ["m1"], 1)));
-    lastStream().push(state(3, "idle"));
+    show(replyItem("r1", 2, "Hello there", "answered"));
+    lastStream().push(stateFrame(2, "idle"));
 
     expect(rows().map((row) => [row.text, row.inProgress])).toEqual([
       ["hi", undefined],
@@ -211,82 +192,96 @@ describe("the mobile chat rendered from the conversation's events", () => {
     expect(loading().visible).toBe(false);
   });
 
-  it("shows a reaction-only answer as the reaction on the message, with no empty bubble", async () => {
+  it("shows a reaction on the message it was given to", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    lastStream().push(entry(1, userMessage("m1", "thanks!")));
-    lastStream().push({
-      kind: "entry_updated",
-      seq: 1,
-      entry: userMessage("m1", "thanks!", { emoji: "🙌", by: "chat_model" }, 1),
-    });
-    lastStream().push(entry(2, replySettled("r1", ["m1"], 1, null, "silent")));
-    lastStream().push(state(2, "idle"));
+    show(userItem("m1", 1, "thanks!"));
+    lastStream().push(
+      updateFrame(
+        userItemWith("m1", 1, {
+          text: "thanks!",
+          reaction: { emoji: "🙌", by: "chat_model" },
+        }),
+        2,
+      ),
+    );
+    lastStream().push(stateFrame(2, "idle"));
 
     expect(rows()).toHaveLength(1);
     expect(rows()[0]?.reaction).toEqual({ emoji: "🙌", by: "chat_model" });
   });
 
-  it("keeps a task's live cards after it finishes, until its reply settles", async () => {
+  it("shows a task's cards while it runs, with the server's progress line, and keeps them once it finishes", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    const task = { task_id: "t1", awaiting_approval: false };
-    lastStream().push(entry(1, userMessage("m1", "email bob")));
-    lastStream().push(entry(2, workStarted("t1", 1)));
-    lastStream().push(state(2, "working", [task]));
-    lastStream().push(workCard("t1", 0, "Sending email"));
+    const card = toolCallCard("t1-0", "Sending email");
+    const running = {
+      ...workItem("t1", 2, "running"),
+      tool_data: [card],
+      timeline: { steps: [], cards: [], progress: progress("Sending email") },
+    };
+    show(userItem("m1", 1, "email bob"), running);
+    lastStream().push(stateFrame(2, "working", [liveTask("t1")]));
 
     const working = rows().at(-1);
     expect(working?.inProgress).toBe(true);
-    expect(working?.toolData).toHaveLength(1);
-    expect(loading().detail).toBe("Sending email");
+    expect(working?.toolData).toEqual([card]);
+    expect(loading().progress?.message).toBe("Sending email");
 
-    lastStream().push(entry(3, workFinished("t1", "done")));
-    lastStream().push(state(3, "thinking"));
-    expect(rows().at(-1)?.toolData).toHaveLength(1);
-
-    lastStream().push(entry(4, reply("t1", "a2", "Sent.")));
-    lastStream().push(entry(5, replySettled("t1", ["m1"], 1)));
-    expect(rows().filter((row) => row.id.startsWith("work:"))).toHaveLength(0);
+    lastStream().push(
+      updateFrame({ ...workItem("t1", 2, "done"), tool_data: [card] }, 3),
+    );
+    lastStream().push(stateFrame(3, "thinking"));
+    expect(rows().at(-1)?.toolData).toEqual([card]);
   });
 
   it("marks a stopped task's cards stopped instead of dropping them", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    lastStream().push(entry(1, userMessage("m1")));
-    lastStream().push(entry(2, workStarted("t1", 1)));
-    lastStream().push(
-      state(2, "working", [{ task_id: "t1", awaiting_approval: false }]),
-    );
-    lastStream().push(workCard("t1", 0, "Searching"));
-    lastStream().push(entry(3, workFinished("t1", "cancelled")));
-    lastStream().push(state(3, "idle"));
+    const card = toolCallCard("t1-0", "Searching");
+    show(userItem("m1", 1), {
+      ...workItem("t1", 2, "cancelled"),
+      tool_data: [card],
+    });
+    lastStream().push(stateFrame(3, "idle"));
 
     const stopped = rows().at(-1);
     expect(stopped?.stopped).toBe(true);
     expect(stopped?.inProgress).toBe(false);
-    expect(stopped?.toolData).toHaveLength(1);
+    expect(stopped?.toolData).toEqual([card]);
   });
 
   it("words a failed reply that showed nothing by why it failed", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    lastStream().push(entry(1, userMessage("m1")));
-    lastStream().push(entry(2, reply("r1", "a1")));
-    lastStream().push(
-      entry(3, replySettled("r1", ["m1"], 1, null, "failed", "step_limit")),
-    );
+    show(userItem("m1", 1), {
+      ...replyItem("r1", 2, "", "failed"),
+      failure: "step_limit",
+    });
 
     expect(rows().at(-1)?.error).toBe(
       "GAIA took too many steps on this and stopped before answering.",
     );
   });
+
   it("shows a workflow run as the user's workflow card, then its reply", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    lastStream().push(entry(1, workflowFired("f1", "Morning brief")));
-    lastStream().push(entry(2, reply("r1", "a1", "Three meetings today.")));
-    lastStream().push(entry(3, replySettled("r1", ["f1"], 1)));
+    show(
+      {
+        kind: "workflow_fired",
+        id: "f1",
+        seq: 1,
+        at: AT,
+        workflow: {
+          id: "wf-f1",
+          title: "Morning brief",
+          description: "",
+          steps: [],
+        },
+      } as ScreenItem,
+      replyItem("r1", 2, "Three meetings today.", "answered"),
+    );
 
     expect(
       rows().map((row) => [row.isUser, row.text, row.firedWorkflow?.title]),
@@ -299,11 +294,16 @@ describe("the mobile chat rendered from the conversation's events", () => {
   it("shows a todo run as what woke it, then its write-up", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    lastStream().push(entry(1, todoWoke("w1")));
-    lastStream().push(entry(2, workStarted("t1", 1)));
-    lastStream().push(entry(3, workFinished("t1")));
-    lastStream().push(entry(4, reply("t1", "a1", "The invoice was paid.")));
-    lastStream().push(entry(5, replySettled("t1", ["w1"], 3)));
+    show(
+      {
+        kind: "todo_woke",
+        id: "w1",
+        seq: 1,
+        at: AT,
+        wake: { kind: "schedule", trigger_names: [], approval_summary: null },
+      } as ScreenItem,
+      replyItem("t1", 2, "The invoice was paid.", "answered"),
+    );
 
     expect(
       rows().map((row) => [row.isUser, row.text, row.todoRunWake?.kind]),
@@ -317,7 +317,7 @@ describe("the mobile chat rendered from the conversation's events", () => {
     release = openConversation(CONVERSATION);
     await flush();
     const card = toolCallCard("c1", "Checked the calendar");
-    lastStream().push(entry(1, notice("n1", "Call the bank", [card])));
+    show({ ...noticeItem("n1", 1, "Call the bank"), tool_data: [card] });
 
     expect(rows()).toMatchObject([
       { isUser: false, text: "Call the bank", toolData: [card] },
@@ -326,35 +326,31 @@ describe("the mobile chat rendered from the conversation's events", () => {
 });
 
 describe("following the events stream", () => {
-  it("reconnects after a dropped socket from before what can still change", async () => {
+  it("reconnects after a dropped socket", async () => {
     vi.useFakeTimers();
     release = openConversation(CONVERSATION);
     await vi.advanceTimersByTimeAsync(0);
     const first = lastStream();
-    first.push(entry(1, userMessage("m1")));
-    first.push(entry(2, reply("r1", "a1")));
-    first.push(entry(3, replySettled("r1", ["m1"], 1)));
-    first.push(entry(4, userMessage("m2")));
+    first.push(insertFrame(userItem("m1", 1)));
     first.drop(new Error("socket lost"));
 
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(server.streams).toHaveLength(2);
-    expect(lastStream().after).toBe(3);
+    expect(rows().map((row) => row.id)).toEqual(["m1"]);
   });
 
   it("reopens from the log when a delta skips an index", async () => {
     release = openConversation(CONVERSATION);
     await flush();
     const first = lastStream();
-    first.push(entry(1, userMessage("m1")));
-    first.push(replyText("a1", 0, "one "));
-    first.push(replyText("a1", 2, "three"));
+    first.push(insertFrame(userItem("m1", 1)));
+    first.push(replyDelta("a1", null, 0, "one "));
+    first.push(replyDelta("a1", null, 2, "three"));
     await flush();
 
     expect(first.aborted()).toBe(true);
     expect(server.streams).toHaveLength(2);
-    expect(lastStream().after).toBe(0);
   });
 
   it("stops following once released", async () => {
@@ -368,7 +364,7 @@ describe("following the events stream", () => {
 });
 
 describe("sending", () => {
-  it("shows the message before the server accepts it, and swaps it for the logged entry", async () => {
+  it("shows the message before the server accepts it, and swaps it for the logged item", async () => {
     server.notFound.add(CONVERSATION);
     release = openConversation(CONVERSATION);
     await flush();
@@ -385,7 +381,7 @@ describe("sending", () => {
     // The send woke the follower that was waiting on a 404.
     expect(server.streams).toHaveLength(1);
     expect(sendResult.calls[0]?.body.message_id).toBe("id-1");
-    lastStream().push(entry(1, userMessage("id-1", "book it")));
+    lastStream().push(insertFrame(userItem("id-1", 1, "book it")));
 
     expect(rows()).toHaveLength(1);
     expect(rows()[0]?.id).toBe("id-1");
@@ -456,12 +452,13 @@ describe("sending", () => {
     expect(rows()[0]?.sendFailed).toBe(true);
   });
 
-  it("retries a failed reply by asking the server to answer its message again", async () => {
+  it("retries a failed reply by asking the server to answer the message it names", async () => {
     release = openConversation(CONVERSATION);
     await flush();
-    lastStream().push(entry(1, userMessage("m1", "plan my day")));
-    lastStream().push(entry(2, reply("r1", "a1")));
-    lastStream().push(entry(3, replySettled("r1", ["m1"], 1, null, "failed")));
+    show(userItem("m1", 1, "plan my day"), {
+      ...replyItem("r1", 2, "", "failed"),
+      retry_target: "m1",
+    });
 
     await retryMessage(CONVERSATION, "r1");
 

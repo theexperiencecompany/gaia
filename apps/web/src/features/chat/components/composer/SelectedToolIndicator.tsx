@@ -10,7 +10,6 @@ import { useComposerUI } from "@/stores/composerStore";
 interface SelectedToolIndicatorProps {
   toolName: string | null;
   toolCategory?: string | null;
-  iconUrl?: string | null;
   onRemove?: () => void;
 }
 
@@ -29,7 +28,6 @@ const formatToolName = (toolName: string): string => {
 const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
   toolName,
   toolCategory,
-  iconUrl,
   onRemove,
 }) => {
   const { isSlashCommandDropdownOpen } = useComposerUI();
@@ -39,7 +37,7 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
   // the integration's iconUrl. Resolve it from the category (integration id) so
   // both the composer and the persisted user bubble render the same icon.
   const resolvedIconUrl =
-    iconUrl ?? integrations.find((i) => i.id === toolCategory)?.iconUrl ?? null;
+    integrations.find((i) => i.id === toolCategory)?.iconUrl ?? null;
 
   const onRemoveRef = useRef(onRemove);
   const isSlashCommandOpenRef = useRef(isSlashCommandDropdownOpen);
