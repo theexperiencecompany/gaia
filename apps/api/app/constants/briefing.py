@@ -127,7 +127,22 @@ MAX_BRIEF_CAPTION_CHARS: Final[int] = 148
 # The message is a text, not a wall: about 20 short lines on the busiest day.
 MAX_BRIEF_MESSAGE_CHARS: Final[int] = 2700
 # How many recent briefs' opening lines the model sees, so today's opens differently.
-RECENT_OPENINGS_SHOWN: Final[int] = 5
+RECENT_BRIEFS_RECALLED: Final[int] = 5
+#: Words that say how often something happens; the voice may use one only where a fact does.
+FREQUENCY_CLAIMS: Final[tuple[str, ...]] = (
+    "rare",
+    "rarely",
+    "seldom",
+    "unusual",
+    "unusually",
+    "usual",
+    "usually",
+    "typical",
+    "typically",
+    "for once",
+    "as always",
+    "once again",
+)
 # Voice attempts per brief: one mend of the last brief when its slots fail the facts (the
 # mend shows it what it wrote), then the run fails rather than ship it.
 MAX_VOICE_ATTEMPTS: Final[int] = 2

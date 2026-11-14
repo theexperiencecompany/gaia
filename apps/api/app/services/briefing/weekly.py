@@ -139,10 +139,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         voice, draft = await written_brief(
             user_id,
             build_weekly_voice_prompt(date_local=clock.date_str, blocks=blocks),
-            Writing(
-                values=facts.values,
-                lead=facts.lead,
-            ),
+            Writing(values=facts.values, lead=facts.lead, grounds=facts.block),
         )
     links = await links_in(user_id, voice.message, facts)
     drawn, undrawn = split_drawable(WEEKLY_FAMILY, laid.blocks)

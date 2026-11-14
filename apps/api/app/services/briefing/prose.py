@@ -5,7 +5,8 @@ back once with the problems named, and a second failure fails the run before any
 stored or sent.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import re
 
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
@@ -13,12 +14,14 @@ from pydantic_core import ErrorDetails
 from app.agents.llm.client import StructuredCallOptions, ainvoke_structured, metered_config
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import (
+    RecentLines,
     reader_line,
     voice_correction_note,
     voice_unreadable_note,
 )
 from app.constants.briefing import (
     BRIEF_VOICE_LABEL,
+    FREQUENCY_CLAIMS,
     MAX_VOICE_ATTEMPTS,
     hue_for_day,
 )
@@ -111,6 +114,10 @@ class Writing:
     #: The lead's fact, which the message refers to by a slot; None without a lead, or for a
     #: winback or wind-down note.
     lead: int | None
+    #: What recent briefs printed; a line of it said again is sent back.
+    recent: RecentLines = field(default_factory=RecentLines)
+    #: The facts the voice was shown; a claim of how often something happens must be among them.
+    grounds: str = ""
 
 
 _VOICED_FIELDS = ("headline", "lede", "caption", "message")
@@ -124,6 +131,49 @@ def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
             **{name: render_slots(getattr(voice, name), values, {}) for name in _VOICED_FIELDS},
         }
     )
+
+
+_FREQUENCY_RE = re.compile(rf"\b({'|'.join(FREQUENCY_CLAIMS)})\b", re.IGNORECASE)
+_NOT_A_WORD_RE = re.compile(r"[^\w\s]")
+
+
+def opening_line(message: str) -> str:
+    """Return a message's first non-blank line."""
+    return next((line.strip() for line in message.splitlines() if line.strip()), "")
+
+
+def _plain(line: str) -> tuple[str, ...]:
+    """Return a line as its words alone, so punctuation and case never hide a repeat."""
+    return tuple(_NOT_A_WORD_RE.sub(" ", line).casefold().split())
+
+
+def _printed_lines(draft: BriefVoice) -> dict[str, str]:
+    return {
+        "headline": draft.headline,
+        "lede": draft.lede,
+        "caption": draft.caption,
+        "message's opening": opening_line(draft.message),
+    }
+
+
+def _repeat_problems(draft: BriefVoice, recent: RecentLines) -> list[str]:
+    said = {_plain(line) for line in recent.every()}
+    return [
+        f"the {name} repeats a recent brief's line ({line!r}); write today's in fresh words"
+        for name, line in _printed_lines(draft).items()
+        if _plain(line) in said
+    ]
+
+
+def _frequency_problems(draft: BriefVoice, grounds: str) -> list[str]:
+    grounded = {claim.casefold() for claim in _FREQUENCY_RE.findall(grounds)}
+    return [
+        f"the {name} says how often something happens ({claim.casefold()!r}) and no fact says "
+        "so; say only what today's facts show"
+        for name, line in _printed_lines(draft).items()
+        for claim in _FREQUENCY_RE.findall(line)
+        if claim.casefold() not in grounded
+    ]
 
 
 def _length_problems(exc: ValidationError) -> list[str]:
@@ -148,9 +198,11 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
     if problems:
         return problems
     try:
-        return _draft(voice, writing.values)
+        draft = _draft(voice, writing.values)
     except ValidationError as exc:
         return _length_problems(exc)
+    said = _repeat_problems(draft, writing.recent) + _frequency_problems(draft, writing.grounds)
+    return said or draft
 
 
 async def written_brief(

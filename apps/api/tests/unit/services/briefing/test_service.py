@@ -1677,7 +1677,7 @@ def _wrote(message: str) -> SimpleNamespace:
 
 
 class TestWhatTheWriterIsShown:
-    async def test_the_model_sees_how_recent_briefs_opened(self, world: World) -> None:
+    async def test_the_model_sees_what_recent_briefs_printed(self, world: World) -> None:
         def brief(message: str | None) -> BriefingModel:
             payload = BriefingPayload(
                 kicker="K",
@@ -1696,8 +1696,10 @@ class TestWhatTheWriterIsShown:
         await daily.run_daily_briefing(_USER)
 
         world.recent.assert_awaited_once_with(_USER, limit=5, kind="daily")
-        assert "HOW YOUR LAST BRIEFS OPENED" in _prompt(world)
-        assert "- Priya replied overnight.\n" in _prompt(world)
+        assert (
+            "Headlines:\n- h\n- h\nLedes:\n- l\n- l\nCaptions:\n- c\n- c\n"
+            "Message openings:\n- Priya replied overnight.\n"
+        ) in _prompt(world)
 
 
 class TestOneSubjectIsOneItem:

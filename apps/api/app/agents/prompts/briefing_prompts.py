@@ -5,7 +5,7 @@ the code-built facts. The model writes only the voice: headline, lede, caption, 
 message, as one structured answer. The day-zero hello is still a silent agent turn.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.agents.prompts.comms_prompts import GAIA_PERSONA, GAIA_VOICE
 from app.constants.briefing import (
@@ -178,6 +178,10 @@ Never "anything else you need?", never two questions, and skip it entirely when
 nothing needs deciding. ONE question across the WHOLE brief: if the goal question below
 applies, that is your one ask, nothing else gets asked.
 
+NEVER CLAIM HOW OFTEN: never say something is rare, unusual, usual or happening again
+unless a fact you were given says so; you see today, not their history. Say a thing once:
+a lede that restates its own point ("clear today. The day is open.") is padding.
+
 NEVER COUNT ZEROS: name what exists, never tally what does not. "0 items
 waiting, 0 done, 0 in progress" is a status report, not a person talking; leave
 out anything with no count instead of saying it is zero.
@@ -264,11 +268,37 @@ def reader_line(first_name: str | None) -> str:
     )
 
 
-def _recent_openings_block(openings: list[str]) -> str:
-    if not openings:
+@dataclass(frozen=True)
+class RecentLines:
+    """What the last few daily briefs printed, newest first; today's brief reuses none of it."""
+
+    headlines: list[str] = field(default_factory=list)
+    ledes: list[str] = field(default_factory=list)
+    captions: list[str] = field(default_factory=list)
+    #: The first line of each message.
+    openings: list[str] = field(default_factory=list)
+
+    def every(self) -> list[str]:
+        """Return every line, whatever field printed it."""
+        return [*self.headlines, *self.ledes, *self.captions, *self.openings]
+
+
+def _recent_lines_block(recent: RecentLines) -> str:
+    groups = (
+        ("Headlines", recent.headlines),
+        ("Ledes", recent.ledes),
+        ("Captions", recent.captions),
+        ("Message openings", recent.openings),
+    )
+    listed = [
+        f"{name}:\n" + "\n".join(f"- {line}" for line in lines) for name, lines in groups if lines
+    ]
+    if not listed:
         return ""
-    listed = "\n".join(f"- {line}" for line in openings)
-    return f"\n## HOW YOUR LAST BRIEFS OPENED (open today's message differently)\n{listed}\n"
+    return (
+        "\n## WHAT YOUR LAST BRIEFS SAID (say today's in fresh words: never reuse one of these "
+        "lines, or open the same way)\n" + "\n".join(listed) + "\n"
+    )
 
 
 _GOAL_QUESTION = """
@@ -316,11 +346,11 @@ def build_briefing_voice_prompt(
     date_local: str,
     blocks: VoicePromptBlocks,
     situation: VoiceSituation,
-    recent_openings: list[str],
+    recent: RecentLines,
 ) -> str:
     """Voice pass over code-built facts: the model narrates, never testifies.
 
-    recent_openings are the first lines of the last few messages, so today's opens differently.
+    recent is what the last few briefs printed, so today's says it in fresh words.
     """
     wind_down_note = ""
     if situation.wind_down == "warn":
@@ -407,7 +437,7 @@ actually changed in response.
 {blocks.goal}
 {setup_block}{winback_note}{first_note}{first_week_note}{cadence_note}{wind_down_note}
 {goal_note}
-{_recent_openings_block(recent_openings)}
+{_recent_lines_block(recent)}
 {_MESSAGE_VOICE}
 - On a full day fold an app's routine items into one line rather than run long.
 
