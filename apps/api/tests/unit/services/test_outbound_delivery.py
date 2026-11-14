@@ -653,3 +653,14 @@ class TestPublishConversationWake:
 
         assert result == od.OutboundResult.SKIPPED
         publisher.assert_not_awaited()
+
+    async def test_a_wake_tells_the_bot_to_follow_from_the_sessions_cursor(self) -> None:
+        publisher = AsyncMock()
+        with patch.object(
+            od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+        ):
+            await od.publish_conversation_wake(_session("telegram", BotDelivery(delivered_seq=3)))
+
+        body = json.loads(publisher.publish_outbound.await_args.args[1])
+        assert (body["destination_id"], body["follow"]["conversation_id"]) == ("556677", "conv-1")
+        assert body["follow"]["after_seq"] == 3
