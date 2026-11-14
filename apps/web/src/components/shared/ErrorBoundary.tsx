@@ -1,9 +1,9 @@
 "use client";
 
 import { ArrowLeft01Icon, Home01Icon } from "@icons";
-import * as Sentry from "@sentry/nextjs";
 import React from "react";
 import { track } from "@/lib/analytics";
+import { reportToSentry } from "@/lib/observability/reportToSentry";
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -48,7 +48,7 @@ class ErrorBoundary extends React.Component<
 
     // Full diagnostics go to the console and Sentry; error.message/stack can
     // carry user content, so analytics only gets the stable error type.
-    Sentry.captureException(error, {
+    reportToSentry(error, {
       tags: scope ? { error_boundary: scope } : undefined,
       extra: { componentStack: errorInfo.componentStack },
     });
