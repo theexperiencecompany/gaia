@@ -1732,3 +1732,18 @@ def test_a_replacement_run_with_no_checks_yet_keeps_the_snapshot_pending(wire) -
     report, _ = ci_remote.snapshot_once(repo, 7, "feat/thing", with_stack=False)
 
     assert report["counts"]["pending"] == 1
+
+
+def test_a_replacement_whose_visible_checks_finished_stays_pending_until_it_completes(wire) -> None:
+    """Jobs behind needs: have no check run yet, so finished visible checks don't settle the run."""
+    finished = dict(PASSED_CHECK, html_url="https://github.com/o/r/actions/runs/100/job/1001")
+    fake = wire(FakeGh(checks=[_gate(98, "failure"), finished]))
+    fake.workflow_runs = [
+        {"id": 98, "workflow_id": 1, "status": "completed", "conclusion": "cancelled"},
+        {"id": 100, "workflow_id": 1, "status": "in_progress", "conclusion": None},
+    ]
+    repo = ci_remote.Repo("o", "r", 10)
+
+    report, _ = ci_remote.snapshot_once(repo, 7, "feat/thing", with_stack=False)
+
+    assert report["counts"]["pending"] == 1

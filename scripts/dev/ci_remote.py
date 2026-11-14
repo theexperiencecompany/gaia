@@ -1382,8 +1382,8 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
     checks = [c for c in normalize(runs + status_checks(statuses)) if c["run_id"] not in superseded]
     truncated = runs_truncated or statuses_truncated
     counts = {k: sum(1 for c in checks if c["status"] == k) for k in COUNT_KEYS}
-    # A replacement GitHub has queued but given no jobs yet is pending, not absent.
-    counts["pending"] += len(in_flight - {c["run_id"] for c in checks})
+    # A replacement still in flight is pending until it completes; jobs behind needs: have no check yet.
+    counts["pending"] += len(in_flight - {c["run_id"] for c in checks if c["status"] == "pending"})
     verdicts, shards, tails, sources = diagnose(repo, checks)
 
     stack_payload = fetch_stack(repo) if with_stack else None
