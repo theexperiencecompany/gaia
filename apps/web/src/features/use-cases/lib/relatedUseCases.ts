@@ -19,11 +19,11 @@ function primaryCategory(useCase: Placed | undefined): string {
 }
 
 /**
- * The curated use cases a use-case page links as related. The list starts after
- * the current one, so every use case is linked from its neighbours instead of
- * all pages pointing at the same most-run few. Its own category fills the first
- * third, the rest come from other topics so one topic does not repeat down the page.
- * A community workflow is not in the list, so it gets the featured ones first.
+ * The use cases a use-case page links as related, the curated ones then the
+ * community's. The list starts after the current one, so every use case is linked
+ * from its neighbours instead of all pages pointing at the same most-run few. Its
+ * own category fills the first third, the rest come from other topics so one topic
+ * does not repeat down the page. A page not in the list gets the first ones.
  */
 export function relatedUseCases<T extends Placed>(
   current: Pick<Placed, "slug">,

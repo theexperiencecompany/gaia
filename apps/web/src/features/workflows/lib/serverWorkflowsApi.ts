@@ -1,7 +1,7 @@
 import { serverApi, serverData, serverDataOrNull } from "@/lib/api/server";
 
 /** The community endpoint pages at most this many workflows per request. */
-const COMMUNITY_PAGE_SIZE = 100;
+export const COMMUNITY_PAGE_SIZE = 100;
 
 /** The curated explore workflows; empty with no backend configured. */
 export async function getExploreWorkflowsServer(limit: number) {
@@ -13,8 +13,8 @@ export async function getExploreWorkflowsServer(limit: number) {
   return serverData(result).workflows;
 }
 
-/** One page of community workflows. */
-async function getCommunityWorkflowsServer(limit: number, offset = 0) {
+/** One page of community workflows, newest first. */
+export async function getCommunityWorkflowsServer(limit: number, offset = 0) {
   const client = serverApi();
   if (!client) return { workflows: [], total: 0 };
   const result = await client.GET("/api/v1/workflows/community", {

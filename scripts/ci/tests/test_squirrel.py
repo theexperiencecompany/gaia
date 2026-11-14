@@ -269,6 +269,7 @@ def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
         _row("/a", "content/word-count", "word-count"),
         _row("/contact", "content/word-count", "word-count"),
         _row("/marketplace/googlesheets", "content/placeholder-contact", "placeholder-contact", [{"id": "email"}]),
+        _row("/marketplace/googlesheets", "content/keyword-stuffing", "keyword-stuffing", [{"id": "google"}]),
     ],
 )  # fmt: skip
 def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -> None:
@@ -413,6 +414,16 @@ def test_a_sample_does_not_judge_a_rule_that_needs_the_whole_site(tmp_path: Path
     _ratchet(tmp_path, rows, baseline, "--sample", "--update")
     assert _lines(tmp_path) == ["/b\tlinks/orphan-pages/orphan-pages"]
     assert _ratchet(tmp_path, rows, baseline).returncode == 1
+
+
+def test_a_sample_does_not_judge_a_title_against_only_its_own_pages(tmp_path: Path) -> None:
+    rows = [
+        _row(
+            "", "content/title-pattern-outlier", "title-pattern-outlier", [{"id": "brand-missing:"}]
+        )
+    ]
+    assert _ratchet(tmp_path, rows, "", "--sample", "--strict").returncode == 0
+    assert _ratchet(tmp_path, rows, "").returncode == 1
 
 
 def test_a_slow_response_counts_only_through_the_score(tmp_path: Path) -> None:

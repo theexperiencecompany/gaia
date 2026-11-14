@@ -10,6 +10,7 @@ This directory contains all blog posts as MDX/Markdown files.
 ```mdx
 ---
 title: "Your Blog Post Title"
+description: "What the post covers, in 120 to 160 characters"
 date: "2025-11-02"
 authors:
   - name: "Aryan"
@@ -40,6 +41,7 @@ Write your blog post content here using Markdown syntax.
 ## Frontmatter Fields
 
 - **title** (required): The title of your blog post
+- **description** (required): The search-result description, 120 to 160 characters (`src/config/seoSnippet.json`)
 - **date** (required): Publication date in YYYY-MM-DD format
 - **authors** (required): Array of author objects with name, role, and avatar
 - **category** (required): Blog post category (e.g., "Product", "Engineering", "AI", etc.)

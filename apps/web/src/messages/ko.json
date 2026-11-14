@@ -79,7 +79,15 @@
     "category_page_title": "{category} 비교",
     "category_page_subtitle": "{category} 도구 {count}개와 GAIA를 항목별로 비교해 각 도구가 어울리는 곳을 보여 줍니다.",
     "category_meta_title": "{category} 도구 비교: GAIA와 {count}개 도구를 항목별로 비교",
-    "category_meta_description": "{category} 도구 {count}개와 GAIA를 기능, 가격, 어울리는 용도별로 비교합니다. 나에게 맞는 도구를 고르는 데 참고하세요. 각 도구의 강점과 GAIA가 먼저 나서서 돕는 상황도 함께 확인할 수 있습니다."
+    "category_meta_description": "{category} 도구 {count}개와 GAIA를 기능, 가격, 어울리는 용도별로 비교합니다. 나에게 맞는 도구를 고르는 데 참고하세요. 각 도구의 강점과 GAIA가 먼저 나서서 돕는 상황도 함께 확인할 수 있습니다.",
+    "category_ai_assistants": "AI 어시스턴트",
+    "category_automation": "자동화",
+    "category_task_management": "작업 관리",
+    "category_project_management": "프로젝트 관리",
+    "category_calendar_scheduling": "캘린더 & 일정 관리",
+    "category_email": "이메일",
+    "category_notes_knowledge": "노트 & 지식",
+    "category_other": "기타"
   },
   "automate": {
     "breadcrumb": "자동화",
