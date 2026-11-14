@@ -2,9 +2,11 @@
 
 from datetime import UTC, datetime
 import json
+from typing import Annotated
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import InjectedToolCallId, StructuredTool, tool
+from langgraph.prebuilt import InjectedState
 from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
@@ -289,7 +291,22 @@ class TestArgsSchemaOf:
         assert schema["required"] == cleaned
         assert schema["properties"]["required"]["required"] == cleaned
 
+    def test_args_the_runtime_injects_are_not_shown_to_the_model(self) -> None:
+        @tool
+        def send(
+            to: str,
+            tool_call_id: Annotated[str, InjectedToolCallId],
+            state: Annotated[dict[str, object], InjectedState],
+        ) -> str:
+            """Send an email."""
+            return to
+
+        assert _args_schema_of(send) == {
+            "type": "object",
+            "properties": {"to": {"type": "string"}},
+            "required": ["to"],
+        }
+
     def test_a_tool_without_a_schema_takes_no_args(self) -> None:
-        tool = _catalog_tool(None)
-        tool.args_schema = None
+        tool = StructuredTool.from_function(func=lambda: None, name="PING", description="Ping.")
         assert _args_schema_of(tool) == {"type": "object", "properties": {}}
