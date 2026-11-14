@@ -420,6 +420,7 @@ export const footerSections: LinkSection[] = [
     links: [
       { label: "Features", href: "/features" },
       { label: "Download", href: "/download" },
+      { label: "Self-Host CLI", href: "/cli" },
       { label: "Use Cases", href: "/use-cases" },
       { label: "Marketplace", href: "/marketplace" },
       { label: "Bots", href: "/bots" },

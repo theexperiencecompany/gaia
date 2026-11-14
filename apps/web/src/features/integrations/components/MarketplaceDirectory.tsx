@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { HubPagination } from "@/components/seo/HubPageNav";
 import { MARKETPLACE_PATH } from "@/features/integrations/lib/marketplaceDirectoryPages";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import type { CommunityIntegration } from "@/features/integrations/types";
 import type { HubPage, HubSection } from "@/lib/hubPagination";
 
@@ -24,7 +25,7 @@ function DirectoryColumn({
         {section.items.map((integration) => (
           <li key={integration.slug} className="mb-2 break-inside-avoid">
             <Link
-              href={`/marketplace/${integration.slug}`}
+              href={marketplacePath(integration.slug)}
               className="text-zinc-400 hover:text-white"
             >
               {integration.name}

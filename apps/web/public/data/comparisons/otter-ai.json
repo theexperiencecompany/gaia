@@ -17,21 +17,21 @@
     "meeting transcription alternative",
     "source-available otter ai alternative"
   ],
-  "intro": "Otter.ai established itself as the go-to tool for meeting transcription, allowing professionals to stop furiously typing notes and instead focus on the conversation. Its AI OtterPilot can join Zoom, Google Meet, and Microsoft Teams calls automatically, generating real-time transcripts, summaries, and a list of suggested action items. For teams drowning in back-to-back meetings, this was a meaningful productivity improvement when it launched.\n\nThe limitation becomes apparent in what Otter.ai does not do with those transcripts. Action items identified by Otter live inside Otter — you still need to manually move them into Todoist, Jira, Asana, or wherever your team tracks work. Follow-up emails still need to be written manually. The Notion page that should capture the meeting decision still needs to be updated by hand. Otter transcribes brilliantly; it stops there.\n\nGAIA is designed to close that gap. It treats meeting content as a trigger for cross-tool action. When a meeting ends, GAIA can parse the discussion, create tasks in the right project management tool with appropriate assignees and deadlines, draft the follow-up email to stakeholders, and update the relevant Notion or documentation page — all without you opening a single additional app. The meeting outcome becomes real work automatically.\n\nBeyond post-meeting automation, GAIA manages the full meeting lifecycle. Before each calendar event, GAIA proactively generates a briefing document: who you are meeting, relevant email threads, outstanding action items from your last interaction, and related documents. This preparation work — which professionals typically do manually by opening five different tabs — takes GAIA seconds.\n\nFor users who specifically need high-quality, real-time transcription during live calls, Otter.ai's core capability is strong. But for professionals who want an AI that manages their entire meeting workflow — preparation, action items, follow-ups, and integration with their broader tool stack — GAIA provides a fundamentally more complete solution at a comparable price point, with the added option of self-hosting for complete data privacy.",
+  "intro": "Otter.ai established itself as the go-to tool for meeting transcription, allowing professionals to stop furiously typing notes and instead focus on the conversation. Its AI OtterPilot can join Zoom, Google Meet, and Microsoft Teams calls automatically, generating real-time transcripts, summaries, and a list of suggested action items. For teams drowning in back-to-back meetings, this was a meaningful productivity improvement when it launched.\n\nThe limitation becomes apparent in what Otter.ai does not do with those transcripts. Action items identified by Otter live inside Otter — you still need to manually move them into Todoist, Jira, Asana, or wherever your team tracks work. Follow-up emails still need to be written manually. The Notion page that should capture the meeting decision still needs to be updated by hand. Otter transcribes brilliantly; it stops there.\n\nGAIA is designed to close that gap. It treats meeting content as a trigger for cross-tool action. When a meeting ends, GAIA can parse the discussion, create tasks in the right project management tool with appropriate assignees and deadlines, draft the follow-up email to stakeholders, and update the relevant Notion or documentation page — all without you opening a single additional app. The meeting outcome becomes real work automatically.\n\nBeyond post-meeting automation, GAIA manages the full lifecycle. Before each calendar event, GAIA proactively generates a briefing document: who you are meeting, relevant email threads, outstanding action items from your last interaction, and related documents. This preparation work — which professionals typically do manually by opening five different tabs — takes GAIA seconds.\n\nFor users who specifically need high-quality, real-time transcription during live calls, Otter.ai's core capability is strong. But for professionals who want an AI that manages their entire meeting workflow — preparation, action items, follow-ups, and integration with their broader tool stack — GAIA provides a fundamentally more complete solution at a comparable price point, with the added option of self-hosting for complete data privacy.",
   "rows": [
     {
       "feature": "Core approach",
-      "gaia": "Full meeting lifecycle AI: pre-meeting prep, post-meeting task creation, follow-up automation, and cross-tool integration",
+      "gaia": "Full lifecycle AI: pre-meeting prep, post-meeting task creation, follow-up automation, and cross-tool integration",
       "competitor": "Meeting transcription and note-taking AI that captures and summarizes what was said"
     },
     {
       "feature": "Meeting transcription",
-      "gaia": "Processes meeting transcripts and summaries to extract actions; integrates with meeting recordings",
+      "gaia": "Processes meeting transcripts and summaries to extract actions; integrates with recordings",
       "competitor": "Real-time transcription with speaker identification, live captions, and keyword highlights"
     },
     {
       "feature": "Pre-meeting briefings",
-      "gaia": "Auto-generates briefing documents before each meeting from email history, prior meeting notes, and connected tools",
+      "gaia": "Auto-generates briefing documents before each meeting from email history, prior notes, and connected tools",
       "competitor": "No pre-meeting preparation features"
     },
     {
@@ -62,7 +62,7 @@
     {
       "feature": "Memory and context",
       "gaia": "Graph-based persistent memory connecting meetings, people, tasks, and projects across all integrated tools",
-      "competitor": "Stores all meeting transcripts and enables keyword search across meeting history"
+      "competitor": "Stores all meeting transcripts and makes them keyword-searchable"
     },
     {
       "feature": "Source-available / self-hosting",
@@ -85,7 +85,7 @@
   ],
   "competitorAdvantages": [
     "Superior real-time transcription accuracy with speaker diarization across all major meeting platforms",
-    "Long-running meeting search and archive: easily find what was said in any past meeting",
+    "Long-running meeting search and archive: easily find what was said in any past conversation",
     "OtterPilot auto-joins meetings and takes notes without any manual setup per meeting"
   ],
   "verdict": "Otter.ai is a specialized and excellent meeting transcription tool that excels at capturing what was said. GAIA is the right choice for professionals who want AI that acts on what was said — creating tasks, drafting emails, updating documents, and managing the full workflow before and after every meeting.",

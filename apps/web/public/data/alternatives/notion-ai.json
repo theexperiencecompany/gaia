@@ -24,7 +24,7 @@
     "self-hosted notion ai alternative",
     "notion ai alternative {{CURRENT_YEAR}}"
   ],
-  "whyPeopleLook": "Notion AI brought AI writing, summarization, and Q&A into the Notion workspace, but it remains siloed within Notion. It cannot see your unread emails, does not know about your upcoming meetings, and cannot create tasks or schedule events on your behalf. To get unlimited Notion AI, you now need the paid Business plan — and you still end up with an AI that only works inside one app. Users looking for a Notion AI alternative typically want an assistant that is genuinely proactive and connected across their entire digital workflow, not just their Notion workspace.",
+  "whyPeopleLook": "Notion AI brought AI writing, summarization, and Q&A into the Notion workspace, but it remains siloed there. It cannot see your unread emails, does not know about your upcoming meetings, and cannot create tasks or schedule events on your behalf. To get unlimited Notion AI, you now need the paid Business plan — and you still end up with an AI that only works inside one app. Users looking for a Notion AI alternative typically want an assistant that is genuinely proactive and connected across their entire digital workflow, not just one workspace.",
   "gaiaFitScore": 4,
   "gaiaReplaces": [
     "AI-powered Q&A over your notes and knowledge base via semantic memory",
@@ -68,7 +68,7 @@
     {
       "feature": "Core approach",
       "gaia": "Assistant across Gmail, Calendar, Todoist, and the rest of your tools, not intelligence confined to one workspace",
-      "competitor": "In-workspace AI assistant embedded in the Notion editor: writes, summarises, translates, and autofills databases on demand inside Notion"
+      "competitor": "In-workspace AI assistant embedded in the Notion editor: writes, summarises, translates, and autofills databases on demand"
     },
     {
       "feature": "Email management",
@@ -83,7 +83,7 @@
     {
       "feature": "AI agents",
       "gaia": "Agents that execute across external tools from email to tasks, not only across pages in one app",
-      "competitor": "Autonomous agents (since Notion 3.0) that execute multi-step tasks across Notion pages: powerful within Notion but isolated to the workspace"
+      "competitor": "Autonomous agents (since Notion 3.0) that execute multi-step tasks across Notion pages: powerful there but isolated to the workspace"
     },
     {
       "feature": "Proactive behavior",
@@ -93,7 +93,7 @@
     {
       "feature": "Integrations",
       "gaia": "AI features extend across every connected tool, not fenced inside one ecosystem",
-      "competitor": "Operates within Notion's ecosystem; external integrations are available in Notion but AI features do not extend across those external tools"
+      "competitor": "Operates within Notion's ecosystem; external integrations exist, but AI features do not extend across those tools"
     },
     {
       "feature": "Task management",
@@ -113,7 +113,7 @@
     {
       "feature": "Memory and context",
       "gaia": "Graph-based memory connecting context across all tools automatically, beyond one workspace",
-      "competitor": "AI context is scoped to your Notion workspace: deep knowledge of Notion content but no awareness of external emails, calendar, or tool activity"
+      "competitor": "AI context is scoped to your Notion workspace: deep knowledge of its content but no awareness of external emails, calendar, or tool activity"
     }
   ]
 }

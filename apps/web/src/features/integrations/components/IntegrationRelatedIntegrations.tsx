@@ -1,77 +1,48 @@
-"use client";
-
-import { useQuery } from "@tanstack/react-query";
-
-import { integrationsApi } from "../api/integrationsApi";
+import { SiteLink } from "@/components/seo/SiteLink";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import type { CommunityIntegration } from "../types";
-import { PublicIntegrationCard } from "./PublicIntegrationCard";
 
 interface IntegrationRelatedIntegrationsProps {
-  /** Slug of the integration currently being viewed (excluded from results). */
-  readonly currentSlug: string;
-  /** Category used to find similar integrations. */
-  readonly category: string;
-  /** Max number of related integrations to show. */
-  readonly limit?: number;
-  /** Server-fetched siblings; when present no client fetch runs. */
-  readonly initialIntegrations?: CommunityIntegration[];
+  /** Server-picked by relatedIntegrations, so the links are in the SSR HTML. */
+  readonly integrations: readonly CommunityIntegration[];
 }
 
-function getCategoryLabel(category: string): string {
-  return category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
-}
-
-/**
- * "Related integrations" section for a marketplace detail page — same-category
- * integrations rendered as PublicIntegrationCard (real <Link> anchors). Mirrors
- * IntegrationRelatedWorkflows; gives every detail page contextual internal
- * links to its siblings so they aren't orphaned.
- */
+/** "Related integrations" on a marketplace detail page: a light row per integration, icon, name and one line of what it does. */
 export function IntegrationRelatedIntegrations({
-  currentSlug,
-  category,
-  limit = 6,
-  initialIntegrations,
+  integrations,
 }: IntegrationRelatedIntegrationsProps) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["related-integrations", category, currentSlug, limit],
-    queryFn: () =>
-      integrationsApi.getCommunityIntegrations({
-        category,
-        sort: "popular",
-        limit: limit + 1,
-      }),
-    staleTime: 5 * 60 * 1000,
-    enabled: !initialIntegrations && !!category,
-  });
-
-  if (!initialIntegrations && isLoading) return null;
-
-  const integrations = (initialIntegrations ?? data?.integrations ?? [])
-    .filter((integration) => integration.slug !== currentSlug)
-    .slice(0, limit);
-
   if (integrations.length === 0) return null;
 
   return (
-    <section className="space-y-6 rounded-3xl bg-zinc-900/50 p-8 backdrop-blur-md">
-      <div>
-        <h2 className="mb-2 text-2xl font-medium text-foreground">
-          Related integrations
-        </h2>
-        <p className="text-sm leading-relaxed text-zinc-400">
-          More {getCategoryLabel(category)} integrations you can connect to
-          GAIA.
-        </p>
-      </div>
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+    <section className="space-y-4 rounded-3xl bg-zinc-900/50 p-8 backdrop-blur-md">
+      <h2 className="text-2xl font-medium text-foreground">
+        Related integrations
+      </h2>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {integrations.map((integration) => (
-          <PublicIntegrationCard
-            key={integration.integrationId}
-            integration={integration}
-          />
+          <li key={integration.integrationId}>
+            <SiteLink
+              href={marketplacePath(integration.slug)}
+              className="flex h-full items-start gap-3 rounded-2xl bg-zinc-800 p-3 transition-colors hover:bg-zinc-700/60"
+            >
+              {getToolCategoryIcon(
+                integration.integrationId,
+                { size: 20, width: 20, height: 20, showBackground: false },
+                integration.iconUrl,
+              )}
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-zinc-100">
+                  {integration.name}
+                </span>
+                <span className="line-clamp-2 text-xs text-zinc-400">
+                  {integration.description}
+                </span>
+              </span>
+            </SiteLink>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   );
 }

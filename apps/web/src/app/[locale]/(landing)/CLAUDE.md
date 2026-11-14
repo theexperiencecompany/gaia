@@ -39,7 +39,7 @@ This applies to both static `export const metadata` objects and dynamic `generat
 **Title formatting:**
 - Lead with the most descriptive keyword, not the brand name
 - Use a colon (not a pipe `|`, never an em dash) to separate primary topic from subtitle: `AI Chief of Staff: Your Proactive AI That Runs Your Day`
-- 30–60 characters as rendered (CJK characters count double toward the 30): the `titleLength` range in `src/config/seoSnippet.json`, which `generatePageMetadata` fits to and `marketing-meta-length.test.ts` enforces
+- 30–60 characters as rendered, counted as raw characters in every locale (CJK included, as the post-deploy audit counts them): the `titleLength` range in `src/config/seoSnippet.json`, which `generatePageMetadata` fits to and `marketing-meta-length.test.ts` enforces
 - No trailing punctuation
 - A translated page has its own title and description in every locale; the same test fails when two locales of one page share either
 

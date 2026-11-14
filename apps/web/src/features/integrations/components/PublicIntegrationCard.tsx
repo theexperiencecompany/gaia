@@ -14,8 +14,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import { isPrivateBlobUrl } from "@/lib/privateBlob";
-
 import type { CommunityIntegration } from "../types";
 
 function formatCloneCount(count: number): string {
@@ -95,7 +95,7 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
   integration,
 }) => {
   return (
-    <Link href={`/marketplace/${integration.slug}`}>
+    <Link href={marketplacePath(integration.slug)}>
       <div className="group relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70 transition-colors select-none cursor-pointer hover:bg-zinc-700/50">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 aspect-square shrink-0 items-center justify-center rounded-xl p-0">
