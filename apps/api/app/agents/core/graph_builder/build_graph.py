@@ -48,6 +48,7 @@ from app.agents.tools.subagent_control_tool import (
     message_subagent,
 )
 from app.agents.tools.todo_tools import create_todo_tools
+from app.agents.tools.weather_tool import get_weather
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.constants.agents import EXECUTOR_SPAWN_EXCLUDED_TOOLS
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
@@ -302,6 +303,7 @@ def comms_tools() -> dict[str, BaseTool]:
         "search_public_workflows": search_public_workflows,
         web_search_tool.name: web_search_tool,
         fetch_webpages.name: fetch_webpages,
+        get_weather.name: get_weather,
         **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
     }
 

@@ -17,6 +17,7 @@ from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.constants.memory import ReconcileOutcome
 from app.memory.ingestion import RetainedMemory
 from app.models.integration_models import UserIntegrationCapabilities
+from app.models.integrations.weather import WeatherLocation, WeatherReport
 from app.models.memory_models import MemoryEntry
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 
@@ -393,3 +394,42 @@ class TestCommsAgentFlow:
             "retain_single must be called with content 'User likes dark mode'. "
             f"Actual call args: {call_args_str}"
         )
+
+    async def test_weather_question_answered_with_weather_card(self):
+        tool_call = {
+            "name": "get_weather",
+            "args": {"location": "Mumbai,IN"},
+            "id": "call_get_weather_001",
+            "type": "tool_call",
+        }
+        fake_llm = create_fake_llm_with_tool_calls([tool_call, "Carry an umbrella."])
+        report = WeatherReport(
+            forecast=[],
+            location=WeatherLocation(city="Mumbai", country="IN", region="Maharashtra"),
+            main={"temp": 29.5},
+        )
+        patches = _common_patches(_make_chroma_store_mock())
+        custom_chunks: list[object] = []
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            patches[6],
+            patch("app.agents.tools.weather_tool.user_weather", new=AsyncMock(return_value=report)),
+        ):
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
+                async for chunk in graph.astream(
+                    {"messages": [HumanMessage(content="What's the weather in Mumbai?")]},
+                    config=_thread_config(),
+                    stream_mode="custom",
+                ):
+                    custom_chunks.append(chunk)
+
+        cards = [c for c in custom_chunks if isinstance(c, dict) and "weather_data" in c]
+        assert len(cards) == 1
+        assert cards[0]["location"] == "Mumbai,IN"
+        assert cards[0]["weather_data"]["location"]["city"] == "Mumbai"
+        assert cards[0]["weather_data"]["main"]["temp"] == 29.5
