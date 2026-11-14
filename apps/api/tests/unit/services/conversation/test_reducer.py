@@ -832,9 +832,19 @@ def test_a_decision_ends_work_parked_on_it_for_the_work_it_starts(
     assert result.effects == ()
 
 
-def test_an_approval_nobody_decided_leaves_parked_work_for_its_finish_to_report() -> None:
+def test_a_withdrawn_approval_releases_parked_work_to_the_run_it_resumes() -> None:
+    """Regression: withdrawn parked work stayed live for a failed finish that collided with its own, then read as lost."""
     entry = ApprovalDecided(
         id="d", approval_id="ap1", outcome=ApprovalOutcome.WITHDRAWN, decider=None
+    )
+    result = _accept(_parked(), 7, entry)
+    assert result.state.work == ()
+    assert result.effects == ()
+
+
+def test_a_cancelled_approval_leaves_parked_work_for_its_finish_to_report() -> None:
+    entry = ApprovalDecided(
+        id="d", approval_id="ap1", outcome=ApprovalOutcome.CANCELLED, decider=None
     )
     state = _accept(_parked(), 7, entry).state
     assert [(item.task_id, item.pending_approvals) for item in state.work] == [("t1", ())]

@@ -34,8 +34,14 @@ from app.models.conversation_log_models import (
 from shared.py.approvals import ApprovalOutcome
 
 #: Decisions the decision path hands on: it starts the work that carries them out or reports the skip.
+#: A withdrawal is made by a live run (a revoke) or delivered to one (the sweep's, for a lost request).
 CONTINUED_DECISIONS = frozenset(
-    {ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED, ApprovalOutcome.EXPIRED}
+    {
+        ApprovalOutcome.APPROVED,
+        ApprovalOutcome.DENIED,
+        ApprovalOutcome.EXPIRED,
+        ApprovalOutcome.WITHDRAWN,
+    }
 )
 
 

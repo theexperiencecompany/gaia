@@ -146,6 +146,8 @@ from app.services.conversation import (
     event_stream,
     mongo_log,
     step as step_module,
+    step_run,
+    step_writes,
     sweeper,
 )
 from app.services.conversation.bot_followers import list_active_bot_conversations
@@ -897,7 +899,7 @@ def _marking_reply_opens(
     mongo_db: AsyncIOMotorDatabase[dict[str, object]], trips: list[float], marks: list[int]
 ) -> Iterator[None]:
     """Just before the turn's reply is appended, note the Redis trips so far and leave a mark in Mongo's profile."""
-    opening_reply = step_module._opening_reply
+    opening_reply = step_writes.opening_reply
 
     async def stamp_then_mark(*args: Any) -> Reply:
         reply = await opening_reply(*args)
@@ -907,7 +909,11 @@ def _marking_reply_opens(
             mongo_db.delegate[_REPLY_OPENS_MARK].find_one({})
         return reply
 
-    with patch.object(step_module, "_opening_reply", stamp_then_mark):
+    # Both openings: a shown delta's (step_run) and a settle's that streamed nothing (step_writes).
+    with (
+        patch.object(step_run, "opening_reply", stamp_then_mark),
+        patch.object(step_writes, "opening_reply", stamp_then_mark),
+    ):
         yield
 
 
@@ -1194,12 +1200,21 @@ async def test_work_waiting_on_an_approval_no_store_holds_is_settled_once(
     model = gated("on it", "I could not send it")
     rig = await rig_for(model)
     await _paused_on(rig, model, expires_at=None)
+    spawned = _Spawned(rig, finish_with="Withdrawn.")
 
-    decided, finished = await _settled_by_sweeps(rig)
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        decided, _ = await _settled_by_sweeps(rig)
+        await asyncio.gather(*spawned.finishing)
+        await rig.settle()
+        _, finished = await _settled_by_sweeps(rig)
 
     state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
     assert [(d.approval_id, d.outcome) for d in decided] == [("a1", "withdrawn")]
-    assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
+    # The delivered run reports the skip; t1's own run is gone, so a later sweep finds it lost.
+    assert [(f.task_id, f.outcome) for f in finished] == [
+        (spawned.task_ids[0], WorkOutcome.DONE),
+        ("t1", WorkOutcome.LOST),
+    ]
     assert state.work == ()
     assert state.display is DisplayState.IDLE
     # The step tells the user in a reply that narrates the task.
@@ -1213,11 +1228,20 @@ async def test_work_waiting_on_an_expired_approval_is_settled_once_as_expired(
     model = gated("on it", "the approval expired")
     rig = await rig_for(model)
     await _paused_on(rig, model, expires_at=datetime.now(UTC) - timedelta(hours=1))
+    spawned = _Spawned(rig, finish_with="Expired.")
 
-    decided, finished = await _settled_by_sweeps(rig)
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        decided, _ = await _settled_by_sweeps(rig)
+        await asyncio.gather(*spawned.finishing)
+        await rig.settle()
+        _, finished = await _settled_by_sweeps(rig)
 
     assert [(d.approval_id, d.outcome) for d in decided] == [("a1", "expired")]
-    assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
+    # The delivered run reports the skip; t1's own run is gone, so a later sweep finds it lost.
+    assert [(f.task_id, f.outcome) for f in finished] == [
+        (spawned.task_ids[0], WorkOutcome.DONE),
+        ("t1", WorkOutcome.LOST),
+    ]
 
 
 @pytest.mark.service
@@ -3112,6 +3136,37 @@ async def test_an_expired_approval_resumes_its_parked_work_once_with_the_expiry(
     assert state.work == ()
     assert [reply.text for reply in await rig.of(Reply)][-1] == "It expired, so nothing was sent"
     await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
+async def test_a_parked_approval_with_no_ledger_entry_resumes_its_work_once_as_withdrawn(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression: the sweep's failed finish shared the parked work's own finish id, so it was dropped and the work later read as lost."""
+    model = gated("I need your approval to send it", "It was withdrawn, so nothing was sent")
+    rig = await rig_for(model)
+    approval_id = await _parked_on_a_ledger_approval(rig, model)
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+    spawned = _Spawned(rig, finish_with="Withdrawn.")
+
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        decided, _ = await _settled_by_sweeps(rig)
+        await asyncio.gather(*spawned.finishing)
+        await rig.settle()
+        await _settled_by_sweeps(rig)
+
+    finished = await rig.of(WorkFinished)
+    assert [(d.approval_id, d.outcome) for d in decided] == [(approval_id, "withdrawn")]
+    assert len(spawned.task_ids) == 1
+    assert [(f.task_id, f.outcome, f.report) for f in finished] == [
+        ("t1", WorkOutcome.DONE, "Approve the send?"),
+        (spawned.task_ids[0], WorkOutcome.DONE, "Withdrawn."),
+    ]
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert state.work == ()
+    assert [reply.text for reply in await rig.of(Reply)][-1] == (
+        "It was withdrawn, so nothing was sent"
+    )
 
 
 @pytest.mark.service

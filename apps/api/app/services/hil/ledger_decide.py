@@ -16,6 +16,7 @@ expires approvals nobody decided.
 from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -31,7 +32,7 @@ from app.constants.hil import ApprovalDecision
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.db.repositories.approval_ledger import approval_ledger_repository
-from app.models.conversation_log_models import ApprovalDecided
+from app.models.conversation_log_models import ApprovalDecided, ApprovalRequested
 from app.models.execute_models import DispatchErrorKind
 from app.models.hil_models import ApprovalLedgerDocument
 from app.models.user_models import AuthenticatedUser
@@ -302,6 +303,7 @@ async def _deliver_ticket(row: ApprovalLedgerDocument) -> None:
 _VERDICT_INSTRUCTIONS: dict[ApprovalOutcome, str] = {
     ApprovalOutcome.DENIED: "The user said no",
     ApprovalOutcome.EXPIRED: "Nobody answered before it expired",
+    ApprovalOutcome.WITHDRAWN: "Its request was lost before anyone could answer it",
 }
 
 
@@ -309,18 +311,30 @@ async def _deliver_verdict(
     row: ApprovalLedgerDocument, outcome: ApprovalOutcome, result: object
 ) -> None:
     """Steer or start a run with a verdict that did not approve; a failed delivery raises to its decider."""
-    from app.agents.core.background.executor_runner import (  # noqa: PLC0415 -- same cycle guard as _deliver_ticket
-        deliver_to_executor,
+    await _deliver_verdict_task(
+        row.conversation_id,
+        row.user_id,
+        _verdict_task(row.approval_id, row.summary, outcome, result),
     )
 
+
+def _verdict_task(approval_id: str, summary: str, outcome: ApprovalOutcome, result: object) -> str:
+    """Word a verdict that did not approve as the task the waiting work resumes with."""
     preview = "" if result is None else str(result)[:500]
-    task = (
-        f"DECISION {row.approval_id}={outcome.upper()} {row.summary}"
+    return (
+        f"DECISION {approval_id}={outcome.upper()} {summary}"
         + (f" :: {preview}" if preview else "")
         + f" {_VERDICT_INSTRUCTIONS[outcome]} — report what you skipped and continue without it. "
         "Do not re-request it."
     )
-    await deliver_to_executor(row.conversation_id, AuthenticatedUser(user_id=row.user_id), task)
+
+
+async def _deliver_verdict_task(conversation_id: str, user_id: str, task: str) -> None:
+    from app.agents.core.background.executor_runner import (  # noqa: PLC0415 -- same cycle guard as _deliver_ticket
+        deliver_to_executor,
+    )
+
+    await deliver_to_executor(conversation_id, AuthenticatedUser(user_id=user_id), task)
 
 
 async def redeem_approved(
@@ -571,6 +585,28 @@ async def expire_ledger_approval(row: ApprovalLedgerDocument) -> bool:
         ),
     )
     await _deliver_verdict(row, ApprovalOutcome.EXPIRED, None)
+    return True
+
+
+async def end_unledgered_approval(
+    conversation_id: str,
+    user_id: str,
+    requested: ApprovalRequested,
+    outcome: Literal[ApprovalOutcome.EXPIRED, ApprovalOutcome.WITHDRAWN],
+) -> bool:
+    """End an approval whose request never reached the ledger and tell the work waiting on it; False when a decision beat this one.
+
+    Decided like expiry: the log takes it once and the work resumes with it, so nothing else ends that work.
+    """
+    approval_id = requested.approval_id
+    if not (
+        await record_approval_decided(conversation_id, user_id, approval_id, outcome, None)
+    ).taken:
+        return False
+    summary = requested.description.action
+    await _deliver_verdict_task(
+        conversation_id, user_id, _verdict_task(approval_id, summary, outcome, None)
+    )
     return True
 
 

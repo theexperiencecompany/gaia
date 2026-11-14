@@ -3,7 +3,7 @@
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import UUID
 
@@ -20,7 +20,7 @@ from app.constants.cache import (
 )
 from app.constants.hil import ApprovalDecision
 from app.constants.log_tags import LogTag
-from app.models.conversation_log_models import ApprovalDecided
+from app.models.conversation_log_models import ApprovalDecided, ApprovalRequested
 from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.hil_models import ApprovalLedgerDocument
 from app.models.user_models import AuthenticatedUser
@@ -42,6 +42,7 @@ from app.services.hil.ledger_decide import (
     cancel_ledger_approvals,
     decide_ledger,
     decide_ledger_batch,
+    end_unledgered_approval,
     reconcile_conversation_ledger,
     redeem_approved,
     revoke_ticket,
@@ -54,6 +55,7 @@ from shared.py.analytics.catalog.hil import (
 )
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from tests.helpers import ledger_facts
+from tests.unit.services.conversation.log_helpers import described
 
 from .conftest import tools_that_always_ask
 
@@ -1975,3 +1977,52 @@ class TestDecideLedgerAlwaysToolScope:
         ):
             await self._decide(repo, decision="approve", scope="always_tool")
         repo.settle.assert_not_awaited()
+
+
+_UNLEDGERED = ApprovalRequested(
+    id="approval:ap-gone", task_id="t1", approval_id="ap-gone", description=described("Send it")
+)
+
+
+@pytest.mark.parametrize(
+    ("outcome", "says"),
+    [
+        (ApprovalOutcome.WITHDRAWN, "Its request was lost before anyone could answer it"),
+        (ApprovalOutcome.EXPIRED, "Nobody answered before it expired"),
+    ],
+)
+async def test_an_unledgered_approval_is_decided_once_and_resumes_its_work(
+    outcome: Literal[ApprovalOutcome.EXPIRED, ApprovalOutcome.WITHDRAWN], says: str
+) -> None:
+    taken = DecisionTaken(stands=None, taken=True)
+    with (
+        patch(f"{MODULE}.record_approval_decided", new=AsyncMock(return_value=taken)) as decided,
+        patch(
+            "app.agents.core.background.executor_runner.deliver_to_executor", new=AsyncMock()
+        ) as deliver,
+    ):
+        assert await end_unledgered_approval("c1", "u1", _UNLEDGERED, outcome) is True
+
+    decided.assert_awaited_once_with("c1", "u1", "ap-gone", outcome, None)
+    conversation_id, user, task = deliver.await_args.args
+    assert (conversation_id, user) == ("c1", AuthenticatedUser(user_id="u1"))
+    assert task == (
+        f"DECISION ap-gone={outcome.upper()} Send it {says} — report what you skipped and "
+        "continue without it. Do not re-request it."
+    )
+
+
+async def test_an_unledgered_approval_a_decision_beat_resumes_nothing() -> None:
+    beaten = DecisionTaken(stands=None, taken=False)
+    with (
+        patch(f"{MODULE}.record_approval_decided", new=AsyncMock(return_value=beaten)),
+        patch(
+            "app.agents.core.background.executor_runner.deliver_to_executor", new=AsyncMock()
+        ) as deliver,
+    ):
+        assert (
+            await end_unledgered_approval("c1", "u1", _UNLEDGERED, ApprovalOutcome.WITHDRAWN)
+            is False
+        )
+
+    deliver.assert_not_awaited()

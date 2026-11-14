@@ -8,13 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from app.constants.conversation import (
-    APPROVAL_EXPIRY_GRACE,
-    APPROVAL_UNDECIDABLE_REPORT,
-    WORK_LOST_REPORT,
-)
+from app.constants.conversation import APPROVAL_EXPIRY_GRACE, WORK_LOST_REPORT
 from app.db.repositories.conversation_log import SweepHead
-from app.models.conversation_log_models import ApprovalRequested, LiveWork, WorkOutcome
+from app.models.conversation_log_models import ApprovalRequested, LiveWork, LoggedEntry, WorkOutcome
 from app.services.conversation.sweeper import SweepReport, sweep_conversations
 from app.services.conversation.work_log import WorkReport
 from shared.py.approvals import ApprovalOutcome
@@ -25,7 +21,9 @@ NOW = T0 + timedelta(hours=1)
 
 
 def _work(task_id: str, approvals: frozenset[str] = frozenset()) -> LiveWork:
-    return LiveWork(task_id=task_id, cause_through=1, answers=(), pending_approvals=approvals)
+    return LiveWork(
+        task_id=task_id, cause_through=1, answers=(), pending_approvals=tuple(sorted(approvals))
+    )
 
 
 def _head(
@@ -42,6 +40,12 @@ def _head(
         has_outbox=outbox,
         state=EMPTY.model_copy(update={"work": work, "unsettled_waking": unsettled}),
     )
+
+
+async def _each_requested(
+    conversation_id: str, *, user_id: str, ids: list[str]
+) -> list[LoggedEntry]:
+    return [logged(3, _requested(id_.removeprefix("approval:"), None)) for id_ in ids]
 
 
 def _requested(approval_id: str, expires_at: datetime | None) -> ApprovalRequested:
@@ -62,7 +66,7 @@ class Seams:
     finished: AsyncMock
     ledger: AsyncMock
     expire: AsyncMock
-    decided: AsyncMock
+    unledgered: AsyncMock
     log: MagicMock
 
 
@@ -77,9 +81,7 @@ def seams() -> Iterator[Seams]:
         patch(f"{MODULE}.record_work_finished", AsyncMock()) as finished,
         patch(f"{MODULE}.approval_ledger_repository") as ledger_repo,
         patch(f"{MODULE}.expire_ledger_approval", AsyncMock(return_value=False)) as expire,
-        patch(
-            f"{MODULE}.record_approval_decided", AsyncMock(return_value=SimpleNamespace(taken=True))
-        ) as decided,
+        patch(f"{MODULE}.end_unledgered_approval", AsyncMock(return_value=True)) as unledgered,
         patch(f"{MODULE}.log") as log,
     ):
         repo.list_heads_to_sweep = AsyncMock(return_value=[])
@@ -87,7 +89,7 @@ def seams() -> Iterator[Seams]:
         repo.read_log = AsyncMock(return_value=[])
         ledger_repo.get_by_approval_id = AsyncMock(return_value=None)
         yield Seams(
-            repo, kick, lost, finished, ledger_repo.get_by_approval_id, expire, decided, log
+            repo, kick, lost, finished, ledger_repo.get_by_approval_id, expire, unledgered, log
         )
 
 
@@ -187,23 +189,41 @@ async def test_an_expired_approval_resumes_its_work_instead_of_ending_it(seams: 
     assert read.kwargs["user_id"] == "u-a"
     assert sorted(read.kwargs["ids"]) == ["approval:expired", "approval:orphan"]
     seams.expire.assert_awaited_once_with(envelope)
-    seams.decided.assert_awaited_once_with("c-a", "u-a", "orphan", ApprovalOutcome.WITHDRAWN, None)
+    seams.unledgered.assert_awaited_once_with(
+        "c-a", "u-a", _requested("orphan", None), ApprovalOutcome.WITHDRAWN
+    )
     seams.finished.assert_not_awaited()
     seams.lost.assert_not_awaited()
     assert report == SweepReport(undecidable_approvals=2)
 
 
-async def test_work_left_only_with_approvals_nobody_holds_ends_as_failed(seams: Seams) -> None:
+async def test_work_left_only_with_approvals_nobody_holds_resumes_withdrawn_never_failed(
+    seams: Seams,
+) -> None:
     work = _work("t1", frozenset({"orphan"}))
     seams.repo.list_heads_to_sweep.side_effect = [[_head("a", work=(work,))]]
+    seams.repo.read_log.side_effect = _each_requested
 
     report = await sweep_conversations()
 
     seams.expire.assert_not_awaited()
-    seams.finished.assert_awaited_once_with(
-        "c-a", "u-a", "t1", WorkOutcome.FAILED, WorkReport(APPROVAL_UNDECIDABLE_REPORT)
+    seams.unledgered.assert_awaited_once_with(
+        "c-a", "u-a", _requested("orphan", None), ApprovalOutcome.WITHDRAWN
     )
+    seams.finished.assert_not_awaited()
     assert report == SweepReport(undecidable_approvals=1)
+
+
+async def test_an_unledgered_approval_a_decision_beat_is_not_counted(seams: Seams) -> None:
+    work = _work("t1", frozenset({"orphan"}))
+    seams.repo.list_heads_to_sweep.side_effect = [[_head("a", work=(work,))]]
+    seams.repo.read_log.side_effect = _each_requested
+    seams.unledgered.return_value = False
+
+    report = await sweep_conversations()
+
+    seams.finished.assert_not_awaited()
+    assert report == SweepReport()
 
 
 async def test_an_expiry_a_decision_beat_leaves_the_work_to_that_decision(seams: Seams) -> None:
@@ -229,7 +249,7 @@ async def test_an_approval_still_in_its_grace_keeps_its_work_waiting(seams: Seam
     report = await sweep_conversations()
 
     seams.expire.assert_not_awaited()
-    seams.decided.assert_not_awaited()
+    seams.unledgered.assert_not_awaited()
     seams.finished.assert_not_awaited()
     assert report == SweepReport()
 
@@ -240,14 +260,17 @@ async def test_an_envelope_less_approval_that_lapsed_is_expired_not_withdrawn(
     work = _work("t1", frozenset({"a1", "a2"}))
     seams.repo.list_heads_to_sweep.side_effect = [[_head("a", work=(work,))]]
     lapsed = NOW - APPROVAL_EXPIRY_GRACE - timedelta(seconds=1)
-    seams.repo.read_log.return_value = [logged(3, _requested("a1", lapsed))]
-    seams.decided.side_effect = [SimpleNamespace(taken=True), SimpleNamespace(taken=False)]
+    seams.repo.read_log.return_value = [
+        logged(3, _requested("a1", lapsed)),
+        logged(4, _requested("a2", None)),
+    ]
+    seams.unledgered.side_effect = [True, False]
 
     report = await sweep_conversations()
 
-    assert seams.decided.await_args_list == [
-        call("c-a", "u-a", "a1", ApprovalOutcome.EXPIRED, None),
-        call("c-a", "u-a", "a2", ApprovalOutcome.WITHDRAWN, None),
+    assert seams.unledgered.await_args_list == [
+        call("c-a", "u-a", _requested("a1", lapsed), ApprovalOutcome.EXPIRED),
+        call("c-a", "u-a", _requested("a2", None), ApprovalOutcome.WITHDRAWN),
     ]
     seams.finished.assert_not_awaited()
     assert report == SweepReport(undecidable_approvals=1)
@@ -275,19 +298,18 @@ async def test_counts_add_up_across_heads_pages_and_work(seams: Seams) -> None:
         [busy("c"), _head("y", outbox=True)],
     ]
     seams.repo.flush_outbox.side_effect = _flush_fails_for("c-x", "c-y")
+    seams.repo.read_log.side_effect = _each_requested
     seams.lost.return_value = True
 
     with patch(f"{MODULE}.SWEEP_BATCH", 3):
         report = await sweep_conversations()
 
     assert seams.repo.list_heads_to_sweep.await_args_list == [call(3, None), call(3, "cur-b")]
-    assert [c.args[2] for c in seams.finished.await_args_list] == [
-        "a-held",
-        "a-dead",
-        "b-held",
-        "b-dead",
-        "c-held",
-        "c-dead",
+    assert [c.args[2] for c in seams.finished.await_args_list] == ["a-dead", "b-dead", "c-dead"]
+    assert [c.args[2].approval_id for c in seams.unledgered.await_args_list] == [
+        "a-ap",
+        "b-ap",
+        "c-ap",
     ]
     assert report == SweepReport(
         flushed=3, lost_work=3, undecidable_approvals=3, kicked=3, failed=2
