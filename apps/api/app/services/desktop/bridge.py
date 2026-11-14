@@ -1,12 +1,10 @@
 """Request/response bridge between agent tools and the desktop app.
 
-A tool running mid-graph publishes a desktop_tool_request frame onto the
-conversation's SSE stream. The Electron renderer that owns that stream executes
-the action via IPC and POSTs the result to /desktop/tool-result, which
-relays it over a per-request Redis channel back to the awaiting tool. Redis
-pub/sub crosses uvicorn workers the same way stream:channel: does, so the
-awaiting tool and the HTTP process receiving the result never need to share a
-process.
+A tool running mid-graph pushes a desktop_tool_request message to the user's
+WebSocket. The user's desktop app executes the action via IPC and POSTs the
+result to /desktop/tool-result, which relays it over a per-request Redis channel
+back to the awaiting tool, so the tool and the HTTP process receiving the result
+never need to share a process.
 """
 
 import asyncio
@@ -25,7 +23,8 @@ from app.constants.cache import (
     DESKTOP_RESULT_CHANNEL_PREFIX,
 )
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
+from app.constants.websocket import DESKTOP_TOOL_REQUEST_MESSAGE
+from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.utils.errors import AppError
 from shared.py.wide_events import log
@@ -64,7 +63,6 @@ class _PendingDesktopRequest(TypedDict, total=False):
     """The request record request_desktop_action stores until the result arrives."""
 
     user_id: str
-    stream_id: str
     tool: str
 
 
@@ -94,14 +92,13 @@ class DesktopToolOutcome:
 
 async def request_desktop_action(
     *,
-    stream_id: str,
     user_id: str,
     tool: str,
     params: dict[str, object] | None = None,
 ) -> DesktopToolOutcome:
     """Execute one action on the user's desktop and await its result.
 
-    Publishes the request onto the chat SSE stream and blocks (up to
+    Pushes the request to the user's WebSocket and blocks (up to
     DESKTOP_TOOL_TIMEOUT_SECONDS) on the per-request Redis result channel.
     """
     if not redis_cache.redis:
@@ -116,11 +113,10 @@ async def request_desktop_action(
         desktop_tool={
             "request_id": request_id,
             "tool": tool,
-            "stream_id": stream_id,
         }
     )
 
-    pending: _PendingDesktopRequest = {"user_id": user_id, "stream_id": stream_id, "tool": tool}
+    pending: _PendingDesktopRequest = {"user_id": user_id, "tool": tool}
     await redis_cache.set(
         request_key,
         pending,
@@ -135,15 +131,18 @@ async def request_desktop_action(
         # can never slip between publish and subscribe.
         await pubsub.subscribe(result_channel)
 
-        frame = {
-            "desktop_tool_request": {
-                "request_id": request_id,
-                "tool": tool,
-                "params": params or {},
-                "timeout_ms": int(DESKTOP_TOOL_TIMEOUT_SECONDS * 1000),
-            }
-        }
-        await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(frame)}\n\n")
+        await websocket_manager.broadcast_to_user(
+            user_id,
+            {
+                "type": DESKTOP_TOOL_REQUEST_MESSAGE,
+                "request": {
+                    "request_id": request_id,
+                    "tool": tool,
+                    "params": params or {},
+                    "timeout_ms": int(DESKTOP_TOOL_TIMEOUT_SECONDS * 1000),
+                },
+            },
+        )
 
         try:
             async with asyncio.timeout(DESKTOP_TOOL_TIMEOUT_SECONDS):
