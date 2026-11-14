@@ -565,8 +565,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 },
                 {
                     "$set": {"error": error},
-                    "$unset": {"in_progress": ""},
-                },  # pragma: no mutate — $unset ignores its value
+                    "$unset": {"in_progress": ""},  # pragma: no mutate — $unset ignores the value
+                },
             )
         return result.modified_count
 
