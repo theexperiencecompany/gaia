@@ -585,6 +585,29 @@ big enough to be a named helper or a paragraph in the PR — not a comment.
 
 ---
 
+## mutation-pragmas
+
+**Rule:** a `# pragma: no mutate` under `app/` must sit where mutmut 3 reads it.
+mutmut honours a trailing pragma for the expressions that start on its line (and,
+after a statement's last line, for the statement's first line), and a comment-only
+`start` / `end` / `block` only between statements. Reported placements:
+
+1. a comment-only pragma inside brackets (a list, dict or call spread over lines);
+2. a comment-only pragma with no `start` / `end` / `block` token;
+3. a trailing pragma on a closing-bracket line that does not end the statement;
+4. a trailing pragma on a plain name argument of a call opened on an earlier line.
+
+**Why:** mutmut ignores all four silently, so the mutant the pragma was written for
+survives and reds the mutation lane, often a whole CI round later.
+
+**Fix:** put the pragma on the line where the mutated expression starts (a call's
+first line for its arguments), or wrap the statement in
+`# pragma: no mutate start` / `# pragma: no mutate end`.
+
+**No allowlist**, no `noqa`.
+
+---
+
 ## tool-pins
 
 **Rule:** the Python lint and audit tools (ruff, bandit, interrogate, xenon,

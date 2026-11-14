@@ -43,6 +43,7 @@ if sys.version_info < REQUIRED_PYTHON:
 from _common import display, iter_python_files, report_rule
 import comment_slop
 import docstring_slop
+import mutation_pragmas
 import no_service_classes
 import no_silent_fallback
 import repository_boundaries
@@ -59,6 +60,7 @@ RULES = (
     tool_dump_boundary,
     docstring_slop,
     comment_slop,
+    mutation_pragmas,
 )
 
 
