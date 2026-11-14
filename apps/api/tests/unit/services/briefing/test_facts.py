@@ -127,6 +127,17 @@ class TestTheFactLine:
         assert "- fact 4 | Done: Investor update\n" in f"{facts.block}\n"
         assert facts.values.facts[4] == BriefFact(title="Investor update", time=None, count=1)
 
+    def test_the_users_own_todo_has_no_deliverable_and_reads_as_a_plain_line(self) -> None:
+        """Replay of 2026-11-14: placing an own todo raised KeyError on its todo id."""
+        item = _ask("Sort the garage", action=BriefAction.ATTEND, todo_id="own-1")
+        candidate = _candidate("Sort the garage", todo_id="own-1", action=BriefAction.ATTEND)
+        chosen = Chosen(sections=[_section([item])], picked=[[(2, candidate)]])
+
+        facts = build_facts(chosen, _sources(), CLOCK)
+
+        assert "- fact 2 | Waiting on you: Sort the garage\n" in f"{facts.block}\n"
+        assert facts.deliverables == {}
+
     def test_an_app_signal_is_a_fact_but_not_a_line_and_the_items_after_it_still_are(self) -> None:
         signal = Signal(
             integration_id="linear",
