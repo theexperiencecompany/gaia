@@ -28,6 +28,7 @@ export {
 export { CONVERSATION_ID_TAKEN, isConversationIdTaken } from "./idTaken";
 export type { LoadingRow, ScreenRow } from "./selectors";
 export {
+  itemText,
   loadingRow,
   messageToRetry,
   screenRows,

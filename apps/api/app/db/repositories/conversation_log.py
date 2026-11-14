@@ -37,9 +37,9 @@ from app.db.repositories.conversation_entries import (
     logged_of,
     store_errors,
 )
-from app.db.repositories.conversation_history import SYNCED_KINDS
 from app.db.repositories.conversations import ConversationRepository, union_with_outboxes
 from app.models.conversation_log_models import (
+    SYNCED_KINDS,
     CommsPhase,
     ConversationState,
     EntryKind,

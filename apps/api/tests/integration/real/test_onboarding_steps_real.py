@@ -131,4 +131,4 @@ async def test_the_bot_link_landing_finishes_onboarding_once(mongo_db, captured:
     )
     await conversation_repository.delete_all_for_user(USER_ID)
     assert seeded is not None
-    assert "Telegram" in json.dumps(seeded["messages"], default=str)
+    assert "Telegram" in json.dumps(seeded["items"], default=str)

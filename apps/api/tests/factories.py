@@ -13,8 +13,9 @@ from composio_client.types.tool_list_response import ItemDeprecated, ItemToolkit
 import httpx
 
 from app.models.conversation_frame_models import EntryFrame, StateFrame
-from app.models.conversation_log_models import DisplayState, Entry
-from app.models.conversation_models import LoadedConversation
+from app.models.conversation_log_models import DisplayState, Entry, ReplyOutcome
+from app.models.conversation_models import StoredConversation
+from app.models.conversation_screen_models import ReplyItem
 from app.models.user_models import AuthenticatedUser
 
 
@@ -46,9 +47,9 @@ def make_loaded_conversation(
     entries: Sequence[Entry],
     *,
     created_at: str = "2026-01-01T10:00:00+00:00",
-) -> LoadedConversation:
+) -> StoredConversation:
     """Build a conversation as a load returns it: its entries in log order under a settled head."""
-    return LoadedConversation(
+    return StoredConversation(
         user_id=user_id,
         conversation_id=conversation_id,
         createdAt=created_at,
@@ -205,4 +206,22 @@ def make_composio_not_found(body: object, message: str) -> composio_client.NotFo
     request = httpx.Request("POST", "https://backend.composio.dev/api/v3/tools/execute")
     return composio_client.NotFoundError(
         message, response=httpx.Response(404, request=request, json=body), body=body
+    )
+
+
+def make_reply_item(text: str, *, reply_id: str = "r1", seq: int = 1) -> ReplyItem:
+    """Build a settled reply's screen item carrying only its text."""
+    return ReplyItem(
+        id=reply_id,
+        seq=seq,
+        at=datetime.now(UTC),
+        text=text,
+        tool_data=(),
+        follow_up_actions=(),
+        image=None,
+        pinned=False,
+        quote=None,
+        outcome=ReplyOutcome.ANSWERED,
+        failure=None,
+        narrates=(),
     )

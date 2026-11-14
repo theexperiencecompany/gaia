@@ -133,7 +133,6 @@ describe("syncing a tracked todo's chat", () => {
     await applySyncedConversation("todo-chat", {
       conversation_id: "todo-chat",
       description: "Watch the deploy",
-      entries: [],
       items: [],
       state: { kind: "state", head: 0, display: "idle", work: [] },
       cursor: null,
@@ -190,7 +189,6 @@ describe("syncing a bot DM chat", () => {
     await applySyncedConversation("telegram-dm", {
       conversation_id: "telegram-dm",
       description: "Telegram Chat",
-      entries: [],
       items: [],
       state: { kind: "state", head: 0, display: "idle", work: [] },
       cursor: null,

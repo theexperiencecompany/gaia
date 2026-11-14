@@ -23,7 +23,6 @@ from app.models.conversation_frame_models import StateFrame
 from app.models.conversation_log_models import DisplayState
 from app.models.conversation_models import (
     ConversationActionResponse,
-    ConversationEntry,
     ConversationListResponse,
     ConversationMessageHit,
     CreateConversationResponse,
@@ -34,6 +33,7 @@ from app.models.conversation_models import (
     UpdateDescriptionResponse,
 )
 from tests.conftest import FAKE_USER
+from tests.factories import make_reply_item
 
 CONV_SERVICE = "app.api.v1.endpoints.conversations"
 
@@ -168,7 +168,7 @@ class TestGetConversation:
         assert mock_get.await_args.kwargs == {}
         body = resp.json()
         assert body["conversation_id"] == "conv_123"
-        assert (body["entries"], body["has_older"], body["state"]["head"]) == ([], False, 0)
+        assert (body["items"], body["has_older"], body["state"]["head"]) == ([], False, 0)
         assert body["metadata"] == {"legacy": True}
         # The Mongo _id is excluded from the response model — it must not
         # reach the client.
@@ -332,7 +332,7 @@ class TestPinnedMessages:
             results=[
                 ConversationMessageHit(
                     conversation_id="conv_123",
-                    message=ConversationEntry(type="bot", response="pinned answer", seq=3),
+                    item=make_reply_item("pinned answer", seq=3),
                 )
             ]
         )
@@ -354,4 +354,4 @@ class TestPinnedMessages:
         results = resp.json()["results"]
         assert len(results) == 1
         assert results[0]["conversation_id"] == "conv_123"
-        assert results[0]["message"]["response"] == "pinned answer"
+        assert results[0]["item"]["text"] == "pinned answer"

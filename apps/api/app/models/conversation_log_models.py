@@ -46,6 +46,24 @@ class EntryKind(StrEnum):
     INTEGRATION_CONNECTED = "integration_connected"
 
 
+#: The kinds whose append advances a conversation's sync clock: each adds or ends a row a client shows.
+SYNCED_KINDS: frozenset[str] = frozenset(
+    {
+        EntryKind.USER_MESSAGE,
+        EntryKind.REPLY,
+        EntryKind.REPLY_SETTLED,
+        EntryKind.NOTICE,
+        EntryKind.TODO_WOKE,
+        EntryKind.WORKFLOW_FIRED,
+        EntryKind.WORK_STARTED,
+        EntryKind.WORK_FINISHED,
+    }
+)
+#: The kinds whose text search reads and a pin marks.
+TEXT_KINDS: frozenset[str] = frozenset({EntryKind.USER_MESSAGE, EntryKind.REPLY, EntryKind.NOTICE})
+PINNABLE_KINDS: frozenset[str] = frozenset({EntryKind.USER_MESSAGE, EntryKind.REPLY})
+
+
 class StopBy(StrEnum):
     """Who asked for a Stop: the user's button or command, or GAIA's cancel_executor tool."""
 

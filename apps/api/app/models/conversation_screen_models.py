@@ -120,6 +120,9 @@ ScreenItem = Annotated[
     Field(discriminator="kind"),
 ]
 
+#: The items whose text search reads and a pin marks.
+TextItem = Annotated[UserItem | ReplyItem | NoticeItem, Field(discriminator="kind")]
+
 
 class ScreenFrame(BaseModel):
     """The newest page of the screen; a client replaces what it holds from the first item's seq on."""

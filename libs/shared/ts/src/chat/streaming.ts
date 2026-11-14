@@ -1,5 +1,5 @@
 import type {
-  MessageReaction,
+  Reaction,
   ReactionBy,
   SubagentEndPayload,
   SubagentStartPayload,
@@ -78,7 +78,7 @@ export type ChatStreamEvent =
   | { type: "parse_error"; raw: string }
   // GAIA reacted to a user message (instantly, or the chat model's pick, which
   // replaces it). Not the turn's answer: the turn may still reply or keep working.
-  | { type: "reaction"; messageId: string; reaction: MessageReaction }
+  | { type: "reaction"; messageId: string; reaction: Reaction }
   | { type: "unknown"; payload: JsonObject };
 
 /** Every ReactionBy the server sends; the generated union is type-only. */

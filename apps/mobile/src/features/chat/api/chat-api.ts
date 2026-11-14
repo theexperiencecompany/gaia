@@ -4,7 +4,7 @@ import type {
   ImageData,
   LoadedConversation,
   MessageAccepted,
-  MessageReaction,
+  Reaction,
   ReplyToMessageData,
   SelectedWorkflowDataOutput,
   SendMessageRequest,
@@ -68,7 +68,7 @@ export interface Message {
    */
   error?: string;
   /** GAIA's one emoji reaction on a user message. */
-  reaction?: MessageReaction | null;
+  reaction?: Reaction | null;
   /** A reply or task still streaming, or a send the server has not accepted yet. */
   inProgress?: boolean;
   /** A reply or task the user stopped. */

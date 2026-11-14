@@ -33,6 +33,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
 )
 from app.models.conversation_models import ConversationDocument
+from app.models.conversation_screen_models import NoticeItem, ReplyItem, ScreenItem
 from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
@@ -43,7 +44,7 @@ from app.services.onboarding.first_conversation import FirstConversation
 from app.utils.seeding_utils import seed_first_conversation
 from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 from tests.conftest import FAKE_USER
-from tests.helpers import shown_messages
+from tests.helpers import item_cards, item_text, shown_items
 from tests.unit.services.conversation.log_helpers import asked, finished, started
 from tests.unit.services.conversation.runtime_doubles import (
     RecordingAnalytics,
@@ -119,7 +120,7 @@ def _turn(text: str, *, cards: tuple[ToolDataEntry, ...] = ()) -> list[Entry]:
 async def _messages(user_id: str, conversation_id: str) -> list[tuple[object, ...]]:
     doc = await conversation_repository.get(conversation_id, user_id=user_id)
     assert doc is not None
-    return [(m.type, m.message_id, m.response) for m in shown_messages(doc)]
+    return [(item.kind, item.id, item_text(item)) for item in shown_items(doc)]
 
 
 async def test_a_seeded_first_conversation_is_gaias_notices_with_their_cards_and_chips(
@@ -138,12 +139,13 @@ async def test_a_seeded_first_conversation_is_gaias_notices_with_their_cards_and
     assert conversation_id is not None
     doc = await conversation_repository.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert [(m.type, bool(m.tool_data), m.follow_up_actions) for m in shown_messages(doc)] == [
-        ("bot", False, None),
-        ("bot", True, None),
-        ("bot", False, ["Plan my day"]),
+    items = shown_items(doc)
+    assert [(bool(item_cards(item)), _follow_ups(item)) for item in items] == [
+        (False, ()),
+        (True, ()),
+        (False, ("Plan my day",)),
     ]
-    assert shown_messages(doc)[2].response == "What first?"
+    assert item_text(items[2]) == "What first?"
     state = await mongo_log.state(conversation_id, user_id)
     assert state.unsettled_waking == ()
 
@@ -165,7 +167,7 @@ async def test_the_first_contact_exchange_is_logged_and_wakes_no_reply(
 
     assert await _messages(user_id, conversation_id) == [
         ("user", f"first-contact:{conversation_id}:user", "hey gaia"),
-        ("bot", f"first-contact:{conversation_id}:intro", "Hi!<NEW_MESSAGE_BREAK>I'm GAIA"),
+        ("notice", f"first-contact:{conversation_id}:intro", "Hi!<NEW_MESSAGE_BREAK>I'm GAIA"),
     ]
     state = await mongo_log.state(conversation_id, user_id)
     assert (state.unsettled_waking, state.head) == ((), 2)
@@ -185,11 +187,10 @@ async def test_a_pin_survives_reload_and_lists_until_unpinned(
     assert (await client.put(pin, json={"pinned": True})).status_code == 200
     doc = await conversation_repository.get(conversation_id, user_id=FAKE_USER.user_id)
     assert doc is not None
-    assert [(m.message_id, m.pinned) for m in shown_messages(doc)] == [("u1", None), ("r1", True)]
+    [_, reply] = shown_items(doc)
+    assert isinstance(reply, ReplyItem) and (reply.id, reply.pinned) == ("r1", True)
     listed = await conversation_repository.list_pinned_messages(FAKE_USER.user_id)
-    assert [(hit.conversation_id, hit.message.message_id) for hit in listed] == [
-        (conversation_id, "r1")
-    ]
+    assert [(hit.conversation_id, hit.item) for hit in listed] == [(conversation_id, reply)]
     assert (await client.put(pin, json={"pinned": False})).status_code == 200
     assert await conversation_repository.list_pinned_messages(FAKE_USER.user_id) == []
     missing = f"/api/v1/conversations/{conversation_id}/messages/nope/pin"
@@ -213,9 +214,9 @@ async def test_a_detached_runs_cards_sit_where_it_started_until_a_reply_answers_
 
     doc = await conversation_repository.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert [(m.message_id, m.tool_data) for m in shown_messages(doc)[2:]] == [
-        ("work:job-1", cards),
-        ("u2", None),
+    assert [(item.id, item_cards(item)) for item in shown_items(doc)[2:]] == [
+        ("work:job-1", tuple(cards)),
+        ("u2", ()),
     ]
     state = await mongo_log.state(conversation_id, user_id)
     assert (state.work, state.finished_work) == ((), ())
@@ -259,8 +260,8 @@ async def _card_status(user_id: str, conversation_id: str) -> object:
     assert doc is not None
     [card] = [
         e
-        for m in shown_messages(doc)
-        for e in m.tool_data or []
+        for item in shown_items(doc)
+        for e in item_cards(item)
         if e["tool_name"] == APPROVAL_REQUEST_TOOL_NAME
     ]
     data = card["data"]
@@ -296,3 +297,7 @@ async def test_an_approval_cards_outcome_follows_the_log(
     assert await _card_status(user_id, conversation_id) == (None, None)
     await mongo_log.append(conversation_id, user_id, ending)
     assert await _card_status(user_id, conversation_id) == label
+
+
+def _follow_ups(item: ScreenItem) -> tuple[str, ...]:
+    return item.follow_up_actions if isinstance(item, ReplyItem | NoticeItem) else ()

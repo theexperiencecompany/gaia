@@ -60,7 +60,6 @@ from app.constants.chat import ConversationSource
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
 from app.constants.hil import HIL_JEV_URL
 from app.constants.trigger_gates import GateKind
-from app.db.repositories.conversation_history import project
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.conversation_log_models import (
@@ -70,11 +69,20 @@ from app.models.conversation_log_models import (
     ReplySettled,
     UserMessage,
 )
-from app.models.conversation_models import ConversationEntriesPage, ConversationEntry
+from app.models.conversation_models import LogPage
+from app.models.conversation_screen_models import (
+    NoticeItem,
+    ReplyItem,
+    ScreenItem,
+    UserItem,
+    WorkItem,
+)
 from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
+from app.models.tool_data_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.conversation.mongo_log import MongoConversationLog
+from app.services.conversation.screen import project_screen
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
 from app.utils.timezone import Timezone
@@ -378,18 +386,38 @@ def local_timezone(tz_name: str) -> Iterator[None]:
 async def stored_conversation(
     conversations: AsyncIOMotorCollection, conversation_id: str
 ) -> dict[str, Any] | None:
-    """Read a stored conversation's head with its messages, as the repository assembles them from entries."""
+    """Read a stored conversation's head with its screen items, as a load projects them from its entries."""
     head = await conversations.find_one({"conversation_id": conversation_id})
     if head is None:
         return None
     doc = await conversation_repository.get(conversation_id, user_id=head["user_id"])
-    messages = [] if doc is None else [m.model_dump(exclude_none=True) for m in shown_messages(doc)]
-    return {**head, "messages": messages}
+    items = [] if doc is None else [item.model_dump(mode="json") for item in shown_items(doc)]
+    return {**head, "items": items}
 
 
-def shown_messages(doc: ConversationEntriesPage) -> list[ConversationEntry]:
-    """Project a loaded page of entries into messages, as search and pins show a message."""
-    return project([LoggedEntry(seq=f.seq, at=f.at, entry=f.entry) for f in doc.entries])
+def shown_items(page: LogPage) -> list[ScreenItem]:
+    """Project a read page of entries into the screen items a load serves."""
+    return project_screen(page.entries)
+
+
+def item_text(item: ScreenItem) -> str:
+    """Return the words an item shows: the user's message, a reply's or a notice's text, else none."""
+    match item:
+        case UserItem(message=message):
+            return message.text
+        case ReplyItem(text=text) | NoticeItem(text=text):
+            return text
+        case _:
+            return ""
+
+
+def item_cards(item: ScreenItem) -> tuple[ToolDataEntry, ...]:
+    """Return the cards an item shows."""
+    match item:
+        case ReplyItem(tool_data=cards) | WorkItem(tool_data=cards) | NoticeItem(tool_data=cards):
+            return cards
+        case _:
+            return ()
 
 
 def worker_mongo_db_name(base_name: str | None = None) -> str:

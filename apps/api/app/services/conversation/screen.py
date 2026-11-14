@@ -20,6 +20,7 @@ from app.models.conversation_log_models import (
     ApprovalRequested,
     BargeIn,
     Entry,
+    EntryKind,
     IntegrationConnected,
     IntegrationNeeded,
     Notice,
@@ -53,6 +54,19 @@ TOOL_CALL_CARD = "tool_calls_data"
 _STOPPED_WORK = frozenset({WorkOutcome.CANCELLED, WorkOutcome.LOST})
 #: A work item whose cards are still being published.
 LIVE_WORK = frozenset({WorkStatus.RUNNING, WorkStatus.AWAITING_APPROVAL})
+#: The kinds a lone message's item reads beside it.
+RELATED_KINDS: frozenset[str] = frozenset(
+    {
+        EntryKind.REPLY_SETTLED,
+        EntryKind.USER_MESSAGE,
+        EntryKind.APPROVAL_REQUESTED,
+        EntryKind.APPROVAL_DECIDED,
+        EntryKind.WORK_STARTED,
+        EntryKind.WORK_FINISHED,
+    }
+)
+#: The suffixes of the two entries that can end a task: its result, or the sweeper's lost marker.
+_ENDS = ("finished", "lost")
 
 
 class _CardData(BaseModel):
@@ -85,6 +99,10 @@ def handoff_call_id(card: ToolDataEntry) -> str | None:
         return None
     data = _card_data(card)
     return data.tool_call_id if data.tool_name == CALL_EXECUTOR_NAME else None
+
+
+def _approval_of(card: ToolDataEntry) -> str | None:
+    return _card_data(card).approval_id if card["tool_name"] == APPROVAL_REQUEST_TOOL_NAME else None
 
 
 def _is_handoff(card: ToolDataEntry) -> bool:
@@ -173,11 +191,7 @@ class _Log:
         """Return the cards with each logged approval's end as the log has it."""
         shown: list[ToolDataEntry] = []
         for card in cards:
-            approval_id = (
-                _card_data(card).approval_id
-                if card["tool_name"] == APPROVAL_REQUEST_TOOL_NAME
-                else None
-            )
+            approval_id = _approval_of(card)
             end = None if approval_id is None else self.approval_end(approval_id)
             shown.append(card if end is None else {**card, "data": {**card["data"], **end}})
         return tuple(shown)
@@ -210,6 +224,61 @@ def project_screen(entries: Sequence[Positioned]) -> list[ScreenItem]:
     # Only a reply that became visible by failing sits at a later seq than its own entry.
     items.sort(key=lambda item: item.seq)
     return items
+
+
+def text_item(
+    logged: Positioned, related: Iterable[Positioned]
+) -> UserItem | ReplyItem | NoticeItem | None:
+    """Return the item a message shows on its conversation's screen, reading related for what sits beside it."""
+    item = _item(logged, _Log.of([*related, logged]))
+    return item if isinstance(item, UserItem | ReplyItem | NoticeItem) else None
+
+
+def needed_beside(
+    window: Sequence[Positioned], related: Sequence[Positioned] = ()
+) -> tuple[list[str], list[str]]:
+    """Return the entry ids and reply ids the window's text items still read beside related.
+
+    Each answer can name more (a settle's quote, a request's work), so a read asks until none is left.
+    """
+    read = _Log.of([*window, *related])
+    wanted: set[str] = set()
+    replies: set[str] = set()
+    for logged in window:
+        match logged.entry:
+            case Reply() as reply:
+                settle = read.settles.get(reply.reply_id)
+                if settle is None:
+                    replies.add(reply.reply_id)
+                target = reply.quote_target if settle is None else settle.entry.quote_target
+                narrated = (*reply.narrates, *(() if settle is None else settle.entry.narrates))
+                wanted |= {target} if target else set()
+                wanted |= {
+                    f"work:{task}:{end}" for task in (*narrated, reply.reply_id) for end in _ENDS
+                }
+                wanted |= _approval_ids(reply.tool_data)
+            case Notice(tool_data=cards):
+                wanted |= _approval_ids(cards)
+            case _:
+                pass
+    wanted |= {f"work:{request.task_id}" for request in read.requests.values()}
+    wanted |= {f"work:{work.joins}" for work in read.started.values() if work.joins}
+    wanted |= {
+        f"work:{read.root(request.task_id)}:{end}"
+        for request in read.requests.values()
+        for end in _ENDS
+    }
+    present = {logged.entry.id for logged in (*window, *related)}
+    return sorted(wanted - present), sorted(replies)
+
+
+def _approval_ids(cards: Iterable[ToolDataEntry]) -> set[str]:
+    return {
+        f"approval:{approval_id}{suffix}"
+        for card in cards
+        if (approval_id := _approval_of(card)) is not None
+        for suffix in ("", ":decided", ":acted")
+    }
 
 
 def _item(logged: Positioned, read: _Log) -> ScreenItem | None:

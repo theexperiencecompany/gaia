@@ -168,7 +168,7 @@ async def get_entries_before_endpoint(
         conversation={"operation": "entries_before", "id": conversation_id},
     )
     page = await get_entries_before(conversation_id, user, before_seq=before_seq, limit=limit)
-    log.set_ns("conversation", entries=len(page.entries), has_older=page.has_older)
+    log.set_ns("conversation", items=len(page.items), has_older=page.has_older)
     return page
 
 

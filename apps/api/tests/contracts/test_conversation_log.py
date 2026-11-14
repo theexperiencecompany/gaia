@@ -17,7 +17,7 @@ from app.constants.chat import ConversationSource
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_log import ConversationLogRepository
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import ConversationSyncItem, MessageModel
+from app.models.chat_models import ConversationSyncItem
 from app.models.conversation_frame_models import EntryFrame, state_frame
 from app.models.conversation_log_models import (
     CommsPhase,
@@ -33,11 +33,12 @@ from app.models.conversation_log_models import (
     UserMessage,
 )
 from app.models.conversation_models import ConversationDocument
+from app.models.conversation_screen_models import ReplyItem
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reducer import reduce
 from tests.contracts.conftest import HeldFlushes
-from tests.helpers import shown_messages
+from tests.helpers import shown_items
 from tests.unit.services.conversation.log_helpers import (
     EMPTY,
     asked,
@@ -560,28 +561,15 @@ def _chat() -> list[Entry]:
     ]
 
 
-def _rows(messages: Sequence[MessageModel]) -> list[tuple[object, ...]]:
-    return [
-        (
-            m.type,
-            m.message_id,
-            m.response,
-            m.in_progress,
-            m.replyToMessage.id if m.replyToMessage else None,
-            bool(m.todo_run_wake),
-            m.selectedWorkflow.id if m.selectedWorkflow else None,
-        )
-        for m in messages
-    ]
-
-
-_HISTORY = [
-    ("user", "u1", "find the acme invoice", None, None, False, None),
-    ("bot", "r1", "found the acme invoice", None, "u1", False, None),
-    ("bot", "n", "delivered", None, None, False, None),
-    ("user", "wf", "", None, None, False, "wf_1"),
-    ("user", "tw", "", None, None, True, None),
-    ("user", "u2", "thanks", None, "u1", False, None),
+#: The screen _chat projects to, as (kind, id): work shows at its hand-off, the rest at their own seq.
+_SCREEN = [
+    ("user", "u1"),
+    ("work", "work:t1"),
+    ("reply", "r1"),
+    ("notice", "n"),
+    ("workflow_fired", "wf"),
+    ("todo_woke", "tw"),
+    ("user", "u2"),
 ]
 
 
@@ -607,7 +595,7 @@ async def test_a_load_a_sync_and_recent_reads_are_the_entries_the_events_stream_
     doc = await repo.get(conversation_id, user_id=user_id)
     assert doc is not None
     assert (doc.entries, doc.state, doc.has_older, doc.cursor) == (logged, state, False, None)
-    assert _rows(shown_messages(doc)) == _HISTORY
+    assert [(item.kind, item.id) for item in shown_items(doc)] == _SCREEN
     [synced] = await repo.find_updated_since(
         user_id, [ConversationSyncItem(conversation_id=conversation_id, last_updated=None)]
     )
@@ -640,7 +628,7 @@ async def test_a_page_reaches_back_to_the_task_and_the_reply_its_entries_complet
     assert (reply.has_older, reply.cursor) == (True, 5)
 
 
-async def test_an_unsettled_reply_reads_in_progress_and_a_failed_one_names_why(
+async def test_a_failed_reply_names_why_and_an_open_one_shows_once_it_has_words(
     raw_collection: Any, log: MongoConversationLog
 ) -> None:
     repo = ConversationRepository()
@@ -657,28 +645,29 @@ async def test_an_unsettled_reply_reads_in_progress_and_a_failed_one_names_why(
 
     doc = await repo.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert [(m.message_id, m.in_progress, m.error) for m in shown_messages(doc)] == [
-        ("u1", None, None),
-        ("r1", None, "server_restart"),
-        ("u2", None, None),
-        ("r2", True, None),
-    ]
+    items = shown_items(doc)
+    assert [item.id for item in items] == ["u1", "r1", "u2"]
+    assert [
+        (item.id, item.outcome, item.failure) for item in items if isinstance(item, ReplyItem)
+    ] == [("r1", ReplyOutcome.FAILED, "server_restart")]
 
 
-async def test_search_reads_the_text_of_messages_replies_and_notices_only(
+async def test_a_search_hit_is_the_item_its_chat_shows_for_messages_replies_and_notices_only(
     raw_collection: Any, log: MongoConversationLog
 ) -> None:
     repo = ConversationRepository()
     user_id, conversation_id = await _mixed_chat(log)
+    doc = await repo.get(conversation_id, user_id=user_id)
+    assert doc is not None
+    screen = {item.id: item for item in shown_items(doc)}
 
     found = await repo.search(user_id, pattern="acme")
-    assert [(hit.conversation_id, *_rows([hit.message])) for hit in found.messages] == [
-        (conversation_id, _HISTORY[0]),
-        (conversation_id, _HISTORY[1]),
+    assert [(hit.conversation_id, hit.item) for hit in found.messages] == [
+        (conversation_id, screen["u1"]),
+        (conversation_id, screen["r1"]),
     ]
-    assert [
-        hit.message.message_id for hit in (await repo.search(user_id, pattern="deliver")).messages
-    ] == ["n"]
+    delivered = await repo.search(user_id, pattern="deliver")
+    assert [hit.item for hit in delivered.messages] == [screen["n"]]
     assert (await repo.search(user_id, pattern="Watch the Acme")).messages == []
 
 

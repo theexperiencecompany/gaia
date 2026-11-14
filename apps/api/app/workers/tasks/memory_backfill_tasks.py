@@ -29,7 +29,7 @@ from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
 from app.models.conversation_log_models import Reply, UserMessage
-from app.models.conversation_models import LoadedConversation
+from app.models.conversation_models import StoredConversation
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -146,7 +146,7 @@ async def backfill_user_memories(ctx: dict[str, object], user_id: str) -> str:  
     return f"backfilled {user_id}: {processed} conversations, {facts} facts"
 
 
-def _conversation_to_messages(conversation: LoadedConversation) -> list[dict[str, str]]:
+def _conversation_to_messages(conversation: StoredConversation) -> list[dict[str, str]]:
     """Map a loaded conversation's user messages and replies to extraction format."""
     messages: list[dict[str, str]] = []
     for frame in conversation.entries:
@@ -162,7 +162,7 @@ def _conversation_to_messages(conversation: LoadedConversation) -> list[dict[str
     return messages
 
 
-def _conversation_date(conversation: LoadedConversation) -> datetime:
+def _conversation_date(conversation: StoredConversation) -> datetime:
     """Best-effort original timestamp so replayed facts land on the right day."""
     if conversation.createdAt:
         try:

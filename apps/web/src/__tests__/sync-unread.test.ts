@@ -27,7 +27,6 @@ const noticedRow = (conversationId: string): ConversationSyncRow => ({
   description: "Reminder",
   createdAt: AT,
   updatedAt: AT,
-  entries: [],
   items: [],
   state: { kind: "state", head: 0, display: "idle", work: [] },
   cursor: null,

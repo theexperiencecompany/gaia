@@ -232,7 +232,7 @@ from shared.py.analytics.context import (
 )
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
-from tests.helpers import shown_messages
+from tests.helpers import item_cards, item_text, shown_items
 from tests.integration.real.test_comms_runner_real import (
     TEST_ATTRIBUTION,
     GatedModel,
@@ -1356,7 +1356,7 @@ async def test_an_image_the_work_generated_stays_on_its_work_and_survives_a_relo
     reloaded = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
     assert reloaded is not None
     assert task_reply.text == "Here is your fox"
-    assert [m.image_data for m in shown_messages(reloaded) if m.message_id == "work:t1"] == [image]
+    assert [item.image for item in shown_items(reloaded) if isinstance(item, WorkItem)] == [image]
 
 
 @pytest.mark.service
@@ -1423,9 +1423,9 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
     assert reloaded is not None
     [shown] = [
         entry["data"]
-        for message in shown_messages(reloaded)
-        if message.message_id == "work:t1"
-        for entry in message.tool_data or []
+        for item in shown_items(reloaded)
+        if item.id == "work:t1"
+        for entry in item_cards(item)
     ]
     assert (shown["outcome"], shown["action"]) == (ApprovalOutcome.APPROVED, ActionResult.FAILED)
     await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
@@ -2384,8 +2384,8 @@ async def test_a_delivered_reminder_is_one_notice_shown_once_with_its_cards(
     stored = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
     assert (notice.text, notice.tool_data) == ("time to stretch", (card,))
     assert stored is not None
-    assert [(m.type, m.response, m.tool_data) for m in shown_messages(stored)] == [
-        ("bot", "time to stretch", [card])
+    assert [(item.kind, item_text(item), item_cards(item)) for item in shown_items(stored)] == [
+        ("notice", "time to stretch", (card,))
     ]
     to_platform.assert_not_awaited()
     assert await _unread(rig) is True

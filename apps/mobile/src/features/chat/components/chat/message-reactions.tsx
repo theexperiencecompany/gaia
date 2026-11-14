@@ -1,4 +1,4 @@
-import type { MessageReaction } from "@gaia/shared/api/generated";
+import type { Reaction } from "@gaia/shared/api/generated";
 import { Chip } from "heroui-native";
 import { type StyleProp, View, type ViewStyle } from "react-native";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,7 @@ export function MessageReactions({
   align,
   style,
 }: {
-  reaction: MessageReaction | null | undefined;
+  reaction: Reaction | null | undefined;
   align: "start" | "end";
   style?: StyleProp<ViewStyle>;
 }) {

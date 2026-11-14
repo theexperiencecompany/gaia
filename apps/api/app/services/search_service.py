@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.notes import note_repository
+from app.models.conversation_screen_models import NoticeItem, ReplyItem, UserItem
 from app.models.search_models import MessageSearchResult, NoteSearchResult, SearchResultsResponse
 from app.utils.general_utils import get_context_window
 from app.utils.log_identifiers import user_text_shape
@@ -38,9 +39,9 @@ async def search_messages(query: str, user_id: str) -> SearchResultsResponse:
         messages = [
             MessageSearchResult(
                 conversation_id=hit.conversation_id,
-                message=hit.message,
-                # Snippet for search highlighting, centered on the matched response.
-                snippet=get_context_window(hit.message.response, query, chars_before=30),
+                item=hit.item,
+                # Snippet for search highlighting, centered on the matched text.
+                snippet=get_context_window(_text(hit.item), query, chars_before=30),
             )
             for hit in conversation_results.messages
         ]
@@ -73,3 +74,7 @@ async def search_messages(query: str, user_id: str) -> SearchResultsResponse:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to perform search: {e!s}",
         ) from e
+
+
+def _text(item: UserItem | ReplyItem | NoticeItem) -> str:
+    return item.message.text if isinstance(item, UserItem) else item.text

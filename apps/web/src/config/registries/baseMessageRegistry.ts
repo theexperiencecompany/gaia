@@ -4,7 +4,7 @@
  * Extends the tools message schema to produce the full message shape.
  */
 
-import type { MessageReaction, TodoRunWake } from "@shared/api/generated";
+import type { Reaction, TodoRunWake } from "@shared/api/generated";
 import type { SelectedCalendarEventData } from "@/stores/composerStore.types";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
@@ -51,7 +51,7 @@ export const BASE_MESSAGE_SCHEMA = {
   // The user stopped this turn with Stop: a quiet "Stopped" line renders under it.
   stopped: undefined as boolean | null | undefined,
   // GAIA's one reaction on a user message, rendered as a badge on its bubble.
-  reaction: undefined as MessageReaction | null | undefined,
+  reaction: undefined as Reaction | null | undefined,
   // Tool fields (spread from tool registry)
   ...TOOLS_MESSAGE_SCHEMA,
 };

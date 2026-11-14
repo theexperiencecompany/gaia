@@ -35,7 +35,7 @@ from app.models.chat_models import (
 )
 from app.models.conversation_frame_models import EntryFrame, StateFrame
 from app.models.conversation_log_models import ConversationState
-from app.models.conversation_screen_models import ScreenItem
+from app.models.conversation_screen_models import ScreenItem, TextItem
 from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
 from app.utils.tool_data_utils import convert_legacy_tool_data
@@ -130,11 +130,10 @@ class ConversationSummary(ResponseModel):
 
 
 class ConversationMessageHit(BaseModel):
-    """A single conversation message tagged with its conversation id — the shape of
-    the pinned-messages and message-search results."""
+    """A message's screen item, as the conversation's screen shows it, tagged with its conversation id."""
 
     conversation_id: str
-    message: ConversationEntry
+    item: TextItem
 
 
 class ConversationDescriptionHit(BaseModel):
@@ -396,17 +395,31 @@ class ConversationListResponse(ResponseModel):
     total_pages: int
 
 
-class ConversationEntriesPage(ResponseModel):
-    """A run of the log's entries, oldest first: the event stream's own entry frames.
+class LogPage(BaseModel):
+    """A run of the log's entries, oldest first, as the repository reads it.
 
     A page never starts inside an open span: it reaches back to the Reply, WorkStarted or
-    ApprovalRequested of every settle, finish, join or decision it holds. state is the head's,
-    so a page alone shows the loading row, live work and approvals; cursor is the seq an
-    older page is read before, set exactly when has_older.
+    ApprovalRequested of every settle, finish, join or decision it holds. state is the head's;
+    cursor is the seq an older page is read before, set exactly when has_older.
     """
 
     entries: list[EntryFrame] = Field(default_factory=list)
-    # The screen these entries project to, as the events stream's screen frame carries it.
+    state: StateFrame
+    has_older: bool = False
+    cursor: int | None = None
+
+
+class StoredConversation(ConversationDocument, LogPage):
+    """A conversation as the repository reads it: its head's fields and the newest page of its log."""
+
+
+class ConversationEntriesPage(ResponseModel):
+    """A page of the conversation's screen, oldest first: the items its log page projects to.
+
+    state is the head's, so a page alone shows the loading row, live work and approvals;
+    cursor is the seq an older page is read before, set exactly when has_older.
+    """
+
     items: list[ScreenItem] = Field(default_factory=list)
     state: StateFrame
     has_older: bool = False
@@ -414,11 +427,11 @@ class ConversationEntriesPage(ResponseModel):
 
 
 class LoadedConversation(ConversationDocument, ConversationEntriesPage):
-    """A conversation as a load returns it: its head's fields and the newest page of its log."""
+    """A conversation as a load returns it: its head's fields and the newest page of its screen."""
 
 
 class ConversationSyncRow(ConversationEntriesPage):
-    """One batch-sync row: the conversation's client-visible fields, its newest page of entries and its artifacts."""
+    """One batch-sync row: the conversation's client-visible fields, its newest page of items and its artifacts."""
 
     conversation_id: str
     description: str

@@ -13,7 +13,6 @@
  */
 import type {
   ActionResult,
-  ApprovalDecider,
   ApprovalOutcome,
   BatchDecisionItem,
   HILPreferencesResponse,
@@ -22,7 +21,6 @@ import type {
 
 export type {
   ActionResult,
-  ApprovalDecider,
   ApprovalOutcome,
   BatchApprovalDecisionResponse,
   BatchDecisionItem,
@@ -30,6 +28,11 @@ export type {
 } from "../api/generated";
 
 export type HilMode = "always_allow" | "always_ask" | "auto";
+
+/** Who approved or denied an action, as the screen stamps it on an approval card (shared.py.analytics.catalog.hil.ApprovalDecider). */
+export const APPROVAL_DECIDER = { USER: "user", AUTO: "auto" } as const;
+export type ApprovalDecider =
+  (typeof APPROVAL_DECIDER)[keyof typeof APPROVAL_DECIDER];
 
 /**
  * Per-user HIL preferences. `tool_overrides` maps a HIL tool key to

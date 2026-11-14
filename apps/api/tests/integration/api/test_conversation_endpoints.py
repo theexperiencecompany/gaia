@@ -116,7 +116,7 @@ class TestConversationEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["conversation_id"] == "conv-456"
-        assert (data["entries"], data["state"]["head"], data["cursor"]) == ([], 0, None)
+        assert (data["items"], data["state"]["head"], data["cursor"]) == ([], 0, None)
 
     @patch(
         "app.api.v1.endpoints.conversations.get_conversation",
@@ -541,7 +541,7 @@ class TestOlderEntries:
     @patch("app.api.v1.endpoints.conversations.get_entries_before", new_callable=AsyncMock)
     async def test_pages_back_from_the_seq_it_is_given(self, page, test_client):
         page.return_value = ConversationEntriesPage(
-            entries=[],
+            items=[],
             state=StateFrame(head=41, display=DisplayState.IDLE, work=()),
             has_older=True,
             cursor=1,
@@ -553,7 +553,7 @@ class TestOlderEntries:
 
         assert response.status_code == 200
         assert response.json() == {
-            "entries": [],
+            "items": [],
             "state": {"kind": "state", "head": 41, "display": "idle", "work": []},
             "has_older": True,
             "cursor": 1,

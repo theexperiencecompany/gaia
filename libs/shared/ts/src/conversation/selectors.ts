@@ -1,3 +1,4 @@
+import type { ConversationMessageHit } from "../api/generated";
 import {
   extractToolProgressMessage,
   type StreamToolDataEntry,
@@ -115,4 +116,9 @@ export function messageToRetry(
     .slice(0, at + 1)
     .findLast((item) => item.kind === SCREEN_ITEM_KIND.USER);
   return asked?.kind === SCREEN_ITEM_KIND.USER ? asked.message : null;
+}
+
+/** The words a pinned or searched item shows: the user's message, or a reply's or notice's text. */
+export function itemText(item: ConversationMessageHit["item"]): string {
+  return item.kind === SCREEN_ITEM_KIND.USER ? item.message.text : item.text;
 }

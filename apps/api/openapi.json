@@ -186,15 +186,6 @@
         "title": "ActivityDay",
         "type": "object"
       },
-      "Actor": {
-        "description": "Who performed the action: a human request in this turn, or the agent acting on its own.",
-        "enum": [
-          "user",
-          "agent"
-        ],
-        "title": "Actor",
-        "type": "string"
-      },
       "AddIntegrationResponse": {
         "description": "Response for adding a public integration to user's workspace.",
         "properties": {
@@ -407,70 +398,6 @@
         ],
         "title": "ApiCallConfig",
         "type": "object"
-      },
-      "ApprovalDecided": {
-        "additionalProperties": false,
-        "description": "A pending approval ended; decider names who approved or denied it (None when nobody did).\n\nAn approved action's end is logged as the same decision restated with action set; the latest\none for an approval is its card's state.",
-        "properties": {
-          "action": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ActionResult"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "approval_id": {
-            "title": "Approval Id",
-            "type": "string"
-          },
-          "decider": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ApprovalDecider"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "const": "approval_decided",
-            "default": "approval_decided",
-            "title": "Kind",
-            "type": "string"
-          },
-          "outcome": {
-            "$ref": "#/components/schemas/ApprovalOutcome"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "approval_id",
-          "outcome",
-          "decider",
-          "action"
-        ],
-        "title": "ApprovalDecided",
-        "type": "object"
-      },
-      "ApprovalDecider": {
-        "description": "Who approved or denied: the user, or auto mode's intent judge.",
-        "enum": [
-          "user",
-          "auto"
-        ],
-        "title": "ApprovalDecider",
-        "type": "string"
       },
       "ApprovalDecisionRequest": {
         "description": "Body for a button approval decision (approve/deny, with scope and feedback).",
@@ -771,28 +698,6 @@
           }
         },
         "title": "AsanaTaskTriggerConfig",
-        "type": "object"
-      },
-      "Attribution": {
-        "additionalProperties": false,
-        "description": "The base properties stamped onto every attributed event by its surface's capture function.",
-        "properties": {
-          "actor": {
-            "$ref": "#/components/schemas/Actor"
-          },
-          "surface": {
-            "$ref": "#/components/schemas/EntrySurface"
-          },
-          "trigger": {
-            "$ref": "#/components/schemas/Trigger"
-          }
-        },
-        "required": [
-          "actor",
-          "trigger",
-          "surface"
-        ],
-        "title": "Attribution",
         "type": "object"
       },
       "AuthenticatedUserResponse": {
@@ -1254,41 +1159,6 @@
           "enforced"
         ],
         "title": "AuthoredGateView",
-        "type": "object"
-      },
-      "BargeIn": {
-        "additionalProperties": false,
-        "description": "The user spoke over a voice reply, having heard its text only up to heard_through characters.",
-        "properties": {
-          "heard_through": {
-            "minimum": 0.0,
-            "title": "Heard Through",
-            "type": "integer"
-          },
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "const": "barge_in",
-            "default": "barge_in",
-            "title": "Kind",
-            "type": "string"
-          },
-          "reply_id": {
-            "title": "Reply Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "reply_id",
-          "heard_through"
-        ],
-        "title": "BargeIn",
         "type": "object"
       },
       "BargeInAccepted": {
@@ -3979,7 +3849,7 @@
         "type": "object"
       },
       "ConversationEntriesPage": {
-        "description": "A run of the log's entries, oldest first: the event stream's own entry frames.\n\nA page never starts inside an open span: it reaches back to the Reply, WorkStarted or\nApprovalRequested of every settle, finish, join or decision it holds. state is the head's,\nso a page alone shows the loading row, live work and approvals; cursor is the seq an\nolder page is read before, set exactly when has_older.",
+        "description": "A page of the conversation's screen, oldest first: the items its log page projects to.\n\nstate is the head's, so a page alone shows the loading row, live work and approvals;\ncursor is the seq an older page is read before, set exactly when has_older.",
         "properties": {
           "cursor": {
             "anyOf": [
@@ -3991,13 +3861,6 @@
               }
             ],
             "title": "Cursor"
-          },
-          "entries": {
-            "items": {
-              "$ref": "#/components/schemas/EntryFrame"
-            },
-            "title": "Entries",
-            "type": "array"
           },
           "has_older": {
             "default": false,
@@ -4046,333 +3909,12 @@
           }
         },
         "required": [
-          "entries",
           "items",
           "state",
           "has_older",
           "cursor"
         ],
         "title": "ConversationEntriesPage",
-        "type": "object"
-      },
-      "ConversationEntry": {
-        "description": "One message of a conversation's log with the seq its append committed it under: order is seq, never a date.",
-        "properties": {
-          "date": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Date"
-          },
-          "disclaimer": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Disclaimer"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "file": {
-            "anyOf": [
-              {
-                "contentMediaType": "application/octet-stream",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "File"
-          },
-          "fileData": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/FileData"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": [],
-            "title": "Filedata"
-          },
-          "fileIds": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": [],
-            "title": "Fileids"
-          },
-          "filename": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filename"
-          },
-          "filetype": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filetype"
-          },
-          "first_contact": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "First Contact"
-          },
-          "follow_up_actions": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Follow Up Actions"
-          },
-          "image_data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ImageData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "in_progress": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "In Progress"
-          },
-          "message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message Id"
-          },
-          "metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Metadata"
-          },
-          "pinned": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pinned"
-          },
-          "platform_message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Platform Message Id"
-          },
-          "reaction": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MessageReaction"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "replyToMessage": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ReplyToMessageData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "response": {
-            "title": "Response",
-            "type": "string"
-          },
-          "selectedCalendarEvent": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SelectedCalendarEventData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "selectedTool": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selectedtool"
-          },
-          "selectedWorkflow": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SelectedWorkflowDataOutput"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "seq": {
-            "title": "Seq",
-            "type": "integer"
-          },
-          "stopped": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stopped"
-          },
-          "subtype": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subtype"
-          },
-          "todo_run_wake": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TodoRunWake"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "toolCategory": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Toolcategory"
-          },
-          "tool_data": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/ToolDataEntry"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tool Data"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "response",
-          "seq"
-        ],
-        "title": "ConversationEntry",
         "type": "object"
       },
       "ConversationEvent": {
@@ -4461,19 +4003,38 @@
         "type": "object"
       },
       "ConversationMessageHit": {
-        "description": "A single conversation message tagged with its conversation id \u2014 the shape of\nthe pinned-messages and message-search results.",
+        "description": "A message's screen item, as the conversation's screen shows it, tagged with its conversation id.",
         "properties": {
           "conversation_id": {
             "title": "Conversation Id",
             "type": "string"
           },
-          "message": {
-            "$ref": "#/components/schemas/ConversationEntry"
+          "item": {
+            "discriminator": {
+              "mapping": {
+                "notice": "#/components/schemas/NoticeItem",
+                "reply": "#/components/schemas/ReplyItem",
+                "user": "#/components/schemas/UserItem"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserItem"
+              },
+              {
+                "$ref": "#/components/schemas/ReplyItem"
+              },
+              {
+                "$ref": "#/components/schemas/NoticeItem"
+              }
+            ],
+            "title": "Item"
           }
         },
         "required": [
           "conversation_id",
-          "message"
+          "item"
         ],
         "title": "ConversationMessageHit",
         "type": "object"
@@ -4736,7 +4297,7 @@
         "type": "object"
       },
       "ConversationSyncRow": {
-        "description": "One batch-sync row: the conversation's client-visible fields, its newest page of entries and its artifacts.",
+        "description": "One batch-sync row: the conversation's client-visible fields, its newest page of items and its artifacts.",
         "properties": {
           "artifacts": {
             "items": {
@@ -4779,13 +4340,6 @@
           "description": {
             "title": "Description",
             "type": "string"
-          },
-          "entries": {
-            "items": {
-              "$ref": "#/components/schemas/EntryFrame"
-            },
-            "title": "Entries",
-            "type": "array"
           },
           "has_older": {
             "default": false,
@@ -4910,7 +4464,6 @@
           }
         },
         "required": [
-          "entries",
           "items",
           "state",
           "has_older",
@@ -6715,114 +6268,6 @@
         ],
         "title": "EnableComposioToolkitResponse",
         "type": "object"
-      },
-      "EntryFrame": {
-        "additionalProperties": false,
-        "description": "A newly appended entry.",
-        "properties": {
-          "at": {
-            "format": "date-time",
-            "title": "At",
-            "type": "string"
-          },
-          "entry": {
-            "discriminator": {
-              "mapping": {
-                "approval_decided": "#/components/schemas/ApprovalDecided",
-                "approval_requested": "#/components/schemas/ApprovalRequested",
-                "barge_in": "#/components/schemas/BargeIn",
-                "integration_connected": "#/components/schemas/IntegrationConnected",
-                "integration_needed": "#/components/schemas/IntegrationNeeded",
-                "notice": "#/components/schemas/Notice",
-                "reply": "#/components/schemas/Reply",
-                "reply_settled": "#/components/schemas/ReplySettled",
-                "stop_requested": "#/components/schemas/StopRequested",
-                "todo_woke": "#/components/schemas/TodoWoke",
-                "user_message": "#/components/schemas/UserMessage",
-                "work_finished": "#/components/schemas/WorkFinished",
-                "work_started": "#/components/schemas/WorkStarted",
-                "workflow_fired": "#/components/schemas/WorkflowFired"
-              },
-              "propertyName": "kind"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/UserMessage"
-              },
-              {
-                "$ref": "#/components/schemas/StopRequested"
-              },
-              {
-                "$ref": "#/components/schemas/BargeIn"
-              },
-              {
-                "$ref": "#/components/schemas/WorkflowFired"
-              },
-              {
-                "$ref": "#/components/schemas/TodoWoke"
-              },
-              {
-                "$ref": "#/components/schemas/Notice"
-              },
-              {
-                "$ref": "#/components/schemas/WorkStarted"
-              },
-              {
-                "$ref": "#/components/schemas/ApprovalRequested"
-              },
-              {
-                "$ref": "#/components/schemas/ApprovalDecided"
-              },
-              {
-                "$ref": "#/components/schemas/WorkFinished"
-              },
-              {
-                "$ref": "#/components/schemas/Reply"
-              },
-              {
-                "$ref": "#/components/schemas/ReplySettled"
-              },
-              {
-                "$ref": "#/components/schemas/IntegrationNeeded"
-              },
-              {
-                "$ref": "#/components/schemas/IntegrationConnected"
-              }
-            ],
-            "title": "Entry"
-          },
-          "kind": {
-            "const": "entry",
-            "default": "entry",
-            "title": "Kind",
-            "type": "string"
-          },
-          "seq": {
-            "minimum": 1.0,
-            "title": "Seq",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "kind",
-          "seq",
-          "at",
-          "entry"
-        ],
-        "title": "EntryFrame",
-        "type": "object"
-      },
-      "EntrySurface": {
-        "description": "Where the run entered GAIA; WORKER is work no client started.",
-        "enum": [
-          "web",
-          "desktop",
-          "bot",
-          "voice",
-          "worker"
-        ],
-        "title": "EntrySurface",
-        "type": "string"
       },
       "ErrorEnvelope": {
         "additionalProperties": true,
@@ -9231,45 +8676,6 @@
         "title": "IntegrationConfigItem",
         "type": "object"
       },
-      "IntegrationConnected": {
-        "additionalProperties": false,
-        "description": "The user connected an integration this conversation's work was waiting on.",
-        "properties": {
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "integration_id": {
-            "title": "Integration Id",
-            "type": "string"
-          },
-          "integration_name": {
-            "title": "Integration Name",
-            "type": "string"
-          },
-          "kind": {
-            "const": "integration_connected",
-            "default": "integration_connected",
-            "title": "Kind",
-            "type": "string"
-          },
-          "needed_id": {
-            "title": "Needed Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "integration_id",
-          "integration_name",
-          "needed_id"
-        ],
-        "title": "IntegrationConnected",
-        "type": "object"
-      },
       "IntegrationContent": {
         "description": "Rich marketplace content shown only on the integration detail page.\n\nSerializes with camelCase aliases (use_cases -> useCases, how_it_works ->\nhowItWorks) so the nested object matches the camelCase contract the rest of\nthe public integration response already uses; without this the frontend\nreceives snake_case keys and silently falls back to generic content.",
         "properties": {
@@ -9370,40 +8776,6 @@
           "status"
         ],
         "title": "IntegrationInfo",
-        "type": "object"
-      },
-      "IntegrationNeeded": {
-        "additionalProperties": false,
-        "description": "Work in this conversation is waiting on the user to connect an integration.",
-        "properties": {
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "integration_id": {
-            "title": "Integration Id",
-            "type": "string"
-          },
-          "integration_name": {
-            "title": "Integration Name",
-            "type": "string"
-          },
-          "kind": {
-            "const": "integration_needed",
-            "default": "integration_needed",
-            "title": "Kind",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "integration_id",
-          "integration_name"
-        ],
-        "title": "IntegrationNeeded",
         "type": "object"
       },
       "IntegrationRef": {
@@ -10030,7 +9402,7 @@
       },
       "LoadedConversation": {
         "additionalProperties": true,
-        "description": "A conversation as a load returns it: its head's fields and the newest page of its log.",
+        "description": "A conversation as a load returns it: its head's fields and the newest page of its screen.",
         "properties": {
           "artifacts": {
             "items": {
@@ -10069,13 +9441,6 @@
             "default": "New Chat",
             "title": "Description",
             "type": "string"
-          },
-          "entries": {
-            "items": {
-              "$ref": "#/components/schemas/EntryFrame"
-            },
-            "title": "Entries",
-            "type": "array"
           },
           "has_older": {
             "default": false,
@@ -10216,7 +9581,6 @@
           }
         },
         "required": [
-          "entries",
           "items",
           "state",
           "has_older",
@@ -11770,24 +11134,6 @@
         "title": "MessageFeedbackResponse",
         "type": "object"
       },
-      "MessageReaction": {
-        "description": "GAIA's one emoji reaction on a user message.",
-        "properties": {
-          "by": {
-            "$ref": "#/components/schemas/ReactionBy"
-          },
-          "emoji": {
-            "title": "Emoji",
-            "type": "string"
-          }
-        },
-        "required": [
-          "emoji",
-          "by"
-        ],
-        "title": "MessageReaction",
-        "type": "object"
-      },
       "MessageRequest": {
         "description": "Minimal chat request with a single message.",
         "properties": {
@@ -11810,8 +11156,27 @@
             "title": "Conversation Id",
             "type": "string"
           },
-          "message": {
-            "$ref": "#/components/schemas/ConversationEntry"
+          "item": {
+            "discriminator": {
+              "mapping": {
+                "notice": "#/components/schemas/NoticeItem",
+                "reply": "#/components/schemas/ReplyItem",
+                "user": "#/components/schemas/UserItem"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UserItem"
+              },
+              {
+                "$ref": "#/components/schemas/ReplyItem"
+              },
+              {
+                "$ref": "#/components/schemas/NoticeItem"
+              }
+            ],
+            "title": "Item"
           },
           "snippet": {
             "title": "Snippet",
@@ -11820,7 +11185,7 @@
         },
         "required": [
           "conversation_id",
-          "message",
+          "item",
           "snippet"
         ],
         "title": "MessageSearchResult",
@@ -12246,58 +11611,6 @@
           "snippet"
         ],
         "title": "NoteSearchResult",
-        "type": "object"
-      },
-      "Notice": {
-        "additionalProperties": false,
-        "description": "Text delivered to the user outside a step, with the cards of the work it reports.",
-        "properties": {
-          "follow_up_actions": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Follow Up Actions",
-            "type": "array"
-          },
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "const": "notice",
-            "default": "notice",
-            "title": "Kind",
-            "type": "string"
-          },
-          "origin": {
-            "title": "Origin",
-            "type": "string"
-          },
-          "text": {
-            "title": "Text",
-            "type": "string"
-          },
-          "tool_data": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/ToolDataEntry"
-            },
-            "title": "Tool Data",
-            "type": "array"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "text",
-          "origin",
-          "tool_data",
-          "follow_up_actions"
-        ],
-        "title": "Notice",
         "type": "object"
       },
       "NoticeItem": {
@@ -15517,40 +14830,6 @@
         "title": "QuietHours",
         "type": "object"
       },
-      "QuietHoursBypass": {
-        "description": "A run let through the user's quiet hours, with the reason it says it interrupts them.",
-        "properties": {
-          "kind": {
-            "const": "bypass",
-            "default": "bypass",
-            "title": "Kind",
-            "type": "string"
-          },
-          "reason": {
-            "minLength": 1,
-            "title": "Reason",
-            "type": "string"
-          }
-        },
-        "required": [
-          "reason"
-        ],
-        "title": "QuietHoursBypass",
-        "type": "object"
-      },
-      "QuietHoursHold": {
-        "description": "A run held until the user's quiet hours ended.",
-        "properties": {
-          "kind": {
-            "const": "hold",
-            "default": "hold",
-            "title": "Kind",
-            "type": "string"
-          }
-        },
-        "title": "QuietHoursHold",
-        "type": "object"
-      },
       "Reaction": {
         "additionalProperties": false,
         "description": "An emoji on a user message; a field updated in place, never a state change.",
@@ -16264,128 +15543,6 @@
         "title": "ReminderResponse",
         "type": "object"
       },
-      "Reply": {
-        "additionalProperties": false,
-        "description": "GAIA's reply, appended when the user first sees it; its content is filled in place.",
-        "properties": {
-          "attempt_id": {
-            "title": "Attempt Id",
-            "type": "string"
-          },
-          "follow_up_actions": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Follow Up Actions",
-            "type": "array"
-          },
-          "heard_through": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Heard Through"
-          },
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "image": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ImageData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "imported": {
-            "default": false,
-            "title": "Imported",
-            "type": "boolean"
-          },
-          "kind": {
-            "const": "reply",
-            "default": "reply",
-            "title": "Kind",
-            "type": "string"
-          },
-          "narrates": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Narrates",
-            "type": "array"
-          },
-          "pinned": {
-            "default": false,
-            "title": "Pinned",
-            "type": "boolean"
-          },
-          "quote_target": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quote Target"
-          },
-          "reply_id": {
-            "title": "Reply Id",
-            "type": "string"
-          },
-          "revision": {
-            "default": 0,
-            "minimum": 0.0,
-            "title": "Revision",
-            "type": "integer"
-          },
-          "text": {
-            "default": "",
-            "title": "Text",
-            "type": "string"
-          },
-          "tool_data": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/ToolDataEntry"
-            },
-            "title": "Tool Data",
-            "type": "array"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "reply_id",
-          "attempt_id",
-          "text",
-          "tool_data",
-          "follow_up_actions",
-          "image",
-          "quote_target",
-          "narrates",
-          "heard_through",
-          "pinned",
-          "imported",
-          "revision"
-        ],
-        "title": "Reply",
-        "type": "object"
-      },
       "ReplyDeltaFrame": {
         "additionalProperties": false,
         "description": "Streamed content of one comms attempt; reply_id is None until its reply entry exists.",
@@ -16599,91 +15756,6 @@
         ],
         "title": "ReplyOutcome",
         "type": "string"
-      },
-      "ReplySettled": {
-        "additionalProperties": false,
-        "description": "The open reply's attempt ended; through is the newest seq it answered.",
-        "properties": {
-          "answers": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Answers",
-            "type": "array"
-          },
-          "failure": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FailureReason"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "imported": {
-            "default": false,
-            "title": "Imported",
-            "type": "boolean"
-          },
-          "kind": {
-            "const": "reply_settled",
-            "default": "reply_settled",
-            "title": "Kind",
-            "type": "string"
-          },
-          "narrates": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Narrates",
-            "type": "array"
-          },
-          "outcome": {
-            "$ref": "#/components/schemas/ReplyOutcome"
-          },
-          "quote_target": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quote Target"
-          },
-          "reply_id": {
-            "title": "Reply Id",
-            "type": "string"
-          },
-          "through": {
-            "minimum": 0.0,
-            "title": "Through",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "reply_id",
-          "outcome",
-          "answers",
-          "through",
-          "quote_target",
-          "failure",
-          "narrates",
-          "imported"
-        ],
-        "title": "ReplySettled",
-        "type": "object"
       },
       "ReplyToMessageData": {
         "description": "Data for the message being replied to.",
@@ -18565,56 +17637,6 @@
         "title": "StaticReminderPayload",
         "type": "object"
       },
-      "StopBy": {
-        "description": "Who asked for a Stop: the user's button or command, or GAIA's cancel_executor tool.",
-        "enum": [
-          "user",
-          "gaia"
-        ],
-        "title": "StopBy",
-        "type": "string"
-      },
-      "StopRequested": {
-        "additionalProperties": false,
-        "description": "A Stop: cancels every input and piece of work caused at or before covers_through.",
-        "properties": {
-          "by": {
-            "$ref": "#/components/schemas/StopBy"
-          },
-          "covers_through": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Covers Through"
-          },
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "const": "stop_requested",
-            "default": "stop_requested",
-            "title": "Kind",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "by",
-          "covers_through"
-        ],
-        "title": "StopRequested",
-        "type": "object"
-      },
       "StoredIntegrationTool": {
         "description": "Tool metadata for frontend display (not used by LLM).",
         "properties": {
@@ -19967,15 +18989,6 @@
         "title": "TodoProgressEvent",
         "type": "object"
       },
-      "TodoReportForm": {
-        "description": "What a tracked todo's run owes the user: a write-up, or its report as the todo's guidance formed it.",
-        "enum": [
-          "write_up",
-          "as_written"
-        ],
-        "title": "TodoReportForm",
-        "type": "string"
-      },
       "TodoResponse": {
         "description": "Complete todo response with all fields",
         "properties": {
@@ -20258,54 +19271,6 @@
           "sub_todo_count"
         ],
         "title": "TodoResponse",
-        "type": "object"
-      },
-      "TodoRun": {
-        "additionalProperties": false,
-        "description": "One run of a tracked todo: the todo, the run, what woke it and the report it owes.",
-        "properties": {
-          "attribution": {
-            "$ref": "#/components/schemas/Attribution"
-          },
-          "report_form": {
-            "$ref": "#/components/schemas/TodoReportForm"
-          },
-          "run_id": {
-            "minLength": 1,
-            "title": "Run Id",
-            "type": "string"
-          },
-          "runs_once": {
-            "title": "Runs Once",
-            "type": "boolean"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "todo_id": {
-            "minLength": 1,
-            "title": "Todo Id",
-            "type": "string"
-          },
-          "trigger_type": {
-            "$ref": "#/components/schemas/TriggerType"
-          },
-          "wake": {
-            "$ref": "#/components/schemas/TodoRunWake"
-          }
-        },
-        "required": [
-          "todo_id",
-          "run_id",
-          "title",
-          "trigger_type",
-          "runs_once",
-          "wake",
-          "report_form",
-          "attribution"
-        ],
-        "title": "TodoRun",
         "type": "object"
       },
       "TodoRunWake": {
@@ -20592,34 +19557,6 @@
         ],
         "title": "TodoWakeKind",
         "type": "string"
-      },
-      "TodoWoke": {
-        "additionalProperties": false,
-        "description": "A tracked todo's run woke; the work it starts answers it, and so does the reply that reports that work.",
-        "properties": {
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "const": "todo_woke",
-            "default": "todo_woke",
-            "title": "Kind",
-            "type": "string"
-          },
-          "run": {
-            "$ref": "#/components/schemas/TodoRun"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "run"
-        ],
-        "title": "TodoWoke",
-        "type": "object"
       },
       "TodoWokeItem": {
         "description": "What woke a tracked todo's run; its write-up is its own item.",
@@ -21107,18 +20044,6 @@
         "title": "TriageEmailSummary",
         "type": "object"
       },
-      "Trigger": {
-        "description": "What started the run an event belongs to.",
-        "enum": [
-          "interactive",
-          "schedule",
-          "integration_trigger",
-          "webhook",
-          "system"
-        ],
-        "title": "Trigger",
-        "type": "string"
-      },
       "TriggerConfig": {
         "additionalProperties": true,
         "description": "Configuration for workflow triggers.\n\nUses a discriminated union pattern for type-safe provider configs.\nProvider-specific data is stored in `trigger_data` field.",
@@ -21402,28 +20327,6 @@
           "default"
         ],
         "title": "TriggerConfigFieldSchema",
-        "type": "object"
-      },
-      "TriggerEmailData": {
-        "description": "The ``email_data`` of a Gmail-triggered run, as the prompt reads it.",
-        "properties": {
-          "message_text": {
-            "default": "",
-            "title": "Message Text",
-            "type": "string"
-          },
-          "sender": {
-            "default": "Unknown",
-            "title": "Sender",
-            "type": "string"
-          },
-          "subject": {
-            "default": "No Subject",
-            "title": "Subject",
-            "type": "string"
-          }
-        },
-        "title": "TriggerEmailData",
         "type": "object"
       },
       "TriggerOption": {
@@ -23406,82 +22309,6 @@
         "title": "WorkCancelled",
         "type": "object"
       },
-      "WorkFinished": {
-        "additionalProperties": false,
-        "description": "Background work ended.",
-        "properties": {
-          "continued_by_decision": {
-            "default": false,
-            "title": "Continued By Decision",
-            "type": "boolean"
-          },
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "image": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ImageData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "const": "work_finished",
-            "default": "work_finished",
-            "title": "Kind",
-            "type": "string"
-          },
-          "note": {
-            "default": "",
-            "title": "Note",
-            "type": "string"
-          },
-          "nothing_for_user": {
-            "default": false,
-            "title": "Nothing For User",
-            "type": "boolean"
-          },
-          "outcome": {
-            "$ref": "#/components/schemas/WorkOutcome"
-          },
-          "report": {
-            "title": "Report",
-            "type": "string"
-          },
-          "task_id": {
-            "title": "Task Id",
-            "type": "string"
-          },
-          "tool_data": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/ToolDataEntry"
-            },
-            "title": "Tool Data",
-            "type": "array"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "task_id",
-          "outcome",
-          "report",
-          "tool_data",
-          "note",
-          "nothing_for_user",
-          "image",
-          "continued_by_decision"
-        ],
-        "title": "WorkFinished",
-        "type": "object"
-      },
       "WorkItem": {
         "description": "One piece of work from its hand-off to its result, with every task handed to it.",
         "properties": {
@@ -23560,97 +22387,6 @@
           "image"
         ],
         "title": "WorkItem",
-        "type": "object"
-      },
-      "WorkOutcome": {
-        "description": "How a piece of background work ended.",
-        "enum": [
-          "done",
-          "failed",
-          "cancelled",
-          "lost"
-        ],
-        "title": "WorkOutcome",
-        "type": "string"
-      },
-      "WorkStarted": {
-        "additionalProperties": false,
-        "description": "Background work dispatched for the inputs through cause_through.",
-        "properties": {
-          "answers": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Answers",
-            "type": "array"
-          },
-          "cause_through": {
-            "minimum": 1.0,
-            "title": "Cause Through",
-            "type": "integer"
-          },
-          "detached": {
-            "default": false,
-            "title": "Detached",
-            "type": "boolean"
-          },
-          "exclusive": {
-            "default": false,
-            "title": "Exclusive",
-            "type": "boolean"
-          },
-          "handoff": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Handoff"
-          },
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "joins": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Joins"
-          },
-          "kind": {
-            "const": "work_started",
-            "default": "work_started",
-            "title": "Kind",
-            "type": "string"
-          },
-          "task_id": {
-            "title": "Task Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "task_id",
-          "cause_through",
-          "answers",
-          "joins",
-          "detached",
-          "exclusive",
-          "handoff"
-        ],
-        "title": "WorkStarted",
         "type": "object"
       },
       "WorkStatus": {
@@ -23904,34 +22640,6 @@
         "title": "WorkflowExecutionsResponse",
         "type": "object"
       },
-      "WorkflowFired": {
-        "additionalProperties": false,
-        "description": "A workflow fired into this conversation; it is answered on its own, never merged.",
-        "properties": {
-          "id": {
-            "description": "Producer-minted idempotency key",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "kind": {
-            "const": "workflow_fired",
-            "default": "workflow_fired",
-            "title": "Kind",
-            "type": "string"
-          },
-          "run": {
-            "$ref": "#/components/schemas/WorkflowRun"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "run"
-        ],
-        "title": "WorkflowFired",
-        "type": "object"
-      },
       "WorkflowFiredItem": {
         "description": "The workflow card that started a run; the run's reply is its own item.",
         "properties": {
@@ -24018,40 +22726,6 @@
           "message"
         ],
         "title": "WorkflowResponse",
-        "type": "object"
-      },
-      "WorkflowRun": {
-        "additionalProperties": false,
-        "description": "What a workflow's turn runs: the workflow, the trigger that fired it, and the fire's bookkeeping.",
-        "properties": {
-          "attribution": {
-            "$ref": "#/components/schemas/Attribution"
-          },
-          "execution_id": {
-            "minLength": 1,
-            "title": "Execution Id",
-            "type": "string"
-          },
-          "timezone": {
-            "minLength": 1,
-            "title": "Timezone",
-            "type": "string"
-          },
-          "trigger": {
-            "$ref": "#/components/schemas/WorkflowTriggerContext"
-          },
-          "workflow": {
-            "$ref": "#/components/schemas/SelectedWorkflowDataOutput"
-          }
-        },
-        "required": [
-          "workflow",
-          "execution_id",
-          "timezone",
-          "trigger",
-          "attribution"
-        ],
-        "title": "WorkflowRun",
         "type": "object"
       },
       "WorkflowStatusResponse": {
@@ -24178,94 +22852,6 @@
           "description"
         ],
         "title": "WorkflowStep",
-        "type": "object"
-      },
-      "WorkflowTriggerContext": {
-        "description": "The keys ``format_workflow_execution_message`` reads off a run's trigger context.\n\nThe bag itself is open by construction \u2014 schedulers spread arbitrary provider\ntrigger data through it alongside the agent's own keys \u2014 so this is a view of\nit, parsed once here, not its full shape.",
-        "properties": {
-          "email_data": {
-            "$ref": "#/components/schemas/TriggerEmailData"
-          },
-          "playbook_fallback": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Playbook Fallback"
-          },
-          "quiet_hours": {
-            "anyOf": [
-              {
-                "discriminator": {
-                  "mapping": {
-                    "bypass": "#/components/schemas/QuietHoursBypass",
-                    "hold": "#/components/schemas/QuietHoursHold"
-                  },
-                  "propertyName": "kind"
-                },
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/QuietHoursBypass"
-                  },
-                  {
-                    "$ref": "#/components/schemas/QuietHoursHold"
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Quiet Hours"
-          },
-          "tracked_todos_context": {
-            "default": "",
-            "title": "Tracked Todos Context",
-            "type": "string"
-          },
-          "trigger_data": {
-            "additionalProperties": true,
-            "title": "Trigger Data",
-            "type": "object"
-          },
-          "triggered_at": {
-            "default": "Unknown",
-            "title": "Triggered At",
-            "type": "string"
-          },
-          "type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Type"
-          },
-          "workflow_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workflow Id"
-          },
-          "workflow_notify_on_completion": {
-            "default": true,
-            "title": "Workflow Notify On Completion",
-            "type": "boolean"
-          }
-        },
-        "title": "WorkflowTriggerContext",
         "type": "object"
       },
       "WorkflowTriggerResponse": {

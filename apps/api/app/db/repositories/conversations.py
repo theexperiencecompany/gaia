@@ -55,13 +55,6 @@ from app.db.repositories.conversation_entries import (
     stored_entries_matching,
     stored_row,
 )
-from app.db.repositories.conversation_history import (
-    PINNABLE_KINDS,
-    RELATED_KINDS,
-    TEXT_KINDS,
-    needed_beside,
-    project,
-)
 from app.models.artifact_models import ArtifactRegistryEntry
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
@@ -70,19 +63,24 @@ from app.models.chat_models import (
     SystemPurpose,
 )
 from app.models.conversation_frame_models import EntryFrame, state_frame
-from app.models.conversation_log_models import EntryKind, LoggedEntry
+from app.models.conversation_log_models import (
+    PINNABLE_KINDS,
+    TEXT_KINDS,
+    EntryKind,
+    LoggedEntry,
+)
 from app.models.conversation_models import (
     BulkWriteDetails,
     ConversationDescriptionHit,
     ConversationDocument,
-    ConversationEntriesPage,
     ConversationHead,
     ConversationMessageHit,
     ConversationSearchResults,
     ConversationSummary,
     ConversationUpdate,
     EntryAddress,
-    LoadedConversation,
+    LogPage,
+    StoredConversation,
     StoredEntry,
     _ConversationIdRow,
     _ConversationOwnerRow,
@@ -90,6 +88,7 @@ from app.models.conversation_models import (
     _SystemGeneratedRow,
     _TodoBindingRow,
 )
+from app.services.conversation.screen import RELATED_KINDS, needed_beside, text_item
 from app.utils.errors import (
     ConversationAlreadyExistsError,
     ConversationIdTakenError,
@@ -330,7 +329,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     # ---- targeted / projected reads ----
 
-    async def get(self, doc_id: str, *, user_id: str) -> LoadedConversation | None:
+    async def get(self, doc_id: str, *, user_id: str) -> StoredConversation | None:
         """Read the conversation with its newest page of entries."""
         heads = await self._read_heads({"conversation_id": doc_id, "user_id": user_id})
         if not heads:
@@ -339,7 +338,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def read_entries_before(
         self, conversation_id: str, *, user_id: str, before_seq: int, limit: int
-    ) -> ConversationEntriesPage | None:
+    ) -> LogPage | None:
         """Read the page of entries before before_seq; None for a missing conversation."""
         heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
         if not heads:
@@ -411,7 +410,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return None if row is None else row.conversation_id
 
-    async def recent_for_user(self, user_id: str, *, limit: int) -> list[LoadedConversation]:
+    async def recent_for_user(self, user_id: str, *, limit: int) -> list[StoredConversation]:
         """Return the user's most recent conversations, each with its newest page of entries."""
         heads = await self._read_heads({"user_id": user_id}, sort={"createdAt": -1}, limit=limit)
         return list(await asyncio.gather(*(self._with_page(head) for head in heads)))
@@ -436,7 +435,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return None if row is None else row.todo_id
 
-    async def create(self, doc: ConversationDocument) -> LoadedConversation:
+    async def create(self, doc: ConversationDocument) -> StoredConversation:
         """Insert the conversation's head at an empty log; raises ValueError if doc carries messages.
 
         conversation_id is unique across every user: an id this user already holds raises
@@ -514,7 +513,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def find_updated_since(
         self, user_id: str, items: list[ConversationSyncItem]
-    ) -> list[LoadedConversation]:
+    ) -> list[StoredConversation]:
         """Batch-fetch conversations updated since each item's last-seen timestamp, with their newest entries.
 
         A missing/unparseable timestamp includes that conversation unconditionally.
@@ -694,16 +693,14 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                         why=str(error.errmsg),
                     ) from exc
 
-    async def _page(
-        self, head: Head, *, before_seq: int | None, limit: int
-    ) -> ConversationEntriesPage:
+    async def _page(self, head: Head, *, before_seq: int | None, limit: int) -> LogPage:
         """Read the newest limit entries before before_seq, reaching back to every opener they complete."""
         [(_, stored)] = await self._union_for(
             [head], EntryWindow(before_seq=before_seq, limit=limit)
         )
         page = await self._with_openers(head, [logged_of(entry) for entry in stored])
         older = bool(page) and await self._holds_before(head, page[0].seq)
-        return ConversationEntriesPage(
+        return LogPage(
             entries=[
                 EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry) for logged in page
             ],
@@ -745,9 +742,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         for row in [*rows, *beside]:
             related.setdefault(row.conversation_id, []).append(row.logged)
         return [
-            ConversationMessageHit(conversation_id=row.conversation_id, message=message)
+            ConversationMessageHit(conversation_id=row.conversation_id, item=item)
             for row in rows
-            for message in project([row.logged], related.get(row.conversation_id, []))
+            if (item := text_item(row.logged, related.get(row.conversation_id, []))) is not None
         ]
 
     async def _related_rows(
@@ -878,9 +875,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             await self._raw_collection().delete_many(query)
         return ids
 
-    async def _with_page(self, head: Head) -> LoadedConversation:
+    async def _with_page(self, head: Head) -> StoredConversation:
         page = await self._page(head, before_seq=None, limit=CONVERSATION_READ_LIMIT)
-        return LoadedConversation.model_validate(
+        return StoredConversation.model_validate(
             {**dict(self._to_model(head.fields)), **dict(page)}
         )
 
