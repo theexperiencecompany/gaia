@@ -25,6 +25,11 @@ vi.mock("@/features/chat/components/interface/RichContentRenderer", () => ({
 vi.mock("@/features/chat/components/interface/MarkdownRenderer", () => ({
   default: ({ content }: { content: string }) => <pre>{content}</pre>,
 }));
+vi.mock("@/features/artifacts/LazyArtifactRenderer", () => ({
+  LazyArtifactRenderer: ({ program }: { program: string }) => (
+    <pre>{program}</pre>
+  ),
+}));
 
 const CONTENT_URL = "https://c0ntent.gaiausercontent.test/?t=signed";
 const issueLinkContentUrl = vi.hoisted(() => vi.fn());
@@ -36,6 +41,7 @@ vi.mock("@/features/short-links/api/linkViewerApi", async (importOriginal) => ({
 }));
 
 import { LinkUnavailable } from "@/features/short-links/components/LinkUnavailable";
+import { PublicOpenUIArtifactView } from "@/features/short-links/components/PublicOpenUIArtifactView";
 import { PublicSessionArtifactView } from "@/features/short-links/components/PublicSessionArtifactView";
 import { PublicWorkflowRunView } from "@/features/short-links/components/PublicWorkflowRunView";
 import { DEAD_LINK_COPY } from "@/features/short-links/constants";
@@ -43,6 +49,7 @@ import { LINK_VIEWS } from "@/features/short-links/registry";
 import type { DeadLinkDenial } from "@/features/short-links/types";
 import type {
   LinkContent,
+  PublicOpenUIArtifact,
   PublicSessionArtifact,
   PublicWorkflowRun,
 } from "@/types/features/shortLinkTypes";
@@ -170,6 +177,29 @@ describe("a shared workflow run", () => {
       withLocale(<PublicWorkflowRunView view={RUN} />),
     );
 
+    expect(html).toMatch(
+      /<time dateTime="2026-11-10T06:27:00Z"[^>]*>Nov 10, 2026<\/time>/,
+    );
+  });
+});
+
+describe("a shared artifact", () => {
+  const ARTIFACT: PublicOpenUIArtifact = {
+    target_type: "openui_artifact",
+    kind: "report",
+    title: "Q3 revenue",
+    program: 'root = Report("Q3 revenue", [])',
+    version: 1,
+    created_at: "2026-11-10T06:27:00Z",
+    shared_by: "Ana",
+  };
+
+  it("says who shared it and when, like every other shared view", () => {
+    const html = renderToString(
+      withLocale(<PublicOpenUIArtifactView view={ARTIFACT} />),
+    );
+
+    expect(html).toMatch(/Shared by (<!-- -->)?Ana/);
     expect(html).toMatch(
       /<time dateTime="2026-11-10T06:27:00Z"[^>]*>Nov 10, 2026<\/time>/,
     );
