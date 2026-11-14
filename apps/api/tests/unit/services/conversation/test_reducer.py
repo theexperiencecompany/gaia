@@ -64,7 +64,7 @@ def _work(task_id: str, cause_through: int, *approvals: str) -> LiveWork:
         task_id=task_id,
         cause_through=cause_through,
         answers=(),
-        pending_approvals=frozenset(approvals),
+        pending_approvals=approvals,
     )
 
 
@@ -289,9 +289,7 @@ def test_work_started_appends_live_work_with_its_answers() -> None:
     entry = started("w", "t1", 2).model_copy(update={"answers": ("u1", "u2")})
     result = _accept(state, 3, entry)
     assert result.state.work == (
-        LiveWork(
-            task_id="t1", cause_through=2, answers=("u1", "u2"), pending_approvals=frozenset()
-        ),
+        LiveWork(task_id="t1", cause_through=2, answers=("u1", "u2"), pending_approvals=()),
     )
     assert result.effects == ()
 
@@ -328,7 +326,7 @@ def test_work_handed_to_running_work_joins_it_and_answers_with_it() -> None:
             task_id="t1",
             cause_through=1,
             answers=("u1", "u3"),
-            pending_approvals=frozenset(),
+            pending_approvals=(),
             joined=("t2",),
         ),
     )
@@ -799,7 +797,7 @@ def _parked() -> ConversationState:
 def test_work_done_while_its_approval_is_pending_stays_live_and_narrates_nothing() -> None:
     result = _accept(_before_park(), 6, _left_to_the_user("f", "t1"))
     assert [(item.task_id, item.pending_approvals) for item in result.state.work] == [
-        ("t1", frozenset({"ap1"}))
+        ("t1", ("ap1",))
     ]
     assert result.state.display is DisplayState.AWAITING_APPROVAL
     assert result.state.unsettled_waking == ()
@@ -825,7 +823,7 @@ def test_an_approval_nobody_decided_leaves_parked_work_for_its_finish_to_report(
         id="d", approval_id="ap1", outcome=ApprovalOutcome.EXPIRED, decider=None
     )
     state = _accept(_parked(), 7, entry).state
-    assert [(item.task_id, item.pending_approvals) for item in state.work] == [("t1", frozenset())]
+    assert [(item.task_id, item.pending_approvals) for item in state.work] == [("t1", ())]
     result = _accept(state, 8, finished("f2", "t1", WorkOutcome.FAILED))
     assert result.state.work == ()
     assert result.effects == (KickStep(),)

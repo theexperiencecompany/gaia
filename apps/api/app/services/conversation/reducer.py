@@ -143,7 +143,7 @@ def _start_work(state: ConversationState, seq: int, entry: WorkStarted) -> Trans
         task_id=entry.task_id,
         cause_through=entry.cause_through,
         answers=entry.answers,
-        pending_approvals=frozenset(),
+        pending_approvals=(),
         detached=entry.detached,
         exclusive=entry.exclusive,
     )
@@ -179,7 +179,7 @@ def _request_approval(state: ConversationState, entry: ApprovalRequested) -> Tra
     if _live(state, entry.task_id) is None:
         return Rejected(reason=RejectReason.TASK_NOT_LIVE)
     work = tuple(
-        item.model_copy(update={"pending_approvals": item.pending_approvals | {entry.approval_id}})
+        item.model_copy(update={"pending_approvals": (*item.pending_approvals, entry.approval_id)})
         if item.task_id == entry.task_id
         else item
         for item in state.work
@@ -190,7 +190,13 @@ def _request_approval(state: ConversationState, entry: ApprovalRequested) -> Tra
 def _decide_approval(state: ConversationState, entry: ApprovalDecided) -> Transition:
     """Release the approval; parked work the user decided ends, as the work the decision starts continues it."""
     released = (
-        item.model_copy(update={"pending_approvals": item.pending_approvals - {entry.approval_id}})
+        item.model_copy(
+            update={
+                "pending_approvals": tuple(
+                    approval for approval in item.pending_approvals if approval != entry.approval_id
+                )
+            }
+        )
         for item in state.work
     )
     continued = entry.outcome in USER_DECISIONS

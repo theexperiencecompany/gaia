@@ -188,7 +188,7 @@ async def test_a_run_parked_on_an_approval_delivers_nothing_yet(seams: _Seams) -
             task_id=seams.task_ids[-1],
             cause_through=3,
             answers=("todo:run_1",),
-            pending_approvals=frozenset({"a1"}),
+            pending_approvals=("a1",),
         )
         return EMPTY_LOG_STATE.model_copy(update={"work": (work,)})
 

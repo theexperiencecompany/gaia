@@ -1235,9 +1235,9 @@ async def test_an_approval_holds_the_work_until_the_user_decides(
         rig.conversation_id, rig.user_id, "a1", ApprovalOutcome.APPROVED, ApprovalDecider.USER
     )
     decided = await rig.ports.log.state(rig.conversation_id, rig.user_id)
-    assert [work.pending_approvals for work in waiting.work] == [frozenset({"a1"})]
+    assert [work.pending_approvals for work in waiting.work] == [("a1",)]
     assert waiting.display is DisplayState.AWAITING_APPROVAL
-    assert [work.pending_approvals for work in decided.work] == [frozenset()]
+    assert [work.pending_approvals for work in decided.work] == [()]
     assert len(await rig.of(ApprovalDecided)) == 1
     assert [(a.summary, a.expires_at) for a in await rig.of(ApprovalRequested)] == [
         ("Send the invoice", None)
@@ -1638,7 +1638,7 @@ async def test_an_agent_withdrawing_its_approval_reaches_the_log_and_every_devic
     ]
     assert streamed == [(approval_id, ApprovalOutcome.WITHDRAWN)]
     state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
-    assert [w.pending_approvals for w in state.work] == [frozenset()]
+    assert [w.pending_approvals for w in state.work] == [()]
     await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
 
 

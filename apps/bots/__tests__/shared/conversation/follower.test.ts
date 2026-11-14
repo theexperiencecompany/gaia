@@ -393,6 +393,23 @@ describe("history the follow started after", () => {
 });
 
 describe("an approval logged after the follow's floor on work started before it", () => {
+  it("is asked from the follow's opening screen alone", async () => {
+    const { surface, calls } = recorder();
+    const sam = approvalAsked("t1", "ap1", "Send email to Sam");
+    // Woken (after_seq 6) for the approval logged at seq 7, on work started at seq 2.
+    const follower = new ConversationFollower(6, NON_EDITING, surface, "c1");
+    await feed(follower, [
+      screenFrame([
+        inbound("u1", 1, "11"),
+        workItem("t1", 2, "awaiting_approval", [sam], 7),
+      ]),
+      stateFrame(7, "awaiting_approval"),
+    ]);
+
+    expect(sent(calls).map(({ text }) => text)).toEqual([
+      "*Approval needed:* Send email to Sam\nReply *yes* to approve or *no* to decline.",
+    ]);
+  });
   it("is asked, once", async () => {
     const { surface, calls } = recorder();
     const sam = approvalAsked("t1", "ap1", "Send email to Sam");
@@ -407,6 +424,33 @@ describe("an approval logged after the follow's floor on work started before it"
     expect(sent(calls).map(({ text }) => text)).toEqual([
       "*Approval needed:* Send email to Sam\nReply *yes* to approve or *no* to decline.",
     ]);
+  });
+});
+
+describe("numbered approvals across two pieces of work", () => {
+  // Mirrors apps/api/tests/unit/services/hil/test_pending.py: the server resolves "2" against the same order.
+  it("number by the work's start, not by when each approval was asked", async () => {
+    const { surface, calls } = recorder();
+    const pay = approvalAsked("task_b", "pay", "Pay the invoice");
+    const email = approvalAsked("task_a", "email", "Send email to Sam");
+    const follower = new ConversationFollower(0, NON_EDITING, surface, "c1");
+    await feed(follower, [
+      screenFrame([
+        inbound("u1", 1, "11"),
+        workItem("task_a", 2, "running"),
+        workItem("task_b", 3, "running"),
+      ]),
+      updateFrame(workItem("task_b", 3, "awaiting_approval", [pay], 4)),
+      updateFrame(workItem("task_a", 2, "awaiting_approval", [email], 5)),
+    ]);
+
+    expect(
+      sent(calls)
+        .map(({ text }) => text)
+        .at(-1),
+    ).toBe(
+      "*Approvals needed:*\n1. Send email to Sam\n2. Pay the invoice\nReply *yes* to approve all, *no* to decline all, or say which numbers you mean.",
+    );
   });
 });
 

@@ -181,7 +181,11 @@ export class ConversationFollower {
         this.finishedReplies.add(item.id);
       if (item.kind === SCREEN_ITEM_KIND.NOTICE) this.noticed.add(item.id);
     }
-    return items.filter((item) => item.seq > this.floor);
+    return items.filter(
+      (item) =>
+        item.seq > this.floor ||
+        (item.kind === SCREEN_ITEM_KIND.WORK && item.asked_seq > this.floor),
+    );
   }
 
   private async renderItems(items: readonly ScreenItem[]): Promise<void> {

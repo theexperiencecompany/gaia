@@ -562,7 +562,7 @@ class StepScenarios:
         assert (await replies(rt))[-1].text == HIL_ACK_APPROVED
         assert (await answered(rt))[-1] == (ReplyOutcome.ANSWERED, ("u6",))
         state = await rt.log.state(CONVERSATION, USER)
-        assert [item.pending_approvals for item in state.work] == [frozenset()]
+        assert [item.pending_approvals for item in state.work] == [()]
         await assert_quiet(rt)
 
     async def test_a_mixed_typed_answer_logs_each_approval_once_with_its_own_decision(
