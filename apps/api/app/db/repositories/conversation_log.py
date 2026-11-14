@@ -274,8 +274,7 @@ class ConversationLogRepository(ConversationRepository):
         with store_errors("log sweep"):  # pragma: no mutate — error label
             cursor = self._raw_collection().find(
                 query,
-                # Equivalent under mutation: any truthy flag projects the field.
-                _SWEEP_PROJECTION,  # pragma: no mutate
+                _SWEEP_PROJECTION,
                 sort=[("_id", 1)],
                 limit=limit,
                 hint=SWEEP_INDEX_NAME,
@@ -288,8 +287,7 @@ class ConversationLogRepository(ConversationRepository):
         with store_errors("log live heads"):  # pragma: no mutate — error label
             cursor = self._raw_collection().find(
                 {"source": source, **SWEEP_DUE_FILTER},
-                # Equivalent under mutation: any truthy flag projects the field.
-                _SWEEP_PROJECTION,  # pragma: no mutate
+                _SWEEP_PROJECTION,
                 limit=limit,
                 hint=SWEEP_INDEX_NAME,
             )
