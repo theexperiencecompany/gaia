@@ -219,6 +219,24 @@ class TestDeliverResultRouting:
         ws.assert_not_awaited()  # exclusive: no WebSocket fan-out for bots
         save.assert_awaited_once()  # always persisted to history
 
+    @pytest.mark.parametrize(
+        "src",
+        [ConversationSource.TELEGRAM, ConversationSource.WHATSAPP, ConversationSource.IMESSAGE],
+    )
+    async def test_work_that_fails_after_the_turn_closed_sends_one_failure_message(
+        self, src
+    ) -> None:
+        """A bot's turn has already ended, so the outbound queue is its only route to the failure."""
+        save, platform, ws = await _deliver(
+            src, comms_text="That didn't work out.", result_text="boom", result_type="error"
+        )
+
+        platform.assert_awaited_once()
+        assert platform.await_args.args[0] == src
+        assert platform.await_args.args[2] == "That didn't work out."
+        ws.assert_not_awaited()
+        save.assert_awaited_once()
+
     @pytest.mark.parametrize("src", [ConversationSource.WEB, ConversationSource.MOBILE, None])
     async def test_non_bot_conversation_broadcasts_over_websocket_only(self, src) -> None:
         save, platform, ws = await _deliver(src)

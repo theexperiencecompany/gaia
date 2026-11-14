@@ -54,6 +54,8 @@ async function run(stream: PassThrough) {
     onError,
     "/bot/chat-stream",
     undefined,
+    undefined,
+    undefined,
     0,
   ).catch(() => undefined);
   return { onChunk, onDone, onError };
@@ -79,6 +81,22 @@ describe("streamChat mid-stream abort", () => {
 
     expect(onDone).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalled();
+  });
+
+  it("finishes the turn on the done frame while the response is still open", async () => {
+    // A bot turn ends when its reply is done; background work behind it must
+    // not hold the user's next message, so the done frame alone releases the turn.
+    const stream = new PassThrough();
+    setImmediate(() => {
+      stream.write(frame({ text: "On it." }));
+      stream.write(frame({ done: true, conversation_id: "conv-1" }));
+    });
+
+    const { onDone, onError } = await run(stream);
+
+    expect(onDone).toHaveBeenCalledExactlyOnceWith("On it.", "conv-1");
+    expect(onError).not.toHaveBeenCalled();
+    expect(stream.writableEnded).toBe(false);
   });
 
   it("still reports a clean end-of-stream with no content as an error", async () => {

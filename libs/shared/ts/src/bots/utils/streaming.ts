@@ -19,8 +19,6 @@
  *     STREAMING_DEFAULTS.discord);
  */
 import type { AnalyticsContext } from "../../analytics";
-import type { ApprovalRequestData } from "../../chat";
-import { formatApprovalAge } from "../../chat/approvals";
 import type { GaiaClient } from "../api";
 import { BOT_STREAM_ERROR, type ReactionHandler } from "../api/chat-stream";
 import {
@@ -53,26 +51,6 @@ import { chunkResponse, PLATFORM_LIMITS } from "./text";
 import { wideLog, withWideEvent } from "./wide-events";
 
 const logger = createBotLogger("shared", "streaming");
-
-/** The approval window is hours, so "360 minutes" is not a usable way to say it. */
-function formatExpiry(seconds: number): string {
-  const minutes = Math.max(1, Math.round(seconds / 60));
-  if (minutes < 60) return minutes === 1 ? "1 minute" : `${minutes} minutes`;
-  const hours = Math.round(minutes / 60);
-  return hours === 1 ? "1 hour" : `${hours} hours`;
-}
-
-/** Render a PENDING HIL approval as a yes/no prompt for a bot message. Only
- * pending approvals are surfaced out-of-band (see handleApprovalUpdate); settled
- * ones are narrated by the agent's streamed reply. */
-function formatApprovalPrompt(data: ApprovalRequestData): string {
-  const age =
-    data.age_seconds != null ? ` (${formatApprovalAge(data.age_seconds)})` : "";
-  return (
-    `**Approval needed:** ${data.summary}${age}\n` +
-    `Reply **yes** to approve or **no** to decline. This expires in ${formatExpiry(data.timeout_seconds)}.`
-  );
-}
 
 export interface StreamingOptions {
   editIntervalMs: number;
@@ -331,9 +309,9 @@ async function _handleStream(
   const discardCurrentMessage = (): void => {
     if (!pending && !shownText) return;
     pending = "";
-    // A SEALED bubble holds something that isn't the retracted text — an approval prompt or
-    // rate-limit notice, posted out of band. Reopening it would hand the replacement reply
-    // that message to overwrite, disappearing a question the user still has to answer.
+    // A SEALED bubble holds something that isn't the retracted text — a rate-limit notice,
+    // posted out of band. Reopening it would hand the replacement reply that message to
+    // overwrite, disappearing a notice the user still has to read.
     if (bubbleSealed) {
       logger.info("bubble_discarded", { chars: 0, sealed: true });
       return;
@@ -363,13 +341,13 @@ async function _handleStream(
   };
 
   /**
-   * Posts a message outside the streamed reply — currently the HIL approval prompt the user
-   * must answer while the agent is paused. Adapters point "the current message" at the prompt
-   * the moment it's sent, so whatever has streamed so far is delivered and sealed first, then
-   * the bubble is sealed again after so the rest of the reply opens a fresh message.
+   * Posts a message outside the streamed reply — currently the rate-limit notice. Adapters
+   * point "the current message" at it the moment it's sent, so whatever has streamed so far is
+   * delivered and sealed first, then the bubble is sealed again after so the rest of the reply
+   * opens a fresh message.
    *
    * Sealing before the boundary is deliberate: a following retraction then finds a sealed
-   * bubble and leaves the prompt alone (see discardCurrentMessage).
+   * bubble and leaves the notice alone (see discardCurrentMessage).
    */
   const deliverOutOfBand = async (text: string): Promise<void> => {
     await enqueue(async () => {
@@ -658,17 +636,6 @@ async function runStreamingChat(
         await onDone(fullText, convId);
       },
       onError,
-      // HIL approval prompts go out as their own message so a non-streaming platform
-      // (Discord/WhatsApp, which shows nothing until the stream ends) still surfaces the
-      // question while the agent is paused waiting.
-
-      // Only the PENDING question needs one — a bot has no buttons, so the user answers in
-      // chat. Settled frames (auto-approved, or a resumed decision) arrive mid-stream and are
-      // already narrated by the agent's streamed reply, so posting them would fragment it.
-      async (data: ApprovalRequestData) => {
-        if (data.status !== "pending") return;
-        await deliverOutOfBand(formatApprovalPrompt(data));
-      },
       // One assistant message ended. A kept one is segmented and delivered here
       // and nowhere earlier; a discarded one (a handoff preamble, or a draft the
       // style guard rewrote) is taken back off the screen.
@@ -676,9 +643,9 @@ async function runStreamingChat(
         if (discarded) discardedMessages += 1;
         await onMessageBoundary(discarded);
       },
-      // A rate-limit notice is about the turn, not part of it — out-of-band for the same
-      // reason as the approval prompt: it must survive the assistant message it arrived during
-      // being retracted, and still reach a non-streaming platform that renders nothing until the stream ends.
+      // A rate-limit notice is about the turn, not part of it — out-of-band: it must survive
+      // the assistant message it arrived during being retracted, and still reach a non-streaming
+      // platform that renders nothing until the stream ends.
       async (text: string) => {
         notices += 1;
         await deliverOutOfBand(text);

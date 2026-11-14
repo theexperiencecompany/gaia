@@ -4,13 +4,7 @@
  * @module
  */
 import type { AxiosInstance } from "axios";
-import type { ApprovalRequestData } from "../../chat";
 import type { BotUserContext } from "../types";
-
-/** Fired when a HIL approval frame arrives (bots render it out-of-band). */
-export type ApprovalUpdateHandler = (
-  data: ApprovalRequestData,
-) => void | Promise<void>;
 
 /**
  * Fired when one assistant message ends.

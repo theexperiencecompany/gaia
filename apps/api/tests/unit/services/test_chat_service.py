@@ -686,6 +686,48 @@ class TestRunChatStreamBackground:
         published = [call.args[1] for call in sm.publish_chunk.call_args_list]
         assert "data: [DONE]\n\n" in published
 
+    @pytest.mark.parametrize(
+        ("source", "ends_before_executor"),
+        [("telegram", True), ("whatsapp", True), ("imessage", True), ("web", False), (None, False)],
+    )
+    async def test_only_a_bot_turn_ends_before_the_executor_finishes(
+        self, test_user, existing_conv_body, source, ends_before_executor
+    ):
+        """A bot handles one message per user at a time: holding its turn holds the next message."""
+        sm = _make_stream_manager_mock()
+        published_before_executor: list[str] = []
+
+        async def executor_still_running(stream_id: str, timeout: float) -> bool:
+            published_before_executor.extend(c.args[1] for c in sm.publish_chunk.call_args_list)
+            return True
+
+        with (
+            _patch_stream_manager(sm),
+            patch(
+                "app.services.chat.stream.call_agent",
+                new=MagicMock(return_value=_done_only_stream()),
+            ),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+            patch("app.services.chat.stream.await_executor_done", new=executor_still_running),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_bot_turn",
+                body=existing_conv_body,
+                user=test_user,
+                conversation_id="conv_existing_123",
+                source=source,
+            )
+
+        reply_complete = 'data: {"reply_complete": true}\n\n'
+        assert (reply_complete in published_before_executor) is ends_before_executor
+        published = [c.args[1] for c in sm.publish_chunk.call_args_list]
+        assert published.count(reply_complete) == (1 if ends_before_executor else 0)
+        assert {c.args[0] for c in sm.publish_chunk.call_args_list} == {"stream_bot_turn"}
+        # Web keeps its open stream: [DONE] still comes only after the executor wait.
+        assert "data: [DONE]\n\n" not in published_before_executor
+        assert "data: [DONE]\n\n" in published
+
     async def test_captures_message_completed_on_success(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()
         with (

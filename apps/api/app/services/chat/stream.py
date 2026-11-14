@@ -60,6 +60,7 @@ from app.models.stream_events import (
     EmojiAckPayload,
     ErrorFrame,
     MainResponseCompleteFrame,
+    ReplyCompleteFrame,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
@@ -401,6 +402,12 @@ async def _run_chat_stream(
         # Before the executor wait: a reaction acknowledging a hand-off lands now,
         # not beside the result the work produces minutes later.
         await _publish_emoji_ack(stream_id, state)
+        # A bot ends its turn here, so the user's next message is not held behind
+        # background work whose result reaches it through the outbound queue.
+        if is_bot_platform(source):
+            await stream_manager.publish_chunk(
+                stream_id, format_sse_data(ReplyCompleteFrame(reply_complete=True).model_dump())
+            )
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
         # A stop pressed during the executor wait arrives after the consume
         # loop's check: re-read it here or the turn closes as completed.
