@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
+from typing import TypedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
@@ -58,6 +59,21 @@ class Delivered:
     bot_messages: list[dict[str, object]] = field(default_factory=list)
     pushes: list[list[dict[str, object]]] = field(default_factory=list)
     socket_events: list[dict[str, object]] = field(default_factory=list)
+
+    def socket_event_types(self) -> list[str]:
+        """Return the type of every socket event, sorted."""
+        types: list[str] = []
+        for event in self.socket_events:
+            event_type = event["type"]
+            assert isinstance(event_type, str)
+            types.append(event_type)
+        return sorted(types)
+
+
+class _StoredNotice(TypedDict):
+    conversation_id: str
+    seq: int
+    text: str
 
 
 @pytest.fixture
@@ -143,7 +159,7 @@ async def _notifications(mongo_db, user_id: str) -> list[dict[str, object]]:
     return await mongo_db["notifications"].find({"user_id": user_id}).to_list(None)
 
 
-async def _notices(mongo_db) -> list[dict[str, object]]:
+async def _notices(mongo_db) -> list[_StoredNotice]:
     return await mongo_db[CONVERSATION_ENTRIES_COLLECTION].find({"kind": "notice"}).to_list(None)
 
 
@@ -191,7 +207,7 @@ async def test_a_retried_reminder_sends_one_notification_one_bot_message_and_no_
     assert wake["destination_id"] == TELEGRAM_USER_ID
     assert await _bot_heard(mongo_db, delivered) == ["**Stretch**\nStand up for a minute"]
     assert delivered.pushes == []
-    assert sorted(e["type"] for e in delivered.socket_events) == [
+    assert delivered.socket_event_types() == [
         "conversation.list_changed",
         "notification.delivered",
     ]
@@ -218,7 +234,7 @@ async def test_a_workflow_result_is_delivered_once_on_the_users_channel(
     (stored,) = await _notifications(mongo_db, str(oid))
     assert stored["status"] == "delivered"
     assert await _bot_heard(mongo_db, delivered) == ["Three meetings today."] * bot_messages
-    assert sorted(e["type"] for e in delivered.socket_events) == [
+    assert delivered.socket_event_types() == [
         *(["conversation.list_changed"] * bot_messages),
         "notification.delivered",
     ]
