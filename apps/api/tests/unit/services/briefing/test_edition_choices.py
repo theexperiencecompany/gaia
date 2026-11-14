@@ -52,6 +52,11 @@ class TestBriefingEditions:
         }
         assert next(e for e in view.editions if e.family == "postal").name == "Air Mail"
 
+    def test_no_edition_is_named_after_the_product(self) -> None:
+        names = [edition.name for edition in briefing_editions({}).editions]
+
+        assert [name for name in names if "GAIA" in name] == []
+
 
 @pytest.mark.unit
 class TestSetEditionChoices:

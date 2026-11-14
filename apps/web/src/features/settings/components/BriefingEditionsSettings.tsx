@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Card, CardFooter } from "@heroui/card";
+import { Card } from "@heroui/card";
 import { Skeleton } from "@heroui/skeleton";
 import { FavouriteIcon } from "@icons";
 import type { BriefingEdition } from "@shared/api/generated";
@@ -79,11 +79,6 @@ function EditionCard({
           sizes="(min-width: 640px) 220px, 45vw"
           className="object-cover object-top"
         />
-        <CardFooter className="absolute bottom-0 z-10 justify-start bg-gradient-to-t from-black/80 to-transparent pt-6">
-          <span className="truncate text-sm font-medium text-white">
-            {edition.name}
-          </span>
-        </CardFooter>
       </Card>
       <Button
         isIconOnly
@@ -104,6 +99,11 @@ function EditionCard({
           className={isFavourite ? "text-red-500" : "text-zinc-300"}
         />
       </Button>
+      <p
+        className={`mt-2 text-sm font-medium ${isOff ? "text-zinc-500" : "text-zinc-200"}`}
+      >
+        {edition.name}
+      </p>
     </div>
   );
 }
