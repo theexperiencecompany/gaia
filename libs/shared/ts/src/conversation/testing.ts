@@ -1,3 +1,4 @@
+import type { UserItem, WorkItem } from "../api/generated";
 import founderFrames from "./fixtures/c41f18c5.frames.json";
 import { parseConversationEvent } from "./frames";
 import type {
@@ -155,9 +156,6 @@ export const stateFrame = (
   display: DisplayState,
   work: LiveTask[] = [],
 ): ConversationFrame => ({ kind: "state", head, display, work });
-
-type UserItem = Extract<ScreenItem, { kind: "user" }>;
-type WorkItem = Extract<ScreenItem, { kind: "work" }>;
 
 /** A user item whose message carries the given fields: a platform id, a reaction, files. */
 export function userItemWith(

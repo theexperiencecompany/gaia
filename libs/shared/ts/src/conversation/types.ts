@@ -1,10 +1,5 @@
 import type { z } from "zod";
-import type {
-  DisplayState,
-  LiveTask,
-  ToolDataEntry,
-  ToolTimeline,
-} from "../api/generated";
+import type { DisplayState, LiveTask, ReplyItem } from "../api/generated";
 import type { ScreenItemSchema } from "./entries";
 
 export type {
@@ -19,13 +14,10 @@ export type { ConversationFrame } from "./frames";
 /** One item of the screen the server projects from the log, as the stream delivers it. */
 export type ScreenItem = z.infer<typeof ScreenItemSchema>;
 
-/** What a reply has streamed so far, as the server split and folded it. */
-export interface ReplyDraft {
-  bubbles: readonly string[];
-  toolData: readonly ToolDataEntry[];
-  timeline: ToolTimeline;
-  followUpActions: readonly string[];
-}
+/** What a reply has streamed so far, as the server split and folded it: its item's content. */
+export type ReplyDraft = Readonly<
+  Pick<ReplyItem, "bubbles" | "tool_data" | "timeline" | "follow_up_actions">
+>;
 
 /** What one reply attempt has streamed and its item does not show yet; work's cards come on its item. */
 export interface StreamDraft {

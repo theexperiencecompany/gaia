@@ -62,7 +62,7 @@ function itemShows(item: ScreenItem, draft: StreamDraft | null): boolean {
     case SCREEN_ITEM_KIND.REPLY:
       return (
         hasText(draft?.content.bubbles ?? item.bubbles) ||
-        (draft?.content.toolData ?? item.tool_data).length > 0 ||
+        (draft?.content.tool_data ?? item.tool_data).length > 0 ||
         item.image !== null ||
         item.outcome === REPLY_OUTCOME.FAILED ||
         item.outcome === REPLY_OUTCOME.STOPPED
@@ -95,7 +95,7 @@ export function rowShows(row: ChatRow, alwaysShowsGaia: boolean): boolean {
     case "draft":
       return (
         hasText(row.draft.content.bubbles) ||
-        row.draft.content.toolData.length > 0
+        row.draft.content.tool_data.length > 0
       );
     default:
       return true;

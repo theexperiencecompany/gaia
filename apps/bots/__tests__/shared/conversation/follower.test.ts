@@ -65,7 +65,7 @@ function recorder(privateChat = true): {
     sendPhoto: async (url, caption) => {
       calls.push({ op: "photo", url, caption });
     },
-    sendFile: async (file) => {
+    sendFile: async (_conversationId, file) => {
       calls.push({ op: "file", path: file.path });
     },
     send: async (text, replyTo) => {

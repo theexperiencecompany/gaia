@@ -51,7 +51,6 @@ export type {
   DeliveryRecorder,
   FollowStart,
   FollowSurface,
-  ReplyFile,
   SentBubble,
   StreamingOptions,
 } from "./conversation";

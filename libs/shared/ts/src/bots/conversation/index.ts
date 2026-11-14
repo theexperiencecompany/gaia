@@ -5,7 +5,6 @@ export type {
   DeliveryCursor,
   FollowStart,
   FollowSurface,
-  ReplyFile,
   SentBubble,
   StreamingOptions,
 } from "./follower.types";
