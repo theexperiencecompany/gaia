@@ -95,6 +95,16 @@ function textEnvelope(id: string, text: string) {
   });
 }
 
+function partsEnvelope(id: string, textParts: string[]) {
+  return msgFor({
+    id,
+    platform: "discord",
+    destination_id: DEST,
+    text_parts: textParts,
+    enqueued_at: AT,
+  });
+}
+
 function photoEnvelope(id: string, url: string, caption: string) {
   return msgFor({
     id,
@@ -136,10 +146,10 @@ describe("a browser run delivered to a bot user", () => {
         "handoff",
         `I need you in the browser: sign in and come back. Open this to take over: ${LIVE_LINK}`,
       ),
-      textEnvelope(
-        "result",
-        "The table is booked for 7pm on Friday, confirmed twice with the restaurant.<NEW_MESSAGE_BREAK>Your confirmation code is ABC123 and the host has your name on the booking.",
-      ),
+      partsEnvelope("result", [
+        "The table is booked for 7pm on Friday, confirmed twice with the restaurant.",
+        "Your confirmation code is ABC123 and the host has your name on the booking.",
+      ]),
     ];
     for (const envelope of envelopes) {
       await deliverMessage(handle, envelope);
@@ -172,12 +182,13 @@ describe("a browser run delivered to a bot user", () => {
     expect(texts.some((text) => text.includes("sign in and come back"))).toBe(
       true,
     );
-    // The result's sentinel became two sends, never a visible token.
-    expect(texts.some((text) => text.includes("ABC123"))).toBe(true);
-    expect(texts.some((text) => text.includes("confirmed twice"))).toBe(true);
-    expect(texts.some((text) => text.includes("<NEW_MESSAGE_BREAK>"))).toBe(
-      false,
+    // The result's bubbles, as the server split them, are two sends in order.
+    const confirmed = texts.findIndex((text) =>
+      text.includes("confirmed twice"),
     );
+    const code = texts.findIndex((text) => text.includes("ABC123"));
+    expect(confirmed).toBeGreaterThanOrEqual(0);
+    expect(code).toBe(confirmed + 1);
 
     // Every envelope acked, none dead-lettered.
     expect(channel.ack).toHaveBeenCalledTimes(envelopes.length);
