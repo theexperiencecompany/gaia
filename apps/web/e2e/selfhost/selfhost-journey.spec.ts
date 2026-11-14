@@ -208,7 +208,17 @@ test.describe("self-host journey", () => {
       { data: { model: "hijacked" } },
     );
     expect(providers.status()).toBe(403);
+    // A streamed 200 here carries a meta refresh that reloads the page mid-screenshot.
+    const settings = await memberPage.request.get("/settings", {
+      maxRedirects: 0,
+    });
+    expect(settings.status()).toBe(307);
+    expect(settings.headers().location).toBe("/settings/account");
     await memberPage.goto("/settings");
+    await expect(memberPage).toHaveURL(/\/settings\/account$/);
+    await expect(
+      visible(memberPage.getByText(MEMBER.email)).first(),
+    ).toBeVisible();
     await memberPage.screenshot({
       path: test.info().outputPath("member-settings.png"),
       fullPage: true,

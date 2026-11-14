@@ -1,4 +1,6 @@
-export const DEFAULT_SECTION = "account";
+import { DEFAULT_SETTINGS_SECTION } from "../../../../settings-redirects.mjs";
+
+export const DEFAULT_SECTION = DEFAULT_SETTINGS_SECTION;
 
 export const VALID_SECTIONS = [
   "account",
