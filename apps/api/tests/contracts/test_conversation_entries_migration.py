@@ -947,6 +947,18 @@ async def test_folding_is_a_dry_run_unless_applied_and_a_rerun_changes_nothing(
     assert await _read_ids(ref) == ["m1"]
 
 
+async def test_folding_a_conversation_with_no_acks_leaves_its_head_untouched(
+    migration: ConversationEntriesMigration, raw_collection: Any
+) -> None:
+    ref = await _legacy(raw_collection, [_message(1)])
+    await migration.migrate(ref, apply=True)
+    before = await raw_collection.find_one(_head(ref))
+
+    assert await migration.fold_reaction_acks(ref, apply=True) == 0
+
+    assert await raw_collection.find_one(_head(ref)) == before
+
+
 async def test_an_ack_the_old_build_wrote_after_the_first_pass_is_folded_by_the_second(
     migration: ConversationEntriesMigration, raw_collection: Any
 ) -> None:

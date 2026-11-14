@@ -260,10 +260,9 @@ class ConversationEntriesMigration(ConversationRepository):
                                 "$expr": {"$eq": ["$user_id", "$$owner"]},
                             }
                         },
-                        # pragma: no mutate start — only whether one exists is read
-                        {"$limit": 1},
-                        {"$project": {"_id": 1}},
-                        # pragma: no mutate end
+                        # only whether one exists is read
+                        {"$limit": 1},  # pragma: no mutate
+                        {"$project": {"_id": 1}},  # pragma: no mutate
                     ],
                     "as": _ACKS_FOUND,
                 }
@@ -286,9 +285,8 @@ class ConversationEntriesMigration(ConversationRepository):
             with store_errors("fold reactions"):  # pragma: no mutate — error label only
                 await self._raw_collection().update_one(
                     {"_id": ObjectId(ref.head_id)},
-                    # pragma: no mutate start — Mongo stamps a date for either boolean
-                    {"$currentDate": {"updatedAt": True}},
-                    # pragma: no mutate end
+                    # Mongo stamps a date for either boolean
+                    {"$currentDate": {"updatedAt": True}},  # pragma: no mutate
                 )
         return len(acks)
 
