@@ -27,6 +27,7 @@ from app.services.cost_budget import (
     get_cost,
     get_request_tokens,
     record_model_call_usage,
+    restart_request_tokens,
 )
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
@@ -239,6 +240,29 @@ class TestRequestCounterBoundaries:
         )
 
         assert await fake_redis.keys("req_tokens:*") == []
+
+
+@pytest.mark.unit
+class TestRequestCeilingRestart:
+    """A run that takes in a new user turn starts that turn's ceiling from zero."""
+
+    async def test_a_restart_clears_what_the_request_has_spent(self) -> None:
+        await record_model_call_usage(
+            None, UsageDailyIncrement(input_tokens=4_000), REQUEST, charge_to_budget=False
+        )
+
+        await restart_request_tokens(REQUEST)
+
+        assert await get_request_tokens(REQUEST) == 0
+
+    async def test_a_restart_leaves_other_requests_alone(self) -> None:
+        await record_model_call_usage(
+            None, UsageDailyIncrement(input_tokens=4_000), "root-req-other", charge_to_budget=False
+        )
+
+        await restart_request_tokens(REQUEST)
+
+        assert await get_request_tokens("root-req-other") == 4_000
 
 
 @pytest.mark.unit
