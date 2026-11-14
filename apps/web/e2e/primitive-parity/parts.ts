@@ -1,4 +1,4 @@
-import type { PartMap } from "./capture";
+import type { PartMap } from "./types";
 
 export type Side = "v2" | "v3";
 
