@@ -1611,7 +1611,7 @@ class TestBriefingReads:
         assert [t.id for t in await repo.list_open_user_todos(user_id, limit=1)] == [newer.id]
 
     async def test_open_user_todos_due_before_a_cutoff_skip_later_and_undated_ones(
-        self, repo, make_doc
+        self, repo, make_doc, raw_collection
     ):
         user_id = "u-due"
         cutoff = datetime(2026, 11, 15, 18, 30, tzinfo=UTC)
@@ -1623,10 +1623,16 @@ class TestBriefingReads:
         )
         await repo.create(make_doc(user_id=user_id, title="at cutoff", due_date=cutoff))
         await repo.create(make_doc(user_id=user_id, title="undated"))
+        await raw_collection.update_one(
+            {"_id": ObjectId(overdue.id)}, {"$set": {"updated_at": cutoff - timedelta(days=9)}}
+        )
 
         found = await repo.list_open_user_todos(user_id, limit=10, due_before=cutoff)
+        first = await repo.list_open_user_todos(user_id, limit=1, due_before=cutoff)
 
-        assert {t.id for t in found} == {overdue.id, today.id}
+        assert [t.id for t in found] == [overdue.id, today.id]
+        # The overdue one was touched longest ago, and still comes first.
+        assert [t.id for t in first] == [overdue.id]
 
     async def test_undated_user_todos_are_the_oldest_open_own_ones_with_no_due_date(
         self, repo, make_doc

@@ -16,7 +16,7 @@ import json
 import re
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, sentinel
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from tests.helpers import captured_wide_event
@@ -339,9 +339,7 @@ def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
     """Patch what the run gathers its context from (work, goals, dormancy, apps) and the scouts."""
     _seam(monkeypatch, w, chat_sync, "format_replies_block", AsyncMock(return_value="No replies."))
     _seam(monkeypatch, w, context, "format_goal_block", AsyncMock(return_value=("Ship v2", True)))
-    _seam(
-        monkeypatch, w, context, "get_yesterday_payload", AsyncMock(return_value=sentinel.yesterday)
-    )
+    _seam(monkeypatch, w, briefing_repository, "get_before_date", AsyncMock(return_value=None))
     _seam(monkeypatch, w, context, "format_lookback_block", AsyncMock(return_value="-"))
     _seam(
         monkeypatch,
@@ -1644,14 +1642,50 @@ class TestTheDailyRunWiring:
 
         assert event["brief_selection"]["candidates"] == 3
 
+    @pytest.mark.parametrize(
+        ("sent_days_ago", "since"),
+        [
+            # Friday's brief, read on Monday: the weekend is in the look-back.
+            (3, _NOW - timedelta(days=3)),
+            # Back after three weeks: the look-back stops at a week.
+            (21, _DAY_START - timedelta(days=6)),
+        ],
+    )
+    async def test_the_look_back_starts_at_the_last_brief_within_a_week(
+        self, world: World, sent_days_ago: int, since: datetime
+    ) -> None:
+        sent = _NOW - timedelta(days=sent_days_ago)
+        last = BriefingModel(
+            user_id=_USER,
+            date=sent.date().isoformat(),
+            payload=BriefingPayload(
+                kicker="K",
+                date="d",
+                headline="H",
+                lede="L",
+                mood="clear",
+                caption="C",
+                template_family="swiss",
+            ),
+            created_at=sent,
+        )
+        world.reads["get_before_date"].return_value = last
+
+        await daily.run_daily_briefing(_USER)
+
+        world.reads["gather_tracked_work"].assert_awaited_once_with(_USER, since)
+        world.reads["gather_completed_since"].assert_awaited_once_with(_USER, since)
+        assert world.reads["format_lookback_block"].await_args.args[1:3] == (last, since)
+
     async def test_every_read_is_for_this_user_and_the_last_local_day(self, world: World) -> None:
         await daily.run_daily_briefing(_USER)
 
         world.reads["format_goal_block"].assert_awaited_once_with(_USER, world.user)
-        world.reads["get_yesterday_payload"].assert_awaited_once_with(_USER, before_date=_DATE)
-        world.reads["format_lookback_block"].assert_awaited_once_with(
-            _USER, sentinel.yesterday, _DAY_START
+        world.reads["get_before_date"].assert_awaited_once_with(
+            _USER, kind="daily", before_date=_DATE
         )
+        lookback = world.reads["format_lookback_block"].await_args.args
+        assert lookback[:3] == (_USER, None, _DAY_START)
         assert world.reads["compute_winback_state"].await_args.args[0].id == _USER
         world.reads["has_daily_briefing"].assert_awaited_once_with(_USER)
         world.reads["gather_tracked_work"].assert_awaited_once_with(_USER, _DAY_START)
@@ -1720,7 +1754,7 @@ class TestTheDailyRunWiring:
         assert payload.caption == "Onward."
         assert payload.message == "Approve the Priya reply\nInvestor update\nSequoia"
         assert [(s.value, s.label) for s in payload.stats] == [
-            ("1", "done since yesterday"),
+            ("1", "done since last brief"),
             ("1", "waiting on you"),
         ]
 
@@ -1836,7 +1870,7 @@ class TestTheFactsTheModelVoices:
         ) in _prompt(world)
         assert "GAIA has no tracked work" not in _prompt(world)
         assert [(s.value, s.label) for s in _stored_payload(world).stats] == [
-            ("1", "done since yesterday"),
+            ("1", "done since last brief"),
             ("2", "in progress"),
             ("1", "waiting on you"),
         ]

@@ -423,12 +423,18 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     ) -> list[TodoDocument]:
         """Return the user's own (non-tracked) open todos, most-recently-updated first.
 
-        due_before keeps only the ones due strictly before it, so undated todos drop out.
+        due_before keeps only the ones due strictly before it, most overdue first, so a
+        read cut at limit keeps the oldest debts; undated todos drop out.
         """
-        query = _own_open_query(user_id)
-        if due_before is not None:
-            query["due_date"] = {"$lt": due_before}
-        return await self._find(query, sort=[("updated_at", -1)], limit=limit)
+        if due_before is None:
+            return await self._find(
+                _own_open_query(user_id), sort=[("updated_at", -1)], limit=limit
+            )
+        return await self._find(
+            {**_own_open_query(user_id), "due_date": {"$lt": due_before}},
+            sort=[("due_date", 1)],
+            limit=limit,
+        )
 
     async def list_undated_user_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
         """Return the user's own open todos with no due date, oldest first."""
