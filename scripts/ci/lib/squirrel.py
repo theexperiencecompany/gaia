@@ -75,7 +75,15 @@ SHORT_PAGES = frozenset({"/download", "/contact"})
 WIKI_LINK = re.compile(r"^\[\[[^\[\]'\"]+\]\]$")
 # One integration's page; the paginated hub (/marketplace/page/N) is ours and stays checked.
 MARKETPLACE_DETAIL = re.compile(r"^/marketplace/[^/]+$")
-AUTOMATE_COMBO = re.compile(r"^/automate/[^/]+$")
+# Pages whose first viewport holds fewer than three images, so squirrel's first-three
+# lazy-above-fold rule reaches ones far below it: a combo, glossary term, persona,
+# integration or blog post (one segment under its hub), and three standalone pages.
+LAZY_BELOW_FOLD_PAGES = re.compile(
+    r"^/(?:automate|learn|for|marketplace|blog)/[^/]+$|^/(?:pricing|inbox-zero-ai|ai-chief-of-staff)$"
+)
+# Images that sit below the first viewport on every page that renders them: the closing
+# section's wallpaper, and /brand's wordmarks under the logo.
+LAZY_BELOW_FOLD_IMAGES = re.compile(r"%2Fwallpapers%2Fcreation_of_adam\.|%2Fbrand%2Fgaia_wordmark_")
 # The checks an integration page fails on its tools' synced docs, not on our copy.
 SYNCED_DOC_RULES = frozenset(
     {"content/placeholder-contact", "content/placeholder-text", "content/keyword-stuffing"}
@@ -124,8 +132,11 @@ class Finding:
 
 @dataclass(frozen=True)
 class Observed:
+    """A finding as one page's check reported it; page stays that page when the finding is site-wide."""
+
     finding: Finding
     item: Item
+    page: str
 
 
 @dataclass(frozen=True)
@@ -166,9 +177,10 @@ def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
     return seen.finding.rule == "content/word-count" and (index or listing)
 
 
-def _lazy_below_fold_icons(seen: Observed, _pages: frozenset[str]) -> bool:
-    on_combo = bool(AUTOMATE_COMBO.match(SITE_LOCALE.sub("", seen.finding.page)))
-    return on_combo and seen.finding.rule == "perf/lazy-above-fold"
+def _lazy_below_fold(seen: Observed, _pages: frozenset[str]) -> bool:
+    page = SITE_LOCALE.sub("", seen.page) or "/"
+    below = LAZY_BELOW_FOLD_PAGES.match(page) or LAZY_BELOW_FOLD_IMAGES.search(seen.finding.item)
+    return seen.finding.rule == "perf/lazy-above-fold" and bool(below)
 
 
 # Only squirrel's own bugs, and one design decision: everything else is a finding.
@@ -216,13 +228,19 @@ IGNORED = (
     ),
     Ignore(
         "squirrel's lazy-above-fold rule takes the first three visible <img> in DOM order as "
-        "above the fold, with no layout; a combo page has no image in its hero, so the first "
-        "three are app icons far below it",
-        "squirrelscan 0.0.133 rule source: first 3 <img> outside aria-hidden/hidden/footer, "
-        "flagged when loading=lazy. /automate/github-linear: the first icon sits at y=3537 on a "
-        "390x844 viewport (unstyled static HTML, so a lower bound), after the hero, intro, use "
-        "cases, steps and FAQ; eager there would spend bandwidth on the LCP's competition",
-        _lazy_below_fold_icons,
+        "above the fold, with no layout; on these pages and for these images the ones it "
+        "names are below the first viewport, where lazy is right and eager would spend "
+        "bandwidth on the LCP's competition",
+        "squirrelscan 0.0.133 rule source: first 3 <img> outside aria-hidden/hidden/inert/"
+        "footer, flagged when loading=lazy. Rendered top of the first lazy image it names on "
+        "the production build at 1440x900 / 390x844 (Playwright, 2026-11-15): "
+        "/automate/asana-zoom 3005/5440, /learn/api-integration 2485/4283, "
+        "/de/for/adhd-professionals 2432/4412, /marketplace/code-interpreter-mcp-developer "
+        "2204/3191 (its hero icon is eager), /blog/how-tool-calling-works 1845/2175 (its "
+        "cover is priority), /pricing 1474/1833, /ai-chief-of-staff 1241/1337, "
+        "/inbox-zero-ai 1260/1374; the closing wallpaper at least 940/1124 "
+        "(/marketplace/page/2), /brand's wordmark 1468/1672",
+        _lazy_below_fold,
     ),
 )
 
@@ -261,21 +279,21 @@ def _observe(
         for item in items:
             named = "" if item["id"] == page_url else _stable(item["id"], site)
             where = SITE_WIDE if BUILD_PATH.search(named) else page
-            yield Observed(Finding(where, name, named), item)
+            yield Observed(Finding(where, name, named), item, page)
         if not items:
-            yield Observed(Finding(page, name), Item(label=message))
+            yield Observed(Finding(page, name), Item(label=message), page)
         return
     for item in items:
         if item["id"] in crawled:
-            yield Observed(Finding(_path(item["id"], site), name), item)
+            path = _path(item["id"], site)
+            yield Observed(Finding(path, name), item, path)
         else:
-            yield Observed(Finding(SITE_WIDE, name, _stable(item["id"], site)), item)
+            yield Observed(Finding(SITE_WIDE, name, _stable(item["id"], site)), item, SITE_WIDE)
     listed = json.loads(raw_pages) if raw_pages else []
     if not items:
         for url in listed or [""]:
-            yield Observed(
-                Finding(_path(url, site) if url else SITE_WIDE, name), Item(label=message)
-            )
+            path = _path(url, site) if url else SITE_WIDE
+            yield Observed(Finding(path, name), Item(label=message), path)
 
 
 def project_db(home: Path) -> Path:
