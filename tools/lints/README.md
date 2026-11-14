@@ -618,6 +618,12 @@ file, so `mise.toml` declares it and `apps/api/Dockerfile` mirrors it with
 `apps/api/.python-version` pinning 3.12.11 against the root's 3.12.15 is the
 drift that motivated it.
 
+A pin only holds where mise resolves the binary. A prek hook inherits the PATH
+of whatever shell ran `git commit`, so every `repo: local` hook in every
+tracked `.pre-commit-config.yaml` starts with `mise exec --` (or `mise run`, or
+an explicit path). The guard fails on an entry that names a bare program: an
+agent shell with uv 0.10.6 first on PATH broke the lint-imports hook that way.
+
 **Why:** "passed locally" must mean "passes CI". A ruff release promotes rules
 (0.16.0 shipped ISC004/RUF036), a biome release changes formatting — an
 unpinned surface goes red or green on its own schedule, with no commit to blame.

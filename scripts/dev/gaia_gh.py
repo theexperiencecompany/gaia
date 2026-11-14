@@ -1,57 +1,53 @@
 #!/usr/bin/env python3
-"""Shared GitHub/gh plumbing for GAIA's agent-legible dev tools.
+"""Shared plumbing for GAIA's agent-legible dev tools that read GitHub.
 
-Used by pr_comments.py and ci_remote.py. Kept dependency-free (stdlib only)
-and importable without side effects.
+Used by ci_remote.py, pr_comments.py and pr_conflicts.py. Every API call goes
+through scripts/ci/lib/github.py, so the importer puts scripts/ci on sys.path
+first. Stdlib only and importable without side effects.
 """
 
 from __future__ import annotations
 
-import json
+from dataclasses import dataclass
+from http import HTTPStatus
 import re
 import subprocess
 import sys
+
+from lib.github import GitHub, GitHubError, Json, field_of, records
+
+# 1 = auth or an outage that outlasted the retries; any other permanent API error is 2.
+AUTH_FAILURES = frozenset({HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN})
+PR_NUMBER_RE = re.compile(r"#?(\d+)")
+# gh pr view's own window: the newest PRs ever opened from the branch.
+BRANCH_PR_WINDOW = 30
+
+PR_BY_NUMBER_QUERY = """
+query($owner:String!,$name:String!,$number:Int!){
+  repository(owner:$owner,name:$name){ pullRequest(number:$number){ number url headRefOid } } }
+"""
+PRS_BY_BRANCH_QUERY = f"""
+query($owner:String!,$name:String!,$branch:String!){{
+  repository(owner:$owner,name:$name){{
+    pullRequests(headRefName:$branch,states:[OPEN,CLOSED,MERGED],first:{BRANCH_PR_WINDOW},
+                 orderBy:{{field:CREATED_AT,direction:DESC}}){{
+      nodes{{ number url headRefOid state }} }} }} }}
+"""
+
+
+@dataclass(frozen=True)
+class PullRequest:
+    number: int
+    url: str
+    head_sha: str
 
 
 def eprint(*args: str) -> None:
     print(*args, file=sys.stderr, flush=True)
 
 
-def gh(args: list[str], timeout_s: int, stdin_text: str | None = None) -> tuple[int, str, str]:
-    """Run `gh`; return (returncode, stdout, stderr). Never raises on nonzero."""
-    try:
-        proc = subprocess.run(
-            ["gh", *args],
-            input=stdin_text,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-        )
-        return proc.returncode, proc.stdout, proc.stderr
-    except subprocess.TimeoutExpired:
-        return 124, "", f"gh timed out after {timeout_s}s"
-    except FileNotFoundError:
-        return 127, "", "gh CLI not found on PATH"
-
-
-def classify_failure(stderr: str, returncode: int) -> int:
-    """Exit triad for network tools: 1 = auth/network/state-of-transport, 2 = usage/config."""
-    low = stderr.lower()
-    authish = any(
-        m in low
-        for m in (
-            "bad credentials",
-            "unauthorized",
-            "forbidden",
-            "rate limit",
-            "could not resolve host",
-            "timed out",
-            "token",
-            "api rate",
-        )
-    )
-    return 1 if (authish or returncode in (4, 124)) else 2
+def exit_code(err: GitHubError) -> int:
+    return 1 if err.transient or err.status in AUTH_FAILURES else 2
 
 
 def current_branch() -> str:
@@ -84,15 +80,25 @@ def parse_repo() -> tuple[str, str]:
     return owner, name
 
 
-def resolve_pr(repo_slug: str, branch: str, timeout_s: int) -> tuple[int, str, str] | None:
-    """Branch -> (number, url, head_sha); None if no open PR (state, not an error)."""
-    rc, out, err = gh(
-        ["pr", "view", branch, "--repo", repo_slug, "--json", "number,url,headRefOid"], timeout_s
+def _pull_request(node: Json) -> PullRequest:
+    return PullRequest(
+        field_of(node, "number", int), field_of(node, "url", str), field_of(node, "headRefOid", str)
     )
-    if rc != 0:
-        if "no pull requests found" in err.lower() or "no open pull requests" in err.lower():
-            return None
-        eprint(f"gh failed resolving the PR:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
-    meta = json.loads(out)
-    return meta["number"], meta["url"], meta["headRefOid"]
+
+
+def resolve_pr(github: GitHub, owner: str, name: str, selector: str) -> PullRequest | None:
+    """Find the PR a number names, or a branch's open PR else its newest closed one, as gh pr view does.
+
+    None when the branch never had a PR (state, not an error).
+    """
+    variables: dict[str, object] = {"owner": owner, "name": name}
+    if number := PR_NUMBER_RE.fullmatch(selector):
+        variables["number"] = int(number.group(1))
+        repo = field_of(github.graphql(PR_BY_NUMBER_QUERY, variables), "repository", dict)
+        return _pull_request(field_of(repo, "pullRequest", dict))
+    variables["branch"] = selector
+    repo = field_of(github.graphql(PRS_BY_BRANCH_QUERY, variables), "repository", dict)
+    nodes = records(field_of(repo, "pullRequests", dict), "nodes")
+    if not nodes:
+        return None
+    return _pull_request(next((n for n in nodes if n.get("state") == "OPEN"), nodes[0]))

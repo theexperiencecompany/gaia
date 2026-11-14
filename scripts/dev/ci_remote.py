@@ -23,6 +23,7 @@ read with the check runs, and a red one is listed under its red job rather than
 explained twice.
 
 `--watch` polls until checks go terminal (bounded), printing transitions;
+a GitHub outage that outlasts lib/github.py's retries skips that poll, not the watch.
 `--fail-fast` stops it at the first red check and prints that failure.
 `mise ci:watch` is `--watch --fail-fast --max-wait 3600`.
 `--stack` prints the gh stack alone, one line per PR.
@@ -41,8 +42,9 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from http import HTTPStatus
 import io
 import json
 import os
@@ -55,14 +57,9 @@ from typing import TypedDict
 import zipfile
 
 sys.path.insert(0, str(__file__.rsplit("/", 1)[0]))
-from gaia_gh import (
-    classify_failure,
-    current_branch,
-    eprint,
-    gh,
-    parse_repo,
-    resolve_pr,
-)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
+from gaia_gh import current_branch, eprint, exit_code, parse_repo, resolve_pr
+from lib.github import GitHub, GitHubError
 
 SCHEMA_VERSION = 2
 MAX_CHECK_PAGES = 6  # 100/page -> up to 600 check runs; plenty for any PR
@@ -205,11 +202,12 @@ class StackRow(TypedDict):
 
 @dataclass(frozen=True)
 class Repo:
-    """Where to ask, and how long to wait — the triple every fetch needs."""
+    """Where to ask, how long a `gh` subprocess may take, and the client every API read goes through."""
 
     owner: str
     name: str
     timeout_s: int
+    github: GitHub = field(compare=False, repr=False)
     # An artifact id names one immutable upload (a job's mid-run re-upload gets
     # a new id), so `--watch` downloads each verdict once, not on every poll.
     artifacts: dict[int, bytes] = field(default_factory=dict, compare=False, repr=False)
@@ -239,20 +237,6 @@ class Options:
     timeout_s: int
 
 
-def gh_bytes(args: list[str], timeout_s: int) -> tuple[int, bytes, str]:
-    """`gh` with undecoded stdout — artifact zips and ANSI-laden job logs.
-
-    gaia_gh.gh decodes as text, which mangles a zip; this is the binary twin.
-    """
-    try:
-        proc = subprocess.run(["gh", *args], capture_output=True, timeout=timeout_s, check=False)
-    except subprocess.TimeoutExpired:
-        return 124, b"", f"gh timed out after {timeout_s}s"
-    except FileNotFoundError:
-        return 127, b"", "gh CLI not found on PATH"
-    return proc.returncode, proc.stdout, proc.stderr.decode("utf-8", "replace")
-
-
 def slug(text: str) -> str:
     return SLUG_RE.sub("-", text.lower()).strip("-")
 
@@ -277,56 +261,57 @@ query($owner:String!,$name:String!,$number:Int!){
     reviewThreads(first:100){ totalCount nodes{ isResolved } }
   } } }
 """
-    payload = json.dumps(
-        {"query": query, "variables": {"owner": repo.owner, "name": repo.name, "number": pr_number}}
-    )
-    rc, out, err = gh(["api", "graphql", "--input", "-"], repo.timeout_s, stdin_text=payload)
-    if rc != 0:
-        eprint(f"ci:remote: POST /graphql (pull request state) failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
-    data = json.loads(out)
-    if "errors" in data:
-        eprint(
-            f"ci:remote: GraphQL errors (pull request state): {json.dumps(data['errors'])[:300]}"
-        )
-        sys.exit(2)
-    return data["data"]["repository"]["pullRequest"]
+    variables = {"owner": repo.owner, "name": repo.name, "number": pr_number}
+    return repo.github.graphql(query, variables)["repository"]["pullRequest"]
 
 
-def fetch_check_runs(repo: Repo, head_sha: str) -> tuple[list[dict], bool]:
-    """All check runs on the head commit. Returns (runs, truncated)."""
-    runs: list[dict] = []
-    page = 1
-    endpoint = repo.api(f"commits/{head_sha}/check-runs")
-    while page <= MAX_CHECK_PAGES:
-        rc, out, err = gh(["api", f"{endpoint}?per_page=100&page={page}"], repo.timeout_s)
-        if rc != 0:
-            eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-            sys.exit(classify_failure(err, rc))
-        batch = json.loads(out).get("check_runs", [])
-        runs.extend(batch)
+def fetch_pages(repo: Repo, path: str, key: str, query: str = "") -> tuple[list[dict], bool]:
+    """Collect key's items across a paged GET of path. Returns (items, truncated)."""
+    items: list[dict] = []
+    endpoint = repo.api(path)
+    for page in range(1, MAX_CHECK_PAGES + 1):
+        url = f"{endpoint}?{query}per_page={MAX_CHECK_PAGE_SIZE}&page={page}"
+        batch = repo.github.get(url).get(key, [])
+        items.extend(batch)
         if len(batch) < MAX_CHECK_PAGE_SIZE:
-            return runs, False
-        page += 1
-    return runs, True
+            return items, False
+    return items, True
 
 
-def fetch_statuses(repo: Repo, head_sha: str) -> tuple[list[dict], bool]:
-    """Fetch the newest commit status of every context on the head commit. Returns (statuses, truncated)."""
-    statuses: list[dict] = []
-    page = 1
-    endpoint = repo.api(f"commits/{head_sha}/status")
-    while page <= MAX_CHECK_PAGES:
-        rc, out, err = gh(["api", f"{endpoint}?per_page=100&page={page}"], repo.timeout_s)
-        if rc != 0:
-            eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-            sys.exit(classify_failure(err, rc))
-        batch = json.loads(out).get("statuses", [])
-        statuses.extend(batch)
-        if len(batch) < MAX_CHECK_PAGE_SIZE:
-            return statuses, False
-        page += 1
-    return statuses, True
+def run_id_of(url: str | None) -> int | None:
+    match = RUN_ID_RE.search(url or "")
+    return int(match.group(1)) if match else None
+
+
+def superseded_runs(runs: list[tuple[int, int]]) -> set[int]:
+    """Return the run ids a newer run of the same workflow replaced, from (run id, workflow id) pairs.
+
+    One push can start two runs of a workflow on one commit (ci.yml's
+    concurrency comment says when). The newer one cancels the older, whose
+    gate then fails on lanes that never ran: that verdict is not the PR's.
+    """
+    newest: dict[int, int] = {}
+    for run_id, workflow_id in runs:
+        newest[workflow_id] = max(run_id, newest.get(workflow_id, run_id))
+    return {run_id for run_id, workflow_id in runs if run_id != newest[workflow_id]}
+
+
+def live_checks(raw: list[dict], workflow_runs: list[dict]) -> list[Check]:
+    """Normalise the head's checks from each workflow's newest run.
+
+    A newest run also reports as itself while it is live, since a job waiting on
+    needs (the gate) has no check yet, and when it ended with no job listed (a
+    startup_failure), as its own conclusion.
+    """
+    superseded = superseded_runs([(run["id"], run["workflow_id"]) for run in workflow_runs])
+    kept = [row for row in raw if run_id_of(row.get("html_url")) not in superseded]
+    listed = {run_id_of(row.get("html_url")) for row in kept}
+    as_itself = [
+        {**run, "app": {"slug": "github-actions"}}
+        for run in workflow_runs
+        if run["id"] not in superseded and (run["status"] != "completed" or run["id"] not in listed)
+    ]
+    return normalize(kept + as_itself)
 
 
 def status_checks(statuses: list[dict]) -> list[dict]:
@@ -363,7 +348,6 @@ def normalize(runs: list[dict]) -> list[Check]:
         else:
             status = CONCLUSION_MAP.get(conclusion, "error")
         url = run.get("html_url") or ""
-        run_match = RUN_ID_RE.search(url)
         job_match = JOB_ID_RE.search(url)
         out.append(
             Check(
@@ -371,7 +355,7 @@ def normalize(runs: list[dict]) -> list[Check]:
                 app=(run.get("app") or {}).get("slug", ""),
                 status=status,
                 url=run.get("html_url"),
-                run_id=int(run_match.group(1)) if run_match else None,
+                run_id=run_id_of(url),
                 job_id=int(job_match.group(1)) if job_match else None,
                 started_at=run.get("started_at"),
                 completed_at=run.get("completed_at"),
@@ -395,14 +379,9 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
     Artifacts are downloadable while the run is still in progress — unlike job
     logs, which only materialise once the whole run completes.
     """
-    endpoint = repo.api(f"actions/runs/{run_id}/artifacts")
-    rc, out, err = gh(["api", f"{endpoint}?per_page=100"], repo.timeout_s)
-    if rc != 0:
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
     wanted = [
         a
-        for a in json.loads(out).get("artifacts", [])
+        for a in run_artifacts(repo, run_id)
         if a.get("name", "").startswith(VERDICT_PREFIX) and not a.get("expired")
     ]
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
@@ -421,6 +400,12 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
     return verdicts
 
 
+def run_artifacts(repo: Repo, run_id: int) -> list[dict]:
+    return repo.github.get(repo.api(f"actions/runs/{run_id}/artifacts?per_page=100")).get(
+        "artifacts", []
+    )
+
+
 def cached_artifact(repo: Repo, artifact_id: int) -> bytes:
     if artifact_id not in repo.artifacts:
         repo.artifacts[artifact_id] = fetch_artifact(repo, artifact_id)
@@ -428,12 +413,7 @@ def cached_artifact(repo: Repo, artifact_id: int) -> bytes:
 
 
 def fetch_artifact(repo: Repo, artifact_id: int) -> bytes:
-    endpoint = repo.api(f"actions/artifacts/{artifact_id}/zip")
-    rc, blob, err = gh_bytes(["api", endpoint], repo.timeout_s)
-    if rc != 0:
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
-    return blob
+    return repo.github.get_bytes(repo.api(f"actions/artifacts/{artifact_id}/zip"))
 
 
 def matrix_index(check_name: str) -> int | None:
@@ -535,14 +515,9 @@ def fetch_run_shards(repo: Repo, run_id: int) -> list[Shard]:
     change to go read) or mutmut dying with nothing to show — two failures
     that need opposite reactions and read identically in a job log.
     """
-    endpoint = repo.api(f"actions/runs/{run_id}/artifacts")
-    rc, out, err = gh(["api", f"{endpoint}?per_page=100"], repo.timeout_s)
-    if rc != 0:
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
     found = [
         a
-        for a in json.loads(out).get("artifacts", [])
+        for a in run_artifacts(repo, run_id)
         if a.get("name", "").startswith(MUTATION_LOG_PREFIX) and not a.get("expired")
     ]
     # `gh run rerun --failed` uploads a SECOND `mutation-log-2` into the same
@@ -706,14 +681,12 @@ def failure_tail(lines: list[str], limit: int = FALLBACK_TAIL_LINES) -> list[str
 
 def fetch_job_tail(repo: Repo, job_id: int) -> list[str]:
     endpoint = repo.api(f"actions/jobs/{job_id}/logs")
-    rc, blob, err = gh_bytes(["api", "--allow-escape-sequences", endpoint], repo.timeout_s)
-    if rc != 0 and "unknown flag" in err.lower():  # older gh has no such flag
-        rc, blob, err = gh_bytes(["api", endpoint], repo.timeout_s)
-    if rc != 0:
-        if "404" in err or "not found" in err.lower():
+    try:
+        blob = repo.github.get_bytes(endpoint)
+    except GitHubError as err:
+        if err.status == HTTPStatus.NOT_FOUND:
             return [f"(no log yet: GET {endpoint} -> 404; logs appear once the run completes)"]
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
+        raise
     return failure_tail(clean_log(blob.decode("utf-8", "replace")))
 
 
@@ -846,25 +819,24 @@ def fetch_stack_states(repo: Repo, numbers: list[int]) -> dict[int, dict]:
         "reviewThreads(first:100){nodes{isResolved}} "
         f"comments(last:{STACK_COMMENT_WINDOW}){{nodes{{author{{login}} body}}}} "
         "commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{"
-        "__typename ... on CheckRun{name conclusion status} "
-        "... on StatusContext{context state}"
+        "__typename ... on CheckRun{name conclusion status "
+        "checkSuite{workflowRun{databaseId workflow{databaseId}}}} "
+        "... on StatusContext{context state targetUrl}"
         "}}}}}} }"
         for n in numbers
     )
     query = (
         f"query($owner:String!,$name:String!){{repository(owner:$owner,name:$name){{{aliases}}}}}"
     )
-    payload = json.dumps({"query": query, "variables": {"owner": repo.owner, "name": repo.name}})
-    rc, out, err = gh(["api", "graphql", "--input", "-"], repo.timeout_s, stdin_text=payload)
-    if rc != 0:
-        eprint(f"ci:remote: POST /graphql (stack rollups) failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
-    data = json.loads(out)
-    if "errors" in data:
-        eprint(f"ci:remote: GraphQL errors (stack rollups): {json.dumps(data['errors'])[:300]}")
-        sys.exit(2)
-    repository = data["data"]["repository"] or {}
+    data = repo.github.graphql(query, {"owner": repo.owner, "name": repo.name})
+    repository = data["repository"] or {}
     return {pr["number"]: pr for pr in repository.values() if pr is not None}
+
+
+def workflow_run_of(node: dict) -> tuple[int, int] | None:
+    """Return a rollup check run's (run id, workflow id); None for a commit status or a non-Actions check."""
+    run = (node.get("checkSuite") or {}).get("workflowRun")
+    return (run["databaseId"], run["workflow"]["databaseId"]) if run else None
 
 
 def rollup_contexts(pr_state: dict) -> list[tuple[str, str]]:
@@ -877,8 +849,13 @@ def rollup_contexts(pr_state: dict) -> list[tuple[str, str]]:
     if not commits:
         return []
     rollup = commits[0]["commit"].get("statusCheckRollup") or {}
+    nodes = (rollup.get("contexts") or {}).get("nodes", [])
+    superseded = superseded_runs([run for run in map(workflow_run_of, nodes) if run])
     pairs: list[tuple[str, str]] = []
-    for node in (rollup.get("contexts") or {}).get("nodes", []):
+    for node in nodes:
+        run = workflow_run_of(node)
+        if (run[0] if run else run_id_of(node.get("targetUrl"))) in superseded:
+            continue
         if node.get("__typename") == "CheckRun":
             name = node.get("name") or "?"
             raw = node.get("conclusion") if node.get("status") == "COMPLETED" else None
@@ -1330,10 +1307,15 @@ def render_stack_only(report: dict) -> None:
 def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> tuple[dict, int]:
     t0 = time.monotonic()
     pr_meta = fetch_pr_state(repo, pr_number)
-    runs, runs_truncated = fetch_check_runs(repo, pr_meta["headRefOid"])
-    statuses, statuses_truncated = fetch_statuses(repo, pr_meta["headRefOid"])
-    checks = normalize(runs + status_checks(statuses))
-    truncated = runs_truncated or statuses_truncated
+    head = pr_meta["headRefOid"]
+    # Runs first: a run already completed here has every job's check in the reads below.
+    workflow_runs, workflows_truncated = fetch_pages(
+        repo, "actions/runs", "workflow_runs", f"head_sha={head}&"
+    )
+    runs, runs_truncated = fetch_pages(repo, f"commits/{head}/check-runs", "check_runs")
+    statuses, statuses_truncated = fetch_pages(repo, f"commits/{head}/status", "statuses")
+    checks = live_checks(runs + status_checks(statuses), workflow_runs)
+    truncated = runs_truncated or statuses_truncated or workflows_truncated
     counts = {k: sum(1 for c in checks if c["status"] == k) for k in COUNT_KEYS}
     verdicts, shards, tails, sources = diagnose(repo, checks)
 
@@ -1458,11 +1440,8 @@ def rerun_timeouts(repo: Repo, report: dict) -> int:
         return 1
 
     for run_id in sorted(runs):
-        rc, _, err = gh(["run", "rerun", str(run_id), "--failed"], repo.timeout_s)
-        if rc != 0:
-            eprint(f"ci:remote: gh run rerun {run_id} --failed failed:\n{err.strip()[:400]}")
-            return classify_failure(err, rc)
-        print(f"--rerun-timeouts: re-ran the failed jobs of run {run_id} (gh run rerun --failed).")
+        repo.github.post(repo.api(f"actions/runs/{run_id}/rerun-failed-jobs"))
+        print(f"--rerun-timeouts: re-ran the failed jobs of run {run_id}.")
     print(f"--rerun-timeouts: {plural(len(runs), 'run')} re-queued. `--watch` to follow them.")
     return 0
 
@@ -1563,7 +1542,14 @@ def watch(repo: Repo, pr_number: int, branch: str, options: Options) -> tuple[di
     poll = 0
     while True:
         poll += 1
-        report, exit_code = snapshot_once(repo, pr_number, branch, options.with_stack)
+        try:
+            report, exit_code = snapshot_once(repo, pr_number, branch, options.with_stack)
+        except GitHubError as err:
+            if not err.transient or time.monotonic() + options.interval > deadline:
+                raise
+            eprint(f"watch[{poll}] {datetime.now(UTC).strftime('%H:%M:%S')}: skipped — {err}")
+            time.sleep(options.interval)
+            continue
         pending = report["counts"]["pending"]
         if not options.as_json:
             elapsed = int(time.monotonic() - (deadline - options.max_wait))
@@ -1595,8 +1581,15 @@ def main() -> int:
     args = build_parser().parse_args()
     options = parse_options(args)
     owner, name = parse_repo()
-    repo = Repo(owner, name, options.timeout_s)
+    try:
+        github = replace(GitHub.from_env(), timeout=float(options.timeout_s))
+        return run(Repo(owner, name, options.timeout_s, github), args.branch, options)
+    except GitHubError as err:
+        eprint(f"ci:remote: {err}")
+        return exit_code(err)
 
+
+def run(repo: Repo, branch_arg: str | None, options: Options) -> int:
     if options.stack_only:
         report, exit_code = stack_snapshot(repo)
         if options.as_json:
@@ -1605,12 +1598,12 @@ def main() -> int:
             render_stack_only(report)
         return exit_code
 
-    branch = args.branch or current_branch()
-    resolved = resolve_pr(repo.slug, branch, options.timeout_s)
-    if resolved is None:
+    branch = branch_arg or current_branch()
+    pr = resolve_pr(repo.github, repo.owner, repo.name, branch)
+    if pr is None:
         print(f"ci:remote: no open PR for '{branch}' — push first or check the branch name.")
         return 0
-    pr_number, _, _ = resolved
+    pr_number = pr.number
 
     if options.watch:
         report, exit_code = watch(repo, pr_number, branch, options)

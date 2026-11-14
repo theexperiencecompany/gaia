@@ -22,6 +22,8 @@ import sys
 import threading
 import urllib.parse
 
+import pytest
+
 RUNNER = Path(__file__).resolve().parent.parent / "runner.py"
 REPO = "theexperiencecompany/gaia"
 
@@ -32,10 +34,13 @@ class Request:
     path: str
     query: dict[str, str]
     body: object
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class Reply:
+    """A canned answer; a bytes body is served raw (artifact zips, job logs), anything else as JSON."""
+
     status: int = 200
     body: object = None
     link: str = ""
@@ -107,6 +112,13 @@ class FakeGitHub:
             **extra,
         }
 
+    def point_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Aim an in-process lib/github.py client here, with the stub token and no retry wait."""
+        monkeypatch.delenv("GH_TOKEN", raising=False)
+        for key, value in self.env().items():
+            if key.startswith("GITHUB_"):
+                monkeypatch.setenv(key, value)
+
 
 def _handler_for(fake: FakeGitHub) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
@@ -119,9 +131,13 @@ def _handler_for(fake: FakeGitHub) -> type[BaseHTTPRequestHandler]:
                 path=parts.path,
                 query=dict(urllib.parse.parse_qsl(parts.query)),
                 body=json.loads(raw) if raw else None,
+                headers=dict(self.headers.items()),
             )
             reply = fake.handle(req)
-            payload = b"" if reply.body is None else json.dumps(reply.body).encode()
+            if isinstance(reply.body, bytes):
+                payload = reply.body
+            else:
+                payload = b"" if reply.body is None else json.dumps(reply.body).encode()
             self.send_response(reply.status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
@@ -146,7 +162,10 @@ def serve() -> Iterator[FakeGitHub]:
     fake = FakeGitHub()
     server = ThreadingHTTPServer(("127.0.0.1", 0), _handler_for(fake))
     fake.url = f"http://127.0.0.1:{server.server_address[1]}"
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    # shutdown() waits out one poll interval; the 0.5 s default was most of each test's run time.
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
+    )
     thread.start()
     try:
         yield fake

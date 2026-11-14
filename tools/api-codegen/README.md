@@ -27,15 +27,17 @@ TypeScript 7 applications work directly. Once that is in a published release:
 2. Delete `tools/api-codegen/`.
 3. Remove the "Install the API codegen toolchain" step from
    `.github/actions/setup-node-pnpm/action.yml`.
-4. Point `regenerateApiSchema()` in `scripts/ci/checks.mjs` back at `pnpm exec
-   openapi-typescript` and drop the `codegenBin` existence check.
+4. Point `regenerateApiSchema()` in `scripts/ci/lib/generated-artifacts.mjs` back at
+   `pnpm exec openapi-typescript` and drop the install it runs when `codegenBin` is missing.
 
 Then the repo has exactly one TypeScript, and no exception anywhere.
 
 ## Using it by hand
 
+`mise api:types` installs this directory's toolchain from its lockfile when it is missing,
+so a fresh checkout needs no step of its own.
+
 ```sh
-pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace
 pnpm exec node scripts/ci/checks.mjs api-schema          # regenerates and compares
 pnpm exec node scripts/ci/checks.mjs api-schema --write  # rewrite the generated file
 ```

@@ -160,3 +160,13 @@ def test_a_build_chain_reports_through_the_plugin() -> None:
     known = nx_affected.checks()
     assert known["web:build"].chained and known["ci:seo"].chained
     assert not known["ci:ruff"].chained and known["ci:api-schema"].exclusive
+
+
+def test_a_checkout_without_node_modules_exits_naming_the_install(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: a fresh `git worktree add` crashed ci:local with a CalledProcessError traceback."""
+    monkeypatch.setattr(nx_affected, "NX_BIN", tmp_path / "node_modules" / ".bin" / "nx")
+    with pytest.raises(SystemExit) as exited:
+        nx_affected.select(["--files=README.md"])
+    assert "run `pnpm install --frozen-lockfile` in" in str(exited.value.code)
