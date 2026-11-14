@@ -10,6 +10,7 @@ import pytest
 
 from app.constants.trigger_gates import GateAuthor
 from app.constants.vfs import SYSTEM_USER_ID
+from app.constants.waits import WaitCondition
 from app.constants.workflows import WorkflowDelivery
 from app.models.scheduler_models import (
     UNSET,
@@ -2695,3 +2696,220 @@ class TestTriggerService:
 
         result = await TriggerService.unregister_triggers(USER_ID, "trigger", ["tid_1"])
         assert result is False
+
+
+# ===========================================================================
+# Waits on a workflow's trigger being set up
+# ===========================================================================
+
+
+class TestTriggerConfiguredWaits:
+    """Saving a workflow's trigger setup picks up whatever waited on the user doing it."""
+
+    @staticmethod
+    def _integration(trigger_name: str) -> TriggerConfig:
+        return _make_trigger_config(trigger_type=TriggerType.INTEGRATION, trigger_name=trigger_name)
+
+    @pytest.mark.parametrize(
+        ("old", "new", "met"),
+        [
+            ("gmail_new_message", "calendar_event_created", True),
+            ("gmail_new_message", "gmail_new_message", False),
+        ],
+        ids=["trigger-changed", "same-trigger-resaved"],
+    )
+    @patch("app.services.workflow.service.report_wait_met", new_callable=AsyncMock)
+    @patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock)
+    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
+    async def test_only_a_changed_trigger_meets_the_wait(
+        self,
+        mock_update: AsyncMock,
+        mock_get: AsyncMock,
+        report: AsyncMock,
+        old: str,
+        new: str,
+        met: bool,
+    ) -> None:
+        wf = _make_workflow(trigger_config=self._integration(old), activated=False)
+        updated = _make_workflow(trigger_config=self._integration(new), activated=False)
+        mock_get.side_effect = [wf, updated]
+        mock_update.return_value = _make_workflow_doc(updated)
+
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID, _make_update_request(trigger_config=self._integration(new)), USER_ID
+        )
+
+        if met:
+            report.assert_awaited_once_with(
+                USER_ID, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, WORKFLOW_ID
+            )
+        else:
+            report.assert_not_awaited()
+
+    @patch("app.services.workflow.service.report_wait_met", new_callable=AsyncMock)
+    @patch("app.services.workflow.service.WorkflowService.get_workflow", new_callable=AsyncMock)
+    @patch(f"{_REPO}.update_for_user", new_callable=AsyncMock)
+    async def test_an_edit_that_leaves_the_trigger_alone_meets_nothing(
+        self, mock_update: AsyncMock, mock_get: AsyncMock, report: AsyncMock
+    ) -> None:
+        wf = _make_workflow()
+        mock_get.side_effect = [wf, wf]
+        mock_update.return_value = _make_workflow_doc(wf)
+
+        await WorkflowService.update_workflow(
+            WORKFLOW_ID, _make_update_request(title="Renamed"), USER_ID
+        )
+
+        report.assert_not_awaited()
+
+    @pytest.mark.parametrize("draft_id", ["draft-1", None])
+    @patch("app.services.workflow.service.report_wait_met", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_a_workflow_created_from_a_draft_meets_the_drafts_wait(
+        self,
+        _mock_create: AsyncMock,
+        _mock_activate: AsyncMock,
+        mock_chroma: MagicMock,
+        _mock_scheduler: MagicMock,
+        _mock_queue: AsyncMock,
+        report: AsyncMock,
+        draft_id: str | None,
+    ) -> None:
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+        request = _make_create_request().model_copy(update={"draft_id": draft_id})
+
+        with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+            await WorkflowService.create_workflow(request, USER_ID)
+
+        if draft_id:
+            report.assert_awaited_once_with(
+                USER_ID, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, draft_id
+            )
+        else:
+            report.assert_not_awaited()
+
+    @pytest.mark.parametrize("queued", [True, False])
+    @patch("app.services.workflow.service.log")
+    @patch(
+        "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",
+        new_callable=AsyncMock,
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_steps_left_for_later_are_queued_and_a_failed_queue_is_logged(
+        self,
+        _mock_create: AsyncMock,
+        _mock_activate: AsyncMock,
+        mock_chroma: MagicMock,
+        _mock_scheduler: MagicMock,
+        mock_queue: AsyncMock,
+        mock_log: MagicMock,
+        queued: bool,
+    ) -> None:
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+        mock_queue.return_value = queued
+        request = _make_create_request().model_copy(
+            update={"generate_immediately": False, "steps": None}
+        )
+
+        with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+            created = await WorkflowService.create_workflow(request, USER_ID)
+
+        mock_queue.assert_awaited_once_with(created.id, USER_ID)
+        failed_logs = [
+            c
+            for c in mock_log.error.call_args_list
+            if "Failed to queue workflow generation" in c.args[0]
+        ]
+        assert len(failed_logs) == (0 if queued else 1)
+
+    @patch("app.services.workflow.service.report_wait_met", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    @patch(
+        "app.services.workflow.service.WorkflowService.get_workflow",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    @patch(
+        "app.services.workflow.service.WorkflowService._generate_workflow_steps",
+        new_callable=AsyncMock,
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_steps_generated_now_are_not_queued_again_and_the_draft_is_met(
+        self,
+        _mock_create: AsyncMock,
+        _mock_activate: AsyncMock,
+        mock_chroma: MagicMock,
+        _mock_scheduler: MagicMock,
+        mock_generate: AsyncMock,
+        _mock_get: AsyncMock,
+        mock_queue: AsyncMock,
+        report: AsyncMock,
+    ) -> None:
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+        request = _make_create_request().model_copy(
+            update={"draft_id": "draft-1", "generate_immediately": True, "steps": None}
+        )
+
+        with patch("app.utils.auth_utils.user_repository.get", new=users_get):
+            await WorkflowService.create_workflow(request, USER_ID)
+
+        workflow_id, user_id = mock_generate.await_args.args
+        assert workflow_id and user_id == USER_ID
+        _mock_get.assert_awaited_once_with(workflow_id, USER_ID)
+        mock_queue.assert_not_awaited()
+        report.assert_awaited_once_with(
+            USER_ID, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, "draft-1"
+        )
+
+    @patch("app.services.workflow.service.report_wait_met", new_callable=AsyncMock)
+    @patch(
+        "app.services.workflow.service.WorkflowService._generate_workflow_steps",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("generation failed"),
+    )
+    @patch("app.services.workflow.service.workflow_scheduler")
+    @patch("app.services.workflow.service.ChromaClient")
+    @patch(f"{_REPO}.delete_for_user", new_callable=AsyncMock)
+    @patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock)
+    @patch(f"{_REPO}.create", new_callable=AsyncMock)
+    async def test_a_creation_rolled_back_after_activation_leaves_the_draft_waiting(
+        self,
+        _mock_create: AsyncMock,
+        _mock_activate: AsyncMock,
+        mock_delete: AsyncMock,
+        mock_chroma: MagicMock,
+        _mock_scheduler: MagicMock,
+        _mock_generate: AsyncMock,
+        report: AsyncMock,
+    ) -> None:
+        mock_chroma.get_langchain_client = AsyncMock(return_value=MagicMock())
+        request = _make_create_request().model_copy(
+            update={"draft_id": "draft-1", "generate_immediately": True, "steps": None}
+        )
+
+        with (
+            patch("app.utils.auth_utils.user_repository.get", new=users_get),
+            pytest.raises(RuntimeError, match="generation failed"),
+        ):
+            await WorkflowService.create_workflow(request, USER_ID)
+
+        mock_delete.assert_awaited_once()
+        report.assert_not_awaited()

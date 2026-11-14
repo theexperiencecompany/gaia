@@ -51,6 +51,7 @@ class ArqJobContext(TypedDict, total=False):
     job_try is absent only when a caller invokes the task with a bare context.
     """
 
+    job_id: str
     job_try: int
     redis: ArqRedis
 

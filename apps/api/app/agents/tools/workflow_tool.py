@@ -15,6 +15,7 @@ always require confirmation due to config_fields (calendar_ids, channel_ids, etc
 """
 
 from typing import Annotated
+from uuid import uuid4
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
@@ -25,6 +26,7 @@ from app.agents.tools.workflow_shared_tools import (
     search_triggers,
 )
 from app.constants.log_tags import LogTag
+from app.constants.waits import WaitCondition
 from app.constants.workflows import WorkflowDelivery
 from app.decorators import with_rate_limiting
 from app.models.agent_models import (
@@ -43,6 +45,7 @@ from app.models.workflow_tool_models import (
     WorkflowToolSuccess,
 )
 from app.services.analytics_service import capture
+from app.services.wait_service import wait_for_user
 from app.services.workflow.service import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.services.workflow.workflow_subagent import SubagentRunContext, WorkflowSubagentRunner
@@ -184,7 +187,16 @@ async def create_workflow(
                 )
 
             # Stream workflow draft to frontend for user confirmation
-            writer(result.draft.to_stream_payload(delivery))
+            draft_id = str(uuid4())
+            if result.draft.trigger_type == "integration":
+                await wait_for_user(
+                    read_agent_configurable(config),
+                    user_id,
+                    WaitCondition.WORKFLOW_TRIGGER_CONFIGURED,
+                    draft_id,
+                    result.draft.title,
+                )
+            writer(result.draft.to_stream_payload(delivery, draft_id))
             log.info(
                 f"{LogTag.TOOL} create_workflow: streamed draft", draft_title=result.draft.title
             )
@@ -434,6 +446,7 @@ async def edit_workflow(
                 workflow=workflow,
                 user_id=user_id,
                 writer=writer,
+                run=read_agent_configurable(config),
                 user_timezone=user_timezone,
             )
 
