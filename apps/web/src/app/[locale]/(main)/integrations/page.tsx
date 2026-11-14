@@ -10,10 +10,7 @@ import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
-import {
-  integrationKeys,
-  toolKeys,
-} from "@/features/integrations/api/queryKeys";
+import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKeys";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
@@ -22,7 +19,6 @@ import { CONNECT_LINK_ERROR_MESSAGES } from "@/features/integrations/constants/c
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationDeepLink } from "@/features/integrations/hooks/useIntegrationDeepLink";
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
-import { useIntegrationStatusWebSocket } from "@/features/integrations/hooks/useIntegrationStatusWebSocket";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { usePendingDeepLink } from "@/features/integrations/hooks/usePendingDeepLink";
 import { usePostConnectSettling } from "@/features/integrations/hooks/usePostConnectSettling";
@@ -47,12 +43,7 @@ export default function IntegrationsPage() {
     deleteCustomIntegration,
     publishIntegration,
     unpublishIntegration,
-    refetch,
   } = useIntegrations();
-
-  // An integration can die while this page is open (Composio revokes the grant,
-  // or a tool call hits a dead account) — flip it to Reconnect without a refresh.
-  useIntegrationStatusWebSocket();
 
   // Search + category filter — page-owned, so they reset when you leave.
   const [searchQuery, setSearchQuery] = useState("");
@@ -80,8 +71,7 @@ export default function IntegrationsPage() {
     connect: (id, token) => integrationsApi.addIntegration(id, token),
     onConnected: (_id, result) => {
       toast.success(`Connected to ${result.name}`);
-      refetch();
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
+      invalidateIntegrationCaches(queryClient);
     },
   });
 
@@ -149,8 +139,7 @@ export default function IntegrationsPage() {
   useIntegrationDeepLink({
     onConnected: (integrationId, name) => {
       if (name) toast.success(`Connected to ${name}`);
-      refetch();
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
+      invalidateIntegrationCaches(queryClient);
       // Open the sidebar for the freshly-connected integration; it settles when its tools land.
       markPending(integrationId);
       beginSettling(integrationId);
@@ -162,8 +151,7 @@ export default function IntegrationsPage() {
       if (refresh) {
         // Marketplace add / custom create — may not be in the cached list yet.
         markPending(integrationId);
-        queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-        queryClient.invalidateQueries({ queryKey: toolKeys.all });
+        invalidateIntegrationCaches(queryClient);
       } else {
         handleIntegrationClick(integrationId);
       }

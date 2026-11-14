@@ -3,10 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
-import {
-  integrationKeys,
-  toolKeys,
-} from "@/features/integrations/api/queryKeys";
+import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKeys";
 import {
   ACCOUNT_OUTCOME_PARAM,
   AccountOutcome,
@@ -78,9 +75,7 @@ export function useOAuthSuccessToast() {
         toast.success(`Connected to ${displayName}`);
       }
 
-      // Invalidate integration-related queries so they refresh
-      queryClient.invalidateQueries({ queryKey: integrationKeys.all });
-      queryClient.invalidateQueries({ queryKey: toolKeys.all });
+      invalidateIntegrationCaches(queryClient);
 
       // The server continues a waiting chat itself when the integration connects.
     }
