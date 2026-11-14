@@ -614,6 +614,8 @@ def test_a_hand_over_chain_that_loops_ends_at_the_task_it_came_back_to() -> None
         "t3": WorkStarted(id="work:t3", task_id="t3", cause_through=1, joins="t2"),
     }
     assert work_root(chain, "t1") == "t2"
+    back = {**chain, "t2": WorkStarted(id="work:t2", task_id="t2", cause_through=1, joins="t1")}
+    assert work_root(back, "t1") == "t1"
 
 
 def test_a_woken_todo_and_a_notice_show_as_their_own_items() -> None:

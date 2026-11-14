@@ -10,7 +10,7 @@ from app.models.conversation_log_models import Entry, LoggedEntry, Reply, WorkOu
 from app.services.conversation import outcome as outcome_module
 from app.services.conversation.event_stream import StreamedFrame
 from app.services.conversation.outcome import STOPPED, EntryOutcome, await_outcome, entry_outcome
-from shared.py.conversation_wire import ReplyOutcome
+from shared.py.conversation_wire import BubbleTextDelta, ReplyDeltaFrame, ReplyOutcome
 from tests.unit.services.conversation.log_helpers import (
     finished,
     fired,
@@ -165,9 +165,10 @@ class _Stream:
 
     def __init__(self) -> None:
         self.frames: list[StreamedFrame] = []
+        self.reads = 0
         self._moved = asyncio.Event()
 
-    def publish(self, frame: EntryFrame) -> None:
+    def publish(self, frame: EntryFrame | ReplyDeltaFrame) -> None:
         self.frames.append(StreamedFrame(stream_id=f"{len(self.frames) + 1}-0", frame=frame))
         self._moved.set()
 
@@ -177,6 +178,8 @@ class _Stream:
 
     async def read(self, conversation_id: str, cursor: str) -> list[StreamedFrame]:
         assert conversation_id == CONVERSATION
+        self.reads += 1
+        await asyncio.sleep(0)
         after = [f for f in self.frames if (f.stream_id or "") > cursor]
         if after:
             return after
@@ -212,13 +215,21 @@ async def test_an_outcome_not_yet_final_is_read_again_only_once_a_frame_says_the
     assert (waiting.done(), len(reads)) == (False, 1)
     claim = await log.claim(CONVERSATION, USER)
     assert claim is not None
+    # A delta moves no entry: the wait reads past it without reading the log again.
+    stream.publish(
+        ReplyDeltaFrame(
+            attempt_id="a1", reply_id="r1", index=0, payload=BubbleTextDelta(bubble=0, text="he")
+        )
+    )
+    await asyncio.sleep(0.05)
+    assert (waiting.done(), len(reads), stream.reads) == (False, 1, 2)
     await log.append_fenced(claim, _reply("o1", "r1", "hello"))
     answered = await log.append_fenced(claim, settled("s1", ["u1"], 1))
     stream.publish(
         EntryFrame(seq=answered.logged.seq, at=answered.logged.at, entry=answered.logged.entry)
     )
     outcome = await asyncio.wait_for(waiting, timeout=2)
-    assert (outcome.text, len(reads)) == ("hello", 2)
+    assert (outcome.text, len(reads), stream.reads) == ("hello", 2, 2)
 
 
 async def test_an_outcome_that_never_settles_times_out(stream: _Stream) -> None:
