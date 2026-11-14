@@ -62,16 +62,18 @@ class RecordingApi(VoiceConversation):
         self.posts.append((path, body))
         return {"seq": 1}
 
-    async def _events(self, conversation_id: str, after: str) -> AsyncIterator[ConversationEvent]:
+    async def _events(self, conversation_id: str) -> AsyncIterator[ConversationEvent]:
         for data in self.scripted:
             yield parse_event(data)
         self.drained.set()
 
 
 def entry(seq: int, kind: str, reply_id: str) -> str:
-    body = {"kind": kind, "id": f"{reply_id}:{kind}", "reply_id": reply_id}
-    frame = {"kind": "entry", "seq": seq, "at": "2026-11-13T00:00:00Z", "entry": body}
-    return json.dumps({"stream_id": None, "frame": frame})
+    """Return a reply item patch: inserted as the reply opens, updated with its outcome as it settles."""
+    opened = kind == "reply"
+    item = {"kind": "reply", "id": reply_id, "seq": seq, "outcome": None if opened else "answered"}
+    patch = "screen_insert" if opened else "screen_update"
+    return json.dumps({"frame": {"kind": patch, "item": item}})
 
 
 def delta(reply_id: str, index: int, text: str) -> str:
@@ -82,7 +84,7 @@ def delta(reply_id: str, index: int, text: str) -> str:
         "index": index,
         "payload": {"type": "response", "response": text},
     }
-    return json.dumps({"stream_id": f"1-{index}", "frame": frame})
+    return json.dumps({"frame": frame})
 
 
 async def follow(conversation: VoiceConversation, *events: str, after_seq: int = 1) -> None:

@@ -240,12 +240,11 @@ export const chatApi = {
    */
   subscribeToConversationEvents: async (
     conversationId: string,
-    after: number,
     onData: (raw: string) => void,
     signal: AbortSignal,
   ): Promise<void> => {
     await fetchEventSource(
-      `${apiBaseUrl}/conversations/${encodeURIComponent(conversationId)}/events?after=${after}`,
+      `${apiBaseUrl}/conversations/${encodeURIComponent(conversationId)}/events`,
       {
         method: "GET",
         openWhenHidden: true,

@@ -27,14 +27,14 @@ import {
 } from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
 import {
-  entryFrame,
-  entryUpdatedFrame,
+  insertFrame,
   replyDelta,
-  reply as replyEntry,
-  replySettled,
+  replyItem,
   retractFrame,
+  screenFrame,
   stateFrame,
-  userMessage,
+  updateFrame,
+  userItemWith,
 } from "../../../../libs/shared/ts/src/conversation/testing";
 import type { ConversationFrame } from "../../../../libs/shared/ts/src/conversation/types";
 import { HarnessAdapter } from "../../harness/src/adapter";
@@ -117,21 +117,18 @@ function turnFrames(
   post: ChatRequest | undefined,
 ): ConversationFrame[] {
   if (!post) throw new Error("the events stream opened before any post");
-  const message = {
-    ...userMessage("u1", post.message),
-    surface: post.platform,
-    platform_message_id: post.platformMessageId ?? null,
-  };
-  const opened = [entryFrame(1, message), stateFrame(1, "thinking")];
+  const message = (reaction: string | null = null) =>
+    userItemWith("u1", 1, {
+      text: post.message,
+      surface: post.platform,
+      platform_message_id: post.platformMessageId ?? null,
+      reaction: reaction ? { emoji: reaction, by: "chat_model" } : null,
+    });
+  const opened = [screenFrame([message()]), stateFrame(1, "thinking")];
   if (script.reaction) {
     return [
       ...opened,
-      entryUpdatedFrame(1, {
-        ...message,
-        reaction: { emoji: script.reaction, by: "chat_model" },
-        revision: 1,
-      }),
-      entryFrame(2, replySettled("r1", ["u1"], 1, null, "silent")),
+      updateFrame(message(script.reaction)),
       stateFrame(2, "idle"),
     ];
   }
@@ -139,18 +136,16 @@ function turnFrames(
   const text = chunks.join("");
   const preamble = script.preamble
     ? [
-        entryFrame(2, replyEntry("r1", "a0")),
+        insertFrame(replyItem("r1", 2, script.preamble)),
         replyDelta("a0", "r1", 0, script.preamble),
         retractFrame("a0"),
       ]
-    : [entryFrame(2, replyEntry("r1", "a1"))];
+    : [insertFrame(replyItem("r1", 2, chunks[0] ?? ""))];
   return [
     ...opened,
     ...preamble,
-    entryUpdatedFrame(2, replyEntry("r1", "a1", "", 1)),
     ...chunks.map((chunk, i) => replyDelta("a1", "r1", i, chunk)),
-    entryUpdatedFrame(2, replyEntry("r1", "a1", text, 2)),
-    entryFrame(3, replySettled("r1", ["u1"], 2)),
+    updateFrame(replyItem("r1", 2, text, "answered")),
     stateFrame(3, "idle"),
   ];
 }
@@ -169,9 +164,7 @@ function makeGaia(script: ApiScript) {
       };
     }),
     conversationEvents: vi.fn(async function* () {
-      for (const frame of turnFrames(script, posts[0])) {
-        yield { streamId: null, frame };
-      }
+      yield* turnFrames(script, posts[0]);
     }),
     checkAuthStatus: vi.fn(async () => ({
       authenticated: false,

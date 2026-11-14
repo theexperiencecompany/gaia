@@ -41,6 +41,7 @@ async def record_work_started(
     task_id: str,
     *,
     joins: str | None = None,
+    handoff: str | None = None,
 ) -> bool:
     """Append WorkStarted under the step's claim; False when a Stop or a lost claim refuses it, so nothing dispatches.
 
@@ -55,6 +56,7 @@ async def record_work_started(
         cause_through=step["cause_through"],
         answers=tuple(step["answers"]),
         joins=joins,
+        handoff=handoff,
     )
     try:
         appended = await ports.log.append_fenced(claim, entry)

@@ -23,9 +23,8 @@ import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  entryFrame,
+  screenFrame,
   stateFrame,
-  stopRequested,
 } from "../../../../libs/shared/ts/src/conversation/testing";
 
 vi.mock("@kapso/whatsapp-cloud-api", async (importOriginal) => ({
@@ -100,8 +99,8 @@ async function buildHarness(): Promise<Harnessed> {
     })),
     // The conversation is already idle with the message answered, so the follow ends at once.
     conversationEvents: vi.fn(async function* () {
-      yield { streamId: null, frame: entryFrame(1, stopRequested("s1")) };
-      yield { streamId: null, frame: stateFrame(1, "idle") };
+      yield screenFrame([]);
+      yield stateFrame(1, "idle");
     }),
     // Authenticated → the welcome path is skipped and the user is cached.
     checkAuthStatus: vi.fn(async () => ({

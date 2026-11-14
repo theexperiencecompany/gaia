@@ -14,26 +14,22 @@ import {
 } from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
 import {
-  entryFrame,
+  screenFrame,
   stateFrame,
-  userMessage,
+  userItemWith,
 } from "../../../../../libs/shared/ts/src/conversation/testing";
-import type {
-  ConversationFrame,
-  ConversationStreamEvent,
-} from "../../../../../libs/shared/ts/src/conversation/types";
+import type { ConversationFrame } from "../../../../../libs/shared/ts/src/conversation/types";
 
-const LOG: ConversationFrame[] = [
-  entryFrame(1, {
-    ...userMessage("u1", "hi", { emoji: "👍", by: "jev" }),
-    surface: "whatsapp",
-    platform_message_id: "11",
-  }),
-];
-
-async function* replay(): AsyncGenerator<ConversationStreamEvent> {
-  for (const frame of LOG) yield { streamId: null, frame };
-  yield { streamId: "9-0", frame: stateFrame(LOG.length, "idle") };
+async function* replay(): AsyncGenerator<ConversationFrame> {
+  yield screenFrame([
+    userItemWith("u1", 1, {
+      text: "hi",
+      reaction: { emoji: "👍", by: "jev" },
+      surface: "whatsapp",
+      platform_message_id: "11",
+    }),
+  ]);
+  yield stateFrame(1, "idle");
 }
 
 class ReactingAdapter extends BaseBotAdapter {

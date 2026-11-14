@@ -152,7 +152,10 @@ async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
         "app.agents.tools.executor_tool._dispatch_executor",
         new=AsyncMock(return_value="Task accepted"),
     ) as mock_dispatch:
-        await call_executor.ainvoke(tool_args, config={"configurable": configurable})
+        await call_executor.ainvoke(
+            {"type": "tool_call", "id": "call_1", "name": call_executor.name, "args": tool_args},
+            config={"configurable": configurable},
+        )
     return mock_dispatch.call_args.kwargs["task"]
 
 

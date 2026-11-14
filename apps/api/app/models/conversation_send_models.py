@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.models.conversation_frame_models import OutputFrame
+from app.models.conversation_screen_models import ScreenStreamFrame
 from app.models.message_models import (
     ReplyToMessageData,
     SelectedCalendarEventData,
@@ -81,7 +81,6 @@ class ActiveBotConversation(ResponseModel):
 
 
 class ConversationEvent(ResponseModel):
-    """One frame on a conversation's events stream; stream_id is the cursor to resume after, None for a log replay."""
+    """One frame on a conversation's events stream: the screen, a patch to it, or a live delta."""
 
-    stream_id: str | None
-    frame: OutputFrame
+    frame: ScreenStreamFrame

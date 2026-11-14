@@ -22,15 +22,16 @@ function persistNow(conversationId: string): void {
   const { view, sends, olderBefore } = liveConversation(conversationId);
   db.putConversationLog({
     conversationId,
-    entries: [...view.entries],
+    items: [...view.items],
+    head: view.head,
     olderBefore,
     sends: { ...sends },
   }).catch((error: unknown) => {
-    console.error("[conversation] failed to save the log locally:", error);
+    console.error("[conversation] failed to save the screen locally:", error);
   });
 }
 
-/** Save the conversation's log and sends to IndexedDB, coalescing bursts of frames. */
+/** Save the conversation's screen, head and sends to IndexedDB, coalescing bursts of frames. */
 export function persistConversation(
   conversationId: string,
   { immediately = false } = {},
@@ -49,13 +50,14 @@ export function persistConversation(
 async function restore(conversationId: string): Promise<void> {
   const saved = await db.getConversationLog(conversationId);
   useLiveConversationStore.getState().restore(conversationId, {
-    entries: saved?.entries ?? [],
+    items: saved?.items ?? [],
+    head: saved?.head ?? 0,
     olderBefore: saved?.olderBefore ?? null,
     sends: saved?.sends ?? {},
   });
 }
 
-/** Fold a page of the server's log into the conversation, over what this device saved of it, and save the result. */
+/** Take a page of the server's screen into the conversation, over what this device saved of it, and save the result. */
 export async function applyConversationPage(
   conversationId: string,
   page: ConversationPage,
@@ -78,7 +80,6 @@ function retitle(conversationId: string, description: string): void {
 const follower = createConversationFollower({
   subscribe: chatApi.subscribeToConversationEvents,
   isNotFound: (error) => error instanceof ConversationNotFoundError,
-  view: (conversationId) => liveConversation(conversationId).view,
   apply: (conversationId, frame) => {
     const gap = useLiveConversationStore
       .getState()
@@ -101,10 +102,7 @@ const follower = createConversationFollower({
   onReopen: (conversationId, gap) => {
     streamLog("sse", "conversation-reopen-on-gap", {
       conversationId,
-      detail: {
-        status: gap.status,
-        at: gap.status === "unknown_seq" ? gap.seq : gap.expected,
-      },
+      detail: { status: gap.status, at: gap.expected },
     });
   },
   onDrop: (_conversationId, error) => {

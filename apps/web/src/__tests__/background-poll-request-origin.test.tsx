@@ -140,7 +140,6 @@ describe("a conversation events subscription", () => {
 
     await chatApi.subscribeToConversationEvents(
       "conv-1",
-      0,
       vi.fn(),
       new AbortController().signal,
     );

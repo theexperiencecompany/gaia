@@ -29,13 +29,13 @@ import {
 } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  entryFrame,
-  entryUpdatedFrame,
+  insertFrame,
   replyDelta,
-  reply as replyEntry,
-  replySettled,
+  replyItem,
+  screenFrame,
   stateFrame,
-  userMessage,
+  updateFrame,
+  userItemWith,
 } from "../../../../libs/shared/ts/src/conversation/testing";
 import type { ConversationFrame } from "../../../../libs/shared/ts/src/conversation/types";
 import { HarnessAdapter } from "../../harness/src/adapter";
@@ -72,37 +72,35 @@ function turnFrames(
 ): ConversationFrame[] {
   const count = posts.length;
   const ids = posts.map((_, i) => `u${i + 1}`);
-  const message = (i: number) => ({
-    ...userMessage(ids[i], posts[i].message),
-    surface: posts[i].platform,
-    platform_message_id: posts[i].platformMessageId ?? null,
-  });
+  const message = (i: number, reaction: string | null = null) =>
+    userItemWith(ids[i], i + 1, {
+      text: posts[i].message,
+      surface: posts[i].platform,
+      platform_message_id: posts[i].platformMessageId ?? null,
+      reaction: reaction ? { emoji: reaction, by: "chat_model" } : null,
+    });
   const frames: ConversationFrame[] = [
-    ...posts.map((_, i) => entryFrame(i + 1, message(i))),
+    screenFrame(posts.map((_, i) => message(i))),
     stateFrame(count, "thinking"),
   ];
   if (script.reaction) {
-    const last = count - 1;
     return [
       ...frames,
-      entryUpdatedFrame(count, {
-        ...message(last),
-        reaction: { emoji: script.reaction, by: "chat_model" },
-        revision: 1,
-      }),
-      entryFrame(count + 1, replySettled("r1", ids, count, null, "silent")),
+      updateFrame(message(count - 1, script.reaction)),
       stateFrame(count + 1, "idle"),
     ];
   }
   const chunks = script.chunks ?? [];
   const text = chunks.join("");
-  const quote = script.quote ? ids[count - 1] : null;
+  const quoted = script.quote ? ids[count - 1] : null;
+  const quote = quoted
+    ? { id: quoted, content: "", role: "user" as const }
+    : null;
   return [
     ...frames,
-    entryFrame(count + 1, replyEntry("r1", "a1", "", 0, quote)),
+    insertFrame({ ...replyItem("r1", count + 1, chunks[0] ?? ""), quote }),
     ...chunks.map((chunk, i) => replyDelta("a1", "r1", i, chunk)),
-    entryUpdatedFrame(count + 1, replyEntry("r1", "a1", text, 1, quote)),
-    entryFrame(count + 2, replySettled("r1", ids, count + 1, quote)),
+    updateFrame({ ...replyItem("r1", count + 1, text, "answered"), quote }),
     stateFrame(count + 2, "idle"),
   ];
 }
@@ -127,9 +125,7 @@ function makeGaia(script: ApiScript, held: Promise<void> = Promise.resolve()) {
     }),
     conversationEvents: vi.fn(async function* () {
       await held;
-      for (const frame of turnFrames(script, posts)) {
-        yield { streamId: null, frame };
-      }
+      yield* turnFrames(script, posts);
     }),
     createLinkToken: vi.fn(async () => ({
       token: "tok",

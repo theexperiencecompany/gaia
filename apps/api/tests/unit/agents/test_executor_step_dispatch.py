@@ -30,6 +30,7 @@ async def _dispatch() -> str:
         task_id="task-1",
         configurable=_configurable(),
         conversation_id="conv-1",
+        handoff="call_1",
     )
 
 
@@ -39,7 +40,7 @@ async def test_a_refused_work_started_dispatches_nothing_and_frees_the_lock() ->
         patch.object(et, "spawn_background_task") as spawn,
     ):
         result = await _dispatch()
-    record.assert_awaited_once_with(STEP, "conv-1", USER_ID, "task-1")
+    record.assert_awaited_once_with(STEP, "conv-1", USER_ID, "task-1", handoff="call_1")
     spawn.assert_not_called()
     assert await redis_cache.client.get(BUSY_KEY) is None
     assert result == et._NOT_STARTED_STOPPED
@@ -48,7 +49,7 @@ async def test_a_refused_work_started_dispatches_nothing_and_frees_the_lock() ->
 async def test_work_started_is_logged_before_the_run_spawns() -> None:
     order: list[str] = []
 
-    async def logged(*_: object) -> bool:
+    async def logged(*_: object, **__: object) -> bool:
         order.append("logged")
         return True
 
@@ -73,7 +74,11 @@ async def test_a_legacy_run_dispatches_without_touching_the_log() -> None:
         patch.object(et, "spawn_background_task", side_effect=lambda coro, **_: coro.close()),
     ):
         await et._dispatch_executor(
-            task="do it", task_id="task-1", configurable=configurable, conversation_id="conv-1"
+            task="do it",
+            task_id="task-1",
+            configurable=configurable,
+            conversation_id="conv-1",
+            handoff="call_1",
         )
     record.assert_not_called()
 
@@ -109,7 +114,9 @@ async def test_work_handed_to_a_running_executor_is_logged_as_joining_it_first()
     with ExitStack() as stack:
         record = _busy(stack, order, joined=True)
         result = await _dispatch()
-    record.assert_awaited_once_with(STEP, "conv-1", USER_ID, "task-1", joins="t-running")
+    record.assert_awaited_once_with(
+        STEP, "conv-1", USER_ID, "task-1", joins="t-running", handoff="call_1"
+    )
     assert order == ["logged", "handed"]
     assert "added to the work already in progress" in result
 

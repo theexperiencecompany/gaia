@@ -15,8 +15,6 @@ vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn() },
 }));
 
-const noop = (): void => undefined;
-
 const card = (
   overrides: Partial<ApprovalRequestData> = {},
 ): ApprovalRequestData => ({
@@ -40,22 +38,12 @@ describe("ApprovalRequestSection ledger UX", () => {
   });
 
   it("shows the card age when the ledger provides it", () => {
-    render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 172800 })}
-        onDecided={noop}
-      />,
-    );
+    render(<ApprovalRequestSection data={card({ age_seconds: 172800 })} />);
     expect(screen.getByText("asked 2d ago")).toBeDefined();
   });
 
   it("asks in place before submitting a day-old approval", async () => {
-    render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 259200 })}
-        onDecided={noop}
-      />,
-    );
+    render(<ApprovalRequestSection data={card({ age_seconds: 259200 })} />);
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     // Re-confirm appears; nothing submitted yet.
     expect(screen.getByText(/still want this/i)).toBeDefined();
@@ -67,12 +55,7 @@ describe("ApprovalRequestSection ledger UX", () => {
   });
 
   it("submits immediately on approve tap — no waiting room", async () => {
-    render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 5 })}
-        onDecided={noop}
-      />,
-    );
+    render(<ApprovalRequestSection data={card({ age_seconds: 5 })} />);
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     // No "Sending your approval" interstitial, no cancel button.
     expect(screen.queryByText(/sending your approval/i)).toBeNull();
@@ -83,11 +66,9 @@ describe("ApprovalRequestSection ledger UX", () => {
   });
 
   it("submits the rendered row version with the decision", async () => {
-    const onDecided = vi.fn();
     render(
       <ApprovalRequestSection
         data={card({ age_seconds: 5, ledger_version: 4 })}
-        onDecided={onDecided}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
@@ -109,7 +90,6 @@ describe("ApprovalRequestSection ledger UX", () => {
     render(
       <ApprovalRequestSection
         data={card({ age_seconds: 5, ledger_version: 4 })}
-        onDecided={noop}
       />,
     );
     // First tap carries the rendered version.
@@ -139,42 +119,18 @@ describe("ApprovalRequestSection ledger UX", () => {
       }),
     );
   });
-
-  it("settles immediately on approve with no loading state", async () => {
-    const onDecided = vi.fn();
-    render(
-      <ApprovalRequestSection
-        data={card({ age_seconds: 5 })}
-        onDecided={onDecided}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
-    await vi.waitFor(() =>
-      expect(onDecided).toHaveBeenCalledWith(
-        { outcome: "approved", decider: "user", action: null },
-        null,
-      ),
-    );
-    // No spinner, no running row, no waiting room anywhere.
-    expect(screen.queryByText(/running/i)).toBeNull();
-  });
 });
 
 describe("ApprovalRequestSection always-allow menu", () => {
   it("offers always-allow on a card the user can waive", () => {
-    render(<ApprovalRequestSection data={card()} onDecided={noop} />);
+    render(<ApprovalRequestSection data={card()} />);
     expect(
       screen.getByRole("button", { name: /more approval options/i }),
     ).toBeDefined();
   });
 
   it("hides always-allow on a card that asks every time", () => {
-    render(
-      <ApprovalRequestSection
-        data={card({ always_asks: true })}
-        onDecided={noop}
-      />,
-    );
+    render(<ApprovalRequestSection data={card({ always_asks: true })} />);
     expect(
       screen.queryByRole("button", { name: /more approval options/i }),
     ).toBeNull();

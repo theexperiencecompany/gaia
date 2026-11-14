@@ -9,7 +9,7 @@
 import type { Readable } from "node:stream";
 import type { AxiosInstance } from "axios";
 import { parseConversationEvent } from "../../conversation/frames";
-import type { ConversationStreamEvent } from "../../conversation/types";
+import type { ConversationFrame } from "../../conversation/types";
 import { wideLog } from "../utils/wide-events";
 
 /** The server sends a keepalive every 15 s; three missed means the connection is dead. */
@@ -29,18 +29,16 @@ function takeSseData(buffer: string): { data: string[]; rest: string } {
   return { data, rest };
 }
 
-/** Yields every event on one connection to the conversation's events stream after `after`. */
+/** Yields every frame on one connection to the conversation's events stream, opening with its screen. */
 export async function* readConversationEvents(
   client: AxiosInstance,
   headers: Record<string, string>,
   conversationId: string,
-  after: string,
   signal: AbortSignal,
-): AsyncGenerator<ConversationStreamEvent> {
+): AsyncGenerator<ConversationFrame> {
   const response = await client.get(
     `/api/v1/conversations/${encodeURIComponent(conversationId)}/events`,
     {
-      params: { after },
       responseType: "stream",
       signal,
       headers: { Accept: "text/event-stream", ...headers },
@@ -73,7 +71,7 @@ export async function* readConversationEvents(
           });
           continue;
         }
-        yield parsed.event;
+        yield parsed.frame;
       }
     }
   } finally {
