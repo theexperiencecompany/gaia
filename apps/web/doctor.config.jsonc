@@ -87,8 +87,9 @@
       },
       // <img> inside satori JSX for OG-image SVG generation: satori renders
       // server-side to SVG; there is no DOM, so next/image does not apply.
+      // Every .tsx under api/og is an ImageResponse route or a leaf it renders.
       {
-        "files": ["src/app/api/og/shared.tsx"],
+        "files": ["src/app/api/og/**"],
         "rules": ["react-doctor/nextjs-no-img-element"]
       },
       // Both createObjectURL calls (:103/:133) are paired with

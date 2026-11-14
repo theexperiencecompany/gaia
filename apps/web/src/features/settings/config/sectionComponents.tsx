@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { ReferralsSettings } from "@/features/referrals/components/ReferralsSettings";
 import AccountSettings from "@/features/settings/components/AccountSettings";
 import BrowserSettings from "@/features/settings/components/BrowserSettings";
 import { ComposioSetupSettings } from "@/features/settings/components/ComposioSetupSettings";
@@ -44,6 +45,7 @@ const SECTION_PANELS: Record<
   members: () => <MembersSettings />,
   subscription: () => <SubscriptionSettings />,
   usage: () => <UsageSettings />,
+  referrals: () => <ReferralsSettings />,
   preferences: (setModalAction) => (
     <PreferencesSettings setModalAction={setModalAction} />
   ),

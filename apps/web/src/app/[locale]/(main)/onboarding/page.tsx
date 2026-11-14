@@ -21,6 +21,8 @@ import { OnboardingShell } from "@/features/onboarding/components/OnboardingShel
 import {
   Chat,
   ChatComposer,
+  Invite,
+  InviteComposer,
   PaidReveal,
   PaidRevealComposer,
   Payment,
@@ -66,6 +68,8 @@ export default function Onboarding() {
         return <Payment />;
       case "paidReveal":
         return <PaidReveal />;
+      case "invite":
+        return <Invite />;
       case "platformPick":
         return (
           <Platforms
@@ -89,6 +93,8 @@ export default function Onboarding() {
         return <ChatComposer submission={submission} />;
       case "paidReveal":
         return <PaidRevealComposer dispatch={dispatch} />;
+      case "invite":
+        return <InviteComposer dispatch={dispatch} />;
     }
   })();
 

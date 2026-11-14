@@ -7,6 +7,8 @@
  * 2026-10-08) and the snapshots are the text a user reads. A refactor that
  * moves where a number comes from must leave every one of them identical.
  */
+
+import type { ReferralFriendGift, ReferralOffer } from "@shared/api/generated";
 import { act, cleanup, render } from "@testing-library/react";
 import {
   afterEach,
@@ -17,11 +19,11 @@ import {
   it,
   vi,
 } from "vitest";
-
 import type {
   Plan,
   UserSubscriptionStatus,
 } from "@/features/pricing/api/pricingApi";
+import { giftCardPrice } from "@/features/referrals/utils/offerPrices";
 
 vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
   useDeployment: () => ({ bills: true }),
@@ -170,6 +172,20 @@ const PRO_YEARLY = row({
 
 const LIVE_CATALOGUE = [ENTERPRISE, PRO_MONTHLY, PRO_YEARLY];
 
+const FRIEND_OFFER: ReferralOffer = {
+  currency: "USD",
+  monthly_regular_minor: 3000,
+  monthly_intro_minor: 1500,
+  intro_cycles: 2,
+  yearly_regular_minor: 30000,
+  yearly_discount_minor: 3000,
+};
+const FRIEND_GIFT: ReferralFriendGift = {
+  referrer_first_name: "Aryan",
+  referrer_picture: null,
+  offer: FRIEND_OFFER,
+  billing_cycles: ["monthly", "yearly"],
+};
 const FOUNDER_OFFER = { discountCode: "THANKYOU40", discountPercent: 40 };
 
 /** A subscription row as Dodo localised it: ZAR, while the catalogue is USD. */
@@ -296,6 +312,57 @@ describe("pricing cards", () => {
     );
   });
 
+  it("monthly and yearly with a referred friend's gift on the Pro card", () => {
+    const gift = giftCardPrice(FRIEND_GIFT);
+    const monthly = render(<PricingCards durationIsMonth gift={gift} />);
+    expect(visibleText(monthly.container)).toContain(
+      "$30$15/ monthFirst 2 months, then $30Subscribe",
+    );
+    cleanup();
+    const yearly = render(<PricingCards gift={gift} />);
+    expect(visibleText(yearly.container)).toContain(
+      "$25$22.50/ monthFirst year, then $300$300$270",
+    );
+  });
+
+  it("a yearly price's month keeps its cents, struck or not", () => {
+    mockPlans = [ENTERPRISE, PRO_MONTHLY, { ...PRO_YEARLY, amount: 27000 }];
+    const list = render(<PricingCards />);
+    expect(visibleText(list.container)).toContain(
+      "$22.50/ monthBilled yearly$270",
+    );
+    cleanup();
+    act(() => {
+      useUpgradeModalStore.setState({ offer: FOUNDER_OFFER });
+    });
+    const offer = render(<PricingCards />);
+    expect(visibleText(offer.container)).toContain(
+      "$22.50$13.50/ monthBilled yearly$270$162",
+    );
+  });
+
+  it("a zero-exponent currency prices a yearly month in whole yen", () => {
+    mockPlans = [
+      { ...PRO_MONTHLY, currency: "JPY", amount: 1000 },
+      { ...PRO_YEARLY, currency: "JPY", amount: 10000 },
+    ];
+    const { container } = render(<PricingCards />);
+    expect(visibleText(container)).toContain("¥833/ monthBilled yearly¥10,000");
+  });
+
+  it("a gift checkout applies only on monthly leaves the yearly card at its list price", () => {
+    const listOnly = visibleText(render(<PricingCards />).container);
+    cleanup();
+    const gift = giftCardPrice({ ...FRIEND_GIFT, billing_cycles: ["monthly"] });
+    const yearly = render(<PricingCards gift={gift} />);
+    expect(visibleText(yearly.container)).toBe(listOnly);
+    cleanup();
+    const monthly = render(<PricingCards durationIsMonth gift={gift} />);
+    expect(visibleText(monthly.container)).toContain(
+      "$30$15/ monthFirst 2 months, then $30Subscribe",
+    );
+  });
+
   it("billing period tabs", () => {
     const { container } = render(
       <BillingPeriodTabs isYearly={false} onChange={vi.fn()} />,
@@ -303,6 +370,26 @@ describe("pricing cards", () => {
     expect(visibleText(container)).toMatchInlineSnapshot(
       `"MonthlyYearly2 months free"`,
     );
+  });
+
+  it("the yearly chip claims the months free the gift card shows", () => {
+    const gift = giftCardPrice(FRIEND_GIFT);
+    const tabs = render(
+      <BillingPeriodTabs isYearly onChange={vi.fn()} gift={gift} />,
+    );
+    expect(visibleText(tabs.container)).toBe("MonthlyYearly3 months free");
+    cleanup();
+    const card = render(<PricingCards gift={gift} />);
+    expect(visibleText(card.container)).toContain("23 months free");
+    cleanup();
+    const monthlyOnly = giftCardPrice({
+      ...FRIEND_GIFT,
+      billing_cycles: ["monthly"],
+    });
+    const listTabs = render(
+      <BillingPeriodTabs isYearly onChange={vi.fn()} gift={monthlyOnly} />,
+    );
+    expect(visibleText(listTabs.container)).toBe("MonthlyYearly2 months free");
   });
 
   it("never rounds a part month up into the chip", () => {
