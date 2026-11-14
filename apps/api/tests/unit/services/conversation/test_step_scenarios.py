@@ -322,6 +322,38 @@ class StepScenarios:
         assert rt.frames.conversations == {CONVERSATION}
         await assert_quiet(rt)
 
+    @pytest.mark.parametrize("ending", ["finished", "answered"])
+    async def test_a_run_that_ends_right_after_an_absorb_settles_the_read_text_above_the_message(
+        self, rt: Runtime, ending: str
+    ) -> None:
+        final = (
+            [Finished(Replied("done"))]
+            if ending == "finished"
+            else [Answered(Replied("done")), Finished(Replied("done"))]
+        )
+        rt.runner.script([text("on it"), Do(arrive(rt, user("u2"))), ModelOutput(True), *final])
+        await send(rt, user("u1"))
+        # A missed segment leaves u2 waking, and the next attempt's unscripted run waits forever.
+        await asyncio.wait_for(run(rt), timeout=10)
+        assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((3,))]
+        assert await kinds(rt) == [
+            "user_message",
+            "reply",
+            "user_message",
+            "reply_settled",
+            "reply",
+            "reply_settled",
+        ]
+        first, second = await replies(rt)
+        assert (first.text, second.text) == ("on it", "done")
+        assert first.attempt_id != second.attempt_id
+        assert await answered(rt) == [
+            (ReplyOutcome.ANSWERED, ("u1",)),
+            (ReplyOutcome.ANSWERED, ("u2",)),
+        ]
+        assert [settled.through for settled in await settles(rt)] == [1, 3]
+        await assert_quiet(rt)
+
     async def test_a_shown_tool_calls_result_card_stays_with_it_above_the_absorbed_message(
         self, rt: Runtime
     ) -> None:
