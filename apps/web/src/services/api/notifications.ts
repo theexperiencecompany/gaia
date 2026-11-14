@@ -3,6 +3,7 @@ import { ApiError } from "@shared/api";
 import type {
   BriefDeliveryWorkflow,
   BriefDeliveryWorkflowsConflict,
+  BriefingEditionsUpdate,
   BriefingScheduleUpdate,
 } from "@shared/api/generated";
 import { z } from "zod";
@@ -97,6 +98,19 @@ export class NotificationsAPI {
   /** Silent so a refused "off" can open its own dialog instead of a toast. */
   static updateBriefingSchedule(update: BriefingScheduleUpdate) {
     return api.put("/api/v1/notifications/preferences/briefing-schedule", {
+      body: update,
+      silent: true,
+    });
+  }
+
+  /** Every daily edition family, and whether the user keeps it on or favours it. */
+  static getBriefingEditions() {
+    return api.get("/api/v1/notifications/preferences/briefing-editions");
+  }
+
+  /** Silent so the editions grid rolls back and words its own toast. */
+  static updateBriefingEditions(update: BriefingEditionsUpdate) {
+    return api.put("/api/v1/notifications/preferences/briefing-editions", {
       body: update,
       silent: true,
     });

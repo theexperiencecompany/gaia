@@ -7,6 +7,7 @@ the weekly recap is always WEEKLY_FAMILY, and a persisted template_family select
 the renderer forever so the archive re-renders identically.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -14,8 +15,10 @@ from app.constants.briefing import (
     DESK_FAMILIES,
     DESK_SHADOW_BLEED_PX,
     EXPLORER_SCALE,
+    FAVOURITE_WEIGHT_FACTOR,
     POSTAL_FAMILY,
     WEEKLY_FAMILY,
+    EditionChoice,
 )
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.explorer_render import (
@@ -23,6 +26,7 @@ from app.services.briefing.editions.explorer_render import (
     explorer_family_ids,
     render_explorer_edition,
 )
+from shared.py.wide_events import log
 
 
 class EditionRenderer(Protocol):
@@ -75,6 +79,24 @@ DAILY_FAMILY_WEIGHTS: dict[str, int] = {
 }
 
 
+def daily_family_weights(choices: Mapping[str, EditionChoice]) -> dict[str, int]:
+    """Return the user's daily bag: families turned off left out, each favourite at twice its weight.
+
+    Settings keep one family on, so the bag is empty only when every family left on was
+    since retired; the brief then draws from every daily family.
+    """
+    weights = {
+        family: weight
+        * (FAVOURITE_WEIGHT_FACTOR if choices.get(family) == EditionChoice.FAVOURITE else 1)
+        for family, weight in DAILY_FAMILY_WEIGHTS.items()
+        if choices.get(family) != EditionChoice.OFF
+    }
+    if weights:
+        return weights
+    log.warning("briefing.editions_all_retired", kept=sorted(choices))
+    return dict(DAILY_FAMILY_WEIGHTS)
+
+
 @dataclass(frozen=True)
 class EditionFrame:
     """How a family's page is rasterized: its canvas, pixel density and crop."""
@@ -118,6 +140,7 @@ __all__ = [
     "EXPLORER_RENDERER",
     "POSTAL_FAMILY",
     "WEEKLY_FAMILY",
+    "daily_family_weights",
     "render_explorer_edition",
     "EditionFrame",
     "edition_frame",

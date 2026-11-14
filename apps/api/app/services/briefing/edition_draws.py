@@ -15,7 +15,7 @@ from app.models.briefing_models import (
     BriefingPayload,
 )
 from app.models.user_models import ShuffleBag, UserDocument
-from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
+from app.services.briefing.editions import daily_family_weights
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
 from app.services.briefing.editions.capabilities import families_drawing, split_drawable
 from app.services.briefing.editions.stamps import hosted_stamp_weights
@@ -59,14 +59,15 @@ class EditionDraw:
 
 
 def draw_edition(user: UserDocument, blocks: list[BriefBlock]) -> EditionDraw:
-    """Draw today's family from the bag's families that can draw every block, else the bag's next.
+    """Draw today's family from the user's bag, among its families that can draw every block.
 
-    Only when no daily family can draw the whole composition does a block go undrawn.
+    When no family in the user's rotation can draw the whole composition, the bag's next
+    family draws and the blocks it cannot draw go to the brief's page; a family the user
+    turned off is never drawn.
     """
-    fits = families_drawing(DAILY_FAMILY_WEIGHTS, blocks)
-    family = draw_from_bag(
-        user, BriefingBag.EDITION_FAMILY, DAILY_FAMILY_WEIGHTS, eligible=fits or None
-    )
+    weights = daily_family_weights(user.briefing_editions)
+    fits = families_drawing(weights, blocks)
+    family = draw_from_bag(user, BriefingBag.EDITION_FAMILY, weights, eligible=fits or None)
     drawn, undrawn = split_drawable(family.member, blocks)
     if undrawn:
         log.info(

@@ -5,6 +5,7 @@ import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
 import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
 import { Link01Icon } from "@icons";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -24,6 +25,13 @@ import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import type { PlatformLinks } from "@/types/platform";
+
+// The editions grid is below the fold and carries its own thumbnails; load it after the page.
+const BriefingEditionsSettings = dynamic(() =>
+  import("@/features/settings/components/BriefingEditionsSettings").then(
+    (m) => m.BriefingEditionsSettings,
+  ),
+);
 
 const PLATFORM_NAME_LIST = new Intl.ListFormat("en", {
   style: "long",
@@ -164,6 +172,7 @@ export default function NotificationSettings() {
         )}
       </SettingsSection>
       <BriefingScheduleSettings />
+      <BriefingEditionsSettings />
     </SettingsPage>
   );
 }

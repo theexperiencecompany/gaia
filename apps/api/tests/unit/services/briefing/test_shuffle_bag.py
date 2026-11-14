@@ -87,9 +87,17 @@ class TestDraw:
 
         assert firsts == {"a", "b"}
 
-    def test_an_impossible_pool_fails_loud(self) -> None:
-        with pytest.raises(ValueError, match="keeps every repeat apart"):
-            draw(None, {"postal": 2}, random.Random(1))
+    def test_a_pool_of_one_member_hands_it_out_every_day(self) -> None:
+        picks, _ = _draws(6, {"postal": 2})
+
+        assert picks == ["postal"] * 6
+
+    def test_a_pool_too_lopsided_to_keep_repeats_apart_still_hands_out_every_weight(
+        self,
+    ) -> None:
+        _, passes = _draws(4 * 5, {"postal": 4, "memo": 1})
+
+        assert all(Counter(order) == Counter({"postal": 4, "memo": 1}) for order in passes)
 
 
 _WORKS = {f"w{i}": 1 for i in range(12)}
