@@ -13,9 +13,11 @@ from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime, timedelta
 import re
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 from langchain_core.messages import AIMessage, HumanMessage
 import pytest
+import time_machine
 
 from app.agents.llm.client import metered_config
 from app.constants.chat import MAX_MESSAGE_LENGTH
@@ -23,6 +25,7 @@ from app.constants.todos import CANVAS_PROMPT_MAX_CHARS, TodoActivityEvent
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.todo_models import TodoDocument
 from app.models.user_models import UserDocument
@@ -290,6 +293,8 @@ class TestHealthCheckExpired:
             "gaia_maintenance_notified:todo-1", "1", ex=SECONDS_PER_DAY
         )
 
+    # 02:00 on the 16th in Kolkata is still the 15th in UTC: the id is dated in UTC.
+    @time_machine.travel(datetime(2026, 1, 16, 2, 0, tzinfo=ZoneInfo("Asia/Kolkata")), tick=False)
     async def test_notify_decision_sends_a_warning_notification(self):
         pool = _pool()
         notify = AsyncMock()
@@ -309,6 +314,7 @@ class TestHealthCheckExpired:
             "todo-1", "user-1", TodoActivityEvent.MAINTENANCE, "told the user this todo expired"
         )
         request = notify.await_args.args[0]
+        assert request.id == notification_id("user-1", "todo_health", "todo-1", "2026-01-15")
         assert request.user_id == "user-1"
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
         assert request.type == NotificationType.WARNING
@@ -576,6 +582,7 @@ class TestSendUserDormantDigest:
             )
 
         request = notify.await_args.args[0]
+        assert request.id == notification_id("user-1", "dormant_digest", "", "2026-01-15")
         assert request.user_id == "user-1"
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
         assert request.type == NotificationType.INFO

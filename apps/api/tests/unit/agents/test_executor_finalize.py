@@ -45,6 +45,7 @@ from app.agents.core.background.session import (
     RunIdentity,
     RunKind,
     create_session,
+    mark_executor_failed,
 )
 from app.agents.core.outcome_review import NOT_REVIEWED, OutcomeReview
 from app.agents.core.subagents.subagent_runner import SubagentExecutionContext, SubagentOutcome
@@ -996,6 +997,20 @@ class TestARunsEndIsLoggedAsItEnded:
         assert args[4].note
         assert kwargs == {"continued_by_decision": True}
 
+    async def test_the_note_follows_the_outcome_the_run_declared(self) -> None:
+        outcome = er.TerminalOutcome(
+            result_text="r",
+            result_type="final",
+            was_cancelled=False,
+            review=OutcomeReview(OutcomeState.ASK, None),
+        )
+
+        logged = await self._log(_run(RunKind.LIVE), outcome)
+
+        note = logged.record.await_args.args[4].note
+        assert note == outcome_delivery_note(OutcomeState.ASK, None)
+        assert note != outcome_delivery_note(None, None)
+
     @pytest.mark.parametrize(
         ("todo", "execution"), [("todo-1", None), (None, "ex-1"), ("todo-1", "ex-1")]
     )
@@ -1123,6 +1138,29 @@ class TestFinalizeHandsOnHowTheRunEnded:
         assert outcome.was_cancelled is True
         assert boundaries.logged.await_args.kwargs == {"stopped": True}
         close.assert_awaited_once_with("s1", cancelled=True)
+
+
+class TestFinalizeOnlyReviewsAFinalAnswer:
+    async def test_a_run_its_waiter_gave_up_on_hands_on_no_outcome(self, boundaries) -> None:
+        create_session("s1", RunKind.LIVE)
+        mark_executor_failed("s1", "the waiter gave up")
+
+        await er._finalize_executor_run(_run(RunKind.LIVE), "late", "final")
+
+        assert boundaries.logged.await_args.args[1] is None
+
+    async def test_a_failed_run_is_not_reviewed(self, boundaries) -> None:
+        with patch.object(er, "_review_outcome", new_callable=AsyncMock) as review:
+            await er._finalize_executor_run(_run(RunKind.LIVE), "boom", "error", _executor_ctx())
+
+        review.assert_not_awaited()
+        assert boundaries.logged.await_args.args[1].review == NOT_REVIEWED
+
+    async def test_a_final_answer_without_a_context_is_not_reviewed(self, boundaries) -> None:
+        with patch.object(er, "_review_outcome", new_callable=AsyncMock) as review:
+            await er._finalize_executor_run(_run(RunKind.LIVE), "done", "final")
+
+        review.assert_not_awaited()
 
 
 class TestStartingACarryRun:

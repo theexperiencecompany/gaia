@@ -9,7 +9,8 @@ repository's own behaviour (user-scoping, source persistence, message stripping,
 pin semantics) is covered by the real-DB contract suite.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
@@ -23,13 +24,17 @@ from app.models.chat_models import (
     ConversationSyncItem,
     SystemPurpose,
 )
+from app.models.conversation_frame_models import EntryFrame
+from app.models.conversation_log_models import UserMessage
 from app.models.conversation_models import (
     ConversationMessageHit,
     ConversationSummary,
+    LogPage,
     StoredConversation,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services import conversation_service
+from app.services.conversation.screen_patches import ScreenTracker
 from app.services.conversation_service import (
     batch_sync_conversations,
     create_conversation_service,
@@ -39,6 +44,7 @@ from app.services.conversation_service import (
     delete_todo_conversations,
     get_conversation,
     get_conversations,
+    get_entries_before,
     get_or_create_todo_conversation,
     get_starred_messages,
     mark_conversation_as_read,
@@ -181,6 +187,65 @@ class TestGetConversation:
         with pytest.raises(HTTPException) as exc_info:
             await get_conversation("nonexistent", test_user)
         assert exc_info.value.status_code == 404
+
+
+class TestTheScreenAPageProjectsTo:
+    """The screen a conversation's log page is shown as: its items, its paging, its own conversation."""
+
+    @staticmethod
+    def _page(**overrides: object) -> LogPage:
+        entry = EntryFrame(
+            seq=4,
+            at=datetime(2026, 1, 1, tzinfo=UTC),
+            entry=UserMessage(id="u4", text="hello", surface=ConversationSource.WEB),
+        )
+        data: dict[str, object] = {
+            "entries": [entry],
+            "state": {"head": 4, "display": "idle", "work": []},
+            "has_older": True,
+            "cursor": 4,
+        }
+        data.update(overrides)
+        return LogPage.model_validate(data)
+
+    async def test_an_older_page_carries_its_items_paging_and_conversation(
+        self, mock_repo, test_user
+    ):
+        mock_repo.read_entries_before.return_value = self._page()
+        loads: list[str] = []
+        real_load = ScreenTracker.load
+
+        async def load(conversation_id: str, entries: Any) -> ScreenTracker:
+            loads.append(conversation_id)
+            return await real_load(conversation_id, entries)
+
+        with patch.object(ScreenTracker, "load", load):
+            page = await get_entries_before("conv_abc", test_user, before_seq=9, limit=20)
+
+        assert loads == ["conv_abc"]
+        assert (page.has_older, page.cursor) == (True, 4)
+        assert len(page.items) == 1
+        mock_repo.read_entries_before.assert_awaited_once_with(
+            "conv_abc", user_id=USER_ID, before_seq=9, limit=20
+        )
+
+    async def test_a_loaded_conversation_projects_its_own_page(self, mock_repo, test_user):
+        page = self._page()
+        mock_repo.get.return_value = _document(
+            entries=[frame.model_dump() for frame in page.entries], has_older=True, cursor=4
+        )
+        loads: list[str] = []
+        real_load = ScreenTracker.load
+
+        async def load(conversation_id: str, entries: Any) -> ScreenTracker:
+            loads.append(conversation_id)
+            return await real_load(conversation_id, entries)
+
+        with patch.object(ScreenTracker, "load", load):
+            loaded = await get_conversation("conv_abc", test_user)
+
+        assert loads == ["conv_abc"]
+        assert (loaded.has_older, loaded.cursor, len(loaded.items)) == (True, 4, 1)
 
 
 class TestStarConversation:

@@ -372,7 +372,13 @@ class TestARunThatFinishedHandsItsResultOn:
             names.append(name)
             return real_spawn(coro, name=name)
 
-        run_executor = AsyncMock()
+        live_session: list[bool] = []
+
+        async def _run(*, run: object, task: str, configurable: object) -> None:
+            session = sess._sessions.get(getattr(run, "stream_id", ""))
+            live_session.append(session is not None and session.executor_spawned)
+
+        run_executor = AsyncMock(side_effect=_run)
         with (
             patch.object(todo_run, "try_acquire_lock", AsyncMock(return_value=True)),
             patch.object(todo_run, "run_executor_background", run_executor),
@@ -382,6 +388,8 @@ class TestARunThatFinishedHandsItsResultOn:
             await run_todo_on_executor(REQUEST)
 
         assert names == [todo_run.TODO_EXECUTOR_TASK_NAME]
+        assert live_session == [True]
+        assert seams.wake.await_args.args == (REQUEST, seams.task_ids[-1])
         kwargs = run_executor.await_args.kwargs
         assert kwargs["task"] == REQUEST.task
         assert kwargs["configurable"] == {"user_id": "user-1", "stream_id": "s"}
