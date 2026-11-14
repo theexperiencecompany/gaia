@@ -229,6 +229,11 @@ class _Log:
             if self.root(request.task_id) == root and approval_id not in self.decisions
         )
 
+    def newest_asked(self, answered: Iterable[str]) -> str | None:
+        """Return the newest user message among answered: the one a retry sends again."""
+        ids = set(answered)
+        return next((user for user in reversed(self.users) if user in ids), None)
+
     def work_status(self, root: str) -> WorkStatus:
         finished = self.finished.get(root)
         if finished is not None:
@@ -276,6 +281,7 @@ def needed_beside(
                 target = reply.quote_target if settle is None else settle.entry.quote_target
                 narrated = (*reply.narrates, *(() if settle is None else settle.entry.narrates))
                 wanted |= {target} if target else set()
+                wanted |= set(() if settle is None else settle.entry.answers)
                 wanted |= {
                     f"work:{task}:{end}" for task in (*narrated, reply.reply_id) for end in _ENDS
                 }
@@ -366,6 +372,7 @@ def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkIte
         tool_data=cards,
         timeline=work_timeline(handoff, cards, approvals),
         image=None if finished is None else finished.image,
+        retry_target=read.newest_asked(started.answers),
     )
 
 
@@ -413,5 +420,8 @@ def _reply_item(seq: int, at: AwareDatetime, reply: Reply, read: _Log) -> ReplyI
         outcome=None if settle is None else settle.outcome,
         failure=None if settle is None else settle.failure,
         narrates=narrates,
+        retry_target=read.newest_asked(
+            (*(() if settle is None else settle.answers), *(() if target is None else (target,)))
+        ),
         files=reply_files([*work_cards, *reply.tool_data]),
     )

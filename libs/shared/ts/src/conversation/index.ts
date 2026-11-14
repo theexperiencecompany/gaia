@@ -9,6 +9,7 @@ export {
 export {
   FAILURE_REASON,
   LIVE_WORK_STATUS,
+  REPLY_OUTCOME,
   SCREEN_ITEM_KIND,
   WORK_STATUS,
 } from "./entries";

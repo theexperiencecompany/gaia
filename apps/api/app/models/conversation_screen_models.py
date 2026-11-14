@@ -58,6 +58,8 @@ class WorkItem(ScreenItemBase):
     # The hand-off's card and the work's cards, as the thread shows them.
     timeline: ToolTimeline
     image: ImageData | None
+    # The user message a retry of this work sends again; None when it answers none.
+    retry_target: str | None
 
 
 class NoticeItem(ScreenItemBase):

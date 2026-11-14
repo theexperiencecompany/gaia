@@ -55,7 +55,7 @@ export function userItem(
   return frame.item;
 }
 
-const NO_TIMELINE = { steps: [], cards: [] };
+const NO_TIMELINE = { steps: [], cards: [], progress: null };
 
 /** A reply item of one bubble, or of the bubbles given; outcome null while it is still being written. */
 export const replyItem = (
@@ -78,6 +78,7 @@ export const replyItem = (
   outcome: outcome as Extract<ScreenItem, { kind: "reply" }>["outcome"],
   failure: null,
   narrates: [],
+  retry_target: null,
   files: [],
 });
 
@@ -208,4 +209,5 @@ export const workItem = (
   tool_data: [],
   timeline: NO_TIMELINE,
   image: null,
+  retry_target: null,
 });

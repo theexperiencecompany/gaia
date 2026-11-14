@@ -8,7 +8,7 @@ type ReplyDelta = Extract<
 export const EMPTY_REPLY_DRAFT: ReplyDraft = {
   bubbles: [],
   toolData: [],
-  timeline: { steps: [], cards: [] },
+  timeline: { steps: [], cards: [], progress: null },
   followUpActions: [],
 };
 

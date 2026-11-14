@@ -172,7 +172,6 @@ export {
   approvalLabel,
   approvalOutcomeLabel,
   DEFAULT_HIL_MODE,
-  extractToolProgressMessage,
   getFixture,
   getToolData,
   isKnownTool,

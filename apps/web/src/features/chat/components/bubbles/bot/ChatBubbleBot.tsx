@@ -56,9 +56,9 @@ export default function ChatBubbleBot(
     disableActions,
   );
 
-  // Not memoized on purpose: `props` is rebuilt by getMessageProps every
-  // render, so a useMemo keyed on it never hits. Real render protection lives
-  // one level up in ChatMessageItem's memo (stable idle message refs).
+  // Not memoized on purpose: `props` is rebuilt every render, so a useMemo
+  // keyed on it never hits. Render protection lives in ChatRenderer's row
+  // memo (an unchanged server item keeps its identity).
   const renderedComponent = image_data ? (
     <ImageBubble {...props} image_data={image_data} />
   ) : (

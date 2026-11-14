@@ -10,14 +10,3 @@ export type StreamToolDataEntry = ToolDataEntry;
  * unified tool thread (not the per-tool renderers) and carry reasoning deltas.
  */
 export const TOOL_CALLS_DATA_TOOL_NAME = "tool_calls_data";
-
-export function extractToolProgressMessage(
-  entry: StreamToolDataEntry,
-): string | null {
-  if (entry.tool_name !== TOOL_CALLS_DATA_TOOL_NAME) return null;
-  const data = entry.data;
-  if (typeof data !== "object" || data === null) return null;
-  return "message" in data && typeof data.message === "string"
-    ? data.message
-    : null;
-}
