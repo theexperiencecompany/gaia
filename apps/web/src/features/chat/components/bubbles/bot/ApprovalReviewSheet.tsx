@@ -12,18 +12,14 @@ import {
 import { ShieldIcon } from "@icons";
 import type {
   ApprovalDecision,
-  ApprovalEnd,
   ApprovalRequestData,
   BatchDecisionOutcome,
 } from "@shared/chat";
 import { formatApprovalAge } from "@shared/chat";
-import { decidedEnd, flattenArgsPreview } from "@shared/utils";
+import { flattenArgsPreview } from "@shared/utils";
 import { useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
-import {
-  BATCH_OUTCOME_REASON,
-  resolveBatchOutcome,
-} from "@/features/chat/utils/batchOutcome";
+import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
 import { toast } from "@/lib/toast";
 
 interface SheetDecision {
@@ -35,42 +31,11 @@ interface ApprovalReviewSheetProps {
   items: ApprovalRequestData[];
   open: boolean;
   onClose: () => void;
-  onSettled: (
-    approvalId: string,
-    end: ApprovalEnd,
-    feedback: string | null,
-  ) => void;
 }
 
-/**
- * Settle one batch outcome: server truth wins over the tapped button, so a
- * lost race never paints the wrong verdict. Any other uncommitted item keeps
- * its decision in the sheet for review or retry.
- */
-function settleBatchOutcome(
-  outcome: BatchDecisionOutcome,
-  made: SheetDecision,
-  onSettled: ApprovalReviewSheetProps["onSettled"],
-  removeDecision: (approvalId: string) => void,
-): void {
-  if (outcome.resolved) {
-    onSettled(
-      outcome.approval_id,
-      decidedEnd(made.decision),
-      made.feedback.trim() || null,
-    );
-    removeDecision(outcome.approval_id);
-    return;
-  }
-  if (outcome.reason === BATCH_OUTCOME_REASON.NOT_FOUND) {
-    onSettled(
-      outcome.approval_id,
-      resolveBatchOutcome(outcome, decidedEnd(made.decision)),
-      made.feedback.trim() || null,
-    );
-    removeDecision(outcome.approval_id);
-  }
-}
+/** Whether the server took this decision or found it already made: either way the sheet lets go of it. */
+const isSettled = (outcome: BatchDecisionOutcome): boolean =>
+  outcome.resolved || outcome.reason === BATCH_OUTCOME_REASON.NOT_FOUND;
 
 /**
  * Bottom sheet for 3+ pending approvals. Same rows as the inline cards, one
@@ -81,7 +46,6 @@ export default function ApprovalReviewSheet({
   items,
   open,
   onClose,
-  onSettled,
 }: ApprovalReviewSheetProps) {
   const [decisions, setDecisions] = useState<Record<string, SheetDecision>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -130,8 +94,7 @@ export default function ApprovalReviewSheet({
         });
       };
       for (const outcome of response.outcomes) {
-        const made = decisions[outcome.approval_id];
-        if (made) settleBatchOutcome(outcome, made, onSettled, removeDecision);
+        if (isSettled(outcome)) removeDecision(outcome.approval_id);
       }
       const kept = response.outcomes.filter(
         (o) => !o.resolved && o.reason !== BATCH_OUTCOME_REASON.NOT_FOUND,

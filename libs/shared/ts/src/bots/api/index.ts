@@ -5,7 +5,7 @@ import type {
   ConversationStopResponse,
   DeliveryFailureReport,
 } from "../../api/generated";
-import type { ConversationStreamEvent } from "../../conversation/types";
+import type { ConversationFrame } from "../../conversation/types";
 import type {
   AuthStatus,
   BotConversation,
@@ -225,14 +225,12 @@ export class GaiaClient {
   conversationEvents(
     ctx: BotUserContext,
     conversationId: string,
-    after: string,
     signal: AbortSignal,
-  ): AsyncGenerator<ConversationStreamEvent> {
+  ): AsyncGenerator<ConversationFrame> {
     return readConversationEvents(
       this.client,
       this.userHeaders(ctx),
       conversationId,
-      after,
       signal,
     );
   }

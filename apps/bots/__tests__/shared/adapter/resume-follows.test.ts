@@ -15,48 +15,29 @@ import {
 } from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
 import {
-  entryFrame,
-  entryUpdatedFrame,
-  reply,
-  replySettled,
+  replyItem,
+  screenFrame,
   stateFrame,
-  userMessage,
-  workFinished,
-  workStarted,
+  userItemWith,
+  workItem,
 } from "../../../../../libs/shared/ts/src/conversation/testing";
 import type {
   ConversationFrame,
-  ConversationStreamEvent,
+  ScreenItem,
 } from "../../../../../libs/shared/ts/src/conversation/types";
 
-/** The conversation's log: a request already answered "On it.", then the work's late result. */
-const LOG: ConversationFrame[] = [
-  entryFrame(1, {
-    ...userMessage("u1"),
-    surface: "whatsapp",
-    platform_message_id: "11",
-  }),
-  entryFrame(2, reply("r1", "a-r1", "On it.", 1)),
-  entryFrame(3, replySettled("r1", ["u1"], 1)),
-  entryFrame(4, workStarted("t1", 1)),
-  entryFrame(5, workFinished("t1")),
-  entryFrame(6, reply("t1", "a-t1")),
-  entryUpdatedFrame(6, reply("t1", "a-t1", "Your flight is booked.", 1)),
-  entryFrame(7, replySettled("t1", ["u1"], 5)),
+/** The conversation's screen: a request already answered "On it.", then the work's late result. */
+const SCREEN: ScreenItem[] = [
+  userItemWith("u1", 1, { surface: "whatsapp", platform_message_id: "11" }),
+  replyItem("r1", 2, "On it.", "answered"),
+  workItem("t1", 4, "done"),
+  replyItem("t1", 6, "Your flight is booked.", "answered"),
 ];
 
-const seqOf = (frame: ConversationFrame): number =>
-  frame.kind === "entry" || frame.kind === "entry_updated" ? frame.seq : 0;
-
-/** Replays the log after a seq, then the conversation's state, as the events route does. */
-async function* replay(
-  log: ConversationFrame[],
-  after: string,
-): AsyncGenerator<ConversationStreamEvent> {
-  for (const frame of log) {
-    if (seqOf(frame) > Number(after)) yield { streamId: null, frame };
-  }
-  yield { streamId: "9-0", frame: stateFrame(log.length, "idle") };
+/** Opens on the screen, then the conversation's state, as the events route does. */
+async function* replay(): AsyncGenerator<ConversationFrame> {
+  yield screenFrame(SCREEN);
+  yield stateFrame(7, "idle");
 }
 
 class RestartedAdapter extends BaseBotAdapter {
@@ -108,22 +89,15 @@ class RestartedAdapter extends BaseBotAdapter {
 
 function restarted(active: ActiveBotConversation[]) {
   const adapter = new RestartedAdapter();
-  const cursors: string[] = [];
+  const opened = vi.fn(replay);
   const listActiveConversations = vi.fn(async () => active);
   Object.assign(adapter, {
     gaia: {
       listActiveConversations,
-      conversationEvents: (
-        _ctx: unknown,
-        _conversationId: string,
-        after: string,
-      ) => {
-        cursors.push(after);
-        return replay(LOG, after);
-      },
+      conversationEvents: opened,
     },
   });
-  return { adapter, cursors, listActiveConversations };
+  return { adapter, opened, listActiveConversations };
 }
 
 const target = (afterSeq: number): ActiveBotConversation => ({
@@ -136,26 +110,24 @@ const target = (afterSeq: number): ActiveBotConversation => ({
 
 describe("a bot restarted while work ran", () => {
   it("delivers the result that landed after the restart, once", async () => {
-    const { adapter, cursors, listActiveConversations } = restarted([
-      target(3),
-    ]);
+    const { adapter, opened, listActiveConversations } = restarted([target(3)]);
 
     await adapter.resume();
     await adapter.conversationsIdle();
 
     expect(listActiveConversations).toHaveBeenCalledWith("whatsapp");
     expect(adapter.targets).toEqual([target(3)]);
-    expect(cursors).toEqual(["3"]);
+    expect(opened).toHaveBeenCalledTimes(1);
     expect(adapter.sent).toEqual(["Your flight is booked."]);
   });
 
   it("sends nothing again when the reply was delivered before the restart", async () => {
-    const { adapter, cursors } = restarted([target(7)]);
+    const { adapter, opened } = restarted([target(7)]);
 
     await adapter.resume();
     await adapter.conversationsIdle();
 
-    expect(cursors).toEqual(["7"]);
+    expect(opened).toHaveBeenCalledTimes(1);
     expect(adapter.sent).toEqual([]);
   });
 });

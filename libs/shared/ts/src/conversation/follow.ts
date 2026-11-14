@@ -2,9 +2,9 @@
  * Follows a conversation's events stream for a client that shows it (web, mobile).
  *
  * One connection per conversation while anything holds it open. Each frame goes to
- * the platform's store; a frame the view cannot apply (an index gap, an update for a
- * seq it never held) reopens the stream from the log, and a dropped or ended
- * connection reconnects with backoff, resuming after resumeAfter(view).
+ * the platform's store; every connection opens on the server's screen, so a frame the
+ * view cannot apply (an index gap) reopens the stream, and a dropped or ended
+ * connection reconnects with backoff.
  */
 
 import {
@@ -12,24 +12,21 @@ import {
   type FrameParseError,
   parseConversationEvent,
 } from "./frames";
-import { resumeAfter } from "./resume";
-import type { ConversationFrame, ConversationView, FrameGap } from "./types";
+import type { ConversationFrame, FrameGap } from "./types";
 
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS = 15_000;
 
 /** What a platform gives the follower: its transport, its store, and where to report. */
 export interface ConversationFollowPorts {
-  /** Read one connection after seq `after`, handing over each data line raw; resolves when the server closes it. */
+  /** Read one connection, handing over each data line raw; resolves when the server closes it. */
   subscribe: (
     conversationId: string,
-    after: number,
     onData: (raw: string) => void,
     signal: AbortSignal,
   ) => Promise<void>;
   /** The subscribe error for a conversation that does not exist yet. */
   isNotFound: (error: unknown) => boolean;
-  view: (conversationId: string) => ConversationView;
   /** Apply one frame to the store; returns the gap when it could not. */
   apply: (conversationId: string, frame: ConversationFrame) => FrameGap | null;
   /** The conversation's title changed; it belongs to the conversation list, not the view. */
@@ -76,19 +73,9 @@ export function createConversationFollower(
 ): ConversationFollower {
   const connections = new Map<string, Connection>();
 
-  // An entry update for a seq this client never held must replay from before that seq.
-  const reopenAfter = (
-    conversationId: string,
-    gap: FrameGap | null,
-  ): number => {
-    const after = resumeAfter(ports.view(conversationId));
-    return gap?.status === "unknown_seq" ? Math.min(after, gap.seq - 1) : after;
-  };
-
   async function readStream(
     conversationId: string,
     connection: Connection,
-    after: number,
   ): Promise<{ gap: FrameGap | null; delivered: boolean }> {
     const controller = new AbortController();
     connection.controller = controller;
@@ -96,7 +83,6 @@ export function createConversationFollower(
     let delivered = false;
     await ports.subscribe(
       conversationId,
-      after,
       (raw) => {
         if (gap) return;
         const parsed = parseConversationEvent(raw);
@@ -105,7 +91,7 @@ export function createConversationFollower(
           return;
         }
         delivered = true;
-        const { frame } = parsed.event;
+        const { frame } = parsed;
         if (frame.kind === FRAME_KIND.CONVERSATION_UPDATED) {
           ports.retitle(conversationId, frame.description);
           return;
@@ -126,10 +112,9 @@ export function createConversationFollower(
     let attempt = 0;
     let gap: FrameGap | null = null;
     while (!connection.closed) {
-      const after = reopenAfter(conversationId, gap);
       gap = null;
       try {
-        const ended = await readStream(conversationId, connection, after);
+        const ended = await readStream(conversationId, connection);
         gap = ended.gap;
         if (ended.delivered) attempt = 0;
       } catch (error) {

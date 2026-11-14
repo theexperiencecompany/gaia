@@ -1,287 +1,107 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { screenRows } from "./selectors";
 import {
-  entryFrame,
-  entryUpdatedFrame,
-  liveTask,
-  notice,
-  reply,
+  founderConversationFrames,
+  insertFrame,
   replyDelta,
-  replySettled,
-  retractFrame,
-  stateFrame,
-  userMessage,
-  workCardDelta,
-  workFinished,
-  workStarted,
+  replyItem,
+  screenFrame,
+  updateFrame,
+  userItem,
 } from "./testing";
-import type { ConversationFrame, ConversationView, StreamDraft } from "./types";
+import type { ConversationFrame, ConversationView } from "./types";
 import { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
 
-const fold = (
-  frames: ConversationFrame[],
-  view = EMPTY_CONVERSATION_VIEW,
-): ConversationView =>
-  frames.reduce((current, frame) => applyFrame(current, frame).view, view);
+const apply = (view: ConversationView, frame: ConversationFrame) => {
+  const outcome = applyFrame(view, frame);
+  if (outcome.status !== "applied") throw new Error(outcome.status);
+  return outcome.view;
+};
 
-const seqs = (view: ConversationView) =>
-  view.entries.map((logged) => logged.seq);
-const replyDraft = (view: ConversationView, attemptId: string) =>
-  view.drafts.find(
-    (draft): draft is Extract<StreamDraft, { source: "reply" }> =>
-      draft.source === "reply" && draft.attemptId === attemptId,
-  );
-const workDraft = (view: ConversationView, taskId: string) =>
-  view.drafts.find(
-    (draft) => draft.source === "work" && draft.taskId === taskId,
-  );
+const ids = (view: ConversationView) => view.items.map((item) => item.id);
 
-describe("applyFrame: entries", () => {
-  it("keeps entries ordered by seq whatever order they arrive in", () => {
-    const view = fold([
-      entryFrame(3, notice("n3")),
-      entryFrame(1, userMessage("m1")),
-      entryFrame(2, notice("n2")),
-    ]);
-    expect(seqs(view)).toEqual([1, 2, 3]);
+afterEach(() => vi.restoreAllMocks());
+
+describe("a client's copy of the server's screen", () => {
+  it("shows the founder's conversation in the server's order, never moving a shown item", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let view = EMPTY_CONVERSATION_VIEW;
+    for (const frame of founderConversationFrames()) {
+      const before = ids(view);
+      view = apply(view, frame);
+      expect(ids(view).filter((id) => before.includes(id))).toEqual(before);
+    }
+    expect(ids(view)).toEqual(["u1", "u2", "work:c4f22a9a", "u3", "r2.1"]);
+    expect(warn).not.toHaveBeenCalled();
   });
 
-  it("returns the same view for a re-sent entry", () => {
-    const view = fold([entryFrame(1, userMessage("m1"))]);
-    expect(applyFrame(view, entryFrame(1, userMessage("m1"))).view).toBe(view);
+  it("places an item that became visible late at its seq, before later items", () => {
+    let view = apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u1", 1)));
+    view = apply(view, insertFrame(userItem("u3", 3)));
+    view = apply(view, insertFrame(replyItem("r2", 2, "late")));
+    expect(ids(view)).toEqual(["u1", "r2", "u3"]);
   });
 
-  it("keeps the filled entry when its original append is replayed after an update", () => {
-    const filled = reply("r1", "a1", "the answer", 1);
-    const view = fold([
-      entryFrame(2, reply("r1", "a1")),
-      entryUpdatedFrame(2, filled),
-    ]);
-    const replayed = applyFrame(view, entryFrame(2, reply("r1", "a1"))).view;
-    expect(replayed.entries[0].entry).toEqual(filled);
+  it("warns when an update would move a shown item", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const view = apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u1", 1)));
+    apply(view, updateFrame(userItem("u1", 5)));
+    expect(warn).toHaveBeenCalledWith("[conversation] item moved", "u1", 1, 5);
   });
 
-  it("takes the newer content when a log replay re-sends an entry filled while the client was away", () => {
-    const view = fold([entryFrame(2, reply("r1", "a1"))]);
-    const filled = reply("r1", "a1", "the answer", 1);
-    const replayed = applyFrame(view, entryFrame(2, filled)).view;
-    expect(replayed.entries[0].entry).toEqual(filled);
-    expect(replayed.entries[0].at).toBe(view.entries[0].at);
+  it("keeps older pages under a fresh screen and replaces what the screen covers", () => {
+    let view = apply(
+      EMPTY_CONVERSATION_VIEW,
+      screenFrame([userItem("u1", 1), replyItem("r1", 2, "old")]),
+    );
+    view = apply(
+      view,
+      screenFrame([replyItem("r1", 2, "new", "answered"), userItem("u2", 3)]),
+    );
+    expect(ids(view)).toEqual(["u1", "r1", "u2"]);
+    expect(view.items[1]).toMatchObject({ text: "new" });
   });
 
-  it("removes the optimistic send whose id the entry carries, and only that one", () => {
+  it("ignores an update to an item older than the loaded page", () => {
+    const view = apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u5", 5)));
+    expect(apply(view, updateFrame(replyItem("r1", 1, "x")))).toBe(view);
+  });
+
+  it("shows this device's send until the server inserts it", () => {
     let view = addPendingSend(EMPTY_CONVERSATION_VIEW, {
       id: "m1",
-      text: "one",
+      text: "hi",
     });
-    view = addPendingSend(view, { id: "m2", text: "two" });
-    view = applyFrame(view, entryFrame(1, userMessage("m1"))).view;
-    expect(view.pending).toEqual([{ id: "m2", text: "two" }]);
+    expect(screenRows(view).map((row) => row.kind)).toEqual(["pending"]);
+    view = apply(view, insertFrame(userItem("m1", 1, "hi")));
+    expect(screenRows(view).map((row) => row.kind)).toEqual(["item"]);
+    expect(addPendingSend(view, { id: "m1", text: "hi" })).toBe(view);
   });
 
-  it("does not add an optimistic send the log already holds", () => {
-    const view = fold([entryFrame(1, userMessage("m1"))]);
-    expect(addPendingSend(view, { id: "m1", text: "one" }).pending).toEqual([]);
-  });
-
-  it("keeps optimistic sends in send order and ignores a repeated send", () => {
-    let view = addPendingSend(EMPTY_CONVERSATION_VIEW, { id: "m2", text: "b" });
-    view = addPendingSend(view, { id: "m1", text: "a" });
-    view = addPendingSend(view, { id: "m2", text: "b" });
-    expect(view.pending.map((send) => send.id)).toEqual(["m2", "m1"]);
-  });
-});
-
-describe("applyFrame: entry_updated", () => {
-  it("replaces the entry at its seq when the revision is newer, keeping when it was appended", () => {
-    const view = fold([
-      entryFrame(2, reply("r1", "a1")),
-      entryUpdatedFrame(2, reply("r1", "a1", "filled", 1)),
-    ]);
-    expect(view.entries).toEqual([
-      {
-        seq: 2,
-        at: "2026-11-12T10:00:00+00:00",
-        entry: reply("r1", "a1", "filled", 1),
-      },
-    ]);
-  });
-
-  it.each([
-    ["an older", 1],
-    ["the same", 2],
-  ])("ignores an update with %s revision", (_, revision) => {
-    const view = fold([
-      entryFrame(2, reply("r1", "a1")),
-      entryUpdatedFrame(2, reply("r1", "a1", "second", 2)),
-    ]);
-    expect(
-      applyFrame(
-        view,
-        entryUpdatedFrame(2, reply("r1", "a1", "stale", revision)),
-      ).view,
-    ).toBe(view);
-  });
-
-  it("carries a reaction filled in place onto the user message", () => {
-    const reacted = userMessage(
-      "m1",
-      "thanks",
-      { emoji: "👍", by: "chat_model" },
-      1,
+  it("streams a reply's text into its item and lets go of it once the item settles", () => {
+    let view = apply(
+      EMPTY_CONVERSATION_VIEW,
+      insertFrame(replyItem("r1", 1, "He")),
     );
-    const view = fold([
-      entryFrame(1, userMessage("m1", "thanks")),
-      entryUpdatedFrame(1, reacted),
-    ]);
-    expect(view.entries[0].entry).toEqual(reacted);
+    view = apply(view, replyDelta("a1", "r1", 0, "Hello"));
+    view = apply(view, replyDelta("a1", "r1", 1, " there"));
+    const [row] = screenRows(view);
+    expect(row.kind === "item" && row.draft?.content.responseText).toBe(
+      "Hello there",
+    );
+    view = apply(
+      view,
+      updateFrame(replyItem("r1", 1, "Hello there", "answered")),
+    );
+    expect(view.drafts).toEqual([]);
+    expect(apply(view, replyDelta("a1", "r1", 2, "!"))).toEqual(view);
   });
 
-  it("reports an unknown seq and leaves the view untouched so the caller can refetch", () => {
-    const view = fold([entryFrame(1, userMessage("m1"))]);
+  it("reports a gap in a stream's deltas so the client reopens for a fresh screen", () => {
     const outcome = applyFrame(
-      view,
-      entryUpdatedFrame(7, reply("r1", "a1", "x", 1)),
+      EMPTY_CONVERSATION_VIEW,
+      replyDelta("a1", "r1", 1, "x"),
     );
-    expect(outcome).toEqual({ status: "unknown_seq", seq: 7, view });
-  });
-});
-
-describe("applyFrame: reply drafts", () => {
-  it("accumulates an attempt's deltas through the shared accumulator", () => {
-    const view = fold([
-      replyDelta("a1", null, 0, "Hel"),
-      replyDelta("a2", null, 0, "other"),
-      replyDelta("a1", "r1", 1, "lo"),
-    ]);
-    expect(replyDraft(view, "a1")).toMatchObject({
-      replyId: "r1",
-      nextIndex: 2,
-      content: { responseText: "Hello" },
-    });
-    expect(replyDraft(view, "a2")?.content.responseText).toBe("other");
-  });
-
-  it("ignores a delta whose index it already applied", () => {
-    const once = fold([
-      replyDelta("a1", null, 0, "Hel"),
-      replyDelta("a1", null, 1, "lo"),
-    ]);
-    const twice = fold([
-      replyDelta("a1", null, 0, "Hel"),
-      replyDelta("a1", null, 0, "Hel"),
-      replyDelta("a1", null, 1, "lo"),
-      replyDelta("a1", null, 0, "Hel"),
-      replyDelta("a1", null, 1, "lo"),
-    ]);
-    expect(twice).toEqual(once);
-  });
-
-  it("reports a skipped index instead of folding text out of order", () => {
-    const view = fold([replyDelta("a1", null, 0, "Hel")]);
-    expect(applyFrame(view, replyDelta("a1", null, 2, "!"))).toEqual({
-      status: "index_gap",
-      expected: 1,
-      view,
-    });
-  });
-
-  it("deletes the draft on retract and ignores deltas the dead attempt sends afterwards", () => {
-    const view = fold([
-      replyDelta("a1", null, 0, "Hel"),
-      retractFrame("a1"),
-      replyDelta("a1", null, 0, "Hel"),
-      replyDelta("a1", null, 1, "late"),
-    ]);
-    expect(view.drafts).toEqual([]);
-  });
-
-  it("keeps the draft through the Reply entry and its in-place fill", () => {
-    const view = fold([
-      replyDelta("a1", null, 0, "Hello"),
-      entryFrame(2, reply("r1", "a1")),
-      entryUpdatedFrame(2, reply("r1", "a1", "Hello", 1)),
-    ]);
-    expect(replyDraft(view, "a1")?.content.responseText).toBe("Hello");
-  });
-
-  it("drops the draft when the reply settles, and ignores its replayed deltas afterwards", () => {
-    const view = fold([
-      entryFrame(1, userMessage("m1")),
-      replyDelta("a1", null, 0, "Hello"),
-      entryFrame(2, reply("r1", "a1")),
-      entryFrame(3, replySettled("r1", ["m1"], 1)),
-      replyDelta("a1", null, 0, "Hello"),
-    ]);
-    expect(view.drafts).toEqual([]);
-  });
-});
-
-describe("applyFrame: work drafts", () => {
-  it("accumulates a task's cards and ignores an index it already applied", () => {
-    const view = fold([
-      workCardDelta("k1", 0, "Searching"),
-      workCardDelta("k1", 0, "Searching"),
-      workCardDelta("k1", 1, "Reading"),
-    ]);
-    expect(workDraft(view, "k1")).toMatchObject({ nextIndex: 2 });
-  });
-
-  it("keeps the cards when the work finishes done", () => {
-    const view = fold([
-      entryFrame(2, workStarted("k1", 1)),
-      workCardDelta("k1", 0, "card"),
-      entryFrame(3, workFinished("k1")),
-    ]);
-    expect(workDraft(view, "k1")).toBeDefined();
-  });
-
-  it("keeps the cards when the work is cancelled, so the bubble can show it stopped", () => {
-    const view = fold([
-      workCardDelta("k1", 0, "card"),
-      entryFrame(3, workFinished("k1", "cancelled")),
-    ]);
-    expect(workDraft(view, "k1")).toBeDefined();
-  });
-
-  it("drops the cards once the reply keyed by the task settles, and ignores their replay", () => {
-    const view = fold([
-      entryFrame(1, userMessage("m1")),
-      entryFrame(2, workStarted("k1", 1)),
-      workCardDelta("k1", 0, "card"),
-      entryFrame(3, workFinished("k1")),
-      entryFrame(4, reply("k1", "a9", "done")),
-      entryFrame(5, replySettled("k1", ["m1"], 3)),
-      workCardDelta("k1", 0, "card"),
-    ]);
-    expect(view.drafts).toEqual([]);
-  });
-
-  it("reports a skipped work index", () => {
-    expect(
-      applyFrame(EMPTY_CONVERSATION_VIEW, workCardDelta("k1", 1, "x")).status,
-    ).toBe("index_gap");
-  });
-});
-
-describe("applyFrame: state", () => {
-  it("replaces display, live work and head", () => {
-    const view = fold([
-      stateFrame(4, "awaiting_approval", [liveTask("k1", true)]),
-    ]);
-    expect([view.display, view.work, view.head]).toEqual([
-      "awaiting_approval",
-      [liveTask("k1", true)],
-      4,
-    ]);
-  });
-
-  it("ignores a state older than the one applied, as a replay re-sends it", () => {
-    const view = fold([stateFrame(5, "idle"), stateFrame(3, "thinking")]);
-    expect([view.display, view.head]).toEqual(["idle", 5]);
-  });
-
-  it("applies a new display at the same head, since comms changes phase without an entry", () => {
-    const view = fold([stateFrame(5, "idle"), stateFrame(5, "thinking")]);
-    expect(view.display).toBe("thinking");
+    expect(outcome.status).toBe("index_gap");
   });
 });

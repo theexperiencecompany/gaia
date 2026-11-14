@@ -34,6 +34,9 @@ class FrameKind(StrEnum):
     RETRACT = "retract"
     STATE = "state"
     CONVERSATION_UPDATED = "conversation_updated"
+    SCREEN = "screen"
+    SCREEN_INSERT = "screen_insert"
+    SCREEN_UPDATE = "screen_update"
 
 
 class StreamPayloadType(StrEnum):

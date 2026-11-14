@@ -1,4 +1,4 @@
-import type { LoggedEntry } from "@shared/conversation";
+import type { ScreenItem } from "@shared/conversation";
 import Dexie, { type IndexableType, type Table } from "dexie";
 import { EventEmitter } from "events";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
@@ -28,10 +28,11 @@ export interface IConversation {
   updatedAt: Date;
 }
 
-/** A conversation's log as this device last saw it, where an older page starts, and the sends it made into it. */
+/** A conversation's screen and head as this device last saw them, where an older page starts, and the sends it made into it. */
 export interface IConversationLog {
   conversationId: string;
-  entries: LoggedEntry[];
+  items: ScreenItem[];
+  head: number;
   olderBefore: number | null;
   sends: Record<string, LocalSend>;
 }
@@ -103,6 +104,10 @@ class ChatDexie extends Dexie {
     // cursor are dropped so each conversation refetches its newest page once.
     this.version(5)
       .stores({ messages: null })
+      .upgrade((tx) => tx.table("conversationLogs").clear());
+    // v6: a conversation is a copy of the server's screen; saved logs are dropped and refetched.
+    this.version(6)
+      .stores({})
       .upgrade((tx) => tx.table("conversationLogs").clear());
 
     this.conversations = this.table("conversations");

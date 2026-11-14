@@ -22,6 +22,7 @@ from app.constants.conversation import (
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.db.repositories.conversation_entries import stored_at
 from app.db.repositories.conversation_log import (
     ConversationLogRepository,
     LogHead,
@@ -255,7 +256,7 @@ class MongoConversationLog:
             seq = head.known.get(entry.id)
             if seq is not None:
                 return await self._duplicate(head, seq)
-            logged = LoggedEntry(seq=head.log_head + 1, at=self._clock(), entry=entry)
+            logged = LoggedEntry(seq=head.log_head + 1, at=stored_at(self._clock()), entry=entry)
             result = reduce(head.state, logged)
             if isinstance(result, Rejected):
                 raise EntryRejected(result.reason)

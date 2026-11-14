@@ -1,17 +1,25 @@
 import {
   type ConversationView,
-  ENTRY_KIND,
-  type LiveBubble,
-  quoteFor,
   replyFailureMessage,
-  type UserMessage,
-  visibleBubbles,
+  SCREEN_ITEM_KIND,
+  type ScreenItem,
+  type ScreenRow,
+  type StreamDraft,
+  screenRows,
+  WORK_STATUS,
 } from "@shared/conversation";
 import type { TypedToolDataEntry } from "@/config/registries/toolRegistry";
 import type { MessageType } from "@/types/features/convoTypes";
 import type { LocalSend } from "./liveConversationStore";
 
-const STOPPED_WORK: ReadonlySet<string> = new Set(["cancelled", "lost"]);
+const STOPPED_WORK: ReadonlySet<string> = new Set([
+  WORK_STATUS.CANCELLED,
+  WORK_STATUS.LOST,
+]);
+const LIVE_WORK: ReadonlySet<string> = new Set([
+  WORK_STATUS.RUNNING,
+  WORK_STATUS.AWAITING_APPROVAL,
+]);
 // Far above any one conversation's rows, so a visible row is never evicted.
 const MAX_CACHED_ROWS = 2000;
 
@@ -43,70 +51,132 @@ function stableRow(
   return message;
 }
 
-type Quote = MessageType["replyToMessage"];
+// The bubble's registry narrows tool entries by name at render.
+const cards = (entries: readonly unknown[]) => entries as TypedToolDataEntry[];
 
-function quotedUserMessage(
-  messages: ReadonlyMap<string, UserMessage>,
-  id: string | null,
-): Quote {
-  const quoted = id ? messages.get(id) : undefined;
-  return quoted
-    ? { id: quoted.id, content: quoted.text, role: "user" }
-    : undefined;
+function itemRow(item: ScreenItem, draft: StreamDraft | null): MessageType {
+  switch (item.kind) {
+    case SCREEN_ITEM_KIND.USER: {
+      const { message } = item;
+      return stableRow(item.id, [item], () => ({
+        type: "user",
+        response: message.text,
+        message_id: item.id,
+        seq: item.seq,
+        date: item.at,
+        fileIds: message.file_ids,
+        fileData: message.files,
+        selectedTool: message.selected_tool,
+        toolCategory: message.tool_category,
+        selectedWorkflow: message.selected_workflow,
+        selectedCalendarEvent: message.selected_calendar_event,
+        replyToMessage: message.reply_to_message ?? undefined,
+        reaction: message.reaction,
+        pinned: message.pinned,
+        todo_run_wake: message.todo_run_wake ?? undefined,
+      }));
+    }
+    case SCREEN_ITEM_KIND.REPLY: {
+      const streamed = draft?.content;
+      return stableRow(item.id, [item, streamed], () => ({
+        type: "bot",
+        response: streamed?.responseText ?? item.text,
+        message_id: item.id,
+        seq: item.seq,
+        date: item.at,
+        tool_data: cards(streamed?.toolData ?? item.tool_data),
+        follow_up_actions: [
+          ...(streamed?.followUpActions ?? item.follow_up_actions),
+        ],
+        image_data: item.image ?? undefined,
+        pinned: item.pinned,
+        in_progress: item.outcome === null,
+        stopped: item.outcome === "stopped",
+        // With text shown, the bubble words this as the cut-short strip under it.
+        error:
+          item.outcome === "failed"
+            ? replyFailureMessage(item.failure)
+            : undefined,
+        replyToMessage: item.quote ?? undefined,
+      }));
+    }
+    case SCREEN_ITEM_KIND.WORK: {
+      const streamed = draft?.content.toolData;
+      return stableRow(item.id, [item, streamed], () => ({
+        type: "bot",
+        response: "",
+        message_id: item.id,
+        seq: item.seq,
+        tool_data: cards([
+          ...(item.handoff ? [item.handoff] : []),
+          ...(streamed ?? item.tool_data),
+        ]),
+        image_data: item.image ?? undefined,
+        in_progress: LIVE_WORK.has(item.status),
+        stopped: STOPPED_WORK.has(item.status),
+      }));
+    }
+    case SCREEN_ITEM_KIND.NOTICE:
+      return stableRow(item.id, [item], () => ({
+        type: "bot",
+        response: item.text,
+        message_id: item.id,
+        seq: item.seq,
+        date: item.at,
+        tool_data: cards(item.tool_data),
+        follow_up_actions: [...item.follow_up_actions],
+      }));
+    // The run's side of the chat: its card alone, as a message with no text.
+    case SCREEN_ITEM_KIND.WORKFLOW_FIRED:
+      return stableRow(item.id, [item], () => ({
+        type: "user",
+        response: "",
+        message_id: item.id,
+        seq: item.seq,
+        date: item.at,
+        selectedWorkflow: item.workflow,
+      }));
+    case SCREEN_ITEM_KIND.TODO_WOKE:
+      return stableRow(item.id, [item], () => ({
+        type: "user",
+        response: "",
+        message_id: item.id,
+        seq: item.seq,
+        date: item.at,
+        todo_run_wake: item.wake,
+      }));
+    default: {
+      const unhandled: never = item;
+      return unhandled;
+    }
+  }
 }
 
-function settlement(view: ConversationView, replyId: string | null) {
-  if (!replyId) return null;
-  const settled = view.entries.find(
-    ({ entry }) =>
-      entry.kind === ENTRY_KIND.REPLY_SETTLED && entry.reply_id === replyId,
-  )?.entry;
-  return settled?.kind === ENTRY_KIND.REPLY_SETTLED ? settled : null;
-}
-
-interface RowContext {
-  view: ConversationView;
-  sends: Readonly<Record<string, LocalSend>>;
-  userMessages: ReadonlyMap<string, UserMessage>;
-  dates: ReadonlyMap<number, string>;
-}
-
-function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
-  const { view, sends, userMessages, dates } = context;
-  switch (bubble.kind) {
-    case "user": {
-      const { message } = bubble;
-      const replyTo = message.reply_to;
-      return stableRow(
-        bubble.key,
-        [message, replyTo && userMessages.get(replyTo)],
-        () => ({
-          type: "user",
-          response: message.text,
-          message_id: bubble.messageId,
-          seq: bubble.seq,
-          date: dates.get(bubble.seq),
-          fileIds: message.file_ids,
-          fileData: message.files,
-          selectedTool: message.selected_tool,
-          toolCategory: message.tool_category,
-          selectedWorkflow: message.selected_workflow,
-          selectedCalendarEvent: message.selected_calendar_event,
-          replyToMessage:
-            message.reply_to_message ??
-            quotedUserMessage(userMessages, replyTo),
-          reaction: bubble.reaction,
-          pinned: message.pinned,
-          todo_run_wake: message.todo_run_wake ?? undefined,
-        }),
-      );
+function row(
+  shown: ScreenRow,
+  sends: Readonly<Record<string, LocalSend>>,
+): MessageType {
+  switch (shown.kind) {
+    case "item":
+      return itemRow(shown.item, shown.draft);
+    case "draft": {
+      const { draft } = shown;
+      const id = draft.replyId ?? `draft:${draft.attemptId}`;
+      return stableRow(`draft:${draft.attemptId}`, [draft.content], () => ({
+        type: "bot",
+        response: draft.content.responseText,
+        message_id: id,
+        tool_data: cards(draft.content.toolData),
+        follow_up_actions: [...(draft.content.followUpActions ?? [])],
+        in_progress: true,
+      }));
     }
     case "pending": {
-      const send = sends[bubble.send.id];
-      return stableRow(bubble.key, [bubble.send, send], () => ({
+      const send = sends[shown.send.id];
+      return stableRow(`pending:${shown.send.id}`, [shown.send, send], () => ({
         type: "user",
-        response: bubble.send.text,
-        message_id: bubble.messageId,
+        response: shown.send.text,
+        message_id: shown.send.id,
         fileIds: send?.body.file_ids ?? [],
         fileData: send?.fileData,
         selectedTool: send?.body.selected_tool,
@@ -118,84 +188,8 @@ function rowFor(bubble: LiveBubble, context: RowContext): MessageType | null {
         failed: send?.failed ?? false,
       }));
     }
-    case "reply": {
-      const settled = settlement(view, bubble.replyId);
-      const quoted = bubble.replyId ? quoteFor(view, bubble.replyId) : null;
-      return stableRow(
-        bubble.key,
-        [
-          bubble.text,
-          bubble.toolData,
-          bubble.followUpActions,
-          bubble.streaming,
-          bubble.image,
-          bubble.pinned,
-          settled,
-          quoted && userMessages.get(quoted),
-        ],
-        () => ({
-          type: "bot",
-          response: bubble.text,
-          message_id: bubble.messageId,
-          seq: bubble.seq ?? undefined,
-          date: bubble.seq === null ? undefined : dates.get(bubble.seq),
-          // The bubble's registry narrows tool entries by name at render.
-          tool_data: bubble.toolData as TypedToolDataEntry[],
-          follow_up_actions: [...bubble.followUpActions],
-          image_data: bubble.image ?? undefined,
-          pinned: bubble.pinned,
-          in_progress: bubble.streaming,
-          stopped: settled?.outcome === "stopped",
-          // With text shown, the bubble words this as the cut-short strip under it.
-          error:
-            settled?.outcome === "failed"
-              ? replyFailureMessage(settled.failure)
-              : undefined,
-          replyToMessage: quotedUserMessage(userMessages, quoted),
-        }),
-      );
-    }
-    case "work":
-      return stableRow(bubble.key, [bubble.toolData, bubble.status], () => ({
-        type: "bot",
-        response: "",
-        message_id: bubble.messageId,
-        seq: bubble.seq ?? undefined,
-        tool_data: bubble.toolData as TypedToolDataEntry[],
-        in_progress:
-          bubble.status === "running" || bubble.status === "awaiting_approval",
-        stopped: STOPPED_WORK.has(bubble.status),
-      }));
-    case "notice":
-      return stableRow(bubble.key, [bubble.text, bubble.toolData], () => ({
-        type: "bot",
-        response: bubble.text,
-        message_id: bubble.messageId,
-        seq: bubble.seq,
-        date: dates.get(bubble.seq),
-        tool_data: bubble.toolData as TypedToolDataEntry[],
-      }));
-    // The run's side of the chat: its card alone, as a message with no text.
-    case "workflow_fired":
-      return stableRow(bubble.key, [bubble.workflow], () => ({
-        type: "user",
-        response: "",
-        message_id: bubble.messageId,
-        seq: bubble.seq,
-        date: dates.get(bubble.seq),
-        selectedWorkflow: bubble.workflow,
-      }));
-    case "todo_woke":
-      return stableRow(bubble.key, [bubble.wake], () => ({
-        type: "user",
-        response: "",
-        message_id: bubble.messageId,
-        seq: bubble.seq,
-        date: dates.get(bubble.seq),
-        todo_run_wake: bubble.wake,
-      }));
     default: {
-      const unhandled: never = bubble;
+      const unhandled: never = shown;
       return unhandled;
     }
   }
@@ -206,15 +200,5 @@ export function liveMessages(
   view: ConversationView,
   sends: Readonly<Record<string, LocalSend>>,
 ): MessageType[] {
-  const userMessages = new Map<string, UserMessage>();
-  const dates = new Map<number, string>();
-  for (const { seq, at, entry } of view.entries) {
-    dates.set(seq, at);
-    if (entry.kind === ENTRY_KIND.USER_MESSAGE)
-      userMessages.set(entry.id, entry);
-  }
-  const context = { view, sends, userMessages, dates };
-  return visibleBubbles(view).flatMap(
-    (bubble) => rowFor(bubble, context) ?? [],
-  );
+  return screenRows(view).map((shown) => row(shown, sends));
 }

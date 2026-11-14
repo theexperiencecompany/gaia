@@ -36,7 +36,6 @@ describe("chatApi conversation events", () => {
 
     await chatApi.subscribeToConversationEvents(
       "c1",
-      0,
       (raw) => received.push(raw),
       new AbortController().signal,
     );
