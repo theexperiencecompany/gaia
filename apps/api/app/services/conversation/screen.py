@@ -42,7 +42,7 @@ from app.models.conversation_screen_models import (
 )
 from app.models.message_models import ReplyToMessageData
 from app.models.tool_data_models import ToolDataEntry
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 
 #: The card a tool call streams; a hand-off is one whose call is call_executor.
 TOOL_CALL_CARD = "tool_calls_data"
