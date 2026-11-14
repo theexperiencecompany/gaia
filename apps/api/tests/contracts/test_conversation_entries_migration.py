@@ -9,16 +9,17 @@ import uuid
 
 from bson import ObjectId
 import pytest
-
-from app.db.mongodb.indexes import UNMIGRATED_HEAD_KEYS, UNMIGRATED_HEAD_OPTIONS
-from app.db.repositories.conversation_entries_legacy import ConversationEntry, LegacyMessage
-from app.db.repositories.conversation_entries_migration import (
+from scripts.migrate_conversation_entries import __main__ as script
+from scripts.migrate_conversation_entries.legacy import ConversationEntry, LegacyMessage
+from scripts.migrate_conversation_entries.migration import (
     ConversationEntriesMigration,
     HeadRef,
     MigrationAction,
     expected_messages,
 )
-from app.db.repositories.conversation_entries_oracle import legacy_messages
+from scripts.migrate_conversation_entries.oracle import legacy_messages
+
+from app.db.mongodb.indexes import UNMIGRATED_HEAD_KEYS, UNMIGRATED_HEAD_OPTIONS
 from app.db.repositories.conversation_migration_guard import (
     MESSAGE_SHAPED,
     NEVER_MIGRATED_HEADS,
@@ -27,7 +28,6 @@ from app.db.repositories.conversation_migration_guard import (
 from app.db.repositories.conversations import ConversationRepository
 from app.models.conversation_log_models import LoggedEntry
 from app.models.conversation_models import LogPage
-from app.scripts import migrate_conversation_entries as script
 from app.utils.errors import UnmigratedConversationError
 
 pytestmark = pytest.mark.usefixtures("entries_collection")

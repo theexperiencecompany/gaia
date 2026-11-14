@@ -12,8 +12,8 @@ from datetime import datetime
 import json
 
 from hypothesis import given, settings, strategies as st
+from scripts.migrate_conversation_entries.legacy import convert_legacy_tool_data
 
-from app.db.repositories.conversation_entries_legacy import convert_legacy_tool_data
 from app.models.chat_models import tool_fields
 
 JSON_VALUE = st.recursive(

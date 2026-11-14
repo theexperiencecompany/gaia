@@ -33,17 +33,6 @@ from app.db.repositories.conversation_entries import (
     store_errors,
     stored_at,
 )
-from app.db.repositories.conversation_entries_legacy import (
-    BOT_MESSAGE_TYPE,
-    USER_MESSAGE_TYPE,
-    ConversationEntry,
-    EmbeddedHead,
-    HeadRefRow,
-    LegacyMessage,
-    LegacyShape,
-    NotKeptFields,
-)
-from app.db.repositories.conversation_entries_oracle import legacy_messages
 from app.db.repositories.conversation_migration_guard import (
     MESSAGE_SHAPED,
     MIGRATED_FINGERPRINT_FIELD,
@@ -64,6 +53,17 @@ from app.models.conversation_log_models import (
 )
 from app.models.conversation_models import StoredEntry
 from app.services.conversation.reducer import reduce
+from scripts.migrate_conversation_entries.legacy import (
+    BOT_MESSAGE_TYPE,
+    USER_MESSAGE_TYPE,
+    ConversationEntry,
+    EmbeddedHead,
+    HeadRefRow,
+    LegacyMessage,
+    LegacyShape,
+    NotKeptFields,
+)
+from scripts.migrate_conversation_entries.oracle import legacy_messages
 from shared.py.conversation_wire import FailureReason, ReplyOutcome
 
 #: A server-side hash of the whole embedded array: any append, trim or in-place edit changes it.
