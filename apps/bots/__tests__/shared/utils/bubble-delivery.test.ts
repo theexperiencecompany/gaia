@@ -36,6 +36,10 @@ const send = (slot: number, t: string): DeliveryOp => ({
 });
 const del = (slot: number): DeliveryOp => ({ kind: "delete", slot });
 const PAUSE: DeliveryOp = { kind: "pause" };
+const sealed = (bubbles: number): DeliveryOp => ({
+  kind: "delivered",
+  bubbles,
+});
 
 /** Runs a frame sequence and returns every operation, in order, plus the final state. */
 function run(
@@ -65,8 +69,8 @@ const CASES: Case[] = [
   {
     name: "R1 one short bubble",
     events: [shown("Done, it"), TICK, shown("Done, it is set."), TICK, END],
-    live: [edit(0, "Done, it"), edit(0, "Done, it is set.")],
-    rest: [edit(0, "Done, it is set.")],
+    live: [edit(0, "Done, it"), edit(0, "Done, it is set."), sealed(1)],
+    rest: [edit(0, "Done, it is set."), sealed(1)],
   },
   {
     name: "R2 three bubbles, each its own message from its first word",
@@ -82,39 +86,59 @@ const CASES: Case[] = [
     live: [
       edit(0, "One"),
       edit(0, "One more."),
+      sealed(1),
       send(1, "Two"),
       edit(1, "Two."),
+      sealed(2),
       send(2, "Three."),
+      sealed(3),
     ],
     rest: [
       edit(0, "One more."),
+      sealed(1),
       PAUSE,
       send(1, "Two."),
+      sealed(2),
       PAUSE,
       send(2, "Three."),
+      sealed(3),
     ],
   },
   {
     name: "R5 text the model took back is replaced in place, its later bubbles deleted",
     events: [shown("Sure.", "Checking"), TICK, shown("All set."), TICK, END],
-    live: [edit(0, "Sure."), send(1, "Checking"), del(1), edit(0, "All set.")],
-    rest: [edit(0, "All set.")],
+    live: [
+      edit(0, "Sure."),
+      sealed(1),
+      send(1, "Checking"),
+      del(1),
+      sealed(0),
+      edit(0, "All set."),
+      sealed(1),
+    ],
+    rest: [edit(0, "All set."), sealed(1)],
   },
   {
     name: "R8 a link-only bubble is a message of its own",
     events: [shown("Here.", "https://x.dev/a", "See it."), TICK, END],
     live: [
       edit(0, "Here."),
+      sealed(1),
       PAUSE,
       send(1, "https://x.dev/a"),
+      sealed(2),
       send(2, "See it."),
+      sealed(3),
     ],
     rest: [
       edit(0, "Here."),
+      sealed(1),
       PAUSE,
       send(1, "https://x.dev/a"),
+      sealed(2),
       PAUSE,
       send(2, "See it."),
+      sealed(3),
     ],
   },
   {
@@ -142,7 +166,7 @@ describe("stepDelivery", () => {
 function screen(ops: DeliveryOp[]): string[] {
   const messages = new Map<number, string>();
   for (const op of ops) {
-    if (op.kind === "pause") continue;
+    if (op.kind === "pause" || op.kind === "delivered") continue;
     if (op.kind === "delete") {
       messages.delete(op.slot);
       continue;

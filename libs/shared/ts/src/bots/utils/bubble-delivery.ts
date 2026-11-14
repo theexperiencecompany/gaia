@@ -166,8 +166,10 @@ function sealBubble(draft: Draft, text: string, config: DeliveryConfig): void {
 /** Seals every bubble a break has closed since the last step. */
 function sealCompleteBubbles(draft: Draft, config: DeliveryConfig): void {
   const complete = draft.pending.slice(0, -1);
-  for (const bubble of complete.slice(draft.sealedBubbles)) {
+  for (const [at, bubble] of complete.entries()) {
+    if (at < draft.sealedBubbles) continue;
     sealBubble(draft, untaken(draft, bubble), config);
+    draft.ops.push({ kind: "delivered", bubbles: at + 1 });
   }
   draft.sealedBubbles = complete.length;
 }
@@ -237,7 +239,10 @@ function closeMessage(draft: Draft): void {
 function keepMessage(draft: Draft, config: DeliveryConfig): void {
   sealCompleteBubbles(draft, config);
   const open = openBubble(draft);
-  if (open) sealBubble(draft, untaken(draft, open), config);
+  if (open) {
+    sealBubble(draft, untaken(draft, open), config);
+    draft.ops.push({ kind: "delivered", bubbles: draft.pending.length });
+  }
   closeMessage(draft);
 }
 
@@ -249,6 +254,9 @@ function retractMessage(draft: Draft): void {
     for (const slot of rest) draft.ops.push({ kind: "delete", slot });
     draft.reusable = { slot: first };
   }
+  // The bubbles counted delivered are taken back with the rest.
+  if (draft.sealedBubbles > 0)
+    draft.ops.push({ kind: "delivered", bubbles: 0 });
   closeMessage(draft);
 }
 

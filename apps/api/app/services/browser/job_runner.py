@@ -52,7 +52,6 @@ from app.schemas.browser_job import (
 )
 from app.services.analytics_service import capture
 from app.services.browser import host_client
-from app.services.browser.bot_delivery import BotProgressDelivery
 from app.services.browser.exceptions import (
     BrowserConcurrencyLimit,
     BrowserSessionGone,
@@ -77,6 +76,7 @@ from app.services.browser.jobs import (
     take_job_messages,
 )
 from app.services.browser.ledger import RunLedger
+from app.services.browser.live_view import create_live_view_link
 from app.services.browser.replay import create_replay_link
 from app.services.browser.run_contract import FinishedRun
 from app.services.browser.run_failure import record_run_result
@@ -230,48 +230,14 @@ class BrowserThreadMirror:
         self._group_id = None  # pragma: no mutate
 
 
-def _build_bot_delivery(request: BrowserJobRequest) -> BotProgressDelivery | None:
-    """Mirror a bot-asked run to the requester's DM, never a group: its live link and shots are private."""
+def _live_view_owner(request: BrowserJobRequest) -> str | None:
+    """Return who a bot-asked run's hand-off link is minted for; None for a run asked on the web, which has the live view."""
     is_bot = request.source_category == SourceCategory.BOT.value
-    if not (is_bot and request.user_id and request.conversation_id):
-        return None
-    if request.conversation_source is None:
-        return None
-    return BotProgressDelivery(
-        platform=request.conversation_source,
-        user_id=request.user_id,
-        stream_screenshots=settings.BROWSER_USE_STREAM_SCREENSHOTS,
-    )
-
-
-async def _deliver_snapshot_to_bot(
-    bot_delivery: BotProgressDelivery, snapshot: BrowserCardSnapshot
-) -> None:
-    """Best-effort mirror of a card to the bot platform.
-
-    The card is already published to the chat, so a messaging/queue outage is
-    logged and swallowed — never a reason to abort the in-flight run.
-    """
-    try:
-        if isinstance(snapshot, BrowserStepSnapshot):
-            await bot_delivery.step(snapshot)
-        elif isinstance(snapshot, BrowserResultSnapshot):
-            await bot_delivery.result(snapshot)
-        elif isinstance(snapshot, BrowserHandoffSnapshot):
-            await bot_delivery.handoff(snapshot)
-        elif isinstance(snapshot, BrowserSessionSnapshot):
-            await bot_delivery.session(snapshot)
-    except Exception as exc:
-        log.error(
-            f"{LogTag.BROWSER} Bot delivery failed; continuing browser task",
-            error_type=type(exc).__name__,
-            error=str(exc),
-            browser={"snapshot_type": type(snapshot).__name__},
-        )
+    return request.user_id if is_bot and request.user_id else None
 
 
 class ProgressEmitter:
-    """Publishes each card snapshot into the run's feed and to the bot platform.
+    """Publishes each card snapshot into the run's feed, the one path every surface reads the run from.
 
     Records the published screenshots and captions the history recap reads back
     once the run finishes, and the run's session and last result card, which a
@@ -282,13 +248,15 @@ class ProgressEmitter:
         self,
         publish: FramePublisher,
         thread_mirror: BrowserThreadMirror,
-        bot_delivery: BotProgressDelivery | None,
+        live_view_owner: str | None,
         record_finished: RecordFinishedFn,
     ) -> None:
         self._publish = publish
         self._record_finished = record_finished
         self.thread_mirror = thread_mirror
-        self._bot_delivery = bot_delivery
+        self._live_view_owner = live_view_owner
+        #: The newest session card, which a note to the user is shown on.
+        self._session: BrowserSessionSnapshot | None = None
         # Captions for the recap ("what's going on" per step), keyed by step index.
         self.step_goals: dict[int, str] = {}
         # The screenshots that were published, by step; a step with no photo has none.
@@ -300,9 +268,11 @@ class ProgressEmitter:
         self.result: BrowserResultSnapshot | None = None
 
     async def note(self, text: str) -> None:
-        """Send one plain line to a bot user; the web card has the live view to watch."""
-        if self._bot_delivery is not None:
-            await self._bot_delivery.note(text)
+        """Show one plain line to the user on the run's session card; before a session opens there is no card to show it on."""
+        if self._session is None:
+            log.info(f"{LogTag.BROWSER} Browser note before the session opened", note=text)
+            return
+        await self._show(self._session.model_copy(update={"detail": text}))
 
     async def emit(self, snapshot: BrowserCardSnapshot) -> None:
         if isinstance(snapshot, BrowserResultSnapshot):
@@ -317,6 +287,19 @@ class ProgressEmitter:
         return card
 
     async def _show(self, snapshot: BrowserCardSnapshot) -> None:
+        if isinstance(snapshot, BrowserSessionSnapshot):
+            self._session = snapshot
+        if (
+            isinstance(snapshot, BrowserHandoffSnapshot)
+            and snapshot.status == HandoffStatus.PENDING
+            and snapshot.session_id
+            and self._live_view_owner
+        ):
+            # One link per hand-off, revoked when it is settled: only one is ever open.
+            link = await create_live_view_link(
+                snapshot.session_id, self._live_view_owner, snapshot.handoff_id
+            )
+            snapshot = snapshot.model_copy(update={"live_view_url": link})
         await self._publish(card_frame(snapshot))
         if isinstance(snapshot, BrowserResultSnapshot):
             # Only once it is on the feed: a stop's abort before then must still end the run on it.
@@ -327,8 +310,6 @@ class ProgressEmitter:
                 self.step_goals[snapshot.index] = snapshot.goal
             if snapshot.screenshot is not None:
                 self.step_shots[snapshot.index] = snapshot.screenshot
-        if self._bot_delivery is not None:
-            await _deliver_snapshot_to_bot(self._bot_delivery, snapshot)
 
     async def _ending_card(self, result: BrowserResultSnapshot) -> BrowserResultSnapshot:
         """Record that the run finished on result; return the card the job ends on, as its ending of record says.
@@ -619,7 +600,7 @@ def _emitter_for(request: BrowserJobRequest) -> ProgressEmitter:
     return ProgressEmitter(
         emit_frame,
         BrowserThreadMirror(emit_frame, request.tool_call_id),
-        _build_bot_delivery(request),
+        _live_view_owner(request),
         partial(_record_finished, request),
     )
 

@@ -16,8 +16,9 @@ from redis.asyncio import Redis
 from app.api.v1.middleware.auth import PostHogRequestContextMiddleware
 from app.constants.analytics import POSTHOG_SESSION_HEADER
 from app.constants.outbound import OUTBOUND_QUEUES
+from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
-from app.models.bot_models import BotChatRequest
+from app.models.bot_models import BotChatRequest, PartialReply
 from app.models.chat_models import ConversationSource
 from app.models.conversation_frame_models import StateFrame
 from app.models.conversation_log_models import BargeIn, DisplayState, Notice, UserMessage
@@ -26,6 +27,7 @@ from app.models.notification.notification_models import NotificationStatus
 from app.models.user_models import AuthenticatedUser
 from app.schemas.outbound import OutboundMessageEnvelope
 from app.services.bot_service import BotService
+from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.bot_wake import BotWakingFrames
 from app.services.conversation.event_stream import RedisStreamFrames
 from app.services.conversation.mongo_log import MongoConversationLog
@@ -307,6 +309,58 @@ async def test_a_retried_notice_in_a_bot_chat_is_logged_once_and_wakes_its_bot_o
         is_dm=True,
         after_seq=notices[0].seq - 1,
     )
+
+
+async def test_a_bot_restarted_mid_delivery_resumes_from_its_delivered_cursor_and_repeats_nothing(
+    sends: Sends,
+) -> None:
+    user = AuthenticatedUser(user_id=FAKE_USER.user_id)
+    platform_user_id = f"tg-{uuid4().hex[:8]}"
+    bot_chat = await BotService.get_or_create_session(
+        "telegram", platform_user_id, None, user, is_dm=True
+    )
+    install_runtime_ports(replace(runtime_ports(), frames=BotWakingFrames(RedisStreamFrames())))
+    publisher = AsyncMock()
+    payload = ConversationPayload(
+        conversation_id=bot_chat,
+        notification_id=f"n-{uuid4().hex[:8]}",
+        text="Your reminder: call the bank",
+        origin="reminder",
+    )
+    with patch(
+        "app.services.outbound_delivery.get_rabbitmq_publisher",
+        AsyncMock(return_value=publisher),
+    ):
+        await ConversationChannelAdapter().deliver(payload, user.user_id)
+
+    async def following() -> list[ActiveBotConversation]:
+        active = await list_active_bot_conversations("telegram")
+        return [a for a in active if a.conversation_id == bot_chat]
+
+    [notice] = [
+        logged
+        for logged in await runtime_ports().log.read_after(bot_chat, user.user_id, 0)
+        if isinstance(logged.entry, Notice)
+    ]
+    [owed] = await following()
+    assert (owed.after_seq, owed.partial_reply) == (notice.seq - 1, None)
+
+    # The bot sent two bubbles of a reply, then crashed: the restart resumes after them.
+    partial = PartialReply(reply_id="r1", bubbles=2)
+    assert await bot_session_repository.record_delivered(
+        bot_chat, platform="telegram", delivered_seq=notice.seq - 1, partial_reply=partial
+    )
+    [resumed] = await following()
+    assert (resumed.after_seq, resumed.partial_reply) == (notice.seq - 1, partial)
+
+    # A late report from behind the cursor moves nothing; delivering everything ends the follow.
+    assert await bot_session_repository.record_delivered(
+        bot_chat, platform="telegram", delivered_seq=notice.seq, partial_reply=None
+    )
+    assert not await bot_session_repository.record_delivered(
+        bot_chat, platform="telegram", delivered_seq=notice.seq - 1, partial_reply=partial
+    )
+    assert await following() == []
 
 
 async def test_a_sent_messages_files_are_stored_on_its_entry_for_every_device(

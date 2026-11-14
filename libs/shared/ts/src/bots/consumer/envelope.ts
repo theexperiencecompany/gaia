@@ -75,13 +75,17 @@ export function outboundAttachmentSchemaFor(ownApiOrigin: string | undefined) {
 }
 
 /** Shape of a bot-facing message on the delivery bus, bound to this bot's API origin. */
-/** A wake: the bot conversation to follow, after the seq its follower starts from. */
+/** A wake: the bot conversation to follow, from the delivered-through cursor its follower recorded. */
 const conversationFollowSchema = z.object({
   conversation_id: z.string().min(1),
   platform_user_id: z.string().min(1),
   channel_id: z.string().nullable(),
   is_dm: z.boolean(),
   after_seq: z.number().int().min(0),
+  partial_reply: z
+    .object({ reply_id: z.string().min(1), bubbles: z.number().int().min(1) })
+    .nullable()
+    .default(null),
 }) satisfies z.ZodType<ActiveBotConversation>;
 
 export function outboundMessageEnvelopeSchemaFor(

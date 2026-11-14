@@ -11,8 +11,6 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import ValidationError
-
 from app.constants.delivery_alerts import DeliveryFailureKind
 from app.constants.outbound import (
     OUTBOUND_QUEUES,
@@ -25,7 +23,7 @@ from app.models.chat_models import ConversationSource
 from app.models.conversation_send_models import ActiveBotConversation
 from app.models.platform_models import PlatformLinkEntry
 from app.schemas.delivery_failures import DeliveryFailure
-from app.schemas.outbound import OutboundAttachment, OutboundMessageEnvelope
+from app.schemas.outbound import OutboundMessageEnvelope
 from app.services.delivery_alerts.reporting import report_delivery_failure
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.log_identifiers import hash_platform_user_id
@@ -258,27 +256,24 @@ async def notify_account_linked(platform: str, user_id: str) -> OutboundResult:
     )
 
 
-async def publish_conversation_wake(session: BotSessionDocument, after_seq: int) -> OutboundResult:
-    """Tell the session's bot to follow its conversation after after_seq, where it renders what was logged.
+async def publish_conversation_wake(session: BotSessionDocument) -> OutboundResult:
+    """Tell the session's bot to follow its conversation from its delivered-through cursor.
 
     The wake carries no content: the bot reads the entries off the conversation's events stream.
     """
+    if session.delivery is None:
+        raise ValueError("a wake follows the session's delivery cursor, and it has none")
     platform = ConversationSource.coerce(session.platform)
     queue_name = OUTBOUND_QUEUES.get(platform) if platform is not None else None
     if platform is None or queue_name is None:
         return OutboundResult.SKIPPED
     is_channel = session.channel_id is not None
+    follow = ActiveBotConversation.of(session, session.delivery)
     envelope = OutboundMessageEnvelope(
         platform=platform.value,
         destination_id=session.channel_id or session.platform_user_id,
         is_channel=is_channel,
-        follow=ActiveBotConversation(
-            conversation_id=session.conversation_id,
-            platform_user_id=session.platform_user_id,
-            channel_id=session.channel_id,
-            is_dm=not is_channel,
-            after_seq=after_seq,
-        ),
+        follow=follow,
     )
     try:
         publisher = await get_rabbitmq_publisher()
@@ -307,78 +302,6 @@ async def publish_conversation_wake(session: BotSessionDocument, after_seq: int)
         "conversation_wake_published",
         **_envelope_fields(envelope, None),
         conversation_id=session.conversation_id,
-        after_seq=after_seq,
+        after_seq=follow.after_seq,
     )
     return OutboundResult.PUBLISHED
-
-
-async def publish_outbound_photo(
-    platform: ConversationSource, user_id: str, url: str, filename: str, caption: str | None = None
-) -> bool:
-    """Enqueue a CDN-hosted image (e.g. a browser-automation step screenshot) for the bot to deliver as a photo.
-
-    The bot fetches the bytes directly from url;
-    nothing is proxied through the session artifact store. Best-effort: unknown
-    platform, unlinked account, unavailable broker, and publish errors all
-    return False without raising.
-    """
-    prep = await _prepare(platform, user_id, "publish_outbound_photo")
-    if isinstance(prep, OutboundResult):
-        return False
-    try:
-        attachment = OutboundAttachment(url=url, filename=filename, caption=caption)
-    except ValidationError:
-        # A rejected URL (non-https, non-own-API origin) must degrade to the
-        # caption text, never to silence: the caller falls back on False.
-        log.warning(
-            "publish_outbound_photo: attachment URL rejected",
-            platform=platform.value,
-            user_id=user_id,
-            destination_hash=hash_platform_user_id(prep[1]),
-            filename=filename,
-        )
-        return False
-    return await _enqueue_attachment(platform, user_id, "publish_outbound_photo", prep, attachment)
-
-
-async def _enqueue_attachment(
-    platform: ConversationSource,
-    user_id: str,
-    operation: str,
-    prep: tuple[str, str, RabbitMQPublisher],
-    attachment: OutboundAttachment,
-) -> bool:
-    queue_name, destination_id, publisher = prep
-    envelope = OutboundMessageEnvelope(
-        platform=platform.value, destination_id=destination_id, attachment=attachment
-    )
-    try:
-        await publisher.publish_outbound(
-            queue_name, envelope.model_dump_json().encode(), expiration=OUTBOUND_TTL_SECONDS_DEFAULT
-        )
-    except Exception as e:
-        log.error(
-            "outbound attachment publish failed",
-            operation=operation,
-            **_envelope_fields(envelope, user_id),
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        await _report_enqueue_failure(
-            platform,
-            user_id,
-            "publish_failed",
-            e,
-            destination_id=destination_id,
-            envelope_id=envelope.id,
-        )
-        return False
-
-    log.info(
-        "outbound_attachment_published",
-        operation=operation,
-        **_envelope_fields(envelope, user_id),
-        queue=queue_name,
-        filename=attachment.filename,
-    )
-    return True

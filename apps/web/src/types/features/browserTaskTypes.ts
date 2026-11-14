@@ -1,83 +1,21 @@
 /**
- * Browser-automation card payloads streamed as `browser_task_data` tool_data.
- * Mirrors the BrowserCardSnapshot models in apps/api/app/schemas/browser.py
- * field for field: they ride the SSE stream, not a route, so the OpenAPI
- * export (and the generated types) never sees them. A field the model
- * defaults is optional here, as the generator would make it.
+ * Browser-automation card payloads streamed as `browser_task_data` tool_data, and
+ * the live-view wire protocol. The card shapes live in the shared lib, where the
+ * bot follower renders them too.
  */
 
-import type {
-  BrowserSessionStatus,
-  HandoffStatus,
-} from "@shared/api/generated";
-
-export type { BrowserSessionStatus } from "@shared/api/generated";
-
-export type BrowserHandoffStatus = HandoffStatus;
-
-export type BrowserSensitiveCategory =
-  | "none"
-  | "payment"
-  | "credentials"
-  | "irreversible";
-
-export interface BrowserSessionSnapshot {
-  kind: "session";
-  task: string;
-  status: BrowserSessionStatus;
-  session_id?: string | null;
-  detail?: string | null;
-}
-
-/** One action the browser agent invoked — its own tool call. */
-export interface BrowserAction {
-  name: string;
-  inputs?: Record<string, unknown>;
-  /** On-page text of the element this action targeted, resolved from the DOM. */
-  target?: string | null;
-}
-
-export interface BrowserStepSnapshot {
-  kind: "step";
-  index: number;
-  goal: string;
-  /** Mirrored into the chat's tool thread, not rendered in the step row. */
-  actions?: BrowserAction[];
-  url?: string | null;
-  title?: string | null;
-  screenshot?: string | null;
-  /** Wall-clock spent reaching this step (LLM think + actions), from the API. */
-  elapsed_ms?: number | null;
-}
-
-export interface BrowserHandoffSnapshot {
-  kind: "handoff";
-  handoff_id: string;
-  category?: BrowserSensitiveCategory;
-  reason: string;
-  session_id?: string | null;
-  status: BrowserHandoffStatus;
-  /** A sign-in finished here is kept for the next task (false when persistence is off). */
-  saves_login?: boolean;
-}
-
-export interface BrowserResultSnapshot {
-  kind: "result";
-  status: BrowserSessionStatus;
-  success: boolean;
-  summary: string;
-  steps?: number;
-  replay_url?: string | null;
-  user_notes?: string[];
-}
-
-export type BrowserTaskSnapshot =
-  | BrowserSessionSnapshot
-  | BrowserStepSnapshot
-  | BrowserHandoffSnapshot
-  | BrowserResultSnapshot;
-
 export type { HandoffDecision as BrowserHandoffDecision } from "@shared/api/generated";
+export type {
+  BrowserAction,
+  BrowserHandoffSnapshot,
+  BrowserHandoffStatus,
+  BrowserResultSnapshot,
+  BrowserSensitiveCategory,
+  BrowserSessionSnapshot,
+  BrowserSessionStatus,
+  BrowserStepSnapshot,
+  BrowserTaskSnapshot,
+} from "@shared/conversation/browser-cards";
 
 /**
  * Live-view WebSocket wire protocol. The API proxies these between the viewer

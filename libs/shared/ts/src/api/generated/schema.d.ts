@@ -315,6 +315,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bot/conversations/{conversation_id}/delivered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record Bot Delivery
+         * @description Move the conversation's bot cursor to what its follower put on the platform.
+         */
+        put: operations["bot_record_delivered"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/bot/conversations/active": {
         parameters: {
             query?: never;
@@ -5904,10 +5924,10 @@ export interface components {
         ActionType: "redirect" | "api_call" | "modal";
         /**
          * ActiveBotConversation
-         * @description A bot session's conversation still answering; a restarted bot follows its events after after_seq.
+         * @description A bot session's conversation to follow: its events after after_seq, the bot's delivered-through cursor.
          *
-         *     The log does not record what a platform delivered: after_seq is the newest settled reply's
-         *     seq, so the follower replays the reply in flight and everything after it.
+         *     partial_reply names the reply just past it that the bot had sent only its first bubbles of, so a
+         *     restarted follower sends the rest and repeats none.
          */
         ActiveBotConversation: {
             /** After Seq */
@@ -5918,6 +5938,7 @@ export interface components {
             conversation_id: string;
             /** Is Dm */
             is_dm: boolean;
+            partial_reply: components["schemas"]["PartialReply"] | null;
             /** Platform User Id */
             platform_user_id: string;
         };
@@ -6750,6 +6771,24 @@ export interface components {
              * @description User's ID on the platform
              */
             platform_user_id: string;
+        };
+        /**
+         * BotDeliveryRecorded
+         * @description Whether the report moved the cursor; False for one behind what is already recorded.
+         */
+        BotDeliveryRecorded: {
+            /** Recorded */
+            recorded: boolean;
+        };
+        /**
+         * BotDeliveryReport
+         * @description What a bot follower put on the platform: every item through delivered_seq, plus partial_reply.
+         */
+        BotDeliveryReport: {
+            /** Delivered Seq */
+            delivered_seq: number;
+            partial_reply?: components["schemas"]["PartialReply"] | null;
+            platform: components["schemas"]["ConversationSource"];
         };
         /**
          * BotMessageAccepted
@@ -12044,6 +12083,16 @@ export interface components {
              */
             total: number;
         };
+        /**
+         * PartialReply
+         * @description A reply a bot follower had put only its first bubbles of on the platform.
+         */
+        PartialReply: {
+            /** Bubbles */
+            bubbles: number;
+            /** Reply Id */
+            reply_id: string;
+        };
         /** PaymentVerificationResponse */
         PaymentVerificationResponse: {
             /** Message */
@@ -17032,6 +17081,8 @@ export type Body_user_update_user_name = components['schemas']['Body_user_update
 export type Body_user_update_user_timezone = components['schemas']['Body_user_update_user_timezone'];
 export type BotAuthStatusResponse = components['schemas']['BotAuthStatusResponse'];
 export type BotChatRequest = components['schemas']['BotChatRequest'];
+export type BotDeliveryRecorded = components['schemas']['BotDeliveryRecorded'];
+export type BotDeliveryReport = components['schemas']['BotDeliveryReport'];
 export type BotMessageAccepted = components['schemas']['BotMessageAccepted'];
 export type BotSessionRequest = components['schemas']['BotSessionRequest'];
 export type BotSettingsResponse = components['schemas']['BotSettingsResponse'];
@@ -17332,6 +17383,7 @@ export type OnboardingStatusResponse = components['schemas']['OnboardingStatusRe
 export type OnboardingStep = components['schemas']['OnboardingStep'];
 export type PaginatedNotificationsResponse = components['schemas']['PaginatedNotificationsResponse'];
 export type PaginationMeta = components['schemas']['PaginationMeta'];
+export type PartialReply = components['schemas']['PartialReply'];
 export type PaymentVerificationResponse = components['schemas']['PaymentVerificationResponse'];
 export type PendingApprovalRef = components['schemas']['PendingApprovalRef'];
 export type PersistedTriageSummary = components['schemas']['PersistedTriageSummary'];
@@ -18320,6 +18372,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BotAuthStatusResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bot_record_delivered: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotDeliveryReport"];
+            };
+        };
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotDeliveryRecorded"];
                 };
             };
             /** @description Unprocessable Entity */
