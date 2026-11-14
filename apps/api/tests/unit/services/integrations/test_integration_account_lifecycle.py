@@ -283,6 +283,30 @@ class TestRemoveAccount:
             UserId(USER_ID), IntegrationAccountRemoved(integration_id="gmail", account_count=2)
         )
 
+    async def test_a_revoke_that_raises_captures_nothing(self, seams: Seams) -> None:
+        """Regression: the removal was captured before Composio revoked the account."""
+        seams.get_record.return_value = _record(
+            make_integration_account("ca_1"), make_integration_account("ca_2")
+        )
+        seams.composio.delete_connected_account.side_effect = RuntimeError("composio down")
+
+        with pytest.raises(RuntimeError, match="composio down"):
+            await remove_account(USER_ID, "gmail", "ca_1")
+
+        seams.save.assert_not_awaited()
+        seams.capture.assert_not_called()
+
+    async def test_a_last_account_disconnect_that_raises_captures_nothing(
+        self, seams: Seams
+    ) -> None:
+        seams.get_record.return_value = _record(make_integration_account("ca_1"))
+        seams.disconnect.side_effect = RuntimeError("composio down")
+
+        with pytest.raises(RuntimeError, match="composio down"):
+            await remove_account(USER_ID, "gmail", "ca_1")
+
+        seams.capture.assert_not_called()
+
     async def test_removing_the_primary_hands_it_on_and_moves_the_triggers(
         self, seams: Seams
     ) -> None:

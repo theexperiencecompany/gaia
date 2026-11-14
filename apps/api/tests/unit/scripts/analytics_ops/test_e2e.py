@@ -15,11 +15,13 @@ from pathlib import Path
 import fakeredis
 import pytest
 from scripts.analytics_ops import e2e
+from scripts.analytics_ops.e2e_coverage import UNCOVERED, Gap
 from scripts.analytics_ops.e2e_journeys import Stack
 from scripts.analytics_ops.posthog_api import ROW_CAP
 
 from app.workers.config.worker_settings import WorkerSettings
 from shared.py.analytics import UserId
+from shared.py.analytics.catalog import CATALOG
 from tests.unit.scripts.analytics_ops.conftest import FakeReader
 
 USER = "6ac74a19fa5dfaf1f5770471"
@@ -380,3 +382,28 @@ def test_a_read_the_query_api_timed_out_is_retried_within_the_deadline(
 
     assert len(received) == len(CLEAN)
     assert "PostHog read timed out" in capsys.readouterr().out
+
+
+def _expected_by_journeys() -> set[str]:
+    return {x.event for journey in e2e.build_journeys(Path("/dev/null")) for x in journey.expects}
+
+
+def test_every_catalog_event_is_expected_by_a_journey_or_declared_uncovered() -> None:
+    """A new event chooses: an Expect in a journey, or an UNCOVERED entry saying why not."""
+    missing = set(CATALOG) - _expected_by_journeys() - set(UNCOVERED)
+    assert not missing, f"add an Expect or an e2e_coverage.UNCOVERED entry for {sorted(missing)}"
+
+
+def test_no_event_is_both_expected_and_declared_uncovered() -> None:
+    both = _expected_by_journeys() & set(UNCOVERED)
+    assert not both, f"a journey expects {sorted(both)}: drop them from UNCOVERED"
+
+
+def test_every_uncovered_entry_names_a_catalog_event() -> None:
+    assert not set(UNCOVERED) - set(CATALOG)
+
+
+def test_a_web_event_is_uncovered_only_as_a_browser_interaction() -> None:
+    """The e2e drives no browser, so a web event's one honest reason is WEB_CLIENT, and only its."""
+    for name, gap in UNCOVERED.items():
+        assert (gap is Gap.WEB_CLIENT) == (CATALOG[name].owner == "web"), name

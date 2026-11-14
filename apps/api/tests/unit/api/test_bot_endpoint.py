@@ -470,39 +470,46 @@ class TestGetSettings:
 class TestUnlinkAccount:
     """POST /api/v1/bot/unlink."""
 
-    @patch("app.api.v1.endpoints.bot.capture")
-    @patch("app.api.v1.endpoints.bot.redis_cache")
-    @patch(
-        "app.api.v1.endpoints.bot.PlatformLinkService.unlink_account",
-        new_callable=AsyncMock,
-    )
     @patch(
         "app.utils.auth_utils.user_repository.get_by_platform_id",
         new_callable=AsyncMock,
+        return_value=UserDocument(id=USER_ID),
     )
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new_callable=AsyncMock)
     async def test_unlink_success(
-        self,
-        mock_auth: AsyncMock,
-        mock_get_user: AsyncMock,
-        mock_unlink: AsyncMock,
-        mock_redis: MagicMock,
-        mock_capture: MagicMock,
-        client: AsyncClient,
+        self, mock_auth: AsyncMock, mock_get_user: AsyncMock, client: AsyncClient
     ):
-        mock_get_user.return_value = UserDocument(id=USER_ID)
-        mock_redis.client = AsyncMock()
-        response = await client.post(
-            f"{BOT_BASE}/unlink",
-            headers={
-                "X-Bot-Platform": "discord",
-                "X-Bot-Platform-User-Id": "u1",
-            },
-        )
+        """The bot unlink is the settings-page unlink: one audit, one cache clear, one event."""
+        service = "app.services.platform_link_service"
+        with (
+            patch(f"{service}.capture") as mock_capture,
+            patch(f"{service}.log") as mock_log,
+            patch(f"{service}.redis_cache") as mock_redis,
+            patch(
+                f"{service}.PlatformLinkService.unlink_account", new_callable=AsyncMock
+            ) as mock_unlink,
+            patch(
+                f"{service}.PlatformLinkService.get_linked_platforms",
+                new_callable=AsyncMock,
+                return_value={"discord": {"platformUserId": "u1"}},
+            ),
+        ):
+            mock_redis.client = AsyncMock()
+            response = await client.post(
+                f"{BOT_BASE}/unlink",
+                headers={
+                    "X-Bot-Platform": "discord",
+                    "X-Bot-Platform-User-Id": "u1",
+                },
+            )
         assert response.status_code == 200
         assert response.json()["success"] is True
         mock_get_user.assert_awaited_once_with("discord", "u1")
-        # The same event name the web-side unlink emits — one action, one name.
+        mock_unlink.assert_awaited_once_with(USER_ID, "discord")
+        mock_redis.client.delete.assert_awaited_once_with("bot_user:discord:u1")
+        mock_log.audit.assert_called_once_with(
+            "platform account unlinked", actor=USER_ID, resource="u1", provider="discord"
+        )
         mock_capture.assert_called_once_with(
             UserId(USER_ID), IntegrationDisconnected(integration_id="discord")
         )

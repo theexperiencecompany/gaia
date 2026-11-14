@@ -104,10 +104,7 @@ def _no_analytics():
     registered in this test module's import chain — capture-specific tests
     patch the call explicitly and assert on it.
     """
-    with (
-        patch("app.services.todos.todo_service.capture"),
-        patch("app.services.todos.todo_bulk_service.capture"),
-    ):
+    with patch("app.services.todos.todo_service.capture"):
         yield
 
 
@@ -1245,6 +1242,51 @@ _TRACKED_PATH = "/workspace/gaia-tasks/x"
 _COMPLETE_TRACKED = "app.services.tracked_todo_service.tracked_todo_service.complete_tracked_todo"
 
 
+class TestBulkUpdateCapturesWhatChanged:
+    """Every bulk path (the web's bulk edit and bulk complete, the agent's bulk complete) captures here, once."""
+
+    async def test_a_bulk_complete_through_the_bulk_edit_is_a_toggle_of_the_todos_written(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Regression: the bulk edit endpoint reported a completion as todos:updated, counting the ids sent."""
+        mock_todo_repo.find_by_ids = AsyncMock(
+            return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
+        )
+        mock_todo_repo.bulk_update = AsyncMock(return_value=2)
+        req = BulkUpdateRequest(todo_ids=["a", "b", "c"], updates=TodoUpdateRequest(completed=True))
+
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), TodosToggled(completed=True, bulk_count=2)
+        )
+
+    async def test_a_bulk_edit_is_an_update_of_the_todos_written(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        mock_todo_repo.bulk_update = AsyncMock(return_value=1)
+        req = BulkUpdateRequest(
+            todo_ids=["a", "b"], updates=TodoUpdateRequest(priority=Priority.HIGH)
+        )
+
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosUpdated(bulk_count=1))
+
+    async def test_a_bulk_edit_that_wrote_nothing_is_not_captured(
+        self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
+    ):
+        """Regression: an empty bulk edit wrote nothing and was still captured as todos:updated."""
+        req = BulkUpdateRequest(todo_ids=["a", "b"], updates=TodoUpdateRequest())
+
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
+            await TodoService.bulk_update_todos(req, FAKE_USER_ID)
+
+        mock_capture.assert_not_called()
+
+
 class TestBulkCompleteRunsTheTrackedLifecycle:
     """A bulk complete must close a tracked todo the way a single complete does: watches torn down, sub-todos completed."""
 
@@ -1838,9 +1880,11 @@ class TestBulkServiceComplete:
             return_value=[_make_todo_doc(todo_id="a"), _make_todo_doc(todo_id="b")]
         )
         todo_repo.bulk_update = AsyncMock(return_value=2)
-        with patch("app.services.todos.todo_bulk_service.capture") as mock_capture:
+        with patch("app.services.todos.todo_service.capture") as mock_capture:
             await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
-        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosToggled(count=2))
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), TodosToggled(completed=True, bulk_count=2)
+        )
 
     async def test_captures_completed_count_with_tracked_todos(self, mock_bulk_repos):
         """Tracked todos count through their completion lifecycle — the reported count is modified + tracked, not a plain update count."""
@@ -1853,14 +1897,16 @@ class TestBulkServiceComplete:
         )
         todo_repo.bulk_update = AsyncMock(return_value=1)
         with (
-            patch("app.services.todos.todo_bulk_service.capture") as mock_capture,
+            patch("app.services.todos.todo_service.capture") as mock_capture,
             patch(_COMPLETE_TRACKED, new_callable=AsyncMock) as mock_tracked,
         ):
             await bulk_complete_todos(["a", "b"], FAKE_USER_ID)
         mock_tracked.assert_awaited_once_with(
             "b", FAKE_USER_ID, summary="Completed via bulk operation"
         )
-        mock_capture.assert_called_once_with(UserId(FAKE_USER_ID), TodosToggled(count=2))
+        mock_capture.assert_called_once_with(
+            UserId(FAKE_USER_ID), TodosToggled(completed=True, bulk_count=2)
+        )
 
     async def test_no_todos_raises_404(self, mock_bulk_repos):
         todo_repo, _ = mock_bulk_repos

@@ -34,7 +34,6 @@ from app.models.support_models import (
     SupportRequestType,
 )
 from app.models.user_models import AuthenticatedUser
-from app.services.analytics_service import capture
 from app.services.support_service import (
     create_support_request,
     create_support_request_with_attachments,
@@ -42,8 +41,6 @@ from app.services.support_service import (
 )
 from app.services.turnstile_service import verify_turnstile_token
 from app.utils.errors import AppError
-from shared.py.analytics import UserId
-from shared.py.analytics.catalog.support import SupportFormSubmitted
 from shared.py.wide_events import log
 
 
@@ -107,15 +104,6 @@ async def submit_support_request(
         )
         log.set(ticket_id=result.ticket_id)
         log.set(outcome="success")
-        capture(
-            UserId(user_id),
-            SupportFormSubmitted(
-                request_type=request_data.type.value,
-                title_length=len(request_data.title),
-                description_length=len(request_data.description),
-                attachment_count=0,
-            ),
-        )
         return result
 
     except HTTPException:
@@ -199,15 +187,6 @@ async def submit_support_request_with_attachments(
         )
         log.set(ticket_id=result.ticket_id)
         log.set(outcome="success")
-        capture(
-            UserId(user_id),
-            SupportFormSubmitted(
-                request_type=request_data.type.value,
-                title_length=len(request_data.title),
-                description_length=len(request_data.description),
-                attachment_count=len(attachments),
-            ),
-        )
         return result
 
     except HTTPException:
@@ -261,17 +240,6 @@ async def submit_public_support_request(
         source=SupportRequestSource.PUBLIC_CONTACT_FORM,
     )
     log.set(ticket_id=result.ticket_id, outcome="success")
-    # A visitor has no analytics identity: distinct_id is only ever a GAIA user id.
-    if user_id:
-        capture(
-            UserId(user_id),
-            SupportFormSubmitted(
-                request_type=request_data.type.value,
-                title_length=len(request_data.title),
-                description_length=len(request_data.description),
-                attachment_count=0,
-            ),
-        )
     return result
 
 

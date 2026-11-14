@@ -79,6 +79,7 @@ from app.services.latency_metrics import observe_sse_delivery
 from app.services.payments.payment_service import payment_service
 from app.services.platform_link_service import (
     PlatformLinkService,
+    disconnect_platform_account,
     platform_requires_upgrade,
 )
 from app.utils.auth_utils import resolve_bot_user
@@ -86,7 +87,6 @@ from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
 from shared.py.analytics.catalog.chat import ChatMessageRefused
-from shared.py.analytics.catalog.integrations import IntegrationDisconnected
 from shared.py.wide_events import get_trace_id, log, log_context
 
 router = APIRouter()
@@ -889,21 +889,8 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
             BOT_ACCOUNT_NOT_LINKED,
         )
 
-    user_id = user.user_id
-    await PlatformLinkService.unlink_account(user_id, platform)
-    log.audit(
-        "platform account unlinked",
-        actor=user_id,
-        resource=platform_user_id,
-        provider=platform,
-    )
-
-    cache_key = f"bot_user:{platform}:{platform_user_id}"
-    await redis_cache.client.delete(cache_key)
-
-    # Same event the web-side platform unlink emits — one user action, one name,
-    # regardless of which surface triggered it.
-    capture(UserId(user_id), IntegrationDisconnected(integration_id=platform))
+    # The settings page and the agent tool unlink through the same function: one audit, one event.
+    await disconnect_platform_account(user.user_id, platform)
     log.set(platform=platform, outcome="success")
     return UnlinkAccountResponse(success=True)
 
