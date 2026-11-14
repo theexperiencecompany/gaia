@@ -179,8 +179,8 @@ class TestTheEmptyBriefAndTheLead:
         facts = build_facts(Chosen(sections=[], picked=[]), _sources(), _CLOCK)
 
         assert (
-            "The brief holds no items today. Do not claim anything ran, finished, or is pending "
-            "beyond what is stated here."
+            "No tracked work, results or app items need them today. Do not claim anything ran, "
+            "finished, or is pending beyond what is stated here."
         ) in facts.block.splitlines()
         assert facts.lead is None
 

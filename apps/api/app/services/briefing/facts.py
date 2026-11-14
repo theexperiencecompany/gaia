@@ -118,15 +118,16 @@ class BriefSpan:
     no_items: str
 
 
+_NO_CLAIM = "Do not claim anything ran, finished, or is pending beyond what is stated here."
 TODAY = BriefSpan(
     heading="Today's calendar",
     empty="The user's calendar has nothing today.",
-    no_items="The brief holds no items today. Do not claim anything ran, finished, or is pending beyond what is stated here.",
+    no_items=f"No tracked work, results or app items need them today. {_NO_CLAIM}",
 )
 WEEK_AHEAD = BriefSpan(
     heading="The week ahead",
     empty="The user's calendar has nothing in the week ahead.",
-    no_items="The digest holds no items from this week. Do not claim anything ran, finished, or is pending beyond what is stated here.",
+    no_items=f"The digest holds no items from this week. {_NO_CLAIM}",
 )
 
 
