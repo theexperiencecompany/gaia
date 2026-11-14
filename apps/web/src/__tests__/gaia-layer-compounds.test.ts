@@ -20,6 +20,20 @@ const UNRENDERED = [
   "[data-tree-column]",
   "[data-drop-target",
   '.slider[data-orientation="vertical"]',
+  // no GAIA Avatar takes a variant or colour, no Checkbox or Radio is secondary,
+  // indeterminate or invalid (grep: no isIndeterminate, isInvalid or variant on either)
+  "avatar--soft",
+  "avatar__fallback--accent",
+  "avatar__fallback--danger",
+  "avatar__fallback--success",
+  "avatar__fallback--warning",
+  "checkbox--secondary",
+  "[data-indeterminate",
+  ".checkbox[aria-invalid",
+  ".checkbox[data-invalid",
+  "radio-group--secondary",
+  ".radio[aria-invalid",
+  ".radio[data-invalid",
 ];
 
 type Styled = { selector: string; decls: Map<string, Set<string>> };
@@ -125,7 +139,12 @@ function requirements(selector: string) {
     );
   const subject = tokens(compounds.at(-1) ?? "");
   const all = new Set(compounds.flatMap((c) => [...tokens(c)]));
-  return { subject, all, pseudoElement: selector.includes("::") };
+  const excluded = new Set(
+    [...selector.matchAll(/:not\(([^()]*)\)/g)].flatMap(([, inner]) => [
+      ...tokens(inner),
+    ]),
+  );
+  return { subject, all, excluded, pseudoElement: selector.includes("::") };
 }
 
 const covers = (outer: Set<string>, inner: Set<string>) =>
@@ -139,6 +158,8 @@ function refines(c: string, g: string): boolean {
   if (cr.pseudoElement || gr.pseudoElement || gr.subject.size === 0)
     return false;
   if (!covers(cr.subject, gr.subject) || !covers(cr.all, gr.all)) return false;
+  // `.select__value:not([data-placeholder])` never styles `.select__value[data-placeholder]`
+  if ([...gr.excluded].some((t) => cr.all.has(t))) return false;
   // `.slider .slider__track` is HeroUI's base rule for the track, nested in its own block.
   const blocks = new Set(
     [...cr.subject]
@@ -211,6 +232,15 @@ describe("shadowedRefinements", () => {
           "@layer gaia { .button { border-radius: 1rem } }",
       ),
     ).toEqual([".button-group .button { border-radius } under gaia .button"]);
+  });
+
+  it("passes a refinement the gaia rule excludes with :not()", () => {
+    expect(
+      check(
+        '@layer components { .select__value[data-placeholder="true"] { color: grey } }' +
+          '@layer gaia { .select__value:not([data-placeholder="true"]) { color: white } }',
+      ),
+    ).toEqual([]);
   });
 
   it("passes a restated refinement, an agreeing value and a sibling state", () => {

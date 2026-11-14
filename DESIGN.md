@@ -511,7 +511,7 @@ On any HeroUI component or GAIA wrapper you may use layout utilities: `w-*`, `h-
 | `placeholder` | field placeholder colour | the tone scale, `dim` to `ghost` | `inputVariants` |
 | `tint` | strength of a soft fill | `default` (20%), `light` (15%) | `GaiaButton tint=`, `chipVariants` |
 | `inset` | a button's horizontal padding | `default`, `tight` (8px), `none` | `GaiaButton inset=` |
-| `surface` | the surface an element is, or sits on | overlays: `raised` (zinc-800), `secondary` (#1a1a1a); dividers: `raised` (on a zinc-800 card) | `overlayVariants`, `separatorVariants` |
+| `surface` | the surface an element is, or sits on | overlays: `raised` (zinc-800), `secondary` (#1a1a1a), and v2's coloured tooltips `accent`, `foreground`, `danger`; dividers: `raised` (on a zinc-800 card) | `overlayVariants`, `separatorVariants` |
 | `density` | an accordion's vertical rhythm | `default`, `compact`, `flush` | `accordionVariants` |
 | `labelPlacement` | where a field's label sits | `outside`, `inside` (v2's 56px field) | `fieldVariants` |
 | `is*` | a boolean state | `isSelected`, `isBordered` | `chipVariants`, `avatarVariants` |

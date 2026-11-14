@@ -1,0 +1,11 @@
+/* Pagination's sheet ships only in the content area (the marketplace), so app.css,
+   which the dev layout loads, leaves it out; the fixture loads it on its own,
+   in the layer order base.css declares in case this sheet loads first. */
+@layer theme, base, openui, components, gaia, utilities;
+
+@import "@heroui/styles/components/pagination.css" layer(components);
+
+@reference "tailwindcss/theme.css";
+@reference "@heroui/styles/themes/default";
+@reference "@heroui/styles/utilities";
+@reference "@heroui/styles/variants";
