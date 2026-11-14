@@ -11,7 +11,7 @@ from langchain_core.tools import BaseTool
 from langgraph.store.base import SearchItem
 import pytest
 
-from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.core.subagents.integration_target import CustomMcpSubagent
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core import retrieval
 from app.models.integration_models import UserToolNamespaces

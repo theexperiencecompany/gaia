@@ -308,9 +308,9 @@ class TestResolveMcpIconName:
                 return_value=mock_registry,
             ),
             patch(
-                "app.db.redis.get_cache", new_callable=AsyncMock, return_value=None
+                "app.utils.agent_utils.get_cache", new_callable=AsyncMock, return_value=None
             ) as mock_get_cache,
-            patch("app.db.redis.set_cache", new_callable=AsyncMock) as mock_set_cache,
+            patch("app.utils.agent_utils.set_cache", new_callable=AsyncMock) as mock_set_cache,
             patch(
                 "app.utils.agent_utils.integration_repository.get",
                 new_callable=AsyncMock,
@@ -354,7 +354,7 @@ class TestResolveMcpIconName:
                 new_callable=AsyncMock,
                 return_value=mock_registry,
             ),
-            patch("app.db.redis.get_cache", new_callable=AsyncMock, return_value=cached),
+            patch("app.utils.agent_utils.get_cache", new_callable=AsyncMock, return_value=cached),
             patch(
                 "app.utils.agent_utils.integration_repository.get",
                 new_callable=AsyncMock,

@@ -31,11 +31,13 @@ from app.agents.context.fetchers import build_provider_metadata_block
 from app.agents.context.text import ACTIVATION_MULTI_ACCOUNT_POINTER
 from app.agents.core.subagents.active_integrations import mark_active
 from app.agents.core.subagents.integration_resolution import (
-    CustomMcpSubagent,
     check_integration_connection,
     check_mcp_connection,
-    get_integration_target,
     is_per_user_mcp,
+)
+from app.agents.core.subagents.integration_target import (
+    CustomMcpSubagent,
+    get_integration_target,
 )
 from app.agents.core.subagents.provider_subagents import register_integration_tools
 from app.agents.prompts.user_instructions_prompts import render_user_instructions

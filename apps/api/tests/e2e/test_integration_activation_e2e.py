@@ -29,7 +29,7 @@ from app.agents.core.graph_builder.build_graph import (
     build_executor_graph,
 )
 from app.agents.core.subagents.integration_activation import ActivatedTools
-from app.agents.core.subagents.integration_resolution import CustomMcpSubagent
+from app.agents.core.subagents.integration_target import CustomMcpSubagent
 from app.agents.tools.execute.execute_tool import execute
 from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 from app.models.hil_models import HILPreferences
