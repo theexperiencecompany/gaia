@@ -8,6 +8,7 @@ import {
   SquareArrowUpRight02Icon,
 } from "@icons";
 import { useState } from "react";
+import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
@@ -122,7 +123,12 @@ export function LivePreview({
       <Modal isOpen={fullscreen} onOpenChange={setFullscreen}>
         <Modal.Backdrop>
           <Modal.Container size="full">
-            <Modal.Dialog className="bg-zinc-950 p-0">
+            <Modal.Dialog
+              className={modalVariants({
+                inset: "none",
+                className: "bg-zinc-950",
+              })}
+            >
               <Modal.CloseTrigger aria-label="Close" />
               <Modal.Body className="flex flex-col gap-4 p-4 sm:p-6">
                 <div className="flex min-h-0 flex-1 items-center justify-center">
