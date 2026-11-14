@@ -5,10 +5,10 @@
  * resent unchanged, so the server's message id dedup holds.
  */
 import {
-  entryFrame,
-  reply,
-  replySettled,
-  userMessage,
+  insertFrame,
+  replyItem,
+  userItem,
+  userItemWith,
 } from "@shared/conversation/testing";
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -34,9 +34,8 @@ describe("useRetryMessage", () => {
     useLiveConversationStore
       .getState()
       .applyFrames("conv-1", [
-        entryFrame(1, userMessage("m-user", "hello")),
-        entryFrame(2, reply("r1", "a1", "hi")),
-        entryFrame(3, replySettled("r1", ["m-user"], 1)),
+        insertFrame(userItem("m-user", 1, "hello")),
+        insertFrame(replyItem("r1", 2, "hi", "answered")),
       ]);
     const { result } = renderHook(() => useRetryMessage());
 
@@ -59,13 +58,15 @@ describe("useRetryMessage", () => {
       },
     ];
     useLiveConversationStore.getState().applyFrames("conv-1", [
-      entryFrame(1, {
-        ...userMessage("m-user", "summarise"),
-        file_ids: ["f1"],
-        files,
-        selected_tool: "gmail_send",
-        tool_category: "gmail",
-      }),
+      insertFrame(
+        userItemWith("m-user", 1, {
+          text: "summarise",
+          file_ids: ["f1"],
+          files,
+          selected_tool: "gmail_send",
+          tool_category: "gmail",
+        }),
+      ),
     ]);
     const { result } = renderHook(() => useRetryMessage());
 

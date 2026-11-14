@@ -213,22 +213,18 @@ async def barge_in_endpoint(
 async def conversation_events_endpoint(
     request: Request,
     conversation_id: str,
-    after: str = Query(
-        default="0", description="A seq to replay the log after, or a stream id to resume after"
-    ),
     user: AuthenticatedUser = Depends(get_current_user),
 ) -> StreamingResponse:
-    """Stream the conversation's frames as SSE: everything after the cursor, then live."""
+    """Stream the conversation's screen as SSE: the newest page, then patches and live deltas."""
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "events", "id": conversation_id, "after": after},
+        conversation={"operation": "events", "id": conversation_id},
     )
     await require_owned_conversation(conversation_id, user.user_id)
     lines = event_lines(
         runtime_ports().log,
         conversation_id,
         user.user_id,
-        after,
         request.is_disconnected,
         shutdown_requested(),
     )

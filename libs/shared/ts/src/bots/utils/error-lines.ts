@@ -1,6 +1,6 @@
 /** The lines a bot shows when GAIA could not answer, shared by every failure path. */
 
-import type { Entry } from "../../conversation/types";
+import type { ScreenItem } from "../../conversation/types";
 
 export const BOT_ERROR_LINE = {
   GENERIC: "❌ Something went wrong. Please try again later.",
@@ -8,7 +8,7 @@ export const BOT_ERROR_LINE = {
 } as const;
 
 type ReplyFailure = NonNullable<
-  Extract<Entry, { kind: "reply_settled" }>["failure"]
+  Extract<ScreenItem, { kind: "reply" }>["failure"]
 >;
 
 /** What a failed reply tells the user, by why it failed: the lines the bots showed before the step. */

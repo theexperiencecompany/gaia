@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, TypeAdapter
 
+from app.constants.chat import CONVERSATION_READ_LIMIT
 from app.constants.conversation import (
     EVENTS_BLOCK_MS,
     EVENTS_KEY_PREFIX,
@@ -34,8 +35,10 @@ from app.models.conversation_log_models import (
     Reply,
     ReplySettled,
 )
+from app.models.conversation_screen_models import ScreenFrame, ScreenStreamFrame
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.ports import ConversationLog
+from app.services.conversation.screen_patches import ScreenTracker
 
 _FRAME: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)
 
@@ -216,6 +219,31 @@ def _unlogged(
             return False
 
 
+async def follow_screen(
+    log: ConversationLog, conversation_id: str, user_id: str
+) -> AsyncGenerator[ScreenStreamFrame | None]:
+    """Yield the newest page of the screen, then its patches and the deltas of what is still being written.
+
+    A reconnect is a fresh call: the screen it opens with is how a client heals any gap.
+    """
+    entries = await log.read_after(conversation_id, user_id, 0)
+    tracker = ScreenTracker(entries)
+    yield ScreenFrame(items=tuple(tracker.items[-CONVERSATION_READ_LIMIT:]))
+    head = str(entries[-1].seq if entries else 0)
+    async for streamed in follow(log, conversation_id, user_id, head):
+        if streamed is None:
+            yield None
+            continue
+        frame = streamed.frame
+        if isinstance(frame, EntryFrame | EntryUpdatedFrame):
+            for patch in tracker.take(frame):
+                yield patch
+        elif isinstance(frame, WorkDeltaFrame):
+            yield tracker.on_its_item(frame)
+        else:
+            yield frame
+
+
 def _is_stream_id(cursor: str) -> bool:
     return "-" in cursor
 
@@ -224,29 +252,26 @@ async def event_lines(
     log: ConversationLog,
     conversation_id: str,
     user_id: str,
-    after: str,
     disconnected: Callable[[], Awaitable[bool]],
     stopping: asyncio.Event,
 ) -> AsyncIterator[str]:
-    """Render the conversation's frames as SSE until the client goes or the process stops.
+    """Render the conversation's screen frames as SSE until the client goes or the process stops.
 
-    A stream frame carries its id to resume after, so a client cut off by a stopping process
-    resumes on the next one; the keepalive is an SSE comment, never a data line.
+    A client cut off by a stopping process reconnects and opens on a fresh screen; the
+    keepalive is an SSE comment, never a data line.
     """
-    async for streamed in _until(stopping, follow(log, conversation_id, user_id, after)):
+    async for frame in _until(stopping, follow_screen(log, conversation_id, user_id)):
         if await disconnected():
             return
-        if streamed is None:
+        if frame is None:
             yield ": keepalive\n\n"
             continue
-        event = ConversationEvent(stream_id=streamed.stream_id, frame=streamed.frame)
-        cursor = f"id: {streamed.stream_id}\n" if streamed.stream_id is not None else ""
-        yield f"{cursor}data: {event.model_dump_json()}\n\n"
+        yield f"data: {ConversationEvent(frame=frame).model_dump_json()}\n\n"
 
 
 async def _until(
-    stopping: asyncio.Event, frames: AsyncGenerator[StreamedFrame | None]
-) -> AsyncIterator[StreamedFrame | None]:
+    stopping: asyncio.Event, frames: AsyncGenerator[ScreenStreamFrame | None]
+) -> AsyncIterator[ScreenStreamFrame | None]:
     """Yield frames until stopping is set, cutting off the read it is blocked in."""
     stopped = asyncio.ensure_future(stopping.wait())
     try:

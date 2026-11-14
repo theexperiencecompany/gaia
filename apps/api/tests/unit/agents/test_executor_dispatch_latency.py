@@ -113,6 +113,7 @@ class TestDispatchLatency:
                 task_id="task-live",
                 configurable=_configurable(stream_id),
                 conversation_id="conv-1",
+                handoff="call_1",
             )
 
         assert "Handed to the executor (task_id: task-live)" in result
@@ -133,6 +134,7 @@ class TestDispatchLatency:
                 task_id="task-second",
                 configurable=_configurable(stream_id),
                 conversation_id="conv-1",
+                handoff="call_1",
             )
 
         assert "already running" in result
@@ -166,6 +168,7 @@ class TestDispatchLatency:
                 task_id="task-r",
                 configurable=_configurable(stream_id),
                 conversation_id="conv-1",
+                handoff="call_1",
             )
 
         assert "Handed to the executor (task_id: task-r)" in result

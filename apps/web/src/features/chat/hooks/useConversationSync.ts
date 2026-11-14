@@ -20,7 +20,7 @@ export const useConversationSync = (conversationId: string | null): void => {
         db.getConversationLog(conversationId),
       ]);
       // A legacy row can hold an invalid date; serializing it would throw.
-      const cachedAt = log?.entries.length ? cached?.updatedAt : undefined;
+      const cachedAt = log?.items.length ? cached?.updatedAt : undefined;
       const { conversations } = await chatApi.batchSyncConversations([
         {
           conversation_id: conversationId,

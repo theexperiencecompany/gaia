@@ -1,4 +1,4 @@
-import { type ConversationView, ENTRY_KIND } from "@shared/conversation";
+import { type ConversationView, SCREEN_ITEM_KIND } from "@shared/conversation";
 import { useMemo } from "react";
 import { useLiveConversationStore } from "@/features/chat/live/liveConversationStore";
 import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
@@ -6,15 +6,14 @@ import type { IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 
 const MESSAGE_KINDS: ReadonlySet<string> = new Set([
-  ENTRY_KIND.USER_MESSAGE,
-  ENTRY_KIND.REPLY,
-  ENTRY_KIND.NOTICE,
+  SCREEN_ITEM_KIND.USER,
+  SCREEN_ITEM_KIND.REPLY,
+  SCREEN_ITEM_KIND.NOTICE,
 ]);
 
-/** The messages this device holds of a conversation's log. */
+/** The messages this device holds of a conversation's screen. */
 const messageCount = (view: ConversationView | undefined): number =>
-  view?.entries.filter(({ entry }) => MESSAGE_KINDS.has(entry.kind)).length ??
-  0;
+  view?.items.filter((item) => MESSAGE_KINDS.has(item.kind)).length ?? 0;
 
 const toConversationRow = (conv: IConversation, messageCount: number) => ({
   conversation_id: conv.id,

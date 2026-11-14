@@ -35,25 +35,37 @@ from src.speech import Flush, ReplySpeech
 _IGNORE_REST = ConfigDict(extra="ignore", frozen=True)
 
 
-class _ReplyEntry(BaseModel):
+class _ReplyItem(BaseModel):
     model_config = _IGNORE_REST
 
-    kind: Literal["reply", "reply_settled"]
-    reply_id: str
+    kind: Literal["reply"]
+    id: str
+    seq: int
+    # None while the reply is still being written.
+    outcome: str | None
 
 
-class _OtherEntry(BaseModel):
+class _OtherItem(BaseModel):
     model_config = _IGNORE_REST
 
     kind: str
 
 
-class _EntryFrame(BaseModel):
+_Item = _ReplyItem | _OtherItem
+
+
+class _Screen(BaseModel):
     model_config = _IGNORE_REST
 
-    kind: Literal["entry"]
-    seq: int
-    entry: _ReplyEntry | _OtherEntry
+    kind: Literal["screen"]
+    items: list[_Item]
+
+
+class _ScreenPatch(BaseModel):
+    model_config = _IGNORE_REST
+
+    kind: Literal["screen_insert", "screen_update"]
+    item: _Item
 
 
 class _ReplyDelta(BaseModel):
@@ -79,15 +91,14 @@ class _OtherFrame(BaseModel):
     kind: str
 
 
-_Frame = _EntryFrame | _ReplyDelta | _ConversationUpdated | _OtherFrame
+_Frame = _Screen | _ScreenPatch | _ReplyDelta | _ConversationUpdated | _OtherFrame
 
 
 class ConversationEvent(BaseModel):
-    """One frame of the events stream; stream_id is the cursor to resume after, None for a log replay."""
+    """One frame of the events stream: the screen, a patch to it, or a live delta."""
 
     model_config = _IGNORE_REST
 
-    stream_id: str | None
     frame: _Frame = Field(union_mode="left_to_right")
 
 
@@ -161,34 +172,40 @@ class VoiceConversation:
 
     async def _follow(self, conversation_id: str, after_seq: int) -> None:
         """Speak every reply opened after after_seq, reconnecting when the stream drops."""
-        cursor = str(after_seq)
         while True:
             async with log_context(
                 "voice_follow", user_id=self.user_id, conversation_id=conversation_id
             ):
                 log.set(voice=VoiceContext(operation="follow", room=self.room_name))
                 try:
-                    async for event in self._events(conversation_id, cursor):
-                        cursor = event.stream_id or cursor
+                    async for event in self._events(conversation_id):
                         await self.apply(event.frame, after_seq)
                 except (aiohttp.ClientError, TimeoutError) as error:
                     log.warning(f"{LogTag.VOICE} events stream dropped", error=str(error))
             await asyncio.sleep(FOLLOW_RECONNECT_DELAY_S)
 
     async def apply(self, frame: _Frame, after_seq: int) -> None:
-        """Speak and display one frame; replies opened at or before after_seq were never this session's."""
+        """Speak and display one frame; replies at or before after_seq were never this session's."""
         match frame:
-            case _EntryFrame(seq=seq, entry=_ReplyEntry(kind="reply", reply_id=reply_id)):
-                if seq > after_seq and reply_id not in self._speeches:
-                    self._speeches[reply_id] = ReplySpeech(reply_id)
-            case _EntryFrame(entry=_ReplyEntry(kind="reply_settled", reply_id=reply_id)):
-                speech = self._speeches.get(reply_id)
-                if speech is not None and not speech.settled:
-                    self._spoken(speech, speech.finish())
+            case _Screen(items=items):
+                for item in items:
+                    self._reply(item, after_seq)
+            case _ScreenPatch(item=item):
+                self._reply(item, after_seq)
             case _ReplyDelta(reply_id=str(reply_id), index=index, payload=payload):
                 await self._delta(reply_id, index, payload)
             case _ConversationUpdated(description=description):
                 await self._send_room_text(description, CONVERSATION_DESCRIPTION_TOPIC)
+
+    def _reply(self, item: _Item, after_seq: int) -> None:
+        """Open a speech for a reply item of this session's, and finish it once the reply settles."""
+        if not isinstance(item, _ReplyItem):
+            return
+        if item.seq > after_seq and item.id not in self._speeches:
+            self._speeches[item.id] = ReplySpeech(item.id)
+        speech = self._speeches.get(item.id)
+        if item.outcome is not None and speech is not None and not speech.settled:
+            self._spoken(speech, speech.finish())
 
     async def _delta(self, reply_id: str, index: int, payload: dict[str, object]) -> None:
         speech = self._speeches.get(reply_id)
@@ -242,10 +259,9 @@ class VoiceConversation:
                 {"reply_id": reply_id, "heard_through": heard_through},
             )
 
-    async def _events(self, conversation_id: str, after: str) -> AsyncIterator[ConversationEvent]:
+    async def _events(self, conversation_id: str) -> AsyncIterator[ConversationEvent]:
         async with self._session().get(
             f"{self.base_url}/api/v1/conversations/{conversation_id}/events",
-            params={"after": after},
             headers=self._headers(),
             timeout=aiohttp.ClientTimeout(total=None, sock_read=None),
         ) as resp:

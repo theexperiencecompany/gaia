@@ -12,7 +12,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
+from langchain_core.tools import InjectedToolCallId, tool
 
 from app.agents.core.background.confirmation_gate import spend_confirmation
 from app.agents.core.background.executor_channel import ExecutorInbox
@@ -99,6 +99,7 @@ async def _acquire_lock_through_redirect(
 @tool
 async def call_executor(
     config: RunnableConfig,
+    tool_call_id: Annotated[str, InjectedToolCallId],
     task: Annotated[
         str,
         "The task to execute - describe what needs to be done",
@@ -208,6 +209,7 @@ async def call_executor(
             task_id=task_id,
             configurable=configurable,
             conversation_id=conversation_id,
+            handoff=tool_call_id,
         )
     except Exception as e:
         log.error(f"{LogTag.TOOL} Error dispatching executor", error=str(e))
@@ -224,8 +226,9 @@ async def _dispatch_executor(
     task_id: str,
     configurable: AgentConfigurable,
     conversation_id: str,
+    handoff: str,
 ) -> str:
-    """Core dispatch logic — acquire lock, queue if busy, or spawn."""
+    """Core dispatch logic — acquire lock, queue if busy, or spawn; handoff is the comms tool call that asked."""
     log.set(
         tool={
             "name": CALL_EXECUTOR_NAME,
@@ -296,7 +299,12 @@ async def _dispatch_executor(
             # whose drain hook reads the inbox before every model call.
             step = configurable.get("conversation_step")
             if step is not None and not await record_work_started(
-                step, conversation_id, configurable.get("user_id", ""), task_id, joins=held_task_id
+                step,
+                conversation_id,
+                configurable.get("user_id", ""),
+                task_id,
+                joins=held_task_id,
+                handoff=handoff,
             ):
                 return _NOT_STARTED_STOPPED
             await ExecutorInbox(conversation_id).append(task_id, task)
@@ -317,7 +325,7 @@ async def _dispatch_executor(
 
     step = configurable.get("conversation_step")
     if step is not None and not await record_work_started(
-        step, conversation_id, configurable.get("user_id", ""), task_id
+        step, conversation_id, configurable.get("user_id", ""), task_id, handoff=handoff
     ):
         await release_lock_if_owned(conversation_id, stream_id, task_id)
         return _NOT_STARTED_STOPPED

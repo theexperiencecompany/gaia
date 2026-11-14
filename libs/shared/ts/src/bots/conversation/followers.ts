@@ -3,12 +3,12 @@
  * when none does, and keep its events stream connected until the
  * conversation is idle with every posted message answered.
  *
- * A dropped connection resumes after the newest stream id the follower saw
- * (the follower is idempotent, so a replayed frame renders nothing). A server
+ * A dropped connection reconnects and opens on a fresh screen (the follower is
+ * idempotent, so an item it already rendered renders nothing). A server
  * that refuses the stream (4xx) ends the follow; anything else is retried.
  */
 
-import type { ConversationStreamEvent } from "../../conversation/types";
+import type { ConversationFrame } from "../../conversation/types";
 import type { BotUserContext } from "../types";
 import { recordBotFailure } from "../utils/failure-reasons";
 import { getHttpStatus, sanitizeErrorForLog } from "../utils/logger";
@@ -21,9 +21,8 @@ import type { ConversationSurface, StreamingOptions } from "./follower.types";
 export type ConversationEventSource = (
   ctx: BotUserContext,
   conversationId: string,
-  after: string,
   signal: AbortSignal,
-) => AsyncIterable<ConversationStreamEvent>;
+) => AsyncIterable<ConversationFrame>;
 
 /** Reconnect backoff: doubles from the base, capped. */
 const RECONNECT_BASE_MS = 500;
@@ -86,7 +85,7 @@ export class ConversationFollowers {
     const follower = new ConversationFollower(floor, this.options, surface);
     const followed = { follower, abort: new AbortController() };
     this.active.set(conversationId, followed);
-    const run = this.run(ctx, conversationId, floor, followed).finally(() => {
+    const run = this.run(ctx, conversationId, followed).finally(() => {
       this.runs.delete(run);
     });
     this.runs.add(run);
@@ -107,7 +106,6 @@ export class ConversationFollowers {
   private run(
     ctx: BotUserContext,
     conversationId: string,
-    floor: number,
     followed: Followed,
   ): Promise<void> {
     return withWideEvent(
@@ -119,7 +117,7 @@ export class ConversationFollowers {
       },
       async () => {
         try {
-          await this.consume(ctx, conversationId, String(floor), followed);
+          await this.consume(ctx, conversationId, followed);
         } finally {
           if (this.active.get(conversationId) === followed)
             this.active.delete(conversationId);
@@ -137,22 +135,18 @@ export class ConversationFollowers {
   private async consume(
     ctx: BotUserContext,
     conversationId: string,
-    start: string,
     { follower, abort }: Followed,
   ): Promise<void> {
-    let cursor = start;
     let failures = 0;
     let reconnects = 0;
     while (!abort.signal.aborted) {
       try {
-        for await (const event of this.events(
+        for await (const frame of this.events(
           ctx,
           conversationId,
-          cursor,
           abort.signal,
         )) {
-          await follower.apply(event.frame);
-          if (event.streamId) cursor = event.streamId;
+          await follower.apply(frame);
           failures = 0;
           if (follower.finished) {
             // Leave the registry before any await, so a message posted now starts a new follow.

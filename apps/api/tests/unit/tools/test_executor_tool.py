@@ -123,6 +123,7 @@ async def call_executor_with(
         acceptance_criteria = []
     kwargs.setdefault("desired_outcome", DEFAULT_TEST_INTENT.desired_outcome)
     kwargs.setdefault("time_horizon", DEFAULT_TEST_INTENT.time_horizon)
+    kwargs.setdefault("tool_call_id", "call_1")
     return await run_call_executor(
         config=config,
         task=task,
