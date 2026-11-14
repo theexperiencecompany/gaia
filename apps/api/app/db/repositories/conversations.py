@@ -26,6 +26,8 @@ from app.constants.chat import (
     CONVERSATION_ENTRIES_COLLECTION,
     CONVERSATION_READ_LIMIT,
 )
+from app.constants.conversation import CONVERSATION_LIST_CHANGED_EVENT
+from app.core.websocket_manager import websocket_manager
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_entries import (
@@ -624,6 +626,17 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     def _to_model(self, raw: Mapping[str, object]) -> ConversationDocument:
         return super()._to_model(head_fields(raw))
 
+    def _announce_row_changed(self, conversation_id: str, user_id: str) -> None:
+        """Tell the user's clients a conversation's list row changed, once its write committed, off the writer's path."""
+        spawn_logged_task(
+            "conversation_list_push",
+            websocket_manager.announce(
+                user_id,
+                {"type": CONVERSATION_LIST_CHANGED_EVENT, "conversation_id": conversation_id},
+            ),
+            conversation_id=conversation_id,
+        )
+
     def _spawn_flush(
         self, conversation_id: str, user_id: str, staged: Sequence[StoredEntry]
     ) -> None:
@@ -922,7 +935,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
-        return matched > 0
+        if not matched:
+            return False
+        self._announce_row_changed(conversation_id, user_id)
+        return True
 
 
 conversation_repository = ConversationRepository()

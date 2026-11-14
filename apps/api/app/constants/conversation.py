@@ -110,3 +110,7 @@ APPROVAL_UNDECIDABLE_REPORT = (
 STEP_DRAIN_GRACE_SECONDS = 20.0
 # How far back a connect looks for work waiting on that integration.
 INTEGRATION_NEED_WINDOW = timedelta(days=1)
+
+# The WebSocket push a user's clients get after a change to a conversation's list row
+# (title, last activity, unread, star), so the conversation list re-syncs.
+CONVERSATION_LIST_CHANGED_EVENT = "conversation.list_changed"

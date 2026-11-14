@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 
+import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { batchSyncConversations } from "@/services/syncService";
 
 const MIN_SYNC_INTERVAL = 30000; // 30 seconds between syncs
-const PERIODIC_SYNC_INTERVAL = 10 * 60 * 1000; // 10 minutes
+
+/** The push the server sends after a conversation's list row (title, activity, unread, star) changed. */
+export const CONVERSATION_LIST_CHANGED_EVENT = "conversation.list_changed";
 
 // Tiny Zustand store for reactive sync status
 interface SyncStatusState {
@@ -22,7 +25,7 @@ const useSyncStatusStore = create<SyncStatusState>((set) => ({
   setSyncError: (error) => set({ syncError: error }),
 }));
 
-/** Keep the local conversation cache in sync with the server while enabled. */
+/** Keep the local conversation cache in sync with the server while enabled: on mount, focus, reconnect and every list push. */
 export const useBackgroundSync = (enabled: boolean) => {
   const lastSyncTimeRef = useRef(0);
   const initialSyncCompleted = useSyncStatusStore(
@@ -58,7 +61,7 @@ export const useBackgroundSync = (enabled: boolean) => {
         setIsSyncing(true);
         setError(null);
         setSyncError(null);
-        // Mount, the interval, focus and reconnect all fire with no user action.
+        // Mount, focus, reconnect and pushes all fire with no user action.
         await batchSyncConversations({ background: true });
       } catch (err) {
         const errorMessage =
@@ -75,8 +78,24 @@ export const useBackgroundSync = (enabled: boolean) => {
     // Initial sync on mount
     runSync();
 
-    // Periodic sync every 10 minutes
-    const intervalId = setInterval(runSync, PERIODIC_SYNC_INTERVAL);
+    // A push is never throttled: it means the list changed now. Pushes that land
+    // while a sync runs coalesce into one more sync after it.
+    let pushSync: Promise<void> | null = null;
+    let pushedDuringSync = false;
+    const handleListChanged = () => {
+      if (pushSync) {
+        pushedDuringSync = true;
+        return;
+      }
+      pushSync = (async () => {
+        do {
+          pushedDuringSync = false;
+          await batchSyncConversations({ background: true });
+        } while (pushedDuringSync && !cancelled);
+      })().finally(() => {
+        pushSync = null;
+      });
+    };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -90,12 +109,16 @@ export const useBackgroundSync = (enabled: boolean) => {
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("online", handleOnline);
+    wsManager.on(CONVERSATION_LIST_CHANGED_EVENT, handleListChanged);
+    // A socket that dropped may have missed pushes.
+    wsManager.onConnect(runSync);
 
     return () => {
       cancelled = true;
-      clearInterval(intervalId);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("online", handleOnline);
+      wsManager.off(CONVERSATION_LIST_CHANGED_EVENT, handleListChanged);
+      wsManager.offConnect(runSync);
     };
   }, [enabled, setInitialSyncCompleted, setSyncError]);
 
