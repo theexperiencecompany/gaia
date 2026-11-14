@@ -5,6 +5,7 @@ Redis and Mongo keep real time on their own servers, so each jump ages the sim d
 the same amount: Redis TTLs shrink and Mongo TTL indexes expire what they would have.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import os
@@ -138,10 +139,29 @@ class SimClock:
         score = next((s for job, s in upcoming if not job.startswith(ARQ_CRON_PREFIX)), None)
         return None if score is None else datetime.fromtimestamp(score / 1000, UTC)
 
-    def wait_quiet(self) -> None:
-        """Block until no ARQ job is due within the pickup slack; a running job stays queued until it ends."""
+    def wait_quiet(self, alive: Callable[[], None]) -> None:
+        """Block until no ARQ job is due within the pickup slack; a running job stays queued until it ends.
+
+        alive raises when a simulated process has died, so a dead worker fails the run at once.
+        """
         deadline = time.monotonic() + _QUIET_TIMEOUT_S
-        while (due := self.due_job_at()) is not None and due <= datetime.now(UTC) + _PICKUP_SLACK:
+        while (busy := self._busy()) is not None:
+            alive()
             if time.monotonic() > deadline:
-                raise ClockError(f"the worker did not catch up: a job due at {due} is still queued")
+                raise ClockError(f"the system never went quiet: {busy}")
             time.sleep(_QUIET_POLL_S)
+
+    def _busy(self) -> str | None:
+        """Say what is still in flight: a due ARQ job, or a workflow run outliving its job.
+
+        A brief's job can leave the queue while its run is still storing and delivering, so
+        the workflow's own executing state is part of "quiet".
+        """
+        due = self.due_job_at()
+        if due is not None and due <= datetime.now(UTC) + _PICKUP_SLACK:
+            return f"an ARQ job due at {due.isoformat()} is queued"
+        if (
+            running := self.mongo.workflows.find_one({"status": "executing"}, {"_id": 1})
+        ) is not None:
+            return f"workflow {running['_id']} is executing"
+        return None

@@ -172,8 +172,9 @@ class Founder:
 
     def add_todo(self, day: int) -> JsonObject:
         title = _TODO_TITLES[day % len(_TODO_TITLES)]
-        # Alternate a late-evening and a just-past-midnight due time: the second is a different UTC date.
-        due = self.clock.at(day, 23, 30) if day % 2 == 0 else self.clock.at(day + 1, 0, 30)
+        # Added in the evening for the next day: 02:00 local is still the day before in UTC
+        # (the next brief sees it overdue), 21:00 local is the same UTC date (due tonight).
+        due = self.clock.at(day + 1, 2, 0) if day % 2 == 0 else self.clock.at(day + 1, 21, 0)
         with self._client() as api:
             created = api.post(
                 "/todos",
@@ -213,8 +214,10 @@ class Founder:
         ]
         for day in range(days):
             if self.clock.weekday(day) < 5:
-                actions.append(Action(at(day, 9, 15), "add_todo", partial(self.add_todo, day)))
-                actions.append(Action(at(day, 19, 0), "complete_todo", self.complete_oldest))
+                actions.append(Action(at(day, 19, 30), "add_todo", partial(self.add_todo, day)))
+            if day % 3 == 2:
+                # Slower than one a day, so open todos pile up across briefs.
+                actions.append(Action(at(day, 18, 0), "complete_todo", self.complete_oldest))
         return sorted(actions, key=lambda a: a.at)
 
     def act(self, action: Action) -> None:

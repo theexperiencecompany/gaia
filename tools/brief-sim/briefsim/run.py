@@ -7,15 +7,17 @@ fast (ARQ_POLL_DELAY_SECONDS) so that takes seconds. When the run ends, everythi
 and sent is exported next to the world's own call log for the oracle and the report.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
 import signal
 import time
 from types import FrameType
+from typing import cast
 from zoneinfo import ZoneInfo
 
 from pymongo import MongoClient
+from pymongo.database import Database
 import redis
 
 from briefsim import oracle
@@ -25,6 +27,8 @@ from briefsim.stack import MONGO_DB, MONGO_URI, REDIS_URL, running_stack
 from briefsim.world.scenario import Clockwork
 
 JsonObject = dict[str, object]
+#: How often the scheduler sweeps for due tasks whose ARQ job is missing.
+RESCAN_EVERY = timedelta(minutes=30)
 #: Exported per user after the run: what GAIA stored and what reached the user in-app.
 EXPORTED = [
     "briefings",
@@ -34,6 +38,24 @@ EXPORTED = [
     "pending_brief_items",
     "llm_calls",
 ]
+
+
+def _next_rescan_for_due_task(db: Database[JsonObject]) -> datetime | None:
+    """Return the scheduler sweep that would arm the next scheduled task if its ARQ job were missing.
+
+    Production sweeps pending tasks every :00/:30 (rescan_pending_scheduled_tasks), so a task
+    whose job is lost still fires within half an hour. Waking at that sweep keeps the sim as
+    forgiving as production, and no more: a lost job shows up as a late brief, not a silent one.
+    """
+    now = datetime.now(UTC)
+    nxt = db.workflows.find_one(
+        {"status": "scheduled", "scheduled_at": {"$gt": now}}, sort=[("scheduled_at", 1)]
+    )
+    if nxt is None:
+        return None
+    due = cast(datetime, nxt["scheduled_at"]).replace(tzinfo=UTC)
+    base = due.replace(minute=0, second=0, microsecond=0)
+    return base + RESCAN_EVERY * -(-(due - base) // RESCAN_EVERY)
 
 
 def _log_jump(out: Path, start: datetime, to: datetime, reason: str, queue: list[str]) -> None:
@@ -88,19 +110,21 @@ def run(out: Path, origin: datetime, days: int) -> None:
         pending = founder.schedule(days)
         while datetime.now(UTC) < end:
             stack.check_alive()
-            clock.wait_quiet()
+            clock.wait_quiet(stack.check_alive)
             while pending and pending[0].at <= datetime.now(UTC):
                 founder.act(pending.pop(0))
-                clock.wait_quiet()
+                clock.wait_quiet(stack.check_alive)
             wake = {"end": end}
             if pending:
                 wake[pending[0].name] = pending[0].at
             if (due := clock.next_event_job_at()) is not None:
                 wake["arq job"] = due
+            if (sweep := _next_rescan_for_due_task(mongo[MONGO_DB])) is not None:
+                wake["scheduler sweep"] = sweep
             reason, to = min(wake.items(), key=lambda item: item[1])
             _log_jump(out, datetime.now(UTC), to, reason, clock.queue_head())
             clock.jump(to)
-        clock.wait_quiet()
+        clock.wait_quiet(stack.check_alive)
         _export(out, mongo, founder.user_id)
     (out / "run.json").write_text(
         json.dumps(

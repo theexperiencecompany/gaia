@@ -8,7 +8,7 @@ import argparse
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from briefsim import report
+from briefsim import oracle, report
 from briefsim.run import run
 
 
@@ -23,12 +23,16 @@ def main() -> None:
     run_cmd = commands.add_parser("run", help="boot the stack and simulate the founder")
     run_cmd.add_argument("--days", type=int, default=14)
     run_cmd.add_argument("--out", type=Path, required=True)
-    report_cmd = commands.add_parser("report", help="rebuild report.html from a finished run")
+    report_cmd = commands.add_parser(
+        "report", help="re-check a finished run and rebuild findings.json and report.html"
+    )
     report_cmd.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
     out: Path = args.out.resolve()
     if args.command == "run":
         run(out, origin=_next_monday(), days=args.days)
+    else:
+        oracle.write_findings(out)
     report.write(out)
 
 
