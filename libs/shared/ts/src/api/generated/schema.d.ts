@@ -11452,6 +11452,7 @@ export interface components {
              * @default 0
              */
             toolCount?: number;
+            toolsSetup?: components["schemas"]["ToolsSetup"] | null;
         };
         /**
          * MyIntegrationsResponse
@@ -15476,6 +15477,12 @@ export interface components {
             total_count: number;
         };
         /**
+         * ToolsSetup
+         * @description Where an MCP's post-connect tool discovery stands, so the UI knows when to stop waiting.
+         * @enum {string}
+         */
+        ToolsSetup: "running" | "ready" | "failed";
+        /**
          * ToolTimeline
          * @description What an item's cards show, in order: the tool thread, then the cards rendered on their own.
          */
@@ -17614,6 +17621,7 @@ export type ToolInfo = components['schemas']['ToolInfo'];
 export type ToolProgress = components['schemas']['ToolProgress'];
 export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse'];
 export type ToolsListResponse = components['schemas']['ToolsListResponse'];
+export type ToolsSetup = components['schemas']['ToolsSetup'];
 export type ToolTimeline = components['schemas']['ToolTimeline'];
 export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResponse'];
 export type TriageEmailSummary = components['schemas']['TriageEmailSummary'];

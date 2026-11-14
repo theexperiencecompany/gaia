@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
+from app.constants.integrations import ToolsSetup
 from app.models.integration_models import UserIntegrationStatus
 from app.models.oauth_models import IntegrationContent
 from app.schemas.common import ResponseModel, SuccessResponse
@@ -149,6 +150,8 @@ class MyIntegrationItem(CamelModel, CloneCountMixin):
     slug: str | None = None
     origin: Literal["code", "instance"] = "code"
     tool_count: int = 0
+    # Where the post-connect tool discovery stands; the UI waits only while it is running.
+    tools_setup: ToolsSetup | None = None
     # Custom-integration fields (None/0 for platform entries).
     is_public: bool | None = None
     created_by: str | None = None

@@ -11769,6 +11769,16 @@
             "default": 0,
             "title": "Toolcount",
             "type": "integer"
+          },
+          "toolsSetup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolsSetup"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -20236,6 +20246,16 @@
         ],
         "title": "ToolsListResponse",
         "type": "object"
+      },
+      "ToolsSetup": {
+        "description": "Where an MCP's post-connect tool discovery stands, so the UI knows when to stop waiting.",
+        "enum": [
+          "running",
+          "ready",
+          "failed"
+        ],
+        "title": "ToolsSetup",
+        "type": "string"
       },
       "TranscribeAudioResponse": {
         "description": "Response model for a transcribed bot audio clip.",

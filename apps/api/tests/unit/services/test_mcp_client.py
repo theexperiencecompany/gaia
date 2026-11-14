@@ -4834,6 +4834,14 @@ class TestRecordConnectionExact:
 
 
 class TestPersistAndIndexToolsExact:
+    @pytest.fixture(autouse=True)
+    def no_running_setup(self) -> Iterator[None]:
+        """Run each test as a connect outside OAuth: no tools setup is running, so storing only re-announces."""
+        with patch(
+            "app.services.mcp.mcp_client.publish_tools_setup", AsyncMock(return_value=False)
+        ):
+            yield
+
     def _resolved(self) -> MagicMock:
         resolved = MagicMock()
         resolved.source = "platform"
@@ -7092,7 +7100,10 @@ class TestConnectAfterOauth:
         def _no_loop(coro: Any, label: str) -> None:
             coro.close()
 
-        with patch("app.services.mcp.mcp_client._spawn_background", side_effect=_no_loop):
+        with (
+            patch("app.services.mcp.mcp_client._spawn_background", side_effect=_no_loop),
+            patch("app.services.mcp.mcp_client.publish_tools_setup", AsyncMock(return_value=True)),
+        ):
             yield
 
     async def test_connects_the_authorized_integration(

@@ -13,8 +13,13 @@ from mcp_use.client.session import MCPSession
 from app.config.settings import settings
 from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
+from app.constants.integrations import ToolsSetup
 from app.constants.log_tags import LogTag
-from app.constants.mcp import COMPOSIO_MCP_HOST, MCP_UNLISTED_CONNECT_MAX
+from app.constants.mcp import (
+    COMPOSIO_MCP_HOST,
+    MCP_TOOLS_SETUP_TIMEOUT_SECONDS,
+    MCP_UNLISTED_CONNECT_MAX,
+)
 from app.constants.providers import CredentialProviderName
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
@@ -32,6 +37,7 @@ from app.models.mcp_config import (
 from app.services.integrations.integration_resolver import IntegrationResolver, ResolvedIntegration
 from app.services.integrations.user_integration_status import (
     announce_integration_changed,
+    publish_tools_setup,
     update_user_integration_status,
 )
 from app.services.integrations.user_integrations import (
@@ -740,8 +746,11 @@ class MCPClient:
         # store_tools; bust once more now that tools are persisted so a concurrent
         # read can't cache an empty-but-connected catalog for the TTL.
         await invalidate_user_integration_caches(self.user_id)
-        # Clients waiting on "Setting up tools" re-read the catalog now that the tools exist.
-        await announce_integration_changed(self.user_id, integration_id)
+        # A connect after OAuth ends its "Setting up tools" here; any other connect re-announces the tools.
+        if not await publish_tools_setup(
+            self.user_id, integration_id, ToolsSetup.READY, only_from=ToolsSetup.RUNNING
+        ):
+            await announce_integration_changed(self.user_id, integration_id)
 
     async def _handle_connect_failure(
         self,
@@ -1073,16 +1082,17 @@ class MCPClient:
 
         Handshake, tools/list, schema conversion and indexing can take 5-15s for
         servers like posthog (339 tools), and the already-authenticated user
-        shouldn't wait on it.
+        shouldn't wait on it. The integration's tools_setup says when it ends, so
+        the page waiting on its tools stops waiting on a failure or timeout too.
         """
+        await publish_tools_setup(self.user_id, integration_id, ToolsSetup.RUNNING)
 
         async def _bg_connect_after_oauth() -> None:
+            # Tools already in memory are returned without a discovery to report them ready.
+            warm = integration_id in self._tools
             try:
-                await self.connect(integration_id)
-                log.info(
-                    f"{LogTag.MCP} background connect after OAuth succeeded",
-                    integration_id=integration_id,
-                )
+                async with asyncio.timeout(MCP_TOOLS_SETUP_TIMEOUT_SECONDS):
+                    await self.connect(integration_id)
             except Exception as e:
                 is_auth_error = "401" in str(e) or "authentication" in str(e).lower()
                 terminal = is_terminal_auth_failure(e) or is_auth_error
@@ -1094,6 +1104,16 @@ class MCPClient:
                 )
                 if terminal:
                     await self._reset_to_disconnected(integration_id)
+                await publish_tools_setup(self.user_id, integration_id, ToolsSetup.FAILED)
+                return
+            log.info(
+                f"{LogTag.MCP} background connect after OAuth succeeded",
+                integration_id=integration_id,
+            )
+            if warm:
+                await publish_tools_setup(
+                    self.user_id, integration_id, ToolsSetup.READY, only_from=ToolsSetup.RUNNING
+                )
 
         bg_task = _spawn_background(_bg_connect_after_oauth(), f"oauth_bg_connect_{integration_id}")
         if bg_task is None:

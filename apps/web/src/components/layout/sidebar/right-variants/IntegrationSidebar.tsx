@@ -17,6 +17,7 @@ import type {
   Integration,
   IntegrationConnectOptions,
 } from "@/features/integrations/types";
+import { isSettingUpTools } from "@/features/integrations/utils/catalog";
 import { IntegrationAccounts } from "./integration-sidebar/IntegrationAccounts";
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
@@ -37,8 +38,6 @@ interface IntegrationSidebarProps {
   onPublish?: (integrationId: string) => Promise<void>;
   onUnpublish?: (integrationId: string) => Promise<void>;
   category?: string;
-  /** True while a just-finished connect is still discovering tools in the background. */
-  isSettling?: boolean;
 }
 
 export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
@@ -49,7 +48,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   onPublish,
   onUnpublish,
   category,
-  isSettling = false,
 }) => {
   const isConnected = integration.status === "connected";
   // Composio integrations hold several accounts; an expired one still lists
@@ -69,9 +67,10 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const permissions = useIntegrationPermissions(integrationTools);
   const permissionsModal = useDisclosure();
 
-  // Show the tool skeleton both on the initial on-demand fetch and while a
-  // just-connected integration is still discovering tools in the background —
+  // Show the tool skeleton both on the initial on-demand fetch and while the
+  // server says a just-connected integration is still discovering its tools —
   // either way the list is empty and would otherwise flash in.
+  const isSettling = isSettingUpTools(integration);
   const showToolsSkeleton =
     integrationTools.length === 0 && (isLoadingTools || isSettling);
 
@@ -144,6 +143,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           isConnected={isConnected}
           showToolsSkeleton={showToolsSkeleton}
           isSettling={isSettling}
+          setupFailed={integration.toolsSetup === "failed"}
           onOpenPermissions={permissionsModal.onOpen}
         />
       </SidebarHeader>

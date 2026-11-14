@@ -63,6 +63,8 @@ export interface Integration {
   createdBy?: string;
   tools?: Array<{ name: string; description?: string }>;
   toolCount?: number;
+  /** Where the server's post-connect tool discovery stands; absent when none ran. */
+  toolsSetup?: MyIntegrationItem["toolsSetup"];
   iconUrl?: string;
   creator?: {
     name: string | null;

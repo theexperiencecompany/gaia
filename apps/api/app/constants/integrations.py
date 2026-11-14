@@ -79,6 +79,14 @@ MAX_ACCOUNT_NICKNAME_LENGTH: Final = 60
 ACCOUNT_OUTCOME_PARAM: Final = "account_outcome"
 
 
+class ToolsSetup(StrEnum):
+    """Where an MCP's post-connect tool discovery stands, so the UI knows when to stop waiting."""
+
+    RUNNING = "running"
+    READY = "ready"
+    FAILED = "failed"
+
+
 class ConnectMode(StrEnum):
     """What a connect_integration call asks the user to do."""
 

@@ -21,7 +21,6 @@ import { useIntegrationDeepLink } from "@/features/integrations/hooks/useIntegra
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { usePendingDeepLink } from "@/features/integrations/hooks/usePendingDeepLink";
-import { usePostConnectSettling } from "@/features/integrations/hooks/usePostConnectSettling";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { usePlatform } from "@/hooks/ui/usePlatform";
@@ -113,14 +112,6 @@ export default function IntegrationsPage() {
     integrations,
     handleIntegrationClick,
   );
-  // A freshly-connected integration shows "Setting up tools" until the server pushes its tools.
-  const { beginSettling, settlingIntegrationId } =
-    usePostConnectSettling(integrations);
-
-  const isSelectedSettling = selectedIntegration
-    ? settlingIntegrationId === selectedIntegration.id
-    : false;
-
   const isCustomIntegration = selectedIntegration?.source === "custom";
 
   // Keyboard shortcut to focus search input
@@ -142,7 +133,6 @@ export default function IntegrationsPage() {
       invalidateIntegrationCaches(queryClient);
       // Open the sidebar for the freshly-connected integration; it settles when its tools land.
       markPending(integrationId);
-      beginSettling(integrationId);
     },
     onBearerRequired: (integrationId, name) => bearer.open(integrationId, name),
     onFailed: (error) =>
@@ -225,7 +215,6 @@ export default function IntegrationsPage() {
             onPublish={isCustomIntegration ? handlePublish : undefined}
             onUnpublish={isCustomIntegration ? handleUnpublish : undefined}
             category={selectedIntegration.name}
-            isSettling={isSelectedSettling}
           />
         </RightSidebarPanel>
       )}
