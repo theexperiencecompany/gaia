@@ -1604,6 +1604,21 @@ class TestWeeklyRecap:
         assert "Friday Oct 16, 1 event(s):" in facts
         assert "Monday Oct 19, 6 event(s), the week's busiest:" in facts
         assert all(f": Meeting {hour}" in facts for hour in range(9, 15))
+        assert "Friday Oct 16, 1 event(s):" in facts
+
+    async def test_a_week_of_equally_full_days_names_no_busiest_day(self, world: World) -> None:
+        """Replay: six events on every day marked all seven the week's busiest."""
+        world.calendar = [
+            BriefingEvent(date=f"2026-10-{day}", start="09:00", title=f"Standup {day}")
+            for day in range(15, 22)
+        ]
+
+        await weekly.run_weekly_digest(_USER)
+
+        facts = _facts_shown(_prompt(world))
+        assert "The week ahead, 7 event(s):" in facts
+        assert "Thursday Oct 15, 1 event(s):" in facts
+        assert "busiest" not in facts
 
 
 class TestTheWeeklyHoldsToItsFacts:

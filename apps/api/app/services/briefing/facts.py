@@ -109,13 +109,14 @@ def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
 class BriefSpan:
     """How the facts name the brief's span: its calendar's heading, an empty calendar, no items.
 
-    by_day lists the calendar under each day's heading, with its count: a span of several days.
+    days is how many local days the calendar covers; a span of several lists it under each
+    day's heading, with its count.
     """
 
     heading: str
     empty: str
     no_items: str
-    by_day: bool = False
+    days: int = 1
 
 
 _NO_CLAIM = "Do not claim anything ran, finished, or is pending beyond what is stated here."
@@ -128,7 +129,7 @@ WEEK_AHEAD = BriefSpan(
     heading="The week ahead",
     empty="The user's calendar has nothing in the week ahead.",
     no_items=f"The digest holds no items from this week. {_NO_CLAIM}",
-    by_day=True,
+    days=7,
 )
 
 
@@ -293,12 +294,16 @@ def _event_lines(events: list[tuple[int, BriefingEvent]]) -> list[str]:
 
 
 def _by_day(events: list[tuple[int, BriefingEvent]]) -> list[str]:
-    """List the events under each day's heading and count, naming the busiest day of several."""
+    """List the events under each day's heading and count, naming the busiest days.
+
+    A day is the busiest only beside a lighter day that has events: equal days have none.
+    """
     days = {day: list(group) for day, group in groupby(events, key=lambda pair: pair[1].date)}
-    busiest = max(len(group) for group in days.values())
+    counts = [len(group) for group in days.values()]
+    busiest = max(counts) if max(counts) > min(counts) else None
     lines: list[str] = []
     for day, group in days.items():
-        busy = ", the week's busiest" if len(days) > 1 and len(group) == busiest else ""
+        busy = ", the week's busiest" if len(group) == busiest else ""
         label = date.fromisoformat(day).strftime("%A %b %-d")
         lines += [f"{label}, {len(group)} event(s){busy}:", *_event_lines(group)]
     return lines
@@ -311,8 +316,13 @@ def _calendar_note(events: list[tuple[int, BriefingEvent]], sources: FactSources
         return NO_CALENDAR_CONNECTED
     if not events:
         return sources.span.empty
-    if sources.span.by_day:
-        return "\n".join([f"{sources.span.heading}, {len(events)} event(s):", *_by_day(events)])
+    if sources.span.days > 1:
+        return "\n".join(
+            [
+                f"{sources.span.heading}, {len(events)} event(s):",
+                *_by_day(events),
+            ]
+        )
     return f"{sources.span.heading}:\n" + "\n".join(_event_lines(events))
 
 

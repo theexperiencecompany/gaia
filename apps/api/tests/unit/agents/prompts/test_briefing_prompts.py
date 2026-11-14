@@ -378,7 +378,7 @@ def test_the_weekly_recaps_the_week_and_asks_at_most_one_grounded_closed_questio
         "1. Each goal in [GOALS THIS WEEK]: what moved it forward, and what has been stuck a week",
         "2. What GAIA did this week, grouped by what it was",
         "3. What is waiting on them: the approvals, replies owed and todos due",
-        "4. Next week: the busiest days the week ahead names",
+        "4. Next week: how many events it holds and the busiest days the week ahead names",
     ):
         assert part in prompt
     flat = " ".join(prompt.split())

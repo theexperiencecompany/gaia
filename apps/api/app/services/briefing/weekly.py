@@ -79,8 +79,6 @@ from app.services.briefing.sections import (
 from app.utils.user_display import display_first_name
 from shared.py.wide_events import log
 
-#: The week ahead the calendar is read over, from tomorrow, and the days a due todo may fall in.
-_WEEK_AHEAD_DAYS = 7
 #: What the week in numbers counts: GAIA's own work and the mail its desk handled.
 _RECAP_SOURCES = frozenset({GAIA_SOURCE, GMAIL_INTEGRATION_ID})
 
@@ -144,7 +142,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     since = context.week_start_utc(clock)
     work = await context.gather_tracked_work(user_id, since)
     completed = await context.gather_completed_since(user_id, since)
-    ahead = await context.gather_calendar(user_id, clock, days=_WEEK_AHEAD_DAYS, days_ahead=1)
+    ahead = await context.gather_calendar(user_id, clock, days=WEEK_AHEAD.days, days_ahead=1)
     ahead_events: list[BriefingEvent] = ahead if isinstance(ahead, list) else []
     week = context.count_week(clock, completed, ahead)
     todos = await context.count_own_todos(user_id, clock)
@@ -159,7 +157,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
             work,
             scouts,
             ahead_events,
-            ahead_days=_WEEK_AHEAD_DAYS + 1,
+            ahead_days=WEEK_AHEAD.days + 1,
             user_done=completed.user,
         ),
     )

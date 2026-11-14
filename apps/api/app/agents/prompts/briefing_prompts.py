@@ -540,8 +540,9 @@ Answer, in this order and only from THIS WEEK'S FACTS:
    list of every item.
 3. What is waiting on them: the approvals, replies owed and todos due that the facts hold,
    and how many of their own todos are past due when the facts count them.
-4. Next week: the busiest days the week ahead names, with their counts, and anything on them
-   that matters.
+4. Next week: how many events it holds and the busiest days the week ahead names, with their
+   counts. Name an event only when it matters (an investor call, a deadline), never every
+   event: the edition shows the calendar.
 Leave out a part the facts hold nothing for. Every fact here is about the week: never say
 "today" of it.
 
