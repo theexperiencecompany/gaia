@@ -195,13 +195,15 @@ class TestAVoiceThatSaysATitleTwice:
     async def test_a_title_written_and_slotted_in_one_sentence_is_sent_back(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        echoed = _voice(message="The Northwind invoice is still past due: [[fact:1]].")
+        echoed = _voice(message="The northwind invoice is still past due: [[fact:1]].")
         asked = AsyncMock(side_effect=[echoed, _voice(message="[Northwind](fact:1) is past due.")])
         monkeypatch.setattr(prose, "ainvoke_structured", asked)
 
         _, draft = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
 
-        problems = ["the message says 'Northwind invoice' twice in one sentence; name it once"]
+        problems = [
+            "the message names 'Northwind invoice' in words and again with [[fact:1]]; keep one"
+        ]
         assert asked.await_args_list[1].args[1] == (
             f"PROMPT\n\n{voice_correction_note(problems, echoed.model_dump_json(indent=2))}"
         )
@@ -217,6 +219,42 @@ class TestAVoiceThatSaysATitleTwice:
         voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=self._VALUES, lead=1))
 
         assert voice == again
+        asked.assert_awaited_once()
+
+    async def test_an_echo_after_a_shared_title_in_the_sentence_is_still_caught(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        values = SlotValues(
+            facts={
+                1: BriefFact(title="Northwind invoice"),
+                2: BriefFact(title="1:1"),
+                3: BriefFact(title="1:1"),
+            },
+            counts={},
+        )
+        echoed = _voice(message="After [[fact:2]], the Northwind invoice: [[fact:1]].")
+        asked = AsyncMock(side_effect=[echoed, _voice(message="[Northwind](fact:1) is due.")])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
+
+        assert asked.await_count == 2
+
+    async def test_two_facts_sharing_a_title_may_each_be_named(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Replay: a day of 1:1s failed as "'1:1' twice in one sentence"."""
+        values = SlotValues(
+            facts={1: BriefFact(title="1:1", time="11:00 AM"), 2: BriefFact(title="1:1")},
+            counts={},
+        )
+        both = _voice(message="A 1:1 at [[fact:1.time]], then [[fact:2]] [the 1:1](fact:1).")
+        asked = AsyncMock(side_effect=[both])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=values, lead=1))
+
+        assert voice == both
         asked.assert_awaited_once()
 
 

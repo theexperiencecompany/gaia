@@ -74,13 +74,15 @@ system fills it in from the facts:
   [[fact:9.time]]").
 - ``[[fact:N.count]]``: how many requests fact N stands for, when its line says so.
 - ``[[series:ID.peak]]`` (or ``.total``, ``.latest``, ``.low``, ``.peak_at``): a figure of a
-  series a chart in [ALSO IN THE BRIEF] draws, by the series id listed there.
+  series a chart in [ALSO IN THE BRIEF] draws, or a total [THE WEEK IN NUMBERS] lists, by the
+  series id listed there.
 - ``[the phrase](fact:N)``: your own words for fact N, linked to what it opens when it is
   marked ``linkable`` and plain text otherwise. This is how you refer to an item.
 - ``[[fact:N]]``: fact N's title exactly as listed. Titles are written as to-dos
   ("Approve the Acme MSA renewal"), so "approve the [[fact:3]]" reads "approve the Approve
   the ...". Use it only where the title reads naturally as it stands; otherwise write
-  "[approve the Acme renewal](fact:3)".
+  "[approve the Acme renewal](fact:3)". It already says the title: never name the item in
+  words in the same sentence too ("the invoice is past due: [[fact:3]]" says it twice).
 The message must refer to the lead (the item under [{LEAD_HEADING}]) through
 one of its slots, usually its phrase; a brief that leaves it out is sent back. Everything else
 the edition already shows, so what else the message says is your call.

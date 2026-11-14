@@ -136,7 +136,6 @@ def _draft(voice: BriefVoice, values: SlotValues) -> BriefVoice:
 
 _FREQUENCY_RE = re.compile(rf"\b({'|'.join(FREQUENCY_CLAIMS)})\b", re.IGNORECASE)
 _NOT_A_WORD_RE = re.compile(r"[^\w\s]")
-_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 
 
 def opening_line(message: str) -> str:
@@ -189,21 +188,6 @@ def _frequency_problems(draft: BriefVoice, grounds: str) -> list[str]:
     ]
 
 
-def _doubled_title_problems(draft: BriefVoice, values: SlotValues) -> list[str]:
-    """Name each fact title a field says twice in one sentence, as written words and a slot do."""
-    titles = {fact.title.casefold(): fact.title for fact in values.facts.values() if fact.title}
-    return [
-        f"the {name} says {title!r} twice in one sentence; name it once"
-        for name in _VOICED_FIELDS
-        for title in dict.fromkeys(
-            titles[key]
-            for sentence in _SENTENCE_END_RE.split(getattr(draft, name).casefold())
-            for key in titles
-            if sentence.count(key) > 1
-        )
-    ]
-
-
 def _length_problems(exc: ValidationError) -> list[str]:
     errors: list[ErrorDetails] = exc.errors()
     return [f"the {error['loc'][0]} once its slots are filled: {error['msg']}" for error in errors]
@@ -229,11 +213,7 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
         draft = _draft(voice, writing.values)
     except ValidationError as exc:
         return _length_problems(exc)
-    said = (
-        _repeat_problems(draft, writing.recent)
-        + _frequency_problems(draft, writing.grounds)
-        + _doubled_title_problems(draft, writing.values)
-    )
+    said = _repeat_problems(draft, writing.recent) + _frequency_problems(draft, writing.grounds)
     return said or draft
 
 
