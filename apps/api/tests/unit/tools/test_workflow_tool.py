@@ -6,6 +6,7 @@ from uuid import UUID
 
 import pytest
 
+from app.constants.briefing import BriefingFrequency
 from app.constants.error_codes import BRIEFS_OFF
 from app.constants.integrations import (
     MAX_INTEGRATION_SEARCH_RESULTS,
@@ -27,7 +28,7 @@ from app.schemas.integrations.responses import (
 import app.services.workflow.service  # noqa: F401  # side-effect import breaks the documented circular-dependency chain
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import WorkflowCreated
-from tests.helpers import briefs_off_users_get, captured_wide_event
+from tests.helpers import captured_wide_event, users_get_on
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -181,14 +182,17 @@ class TestCreateWorkflow:
         else:
             wait.assert_not_awaited()
 
-    async def test_a_brief_workflow_while_briefs_are_off_is_refused_with_what_to_ask(
-        self,
+    @pytest.mark.parametrize(
+        "frequency", [BriefingFrequency.OFF, BriefingFrequency.WEEKLY_ONLY], ids=["off", "weekly"]
+    )
+    async def test_a_brief_workflow_with_no_daily_brief_is_refused_with_what_to_ask(
+        self, frequency: BriefingFrequency
     ) -> None:
-        """Regression: with briefs off the agent saved a brief workflow whose results were lost."""
+        """Regression: with no daily brief the agent saved a brief workflow whose results were lost."""
         from app.agents.tools.workflow_tool import create_workflow
 
         with (
-            patch("app.utils.auth_utils.user_repository.get", new=briefs_off_users_get),
+            patch("app.utils.auth_utils.user_repository.get", new=users_get_on(frequency)),
             patch(f"{MODULE}.current_stream_writer", return_value=_writer_mock()),
             patch(f"{MODULE}.WorkflowSubagentRunner") as mock_runner,
         ):
@@ -203,9 +207,9 @@ class TestCreateWorkflow:
         assert result["success"] is False
         assert result["error"] == BRIEFS_OFF
         assert result["message"] == (
-            "The user has briefs turned off, so this workflow's results cannot go to their "
+            "The user gets no daily brief, so this workflow's results cannot go to a "
             "brief. Ask them to pick instead: Choose Tell me now or Don't notify me, or turn "
-            "briefs back on in Settings."
+            "on daily briefs in Settings."
         )
         mock_runner.execute.assert_not_awaited()
 

@@ -84,6 +84,9 @@ _WINBACK = (
     "deliverable they never opened, named concretely ('the 12-investor list is still "
     "sitting here; want it, or should I bin it?').",
     "End on one binary choice: they want it, or they tell GAIA what changed.",
+    "Then say plainly, in one line of its own, that any reply keeps these briefs coming and "
+    "that without one the daily briefs pause after today ('Reply with anything to keep "
+    "these coming; otherwise I'll pause them after today.').",
     "If the facts hold nothing of value, ask one concrete question about whether the goal "
     "itself is still right ('still raising, or has the plan moved?').",
     "Never 'just checking in', never 'we miss you', never a guilt-trip, never a feature tour.",
@@ -183,10 +186,25 @@ def test_a_goal_asked_about_recently_is_not_asked_about_again() -> None:
         recent=RecentLines(),
     )
 
-    assert f"{_GOAL}\n\nYou asked recently whether their goal is still live." in prompt
-    assert "Do not ask about it again today, in any\nwording" in prompt
+    assert f"{_GOAL}\n\nYou asked recently about their goal: whether it is still live" in prompt
+    assert "Do not ask about\nit again today, in any wording" in prompt
     assert "If no goal lane exists" not in prompt
     assert "confirming question" not in prompt
+
+
+def test_a_first_week_asked_for_a_goal_recently_is_not_told_to_ask_for_one() -> None:
+    prompt = " ".join(
+        build_briefing_voice_prompt(
+            date_local="Tuesday, October 14",
+            blocks=_BLOCKS,
+            situation=VoiceSituation(first_week=True, goal_asked_recently=True),
+            recent=RecentLines(),
+        ).split()
+    )
+
+    assert (
+        "offer to connect the one their goal or work most needs; otherwise name one thing"
+    ) in prompt
 
 
 @pytest.mark.parametrize(
