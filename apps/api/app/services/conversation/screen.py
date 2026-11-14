@@ -322,8 +322,8 @@ def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
             | IntegrationConnected()
         ):
             return None
-        case unhandled:
-            assert_never(unhandled)
+        case unhandled:  # pragma: no mutate — unreachable: the Entry union is exhaustive
+            assert_never(unhandled)  # pragma: no mutate — unreachable
 
 
 def work_timeline(
@@ -335,9 +335,10 @@ def work_timeline(
     asked: list[ToolDataEntry] = [
         {
             "tool_name": approval.tool_name,
-            "tool_category": approval.tool_category,
+            # Approval cards are grouped: tool_timeline keeps only their data.
+            "tool_category": approval.tool_category,  # pragma: no mutate — never read
             "data": approval.data.model_dump(mode="json"),
-            "timestamp": approval.timestamp,
+            "timestamp": approval.timestamp,  # pragma: no mutate — never read
         }
         for approval in approvals
     ]

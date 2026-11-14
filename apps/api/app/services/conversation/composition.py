@@ -57,7 +57,7 @@ class _Steps:
 
     def __init__(self) -> None:
         self.running: set[asyncio.Task[None]] = set()
-        self.draining = False
+        self.draining = False  # pragma: no mutate — only read as truthiness
 
 
 _steps = _Steps()

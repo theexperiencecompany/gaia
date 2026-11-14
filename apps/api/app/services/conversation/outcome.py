@@ -58,7 +58,7 @@ def entry_outcome(
 ) -> EntryOutcome | None:
     """Return the entry's outcome once nothing it caused is still running or unanswered; else None.
 
-    entries are the log from seq on, with their current content.
+    entries are the log after seq, with their current content: all that answers the entry.
     """
     if (
         seq in state.unsettled_waking
@@ -97,7 +97,7 @@ async def await_outcome(
         while True:
             # State before entries: whatever the state says has settled, the entries read after it hold.
             state = await log.state(conversation_id, user_id)
-            entries = await log.read_after(conversation_id, user_id, logged.seq - 1)
+            entries = await log.read_after(conversation_id, user_id, logged.seq)
             outcome = entry_outcome(logged.entry.id, logged.seq, entries, state)
             if outcome is not None:
                 return outcome
