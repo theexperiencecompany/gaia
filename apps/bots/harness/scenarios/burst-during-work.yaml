@@ -1,0 +1,27 @@
+# Three Telegram messages in a burst while background work runs, pinned as the
+# sim stack delivers them today. The executor holds between its two todos
+# ([[wait:...]]) so the burst lands mid-run. Telegram takes one message at a
+# time, and the work message's turn stays open until the work is done, so the
+# burst waits behind it and each burst message gets a reply of its own.
+#
+#   mise dev --sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/burst-during-work.yaml
+name: burst during background work
+emulate: telegram
+user: scenario-harness@gaia.local
+turns:
+  - burst:
+      - send: 'stock up [[tool:create_todo {"title":"sc-1"}]] [[wait:15000]] [[tool:create_todo {"title":"sc-2"}]] [[say:Pantry stocked.]]'
+      - send: "one [[say:Reply one.]]"
+        afterMs: 3000
+      - send: "two [[say:Reply two.]]"
+        afterMs: 300
+      - send: "three [[say:Reply three.]]"
+        afterMs: 300
+    settleMs: 45000
+    # Where the proactive result lands among the replies depends on timing, so
+    # the replies' order is pinned without it and the result only by presence.
+    expect:
+      - bubbles: ["Pantry stocked.", "Reply one.", "Reply two.", "Reply three."]
+      - eventTypes: [outbound-delivery]
+      - reactedTo: []

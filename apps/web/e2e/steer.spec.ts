@@ -1,7 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { SIM_ENABLED } from "./harness";
-
-const COMPOSER_PLACEHOLDER = "What can I do for you today?";
+import { COMPOSER_PLACEHOLDER, SIM_ENABLED } from "./harness";
 
 /** Enough scripted tool calls to hold turn 1's stream open for seconds. */
 const LONG_TASK = `stock the pantry ${Array.from(
