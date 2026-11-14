@@ -13,6 +13,7 @@ from app.constants.cache import (
     DESKTOP_REQUEST_TTL_GRACE_SECONDS,
     DESKTOP_RESULT_CHANNEL_PREFIX,
 )
+from app.constants.websocket import DESKTOP_TOOL_REQUEST_MESSAGE
 from app.services.desktop import bridge
 from app.services.desktop.bridge import (
     ERROR_REDIS_UNAVAILABLE,
@@ -56,28 +57,25 @@ def _redis(pubsub: MagicMock, stored: object = None) -> Iterator[SimpleNamespace
 class TestRequestDesktopAction:
     async def test_the_request_is_parked_for_its_owner_and_answered_by_the_desktop(self) -> None:
         pubsub = _pubsub([_REPLY])
-        publish_chunk = AsyncMock()
+        broadcast = AsyncMock()
         with (
             _redis(pubsub) as cache,
-            patch.object(bridge.stream_manager, "publish_chunk", publish_chunk),
+            patch.object(bridge.websocket_manager, "broadcast_to_user", broadcast),
         ):
-            outcome = await request_desktop_action(
-                stream_id="s1", user_id="u1", tool="read_clipboard"
-            )
+            outcome = await request_desktop_action(user_id="u1", tool="read_clipboard")
 
         assert outcome == DesktopToolOutcome(ok=True, data={"text": "hi"}, error=None)
         request_key, pending = cache.set.await_args.args
         request_id = request_key.removeprefix(DESKTOP_REQUEST_PREFIX)
-        assert pending == {"user_id": "u1", "stream_id": "s1", "tool": "read_clipboard"}
+        assert pending == {"user_id": "u1", "tool": "read_clipboard"}
         assert cache.set.await_args.kwargs == {
             "ttl": int(bridge.DESKTOP_TOOL_TIMEOUT_SECONDS) + DESKTOP_REQUEST_TTL_GRACE_SECONDS
         }
         pubsub.subscribe.assert_awaited_once_with(f"{DESKTOP_RESULT_CHANNEL_PREFIX}{request_id}")
-        stream_id, frame = publish_chunk.await_args.args
-        assert stream_id == "s1"
-        assert json.loads(frame.removeprefix("data: "))["desktop_tool_request"]["request_id"] == (
-            request_id
-        )
+        user_id, message = broadcast.await_args.args
+        assert user_id == "u1"
+        assert message["type"] == DESKTOP_TOOL_REQUEST_MESSAGE
+        assert message["request"]["request_id"] == request_id
         pubsub.get_message.assert_awaited_with(
             ignore_subscribe_messages=True, timeout=bridge._PUBSUB_POLL_SECONDS
         )
@@ -97,29 +95,30 @@ class TestRequestDesktopAction:
                 bytes_reply,
             ]
         )
-        with _redis(pubsub), patch.object(bridge.stream_manager, "publish_chunk", AsyncMock()):
-            outcome = await request_desktop_action(
-                stream_id="s1", user_id="u1", tool="read_clipboard"
-            )
+        with (
+            _redis(pubsub),
+            patch.object(bridge.websocket_manager, "broadcast_to_user", AsyncMock()),
+        ):
+            outcome = await request_desktop_action(user_id="u1", tool="read_clipboard")
 
         assert outcome == DesktopToolOutcome(ok=False, data=None, error="denied")
         assert pubsub.get_message.await_count == 4
 
     async def test_without_redis_the_action_fails_without_publishing(self) -> None:
-        publish_chunk = AsyncMock()
+        broadcast = AsyncMock()
         with (
             patch.object(bridge, "redis_cache", SimpleNamespace(redis=None)),
-            patch.object(bridge.stream_manager, "publish_chunk", publish_chunk),
+            patch.object(bridge.websocket_manager, "broadcast_to_user", broadcast),
         ):
-            outcome = await request_desktop_action(stream_id="s1", user_id="u1", tool="open_url")
+            outcome = await request_desktop_action(user_id="u1", tool="open_url")
 
         assert outcome == DesktopToolOutcome(ok=False, error=ERROR_REDIS_UNAVAILABLE)
-        publish_chunk.assert_not_awaited()
+        broadcast.assert_not_awaited()
 
 
 class TestRelayDesktopResult:
     async def test_the_owner_resolves_the_request_exactly_once(self) -> None:
-        pending = {"user_id": "u1", "stream_id": "s1", "tool": "read_clipboard"}
+        pending = {"user_id": "u1", "tool": "read_clipboard"}
         with _redis(_pubsub([]), stored=pending) as cache:
             await relay_desktop_result(
                 request_id="req-1", user_id="u1", ok=True, data={"text": "hi"}, error=None
@@ -141,7 +140,7 @@ class TestRelayDesktopResult:
         cache.redis.publish.assert_not_awaited()
 
     async def test_another_users_result_is_refused(self) -> None:
-        pending = {"user_id": "u1", "stream_id": "s1", "tool": "read_clipboard"}
+        pending = {"user_id": "u1", "tool": "read_clipboard"}
         with _redis(_pubsub([]), stored=pending) as cache:
             with pytest.raises(DesktopRequestForbiddenError):
                 await relay_desktop_result(

@@ -52,6 +52,7 @@ function local(id: string, overrides: Partial<IConversation> = {}) {
   return {
     id,
     title: id,
+    awaitingApproval: false,
     createdAt: LONG_AGO,
     updatedAt: LONG_AGO,
     ...overrides,

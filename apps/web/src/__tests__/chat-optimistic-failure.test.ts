@@ -3,13 +3,10 @@
  * failure path used to call `clearOptimisticMessage()` unconditionally, erasing a
  * new conversation's only record of the message on any API failure. Verified live
  * (API stopped): new-conversation send left an empty thread; existing conversations
- * correctly showed "Not delivered" + Retry. Pins store flag → mapping → props; JSX itself is unverified (no DOM test env).
+ * correctly showed "Not delivered" + Retry. Pins the store flag; liveChat.render.test.tsx pins the bubble.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mapOptimisticMessageToConversationMessage } from "@/features/chat/hooks/useConversation";
-import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
+import { beforeEach, describe, expect, it } from "vitest";
 import { type OptimisticMessage, useChatStore } from "@/stores/chatStore";
-import type { MessageType } from "@/types/features/convoTypes";
 
 const optimistic = (): OptimisticMessage => ({
   id: "optimistic-1",
@@ -49,48 +46,5 @@ describe("optimistic message failure", () => {
     store.clearOptimisticMessage();
 
     expect(useChatStore.getState().optimisticMessage).toBeNull();
-  });
-});
-
-describe("failed message mapping", () => {
-  it("carries the optimistic failure into the conversation message", () => {
-    const mapped = mapOptimisticMessageToConversationMessage({
-      ...optimistic(),
-      failed: true,
-    });
-
-    expect(mapped.failed).toBe(true);
-    expect(mapped.response).toBe("the message the user typed");
-  });
-
-  it("leaves a healthy optimistic message unflagged", () => {
-    expect(
-      mapOptimisticMessageToConversationMessage(optimistic()).failed,
-    ).toBeUndefined();
-  });
-});
-
-describe("failed user bubble props", () => {
-  // The "Not delivered" label renders on `failed`, and Retry on `onRetry` — the
-  // two props the bubble needs before the failure is actionable on screen.
-  it("hands the bubble the failed flag and a bound retry callback", () => {
-    const message: MessageType = {
-      type: "user",
-      response: "the message the user typed",
-      message_id: "user-1",
-      failed: true,
-    };
-    const onRetry = vi.fn();
-
-    const props = getMessageProps(message, "user", {
-      setImageData: vi.fn(),
-      setOpenGeneratedImage: vi.fn(),
-      setOpenMemoryModal: vi.fn(),
-      onRetry,
-    });
-
-    expect(props.failed).toBe(true);
-    props.onRetry?.();
-    expect(onRetry).toHaveBeenCalledWith("user-1");
   });
 });

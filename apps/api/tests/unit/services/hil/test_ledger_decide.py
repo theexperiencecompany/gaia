@@ -1795,11 +1795,10 @@ class TestTheTicketReachesARunWhateverHeldTheConversation:
     _OLD = EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
 
     async def _approve(self) -> MagicMock:
-        from app.agents.core.background import executor_queue as eq, executor_runner as er
+        from app.agents.core.background import executor_runner as er
         from app.services.hil.ledger_decide import _deliver_ticket
 
         with (
-            patch.object(eq, "StreamManager", AsyncMock()),
             patch.object(er, "_spawn_detached_run") as spawn,
             patch.object(er, "record_work_carried", AsyncMock(return_value=True)),
         ):

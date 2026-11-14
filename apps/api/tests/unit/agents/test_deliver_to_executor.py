@@ -147,7 +147,6 @@ class TestTheRealLockAndInbox:
             return await real_append(inbox, entry_id, text, tag)
 
         with (
-            patch.object(eq, "StreamManager", AsyncMock()),
             patch.object(er, "_spawn_detached_run") as spawn,
             patch.object(ExecutorInbox, "append", finalize_the_old_run_then_append),
         ):
@@ -174,7 +173,6 @@ _OLD_LOCK_SECONDS = EXECUTOR_BUSY_TTL - EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS
 def _real_lifecycle() -> Iterator[SimpleNamespace]:
     """Run the real busy lock and inbox over fakeredis, capturing only the spawned run."""
     with (
-        patch.object(eq, "StreamManager", AsyncMock()),
         patch.object(er, "_spawn_detached_run") as spawn,
     ):
         yield SimpleNamespace(spawn=spawn)
@@ -335,8 +333,7 @@ class TestARunTheLogRefuses:
     ) -> None:
         _carried_work_is_logged.return_value = False
         with (
-            patch.object(eq, "StreamManager", AsyncMock()),
-            patch.object(er, "close_detached_stream", new_callable=AsyncMock) as closed,
+            patch.object(er, "teardown_session") as closed,
             patch.object(er, "_spawn_detached_run") as spawn,
         ):
             started = await er._start_executor_run(
@@ -344,5 +341,5 @@ class TestARunTheLogRefuses:
             )
         assert started is False
         spawn.assert_not_called()
-        closed.assert_awaited_once()
+        closed.assert_called_once()
         assert await get_lock_holder(CONVERSATION) is None

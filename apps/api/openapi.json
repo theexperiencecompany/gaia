@@ -15886,6 +15886,17 @@
               }
             ]
           },
+          "retry_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Target"
+          },
           "seq": {
             "minimum": 1.0,
             "title": "Seq",
@@ -15916,6 +15927,7 @@
           "outcome",
           "failure",
           "narrates",
+          "retry_target",
           "files"
         ],
         "title": "ReplyItem",
@@ -19911,6 +19923,61 @@
         "title": "ToolInfo",
         "type": "object"
       },
+      "ToolProgress": {
+        "additionalProperties": false,
+        "description": "The newest tool call's line, which the loading row shows while the item streams.",
+        "properties": {
+          "icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Url"
+          },
+          "integration_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Integration Name"
+          },
+          "message": {
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "show_category": {
+            "title": "Show Category",
+            "type": "boolean"
+          },
+          "tool_category": {
+            "title": "Tool Category",
+            "type": "string"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "tool_name",
+          "tool_category",
+          "integration_name",
+          "icon_url",
+          "show_category"
+        ],
+        "title": "ToolProgress",
+        "type": "object"
+      },
       "ToolTimeline": {
         "additionalProperties": false,
         "description": "What an item's cards show, in order: the tool thread, then the cards rendered on their own.",
@@ -19923,6 +19990,16 @@
             "title": "Cards",
             "type": "array"
           },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ToolProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "steps": {
             "default": [],
             "items": {
@@ -19934,7 +20011,8 @@
         },
         "required": [
           "steps",
-          "cards"
+          "cards",
+          "progress"
         ],
         "title": "ToolTimeline",
         "type": "object"
@@ -22356,6 +22434,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "retry_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Target"
+          },
           "seq": {
             "minimum": 1.0,
             "title": "Seq",
@@ -22391,7 +22480,8 @@
           "handoff",
           "tool_data",
           "timeline",
-          "image"
+          "image",
+          "retry_target"
         ],
         "title": "WorkItem",
         "type": "object"

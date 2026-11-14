@@ -38,7 +38,7 @@ class Sink:
     def __init__(self) -> None:
         self.cards: list[dict[str, object]] = []
 
-    async def __call__(self, card: dict[str, object]) -> None:
+    def __call__(self, card: dict[str, object]) -> None:
         self.cards.append(card)
 
 

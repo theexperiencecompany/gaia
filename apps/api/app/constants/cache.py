@@ -45,10 +45,7 @@ SKILLS_TEXT_CACHE_TTL = TWELVE_HOUR_TTL
 USER_INSTRUCTIONS_CACHE_TTL = ONE_DAY_TTL
 COMMUNITY_CACHE_TTL = FIVE_MINUTES_TTL
 FAVICON_CACHE_TTL = SIX_MONTH_TTL
-STREAM_TTL = FIVE_MINUTES_TTL
-# A streaming turn refreshes its progress/resume keys once they drop below this,
-# so the refresh costs one TTL read per frame instead of a read-plus-two-writes.
-STREAM_LIVENESS_REFRESH_AFTER = STREAM_TTL // 2
+RUN_STOP_TTL = FIVE_MINUTES_TTL
 STATE_TOKEN_TTL = TEN_MINUTES_TTL
 MOBILE_REDIRECT_TTL = FIVE_MINUTES_TTL
 
@@ -117,14 +114,8 @@ SKILLS_TEXT_CACHE_KEY = "skills:text:v2:{user_id}:{agent_name}"
 USER_INSTRUCTIONS_CACHE_KEY = "user_instructions:{user_id}"
 # A user's uploaded-file listings; busted on every file upload/update/delete.
 FILES_CACHE_PATTERN = "files:{user_id}:*"
-STREAM_SIGNAL_PREFIX = "stream:signal:"
-STREAM_PROGRESS_PREFIX = "stream:progress:"
-# Replayable per-stream event log (Redis Stream). Entry ids double as SSE ids,
-# so any subscriber can attach late or reconnect with Last-Event-ID and replay.
-STREAM_EVENTS_PREFIX = "stream:events:"
-STREAM_EVENTS_MAXLEN = 4096
-# Reverse index {user_id}:{conversation_id} -> stream_id for the in-flight chat
-# turn, so a reloaded client can rediscover and re-attach to a live stream.
+# A run's stop mark, keyed by the run's stream id: run_stop.py.
+RUN_STOP_PREFIX = "run:stop:"
 STATE_KEY_PREFIX = "oauth_state"
 # Single-use login-free integration-connect codes: code -> {user_id, integration_id}.
 CONNECT_LINK_PREFIX = "connect_link"

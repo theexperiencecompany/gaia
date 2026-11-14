@@ -34,10 +34,7 @@ export type {
   StreamToolDataEntry,
   TodoProgressSnapshot,
 } from "./streaming";
-export {
-  extractToolProgressMessage,
-  TOOL_CALLS_DATA_TOOL_NAME,
-} from "./streaming";
+export { TOOL_CALLS_DATA_TOOL_NAME } from "./streaming";
 export type {
   ApiFileData,
   ApiToolData,

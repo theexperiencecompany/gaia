@@ -1,29 +1,14 @@
-"""Sync-callable Redis stream writer for background executor execution.
+"""The stream writer a background run hands its graph: every frame goes to its stream's session collector.
 
-When executor runs as a background asyncio task (outside LangGraph's
-graph context), get_stream_writer() is unavailable. This provides a
-sync callable that schedules async Redis publishes via asyncio.create_task.
-
-Usage:
-    writer = make_redis_stream_writer(stream_id)
-    result = await execute_subagent_stream(ctx=ctx, stream_writer=writer)
+Outside LangGraph's graph context get_stream_writer() is unavailable; the collector is
+what the run's WorkFinished reads its cards from.
 """
 
 from collections.abc import Callable
-import json
 import time
 from typing import TypedDict, cast
 
 from app.agents.core.background.session import StreamSession, get_session
-from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
-from app.utils.background_tasks import spawn_background_task
-
-#: Task name for the fire-and-forget stream publishes. Tests drain by this name
-#: to wait out exactly the XADDs a turn scheduled, rather than every background
-#: task in the process (some of which outlive any single turn).
-STREAM_PUBLISH_TASK_NAME = "stream-publish"
-from shared.py.wide_events import log
 
 
 class _ReasoningDelta(TypedDict, total=False):
@@ -71,33 +56,17 @@ def _collect(session: StreamSession, data: dict[str, object]) -> None:
     session.tool_events.append({"reasoning": dict(reasoning)})
 
 
-async def publish_to_stream(stream_id: str, data: dict[str, object]) -> None:
-    """Publish one event to a stream and its collector, awaited, so a caller sending many keeps their order."""
-    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(data)}\n\n")
+def collect_frame(stream_id: str, data: dict[str, object]) -> None:
+    """Add one frame to its stream's session collector, when the stream has a session."""
     session = get_session(stream_id)
     if session is not None:
         _collect(session, data)
 
 
-def make_redis_stream_writer(stream_id: str) -> Callable[[dict[str, object]], None]:
-    """Return a sync callable that publishes tool events directly to Redis.
-
-    Matches the stream_writer protocol expected by execute_subagent_stream().
-    Also appends each event to the session's tool-event collector (if
-    registered); the SSE publish itself is unbatched, only the save-path
-    copy is coalesced by _collect.
-    """
+def make_session_writer(stream_id: str) -> Callable[[dict[str, object]], None]:
+    """Return the stream_writer execute_subagent_stream() expects, collecting into the stream's session."""
 
     def writer(data: dict[str, object]) -> None:
-        chunk = f"data: {json.dumps(data)}\n\n"
-        try:
-            spawn_background_task(
-                stream_manager.publish_chunk(stream_id, chunk),
-                name=STREAM_PUBLISH_TASK_NAME,
-            )
-        except RuntimeError:
-            log.error(f"{LogTag.AGENT} redis_writer: no event loop for stream", stream_id=stream_id)
-
         session = get_session(stream_id)
         if session is not None:
             if session.executor_first_frame_perf is None:

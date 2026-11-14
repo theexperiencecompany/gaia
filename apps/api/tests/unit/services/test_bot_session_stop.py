@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.chat import ConversationSource
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.models.bot_models import BotSessionDocument
 from app.models.user_models import AuthenticatedUser
@@ -13,7 +12,6 @@ from app.models.work_cancel_models import ConversationStopResponse, WorkCancelle
 from app.services import bot_session_stop, conversation_stop_service
 from app.services.bot_service import BotService
 from app.services.bot_session_stop import reset_bot_session, stop_bot_session
-from app.services.browser.job_stop import RequesterChat
 from shared.py.analytics.catalog.chat import ChatWorkStopped
 
 pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("fake_redis", "logged_stops")]
@@ -85,24 +83,22 @@ def no_session() -> Iterator[_Sessions]:
 
 
 class TestStop:
-    async def test_a_dm_stop_reaches_the_users_runs_from_any_group_and_keeps_the_session(
+    async def test_a_dm_stop_stops_the_dm_conversation_and_keeps_the_session(
         self, dm_session: _Sessions, cancelled: AsyncMock, captured: MagicMock
     ) -> None:
         await stop_bot_session("discord", "user123", "dm-chan", USER, is_dm=True)
 
         dm_session.get_by_session_key.assert_awaited_once_with("discord:user123:user123")
-        cancelled.assert_awaited_once_with(
-            "conv-dm", USER.user_id, RequesterChat(USER.user_id, ConversationSource.DISCORD)
-        )
+        cancelled.assert_awaited_once_with("conv-dm", USER.user_id)
         dm_session.delete_by_session_key.assert_not_awaited()
 
-    async def test_a_group_stop_reaches_only_that_groups_own_work(
+    async def test_a_group_stop_stops_that_groups_conversation(
         self, dm_session: _Sessions, cancelled: AsyncMock, captured: MagicMock
     ) -> None:
         await stop_bot_session("slack", "user123", "channel789", USER)
 
         dm_session.get_by_session_key.assert_awaited_once_with("slack:user123:channel789")
-        cancelled.assert_awaited_once_with("conv-dm", USER.user_id, None)
+        cancelled.assert_awaited_once_with("conv-dm", USER.user_id)
 
     async def test_a_stop_is_the_users_stop_and_emits_work_stopped_once(
         self, dm_session: _Sessions, cancelled: AsyncMock, captured: MagicMock
@@ -137,10 +133,10 @@ class TestReset:
 
         assert new_id == "conv-new"
         dm_session.get_by_session_key.assert_awaited_once_with("slack:user123:channel789")
-        cancelled.assert_awaited_once_with("conv-dm", USER.user_id, None)
+        cancelled.assert_awaited_once_with("conv-dm", USER.user_id)
         reset.assert_awaited_once_with("slack", "user123", "channel789", USER, is_dm=False)
 
-    async def test_new_in_a_dm_stops_the_users_runs_from_any_group(
+    async def test_new_in_a_dm_stops_the_dm_conversation(
         self,
         dm_session: _Sessions,
         cancelled: AsyncMock,
@@ -153,9 +149,7 @@ class TestReset:
         await reset_bot_session("discord", "user123", "dm-chan", USER, is_dm=True)
 
         dm_session.get_by_session_key.assert_awaited_once_with("discord:user123:user123")
-        cancelled.assert_awaited_once_with(
-            "conv-dm", USER.user_id, RequesterChat(USER.user_id, ConversationSource.DISCORD)
-        )
+        cancelled.assert_awaited_once_with("conv-dm", USER.user_id)
         reset.assert_awaited_once_with("discord", "user123", "dm-chan", USER, is_dm=True)
 
     async def test_new_is_its_own_action_and_emits_no_work_stopped(

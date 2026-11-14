@@ -7,6 +7,7 @@ import { ElectronRouteGuard } from "@/components/electron/ElectronRouteGuard";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
 import { Toaster } from "@/components/ui/Toaster";
 import { useCalendarChangesWebSocket } from "@/features/calendar/hooks/useCalendarChangesWebSocket";
+import { useDesktopToolRequests } from "@/features/chat/hooks/useDesktopToolRequests";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
@@ -46,6 +47,9 @@ function PaidSessionEffects() {
 
   // Calendar edits made anywhere (this page, another tab, GAIA's agent) re-read the cached events
   useCalendarChangesWebSocket();
+
+  // In the desktop app, run the agent's desktop tool requests (screenshot, clipboard, apps)
+  useDesktopToolRequests();
 
   return null;
 }

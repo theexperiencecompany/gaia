@@ -603,7 +603,7 @@ async def test_a_stop_cancels_only_the_work_before_it_and_reports_what_it_cancel
         patch.object(rig.effects, "cancel_work", side_effect=then_new_work_starts),
         patch.object(conversation_stop_service, "capture", side_effect=record),
     ):
-        stopped = await press_stop(rig.conversation_id, rig.user_id, None)
+        stopped = await press_stop(rig.conversation_id, rig.user_id)
     state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
     assert asked == [CancelWork(task_ids=("t1",), approval_ids=("a1",))]
     assert (stopped.work.executor_stopped, stopped.work.executor_task_id) == (True, "t1")

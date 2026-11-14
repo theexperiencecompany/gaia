@@ -7,10 +7,6 @@ import {
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import { applyConversationPage } from "@/features/chat/live/connection";
-import {
-  apiRowAwaitsApproval,
-  isApprovalFlagStale,
-} from "@/features/chat/utils/approvalFlag";
 import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
@@ -44,7 +40,7 @@ const toStoredConversation = (
   isSystemGenerated: conversation.is_system_generated ?? false,
   systemPurpose: conversation.system_purpose ?? null,
   isUnread: unreadUnlessViewed(conversation),
-  awaitingApproval: apiRowAwaitsApproval(conversation),
+  awaitingApproval: conversation.awaiting_approval,
   todoId: conversation.todo_id ?? null,
   source: conversation.source ?? undefined,
   listed: conversation.listed,
@@ -84,7 +80,7 @@ const identifyStaleConversations = (
       continue;
     }
 
-    if (isApprovalFlagStale(localFlagMap.get(conversationId), remote)) {
+    if (remote.awaiting_approval !== localFlagMap.get(conversationId)) {
       // Flag flipped without touching updatedAt — refetch for the dot.
       staleItems.push({
         conversation_id: conversationId,

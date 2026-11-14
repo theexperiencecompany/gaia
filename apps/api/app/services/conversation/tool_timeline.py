@@ -25,6 +25,7 @@ from shared.py.conversation_wire import (
     TimelineStep,
     TimelineStepKind,
     ToolDataEntry,
+    ToolProgress,
     ToolTimeline,
 )
 
@@ -69,7 +70,29 @@ def tool_timeline(cards: Sequence[ToolDataEntry]) -> ToolTimeline:
         cards=tuple(
             TimelineCard(key=key, card=card) for card, key in zip(shown, card_keys, strict=True)
         ),
+        progress=_progress(cards),
     )
+
+
+def _progress(cards: Sequence[ToolDataEntry]) -> ToolProgress | None:
+    """Return the newest tool call's line: the last tool-call card that names one."""
+    for card in reversed(cards):
+        data = card["data"]
+        if card["tool_name"] != TOOL_CALLS_CARD or not isinstance(data, dict):
+            continue
+        message = _text(data.get("message"))
+        if not message:
+            continue
+        integration, icon = data.get("integration_name"), data.get("icon_url")
+        return ToolProgress(
+            message=message,
+            tool_name=_text(data.get("tool_name")),
+            tool_category=_text(data.get("tool_category")),
+            integration_name=integration if isinstance(integration, str) else None,
+            icon_url=icon if isinstance(icon, str) else None,
+            show_category=data.get("show_category") is not False,
+        )
+    return None
 
 
 def _bucket(cards: Sequence[ToolDataEntry]) -> _Buckets:

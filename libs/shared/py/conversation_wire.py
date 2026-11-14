@@ -146,6 +146,19 @@ class TimelineCard(BaseModel):
     card: ToolDataEntry
 
 
+class ToolProgress(BaseModel):
+    """The newest tool call's line, which the loading row shows while the item streams."""
+
+    model_config = WIRE_CONFIG
+
+    message: str = Field(min_length=1)
+    tool_name: str
+    tool_category: str
+    integration_name: str | None
+    icon_url: str | None
+    show_category: bool
+
+
 class ToolTimeline(BaseModel):
     """What an item's cards show, in order: the tool thread, then the cards rendered on their own."""
 
@@ -153,6 +166,7 @@ class ToolTimeline(BaseModel):
 
     steps: tuple[TimelineStep, ...] = ()
     cards: tuple[TimelineCard, ...] = ()
+    progress: ToolProgress | None = None
 
 
 class ScreenItemBase(BaseModel):
@@ -190,6 +204,8 @@ class ReplyItem(ScreenItemBase):
     outcome: ReplyOutcome | None
     failure: FailureReason | None
     narrates: tuple[str, ...]
+    # The user message a retry of this reply sends again; None when it answers none.
+    retry_target: str | None
     # The files the reply and the work it narrates wrote; a chat platform uploads them once it settles.
     files: tuple[ReplyFile, ...]
 

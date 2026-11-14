@@ -44,7 +44,6 @@ from app.constants.cache import (
 from app.constants.executor import EXECUTOR_PROGRESS_MAX_CALLS
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.services.conversation.runtime import install_runtime_ports
 from tests.helpers import captured_wide_event
@@ -395,7 +394,6 @@ class TestLifetime:
         self, fake_redis: fakeredis.aioredis.FakeRedis, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Cancel frees the lock directly, so the run's later finalize finds it gone and deletes nothing."""
-        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
         monkeypatch.setattr(websocket_manager, "broadcast_to_user", AsyncMock())
         install_runtime_ports(Runtime().ports)
         await _hold_live_lock(fake_redis)

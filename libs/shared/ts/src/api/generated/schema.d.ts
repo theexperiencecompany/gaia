@@ -13351,6 +13351,8 @@ export interface components {
             /** Pinned */
             pinned: boolean;
             quote: components["schemas"]["ReplyToMessageData"] | null;
+            /** Retry Target */
+            retry_target: string | null;
             /** Seq */
             seq: number;
             timeline: components["schemas"]["ToolTimeline"];
@@ -15327,6 +15329,24 @@ export interface components {
             requires_integration: boolean;
         };
         /**
+         * ToolProgress
+         * @description The newest tool call's line, which the loading row shows while the item streams.
+         */
+        ToolProgress: {
+            /** Icon Url */
+            icon_url: string | null;
+            /** Integration Name */
+            integration_name: string | null;
+            /** Message */
+            message: string;
+            /** Show Category */
+            show_category: boolean;
+            /** Tool Category */
+            tool_category: string;
+            /** Tool Name */
+            tool_name: string;
+        };
+        /**
          * ToolsCategoryResponse
          * @description Response model for tools by category.
          */
@@ -15360,6 +15380,7 @@ export interface components {
              * @default []
              */
             cards: components["schemas"]["TimelineCard"][];
+            progress: components["schemas"]["ToolProgress"] | null;
             /**
              * Steps
              * @default []
@@ -16885,6 +16906,8 @@ export interface components {
              * @enum {string}
              */
             kind: "work";
+            /** Retry Target */
+            retry_target: string | null;
             /** Seq */
             seq: number;
             status: components["schemas"]["WorkStatus"];
@@ -17477,6 +17500,7 @@ export type TodoWorkflowStatusResponse = components['schemas']['TodoWorkflowStat
 export type ToolContract = components['schemas']['ToolContract'];
 export type ToolDataEntry = components['schemas']['ToolDataEntry'];
 export type ToolInfo = components['schemas']['ToolInfo'];
+export type ToolProgress = components['schemas']['ToolProgress'];
 export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse'];
 export type ToolsListResponse = components['schemas']['ToolsListResponse'];
 export type ToolTimeline = components['schemas']['ToolTimeline'];

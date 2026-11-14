@@ -89,6 +89,12 @@ async def stop_named_jobs(task_ids: Collection[str]) -> dict[str, BrowserStopOut
     return {job_id: await stop_job(job_id) for job_id in job_ids}
 
 
+async def stop_run_jobs(conversation_id: str) -> dict[str, BrowserStopOutcome]:
+    """Stop the jobs the conversation's executor run waits on in the foreground: they are its work, not their own."""
+    jobs = await running_chat_jobs(conversation_id, None)
+    return {job.job_id: await stop_job(job.job_id) for job in jobs if not job.in_background}
+
+
 async def stop_chat_jobs(
     conversation_id: str, requester: RequesterChat | None
 ) -> dict[str, BrowserStopOutcome]:

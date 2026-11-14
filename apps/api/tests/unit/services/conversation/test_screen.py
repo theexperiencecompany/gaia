@@ -36,7 +36,14 @@ from app.models.conversation_screen_models import (
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
 from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
-from shared.py.conversation_wire import FailureReason, ReplyOutcome, ScreenItemKind, ToolDataEntry
+from shared.py.conversation_wire import (
+    FailureReason,
+    ReplyItem,
+    ReplyOutcome,
+    ScreenItemKind,
+    ToolDataEntry,
+    ToolProgress,
+)
 from tests.unit.services.conversation.log_helpers import asked, decided, logged, notice, user
 
 
@@ -541,3 +548,73 @@ def test_a_reply_delivers_the_files_it_and_the_work_it_narrates_wrote_once_each(
     [*_, item] = project_screen(log)
     assert item.kind is ScreenItemKind.REPLY
     assert [file.path for file in item.files] == ["out/a.pdf", "out/b.pdf"]
+
+
+def test_a_reply_and_its_work_name_the_newest_user_message_they_answer_as_the_retry_target() -> (
+    None
+):
+    work = WorkStarted(id="work:t1", task_id="t1", cause_through=3, answers=("u1", "u2"))
+    reply = Reply(id="r:reply", reply_id="r", attempt_id="1", text="done")
+    settle = ReplySettled(
+        id="r:settled",
+        reply_id="r",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("u2", "u1"),
+        through=3,
+        quote_target=None,
+    )
+    log = [
+        logged(1, user("u1")),
+        logged(2, user("u2")),
+        logged(3, user("u3")),
+        logged(4, work),
+        logged(5, reply),
+        logged(6, settle),
+    ]
+    targets = {
+        item.id: item.retry_target
+        for item in project_screen(log)
+        if isinstance(item, WorkItem | ReplyItem)
+    }
+    assert targets == {"work:t1": "u2", "r": "u2"}
+
+
+def test_work_answering_no_user_message_has_no_retry_target() -> None:
+    work = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("n1",))
+    [_, item] = project_screen([logged(1, notice("n1")), logged(2, work)])
+    assert isinstance(item, WorkItem)
+    assert item.retry_target is None
+
+
+def test_an_items_timeline_states_the_newest_tool_calls_progress_line() -> None:
+    first: ToolDataEntry = {
+        "tool_name": TOOL_CALL_CARD,
+        "data": {"tool_name": "search", "message": "Searching the web", "show_category": False},
+    }
+    newest: ToolDataEntry = {
+        "tool_name": TOOL_CALL_CARD,
+        "data": {
+            "tool_name": "gmail_send",
+            "tool_category": "gmail",
+            "message": "Sending the email",
+            "integration_name": "Gmail",
+            "icon_url": None,
+        },
+    }
+    reply = Reply(
+        id="r:reply",
+        reply_id="r",
+        attempt_id="1",
+        text="hi",
+        tool_data=(first, newest, _card("no_message")),
+    )
+    [*_, item] = project_screen([logged(1, user("u1")), logged(2, reply)])
+    assert isinstance(item, ReplyItem)
+    assert item.timeline.progress == ToolProgress(
+        message="Sending the email",
+        tool_name="gmail_send",
+        tool_category="gmail",
+        integration_name="Gmail",
+        icon_url=None,
+        show_category=True,
+    )

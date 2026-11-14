@@ -60,6 +60,7 @@ async function startConversation(): Promise<string> {
     title: NEW_CONVERSATION_TITLE,
     description: NEW_CONVERSATION_TITLE,
     starred: false,
+    awaitingApproval: false,
     isSystemGenerated: false,
     createdAt: now,
     updatedAt: now,

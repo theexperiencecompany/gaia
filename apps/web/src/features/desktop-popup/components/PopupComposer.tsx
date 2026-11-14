@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Cancel01Icon } from "@icons";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
-import { useConversation } from "@/features/chat/hooks/useConversation";
+import { useChatRows } from "@/features/chat/hooks/useChatRows";
 import { sendMessage } from "@/features/chat/live/sendMessage";
 import { useElectron } from "@/hooks/useElectron";
 import { usePopupDismissGuard } from "../hooks/usePopupEscapeDismiss";
@@ -34,8 +34,7 @@ export default function PopupComposer({
   const inputRef = useRef<HTMLInputElement>(null);
   const { dismissPopup } = useElectron();
   const dismissIfIdle = usePopupDismissGuard();
-  const { convoMessages } = useConversation();
-  const messageCount = convoMessages?.length ?? 0;
+  const messageCount = useChatRows().length;
   const hasContent = text.trim().length > 0 && !disabled;
 
   useEffect(() => {
