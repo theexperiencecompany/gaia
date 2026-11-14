@@ -1,4 +1,4 @@
-import type { Capture, Styles } from "./capture";
+import type { Capture, Styles } from "./types";
 
 export interface Difference {
   key: string;
