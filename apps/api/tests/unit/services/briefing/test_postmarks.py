@@ -5,7 +5,7 @@ The repository is faked; the real stamp catalogue (cities.json) is read.
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
+from tests.helpers import captured_wide_event
 
 from app.models.briefing_models import BriefingModel, BriefingPayload, Postmark
 from app.services.briefing.postmarks import collected_postmarks
@@ -76,12 +76,19 @@ async def test_no_stamped_briefs_is_an_empty_collection_of_the_full_set() -> Non
     assert (result.total, result.postmarks) == (85, [])
 
 
-async def test_a_stamp_city_missing_from_the_catalogue_fails_loudly() -> None:
-    with (
-        patch(
-            f"{MODULE}.briefing_repository.list_stamped",
-            AsyncMock(return_value=[_brief("brief_1", "2026-09-01", "atlantis")]),
-        ),
-        pytest.raises(KeyError, match="atlantis"),
-    ):
-        await collected_postmarks(USER_ID)
+async def test_a_stamp_city_no_longer_in_the_catalogue_is_left_out_and_logged() -> None:
+    briefs = [
+        _brief("brief_1", "2026-09-01", "atlantis"),
+        _brief("brief_2", "2026-09-04", "lima"),
+    ]
+    with patch(f"{MODULE}.briefing_repository.list_stamped", AsyncMock(return_value=briefs)):
+        async with captured_wide_event() as event:
+            result = await collected_postmarks(USER_ID)
+
+    assert [postmark.city_slug for postmark in result.postmarks] == ["lima"]
+    [warning] = event["warnings"]
+    assert (warning["msg"], warning["city_slug"], warning["briefing_id"]) == (
+        "briefing.postmark_city_unknown",
+        "atlantis",
+        "brief_1",
+    )
