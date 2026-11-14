@@ -281,45 +281,66 @@ const PART_PROPS: Record<string, string[]> = {
   label: TYPE_ONLY,
 };
 
+/** Whether a property compares on this reading: both versions draw it on the element the part names. */
+function compared(
+  key: string,
+  prop: string,
+  v2Value: string,
+  v3Value: string | undefined,
+): boolean {
+  const only = PART_PROPS[key.split("::")[1].replace(/\d+$/, "")];
+  if (only && !only.includes(prop)) return false;
+  // n/a on one side: the other version draws this on a different element of the part
+  if (v2Value === "n/a" || v3Value === "n/a") return false;
+  // text-x/y exist only where the part itself holds the text
+  if (prop.startsWith("text-") && v3Value === undefined) return false;
+  // insets compare through text-x/y and the parts' offsets: padding sits on different elements per version
+  if (prop.startsWith("padding-")) return false;
+  // a fade shows on a control's fill; on every other part the property it times never changes
+  return (
+    prop !== "transition-duration" || FADING_KINDS.includes(key.split("/")[0])
+  );
+}
+
+/** A part one version draws and the other does not. */
+function partPresence(
+  key: string,
+  rawV2: Styles,
+  rawV3: Styles | undefined,
+): Difference[] {
+  if (rawV2.missing === rawV3?.missing) return [];
+  return [
+    {
+      key,
+      prop: "(part)",
+      v2: rawV2.missing ? "missing" : "present",
+      v3: rawV3 && !rawV3.missing ? "present" : "missing",
+    },
+  ];
+}
+
+/** The differences on one reading both versions draw. */
+function compareReading(
+  key: string,
+  rawV2: Styles,
+  rawV3: Styles,
+): Difference[] {
+  const [a, b] = [visible(rawV2), visible(rawV3)];
+  return Object.entries(a)
+    .filter(([prop, value]) => compared(key, prop, value, b[prop]))
+    .filter(([prop, value]) => !valuesEqual(prop, value, b[prop] ?? ""))
+    .map(([prop, value]) => ({ key, prop, v2: value, v3: b[prop] ?? "" }));
+}
+
 /** Every property of every part v2 drew that v3 draws differently, beyond the tolerances. */
 export function compareCaptures(v2: Capture, v3: Capture): Difference[] {
-  const out: Difference[] = [];
-  for (const [key, rawV2] of Object.entries(v2)) {
+  return Object.entries(v2).flatMap(([key, rawV2]) => {
     const rawV3 = v3[key];
     if (!rawV3 || rawV3.missing || rawV2.missing) {
-      if (rawV2.missing !== rawV3?.missing) {
-        out.push({
-          key,
-          prop: "(part)",
-          v2: rawV2.missing ? "missing" : "present",
-          v3: rawV3 && !rawV3.missing ? "present" : "missing",
-        });
-      }
-      continue;
+      return partPresence(key, rawV2, rawV3);
     }
-    const [a, b] = [visible(rawV2), visible(rawV3)];
-    const only = PART_PROPS[key.split("::")[1].replace(/\d+$/, "")];
-    for (const [prop, value] of Object.entries(a)) {
-      if (only && !only.includes(prop)) continue;
-      // n/a on one side: the other version draws this on a different element of the part
-      if (value === "n/a" || b[prop] === "n/a") continue;
-      // text-x/y exist only where the part itself holds the text
-      if (prop.startsWith("text-") && b[prop] === undefined) continue;
-      // insets compare through text-x/y and the parts' offsets: padding sits on different elements per version
-      if (prop.startsWith("padding-")) continue;
-      // a fade shows on a control's fill; on every other part the property it times never changes
-      if (
-        prop === "transition-duration" &&
-        !FADING_KINDS.includes(key.split("/")[0])
-      ) {
-        continue;
-      }
-      if (!valuesEqual(prop, value, b[prop] ?? "")) {
-        out.push({ key, prop, v2: value, v3: b[prop] ?? "" });
-      }
-    }
-  }
-  return out;
+    return compareReading(key, rawV2, rawV3);
+  });
 }
 
 export const isApproved = (difference: Difference, approvals: Approval[]) =>
