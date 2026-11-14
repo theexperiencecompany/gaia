@@ -885,6 +885,47 @@ class TestDailyBrief:
         assert world.capture.call_args.args[1].form == "quiet_note"
         assert world.bags == bags_before
 
+    def _shown_before(self, world: World, todo_id: str, times: int) -> None:
+        world.memory = [
+            SignalMemoryDocument(
+                user_id=_USER,
+                integration_id="gaia",
+                external_id=f"todo:{todo_id}",
+                first_seen=_NOW - timedelta(days=3),
+                times_shown=times,
+                last_shown=_NOW - timedelta(days=1),
+                last_state="you",
+            )
+        ]
+
+    async def test_a_day_holding_only_what_earlier_briefs_showed_is_quiet(
+        self, world: World
+    ) -> None:
+        """Replay: the same three undated todos were drawn as a fresh edition day after day."""
+        self._quiet(world)
+        world.calendar = []
+        world.work = context.TrackedWork(blocked=[_todo("b1", "Approve the Acme MSA")])
+        self._shown_before(world, "b1", times=2)
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).form is BriefForm.QUIET_NOTE
+        world.host_image.assert_not_awaited()
+
+    async def test_a_day_with_something_new_is_an_edition_even_beside_repeats(
+        self, world: World
+    ) -> None:
+        self._quiet(world)
+        world.calendar = []
+        world.work = context.TrackedWork(
+            blocked=[_todo("b1", "Approve the Acme MSA"), _todo("b2", "Reply to Daniel")]
+        )
+        self._shown_before(world, "b1", times=2)
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).form is BriefForm.EDITION
+
     async def test_a_quiet_day_whose_calendar_did_not_answer_says_so(self, world: World) -> None:
         self._quiet(world)
         world.calendar = context.CalendarUnread(context.CalendarGap.UNAVAILABLE)
