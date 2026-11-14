@@ -2,7 +2,11 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isValidSection } from "@/features/settings/config/sectionKeys";
+import { MENU_SECTIONS } from "@/features/search/config/commandMenuConfig";
+import {
+  DEFAULT_SETTINGS_PATH,
+  isValidSection,
+} from "@/features/settings/config/sectionKeys";
 
 import {
   DEFAULT_SETTINGS_SECTION,
@@ -30,5 +34,15 @@ describe("settings redirects", () => {
     expect(first.has?.[0].key).toBe("section");
     expect(first.destination).toBe("/settings/:section");
     expect(second.has).toBeUndefined();
+  });
+
+  it("open in-app Settings on a section, so a click never rides the /settings redirect", () => {
+    const paths = MENU_SECTIONS.flatMap((section) => section.items)
+      .map((item) => item.path)
+      .filter((p): p is string => p?.startsWith("/settings") ?? false);
+    expect(paths).toContain(DEFAULT_SETTINGS_PATH);
+    for (const settingsPath of paths) {
+      expect(isValidSection(settingsPath.split("/")[2])).toBe(true);
+    }
   });
 });

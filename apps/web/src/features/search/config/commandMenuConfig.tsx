@@ -13,6 +13,7 @@ import {
   ZapIcon,
 } from "@icons";
 import type { ReactNode } from "react";
+import { DEFAULT_SETTINGS_PATH } from "@/features/settings/config/sectionKeys";
 
 // Menu item configuration
 export interface MenuItemConfig {
@@ -120,7 +121,7 @@ const USER_ITEMS: MenuItemConfig[] = [
     id: "settings",
     label: "Settings",
     icon: <Settings01Icon width={18} height={18} />,
-    path: "/settings",
+    path: DEFAULT_SETTINGS_PATH,
     shortcut: "⌘,",
   },
 ];
