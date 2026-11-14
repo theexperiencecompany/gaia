@@ -170,8 +170,8 @@ async def _run(args: argparse.Namespace) -> int:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description=__doc__,  # pragma: no mutate — help text only
+    parser = argparse.ArgumentParser(  # pragma: no mutate — help text and its layout only
+        description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(

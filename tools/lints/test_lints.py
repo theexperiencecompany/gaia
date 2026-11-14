@@ -23,6 +23,7 @@ from unittest.mock import patch
 import comment_slop
 import comms_graph_owner
 import docstring_slop
+import mutation_pragmas
 import no_service_classes
 import pytest
 import repository_boundaries
@@ -959,3 +960,59 @@ def test_runner_hands_test_files_only_to_rules_that_opt_in(
     assert code == 1
     assert "DS4" in err  # docstring-content opted in and saw the test file
     assert "repository-boundaries" not in err  # the boundary rule still skips tests
+
+
+# --------------------------------------------------------------------------- #
+# mutation-pragmas
+# --------------------------------------------------------------------------- #
+
+
+def _pragma_lines(tmp_path: Path, src: str) -> list[int]:
+    path = _write(tmp_path, "app/x.py", src)
+    return [v.line for v in mutation_pragmas.check([path])]
+
+
+def test_a_pragma_mutmut_honours_is_clean(tmp_path: Path) -> None:
+    src = (
+        "def f(a):\n"
+        "    x = [\n"
+        "        {'$limit': 1},  # pragma: no mutate\n"
+        "    ]\n"
+        "    # pragma: no mutate start\n"
+        "    y = g(a, 1)\n"
+        "    # pragma: no mutate end\n"
+        "    z = h(  # pragma: no mutate\n"
+        "        a,\n"
+        "    )\n"
+        "    return g(\n"
+        "        a\n"
+        "    )  # pragma: no mutate\n"
+    )
+    assert _pragma_lines(tmp_path, src) == []
+
+
+def test_a_start_or_end_inside_brackets_is_flagged(tmp_path: Path) -> None:
+    src = (
+        "x = [\n    # pragma: no mutate start\n    {'$limit': 1},\n    # pragma: no mutate end\n]\n"
+    )
+    assert _pragma_lines(tmp_path, src) == [2, 4]
+
+
+def test_a_bare_comment_only_pragma_is_flagged(tmp_path: Path) -> None:
+    src = "# pragma: no mutate -- the next line is a no-op\nx = g('a')\n"
+    assert _pragma_lines(tmp_path, src) == [1]
+
+
+def test_a_pragma_on_a_closing_bracket_inside_an_expression_is_flagged(tmp_path: Path) -> None:
+    src = "x = [\n    {\n        'a': 1\n    },  # pragma: no mutate\n]\n"
+    assert _pragma_lines(tmp_path, src) == [4]
+
+
+def test_a_pragma_on_a_plain_argument_of_a_multiline_call_is_flagged(tmp_path: Path) -> None:
+    src = "x = g(\n    a,\n    limit=limit,  # pragma: no mutate\n    b='s',  # pragma: no mutate\n)\n"
+    assert _pragma_lines(tmp_path, src) == [3]
+
+
+def test_pragmas_outside_app_are_ignored(tmp_path: Path) -> None:
+    path = _write(tmp_path, "scripts/x.py", "x = [\n    # pragma: no mutate start\n    1,\n]\n")
+    assert mutation_pragmas.check([path]) == []
