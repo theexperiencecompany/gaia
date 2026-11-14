@@ -88,8 +88,7 @@ class InMemoryConversationLog:
 
     async def append(self, conversation_id: str, user_id: str, entry: Entry) -> Appended:
         await self.pause("append")
-        conversation = self._conversations.setdefault(conversation_id, _Conversation(user_id))
-        result = self._append(conversation, entry)
+        result = self._append(self._own(conversation_id, user_id), entry)
         await self.pause("append:done")
         return result
 
@@ -117,22 +116,22 @@ class InMemoryConversationLog:
         self, conversation_id: str, user_id: str, seq: int
     ) -> Sequence[LoggedEntry]:
         await self.pause("read_after")
-        return [item for item in self._conv(conversation_id).entries if item.seq > seq]
+        return [item for item in self._read(conversation_id, user_id).entries if item.seq > seq]
 
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         await self.pause("state")
-        return self._conv(conversation_id).state
+        return self._read(conversation_id, user_id).state
 
     async def unsettled(self, conversation_id: str, user_id: str) -> Unsettled:
         await self.pause("unsettled")
-        conversation = self._conv(conversation_id)
+        conversation = self._read(conversation_id, user_id)
         since = max(conversation.state.settled_through, conversation.state.stopped_through)
         entries = [item for item in conversation.entries if item.seq > since]
         return Unsettled(state=conversation.state, entries=entries)
 
     async def claim(self, conversation_id: str, user_id: str) -> StepClaim | None:
         await self.pause("claim")
-        conversation = self._conversations.setdefault(conversation_id, _Conversation(user_id))
+        conversation = self._own(conversation_id, user_id)
         if conversation.holder is not None and self._clock() < conversation.alive_until:
             return None
         took_over = conversation.holder is not None
@@ -165,7 +164,7 @@ class InMemoryConversationLog:
 
     async def hint(self, conversation_id: str, user_id: str) -> PreemptHint:
         await self.pause("hint")
-        conversation = self._conv(conversation_id)
+        conversation = self._read(conversation_id, user_id)
         state = conversation.state
         barged = conversation.barged_reply
         return PreemptHint(
@@ -189,6 +188,17 @@ class InMemoryConversationLog:
 
     def _conv(self, conversation_id: str) -> _Conversation:
         return self._conversations.get(conversation_id) or _Conversation(user_id="")
+
+    def _read(self, conversation_id: str, user_id: str) -> _Conversation:
+        """Another user's conversation reads as empty: the real log scopes every read by its owner."""
+        conversation = self._conv(conversation_id)
+        return conversation if conversation.user_id == user_id else _Conversation(user_id=user_id)
+
+    def _own(self, conversation_id: str, user_id: str) -> _Conversation:
+        conversation = self._conversations.setdefault(conversation_id, _Conversation(user_id))
+        if conversation.user_id != user_id:
+            raise PermissionError(f"conversation {conversation_id} belongs to another user")
+        return conversation
 
     def _holding(self, claim: StepClaim) -> _Conversation:
         conversation = self._conv(claim.conversation_id)
@@ -474,8 +484,11 @@ class ScriptedRunner:
 @dataclass
 class RecordingFrames:
     published: list[OutputFrame] = field(default_factory=list)
+    # The conversation each publish went to.
+    conversations: list[str] = field(default_factory=list)
 
     async def publish(self, conversation_id: str, *frames: OutputFrame) -> None:
+        self.conversations.append(conversation_id)
         self.published.extend(frames)
 
 
@@ -490,8 +503,11 @@ class RecordingEffects:
     calls: list[EffectCall] = field(default_factory=list)
     failing: frozenset[str] = frozenset()
     on_kick: Action | None = None
+    # The (conversation, user) each effect was run for.
+    addressed: list[tuple[str, str]] = field(default_factory=list)
 
     async def kick(self, conversation_id: str, user_id: str) -> None:
+        self.addressed.append((conversation_id, user_id))
         self._record(EffectCall("kick"))
         if self.on_kick is not None:
             await self.on_kick()
@@ -499,13 +515,16 @@ class RecordingEffects:
     async def cancel_work(
         self, conversation_id: str, user_id: str, cancel: CancelWork
     ) -> WorkCancelled:
+        self.addressed.append((conversation_id, user_id))
         self._record(EffectCall("cancel_work", cancel.task_ids))
-        return WorkCancelled()
+        return WorkCancelled(pending_task_ids=list(cancel.task_ids))
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:
+        self.addressed.append((conversation_id, user_id))
         self._record(EffectCall("start_ack", message_id))
 
     async def reset_workflow_threads(self, conversation_id: str) -> None:
+        self.addressed.append((conversation_id, ""))
         self._record(EffectCall("reset_workflow_threads"))
 
     def _record(self, call: EffectCall) -> None:
