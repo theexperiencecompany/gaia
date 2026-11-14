@@ -62,7 +62,7 @@ class TestGateContext:
         assert read_gate_context(make_request(configurable=configurable)) is None
 
     def test_a_background_run_is_identified_as_background(self) -> None:
-        # No live client watches it, so its pending guidance points at the Approvals tab.
+        # No live client watches it, so its pending guidance points at its conversation.
         request = make_request(
             configurable={
                 "stream_id": STREAM_ID,

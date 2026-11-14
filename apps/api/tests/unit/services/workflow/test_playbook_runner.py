@@ -416,7 +416,6 @@ async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the
     )
     with (
         patch(f"{GATE}.approval_ledger_repository", ledger),
-        patch(f"{GATE}.recall_declined_call", AsyncMock(return_value=None)),
         patch(f"{GATE}._integration_name_for", AsyncMock(return_value=None)),
         patch(f"{GATE}.announce_approval", AsyncMock()) as publish,
     ):

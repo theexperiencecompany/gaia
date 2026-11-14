@@ -1,7 +1,7 @@
 """HIL preference + custom-tool classification documents."""
 
 from datetime import UTC, datetime
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -9,25 +9,12 @@ from app.constants.hil import ApprovalDecision
 from app.models.document_models import MongoDocument
 from shared.py.approvals import ActionResult, ApprovalOutcome
 
-# The three global approval modes. Launch switch: the default stays
-# ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.
+# The three global approval modes. The default applies at read time to every user
+# who never chose a mode, so changing it moves all of them at once.
 HILMode = Literal["always_allow", "always_ask", "auto"]
 # once: this call only. always_tool: also set a "never ask" override for the tool.
 ApprovalScope = Literal["once", "always_tool"]
-HIL_DEFAULT_MODE: HILMode = "always_allow"
-
-
-class DeclinedCallRecord(TypedDict):
-    """What ``bridge.remember_declined_call`` stores in Redis for one declined call.
-
-    Written and read by that one module, so it needs no runtime validation — the
-    TypedDict is the shape contract both sides are checked against.
-    """
-
-    feedback: str | None
-    # Present only on auto-mode refusals (absent on rows written before this
-    # shipped, which correctly read as user-made).
-    auto: NotRequired[bool]
+HIL_DEFAULT_MODE: HILMode = "auto"
 
 
 class HILPreferences(BaseModel):
@@ -70,6 +57,25 @@ class HILToolRiskUpdate(BaseModel):
     classified_at: datetime | None = None
 
 
+class ApprovalDetail(BaseModel):
+    """One labelled fact about a gated call, e.g. To: bob@x.com."""
+
+    label: str
+    value: str
+
+
+class ApprovalDescription(BaseModel):
+    """A gated call in plain words, rendered the same by web cards and bot prompts."""
+
+    # Verb + object, e.g. "Send an email".
+    action: str
+    # The action with its target, for lists and the model: Send an email to bob@x.com: "Q3".
+    headline: str
+    # Closing verb for a single-action prompt, e.g. "send it".
+    confirm: str
+    details: list[ApprovalDetail]
+
+
 class ApprovalProposal(BaseModel):
     """What a gated call proposes; the ledger mints the id and owns the state."""
 
@@ -84,7 +90,6 @@ class ApprovalProposal(BaseModel):
     # The connected account the call acts as; None is the integration's primary.
     account: str | None = None
     summary: str = ""
-    rationale: str = ""
     preview: str = ""
     owner_agent: str = ""
     # Background owner parked on this approval, for the resume driver: who to wake

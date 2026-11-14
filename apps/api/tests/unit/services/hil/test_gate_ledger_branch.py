@@ -1,7 +1,7 @@
 """Ledger branch of the approval gate (flag on: register, never interrupt)."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware.types import ToolCallRequest
@@ -11,7 +11,7 @@ from pydantic import BaseModel
 import pytest
 import time_machine
 
-from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS, HIL_STATUS_KWARG
+from app.constants.hil import AUTO_ASK_NOTE, HIL_APPROVAL_TIMEOUT_SECONDS, HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
 from app.models.conversation_log_models import ApprovalRequested
 from app.models.hil_models import (
@@ -19,19 +19,13 @@ from app.models.hil_models import (
     ApprovalProposal,
 )
 from app.services.hil import gate
-from app.services.hil.bridge import GateVerdict
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, summarize_history
 from app.services.hil.jev_judge import JevIntentJudge
-from app.services.hil.prompts import (
-    AUTO_REJECT_TEMPLATE,
-    DENIED_TEMPLATE,
-    GATE_ERROR_TEMPLATE,
-    TIMEOUT_TEMPLATE,
-)
-from app.services.hil.utils import GatedApproval, GatedCall, approval_window_label
+from app.services.hil.prompts import GATE_ERROR_TEMPLATE
+from app.services.hil.utils import GatedApproval, GatedCall
 from app.utils.general_utils import ELLIPSIS
-from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 
 from .conftest import (
     CONVERSATION_ID,
@@ -132,8 +126,8 @@ class TestLedgerBranch:
         ledger.register.assert_not_awaited()
         assert result is not None and "NOT performed" in str(result.content)
 
-    async def test_background_pending_points_at_the_approvals_tab(self) -> None:
-        """A background run has no watcher: the approval lives in the Approvals tab, so the guidance must say so instead of "when this run ends"."""
+    async def test_background_pending_points_at_its_conversation(self) -> None:
+        """A background run has no watcher: the card waits in its conversation, so the guidance must say so instead of "when this run ends"."""
         ledger = _ledger()
         request = _gated_request(execution_mode="background")
         with (
@@ -144,7 +138,8 @@ class TestLedgerBranch:
         ):
             result = await gate.decide_tool_call(request)
         assert result is not None
-        assert "Approvals tab" in str(result.content)
+        assert "this conversation, which shows in their chat list" in str(result.content)
+        assert "Approvals tab" not in str(result.content)
         assert "when this run ends" not in str(result.content)
 
     async def test_background_workflow_run_tags_the_ledger_owner(self) -> None:
@@ -414,7 +409,6 @@ class TestLedgerRegistration:
         result = await gate.decide_tool_call(gated_request(thread_id="gmail_conv-1"))
 
         fingerprint = approval_fingerprint(GATED_TOOL, GATED_ARGS)
-        gate_seams.recall.assert_awaited_once_with(STREAM_ID, GATED_TOOL, GATED_ARGS)
         gate_seams.ledger.find_live.assert_awaited_once_with(fingerprint, CONVERSATION_ID)
         gate_seams.ledger.find_latest_denied.assert_awaited_once_with(fingerprint, CONVERSATION_ID)
         gate_seams.ledger.register.assert_awaited_once_with(
@@ -597,7 +591,7 @@ class TestLedgerCollapsesIntoExistingRows:
         result = await gate.decide_tool_call(gated_request(**extra))
 
         expected_destination = (
-            gate.ApprovalDestination.APPROVALS_TAB if background else gate.ApprovalDestination.CHAT
+            gate.ApprovalDestination.CONVERSATION if background else gate.ApprovalDestination.CHAT
         )
         assert gate._approval_destination(background=background) is expected_destination
         _assert_pending(result)
@@ -634,50 +628,6 @@ class TestLedgerCollapsesIntoExistingRows:
             f"REFUSED ap_old: the user denied Send the old one in this run.{said} "
             "DO NOT re-request it. State what you skipped and continue without it."
         )
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
-
-
-@pytest.mark.unit
-class TestLedgerDeclineMemory:
-    async def test_a_users_decline_this_turn_is_repeated_back(self, gate_seams: GateSeams) -> None:
-        gate_seams.recall.return_value = GateVerdict(
-            outcome=ApprovalOutcome.DENIED, feedback="wrong person"
-        )
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == DENIED_TEMPLATE.format(
-            tool=GATED_TOOL, feedback=" The user said: 'wrong person'."
-        )
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
-        gate_seams.ledger.register.assert_not_awaited()
-
-    async def test_an_approval_that_expired_this_turn_is_repeated_as_a_timeout(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.recall.return_value = GateVerdict(outcome=ApprovalOutcome.EXPIRED, feedback=None)
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == TIMEOUT_TEMPLATE.format(
-            tool=GATED_TOOL, feedback="", waited=approval_window_label()
-        )
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "timeout"
-        gate_seams.ledger.register.assert_not_awaited()
-
-    async def test_an_auto_refusal_without_words_is_repeated_as_auto(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.recall.return_value = GateVerdict(
-            outcome=ApprovalOutcome.DENIED, feedback=None, decider=ApprovalDecider.AUTO
-        )
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(tool=GATED_TOOL, reason="")
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
 
 
@@ -766,14 +716,11 @@ class TestLedgerAutoMode:
         gate_seams.ledger.register.assert_not_awaited()
 
     @pytest.mark.regression
-    @pytest.mark.parametrize(
-        ("outcome", "decision"), [("accept", "approved"), ("reject", "denied")]
-    )
-    async def test_an_auto_decision_is_counted_as_a_decision_made_by_auto(
-        self, gate_seams: GateSeams, outcome: Literal["accept", "reject"], decision: str
+    async def test_an_auto_run_is_counted_as_a_decision_made_by_auto(
+        self, gate_seams: GateSeams
     ) -> None:
         gate_seams.policy.return_value = "auto"
-        gate_seams.judge.return_value = IntentDecision(outcome, "asked")
+        gate_seams.judge.return_value = IntentDecision("accept", "asked")
         posthog = MagicMock()
 
         with patch("app.services.analytics_service._get_posthog_client", return_value=posthog):
@@ -782,7 +729,7 @@ class TestLedgerAutoMode:
         [sent] = [c.kwargs for c in posthog.capture.call_args_list]
         assert (sent["event"], sent["distinct_id"]) == ("hil:decision_submitted", USER_ID)
         decided = {key: sent["properties"].get(key) for key in ("decision", "tool_name", "via")}
-        assert decided == {"decision": decision, "tool_name": GATED_TOOL, "via": "auto"}
+        assert decided == {"decision": "approved", "tool_name": GATED_TOOL, "via": "auto"}
 
     async def test_an_unsure_judge_decides_nothing(self, gate_seams: GateSeams) -> None:
         gate_seams.policy.return_value = "auto"
@@ -796,61 +743,33 @@ class TestLedgerAutoMode:
             c.kwargs["event"] for c in posthog.capture.call_args_list
         ]
 
-    async def test_an_unsure_judge_explains_itself_on_the_card(self, gate_seams: GateSeams) -> None:
+    async def test_an_unsure_judge_tells_the_user_in_plain_words_and_the_model_why(
+        self, gate_seams: GateSeams
+    ) -> None:
         gate_seams.policy.return_value = "auto"
         gate_seams.judge.return_value = IntentDecision("ask", "the recipient is new")
 
         result = await gate.decide_tool_call(gated_request())
 
         _assert_pending(result)
-        assert (
-            gate_seams.requested.await_args.args[2].auto_reason
-            == "Auto mode wasn't sure: the recipient is new"
-        )
+        assert gate_seams.requested.await_args.args[2].auto_reason == AUTO_ASK_NOTE
+        assert "Auto mode wasn't sure: the recipient is new" in str(result.content)
 
-    async def test_an_unsure_judge_with_no_reason_adds_nothing(self, gate_seams: GateSeams) -> None:
+    async def test_an_unsure_judge_with_no_reason_still_says_why_it_asks(
+        self, gate_seams: GateSeams
+    ) -> None:
         gate_seams.policy.return_value = "auto"
 
         result = await gate.decide_tool_call(gated_request())
 
         _assert_pending(result)
+        assert gate_seams.requested.await_args.args[2].auto_reason == AUTO_ASK_NOTE
+
+    async def test_an_ask_policy_card_carries_no_auto_note(self, gate_seams: GateSeams) -> None:
+        result = await gate.decide_tool_call(gated_request())
+
+        _assert_pending(result)
         assert gate_seams.requested.await_args.args[2].auto_reason is None
-
-    async def test_a_rejected_call_is_refused_and_remembered_as_auto(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.policy.return_value = "auto"
-        gate_seams.judge.return_value = IntentDecision("reject", "you said never email b@x")
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(
-            tool=GATED_TOOL, reason="you said never email b@x"
-        )
-        gate_seams.remember.assert_awaited_once_with(
-            STREAM_ID, GATED_TOOL, GATED_ARGS, "you said never email b@x", auto=True
-        )
-        gate_seams.ledger.register.assert_not_awaited()
-
-    async def test_a_lost_decline_memory_is_reported_but_still_refuses(
-        self, gate_seams: GateSeams
-    ) -> None:
-        gate_seams.policy.return_value = "auto"
-        gate_seams.judge.return_value = IntentDecision("reject", "no")
-        gate_seams.remember.side_effect = RuntimeError("redis down")
-
-        result = await gate.decide_tool_call(gated_request())
-
-        assert result is not None
-        assert result.content == AUTO_REJECT_TEMPLATE.format(tool=GATED_TOOL, reason="no")
-        gate_seams.log.warning.assert_called_once()
-        assert "decline memory write failed" in gate_seams.log.warning.call_args.args[0]
-        assert gate_seams.log.warning.call_args.kwargs == {
-            "tool_name": GATED_TOOL,
-            "error": "redis down",
-            "error_type": "RuntimeError",
-        }
 
     async def test_unreadable_memory_and_prefs_are_reported_and_judged_without(
         self, gate_seams: GateSeams

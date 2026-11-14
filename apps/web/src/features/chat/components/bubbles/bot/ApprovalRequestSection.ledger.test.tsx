@@ -27,7 +27,6 @@ const card = (
   outcome: null,
   feedback: null,
   auto_reason: null,
-  timeout_seconds: 300,
   ...overrides,
 });
 

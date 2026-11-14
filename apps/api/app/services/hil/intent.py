@@ -53,9 +53,9 @@ class JudgedCall:
     tool_schema: dict[str, object] | None = None
 
 
-# What auto mode decided about one call: accept runs it, reject refuses it with
-# the reason (no card, no retry), ask registers the normal approval card.
-AutoOutcome = Literal["accept", "reject", "ask"]
+# What auto mode decided about one call: accept runs it, ask registers the normal
+# approval card. Auto never refuses on its own: a call it doubts goes to the user.
+AutoOutcome = Literal["accept", "ask"]
 
 
 @dataclass(frozen=True)
@@ -79,11 +79,7 @@ class AutoHistory:
 
 @dataclass(frozen=True)
 class IntentDecision:
-    """The judge's call, plus the why — shown to the user on receipts and refusals.
-
-    Ternary, not boolean: accept runs the call, reject refuses it with the
-    reason (no card, no retry), ask registers the normal approval card.
-    """
+    """The judge's call, plus the model-facing why: accept runs the call, ask raises a card."""
 
     outcome: AutoOutcome
     reason: str

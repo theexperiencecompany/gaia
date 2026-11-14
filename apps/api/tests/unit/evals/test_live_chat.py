@@ -137,7 +137,6 @@ def approval_card(outcome: ApprovalOutcome | None) -> ApprovalRequestEntry:
             decider=None if outcome is None else ApprovalDecider.USER,
             feedback=None,
             auto_reason=None,
-            timeout_seconds=60,
         ),
         timestamp=NOW.isoformat(),
     )

@@ -5,9 +5,9 @@ BUTTON-LESS CHANNELS ONLY: the conversation step's approval replies
 web/mobile/desktop resolve via POST /approvals/{id}/decision instead.
 
 A reply approves (runs EXACTLY as proposed), denies (any change is a deny with
-the change as feedback), or is unrelated (abandon, run the new message). Several
-pending approvals decide per item: unnamed items deny on an exclusive reply and
-stay pending on a partial one. JEV (jev_reply.py) classifies first when the
+the change as feedback), or is a new request (the approvals stay pending and the
+message runs). Several pending approvals decide per item: unnamed items deny on
+an exclusive reply and stay pending on a partial one. JEV (jev_reply.py) classifies first when the
 user's flag is on, the LLM on its transport failure. Fails safe: a classifier
 error leaves approvals pending, never approves.
 """
@@ -18,7 +18,6 @@ from typing import assert_never
 
 from app.constants.hil import (
     HIL_CLASSIFIER_HISTORY_TURNS,
-    UNRELATED_FEEDBACK,
     ApprovalDecision,
     ReplyChoice,
 )
@@ -77,24 +76,21 @@ async def resolve_pending_from_message(
     message: str,
     history: list[MessageDict] | None = None,
 ) -> DecisionAction | None:
-    """Resolve the conversation's pending approval(s) from message.
+    """Resolve the conversation's pending approval(s) from message; history is recent turns for the classifier.
 
-    history is a recent window of prior turns (context for the classifier).
-    Returns the overall classified action ("approve" when anything was approved,
-    "deny" when things were only declined, "unrelated" when the user moved on),
-    or None when nothing was pending or the reply addressed none of it.
+    Returns "approve" when anything was approved, "deny" when only declined, "unrelated"
+    when the reply is a new request (they stay pending), None when it decided nothing.
     """
     pending = await pending_approvals(conversation_id, user_id)
     if not pending:
         return None
     if len(pending) == 1:
-        return await _resolve_single(pending[0], conversation_id, user_id, message, history)
-    return await _resolve_batch(pending, conversation_id, user_id, message, history)
+        return await _resolve_single(pending[0], user_id, message, history)
+    return await _resolve_batch(pending, user_id, message, history)
 
 
 async def _resolve_single(
     record: ApprovalLedgerDocument,
-    conversation_id: str,
     user_id: str,
     message: str,
     history: list[MessageDict] | None,
@@ -107,7 +103,6 @@ async def _resolve_single(
         # (matches the batch path's fail-toward-pending behavior).
         return None
     if result.action == "unrelated":
-        await _abandon_ledger_approvals(conversation_id, user_id)
         return "unrelated"
 
     action, feedback = no_arg_edit(result.action, result.feedback)
@@ -117,7 +112,6 @@ async def _resolve_single(
 
 async def _resolve_batch(
     pending: list[ApprovalLedgerDocument],
-    conversation_id: str,
     user_id: str,
     message: str,
     history: list[MessageDict] | None,
@@ -129,7 +123,6 @@ async def _resolve_batch(
     action_details = [build_action_detail(r.summary, r.args) for r in pending]
     result = await interpret_batch_decision_message(message, action_details, history)
     if result.unrelated:
-        await _abandon_ledger_approvals(conversation_id, user_id)
         return "unrelated"
 
     approved, denied = await _apply_decisions(pending, user_id, result.decisions)
@@ -265,19 +258,3 @@ async def _safe_resolve_ledger(
             approval_id=approval_id,
             outcome=ledger_outcome_text(result.outcome, result.action),
         )
-
-
-async def _abandon_ledger_approvals(conversation_id: str, user_id: str) -> None:
-    """Deny every pending ledger row because the user moved on.
-
-    Denies with the moved-on feedback, which wakes the agent to wrap up.
-    """
-    for row in await pending_approvals(conversation_id, user_id):
-        with contextlib.suppress(ApprovalRequestNotFoundError, ApprovalRequestForbiddenError):
-            await decide_ledger(
-                row.approval_id,
-                user_id=user_id,
-                kind="deny",
-                feedback=UNRELATED_FEEDBACK,
-                via="chat",
-            )

@@ -32,7 +32,7 @@ POLICY = "app.services.hil.policy"
 TOOL_NAME = "delete_item"
 SERVER_KEY = "mcp:srv_a:delete_item"
 INTEGRATION_NAME = "Alpha Docs"
-SUMMARY = "Delete item (Alpha Docs); id: i1"
+SUMMARY = "Delete item in Alpha Docs: i1"
 
 
 def _mcp_tool() -> BaseTool:
@@ -101,7 +101,6 @@ class TestLedgerPathResolvesForTheRunsUser:
         ledger = _ledger()
         with (
             patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
-            patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=None)),
             patch(f"{MODULE}.approval_ledger_repository", new=ledger),
             patch(f"{MODULE}.announce_approval", new=AsyncMock()) as publish,
         ):
@@ -125,7 +124,7 @@ class TestLedgerPathResolvesForTheRunsUser:
                 _execute_request(), _context(), _call(), "auto"
             )
 
-        assert verdict.settled is True
+        assert verdict.runs is True
         assert judged.await_args.args[3] == SUMMARY
 
 

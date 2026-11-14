@@ -28,7 +28,6 @@ const card = (id: string, integration: string): ApprovalRequestData => ({
   outcome: null,
   feedback: null,
   auto_reason: null,
-  timeout_seconds: 300,
   asked_at: new Date(Date.now() - 60_000).toISOString(),
 });
 

@@ -645,10 +645,6 @@
             "title": "Summary",
             "type": "string"
           },
-          "timeout_seconds": {
-            "title": "Timeout Seconds",
-            "type": "integer"
-          },
           "tool_call_id": {
             "title": "Tool Call Id",
             "type": "string"
@@ -663,8 +659,7 @@
           "args_preview",
           "outcome",
           "feedback",
-          "auto_reason",
-          "timeout_seconds"
+          "auto_reason"
         ],
         "title": "ApprovalRequestEntryData",
         "type": "object"
@@ -8230,7 +8225,7 @@
         "description": "A user's HIL preferences as returned by the preferences endpoints.",
         "properties": {
           "mode": {
-            "default": "always_allow",
+            "default": "auto",
             "enum": [
               "always_allow",
               "always_ask",

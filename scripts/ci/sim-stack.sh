@@ -86,6 +86,11 @@ cmd_up() {
   export FRONTEND_URL="http://localhost:$WEB_PORT"
   export HOST="http://localhost:$API_PORT"
   export LLM_STUB_PORT WEB_PORT API_PORT
+  # Fixture keys, as tests/offline_env.py provisions them: the auth middleware
+  # builds a WorkOS client the bypass never calls, and agent/MCP tokens need a key.
+  export WORKOS_API_KEY="sk_test_fake" WORKOS_CLIENT_ID="client_fake" WORKOS_COOKIE_PASSWORD="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  export MCP_ENCRYPTION_KEY="dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==" # pragma: allowlist secret
+  export AGENT_SECRET="test-agent-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" # pragma: allowlist secret
 
   local stub api worker web
   stub=$(_start llm-stub "$REPO_ROOT" uv run tools/llm-stub/server.py)
