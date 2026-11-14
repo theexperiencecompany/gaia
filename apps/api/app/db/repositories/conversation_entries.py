@@ -16,7 +16,6 @@ from datetime import datetime
 from pydantic import TypeAdapter
 from pymongo.errors import PyMongoError
 
-from app.constants.chat import CONVERSATION_ENTRIES_MIGRATION_SCRIPT
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -36,7 +35,7 @@ from app.models.conversation_models import (
     MessageShape,
     StoredEntry,
 )
-from app.utils.errors import ConversationStoreError, UnmigratedConversationError
+from app.utils.errors import ConversationStoreError
 
 LOG_HEAD_FIELD = "log_head"
 OUTBOX_FIELD = "outbox"
@@ -46,19 +45,15 @@ RUNNER_FIELD = "runner"
 RUNNER_EPOCH_FIELD = "runner_epoch"
 #: On an amendable log entry (a reply, a user message): bumped by each amend, staged through the outbox.
 REVISION_FIELD = "revision"
-#: The fingerprint of the embedded array as the migration last rewrote it, so any later old-build write shows.
-MIGRATED_FINGERPRINT_FIELD = "migrated_fingerprint"
 #: On a migrated entry: each field's hash as the migration wrote it (the next pass sets only what changed).
 MIGRATION_FIELDS_FIELD = "migration_fields"
 #: Head fields that never reach a ConversationDocument (or the client it is returned to).
 HEAD_INTERNAL_FIELDS = (
-    "messages",
     LOG_HEAD_FIELD,
     OUTBOX_FIELD,
     STATE_FIELD,
     RUNNER_FIELD,
     RUNNER_EPOCH_FIELD,
-    MIGRATED_FINGERPRINT_FIELD,
 )
 #: The kinds the conversation log appends; a stored entry with any other kind, or none, is a message.
 LOG_KINDS: list[str] = [kind.value for kind in EntryKind]
@@ -341,17 +336,6 @@ def stored_entries_matching(
         {"$project": {_HEAD_OF_ENTRY: 0}},
     ]
     return [*pipeline, {"$limit": limit}] if limit else pipeline
-
-
-def unmigrated(subject: str) -> UnmigratedConversationError:
-    """Build the boot refusal for messages still in the old shape, naming the command that rewrites them."""
-    return UnmigratedConversationError(
-        message=(
-            f"{subject} still holds messages in the old shape: run "
-            f"python -m {CONVERSATION_ENTRIES_MIGRATION_SCRIPT} --apply, then --verify"
-        ),
-        why="an embedded messages array no migration pass marked, or message-shaped entries",
-    )
 
 
 def head_fields(raw: Mapping[str, object]) -> dict[str, object]:

@@ -39,7 +39,7 @@ from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
 from app.db.rabbitmq import declare_outbound_topology_on_startup, init_rabbitmq_publisher
 from app.db.redis import redis_cache
-from app.db.repositories.conversation_entries_migration import refuse_unmigrated_conversations
+from app.db.repositories.conversation_migration_guard import refuse_unmigrated_conversations
 from app.helpers.lifespan_helpers import (
     StartupService,
     _process_results,

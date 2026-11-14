@@ -438,16 +438,12 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return None if row is None else row.todo_id
 
     async def create(self, doc: ConversationDocument) -> StoredConversation:
-        """Insert the conversation's head at an empty log; raises ValueError if doc carries messages.
+        """Insert the conversation's head at an empty log.
 
         conversation_id is unique across every user: an id this user already holds raises
         ConversationAlreadyExistsError (a concurrent first send lost the race), one another
         user holds raises ConversationIdTakenError.
         """
-        if getattr(doc, "messages", None):
-            raise ValueError(
-                "create() writes only the head; messages are log entries appended to its log"
-            )
         head = doc.model_dump(exclude={"id"}, exclude_none=True)
         head[LOG_HEAD_FIELD] = 0
         key = {"user_id": doc.user_id, "conversation_id": doc.conversation_id}

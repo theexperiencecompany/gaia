@@ -11,19 +11,22 @@ from bson import ObjectId
 import pytest
 
 from app.db.mongodb.indexes import UNMIGRATED_HEAD_KEYS, UNMIGRATED_HEAD_OPTIONS
+from app.db.repositories.conversation_entries_legacy import ConversationEntry
 from app.db.repositories.conversation_entries_migration import (
-    MESSAGE_SHAPED,
-    NEVER_MIGRATED_HEADS,
     ConversationEntriesMigration,
     HeadRef,
     MigrationAction,
     expected_messages,
-    refuse_unmigrated_conversations,
 )
 from app.db.repositories.conversation_entries_oracle import legacy_messages
+from app.db.repositories.conversation_migration_guard import (
+    MESSAGE_SHAPED,
+    NEVER_MIGRATED_HEADS,
+    refuse_unmigrated_conversations,
+)
 from app.db.repositories.conversations import ConversationRepository
 from app.models.conversation_log_models import LoggedEntry
-from app.models.conversation_models import ConversationEntry, LogPage
+from app.models.conversation_models import LogPage
 from app.scripts import migrate_conversation_entries as script
 from app.utils.errors import UnmigratedConversationError
 
@@ -365,48 +368,26 @@ async def _cli(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[int, lis
     return code, capsys.readouterr().out.splitlines()
 
 
-async def test_drop_refuses_without_a_full_passing_verify_then_drops_only_the_verified_array(
-    migration: ConversationEntriesMigration,
+async def test_cli_applies_then_verifies_and_keeps_every_old_array(
     raw_collection: Any,
     entries_collection: Any,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     ref = await _legacy(raw_collection, [_message(1), _message(2, "bot")])
 
-    assert (await _cli(capsys, "--drop-embedded", "--apply"))[0] == 1
-    assert (await _head(raw_collection, ref))["messages"]
     code, out = await _cli(capsys)
     assert code == 0 and out[-1] == "Dry run only. Re-run with --apply to write."
     assert await _entries(entries_collection, ref) == []
     assert (await _cli(capsys, "--apply"))[0] == 0
     entry_of = {"user_id": USER, "conversation_id": ref.conversation_id}
     await entries_collection.update_one({**entry_of, "id": "m1"}, {"$set": {"text": "x"}})
-
-    code, out = await _cli(capsys, "--drop-embedded", "--apply")
-    assert code == 1 and "Nothing dropped" in out[-1]
-    assert (await _head(raw_collection, ref))["messages"]
+    assert (await _cli(capsys, "--verify"))[0] == 1
 
     await entries_collection.update_one({**entry_of, "id": "m1"}, {"$set": {"text": "message 1"}})
     assert (await _cli(capsys, "--verify"))[0] == 0
-    assert (await _cli(capsys, "--drop-embedded", "--apply"))[0] == 0
     head = await _head(raw_collection, ref)
-    assert "messages" not in head and "migrated_fingerprint" not in head
+    assert [m["message_id"] for m in head["messages"]] == ["m1", "m2"]
     assert await _history(ref) == [("user", "m1", "message 1"), ("bot", "m2", "message 2")]
-
-
-async def test_drop_refuses_an_array_written_after_its_verify(
-    migration: ConversationEntriesMigration, raw_collection: Any
-) -> None:
-    ref = await _legacy(raw_collection, [_message(1)])
-    await migration.migrate(ref, apply=True)
-    report = await migration.verify(ref)
-    assert report.ok and report.fingerprint is not None
-    await raw_collection.update_one(
-        {"_id": ObjectId(ref.head_id)}, {"$set": {"messages.0.pinned": True}}
-    )
-
-    assert await migration.drop_embedded(ref, verified=report.fingerprint) is False
-    assert (await _head(raw_collection, ref))["messages"]
 
 
 async def test_message_shaped_entries_are_rewritten_in_place_with_settles_at_the_tail(

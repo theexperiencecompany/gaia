@@ -89,14 +89,13 @@ class TestConversationCrud:
         assert fetched.createdAt == doc.createdAt
         assert fetched.id == ""
 
-    async def test_create_with_messages_raises_and_writes_nothing(self, repo):
-        doc = _doc(messages=[{"type": "user", "response": "hi", "seq": 1}])
-        with pytest.raises(ValueError) as refused:
-            await repo.create(doc)
-        assert str(refused.value) == (
-            "create() writes only the head; messages are log entries appended to its log"
-        )
-        assert await repo.get(doc.conversation_id, user_id=doc.user_id) is None
+    async def test_create_drops_an_old_embedded_messages_array(self, repo, raw_collection):
+        doc = _doc(messages=[{"type": "user", "response": "hi"}])
+        await repo.create(doc)
+        stored = await raw_collection.find_one({"conversation_id": doc.conversation_id})
+        assert stored is not None
+        assert "messages" not in stored
+        assert stored["log_head"] == 0
 
     async def test_get_missing_returns_none(self, repo):
         assert await repo.get(_cid(), user_id=_uid()) is None

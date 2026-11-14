@@ -994,11 +994,7 @@ export interface paths {
         };
         /**
          * Get Conversation Endpoint
-         * @description Retrieve a conversation with the newest page of its log, as the events stream's entries.
-         *
-         *     The head's own fields: ``ConversationDocument`` is ``extra="allow"``,
-         *     so stray/legacy top-level fields the row carries still reach the client
-         *     verbatim, while the declared fields give the schema its shape.
+         * @description Retrieve a conversation's head fields with the newest page of its screen.
          */
         get: operations["conversations_get_conversation_endpoint"];
         put?: never;
@@ -1224,7 +1220,7 @@ export interface paths {
         put?: never;
         /**
          * Batch Sync Conversations Endpoint
-         * @description Batch sync conversations - returns only stale conversations with messages.
+         * @description Return the conversations the client holds stale, each with its newest page of items.
          */
         post: operations["conversations_batch_sync_conversations_endpoint"];
         delete?: never;
@@ -6143,8 +6139,7 @@ export interface components {
          * ArtifactRegistryEntry
          * @description One element of ``ConversationDocument.artifacts``.
          *
-         *     ``app.services.chat.artifacts_registry`` owns every write of this shape; the
-         *     conversation document stores it and mirrors it verbatim to the client.
+         *     The conversation document stores it and mirrors it verbatim to the client.
          *     ``mtime`` is a Unix timestamp, matching what every publisher in
          *     :mod:`app.services.artifact_events` stamps. ``body`` is present only for
          *     small textual artifacts inlined at write time.
@@ -7659,7 +7654,7 @@ export interface components {
         };
         /**
          * ConversationModel
-         * @description A chat conversation and its display/system metadata.
+         * @description A conversation to create: its id and the display/system metadata it starts with.
          */
         ConversationModel: {
             /** Conversation Id */
@@ -10315,8 +10310,6 @@ export interface components {
             updatedAt: string | null;
             /** User Id */
             user_id: string;
-        } & {
-            [key: string]: unknown;
         };
         /**
          * LoginRequest
@@ -15286,7 +15279,7 @@ export interface components {
          * @description Unified structure for tool execution data.
          *
          *     Every key an emitter can stamp must be declared here. This TypedDict is the
-         *     element type of ``MessageModel.tool_data``, and Pydantic drops undeclared
+         *     element type of every entry's ``tool_data``, and Pydantic drops undeclared
          *     keys on ``model_dump()`` — which is how a message reaches Mongo. An emitted
          *     key missing from this shape therefore survives the live SSE frame (the
          *     frontend parses those against its own loose schema) and silently vanishes

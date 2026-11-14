@@ -1,5 +1,4 @@
 from enum import Enum, StrEnum
-from typing import Any
 
 from pydantic import BaseModel
 
@@ -7,13 +6,6 @@ from pydantic import BaseModel
 # app.constants.outbound can derive the outbound queue set without the model
 # stack. Re-exported here because this is the import site consumers use.
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
-from app.models.message_models import (
-    FileData,
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
-from app.models.todo_wake_models import TodoRunWake
 
 # ToolDataEntry lives in app.models.tool_data_models, which imports nothing heavy, so the
 # pure conversation core can use it without booting settings. Re-exported here for the
@@ -23,12 +15,10 @@ from app.models.tool_data_models import ToolDataEntry
 __all__ = [
     "BOT_CONVERSATION_SOURCES",
     "BatchSyncRequest",
-    "CancelStreamResponse",
     "ConversationModel",
     "ConversationSource",
     "ConversationSyncItem",
     "ImageData",
-    "MessageModel",
     "PinnedUpdate",
     "SourceCategory",
     "StarredUpdate",
@@ -92,61 +82,6 @@ class ReactionBy(StrEnum):
     CHAT_MODEL = "chat_model"
 
 
-class MessageReaction(BaseModel):
-    """GAIA's one emoji reaction on a user message."""
-
-    emoji: str
-    by: ReactionBy
-
-
-class MessageModel(BaseModel):
-    """A single chat message with its content, attachments and tool data."""
-
-    type: str
-    response: str
-    date: str | None = None
-    image_data: ImageData | None = None
-    disclaimer: str | None = None
-    subtype: str | None = None
-    file: bytes | None = None
-    filename: str | None = None
-    filetype: str | None = None
-    message_id: str | None = None
-    fileIds: list[str] | None = []
-    fileData: list[FileData] | None = []
-    selectedTool: str | None = None
-    toolCategory: str | None = None
-    selectedWorkflow: SelectedWorkflowData | None = None
-    selectedCalendarEvent: SelectedCalendarEventData | None = None
-    # What woke a tracked todo's run, on the user's side of the todo's chat.
-    todo_run_wake: TodoRunWake | None = None
-    tool_data: list[ToolDataEntry] | None = None
-    follow_up_actions: list[str] | None = None
-    metadata: dict[str, Any] | None = None
-    replyToMessage: ReplyToMessageData | None = None
-    # Terminal stream error for a bot turn that produced no response — rendered
-    # on reload instead of an empty bubble.
-    error: str | None = None
-    # True on a bot turn the user stopped with Stop; the client shows a quiet
-    # "Stopped" line under it. None everywhere else.
-    stopped: bool | None = None
-    # True on a bot reply whose entry holds its place in the order (opened when the
-    # user first saw it) while its turn is still running. None once the turn saves it.
-    in_progress: bool | None = None
-    # Set by the pin-message endpoint on the embedded message; absent on most
-    # messages, so it reads back as None unless the user pinned this one.
-    pinned: bool | None = None
-    # Set only on a user message GAIA reacted to; one reaction per message.
-    reaction: MessageReaction | None = None
-    # Platform-native id (WhatsApp wamid, Telegram message_id, Discord id, Slack
-    # ts). Set only on user messages that arrived through a bot, so a later
-    # background reaction can anchor to the exact platform message. Else None.
-    platform_message_id: str | None = None
-    # Set on the user's linking message stored at account linking: no chat turn
-    # ran for it, so no chat:message_submitted counts it. None everywhere else.
-    first_contact: bool | None = None
-
-
 class SystemPurpose(str, Enum):
     """Why a system-generated conversation was created."""
 
@@ -159,7 +94,7 @@ class SystemPurpose(str, Enum):
 
 
 class ConversationModel(BaseModel):
-    """A chat conversation and its display/system metadata."""
+    """A conversation to create: its id and the display/system metadata it starts with."""
 
     conversation_id: str
     description: str = "New Chat"
@@ -199,15 +134,3 @@ class BatchSyncRequest(BaseModel):
     """Batch of conversation sync items sent by a client to reconcile state."""
 
     conversations: list[ConversationSyncItem]
-
-
-class CancelStreamResponse(BaseModel):
-    """Outcome of a stream-cancellation request.
-
-    ``error`` is set only when the stream could not be cancelled at all (it was
-    never started, or already expired from Redis).
-    """
-
-    success: bool
-    stream_id: str
-    error: str | None = None

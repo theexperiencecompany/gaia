@@ -22,7 +22,7 @@ class ToolDataEntry(TypedDict):
     """Unified structure for tool execution data.
 
     Every key an emitter can stamp must be declared here. This TypedDict is the
-    element type of ``MessageModel.tool_data``, and Pydantic drops undeclared
+    element type of every entry's ``tool_data``, and Pydantic drops undeclared
     keys on ``model_dump()`` — which is how a message reaches Mongo. An emitted
     key missing from this shape therefore survives the live SSE frame (the
     frontend parses those against its own loose schema) and silently vanishes

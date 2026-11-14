@@ -18,9 +18,9 @@ import json
 
 from hypothesis import given, settings, strategies as st
 
+from app.db.repositories.conversation_entries_legacy import convert_legacy_tool_data
 from app.models.chat_models import tool_fields
 from app.utils.agent_utils import format_sse_data, format_sse_response
-from app.utils.tool_data_utils import convert_legacy_tool_data
 
 UNICODE_TEXT = st.text(
     alphabet=st.characters(blacklist_categories=("Cs",)), min_size=0, max_size=200

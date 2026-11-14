@@ -11,9 +11,13 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ConfigDict
 
-from app.constants.chat import BOT_MESSAGE_TYPE, USER_MESSAGE_TYPE
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
-from app.models.chat_models import MessageReaction
+from app.db.repositories.conversation_entries_legacy import (
+    BOT_MESSAGE_TYPE,
+    USER_MESSAGE_TYPE,
+    ConversationEntry,
+    MessageReaction,
+)
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -29,7 +33,6 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.models.conversation_models import ConversationEntry
 from app.models.message_models import ReplyToMessageData
 from app.models.tool_data_models import ToolDataEntry
 from shared.py.approvals import ApprovalOutcome

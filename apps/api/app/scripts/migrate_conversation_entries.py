@@ -17,11 +17,9 @@ Cutover, in this order:
   3. --apply again, then --verify; both must exit 0.
   4. Deploy the new build. It refuses to boot while any conversation has an embedded array
      no pass marked, or message-shaped entries.
-  5. Later, --drop-embedded --apply: it verifies every conversation first and drops nothing
-     unless all pass, then unsets each array only while it is exactly the one verified.
 
-Rollback before step 5: redeploy the old build; the arrays are untouched. After step 5
-there is no rollback but a database restore.
+The migration copies and never deletes: the arrays stay as they were, so rollback is
+redeploying the old build.
 
 Usage::
 
@@ -29,7 +27,6 @@ Usage::
     uv run python -m app.scripts.migrate_conversation_entries               # dry run
     uv run python -m app.scripts.migrate_conversation_entries --apply
     uv run python -m app.scripts.migrate_conversation_entries --verify
-    uv run python -m app.scripts.migrate_conversation_entries --drop-embedded --apply
 """
 
 from __future__ import annotations
@@ -44,7 +41,6 @@ from app.db.repositories.conversation_entries_migration import (
     NOT_KEPT_FIELDS,
     HeadRef,
     MigrationAction,
-    VerifyReport,
     conversation_entries_migration,
 )
 
@@ -121,52 +117,24 @@ async def _migrate(args: argparse.Namespace) -> int:
     return 1 if any(actions[action] for action in _FAILED) else 0
 
 
-async def _verify_all() -> tuple[list[tuple[HeadRef, VerifyReport]], int]:
+async def _verify() -> int:
     """Verify every head with an embedded array or message entries, printing each mismatch."""
-    reports: list[tuple[HeadRef, VerifyReport]] = []
-    failed = 0
+    verified = failed = 0
     for scan in _scans(every_embedded=True):
         async for ref in _heads(scan):
             report = await conversation_entries_migration.verify(ref)
-            reports.append((ref, report))
+            verified += 1
             if not report.ok:
                 failed += 1
                 for mismatch in report.mismatches:
                     print(f"  MISMATCH {ref.conversation_id}: {mismatch}")
-    print(f"Verified {len(reports)} conversations: {failed} with mismatches.")
-    return reports, failed
-
-
-async def _verify() -> int:
-    _, failed = await _verify_all()
+    print(f"Verified {verified} conversations: {failed} with mismatches.")
     return 1 if failed else 0
-
-
-async def _drop(args: argparse.Namespace) -> int:
-    reports, failed = await _verify_all()
-    if failed:
-        print("Nothing dropped: every conversation must verify first. Run --apply, then retry.")
-        return 1
-    droppable = [(ref, report.fingerprint) for ref, report in reports if report.fingerprint]
-    if not args.apply:
-        print(f"{len(droppable)} embedded arrays would drop. Dry run only. Re-run with --apply.")
-        return 0
-    dropped = refused = 0
-    for ref, fingerprint in droppable:
-        if await conversation_entries_migration.drop_embedded(ref, verified=fingerprint):
-            dropped += 1
-        else:
-            refused += 1
-            print(f"  [refused] {ref.conversation_id}: written since its verify")
-    print(f"{dropped} embedded arrays dropped; {refused} refused.")
-    return 1 if refused else 0
 
 
 async def _run(args: argparse.Namespace) -> int:
     if args.verify:
         return await _verify()
-    if args.drop_embedded:
-        return await _drop(args)
     return await _migrate(args)
 
 
@@ -185,11 +153,6 @@ def _parser() -> argparse.ArgumentParser:
         "--verify",
         action="store_true",
         help="Check what clients read back against each old array.",  # pragma: no mutate — help text only
-    )
-    mode.add_argument(
-        "--drop-embedded",
-        action="store_true",
-        help="Verify every conversation, then unset the arrays if all pass.",  # pragma: no mutate
     )
     return parser
 

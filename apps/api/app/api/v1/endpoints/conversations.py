@@ -56,7 +56,7 @@ from app.services.conversation_service import (
     update_conversation_description,
 )
 from app.services.conversation_stop_service import press_stop
-from shared.py.wide_events import log
+from shared.py.wide_events import ConversationOperation, log
 
 router = APIRouter()
 
@@ -70,12 +70,12 @@ async def create_conversation_endpoint(
     """
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "create", "is_new": True},
+        conversation={"operation": ConversationOperation.CREATE, "is_new": True},
     )
     response = await create_conversation_service(conversation, user)
     log.set(
         conversation={
-            "operation": "create",
+            "operation": ConversationOperation.CREATE,
             "is_new": True,
             "id": response.conversation_id,
         }
@@ -106,12 +106,12 @@ async def get_conversations_endpoint(
     """
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "list", "page": page, "limit": limit},
+        conversation={"operation": ConversationOperation.LIST, "page": page, "limit": limit},
     )
     response = await get_conversations(user, page=page, limit=limit)
     log.set(
         conversation={
-            "operation": "list",
+            "operation": ConversationOperation.LIST,
             "page": page,
             "limit": limit,
             "total_returned": len(response.conversations),
@@ -125,12 +125,10 @@ async def get_conversations_endpoint(
 async def batch_sync_conversations_endpoint(
     request: BatchSyncRequest, user: AuthenticatedUser = Depends(get_current_user)
 ) -> BatchSyncResponse:
-    """
-    Batch sync conversations - returns only stale conversations with messages.
-    """
+    """Return the conversations the client holds stale, each with its newest page of items."""
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "batch_sync"},
+        conversation={"operation": ConversationOperation.BATCH_SYNC},
     )
     return await batch_sync_conversations(request, user)
 
@@ -139,16 +137,10 @@ async def batch_sync_conversations_endpoint(
 async def get_conversation_endpoint(
     conversation_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> LoadedConversation:
-    """
-    Retrieve a conversation with the newest page of its log, as the events stream's entries.
-
-    The head's own fields: ``ConversationDocument`` is ``extra="allow"``,
-    so stray/legacy top-level fields the row carries still reach the client
-    verbatim, while the declared fields give the schema its shape.
-    """
+    """Retrieve a conversation's head fields with the newest page of its screen."""
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "get", "id": conversation_id},
+        conversation={"operation": ConversationOperation.GET, "id": conversation_id},
     )
     return await get_conversation(conversation_id, user)
 
@@ -165,7 +157,7 @@ async def get_entries_before_endpoint(
     """Page a conversation's log back from before_seq, never starting inside an open reply, task or approval."""
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "entries_before", "id": conversation_id},
+        conversation={"operation": ConversationOperation.ENTRIES_BEFORE, "id": conversation_id},
     )
     page = await get_entries_before(conversation_id, user, before_seq=before_seq, limit=limit)
     log.set_ns("conversation", items=len(page.items), has_older=page.has_older)
@@ -183,7 +175,7 @@ async def send_message_endpoint(
     """Accept a message into a conversation the step runs; its reply arrives on the events stream."""
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "send", "id": conversation_id},
+        conversation={"operation": ConversationOperation.SEND, "id": conversation_id},
     )
     accepted = await submit_message(conversation_id, user, body, request_client_source(request))
     log.set_ns("conversation", message_id=accepted.message_id, seq=accepted.seq)
@@ -199,7 +191,7 @@ async def barge_in_endpoint(
     """Record that the user spoke over a voice reply and how much of it they heard."""
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "barge_in", "id": conversation_id},
+        conversation={"operation": ConversationOperation.BARGE_IN, "id": conversation_id},
     )
     await require_owned_conversation(conversation_id, user.user_id)
     return await submit_barge_in(conversation_id, user, body)
@@ -218,7 +210,7 @@ async def conversation_events_endpoint(
     """Stream the conversation's screen as SSE: the newest page, then patches and live deltas."""
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "events", "id": conversation_id},
+        conversation={"operation": ConversationOperation.EVENTS, "id": conversation_id},
     )
     await require_owned_conversation(conversation_id, user.user_id)
     lines = event_lines(
@@ -247,7 +239,7 @@ async def star_conversation_endpoint(
     log.set(
         user={"id": user.user_id},
         conversation={
-            "operation": "star",
+            "operation": ConversationOperation.STAR,
             "id": conversation_id,
             "is_starred": body.starred,
         },
@@ -263,7 +255,7 @@ async def stop_conversation_endpoint(
     """Stop everything running for a conversation: its reply in flight, executor, subagents, approvals and browser job."""
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "stop", "id": conversation_id},
+        conversation={"operation": ConversationOperation.STOP, "id": conversation_id},
     )
     await require_owned_conversation(conversation_id, user.user_id)
     result = await press_stop(conversation_id, user.user_id, None)
@@ -280,7 +272,7 @@ async def delete_all_conversations_endpoint(
     """
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "delete_all"},
+        conversation={"operation": ConversationOperation.DELETE_ALL},
     )
     return await delete_all_conversations(user)
 
@@ -294,7 +286,7 @@ async def delete_conversation_endpoint(
     """
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "delete", "id": conversation_id},
+        conversation={"operation": ConversationOperation.DELETE, "id": conversation_id},
     )
     return await delete_conversation(conversation_id, user)
 
@@ -311,7 +303,7 @@ async def pin_message_endpoint(
     """
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "pin_message", "id": conversation_id},
+        conversation={"operation": ConversationOperation.PIN_MESSAGE, "id": conversation_id},
     )
     return await pin_message(conversation_id, message_id, body.pinned, user)
 
@@ -325,7 +317,7 @@ async def get_starred_messages_endpoint(
     """
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "get_pinned"},
+        conversation={"operation": ConversationOperation.GET_PINNED},
     )
     return await get_starred_messages(user)
 
@@ -341,7 +333,7 @@ async def update_conversation_description_endpoint(
     """
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "update_description", "id": conversation_id},
+        conversation={"operation": ConversationOperation.UPDATE_DESCRIPTION, "id": conversation_id},
     )
     return await update_conversation_description(conversation_id, body.description, user)
 
@@ -356,7 +348,7 @@ async def mark_as_read_endpoint(
     """
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "mark_read", "id": conversation_id},
+        conversation={"operation": ConversationOperation.MARK_READ, "id": conversation_id},
     )
     return await mark_conversation_as_read(conversation_id, user)
 
@@ -371,6 +363,6 @@ async def mark_as_unread_endpoint(
     """
     log.set(
         user={"id": user.user_id},
-        conversation={"operation": "mark_unread", "id": conversation_id},
+        conversation={"operation": ConversationOperation.MARK_UNREAD, "id": conversation_id},
     )
     return await mark_conversation_as_unread(conversation_id, user)

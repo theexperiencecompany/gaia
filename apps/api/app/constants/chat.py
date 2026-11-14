@@ -121,16 +121,6 @@ CONVERSATION_READ_LIMIT = 600
 # Named in every refusal of a conversation the entries migration has not reached.
 CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "app.scripts.migrate_conversation_entries"
 
-# ``MessageModel.type`` of a message the human wrote, and of one GAIA wrote: the projection's two sides.
-USER_MESSAGE_TYPE = "user"
-BOT_MESSAGE_TYPE = "bot"
-
-# Saved on a reply whose turn died (a crashed process) after the user saw it begin.
-TURN_INTERRUPTED = (
-    "My reply was cut off before I could finish it. Anything I started for it may "
-    "already be done, so check before asking again."
-)
-
 # Shown when the model produced no text at all (reasoning-only output,
 # max_tokens exhausted mid-thought, a content filter) — a blank bubble reads as "it ignored me".
 EMPTY_RESPONSE_FALLBACK = "that didn't come through, say it again?"

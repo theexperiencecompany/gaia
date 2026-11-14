@@ -8,8 +8,6 @@ from app.models.chat_models import (
     ConversationModel,
     ConversationSource,
     ConversationSyncItem,
-    ImageData,
-    MessageModel,
     SourceCategory,
     SystemPurpose,
 )
@@ -75,39 +73,6 @@ class TestConversationModel:
         for source in ConversationSource:
             m = ConversationModel(conversation_id="conv_src", source=source)
             assert m.source == source
-
-
-class TestMessageModel:
-    def test_valid_minimal(self):
-        m = MessageModel(type="user", response="Hello")
-        assert m.type == "user"
-        assert m.response == "Hello"
-        assert m.image_data is None
-        assert m.tool_data is None
-
-    def test_with_image_data(self):
-        m = MessageModel(
-            type="assistant",
-            response="Here is your image",
-            image_data=ImageData(url="https://img.com/1.png", prompt="a cat"),
-        )
-        assert m.image_data.url == "https://img.com/1.png"
-
-    def test_with_tool_data(self):
-        m = MessageModel(
-            type="assistant",
-            response="Done",
-            tool_data=[{"tool_name": "search", "data": {"query": "test"}, "timestamp": None}],
-        )
-        assert len(m.tool_data) == 1
-        assert m.tool_data[0]["tool_name"] == "search"
-
-    def test_missing_required_fields(self):
-        with pytest.raises(ValidationError):
-            MessageModel(type="user")
-
-        with pytest.raises(ValidationError):
-            MessageModel(response="Hello")
 
 
 class TestFileData:
