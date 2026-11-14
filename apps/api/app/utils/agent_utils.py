@@ -31,6 +31,7 @@ from app.models.stream_events import (
     ToolCallsDataEntryData,
 )
 from app.services.browser.captions import describe_action
+from app.services.mcp.mcp_client import get_mcp_client, mcp_tool_owner
 from shared.py.wide_events import log
 
 # Type for the stream_writer callable used across agent execution paths.
@@ -351,7 +352,8 @@ async def _general_tool_category(
     # MCP tools no longer live in the global registry — resolve provenance
     # via the user's MCPClient when the caller didn't pre-supply it.
     if not integration_id and user_id:
-        integration_id = await _resolve_mcp_integration_id(tool_name_raw, user_id)
+        mcp_owner = await mcp_tool_owner(user_id, tool_name_raw)
+        integration_id = mcp_owner.integration_id if mcp_owner else None
     return integration_id or registry_category, integration_id, False
 
 
@@ -383,36 +385,10 @@ def _registry_mcp_ui_metadata(
     return mcp_ui, mcp_server_url
 
 
-async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | None:
-    """Resolve which of the user's connected MCP integrations owns a tool, or None.
-
-    The same owner lookup the execute resolver runs the tool through, so a card
-    formatted before this process has loaded the tool still names its integration.
-    """
-    from app.services.mcp.mcp_client import (
-        get_mcp_client,
-    )
-
-    try:
-        mcp_client = await get_mcp_client(user_id)
-        return await mcp_client.resolve_tool_owner(tool_name)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.AGENT} MCP integration lookup failed for",
-            tool_name=tool_name,
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-        )
-        return None
-
-
 async def _resolve_mcp_ui_metadata(
     tool_name: str, user_id: str
 ) -> tuple[dict[str, object] | None, str | None]:
     """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
-    from app.services.mcp.mcp_client import get_mcp_client
-
     try:
         mcp_client = await get_mcp_client(user_id)
         for tools in mcp_client._tools.values():

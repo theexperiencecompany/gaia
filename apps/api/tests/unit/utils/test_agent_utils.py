@@ -20,6 +20,7 @@ from app.services.composio.instance_toolkits import (
     InstanceToolkitRecord,
     build_instance_integration,
 )
+from app.services.mcp.mcp_client import McpToolOwner
 from app.utils.agent_utils import (
     IntegrationDisplayMetadata,
     _general_tool_category,
@@ -280,7 +281,7 @@ class TestResolveMcpUiMetadata:
         client._tools = {"notion_int": [tool]}
 
         with patch(
-            "app.services.mcp.mcp_client.get_mcp_client",
+            "app.utils.agent_utils.get_mcp_client",
             new_callable=AsyncMock,
             return_value=client,
         ):
@@ -391,9 +392,9 @@ class _FakeRegistry:
 
 def _mcp_lookup(integration_id: str = "notion_int") -> Any:
     return patch(
-        "app.utils.agent_utils._resolve_mcp_integration_id",
+        "app.utils.agent_utils.mcp_tool_owner",
         new_callable=AsyncMock,
-        return_value=integration_id,
+        return_value=McpToolOwner(MagicMock(), integration_id),
     )
 
 
@@ -437,7 +438,7 @@ class TestGeneralToolCategory:
             )
 
         assert result == ("notion_int", "notion_int", False)
-        mock_resolve.assert_awaited_once_with("notion_tool", "u1")
+        mock_resolve.assert_awaited_once_with("u1", "notion_tool")
 
     @pytest.mark.asyncio
     async def test_an_unauthenticated_platform_mcp_tool_is_owned_by_its_integration(self) -> None:

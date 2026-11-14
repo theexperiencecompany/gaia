@@ -2264,6 +2264,11 @@ async def test_an_executor_runs_custom_mcp_tool_card_names_the_integration_it_ca
             return_value=_ColdMcpClient(),
         ),
         patch(
+            "app.utils.agent_utils.get_mcp_client",
+            new_callable=AsyncMock,
+            return_value=_ColdMcpClient(),
+        ),
+        patch(
             "app.utils.agent_utils._integration_display",
             new_callable=AsyncMock,
             return_value=("https://weather.example/icon.png", "Bundle Weather"),
