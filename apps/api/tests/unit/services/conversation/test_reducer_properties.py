@@ -56,9 +56,10 @@ def _next_entry(data: st.DataObject, state: ConversationState, seq: int) -> Entr
         options.append(st.sampled_from(live).map(lambda task: asked(entry_id, task, f"ap{seq}")))
     if state.open_reply is None:
         options.append(st.just(opened(entry_id, f"r{seq}")))
-    else:
+    elif (state.open_reply_seq or seq) > 1:
         open_reply = state.open_reply
-        throughs = st.integers(1, seq - 1)
+        # A reply answers only inputs logged below the seq it opened at.
+        throughs = st.integers(1, (state.open_reply_seq or seq) - 1)
         options.append(
             throughs.map(lambda through: settled(entry_id, ["x"], through, reply_id=open_reply))
         )

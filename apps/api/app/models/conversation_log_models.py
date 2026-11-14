@@ -444,6 +444,8 @@ class ConversationState(BaseModel):
     comms: CommsPhase
     # The reply whose attempt has not settled yet: set by its Reply, cleared by its ReplySettled.
     open_reply: str | None
+    # The seq the open reply sits at: it may answer only inputs logged below it.
+    open_reply_seq: int | None = None
     work: tuple[LiveWork, ...]
     # One per WorkFinished seq in unsettled_waking.
     finished_work: tuple[FinishedWork, ...] = ()
@@ -524,6 +526,7 @@ class RejectReason(StrEnum):
     REPLY_ALREADY_OPEN = "reply_already_open"
     REPLY_NOT_OPEN = "reply_not_open"
     REPLY_ANSWERS_FUTURE = "reply_answers_future"
+    REPLY_ABOVE_ITS_INPUT = "reply_above_its_input"
     FIRE_OVERLAPS = "fire_overlaps"
 
 

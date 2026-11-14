@@ -49,6 +49,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.message_models import MessageDict
 from app.services.conversation.log import publish_appended
+from app.services.conversation.placement import Segment, hand, open_slot, segments
 from app.services.conversation.ports import (
     Answered,
     CancelReason,
@@ -76,6 +77,7 @@ from app.services.conversation.tool_timeline import tool_timeline
 from app.services.conversation.verdict import merge_group, quote_target, verdict
 from app.utils.hot_path import first_text_gate, first_text_shown
 from app.utils.liveness import keep_proving
+from app.utils.message_breaks import split_message_bubbles
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
 from shared.py.conversation_wire import (
@@ -115,30 +117,30 @@ class _Showing:
     """Committed, and the user reads this reply's text in its slot: its content is the fold of every delta shown."""
 
     reply: Reply
-    seq: int
 
 
 @dataclass
 class _Attempt:
-    """One comms attempt: what it covers, how far it got, and which newer inputs could join it."""
+    """One comms attempt: the inputs handed to its run, where its segments opened, and how far it got."""
 
     claim: StepClaim
     run_id: str
     reply_id: str
     batch: Batch
-    covers: tuple[LoggedEntry, ...]
+    # Every input the run was given, in log order; which segment answers each is derived.
+    handed: tuple[LoggedEntry, ...]
     # Highest seq examined for joiners.
     seen: int
     view: StepView
     # The log's head as the last verdict's hint read it: the view answers only while it reaches this.
     hint_head: int = 0
     progress: _Quiet | _Drafting | _Showing | None = None
-    # Replies this attempt settled before absorbing a later message; each later one is a new segment.
+    # Segments this attempt settled; the current one is the next.
     segment: int = 0
-    # Waking entries after covers, of the batch's group, not past a Stop.
+    # The seq each segment's reply opened at, in order.
+    slots: tuple[int, ...] = ()
+    # Waking entries after handed, of the batch's group, not past a Stop.
     joiners: tuple[LoggedEntry, ...] = ()
-    # Joiners absorbed while text showed: their segment opens once the model writes again.
-    absorbed: tuple[LoggedEntry, ...] = ()
     # A Stop or another group's input ended the run of joinable entries.
     closed: bool = False
     deltas: int = 0
@@ -174,8 +176,23 @@ class _Attempt:
         return merge_group(_waking(self.batch.waking[0]))
 
     @property
+    def placed(self) -> tuple[Segment, ...]:
+        """Return every segment the handed inputs and opened slots place."""
+        return segments(self.handed, self.slots)
+
+    @property
+    def covers(self) -> tuple[LoggedEntry, ...]:
+        """Return the inputs the current segment answers: those handed and logged below its slot."""
+        return self.placed[self.segment].covers
+
+    @property
+    def slot(self) -> int | None:
+        """Return the seq the current segment's reply opened at, None until it opens."""
+        return self.slots[self.segment] if len(self.slots) > self.segment else None
+
+    @property
     def through(self) -> int:
-        """Return the newest seq the attempt covers."""
+        """Return the newest seq the current segment covers."""
         return self.covers[-1].seq
 
 
@@ -320,7 +337,7 @@ async def _serve(
         run_id=attempt_id,
         reply_id=f"r{attempt_id}",
         batch=batch,
-        covers=batch.waking,
+        handed=batch.waking,
         seen=batch.end,
         view=view,
         hint_head=state.head,
@@ -450,7 +467,7 @@ async def _run_attempt(
         raise
     except Exception as error:  # a store or stream failure mid-attempt fails it, under the claim
         await run.cancel(CancelReason.LOST)
-        await _open_absorbed_segment(ports, attempt)
+        await _settle_segment_if_passed(ports, attempt)
         await _fail(ports, attempt, error)
         return
     except BaseException:
@@ -484,7 +501,7 @@ async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Endi
             if isinstance(signal, Finished | _Crashed):
                 return signal
             if isinstance(signal, Answered):
-                await _open_absorbed_segment(ports, attempt)
+                await _settle_segment_if_passed(ports, attempt)
                 attempt.answered = await _finish(ports, attempt, signal.outcome)
             elif not isinstance(signal, _Tick):
                 await _handle(ports, attempt, run, signal)
@@ -581,17 +598,17 @@ async def _handle(
             _commit_quietly(attempt)
         case ModelOutput(has_tool_calls=has_tool_calls):
             _commit_quietly(attempt)
-            await _open_absorbed_segment(ports, attempt)
+            await _settle_segment_if_passed(ports, attempt)
             if has_tool_calls and attempt.joiners:
                 await run.absorb(attempt.joiners)
-                if isinstance(attempt.progress, _Showing):
-                    attempt.absorbed = (*attempt.absorbed, *attempt.joiners)
-                else:
-                    attempt.covers = (*attempt.covers, *attempt.joiners)
+                attempt.handed = hand(
+                    attempt.handed, attempt.slots, attempt.segment, attempt.joiners
+                )
                 attempt.joiners = ()
         case Streamed(payload=payload, by_model=by_model):
+            # What a running tool shows stays beside its call, above inputs handed since.
             if by_model:
-                await _open_absorbed_segment(ports, attempt)
+                await _settle_segment_if_passed(ports, attempt)
             await _show(ports, attempt, payload)
 
 
@@ -600,12 +617,11 @@ def _commit_quietly(attempt: _Attempt) -> None:
         attempt.progress = _Quiet(reason=CommitReason.MODEL_OUTPUT)
 
 
-async def _open_absorbed_segment(ports: RuntimePorts, attempt: _Attempt) -> None:
-    """Settle the text the user already read where it stands; the rest answers below the absorbed messages."""
-    if not attempt.absorbed:
+async def _settle_segment_if_passed(ports: RuntimePorts, attempt: _Attempt) -> None:
+    """Settle the open segment where it stands once inputs handed after its slot wait; the next segment answers them below."""
+    if len(attempt.placed) == attempt.segment + 1:
         return
     await _conclude(ports, attempt, _base_reply(attempt), ReplyOutcome.ANSWERED)
-    attempt.covers, attempt.absorbed = attempt.absorbed, ()
     attempt.segment += 1
     attempt.reply_id = f"r{attempt.attempt_id}"
     attempt.progress = _Quiet(reason=CommitReason.MODEL_OUTPUT)
@@ -625,8 +641,8 @@ async def _show(ports: RuntimePorts, attempt: _Attempt, payload: StreamPayload) 
     folded = _fold(before, payload, attempt.text)
     if not isinstance(attempt.progress, _Showing) and _is_visible(payload):
         folded = await _opening_reply(ports, attempt, folded)
-        opened = await _append_seen(ports, attempt, folded)
-        attempt.progress = _Showing(reply=folded, seq=opened.seq)
+        opened = await _append_opening(ports, attempt, folded)
+        attempt.progress = _Showing(reply=folded)
         if opened.seq == attempt.seen + 1:
             # Its own entry: no need to read the log for joiners the next verdict.
             attempt.seen = opened.seq
@@ -678,10 +694,10 @@ def _own_cards(reply: Reply) -> tuple[ToolDataEntry, ...]:
 
 
 async def _end(ports: RuntimePorts, attempt: _Attempt, run: CommsRun, ending: _Ending) -> None:
-    # A restart withdraws the attempt and a lost claim leaves it to the new holder; every other end
-    # settles what was shown above the inputs the run absorbed, and answers those below them.
-    if ending is not Verdict.RESTART and ending is not Verdict.LOST:
-        await _open_absorbed_segment(ports, attempt)
+    # A run that ended on its own settles what was shown above the inputs handed after it and
+    # answers those below; a cancelled one ends the shown segment as cancelled, leaving them open.
+    if not isinstance(ending, Verdict):
+        await _settle_segment_if_passed(ports, attempt)
     match ending:
         case Finished(outcome=outcome) if attempt.answered is not None:
             await _add_follow_ups(ports, attempt, attempt.answered, outcome)
@@ -731,11 +747,11 @@ async def _truncate(ports: RuntimePorts, attempt: _Attempt) -> None:
     if isinstance(progress, _Drafting):
         await _conclude(ports, attempt, progress.reply, ReplyOutcome.TRUNCATED)
         return
-    if not isinstance(progress, _Showing):
+    if not isinstance(progress, _Showing) or attempt.slot is None:
         await _retract(ports, attempt)
         return
     after = await ports.log.read_after(
-        attempt.claim.conversation_id, attempt.claim.user_id, progress.seq
+        attempt.claim.conversation_id, attempt.claim.user_id, attempt.slot
     )
     barges = [
         logged.entry
@@ -815,9 +831,13 @@ async def _add_follow_ups(
 
 
 def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOutcome]:
-    """Save what was shown; a run's Replied content is used only when it streamed nothing."""
+    """Save what was shown; a run's Replied content is used only when nothing it streamed stayed.
+
+    A reply whose slot opened never ends empty: the user saw it there, so it never vanishes.
+    """
     filled = _base_reply(attempt)
-    if isinstance(outcome, Replied) and not isinstance(attempt.progress, _Showing | _Drafting):
+    streamed = isinstance(attempt.progress, _Showing | _Drafting)
+    if isinstance(outcome, Replied) and not (streamed and (filled.text or filled.tool_data)):
         filled = filled.model_copy(
             update={
                 "text": outcome.text,
@@ -827,7 +847,7 @@ def _final_reply(attempt: _Attempt, outcome: RunOutcome) -> tuple[Reply, ReplyOu
         )
     if filled.text or filled.tool_data:
         return filled, ReplyOutcome.ANSWERED
-    if isinstance(outcome, Reacted) or not _asked(attempt):
+    if attempt.slot is None and (isinstance(outcome, Reacted) or not _asked(attempt)):
         return filled, ReplyOutcome.SILENT
     # A user who asked never gets nothing back.
     return filled.model_copy(update={"text": EMPTY_RESPONSE_FALLBACK}), ReplyOutcome.ANSWERED
@@ -960,6 +980,10 @@ def _visible(logged: LoggedEntry) -> VisibleEntry | None:
     return None
 
 
+def _bubbles(text: str) -> tuple[str, ...]:
+    return tuple(split_message_bubbles(text))
+
+
 def _is_text(payload: StreamPayload) -> bool:
     return isinstance(payload, ResponseEvent) and bool(payload.response)
 
@@ -1003,12 +1027,29 @@ def _base_reply(attempt: _Attempt) -> Reply:
 
 
 async def _put_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> LoggedEntry:
-    if attempt.shown != attempt.text.bubbles:
-        # A take-back no text replaced: clients drop it now, as the stored reply does.
-        await _publish_delta(ports, attempt, BubblesDelta(bubbles=attempt.text.bubbles))
-    if isinstance(attempt.progress, _Showing):
-        return await _amend_seen(ports, attempt, reply)
-    return await _append_seen(ports, attempt, await _opening_reply(ports, attempt, reply))
+    """Store the segment's final reply; once it is shown, clients are carried to the stored text."""
+    if not isinstance(attempt.progress, _Showing):
+        return await _append_opening(ports, attempt, await _opening_reply(ports, attempt, reply))
+    reply = _kept_in_slot(reply)
+    # A spoken-over reply is cut by its heard_through, which clients apply themselves.
+    if reply.heard_through is None and _bubbles(reply.text) != attempt.shown:
+        await _publish_delta(ports, attempt, BubblesDelta(bubbles=_bubbles(reply.text)))
+    return await _amend_seen(ports, attempt, reply)
+
+
+def _kept_in_slot(reply: Reply) -> Reply:
+    """Return the shown reply, holding the fallback text where a take-back would leave it empty: it never vanishes."""
+    if reply.text or reply.tool_data or reply.image:
+        return reply
+    # No one spoke over the fallback, so it carries no heard cut.
+    return reply.model_copy(update={"text": EMPTY_RESPONSE_FALLBACK, "heard_through": None})
+
+
+async def _append_opening(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> LoggedEntry:
+    """Open the current segment's reply: the seq it takes is its slot, and never changes."""
+    opened = await _append_seen(ports, attempt, reply)
+    attempt.slots = open_slot(attempt.slots, attempt.segment, opened.seq)
+    return opened
 
 
 async def _opening_reply(ports: RuntimePorts, attempt: _Attempt, reply: Reply) -> Reply:

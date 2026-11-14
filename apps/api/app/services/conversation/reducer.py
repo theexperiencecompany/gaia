@@ -72,7 +72,7 @@ def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rej
         case WorkFinished():
             result = _finish_work(state, seq, entry)
         case Reply():
-            result = _open_reply(state, entry)
+            result = _open_reply(state, seq, entry)
         case ReplySettled():
             result = _settle_reply(state, seq, entry)
     return result
@@ -224,10 +224,12 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
     return Transition(state=_wake(awaiting, seq), effects=(KickStep(),))
 
 
-def _open_reply(state: ConversationState, entry: Reply) -> Transition | Rejected:
+def _open_reply(state: ConversationState, seq: int, entry: Reply) -> Transition | Rejected:
     if state.open_reply is not None:
         return Rejected(reason=RejectReason.REPLY_ALREADY_OPEN)
-    opened = state.model_copy(update={"comms": CommsPhase.ANSWERING, "open_reply": entry.reply_id})
+    opened = state.model_copy(
+        update={"comms": CommsPhase.ANSWERING, "open_reply": entry.reply_id, "open_reply_seq": seq}
+    )
     return Transition(state=opened, effects=())
 
 
@@ -238,9 +240,17 @@ def _settle_reply(state: ConversationState, seq: int, entry: ReplySettled) -> Tr
         return Rejected(reason=RejectReason.REPLY_NOT_OPEN)
     if entry.through >= seq:
         return Rejected(reason=RejectReason.REPLY_ANSWERS_FUTURE)
+    if entry.answers and state.open_reply_seq is not None and entry.through > state.open_reply_seq:
+        # through is the newest input it answers: a reply never sits above what it answers.
+        return Rejected(reason=RejectReason.REPLY_ABOVE_ITS_INPUT)
     settled = max(state.settled_through, entry.through)
     finished = _drop_waking_through(state, settled).model_copy(
-        update={"comms": CommsPhase.IDLE, "open_reply": None, "settled_through": settled}
+        update={
+            "comms": CommsPhase.IDLE,
+            "open_reply": None,
+            "open_reply_seq": None,
+            "settled_through": settled,
+        }
     )
     return Transition(state=finished, effects=())
 
