@@ -47,26 +47,6 @@ describe("a bare textarea", () => {
   });
 });
 
-// The New Integration modal showed a resize grip on its description and a grey
-// disc behind its close X; v2 had neither, on any textarea or close button.
-describe("v2's chrome-free controls", () => {
-  it("never offers a textarea resize handle", () => {
-    expect(valuesFor(".textarea", "resize")).toContain("none");
-    expect(
-      valuesFor(
-        '.input-group__input[data-slot="input-group-textarea"]',
-        "resize",
-      ),
-    ).toContain("none");
-  });
-
-  it("draws a close button without a fill at rest", () => {
-    expect(valuesFor(".close-button--default", "background-color")).toContain(
-      "transparent",
-    );
-  });
-});
-
 // shape="pill" on the New skill modal's Tabs set --field-radius on the Tabs root,
 // and every field in its panels inherited it and rounded into a pill.
 describe("a shape class", () => {

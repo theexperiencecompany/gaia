@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-# One command per side of the HeroUI review. Run on the capture machine (the M4).
+# One command per side of the HeroUI review. Run from a GAIA checkout.
 #
 #   run.sh before <git-ref>   seed the API, build + capture v2 (twice), write review.html
 #   run.sh after  <git-ref>   build + capture v3 (twice), change log, full review.html
 #   run.sh report             recompare and re-render from existing captures
-#   run.sh publish            serve $REVIEW_OUT on the Tailscale address
+#   run.sh publish            serve $REVIEW_OUT on $PUBLISH_ADDR:$PUBLISH_PORT
 #
 # Env: REVIEW_HOME (default ~/v3review), REVIEW_OUT (default $REVIEW_HOME/out),
 #      RESEED=1 to rebuild the dataset (invalidates an existing before capture),
-#      REDISCOVER=1 to regenerate states.json, WORKERS (default 4).
+#      REDISCOVER=1 to regenerate states.json, WORKERS (default 4),
+#      PUBLISH_ADDR (default 127.0.0.1; set a Tailscale/LAN address to share), PUBLISH_PORT (default 8765).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REVIEW_HOME="${REVIEW_HOME:-$HOME/v3review}"
 OUT="${REVIEW_OUT:-$REVIEW_HOME/out}"
 WORKERS="${WORKERS:-4}"
-PUBLISH_ADDR="${PUBLISH_ADDR:-100.65.57.85}"
+PUBLISH_ADDR="${PUBLISH_ADDR:-127.0.0.1}"
 PUBLISH_PORT="${PUBLISH_PORT:-8765}"
 STACK="$HERE/stack.sh"
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:/opt/homebrew/bin:$PATH"
@@ -23,6 +24,15 @@ mkdir -p "$OUT"
 
 die() { echo "run.sh: $*" >&2; exit 1; }
 api_up() { curl -sf -o /dev/null --max-time 3 http://127.0.0.1:8100/health; }
+
+# The harness's own deps come from this checkout's workspace install; its chromium is fetched on first use.
+ensure_browser() {
+  [ -d "$HERE/../node_modules/playwright" ] || die "harness deps missing: run pnpm install in the repo root"
+  local chromium
+  chromium=$(cd "$HERE/.." && node -e 'process.stdout.write(require("playwright").chromium.executablePath())')
+  [ -x "$chromium" ] || (cd "$HERE/.." && pnpm exec playwright install chromium)
+  [ -x "$chromium" ] || die "playwright chromium is still missing at $chromium after install"
+}
 
 capture_twice() {
   local label="$1"
@@ -46,6 +56,7 @@ publish() {
 
 cmd_before() {
   local ref="$1"
+  ensure_browser
   bash "$STACK" tree before "$ref"
   api_up || bash "$STACK" api
   if [ "${RESEED:-}" = 1 ] || [ ! -f "$OUT/seed-state.json" ]; then
@@ -71,6 +82,7 @@ cmd_before() {
 cmd_after() {
   local ref="$1"
   [ -f "$OUT/before.sha" ] || die "capture the before side first: run.sh before <ref>"
+  ensure_browser
   bash "$STACK" tree after "$ref"
   api_up || bash "$STACK" api
   bash "$STACK" build after

@@ -322,8 +322,8 @@ export default function WorkflowModal({
               className={overlayVariants({
                 surface: "secondary",
                 className: isTwoColumn
-                  ? "h-[85vh] max-h-208 max-w-6xl"
-                  : `${modalVariants({ size: "4xl" })} max-h-[90vh]`,
+                  ? "h-[85vh] max-h-208 max-w-6xl p-0"
+                  : `${modalVariants({ size: "4xl" })} max-h-[90vh] p-0`,
               })}
             >
               <Modal.Body className="flex min-h-0 flex-col gap-0 p-0">
