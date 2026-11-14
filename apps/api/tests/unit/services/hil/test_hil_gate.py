@@ -9,11 +9,13 @@ that matter are the ones that make the tool *run* when it should not have:
 """
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Annotated, Any
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import ToolMessage
+from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langgraph.errors import GraphInterrupt
+from langgraph.prebuilt import InjectedState
 import pytest
 
 from app.constants.hil import HIL_STATUS_KWARG, SUBAGENT_RESUME_CONFIG_KEY
@@ -511,6 +513,28 @@ class TestBarrierValidatesArgsAgainstTheRealTool:
         assert result.additional_kwargs[HIL_STATUS_KWARG] == "error"
         barrier.publish_request.assert_not_awaited()
         barrier.interrupt.assert_not_called()
+
+    async def test_args_the_runtime_injects_are_not_asked_of_the_model(
+        self, barrier: GateSeams
+    ) -> None:
+        @tool(GATED_TOOL)
+        def send(
+            to: str,
+            tool_call_id: Annotated[str, InjectedToolCallId],
+            state: Annotated[dict[str, object], InjectedState],
+        ) -> str:
+            """Send an email."""
+            return to
+
+        async def resolve(request: object, user_id: str, name: str) -> BaseTool:
+            return send
+
+        barrier.gated_tool.side_effect = resolve
+
+        await decide_tool_call(gated_request())
+
+        barrier.publish_request.assert_awaited()
+        barrier.interrupt.assert_called_once()
 
 
 class TestAResumeWithNoDecision:
