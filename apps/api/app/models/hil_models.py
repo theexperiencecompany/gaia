@@ -57,6 +57,25 @@ class HILToolRiskUpdate(BaseModel):
     classified_at: datetime | None = None
 
 
+class ApprovalDetail(BaseModel):
+    """One labelled fact about a gated call, e.g. To: bob@x.com."""
+
+    label: str
+    value: str
+
+
+class ApprovalDescription(BaseModel):
+    """A gated call in plain words, rendered the same by web cards and bot prompts."""
+
+    # Verb + object, e.g. "Send an email".
+    action: str
+    # The action with its target, for lists and the model: Send an email to bob@x.com: "Q3".
+    headline: str
+    # Closing verb for a single-action prompt, e.g. "send it".
+    confirm: str
+    details: list[ApprovalDetail]
+
+
 class ApprovalProposal(BaseModel):
     """What a gated call proposes; the ledger mints the id and owns the state."""
 

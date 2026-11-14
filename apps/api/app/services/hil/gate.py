@@ -50,8 +50,8 @@ from app.services.analytics_service import capture
 from app.services.conversation.work_log import record_approval_requested, work_of_run
 from app.services.hil.bridge import (
     announce_approval,
-    build_summary,
 )
+from app.services.hil.describe import describe_call
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import (
     AutoContext,
@@ -182,7 +182,7 @@ async def _decide_ledger(
         deny_note = _prior_denial_note(denied)
 
         integration_name = await _integration_name_for(request, context.user_id, call.name)
-        summary = build_summary(call.name, call.args, integration_name, call.account)
+        summary = describe_call(call.name, call.args, integration_name, call.account).headline
         # Owner is the worker thread, stable across runs: subagent threads read
         # "<integration>_<conversation>", the executor "executor_<...>", so a
         # later turn of the same worker can revoke what it proposed.
@@ -407,7 +407,7 @@ async def _auto_ledger_verdict(
     if policy != "auto":
         return _AutoVerdict()
     integration_name = await _integration_name_for(request, context.user_id, call.name)
-    summary = build_summary(call.name, call.args, integration_name, call.account)
+    summary = describe_call(call.name, call.args, integration_name, call.account).headline
     decision = await _judge(request, context, call, summary)
     if decision.outcome == "accept":
         log.info(

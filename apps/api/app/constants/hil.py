@@ -110,10 +110,6 @@ class ReplyChoice(StrEnum):
     UNRELATED = "unrelated"
 
 
-# How much of a call's arguments the deterministic one-line summary shows.
-HIL_SUMMARY_MAX_ARGS = 2
-HIL_SUMMARY_MAX_ARG_CHARS = 60
-
 # The classifier reading a chat reply to a pending approval gets richer context
 # than the card summary: recent turns + the full (bounded) args. TOTAL budget
 # is the real ceiling; the per-value clip only stops one pathological arg from eating it all.
