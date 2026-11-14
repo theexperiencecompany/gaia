@@ -173,6 +173,20 @@ def test_an_ordinary_morning_goes_straight_from_goal_memory_to_the_goal_guidance
         assert situation[0] not in prompt
 
 
+def test_a_goal_asked_about_recently_is_not_asked_about_again() -> None:
+    prompt = build_briefing_voice_prompt(
+        date_local="Tuesday, October 14",
+        blocks=_BLOCKS,
+        situation=VoiceSituation(goal_asked_recently=True),
+        recent_openings=[],
+    )
+
+    assert f"{_GOAL}\n\nYou asked recently whether their goal is still live." in prompt
+    assert "Do not ask about it again today, in any\nwording" in prompt
+    assert "If no goal lane exists" not in prompt
+    assert "confirming question" not in prompt
+
+
 @pytest.mark.parametrize(
     ("situation", "expected"),
     [

@@ -27,7 +27,7 @@ from app.models.brief_pool_models import (
 from app.models.briefing_models import BriefPoolItem
 from app.models.scout_models import Signal
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
-from app.services.briefing.sections import _data_block, carried_ids, lay_out
+from app.services.briefing.sections import _data_block, carried_ids, lay_out, sources_shown
 
 _SIGNAL = Signal(
     integration_id="linear",
@@ -314,3 +314,36 @@ class TestLayOut:
 
     def test_every_held_result_in_the_pool_is_carried_composed_or_not(self) -> None:
         assert carried_ids(POOL.items, ["h9"]) == ["h2", "h6", "h9"]
+
+
+class TestSourcesShown:
+    def test_only_apps_the_brief_shows_something_from_are_named(self) -> None:
+        laid = lay_out(_COMPOSITION, POOL)
+
+        assert sources_shown(laid, POOL.items) == ["Gmail", "Google Calendar"]
+
+    def test_a_charted_series_and_a_quote_name_their_apps(self) -> None:
+        series = _SERIES.model_copy(update={"id": "gh_prs", "source": "github", "app": "GitHub"})
+        quote = _QUOTE.model_copy(update={"source": "slack", "app": "Slack"})
+        own = _SERIES.model_copy(update={"id": "runs", "source": "gaia", "app": "GAIA"})
+        pool = replace(POOL, series=[series, own], quotes=[quote])
+        composition = BriefComposition.model_validate(
+            {
+                "blocks": [
+                    {
+                        "kind": "chart",
+                        "series_ids": ["gh_prs", "runs"],
+                        "chart": "bar",
+                        "title": "Pull requests",
+                        "takeaway": "Two merged.",
+                    },
+                    {"kind": "quote", "quote_id": "q1"},
+                ]
+            }
+        )
+
+        assert sources_shown(lay_out(composition, pool), pool.items) == [
+            "Google Calendar",
+            "GitHub",
+            "Slack",
+        ]

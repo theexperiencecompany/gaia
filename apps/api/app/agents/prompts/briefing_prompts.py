@@ -248,7 +248,9 @@ Voice these in the message, grouped by app. An important item gets its own line,
 concretely, linked with its fact's link slot when it is linkable. The rest of an app's items
 share one line ("plus a few more open in Linear"), linking the ones you name. Use each item's memory: an item
 mentioned yesterday and unchanged gets a short "still" or is left out; one that moved gets
-the move; a new one is news. Never invent an item, a link, a date or a person not shown here.
+the move; one marked new is news. An item only first seen today is not new to them (the app
+dates it earlier, or not at all): never call it new, just assigned or today's. Never invent an
+item, a link, a date or a person not shown here.
 """
 
 
@@ -269,6 +271,29 @@ def _recent_openings_block(openings: list[str]) -> str:
     return f"\n## HOW YOUR LAST BRIEFS OPENED (open today's message differently)\n{listed}\n"
 
 
+_GOAL_QUESTION = """
+If no goal lane exists but the goal knowledge above names something specific, the
+whole brief is one short honest message plus ONE confirming question that quotes
+it and offers to start on one deliverable you name ("You mentioned launching the
+mobile app by December, want me to start with a launch checklist tonight?"). EXCEPTION,
+absolute: if the user's replies above ALREADY answered this with a yes, never ask
+it again in any wording. Acknowledge their yes plainly instead ("you said go
+ahead on the investor list, that's in motion") and say nothing more about it. Weigh
+the bracketed dates: a goal [mentioned] months ago with no activity since is
+probably stale; ask whether it is still live rather than acting on it. Only when
+the knowledge above is truly empty, ask ONE question with 2-3 specific, mutually
+exclusive, one-word-answerable options grounded in what you DO know (profession,
+onboarding focus, recent activity). Generic buckets (Work / Personal / Other) are
+a hard failure. Never ask an open-ended "what can I help with".
+""".strip()
+
+# A remembered goal is asked about once per GOAL_QUESTION_REASK; inside the window this replaces it.
+_GOAL_ASKED = """
+You asked recently whether their goal is still live. Do not ask about it again today, in any
+wording, and do not ask them to name one: mention a goal only where today's facts serve it.
+""".strip()
+
+
 @dataclass(frozen=True)
 class VoiceSituation:
     """Where the user stands today; each flag adds its one note to the voice prompt.
@@ -282,6 +307,8 @@ class VoiceSituation:
     wind_down: str | None = None
     first_week: bool = False
     offer_lighter_cadence: bool = False
+    #: A brief asked about their remembered goal inside GOAL_QUESTION_REASK.
+    goal_asked_recently: bool = False
 
 
 def build_briefing_voice_prompt(
@@ -355,6 +382,7 @@ def build_briefing_voice_prompt(
         if situation.offer_lighter_cadence
         else ""
     )
+    goal_note = _GOAL_ASKED if situation.goal_asked_recently else _GOAL_QUESTION
     setup_block = f"\n## THEIR GAIA SETUP (real facts)\n{blocks.setup}\n" if blocks.setup else ""
     return f"""{_SPEAKER}
 
@@ -378,19 +406,7 @@ actually changed in response.
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {blocks.goal}
 {setup_block}{winback_note}{first_note}{first_week_note}{cadence_note}{wind_down_note}
-If no goal lane exists but the goal knowledge above names something specific, the
-whole brief is one short honest message plus ONE confirming question that quotes
-it and offers to start on one deliverable you name ("You mentioned launching the
-mobile app by December, want me to start with a launch checklist tonight?"). EXCEPTION,
-absolute: if the user's replies above ALREADY answered this with a yes, never ask
-it again in any wording. Acknowledge their yes plainly instead ("you said go
-ahead on the investor list, that's in motion") and say nothing more about it. Weigh
-the bracketed dates: a goal [mentioned] months ago with no activity since is
-probably stale; ask whether it is still live rather than acting on it. Only when
-the knowledge above is truly empty, ask ONE question with 2-3 specific, mutually
-exclusive, one-word-answerable options grounded in what you DO know (profession,
-onboarding focus, recent activity). Generic buckets (Work / Personal / Other) are
-a hard failure. Never ask an open-ended "what can I help with".
+{goal_note}
 {_recent_openings_block(recent_openings)}
 {_MESSAGE_VOICE}
 - On a full day fold an app's routine items into one line rather than run long.

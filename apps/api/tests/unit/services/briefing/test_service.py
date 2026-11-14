@@ -382,6 +382,7 @@ class World:
     was_delivered: AsyncMock = field(default_factory=lambda: AsyncMock(return_value=False))
     clear_dormancy: AsyncMock = field(default_factory=AsyncMock)
     enter_dormancy: AsyncMock = field(default_factory=AsyncMock)
+    goal_asked: AsyncMock = field(default_factory=AsyncMock)
     activity: ActivityStatus = ActivityStatus.ACTIVE
     connected_apps: list[str] = field(default_factory=list)
     bags: dict[str, ShuffleBag] = field(default_factory=dict)
@@ -526,6 +527,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
     monkeypatch.setattr(user_repository, "clear_briefing_bootstrap", w.clear_bootstrap)
     monkeypatch.setattr(dormancy, "clear_dormancy", w.clear_dormancy)
     monkeypatch.setattr(dormancy, "enter_dormancy", w.enter_dormancy)
+    monkeypatch.setattr(user_repository, "record_goal_question", w.goal_asked)
     monkeypatch.setattr(daily, "build_briefing_voice_prompt", w.voice_prompt)
     monkeypatch.setattr(weekly, "build_weekly_voice_prompt", w.weekly_prompt)
 
@@ -2558,6 +2560,37 @@ class TestTheIdleLadder:
 
         assert world.reads["record_idle_day"].await_args.args[2] is idle
 
+    @pytest.mark.parametrize(
+        ("asked_days_ago", "asks", "told_it_asked"),
+        [(None, True, False), (2, False, True), (7, True, False)],
+        ids=["never-asked", "asked-two-days-ago", "asked-a-week-ago"],
+    )
+    async def test_a_remembered_goal_is_asked_about_once_a_week_and_each_ask_is_recorded(
+        self,
+        world: World,
+        monkeypatch: pytest.MonkeyPatch,
+        asked_days_ago: int | None,
+        asks: bool,
+        told_it_asked: bool,
+    ) -> None:
+        asked_at = None if asked_days_ago is None else _NOW - timedelta(days=asked_days_ago)
+        world.user = UserDocument(
+            id=_USER,
+            timezone=_TZ,
+            email="a@b.c",
+            briefing_dormancy=BriefingDormancy(goal_asked_at=asked_at),
+        )
+        goal = context.StatedGoal("Ship v2", GoalOrigin.ONBOARDING)
+        _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[goal]))
+        _seam(monkeypatch, world, dormancy, "latest_activity_since", AsyncMock(return_value=_NOW))
+
+        await daily.run_daily_briefing(_USER)
+
+        situation = world.voice_prompt.call_args.kwargs["situation"]
+        assert situation.goal_asked_recently is told_it_asked
+        assert world.goal_asked.await_count == int(asks)
+        assert world.reads["record_idle_day"].await_args.args[2] is False
+
     @pytest.mark.parametrize(("idle_days", "stage"), [(2, "warn"), (3, "final")])
     async def test_the_idle_streak_sets_the_wind_down_and_the_goodbye_goes_dormant(
         self, world: World, monkeypatch: pytest.MonkeyPatch, idle_days: int, stage: str
@@ -3042,7 +3075,7 @@ class TestSignalsInTheBrief:
             " 1 time(s), last 2 days ago, moved from Todo to In Progress"
         ) in prompt
         assert "- fact 2 | other | issue assigned to you: Refresh the onboarding docs" in prompt
-        assert "new today" in prompt
+        assert "first seen today, created date unknown" in prompt
         assert (_stored_payload(world).message or "").endswith(
             f"[the login redirect]({_LOGIN.url}) still needs you."
         )
@@ -3152,7 +3185,7 @@ class TestEverySourceReachesItsSection:
             ),
         ]
         assert payload.sections[0].items[2].url == _LOGIN.url
-        assert payload.sources_read == ["Linear", "Gmail", "Google Calendar"]
+        assert payload.sources_read == ["Gmail", "Linear", "Google Calendar"]
         assert [(u.app, u.reason) for u in payload.sources_unavailable] == [
             ("Notion", ScoutSkipReason.FAILED)
         ]

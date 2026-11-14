@@ -51,6 +51,7 @@ from app.services.briefing.sections import (
     event_ids,
     lay_out,
     log_composition,
+    sources_shown,
 )
 from app.utils.timezone import Timezone
 from app.utils.user_display import display_first_name
@@ -159,7 +160,7 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
                 done_by_you=sum(d.you for d in week.days),
                 done_by_gaia=sum(d.gaia for d in week.days),
             ),
-            "sources_read": gathered.sources_read,
+            "sources_read": sources_shown(laid, gathered.pool),
             "blocks": drawn,
             "undrawn": undrawn,
             "uncomposed": laid.uncomposed,
