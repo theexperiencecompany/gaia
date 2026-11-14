@@ -339,13 +339,33 @@ def test_comms_forwards_executor_tool_via_call_executor():
 
 def test_comms_after_forwarding_stays_silent():
     """The say is the result's, re-voiced when it arrives; said at the hand-off it showed twice."""
-    script = '[[tool:create_reminder {"title": "x"}]] [[say:Reminder set!]] [[fail:boom]]'
+    script = '[[tool:create_reminder {"title": "x"}]] [[say:Reminder set!]]'
     messages = [
         _user(script),
         _assistant_tool_call(CALL_EXECUTOR_TOOL, {"task": script}),
         _tool_result(CALL_EXECUTOR_TOOL),
     ]
     assert resolve_response(messages, COMMS_TOOLS) == SayResponse(text=HAND_OFF_SILENCE)
+
+
+@pytest.mark.parametrize(
+    ("closing", "expected"),
+    [
+        ("[[say:Partial.]] [[fail:boom]]", SayResponse(text="Partial.", fail="boom")),
+        ("[[narrate:Let me check.]] [[say:Checked.]]", SayResponse(text="Checked.")),
+    ],
+)
+def test_comms_after_forwarding_says_a_closing_scripted_for_the_front_door(
+    closing: str, expected: SayResponse
+):
+    """A fail or a narrate scripts the front door's own turn, so its reply is said there."""
+    script = f'[[tool:create_reminder {{"title": "x"}}]] {closing}'
+    messages = [
+        _user(script),
+        _assistant_tool_call(CALL_EXECUTOR_TOOL, {"task": script}),
+        _tool_result(CALL_EXECUTOR_TOOL),
+    ]
+    assert resolve_response(messages, COMMS_TOOLS) == expected
 
 
 def test_comms_single_forward_covers_multiple_executor_tools():

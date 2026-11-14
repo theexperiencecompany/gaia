@@ -23,7 +23,8 @@ reply when no tool follows; consecutive waits add up. Each tier waits only on
 the steps it emits itself: the front door forwards executor tools at once (the
 executor waits on them), and the say is emitted, and waited on, by the tier that
 reaches it. After a hand-off the front door stays silent; the say reaches the
-user once, when it re-voices the finished work.
+user once, when it re-voices the finished work. A script whose closing has a
+narrate or a fail scripts the front door's own turn, so it says the reply there.
 
 The stub is stateless. On every invocation it re-derives where in the script it
 is by counting the tool-call turns already present in the request's message list
@@ -530,6 +531,11 @@ def _terminal(script: _Script) -> SayResponse:
     return SayResponse(say.text if say is not None else DEFAULT_REPLY, **timing)
 
 
+def _scripts_front_door(script: _Script) -> bool:
+    """Whether the closing scripts the front door's own turn: a preamble it streams, or a reply it breaks."""
+    return any(isinstance(d, (NarrateDirective, FailDirective)) for d in script.closing)
+
+
 def _narration(script: _Script) -> dict[str, Any]:
     """Return the preamble a front-door hand-off streams, paced like the reply; empty without one."""
     narrate = next((d for d in script.closing if isinstance(d, NarrateDirective)), None)
@@ -587,7 +593,7 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
 
     emitted = _emitted_tool_names(messages[latest + 1 :])
     di = _cursor(tool_dirs, emitted, available_tools)
-    if di >= len(tool_dirs) and CALL_EXECUTOR_TOOL in emitted:
+    if di >= len(tool_dirs) and CALL_EXECUTOR_TOOL in emitted and not _scripts_front_door(script):
         return SayResponse(HAND_OFF_SILENCE)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
