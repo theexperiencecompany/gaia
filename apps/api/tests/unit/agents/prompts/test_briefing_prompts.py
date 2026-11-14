@@ -24,6 +24,7 @@ from app.agents.prompts.briefing_prompts import (
     voice_unreadable_note,
 )
 from app.constants.briefing import (
+    FREQUENCY_CLAIMS,
     MAX_BRIEF_CAPTION_CHARS,
     MAX_BRIEF_HEADLINE_CHARS,
     MAX_BRIEF_LEDE_CHARS,
@@ -302,7 +303,10 @@ def test_every_line_recent_briefs_printed_is_listed_for_the_model_to_avoid() -> 
 
 
 def test_the_voice_is_told_never_to_claim_how_often_something_happens() -> None:
-    assert "NEVER CLAIM HOW OFTEN: never say something is rare, unusual, usual" in _prompt()
+    prompt = _prompt()
+
+    assert "NEVER CLAIM HOW OFTEN: you see today, not their history" in prompt
+    assert f"them: {', '.join(FREQUENCY_CLAIMS)}." in " ".join(prompt.split())
 
 
 def test_without_recent_briefs_no_recent_lines_block_is_added() -> None:

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 from app.agents.prompts.comms_prompts import GAIA_PERSONA, GAIA_VOICE
 from app.constants.briefing import (
+    FREQUENCY_CLAIMS,
     LEAD_HEADING,
     MAX_BRIEF_CAPTION_CHARS,
     MAX_BRIEF_HEADLINE_CHARS,
@@ -119,8 +120,16 @@ its voice. Every specific in your prose must appear in the facts below; if it is
 not there, you do not say it.
 """.strip()
 
+# A frequency word no fact uses is sent back by the prose check, so the voice is told each one.
+_HOW_OFTEN = f"""
+NEVER CLAIM HOW OFTEN: you see today, not their history, so never say how often something
+happens unless a fact you were given says it. These words are sent back wherever no fact uses
+them: {", ".join(FREQUENCY_CLAIMS)}. Say a thing once: a lede that restates its own point
+("clear today. The day is open.") is padding.
+""".strip()
+
 # How every brief's prose reads, past what its headline and lede are written from.
-_VOICE_CRAFT = """
+_VOICE_CRAFT = f"""
 Be CONCRETE, not vague. A fact's ``detail:`` or ``summary:`` names specifics: use
 them ("vetted twelve investors, Elad Gil, Nat Friedman, Daniel Gross and more" beats
 "the investor list is ready"). Pull real names and choices straight from them;
@@ -178,9 +187,7 @@ Never "anything else you need?", never two questions, and skip it entirely when
 nothing needs deciding. ONE question across the WHOLE brief: if the goal question below
 applies, that is your one ask, nothing else gets asked.
 
-NEVER CLAIM HOW OFTEN: never say something is rare, unusual, usual or happening again
-unless a fact you were given says so; you see today, not their history. Say a thing once:
-a lede that restates its own point ("clear today. The day is open.") is padding.
+{_HOW_OFTEN}
 
 NEVER COUNT ZEROS: name what exists, never tally what does not. "0 items
 waiting, 0 done, 0 in progress" is a status report, not a person talking; leave
@@ -189,7 +196,7 @@ out anything with no count instead of saying it is zero.
 
 _WORDS = """
 WORDS: never name the brief's internal machinery to the user: no "lane", "held
-results", "sections", "facts", a fact's number or "[COUNTS]" (say you'll track it as a goal, or
+results", "sections", "facts", "briefing items", a fact's number or "[COUNTS]" (say you'll track it as a goal, or
 just name the work). Never use em dashes or en dashes anywhere in any
 string; use commas, periods, or parentheses.
 """.strip()
