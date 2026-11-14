@@ -400,6 +400,40 @@
       }
     },
     {
+      "event": "agent:wait_resumed",
+      "class": "WaitResumed",
+      "owner": "server",
+      "domain": "agent",
+      "description": "Something GAIA asked the user to do got done, and the chat, todo or workflow waiting on it was picked back up.",
+      "previous_names": [],
+      "budget_per_user_day": 50,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Something GAIA asked the user to do got done, and the chat, todo or workflow waiting on it was picked back up.",
+        "properties": {
+          "condition": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Condition",
+            "type": "string"
+          },
+          "waiter": {
+            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "title": "Waiter",
+            "type": "string"
+          },
+          "waited_minutes": {
+            "title": "Waited Minutes",
+            "type": "integer"
+          }
+        },
+        "required": ["condition", "waiter", "waited_minutes"],
+        "title": "WaitResumed",
+        "type": "object"
+      }
+    },
+    {
       "event": "ai:llm_call_completed",
       "class": "AiLlmCallCompleted",
       "owner": "server",
