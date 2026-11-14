@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from functools import partial
 
 import pytest
 from redis.asyncio import Redis
@@ -25,6 +26,7 @@ from app.models.conversation_frame_models import (
 from app.models.conversation_log_models import CommsPhase, Entry
 from app.models.conversation_screen_models import ScreenFrame
 from app.models.conversation_send_models import ConversationEvent
+from app.services.conversation import event_stream
 from app.services.conversation.event_stream import (
     RedisStreamFrames,
     StreamedFrame,
@@ -44,6 +46,12 @@ CID = "c-events"
 UID = "u-events"
 STREAM = f"{EVENTS_KEY_PREFIX}{CID}"
 OPEN = f"{EVENTS_OPEN_REPLY_KEY_PREFIX}{CID}"
+
+
+@pytest.fixture(autouse=True)
+def short_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Wait 100 ms for a live frame instead of 15 s, so a follower that finds none moves on."""
+    monkeypatch.setattr(event_stream, "read_frames", partial(read_frames, block_ms=100))
 
 
 def _delta(attempt_id: str, reply_id: str | None, index: int = 0) -> ReplyDeltaFrame:
