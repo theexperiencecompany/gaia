@@ -25,16 +25,14 @@ SUMMARY = "Send the deck to bob"
 
 @pytest.fixture
 def mock_channels():
-    device_service = SimpleNamespace(
-        get_active_tokens=AsyncMock(return_value=[]),
-        deactivate_tokens=AsyncMock(),
-    )
     with (
         patch(f"{_MOD}.websocket_manager") as m_ws,
-        patch(f"{_MOD}.get_device_token_service", return_value=device_service) as m_dts,
+        patch(f"{_MOD}.device_token_repository") as m_devices,
     ):
         m_ws.broadcast_to_user = AsyncMock()
-        yield SimpleNamespace(ws=m_ws, dts=m_dts, device=device_service)
+        m_devices.list_active_tokens = AsyncMock(return_value=[])
+        m_devices.deactivate = AsyncMock()
+        yield SimpleNamespace(ws=m_ws, device=m_devices)
 
 
 @pytest.fixture
@@ -51,7 +49,7 @@ def mock_expo():
 
 class TestNotifyApprovalPending:
     async def test_fires_both_channels(self, mock_channels, mock_expo):
-        mock_channels.device.get_active_tokens.return_value = ["token-1"]
+        mock_channels.device.list_active_tokens.return_value = ["token-1"]
 
         await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
 
@@ -66,6 +64,7 @@ class TestNotifyApprovalPending:
                 },
             },
         )
+        mock_channels.device.list_active_tokens.assert_awaited_once_with(USER_ID)
         mock_expo.post.assert_awaited_once()
 
 
@@ -81,10 +80,10 @@ class TestPushToDevices:
         await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
 
         mock_expo.post.assert_not_awaited()
-        mock_channels.device.deactivate_tokens.assert_not_awaited()
+        mock_channels.device.deactivate.assert_not_awaited()
 
     async def test_token_fetch_failure_is_swallowed(self, mock_channels, mock_expo):
-        mock_channels.device.get_active_tokens.side_effect = RuntimeError("db down")
+        mock_channels.device.list_active_tokens.side_effect = RuntimeError("db down")
 
         await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
 
@@ -135,7 +134,7 @@ class TestSendExpoPush:
             ]
         }
         mock_expo.post.return_value = response
-        mock_channels.device.get_active_tokens.return_value = ["token-1", "token-2"]
+        mock_channels.device.list_active_tokens.return_value = ["token-1", "token-2"]
 
         await _send_expo_push(
             ["token-1", "token-2"],
@@ -144,11 +143,31 @@ class TestSendExpoPush:
             summary=SUMMARY,
         )
 
-        mock_channels.device.deactivate_tokens.assert_awaited_once_with(["token-2"])
+        mock_channels.device.deactivate.assert_awaited_once_with(["token-2"])
+
+    async def test_a_dead_token_in_a_later_batch_is_the_one_deactivated(
+        self, mock_channels, mock_expo
+    ):
+        delivered, one_dead = MagicMock(), MagicMock()
+        delivered.json.return_value = {"data": [{"status": "ok"}] * 100}
+        one_dead.json.return_value = {
+            "data": [{"status": "error", "details": {"error": "DeviceNotRegistered"}}]
+            + [{"status": "ok"}] * 49
+        }
+        mock_expo.post.side_effect = [delivered, one_dead]
+
+        await _send_expo_push(
+            [f"token-{i}" for i in range(150)],
+            conversation_id=CONVERSATION_ID,
+            approval_id=APPROVAL_ID,
+            summary=SUMMARY,
+        )
+
+        mock_channels.device.deactivate.assert_awaited_once_with(["token-100"])
 
     async def test_post_failure_is_swallowed(self, mock_channels, mock_expo):
         """The swallow happens in _push_to_devices — notify must never raise."""
-        mock_channels.device.get_active_tokens.return_value = ["token-1"]
+        mock_channels.device.list_active_tokens.return_value = ["token-1"]
         mock_expo.post.side_effect = RuntimeError("expo down")
 
         await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
@@ -161,7 +180,7 @@ class TestDeadTokensFromReceipts:
         return response
 
     def test_returns_device_not_registered_tokens(self):
-        batch = [{"to": "a"}, {"to": "b"}, {"to": "c"}]
+        batch = ["a", "b", "c"]
         response = self._response(
             {
                 "data": [
@@ -175,10 +194,27 @@ class TestDeadTokensFromReceipts:
         assert _dead_tokens_from_receipts(batch, response) == ["b"]
 
     def test_empty_data(self):
-        assert _dead_tokens_from_receipts([{"to": "a"}], self._response({})) == []
+        assert _dead_tokens_from_receipts(["a"], self._response({})) == []
 
     def test_non_json_body(self):
         response = MagicMock()
         response.json.side_effect = ValueError("not json")
 
-        assert _dead_tokens_from_receipts([{"to": "a"}], response) == []
+        assert _dead_tokens_from_receipts(["a"], response) == []
+
+    def test_a_reply_that_is_not_ticket_shaped_reports_none(self):
+        assert _dead_tokens_from_receipts(["a"], self._response({"data": "unavailable"})) == []
+
+    def test_a_reply_without_one_ticket_per_message_reports_none(self):
+        response = self._response(
+            {"data": [{"status": "error", "details": {"error": "DeviceNotRegistered"}}]}
+        )
+
+        assert _dead_tokens_from_receipts(["a", "b"], response) == []
+
+    def test_an_error_ticket_without_details_is_not_dead(self):
+        response = self._response(
+            {"data": [{"status": "error"}, {"status": "error", "details": None}]}
+        )
+
+        assert _dead_tokens_from_receipts(["a", "b"], response) == []
