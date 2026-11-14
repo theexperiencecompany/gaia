@@ -519,6 +519,12 @@ async def test_work_started_after_a_message_joined_the_attempt_answers_that_mess
         ("t1", m2_seq, ("m1", "m2"))
     ]
     assert {"m1", "m2"} <= set(write_up.answers)
+    # Absorbing m2 settles the cards already shown; "on it" opens the next segment below m2.
+    assert [(reply.text, bool(reply.tool_data)) for reply in await rig.of(Reply)] == [
+        ("", True),
+        ("on it", False),
+        ("both done", False),
+    ]
     # The attempt's card-only reply sits between, so the late write-up quotes the newest
     # message it answers: m2, not m1, because m2 is answered too.
     assert write_up.quote_target == "m2"
@@ -814,24 +820,27 @@ class _Budget:
     redis_before_text: int
 
 
-# Through submit_message: before the reply opens, accept 2, claim 1, unsettled 1, comms 1, reply head 1
-# (+ its own commit in the same ms). Was 29/14 Mongo, 27/14 Redis; work turn 46/23, 28/16.
-PLAIN_TURN = _Budget(mongo=24, mongo_before_text=7, redis=30, redis_before_text=17)
+# Through submit_message: before the reply opens, accept 2, claim 1, unsettled 1, comms 1.
+# Was 29/14 Mongo, 27/14 Redis; work turn 46/23, 28/16.
+PLAIN_TURN = _Budget(mongo=24, mongo_before_text=5, redis=30, redis_before_text=17)
 # The same turn with the attempt also logging the work it hands the executor before any text.
-WORK_TURN = _Budget(mongo=43, mongo_before_text=15, redis=31, redis_before_text=19)
+WORK_TURN = _Budget(mongo=43, mongo_before_text=13, redis=31, redis_before_text=19)
 
 
 @dataclass(frozen=True)
 class _MongoOp:
     collection: str
     op: str
-    at: datetime
+
+
+# A collection only the reply-opening mark reads, so its profiler row splits the turn exactly.
+_REPLY_OPENS_MARK = "reply_opens_mark"
 
 
 async def _profiled(
     mongo_db: AsyncIOMotorDatabase[dict[str, object]], turn: Callable[[], Awaitable[None]]
 ) -> list[_MongoOp]:
-    """Run turn with Mongo's profiler recording every operation, and return them in order."""
+    """Run turn with Mongo's profiler recording every operation, and return them in the order they finished."""
     await mongo_db.command("profile", 0)
     await mongo_db["system.profile"].drop()
     await mongo_db.command("profile", 2)
@@ -840,14 +849,34 @@ async def _profiled(
     finally:
         await mongo_db.command("profile", 0)
     ops = []
-    async for doc in mongo_db["system.profile"].find({}).sort("ts", 1):
+    # system.profile is capped: natural order is write order, exact where ms timestamps tie.
+    async for doc in mongo_db["system.profile"].find({}).sort("$natural", 1):
         collection = str(doc.get("ns", "")).split(".", 1)[-1]
         if collection.startswith("system.") or collection == "$cmd":
             continue
         command = doc.get("command")
         name = next(iter(command)) if isinstance(command, dict) and command else doc.get("op")
-        ops.append(_MongoOp(collection, str(name), cast(datetime, doc["ts"])))
+        ops.append(_MongoOp(collection, str(name)))
     return ops
+
+
+@contextmanager
+def _marking_reply_opens(
+    mongo_db: AsyncIOMotorDatabase[dict[str, object]], trips: list[float], marks: list[int]
+) -> Iterator[None]:
+    """Just before the turn's reply is appended, note the Redis trips so far and leave a mark in Mongo's profile."""
+    opening_reply = step_module._opening_reply
+
+    async def stamp_then_mark(*args: Any) -> Reply:
+        reply = await opening_reply(*args)
+        if not marks:
+            marks.append(len(trips))
+            # Synchronous, so nothing on the loop runs between the mark and the append.
+            mongo_db.delegate[_REPLY_OPENS_MARK].find_one({})
+        return reply
+
+    with patch.object(step_module, "_opening_reply", stamp_then_mark):
+        yield
 
 
 def _count_redis_trips(monkeypatch: pytest.MonkeyPatch) -> list[float]:
@@ -871,8 +900,8 @@ def _count_redis_trips(monkeypatch: pytest.MonkeyPatch) -> list[float]:
 @dataclass(frozen=True)
 class _Turn:
     spent: _Budget
-    ops: list[_MongoOp]
-    opened_at: datetime
+    before_text: list[_MongoOp]
+    after_text: list[_MongoOp]
 
 
 async def _measured_turn(
@@ -880,29 +909,31 @@ async def _measured_turn(
     mongo_db: AsyncIOMotorDatabase[dict[str, object]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> _Turn:
-    """Submit a second message, settle, and count what its turn cost before the reply opened and in all."""
+    """Submit a second message, settle, and count what its turn cost before its first text and in all."""
     await rig.send("m1", "hi")
     await rig.settle()
     trips: list[float] = []
+    marks: list[int] = []
 
     async def turn() -> None:
         counted = _count_redis_trips(monkeypatch)
-        with patch("app.services.conversation.send.capture"):
-            await rig.submit("m2", "and again")
-        await rig.settle()
+        with _marking_reply_opens(mongo_db, counted, marks):
+            with patch("app.services.conversation.send.capture"):
+                await rig.submit("m2", "and again")
+            await rig.settle()
         trips.extend(counted)
 
     ops = await _profiled(mongo_db, turn)
-    opened = next(
-        logged for logged in reversed(await rig.entries()) if isinstance(logged.entry, Reply)
-    )
+    [redis_before_text] = marks
+    [boundary] = [i for i, op in enumerate(ops) if op.collection == _REPLY_OPENS_MARK]
+    before_text, after_text = ops[:boundary], ops[boundary + 1 :]
     spent = _Budget(
-        mongo=len(ops),
-        mongo_before_text=len([op for op in ops if op.at <= opened.at]),
+        mongo=len(before_text) + len(after_text),
+        mongo_before_text=len(before_text),
         redis=len(trips),
-        redis_before_text=len([at for at in trips if at <= opened.at.timestamp()]),
+        redis_before_text=redis_before_text,
     )
-    return _Turn(spent=spent, ops=ops, opened_at=opened.at)
+    return _Turn(spent=spent, before_text=before_text, after_text=after_text)
 
 
 async def _all_flushed(rig: Rig, mongo_db: AsyncIOMotorDatabase[dict[str, object]]) -> list[str]:
@@ -935,9 +966,8 @@ async def test_a_plain_turn_stays_within_its_mongo_and_redis_budget(
     turn = await _measured_turn(rig, mongo_db, monkeypatch)
     _within(turn.spent, PLAIN_TURN)
     # The optional writes wait for the first text and still happen exactly once.
-    ledger = [op for op in turn.ops if op.collection == "llm_calls"]
-    assert [op.op for op in ledger] == ["insert"]
-    assert all(op.at >= turn.opened_at for op in ledger)
+    assert [op.op for op in turn.after_text if op.collection == "llm_calls"] == ["insert"]
+    assert not [op for op in turn.before_text if op.collection == "llm_calls"]
     assert await _all_flushed(rig, mongo_db) == [logged.entry.id for logged in await rig.entries()]
 
 
