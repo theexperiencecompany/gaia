@@ -1317,6 +1317,51 @@ class TestTheWeeklyHoldsToItsFacts:
 
         assert world.agent.await_count == 1
 
+    async def test_a_recap_that_leaves_out_its_lead_is_sent_back(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _a_full_week(monkeypatch, world)
+        world.composer.side_effect = _composed(
+            {"GAIA's work": ["Investor deck"]}, lead=("CRM sync failed", "I can rerun it.")
+        )
+        world.agent.return_value = _weekly_voiced(message="Good week.")
+
+        with pytest.raises(errors.BriefingGenerationError, match="never refers to the lead"):
+            await weekly.run_weekly_digest(_USER)
+
+        assert "(CRM sync failed)" in world.agent.await_args_list[1].kwargs["prompt"]
+
+    async def test_a_frequency_word_its_facts_carry_is_kept(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _seam(
+            monkeypatch,
+            world,
+            context,
+            "gather_completed_since",
+            AsyncMock(
+                return_value=context.CompletedWork(
+                    gaia=[], user=[_todo("u1", "Send the usual deck")]
+                )
+            ),
+        )
+        world.agent.return_value = _weekly_voiced(lede="The usual deck went out.")
+
+        await weekly.run_weekly_digest(_USER)
+
+        assert world.agent.await_count == 1
+        assert _stored_payload(world).lede == "The usual deck went out."
+
+    async def test_the_recap_names_the_apps_behind_what_it_shows(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _a_full_week(monkeypatch, world)
+        world.agent.return_value = _weekly_voiced()
+
+        await weekly.run_weekly_digest(_USER)
+
+        assert _stored_payload(world).sources_read == ["Google Calendar"]
+
     async def test_a_recap_without_a_message_fails_and_sends_nothing(self, world: World) -> None:
         world.agent.return_value = _weekly_voiced(message="")
 
