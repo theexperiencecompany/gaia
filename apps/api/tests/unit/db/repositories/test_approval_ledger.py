@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from pymongo.errors import DuplicateKeyError
 import pytest
+import time_machine
 
 from app.db.repositories.approval_ledger import (
     ApprovalLedgerRepository,
@@ -100,6 +101,17 @@ class TestRegister:
         assert ("outcome", None) in inserted.items()
         assert ("action", None) in inserted.items()
         assert inserted["approval_id"] == ap_id
+
+    @time_machine.travel(datetime(2026, 11, 14, 12, 0, tzinfo=UTC), tick=False)
+    async def test_the_row_is_stamped_now_and_leaves_its_id_to_mongo(
+        self, repo: ApprovalLedgerRepository, collection: MagicMock
+    ) -> None:
+        await repo.register(_PROPOSAL)
+
+        inserted = collection.insert_one.await_args.args[0]
+        assert inserted["created_at"] == datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
+        assert inserted["created_at"].tzinfo is UTC
+        assert "id" not in inserted
 
     async def test_live_duplicate_returns_existing_id_without_insert(
         self, repo: ApprovalLedgerRepository, collection: MagicMock

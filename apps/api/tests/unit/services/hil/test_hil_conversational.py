@@ -8,13 +8,15 @@ the mapping onto decisions run for real. Every decision commits through decide_l
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import httpx
 import pytest
 
 from app.constants.hil import HIL_JEV_REPLY_APPROVE_LINE, UNRELATED_FEEDBACK
 from app.models.hil_models import ApprovalLedgerDocument
+from app.models.message_models import MessageDict
+from app.services.hil.bridge import build_action_detail
 from app.services.hil.conversational import ledger_outcome_text, resolve_pending_from_message
 from app.services.hil.ledger_decide import LedgerDecision
 from shared.py.approvals import ActionResult, ApprovalOutcome
@@ -38,9 +40,9 @@ def _row(approval_id: str, summary: str, *, age_minutes: int = 1) -> ApprovalLed
 
 
 @pytest.fixture(autouse=True)
-def _quiet_log() -> Iterator[None]:
-    with patch(f"{MODULE}.log"):
-        yield
+def logged() -> Iterator[MagicMock]:
+    with patch(f"{MODULE}.log") as mock:
+        yield mock
 
 
 @pytest.fixture
@@ -62,10 +64,33 @@ def _pending(*rows: ApprovalLedgerDocument) -> Any:
 
 
 def _decided(decide: AsyncMock) -> list[tuple[str, str, str | None]]:
+    """Each decision taken, after checking it was taken as this user."""
+    assert {decided.kwargs["user_id"] for decided in decide.await_args_list} <= {USER_ID}
     return [
-        (call.args[0], call.kwargs["kind"], call.kwargs["feedback"])
-        for call in decide.await_args_list
+        (decided.args[0], decided.kwargs["kind"], decided.kwargs["feedback"])
+        for decided in decide.await_args_list
     ]
+
+
+HISTORY: list[MessageDict] = [
+    {"role": "assistant", "content": "Shall I send the email to Bob?"},
+    {"role": "user", "content": "let me think"},
+]
+
+
+def _asked_state(jev: AsyncMock) -> object:
+    return jev.post.await_args.kwargs["json"]["state"]
+
+
+def _expected_state(reply: str, *rows: ApprovalLedgerDocument) -> dict[str, object]:
+    return {
+        "reply": reply,
+        "pending_actions": [
+            {"number": number, "action": build_action_detail(row.summary, row.args)}
+            for number, row in enumerate(rows, start=1)
+        ],
+        "recent_conversation": HISTORY,
+    }
 
 
 class TestNothingPending:
@@ -150,6 +175,88 @@ class TestBatch:
         ):
             assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") is None
         decide.assert_not_awaited()
+
+
+class TestWhatTheClassifierReads:
+    async def test_one_approval_is_asked_with_the_reply_its_detail_and_the_history(
+        self, decide: AsyncMock
+    ) -> None:
+        row = _row("ap_1", "Send email")
+        with _pending(row), serve_jev(jev_reply_body(("approve", 0.99))) as jev:
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes", HISTORY)
+
+        assert _asked_state(jev) == _expected_state("yes", row)
+
+    async def test_a_batch_is_asked_with_every_detail_and_the_history(
+        self, decide: AsyncMock
+    ) -> None:
+        rows = (_row("ap_1", "Send A"), _row("ap_2", "Send B"))
+        with (
+            _pending(*rows),
+            serve_jev(jev_reply_body(("approve", 0.99), ("approve", 0.99))) as jev,
+        ):
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "both", HISTORY)
+
+        assert _asked_state(jev) == _expected_state("both", *rows)
+
+
+class TestMovingOnIsScopedToThisConversation:
+    @pytest.mark.parametrize("rows", [("ap_1",), ("ap_1", "ap_2")])
+    async def test_moving_on_rereads_and_denies_this_users_pending_set(
+        self, decide: AsyncMock, rows: tuple[str, ...]
+    ) -> None:
+        pending_rows = [_row(approval_id, f"Send {approval_id}") for approval_id in rows]
+        verdicts = [("unrelated", 0.95)] * len(rows)
+        with _pending(*pending_rows) as pending, serve_jev(jev_reply_body(*verdicts)):
+            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "weather?")
+
+        assert action == "unrelated"
+        assert pending.await_args_list == [call(CONVERSATION_ID, USER_ID)] * 2
+        assert _decided(decide) == [(r, "deny", UNRELATED_FEEDBACK) for r in rows]
+
+
+class TestWhatIsLogged:
+    @pytest.mark.parametrize("rows", [("ap_1",), ("ap_1", "ap_2")])
+    async def test_a_failing_classifier_is_logged_as_an_error(
+        self, decide: AsyncMock, logged: MagicMock, rows: tuple[str, ...]
+    ) -> None:
+        pending_rows = [_row(approval_id, "Send") for approval_id in rows]
+        with _pending(*pending_rows), serve_jev(httpx.ConnectError("down")):
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+        logged.error.assert_called_once_with(
+            "[HIL] JEV reply classifier failed; the approvals stay pending",
+            error="down",
+            error_type="ConnectError",
+        )
+
+    @pytest.mark.parametrize(
+        ("outcome", "action", "said"),
+        [
+            (ApprovalOutcome.APPROVED, ActionResult.EXECUTED, "approved by the user and executed"),
+            (ApprovalOutcome.DENIED, None, "denied by the user; the action did NOT run"),
+        ],
+    )
+    async def test_a_decision_the_log_already_took_is_logged_with_where_it_stands(
+        self,
+        logged: MagicMock,
+        outcome: ApprovalOutcome,
+        action: ActionResult | None,
+        said: str,
+    ) -> None:
+        lost = LedgerDecision(committed=False, approval_id="ap_1", outcome=outcome, action=action)
+        with (
+            _pending(_row("ap_1", "Send email")),
+            serve_jev(jev_reply_body(("approve", 0.99))),
+            patch(f"{MODULE}.decide_ledger", new=AsyncMock(return_value=lost)),
+        ):
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+        logged.warning.assert_called_once_with(
+            "[HIL] Ledger bot decision lost the race",
+            approval_id="ap_1",
+            outcome=said,
+        )
 
 
 class TestLedgerOutcomeText:

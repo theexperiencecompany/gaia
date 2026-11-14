@@ -170,7 +170,7 @@ async def interpret_batch_decision_message(
         verdicts, _in, _out = await ask_jev_reply(message, action_details, history)
     except Exception as e:  # the one classifier failed: nothing is decided on a guess
         _log_jev_failure(e)
-        return BatchDecisionResult(unrelated=False, decisions=[])
+        return BatchDecisionResult(unrelated=False)
     return batch_from_jev_reply(settle_reply(verdicts), message)
 
 

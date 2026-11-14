@@ -2,7 +2,9 @@
 
 from app.models.conversation_frame_models import EntryFrame, LiveTask, StateFrame
 from app.models.conversation_log_models import CancelWork, DisplayState, KickStep, StartAck
+from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.log import accept
+from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import started, stop, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
@@ -20,7 +22,10 @@ async def test_accept_publishes_the_entry_and_runs_the_effects_in_order() -> Non
         StateFrame(head=1, display=DisplayState.THINKING, work=()),
     ]
     assert rt.effects.calls == [EffectCall("kick"), EffectCall("start_ack", "u1")]
+    assert rt.effects.addressed == [(CONVERSATION, USER), (CONVERSATION, USER)]
+    assert rt.frames.conversations == [CONVERSATION]
     assert (accepted.failed_effects, accepted.kick_failed) == ((), False)
+    assert accepted.cancelled == WorkCancelled()
 
 
 async def test_a_duplicate_publishes_nothing_and_runs_no_effects() -> None:
@@ -31,6 +36,7 @@ async def test_a_duplicate_publishes_nothing_and_runs_no_effects() -> None:
     again = await accept(rt.ports, CONVERSATION, USER, user("u1"))
     assert again.appended.duplicate
     assert (rt.frames.published, rt.effects.calls) == ([], [])
+    assert (again.failed_effects, again.cancelled) == ((), WorkCancelled())
 
 
 async def test_a_work_change_publishes_a_state_frame_after_the_entry() -> None:
@@ -52,7 +58,17 @@ async def test_a_failing_effect_keeps_the_entry_and_the_rest_still_run() -> None
     await accept(rt.ports, CONVERSATION, USER, started("w", "t1", 1))
     rt.effects.calls.clear()
     rt.effects.failing = frozenset({"cancel_work"})
-    accepted = await accept(rt.ports, CONVERSATION, USER, stop("s"))
+    async with captured_wide_event() as event:
+        accepted = await accept(rt.ports, CONVERSATION, USER, stop("s"))
+    assert event["errors"] == [
+        {
+            "msg": "conversation effect failed after its entry was appended",
+            "effect": "CancelWork",
+            "error": "cancel_work failed",
+            "error_type": "RuntimeError",
+            "conversation_id": CONVERSATION,
+        }
+    ]
     assert (await rt.entries())[-1].entry == stop("s")
     assert accepted.failed_effects == (CancelWork(task_ids=("t1",)),)
     assert not accepted.kick_failed
@@ -62,3 +78,25 @@ async def test_a_failing_effect_keeps_the_entry_and_the_rest_still_run() -> None
     assert rt.effects.calls[-2:] == [EffectCall("kick"), EffectCall("start_ack", "u4")]
     assert (accepted.failed_effects, accepted.kick_failed) == ((KickStep(),), True)
     assert StartAck(message_id="u4") in accepted.appended.effects
+
+
+async def test_a_stop_hands_back_what_its_cancel_cancelled_for_the_users_conversation() -> None:
+    rt = Runtime()
+    await accept(rt.ports, CONVERSATION, USER, user("u1"))
+    await accept(rt.ports, CONVERSATION, USER, started("w", "t1", 1))
+    rt.effects.addressed.clear()
+    accepted = await accept(rt.ports, CONVERSATION, USER, stop("s"))
+    assert accepted.cancelled == WorkCancelled(pending_task_ids=["t1"])
+    assert EffectCall("cancel_work", ("t1",)) in rt.effects.calls
+    assert set(rt.effects.addressed) == {(CONVERSATION, USER)}
+
+
+async def test_an_entry_that_changes_nothing_shown_publishes_alone_to_its_conversation() -> None:
+    rt = Runtime()
+    await accept(rt.ports, CONVERSATION, USER, user("u1"))
+    rt.frames.published.clear()
+    rt.frames.conversations.clear()
+    accepted = await accept(rt.ports, CONVERSATION, USER, user("u2"))
+    logged = accepted.appended.logged
+    assert rt.frames.published == [EntryFrame(seq=logged.seq, at=logged.at, entry=user("u2"))]
+    assert rt.frames.conversations == [CONVERSATION]

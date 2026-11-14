@@ -2,8 +2,18 @@
 
 from datetime import UTC, datetime
 
+import pytest
+
 from app.constants.chat import ConversationSource
-from app.db.repositories.conversation_entries import log_document, openers_outside, stored_row
+from app.db.repositories.conversation_entries import (
+    EMPTY_LOG_STATE,
+    current_state,
+    log_document,
+    newest,
+    openers_outside,
+    stored_at,
+    stored_row,
+)
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -16,6 +26,7 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
+from app.models.conversation_models import ConversationHead, StoredEntry
 from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.conversation_wire import ReplyOutcome
 
@@ -86,3 +97,43 @@ def test_a_page_holding_its_openers_names_none() -> None:
     )
 
     assert openers_outside(page) == {}
+
+
+def test_the_current_state_is_the_stored_fold_at_the_log_head() -> None:
+    folded = EMPTY_LOG_STATE.model_copy(update={"stopped_through": 3})
+    head = ConversationHead(conversation_id="c1", user_id="u1", log_head=7, state=folded)
+    assert current_state(head) == folded.model_copy(update={"head": 7})
+    empty = ConversationHead(conversation_id="c1", user_id="u1")
+    assert current_state(empty) == EMPTY_LOG_STATE.model_copy(update={"head": 0})
+
+
+def _copy(revision: int | None) -> StoredEntry:
+    return StoredEntry(conversation_id="c1", user_id="u1", seq=1, id="m1", revision=revision)
+
+
+@pytest.mark.parametrize(
+    ("stored", "staged", "read"),
+    [
+        (None, 1, "staged"),
+        (2, None, "stored"),
+        (None, None, "stored"),
+        (1, 2, "staged"),
+        (2, 2, "stored"),
+        (3, 2, "stored"),
+    ],
+)
+def test_a_read_returns_the_staged_copy_only_when_it_is_newer(
+    stored: int | None, staged: int | None, read: str
+) -> None:
+    held, outboxed = _copy(stored), _copy(staged)
+    assert newest(held, outboxed) is (outboxed if read == "staged" else held)
+
+
+def test_a_read_with_nothing_stored_returns_the_staged_copy() -> None:
+    outboxed = _copy(None)
+    assert newest(None, outboxed) is outboxed
+
+
+def test_a_stored_time_keeps_whole_milliseconds() -> None:
+    at = datetime(2026, 1, 2, 3, 4, 5, 999_500, tzinfo=UTC)
+    assert stored_at(at) == datetime(2026, 1, 2, 3, 4, 5, 999_000, tzinfo=UTC)
