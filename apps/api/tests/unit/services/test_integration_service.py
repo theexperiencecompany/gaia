@@ -997,7 +997,7 @@ class TestGetUserConnectedIntegrations:
 class TestGetConnectedIntegrationsNamed:
     @patch("app.services.integrations.user_integrations.integration_repository")
     @patch("app.services.integrations.user_integrations.get_connected_integration_ids")
-    async def test_names_platform_and_custom_integrations_and_falls_back_to_the_id(
+    async def test_names_platform_and_custom_integrations_and_leaves_out_an_unnamed_id(
         self, mock_ids, mock_int_repo
     ):
         mock_ids.return_value = {"github", "custom-uuid", "unknown-uuid"}
@@ -1010,13 +1010,33 @@ class TestGetConnectedIntegrationsNamed:
         )
         mock_int_repo.find_by_ids = AsyncMock(return_value=[custom])
 
-        result = await get_connected_integrations_named(USER_ID)
+        async with captured_wide_event() as event:
+            result = await get_connected_integrations_named(USER_ID)
 
         mock_int_repo.find_by_ids.assert_awaited_once_with(["custom-uuid", "unknown-uuid"])
         assert result == [
             {"id": "custom-uuid", "name": "Custom"},
             {"id": "github", "name": "GitHub"},
-            {"id": "unknown-uuid", "name": "unknown-uuid"},
+        ]
+        [warning] = event["warnings"]
+        assert warning["msg"] == "integrations.unnamed_connection_records"
+        assert warning["integration_ids"] == ["unknown-uuid"]
+
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.get_connected_integration_ids")
+    async def test_a_retired_id_is_named_as_the_integration_it_was_renamed_to(
+        self, mock_ids, mock_int_repo
+    ):
+        mock_ids.return_value = {"google_calendar", "googlecalendar", "google_docs"}
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[])
+
+        result = await get_connected_integrations_named(USER_ID)
+
+        mock_ids.assert_awaited_once_with(USER_ID)
+        mock_int_repo.find_by_ids.assert_not_awaited()
+        assert result == [
+            {"id": "googlecalendar", "name": "Google Calendar"},
+            {"id": "googledocs", "name": "Google Docs"},
         ]
 
 

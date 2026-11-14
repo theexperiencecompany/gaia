@@ -36,6 +36,9 @@ class Signal(BaseModel):
     people: list[str] = Field(default_factory=list)
     url: str | None = None
     state: str | None = Field(default=None, description="The item's status as the app shows it")
+    #: When the item was created and last changed in the app; None when the app does not say.
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class SignalFields(BaseModel):
@@ -49,6 +52,8 @@ class SignalFields(BaseModel):
     due_at: str | None = None
     state: str | None = None
     people: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class SignalSource(BaseModel):
@@ -76,6 +81,8 @@ class LearnedSignal(BaseModel):
     people: list[str] = Field(default_factory=list)
     url: str | None = None
     state: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class ScoutStep(BaseModel):

@@ -2648,7 +2648,7 @@ class TestSignalsInTheBrief:
             " 1 time(s), last 2 days ago, moved from Todo to In Progress"
         ) in prompt
         assert "- fact 2 | other | issue assigned to you: Refresh the onboarding docs" in prompt
-        assert "new today" in prompt
+        assert "first seen today, created date unknown" in prompt
         assert (_stored_payload(world).message or "").endswith(
             f"[the login redirect]({_LOGIN.url}) still needs you."
         )
