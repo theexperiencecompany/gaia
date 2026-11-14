@@ -1,5 +1,5 @@
 import { colors } from "../lib";
-import { TICKET_TOP } from "./ticketTheme";
+import { CARD_TOP } from "../wallpaperCard";
 
 /** The referrer's photo on the invite card, or their initial when they have none. */
 export function ReferrerFace({
@@ -27,7 +27,7 @@ export function ReferrerFace({
         width: 60,
         height: 60,
         borderRadius: 999,
-        backgroundColor: TICKET_TOP,
+        backgroundColor: CARD_TOP,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

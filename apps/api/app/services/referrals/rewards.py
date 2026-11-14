@@ -27,6 +27,8 @@ from app.constants.referrals import (
     REWARD_APPLIED_TITLE,
     REWARD_BANKED_BODY,
     REWARD_DATE_FORMAT,
+    REWARD_EMAIL_CLOSING_FRIEND,
+    REWARD_EMAIL_CLOSING_WORKFLOW,
     REWARD_LOCK_KEY_TEMPLATE,
     REWARD_LOCK_LEASE_S,
     REWARD_LOCK_MAX_HOLD_S,
@@ -34,11 +36,16 @@ from app.constants.referrals import (
     REWARD_LOCK_UNAVAILABLE,
     REWARD_LOCK_WAIT_S,
     REWARD_MONTHS_PER_FRIEND,
+    WORKFLOW_CREDITS_PER_MONTH,
+    WORKFLOW_REWARD_TITLE,
+    WORKFLOW_REWARD_TITLE_UNNAMED,
     ReferralNudge,
+    ReferralSource,
 )
 from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRecord,
@@ -212,9 +219,25 @@ async def _settle(referral: ReferralDocument, dodo_subscription_id: str | None) 
     if referral.revocation_owed:
         await reclaim_reward(referral, dodo_subscription_id)
         return RewardDelivery(ReferralRewardState.REVOKED)
+    if (
+        referral.reward_state is ReferralRewardState.PENDING
+        and referral.source is ReferralSource.WORKFLOW
+        and not await _fills_the_meter(referral)
+    ):
+        await referral_repository.update(
+            referral.friend_user_id, ReferralUpdate(reward_state=ReferralRewardState.METERED)
+        )
+        log.set_ns("referral", workflow_meter="counted")
+        return RewardDelivery(ReferralRewardState.METERED)
     if dodo_subscription_id is None:
         return await _bank(referral)
     return await _apply(referral, dodo_subscription_id)
+
+
+async def _fills_the_meter(referral: ReferralDocument) -> bool:
+    """Whether this workflow visitor completes their creator's next free month."""
+    meter = await referral_repository.count_workflow_credits(referral.referrer_user_id)
+    return (meter.counted + 1) // WORKFLOW_CREDITS_PER_MONTH > meter.carrying
 
 
 async def _bank(referral: ReferralDocument) -> RewardDelivery:
@@ -304,7 +327,7 @@ def _reached_chat(record: NotificationRecord) -> bool:
     )
 
 
-async def _email_referrer(referral: ReferralDocument, friend_name: str, reward_line: str) -> None:
+async def _email_referrer(referral: ReferralDocument, headline: str, reward_line: str) -> None:
     """Email the referrer the news when they take email; a refused send never fails the payment."""
     referrer = await user_repository.get(referral.referrer_user_id)
     if referrer is None or not referrer.email:
@@ -317,8 +340,11 @@ async def _email_referrer(referral: ReferralDocument, friend_name: str, reward_l
                 to=referrer.email,
                 user_id=referrer.id,
                 first_name=first_name_of(referrer),
-                friend_name=friend_name,
+                headline=headline,
                 reward_line=reward_line,
+                closing=REWARD_EMAIL_CLOSING_WORKFLOW
+                if referral.source is ReferralSource.WORKFLOW
+                else REWARD_EMAIL_CLOSING_FRIEND,
             )
         )
     except Exception as e:
@@ -348,10 +374,28 @@ async def _record_announced(user_id: str, nudge: ReferralNudge) -> None:
         )
 
 
+async def _headline(referral: ReferralDocument) -> str:
+    """Name who earned the month: the friend, or for a workflow's visitor (never named), the workflow."""
+    if referral.source is ReferralSource.WORKFLOW:
+        workflows = (
+            await workflow_repository.find_by_ids([referral.workflow_id])
+            if referral.workflow_id
+            else []
+        )
+        return (
+            WORKFLOW_REWARD_TITLE.format(workflow=workflows[0].title)
+            if workflows
+            else WORKFLOW_REWARD_TITLE_UNNAMED
+        )
+    friend = await user_repository.get(referral.friend_user_id)
+    return REWARD_APPLIED_TITLE.format(
+        friend=(first_name_of(friend) if friend else None) or "A friend"
+    )
+
+
 async def _notify(referral: ReferralDocument, delivery: RewardDelivery) -> None:
     """Tell the referrer in the app, on their one chat platform, and by email."""
-    friend = await user_repository.get(referral.friend_user_id)
-    friend_name = (first_name_of(friend) if friend else None) or "A friend"
+    headline = await _headline(referral)
     reward_line = (
         REWARD_APPLIED_BODY.format(date=delivery.next_billing_date.strftime(REWARD_DATE_FORMAT))
         if delivery.next_billing_date
@@ -364,9 +408,7 @@ async def _notify(referral: ReferralDocument, delivery: RewardDelivery) -> None:
             source=NotificationSourceEnum.REFERRAL_REWARD,
             type=NotificationType.SUCCESS,
             priority=2,
-            content=NotificationContent(
-                title=REWARD_APPLIED_TITLE.format(friend=friend_name), body=reward_line
-            ),
+            content=NotificationContent(title=headline, body=reward_line),
             metadata={"friend_user_id": referral.friend_user_id, "reward": delivery.state.value},
         )
     )
@@ -378,4 +420,4 @@ async def _notify(referral: ReferralDocument, delivery: RewardDelivery) -> None:
         )
     elif _reached_chat(record):
         await _record_announced(referral.referrer_user_id, ReferralNudge.REWARD_DM)
-    await _email_referrer(referral, friend_name, reward_line)
+    await _email_referrer(referral, headline, reward_line)

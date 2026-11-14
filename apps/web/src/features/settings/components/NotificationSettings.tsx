@@ -3,6 +3,8 @@
 import { Switch } from "@heroui/switch";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import {
   NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
@@ -12,8 +14,6 @@ import {
 import { ChatChannelSettings } from "@/features/settings/components/ChatChannelSettings";
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";

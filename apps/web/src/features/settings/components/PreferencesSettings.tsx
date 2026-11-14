@@ -8,18 +8,18 @@ import {
 } from "@heroui/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { authApi } from "@/features/auth/api/authApi";
 import {
   patchCurrentUser,
+  patchOnboardingPreferences,
   useCurrentUser,
 } from "@/features/auth/hooks/useCurrentUser";
 import { CustomResponseStyleInput } from "@/features/settings/components/CustomResponseStyleInput";
 import { HilApprovalMode } from "@/features/settings/components/HilApprovalMode";
 import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { mergedOnboardingUpdate } from "@/features/settings/utils/onboardingPreferences";
 import { toast } from "@/lib/toast";
 import {
   getCurrentBrowserTimezone,
@@ -230,13 +230,10 @@ export default function PreferencesSettings({
         });
 
         if (response.success) {
-          patchCurrentUser(
-            queryClient,
-            mergedOnboardingUpdate(user.onboarding, {
-              profession: profession || undefined,
-              response_style: response_style || undefined,
-            }),
-          );
+          patchOnboardingPreferences(queryClient, {
+            profession: profession || undefined,
+            response_style: response_style || undefined,
+          });
 
           // If timezone changed, update it separately
           if (timezone !== lastSavedPreferences.current.timezone) {
@@ -261,7 +258,7 @@ export default function PreferencesSettings({
         setIsUpdating(false);
       }
     },
-    [updateTimezone, queryClient, user.onboarding],
+    [updateTimezone, queryClient],
   );
 
   // Debounced update function

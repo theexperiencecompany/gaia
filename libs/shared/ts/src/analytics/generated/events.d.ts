@@ -108,6 +108,7 @@ export type ServerEventName =
   | "referral:nudge_sent"
   | "referral:reward_granted"
   | "referral:reward_revoked"
+  | "referral:sent_with_gaia_appended"
   | "referral:signup_attributed"
   | "reminder:completed"
   | "reminder:created"
@@ -1250,8 +1251,14 @@ export interface EventProperties {
     "prior_state": string;
     "reclaimed": boolean;
   };
+  "referral:sent_with_gaia_appended": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "tool": string;
+  };
   "referral:share_clicked": {
-    "surface": "page" | "sidebar" | "post_payment" | "chat_card";
+    "surface": "page" | "sidebar" | "post_payment" | "chat_card" | "weekly_stats";
     "channel": "native" | "whatsapp" | "sms" | "x" | "linkedin" | "email" | "copy" | "qr";
     "copy_variant": "gift" | "earn" | "time_back";
   };
@@ -1261,6 +1268,7 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "referrer_id": string;
     "landing_variant"?: string;
+    "source": "invite_link" | "workflow";
   };
   "reminder:completed": {
     "actor": "user" | "agent";
@@ -1341,6 +1349,7 @@ export interface EventProperties {
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "setting": "onboarding_preferences" | "voice" | "voice_star" | "hil_approvals" | "tool_approval";
     "fields"?: (string)[];
+    "sent_with_gaia"?: boolean;
     "voice_id"?: string;
     "is_starred"?: boolean;
     "mode"?: string;

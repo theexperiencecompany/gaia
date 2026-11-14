@@ -7,11 +7,14 @@ account is attributed, and never to a referrer who is the same person.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import re
 
 from app.constants.referrals import (
     CODE_MAX_LENGTH,
     REFERRAL_COOKIE_VARIANT_SEPARATOR,
+    WORKFLOW_ID_PATTERN,
     ReferralCopyVariant,
+    ReferralSource,
 )
 from app.db.repositories.referral_codes import referral_code_repository
 from app.db.repositories.referrals import referral_repository
@@ -28,28 +31,44 @@ from shared.py.wide_events import log
 
 @dataclass(frozen=True)
 class ReferralAttribution:
-    """What the attribution cookie carries: the code clicked, and the landing copy shown."""
+    """What the attribution cookie carries: the code, the landing copy shown, and what brought the friend."""
 
     code: str
     landing_variant: ReferralCopyVariant | None = None
+    source: ReferralSource = ReferralSource.INVITE_LINK
+    workflow_id: str | None = None
 
     def cookie_value(self) -> str:
-        """Serialize for the cookie; a code never contains the separator."""
-        if self.landing_variant is None:
-            return self.code
-        return f"{self.code}{REFERRAL_COOKIE_VARIANT_SEPARATOR}{self.landing_variant.value}"
+        """Serialize as code[.variant[.source[.workflow]]]; no part contains the separator."""
+        parts = [self.code, self.landing_variant.value if self.landing_variant else ""]
+        if self.source is not ReferralSource.INVITE_LINK:
+            parts.append(self.source.value)
+            if self.workflow_id:
+                parts.append(self.workflow_id)
+        return REFERRAL_COOKIE_VARIANT_SEPARATOR.join(parts).rstrip(
+            REFERRAL_COOKIE_VARIANT_SEPARATOR
+        )
 
     @classmethod
     def from_cookie(cls, raw: str | None) -> "ReferralAttribution | None":
         """Parse a cookie value; None for an absent or malformed one, which attributes nothing."""
         if not raw:
             return None
-        code, _, variant = raw.partition(REFERRAL_COOKIE_VARIANT_SEPARATOR)
+        code, _, rest = raw.partition(REFERRAL_COOKIE_VARIANT_SEPARATOR)
+        variant, _, rest = rest.partition(REFERRAL_COOKIE_VARIANT_SEPARATOR)
+        origin, _, workflow_id = rest.partition(REFERRAL_COOKIE_VARIANT_SEPARATOR)
         if not code or len(code) > CODE_MAX_LENGTH:
             return None
-        known = {member.value for member in ReferralCopyVariant}
+        variants = {member.value for member in ReferralCopyVariant}
+        origins = {member.value for member in ReferralSource}
+        source = ReferralSource(origin) if origin in origins else ReferralSource.INVITE_LINK
         return cls(
-            code=code, landing_variant=ReferralCopyVariant(variant) if variant in known else None
+            code=code,
+            landing_variant=ReferralCopyVariant(variant) if variant in variants else None,
+            source=source,
+            workflow_id=workflow_id
+            if source is ReferralSource.WORKFLOW and re.fullmatch(WORKFLOW_ID_PATTERN, workflow_id)
+            else None,
         )
 
 
@@ -58,12 +77,18 @@ def first_touch_cookie(
 ) -> str | None:
     """Return the cookie value to set for a click, or None to leave the cookie alone.
 
-    A valid code is written only when no live attribution is already there:
-    the first link clicked keeps the friend for the whole window.
+    The first link clicked keeps the friend for the whole window, with one
+    exception: a friend's own invite link always replaces credit a workflow's
+    creator was holding, and a workflow never replaces an invite.
     """
-    if not valid or ReferralAttribution.from_cookie(existing) is not None:
+    if not valid:
         return None
-    return clicked.cookie_value()
+    held = ReferralAttribution.from_cookie(existing)
+    if held is None or (
+        held.source is ReferralSource.WORKFLOW and clicked.source is ReferralSource.INVITE_LINK
+    ):
+        return clicked.cookie_value()
+    return None
 
 
 async def attribute_signup(friend_user_id: str, attribution: ReferralAttribution) -> None:
@@ -96,6 +121,8 @@ async def attribute_signup(friend_user_id: str, attribution: ReferralAttribution
             referrer_user_id=referrer.id,
             code=attribution.code,
             landing_variant=attribution.landing_variant,
+            source=attribution.source,
+            workflow_id=attribution.workflow_id,
             joined_at=now,
             created_at=now,
             updated_at=now,
@@ -112,6 +139,7 @@ async def attribute_signup(friend_user_id: str, attribution: ReferralAttribution
             landing_variant=attribution.landing_variant.value
             if attribution.landing_variant
             else None,
+            source=attribution.source.value,
         ),
         dedupe=Dedupe(key=friend.id, occurred_at=as_utc(created.joined_at) or now),
     )

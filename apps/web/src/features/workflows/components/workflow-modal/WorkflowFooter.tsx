@@ -2,6 +2,7 @@ import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
 import { PlayIcon, Share01Icon } from "@icons";
+import { WorkflowPublishHint } from "@/features/referrals/components/WorkflowPublishHint";
 
 /** What the current edit session offers for auxiliary actions. */
 interface WorkflowFooterWorkflow {
@@ -69,7 +70,10 @@ export default function WorkflowFooter({
         )}
 
         {isExisting && !isPublic && onPublish && (
-          <Tooltip content="Share to the marketplace" placement="top">
+          <Tooltip
+            content={<WorkflowPublishHint label="Share to the marketplace" />}
+            placement="top"
+          >
             <Button
               variant="flat"
               startContent={<Share01Icon className="h-4 w-4" />}

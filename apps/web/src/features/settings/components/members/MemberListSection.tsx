@@ -3,9 +3,9 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import type { MemberResponse } from "@shared/api/generated";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { formatRelativeDate } from "@/utils/date/dateUtils";
 

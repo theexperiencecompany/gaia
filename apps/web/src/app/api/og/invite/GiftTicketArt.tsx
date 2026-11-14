@@ -1,7 +1,7 @@
 import { REFERRAL_UI_COPY } from "@/features/referrals/referralCopy";
 import type { OfferPrices } from "@/features/referrals/utils/offerPrices";
 import { colors, fonts } from "../lib";
-import { TICKET_BOTTOM, TICKET_TOP } from "./ticketTheme";
+import { CARD_BOTTOM, CARD_TOP } from "../wallpaperCard";
 
 /** The ticket outline: a rounded card with half-circle bites where the stub tears off. */
 const TICKET = {
@@ -43,8 +43,8 @@ export function GiftTicketArt({
       >
         <defs>
           <linearGradient id="ticket" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor={TICKET_TOP} />
-            <stop offset="1" stopColor={TICKET_BOTTOM} />
+            <stop offset="0" stopColor={CARD_TOP} />
+            <stop offset="1" stopColor={CARD_BOTTOM} />
           </linearGradient>
         </defs>
         <path d={ticketPath()} fill="url(#ticket)" />

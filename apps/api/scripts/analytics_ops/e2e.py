@@ -60,6 +60,7 @@ from shared.py.analytics.catalog.referrals import (
     ReferralNudgeDismissed,
     ReferralNudgeSent,
     ReferralRewardGranted,
+    ReferralSentWithGaiaAppended,
     ReferralSignupAttributed,
 )
 from shared.py.analytics.catalog.reminders import ReminderCompleted
@@ -130,6 +131,8 @@ NOT_DRIVABLE = (
     "tests/integration/real/test_referral_rewards_real.py drives them against real Mongo",
     f"{ReferralGiftCheckoutOpened.event}, {ReferralGiftMintFailed.event}: need a referred friend "
     "and a real Dodo checkout session; the payment journey delivers signed webhooks only",
+    f"{ReferralSentWithGaiaAppended.event}: fires inside the Gmail compose hook, which needs a "
+    "connected Gmail account; test_gmail_attachments_hook.py asserts the capture",
     "ai:llm_call_completed: the sim stub reports zero tokens, and one-shot calls skip zero usage; "
     "the ledger row is asserted in Mongo instead",
     f"{WorkflowResultDelivered.event} (destination, destination_basis): the workflow journey's "

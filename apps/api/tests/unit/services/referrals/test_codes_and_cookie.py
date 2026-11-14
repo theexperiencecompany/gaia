@@ -8,7 +8,12 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.config.settings import settings
-from app.constants.referrals import CODE_MAX_LENGTH, CODE_MINT_ATTEMPTS, ReferralCopyVariant
+from app.constants.referrals import (
+    CODE_MAX_LENGTH,
+    CODE_MINT_ATTEMPTS,
+    ReferralCopyVariant,
+    ReferralSource,
+)
 from app.models.referral_models import ReferralCodeDocument
 from app.models.user_models import UserDocument
 from app.services.referrals.attribution import ReferralAttribution, first_touch_cookie
@@ -58,6 +63,55 @@ def test_the_cookie_round_trips_code_and_landing_variant() -> None:
     assert ReferralAttribution.from_cookie("aryan-k7f2") == ReferralAttribution(code="aryan-k7f2")
 
 
+@pytest.mark.parametrize(
+    "clicked",
+    [
+        ReferralAttribution(code="aryan-k7f2", source=ReferralSource.WORKFLOW),
+        ReferralAttribution(
+            code="aryan-k7f2",
+            landing_variant=ReferralCopyVariant.GIFT,
+            source=ReferralSource.WORKFLOW,
+        ),
+    ],
+)
+def test_the_cookie_round_trips_a_workflow_source(clicked: ReferralAttribution) -> None:
+    assert ReferralAttribution.from_cookie(clicked.cookie_value()) == clicked
+
+
+def test_an_invite_link_cookie_keeps_its_original_shape() -> None:
+    assert ReferralAttribution(code="aryan-k7f2").cookie_value() == "aryan-k7f2"
+    assert (
+        ReferralAttribution(
+            code="aryan-k7f2", landing_variant=ReferralCopyVariant.GIFT
+        ).cookie_value()
+        == "aryan-k7f2.gift"
+    )
+
+
+def test_a_workflow_cookie_carries_the_workflow_it_came_from() -> None:
+    clicked = ReferralAttribution(
+        code="aryan-k7f2", source=ReferralSource.WORKFLOW, workflow_id="wf_digest"
+    )
+
+    assert clicked.cookie_value() == "aryan-k7f2..workflow.wf_digest"
+    assert ReferralAttribution.from_cookie(clicked.cookie_value()) == clicked
+
+
+@pytest.mark.parametrize(
+    "raw", ["aryan-k7f2..workflow.wf;digest", "aryan-k7f2..invite_link.wf_digest"]
+)
+def test_a_malformed_or_misplaced_workflow_id_is_dropped(raw: str) -> None:
+    parsed = ReferralAttribution.from_cookie(raw)
+
+    assert parsed is not None and parsed.workflow_id is None
+
+
+def test_an_unknown_source_falls_back_to_the_invite_link() -> None:
+    assert ReferralAttribution.from_cookie("aryan-k7f2..bogus") == ReferralAttribution(
+        code="aryan-k7f2"
+    )
+
+
 @pytest.mark.parametrize("raw", [None, "", "x" * (CODE_MAX_LENGTH + 1)])
 def test_a_missing_or_malformed_cookie_attributes_nothing(raw: str | None) -> None:
     assert ReferralAttribution.from_cookie(raw) is None
@@ -77,6 +131,23 @@ class TestFirstTouch:
     def test_a_later_click_never_replaces_the_first(self) -> None:
         later = ReferralAttribution(code="priya-ab23")
         assert first_touch_cookie("aryan-k7f2", later, valid=True) is None
+
+    def test_an_invite_link_replaces_credit_a_workflow_was_holding(self) -> None:
+        workflow = ReferralAttribution(
+            code="maya-q8rt", source=ReferralSource.WORKFLOW, workflow_id="wf_digest"
+        )
+        invite = ReferralAttribution(code="aryan-k7f2", landing_variant=ReferralCopyVariant.GIFT)
+
+        assert first_touch_cookie(workflow.cookie_value(), invite, valid=True) == "aryan-k7f2.gift"
+
+    def test_a_workflow_never_replaces_an_invite_or_an_earlier_workflow(self) -> None:
+        workflow = ReferralAttribution(
+            code="maya-q8rt", source=ReferralSource.WORKFLOW, workflow_id="wf_digest"
+        )
+        earlier = ReferralAttribution(code="lee-n3vx", source=ReferralSource.WORKFLOW)
+
+        assert first_touch_cookie("aryan-k7f2.gift", workflow, valid=True) is None
+        assert first_touch_cookie(earlier.cookie_value(), workflow, valid=True) is None
 
     def test_an_invalid_code_sets_nothing(self) -> None:
         assert (

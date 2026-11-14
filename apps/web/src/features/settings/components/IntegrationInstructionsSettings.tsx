@@ -5,6 +5,8 @@ import { Skeleton } from "@heroui/skeleton";
 import { useQueries } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { ChevronRight } from "@/components/shared/icons";
 import {
   instructionsQueryOptions,
@@ -18,8 +20,6 @@ import type { Integration } from "@/features/integrations/types";
 import { instructionsPreview } from "@/features/integrations/utils/instructionsPreview";
 import { GlobalInstructionsEditor } from "@/features/settings/components/GlobalInstructionsEditor";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 
 interface InstructionsModalHostProps {
   integration: Integration;

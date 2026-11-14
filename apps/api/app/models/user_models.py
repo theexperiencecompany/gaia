@@ -240,6 +240,10 @@ class OnboardingPreferences(BaseModel):
         default=None,
         description='The user\'s browser language as a primary subtag ("de", "pt"), set at onboarding',
     )
+    sent_with_gaia: bool | None = Field(
+        default=None,
+        description="Sign mail GAIA writes for the user with a small 'Sent with GAIA' invite line",
+    )
     # Removed timezone field - now only stored at user.timezone root level
 
     @field_validator("language", mode="before")

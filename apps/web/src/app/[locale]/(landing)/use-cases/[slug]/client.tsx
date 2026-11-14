@@ -4,9 +4,6 @@ import { PlayIcon, UserCircle02Icon } from "@icons";
 import { getToolDisplayName } from "@shared/icons";
 import { formatCompactNumber } from "@shared/utils";
 import Image from "next/image";
-import { useTransition } from "react";
-import { useAuth } from "@/features/auth/hooks/useAuth";
-import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrationLookup } from "@/features/integrations/hooks/useIntegrationLookup";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -14,6 +11,7 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import MetaInfoCard from "@/features/use-cases/components/MetaInfoCard";
 import ToolsList from "@/features/use-cases/components/ToolsList";
 import UseCaseDetailLayout from "@/features/use-cases/components/UseCaseDetailLayout";
+import { useCreateFromUseCase } from "@/features/use-cases/hooks/useCreateFromUseCase";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import {
@@ -21,7 +19,6 @@ import {
   WORKFLOW_ICON_BG_ALPHA,
   WORKFLOW_ICON_MAP,
 } from "@/features/workflows/constants/workflowIconCatalog";
-import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "@/features/workflows/triggers/utils";
 import { resolveCreatorAvatar } from "@/features/workflows/utils/creator";
 import type { UseCase } from "@/types/features/workflowTypes";
@@ -30,51 +27,6 @@ interface UseCaseDetailClientProps {
   useCase: UseCase | null;
   communityWorkflow: Workflow | null;
   slug: string;
-}
-
-function buildWorkflowRequest(
-  useCase: UseCase | null,
-  communityWorkflow: Workflow | null,
-) {
-  const title = useCase?.title || communityWorkflow?.title;
-  const description = useCase?.description || communityWorkflow?.description;
-  const existingSteps = useCase?.steps || communityWorkflow?.steps;
-
-  if (!title || !description) return null;
-
-  // Convert PublicWorkflowStep to WorkflowStepData format if steps exist
-  const formattedSteps = existingSteps?.map((step, index) => ({
-    id: step.id || `step_${index}`,
-    title: step.title,
-    description: step.description,
-    category: step.category,
-  }));
-
-  return {
-    title,
-    description,
-    prompt: useCase?.prompt || communityWorkflow?.prompt || description,
-    icon: useCase?.icon ?? communityWorkflow?.icon ?? undefined,
-    icon_color:
-      useCase?.icon_color ?? communityWorkflow?.icon_color ?? undefined,
-    // Reproduce the advertised trigger; manual only as a fallback.
-    trigger_config: useCase?.trigger_config ??
-      communityWorkflow?.trigger_config ?? {
-        type: "manual" as const,
-        enabled: true,
-      },
-    system_workflow_key:
-      useCase?.system_workflow_key ??
-      communityWorkflow?.system_workflow_key ??
-      undefined,
-    // Pass formatted steps if available to avoid regeneration
-    ...(formattedSteps &&
-      formattedSteps.length > 0 && {
-        steps: formattedSteps,
-      }),
-    // Only generate if no steps exist
-    generate_immediately: !formattedSteps || formattedSteps.length === 0,
-  };
 }
 
 /** The workflow's chosen icon, on its own tinted tile, beside the page title. */
@@ -243,38 +195,6 @@ function UseCaseMetaInfo({
       )}
     </>
   );
-}
-
-/** Creating the workflow behind a use case, gated on being signed in. */
-function useCreateFromUseCase(
-  useCase: UseCaseDetailClientProps["useCase"],
-  communityWorkflow: UseCaseDetailClientProps["communityWorkflow"],
-) {
-  const [isCreating, startCreateTransition] = useTransition();
-  const { createWorkflow } = useWorkflowCreation();
-  const { selectWorkflow } = useWorkflowSelection();
-  const { isAuthenticated, openLoginModal } = useAuth();
-
-  const handleCreateWorkflow = () => {
-    if (!isAuthenticated) {
-      openLoginModal();
-      return;
-    }
-    const workflowRequest = buildWorkflowRequest(useCase, communityWorkflow);
-    if (!workflowRequest) return;
-
-    startCreateTransition(async () => {
-      try {
-        const result = await createWorkflow(workflowRequest);
-        if (result.success && result.workflow)
-          selectWorkflow(result.workflow, { autoSend: false });
-      } catch (error) {
-        console.error("Workflow creation error:", error);
-      }
-    });
-  };
-
-  return { isCreating, handleCreateWorkflow };
 }
 
 /** Everything the detail layout shows, from whichever source the page resolved. */

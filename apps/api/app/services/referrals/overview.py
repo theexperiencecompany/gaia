@@ -11,18 +11,23 @@ from app.constants.referrals import (
     SUBSCRIPTION_REQUIRED_FIX,
     SUBSCRIPTION_REQUIRED_MESSAGE,
     SUBSCRIPTION_REQUIRED_WHY,
+    WORKFLOW_CREDITS_PER_MONTH,
     ReferralCopyVariant,
+    ReferralSource,
 )
 from app.db.repositories.referral_codes import referral_code_repository
 from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
+from app.db.repositories.workflows import workflow_repository
+from app.models.payment_models import SubscriptionDocument
 from app.models.referral_models import ReferralDocument, ReferralRewardState, ReferredFriendStanding
 from app.schemas.referrals import (
     ReferralFriendGift,
     ReferralGiftResponse,
     ReferralMeResponse,
     ReferralResolveResponse,
+    ReferralWorkflowMeter,
     ReferredFriend,
 )
 from app.services.analytics_service import capture
@@ -54,11 +59,27 @@ def _friend_entry(referral: ReferralDocument, first_name: str | None) -> Referre
     )
 
 
-async def get_referral_overview(user_id: str) -> ReferralMeResponse:
-    """Return the caller's link, gift, earned months and friends; 403 while referrals are off or without a subscription."""
+def _workflow_meter(
+    referrals: list[ReferralDocument], community_workflows: int
+) -> ReferralWorkflowMeter:
+    """Count paying workflow visitors toward the creator's next month; their names are never shown."""
+    states = Counter(
+        r.reward_state for r in referrals if r.source is ReferralSource.WORKFLOW and not r.refunded
+    )
+    months = states[ReferralRewardState.APPLIED] + states[ReferralRewardState.BANKED]
+    counted = months + states[ReferralRewardState.METERED]
+    return ReferralWorkflowMeter(
+        subscribed=max(0, counted - months * WORKFLOW_CREDITS_PER_MONTH),
+        per_month=WORKFLOW_CREDITS_PER_MONTH,
+        months_earned=months,
+        published=community_workflows,
+    )
+
+
+async def require_referrer(user_id: str) -> SubscriptionDocument:
+    """Return the user's active subscription; 403 while referrals are off or without one, since only subscribers have a link."""
     await require_referrals(user_id)
-    user = await load_user(user_id)
-    subscription = await subscription_repository.get_active_for_user(user.id)
+    subscription = await subscription_repository.get_active_for_user(user_id)
     if subscription is None:
         raise AppError(
             message=SUBSCRIPTION_REQUIRED_MESSAGE,
@@ -67,16 +88,32 @@ async def get_referral_overview(user_id: str) -> ReferralMeResponse:
             status_code=403,
             code=REFERRAL_SUBSCRIPTION_REQUIRED,
         )
-    code, plans, referrals, copy_variant, layout_variant = await asyncio.gather(
+    return subscription
+
+
+async def get_referral_overview(user_id: str) -> ReferralMeResponse:
+    """Return the caller's link, gift, earned months and friends; 403 while referrals are off or without a subscription."""
+    subscription = await require_referrer(user_id)
+    user = await load_user(user_id)
+    (
+        code,
+        plans,
+        referrals,
+        copy_variant,
+        layout_variant,
+        community_workflows,
+    ) = await asyncio.gather(
         ensure_code(user),
         payment_service.get_pro_plans(),
         referral_repository.list_for_referrer(user.id),
         get_variant(REFERRAL_COPY_FLAG, user.id),
         get_variant(REFERRAL_LAYOUT_FLAG, user.id),
+        workflow_repository.count_community_by_creator(user.id),
     )
+    invited = [r for r in referrals if r.source is ReferralSource.INVITE_LINK]
     friends = {
         friend.id: friend
-        for friend in await user_repository.find_by_ids([r.friend_user_id for r in referrals])
+        for friend in await user_repository.find_by_ids([r.friend_user_id for r in invited])
     }
     rewards = Counter(
         r.reward_state for r in referrals if r.reward_state in _EARNED_STATES and not r.refunded
@@ -96,8 +133,9 @@ async def get_referral_overview(user_id: str) -> ReferralMeResponse:
                 r,
                 first_name_of(friends[r.friend_user_id]) if r.friend_user_id in friends else None,
             )
-            for r in referrals
+            for r in invited
         ],
+        workflow_meter=_workflow_meter(referrals, community_workflows),
         copy_variant=copy_variant,
         layout_variant=layout_variant,
     )

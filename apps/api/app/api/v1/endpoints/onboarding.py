@@ -248,6 +248,7 @@ async def update_user_preferences(
             SettingsPreferencesChanged(
                 setting="onboarding_preferences",
                 fields=sorted(preferences.model_fields_set),
+                sent_with_gaia=preferences.sent_with_gaia,
             ),
         )
 

@@ -23,7 +23,6 @@ from app.constants.referrals import (
     INVITE_SENDER_NAME_TEMPLATE,
     INVITE_SUBJECT_TEMPLATE,
     REFERRALS_PAGE_PATH,
-    REWARD_APPLIED_TITLE,
     REWARD_EMAIL_CTA_LABEL,
     REWARD_EMAIL_TEMPLATE,
 )
@@ -303,12 +302,13 @@ async def send_referral_reward_email(reward: ReferralRewardEmail) -> None:
         EmailMessage(
             sender=FOUNDER_SENDER,
             to=[reward.to],
-            subject=REWARD_APPLIED_TITLE.format(friend=reward.friend_name),
+            subject=reward.headline,
             html=render_email_template(
                 REWARD_EMAIL_TEMPLATE,
                 first_name=reward.first_name,
-                friend_name=reward.friend_name,
+                headline=reward.headline,
                 reward_line=reward.reward_line,
+                closing=reward.closing,
                 cta_url=f"{settings.FRONTEND_URL}{REFERRALS_PAGE_PATH}",
                 cta_label=REWARD_EMAIL_CTA_LABEL,
                 unsubscribe_url=build_unsubscribe_url(reward.user_id),

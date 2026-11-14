@@ -169,6 +169,15 @@ export const REFERRAL_UI_COPY = {
     n === 1 ? "1 friend on the way" : `${n} friends on the way`,
   nextBill: (date: string) => `Next bill moves to ${date}`,
   friendsTitle: "Friends",
+  workflowsTitle: "From your workflows",
+  workflowMeter: (subscribed: number, perMonth: number) => {
+    const left = perMonth - subscribed;
+    return `${subscribed} of ${perMonth} subscribed. ${left} more for a free month.`;
+  },
+  workflowMeterEmpty: (perMonth: number) =>
+    `Every ${perMonth} people who start with your workflows and subscribe earn you a free month.`,
+  workflowPublishLine: (perMonth: number) =>
+    `People who start with your workflow and subscribe fill your meter. Every ${perMonth} earn you a free month.`,
   unnamedFriend: "A friend",
   friendsEmpty:
     "Your first friend who subscribes gets you a free month. Who's it going to be?",
@@ -218,6 +227,30 @@ export const REFERRAL_UI_COPY = {
   landingMemberBody:
     "This invite is a gift for someone new. Your assistant is right where you left it.",
   landingMemberCta: "Open GAIA",
+} as const;
+
+/** The opt-in line GAIA adds to mail it writes for you. */
+export const SENT_WITH_GAIA_COPY = {
+  title: 'Add "Sent with GAIA" to my emails',
+  body: "A small line with your invite link, only on emails GAIA writes for you.",
+  saveFailed: "Couldn't save that. Try again in a moment.",
+} as const;
+
+/** The Monday recap: what GAIA did last week, said as time back. */
+export const WEEKLY_STATS_COPY = {
+  title: "Your week with GAIA",
+  saved: "saved last week",
+  /** Labels sit beside their count, so the count is not in them. */
+  actions: (n: number) => (n === 1 ? "thing done" : "things done"),
+  workflowRuns: (n: number) => (n === 1 ? "workflow run" : "workflow runs"),
+  estimate: "An estimate from what GAIA did for you.",
+  cta: "Share my week",
+  saveImage: "Save image",
+  shareText: (time: string) =>
+    `GAIA saved me ${time} last week. Here's GAIA for you too 💛`,
+  emailSubject: "My week with GAIA",
+  ogLead: "GAIA saved me",
+  ogTail: "last week",
 } as const;
 
 export const CHANNEL_LABELS = {

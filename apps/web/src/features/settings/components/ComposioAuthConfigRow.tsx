@@ -2,9 +2,9 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
+import { SettingsRow } from "@/components/settings/SettingsRow";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { ComposioIntegrationSetup } from "@/features/settings/api/composioSetupApi";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 
 const SOURCE_HINT: Record<"env" | "catalog", string> = {
   env: "Set in your .env",

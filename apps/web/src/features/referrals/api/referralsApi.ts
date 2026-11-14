@@ -5,6 +5,9 @@ import type {
 import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 import { api } from "@/lib/api/typed";
 
+/** How long a signed-out visitor waits on crediting a workflow's creator before sign-in goes ahead. */
+const WORKFLOW_CREDIT_TIMEOUT_MS = 3_000;
+
 /** The 403s a referrer-only route answers with: states the referral surfaces render, not failures. */
 const NOT_A_REFERRER_CODES = [
   API_ERROR_CODES.REFERRAL_SUBSCRIPTION_REQUIRED,
@@ -38,6 +41,26 @@ export const referralsApi = {
 
   sendInvites: (emails: string[], surface: ReferralInviteSurface) =>
     api.post("/api/v1/referrals/invites", { body: { emails, surface } }),
+
+  /** Browser-only, logged out: credits the workflow's creator through the same first-touch cookie. */
+  creditWorkflow: (workflowId: string) =>
+    api.post("/api/v1/referrals/workflow-credit/{workflow_id}", {
+      path: { workflow_id: workflowId },
+      silent: true,
+      signal: AbortSignal.timeout(WORKFLOW_CREDIT_TIMEOUT_MS),
+    }),
+
+  /** Spends this week's referral nudge when show is true; ask only where the card would appear. */
+  claimWeeklyCard: () =>
+    api.post("/api/v1/referrals/nudges/weekly-card", {
+      silent: true,
+      expectedErrorCodes: NOT_A_REFERRER_CODES,
+    }),
+
+  dismissWeeklyCard: () =>
+    api.post("/api/v1/referrals/nudges/weekly-card/dismissal", {
+      silent: true,
+    }),
 
   /** Spends this week's referral nudge when show is true; ask only at the moment the card would appear. */
   claimChatCard: () =>

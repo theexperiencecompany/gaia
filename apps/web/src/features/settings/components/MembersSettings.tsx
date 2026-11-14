@@ -2,11 +2,11 @@
 
 import { Skeleton } from "@heroui/skeleton";
 import { Switch } from "@heroui/switch";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { InviteLinksSection } from "@/features/settings/components/members/InviteLinksSection";
 import { MemberListSection } from "@/features/settings/components/members/MemberListSection";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useMembers } from "@/features/settings/hooks/useMembers";
 
 /** Admin-only: who can use this self-hosted GAIA and how new people join. */

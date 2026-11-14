@@ -34,5 +34,6 @@ class ReferralRewardEmail(BaseModel):
     to: str
     user_id: str
     first_name: str | None = None
-    friend_name: str
+    headline: str
     reward_line: str
+    closing: str

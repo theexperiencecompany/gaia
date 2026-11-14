@@ -3,11 +3,11 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { type FormEvent, useState } from "react";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { FormError } from "@/components/shared/FormError";
 import { SecretInput } from "@/components/shared/SecretInput";
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { MIN_PASSWORD_LENGTH } from "@/features/auth/constants";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
 import { API_ERROR_CODES } from "@/lib/api/errorCodes";
 

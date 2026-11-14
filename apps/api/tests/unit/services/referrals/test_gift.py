@@ -10,6 +10,7 @@ import httpx
 import pytest
 import time_machine
 
+from app.constants.referrals import ReferralSource
 from app.models.payment_models import PlanDuration
 from app.models.referral_models import ReferralDocument, ReferredFriendStatus
 from app.services.referrals.gift import (
@@ -116,6 +117,16 @@ class TestPendingGiftReferral:
             patch(
                 f"{GIFT}.subscription_repository.has_any_for_user",
                 AsyncMock(return_value=ever_subscribed),
+            ),
+        ):
+            assert await pending_gift_referral(FRIEND_ID) is None
+
+    async def test_a_workflow_visitor_is_owed_no_gift(self) -> None:
+        visitor = _referral().model_copy(update={"source": ReferralSource.WORKFLOW})
+        with (
+            patch(f"{GIFT}.referral_repository.get", AsyncMock(return_value=visitor)),
+            patch(
+                f"{GIFT}.subscription_repository.has_any_for_user", AsyncMock(return_value=False)
             ),
         ):
             assert await pending_gift_referral(FRIEND_ID) is None

@@ -74,6 +74,7 @@ class SettingsPreferencesChanged(ServerEvent):
         "onboarding_preferences", "voice", "voice_star", "hil_approvals", "tool_approval"
     ]
     fields: list[Identifier] | None = None
+    sent_with_gaia: bool | None = None
     voice_id: Identifier | None = None
     is_starred: bool | None = None
     mode: Identifier | None = None

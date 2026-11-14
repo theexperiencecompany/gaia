@@ -1,10 +1,10 @@
 "use client";
 
 import { Skeleton } from "@heroui/skeleton";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { ExperimentalFeatureRow } from "@/features/settings/components/ExperimentalFeatureRow";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useFeatureFlags } from "@/features/settings/hooks/useFeatureFlags";
 
 export default function ExperimentalFeaturesSettings() {
