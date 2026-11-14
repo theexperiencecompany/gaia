@@ -38,6 +38,7 @@ from app.utils.notification.channels.conversation import (
     ConversationPayload,
 )
 from app.utils.notification.channels.discord import DiscordChannelAdapter
+from app.utils.notification.channels.external import ExternalPayload, notice_origin
 from app.utils.notification.channels.imessage import ImessageChannelAdapter
 from app.utils.notification.channels.slack import SlackChannelAdapter
 from app.utils.notification.channels.telegram import TelegramChannelAdapter
@@ -137,6 +138,26 @@ class TestExternalPlatformTransform:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
         assert "[View Task](https://app.example.com/todos/1)" in content.text
+
+    async def test_the_whole_payload_carries_every_link_on_one_line_after_the_text(
+        self,
+    ) -> None:
+        actions = [
+            _make_redirect_action(label="View Task", url="/todos/1"),
+            _make_redirect_action(label="Open", url="/x"),
+        ]
+        request = _make_request(title="Task", body="details", actions=actions)
+        with patch("app.utils.notification.channels.external.settings") as s:
+            s.FRONTEND_URL = "https://app.example.com/"
+            content = await DiscordChannelAdapter().transform(request)
+        assert content == ExternalPayload(
+            notification_id="notif-1",
+            text=(
+                "**Task**\ndetails\n\n"
+                "[View Task](https://app.example.com/todos/1) · [Open](https://app.example.com/x)"
+            ),
+            origin=notice_origin(request),
+        )
 
     async def test_rich_content_is_ignored(self) -> None:
         # Workflow results now reach the user as real chat messages, not through

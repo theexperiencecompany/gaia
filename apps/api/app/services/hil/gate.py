@@ -258,7 +258,7 @@ async def _decide_ledger(
                 integration_name=integration_name,
             ),
             background=context.background,
-            has_owner=bool(context.owner_run_type and context.owner_id),
+            has_owner=bool(context.owner_id),
         )
         # "allow" returned before this branch, so the only policies left are
         # the two that explain WHY this call is gated — the model deserves

@@ -241,14 +241,21 @@ async def test_a_throwing_judge_fails_closed_to_ask() -> None:
         async def decide(self, **kwargs: Any) -> IntentDecision:
             raise RuntimeError("judge exploded")
 
-    d = await judge_intent(
-        AutoContext(user_id="u"),
-        user_messages=["please send the deck to bob now"],
-        call=_call(),
-        prior_calls=[],
-        judge=_Boom(),
-    )
+    with patch("app.services.hil.intent.log") as log:
+        d = await judge_intent(
+            AutoContext(user_id="u"),
+            user_messages=["please send the deck to bob now"],
+            call=_call(),
+            prior_calls=[],
+            judge=_Boom(),
+        )
     assert d.outcome == "ask"
+    log.error.assert_called_once_with(
+        "[HIL] intent judge failed; asking",
+        tool_name=_call().tool_name,
+        error="judge exploded",
+        error_type="RuntimeError",
+    )
 
 
 async def test_ask_carries_auto_mode_reason_to_card_and_model() -> None:
