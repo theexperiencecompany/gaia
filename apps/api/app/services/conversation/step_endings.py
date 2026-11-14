@@ -104,7 +104,8 @@ async def _stop(ports: RuntimePorts, attempt: Attempt) -> None:
         attempt.claim,
         attempt.covers,
         settled_entry(attempt, ReplyOutcome.STOPPED, (), state.stopped_through, None),
-        attempt.view,
+        # The Stop was logged by its sender, so the view is already behind the log.
+        None,
     )
 
 

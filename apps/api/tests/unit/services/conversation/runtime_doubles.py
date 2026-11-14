@@ -340,6 +340,10 @@ class Pause:
     actions: tuple[Action, ...]
 
 
+class UnscriptedRunError(Exception):
+    """A run started after every script was played."""
+
+
 @dataclass(frozen=True)
 class Fail:
     """The run raises when the step asks for the next event."""
@@ -466,8 +470,10 @@ class ScriptedRunner:
         self.runs: list[ScriptedRun] = []
         self.overlaps = 0
         self.swallow_first_cancel = False
-        # What a run plays once the scripts run out; the default hangs until cancelled.
-        self.unscripted: Sequence[ScriptItem] = ()
+        # What a run plays once the scripts run out: an attempt no test scripted fails at once, never hangs.
+        self.unscripted: Sequence[ScriptItem] = (
+            Fail(UnscriptedRunError("no script for this run")),
+        )
 
     def script(self, *scripts: Sequence[ScriptItem]) -> None:
         self._scripts.extend(scripts)

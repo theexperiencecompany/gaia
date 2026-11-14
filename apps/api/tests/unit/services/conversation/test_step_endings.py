@@ -1,0 +1,270 @@
+"""How an attempt ends, scenario by scenario: crashes, spoken-over replies, follow-ups, reactions and stops."""
+
+from collections.abc import Sequence
+
+import pytest
+
+from app.constants.general import CALL_EXECUTOR_NAME
+from app.models.conversation_frame_models import (
+    EntryUpdatedFrame,
+    ResponseEvent,
+    RetractFrame,
+    ToolDataEvent,
+)
+from app.models.conversation_log_models import (
+    Batch,
+    Entry,
+    LoggedEntry,
+    Reply,
+    ReplySettled,
+    StepClaim,
+    Verdict,
+)
+from app.services.conversation.log import accept
+from app.services.conversation.ports import (
+    Answered,
+    CancelReason,
+    Finished,
+    Reacted,
+    Replied,
+    Streamed,
+)
+from app.services.conversation.screen import TOOL_CALL_CARD
+from app.services.conversation.step import advance
+from app.services.conversation.step_attempt import Attempt, Drafting
+from app.services.conversation.step_endings import end_attempt
+from app.services.conversation.step_view import StepView
+from shared.py.analytics import Dedupe
+from shared.py.analytics.catalog.chat import ChatTurnReacted
+from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
+from tests.helpers import captured_wide_event
+from tests.unit.services.conversation.log_helpers import barge, user
+from tests.unit.services.conversation.runtime_doubles import (
+    CONVERSATION,
+    USER,
+    Action,
+    Cancelled,
+    Fail,
+    Pause,
+    RecordingAnalytics,
+    Runtime,
+    ScriptedRun,
+    Started,
+)
+
+HANDOFF_CARD: ToolDataEntry = {
+    "tool_name": TOOL_CALL_CARD,
+    "data": {"tool_name": CALL_EXECUTOR_NAME, "tool_call_id": "h1", "inputs": {}},
+}
+CARD: ToolDataEntry = {"tool_name": "search", "data": {"query": "flights"}}
+
+
+def text(chunk: str) -> Streamed:
+    return Streamed(payload=ResponseEvent(response=chunk))
+
+
+def card(tool_data: ToolDataEntry = CARD) -> Streamed:
+    return Streamed(payload=ToolDataEvent(tool_data=tool_data))
+
+
+async def send(rt: Runtime, *entries: Entry) -> None:
+    for entry in entries:
+        await accept(rt.ports, CONVERSATION, USER, entry)
+
+
+def arrive(rt: Runtime, *entries: Entry) -> Action:
+    async def action() -> None:
+        await send(rt, *entries)
+
+    return action
+
+
+async def run(rt: Runtime) -> None:
+    await advance(rt.ports, CONVERSATION, USER)
+
+
+async def replies(rt: Runtime) -> list[Reply]:
+    return [item.entry for item in await rt.entries() if isinstance(item.entry, Reply)]
+
+
+async def settles(rt: Runtime) -> list[ReplySettled]:
+    return [item.entry for item in await rt.entries() if isinstance(item.entry, ReplySettled)]
+
+
+async def test_a_run_that_crashes_after_its_answer_settled_is_cancelled_and_only_warned_about() -> (
+    None
+):
+    rt = Runtime()
+    rt.runner.script([text("done"), Answered(Replied("done")), Fail(RuntimeError("boom"))])
+    await send(rt, user("u1"))
+    async with captured_wide_event() as event:
+        await run(rt)
+    assert rt.runner.calls == [Started(batch=(1,), context=()), Cancelled(CancelReason.LOST)]
+    assert [(item.outcome, item.answers) for item in await settles(rt)] == [
+        (ReplyOutcome.ANSWERED, ("u1",))
+    ]
+    assert event["warnings"] == [
+        {
+            "msg": "comms run failed after its reply settled; no follow-up suggestions",
+            "error_type": "RuntimeError",
+            "conversation_id": CONVERSATION,
+        }
+    ]
+    assert "errors" not in event
+
+
+async def test_a_run_that_fails_logs_what_failed_on_which_attempt() -> None:
+    rt = Runtime()
+    rt.runner.script([text("half"), Fail(RuntimeError("model down"))])
+    await send(rt, user("u1"))
+    async with captured_wide_event() as event:
+        await run(rt)
+    assert event["errors"] == [
+        {
+            "msg": "comms run failed",
+            "error": "model down",
+            "error_type": "RuntimeError",
+            "conversation_id": CONVERSATION,
+            "attempt_id": "1.1",
+        }
+    ]
+
+
+async def _attempt_on(rt: Runtime, progress: Drafting | None) -> tuple[Attempt, StepClaim]:
+    """Log u1 and claim its step, returning an attempt over it in the given progress."""
+    await send(rt, user("u1"))
+    claim = await rt.log.claim(CONVERSATION, USER)
+    assert claim is not None
+    unsettled = await rt.log.unsettled(CONVERSATION, USER)
+    [waking] = unsettled.entries
+    batch = Batch(start=1, end=1, waking=(waking,), first_at=waking.at)
+    attempt = Attempt(
+        claim=claim,
+        run_id="1.1",
+        reply_id="r1.1",
+        batch=batch,
+        handed=batch.waking,
+        seen=1,
+        view=StepView(state=unsettled.state, after=0, entries=list(unsettled.entries)),
+        hint_head=unsettled.state.head,
+        progress=progress,
+    )
+    return attempt, claim
+
+
+async def test_speaking_over_a_drafted_hand_off_saves_the_draft_as_truncated() -> None:
+    rt = Runtime()
+    draft = Reply(id="1.1:reply", reply_id="r1.1", attempt_id="1.1", tool_data=(HANDOFF_CARD,))
+    attempt, claim = await _attempt_on(rt, Drafting(reply=draft))
+    run_ = await rt.runner.start(claim, attempt.batch, ())
+    await end_attempt(rt.ports, attempt, run_, Verdict.TRUNCATE)
+    assert rt.runner.calls[-1] == Cancelled(CancelReason.TRUNCATE)
+    [saved] = await replies(rt)
+    assert (saved.reply_id, saved.tool_data) == ("r1.1", (HANDOFF_CARD,))
+    assert [(item.outcome, item.answers) for item in await settles(rt)] == [
+        (ReplyOutcome.TRUNCATED, ("u1",))
+    ]
+
+
+async def test_speaking_over_an_attempt_that_showed_nothing_withdraws_it() -> None:
+    rt = Runtime()
+    attempt, claim = await _attempt_on(rt, None)
+    run_ = await rt.runner.start(claim, attempt.batch, ())
+    await end_attempt(rt.ports, attempt, run_, Verdict.TRUNCATE)
+    assert [item.entry.id for item in await rt.entries()] == ["u1"]
+    assert rt.frames.published[-1] == RetractFrame(attempt_id="1.1")
+
+
+async def test_a_reply_heard_to_its_end_is_saved_once_as_heard_in_full() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [text("hello there"), Pause((arrive(rt, barge("b", "r1.1", 99)),))],
+    )
+    await send(rt, user("u1", voice=True))
+    await run(rt)
+    [spoken_over] = await replies(rt)
+    assert (spoken_over.heard_through, spoken_over.revision) == (len("hello there"), 1)
+    assert [item.outcome for item in await settles(rt)] == [ReplyOutcome.TRUNCATED]
+
+
+async def test_a_message_said_while_speaking_over_a_reply_is_answered_next() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [
+            text("hello there friend"),
+            Pause((arrive(rt, barge("b", "r1.1"), user("u2", voice=True)),)),
+        ],
+        [Finished(Replied("go on"))],
+    )
+    await send(rt, user("u1", voice=True))
+    await run(rt)
+    first, _ = await replies(rt)
+    assert (first.text, first.heard_through) == ("hello there friend", 5)
+    assert [(item.outcome, item.answers) for item in await settles(rt)] == [
+        (ReplyOutcome.TRUNCATED, ("u1",)),
+        (ReplyOutcome.ANSWERED, ("u2",)),
+    ]
+
+
+async def test_the_next_run_reads_a_settled_reply_as_the_part_the_user_heard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rt = Runtime()
+    contexts: list[Sequence[LoggedEntry]] = []
+    start = rt.runner.start
+
+    async def recording_start(
+        claim: StepClaim, batch: Batch, context: Sequence[LoggedEntry]
+    ) -> ScriptedRun:
+        contexts.append(context)
+        return await start(claim, batch, context)
+
+    monkeypatch.setattr(rt.runner, "start", recording_start)
+    rt.runner.script([text("hello there friend"), Finished(Replied("hello there friend"))])
+    await send(rt, user("u1", voice=True))
+    await run(rt)
+    rt.runner.script([Finished(Replied("go on"))])
+    await send(rt, barge("b", "r1.1", 5), user("u2", voice=True))
+    await run(rt)
+    heard = [item.entry for item in contexts[-1] if isinstance(item.entry, Reply)]
+    assert [(reply.text, reply.heard_through) for reply in heard] == [("hello there friend", 5)]
+
+
+async def test_a_settled_reply_without_new_suggestions_is_not_rewritten() -> None:
+    rt = Runtime()
+    rt.runner.script([text("done"), Answered(Replied("done")), Finished(Replied("done"))])
+    await send(rt, user("u1"))
+    await run(rt)
+    [reply] = await replies(rt)
+    assert (reply.revision, reply.follow_up_actions) == (1, ())
+
+
+async def test_a_settled_reply_of_cards_only_gets_no_suggestions() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [card(), Answered(Replied("")), Finished(Replied("", follow_up_actions=("Book it",)))]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    [reply] = await replies(rt)
+    assert (reply.tool_data, reply.follow_up_actions) == ((CARD,), ())
+    assert not [f for f in rt.frames.published if isinstance(f, EntryUpdatedFrame) and f.seq != 2][
+        1:
+    ]
+
+
+async def test_a_reaction_is_counted_once_per_message_and_emoji() -> None:
+    analytics = RecordingAnalytics()
+    rt = Runtime(analytics=analytics)
+    rt.runner.script([Finished(Reacted("👍"))])
+    await send(rt, user("u1"))
+    await run(rt)
+    reacted = [
+        (event, dedupe)
+        for _, event, _, dedupe in analytics.ended
+        if isinstance(event, ChatTurnReacted)
+    ]
+    message = (await rt.entries())[0]
+    assert [(event.emoji, dedupe.key) for event, dedupe in reacted] == [("👍", "reacted:u1:👍")]
+    [(_, dedupe)] = reacted
+    assert dedupe == Dedupe(key="reacted:u1:👍", occurred_at=message.at)
