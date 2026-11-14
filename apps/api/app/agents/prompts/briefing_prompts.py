@@ -288,10 +288,10 @@ onboarding focus, recent activity). Generic buckets (Work / Personal / Other) ar
 a hard failure. Never ask an open-ended "what can I help with".
 """.strip()
 
-# A remembered goal is asked about once per GOAL_QUESTION_REASK; inside the window this replaces it.
+# A goal is asked about, or asked for, once per GOAL_QUESTION_REASK; inside the window this replaces it.
 _GOAL_ASKED = """
-You asked recently whether their goal is still live. Do not ask about it again today, in any
-wording, and do not ask them to name one: mention a goal only where today's facts serve it.
+You asked recently about their goal: whether it is still live, or what it is. Do not ask about
+it again today, in any wording, and do not ask them to name one: mention a goal only where today's facts serve it.
 """.strip()
 
 
@@ -350,7 +350,10 @@ def build_briefing_voice_prompt(
             "the facts: the finished deliverable they never opened, named "
             "concretely ('the 12-investor list is still sitting here; want it, or "
             "should I bin it?'). End on one binary choice: they want it, or they "
-            "tell GAIA what changed. If the facts hold "
+            "tell GAIA what changed. Then say plainly, in one line of its own, that any "
+            "reply keeps these briefs coming and that without one the daily briefs pause "
+            "after today ('Reply with anything to keep these coming; otherwise I'll pause "
+            "them after today.'). If the facts hold "
             "nothing of value, ask one concrete question about whether the goal "
             "itself is still right ('still raising, or has the plan moved?'). Never "
             "'just checking in', never 'we miss you', never a guilt-trip, never a "
@@ -365,11 +368,13 @@ def build_briefing_voice_prompt(
         if situation.is_first_briefing
         else ""
     )
+    # A goal asked for inside GOAL_QUESTION_REASK is not asked for again, in the first week too.
+    ask_for_goal = "" if situation.goal_asked_recently else "no goal known, ask for one; "
     first_week_note = (
         "\nThis user joined GAIA this week. After today's facts, close on ONE concrete "
         "step that gets them real value, chosen from THEIR GAIA SETUP and the goal "
         "knowledge: no app connected yet, offer to connect the one their goal or work "
-        "most needs; no goal known, ask for one; otherwise name one thing you can do "
+        f"most needs; {ask_for_goal}otherwise name one thing you can do "
         "with an app they already connected. Never name an app, goal or capability "
         "those facts don't support.\n"
         if situation.first_week

@@ -4,7 +4,7 @@ import uuid
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.briefing import BriefingFrequency
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, ENABLED_BRIEFING_KEYS
 from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import GateAuthor, GateOwner
@@ -68,16 +68,16 @@ _SLUG_SUFFIX_LEN = 6
 _SLUG_MAX_RETRIES = 5
 
 
-BRIEFS_OFF_FIX = "Choose Tell me now or Don't notify me, or turn briefs back on in Settings"
+BRIEFS_OFF_FIX = "Choose Tell me now or Don't notify me, or turn on daily briefs in Settings"
 
 
 class BriefsOffError(AppError):
-    """A workflow cannot send its results to the brief while the user has briefs off."""
+    """A workflow cannot send its results to the brief while the user gets no daily brief."""
 
     def __init__(self) -> None:
         super().__init__(
-            message="Briefs are off, so a workflow cannot add its results to your brief",
-            why="With briefs off, its results would go nowhere",
+            message="You get no daily brief, so a workflow cannot add its results to one",
+            why="Results wait only for a daily brief, so they would go nowhere",
             fix=BRIEFS_OFF_FIX,
             status_code=409,
             code=BRIEFS_OFF,
@@ -87,10 +87,11 @@ class BriefsOffError(AppError):
 def delivers_to_a_missing_brief(
     owner: AuthenticatedUser, delivery: WorkflowDelivery | None
 ) -> bool:
-    """Report whether delivery is the brief while the owner has briefs turned off."""
+    """Report whether delivery is the brief while the owner gets no daily brief to carry it."""
     return (
         delivery is WorkflowDelivery.BRIEF
-        and owner.briefing_schedule.frequency is BriefingFrequency.OFF
+        and DAILY_BRIEFING_WORKFLOW_KEY
+        not in ENABLED_BRIEFING_KEYS[owner.briefing_schedule.frequency]
     )
 
 

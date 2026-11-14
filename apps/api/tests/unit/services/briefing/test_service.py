@@ -2306,6 +2306,33 @@ class TestTheIdleLadder:
         assert world.goal_asked.await_count == int(asks)
         assert world.reads["record_idle_day"].await_args.args[2] is False
 
+    @pytest.mark.parametrize(
+        ("asked_days_ago", "asks"),
+        [(None, True), (2, False), (7, True)],
+        ids=["never-asked", "asked-two-days-ago", "asked-a-week-ago"],
+    )
+    async def test_a_user_with_no_goal_is_asked_for_one_once_a_week(
+        self,
+        world: World,
+        monkeypatch: pytest.MonkeyPatch,
+        asked_days_ago: int | None,
+        asks: bool,
+    ) -> None:
+        asked_at = None if asked_days_ago is None else _NOW - timedelta(days=asked_days_ago)
+        world.user = UserDocument(
+            id=_USER,
+            timezone=_TZ,
+            email="a@b.c",
+            briefing_dormancy=BriefingDormancy(goal_asked_at=asked_at),
+        )
+        _seam(monkeypatch, world, context, "format_goal_block", AsyncMock(return_value=("", False)))
+
+        await daily.run_daily_briefing(_USER)
+
+        situation = world.voice_prompt.call_args.kwargs["situation"]
+        assert situation.goal_asked_recently is not asks
+        assert world.goal_asked.await_count == int(asks)
+
     @pytest.mark.parametrize(("idle_days", "stage"), [(2, "warn"), (3, "final")])
     async def test_the_idle_streak_sets_the_wind_down_and_the_goodbye_goes_dormant(
         self, world: World, monkeypatch: pytest.MonkeyPatch, idle_days: int, stage: str

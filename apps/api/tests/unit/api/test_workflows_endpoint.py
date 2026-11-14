@@ -7,9 +7,11 @@ from httpx import AsyncClient
 from pymongo.errors import DuplicateKeyError
 import pytest
 
+from app.constants.briefing import BriefingFrequency
 from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
 from app.constants.workflows import WorkflowDelivery
+from app.models.briefing_models import BriefingSchedule
 from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
@@ -27,6 +29,7 @@ from app.services.workflow.generation_service import (
     WorkflowPromptRequest,
     WorkflowStepGenerationError,
 )
+from app.services.workflow.service import delivers_to_a_missing_brief
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.workflows import (
@@ -37,7 +40,7 @@ from shared.py.analytics.catalog.workflows import (
 )
 from shared.py.wide_events import WorkflowContext, log
 from tests.conftest import FAKE_USER
-from tests.helpers import briefs_off_users_get
+from tests.helpers import users_get_on
 
 BASE_URL = "/api/v1/workflows"
 _LOG = "app.api.v1.endpoints.workflows.log"
@@ -381,17 +384,20 @@ class TestCreateWorkflow:
 
         assert response.status_code == 400
 
-    async def test_a_brief_workflow_while_briefs_are_off_is_a_409_naming_the_fix(
-        self, client: AsyncClient
+    @pytest.mark.parametrize(
+        "frequency", [BriefingFrequency.OFF, BriefingFrequency.WEEKLY_ONLY], ids=["off", "weekly"]
+    )
+    async def test_a_brief_workflow_with_no_daily_brief_is_a_409_naming_the_fix(
+        self, client: AsyncClient, frequency: BriefingFrequency
     ):
-        """Regression: with briefs off, POST saved a brief workflow (201) whose results were lost."""
+        """Regression: with no daily brief, POST saved a brief workflow (201) whose results were lost."""
         with (
             patch(
                 "app.api.v1.endpoints.workflows.get_all_integrations_status",
                 new_callable=AsyncMock,
                 return_value={},
             ),
-            patch("app.utils.auth_utils.user_repository.get", new=briefs_off_users_get),
+            patch("app.utils.auth_utils.user_repository.get", new=users_get_on(frequency)),
             patch("app.services.workflow.service.workflow_repository.create") as mock_create,
         ):
             response = await client.post(BASE_URL, json=_create_workflow_payload(delivery="brief"))
@@ -400,11 +406,30 @@ class TestCreateWorkflow:
         body = response.json()
         assert {key: body[key] for key in ("code", "message", "why", "fix")} == {
             "code": BRIEFS_OFF,
-            "message": "Briefs are off, so a workflow cannot add its results to your brief",
-            "why": "With briefs off, its results would go nowhere",
-            "fix": "Choose Tell me now or Don't notify me, or turn briefs back on in Settings",
+            "message": "You get no daily brief, so a workflow cannot add its results to one",
+            "why": "Results wait only for a daily brief, so they would go nowhere",
+            "fix": "Choose Tell me now or Don't notify me, or turn on daily briefs in Settings",
         }
         mock_create.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("frequency", "delivery", "refused"),
+        [
+            (BriefingFrequency.WEEKLY_ONLY, WorkflowDelivery.BRIEF, True),
+            (BriefingFrequency.OFF, WorkflowDelivery.BRIEF, True),
+            (BriefingFrequency.WEEKDAYS, WorkflowDelivery.BRIEF, False),
+            (BriefingFrequency.WEEKLY_ONLY, WorkflowDelivery.NOW, False),
+            (BriefingFrequency.OFF, WorkflowDelivery.SILENT, False),
+        ],
+    )
+    def test_only_a_brief_delivery_without_a_daily_brief_is_refused(
+        self, frequency: BriefingFrequency, delivery: WorkflowDelivery, refused: bool
+    ):
+        owner = FAKE_USER.model_copy(
+            update={"briefing_schedule": BriefingSchedule(frequency=frequency)}
+        )
+
+        assert delivers_to_a_missing_brief(owner, delivery) is refused
 
     async def test_create_workflow_service_error_returns_500(self, client: AsyncClient):
         with patch(
@@ -1385,7 +1410,10 @@ class TestUpdateWorkflow:
                 new_callable=AsyncMock,
                 return_value=_make_workflow(),
             ),
-            patch("app.utils.auth_utils.user_repository.get", new=briefs_off_users_get),
+            patch(
+                "app.utils.auth_utils.user_repository.get",
+                new=users_get_on(BriefingFrequency.OFF),
+            ),
             patch("app.services.workflow.service.workflow_repository.update_for_user") as update,
         ):
             response = await client.put(f"{BASE_URL}/wf_abc123", json={"delivery": "brief"})

@@ -479,7 +479,6 @@ export type {
 export {
   BRIEF_DELIVERY_DESCRIPTION,
   BRIEF_FREE_DELIVERIES,
-  BRIEFS_OFF_DELIVERY_REASON,
   BUILTIN_TRIGGER_META,
   buildDefaultTriggerConfig,
   findTriggerSchema,
@@ -488,6 +487,7 @@ export {
   getTriggerDisplayInfoBySlug,
   getTriggerLogoKey,
   groupTriggerSchemasByIntegration,
+  NO_DAILY_BRIEF_DELIVERY_REASON,
   ONE_CLICK_WORKFLOW_DELIVERY,
   WORKFLOW_DELIVERIES,
   WORKFLOW_DELIVERY_COPY,
