@@ -9,6 +9,7 @@ import {
   RedoIcon,
 } from "@icons";
 import type { DeviceServerView } from "@shared/bridge-core/ipc.types";
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { UseBridge } from "../hooks/useBridge";
 import { thisDeviceLabel } from "../hooks/useDesktopPlatform";
@@ -63,7 +64,9 @@ function ServerStateIndicator({
           <RedoIcon width={14} height={14} />
           Retry
         </GaiaButton>
-        <Tooltip.Content>{error ?? "Failed to connect"}</Tooltip.Content>
+        <Tooltip.Content className={overlayVariants({ surface: "danger" })}>
+          {error ?? "Failed to connect"}
+        </Tooltip.Content>
       </Tooltip>
     );
   return (

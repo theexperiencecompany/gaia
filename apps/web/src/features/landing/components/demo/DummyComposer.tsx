@@ -8,7 +8,10 @@ import {
 } from "@icons";
 import type React from "react";
 import { useRef, useState } from "react";
-import { inputVariants } from "@/components/shared/controlVariants";
+import {
+  inputVariants,
+  overlayVariants,
+} from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { Button as ShadcnButton } from "@/components/ui/button";
 import {
@@ -196,7 +199,9 @@ const DummyComposer: React.FC<{
                           </div>
                         </div>
                       </Tooltip.Trigger>
-                      <Tooltip.Content>
+                      <Tooltip.Content
+                        className={overlayVariants({ surface: "foreground" })}
+                      >
                         <div className="max-w-[270px]">
                           Upload and analyze documents, images or other files
                         </div>
@@ -228,7 +233,11 @@ const DummyComposer: React.FC<{
                     )}
                   </ShadcnButton>
                 </Tooltip.Trigger>
-                <Tooltip.Content placement="right" showArrow>
+                <Tooltip.Content
+                  className={overlayVariants({ surface: "accent" })}
+                  placement="right"
+                  showArrow
+                >
                   <Tooltip.Arrow />
                   Browse all tools
                 </Tooltip.Content>

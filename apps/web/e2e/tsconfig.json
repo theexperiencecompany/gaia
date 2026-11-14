@@ -11,6 +11,7 @@
     "../playwright.config.ts",
     "../playwright.selfhost.config.ts",
     "../playwright.worker.config.ts",
-    "../playwright.visual.config.ts"
+    "../playwright.visual.config.ts",
+    "../playwright.parity.config.ts"
   ]
 }

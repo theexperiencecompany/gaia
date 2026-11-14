@@ -82,6 +82,12 @@
 
 .dark {
   --accent-soft-foreground: #66aaf9;
+  /* v2 flat danger text: danger-400 in dark, lighter than the solid #f31260 */
+  --danger-soft-foreground: #f54180;
+  /* v2 default-foreground: white on its zinc default and light buttons (v3: snow #fcfcfc) */
+  --default-foreground: #ffffff;
+  /* v2 flat field hover: default-200, zinc-700 */
+  --field-hover: var(--color-zinc-700);
   /* v2 flat default text: default-700, zinc-200 in dark */
   --default-soft-foreground: var(--color-zinc-200);
   --default-soft: color-mix(in oklab, #3f3f46 40%, transparent);
@@ -90,6 +96,11 @@
 
 html {
   background-color: var(--background);
+}
+
+/* v2's theme set the page text on .dark itself; v3 leaves it to the browser's white */
+.dark {
+  color: var(--foreground);
 }
 
 /* v2's Tooltip defaults (delay 0, closeDelay 500); v3's theme waits 1500ms before
@@ -123,7 +134,14 @@ html {
   --gaia-table-header-height: 2.5rem;
   --gaia-table-header-gap: 5px;
   --gaia-table-card-padding: 1rem;
-  --gaia-table-card-shadow: 0 0 5px 0 rgb(0 0 0 / 0.05), 0 2px 10px 0 rgb(0 0 0 / 0.2), inset 0 0 1px 0 rgb(255 255 255 / 0.15);
+  /* v2's shadow-sm (fields), shadow-small (tooltip, modal, kbd, toggles) and
+     shadow-medium (popover, menu, select list, card); v3's dark overlays draw
+     only a 30% white inner hairline, which reads as an outline */
+  --gaia-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --gaia-shadow-small: 0 0 5px 0 rgb(0 0 0 / 0.05), 0 2px 10px 0 rgb(0 0 0 / 0.2), inset 0 0 1px 0 rgb(255 255 255 / 0.15);
+  --gaia-shadow-medium: 0 0 15px 0 rgb(0 0 0 / 0.06), 0 2px 30px 0 rgb(0 0 0 / 0.22), inset 0 0 1px 0 rgb(255 255 255 / 0.15);
+  --gaia-shadow-underline: 0 1px 0 0 rgb(0 0 0 / 0.05);
+  --gaia-table-card-shadow: var(--gaia-shadow-small);
   --gaia-table-row-selected: color-mix(in oklab, var(--color-zinc-700) 60%, transparent);
   --gaia-table-row-hover: color-mix(in oklab, var(--color-zinc-800) 70%, transparent);
   --gaia-table-cell-padding-y: 0.5rem;
@@ -159,7 +177,8 @@ html {
   --gaia-checkbox-gap: 0.5rem;
   --gaia-field-inside-height: 3.5rem;
   --gaia-field-inside-label-size: 0.75rem;
-  --gaia-field-inside-label-top: 0.5rem;
+  /* v2's floating label (14px scaled to 85%) drew its glyphs 8px down; at 12px that is a 7px box */
+  --gaia-field-inside-label-top: 0.4375rem;
   --gaia-field-inside-padding-top: 1.5rem;
   --gaia-field-inside-padding-bottom: 0.5rem;
   --gaia-field-inside-padding-x: 0.75rem;
@@ -203,6 +222,27 @@ html {
   --gaia-chip-lg-padding-x: 0.875rem;
   --gaia-chip-start-inset: 0.25rem;
   --gaia-chip-lg-start-inset: 0.5rem;
+  --gaia-popover-padding-y: 0.25rem;
+  --gaia-popover-padding-x: 0.625rem;
+  --gaia-menu-min-width: 12.5rem;
+  --gaia-menu-inset: 0.25rem;
+  --gaia-field-pill-padding-x: 1rem;
+  --gaia-toggle-hit-inset: 0.5rem;
+  --gaia-toggle-border-width: 2px;
+  --gaia-toggle-border: var(--color-zinc-700);
+  --gaia-checkbox-radius: calc(var(--gaia-radius-md) * 0.6);
+  --gaia-radio-size: 1.25rem;
+  --gaia-radio-dot: 0.5rem;
+  --gaia-menu-indicator-inset: 1.75rem;
+  --gaia-radio-gap: 0.25rem;
+  --gaia-radio-group-gap: 0.5rem;
+  --gaia-input-underlined-padding-top: 0.4375rem;
+  --gaia-input-underlined-padding-bottom: 0.6875rem;
+  --gaia-pagination-inset: 0.625rem;
+  --gaia-pagination-gap: 0.25rem;
+  --gaia-pagination-size: 2.25rem;
+  --gaia-tooltip-offset-extra: 4px;
+  --gaia-tooltip-arrow-offset-extra: 3px;
   --gaia-tooltip-padding-y: 0.25rem;
   --gaia-tooltip-padding-x: 0.625rem;
   --gaia-tooltip-font-size: 0.875rem;
