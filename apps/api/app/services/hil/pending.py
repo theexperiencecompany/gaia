@@ -31,19 +31,9 @@ async def pending_approvals_by_owner(
     rows = await approval_ledger_repository.list_by_owners(
         owner_run_type, owner_ids, created_since=asked_since
     )
-    conversations = {(row.conversation_id, row.user_id) for row in rows}
-    states = dict(
-        zip(
-            conversations,
-            await asyncio.gather(
-                *(
-                    runtime_ports().log.state(conversation, user)
-                    for conversation, user in conversations
-                )
-            ),
-            strict=True,
-        )
-    )
+    conversations = list({(row.conversation_id, row.user_id) for row in rows})
+    logged = await asyncio.gather(*(runtime_ports().log.state(*key) for key in conversations))
+    states = dict(zip(conversations, logged, strict=True))  # pragma: no mutate — one per key
     oldest: dict[str, ApprovalLedgerDocument] = {}
     for row in rows:
         state = states[(row.conversation_id, row.user_id)]
