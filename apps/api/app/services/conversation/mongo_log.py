@@ -45,7 +45,7 @@ from app.models.conversation_log_models import (
     UserMessage,
 )
 from app.services.conversation.ports import Appended, ClaimLost, EntryRejected, Unsettled
-from app.services.conversation.reducer import reduce
+from app.services.conversation.reducer import amend_refusal, reduce
 from app.utils.errors import (
     ConversationEntryNotFoundError,
     ConversationNotFoundError,
@@ -101,6 +101,8 @@ class MongoConversationLog:
                 message=f"no {entry.kind} entry {entry.id} in conversation {claim.conversation_id}",
                 meta={"conversation_id": claim.conversation_id, "entry_id": entry.id},
             )
+        if (refusal := amend_refusal(previous, entry)) is not None:
+            raise EntryRejected(refusal)
         # A pin is the user's, set beside the step: a fill never takes it back.
         revised = entry.model_copy(
             update={"revision": previous.revision + 1, "pinned": previous.pinned}

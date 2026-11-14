@@ -93,8 +93,10 @@ def test_a_settled_answer_and_an_open_reply_show_the_model_nothing() -> None:
 
 
 def test_a_reply_the_user_spoke_over_tells_the_model_only_its_heard_part_was_heard() -> None:
-    cut = Reply(id="o", reply_id="r1", attempt_id="a1", text="Your flight", heard_through=11)
-    [note] = entry_messages(logged(2, cut))
+    spoken_over = Reply(
+        id="o", reply_id="r1", attempt_id="a1", text="Your flight leaves at 9", heard_through=11
+    )
+    [note] = entry_messages(logged(2, spoken_over))
     assert (note.id, note.content) == ("log:o", BARGE_IN_NOTE.format(heard="Your flight"))
     assert entry_messages(logged(3, barge("b", "r1", 11))) == []
 

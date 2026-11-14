@@ -25,15 +25,13 @@ class ReplyText:
     break_pending: bool = False
 
     def take(self, payload: ResponseEvent | MessageBoundaryEvent) -> ReplyText:
-        """Fold one streamed chunk or message boundary; a discarded message's text is cut back out."""
+        """Fold one streamed chunk or message boundary; text only ever grows."""
         match payload:
             case ResponseEvent(response=chunk) if self.break_pending:
                 raw = f"{self.raw}{NEW_MESSAGE_BREAKER}"
                 return ReplyText(raw=raw + chunk, message_start=len(raw))
             case ResponseEvent(response=chunk):
                 return replace(self, raw=self.raw + chunk)
-            case MessageBoundaryEvent(message_boundary=boundary) if boundary.discarded:
-                return replace(self, raw=self.raw[: self.message_start])
             case MessageBoundaryEvent():
                 return ReplyText(
                     raw=self.raw,

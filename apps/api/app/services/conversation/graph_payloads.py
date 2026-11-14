@@ -1,7 +1,7 @@
 """The one translation of a graph run's stream events into the payloads a conversation streams.
 
-A comms run's events pass through payloads_for_stream_event, which also holds back text that
-may turn out to be a hand-off preamble; an executor's stream writer events pass through
+A comms run's events pass through payloads_for_stream_event, which never releases text it may
+later take back; an executor's stream writer events pass through
 payloads_of_custom. Both produce the same typed payloads, which tool_cards folds.
 """
 
@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from app.agents.core.background.session import claim_tool_output
 from app.agents.core.comms_directive import visible_comms_text, visible_comms_text_so_far
-from app.agents.core.held_replies import HeldReplies, drop_retracted_text, last_ai_message
+from app.agents.core.held_replies import HeldReplies, last_ai_message
 from app.agents.llm.reasoning import extract_reasoning_delta
 from app.models.agent_models import StreamChunkMetadata
 from app.models.conversation_frame_models import (
@@ -31,6 +31,7 @@ from app.models.mcp_app_models import McpUiMetadata, McpUiResource
 from app.models.stream_events import MessageBoundaryPayload, ReasoningPayload, ToolOutputPayload
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import NodeMessagesUpdate, ToolCallView, format_tool_call_entry
+from app.utils.errors import ShownReplyRetriedError
 from app.utils.multimodal import MessageContent, extract_text_content, has_media_blocks
 from app.utils.tool_events import normalize_custom_event
 from shared.py.conversation_wire import ToolDataEntry
@@ -136,10 +137,8 @@ def payloads_of_custom(data: Mapping[str, object]) -> list[StreamPayload]:
     return [_PAYLOADS.validate_python({"type": key, key: item}) for item in values]
 
 
-def _boundary(message_id: str, *, discarded: bool) -> MessageBoundaryEvent:
-    return MessageBoundaryEvent(
-        message_boundary=MessageBoundaryPayload(message_id=message_id, discarded=discarded)
-    )
+def _boundary(message_id: str) -> MessageBoundaryEvent:
+    return MessageBoundaryEvent(message_boundary=MessageBoundaryPayload(message_id=message_id))
 
 
 def _json_safe_tool_result(content: MessageContent) -> object:
@@ -254,16 +253,16 @@ async def _updates(
             msg, state.emitted_tool_calls, state.pending_mcp_apps, user_id
         ):
             yield card
-    # The node finished, so the message's fate is decided: kept, or a discarded hand-off preamble.
+    # The node finished, so its message is whole: a preamble before a hand-off is said, and stays.
     closing = last_ai_message(messages)
     closing_text = "" if closing is None else _finish_visible_text(state, closing.id or "")
-    state.complete_message, boundary_id, discarded = state.held.settle(
+    state.complete_message, boundary_id = state.held.settle(
         messages, state.complete_message, reply_tier=is_comms
     )
     if boundary_id is not None:
-        if closing_text and not discarded:
+        if closing_text:
             yield ResponseEvent(response=closing_text)
-        yield _boundary(boundary_id, discarded=discarded)
+        yield _boundary(boundary_id)
 
 
 async def _tool_message_payloads(
@@ -331,9 +330,11 @@ async def _messages(
             yield ReasoningEvent(reasoning=ReasoningPayload(content=reasoning_delta))
         held = state.held.hold(chunk, metadata, reply_tier=is_comms)
         if held.text:
-            if held.abandoned_id is not None:
-                # Retract the failed attempt's text before the retry streams the reply again.
-                yield _boundary(held.abandoned_id, discarded=True)
+            if held.abandoned_id is not None and state.released_text.pop(held.abandoned_id, ""):
+                raise ShownReplyRetriedError(
+                    message="a model call was retried after the user saw part of its reply",
+                    meta={"abandoned_message_id": held.abandoned_id},
+                )
             if visible := _stream_visible_text(state, held.message_id):
                 yield ResponseEvent(response=visible)
     elif isinstance(chunk, ToolMessage):
@@ -347,7 +348,6 @@ async def _custom(
     payload: object, state: GraphStreamState, user_id: str | None
 ) -> AsyncGenerator[StreamPayload]:
     """Handle one custom event: its payloads, then a subagent's deferred MCP App."""
-    drop_retracted_text(payload, state.held.texts, state.released_text)
     if not isinstance(payload, dict):
         return
     for custom in payloads_of_custom(payload):
