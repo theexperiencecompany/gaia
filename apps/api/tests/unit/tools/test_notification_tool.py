@@ -39,6 +39,7 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationType,
     NotificationView,
+    notification_id,
 )
 from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.utils.notification.orchestrator import Notified
@@ -458,6 +459,9 @@ class TestSendNotificationChannels:
         mock_resolve.assert_awaited_once_with(FAKE_USER_ID)
         assert _requested_channels(mock_service) == ["telegram"]
         assert result["delivered_channels"] == ["telegram"]
+        # Keyed by the tool call, so a replayed call sends nothing twice.
+        (request,) = mock_service.notify.await_args.args
+        assert request.id == notification_id(FAKE_USER_ID, "agent_notification", "call-1")
 
     @patch(f"{MODULE}.current_stream_writer")
     @patch(f"{MODULE}.notification_service")

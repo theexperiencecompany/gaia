@@ -9,6 +9,7 @@ import pytest
 
 from app.constants.chat import ConversationSource
 from app.models.bot_models import BotChatRequest
+from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.chat_models import ConversationModel
 from app.models.conversation_log_models import BargeIn, Entry, UserMessage
 from app.models.conversation_send_models import (
@@ -18,7 +19,7 @@ from app.models.conversation_send_models import (
     MessageAccepted,
     SendMessageRequest,
 )
-from app.models.message_models import FileData
+from app.models.message_models import FileData, SelectedCalendarEventData
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation.ports import Appended
 from app.services.conversation.send import (
@@ -33,6 +34,7 @@ from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from shared.py.analytics.context import AnalyticsContext, analytics_context
 from shared.py.conversation_wire import ReplyToMessageData
 from tests.factories import make_authenticated_user
+from tests.unit.services.conversation.log_helpers import workflow_run
 from tests.unit.services.conversation.runtime_doubles import (
     USER,
     EffectCall,
@@ -47,6 +49,13 @@ SEND = "app.services.conversation.send"
 CONVERSATION = "conv-send"
 UPLOAD = FileData(fileId="f1", url="https://files/f1", filename="notes.pdf")
 QUOTED = ReplyToMessageData(id="m0", content="earlier", role="assistant")
+CALENDAR_EVENT = SelectedCalendarEventData(
+    id="ev1",
+    summary="Standup",
+    description="daily",
+    start=GoogleCalendarEventDateTime(dateTime="2026-11-14T09:00:00Z"),
+    end=GoogleCalendarEventDateTime(dateTime="2026-11-14T09:15:00Z"),
+)
 
 
 class OpenedOnlyLog(InMemoryConversationLog):
@@ -55,10 +64,13 @@ class OpenedOnlyLog(InMemoryConversationLog):
     def __init__(self, clock: Callable[[], datetime]) -> None:
         super().__init__(clock)
         self.opened: set[str] = set()
+        # Whose name each accepted append was written under; Mongo scopes every write by it.
+        self.writers: list[str] = []
 
     async def append(self, conversation_id: str, user_id: str, entry: Entry) -> Appended:
         if conversation_id not in self.opened:
             raise ConversationNotFoundError(message=f"conversation {conversation_id} is missing")
+        self.writers.append(user_id)
         return await super().append(conversation_id, user_id, entry)
 
 
@@ -217,18 +229,31 @@ async def test_a_send_into_an_open_conversation_is_neither_created_nor_titled(
     world: World,
 ) -> None:
     world.log.opened.add(CONVERSATION)
-    body = SendMessageRequest(message_id="m1", text="again", reply_to="m0", retry_of="m0")
+    body = SendMessageRequest(
+        message_id="m1",
+        text="again",
+        reply_to="m0",
+        retry_of="m0",
+        voice=True,
+        selected_workflow=workflow_run().workflow,
+        selected_calendar_event=CALENDAR_EVENT,
+    )
     accepted = await submit_message(CONVERSATION, world.user, body, ConversationSource.WEB)
 
     assert accepted == MessageAccepted(conversation_id=CONVERSATION, message_id="m1", seq=1)
-    [message] = await world.entries()
-    assert isinstance(message, UserMessage)
-    assert (message.reply_to, message.retry_of, message.files, message.posthog_session_id) == (
-        "m0",
-        "m0",
-        (),
-        None,
-    )
+    assert await world.entries() == [
+        UserMessage(
+            id="m1",
+            text="again",
+            surface=ConversationSource.WEB,
+            reply_to="m0",
+            retry_of="m0",
+            voice=True,
+            selected_workflow=workflow_run().workflow,
+            selected_calendar_event=CALENDAR_EVENT,
+        )
+    ]
+    assert world.log.writers == [USER]
     world.create.assert_not_awaited()
     world.files.attach_uploads.assert_not_awaited()
     world.files.get_uploads.assert_not_awaited()
@@ -293,7 +318,7 @@ async def test_a_bot_message_lands_in_its_session_under_its_platform_message_id(
     world: World,
 ) -> None:
     world.log.opened.add(CONVERSATION)
-    accepted = await submit_bot_message(_bot_request(), world.user)
+    accepted = await submit_bot_message(_bot_request(file_ids=["f1"]), world.user)
 
     assert accepted == BotMessageAccepted(
         conversation_id=CONVERSATION, message_id="telegram:77", seq=1, session_token="session-token"
@@ -304,6 +329,8 @@ async def test_a_bot_message_lands_in_its_session_under_its_platform_message_id(
             text="hi from telegram",
             surface=ConversationSource.TELEGRAM,
             platform_message_id="77",
+            file_ids=("f1",),
+            files=(UPLOAD,),
         )
     ]
     world.bots.get_or_create_session.assert_awaited_once_with(
@@ -313,7 +340,7 @@ async def test_a_bot_message_lands_in_its_session_under_its_platform_message_id(
     world.capture.assert_called_once_with(
         UserId(USER),
         ChatMessageSubmitted(
-            source="telegram", has_files=False, stream_id="telegram:77", is_retry=False
+            source="telegram", has_files=True, stream_id="telegram:77", is_retry=False
         ),
     )
     world.token.assert_called_once_with(user_id=USER, platform="telegram", platform_user_id="pu1")
@@ -359,6 +386,7 @@ async def test_a_barge_in_is_logged_against_its_reply_and_a_resend_keeps_its_seq
 
     assert first == again == BargeInAccepted(conversation_id=CONVERSATION, seq=1)
     assert await world.entries() == [BargeIn(id="r1:barge", reply_id="r1", heard_through=3)]
+    assert world.log.writers == [USER, USER]
     assert [c.kwargs for c in world.wide.set_ns.call_args_list] == [
         {"seq": 1, "duplicate": False},
         {"seq": 1, "duplicate": True},

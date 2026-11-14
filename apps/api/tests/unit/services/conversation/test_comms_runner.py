@@ -23,9 +23,11 @@ from app.agents.context.slots import DYNAMIC_CONTEXT_MARKER, TIME_CONTEXT_MARKER
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import INTERRUPTION_MARKER
 from app.agents.core.messages import MessageAttachments, MessageScope
+from app.agents.core.nodes.drain_conversation_log import close_feed, open_feed
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.agents.tools.core.registry import init_tool_registry
 from app.constants.conversation import LOG_SEQ
+from app.constants.graphs import GraphName
 from app.core.lazy_loader import providers
 from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentRunnableConfig
@@ -147,7 +149,6 @@ def _config(
         AgentRunnableConfig,
         {
             "configurable": {
-                "thread_id": conversation_id,
                 "conversation_id": conversation_id,
                 "user_id": USER,
                 "agent_name": "comms_agent",
@@ -315,7 +316,9 @@ async def test_summarization_is_reported_before_any_visible_output(conversation_
         WorkspaceArchivingSummarizationMiddleware, "_should_trigger_summarization", trigger_once
     ):
         async with comms_graph([], model=model) as graph:
-            await graph.aupdate_state(_config(conversation_id), {"messages": history})
+            await graph.aupdate_state(
+                {"configurable": {"thread_id": conversation_id}}, {"messages": history}
+            )
             with patched_graph(graph):
                 run = await runner(conversation_id).start(
                     claim(conversation_id), batch(logged(1, user("u1"))), ()
@@ -739,3 +742,107 @@ async def test_a_run_out_of_steps_ends_with_the_step_limit(conversation_id: str)
             with pytest.raises(StepLimitReached, match="Recursion limit of 1"):
                 await collect(run)
     assert run.task.done()
+
+
+async def test_the_turn_context_is_keyed_on_the_batchs_oldest_input(conversation_id: str) -> None:
+    async with comms_graph([], model=gated("hello there")) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id).start(
+                claim(conversation_id), batch(logged(1, user("u1")), logged(2, user("u2"))), ()
+            )
+            await collect(run)
+            left = await thread_of(graph, conversation_id)
+    context_ids = [m.id for m in left if not m.additional_kwargs.get(LOG_SEQ) and m.id]
+    assert context_ids[:3] == ["log:u1:turn:0", "log:u1:turn:1", "log:u1:turn:2"]
+
+
+async def test_a_run_reads_the_comms_graph_and_builds_its_turn_from_the_batch(
+    conversation_id: str,
+) -> None:
+    built: list[tuple[StepClaim, Batch]] = []
+    inner = runner(conversation_id)
+
+    async def recording_build(step_claim: StepClaim, step_batch: Batch) -> CommsTurn:
+        built.append((step_claim, step_batch))
+        return await inner._build_turn(step_claim, step_batch)
+
+    first = batch(logged(1, user("u1")))
+    async with comms_graph([], model=gated("hello there")) as graph:
+        get_graph = AsyncMock(return_value=graph)
+        mapper = MagicMock(wraps=CommsEventMapper)
+        with (
+            patch.object(GraphManager, "get_graph", get_graph),
+            patch("app.services.conversation.comms_runner.CommsEventMapper", mapper),
+        ):
+            run = await CommsGraphRunner(recording_build, CONFIRM_SECONDS).start(
+                claim(conversation_id), first, ()
+            )
+            await collect(run)
+    get_graph.assert_awaited_once_with(GraphName.COMMS)
+    assert built == [(claim(conversation_id), first)]
+    mapper.assert_called_once_with(USER)
+
+
+async def test_a_first_run_on_a_fresh_thread_says_the_stop_in_its_context(
+    conversation_id: str,
+) -> None:
+    model = gated("after the stop")
+    async with comms_graph([], model=model) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id).start(
+                claim(conversation_id), batch(logged(2, user("u2"))), [logged(1, stop("s1"))]
+            )
+            events = await collect(run)
+    assert events[-1] == Finished(outcome=Replied(text="after the stop"))
+
+
+async def test_every_absorb_reaches_the_next_model_call_until_a_stop(
+    conversation_id: str,
+) -> None:
+    model = gated(recall_call(), "answered all")
+    async with comms_graph([], model=model) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id).start(
+                claim(conversation_id), batch(logged(1, user("u1"))), ()
+            )
+
+            async def absorb_twice(event: RunEvent) -> None:
+                if event == ModelOutput(has_tool_calls=True):
+                    await run.absorb([logged(2, user("u2"))])
+                    await run.absorb([logged(3, user("u3"))])
+
+            await collect(run, absorb_twice)
+    shown = humans(model.prompts[1])
+    assert (shown.count("text of u2"), shown.count("text of u3")) == (1, 1)
+
+
+async def test_nothing_joins_a_run_once_it_is_being_cancelled(conversation_id: str) -> None:
+    model = gated("never", hold=[0])
+    first = batch(logged(1, user("u1")))
+    step = step_turn_ref(claim(conversation_id), first)
+    async with comms_graph([], model=model) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id, step=step).start(claim(conversation_id), first, ())
+            await model.entered(0).wait()
+            cancelling = asyncio.create_task(run.cancel(CancelReason.RESTART))
+            await asyncio.sleep(0)
+            await run.absorb([logged(2, user("u2"))])
+            await cancelling
+    assert step == {"epoch": 1, "batch_start": 1, "cause_through": 1, "answers": ["u1"]}
+
+
+async def test_a_finished_run_closes_the_feed_it_opened(conversation_id: str) -> None:
+    opened = MagicMock(wraps=open_feed)
+    closed = MagicMock(wraps=close_feed)
+    async with comms_graph([], model=gated("hello there")) as graph:
+        with (
+            patched_graph(graph),
+            patch("app.services.conversation.comms_runner.open_feed", opened),
+            patch("app.services.conversation.comms_runner.close_feed", closed),
+        ):
+            run = await runner(conversation_id).start(
+                claim(conversation_id), batch(logged(1, user("u1"))), ()
+            )
+            await collect(run)
+    (run_id,) = opened.call_args.args
+    closed.assert_called_once_with(run_id)
