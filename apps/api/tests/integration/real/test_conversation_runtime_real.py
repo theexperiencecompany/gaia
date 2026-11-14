@@ -847,10 +847,11 @@ class _Budget:
 
 
 # Through submit_message: before the reply opens, accept 2, claim 1, unsettled 1, comms 1.
-# Was 29/14 Mongo, 27/14 Redis; work turn 46/23, 28/16.
-PLAIN_TURN = _Budget(mongo=24, mongo_before_text=5, redis=30, redis_before_text=17)
+# Was 29/14 Mongo, 27/14 Redis; work turn 46/23, 28/16. Each logged reply or work adds one
+# Redis publish, the conversation.list_changed push.
+PLAIN_TURN = _Budget(mongo=24, mongo_before_text=5, redis=31, redis_before_text=17)
 # The same turn with the attempt also logging the work it hands the executor before any text.
-WORK_TURN = _Budget(mongo=43, mongo_before_text=13, redis=31, redis_before_text=19)
+WORK_TURN = _Budget(mongo=43, mongo_before_text=13, redis=33, redis_before_text=20)
 
 
 @dataclass(frozen=True)

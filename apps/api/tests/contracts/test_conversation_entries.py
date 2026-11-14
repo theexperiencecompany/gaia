@@ -135,7 +135,8 @@ async def test_an_entry_is_read_the_moment_append_returns(
 
     assert held.held, "the flush must not have run yet"
     assert held.spawned == [
-        ("conversation_flush", {"conversation_id": conversation.conversation_id})
+        ("conversation_list_push", {"conversation_id": conversation.conversation_id}),
+        ("conversation_flush", {"conversation_id": conversation.conversation_id}),
     ]
     assert await _ids(repo, conversation) == [(seq, "m1")]
 

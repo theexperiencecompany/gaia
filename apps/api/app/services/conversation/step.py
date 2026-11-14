@@ -136,6 +136,8 @@ class _Attempt:
     segment: int = 0
     # Waking entries after covers, of the batch's group, not past a Stop.
     joiners: tuple[LoggedEntry, ...] = ()
+    # Joiners handed to the run; covered once the model writes again, as the tools still show above them.
+    absorbed: tuple[LoggedEntry, ...] = ()
     # A Stop or another group's input ended the run of joinable entries.
     closed: bool = False
     deltas: int = 0
@@ -483,6 +485,8 @@ async def _watch(ports: RuntimePorts, attempt: _Attempt, run: CommsRun) -> _Endi
             elif not isinstance(signal, _Tick):
                 await _handle(ports, attempt, run, signal)
     finally:
+        # However the run ended, it read what it absorbed.
+        _cover_absorbed(attempt)
         await _close(pump)
 
 
@@ -575,14 +579,29 @@ async def _handle(
             _commit_quietly(attempt)
         case ModelOutput(has_tool_calls=has_tool_calls):
             _commit_quietly(attempt)
+            await _answer_below_absorbed(ports, attempt)
             if has_tool_calls and attempt.joiners:
                 await run.absorb(attempt.joiners)
-                if isinstance(attempt.progress, _Showing):
-                    await _next_segment(ports, attempt)
-                attempt.covers = (*attempt.covers, *attempt.joiners)
+                attempt.absorbed = attempt.joiners
                 attempt.joiners = ()
-        case Streamed(payload=payload):
+        case Streamed(payload=payload, by_model=by_model):
+            if by_model:
+                await _answer_below_absorbed(ports, attempt)
             await _show(ports, attempt, payload)
+
+
+async def _answer_below_absorbed(ports: RuntimePorts, attempt: _Attempt) -> None:
+    """Once the model writes after an absorb, settle what was shown above the absorbed inputs; the rest answers below them."""
+    if not attempt.absorbed:
+        return
+    if isinstance(attempt.progress, _Showing):
+        await _next_segment(ports, attempt)
+    _cover_absorbed(attempt)
+
+
+def _cover_absorbed(attempt: _Attempt) -> None:
+    attempt.covers = (*attempt.covers, *attempt.absorbed)
+    attempt.absorbed = ()
 
 
 def _commit_quietly(attempt: _Attempt) -> None:

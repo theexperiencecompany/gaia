@@ -24,6 +24,7 @@ from app.models.reminder_models import AgentType, ReminderModel, StaticReminderP
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.todo_models import TodoDocument
 from app.models.workflow_models import TriggerType
+from app.services.conversation.bot_wake import BotWakingFrames
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports
@@ -104,12 +105,12 @@ async def _no_tick() -> None:
 
 @pytest.fixture(autouse=True)
 def _runtime() -> None:
-    """Install the real Mongo conversation log; nothing a Notice appends runs a step here."""
+    """Install the real Mongo log and the real bot wake; nothing a Notice appends runs a step here."""
     install_runtime_ports(
         RuntimePorts(
             log=MongoConversationLog(conversation_log_repository, lambda: datetime.now(UTC)),
             runner=ScriptedRunner(TickGate()),
-            frames=RecordingFrames(),
+            frames=BotWakingFrames(RecordingFrames()),
             effects=RecordingEffects(),
             approvals=ScriptedApprovals(),
             analytics=RecordingAnalytics(),
@@ -146,6 +147,21 @@ async def _notices(mongo_db) -> list[dict[str, object]]:
     return await mongo_db[CONVERSATION_ENTRIES_COLLECTION].find({"kind": "notice"}).to_list(None)
 
 
+async def _bot_heard(mongo_db, delivered: Delivered) -> list[str]:
+    """Return the Notice text each bot wake points its follower at, in wake order."""
+    heard: list[str] = []
+    for wake in delivered.bot_messages:
+        follow = wake["follow"]
+        assert isinstance(follow, dict)
+        heard += [
+            notice["text"]
+            for notice in await _notices(mongo_db)
+            if notice["conversation_id"] == follow["conversation_id"]
+            and notice["seq"] > follow["after_seq"]
+        ]
+    return heard
+
+
 def _reminder(user_id: str) -> ReminderModel:
     return ReminderModel(
         _id=str(ObjectId()),
@@ -161,7 +177,7 @@ def _reminder(user_id: str) -> ReminderModel:
     )
 
 
-async def test_a_retried_reminder_sends_one_notification_one_bot_message_one_push(
+async def test_a_retried_reminder_sends_one_notification_one_bot_message_and_no_push(
     mongo_db, delivered: Delivered
 ) -> None:
     reminder = _reminder(str(LINKED_OID))
@@ -171,12 +187,14 @@ async def test_a_retried_reminder_sends_one_notification_one_bot_message_one_pus
 
     (stored,) = await _notifications(mongo_db, str(LINKED_OID))
     assert stored["status"] == "delivered"
-    (message,) = delivered.bot_messages
-    assert message["destination_id"] == TELEGRAM_USER_ID
-    assert message["notification_id"] == stored["id"]
-    assert message["text"] == "**Stretch**\nStand up for a minute"
-    assert len(delivered.pushes) == 1
-    assert [e["type"] for e in delivered.socket_events] == ["notification.delivered"]
+    (wake,) = delivered.bot_messages
+    assert wake["destination_id"] == TELEGRAM_USER_ID
+    assert await _bot_heard(mongo_db, delivered) == ["**Stretch**\nStand up for a minute"]
+    assert delivered.pushes == []
+    assert sorted(e["type"] for e in delivered.socket_events) == [
+        "conversation.list_changed",
+        "notification.delivered",
+    ]
     (notice,) = await _notices(mongo_db)
     assert notice["text"] == "**Stretch**\nStand up for a minute"
 
@@ -199,8 +217,11 @@ async def test_a_workflow_result_is_delivered_once_on_the_users_channel(
 
     (stored,) = await _notifications(mongo_db, str(oid))
     assert stored["status"] == "delivered"
-    assert [m["text"] for m in delivered.bot_messages] == ["Three meetings today."] * bot_messages
-    assert len(delivered.socket_events) == 1
+    assert await _bot_heard(mongo_db, delivered) == ["Three meetings today."] * bot_messages
+    assert sorted(e["type"] for e in delivered.socket_events) == [
+        *(["conversation.list_changed"] * bot_messages),
+        "notification.delivered",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -232,9 +253,7 @@ async def test_a_todo_run_result_is_delivered_once_on_the_users_channel(
 
     (stored,) = await _notifications(mongo_db, str(oid))
     assert stored["status"] == "delivered"
-    assert [m["text"] for m in delivered.bot_messages] == [
-        "Fares to Lisbon dropped 12%."
-    ] * bot_messages
+    assert await _bot_heard(mongo_db, delivered) == ["Fares to Lisbon dropped 12%."] * bot_messages
 
 
 async def test_a_pending_approval_pushes_once_and_never_prompts_the_bot(
@@ -262,8 +281,7 @@ async def test_an_integration_expiry_raises_one_notification(
         account=account, account_count=1, was_primary=True, integration_expired=True
     )
     with patch(
-        "app.services.integrations.integration_expiry.websocket_manager",
-        MagicMock(broadcast_to_user=AsyncMock()),
+        "app.services.integrations.integration_expiry.announce_integration_changed", AsyncMock()
     ):
         for _ in range(2):
             await announce_account_expiry(str(LINKED_OID), "gmail", expired, [], None)

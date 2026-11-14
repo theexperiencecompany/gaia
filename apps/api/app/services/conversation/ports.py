@@ -133,6 +133,8 @@ class Streamed:
     """A visible delta of the reply: text, reasoning or a tool card."""
 
     payload: StreamPayload
+    # False for what a running tool shows: it belongs beside its call, above inputs absorbed since.
+    by_model: bool = True
 
 
 @dataclass(frozen=True)
