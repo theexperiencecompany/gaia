@@ -29,7 +29,11 @@ export type DeadLinkState =
 export type LinkUnavailableState =
   | { denial: DeadLinkState }
   | { denial: Extract<LinkDenial, "link_sign_in_required">; slug: string }
-  | { denial: Extract<LinkDenial, "link_forbidden">; signedInAs: string };
+  | {
+      denial: Extract<LinkDenial, "link_forbidden">;
+      signedInAs: string;
+      slug: string;
+    };
 
 /** How opening a link turned out, on the server or in the browser. */
 export type LinkResolution =

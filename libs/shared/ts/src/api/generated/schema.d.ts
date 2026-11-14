@@ -5642,7 +5642,10 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description Logout user and return logout URL for frontend redirection.
+         * @description Log the user out and return where the browser goes next.
+         *
+         *     return_url, a path on this site, is for switching accounts: the identity
+         *     provider's logout lands on the sign-in page, which then returns there.
          */
         post: operations["user_logout"];
         delete?: never;
@@ -33895,7 +33898,9 @@ export interface operations {
     };
     user_logout: {
         parameters: {
-            query?: never;
+            query?: {
+                return_url?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

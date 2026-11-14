@@ -11,6 +11,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/features/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isAuthenticated: true }),
 }));
+vi.mock("@/features/auth/hooks/useLogout", () => ({
+  useLogout: () => ({ logout: () => Promise.resolve() }),
+}));
 vi.mock("@/features/chat/components/interface/RichContentRenderer", () => ({
   RichContentRenderer: ({ content }: { content: string }) => <p>{content}</p>,
 }));
@@ -56,6 +59,9 @@ describe("GatedLinkView", () => {
 
     expect(
       await screen.findByText("You're signed in as sam@example.com."),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Sign in with another account" }),
     ).toBeTruthy();
   });
 

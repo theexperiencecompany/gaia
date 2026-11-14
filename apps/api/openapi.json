@@ -45146,8 +45146,26 @@
     },
     "/api/v1/user/logout": {
       "post": {
-        "description": "Logout user and return logout URL for frontend redirection.",
+        "description": "Log the user out and return where the browser goes next.\n\nreturn_url, a path on this site, is for switching accounts: the identity\nprovider's logout lands on the sign-in page, which then returns there.",
         "operationId": "user_logout",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "return_url",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return Url"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

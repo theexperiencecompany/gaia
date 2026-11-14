@@ -20,7 +20,9 @@ export function linkUnavailableState(
   if (code === "link_sign_in_required") return { denial: code, slug };
   if (code === "link_forbidden") {
     const signedInAs = envelope.signed_in_as;
-    return typeof signedInAs === "string" ? { denial: code, signedInAs } : null;
+    return typeof signedInAs === "string"
+      ? { denial: code, signedInAs, slug }
+      : null;
   }
   return isDeadLinkState(code) ? { denial: code } : null;
 }

@@ -636,6 +636,31 @@ class TestLogout:
         mock_capture.assert_called_once_with(UserId("507f1f77bcf86cd799439011"), UserLoggedOut())
 
     @patch("app.api.v1.endpoints.user.get_workos_client")
+    async def test_logout_to_switch_accounts_comes_back_to_sign_in_then_the_page(
+        self, mock_workos: MagicMock, client: AsyncClient
+    ):
+        """Ending the hosted session too is what lets the next sign-in pick another account."""
+        session = MagicMock()
+        session.get_logout_url.return_value = "https://auth.example.com/logout"
+        mock_workos.return_value.user_management.load_sealed_session.return_value = session
+        client.cookies.set("wos_session", "sealed_token")
+        with patch("app.api.v1.endpoints.user.capture"):
+            response = await client.post(f"{USER_BASE}/logout", params={"return_url": "/l/abc"})
+
+        assert response.status_code == 200
+        session.get_logout_url.assert_called_once_with(
+            return_to=f"{settings.FRONTEND_URL}/login?return_url=%2Fl%2Fabc"
+        )
+
+    @pytest.mark.parametrize("unsafe", ["//evil.com", "https://evil.com", "/\\evil.com"])
+    async def test_logout_refuses_a_return_url_off_this_site(self, client: AsyncClient, unsafe):
+        response = await client.post(f"{USER_BASE}/logout", params={"return_url": unsafe})
+
+        assert response.status_code == 422
+        assert response.json()["code"] == "invalid_return_url"
+        assert response.json()["message"] == "return_url must be a path on this site"
+
+    @patch("app.api.v1.endpoints.user.get_workos_client")
     async def test_logout_track_failure_is_logged_not_fatal(
         self,
         mock_workos: MagicMock,

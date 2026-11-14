@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
@@ -18,6 +18,10 @@ import {
 
 vi.mock("@/features/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isAuthenticated: false }),
+}));
+const logout = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+vi.mock("@/features/auth/hooks/useLogout", () => ({
+  useLogout: () => ({ logout }),
 }));
 vi.mock("@/features/chat/components/interface/RichContentRenderer", () => ({
   RichContentRenderer: ({ content }: { content: string }) => <p>{content}</p>,
@@ -142,7 +146,11 @@ describe("a heygaia.link that doesn't open", () => {
   it("tells a signed-in viewer who isn't a grantee which account they're using", () => {
     render(
       <LinkUnavailable
-        state={{ denial: "link_forbidden", signedInAs: "sam@example.com" }}
+        state={{
+          denial: "link_forbidden",
+          signedInAs: "sam@example.com",
+          slug: "abcdefghijk",
+        }}
       />,
     );
 
@@ -152,6 +160,25 @@ describe("a heygaia.link that doesn't open", () => {
     expect(
       screen.getByText("You're signed in as sam@example.com."),
     ).toBeTruthy();
+  });
+
+  it("lets a viewer without access sign in with another account and come back", () => {
+    logout.mockClear();
+    render(
+      <LinkUnavailable
+        state={{
+          denial: "link_forbidden",
+          signedInAs: "sam@example.com",
+          slug: "abcdefghijk",
+        }}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sign in with another account" }),
+    );
+
+    expect(logout).toHaveBeenCalledWith("/l/abcdefghijk");
   });
 });
 
