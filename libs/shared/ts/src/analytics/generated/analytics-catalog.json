@@ -432,14 +432,14 @@
             "type": "boolean"
           },
           "model": {
-            "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+            "pattern": "^@?[A-Za-z0-9_.:/#+~\\-]{1,256}$",
             "title": "Model",
             "type": "string"
           },
           "model_served": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_.:/#+~\\-]{1,256}$",
+                "pattern": "^@?[A-Za-z0-9_.:/#+~\\-]{1,256}$",
                 "type": "string"
               },
               {

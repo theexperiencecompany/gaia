@@ -21,6 +21,8 @@ class LLMProviderName(StrEnum):
     # OLLAMA_BASE_URL picks the endpoint at load time; nothing keys off the name
     # beyond registration.
     OLLAMA = "ollama"
+    # Workers AI's OpenAI-compatible API. Configured, it serves every role ahead of the rest.
+    CLOUDFLARE = "cloudflare"
 
 
 class LLMProviderKey(StrEnum):
@@ -35,6 +37,7 @@ class LLMProviderKey(StrEnum):
     CUSTOM = "custom_llm"
     OPENAI = "openai_llm"
     OLLAMA = "ollama_llm"
+    CLOUDFLARE = "cloudflare_llm"
 
 
 class ModelUse(StrEnum):
@@ -360,6 +363,15 @@ OPENAI_MAX_OUTPUT_TOKENS = 16_000
 # degrade to — kept so re-pointing PAID_MODEL_NAME makes that guard bite again.
 PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
 PAID_MODEL_NAME = DEFAULT_MODEL_NAME
+
+#: Cloudflare Workers AI. The 1M-token window equals DEFAULT_MAX_TOKENS; the model takes
+#: images, tools and reasoning_effort none|low|high|max (developers.cloudflare.com/workers-ai).
+CLOUDFLARE_MODEL_NAME = "@cf/deepseek-ai/deepseek-v4.1-flash-1017"
+CLOUDFLARE_AI_API_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
+#: One effort for every chat role, comms included: comms ran at "none" on OpenAI, and the
+#: model's own default ("high") would stall voice and chat replies.
+CLOUDFLARE_REASONING_EFFORT = "low"
+CLOUDFLARE_MAX_OUTPUT_TOKENS = 64_000
 
 OPENAI_API_URL = "https://api.openai.com/v1"
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1"

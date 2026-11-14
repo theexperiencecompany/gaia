@@ -3,7 +3,7 @@
 from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent
-from shared.py.analytics.catalog.properties import Identifier
+from shared.py.analytics.catalog.properties import Identifier, ModelId
 
 __all__ = [
     "AgentRunCompleted",
@@ -92,8 +92,8 @@ class AiLlmCallCompleted(ServerEvent):
     agent_name: Identifier
     background: bool
     charge_to_budget: bool
-    model: Identifier
-    model_served: Identifier | None = None
+    model: ModelId
+    model_served: ModelId | None = None
     provider: Identifier | None = None
     input_tokens: int
     output_tokens: int
