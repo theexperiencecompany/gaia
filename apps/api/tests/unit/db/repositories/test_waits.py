@@ -20,9 +20,11 @@ from app.db.repositories.waits import WaitsRepository
 from app.models.wait_models import WaitKey, WaitUpdate
 
 USER = "6812f0b3c9a14e2b7d5a91cc"
+JOB = "job-1"
 WAIT_ID = "6812f0b3c9a14e2b7d5a91ff"
 NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 OLDEST_LIVE = NOW - timedelta(days=7)
+LEASE_CLEARED = {"claimed_by": "", "claimed_at": ""}
 KEY = WaitKey(
     user_id=USER,
     condition=WaitCondition.INTEGRATION_CONNECTED,
@@ -53,7 +55,8 @@ def _raw() -> dict[str, object]:
 def collection() -> Iterator[MagicMock]:
     mock = MagicMock()
     mock.find_one_and_update = AsyncMock(return_value=_raw())
-    mock.find_one_and_delete = AsyncMock(return_value=_raw())
+    mock.delete_one = AsyncMock()
+    mock.update_one = AsyncMock()
     cursor = MagicMock()
     cursor.to_list = AsyncMock(return_value=[_raw()])
     mock.find = MagicMock(return_value=cursor)
@@ -72,7 +75,10 @@ class TestKeep:
 
         collection.find_one_and_update.assert_awaited_once_with(
             KEY_FILTER,
-            {"$set": {"subject_name": "Gmail", "stream_id": "stream-1", "created_at": NOW}},
+            {
+                "$set": {"subject_name": "Gmail", "stream_id": "stream-1", "created_at": NOW},
+                "$unset": LEASE_CLEARED,
+            },
             array_filters=None,
             return_document=True,
             upsert=True,
@@ -107,42 +113,47 @@ class TestFindMet:
 
 
 class TestClaim:
-    async def test_takes_the_users_live_wait_by_id(self, collection: MagicMock) -> None:
-        wait = await WaitsRepository().claim(WAIT_ID, user_id=USER)
+    async def test_leases_the_users_live_wait_to_the_job(self, collection: MagicMock) -> None:
+        wait = await WaitsRepository().claim(WAIT_ID, user_id=USER, job_id=JOB)
 
-        collection.find_one_and_delete.assert_awaited_once_with(
-            {"_id": ObjectId(WAIT_ID), "user_id": USER, "created_at": {"$gte": OLDEST_LIVE}}
+        collection.find_one_and_update.assert_awaited_once_with(
+            {
+                "_id": ObjectId(WAIT_ID),
+                "user_id": USER,
+                "created_at": {"$gte": OLDEST_LIVE},
+                "$or": [
+                    {"claimed_by": None},
+                    {"claimed_by": JOB},
+                    {"claimed_at": {"$lt": NOW - timedelta(hours=1)}},
+                ],
+            },
+            {"$set": {"claimed_by": JOB, "claimed_at": NOW}},
+            array_filters=None,
+            return_document=True,
+            upsert=False,
         )
         assert wait is not None
         assert (wait.id, wait.waiter_id) == (WAIT_ID, "conv-1")
 
-    async def test_a_wait_already_taken_claims_nothing(self, collection: MagicMock) -> None:
-        collection.find_one_and_delete.return_value = None
+    async def test_a_wait_another_job_holds_claims_nothing(self, collection: MagicMock) -> None:
+        collection.find_one_and_update.return_value = None
 
-        assert await WaitsRepository().claim(WAIT_ID, user_id=USER) is None
+        assert await WaitsRepository().claim(WAIT_ID, user_id=USER, job_id=JOB) is None
 
 
-class TestRestore:
-    async def test_a_failed_resume_puts_its_wait_back_unless_a_newer_ask_is_there(
+class TestSettleAndRelease:
+    async def test_settling_drops_only_the_wait_the_job_still_holds(
         self, collection: MagicMock
     ) -> None:
-        repo = WaitsRepository()
-        wait = await repo.claim(WAIT_ID, user_id=USER)
-        assert wait is not None
+        await WaitsRepository().settle(WAIT_ID, job_id=JOB)
 
-        await repo.restore(wait)
+        collection.delete_one.assert_awaited_once_with(
+            {"_id": ObjectId(WAIT_ID), "claimed_by": JOB}
+        )
 
-        collection.find_one_and_update.assert_awaited_once_with(
-            KEY_FILTER,
-            {
-                "$setOnInsert": {
-                    "subject_name": "Gmail",
-                    "stream_id": "stream-1",
-                    "created_at": NOW,
-                    "_id": ObjectId(WAIT_ID),
-                }
-            },
-            array_filters=None,
-            return_document=True,
-            upsert=True,
+    async def test_releasing_clears_only_the_jobs_own_lease(self, collection: MagicMock) -> None:
+        await WaitsRepository().release(WAIT_ID, job_id=JOB)
+
+        collection.update_one.assert_awaited_once_with(
+            {"_id": ObjectId(WAIT_ID), "claimed_by": JOB}, {"$unset": LEASE_CLEARED}
         )

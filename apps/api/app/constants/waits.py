@@ -33,6 +33,8 @@ WAIT_TTL_SECONDS: Final = 7 * ONE_DAY_TTL
 RESUME_WAITER_TASK: Final = "resume_waiter"
 #: Tries before a resume that keeps failing gives up, leaving its wait for the next report.
 RESUME_WAITER_MAX_TRIES: Final = 5
+#: How long a resume job holds its claimed wait; past it, a job that died mid-resume loses it.
+RESUME_WAITER_LEASE: Final = timedelta(hours=1)
 #: First retry delay of a failed resume; each later try doubles it.
 RESUME_WAITER_RETRY_DELAY: Final = timedelta(seconds=30)
 #: The synthetic trigger name a woken tracked todo run sees as its origin.

@@ -15,9 +15,16 @@ import time_machine
 from app.constants.agents import AgentTag
 from app.constants.log_tags import LogTag
 from app.constants.todos import EXECUTE_TRACKED_TODO_TASK
-from app.constants.waits import WAIT_MET_CONTEXT_KEY, WAIT_MET_TRIGGER, WaitCondition, WaiterKind
+from app.constants.waits import (
+    RESUME_WAITER_MAX_TRIES,
+    WAIT_MET_CONTEXT_KEY,
+    WAIT_MET_TRIGGER,
+    WaitCondition,
+    WaiterKind,
+)
 from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.wait_models import WaitDocument
+from app.workers.task_envelope import ArqJobContext
 from app.workers.tasks.wait_tasks import WorkflowNotQueuedError, resume_waiter
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.agents import WaitResumed
@@ -25,6 +32,8 @@ from shared.py.analytics.catalog.agents import WaitResumed
 MODULE = "app.workers.tasks.wait_tasks"
 USER = "6812f0b3c9a14e2b7d5a91cc"
 NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
+JOB = "job-1"
+CTX: ArqJobContext = {"job_id": JOB}
 
 
 def _wait(
@@ -54,7 +63,8 @@ class Seams:
     user: MagicMock
     pool: MagicMock
     claim: AsyncMock
-    restore: AsyncMock
+    settle: AsyncMock
+    release: AsyncMock
     require_owner: AsyncMock
     unblock: AsyncMock
     deliver: AsyncMock
@@ -70,7 +80,8 @@ def seams() -> Iterator[Seams]:
     with (
         time_machine.travel(NOW, tick=False),
         patch(f"{MODULE}.wait_repository.claim", AsyncMock(return_value=_wait())) as claim,
-        patch(f"{MODULE}.wait_repository.restore", AsyncMock()) as restore,
+        patch(f"{MODULE}.wait_repository.settle", AsyncMock()) as settle,
+        patch(f"{MODULE}.wait_repository.release", AsyncMock()) as release,
         patch(f"{MODULE}.require_owner", AsyncMock(return_value=user)) as require_owner,
         patch(f"{MODULE}.unblock_integration", AsyncMock()) as unblock,
         patch(f"{MODULE}.deliver_to_executor", AsyncMock()) as deliver,
@@ -86,7 +97,8 @@ def seams() -> Iterator[Seams]:
             user=user,
             pool=pool,
             claim=claim,
-            restore=restore,
+            settle=settle,
+            release=release,
             require_owner=require_owner,
             unblock=unblock,
             deliver=deliver,
@@ -100,7 +112,7 @@ class TestResumeWaiter:
     async def test_a_chat_is_told_what_was_done_and_how_long_ago_it_asked(
         self, seams: Seams
     ) -> None:
-        await resume_waiter({}, USER, "w1")
+        await resume_waiter(CTX, USER, "w1")
 
         conversation_id, user, entry = seams.deliver.await_args.args
         assert (conversation_id, user) == ("conv-1", seams.user)
@@ -119,7 +131,7 @@ class TestResumeWaiter:
         self, seams: Seams
     ) -> None:
         seams.claim.return_value = _wait(WaiterKind.TODO, "todo-1")
-        await resume_waiter({}, USER, "w1")
+        await resume_waiter(CTX, USER, "w1")
 
         pool, task, todo_id, origin = seams.enqueue.await_args.args
         assert (pool, task, todo_id) == (seams.pool, EXECUTE_TRACKED_TODO_TASK, "todo-1")
@@ -130,14 +142,14 @@ class TestResumeWaiter:
 
     async def test_a_workflow_gets_a_run_carrying_the_news(self, seams: Seams) -> None:
         seams.claim.return_value = _wait(WaiterKind.WORKFLOW, "wf-1")
-        await resume_waiter({}, USER, "w1")
+        await resume_waiter(CTX, USER, "w1")
 
         workflow_id, user_id = seams.queue_workflow.await_args.args
         assert (workflow_id, user_id) == ("wf-1", USER)
         context = seams.queue_workflow.await_args.kwargs["context"]
         assert context[WAIT_MET_CONTEXT_KEY].startswith("The user just connected Gmail.")
 
-    async def test_a_failed_resume_puts_the_wait_back_and_retries_with_backoff(
+    async def test_a_failed_resume_keeps_the_wait_leased_and_retries_with_backoff(
         self, seams: Seams
     ) -> None:
         wait = _wait(WaiterKind.WORKFLOW, "wf-1")
@@ -145,23 +157,44 @@ class TestResumeWaiter:
         seams.queue_workflow.return_value = False
 
         with pytest.raises(Retry) as retry:
-            await resume_waiter({"job_try": 3}, USER, "w1")
+            await resume_waiter({"job_id": JOB, "job_try": 3}, USER, "w1")
 
         assert isinstance(retry.value.__cause__, WorkflowNotQueuedError)
         assert "wf-1" in str(retry.value.__cause__)
         assert retry.value.defer_score == 120_000
-        seams.restore.assert_awaited_once_with(wait)
+        seams.settle.assert_not_awaited()
+        seams.release.assert_not_awaited()
         seams.capture.assert_not_called()
 
-    async def test_a_resume_that_succeeds_leaves_the_wait_taken(self, seams: Seams) -> None:
-        await resume_waiter({}, USER, "w1")
+    async def test_a_resume_that_went_through_drops_the_wait_it_holds(self, seams: Seams) -> None:
+        await resume_waiter(CTX, USER, "w1")
 
-        seams.restore.assert_not_awaited()
+        seams.settle.assert_awaited_once_with("w1", job_id=JOB)
+        seams.release.assert_not_awaited()
+
+    async def test_the_last_failed_try_releases_the_wait_and_fails_loud(self, seams: Seams) -> None:
+        seams.claim.return_value = _wait(WaiterKind.WORKFLOW, "wf-1")
+        seams.queue_workflow.return_value = False
+
+        with pytest.raises(WorkflowNotQueuedError):
+            await resume_waiter({"job_id": JOB, "job_try": RESUME_WAITER_MAX_TRIES}, USER, "w1")
+
+        seams.release.assert_awaited_once_with("w1", job_id=JOB)
+        seams.settle.assert_not_awaited()
+
+    async def test_the_try_before_the_last_still_retries(self, seams: Seams) -> None:
+        seams.claim.return_value = _wait(WaiterKind.WORKFLOW, "wf-1")
+        seams.queue_workflow.return_value = False
+
+        with pytest.raises(Retry):
+            await resume_waiter({"job_id": JOB, "job_try": RESUME_WAITER_MAX_TRIES - 1}, USER, "w1")
+
+        seams.release.assert_not_awaited()
 
     async def test_a_connect_lifts_the_asking_runs_block_on_the_integration(
         self, seams: Seams
     ) -> None:
-        await resume_waiter({}, USER, "w1")
+        await resume_waiter(CTX, USER, "w1")
 
         seams.unblock.assert_awaited_once_with("stream-1", "gmail")
 
@@ -171,7 +204,7 @@ class TestResumeWaiter:
         seams.claim.return_value = _wait(
             condition=WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, subject_name="PR digest"
         )
-        await resume_waiter({}, USER, "w1")
+        await resume_waiter(CTX, USER, "w1")
 
         seams.unblock.assert_not_awaited()
         entry = seams.deliver.await_args.args[2]
@@ -182,15 +215,15 @@ class TestResumeWaiter:
     async def test_the_job_claims_the_wait_it_was_queued_for_as_its_owner(
         self, seams: Seams
     ) -> None:
-        await resume_waiter({}, USER, "w1")
+        await resume_waiter(CTX, USER, "w1")
 
-        seams.claim.assert_awaited_once_with("w1", user_id=USER)
+        seams.claim.assert_awaited_once_with("w1", user_id=USER, job_id=JOB)
         seams.require_owner.assert_awaited_once_with(USER)
 
     async def test_a_wait_already_picked_up_or_expired_resumes_nothing(self, seams: Seams) -> None:
         seams.claim.return_value = None
 
-        await resume_waiter({}, USER, "w1")
+        await resume_waiter(CTX, USER, "w1")
 
         seams.deliver.assert_not_awaited()
         seams.capture.assert_not_called()
@@ -200,11 +233,11 @@ class TestResumeWaiter:
         seams.queue_workflow.return_value = False
 
         with patch(f"{MODULE}.log") as log, pytest.raises(Retry) as retry:
-            await resume_waiter({}, USER, "w1")
+            await resume_waiter(CTX, USER, "w1")
 
         assert retry.value.defer_score == 30_000
         log.warning.assert_called_once_with(
-            f"{LogTag.AGENT} Resuming a waiter failed; the wait is back on file and retrying",
+            f"{LogTag.AGENT} Resuming a waiter failed; the job keeps its wait and retries",
             waiter="workflow",
             waiter_id="wf-1",
             error_type="WorkflowNotQueuedError",
@@ -212,14 +245,13 @@ class TestResumeWaiter:
             defer_seconds=30.0,
         )
 
-    async def test_a_cancelled_resume_puts_the_wait_back_and_stays_cancelled(
+    async def test_a_cancelled_resume_keeps_the_wait_for_arq_to_rerun_the_job(
         self, seams: Seams
     ) -> None:
-        wait = _wait()
-        seams.claim.return_value = wait
         seams.deliver.side_effect = asyncio.CancelledError
 
         with pytest.raises(asyncio.CancelledError):
-            await resume_waiter({}, USER, "w1")
+            await resume_waiter(CTX, USER, "w1")
 
-        seams.restore.assert_awaited_once_with(wait)
+        seams.settle.assert_not_awaited()
+        seams.release.assert_not_awaited()

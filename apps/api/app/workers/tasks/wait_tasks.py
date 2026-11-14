@@ -18,6 +18,7 @@ from app.constants.agents import AgentTag
 from app.constants.log_tags import LogTag
 from app.constants.todos import EXECUTE_TRACKED_TODO_TASK
 from app.constants.waits import (
+    RESUME_WAITER_MAX_TRIES,
     RESUME_WAITER_RETRY_DELAY,
     WAIT_MET_CONTEXT_KEY,
     WAIT_MET_TRIGGER,
@@ -93,20 +94,23 @@ async def _resume(wait: WaitDocument) -> None:
 async def resume_waiter(ctx: ArqJobContext, user_id: str, wait_id: str) -> str:
     """Claim the wait, tell its waiter what the user did and how long ago it was asked, and let it pick back up.
 
-    A resume that fails puts the wait back and retries, so a waiter is never lost to one bad try.
+    The wait is dropped only once the resume went through. A failed try keeps the lease and
+    retries; the last one releases it for the next report of the condition.
     """
-    wait = await wait_repository.claim(wait_id, user_id=user_id)
+    job_id = ctx["job_id"]
+    wait = await wait_repository.claim(wait_id, user_id=user_id, job_id=job_id)
     if wait is None:
         return f"resume_waiter {wait_id}: already picked up or expired"
     try:
         await _resume(wait)
-    except BaseException as e:  # recovered: the wait goes back on file, then the job retries
-        await wait_repository.restore(wait)
-        if not isinstance(e, Exception):
-            raise  # cancelled or shutting down: the wait is back, let the interruption through
-        defer = RESUME_WAITER_RETRY_DELAY * 2 ** (ctx.get("job_try", 1) - 1)
+    except Exception as e:
+        job_try = ctx.get("job_try", 1)
+        if job_try >= RESUME_WAITER_MAX_TRIES:
+            await wait_repository.release(wait_id, job_id=job_id)
+            raise
+        defer = RESUME_WAITER_RETRY_DELAY * 2 ** (job_try - 1)
         log.warning(
-            f"{LogTag.AGENT} Resuming a waiter failed; the wait is back on file and retrying",
+            f"{LogTag.AGENT} Resuming a waiter failed; the job keeps its wait and retries",
             waiter=wait.waiter.value,
             waiter_id=wait.waiter_id,
             error_type=type(e).__name__,
@@ -114,6 +118,7 @@ async def resume_waiter(ctx: ArqJobContext, user_id: str, wait_id: str) -> str:
             defer_seconds=defer.total_seconds(),
         )
         raise Retry(defer=defer) from e
+    await wait_repository.settle(wait_id, job_id=job_id)
     waited_minutes = int((datetime.now(UTC) - wait.created_at).total_seconds()) // 60
     capture(
         UserId(wait.user_id),

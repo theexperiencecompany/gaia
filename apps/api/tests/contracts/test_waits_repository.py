@@ -13,7 +13,7 @@ from typing import TypeAlias
 from motor.motor_asyncio import AsyncIOMotorCollection
 import pytest
 
-from app.constants.waits import WAIT_TTL_SECONDS, WaitCondition, WaiterKind
+from app.constants.waits import RESUME_WAITER_LEASE, WAIT_TTL_SECONDS, WaitCondition, WaiterKind
 from app.db.repositories.waits import WaitsRepository
 from app.models.wait_models import WaitDocument, WaitKey, WaitUpdate
 
@@ -61,7 +61,7 @@ async def _keep(
 async def _take_all(repo: WaitsRepository, user_id: str = USER) -> list[WaitDocument]:
     """Find the live waits and claim each, as report_wait_met and one resume job per wait do."""
     found = await repo.find_met(user_id, CONNECTED, "gmail")
-    claimed = [await repo.claim(w.id, user_id=user_id) for w in found]
+    claimed = [await repo.claim(w.id, user_id=user_id, job_id=f"job-{w.id}") for w in found]
     return [w for w in claimed if w is not None]
 
 
@@ -105,8 +105,8 @@ class TestWaitsRepository:
 
         found = await repo.find_met(USER, CONNECTED, "gmail")
         found_again = await repo.find_met(USER, CONNECTED, "gmail")
-        first = [await repo.claim(w.id, user_id=USER) for w in found]
-        second = [await repo.claim(w.id, user_id=USER) for w in found]
+        first = [await repo.claim(w.id, user_id=USER, job_id="job-a") for w in found]
+        second = [await repo.claim(w.id, user_id=USER, job_id="job-b") for w in found]
 
         assert sorted(w.waiter_id for w in found) == ["conv-1", "todo-1", "wf-1"]
         assert sorted(w.id for w in found_again) == sorted(w.id for w in found)
@@ -123,14 +123,14 @@ class TestWaitsRepository:
         )
 
         assert await repo.find_met(USER, CONNECTED, "gmail") == []
-        assert await repo.claim(wait.id, user_id=USER) is None
+        assert await repo.claim(wait.id, user_id=USER, job_id="job-a") is None
 
     async def test_another_users_claim_takes_nothing(self, repo: WaitsRepository) -> None:
         await _keep(repo)
         [wait] = await repo.find_met(USER, CONNECTED, "gmail")
 
-        assert await repo.claim(wait.id, user_id=OTHER) is None
-        assert await repo.claim(wait.id, user_id=USER) is not None
+        assert await repo.claim(wait.id, user_id=OTHER, job_id="job-a") is None
+        assert await repo.claim(wait.id, user_id=USER, job_id="job-a") is not None
 
     async def test_finding_skips_other_subjects_conditions_and_users(
         self, repo: WaitsRepository
@@ -154,7 +154,7 @@ class TestWaitsRepository:
         found = await repo.find_met(USER, CONNECTED, "gmail")
 
         results = await asyncio.gather(
-            *(repo.claim(w.id, user_id=USER) for w in found for _ in range(4))
+            *(repo.claim(w.id, user_id=USER, job_id=f"job-{n}") for w in found for n in range(4))
         )
 
         claimed = [w.waiter_id for w in results if w is not None]
@@ -167,31 +167,83 @@ class TestWaitsRepository:
 
         assert await raw_collection.count_documents({"user_id": USER}) == 1
 
-    async def test_a_restored_wait_is_claimable_again_with_its_original_ask_time(
+    async def test_a_rerun_of_the_same_job_takes_its_wait_again(
+        self, repo: WaitsRepository
+    ) -> None:
+        await _keep(repo)
+        [wait] = await repo.find_met(USER, CONNECTED, "gmail")
+        assert await repo.claim(wait.id, user_id=USER, job_id="job-a") is not None
+
+        again = await repo.claim(wait.id, user_id=USER, job_id="job-a")
+
+        assert again is not None
+        assert again.id == wait.id
+
+    async def test_a_lease_past_its_time_goes_to_the_next_job(
+        self, repo: WaitsRepository, raw_collection: WaitsCollection
+    ) -> None:
+        await _keep(repo)
+        [wait] = await repo.find_met(USER, CONNECTED, "gmail")
+        assert await repo.claim(wait.id, user_id=USER, job_id="job-a") is not None
+        assert await repo.claim(wait.id, user_id=USER, job_id="job-b") is None
+        await raw_collection.update_many(
+            {},
+            {
+                "$set": {
+                    "claimed_at": datetime.now(UTC) - RESUME_WAITER_LEASE - timedelta(minutes=1)
+                }
+            },
+        )
+
+        assert await repo.claim(wait.id, user_id=USER, job_id="job-b") is not None
+
+    async def test_a_settled_wait_is_gone(
+        self, repo: WaitsRepository, raw_collection: WaitsCollection
+    ) -> None:
+        await _keep(repo)
+        [wait] = await repo.find_met(USER, CONNECTED, "gmail")
+        await repo.claim(wait.id, user_id=USER, job_id="job-a")
+
+        await repo.settle(wait.id, job_id="job-a")
+
+        assert await raw_collection.count_documents({}) == 0
+
+    async def test_settling_never_drops_a_newer_ask(self, repo: WaitsRepository) -> None:
+        await _keep(repo, stream_id="stream-old")
+        [wait] = await repo.find_met(USER, CONNECTED, "gmail")
+        await repo.claim(wait.id, user_id=USER, job_id="job-a")
+        await _keep(repo, stream_id="stream-new")
+
+        await repo.settle(wait.id, job_id="job-a")
+
+        [kept] = await _take_all(repo)
+        assert kept.stream_id == "stream-new"
+
+    async def test_a_released_wait_goes_to_the_next_job_with_its_original_ask_time(
         self, repo: WaitsRepository, raw_collection: WaitsCollection
     ) -> None:
         await _keep(repo)
         asked_at = datetime.now(UTC) - timedelta(hours=3)
         await raw_collection.update_many({}, {"$set": {"created_at": asked_at}})
         [wait] = await repo.find_met(USER, CONNECTED, "gmail")
-        claimed = await repo.claim(wait.id, user_id=USER)
-        assert claimed is not None
+        await repo.claim(wait.id, user_id=USER, job_id="job-a")
 
-        await repo.restore(claimed)
+        await repo.release(wait.id, job_id="job-a")
 
-        [again] = await _take_all(repo)
-        assert again.id == claimed.id
-        # Mongo keeps milliseconds, so the restored time is the original to within one.
+        again = await repo.claim(wait.id, user_id=USER, job_id="job-b")
+        assert again is not None
+        # Mongo keeps milliseconds, so the stored time is the original to within one.
         assert abs(again.created_at - asked_at) < timedelta(milliseconds=1)
 
-    async def test_restoring_never_overwrites_a_newer_ask(self, repo: WaitsRepository) -> None:
-        await _keep(repo, stream_id="stream-old")
+    async def test_another_jobs_settle_or_release_touches_nothing(
+        self, repo: WaitsRepository
+    ) -> None:
+        await _keep(repo)
         [wait] = await repo.find_met(USER, CONNECTED, "gmail")
-        claimed = await repo.claim(wait.id, user_id=USER)
-        assert claimed is not None
-        await _keep(repo, stream_id="stream-new")
+        await repo.claim(wait.id, user_id=USER, job_id="job-a")
 
-        await repo.restore(claimed)
+        await repo.settle(wait.id, job_id="job-b")
+        await repo.release(wait.id, job_id="job-b")
 
-        [kept] = await repo.find_met(USER, CONNECTED, "gmail")
-        assert kept.stream_id == "stream-new"
+        assert await repo.claim(wait.id, user_id=USER, job_id="job-b") is None
+        assert await repo.claim(wait.id, user_id=USER, job_id="job-a") is not None
