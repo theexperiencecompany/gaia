@@ -14,6 +14,7 @@ from app.agents.tools.coding._artifacts import (
     publish_artifact_write,
 )
 from app.agents.workspace.paths import MountRole
+from app.services.artifact_events import ArtifactFileEvent
 
 WRITER = "app.agents.tools.coding._context.current_stream_writer"
 MTIME = 1_700_000_000.0
@@ -80,7 +81,7 @@ async def test_bash_cards_every_file_find_lists_in_one_round_trip() -> None:
             )
         )
     )
-    written: list[dict[str, object]] = []
+    written: list[dict[str, ArtifactFileEvent]] = []
     with patch(WRITER, return_value=written.append):
         await bash_tool._publish_artifacts(sandbox, "c1")
 
