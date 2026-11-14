@@ -1,9 +1,10 @@
 """Conversation initialization and persistence.
 
 Two concerns kept together because they share the user/conversation shape:
-:func:initialize_new_conversation writes the conversation row and returns the
-init SSE chunk; :func:save_user_message writes the user message as the turn
-begins and :func:save_bot_reply writes the reply when it ends. Spend is NOT billed here — every model call is metered once, at
+:func:initialize_new_conversation writes the conversation row;
+:func:save_user_message writes the user message as the turn begins,
+:func:open_bot_reply takes the reply's place in the order when the user first
+sees it, and :func:save_bot_reply writes the reply when it ends. Spend is NOT billed here — every model call is metered once, at
 the point of the call, by LLMAccountingMiddleware (see
 app.services.llm_metering); a second pass over the stream's aggregate
 usage_metadata used to re-count the turn against chat_messages as well.
@@ -17,13 +18,12 @@ frontend chunk.
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-import json
 import re
 
 from app.constants.chat import ARTIFACT_REF_RE, USER_MESSAGE_TYPE, WORKSPACE_ARTIFACT_RE
+from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import MessageKind, MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageDict, MessageRequestWithHistory
-from app.models.stream_events import ConversationInitializedFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
 from app.utils.artifact_utils import artifact_url_base
@@ -44,14 +44,9 @@ def user_message_content_from(body: MessageRequestWithHistory) -> str:
 
 
 async def initialize_new_conversation(
-    body: MessageRequestWithHistory,
-    user: AuthenticatedUser,
-    conversation_id: str,
-    user_message_id: str,
-    bot_message_id: str,
-    stream_id: str,
+    body: MessageRequestWithHistory, user: AuthenticatedUser, conversation_id: str
 ) -> str:
-    """Create the conversation row and return the init SSE chunk."""
+    """Create the conversation row and return its description."""
     last_message = body.messages[-1] if body.messages else None
 
     conversation = await create_conversation(
@@ -66,17 +61,7 @@ async def initialize_new_conversation(
     # Per-conversation session dirs (scratch/, user-uploaded/, artifacts/) are
     # created on demand by the write/bash paths and `.meta.json` by the post-init
     # last-active touch — so we keep JuiceFS off the first-message critical path.
-
-    init_frame = ConversationInitializedFrame(
-        conversation_id=conversation_id,
-        conversation_description=conversation.description,
-        user_message_id=user_message_id,
-        user_message_content=user_message_content_from(body),
-        bot_message_id=bot_message_id,
-        stream_id=stream_id,
-    )
-
-    return f"data: {json.dumps(init_frame.model_dump())}\n\n"
+    return conversation.description
 
 
 def absolutize_artifact_urls(message: str, conversation_id: str) -> str:
@@ -105,8 +90,8 @@ async def save_user_message(
     user: AuthenticatedUser,
     conversation_id: str,
     user_message_id: str,
-) -> None:
-    """Persist the turn's user message before any agent work runs.
+) -> int:
+    """Persist the turn's user message before any agent work runs, returning its seq.
 
     Written ahead of the reply because the work it asks for commits on its own:
     a turn that dies mid-run must still show the user what they asked.
@@ -124,10 +109,32 @@ async def save_user_message(
         platform_message_id=body.platform_message_id,
     )
     user_message.message_id = user_message_id
-    await update_messages(
+    saved = await update_messages(
         UpdateMessagesRequest(conversation_id=conversation_id, messages=[user_message]),
         user=user,
     )
+    return saved.message_seqs[0]
+
+
+async def open_bot_reply(
+    body: MessageRequestWithHistory,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    bot_message_id: str,
+) -> int:
+    """Append the reply's entry, empty and in progress, as the user first sees it; return its seq."""
+    reply = MessageModel(
+        type="bot",
+        response="",
+        date=datetime.now(UTC).isoformat(),
+        fileIds=body.fileIds,
+        message_id=bot_message_id,
+        in_progress=True,
+    )
+    saved = await update_messages(
+        UpdateMessagesRequest(conversation_id=conversation_id, messages=[reply]), user=user
+    )
+    return saved.message_seqs[0]
 
 
 @dataclass(frozen=True)
@@ -138,8 +145,6 @@ class BotReply:
     bot_message_id: str
     tool_data: Mapping[str, object] = field(default_factory=dict)
     metadata: dict[str, object] = field(default_factory=dict)
-    #: Comms-completion time, which keeps the reply sorted ahead of a delegated answer.
-    bot_timestamp: datetime | None = None
     error: str | None = None
     follow_up_actions: list[str] | None = None
     #: A REACT turn: a one-emoji acknowledgment of reacts_to_message_id.
@@ -154,18 +159,20 @@ async def save_bot_reply(
     user: AuthenticatedUser,
     conversation_id: str,
     reply: BotReply,
-) -> None:
-    """Persist the turn's reply to Mongo; the user message was saved when the turn began.
+) -> int | None:
+    """Persist the turn's reply, returning its seq when appended; an opened entry is filled and keeps its own.
+
+    Whether the entry was opened is the store's answer, not the turn's: an open whose
+    write landed before its call raised is filled all the same.
 
     Artifact URLs are baked absolute so a stale frontend chunk still renders.
     """
-    bot_timestamp = reply.bot_timestamp or datetime.now(UTC)
     rendered_message = absolutize_artifact_urls(reply.complete_message, conversation_id)
 
     bot_message = MessageModel(
         type="bot",
         response=rendered_message,
-        date=bot_timestamp.isoformat(),
+        date=datetime.now(UTC).isoformat(),
         fileIds=body.fileIds,
         metadata=reply.metadata,
         error=reply.error,
@@ -182,10 +189,11 @@ async def save_bot_reply(
     for key, value in reply.tool_data.items():
         setattr(bot_message, key, value)
 
-    await update_messages(
-        UpdateMessagesRequest(
-            conversation_id=conversation_id,
-            messages=[bot_message],
-        ),
-        user=user,
+    if await conversation_repository.fill_message(
+        conversation_id, user_id=user.user_id, message=bot_message
+    ):
+        return None
+    saved = await update_messages(
+        UpdateMessagesRequest(conversation_id=conversation_id, messages=[bot_message]), user=user
     )
+    return saved.message_seqs[0]

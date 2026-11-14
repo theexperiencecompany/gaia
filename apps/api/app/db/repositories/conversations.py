@@ -47,6 +47,8 @@ from app.db.repositories.conversation_entries import (
     at_its_seq,
     at_log_head,
     content_hash,
+    every_outbox_entry_matching,
+    filled,
     head_fields,
     head_from_raw,
     head_with_existing,
@@ -377,9 +379,9 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 )
 
     async def append_messages(
-        self, conversation_id: str, *, user_id: str, messages: list[MessageModel]
-    ) -> list[str] | None:
-        """Append messages to a conversation, returning their ids (None if it does not exist).
+        self, conversation_id: str, *, user_id: str, messages: Sequence[MessageModel]
+    ) -> dict[str, int] | None:
+        """Append messages to a conversation, returning each id's seq in order (None if it does not exist).
 
         Each message takes the folded cards waiting for its id in the same commit.
         """
@@ -390,10 +392,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             for message in messages
         ]
         try:
-            await self.append(conversation_id, user_id=user_id, entries=stamped)
+            seqs = await self.append(conversation_id, user_id=user_id, entries=stamped)
         except ConversationNotFoundError:
             return None
-        return [str(message.message_id) for message in stamped]
+        return {str(message.message_id): seqs[n] for n, message in enumerate(stamped)}
 
     async def park_folded_cards(
         self,
@@ -527,6 +529,74 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             ],
         )
 
+    async def fill_message(
+        self, conversation_id: str, *, user_id: str, message: MessageModel
+    ) -> bool:
+        """Replace an opened entry's content with message in place, keeping its seq; False when absent.
+
+        Cards folded into the entry since it was opened stay, after message's own.
+        """
+        return await self._update_entry(
+            conversation_id, user_id, {"id": message.message_id}, filled(message)
+        )
+
+    async def fail_unfinished_replies(
+        self, *, opened_before: datetime, error: str, owners: set[tuple[str, str]]
+    ) -> int:
+        """Settle the replies in progress since before opened_before in owners' conversations as failed with error.
+
+        owners holds (user_id, conversation_id) pairs; each one's outbox is flushed first, so a
+        reply committed by a process that died before its flush is settled too. Intentionally
+        unscoped (a maintenance sweep).
+        """
+        if not owners:
+            return 0
+        for user_id, conversation_id in sorted(owners):
+            await self.flush_outbox(conversation_id, user_id=user_id)
+        with store_errors("unfinished reply sweep"):  # pragma: no mutate — error label only
+            result = await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).update_many(
+                {
+                    "in_progress": True,
+                    "at": {"$lt": opened_before},
+                    "$or": [
+                        {"user_id": user_id, "conversation_id": conversation_id}
+                        for user_id, conversation_id in sorted(owners)
+                    ],
+                },
+                {
+                    "$set": {"error": error},
+                    "$unset": {"in_progress": ""},  # pragma: no mutate — $unset ignores the value
+                },
+            )
+        return result.modified_count
+
+    async def list_unfinished_reply_owners(
+        self, *, opened_before: datetime
+    ) -> set[tuple[str, str]]:
+        """Return the (user_id, conversation_id) of every reply in progress since before opened_before.
+
+        Reads the outboxes as well as the collection. Intentionally unscoped (a maintenance sweep).
+        """
+        unfinished = {"in_progress": True, "at": {"$lt": opened_before}}
+        owner = {
+            "_id": 0,
+            "user_id": 1,  # pragma: no mutate — projection reads truthiness, not the value
+            "conversation_id": 1,  # pragma: no mutate — projection reads truthiness, not the value
+        }
+        with store_errors("unfinished reply sweep"):  # pragma: no mutate — error label only
+            stored = await (
+                self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+                .find(unfinished, owner)
+                .to_list(length=None)
+            )
+            pending = await (
+                self._raw_collection()
+                .aggregate([*every_outbox_entry_matching(unfinished), {"$project": owner}])
+                .to_list(length=None)
+            )
+        owners = [_ConversationOwnerRow.model_validate(row) for row in [*stored, *pending]]
+        return {(owner.user_id, owner.conversation_id) for owner in owners}
+
     async def set_message_response(
         self, conversation_id: str, *, user_id: str, message_id: str, response: str
     ) -> bool:
@@ -582,21 +652,20 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
 
     async def get_message(
         self, conversation_id: str, message_id: str, *, user_id: str
-    ) -> MessageModel | None:
+    ) -> ConversationEntry | None:
         """Read one message by id, without reading the rest of the conversation."""
         entries = await self._read_entries(
             conversation_id, user_id=user_id, window=EntryWindow(ids=[message_id])
         )
-        return entries[0].message if entries else None
+        return entries[0] if entries else None
 
     async def list_recent_messages(
         self, conversation_id: str, *, user_id: str, limit: int
-    ) -> list[MessageModel]:
+    ) -> list[ConversationEntry]:
         """Return the conversation's newest limit messages, oldest first; empty when it does not exist."""
-        entries = await self._read_entries(
+        return await self._read_entries(
             conversation_id, user_id=user_id, window=EntryWindow(limit=limit)
         )
-        return [entry.message for entry in entries]
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
         """Return the conversation's source enum, or None when it doesn't exist."""
@@ -692,11 +761,15 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return None if row is None else row.todo_id
 
     async def create(self, doc: ConversationDocument) -> ConversationDocument:
-        """Insert the conversation's head at an empty log, then append any messages it carries.
+        """Insert the conversation's head at an empty log; raises ValueError if doc carries messages.
 
         A delete that died after removing the head leaves its entries behind; a head
         recreated under the same id clears them first, so its log starts clean.
         """
+        if doc.messages:
+            raise ValueError(
+                "create() writes only the head; append the messages with append_messages()"
+            )
         head = doc.model_dump(exclude={"id", "messages"}, exclude_none=True)
         head[LOG_HEAD_FIELD] = 0
         key = {"user_id": doc.user_id, "conversation_id": doc.conversation_id}
@@ -705,10 +778,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(key)
         # Outside store_errors: try_create reads a DuplicateKeyError as a lost creation race.
         await self._raw_collection().insert_one(head)
-        if doc.messages:
-            await self.append_messages(
-                doc.conversation_id, user_id=doc.user_id, messages=doc.messages
-            )
         created = await self.get(doc.conversation_id, user_id=doc.user_id)
         if created is None:
             # pragma: no mutate start — error text only
@@ -781,7 +850,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def list_pinned_messages(self, user_id: str) -> list[ConversationMessageHit]:
         """Every pinned message across the user's conversations."""
         return [
-            ConversationMessageHit(conversation_id=conversation_id, message=entry.message)
+            ConversationMessageHit(conversation_id=conversation_id, message=entry)
             for conversation_id, entry in await self._find_entries(user_id, {"pinned": True})
         ]
 
@@ -810,7 +879,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return ConversationSearchResults(
             messages=[
-                ConversationMessageHit(conversation_id=conversation_id, message=entry.message)
+                ConversationMessageHit(conversation_id=conversation_id, message=entry)
                 for conversation_id, entry in hits
             ],
             conversations=described,
@@ -1079,7 +1148,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         conversation_id: str,
         user_id: str,
         match: Mapping[str, object],
-        update: Mapping[str, object],
+        update: Mapping[str, object] | Sequence[Mapping[str, object]],
         *,
         array_filters: Sequence[Mapping[str, object]] | None = None,
         every_match: bool = False,
@@ -1092,19 +1161,22 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """
         query = {"user_id": user_id, "conversation_id": conversation_id, **match}
         filters = [dict(f) for f in array_filters] if array_filters is not None else None
+        document: dict[str, object] | list[dict[str, object]] = (
+            dict(update) if isinstance(update, Mapping) else [dict(stage) for stage in update]
+        )
         entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
         if every_match:
             await self.flush_outbox(conversation_id, user_id=user_id)
             with store_errors("entry update"):  # pragma: no mutate — error label only
-                result = await entries.update_many(query, dict(update), array_filters=filters)
+                result = await entries.update_many(query, document, array_filters=filters)
             return result.matched_count > 0
         with store_errors("entry update"):  # pragma: no mutate — error label only
-            result = await entries.update_one(query, dict(update), array_filters=filters)
+            result = await entries.update_one(query, document, array_filters=filters)
         if result.matched_count:
             return True
         await self.flush_outbox(conversation_id, user_id=user_id)
         with store_errors("entry update"):  # pragma: no mutate — error label only
-            retried = await entries.update_one(query, dict(update), array_filters=filters)
+            retried = await entries.update_one(query, document, array_filters=filters)
         return retried.matched_count > 0
 
     async def _delete_conversations(self, match: Mapping[str, object], user_id: str) -> list[str]:
@@ -1125,7 +1197,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         self, head: Head, entries: Sequence[ConversationEntry]
     ) -> ConversationDocument:
         doc = self._to_model(head.fields)
-        doc.messages = [entry.message for entry in entries]
+        doc.messages = list(entries)
         return doc
 
     def _listed(self) -> dict[str, object]:

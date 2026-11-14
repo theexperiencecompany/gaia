@@ -201,6 +201,12 @@ def outbox_entries_matching(
     return [{"$match": heads}, *_OUTBOX_AS_ENTRIES, {"$match": dict(match)}]
 
 
+def every_outbox_entry_matching(match: Mapping[str, object]) -> list[dict[str, object]]:
+    """Read every head's outbox entries that match, across all users (a maintenance sweep's read)."""
+    heads = {OUTBOX_FIELD: {"$exists": True, "$ne": {}}}
+    return [{"$match": heads}, *_OUTBOX_AS_ENTRIES, {"$match": dict(match)}]
+
+
 def stored_entries_matching(
     user_id: str,
     match: Mapping[str, object],
@@ -267,8 +273,9 @@ def content_hash(stored: Mapping[str, object]) -> str:
 
 def entry_of(stored: StoredEntry) -> ConversationEntry:
     """Read a stored entry (from the collection or an outbox) back as a seq-tagged message."""
-    message = {**stored.message_fields(), "message_id": stored.id}
-    return ConversationEntry.model_validate({"seq": stored.seq, "message": message})
+    return ConversationEntry.model_validate(
+        {**stored.message_fields(), "message_id": stored.id, "seq": stored.seq}
+    )
 
 
 def stored_row(raw: Mapping[str, object]) -> StoredRow:
@@ -295,6 +302,34 @@ def at_its_seq(entry: StoredEntry) -> dict[str, object]:
 def is_same_entry(stored: Mapping[str, object] | None, entry: StoredEntry) -> bool:
     """Whether stored is this entry (same id at its seq), so inserting it again found it flushed."""
     return stored is not None and EntryKey.model_validate(stored).id == entry.id
+
+
+def filled(message: MessageModel) -> list[dict[str, object]]:
+    """Pipeline that replaces an entry's content with message, keeping its keys and the cards folded in since it opened."""
+    data = stored_message(message)
+    # The entry now holds this message: a retried append of it is the same save, not a conflict.
+    committed = content_hash(data)
+    own_cards = data.pop("tool_data", [])
+    del data["id"]
+    cleared = [
+        name
+        for name in MessageModel.model_fields
+        # pinned is the user's mark on the message, not the turn's content.
+        if name not in data and name not in ("message_id", "tool_data", "pinned")
+    ]
+    cards = {"$concatArrays": [{"$literal": own_cards}, {"$ifNull": ["$tool_data", []]}]}
+    pipeline: list[dict[str, object]] = [
+        {
+            "$set": {
+                **{key: {"$literal": value} for key, value in data.items()},
+                CONTENT_HASH_FIELD: committed,
+                "tool_data": {"$cond": [{"$eq": [cards, []]}, "$$REMOVE", cards]},
+            }
+        }
+    ]
+    if cleared:
+        pipeline.append({"$unset": cleared})
+    return pipeline
 
 
 @contextmanager
@@ -343,7 +378,7 @@ class EntryWindow:
 
     def admits(self, entry: ConversationEntry, log_head: int) -> bool:
         in_range = self.lower(log_head) < entry.seq <= self.upper(log_head)
-        return in_range and (self.ids is None or entry.message.message_id in self.ids)
+        return in_range and (self.ids is None or entry.message_id in self.ids)
 
     def take(self, union: Mapping[int, ConversationEntry]) -> list[ConversationEntry]:
         seqs = sorted(union, reverse=True)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import Mock, call
@@ -87,7 +87,7 @@ def _message(message_id: str, text: str = "hi") -> MessageModel:
 
 async def _ids(repo: ConversationRepository, doc: ConversationDocument) -> list[tuple[int, str]]:
     entries = await repo._read_entries(doc.conversation_id, user_id=doc.user_id)
-    return [(entry.seq, entry.message.message_id or "") for entry in entries]
+    return [(entry.seq, entry.message_id or "") for entry in entries]
 
 
 async def _outbox(raw_collection: Any, doc: ConversationDocument) -> dict[str, Any]:
@@ -786,25 +786,23 @@ async def test_two_users_conversations_under_one_id_keep_their_own_entries(
     assert other is not None and other.messages == []
 
 
-async def test_a_conversation_created_with_messages_holds_them_as_entries_not_in_its_head(
-    repo: ConversationRepository, held: _HeldFlushes, raw_collection: Any
+async def test_a_created_conversation_head_holds_no_messages_and_an_empty_log(
+    repo: ConversationRepository, raw_collection: Any
 ) -> None:
     doc = ConversationDocument.model_validate(
         {
             "user_id": f"u-{uuid.uuid4().hex}",
             "conversation_id": f"c-{uuid.uuid4().hex}",
             "createdAt": datetime.now(UTC).isoformat(),
-            "messages": [_message("m1"), _message("m2")],
         }
     )
 
-    created = await repo.create(doc)
+    await repo.create(doc)
 
-    assert [m.message_id for m in created.messages] == ["m1", "m2"]
     head = await raw_collection.find_one({"conversation_id": doc.conversation_id})
     assert head is not None
     assert not {"id", "messages"} & set(head)
-    assert head["log_head"] == 2
+    assert head["log_head"] == 0
 
 
 async def test_pinning_a_stored_message_bumps_updated_at_and_leaves_the_outbox_to_its_flush(
@@ -959,3 +957,25 @@ async def test_a_retried_append_of_a_known_id_with_other_content_fails_instead_o
 
     kept = await repo.get_message(cid, "r1", user_id=uid)
     assert kept is not None and kept.response == ""
+
+
+async def test_the_reply_sweep_settles_a_reply_whose_process_died_before_its_flush(
+    repo: ConversationRepository, conversation: ConversationDocument, held: _HeldFlushes
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    opened = MessageModel(type="bot", response="", message_id="r1", in_progress=True)
+    await repo.append(cid, user_id=uid, entries=[opened])
+    # The process dies here: the flush append spawned never runs.
+    held.drop_all()
+    cutoff = datetime.now(UTC) + timedelta(seconds=1)
+
+    owners = await repo.list_unfinished_reply_owners(opened_before=cutoff)
+    assert owners == {(uid, cid)}
+    assert (
+        await repo.fail_unfinished_replies(opened_before=cutoff, error="interrupted", owners=owners)
+        == 1
+    )
+
+    settled = await repo.get_message(cid, "r1", user_id=uid)
+    assert settled is not None
+    assert (settled.in_progress, settled.error) == (None, "interrupted")

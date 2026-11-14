@@ -2,7 +2,7 @@
 
 Tests cover the core orchestration logic in chat_service.py:
 - run_chat_stream_background: end-to-end background streaming coordination
-- _initialize_new_conversation: conversation creation and init chunk format
+- _initialize_new_conversation: conversation creation and its description
 - save_user_message / save_bot_reply: MongoDB persistence with correct message structure
 - extract_tool_data: JSON parsing and tool field extraction
 - _extract_response_text: response text extraction from SSE chunks
@@ -51,6 +51,7 @@ from app.services.chat.stream import (
     _note_cancellation,
     _observe_turn_latencies,
     _resolve_pending_approval_turn,
+    _shows_reply,
     _stamp_turn_latencies,
     _StreamState,
     run_chat_stream_background,
@@ -278,80 +279,22 @@ class TestExtractResponseText:
 
 
 class TestInitializeNewConversation:
-    async def test_returns_sse_formatted_init_chunk(self, test_user, basic_body):
-        mock_conv = _created_conversation("conv_new_xyz", "New Chat")
-        with patch(
-            "app.services.chat.persistence.create_conversation",
-            new=AsyncMock(return_value=mock_conv),
-        ):
-            chunk = await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_new_xyz",
-                user_message_id="umsg_1",
-                bot_message_id="bmsg_1",
-                stream_id="stream_abc",
-            )
-
-        assert chunk.startswith("data: ")
-        assert chunk.endswith("\n\n")
-        payload = json.loads(chunk[6:])
-        assert payload["conversation_id"] == "conv_new_xyz"
-        assert payload["user_message_id"] == "umsg_1"
-        assert payload["bot_message_id"] == "bmsg_1"
-        assert payload["stream_id"] == "stream_abc"
-
-    async def test_passes_generate_description_false(self, test_user, basic_body):
-        """The new-conversation path must pass generate_description=False."""
-        mock_conv = _created_conversation("conv_new_xyz", "New Chat")
+    async def test_creates_the_conversation_and_returns_its_description(
+        self, test_user, basic_body
+    ):
+        mock_conv = _created_conversation("conv_new_xyz", "Chat about the weather")
         with patch(
             "app.services.chat.persistence.create_conversation",
             new=AsyncMock(return_value=mock_conv),
         ) as mock_create:
-            await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_new_xyz",
-                user_message_id="u1",
-                bot_message_id="b1",
-                stream_id="s1",
+            description = await _initialize_new_conversation(
+                body=basic_body, user=test_user, conversation_id="conv_new_xyz"
             )
+
+        assert description == "Chat about the weather"
         call_kwargs = mock_create.call_args.kwargs
         assert call_kwargs.get("generate_description") is False
-
-    async def test_uses_provided_conversation_id(self, test_user, basic_body):
-        mock_conv = _created_conversation("forced_id", "New Chat")
-        with patch(
-            "app.services.chat.persistence.create_conversation",
-            new=AsyncMock(return_value=mock_conv),
-        ) as mock_create:
-            await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="forced_id",
-                user_message_id="u1",
-                bot_message_id="b1",
-                stream_id="s1",
-            )
-        call_kwargs = mock_create.call_args.kwargs
-        assert call_kwargs.get("conversation_id") == "forced_id"
-
-    async def test_description_included_in_init_chunk(self, test_user, basic_body):
-        mock_conv = _created_conversation("conv_id", "Chat about the weather")
-        with patch(
-            "app.services.chat.persistence.create_conversation",
-            new=AsyncMock(return_value=mock_conv),
-        ):
-            chunk = await _initialize_new_conversation(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_id",
-                user_message_id="u1",
-                bot_message_id="b1",
-                stream_id="s1",
-            )
-        payload = json.loads(chunk[6:])
-        assert payload["conversation_description"] == "Chat about the weather"
+        assert call_kwargs.get("conversation_id") == "conv_new_xyz"
 
 
 # ---------------------------------------------------------------------------
@@ -367,7 +310,7 @@ async def _saved_user_message(body: MessageRequestWithHistory, user: Authenticat
     request_arg = mock_update.call_args.args[0]
     assert request_arg.conversation_id == "conv_x"
     (user_msg,) = request_arg.messages
-    # Stamped in UTC so it sorts against replies saved by other processes.
+    # The display time, in UTC; order is the seq the save returns, never this date.
     assert datetime.fromisoformat(user_msg.date).utcoffset() == timedelta(0)
     return user_msg
 
@@ -376,7 +319,13 @@ async def _saved_bot_reply(user: AuthenticatedUser, body: MessageRequestWithHist
     mock_update = AsyncMock()
     conversation_id = overrides.pop("conversation_id", "conv_123")
     reply = BotReply(**{"complete_message": "ok", "bot_message_id": "bmsg_1", **overrides})
-    with patch("app.services.chat.persistence.update_messages", new=mock_update):
+    with (
+        patch("app.services.chat.persistence.update_messages", new=mock_update),
+        patch(
+            "app.services.chat.persistence.conversation_repository.fill_message",
+            new=AsyncMock(return_value=False),
+        ),
+    ):
         await save_bot_reply(body, user, conversation_id, reply)
     assert mock_update.call_args.kwargs == {"user": user}
     request_arg = mock_update.call_args.args[0]
@@ -408,6 +357,31 @@ class TestSaveUserMessage:
             message="Fallback content", messages=[], conversation_id="conv_y"
         )
         assert (await _saved_user_message(body, test_user)).response == "Fallback content"
+
+
+class TestSaveReturnsTheSeq:
+    async def test_the_user_message_save_returns_its_seq(self, test_user, basic_body):
+        saved = MagicMock(message_seqs=[7])
+        with patch(
+            "app.services.chat.persistence.update_messages", new=AsyncMock(return_value=saved)
+        ):
+            assert await save_user_message(basic_body, test_user, "conv_x", "umsg_1") == 7
+
+    async def test_an_opened_reply_is_filled_in_place_and_appends_nothing(
+        self, test_user, basic_body
+    ):
+        reply = BotReply(complete_message="ok", bot_message_id="bmsg_1")
+        appended = AsyncMock()
+        with (
+            patch(
+                "app.services.chat.persistence.conversation_repository.fill_message",
+                new=AsyncMock(return_value=True),
+            ),
+            patch("app.services.chat.persistence.update_messages", new=appended),
+        ):
+            assert await save_bot_reply(basic_body, test_user, "conv_123", reply) is None
+
+        appended.assert_not_awaited()
 
 
 class TestSaveBotReply:
@@ -467,6 +441,20 @@ def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
     return m
 
 
+class TestShowsReply:
+    @pytest.mark.parametrize(
+        ("chunk", "shows"),
+        [
+            (f"data: {json.dumps({'response': 'Hi'})}\n\n", True),
+            (f"data: {json.dumps({'tool_data': [{'tool_name': 'search', 'data': {}}]})}\n\n", True),
+            ("data: {}\n\n", False),
+            (f"event: {json.dumps({'response': 'Hi'})}\n\n", False),
+        ],
+    )
+    def test_only_reply_text_or_a_tool_card_shows_the_reply(self, chunk: str, shows: bool) -> None:
+        assert _shows_reply(chunk) is shows
+
+
 class TestRunChatStreamBackground:
     @pytest.fixture(autouse=True)
     def _no_pending_approval(self) -> Iterator[None]:
@@ -511,8 +499,18 @@ class TestRunChatStreamBackground:
     @pytest.fixture(autouse=True)
     def saved_user_message(self) -> Iterator[AsyncMock]:
         """Stub the turn-start user-message write; these tests assert on the reply."""
-        with patch("app.services.chat.stream.save_user_message", new=AsyncMock()) as mock_save:
+        with patch(
+            "app.services.chat.stream.save_user_message", new=AsyncMock(return_value=1)
+        ) as mock_save:
             yield mock_save
+
+    @pytest.fixture(autouse=True)
+    def opened_reply(self) -> Iterator[AsyncMock]:
+        """Stub the write that opens the reply's entry at its first shown frame."""
+        with patch(
+            "app.services.chat.stream.open_bot_reply", new=AsyncMock(return_value=2)
+        ) as mock_open:
+            yield mock_open
 
     async def test_the_user_message_is_saved_before_the_agent_runs(
         self, test_user, existing_conv_body, saved_user_message
@@ -545,7 +543,7 @@ class TestRunChatStreamBackground:
         self, test_user, existing_conv_body
     ):
         sm = _make_stream_manager_mock()
-        update = AsyncMock(side_effect=[RuntimeError("document too large"), None])
+        fill = AsyncMock(side_effect=[RuntimeError("document too large"), True])
 
         with (
             _patch_stream_manager(sm),
@@ -553,7 +551,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.call_agent",
                 new=MagicMock(return_value=_text_then_nostream("Reminder set.", "Reminder set.")),
             ),
-            patch("app.services.chat.persistence.update_messages", new=update),
+            patch("app.services.chat.persistence.conversation_repository.fill_message", new=fill),
             patch("app.services.chat.stream.log.error") as log_error,
             patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
@@ -564,21 +562,19 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        lost, replacement = (c.args[0] for c in update.await_args_list)
-        assert all(c.kwargs == {"user": test_user} for c in update.await_args_list)
-        assert replacement.conversation_id == "conv_existing_123"
-        (lost_reply,) = lost.messages
-        (error_reply,) = replacement.messages
+        # The reply was shown, so both writes fill its opened entry in place.
+        assert all(
+            c.args == ("conv_existing_123",) and c.kwargs["user_id"] == test_user.user_id
+            for c in fill.await_args_list
+        )
+        lost_reply, error_reply = (c.kwargs["message"] for c in fill.await_args_list)
         assert (error_reply.type, error_reply.response, error_reply.error) == (
             "bot",
             "",
             TURN_REPLY_NOT_SAVED,
         )
         assert (error_reply.tool_data, error_reply.metadata) == (None, {})
-        assert (error_reply.message_id, error_reply.date) == (
-            lost_reply.message_id,
-            lost_reply.date,
-        )
+        assert error_reply.message_id == lost_reply.message_id
         log_error.assert_any_call(
             "[CHAT] Reply could not be saved; saving its error instead",
             stream_id="stream_rs",
@@ -602,7 +598,7 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat.persistence.create_conversation",
                 new=AsyncMock(return_value=_created_conversation("new_conv_id", "Test conv")),
-            ),
+            ) as created,
             patch(
                 "app.services.chat.stream.generate_and_update_description",
                 new=AsyncMock(return_value="Test conv"),
@@ -624,11 +620,20 @@ class TestRunChatStreamBackground:
                 conversation_id="new_conv_id",
             )
 
-        # First publish_chunk call should contain the init data (conversation_id)
-        first_publish_call = sm.publish_chunk.call_args_list[0]
-        first_arg = first_publish_call.args[1]
+        stream_id, first_arg = sm.publish_chunk.call_args_list[0].args
         payload = json.loads(first_arg[6:])
-        assert "conversation_id" in payload
+        assert stream_id == "stream_1"
+        assert (
+            payload["conversation_id"],
+            payload["conversation_description"],
+            payload["user_message_seq"],
+            payload["stream_id"],
+        ) == ("new_conv_id", "Test conv", 1, "stream_1")
+        create_kwargs = created.await_args.kwargs
+        assert (create_kwargs["user"], create_kwargs["conversation_id"]) == (
+            test_user,
+            "new_conv_id",
+        )
 
     async def test_existing_conversation_publishes_message_ids_only(
         self, test_user, existing_conv_body
@@ -661,6 +666,51 @@ class TestRunChatStreamBackground:
         assert "bot_message_id" in payload
         # Should NOT contain conversation_id for existing conversations
         assert "conversation_id" not in payload
+        assert "conversation_description" not in payload
+
+    async def _run_existing(
+        self, user: AuthenticatedUser, body: MessageRequestWithHistory, *chunks: str
+    ) -> list[tuple[str, str]]:
+        """Run one turn on an existing conversation whose agent yields chunks; return every publish."""
+
+        async def agent() -> AsyncGenerator[str, None]:
+            for chunk in chunks:
+                yield chunk
+
+        sm = _make_stream_manager_mock()
+        with (
+            _patch_stream_manager(sm),
+            patch("app.services.chat.stream.call_agent", new=MagicMock(return_value=agent())),
+            patch("app.services.chat.stream.save_bot_reply", new=AsyncMock(return_value=5)),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
+        ):
+            await run_chat_stream_background(
+                stream_id="stream_r", body=body, user=user, conversation_id="conv_existing_123"
+            )
+        return [(call.args[0], call.args[1]) for call in sm.publish_chunk.call_args_list]
+
+    async def test_the_reply_takes_its_place_at_its_first_shown_frame(
+        self, test_user, existing_conv_body, opened_reply
+    ):
+        text = f"data: {json.dumps({'response': 'Hi'})}\n\n"
+        published = await self._run_existing(test_user, existing_conv_body, text, text)
+
+        bot_message_id = json.loads(published[0][1][6:])["bot_message_id"]
+        opened_reply.assert_awaited_once_with(
+            existing_conv_body, test_user, "conv_existing_123", bot_message_id
+        )
+        placed = ("stream_r", f"data: {json.dumps({'bot_message_seq': 2})}\n\n")
+        assert published.index(placed) < published.index(("stream_r", text))
+
+    async def test_a_reply_never_shown_takes_its_place_at_its_save(
+        self, test_user, existing_conv_body, opened_reply
+    ):
+        published = await self._run_existing(
+            test_user, existing_conv_body, "data: {}\n\n", "data: [DONE]\n\n"
+        )
+
+        opened_reply.assert_not_awaited()
+        assert ("stream_r", f"data: {json.dumps({'bot_message_seq': 5})}\n\n") in published
 
     async def test_done_marker_published_after_agent_completes(self, test_user, existing_conv_body):
         sm = _make_stream_manager_mock()
@@ -2183,7 +2233,7 @@ class TestTurnLatencyHelpers:
         assert state.e2e_full_ms is None
         assert state.delegated is False
         assert state.queued is False
-        assert state.turn_completed_at is None
+        assert state.reply_opened is False
         assert state.is_cancelled is False
 
     def test_stamp_turn_latencies_computes_exact_ms(self) -> None:

@@ -22,7 +22,8 @@ import pytest
 
 from app.agents.core.agent import AgentRunOptions, StreamMessageIds
 from app.agents.core.background.session import RunKind, create_session, get_session
-from app.models.message_models import FileData, MessageRequestWithHistory
+from app.db.repositories.conversations import conversation_repository
+from app.models.message_models import FileData, MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
@@ -35,6 +36,7 @@ from app.services.chat.stream import (
     _StreamState,
     _TurnContext,
 )
+from app.services.files import FileService
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -170,13 +172,12 @@ class TestFinalizeStreamBackstop:
 
     async def test_the_final_event_names_each_distinct_tool_the_turn_used(self) -> None:
         state = _state(cancelled=False, saved=True)
-        state.tool_entries.extend(
-            [
-                {"tool_name": "search", "data": {}},
-                {"tool_name": "search", "data": {}},
-                {"data": {}},
-            ]
-        )
+        # The last row is a legacy card saved without a tool name.
+        state.tool_data["tool_data"] = [
+            {"tool_name": "search", "data": {}},
+            {"tool_name": "search", "data": {}},
+            {"data": {}},
+        ]
 
         with (
             patch.object(chat_stream, "stream_manager") as sm,
@@ -216,7 +217,7 @@ class TestFinalizeStreamBackstop:
 
 class TestRecentHistory:
     def test_a_trailing_user_turn_is_dropped_from_the_prior_context(self) -> None:
-        messages = [
+        messages: list[MessageDict] = [
             {"role": "user", "content": "draft it"},
             {"role": "assistant", "content": "drafted"},
             {"role": "user", "content": "send it"},
@@ -225,7 +226,7 @@ class TestRecentHistory:
         assert _recent_history(messages) == messages[:2]
 
     def test_a_trailing_assistant_turn_is_kept(self) -> None:
-        messages = [
+        messages: list[MessageDict] = [
             {"role": "user", "content": "draft it"},
             {"role": "assistant", "content": "drafted"},
         ]
@@ -263,25 +264,30 @@ class TestResolvePendingApprovalTurnApproves:
             conversation_id="conv-1",
         )
         classifier = AsyncMock(return_value="approve")
+        opener = AsyncMock(return_value=2)
+        user = AuthenticatedUser(user_id=USER_ID)
+        state = _StreamState()
         with (
             patch.object(chat_stream, "stream_manager") as sm,
             patch.object(chat_stream, "_persist_turn", new_callable=AsyncMock),
+            patch.object(chat_stream, "open_bot_reply", new=opener),
             patch.object(chat_stream, "resolve_pending_from_message", new=classifier),
         ):
             sm.publish_chunk = AsyncMock()
             sm.complete_stream = AsyncMock()
             result = await _resolve_pending_approval_turn(
-                body,
-                AuthenticatedUser(user_id=USER_ID),
-                "conv-1",
-                "stream-1",
-                _StreamState(),
-                "whatsapp",
+                body, user, "conv-1", "stream-1", state, "whatsapp"
             )
 
         assert result is True
         classifier.assert_awaited_once_with(
             "conv-1", USER_ID, "yes", [{"role": "assistant", "content": "Send the email?"}]
+        )
+        opener.assert_awaited_once_with(body, user, "conv-1", state.bot_message_id)
+        stream_id, placed = sm.publish_chunk.await_args_list[0].args
+        assert (stream_id, json.loads(placed.removeprefix("data: "))) == (
+            "stream-1",
+            {"bot_message_seq": 2},
         )
 
 
@@ -427,6 +433,7 @@ class TestConsumeAgentStreamAccumulatesAcrossChunks:
         with (
             patch.object(chat_stream, "call_agent", fake_call_agent),
             patch.object(chat_stream, "stream_manager", sm),
+            patch.object(chat_stream, "open_bot_reply", new=AsyncMock(return_value=2)),
             patch("app.services.chat.chunks.stream_manager", sm),
             patch("app.utils.stream_publishers.stream_manager", sm),
         ):
@@ -511,10 +518,8 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "capture"),
             patch.object(chat_stream, "_finalize_stream", AsyncMock()),
             patch.object(chat_stream, "_wait_for_artifact_forwarder", AsyncMock()),
-            patch.object(chat_stream.conversation_repository, "get_todo_id", get_todo_id),
-            patch.object(
-                chat_stream.FileService, "attach_uploads", new_callable=AsyncMock
-            ) as attach_uploads,
+            patch.object(conversation_repository, "get_todo_id", get_todo_id),
+            patch.object(FileService, "attach_uploads", new_callable=AsyncMock) as attach_uploads,
         ):
             sm.publish_chunk = AsyncMock()
             sm.complete_stream = AsyncMock()

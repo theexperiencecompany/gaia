@@ -59,6 +59,8 @@ export type ChatStreamEvent =
       /** Equals the client's send id (turn_id) when the client provided one —
        *  the optimistic record already carries the final key. */
       user_message_id?: string;
+      /** The saved user message's place in the conversation's order. */
+      user_message_seq?: number;
       /** The user message text — replay alone can reconstruct the record if
        *  the client's local write never committed before a reload. */
       user_message_content?: string;
@@ -66,6 +68,8 @@ export type ChatStreamEvent =
       stream_id?: string;
     }
   | { type: "conversation_description"; description: string }
+  // The reply took its place in the order: when first shown, or at its save.
+  | { type: "reply_placed"; seq: number }
   | {
       type: "progress";
       message: string;
@@ -184,6 +188,11 @@ const extractResponse = (payload: JsonObject): ChatStreamEvent[] => {
   }
   return events;
 };
+
+const extractReplyPlaced = (payload: JsonObject): ChatStreamEvent[] =>
+  typeof payload.bot_message_seq === "number"
+    ? [{ type: "reply_placed", seq: payload.bot_message_seq }]
+    : [];
 
 const extractMessageBoundary = (payload: JsonObject): ChatStreamEvent[] => {
   const boundary = payload.message_boundary;
@@ -389,6 +398,10 @@ const extractConversation = (payload: JsonObject): ChatStreamEvent[] => {
           typeof payload.user_message_id === "string"
             ? payload.user_message_id
             : undefined,
+        user_message_seq:
+          typeof payload.user_message_seq === "number"
+            ? payload.user_message_seq
+            : undefined,
         user_message_content:
           typeof payload.user_message_content === "string"
             ? payload.user_message_content
@@ -457,6 +470,7 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
     ...extractDesktopToolRequest(payload),
     ...extractTodoProgress(payload),
     ...extractConversation(payload),
+    ...extractReplyPlaced(payload),
   ];
 
   return events.length > 0 ? events : [{ type: "unknown", payload }];

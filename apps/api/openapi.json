@@ -3703,7 +3703,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/MessageModelOutput"
+              "$ref": "#/components/schemas/ConversationEntry"
             },
             "title": "Messages",
             "type": "array"
@@ -3774,6 +3774,321 @@
         "title": "ConversationDocument",
         "type": "object"
       },
+      "ConversationEntry": {
+        "description": "One message of a conversation's log with the seq its append committed it under: order is seq, never a date.",
+        "properties": {
+          "date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date"
+          },
+          "disclaimer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disclaimer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "contentMediaType": "application/octet-stream",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File"
+          },
+          "fileData": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FileData"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": [],
+            "title": "Filedata"
+          },
+          "fileIds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": [],
+            "title": "Fileids"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "filetype": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filetype"
+          },
+          "first_contact": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Contact"
+          },
+          "follow_up_actions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Up Actions"
+          },
+          "image_data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "in_progress": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Progress"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/MessageKind",
+            "default": "text"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
+          },
+          "platform_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Message Id"
+          },
+          "reacts_to_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reacts To Message Id"
+          },
+          "replyToMessage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReplyToMessageData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "response": {
+            "title": "Response",
+            "type": "string"
+          },
+          "selectedTool": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selectedtool"
+          },
+          "selectedWorkflow": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SelectedWorkflowDataOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "stopped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
+          "subtype": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subtype"
+          },
+          "todo_run_wake": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TodoRunWake"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "toolCategory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Toolcategory"
+          },
+          "tool_data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ToolDataEntry"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Data"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "response",
+          "seq"
+        ],
+        "title": "ConversationEntry",
+        "type": "object"
+      },
       "ConversationListResponse": {
         "description": "One page of the conversation list: every starred conversation followed by\nthe requested page of the non-starred ones.",
         "properties": {
@@ -3819,7 +4134,7 @@
             "type": "string"
           },
           "message": {
-            "$ref": "#/components/schemas/MessageModelOutput"
+            "$ref": "#/components/schemas/ConversationEntry"
           }
         },
         "required": [
@@ -4130,7 +4445,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/MessageModelOutput"
+              "$ref": "#/components/schemas/ConversationEntry"
             },
             "title": "Messages",
             "type": "array"
@@ -10545,7 +10860,7 @@
         "title": "MessageKind",
         "type": "string"
       },
-      "MessageModelInput": {
+      "MessageModel": {
         "description": "A single chat message with its content, attachments and tool data.",
         "properties": {
           "date": {
@@ -10679,6 +10994,17 @@
                 "type": "null"
               }
             ]
+          },
+          "in_progress": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Progress"
           },
           "kind": {
             "$ref": "#/components/schemas/MessageKind",
@@ -10769,305 +11095,6 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/SelectedWorkflowDataInput"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "stopped": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stopped"
-          },
-          "subtype": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subtype"
-          },
-          "todo_run_wake": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/TodoRunWake"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "toolCategory": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Toolcategory"
-          },
-          "tool_data": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/ToolDataEntry"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tool Data"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "response"
-        ],
-        "title": "MessageModel",
-        "type": "object"
-      },
-      "MessageModelOutput": {
-        "description": "A single chat message with its content, attachments and tool data.",
-        "properties": {
-          "date": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Date"
-          },
-          "disclaimer": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Disclaimer"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "file": {
-            "anyOf": [
-              {
-                "contentMediaType": "application/octet-stream",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "File"
-          },
-          "fileData": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/FileData"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": [],
-            "title": "Filedata"
-          },
-          "fileIds": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": [],
-            "title": "Fileids"
-          },
-          "filename": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filename"
-          },
-          "filetype": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filetype"
-          },
-          "first_contact": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "First Contact"
-          },
-          "follow_up_actions": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Follow Up Actions"
-          },
-          "image_data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ImageData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "kind": {
-            "$ref": "#/components/schemas/MessageKind",
-            "default": "text"
-          },
-          "message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message Id"
-          },
-          "metadata": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Metadata"
-          },
-          "pinned": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pinned"
-          },
-          "platform_message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Platform Message Id"
-          },
-          "reacts_to_message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reacts To Message Id"
-          },
-          "replyToMessage": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ReplyToMessageData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "response": {
-            "title": "Response",
-            "type": "string"
-          },
-          "selectedTool": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Selectedtool"
-          },
-          "selectedWorkflow": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SelectedWorkflowDataOutput"
               },
               {
                 "type": "null"
@@ -11350,7 +11377,7 @@
             "type": "string"
           },
           "message": {
-            "$ref": "#/components/schemas/MessageModelOutput"
+            "$ref": "#/components/schemas/ConversationEntry"
           },
           "snippet": {
             "title": "Snippet",
@@ -20201,7 +20228,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/MessageModelInput"
+              "$ref": "#/components/schemas/MessageModel"
             },
             "title": "Messages",
             "type": "array"
@@ -20232,6 +20259,13 @@
             "title": "Message Ids",
             "type": "array"
           },
+          "message_seqs": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Message Seqs",
+            "type": "array"
+          },
           "modified_count": {
             "title": "Modified Count",
             "type": "integer"
@@ -20241,7 +20275,8 @@
           "conversation_id",
           "message",
           "modified_count",
-          "message_ids"
+          "message_ids",
+          "message_seqs"
         ],
         "title": "UpdateMessagesResponse",
         "type": "object"
