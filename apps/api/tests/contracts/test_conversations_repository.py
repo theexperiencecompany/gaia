@@ -299,9 +299,9 @@ class TestMessages:
         assert fetched is not None
         [user, reply] = shown_items(fetched)
         assert isinstance(user, UserItem) and isinstance(reply, ReplyItem)
-        assert [(user.id, user.message.text), (reply.id, reply.text)] == [
-            (asked.id, "hi"),
-            (replied.reply_id, "hello"),
+        assert [(user.id, (user.message.text,)), (reply.id, reply.bubbles)] == [
+            (asked.id, ("hi",)),
+            (replied.reply_id, ("hello",)),
         ]
 
     async def test_a_pinned_reply_is_listed_as_the_item_its_chat_shows(self, repo):

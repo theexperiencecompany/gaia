@@ -58,7 +58,11 @@ PROXY_PATH = "app.services.calendar_service.proxy_request"
 
 @pytest.fixture
 def mock_proxy() -> Iterator[AsyncMock]:
-    with patch(PROXY_PATH, new_callable=AsyncMock) as proxy:
+    # A write announces the calendar change over the socket broadcast.
+    with (
+        patch(PROXY_PATH, new_callable=AsyncMock) as proxy,
+        patch("app.services.calendar_service.websocket_manager", announce=AsyncMock()),
+    ):
         proxy.return_value = {}
         yield proxy
 
