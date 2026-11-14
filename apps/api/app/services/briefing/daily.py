@@ -1,4 +1,4 @@
-"""The daily brief: look back since yesterday, choose what matters, voice it and publish it."""
+"""The daily brief: look back since the last one, choose what matters, voice it and publish it."""
 
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -172,9 +172,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         return BriefingRunOutcome.BOOTSTRAP_PENDING
 
     # Gather the world the agent must see.
-    yesterday = await context.get_yesterday_payload(user_id, before_date=clock.date_str)
-    since = context.day_start_utc(clock, days_ago=1)
-    lookback_block = await context.format_lookback_block(user_id, yesterday, since)
+    last = await context.last_brief(user_id, clock)
+    since = context.lookback_since(clock, last)
+    lookback_block = await context.format_lookback_block(user_id, last, since, clock)
     winback = await context.compute_winback_state(user)
     is_first = not await briefing_repository.has_daily_briefing(user_id)
 

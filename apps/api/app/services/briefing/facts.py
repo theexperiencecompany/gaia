@@ -79,7 +79,7 @@ class Facts:
 def work_stats(work: context.TrackedWork) -> list[BriefingStat]:
     """Build the stat row: one figure per non-empty tracked-work state, counted by subject."""
     figures = (
-        (work.completed, "done since yesterday"),
+        (work.completed, "done since last brief"),
         (work.running, "in progress"),
         (work.blocked, "waiting on you"),
     )

@@ -239,6 +239,16 @@ class TestTrackedWork:
         assert ([d.id for d in work.blocked], work.running) == (["n1"], [])
 
 
+# Tuesday 13 Oct 2026, 09:00 in Kolkata.
+_CLOCK = context.UserClock(
+    tz=ZoneInfo("Asia/Kolkata"),
+    now_local=datetime(2026, 10, 13, 9, tzinfo=ZoneInfo("Asia/Kolkata")),
+    date_str="2026-10-13",
+    day_of_year=286,
+)
+_SINCE_BRIEF = datetime(2026, 10, 12, 8, tzinfo=UTC)
+
+
 class TestLookback:
     @pytest.fixture(autouse=True)
     def no_briefing_workflows(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -252,7 +262,7 @@ class TestLookback:
             workflow_executions_repository, "list_since", AsyncMock(return_value=[])
         )
 
-        block = await context.format_lookback_block(_USER, None, datetime.now(UTC))
+        block = await context.format_lookback_block(_USER, None, datetime.now(UTC), _CLOCK)
 
         assert "No prior briefing" in block
         assert "Nothing was completed" in block
@@ -273,7 +283,7 @@ class TestLookback:
         )
 
         block = await context.format_lookback_block(
-            _USER, _brief("clear", items=["Finish the deck"]).payload, datetime.now(UTC)
+            _USER, _brief("clear", items=["Finish the deck"]), _SINCE_BRIEF, _CLOCK
         )
 
         assert "- Finish the deck" in block
@@ -606,12 +616,13 @@ class TestLookbackBlock:
             _execution("failed", None),
         ]
         since = datetime(2026, 10, 13, tzinfo=UTC)
-        yesterday = _brief("clear", items=["Finish the deck", "Book flights"]).payload
+        yesterday = _brief("clear", items=["Finish the deck", "Book flights"])
+        yesterday.created_at = since
 
-        block = await context.format_lookback_block(_USER, yesterday, since)
+        block = await context.format_lookback_block(_USER, yesterday, since, _CLOCK)
 
         assert block == (
-            "Yesterday you told the user you'd focus on:\n"
+            "Your last brief, yesterday, told the user you'd focus on:\n"
             "- Finish the deck\n"
             "- Book flights\n\n"
             "Actually completed since then:\n"
@@ -635,7 +646,7 @@ class TestLookbackBlock:
     async def test_a_first_look_back_with_nothing_done_says_both_plainly(
         self, reads: SimpleNamespace
     ) -> None:
-        block = await context.format_lookback_block(_USER, None, datetime.now(UTC))
+        block = await context.format_lookback_block(_USER, None, datetime.now(UTC), _CLOCK)
 
         assert block == (
             "No prior briefing — this is the first look-back.\n\n"
@@ -647,9 +658,47 @@ class TestLookbackBlock:
     ) -> None:
         reads.completed.return_value = [_todo("c1", "Gym")]
 
-        block = await context.format_lookback_block(_USER, None, datetime.now(UTC))
+        block = await context.format_lookback_block(_USER, None, datetime.now(UTC), _CLOCK)
 
         assert block.endswith("Actually completed since then:\n- You finished: Gym")
+
+    async def test_a_brief_days_ago_is_named_by_its_day_not_as_yesterday(
+        self, reads: SimpleNamespace
+    ) -> None:
+        friday = _brief("clear", items=["Finish the deck"])
+        friday.date = "2026-10-09"
+
+        block = await context.format_lookback_block(_USER, friday, friday.created_at, _CLOCK)
+
+        assert block.startswith(
+            "Your last brief, on Friday Oct 9, told the user you'd focus on:\n- Finish the deck"
+        )
+        assert "Yesterday" not in block
+
+    async def test_a_brief_older_than_the_look_back_is_named_but_not_quoted(
+        self, reads: SimpleNamespace
+    ) -> None:
+        old = _brief("clear", items=["Finish the deck"])
+        old.date = "2026-09-20"
+        old.created_at = datetime(2026, 9, 20, 2, tzinfo=UTC)
+        since = context.lookback_since(_CLOCK, old)
+
+        block = await context.format_lookback_block(_USER, old, since, _CLOCK)
+
+        assert since == context.day_start_utc(_CLOCK, days_ago=7)
+        assert block.startswith("The last brief went out on Sunday Sep 20, over 7 days ago")
+        assert "Finish the deck" not in block
+
+
+class TestLookbackSince:
+    def test_with_no_brief_before_it_starts_at_yesterdays_midnight(self) -> None:
+        assert context.lookback_since(_CLOCK, None) == context.day_start_utc(_CLOCK, days_ago=1)
+
+    def test_it_starts_when_the_last_brief_went_out(self) -> None:
+        friday = _brief("clear")
+        friday.created_at = datetime(2026, 10, 9, 2, 30, tzinfo=UTC)
+
+        assert context.lookback_since(_CLOCK, friday) == friday.created_at
 
 
 class TestWinbackReads:

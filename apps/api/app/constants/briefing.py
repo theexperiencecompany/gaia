@@ -153,6 +153,9 @@ DUE_TODO_CANDIDATES_LIMIT: Final[int] = 20
 # Their oldest open todos with no due date, offered for GAIA to show or skip.
 UNDATED_TODO_CANDIDATES_LIMIT: Final[int] = 3
 
+# Days a daily brief looks back at most, however long ago the last one went out.
+LOOKBACK_MAX_DAYS: Final[int] = 7
+
 # Events the weekly recap carries from the week ahead.
 WEEK_LIST_LIMIT: Final[int] = 5
 
