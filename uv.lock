@@ -51,7 +51,7 @@ constraints = [
     { name = "python-multipart", specifier = ">=0.0.22" },
     { name = "requests", specifier = ">=2.33.0" },
     { name = "setuptools", specifier = ">=84.1.0" },
-    { name = "soupsieve", specifier = ">=2.9.0" },
+    { name = "soupsieve", specifier = ">=4.0" },
     { name = "urllib3", specifier = ">=2.8.0" },
     { name = "virtualenv", specifier = ">=21.14.13" },
     { name = "werkzeug", specifier = ">=3.1.9" },
@@ -6761,7 +6761,6 @@ dependencies = [
     { name = "pyobjc-framework-photos", marker = "(platform_release >= '15.0' and sys_platform != 'darwin') or (platform_release >= '15' and sys_platform == 'darwin')" },
     { name = "pyobjc-framework-photosui", marker = "(platform_release >= '15.0' and sys_platform != 'darwin') or (platform_release >= '15' and sys_platform == 'darwin')" },
     { name = "pyobjc-framework-preferencepanes" },
-    { name = "pyobjc-framework-pubsub", marker = "platform_release >= '9' and platform_release < '18' and sys_platform == 'darwin'" },
     { name = "pyobjc-framework-pushkit", marker = "(platform_release >= '19.0' and sys_platform != 'darwin') or (platform_release >= '19' and sys_platform == 'darwin')" },
     { name = "pyobjc-framework-quartz" },
     { name = "pyobjc-framework-quicklookthumbnailing", marker = "(platform_release >= '19.0' and sys_platform != 'darwin') or (platform_release >= '19' and sys_platform == 'darwin')" },
@@ -8846,19 +8845,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pyobjc-framework-pubsub"
-version = "12.2.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pyobjc-core" },
-    { name = "pyobjc-framework-cocoa" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/39/e1bbc399bf210046fac5d594149c067a2c3bf13f98bd8f53a5a63123e728/pyobjc_framework_pubsub-12.2.2.tar.gz", hash = "sha256:c23af3059ab7108c0173f39c994b15c79e59cdc1a62e50ba4bfbbdaf80b38a40", size = 15007, upload-time = "2026-08-11T19:45:12.515Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/e7/12a8abb39dadc3ff86f5976316da44e3b770349c296b1078db84a2f851aa/pyobjc_framework_pubsub-12.2.2-py2.py3-none-any.whl", hash = "sha256:57bfdf6cc4d640cc0e8741c32e8124c613f4886fae489020a894e57b7d3abf6f", size = 4391, upload-time = "2026-08-11T19:40:13.463Z" },
-]
-
-[[package]]
 name = "pyobjc-framework-pushkit"
 version = "12.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -10809,11 +10795,11 @@ wheels = [
 
 [[package]]
 name = "soupsieve"
-version = "2.9.2"
+version = "4.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/69/99/a6ca3beb3ccacb41fb3321d8a60e5566f9e6467601ef8eba6a17e1b89778/soupsieve-2.9.2.tar.gz", hash = "sha256:4a55d8cf158a9c2e587fa4922f1bbb91d68ac829e2d6f25403a85747c71daf74", size = 122445, upload-time = "2026-08-07T00:57:24.801Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/48/21a393ff731b8f928fa4f8176f9a7ceba2252ee60a5149f25b45c292aa5c/soupsieve-4.1.tar.gz", hash = "sha256:ca9abf7126667010d8f6e9b39bfc1bc3b23c8aed9bcb0f54a754dde969bb8aab", size = 161955, upload-time = "2026-11-10T01:59:50.399Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/dc/ad025c1ee131eba60c69f4dd5779b18fcf1e6b21a343e2162a84d5d133c7/soupsieve-2.9.2-py3-none-any.whl", hash = "sha256:8089a26fd974ca7a1f30276d3d8492ab266ab15af581642dfe8aa162e0c1c823", size = 37370, upload-time = "2026-08-07T00:57:23.524Z" },
+    { url = "https://files.pythonhosted.org/packages/88/73/6a2087c72975cfc07394623bca8d17654342ea4055ae368deafe5a81a542/soupsieve-4.1-py3-none-any.whl", hash = "sha256:e4d667b3974ce6e038e7390486b8093369854a1d345ffdd4c121dfc4a782e809", size = 52302, upload-time = "2026-11-10T01:59:48.571Z" },
 ]
 
 [[package]]

@@ -12,7 +12,7 @@ from typing import NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.composio_schemas.gmail import GmailMessageContent
+from app.models.composio_schemas.gmail import GmailAttachmentMetadata, GmailMessageContent
 from app.models.composio_schemas.google_people import (
     GoogleContactsResponseData,
     GooglePeopleSearchResponseData,
@@ -81,7 +81,7 @@ class GmailThreadData(BaseModel):
 
 
 class GmailDraftDetailData(BaseModel):
-    """A users.drafts resource: GMAIL_GET_DRAFT's data, or one GMAIL_LIST_DRAFTS entry."""
+    """A users.drafts resource: one GMAIL_LIST_DRAFTS entry."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -117,9 +117,6 @@ class GmailThreadMessageView(BaseModel):
     snippet: str | None = ""
     time: str | None = ""
     is_read: bool = Field(default=False, validation_alias="isRead", serialization_alias="isRead")
-    has_attachment: bool = Field(
-        default=False, validation_alias="hasAttachment", serialization_alias="hasAttachment"
-    )
     body: str | None = ""
     labels: list[str] = Field(default_factory=list)
     content: GmailMessageContent | None = Field(
@@ -140,17 +137,18 @@ class GmailThreadView(BaseModel):
 
 
 class GmailDraftMessageView(TypedDict):
-    """A draft's message as ``draft_template`` trims it; body is the plain text."""
+    """A draft's message as ``process_list_drafts_response`` trims it; body is the plain text."""
 
     to: str
     subject: str
     snippet: str
     body: str
     content: GmailMessageContent
+    attachments: list[GmailAttachmentMetadata]
 
 
 class GmailDraftView(TypedDict):
-    """``draft_template``'s output."""
+    """One draft in ``process_list_drafts_response``'s output."""
 
     id: str
     message: GmailDraftMessageView

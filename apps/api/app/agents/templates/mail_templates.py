@@ -314,20 +314,21 @@ def _get_text_from_html(html_content: str | None) -> str:
 def _attachment_metadata(payload: GmailMessagePart | None) -> list[GmailAttachmentMetadata]:
     """Extract attachment metadata (no bytes) from a full-format Gmail payload.
 
-    Walks the MIME parts tree, returning one entry per part with a filename
-    and attachmentId. Returns [] for a metadata-format message (no parts).
+    Walks the MIME parts tree, returning one entry per part with a filename. A
+    small attachment's bytes sit inline in body.data, so its attachmentId is None.
+    Returns [] for a metadata-format message (no parts).
     """
     out: list[GmailAttachmentMetadata] = []
 
     def walk(part: GmailMessagePart) -> None:
         body = part.body
-        if part.filename and body and body.attachment_id:
+        if part.filename:
             out.append(
                 {
                     "filename": part.filename,
                     "mimeType": part.mime_type,
-                    "size": body.size,
-                    "attachmentId": body.attachment_id,
+                    "size": body.size if body else None,
+                    "attachmentId": body.attachment_id if body else None,
                 }
             )
         for sub in part.parts:
@@ -367,7 +368,6 @@ def minimal_message_template(
         snippet=message.snippet or "",
         time=parser.date or message.message_timestamp or "",
         is_read="UNREAD" not in labels,
-        has_attachment="HAS_ATTACHMENT" in labels,
         body=body_content[:100] if short_body else body_content,
         labels=labels,
         content=content,
@@ -395,7 +395,6 @@ def _message_view(message: RelayedGmailMessage, *, include_body: bool) -> GmailM
         snippet=message.snippet or "",
         time=parser.date,
         is_read="UNREAD" not in labels,
-        has_attachment="HAS_ATTACHMENT" in labels,
         attachments=_attachment_metadata(message.payload),
         labels=labels,
         cc=parser.cc,
@@ -406,17 +405,6 @@ def _message_view(message: RelayedGmailMessage, *, include_body: bool) -> GmailM
         view.body = content["text"]  # Plain text for backward compatibility
         view.content = content
     return view
-
-
-def detailed_message_template(raw: Mapping[str, object]) -> dict[str, object]:
-    """Convert a raw Gmail message to its detailed view, keyed as the agent reads it.
-
-    Every field of the view is a JSON-native scalar, a list of them, or a TypedDict of
-    them, so the dump is already the document the agent is handed. The test that round-
-    trips this through json.dumps is what keeps that true for a field added later.
-    """
-    view = _message_view(RelayedGmailMessage.model_validate(raw), include_body=True)
-    return view.model_dump(by_alias=True)
 
 
 def thread_template(thread: GmailThreadData) -> GmailThreadView:
@@ -449,13 +437,9 @@ def _draft_view(draft: GmailDraftDetailData) -> GmailDraftView:
             "snippet": message.snippet or "",
             "body": content["text"],  # Plain text for backward compatibility
             "content": content,
+            "attachments": _attachment_metadata(message.payload),
         },
     }
-
-
-def draft_template(raw: Mapping[str, object]) -> GmailDraftView:
-    """Convert a raw GMAIL_GET_DRAFT payload to its minimal draft view."""
-    return _draft_view(GmailDraftDetailData.model_validate(raw))
 
 
 def message_view_needs_body(
@@ -471,6 +455,17 @@ def message_view_needs_body(
         return False
     # `None` or an empty list both mean "all documented fields", body included.
     return not fields or "body" in fields
+
+
+def message_view_needs_full(
+    fields: Sequence[MessageFieldLiteral] | None, body_processing: BodyProcessingLiteral
+) -> bool:
+    """Whether a projected message view must be built from a format=full fetch.
+
+    The body and the attachment list both come from the MIME parts, which
+    format=metadata leaves out.
+    """
+    return message_view_needs_body(fields, body_processing) or not fields or "attachments" in fields
 
 
 def project_message_view(

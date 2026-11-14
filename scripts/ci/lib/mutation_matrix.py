@@ -475,6 +475,15 @@ def _entry(module_rel: str, testfiles: list[str], merge_base: str) -> dict[str, 
     return {"module": module_rel, "testfiles": testfiles, "changed_lines": ranges}
 
 
+def _is_untracked(path: str) -> bool:
+    return (
+        subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "--", path], capture_output=True, check=False
+        ).returncode
+        != 0
+    )
+
+
 def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:
     """PR-changed line ranges for a file, from the merge-base diff (unified=0).
 
@@ -484,9 +493,16 @@ def _changed_line_ranges(path: str, merge_base: str) -> list[list[int]]:
     """
     if not merge_base:
         return []
+    # Off CI the working tree counts, uncommitted and untracked, as in `changes.sh
+    # files`: a local run checks what is about to be committed. CI's tree is the commit.
+    in_ci = bool(os.environ.get("GITHUB_ACTIONS"))
+    if not in_ci and _is_untracked(path):
+        line_count = len(Path(path).read_text().splitlines())
+        return [[1, line_count]] if line_count else []
+    revisions = [merge_base, "HEAD"] if in_ci else [merge_base]
     try:
         out = subprocess.check_output(
-            ["git", "diff", "--unified=0", merge_base, "HEAD", "--", path],
+            ["git", "diff", "--unified=0", *revisions, "--", path],
             text=True,
             stderr=subprocess.DEVNULL,
         )
