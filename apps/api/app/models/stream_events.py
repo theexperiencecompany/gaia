@@ -106,7 +106,6 @@ class ApprovalRequestEntryData(BaseModel):
     action: ActionResult | None = None
     feedback: str | None
     auto_reason: str | None
-    timeout_seconds: int
     # When the user was asked, so a client can say how long ago.
     asked_at: AwareDatetime | None = None
     # The call asks in every mode, so clients must not offer "always allow" on it.

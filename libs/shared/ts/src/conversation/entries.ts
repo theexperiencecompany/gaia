@@ -198,7 +198,6 @@ const ApprovalCardSchema = z.object({
       .optional(),
     feedback: z.string().nullable(),
     auto_reason: z.string().nullable(),
-    timeout_seconds: z.number().int(),
     asked_at: z.string().nullable().optional(),
     always_asks: z.boolean().optional(),
   }),

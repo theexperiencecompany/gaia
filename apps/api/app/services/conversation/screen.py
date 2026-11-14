@@ -17,7 +17,6 @@ from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import (
     APPROVAL_REQUEST_TOOL_NAME,
     APPROVAL_TOOL_CATEGORY,
-    HIL_APPROVAL_TIMEOUT_SECONDS,
 )
 from app.models.conversation_log_models import (
     ApprovalDecided,
@@ -212,7 +211,6 @@ class _Log:
                 action=None if decision is None else decision.action,
                 feedback=None if decision is None else decision.feedback,
                 auto_reason=request.auto_reason,
-                timeout_seconds=HIL_APPROVAL_TIMEOUT_SECONDS,
                 asked_at=asked_at,
                 always_asks=request.always_asks,
             ),

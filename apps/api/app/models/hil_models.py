@@ -71,7 +71,6 @@ class ApprovalProposal(BaseModel):
     # The connected account the call acts as; None is the integration's primary.
     account: str | None = None
     summary: str = ""
-    rationale: str = ""
     preview: str = ""
     owner_agent: str = ""
     # Background owner parked on this approval, for the resume driver: who to wake

@@ -6219,8 +6219,6 @@ export interface components {
             outcome: components["schemas"]["ApprovalOutcome"] | null;
             /** Summary */
             summary: string;
-            /** Timeout Seconds */
-            timeout_seconds: number;
             /** Tool Call Id */
             tool_call_id: string;
         };

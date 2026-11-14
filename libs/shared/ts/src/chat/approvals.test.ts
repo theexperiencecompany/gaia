@@ -15,7 +15,6 @@ const base: ApprovalRequestData = {
   args_preview: {},
   outcome: null,
   feedback: null,
-  timeout_seconds: 300,
 };
 
 const card = (
