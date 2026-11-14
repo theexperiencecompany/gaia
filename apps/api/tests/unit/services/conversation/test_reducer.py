@@ -817,8 +817,10 @@ def test_work_done_while_its_approval_is_pending_stays_live_and_narrates_nothing
     assert result.effects == ()
 
 
-@pytest.mark.parametrize("outcome", [ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED])
-def test_the_users_decision_ends_work_parked_on_it_for_the_work_it_starts(
+@pytest.mark.parametrize(
+    "outcome", [ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED, ApprovalOutcome.EXPIRED]
+)
+def test_a_decision_ends_work_parked_on_it_for_the_work_it_starts(
     outcome: ApprovalOutcome,
 ) -> None:
     entry = ApprovalDecided(
@@ -832,7 +834,7 @@ def test_the_users_decision_ends_work_parked_on_it_for_the_work_it_starts(
 
 def test_an_approval_nobody_decided_leaves_parked_work_for_its_finish_to_report() -> None:
     entry = ApprovalDecided(
-        id="d", approval_id="ap1", outcome=ApprovalOutcome.EXPIRED, decider=None
+        id="d", approval_id="ap1", outcome=ApprovalOutcome.WITHDRAWN, decider=None
     )
     state = _accept(_parked(), 7, entry).state
     assert [(item.task_id, item.pending_approvals) for item in state.work] == [("t1", ())]

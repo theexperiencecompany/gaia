@@ -13,6 +13,7 @@ learn whether its envelope still exists, without which nobody can decide it.
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 
 from app.agents.core.background.executor_queue import run_is_lost
 from app.constants.conversation import (
@@ -31,7 +32,7 @@ from app.services.conversation.work_log import (
     record_approval_decided,
     record_work_finished,
 )
-from app.services.hil.ledger_decide import cancel_ledger_approvals
+from app.services.hil.ledger_decide import expire_ledger_approval
 from shared.py.approvals import ApprovalOutcome
 from shared.py.wide_events import log
 
@@ -102,7 +103,11 @@ async def _sweep_one(ports: RuntimePorts, head: SweepHead, report: SweepReport) 
 async def _settle_undecidable(
     head: SweepHead, work: LiveWork, clock: Callable[[], datetime], report: SweepReport
 ) -> None:
-    """Settle the approvals work waits on that nobody can decide; with none left to wait on, end the work."""
+    """Settle the approvals work waits on that nobody can decide; with none left to wait on, end the work.
+
+    An expired approval is decided like any other and the work resumes with it; only work left
+    with no decision to resume it is ended here.
+    """
     conversation_id, user_id = head.conversation_id, head.user_id
     requested = await conversation_log_repository.read_log(
         conversation_id, user_id=user_id, ids=[f"approval:{a}" for a in work.pending_approvals]
@@ -113,13 +118,16 @@ async def _settle_undecidable(
         if isinstance(logged.entry, ApprovalRequested)
     }
     settled = 0
+    resumed = False
     for approval_id in sorted(work.pending_approvals):
         expires_at = expiries.get(approval_id)
         expired = expires_at is not None and expires_at + APPROVAL_EXPIRY_GRACE < clock()
-        if await _undecidable(conversation_id, user_id, approval_id, expired=expired):
+        ending = await _undecidable(conversation_id, user_id, approval_id, expired=expired)
+        if ending is not _Ending.UNDECIDED:
             settled += 1
+        resumed = resumed or ending is _Ending.RESUMED
     report.undecidable_approvals += settled
-    if settled == len(work.pending_approvals):
+    if settled == len(work.pending_approvals) and not resumed:
         await record_work_finished(
             conversation_id,
             user_id,
@@ -129,21 +137,27 @@ async def _settle_undecidable(
         )
 
 
+class _Ending(Enum):
+    """How the sweep left one approval: still decidable, ended in the log, or expired with its work resumed."""
+
+    UNDECIDED = "undecided"
+    ENDED = "ended"
+    RESUMED = "resumed"
+
+
 async def _undecidable(
     conversation_id: str, user_id: str, approval_id: str, *, expired: bool
-) -> bool:
-    """End an approval nobody can decide in the log; False while one still can, or a decision beat this one.
+) -> _Ending:
+    """End an approval nobody can decide; UNDECIDED while one still can, or a decision beat this one.
 
-    Expired when it ran out of time; withdrawn when the ledger holds no envelope for it, so its run is gone.
+    Expired when it ran out of time, which resumes its work; withdrawn when the ledger holds no
+    envelope for it, so its run is gone.
     """
-    if await approval_ledger_repository.get_by_approval_id(approval_id) is not None:
-        if not expired:
-            return False
-        return bool(
-            await cancel_ledger_approvals(
-                conversation_id, user_id, [approval_id], ApprovalOutcome.EXPIRED
-            )
-        )
+    row = await approval_ledger_repository.get_by_approval_id(approval_id)
+    if row is not None:
+        if not expired or not await expire_ledger_approval(row):
+            return _Ending.UNDECIDED
+        return _Ending.RESUMED
     taken = await record_approval_decided(
         conversation_id,
         user_id,
@@ -151,4 +165,4 @@ async def _undecidable(
         ApprovalOutcome.EXPIRED if expired else ApprovalOutcome.WITHDRAWN,
         None,
     )
-    return taken.taken
+    return _Ending.ENDED if taken.taken else _Ending.UNDECIDED

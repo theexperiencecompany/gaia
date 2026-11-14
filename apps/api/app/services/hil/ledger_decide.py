@@ -204,7 +204,7 @@ async def _commit_decision(
             await _deliver_ticket(row)
     else:
         # A wake alone reaches only a running run: delivery starts one to report what was skipped.
-        await _deliver_verdict(row, "DENIED", feedback)
+        await _deliver_verdict(row, ApprovalOutcome.DENIED, feedback)
         # A background todo has no other surface: leave the skip in its log.
         await record_owner_deny(row, feedback)
     await reconcile_conversation_ledger(row.conversation_id)
@@ -299,17 +299,25 @@ async def _deliver_ticket(row: ApprovalLedgerDocument) -> None:
     )
 
 
-async def _deliver_verdict(row: ApprovalLedgerDocument, outcome: str, result: object) -> None:
-    """Steer or start a run with a non-approve verdict (deny today); a failed delivery raises to the tap."""
+_VERDICT_INSTRUCTIONS: dict[ApprovalOutcome, str] = {
+    ApprovalOutcome.DENIED: "The user said no",
+    ApprovalOutcome.EXPIRED: "Nobody answered before it expired",
+}
+
+
+async def _deliver_verdict(
+    row: ApprovalLedgerDocument, outcome: ApprovalOutcome, result: object
+) -> None:
+    """Steer or start a run with a verdict that did not approve; a failed delivery raises to its decider."""
     from app.agents.core.background.executor_runner import (  # noqa: PLC0415 -- same cycle guard as _deliver_ticket
         deliver_to_executor,
     )
 
     preview = "" if result is None else str(result)[:500]
     task = (
-        f"DECISION {row.approval_id}={outcome} {row.summary}"
+        f"DECISION {row.approval_id}={outcome.upper()} {row.summary}"
         + (f" :: {preview}" if preview else "")
-        + " The user said no — report what you skipped and continue without it. "
+        + f" {_VERDICT_INSTRUCTIONS[outcome]} — report what you skipped and continue without it. "
         "Do not re-request it."
     )
     await deliver_to_executor(row.conversation_id, AuthenticatedUser(user_id=row.user_id), task)
@@ -543,6 +551,27 @@ async def cancel_ledger_approvals(
             approval_ids=cancelled,
         )
     return cancelled
+
+
+async def expire_ledger_approval(row: ApprovalLedgerDocument) -> bool:
+    """Expire an approval nobody decided in time and tell the work waiting on it; False when a decision beat this one.
+
+    Expiry is a decision like any other: the log takes it once, and the work resumes with it.
+    """
+    if not (await _decide_in_log(row, ApprovalOutcome.EXPIRED, None)).taken:
+        return False
+    await _follow_in_ledger(row, ApprovalOutcome.EXPIRED)
+    capture(
+        UserId(row.user_id),
+        HilRevoked(
+            approval_id=row.approval_id,
+            ledger_version=row.v + 1,
+            revoker="expired",
+            outcome=ApprovalOutcome.EXPIRED,
+        ),
+    )
+    await _deliver_verdict(row, ApprovalOutcome.EXPIRED, None)
+    return True
 
 
 async def reconcile_conversation_ledger(conversation_id: str) -> None:

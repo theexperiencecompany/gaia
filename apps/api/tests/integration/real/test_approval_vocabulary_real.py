@@ -118,9 +118,9 @@ async def _withdraw(approval_id: str) -> None:
 
 
 async def _expire(approval_id: str) -> None:
-    await ledger_decide.cancel_ledger_approvals(
-        CONVERSATION_ID, USER_ID, [approval_id], ApprovalOutcome.EXPIRED
-    )
+    row = await approval_ledger_repository.get_by_approval_id(approval_id)
+    assert row is not None
+    assert await ledger_decide.expire_ledger_approval(row)
 
 
 def _event_outcome(edges: Edges) -> ApprovalOutcome:
