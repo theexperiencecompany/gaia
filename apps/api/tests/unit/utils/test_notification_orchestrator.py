@@ -727,7 +727,9 @@ class TestRouting:
     ) -> None:
         request = _make_request().model_copy(update={"channels": [], "conversation_id": "conv-1"})
         with (
-            patch(f"{ORCHESTRATOR}.resolve_proactive_target", AsyncMock(return_value=target)),
+            patch(
+                f"{ORCHESTRATOR}.resolve_proactive_target", AsyncMock(return_value=target)
+            ) as resolve,
             patch(
                 f"{ORCHESTRATOR}.conversation_repository.get_source",
                 AsyncMock(return_value=set_in),
@@ -736,6 +738,7 @@ class TestRouting:
             channels, routed = await NotificationOrchestrator(storage=MagicMock())._route(request)
 
         assert (channels, routed) == (expected, target)
+        resolve.assert_awaited_once_with("user-1")
         source.assert_awaited_once_with("conv-1", user_id="user-1")
 
     async def test_named_channels_are_sent_as_named_and_nothing_is_resolved(self) -> None:

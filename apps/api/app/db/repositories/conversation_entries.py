@@ -183,8 +183,6 @@ def openers_outside(page: Sequence[LoggedEntry]) -> dict[str, list[str]]:
                 tasks.add(task_id)
             case ApprovalDecided(approval_id=approval_id):
                 approvals.add(approval_id)
-            case _:
-                pass
     wanted = {
         "reply_id": (replies, held_replies),
         "task_id": (tasks, held_tasks),

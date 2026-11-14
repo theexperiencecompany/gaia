@@ -23,6 +23,8 @@ def server_handler() -> Iterator[list[int]]:
     received: list[int] = []
 
     def handle_exit(signum: int, frame: FrameType | None) -> None:
+        # uvicorn's handler takes the interrupted frame; the chain must hand on the real one.
+        assert frame is not None
         received.append(signum)
 
     original = signal.signal(signal.SIGTERM, handle_exit)

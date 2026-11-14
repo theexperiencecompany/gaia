@@ -65,7 +65,7 @@ def bubble_deltas(shown: Sequence[str], now: Sequence[str]) -> list[BubbleTextDe
     if shown and not now[len(shown) - 1].startswith(shown[-1]):
         return [BubblesDelta(bubbles=tuple(now))]
     deltas: list[BubbleTextDelta | BubblesDelta] = []
-    for bubble in range(max(len(shown) - 1, 0), len(now)):
+    for bubble in range(len(now)):
         before = shown[bubble] if bubble < len(shown) else ""
         if now[bubble] != before:
             deltas.append(BubbleTextDelta(bubble=bubble, text=now[bubble][len(before) :]))

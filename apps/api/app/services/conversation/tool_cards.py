@@ -294,12 +294,11 @@ def _holds(group: _Group, subagent_id: str) -> bool:
 
 def _update_group(
     cards: list[ToolDataEntry], subagent_id: str, change: Callable[[_Group], _Group]
-) -> bool:
-    """Change the subagent's group wherever it nests; False when its start never arrived."""
+) -> None:
+    """Change the subagent's group wherever it nests; nothing when its start never arrived."""
     for index, card in enumerate(cards):
         data = card["data"]
         if card["tool_name"] == SUBAGENT_GROUP_TOOL_NAME and isinstance(data, dict):
             if _holds(data, subagent_id):
                 cards[index] = {**card, "data": _in_group(data, subagent_id, change)}
-                return True
-    return False
+                return

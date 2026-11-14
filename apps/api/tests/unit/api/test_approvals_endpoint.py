@@ -5,7 +5,7 @@ read/update routes. Service layer is mocked; HTTP status codes, response
 shapes, payload forwarding, and the AppError status mapping are verified.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, call, patch
 
 from httpx import AsyncClient
 import pytest
@@ -82,22 +82,56 @@ class TestPostApprovalDecision:
             "action": None,
         }
 
+    @patch(DECIDE, new_callable=AsyncMock)
+    async def test_an_approval_that_already_ran_says_how_it_ran(
+        self, mock_decide: AsyncMock, client: AsyncClient
+    ) -> None:
+        mock_decide.return_value = _decision(ActionResult.EXECUTED, committed=False)
+        resp = await client.post(f"{APPROVALS_BASE}/ap_1/decision", json={"decision": "deny"})
+        assert resp.json() == {
+            "success": False,
+            "reason": "not_found",
+            "outcome": "approved",
+            "action": "executed",
+        }
+
+    @pytest.mark.parametrize("committed", [True, False])
+    @patch(DECIDE, new_callable=AsyncMock)
+    async def test_the_wide_event_records_whether_the_tap_committed(
+        self, mock_decide: AsyncMock, client: AsyncClient, committed: bool
+    ) -> None:
+        mock_decide.return_value = _decision(ApprovalOutcome.DENIED, committed=committed)
+        with patch("app.api.v1.endpoints.approvals.log") as log:
+            await client.post(f"{APPROVALS_BASE}/ap_1/decision", json={"decision": "deny"})
+        assert log.set.call_args_list == [
+            call(user={"id": USER_ID}, hil={"approval_id": "ap_1", "decision": "deny"}),
+            call(hil={"resolved": committed}),
+        ]
+
     async def test_invalid_decision_is_rejected(self, client: AsyncClient) -> None:
         resp = await client.post(f"{APPROVALS_BASE}/ap_1/decision", json={"decision": "maybe"})
         assert resp.status_code == 422
 
     @pytest.mark.parametrize(
-        ("error", "status"),
-        [(ApprovalRequestNotFoundError(), 410), (ApprovalRequestForbiddenError(), 403)],
+        ("error", "status", "message"),
+        [
+            (ApprovalRequestNotFoundError, 410, "Approval request expired or already resolved"),
+            (ApprovalRequestForbiddenError, 403, "Approval request belongs to another user"),
+        ],
     )
     async def test_a_refused_tap_maps_to_its_status(
-        self, error: Exception, status: int, client: AsyncClient
+        self,
+        error: type[Exception],
+        status: int,
+        message: str,
+        client: AsyncClient,
     ) -> None:
-        with patch(DECIDE, new=AsyncMock(side_effect=error)):
+        with patch(DECIDE, new=AsyncMock(side_effect=error())):
             resp = await client.post(
                 f"{APPROVALS_BASE}/ap_1/decision", json={"decision": "approve"}
             )
         assert resp.status_code == status
+        assert resp.json()["message"] == message
 
     async def test_a_call_that_always_asks_refuses_the_scope_with_422(
         self, client: AsyncClient

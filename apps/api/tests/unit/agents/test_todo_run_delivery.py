@@ -31,6 +31,7 @@ from app.models.notification.notification_models import (
     NotificationRequest,
     NotificationStatus,
     NotificationType,
+    notification_id,
 )
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
@@ -223,6 +224,10 @@ class TestResultsThatReachNobody:
 
         assert seams.event().outcome == "undelivered"
         assert seams.event().delivered is False
+        assert (seams.event().destination, seams.event().destination_basis) == (
+            "in_app",
+            "no_chat_app",
+        )
 
 
 class TestABriefingThatOwnsItsForm:
@@ -442,6 +447,13 @@ class TestTheEventSaysWhereTheResultWasRouted:
             ),
         )
 
+    async def test_a_retried_finish_sends_under_the_runs_one_notification_id(self) -> None:
+        with _seams(todo=_todo()) as seams:
+            await deliver(seams, SCHEDULED, "report")
+
+        sent = seams.in_app.await_args.args[0]
+        assert sent.id == notification_id(USER_ID, "todo_run", "s1")
+
 
 class TestTheWideEventSaysWhatHappened:
     """The executor_run event is where an operator reads why a todo did or did not message."""
@@ -478,6 +490,7 @@ class TestTheDecisionSeesTheStandingRules:
         with _seams(todo=todo) as seams:
             await deliver(seams, SCHEDULED, "report")
 
+        assert {read.args for read in seams.read_todo.await_args_list} == {("todo-1",)}
         assert seams.note == tracked_todo_delivery_note(
             "Watch the deploy",
             long_rules[: todo_constants.STANDING_RULES_MAX_CHARS],

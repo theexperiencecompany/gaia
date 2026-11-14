@@ -368,7 +368,7 @@ async def _notify(
     event = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
     await notification_service.notify(
         NotificationRequest(
-            id=notification_id(todo.user_id, "todo_trigger", subscription.id or "", event),
+            id=notification_id(todo.user_id, "todo_trigger", subscription.id, event),
             user_id=todo.user_id,
             source=NotificationSourceEnum.TODO_TRIGGER,
             content=NotificationContent(

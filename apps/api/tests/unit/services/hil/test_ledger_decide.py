@@ -30,6 +30,7 @@ from app.services.hil import ledger_decide
 from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
     ApprovalRequestNotFoundError,
+    LedgerDriftError,
     LedgerWakeUndeliveredError,
     ToolAlwaysAsksError,
 )
@@ -80,16 +81,25 @@ def logged_decisions() -> Iterator[dict[str, ApprovalDecided]]:
     """
     decided: dict[str, ApprovalDecided] = {}
 
-    async def _from_row(approval_id: str) -> ApprovalDecided | None:
+    async def _row(approval_id: str) -> object:
         # The module's current binding: the repo mock the running test patched in.
         read = vars(ledger_decide)["approval_ledger_repository"].get_by_approval_id
         assert isinstance(read, Mock)
         if read.side_effect is None:
-            row = read.return_value
-        elif callable(read.side_effect):
-            row = await read.side_effect(approval_id)
-        else:  # a sequence the code under test consumes; the test seeds the log itself
-            return None
+            return read.return_value
+        if callable(read.side_effect):
+            return await read.side_effect(approval_id)
+        return None  # a sequence the code under test consumes; the test seeds the log itself
+
+    async def _in_its_conversation(conversation_id: str, user_id: str, approval_id: str) -> bool:
+        """Whether the log is addressed by the approval's own conversation and user."""
+        row = await _row(approval_id)
+        if not isinstance(getattr(row, "conversation_id", None), str):
+            return True  # no row to check the address against
+        return (conversation_id, user_id) == (row.conversation_id, row.user_id)
+
+    async def _from_row(approval_id: str) -> ApprovalDecided | None:
+        row = await _row(approval_id)
         outcome = getattr(row, "outcome", None)
         if not isinstance(outcome, ApprovalOutcome):
             return None
@@ -109,6 +119,7 @@ def logged_decisions() -> Iterator[dict[str, ApprovalDecided]]:
         *,
         feedback: str | None = None,
     ) -> DecisionTaken:
+        assert await _in_its_conversation(conversation_id, user_id, approval_id)
         stands = decided.get(approval_id) or await _from_row(approval_id)
         if stands is not None:
             decided[approval_id] = stands
@@ -123,11 +134,14 @@ def logged_decisions() -> Iterator[dict[str, ApprovalDecided]]:
         return DecisionTaken(stands=decided[approval_id], taken=True)
 
     async def _read(conversation_id: str, user_id: str, approval_id: str) -> ApprovalDecided | None:
+        if not await _in_its_conversation(conversation_id, user_id, approval_id):
+            return None
         return decided.get(approval_id) or await _from_row(approval_id)
 
     async def _acted(
         conversation_id: str, user_id: str, approval_id: str, action: ActionResult
     ) -> None:
+        assert await _in_its_conversation(conversation_id, user_id, approval_id)
         decided[approval_id] = ApprovalDecided(
             id=f"approval:{approval_id}:acted",
             approval_id=approval_id,
@@ -377,8 +391,12 @@ class TestDecisionSubmittedEvent:
 
         await decide_ledger_batch(USER_ID, items)
 
+        events = [call.args for call in seams.capture.call_args_list]
+        assert (
+            UserId(USER_ID),
+            ApprovalDecidedEvent(batch=True, decisions=2, resolved=1),
+        ) in events
         events = [call.args[1] for call in seams.capture.call_args_list]
-        assert ApprovalDecidedEvent(batch=True, decisions=2, resolved=1) in events
         assert ApprovalDecidedEvent(outcome=ApprovalOutcome.APPROVED) in events
 
     async def test_uncommitted_decisions_emit_nothing(self) -> None:
@@ -1325,6 +1343,20 @@ class TestDecideLedgerOutcomes:
         seams.repo.settle.assert_not_awaited()
         seams.capture.assert_not_called()
 
+    async def test_a_ledger_row_that_drifted_from_the_log_is_raised_loudly(
+        self, seams: LedgerSeams
+    ) -> None:
+        seams.rows["ap_1"] = _doc()
+        seams.repo.settle.side_effect = None
+        seams.repo.settle.return_value = False
+
+        with pytest.raises(LedgerDriftError) as raised:
+            await decide_ledger("ap_1", user_id=USER_ID, kind="deny", via="card")
+
+        assert str(raised.value) == (
+            f"ledger row ap_1 was not pending when the log decided it {ApprovalOutcome.DENIED}"
+        )
+
     async def test_whitespace_feedback_is_no_condition(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()
 
@@ -1543,6 +1575,24 @@ class TestRedeemOutcomes:
         )
         seams.repo.get_by_approval_id.assert_awaited_once_with("ap_1")
 
+    @pytest.mark.parametrize(
+        ("outcome", "standing"),
+        [(ApprovalOutcome.DENIED, "denied"), (None, "pending")],
+        ids=["denied", "undecided"],
+    )
+    async def test_a_ticket_that_was_never_approved_is_refused(
+        self, seams: LedgerSeams, outcome: ApprovalOutcome | None, standing: str
+    ) -> None:
+        seams.rows["ap_1"] = _doc(outcome=outcome, action=None)
+
+        assert await self._redeem() == RedeemResult(
+            ok=False,
+            approval_id="ap_1",
+            action=None,
+            detail=f"Already {standing}; report that instead of retrying.",
+        )
+        seams.dispatch.assert_not_awaited()
+
     async def test_the_proposing_worker_may_redeem_its_own_ticket(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(outcome=ApprovalOutcome.APPROVED, action=None)
         seams.dispatch.return_value = MagicMock(ok=True, output="sent", error=None)
@@ -1630,6 +1680,7 @@ class TestRedeemOutcomes:
             action=ActionResult.UNKNOWN,
             detail="RuntimeError: socket closed",
         )
+        assert seams.decisions["ap_1"].action is ActionResult.UNKNOWN
         assert _warned(seams.log.error)[
             f"{LogTag.HIL} Ticket redeem raised; reconciled as UNKNOWN, never retried"
         ] == {"approval_id": "ap_1", "error_type": "RuntimeError"}

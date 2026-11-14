@@ -40,7 +40,7 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
     async def insert_if_absent(self, record: NotificationRecord) -> bool:
         """Store record unless a notification with its id exists; True when this call stored it."""
         document = record.model_dump(exclude={"updated_at"}, exclude_none=True)
-        matched = await self._apply_raw_update_unfetched(
+        matched = await self._apply_raw_update_unfetched(  # pragma: no mutate — scope unread
             {"id": record.id},
             {"$setOnInsert": document},
             scope=REPO_GLOBAL_SCOPE,
@@ -51,7 +51,7 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
     async def claim_channel(self, notification_id: str, channel_type: str) -> bool:
         """Record a send on channel_type as started; False when one already was, so it is not repeated."""
         claim = ChannelDeliveryStatus(channel_type=channel_type, status=NotificationStatus.PENDING)
-        matched = await self._apply_raw_update_unfetched(
+        matched = await self._apply_raw_update_unfetched(  # pragma: no mutate — scope unread
             {"id": notification_id, "channels.channel_type": {"$ne": channel_type}},
             {"$push": {"channels": claim.model_dump()}},
             scope=REPO_GLOBAL_SCOPE,
@@ -60,7 +60,7 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
 
     async def record_channel(self, notification_id: str, outcome: ChannelDeliveryStatus) -> None:
         """Replace a claimed channel's entry with how its send ended."""
-        await self._apply_raw_update_unfetched(
+        await self._apply_raw_update_unfetched(  # pragma: no mutate — scope unread
             {"id": notification_id, "channels.channel_type": outcome.channel_type},
             {"$set": {"channels.$": outcome.model_dump()}},
             scope=REPO_GLOBAL_SCOPE,

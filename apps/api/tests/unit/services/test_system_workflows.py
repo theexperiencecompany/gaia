@@ -14,10 +14,14 @@ from pymongo.errors import DuplicateKeyError
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.models.notification.notification_models import notification_id
 from app.models.payment_models import PlanType
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
-from app.services.system_workflows.provisioner import reset_system_workflow_to_default
+from app.services.system_workflows.provisioner import (
+    _notify_workflows_provisioned,
+    reset_system_workflow_to_default,
+)
 
 MODULE = "app.services.system_workflows.provisioner"
 
@@ -278,6 +282,23 @@ class TestNotifyWorkflowsProvisioned:
 
         notification = mock_svc.notify.call_args[0][0]
         assert "2 workflows" in notification.content.title
+
+    @pytest.mark.asyncio
+    @patch(f"{MODULE}.NotificationService")
+    async def test_one_set_of_workflows_is_announced_under_one_id_in_any_order(
+        self, mock_notif_cls: MagicMock
+    ) -> None:
+        mock_svc = AsyncMock()
+        mock_notif_cls.return_value = mock_svc
+        digest = _make_workflow_request("Digest", "desc1")
+        sorter = _make_workflow_request("Sorter", "desc2")
+
+        await _notify_workflows_provisioned("user-1", "Gmail", [sorter, digest])
+
+        notification = mock_svc.notify.call_args[0][0]
+        assert notification.id == notification_id(
+            "user-1", "system_workflows_provisioned", "Gmail", "Digest,Sorter"
+        )
 
     @pytest.mark.asyncio
     @patch(f"{MODULE}.NotificationService")

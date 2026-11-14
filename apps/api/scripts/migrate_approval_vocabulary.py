@@ -13,9 +13,9 @@ fenced, then deploy: --apply, then --verify (exits 1 while any old value is left
 Usage::
 
     cd apps/api
-    uv run python -m app.scripts.migrate_approval_vocabulary            # report only
-    uv run python -m app.scripts.migrate_approval_vocabulary --apply
-    uv run python -m app.scripts.migrate_approval_vocabulary --verify
+    uv run python -m scripts.migrate_approval_vocabulary            # report only
+    uv run python -m scripts.migrate_approval_vocabulary --apply
+    uv run python -m scripts.migrate_approval_vocabulary --verify
 """
 
 from __future__ import annotations

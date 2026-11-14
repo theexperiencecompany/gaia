@@ -1041,9 +1041,7 @@ async def _notify_run_failed(doc: TodoDocument, body: str) -> None:
     try:
         await notification_service.notify(
             NotificationRequest(
-                id=notification_id(
-                    doc.user_id, "todo_run_failed", doc.id or "", str(doc.scheduled_at)
-                ),
+                id=notification_id(doc.user_id, "todo_run_failed", doc.id, str(doc.scheduled_at)),
                 user_id=doc.user_id,
                 source=NotificationSourceEnum.BACKGROUND_JOB,
                 type=NotificationType.ERROR,

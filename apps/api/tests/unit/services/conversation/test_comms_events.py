@@ -1,5 +1,7 @@
 """Graph stream events to step events: typed payloads from the shared translator, the summary call, the outcome."""
 
+from unittest.mock import AsyncMock
+
 from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
@@ -20,6 +22,8 @@ from app.services.conversation.ports import (
     Streamed,
     Summarized,
 )
+from app.utils import agent_utils
+from shared.py.conversation_wire import ToolDataEntry
 
 
 def silent_call(node: str = "agent") -> GraphEvent:
@@ -120,3 +124,85 @@ async def test_a_subagents_completion_marker_is_not_the_comms_answer() -> None:
     await mapper.map(answer("hello"))
     nested = await mapper.map((("tools:1",), "custom", {"main_response_complete": True}))
     assert not [event for event in nested if isinstance(event, Answered)]
+
+
+def token(text: str) -> GraphEvent:
+    chunk = AIMessageChunk(content=text, id="m1")
+    return ((), "messages", (chunk, {"langgraph_node": "agent"}))
+
+
+def card_event() -> GraphEvent:
+    return ((), "custom", {"email_fetch_data": [{"id": "e1"}]})
+
+
+async def shown_card(mapper: CommsEventMapper) -> ToolDataEntry:
+    """Stream the hook's card and return it as shown: a card the model did not write."""
+    (event,) = await mapper.map(card_event())
+    assert isinstance(event, Streamed) and isinstance(event.payload, ToolDataEvent)
+    assert event.by_model is False
+    assert (event.payload.tool_data["tool_name"], event.payload.tool_data["data"]) == (
+        "email_fetch_data",
+        [{"id": "e1"}],
+    )
+    return event.payload.tool_data
+
+
+async def test_a_reply_carries_the_cards_its_run_showed() -> None:
+    mapper = CommsEventMapper("u-1")
+    card = await shown_card(mapper)
+    await mapper.map(answer("here"))
+    assert mapper.finish()[-1] == Finished(outcome=Replied(text="here", tool_data=(card,)))
+
+
+async def test_a_reaction_beside_cards_is_a_reply_of_the_cards_alone() -> None:
+    mapper = CommsEventMapper("u-1")
+    card = await shown_card(mapper)
+    await mapper.map(answer("👍"))
+    assert mapper.finish()[-1] == Finished(outcome=Replied(text="", tool_data=(card,)))
+
+
+async def test_a_run_that_never_answered_ends_silent() -> None:
+    assert CommsEventMapper("u-1").finish() == [Finished(outcome=Silent())]
+
+
+async def test_a_model_turn_that_calls_tools_is_not_the_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(agent_utils, "get_tool_registry", AsyncMock())
+    mapper = CommsEventMapper("u-1")
+    calling = AIMessage(
+        content="checking", id="m1", tool_calls=[{"name": "", "args": {}, "id": "c1"}]
+    )
+    events = await mapper.map(((), "updates", {"agent": {"messages": [calling]}}))
+    assert events[-1] == ModelOutput(has_tool_calls=True)
+    assert mapper.finish()[-1] == Finished(outcome=Silent())
+
+
+async def test_another_nodes_update_is_not_the_model_returning() -> None:
+    mapper = CommsEventMapper("u-1")
+    events = await mapper.map(((), "updates", {"tools": {"messages": []}}))
+    assert [event for event in events if isinstance(event, ModelOutput)] == []
+
+
+async def test_the_answer_is_reported_final_once() -> None:
+    mapper = CommsEventMapper("u-1")
+    await mapper.map(answer("hello"))
+    marker: GraphEvent = ((), "custom", {"main_response_complete": True})
+    first = await mapper.map(marker)
+    assert [event for event in first if isinstance(event, Answered)] == [
+        Answered(outcome=Replied(text="hello"))
+    ]
+    assert await mapper.map(marker) == []
+
+
+async def test_text_still_held_when_the_stream_ends_is_streamed_before_the_outcome() -> None:
+    mapper = CommsEventMapper("u-1")
+    streamed = await mapper.map(token("hi <"))
+    owed = mapper.finish()
+    texts = [
+        event.payload.response
+        for event in [*streamed, *owed]
+        if isinstance(event, Streamed) and isinstance(event.payload, ResponseEvent)
+    ]
+    assert "".join(texts) == "hi <"
+    assert len(owed) == 2
