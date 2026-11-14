@@ -244,8 +244,9 @@ class VoicePromptBlocks:
     reader: str
     facts: str
     goal: str
-    lookback: str
-    replies: str
+    #: What the daily looks back on and what the user said since; the weekly has neither.
+    lookback: str = ""
+    replies: str = ""
     # Account facts (brief cadence, connected apps) a first-week tip or cadence offer cites.
     setup: str = ""
     # What the user's connected apps hold that needs them, with what earlier briefs said.

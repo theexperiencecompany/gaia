@@ -108,7 +108,7 @@ def _scouts(*remembered: RememberedSignal) -> ScoutSignals:
 
 
 async def _gathered(work: TrackedWork, scouts: ScoutSignals) -> GatheredCandidates:
-    return await gather_candidates(USER_ID, CLOCK, NOW, NOW, CandidateSources(work, [], scouts, []))
+    return await gather_candidates(USER_ID, CLOCK, NOW, NOW, CandidateSources(work, scouts, []))
 
 
 def _found(
@@ -185,7 +185,7 @@ class TestFoldingTwoFindsOfOneThing:
 class TestTheCalendarJoinsThePool:
     async def test_todays_events_are_timed_in_the_users_own_clock(self) -> None:
         events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
-        sources = CandidateSources(TrackedWork(), [], _scouts(), events)
+        sources = CandidateSources(TrackedWork(), _scouts(), events)
 
         gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
 

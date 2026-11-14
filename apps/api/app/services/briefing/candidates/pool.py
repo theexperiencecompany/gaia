@@ -54,9 +54,10 @@ class CandidateSources:
     """
 
     work: TrackedWork
-    held: list[PendingBriefItemDocument]
     scouts: ScoutSignals
     calendar: list[BriefingEvent]
+    #: The results held for the daily brief; the weekly carries none.
+    held: list[PendingBriefItemDocument] = field(default_factory=list)
     ahead_days: int = 1
     user_done: list[TodoDocument] = field(default_factory=list)
 

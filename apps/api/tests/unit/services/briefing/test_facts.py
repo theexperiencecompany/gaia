@@ -13,12 +13,26 @@ from app.constants.briefing import (
 )
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, ChartBlock, ChartKind, SectionBlock
-from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
+from app.models.brief_pool_models import (
+    DataSeries,
+    GoalOrigin,
+    GoalState,
+    SeriesPoint,
+    SeriesShape,
+)
 from app.models.briefing_models import BriefingEvent, BriefingItem, BriefingSection
 from app.models.scout_models import Signal, SignalMemoryDocument
 from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.context import CalendarGap, CalendarUnread, UserClock
-from app.services.briefing.facts import TODAY, WEEK_AHEAD, BriefSpan, FactSources, build_facts
+from app.services.briefing.facts import (
+    TODAY,
+    WEEK_AHEAD,
+    BriefSpan,
+    FactSources,
+    WeekRecap,
+    build_facts,
+    user_todos_note,
+)
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import BriefFact, CountSlot, SeriesField
 
@@ -341,3 +355,77 @@ class TestTheEmptyBriefAndTheLead:
         facts = build_facts(Chosen(sections, picked), _sources(blocks=blocks), _CLOCK)
 
         assert facts.lead == 5
+
+
+class TestTheWeekRecap:
+    """The weekly's recap: each GAIA count series as a slotted total, and each goal's week."""
+
+    _FINISHED = DataSeries(
+        id="gaia_finished",
+        label="Tasks GAIA finished",
+        unit="tasks",
+        source="gaia",
+        app="GAIA",
+        shape=SeriesShape.TIME_SERIES,
+        points=[SeriesPoint(x="2026-11-09", y=4), SeriesPoint(x="2026-11-10", y=2)],
+    )
+    _UNITLESS = _FINISHED.model_copy(update={"id": "runs", "label": "Runs", "unit": None})
+
+    def test_totals_and_goals_read_as_slotted_lines_and_quotable_titles(self) -> None:
+        item = BriefingItem(text="Q3 board pack", kind="you", action=BriefAction.REVIEW)
+        candidate = BriefCandidate(source="gaia", app="GAIA", state="you", title="Q3 board pack")
+        goals = [
+            GoalState(
+                id="g1",
+                statement="Ship Atlas",
+                origin=GoalOrigin.MEMORY,
+                done=2,
+                open=2,
+                linked=["Atlas v11 build", "Atlas docs", "Atlas pricing", "Atlas press"],
+                stalled=["Atlas pricing", "Atlas press"],
+            ),
+            GoalState(
+                id="g2", statement="Run a marathon", origin=GoalOrigin.ONBOARDING, done=0, open=0
+            ),
+        ]
+        sources = FactSources(
+            artifacts={},
+            open_todos=0,
+            calendar=[],
+            event_ids=[],
+            span=WEEK_AHEAD,
+            todos_note=None,
+            recap=WeekRecap(series=[self._FINISHED, self._UNITLESS], goals=goals),
+        )
+
+        facts = build_facts(_chosen((item, candidate)), sources, _CLOCK)
+
+        lines = facts.block.splitlines()
+        start = lines.index(
+            "[THE WEEK IN NUMBERS] (voice these as one grouped recap of the week, never as a list)"
+        )
+        assert lines[start + 1 : start + 6] == [
+            "- Tasks GAIA finished: [[series:gaia_finished.total]] (6 tasks)",
+            "- Runs: [[series:runs.total]] (6)",
+            "[GOALS THIS WEEK]",
+            '- "Ship Atlas": moved forward: Atlas v11 build; Atlas docs'
+            " | stuck a week or more: Atlas pricing; Atlas press",
+            '- "Run a marathon": nothing linked to it finished',
+        ]
+        assert facts.values.series["gaia_finished"][SeriesField.TOTAL] == "6"
+        assert {"Q3", "v11"} <= facts.values.quoted
+
+
+class TestTheOwnTodosNote:
+    def test_overdue_todos_are_counted_by_their_slot_and_never_listed(self) -> None:
+        assert user_todos_note(80, 70) == (
+            "The user's own open todos are counted in [COUNTS]; never voice that list as clear or"
+            " empty. [[count:overdue_todos]] of them are past due: say that count in one plain"
+            " line, never list them."
+        )
+
+    def test_with_none_past_due_the_note_says_nothing_of_it(self) -> None:
+        assert user_todos_note(80) == (
+            "The user's own open todos are counted in [COUNTS]; never voice that list as clear or"
+            " empty."
+        )

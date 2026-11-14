@@ -87,13 +87,7 @@ _RECAP_SOURCES = frozenset({GAIA_SOURCE, GMAIL_INTEGRATION_ID})
 
 def _recap_series(series: list[DataSeries]) -> list[DataSeries]:
     """Return the week's day-by-day counts of GAIA's work and its mail desk, each with a total."""
-    return [
-        s
-        for s in series
-        if s.shape is SeriesShape.TIME_SERIES
-        and s.source in _RECAP_SOURCES
-        and any(p.y for p in s.points)
-    ]
+    return [s for s in series if s.shape is SeriesShape.TIME_SERIES and s.source in _RECAP_SOURCES]
 
 
 def _is_empty_week(gathered: GatheredCandidates) -> bool:
@@ -140,7 +134,6 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         seen_at,
         CandidateSources(
             work,
-            [],
             scouts,
             ahead_events,
             ahead_days=_WEEK_AHEAD_DAYS + 1,
@@ -205,8 +198,6 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         reader=reader_block(user),
         facts=facts.block,
         goal=goal_block,
-        lookback="",
-        replies="",
         signals=signals_block(remembered, clock),
     )
     # Bounded: a stalled agent run must fail the cron loudly, not hang the

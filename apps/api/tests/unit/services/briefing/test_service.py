@@ -35,6 +35,7 @@ from app.agents.prompts.briefing_prompts import (
 from app.constants.briefing import (
     BRIEF_VOICE_LABEL,
     CALENDAR_UNAVAILABLE,
+    DUE_TODO_CANDIDATES_LIMIT,
     FIRST_WEEK_DAYS,
     IDLE_DORMANT_DAYS,
     MAX_BRIEF_HEADLINE_CHARS,
@@ -51,6 +52,7 @@ from app.constants.briefing import (
     BriefItemSource,
     BriefOutcome,
 )
+from app.constants.desk_buckets import DeskBucket
 from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_NOTE,
@@ -87,6 +89,7 @@ from app.models.briefing_models import (
 )
 from app.models.calendar_models import GoogleCalendarEventDateTime, GoogleCalendarEventResource
 from app.models.chat_models import ConversationSource
+from app.models.email_verdict_models import EmailVerdictDocument
 from app.models.hil_models import ApprovalLedgerDocument
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
@@ -131,6 +134,7 @@ from app.services.briefing.dormancy import DormancyState
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
+from app.services.briefing.prose import reader_block
 from app.services.briefing.scouts import service as scout_service
 from app.services.briefing.scouts.facts import SHOWN_NOT_TOTAL
 from app.services.cost_budget import DAILY_BUDGET_STOP_FREE
@@ -1705,6 +1709,17 @@ class TestTheWeeklyAnswersTheWeek:
     async def test_gaias_week_is_one_grouped_count_per_kind_of_work(self, world: World) -> None:
         finished = [_finished(f"g{n}", f"Research {n}", gaia=True, days_ago=1) for n in range(6)]
         world.reads["list_completed_since"].return_value = finished
+        # Meeting hours and the last day's mail sort are not GAIA's week: neither is counted.
+        world.calendar = [BriefingEvent(date="2026-10-13", start="10:00", title="Board")]
+        world.reads["verdicts_since"].return_value = [
+            EmailVerdictDocument(
+                user_id=_USER,
+                message_id="m1",
+                answers={},
+                bucket=DeskBucket.REPLY,
+                created_at=_NOW,
+            )
+        ]
         world.agent.return_value = _weekly_voiced(
             lede="I finished [[series:gaia_finished.total]] tasks."
         )
@@ -1713,7 +1728,10 @@ class TestTheWeeklyAnswersTheWeek:
 
         facts = _facts_shown(_prompt(world))
         assert "[THE WEEK IN NUMBERS]" in facts
-        assert "- Tasks GAIA finished: [[series:gaia_finished.total]] (6 tasks)" in facts
+        numbers = facts.split("[THE WEEK IN NUMBERS]", 1)[1].split("\n[", 1)[0]
+        assert numbers.splitlines()[1:] == [
+            "- Tasks GAIA finished: [[series:gaia_finished.total]] (6 tasks)"
+        ]
         assert _stored_payload(world).lede == "I finished 6 tasks."
 
     async def test_each_goal_says_what_moved_it_and_what_is_stuck_a_week_or_more(
@@ -1743,6 +1761,166 @@ class TestTheWeeklyAnswersTheWeek:
             '- "Launch Atlas": moved forward: Atlas landing page'
             " | stuck a week or more: Atlas pricing"
         ) in facts
+
+
+_TODAY_START = datetime(2026, 10, 13, 18, 30, tzinfo=UTC)
+# The week ahead runs seven local days from tomorrow; what falls due in it is the weekly's.
+_WEEK_AHEAD_END = _TODAY_START + timedelta(days=8)
+
+
+class TestTheWeeklyReadsThisUsersWeek:
+    """Every weekly read is the user's and the week's, and what it writes is stamped now."""
+
+    async def test_every_read_is_this_users_over_the_week_and_the_week_ahead(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _a_full_week(monkeypatch, world)
+        world.scouts = [
+            *_scouted(_LOGIN),
+            ScoutResult(
+                integration_id="notion",
+                app="Notion",
+                outcome=ScoutOutcome.SKIPPED,
+                skip_reason=ScoutSkipReason.FAILED,
+            ),
+        ]
+        world.recent.return_value = [
+            BriefingModel(
+                id="d",
+                user_id=_USER,
+                date="2026-10-13",
+                payload=BriefingPayload(
+                    kicker="K",
+                    date="2026-10-13",
+                    headline="h",
+                    lede="l",
+                    mood="packed",
+                    caption="c",
+                    message="Priya replied overnight.",
+                    template_family="swiss",
+                ),
+            )
+        ]
+        world.memory = [
+            SignalMemoryDocument(
+                user_id=_USER,
+                integration_id="linear",
+                external_id="ENG-12",
+                first_seen=_NOW - timedelta(days=3),
+                times_shown=1,
+                last_shown=_NOW - timedelta(days=2),
+                last_state="In Progress",
+            )
+        ]
+        _seam(monkeypatch, world, todo_repository, "count_open_user_todos", _own_todos(80, 70))
+        due = TodoDocument(
+            id="o1", user_id=_USER, title="File the VAT return", due_date=_NOW + timedelta(days=1)
+        )
+        world.reads["list_open_user_todos"].side_effect = lambda *_a, due_before=None, **_k: (
+            [due] if due_before is not None else []
+        )
+        world.agent.return_value = _weekly_voiced(
+            message="[The deck](fact:<fact of Investor deck>) is done. [[fact:<fact of Investor deck>]]"
+            " shipped, [Priya](fact:<fact of Fix the login redirect>) waits."
+        )
+
+        await weekly.run_weekly_digest(_USER)
+
+        world.reads["gather_tracked_work"].assert_awaited_once_with(_USER, _WEEK_START)
+        assert world.agent.await_args.kwargs["config"] == metered_config(_USER)
+        assert "first seen 3 days ago, mentioned 1 time(s), last 2 days ago" in _prompt(world)
+        assert world.reads["count_open_user_todos"].await_args_list == [
+            call(_USER),
+            call(_USER, due_before=_TODAY_START),
+        ]
+        world.reads["find_scheduled_between"].assert_awaited_once_with(
+            _USER, _TODAY_START, _WEEK_AHEAD_END
+        )
+        assert (
+            call(_USER, limit=DUE_TODO_CANDIDATES_LIMIT, due_before=_WEEK_AHEAD_END)
+            in world.reads["list_open_user_todos"].await_args_list
+        )
+        assert world.week.call_args.args[2] == [_FRIDAY_PITCH]
+        assert all(c.args[0] == _USER and c.args[2] == _NOW for c in world.seen.await_args_list)
+        assert "Recent briefs opened on" in world.composer.await_args.args[1]
+        assert "Priya replied overnight." in world.composer.await_args.args[1]
+        prompt_args = world.weekly_prompt.call_args.kwargs
+        assert prompt_args["date_local"] == _DATE
+        assert prompt_args["blocks"].reader == reader_block(world.user)
+        facts = _facts_shown(_prompt(world))
+        assert "[[count:open_todos]] (80)" in facts and "[[count:overdue_todos]] (70)" in facts
+        assert "never voice that list as clear or empty." in facts
+        assert "[[count:overdue_todos]] of them are past due" in facts
+        assert "File the VAT return | time: [[fact:" in facts and "(Thu Oct 15)" in facts
+        assert "[ACROSS THEIR APPS]" in _prompt(world)
+        world.mint.assert_any_await(_USER, ShortLinkTargetType.TODO_DELIVERABLE, "g1")
+        payload = _stored_payload(world)
+        assert [(u.app, u.reason) for u in payload.sources_unavailable] == [
+            ("Notion", ScoutSkipReason.FAILED)
+        ]
+        assert world.capture.call_args.args[1].signal_count == 1
+        shown_by, _, shown_at = world.shown.await_args.args
+        assert (shown_by, shown_at) == (_USER, _NOW)
+
+    async def test_a_quiet_week_note_says_the_calendar_the_streak_and_whats_overdue(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        world.calendar = context.CalendarUnread(context.CalendarGap.UNAVAILABLE)
+        world.reads["gather_completed_since"].return_value = context.CompletedWork()
+        _seam(monkeypatch, world, todo_repository, "count_open_user_todos", _own_todos(3, 3))
+        world.reads["list_undated_user_todos"].return_value = [
+            TodoDocument(id="u9", user_id=_USER, title="Sort the garage")
+        ]
+
+        def brief(day: str, form: BriefForm) -> BriefingModel:
+            payload = BriefingPayload(
+                form=form,
+                kicker="K",
+                date=day,
+                headline="h",
+                lede="",
+                mood="idle",
+                caption="",
+                template_family="",
+            )
+            return BriefingModel(id=day, user_id=_USER, date=day, payload=payload)
+
+        world.recent.return_value = [
+            brief("2026-10-07", BriefForm.QUIET_NOTE),
+            brief("2026-10-05", BriefForm.EDITION),
+        ]
+
+        await weekly.run_weekly_digest(_USER)
+
+        assert _stored_payload(world).message.splitlines() == [
+            "Still nothing new: 2 quiet weeks since your brief on Monday Oct 5. I couldn't read "
+            "your calendar, so check it before you plan.",
+            "3 of your own todos are past due.",
+            "I'll flag anything that comes in.",
+        ]
+        payload = _stored_payload(world)
+        assert (payload.lede, payload.caption, payload.template_family) == ("", "", "")
+        channels = world.set_channels.await_args.args[3]
+        world.set_channels.assert_awaited_once_with(_USER, _DATE, "weekly", channels)
+        assert channels
+        assert world.capture.call_args.args == (
+            UserId(_USER),
+            BriefingSent(
+                kind="weekly",
+                form="quiet_note",
+                family="none",
+                mood="idle",
+                item_count=0,
+                channel_count=len(channels),
+                signal_count=0,
+                stamp_collected=False,
+                block_kinds=[],
+                chart_count=0,
+                pool_item_count=1,
+                series_count=0,
+                source_count=0,
+            ),
+        )
 
 
 class TestHeldItemsJoinTheBrief:
@@ -2632,6 +2810,20 @@ class TestTheFactsTheModelVoices:
             "The user's own open todos are counted in [COUNTS]"
             "; never voice that list as clear or empty.\n"
         ) in _prompt(world)
+
+    async def test_the_users_overdue_todos_are_counted_by_their_slot(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Replay: a heavy user's 70 overdue todos were never mentioned."""
+        _seam(monkeypatch, world, todo_repository, "count_open_user_todos", _own_todos(200, 70))
+        world.agent.return_value = _saying("[[count:overdue_todos]] of your todos are past due.")
+
+        await daily.run_daily_briefing(_USER)
+
+        facts = _facts_shown(_prompt(world))
+        assert "[[count:open_todos]] (200) · [[count:overdue_todos]] (70)" in facts
+        assert "[[count:overdue_todos]] of them are past due" in facts
+        assert (_stored_payload(world).message or "").endswith("70 of your todos are past due.")
 
     async def test_an_untimed_event_reads_all_day_and_none_reads_empty(
         self, world: World, monkeypatch: pytest.MonkeyPatch

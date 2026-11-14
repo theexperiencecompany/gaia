@@ -204,7 +204,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     seen_at = datetime.now(UTC)
     scouts = await scout_signals(user, seen_at)
     gathered = await gather_candidates(
-        user_id, clock, since, seen_at, CandidateSources(work, held, scouts, day.events)
+        user_id, clock, since, seen_at, CandidateSources(work, scouts, day.events, held=held)
     )
     briefs = await briefing_repository.list_recent(user_id, limit=RECENT_BRIEFS_RECALLED)
     recent = recent_lines(briefs)
