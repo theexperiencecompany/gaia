@@ -285,6 +285,11 @@ else
 fi
 """
 
+[tasks."web:primitive-parity"]
+description = "Compare every HeroUI primitive GAIA renders (the dev-only /dev/primitive-parity fixture) against v2's computed styles in apps/web/e2e/primitive-parity/v2-snapshot.json: borders, outline, shadow, corners, insets, size, type, colour, opacity, fades and tooltip delay, at rest, hover, keyboard focus, pressed and open. Starts `next dev` unless PARITY_BASE_URL points at a server already running the fixture; intended differences go in approved.json with a reason. Run it after any HeroUI bump or gaia.css change."
+dir = "apps/web"
+run = "pnpm exec playwright test -c playwright.parity.config.ts"
+
 [tasks."web:visual:review"]
 description = "Whole-app before/after visual review: seed one local API, production-build and screenshot every app route and UI state at <base> and at [head] (default HEAD), then write review.html with each diff. Run it before merging a UI-heavy change. Wraps the review harness in tools/heroui-migration/review/ (run.sh before/after over stack.sh); refs must exist in GIT_SOURCE (default: this checkout)"
 usage = '''
