@@ -6,11 +6,17 @@ import {
   replyDelta,
   replyItem,
   screenFrame,
+  stateFrame,
   updateFrame,
   userItem,
 } from "./testing";
 import type { ConversationFrame, ConversationView } from "./types";
-import { addPendingSend, applyFrame, EMPTY_CONVERSATION_VIEW } from "./view";
+import {
+  addPendingSend,
+  applyFrame,
+  applyPage,
+  EMPTY_CONVERSATION_VIEW,
+} from "./view";
 
 const apply = (view: ConversationView, frame: ConversationFrame) => {
   const outcome = applyFrame(view, frame);
@@ -33,6 +39,51 @@ describe("a client's copy of the server's screen", () => {
     }
     expect(ids(view)).toEqual(["u1", "u2", "work:c4f22a9a", "u3", "r2.1"]);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("keeps a settled reply when a page read before it settled lands later", () => {
+    let view = apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u2", 2)));
+    view = apply(view, insertFrame(replyItem("r1", 3, "Not")));
+    view = apply(
+      view,
+      updateFrame(replyItem("r1", 3, "Not added.", "answered")),
+    );
+    view = apply(view, stateFrame(4, "idle"));
+
+    view = applyPage(
+      view,
+      [userItem("u1", 1), userItem("u2", 2), replyItem("r1", 3, "Not")],
+      { kind: "state", head: 3, display: "thinking", work: [] },
+    );
+
+    expect(
+      view.items.map((item) => [
+        item.id,
+        item.kind === "reply" ? item.bubbles : null,
+      ]),
+    ).toEqual([
+      ["u1", null],
+      ["u2", null],
+      ["r1", ["Not added."]],
+    ]);
+    expect([view.head, view.display]).toEqual([4, "idle"]);
+  });
+
+  it("keeps live work cards when a page at the same head carries fewer", () => {
+    let view = apply(EMPTY_CONVERSATION_VIEW, insertFrame(userItem("u1", 1)));
+    view = apply(view, insertFrame(replyItem("r1", 2, ["Checked", "it."])));
+    view = apply(view, stateFrame(2, "working"));
+
+    view = applyPage(view, [replyItem("r1", 2, "Checked")], {
+      kind: "state",
+      head: 2,
+      display: "working",
+      work: [],
+    });
+
+    expect(view.items.find((item) => item.id === "r1")).toMatchObject({
+      bubbles: ["Checked", "it."],
+    });
   });
 
   it("places an item that became visible late at its seq, before later items", () => {

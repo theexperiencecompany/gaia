@@ -51,8 +51,11 @@ const targetConversationId = (overrides?: SendMessageOverrides) => {
   return requested === NEW_CONVERSATION_ROUTE_ID ? null : requested;
 };
 
-/** Mint a conversation id and show it as the open chat before its first message is accepted. */
-async function startConversation(): Promise<string> {
+/** Mint a conversation id and show it as the open chat before its first message is accepted; resolves once it is saved locally. */
+function startConversation(): {
+  conversationId: string;
+  saved: Promise<string>;
+} {
   const conversationId = uuidv4();
   const now = new Date();
   const conversation: IConversation = {
@@ -71,8 +74,7 @@ async function startConversation(): Promise<string> {
   if (/^\/c(\/|$)/.test(globalThis.location.pathname)) {
     globalThis.history.replaceState({}, "", `/c/${conversationId}`);
   }
-  await db.putConversation(conversation);
-  return conversationId;
+  return { conversationId, saved: db.putConversation(conversation) };
 }
 
 /** Drop a conversation whose first message was refused, so the next attempt starts under a fresh id. */
@@ -129,12 +131,21 @@ export async function sendMessage(
     await queueAndDeliver(existingId, buildSend());
     return;
   }
-  const conversationId = await startConversation();
+  // The open chat switches to the new id at once: queue before awaiting, so its next send delivers after this one.
+  const started = startConversation();
   try {
-    await queueAndDeliver(conversationId, buildSend());
+    await Promise.all([
+      started.saved,
+      queueAndDeliver(started.conversationId, buildSend()),
+    ]);
   } catch (error) {
     if (!isConversationIdTaken(error)) throw error;
-    await abandonConversation(conversationId);
-    await queueAndDeliver(await startConversation(), buildSend());
+    await started.saved;
+    await abandonConversation(started.conversationId);
+    const restarted = startConversation();
+    await Promise.all([
+      restarted.saved,
+      queueAndDeliver(restarted.conversationId, buildSend()),
+    ]);
   }
 }

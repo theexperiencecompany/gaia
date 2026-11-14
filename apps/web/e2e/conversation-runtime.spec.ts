@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import {
   type BubbleSnapshot,
+  firstShownAt,
   listBubbles,
   loadingGaps,
   loadingRow,
@@ -83,7 +84,7 @@ test.describe("conversation runtime — messages during work", () => {
     page,
   }) => {
     await page.goto("/c");
-    const watch = watchConversation(page);
+    const watch = watchConversation(page, ["sa-2"]);
     const workRunning = await startWork(
       page,
       workScript("sa", "Background work finished."),
@@ -111,7 +112,6 @@ test.describe("conversation runtime — messages during work", () => {
         timeout: TURN_TIMEOUT_MS,
       })
       .toBe(1);
-    const workDone = Date.now();
     const final = await settled(page, "Background work finished.");
     const samples = await watch.stop();
 
@@ -119,7 +119,7 @@ test.describe("conversation runtime — messages during work", () => {
       loadingGaps(
         samples,
         sideAsked - watch.startedAt,
-        workDone - watch.startedAt,
+        firstShownAt(samples, "sa-2") - 1,
       ),
       "the loading row stays up for the whole run",
     ).toEqual([]);

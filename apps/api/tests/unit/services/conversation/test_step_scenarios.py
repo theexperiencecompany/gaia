@@ -11,6 +11,7 @@ from app.constants.hil import HIL_ACK_APPROVED
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryFrame,
+    MessageBoundaryEvent,
     OutputFrame,
     ResponseEvent,
     RetractFrame,
@@ -29,7 +30,7 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkStarted,
 )
-from app.models.stream_events import ToolOutputPayload
+from app.models.stream_events import MessageBoundaryPayload, ToolOutputPayload
 from app.services.conversation.composition import PostHogTurnAnalytics
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
@@ -47,7 +48,16 @@ from app.services.conversation.ports import (
     ToolsRan,
 )
 from app.services.conversation.step import advance
-from shared.py.conversation_wire import FailureReason, ReplyDeltaFrame, ReplyOutcome, ToolDataEntry
+from shared.py.conversation_wire import (
+    BubblesDelta,
+    BubbleTextDelta,
+    CardsDelta,
+    FailureReason,
+    ReplyDelta,
+    ReplyDeltaFrame,
+    ReplyOutcome,
+    ToolDataEntry,
+)
 from tests.unit.services.conversation.log_helpers import (
     asked,
     barge,
@@ -97,6 +107,15 @@ def card() -> Streamed:
 
 def text(chunk: str) -> Streamed:
     return Streamed(payload=ResponseEvent(response=chunk))
+
+
+def taken_back(message_id: str) -> Streamed:
+    boundary = MessageBoundaryPayload(message_id=message_id, discarded=True)
+    return Streamed(payload=MessageBoundaryEvent(message_boundary=boundary))
+
+
+def reply_deltas(rt: Runtime) -> list[ReplyDelta]:
+    return [frame.payload for frame in rt.frames.published if isinstance(frame, ReplyDeltaFrame)]
 
 
 async def kinds(rt: Runtime) -> list[str]:
@@ -848,6 +867,59 @@ class StepScenarios:
         assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
         assert [s.failure for s in await settles(rt)] == [FailureReason.MODEL_ERROR]
         await assert_quiet(rt)
+
+    async def test_a_retried_model_call_restreaming_the_same_text_never_blanks_it(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script(
+            [
+                text("Second partial."),
+                taken_back("m1"),
+                text("Second "),
+                text("partial."),
+                Fail(RuntimeError("provider dropped the stream")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert reply_deltas(rt) == [BubbleTextDelta(bubble=0, text="Second partial.")]
+        assert (await replies(rt))[0].text == "Second partial."
+        assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
+
+    async def test_a_retracted_preamble_is_replaced_in_place_by_the_reply(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script(
+            [
+                text("Let me check that."),
+                taken_back("m1"),
+                text("Checked"),
+                text(" it."),
+                ModelOutput(False),
+                Finished(Replied("Checked it.")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert reply_deltas(rt) == [
+            BubbleTextDelta(bubble=0, text="Let me check that."),
+            BubblesDelta(bubbles=("Checked",)),
+            BubbleTextDelta(bubble=0, text=" it."),
+        ]
+        assert (await replies(rt))[0].text == "Checked it."
+
+    async def test_a_take_back_nothing_replaced_is_withdrawn_before_the_reply_settles(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script([text("Let me check."), taken_back("m1"), card(), Finished(Replied(""))])
+        await send(rt, user("u1"))
+        await run(rt)
+        bubbles = [delta for delta in reply_deltas(rt) if not isinstance(delta, CardsDelta)]
+        assert bubbles == [
+            BubbleTextDelta(bubble=0, text="Let me check."),
+            BubblesDelta(bubbles=()),
+        ]
+        assert (await replies(rt))[0].text == ""
 
     async def test_a_run_that_hits_the_step_limit_says_so_on_its_settle(self, rt: Runtime) -> None:
         rt.runner.script([text("half"), Fail(StepLimitReached("limit"))])

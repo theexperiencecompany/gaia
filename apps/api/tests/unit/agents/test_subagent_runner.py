@@ -35,10 +35,12 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.llm.lane import AgentRole
 from app.constants.agents import NO_ANSWER_NOTICE, AgentTag, wrap_agent_payload
+from app.constants.general import EXECUTOR_INTEGRATION_ID
 from app.constants.llm import BUDGET_STOP_METADATA_KEY, DEV_MODEL_OPTIONS, EXECUTOR_RECURSION_LIMIT
 from app.helpers.agent_helpers import AgentIdentity, AgentLane, AgentThread
 from app.models.mcp_config import MCPConfig, SubAgentConfig
 from app.models.subagent_models import Subagent
+from app.override.langgraph_bigtool.utils import NUDGE_CONTINUE_NODE
 from tests._harness.context_chain import slots_of
 
 # ---------------------------------------------------------------------------
@@ -337,6 +339,25 @@ class TestExecuteSubagentStream:
             result = await execute_subagent_stream(ctx)
 
         assert result.text == "Hello world"
+
+    @pytest.mark.asyncio
+    async def test_a_stop_the_completion_nudge_sent_back_is_not_part_of_the_answer(self):
+        early = AIMessageChunk(content="Not added.", id="m1")
+        final = AIMessageChunk(content="Skipped the todo you denied.", id="m2")
+
+        async def _fake_astream(*args, **kwargs):
+            yield ("messages", (early, {}))
+            yield ("updates", {NUDGE_CONTINUE_NODE: {"messages": [HumanMessage("finish")]}})
+            yield ("messages", (final, {}))
+
+        mock_graph = MagicMock()
+        mock_graph.astream = _fake_astream
+        ctx = _make_ctx(subagent_graph=mock_graph, integration_id=EXECUTOR_INTEGRATION_ID)
+
+        with patch("app.agents.core.subagents.subagent_runner.log"):
+            result = await execute_subagent_stream(ctx)
+
+        assert result.text == "Skipped the todo you denied."
 
     @pytest.mark.asyncio
     async def test_silent_messages_skipped(self):

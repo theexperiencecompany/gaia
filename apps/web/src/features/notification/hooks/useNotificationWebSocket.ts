@@ -6,7 +6,7 @@ import { notificationKeys } from "@/features/notification/api/queryKeys";
 import { toast } from "@/lib/toast";
 import { isSafeInternalPath } from "@/lib/url-safety";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
-import { batchSyncConversations } from "@/services/syncService";
+import { syncPushedConversations } from "@/services/syncService";
 import type {
   NotificationAction,
   NotificationView,
@@ -94,13 +94,16 @@ function handleDeliveredNotification(
     showDeliveredToast(notification, router);
   }
 
-  // Sync chats when a workflow completion notification arrives
-  if (notification.metadata?.conversation_id) {
+  // Sync the chat a workflow completion notification names
+  const conversationId = notification.metadata?.conversation_id;
+  if (typeof conversationId === "string") {
     console.debug(
       "[NotificationWS] Notification has conversation_id, triggering sync",
-      notification.metadata.conversation_id,
+      conversationId,
     );
-    batchSyncConversations({ background: true });
+    syncPushedConversations([conversationId], {
+      background: true,
+    }).catch(console.error);
   }
 }
 

@@ -86,6 +86,7 @@ from app.override.langgraph_bigtool.hooks import (
     sync_execute_hooks,
 )
 from app.override.langgraph_bigtool.utils import (
+    NUDGE_CONTINUE_NODE,
     REMAINING_STEPS_KEY,
     State,
     dedupe_str_list,
@@ -706,10 +707,10 @@ def _after_finish_task(exit_node: str) -> Callable[[State], str]:
     def route(state: State) -> str:
         if _owes_playbook_decision(state):
             log.info(f"{LogTag.AGENT} finish_task without a playbook decision; nudging once")
-            return "nudge_continue"
+            return NUDGE_CONTINUE_NODE
         if _owes_backed_outcome(state):
             log.info(f"{LogTag.AGENT} finish_task outcome not backed by this run; nudging once")
-            return "nudge_continue"
+            return NUDGE_CONTINUE_NODE
         return exit_node
 
     return route
@@ -816,7 +817,7 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
                     and (work_looks_unfinished(state) or leaves_a_todo_asleep(state))
                 )
             ):
-                return "nudge_continue"
+                return NUDGE_CONTINUE_NODE
             return "end_graph_hooks" if deps.end_graph_hooks else END
         bound_names = _get_bound_tool_names(deps, state)
         canonical_to_bound = canonical_tool_name_map(bound_names)
@@ -867,14 +868,14 @@ def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
         path_map.insert(0, "select_tools")
     if deps.require_finish_to_end:
         builder.add_node(
-            "nudge_continue",
+            NUDGE_CONTINUE_NODE,
             # Sync-only: the node ignores state and just emits the nudge, and
             # RunnableCallable runs a sync func on ainvoke when no async twin
             # is given — the twin was a pass-through with nothing to add.
             RunnableCallable(nudge_continue_node),
         )
-        builder.add_edge("nudge_continue", "agent")
-        path_map.append("nudge_continue")
+        builder.add_edge(NUDGE_CONTINUE_NODE, "agent")
+        path_map.append(NUDGE_CONTINUE_NODE)
     if deps.end_graph_hooks:
         builder.add_node("end_graph_hooks", _end_graph_hooks_node(deps.end_graph_hooks))
         builder.add_edge("end_graph_hooks", END)
@@ -892,7 +893,7 @@ def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
         builder.add_conditional_edges(
             FINISH_TASK_NAME,
             _after_finish_task(exit_node),
-            path_map=["nudge_continue", exit_node],
+            path_map=[NUDGE_CONTINUE_NODE, exit_node],
         )
     else:
         builder.add_edge(FINISH_TASK_NAME, exit_node)

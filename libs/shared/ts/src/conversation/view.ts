@@ -161,13 +161,18 @@ export function applyFrame(
   }
 }
 
-/** Take a page of the server's screen (a load, a sync or a page back) and its state. */
+/** Take a page of the server's screen (a load, a sync or a page back) and its state; a page no newer than the view's head only adds the items the view lacks. */
 export function applyPage(
   view: ConversationView,
   items: readonly ScreenItem[],
   state: Extract<ConversationFrame, { kind: "state" }>,
 ): ConversationView {
-  const outcome = applyFrame(withItems(view, items), state);
+  const held = new Set(view.items.map((item) => item.id));
+  const fresh =
+    state.head <= view.head
+      ? items.filter((item) => !held.has(item.id))
+      : items;
+  const outcome = applyFrame(withItems(view, fresh), state);
   return outcome.view;
 }
 

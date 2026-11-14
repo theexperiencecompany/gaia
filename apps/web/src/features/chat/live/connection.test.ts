@@ -28,6 +28,7 @@ const { server, saved, sendResult, retitled } = vi.hoisted(() => ({
   sendResult: {
     fail: null as Error | null,
     refusals: [] as Error[],
+    hold: null as Promise<void> | null,
     calls: [] as unknown[],
   },
 }));
@@ -61,6 +62,9 @@ vi.mock("@/features/chat/api/chatApi", () => {
         body: { message_id: string },
       ) => {
         sendResult.calls.push({ conversationId, body });
+        const hold = sendResult.hold;
+        sendResult.hold = null;
+        if (hold) await hold;
         const refusal = sendResult.refusals.shift();
         if (refusal) throw refusal;
         if (sendResult.fail) throw sendResult.fail;
@@ -132,6 +136,7 @@ beforeEach(() => {
   saved.clear();
   sendResult.fail = null;
   sendResult.refusals = [];
+  sendResult.hold = null;
   sendResult.calls = [];
   retitled.length = 0;
   useLiveConversationStore.setState({ conversations: {} });
@@ -301,6 +306,42 @@ describe("sending", () => {
 
     expect(view().pending).toEqual([]);
     expect(ids()).toEqual([pending[0].id]);
+  });
+
+  it("delivers a burst in send order, each once the one before it was answered", async () => {
+    let answerFirst: () => void = () => undefined;
+    sendResult.hold = new Promise<void>((resolve) => {
+      answerFirst = resolve;
+    });
+    const texts = () =>
+      sendResult.calls.map(
+        (call) => (call as { body: { text: string } }).body.text,
+      );
+    const sending = ["first", "second", "third"].map((text) =>
+      sendMessage(text, { conversationId: CONVERSATION }),
+    );
+    await flush();
+    expect(texts()).toEqual(["first"]);
+
+    answerFirst();
+    await Promise.all(sending);
+
+    expect(texts()).toEqual(["first", "second", "third"]);
+  });
+
+  it("delivers a new chat's first message before the next one sent into it", async () => {
+    const texts = () =>
+      sendResult.calls.map(
+        (call) => (call as { body: { text: string } }).body.text,
+      );
+    const first = sendMessage("first", { conversationId: null });
+    const second = sendMessage("second");
+    await flush();
+    expect(texts()[0]).toBe("first");
+
+    await Promise.all([first, second]);
+
+    expect(texts()).toEqual(["first", "second"]);
   });
 
   it("marks a send the server refused as failed, and a retry resends the same message", async () => {

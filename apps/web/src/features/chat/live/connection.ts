@@ -113,8 +113,30 @@ const follower = createConversationFollower({
 /** Follow a conversation's events while anything holds it open; the returned release closes it. */
 export const openConversation = follower.open;
 
-/** POST a queued send; a failure marks its bubble failed, and the retry resends the same request. */
-export async function deliverSend(
+/** Each conversation's newest delivery: the server orders messages as they arrive, so the next waits on it. */
+const deliveries = new Map<string, Promise<void>>();
+
+/** POST a queued send after the conversation's earlier sends were answered; a failure marks its bubble failed, and the retry resends the same request. */
+export function deliverSend(
+  conversationId: string,
+  messageId: string,
+): Promise<void> {
+  const post = () => postSend(conversationId, messageId);
+  // An earlier send's failure is its own caller's to handle; this one goes out regardless.
+  const delivery = (deliveries.get(conversationId) ?? Promise.resolve()).then(
+    post,
+    post,
+  );
+  deliveries.set(conversationId, delivery);
+  const forget = () => {
+    if (deliveries.get(conversationId) === delivery)
+      deliveries.delete(conversationId);
+  };
+  delivery.then(forget, forget);
+  return delivery;
+}
+
+async function postSend(
   conversationId: string,
   messageId: string,
 ): Promise<void> {

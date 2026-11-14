@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import {
+  firstShownAt,
   loadingGaps,
   loadingRow,
   longestBlindWorkMs,
@@ -364,19 +365,17 @@ test.describe("screen over time — chat", () => {
     page,
   }) => {
     await openNewChat(page);
-    const watch = watchConversation(page);
+    const watch = watchConversation(page, ["ld-1", "ld-2"]);
     await sendAndOpen(page, heldWork("ld", "Loaded."));
-    await untilBotLine(page, "ld-1");
-    const firstCard = Date.now();
     await untilBotLine(page, "ld-2");
-    const lastCard = Date.now();
     await settledScreen(page, "Loaded.", TURN_MS);
     const samples = await watch.stop();
+    // Work streams from its first card until its last shows; the turn may end in that same reading.
     expect(
       loadingGaps(
         samples,
-        firstCard - watch.startedAt,
-        lastCard - watch.startedAt,
+        firstShownAt(samples, "ld-1"),
+        firstShownAt(samples, "ld-2") - 1,
       ),
       "no moment of running work without the loading line",
     ).toEqual([]);

@@ -74,6 +74,7 @@ from app.models.agent_models import (
 )
 from app.models.ownership_models import ExecutorIntent
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
+from app.override.langgraph_bigtool.utils import NUDGE_CONTINUE_NODE
 from app.services.files import FileService
 from app.services.latency_metrics import observe_subagent_run
 from app.utils.agent_utils import IntegrationMetadata, StreamWriterCallable
@@ -347,6 +348,8 @@ def _note_budget_stop(run: _StreamRun, messages: Sequence[AnyMessage]) -> None:
 async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) -> None:
     """Handle one "updates"-mode stream event: emit tool_data for the agent node's calls."""
     for node_name, state_update in payload.items():
+        if node_name == NUDGE_CONTINUE_NODE:
+            run.held.supersede()
         # Only emit tool_data from the LLM ("agent") node — pre-model hooks
         # produce "updates" events with historical AIMessages from previous
         # checkpoint runs, and emitting those would replay stale tool cards.

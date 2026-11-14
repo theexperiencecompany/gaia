@@ -2,12 +2,31 @@ import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 
 import { wsManager } from "@/lib/websocket/WebSocketManager";
-import { batchSyncConversations } from "@/services/syncService";
+import {
+  batchSyncConversations,
+  syncPushedConversations,
+} from "@/services/syncService";
 
 const MIN_SYNC_INTERVAL = 30000; // 30 seconds between syncs
 
 /** The push the server sends after a conversation's list row (title, activity, unread, star) changed. */
 export const CONVERSATION_LIST_CHANGED_EVENT = "conversation.list_changed";
+
+/** The conversation a list push names; every push the server sends carries one. */
+function pushedConversationId(message: unknown): string {
+  const conversationId =
+    typeof message === "object" &&
+    message !== null &&
+    "conversation_id" in message
+      ? message.conversation_id
+      : undefined;
+  if (typeof conversationId !== "string") {
+    throw new Error(
+      `${CONVERSATION_LIST_CHANGED_EVENT} push without a conversation_id`,
+    );
+  }
+  return conversationId;
+}
 
 // Tiny Zustand store for reactive sync status
 interface SyncStatusState {
@@ -25,7 +44,7 @@ const useSyncStatusStore = create<SyncStatusState>((set) => ({
   setSyncError: (error) => set({ syncError: error }),
 }));
 
-/** Keep the local conversation cache in sync with the server while enabled: on mount, focus, reconnect and every list push. */
+/** Keep the local conversation cache in sync with the server while enabled: the list on mount, focus and reconnect, and each row a push names. */
 export const useBackgroundSync = (enabled: boolean) => {
   const lastSyncTimeRef = useRef(0);
   const initialSyncCompleted = useSyncStatusStore(
@@ -78,23 +97,26 @@ export const useBackgroundSync = (enabled: boolean) => {
     // Initial sync on mount
     runSync();
 
-    // A push is never throttled: it means the list changed now. Pushes that land
-    // while a sync runs coalesce into one more sync after it.
+    // A push is never throttled: it names the row that changed now, so only that
+    // row is synced. Pushes that land while a sync runs coalesce into one more sync after it.
+    const pushed = new Set<string>();
     let pushSync: Promise<void> | null = null;
-    let pushedDuringSync = false;
-    const handleListChanged = () => {
-      if (pushSync) {
-        pushedDuringSync = true;
-        return;
-      }
+    const handleListChanged = (message: unknown) => {
+      pushed.add(pushedConversationId(message));
+      if (pushSync) return;
       pushSync = (async () => {
-        do {
-          pushedDuringSync = false;
-          await batchSyncConversations({ background: true });
-        } while (pushedDuringSync && !cancelled);
-      })().finally(() => {
-        pushSync = null;
-      });
+        while (pushed.size > 0 && !cancelled) {
+          const conversationIds = [...pushed];
+          pushed.clear();
+          await syncPushedConversations(conversationIds, { background: true });
+        }
+      })()
+        .catch((err: unknown) => {
+          console.error("[BackgroundSync] Push sync failed:", err);
+        })
+        .finally(() => {
+          pushSync = null;
+        });
     };
 
     const handleVisibilityChange = () => {
