@@ -53,6 +53,13 @@ SWEEP_DUE_FILTER: dict[str, object] = {
     ]
 }
 SWEEP_INDEX_NAME = "conversation_sweep_due"
+_SWEEP_HEAD_FIELDS: dict[str, object] = {
+    "_id": 0,
+    "conversation_id": 1,
+    "user_id": 1,
+    OUTBOX_FIELD: 1,
+    STATE_FIELD: 1,
+}
 #: The fold of a log with no entries yet: what a head that stores no state holds.
 EMPTY_LOG_STATE = ConversationState(
     head=0,
@@ -207,14 +214,7 @@ class ConversationLogRepository(ConversationRepository):
         with store_errors("log sweep"):  # pragma: no mutate — error label
             cursor = self._raw_collection().find(
                 SWEEP_DUE_FILTER,
-                # Equivalent under mutation: any truthy flag projects the field.
-                {
-                    "_id": 0,
-                    "conversation_id": 1,
-                    "user_id": 1,
-                    OUTBOX_FIELD: 1,
-                    STATE_FIELD: 1,
-                },  # pragma: no mutate
+                _SWEEP_HEAD_FIELDS,
                 limit=limit,
                 hint=SWEEP_INDEX_NAME,
             )
@@ -226,14 +226,7 @@ class ConversationLogRepository(ConversationRepository):
         with store_errors("log live heads"):  # pragma: no mutate — error label
             cursor = self._raw_collection().find(
                 {"source": source, **SWEEP_DUE_FILTER},
-                # Equivalent under mutation: any truthy flag projects the field.
-                {
-                    "_id": 0,
-                    "conversation_id": 1,
-                    "user_id": 1,
-                    OUTBOX_FIELD: 1,
-                    STATE_FIELD: 1,
-                },  # pragma: no mutate
+                _SWEEP_HEAD_FIELDS,
                 limit=limit,
                 hint=SWEEP_INDEX_NAME,
             )
