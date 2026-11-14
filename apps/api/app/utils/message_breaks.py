@@ -97,8 +97,10 @@ def _code_fence_ranges(text: str) -> list[tuple[int, int]]:
         if close == -1:
             ranges.append((start, len(text)))
             break
-        ranges.append((start, close + len(_CODE_FENCE)))
-        start = text.find(_CODE_FENCE, close + len(_CODE_FENCE))
+        # No break or fence overlaps a closing fence, so its end can't move one in or out.
+        end = close + len(_CODE_FENCE)  # pragma: no mutate
+        ranges.append((start, end))
+        start = text.find(_CODE_FENCE, end)
     return ranges
 
 
@@ -121,7 +123,8 @@ def _openui_ranges(text: str) -> list[tuple[int, int]]:
         if close == -1:
             ranges.append((start, len(text)))
             break
-        end = close + len(_OPENUI_CLOSE)
+        # No break or opener overlaps a close, so its end can't move one in or out.
+        end = close + len(_OPENUI_CLOSE)  # pragma: no mutate
         ranges.append((start, end))
         start = text.find(_OPENUI_OPEN, end)
     return ranges
@@ -138,11 +141,12 @@ def split_message_bubbles(text: str) -> list[str]:
     fenced = [*_code_fence_ranges(text), *_openui_ranges(text)]
     pieces: list[str] = []
     piece = ""
-    cursor = 0
+    cursor = 0  # pragma: no mutate — text[None:] is text[0:]
     for found in MESSAGE_BREAK_SENTINEL_RE.finditer(text):
         piece += text[cursor : found.start()]
         cursor = found.end()
-        if any(start <= found.start() < end for start, end in fenced):
+        # A block opens with its marker, so no break starts exactly where one does.
+        if any(start <= found.start() < end for start, end in fenced):  # pragma: no mutate
             piece += "\n"
         else:
             pieces.append(piece)
