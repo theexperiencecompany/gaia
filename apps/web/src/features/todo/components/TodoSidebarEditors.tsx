@@ -35,7 +35,7 @@ export function TodoSidebarTitle({
           className: `mt-1 ${completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900 "}`,
         })}
       >
-        <Checkbox.Content className="w-[30vw]">
+        <Checkbox.Content>
           <Checkbox.Control>
             <Checkbox.Indicator />
           </Checkbox.Control>
