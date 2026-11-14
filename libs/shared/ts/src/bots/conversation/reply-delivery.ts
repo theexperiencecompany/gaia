@@ -69,6 +69,7 @@ export class ReplyDelivery {
   private async apply(event: DeliveryEvent): Promise<void> {
     const step = stepDelivery(this.state, event, this.config);
     this.state = step.state;
+    // react-doctor-disable-next-line async-await-in-loop -- delivery ops (send, pause, edit) are an ordered script
     for (const op of step.ops) await this.run(op);
   }
 

@@ -182,8 +182,8 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
     conversationId: string | null,
   ): LiveConversation<Send> =>
     useLiveConversationStore((state) =>
-      conversationId ? (state.conversations[conversationId] ?? empty) : empty,
-    );
+      conversationId ? state.conversations[conversationId] : undefined,
+    ) ?? empty;
 
   return { useLiveConversationStore, liveConversation, useLiveConversation };
 }

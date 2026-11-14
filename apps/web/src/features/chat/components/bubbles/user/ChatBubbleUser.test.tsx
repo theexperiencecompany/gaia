@@ -49,7 +49,7 @@ describe("ChatBubbleUser grouping", () => {
   });
 
   it("drops the avatar, tail and footer from a message followed by another", () => {
-    renderBubble({ isGroupedWithNext: true });
+    renderBubble({ grouping: { withPrev: false, withNext: true } });
     expect(screen.queryByTestId("user-avatar")).toBeNull();
     expect(screen.queryByTestId("user-footer")).toBeNull();
     expect(bubbleOf("whats 2+2")?.className).toContain(
@@ -58,12 +58,17 @@ describe("ChatBubbleUser grouping", () => {
   });
 
   it("sits tight under the message before it", () => {
-    const { container } = renderBubble({ isGroupedWithPrev: true });
+    const { container } = renderBubble({
+      grouping: { withPrev: true, withNext: false },
+    });
     expect((container.firstChild as HTMLElement).className).toContain("mt-1.5");
   });
 
   it("keeps the footer of a failed message inside a group, so Retry stays reachable", () => {
-    renderBubble({ isGroupedWithNext: true, failed: true });
+    renderBubble({
+      grouping: { withPrev: false, withNext: true },
+      failed: true,
+    });
     expect(screen.getByTestId("user-footer")).toBeTruthy();
   });
 });

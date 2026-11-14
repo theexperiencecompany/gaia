@@ -17,6 +17,7 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
   return (
     <button
       type="button"
+      aria-label={`Connect ${tool.displayName} to use ${formatToolName(tool.name)}`}
       className="group relative mx-2 mb-1 block w-full cursor-pointer text-left"
       onClick={onConnect}
     >
