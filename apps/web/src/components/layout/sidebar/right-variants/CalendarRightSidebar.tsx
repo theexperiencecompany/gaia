@@ -128,7 +128,12 @@ const EventDateTimeSection: React.FC<EventDateTimeSectionProps> = ({
   <>
     {/* All-day Toggle */}
     <Switch isSelected={isAllDay} onChange={onAllDayChange} size="sm">
-      <span className="text-sm text-zinc-500">All-day event</span>
+      <Switch.Content>
+        <Switch.Control>
+          <Switch.Thumb />
+        </Switch.Control>
+        <span className="text-sm text-zinc-500">All-day event</span>
+      </Switch.Content>
     </Switch>
 
     {/* Date & Time Section */}

@@ -1126,6 +1126,10 @@ V2_VARIANT_NAMES = [
         ),
         (_hero_component("<Checkbox />", "Checkbox"), "<Checkbox />: render its Checkbox.Control"),
         (
+            _hero_component("<Switch isSelected><span>All-day</span></Switch>", "Switch"),
+            "<Switch>: render its Switch.Control",
+        ),
+        (
             _hero_component(
                 '<Table.Header><Table.Column id="a">A</Table.Column></Table.Header>', "Table"
             ),
