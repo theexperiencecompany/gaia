@@ -434,7 +434,9 @@ export class ConversationFollower {
   /** The newest seq at or below which every item is on the platform; never behind the last record. */
   private deliveredThrough(): number {
     const { items } = this.view;
-    const owed = items.filter((item) => this.owes(item)).map(deliverySeq);
+    const owed = items.flatMap((item) =>
+      this.owes(item) ? [deliverySeq(item)] : [],
+    );
     const through =
       owed.length > 0
         ? Math.min(...owed) - 1

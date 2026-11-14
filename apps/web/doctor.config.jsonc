@@ -148,6 +148,13 @@
         "files": ["src/features/skills/components/SkillImportForm.tsx"],
         "rules": ["react-doctor/async-await-in-loop"]
       },
+      // The push-sync drain loop syncs one batch of pushed ids per pass and
+      // re-reads the set after each await: ids pushed while a sync runs join
+      // the next batch, so one row is never synced twice at once.
+      {
+        "files": ["src/hooks/useBackgroundSync.ts"],
+        "rules": ["react-doctor/async-await-in-loop"]
+      },
       // setToolOverride responses each return the WHOLE preferences doc —
       // parallel writes let the last-to-land response overwrite the cache with
       // a pre-sibling snapshot. Sequential awaits are load-bearing
