@@ -404,7 +404,7 @@ async def test_cross_conversation_reads_see_flushed_and_outbox_entries(
 
 
 async def test_a_bounded_cross_conversation_read_takes_at_most_its_limit_from_the_collection(
-    repo: ConversationRepository, held: _HeldFlushes
+    repo: ConversationRepository, held: HeldFlushes
 ) -> None:
     uid = f"u-{uuid.uuid4().hex}"
     cid = await _chat(repo, uid)

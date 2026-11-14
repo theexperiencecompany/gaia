@@ -42,10 +42,11 @@ from app.agents.prompts.delegation_prompts import (
 from app.constants.agents import AgentTag
 from app.constants.hil import SUBAGENT_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
+from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, RunningSubagent, SubagentKind
 from app.models.chat_models import MessageModel, ToolDataEntry
-from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus, HilInterruptPayload
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
 from shared.py.wide_events import log
@@ -81,14 +82,14 @@ LIVE: AgentConfigurable = {
 }
 
 
-def _delegation(parent: AgentConfigurable | None = None, **ctx_overrides: Any) -> Delegation:
-    parent = dict(parent if parent is not None else LIVE)
-    configurable = {**parent, "thread_id": THREAD, **ctx_overrides}
+def _delegation(parent: AgentConfigurable | None = None) -> Delegation:
+    parent = parent if parent is not None else LIVE
+    configurable: AgentConfigurable = {**parent, "thread_id": THREAD}
     return Delegation(
         ctx=SubagentExecutionContext(
             subagent_graph=MagicMock(),
             agent_name="spawned_subagent",
-            config={"configurable": dict(configurable)},
+            config={"configurable": {**configurable}, "agent_name": "spawned_subagent"},
             configurable=configurable,
             integration_id="spawn",
             initial_state={},
@@ -131,7 +132,7 @@ def client_edges() -> Iterator[SimpleNamespace]:
 
     with (
         patch.object(executor_queue, "StreamManager", AsyncMock()) as stream_manager,
-        patch.object(executor_queue.websocket_manager, "broadcast_to_user", new=_broadcast),
+        patch.object(websocket_manager, "broadcast_to_user", new=_broadcast),
         patch(f"{FOLDED_CARDS}.conversation_repository") as conversations,
         patch(f"{MODULE}.stream_manager") as streams,
         patch(f"{FOLDED}.stream_manager", new=streams),
@@ -309,7 +310,7 @@ class TestABlockingRun:
                 ),
             )
 
-        parent = {**LIVE, "workflow_id": "wf-1", "execution_mode": "background"}
+        parent: AgentConfigurable = {**LIVE, "workflow_id": "wf-1", "execution_mode": "background"}
         with _blocking(
             [_outcome("", "a@b.c", paused=True), _outcome("both sent", "d@e.f", paused=False)]
         ):
@@ -677,7 +678,7 @@ class TestWhatTheExecutorIsTold:
                 ToolMessage(content="ok", tool_call_id="t1"),
             ),
         )
-        parent = {**LIVE, "workflow_id": "wf-1"}
+        parent: AgentConfigurable = {**LIVE, "workflow_id": "wf-1"}
         with patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(return_value=outcome)):
             await delegate(_delegation(parent), background=True, probe_parked=False)
             await _drain()
@@ -998,10 +999,13 @@ class TestABackgroundRunsStreamLifecycle:
         assert conversations.append_message_tool_data.await_args.kwargs["user_id"] == ""
 
 
-GROUP = {"tool_name": "subagent_group", "data": {"subagent_id": "row-1", "tool_calls": []}}
-HELD_CARD = {"tool_name": "approval_request", "data": {"approval_id": "appr-1"}}
-NEW_CARD = {"tool_name": "approval_request", "data": {"approval_id": "appr-2"}}
-SEARCH = {"tool_name": "search", "data": {"q": "x"}}
+GROUP: ToolDataEntry = {
+    "tool_name": "subagent_group",
+    "data": {"subagent_id": "row-1", "tool_calls": []},
+}
+HELD_CARD: ToolDataEntry = {"tool_name": "approval_request", "data": {"approval_id": "appr-1"}}
+NEW_CARD: ToolDataEntry = {"tool_name": "approval_request", "data": {"approval_id": "appr-2"}}
+SEARCH: ToolDataEntry = {"tool_name": "search", "data": {"q": "x"}}
 
 
 class TestSavingABackgroundRunsFrames:
@@ -1050,7 +1054,8 @@ class TestSavingABackgroundRunsFrames:
     async def test_a_run_with_no_message_to_fold_into_saves_nothing_and_says_so(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
     ) -> None:
-        parent = {k: v for k, v in LIVE.items() if k != "bot_message_id"}
+        parent: AgentConfigurable = {**LIVE}
+        del parent["bot_message_id"]
 
         await self._run([GROUP, SEARCH], parent)
 
@@ -1119,7 +1124,7 @@ class TestSavingABackgroundRunsFrames:
 class TestWhatAParkedRunSays:
     @staticmethod
     async def _park(
-        interrupt: dict[str, Any], *records: HILApprovalRecord
+        interrupt: HilInterruptPayload, *records: HILApprovalRecord
     ) -> tuple[AsyncMock, AsyncMock]:
         execute = AsyncMock(
             side_effect=[
