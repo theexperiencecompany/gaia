@@ -830,7 +830,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 match,
                 excluding=excluding,
                 heads_collection=self._raw_collection().name,
-                limit=limit,  # pragma: no mutate — limit only bounds a read whose callers ask whether one exists
+                limit=limit,
             )
             rows = await (
                 self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
