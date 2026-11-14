@@ -318,7 +318,6 @@ class GmailMessageView(BaseModel):
     snippet: str
     time: str
     is_read: bool = Field(serialization_alias="isRead")
-    has_attachment: bool = Field(serialization_alias="hasAttachment")
     attachments: list[GmailAttachmentMetadata]
     labels: list[str]
     cc: str

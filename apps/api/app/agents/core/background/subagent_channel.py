@@ -90,7 +90,10 @@ async def drain_subagent_inbox_hook(
         if not thread_id:
             log.warning(f"{LogTag.AGENT} drain_subagent_inbox_hook: run carries no thread_id")
             return state
-        return await apply_drain(SubagentInbox(thread_id), state, log_key="subagent_inbox_injected")
+        drained, _ = await apply_drain(
+            SubagentInbox(thread_id), state, log_key="subagent_inbox_injected"
+        )
+        return drained
     except Exception as e:  # reading the mailbox must never break the subagent's turn
         log.error(f"{LogTag.AGENT} drain_subagent_inbox_hook failed", error_type=type(e).__name__)
         return state
