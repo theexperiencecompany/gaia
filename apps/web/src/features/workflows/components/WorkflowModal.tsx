@@ -182,6 +182,7 @@ export default function WorkflowModal({
     triggerSchemas,
     hasPredefinedSteps,
     predefinedSteps,
+    draftId: draftData?.draft_id,
     createAndSend,
     onWorkflowSaved,
     onWorkflowDeleted,

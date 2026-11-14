@@ -8,6 +8,7 @@ from pymongo.errors import PyMongoError
 import pytest
 
 from app.constants.log_tags import LogTag
+from app.constants.waits import WaitCondition
 from app.services.integrations.user_integration_status import (
     publish_connected,
     reconnect_or_unknown,
@@ -57,6 +58,7 @@ class TestPublishConnected:
             patch(f"{MODULE}.schedule_user_integrations_sync", MagicMock()),
             patch(f"{MODULE}.queue_scout_learn", AsyncMock(side_effect=ConnectionError("down"))),
             patch(f"{MODULE}.websocket_manager.broadcast_to_user", broadcast),
+            patch(f"{MODULE}.report_wait_met", AsyncMock()),
             patch(f"{MODULE}.log") as log,
         ):
             await publish_connected("user-1", "linear")
@@ -75,7 +77,19 @@ class TestPublishConnected:
             patch(f"{MODULE}.schedule_user_integrations_sync", MagicMock()),
             patch(f"{MODULE}.queue_scout_learn", queue),
             patch(f"{MODULE}.websocket_manager.broadcast_to_user", AsyncMock()),
+            patch(f"{MODULE}.report_wait_met", AsyncMock()),
         ):
             await publish_connected("user-1", "linear")
 
         queue.assert_awaited_once_with("user-1", "linear")
+
+    async def test_a_connect_meets_everything_waiting_on_that_integration(self) -> None:
+        with (
+            patch(f"{MODULE}.schedule_user_integrations_sync"),
+            patch(f"{MODULE}.queue_scout_learn", AsyncMock()),
+            patch(f"{MODULE}.websocket_manager.broadcast_to_user", AsyncMock()),
+            patch(f"{MODULE}.report_wait_met", AsyncMock()) as report,
+        ):
+            await publish_connected("user-1", "gmail")
+
+        report.assert_awaited_once_with("user-1", WaitCondition.INTEGRATION_CONNECTED, "gmail")
