@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { APPROVAL_COPY } from "../src/features/chat/constants/approvalCopy";
 import {
   firstShownAt,
   loadingGaps,
@@ -444,30 +445,35 @@ test.describe("screen over time — approvals", () => {
   async function askForApproval(page: Page, title: string, reply: string) {
     await openNewChat(page);
     await sendAndOpen(page, `${todo(title)} [[say:${reply}]]`);
-    const card = page.getByText("Needs approval").first();
+    const card = page.getByText(APPROVAL_COPY.needsApproval).first();
     await expect(card).toBeVisible({ timeout: TURN_MS });
     await expectScreenOnlyGrew(page);
   }
 
   test("approving runs the call in the same work section", async ({ page }) => {
     await askForApproval(page, "ap-1", "Approved and added.");
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await page
+      .getByRole("button", { name: APPROVAL_COPY.approve, exact: true })
+      .click();
     const live = await finish(page, "Approved and added.");
     expect(
       toolSections(live),
       "the approved call joins its work, not a new section",
     ).toBe(1);
-    expect(botLinesReading(live, "Needs approval"), "the card resolved").toBe(
-      0,
-    );
+    expect(
+      botLinesReading(live, APPROVAL_COPY.needsApproval),
+      "the card resolved",
+    ).toBe(0);
   });
 
   test("denying leaves the call unrun and the card resolved", async ({
     page,
   }) => {
     await askForApproval(page, "dn-1", "Not added.");
-    await page.getByRole("button", { name: "Deny", exact: true }).click();
-    await expect(page.getByText("Needs approval")).toHaveCount(0, {
+    await page
+      .getByRole("button", { name: APPROVAL_COPY.deny, exact: true })
+      .click();
+    await expect(page.getByText(APPROVAL_COPY.needsApproval)).toHaveCount(0, {
       timeout: TURN_MS,
     });
     const live = await settledScreen(page, "Not added.", TURN_MS);
@@ -482,7 +488,7 @@ test.describe("screen over time — approvals", () => {
     test.setTimeout(SWEEP_MS + 3 * TURN_MS);
     await askForApproval(page, "ex-1", "Expired.");
     backdateApproval(conversationIdOf(page.url()));
-    await expect(page.getByText("Needs approval")).toHaveCount(0, {
+    await expect(page.getByText(APPROVAL_COPY.needsApproval)).toHaveCount(0, {
       timeout: SWEEP_MS,
     });
     await expect(page.getByText("Expired").first()).toBeVisible();
@@ -499,11 +505,15 @@ test.describe("screen over time — approvals", () => {
     await askForApproval(first, "tw-1", "Decided elsewhere.");
     await recordScreen(second);
     await second.goto(first.url());
-    await expect(second.getByText("Needs approval").first()).toBeVisible({
+    await expect(
+      second.getByText(APPROVAL_COPY.needsApproval).first(),
+    ).toBeVisible({
       timeout: TURN_MS,
     });
-    await first.getByRole("button", { name: "Approve", exact: true }).click();
-    await expect(second.getByText("Needs approval")).toHaveCount(0, {
+    await first
+      .getByRole("button", { name: APPROVAL_COPY.approve, exact: true })
+      .click();
+    await expect(second.getByText(APPROVAL_COPY.needsApproval)).toHaveCount(0, {
       timeout: TURN_MS,
     });
     const onFirst = await settledScreen(first, "Decided elsewhere.", TURN_MS);
