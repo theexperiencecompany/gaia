@@ -24,6 +24,7 @@ import re
 from types import SimpleNamespace
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from arq.connections import ArqRedis
@@ -95,6 +96,7 @@ from app.models.conversation_log_models import TodoReportForm
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationType,
+    notification_id,
 )
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.scheduler_models import DeactivationReason
@@ -3579,6 +3581,16 @@ class TestExecuteOnExecutor:
         assert "Canvas (canvas.md):\n## Current State\nall good" in request.task
         assert "Recent activity (activity.md):\n- earlier run" in request.task
 
+    async def test_each_run_of_a_todo_gets_its_own_run_id(self):
+        await self._execute()
+        first = self._request().todo_run.run_id
+        await self._execute()
+        second = self._request().todo_run.run_id
+
+        assert first != second
+        assert str(UUID(first)) == first
+        assert str(UUID(second)) == second
+
     @pytest.mark.parametrize(
         ("fields", "runs_once"),
         [
@@ -3830,13 +3842,18 @@ class TestMarkTodoFailed:
             patch(f"{MODULE}.notification_service.notify", notify),
             patch(f"{MODULE}.teardown_subscriptions", teardown),
         ):
-            await _mark_todo_failed("todo-1", OWNER_ID, _doc(title="Nightly backup"))
+            doc = _doc(title="Nightly backup", scheduled_at=datetime(2026, 11, 14, 8, tzinfo=UTC))
+            await _mark_todo_failed("todo-1", OWNER_ID, doc)
 
         repo.add_labels.assert_awaited_once_with("todo-1", user_id=OWNER_ID, labels=[FAILED_LABEL])
         # A failed todo is skipped by the execution path until a manual reset, so
         # leaving its subscriptions armed would burn events on a todo that cannot run.
         teardown.assert_awaited_once_with("todo-1", OWNER_ID, reason="failed")
         request = notify.await_args.args[0]
+        # One id per failed occurrence: a retried job tells the user once.
+        assert request.id == notification_id(
+            OWNER_ID, "todo_run_failed", "todo-1", "2026-11-14 08:00:00+00:00"
+        )
         assert request.user_id == OWNER_ID
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
         assert request.type == NotificationType.ERROR

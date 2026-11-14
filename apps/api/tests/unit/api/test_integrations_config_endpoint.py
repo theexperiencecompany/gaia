@@ -15,6 +15,7 @@ import pytest
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.integrations import NOT_SET_UP_ON_INSTANCE
+from app.constants.log_tags import LogTag
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.schemas.integrations.responses import ConnectIntegrationResponse
 from app.services.composio.error_detail import AuthConfigNotFoundError
@@ -25,6 +26,7 @@ from shared.py.analytics.catalog.integrations import (
     IntegrationConnectInitiated,
     IntegrationDisconnected,
 )
+from tests.conftest import FAKE_USER
 from tests.factories import make_authenticated_user
 
 API = "/api/v1/integrations"
@@ -635,6 +637,7 @@ class TestConnectIntegration:
             patch(f"{_SERVICE}.create_oauth_state", new_callable=AsyncMock, return_value="st"),
             patch(f"{_SERVICE}.update_user_integration_status", new_callable=AsyncMock),
             patch(f"{_SERVICE}.get_composio_service", return_value=composio),
+            patch(f"{_SERVICE}.log") as mock_log,
         ):
             resp = await client.post(
                 f"{API}/connect/gmail",
@@ -642,6 +645,13 @@ class TestConnectIntegration:
             )
         assert resp.status_code == 200
         assert resp.json() == _error_body("gmail", "Gmail", f"Gmail {NOT_SET_UP_ON_INSTANCE}")
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.INTEGRATION} Integration has no auth config in this Composio project",
+            integration_id="gmail",
+            auth_config_id="ac_1",
+            user_id=FAKE_USER.user_id,
+        )
+        mock_log.set.assert_any_call(integration={"id": "gmail", "status": "not_set_up"})
 
     async def test_connect_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.post(

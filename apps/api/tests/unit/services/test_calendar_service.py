@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from fastapi import HTTPException
 import pytest
 
+from app.constants.calendar import CALENDAR_CHANGED_EVENT
 from app.models.calendar_models import (
     CalendarEventDisplay,
     CalendarPreferencesDocument,
@@ -57,12 +58,15 @@ PROXY_PATH = "app.services.calendar_service.proxy_request"
 
 
 @pytest.fixture
-def mock_proxy() -> Iterator[AsyncMock]:
-    # A write announces the calendar change over the socket broadcast.
-    with (
-        patch(PROXY_PATH, new_callable=AsyncMock) as proxy,
-        patch("app.services.calendar_service.websocket_manager", announce=AsyncMock()),
-    ):
+def announced() -> Iterator[AsyncMock]:
+    """Record the socket announce a write to Google makes to the user's open clients."""
+    with patch("app.services.calendar_service.websocket_manager.announce", AsyncMock()) as announce:
+        yield announce
+
+
+@pytest.fixture
+def mock_proxy(announced: AsyncMock) -> Iterator[AsyncMock]:
+    with patch(PROXY_PATH, new_callable=AsyncMock) as proxy:
         proxy.return_value = {}
         yield proxy
 
@@ -175,6 +179,11 @@ class TestListCalendars:
         assert request.endpoint.endswith("/users/me/calendarList")
         assert request.method == "GET"
         assert request.user_id == USER_ID
+
+    async def test_a_read_announces_nothing(self, mock_proxy, announced):
+        mock_proxy.return_value = {"items": []}
+        await list_calendars(USER_ID)
+        announced.assert_not_awaited()
 
     async def test_short_format_returns_subset(self, mock_proxy):
         mock_proxy.return_value = {
@@ -459,6 +468,13 @@ class TestDeleteCalendarEvent:
         request = mock_proxy.call_args.args[0]
         assert request.method == "DELETE"
         assert request.endpoint.endswith("/calendars/primary/events/evt-1")
+
+    async def test_a_delete_tells_the_users_open_clients_to_re_read(self, mock_proxy, announced):
+        mock_proxy.return_value = None
+        await delete_calendar_event(
+            EventDeleteRequest(event_id="evt-1", calendar_id="primary"), USER_ID
+        )
+        announced.assert_awaited_once_with(USER_ID, {"type": CALENDAR_CHANGED_EVENT})
 
     async def test_404_raises_clean_message(self, mock_proxy):
         mock_proxy.side_effect = _http_error(404)

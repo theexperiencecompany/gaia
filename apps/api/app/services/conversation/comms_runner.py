@@ -96,7 +96,7 @@ class CommsGraphRun:
         self._confirm = cancel_confirm_seconds
         self._out: asyncio.Queue[RunEvent | Exception] = asyncio.Queue()
         self._wanted: asyncio.Queue[None] = asyncio.Queue()
-        self._sealed = False
+        self._sealed = False  # pragma: no mutate — only read as `if self._sealed`
         open_feed(self._run_id)
         self.task = asyncio.create_task(self._drive(state))
 
@@ -255,7 +255,8 @@ async def reframed_messages(claim: StepClaim, entries: Sequence[LoggedEntry]) ->
     ]
     scope = MessageScope(user_id=claim.user_id, conversation_id=claim.conversation_id)
     contents = await asyncio.gather(*(human_content(scope, *_framing(entry)) for entry in reframed))
-    return {entry.id: content for entry, content in zip(reframed, contents, strict=True)}
+    pairs = zip(reframed, contents, strict=True)  # pragma: no mutate — one result per input
+    return {entry.id: content for entry, content in pairs}
 
 
 def _framing(entry: UserMessage | WorkflowFired) -> tuple[MessageAttachments, str]:

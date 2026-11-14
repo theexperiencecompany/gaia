@@ -109,6 +109,32 @@ class TestSplitMessageBubbles:
         text = ":::openui\nA\n:::openui\nB<NEW_MESSAGE_BREAK>C\n:::<NEW_MESSAGE_BREAK>after"
         assert split_message_bubbles(text)[-1] == "after"
 
+    def test_every_code_block_keeps_its_breaks_and_the_text_between_still_splits(self) -> None:
+        text = (
+            "```a<NEW_MESSAGE_BREAK>b```<NEW_MESSAGE_BREAK>mid<NEW_MESSAGE_BREAK>"
+            "```c<NEW_MESSAGE_BREAK>d```<NEW_MESSAGE_BREAK>end"
+        )
+        assert split_message_bubbles(text) == ["```a\nb```", "mid", "```c\nd```", "end"]
+
+    def test_every_openui_block_keeps_its_breaks_and_the_text_between_still_splits(self) -> None:
+        text = (
+            ":::openui\nA<NEW_MESSAGE_BREAK>B\n:::<NEW_MESSAGE_BREAK>mid<NEW_MESSAGE_BREAK>"
+            ":::openui\nC<NEW_MESSAGE_BREAK>D\n:::<NEW_MESSAGE_BREAK>end"
+        )
+        assert split_message_bubbles(text) == [
+            ":::openui\nA\nB\n:::",
+            "mid",
+            ":::openui\nC\nD\n:::",
+            "end",
+        ]
+
+    def test_a_break_inside_an_unclosed_openui_block_never_splits(self) -> None:
+        assert split_message_bubbles(":::openui\nA<NEW_MESSAGE_BREAK>B") == [":::openui\nA\nB"]
+
+    def test_a_reopening_marker_inside_a_block_does_not_close_it(self) -> None:
+        text = ":::openui\nA\n:::openui\nB\n:::<NEW_MESSAGE_BREAK>C\n:::<NEW_MESSAGE_BREAK>after"
+        assert split_message_bubbles(text) == [":::openui\nA\n:::openui\nB\n:::", "C\n:::", "after"]
+
 
 class TestPrefixBuilders:
     """_word_prefixes/_partial_sequence build module-level constants at import time, so only direct calls catch a mutation."""

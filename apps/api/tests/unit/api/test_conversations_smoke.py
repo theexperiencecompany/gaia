@@ -68,6 +68,9 @@ class TestCreateConversation:
             user={"id": FAKE_USER.user_id},
             conversation={"operation": "create", "is_new": True},
         )
+        mock_log.set.assert_any_call(
+            conversation={"operation": "create", "is_new": True, "id": "conv_123"}
+        )
 
     async def test_create_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.post(
@@ -102,6 +105,9 @@ class TestListConversations:
         mock_log.set.assert_any_call(
             user={"id": FAKE_USER.user_id},
             conversation={"operation": "list", "page": 1, "limit": 10},
+        )
+        mock_log.set.assert_any_call(
+            conversation={"operation": "list", "page": 1, "limit": 10, "total_returned": 0}
         )
 
     async def test_list_with_pagination(self, client: AsyncClient):

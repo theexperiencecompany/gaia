@@ -282,7 +282,7 @@ async def _execute_on_own_stream(
         stream_id, conversation_id=delegation.conversation_id, user_id=ctx.user_id or ""
     ):
         # A Stop landed before the run could start: it is as stopped as one the user ended mid-run.
-        return SubagentOutcome(text="", stopped=True)
+        return SubagentOutcome(text="", stopped=True)  # pragma: no mutate — unread when stopped
     ctx.stream_id = stream_id
     ctx.parent_stream_id = parent_stream_id
     for configurable in (ctx.configurable, ctx.config.setdefault("configurable", {})):

@@ -24,6 +24,7 @@ from app.constants.memory import (
 from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import Entry, Notice, Reply, UserMessage
 from app.models.conversation_models import StoredConversation
+from app.models.notification.notification_models import notification_id
 from app.models.user_models import UserDocument
 from app.workers.tasks.memory_backfill_tasks import (
     _conversation_date,
@@ -340,6 +341,8 @@ class TestNotifyMemoryReady:
             await _notify_memory_ready(USER_ID)
 
         (request,) = create.await_args.args
+        # One id per user: a re-run backfill never tells them twice.
+        assert request.id == notification_id(USER_ID, "memory_ready", USER_ID)
         assert request.user_id == USER_ID
         assert request.metadata == {"source": "memory_backfill"}
         (action,) = request.content.actions

@@ -114,8 +114,7 @@ async def build_playbook_tool_data(
         )
         if entry is None:
             continue
-        if call.subagent_id:
-            entry["subagent_id"] = call.subagent_id
+        # No subagent group opens on a replay, so a call tagged with its subagent would fold away.
         payloads.extend((ToolDataEvent(tool_data=entry), _output(call_id, call.result_digest)))
     return list(fold_cards(payloads).tool_data)
 

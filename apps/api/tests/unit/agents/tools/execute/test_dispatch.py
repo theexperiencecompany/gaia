@@ -27,6 +27,7 @@ from app.agents.tools.execute.dispatch import (
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.config.oauth_config import get_integration_by_id
 from app.constants.integrations import ConnectMode
+from app.constants.log_tags import LogTag
 from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from shared.py.analytics import UserId
@@ -237,16 +238,23 @@ class TestAccountChoice:
             f"{MODULE}.resolve_tool",
             new=AsyncMock(return_value=ResolvedTool(tool.name, tool, is_integration=False)),
         ):
-            result = await dispatch_tool(
-                user_id=USER_ID,
-                tool_name="todo_create",
-                data={"recipient": "a@b.c", "subject": "hi"},
-                config=CONFIG,
-                account="work",
-            )
+            async with captured_wide_event() as event:
+                result = await dispatch_tool(
+                    user_id=USER_ID,
+                    tool_name="todo_create",
+                    data={"recipient": "a@b.c", "subject": "hi"},
+                    config=CONFIG,
+                    account="work",
+                )
 
         assert result.ok is True
         assert result.error is None
+        assert event["warnings"] == [
+            {
+                "msg": f"{LogTag.TOOL} execute: account ignored, tool has no accounts",
+                "tool_name": "todo_create",
+            }
+        ]
         tool.ainvoke.assert_awaited_once()
         assert "composio_account" not in (
             tool.ainvoke.await_args.kwargs["config"].get("metadata") or {}

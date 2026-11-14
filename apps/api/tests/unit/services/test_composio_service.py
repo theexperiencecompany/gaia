@@ -17,7 +17,10 @@ from app.constants.integrations import (
     GMAIL_INTEGRATION_ID,
 )
 from app.services.composio import auth_config_resolver
-from app.services.composio.error_detail import AuthConfigNotFoundError
+from app.services.composio.error_detail import (
+    AuthConfigNotFoundError,
+    is_auth_config_not_found,
+)
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.utils.exceptions import ProviderNotConfiguredError
 from shared.py.wide_events import log
@@ -1011,3 +1014,35 @@ class TestRegisterGmailCustomTools:
 # Behavior tests for MARK_AS_READ/STAR_EMAIL/GET_UNREAD_COUNT/GET_CONTACT_LIST
 # live in test_composio_gmail_tools.py. Removed here: they duplicated
 # production logic inline, giving false confidence.
+
+
+def _not_found(message: str, slug: str | None) -> composio_client.NotFoundError:
+    request = httpx.Request("POST", "https://backend.composio.dev/api/v3/connected_accounts/link")
+    body = {"error": {"slug": slug}} if slug is not None else {}
+    return composio_client.NotFoundError(
+        message, response=httpx.Response(404, request=request), body=body
+    )
+
+
+class TestIsAuthConfigNotFound:
+    @pytest.mark.parametrize(
+        ("error", "expected"),
+        [
+            (_not_found("Auth_Config_NotFound: no such config", None), True),
+            (_not_found("Not found", "Auth_Config_NotFound"), True),
+            (_not_found("Not found", "Connected_Account_NotFound"), False),
+            (RuntimeError("Auth_Config_NotFound"), False),
+        ],
+        ids=["slug-in-message", "slug-in-body", "another-404", "not-a-composio-404"],
+    )
+    def test_only_a_404_naming_the_auth_config_is_one(
+        self, error: Exception, expected: bool
+    ) -> None:
+        assert is_auth_config_not_found(error) is expected
+
+    def test_the_error_names_the_integration_and_its_config(self) -> None:
+        error = AuthConfigNotFoundError("Gmail", "ac_1")
+        assert (error.integration_name, error.auth_config_id) == ("Gmail", "ac_1")
+        assert str(error) == (
+            "Gmail is not set up for this Composio project: auth config ac_1 does not exist there"
+        )

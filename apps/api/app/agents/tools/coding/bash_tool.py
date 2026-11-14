@@ -525,7 +525,8 @@ async def _publish_artifacts(sbx: object, session_id: str) -> None:
         return
 
     # What follows the last NUL is never a field; a partial trailing record means find was cut short.
-    fields = (getattr(res, "stdout", "") or "").split("\0")[:-1]
+    stdout = getattr(res, "stdout", "") or ""  # pragma: no mutate — NUL-free text holds no field
+    fields = stdout.split("\0")[:-1]
     for i in range(0, len(fields) - (len(fields) % 3), 3):
         rel, size_str, mtime_str = fields[i : i + 3]
         if not rel:
