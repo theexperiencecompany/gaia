@@ -107,7 +107,7 @@ class TestSplitMessageBubbles:
 
     def test_a_nested_openui_block_keeps_its_outer_block_whole(self) -> None:
         text = ":::openui\nA\n:::openui\nB<NEW_MESSAGE_BREAK>C\n:::<NEW_MESSAGE_BREAK>after"
-        assert split_message_bubbles(text)[-1] == "after"
+        assert split_message_bubbles(text) == [":::openui\nA\n:::openui\nB\nC\n:::", "after"]
 
     def test_every_code_block_keeps_its_breaks_and_the_text_between_still_splits(self) -> None:
         text = (
@@ -131,9 +131,16 @@ class TestSplitMessageBubbles:
     def test_a_break_inside_an_unclosed_openui_block_never_splits(self) -> None:
         assert split_message_bubbles(":::openui\nA<NEW_MESSAGE_BREAK>B") == [":::openui\nA\nB"]
 
-    def test_a_reopening_marker_inside_a_block_does_not_close_it(self) -> None:
-        text = ":::openui\nA\n:::openui\nB\n:::<NEW_MESSAGE_BREAK>C\n:::<NEW_MESSAGE_BREAK>after"
-        assert split_message_bubbles(text) == [":::openui\nA\n:::openui\nB\n:::", "C\n:::", "after"]
+    def test_a_third_openui_block_is_found_after_the_second(self) -> None:
+        text = (
+            ":::openui\nA\n:::<NEW_MESSAGE_BREAK>:::openui\nB<NEW_MESSAGE_BREAK>C\n:::"
+            "<NEW_MESSAGE_BREAK>:::openui\nD\n:::"
+        )
+        assert split_message_bubbles(text) == [
+            ":::openui\nA\n:::",
+            ":::openui\nB\nC\n:::",
+            ":::openui\nD\n:::",
+        ]
 
 
 class TestPrefixBuilders:
