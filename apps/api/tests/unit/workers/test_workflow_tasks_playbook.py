@@ -240,6 +240,10 @@ class _Harness:
                 self.completion_notification,
             ),
             patch(f"{COMPLETION}.pending_brief_items_repository.create", self.brief_create),
+            patch(
+                f"{MODULE}.workflow_repository.find_system_workflow",
+                AsyncMock(return_value=MagicMock(activated=True)),
+            ),
             patch(f"{MODULE}.enforce_tiered_limit", self.tiered_limit),
             patch(f"{MODULE}.get_or_create_workflow_conversation", self.conversation),
             patch(f"{MODULE}.try_acquire_lock", self.acquire),

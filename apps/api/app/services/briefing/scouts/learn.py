@@ -1,7 +1,7 @@
 """A scout's learn run: a cheap read-only agent finds what needs the user, then its calls freeze.
 
-The run is bounded by steps and wall clock, books its spend to the scout tally, and runs
-read-only: the HIL gate refuses any tool not classified read-only. Its
+The run is bounded by steps and wall clock, books its spend to its reserved slice of the
+scout tally, and runs read-only: the HIL gate refuses any tool not classified read-only. Its
 report names the calls that answered, where their results hold items, and the criteria
 replayed items are judged by; the calls are checked by the playbook validator against
 the run's own record, then replayed once with no model so a freeze is known to work.
@@ -53,7 +53,11 @@ class Learned:
 
 
 async def _run_agent(
-    user_id: str, integration: ScoutIntegration, tools: dict[str, BaseTool], prompt: str
+    user_id: str,
+    integration: ScoutIntegration,
+    tools: dict[str, BaseTool],
+    prompt: str,
+    spend: ScoutSpend,
 ) -> tuple[str, list[LearnCall]]:
     """Run the read-only agent; return its final text and the calls it made."""
     configurable: AgentConfigurable = {
@@ -71,9 +75,7 @@ async def _run_agent(
             [HumanMessage(content=prompt)],
             agent_name=SCOUT_AGENT_NAME,
             configurable=configurable,
-            accounting=AccountingOptions(
-                recursion_limit=SCOUT_LEARN_RECURSION_LIMIT, ledger=ScoutSpend(user_id)
-            ),
+            accounting=AccountingOptions(recursion_limit=SCOUT_LEARN_RECURSION_LIMIT, ledger=spend),
         )
     return messages[-1].text, learn_calls(messages)
 
@@ -153,9 +155,13 @@ async def _freeze_problem(
 
 
 async def learn_scout(
-    user: PlaybookUser, user_id: str, integration: ScoutIntegration, tools: ScoutTools
+    user: PlaybookUser,
+    user_id: str,
+    integration: ScoutIntegration,
+    tools: ScoutTools,
+    spend: ScoutSpend,
 ) -> Learned:
-    """Run the learn agent for one integration; raise when it could not report at all."""
+    """Run the learn agent for one integration on its reserved spend; raise when it could not report."""
     bound = await bound_tools(tools)
     now = datetime.now(UTC)
     prompt = SCOUT_LEARN_PROMPT.format(
@@ -163,7 +169,7 @@ async def learn_scout(
         today=Timezone.parse(user.timezone).localize(now).date().isoformat(),
         timezone=user.timezone,
     )
-    text, calls = await _run_agent(user_id, integration, bound, prompt)
+    text, calls = await _run_agent(user_id, integration, bound, prompt, spend)
     report = _parse_report(text, integration)
     signals = [
         Signal(integration_id=integration.integration_id, app=integration.name, **s.model_dump())

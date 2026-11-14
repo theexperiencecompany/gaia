@@ -145,7 +145,9 @@ class ScoutDocument(UserScopedDocument):
 
     tool_fingerprint is the integration's tool list when the scout learned; a different
     list means the frozen calls may no longer exist, so the scout learns again. A failed
-    learn leaves a LEARN_FAILED scout that waits until next_learn_at, unless the tools change.
+    learn waits until next_learn_at, unless the tools change: a working scout keeps its
+    frozen calls meanwhile, any other is left LEARN_FAILED. failed_replays counts briefs in
+    a row its app did not answer.
     """
 
     integration_id: str
@@ -158,6 +160,7 @@ class ScoutDocument(UserScopedDocument):
     learned_at: datetime
     failed_learns: int = 0
     next_learn_at: datetime | None = None
+    failed_replays: int = 0
 
 
 class ScoutUpdate(BaseModel):
@@ -182,6 +185,8 @@ class ScoutSkipReason(StrEnum):
     BUDGET = "budget"
     #: Learning failed recently; the scout waits out its backoff before learning again.
     BACKOFF = "backoff"
+    #: The app did not answer the frozen calls; the scout keeps them for the next brief.
+    SOURCE_FAILED = "source_failed"
     #: No tool of the integration is classified read-only, so a scout may call none.
     NO_READ_ONLY_TOOLS = "no_read_only_tools"
     #: The connection record names an integration that no longer exists.

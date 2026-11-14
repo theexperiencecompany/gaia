@@ -23,6 +23,7 @@ from app.models.workflow_models import (
     Workflow,
     WorkflowStep,
 )
+from app.services.briefing.service import BriefingGenerationError
 from app.workers.tasks.workflow_tasks import _run_briefing_workflow, execute_workflow_by_id
 
 MODULE = "app.workers.tasks.workflow_tasks"
@@ -198,3 +199,40 @@ class TestTheFireTakesTheBriefingPath:
         harness.chat.assert_awaited_once()
         pipelines.daily.assert_not_awaited()
         pipelines.weekly.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestAFailedBrief:
+    """A failed brief told the user "Workflow Failed: Daily brief" for a workflow they never see."""
+
+    async def _fail(
+        self, workflow: Workflow, pipelines: _Pipelines
+    ) -> tuple[_FireHarness, AsyncMock]:
+        pipelines.daily.side_effect = BriefingGenerationError("the prose contradicts its items")
+        harness = _FireHarness(workflow)
+        harness.chat.side_effect = RuntimeError("the chat turn broke")
+        notify = AsyncMock()
+        with patch(f"{MODULE}.notification_service.create_notification", notify):
+            await _fire(harness, pipelines)
+        return harness, notify
+
+    async def test_it_is_recorded_failed_and_never_notified_as_a_workflow(
+        self, pipelines: _Pipelines
+    ) -> None:
+        harness, notify = await self._fail(
+            _briefing_workflow(DAILY_BRIEFING_WORKFLOW_KEY), pipelines
+        )
+
+        notify.assert_not_awaited()
+        assert harness.complete_execution.await_args.kwargs["status"] == "failed"
+        assert harness.complete_execution.await_args.kwargs["error_message"] == (
+            "the prose contradicts its items"
+        )
+
+    async def test_a_users_own_workflow_that_fails_still_tells_them(
+        self, pipelines: _Pipelines
+    ) -> None:
+        _harness, notify = await self._fail(_briefing_workflow("todo_followup"), pipelines)
+
+        [call] = notify.await_args_list
+        assert call.args[0].content.title == "Workflow Failed: Daily brief"
