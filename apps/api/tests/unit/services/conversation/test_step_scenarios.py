@@ -7,6 +7,7 @@ from typing import cast
 import pytest
 
 from app.constants.chat import EMPTY_RESPONSE_FALLBACK, ConversationSource
+from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import HIL_ACK_APPROVED
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
@@ -46,6 +47,7 @@ from app.services.conversation.ports import (
     Streamed,
     Summarized,
 )
+from app.services.conversation.screen import TOOL_CALL_CARD
 from app.services.conversation.step import advance
 from shared.py.conversation_wire import (
     BubblesDelta,
@@ -88,6 +90,10 @@ TRUNCATE = Cancelled(CancelReason.TRUNCATE)
 
 
 CARD: ToolDataEntry = {"tool_name": "search", "data": {"query": "flights"}}
+HANDOFF_CARD: ToolDataEntry = {
+    "tool_name": TOOL_CALL_CARD,
+    "data": {"tool_name": CALL_EXECUTOR_NAME, "tool_call_id": "h1", "inputs": {}},
+}
 FILE_CARD: ToolDataEntry = {
     "tool_name": "artifact_data",
     "data": {
@@ -603,6 +609,22 @@ class StepScenarios:
         assert (last.narrates, last.answers, last.quote_target) == (("t1",), ("f", "u0"), "u0")
         assert [(r.narrates, r.quote_target) for r in await replies(rt)][-1] == (("t1",), "u0")
         await assert_quiet(rt)
+
+    async def test_a_result_after_a_silent_hand_off_does_not_quote_its_request(
+        self, rt: Runtime
+    ) -> None:
+        """Regression: the hand-off chip shows on the work, so the request sits right above."""
+        work = WorkStarted(id="w", task_id="t1", cause_through=1, answers=("u0",))
+        hand_off = Streamed(payload=ToolDataEvent(tool_data=HANDOFF_CARD))
+        rt.runner.script([hand_off, Do(arrive(rt, work)), Finished(Silent())])
+        await send(rt, user("u0"))
+        await run(rt)
+        rt.runner.script([Finished(Replied("done"))])
+        await send(rt, finished("f", "t1"))
+        await run(rt)
+        last = (await settles(rt))[-1]
+        assert (last.narrates, last.quote_target) == (("t1",), None)
+        assert [r.quote_target for r in await replies(rt)][-1] is None
 
     async def test_a_write_up_that_says_nothing_settles_silent_and_leaves_the_cards_to_the_work(
         self, rt: Runtime

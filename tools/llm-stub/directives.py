@@ -21,8 +21,9 @@ directives out of it:
 Timing: a wait belongs to the next tool directive after it, or to the final
 reply when no tool follows; consecutive waits add up. Each tier waits only on
 the steps it emits itself: the front door forwards executor tools at once (the
-executor waits on them), and the say is emitted, and waited on, by every tier
-that reaches it.
+executor waits on them), and the say is emitted, and waited on, by the tier that
+reaches it. After a hand-off the front door stays silent; the say reaches the
+user once, when it re-voices the finished work.
 
 The stub is stateless. On every invocation it re-derives where in the script it
 is by counting the tool-call turns already present in the request's message list
@@ -68,6 +69,10 @@ import re
 from typing import Any
 
 DEFAULT_REPLY = "ok (llm-stub)"
+# The front door's turn right after a hand-off: the result arrives on its own, so
+# comms stays silent (SILENCE_DIRECTIVE, apps/api/app/constants/comms.py) rather
+# than saying the script's reply, which the result then says a second time.
+HAND_OFF_SILENCE = "<SILENCE>the result arrives on its own</SILENCE>"
 CALL_EXECUTOR_TOOL = "call_executor"
 # call_executor's required args beyond the task, so a scripted hand-off is a call
 # the real tool accepts. Exported rather than inlined so the stub's tests pin the
@@ -580,7 +585,10 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
     script = _script(parse_directives(task_text))
     tool_dirs = script.tools
 
-    di = _cursor(tool_dirs, _emitted_tool_names(messages[latest + 1 :]), available_tools)
+    emitted = _emitted_tool_names(messages[latest + 1 :])
+    di = _cursor(tool_dirs, emitted, available_tools)
+    if di >= len(tool_dirs) and CALL_EXECUTOR_TOOL in emitted:
+        return SayResponse(HAND_OFF_SILENCE)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
         # Only the executor tier runs a tool itself, so the execute/retrieve

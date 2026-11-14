@@ -975,7 +975,7 @@ def _visible(logged: LoggedEntry) -> VisibleEntry | None:
     match logged.entry:
         case UserMessage(id=message_id):
             return VisibleEntry(seq=logged.seq, id=message_id, is_user_message=True)
-        case Reply(reply_id=reply_id, text=text, tool_data=tool_data) if text or tool_data:
+        case Reply(reply_id=reply_id, text=text) as reply if text or _own_cards(reply):
             return VisibleEntry(seq=logged.seq, id=reply_id, is_user_message=False)
     return None
 
