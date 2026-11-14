@@ -5,7 +5,7 @@ import { tv } from "tailwind-variants";
  * accordionVariants: no trigger inset or hover fill, a 24px chevron (v2's 1em
  * icon in its h2 heading) turning down when open, and padded content. The content slot goes on an element inside
  * Accordion.Panel, never on the panel: the panel keeps its padding when collapsed.
- * density compact is v2's isCompact; flush drops the trigger's vertical padding.
+ * density compact is v2's isCompact (a 16px chevron); flush drops the trigger's vertical padding.
  */
 export const accordionVariants = tv({
   slots: {
@@ -23,7 +23,7 @@ export const accordionVariants = tv({
     },
     density: {
       default: { trigger: "py-4", content: "py-2" },
-      compact: { trigger: "py-2", content: "py-1" },
+      compact: { trigger: "py-2", indicator: "size-4", content: "py-1" },
       flush: { trigger: "py-0", content: "py-1" },
     },
   },

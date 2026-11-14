@@ -3,6 +3,13 @@
    `components`, so these win over HeroUI's sheets whichever area bundle loads them. */
 @layer gaia {
   .button {
+    /* v2 eased every colour, opacity and transform change over 250ms */
+    transition:
+      transform 250ms var(--ease-out),
+      color 250ms var(--ease-out),
+      background-color 250ms var(--ease-out),
+      opacity 250ms var(--ease-out),
+      box-shadow 250ms var(--ease-out);
     font-weight: var(--gaia-button-weight);
     height: var(--gaia-button-md-height);
     min-width: var(--gaia-button-md-min-width);
@@ -50,7 +57,6 @@
     min-width: var(--gaia-button-md-height);
     width: var(--gaia-button-md-height);
     padding-inline: 0;
-    --gaia-button-radius: var(--gaia-radius-sm);
   }
   .button--icon-only.button--sm {
     min-width: var(--gaia-button-sm-height);
@@ -66,29 +72,37 @@
     width: 100%;
   }
   /* ButtonGroup: the buttons inside are square and the group's ends take the
-     button's own radius, as v2's group did (HeroUI rounds the ends at 24px). */
+     button's own radius (or the group's shape), as v2's group did (HeroUI rounds
+     the ends at 24px). A button's place is its own among the group's children, or
+     its wrapper's when a Tooltip.Trigger wraps it: HeroUI's .button:first-child
+     reads the wrapper's only child, so every wrapped button rounded both ends. */
   .button-group .button {
     border-radius: 0;
   }
-  .button-group--horizontal .button:first-child {
-    border-start-start-radius: var(--gaia-button-radius);
-    border-end-start-radius: var(--gaia-button-radius);
+  .button-group--horizontal > .button:first-child,
+  .button-group--horizontal > :first-child > .button {
+    border-start-start-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+    border-end-start-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
   }
-  .button-group--horizontal .button:last-child {
-    border-start-end-radius: var(--gaia-button-radius);
-    border-end-end-radius: var(--gaia-button-radius);
+  .button-group--horizontal > .button:last-child,
+  .button-group--horizontal > :last-child > .button {
+    border-start-end-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+    border-end-end-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
   }
-  .button-group--vertical .button:first-child {
-    border-start-start-radius: var(--gaia-button-radius);
-    border-start-end-radius: var(--gaia-button-radius);
+  .button-group--vertical > .button:first-child,
+  .button-group--vertical > :first-child > .button {
+    border-start-start-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+    border-start-end-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
   }
-  .button-group--vertical .button:last-child {
-    border-end-start-radius: var(--gaia-button-radius);
-    border-end-end-radius: var(--gaia-button-radius);
+  .button-group--vertical > .button:last-child,
+  .button-group--vertical > :last-child > .button {
+    border-end-start-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
+    border-end-end-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
   }
-  .button-group--horizontal .button:first-child:last-child,
-  .button-group--vertical .button:first-child:last-child {
-    border-radius: var(--gaia-button-radius);
+  .button-group--horizontal > .button:first-child:last-child,
+  .button-group--vertical > .button:first-child:last-child,
+  .button-group > :only-child > .button {
+    border-radius: var(--gaia-button-group-radius, var(--gaia-button-radius));
   }
   /* Chip: v2's full radius (its radius="sm" chips take shape sm), heights, 8/12/16px
      text inset (with the label's 2px), weight 400 and 12/14/16px type scale.
@@ -152,7 +166,6 @@
   .combo-box__input-group {
     min-height: var(--gaia-field-height);
   }
-
   /* Field text: v2's 14px on 20px lines at every width (v3 runs 16px below
      sm); a selected value stays on one line and truncates, as v2's did. */
   .input,
@@ -164,6 +177,32 @@
     font-size: var(--gaia-field-font-size);
     line-height: var(--gaia-field-line-height);
   }
+  /* v2's Select value: a 20px line centred in the trigger, white once chosen. */
+  .select__trigger {
+    align-items: center;
+  }
+  .select__value {
+    min-height: 0;
+  }
+  /* v2's field labels were regular weight; a small field's outside label 12px on 16px. */
+  :is(.textfield, .select, .combo-box) > .label {
+    font-weight: 400;
+  }
+  /* v2's outside label sat 6px above its field; v3's column gap is 4px */
+  :is(.textfield, .select, .combo-box) > .label {
+    margin-bottom: 0.125rem;
+  }
+  .gaia-input-sm > .label {
+    font-size: var(--text-xs);
+    line-height: 1rem;
+  }
+  /* v2's fully round field inset its text 16px (v3: the 12px of any field). */
+  .gaia-pill > .input,
+  .input.gaia-pill {
+    padding-inline: var(--gaia-field-pill-padding-x);
+  }
+
+
   /* v2's grouped input shrank with its row instead of holding its intrinsic width. */
   .input-group__input,
   .search-field__input {
@@ -232,7 +271,7 @@
   }
 
   /* ComboBoxInput is v2's Autocomplete field: the row is the filled field,
-     lifting to zinc-700 on hover or focus (ringed only on keyboard focus), and
+     lifting to zinc-700 on hover (ringed, not lifted, on keyboard focus), and
      the input, start content, clear button and chevron all sit inside it. */
   .combo-box__input-group {
     border-radius: var(--gaia-radius-md);
@@ -245,12 +284,8 @@
     font-size: var(--gaia-input-sm-font-size);
     border-radius: var(--gaia-radius-sm);
   }
-  .combo-box__input-group:hover,
-  .combo-box__input-group:focus-within {
+  .combo-box__input-group:hover {
     background-color: var(--gaia-field-active);
-  }
-  .combo-box__input-group:has(> .input[data-focus-visible="true"]) {
-    box-shadow: 0 0 0 2px var(--focus);
   }
   .combo-box__input-group > .input {
     min-height: 0;
@@ -305,11 +340,14 @@
   .input.gaia-input-underlined,
   .textarea.gaia-input-underlined {
     padding-inline: 0.25rem;
+    /* v2's underlined text sat 3px above the field's centre, 7px down its 40px */
+    padding-top: var(--gaia-input-underlined-padding-top);
+    padding-bottom: var(--gaia-input-underlined-padding-bottom);
     border-width: 0 0 2px;
     border-color: transparent;
     border-radius: 0;
     background-color: transparent;
-    box-shadow: none;
+    box-shadow: var(--gaia-shadow-underline);
     --input-bg: transparent;
     --input-bg-hover: transparent;
     --input-bg-focus: transparent;
@@ -318,7 +356,8 @@
   .input.gaia-input-underlined[data-focused="true"],
   .textarea.gaia-input-underlined:focus,
   .textarea.gaia-input-underlined[data-focused="true"] {
-    border-color: var(--foreground);
+    /* v2's focus line: default-foreground, white */
+    border-color: var(--default-foreground);
   }
 
   /* inputVariants({ variant: "transparent" }): no fill at rest, hover or focus; inset and ring stay. */
@@ -560,6 +599,7 @@
     border-radius: var(--gaia-radius-pill);
   }
   .switch__thumb {
+    box-shadow: var(--gaia-shadow-small);
     width: var(--gaia-switch-md-thumb);
     height: var(--gaia-switch-md-thumb);
     margin-inline-start: 0;
@@ -598,11 +638,23 @@
         var(--gaia-switch-lg-thumb)
     );
   }
-  /* v2's thumb stayed white when on or disabled; HeroUI paints it accent-foreground. */
+  /* v2's track kept its colour on hover */
+  .switch {
+    --switch-control-bg-hover: var(--gaia-switch-track-off);
+    --switch-control-bg-checked-hover: var(--accent);
+  }
+  /* v2's thumb stayed white and lifted when on or disabled, and a disabled switch
+     dimmed as a whole (HeroUI paints the thumb accent-foreground and fades it). */
   .switch[data-selected="true"] .switch__thumb,
   .switch[aria-checked="true"] .switch__thumb,
   .switch[data-disabled="true"] .switch__thumb {
     background-color: #ffffff;
+    box-shadow: var(--gaia-shadow-small);
+  }
+  .switch[data-disabled="true"] .switch__thumb,
+  .switch[data-disabled="true"][data-selected="true"] .switch__thumb,
+  .switch[data-disabled="true"][aria-checked="true"] .switch__thumb {
+    opacity: 1;
   }
 
   /* Slider: v2's thin pill track and round thumb with an inner dot
@@ -615,10 +667,12 @@
     height: var(--gaia-slider-md-track);
     border-inline-width: calc(var(--gaia-slider-md-thumb) / 2);
   }
+  /* v2's fill had square ends under its thumb */
   .slider__fill {
-    border-radius: var(--gaia-radius-pill);
+    border-radius: 0;
   }
   .slider[data-orientation="horizontal"] .slider__thumb {
+    box-shadow: var(--gaia-shadow-small);
     width: var(--gaia-slider-md-thumb);
     height: var(--gaia-slider-md-thumb);
     border-radius: var(--gaia-radius-pill);
@@ -668,6 +722,7 @@
   }
   .modal__dialog--full {
     border-radius: 0;
+    box-shadow: none;
   }
   /* v2's tooltip body: 14px on 20px lines, 4px by 10px, foreground text (v3: 12px, 8px, white). */
   .tooltip {
@@ -895,6 +950,61 @@
     margin-top: 0;
   }
 
+  /* Checkbox and Radio: v2's 8px hit inset, 16px regular label, and an outlined
+     control with no fill (the checkbox's 7.2px corners, the radio 20px round). */
+  .checkbox {
+    padding: var(--gaia-toggle-hit-inset);
+    margin: calc(var(--gaia-toggle-hit-inset) * -1);
+  }
+  .checkbox__content,
+  .radio__content {
+    font-size: var(--text-base);
+    line-height: 1.5rem;
+    font-weight: 400;
+  }
+  /* the control's own 8px end margin is v2's label gap */
+  .checkbox__content {
+    gap: 0;
+  }
+  .radio__content {
+    gap: var(--gaia-radio-gap);
+  }
+  .radio-group,
+  .radio-group[data-orientation="horizontal"] {
+    gap: var(--gaia-radio-group-gap);
+  }
+  .checkbox__control {
+    border: var(--gaia-toggle-border-width) solid var(--gaia-toggle-border);
+    border-radius: var(--gaia-checkbox-radius);
+    background-color: transparent;
+  }
+  /* checked, the fill covers the whole box, outline included */
+  .checkbox[data-selected="true"] .checkbox__control,
+  .checkbox[aria-checked="true"] .checkbox__control {
+    border-width: 0;
+  }
+  .radio__control {
+    width: var(--gaia-radio-size);
+    height: var(--gaia-radio-size);
+    border: var(--gaia-toggle-border-width) solid var(--gaia-toggle-border);
+    border-radius: var(--gaia-radius-pill);
+    background-color: transparent;
+  }
+  .radio[data-selected] .radio__control {
+    border-color: var(--accent);
+    background-color: transparent;
+  }
+  .radio__indicator:empty::before {
+    background-color: transparent;
+  }
+  .radio[data-selected] .radio__indicator:empty::before {
+    width: var(--gaia-radio-dot);
+    height: var(--gaia-radio-dot);
+    scale: 1;
+    border-radius: var(--gaia-radius-pill);
+    background-color: var(--accent);
+  }
+
   /* shape="pill" (components/shared/shape.ts): v2's radius="full", one class for
      every control. Field controls round through their own --field-radius, set only
      on a field: set on a container (pill Tabs) it reached every field in its panels. */
@@ -903,7 +1013,6 @@
   }
   .button.gaia-pill,
   .chip.gaia-pill,
-  .button-group.gaia-pill,
   .gaia-pill .tabs__list,
   .gaia-pill .tabs__tab,
   .gaia-pill .tabs__indicator,
@@ -928,31 +1037,370 @@
     --field-radius: var(--gaia-radius-xl);
   }
   .button.gaia-sharp,
-  .chip.gaia-sharp,
-  .button-group.gaia-sharp {
+  .chip.gaia-sharp {
     border-radius: var(--gaia-radius-xs);
   }
   .button.gaia-radius-sm,
   .chip.gaia-radius-sm,
-  .button-group.gaia-radius-sm {
+  .tooltip.gaia-radius-sm {
     border-radius: var(--gaia-radius-sm);
   }
   .button.gaia-radius-md,
-  .chip.gaia-radius-md,
-  .button-group.gaia-radius-md {
+  .chip.gaia-radius-md {
     border-radius: var(--gaia-radius-md);
   }
   .button.gaia-radius-lg,
-  .chip.gaia-radius-lg,
-  .button-group.gaia-radius-lg {
+  .chip.gaia-radius-lg {
     border-radius: var(--gaia-radius-lg);
   }
   .button.gaia-radius-xl,
-  .chip.gaia-radius-xl,
-  .button-group.gaia-radius-xl {
+  .chip.gaia-radius-xl {
     border-radius: var(--gaia-radius-xl);
   }
+  /* A shaped ButtonGroup rounds its end buttons, not itself (v2's group radius). */
   .button-group.gaia-pill {
-    overflow: hidden;
+    --gaia-button-group-radius: var(--gaia-radius-pill);
+  }
+  .button-group.gaia-sharp {
+    --gaia-button-group-radius: var(--gaia-radius-xs);
+  }
+  .button-group.gaia-radius-sm {
+    --gaia-button-group-radius: var(--gaia-radius-sm);
+  }
+  .button-group.gaia-radius-md {
+    --gaia-button-group-radius: var(--gaia-radius-md);
+  }
+  .button-group.gaia-radius-lg {
+    --gaia-button-group-radius: var(--gaia-radius-lg);
+  }
+  .button-group.gaia-radius-xl {
+    --gaia-button-group-radius: var(--gaia-radius-xl);
+  }
+
+  /* Button state, v2's: no fade under reduced motion; pressed scales to 97% at
+     every size; a solid or flat fill holds its colour on hover and press while
+     the button dims to 90%. */
+  @media (prefers-reduced-motion: reduce) {
+    .button {
+      transition: none;
+    }
+  }
+  .button:active,
+  .button[data-pressed="true"],
+  .button--sm:active,
+  .button--sm[data-pressed="true"],
+  .button--lg:active,
+  .button--lg[data-pressed="true"] {
+    transform: scale(0.97);
+  }
+  .button-group .button:active,
+  .button-group .button[data-pressed="true"] {
+    transform: none;
+  }
+  .button--primary,
+  .button--danger-soft {
+    --button-bg-hover: var(--button-bg);
+    --button-bg-pressed: var(--button-bg);
+  }
+  :is(.button--primary, .button--danger-soft):is(:hover, [data-hovered="true"], [data-pressed="true"]) {
+    opacity: 0.9;
+  }
+  /* v2's 12px small-button label sat on a 16px line (v3: 12px on 17.14px). */
+  .button--sm {
+    line-height: 1rem;
+  }
+
+  /* Overlay surfaces, v2's: a tooltip and a modal lift on shadow-small, a
+     popover, menu or list on shadow-medium (v3 dark: a 30% white hairline, read
+     as an outline), and an arrow is the surface with no stroke. */
+  .tooltip,
+  .modal__dialog {
+    box-shadow: var(--gaia-shadow-small);
+  }
+  .popover,
+  .dropdown__popover,
+  .select__popover,
+  .combo-box__popover {
+    box-shadow: var(--gaia-shadow-medium);
+  }
+  .tooltip [data-slot="overlay-arrow"],
+  .popover [data-slot="popover-overlay-arrow"] {
+    stroke: transparent;
+  }
+  /* v2 opened a tooltip 7px from its trigger, 10px with an arrow; v3's Tooltip
+     offsets 3px and 7px in JS (and its positioning absorbs margins), so a
+     translate carries it the rest of the way along its placement. */
+  .tooltip {
+    --gaia-tooltip-extra-offset: var(--gaia-tooltip-offset-extra);
+  }
+  .tooltip:has([data-slot="tooltip-arrow"]) {
+    --gaia-tooltip-extra-offset: var(--gaia-tooltip-arrow-offset-extra);
+  }
+  .tooltip[data-placement="top"] {
+    translate: 0 calc(var(--gaia-tooltip-extra-offset) * -1);
+  }
+  .tooltip[data-placement="bottom"] {
+    translate: 0 var(--gaia-tooltip-extra-offset);
+  }
+  .tooltip[data-placement="left"] {
+    translate: calc(var(--gaia-tooltip-extra-offset) * -1) 0;
+  }
+  .tooltip[data-placement="right"] {
+    translate: var(--gaia-tooltip-extra-offset) 0;
+  }
+  /* overlayVariants({ surface: accent | foreground | danger }): v2's coloured
+     tooltips, body and arrow alike. */
+  .gaia-overlay-accent {
+    --gaia-overlay-fill: var(--accent);
+    color: var(--color-black);
+  }
+  .gaia-overlay-foreground {
+    --gaia-overlay-fill: var(--foreground);
+    color: var(--color-black);
+  }
+  .gaia-overlay-danger {
+    --gaia-overlay-fill: var(--danger);
+    color: var(--color-white);
+  }
+  :is(.gaia-overlay-accent, .gaia-overlay-foreground, .gaia-overlay-danger) {
+    background-color: var(--gaia-overlay-fill);
+  }
+  .tooltip [data-slot="overlay-arrow"] {
+    fill: var(--overlay);
+  }
+  :is(.gaia-overlay-accent, .gaia-overlay-foreground, .gaia-overlay-danger) [data-slot="overlay-arrow"] {
+    fill: var(--gaia-overlay-fill);
+  }
+  /* v2's popover content: 4px by 10px around its body (v3: 16px). */
+  .popover__dialog {
+    padding: var(--gaia-popover-padding-y) var(--gaia-popover-padding-x);
+  }
+  /* v2's menu: at least 200px wide, its rows 8px in (4px of surface, 4px of
+     list) with an 8px text inset (v3: 10px and 10px). */
+  .dropdown__popover {
+    min-width: var(--gaia-menu-min-width);
+    padding: var(--gaia-menu-inset);
+  }
+  .dropdown__menu {
+    padding: var(--gaia-menu-inset);
+  }
+  .menu-item {
+    padding-inline: var(--gaia-list-item-padding-x);
+  }
+  .menu-item:has(.menu-item__indicator:not(.menu-item__indicator--submenu)) {
+    padding-inline-start: var(--gaia-menu-indicator-inset);
+  }
+  .menu-item[data-has-submenu="true"]:has(.menu-item__indicator--submenu) {
+    padding-inline-end: var(--gaia-menu-indicator-inset);
+  }
+
+  /* Fields, v2's: shadow-sm at rest (zero specificity, so focus and every
+     variant restate it). */
+  :where(.input:not(.combo-box__input-group .input, .input-group .input, .gaia-input-bare)),
+  :where(.textarea:not(.gaia-input-bare)),
+  :where(.select__trigger:not(.gaia-input-bare)),
+  :where(.combo-box__input-group) {
+    box-shadow: var(--gaia-shadow-xs);
+  }
+  /* v2's Select value, white once chosen. */
+  .select__value:not([data-placeholder="true"]) {
+    color: var(--default-foreground);
+  }
+  .select__value[data-placeholder="true"] {
+    color: var(--field-placeholder);
+  }
+  /* v2's list rows: foreground text, the selected row white. */
+  .list-box-item {
+    color: var(--foreground);
+  }
+  .list-box-item[data-selected="true"] {
+    color: var(--default-foreground);
+  }
+  .list-box-item__indicator,
+  .list-box-item--danger .list-box-item__indicator {
+    color: inherit;
+  }
+  /* Accordion title, v2's: 16px bold on 24px (its h2 heading), compact or not. */
+  .accordion__trigger {
+    font-size: var(--text-base);
+    line-height: 1.5rem;
+    font-weight: 700;
+  }
+
+  /* Avatar fallback, v2's: zinc-700 disc, white regular initials, 12px at md. */
+  .avatar {
+    background-color: var(--color-zinc-700);
+  }
+  .avatar__fallback--default {
+    color: #ffffff;
+  }
+  .avatar__fallback {
+    font-weight: 400;
+  }
+  .avatar--md .avatar__fallback {
+    font-size: var(--text-xs);
+    line-height: 1rem;
+  }
+
+  /* Card, v2's: 14px corners on shadow-medium, a regular 16px title. */
+  .card {
+    border-radius: var(--gaia-radius-lg);
+    box-shadow: var(--gaia-shadow-medium);
+  }
+  .card--transparent {
+    box-shadow: none;
+  }
+  .card__title {
+    font-size: var(--text-base);
+    line-height: 1.5rem;
+    font-weight: 400;
+  }
+
+  /* Modal title, v2's: 18px semibold on 28px. */
+  .modal__header {
+    font-size: var(--text-lg);
+    line-height: 1.75rem;
+    font-weight: 600;
+  }
+
+  /* Small chip label, v2's 12px on 16px (v3: 20px). */
+  .chip--sm .chip__label {
+    line-height: 1rem;
+  }
+
+  /* Kbd, v2's: shadow-small, 2px vertical inset, 2px between the key symbol and its letter. */
+  .kbd {
+    height: auto;
+    padding-block: 0.125rem;
+    box-shadow: var(--gaia-shadow-small);
+  }
+  .kbd__abbr {
+    margin-inline-end: 0.125rem;
+  }
+
+  /* Progress, v2's: a 4px (sm) or 12px (md) round track on zinc-600 at 50%. */
+  .progress-bar__track,
+  .progress-bar--sm .progress-bar__track,
+  .progress-bar--lg .progress-bar__track {
+    border-radius: var(--gaia-radius-pill);
+    background-color: var(--gaia-slider-track-bg);
+  }
+  .progress-bar__fill,
+  .progress-bar--sm .progress-bar__fill,
+  .progress-bar--lg .progress-bar__fill {
+    border-radius: var(--gaia-radius-pill);
+  }
+  /* v3 keeps an empty label row and its 4px gap above a bare track; v2 drew the track alone. */
+  .progress-bar:not(:has(> :not(.progress-bar__track))) {
+    row-gap: 0;
+  }
+  .progress-bar--sm .progress-bar__track {
+    height: 0.25rem;
+  }
+  .progress-bar--md .progress-bar__track {
+    height: 0.75rem;
+  }
+
+  /* Skeleton, v2's: a zinc-800 block, square unless the call site rounds it. */
+  .skeleton {
+    border-radius: 0;
+    background-color: var(--color-zinc-800);
+  }
+
+  /* Pagination, v2's faded: 36px zinc-900 cells with a 2px zinc-700 outline on
+     12px corners, 4px apart, regular 14px numbers, the current page an accent
+     cell with black text; the nav pads 10px out (v3: 32px bare cells). */
+  .pagination {
+    /* a block, as v2's nav was: v3's flex nav kept its pagination's width and clipped the inset */
+    display: block;
+    width: auto;
+    padding: var(--gaia-pagination-inset);
+    margin: calc(var(--gaia-pagination-inset) * -1);
+  }
+  .pagination__content {
+    gap: var(--gaia-pagination-gap);
+  }
+  .pagination__link {
+    width: var(--gaia-pagination-size);
+    min-width: var(--gaia-pagination-size);
+    height: var(--gaia-pagination-size);
+    border-radius: var(--gaia-radius-md);
+    background-color: var(--surface);
+    box-shadow: var(--gaia-shadow-xs);
+    font-size: var(--text-sm);
+    line-height: 1.25rem;
+    font-weight: 400;
+    color: var(--default-foreground);
+  }
+  .pagination__link:not(.pagination__link--nav) {
+    border: var(--gaia-toggle-border-width) solid var(--gaia-toggle-border);
+  }
+  .pagination__link:is(:hover, [data-hovered="true"]) {
+    background-color: var(--color-zinc-800);
+  }
+  .pagination__link[data-active="true"] {
+    border-color: transparent;
+    box-shadow: none;
+    background-color: var(--accent);
+    color: var(--color-black);
+  }
+
+  /* Spinner, v2's sizes: 20px sm, 32px md, 40px lg. */
+  .spinner--sm {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  .spinner--md {
+    width: 2rem;
+    height: 2rem;
+  }
+  .spinner--lg {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  /* Tabs, v2's: an unselected tab dims to 50% under the pointer (v3: 70%). */
+  .tabs__tab:not([data-selected="true"]):not([data-disabled="true"]):hover,
+  .tabs__tab[data-hovered="true"]:not([data-selected="true"]):not([data-disabled="true"]) {
+    opacity: 0.5;
+  }
+
+  /* Keyboard focus, v2's: a button, tab, trigger or row draws a 2px focus
+     outline 2px out; a field or toggle a 2px focus ring 2px out on the page
+     colour. v3 rings a button on black and a field with no gap. */
+  :is(.button, .tabs__tab, .select__trigger, .accordion__trigger, .list-box-item, .menu-item):is(:focus-visible, [data-focus-visible="true"]) {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+  :is(.button, .tabs__tab, .accordion__trigger, .list-box-item, .menu-item):is(:focus-visible, [data-focus-visible="true"]) {
+    box-shadow: none;
+  }
+  :is(.input, .textarea):not(.gaia-input-underlined, .gaia-input-bare):is(:focus-visible, [data-focus-visible="true"]),
+  .combo-box__input-group:has(> .input:is(:focus-visible, [data-focus-visible="true"])) {
+    box-shadow:
+      0 0 0 2px var(--background),
+      0 0 0 4px var(--focus),
+      var(--gaia-shadow-xs);
+  }
+  /* a toggle's keyboard ring, v2's: 2px focus colour 2px out on the page colour */
+  .switch:focus-visible .switch__control,
+  .switch [data-slot="switch-content"][data-focus-visible="true"] .switch__control,
+  .checkbox:focus-visible .checkbox__control,
+  .checkbox:has([data-slot="checkbox-content"][data-focus-visible="true"]) .checkbox__control,
+  .checkbox [data-slot="checkbox-content"][data-focus-visible="true"] .checkbox__control,
+  .radio:has([data-slot="radio-content"]:focus-visible) .radio__control,
+  .radio [data-slot="radio-content"]:focus-visible .radio__control,
+  .radio:has([data-slot="radio-content"][data-focus-visible="true"]) .radio__control,
+  .radio [data-slot="radio-content"][data-focus-visible="true"] .radio__control,
+  .slider .slider__thumb[data-focus-visible="true"] {
+    box-shadow:
+      0 0 0 2px var(--background),
+      0 0 0 4px var(--focus);
+  }
+  /* a pressed selected radio keeps v2's look (restates HeroUI's pressed fill) */
+  .radio[data-selected]:has([data-slot="radio-content"]:active) .radio__control,
+  .radio[data-selected]:has([data-slot="radio-content"][data-pressed="true"]) .radio__control {
+    border-color: var(--accent);
+    background-color: transparent;
   }
 }

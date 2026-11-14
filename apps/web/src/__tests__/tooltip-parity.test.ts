@@ -49,3 +49,32 @@ it("a tooltip body takes v2's type and inset", async () => {
     ]),
   );
 });
+
+/** Every declaration the gaia layer gives `selector`, from any rule whose selector list names it. */
+function gaiaDeclarations(selector: string): Set<string> {
+  const gaia = postcss.parse(
+    readFileSync(path.resolve(__dirname, "../app/styles/gaia.css"), "utf8"),
+  );
+  const decls = new Set<string>();
+  gaia.walkRules((rule) => {
+    if (!rule.selectors.includes(selector)) return;
+    rule.walkDecls((decl) => {
+      decls.add(`${decl.prop}: ${decl.value}`);
+    });
+  });
+  return decls;
+}
+
+// v3's dark tooltip draws only a 30% white inner hairline, read as an outline with
+// no lift; v2's sat on shadow-small (two soft drop shadows and a 15% hairline).
+it("a tooltip lifts on v2's shadow and its arrow has no stroke", async () => {
+  expect(gaiaDeclarations(".tooltip")).toContain(
+    "box-shadow: var(--gaia-shadow-small)",
+  );
+  expect(await unlayeredValue("--gaia-shadow-small")).toBe(
+    "0 0 5px 0 rgb(0 0 0 / 0.05), 0 2px 10px 0 rgb(0 0 0 / 0.2), inset 0 0 1px 0 rgb(255 255 255 / 0.15)",
+  );
+  expect(gaiaDeclarations('.tooltip [data-slot="overlay-arrow"]')).toContain(
+    "stroke: transparent",
+  );
+});
