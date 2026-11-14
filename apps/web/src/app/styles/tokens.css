@@ -110,6 +110,12 @@ html {
   --tooltip-close-delay: 500ms;
 }
 
+/* v2's fields sat on shadow-sm; v3's dark theme gives them a transparent one. */
+:root,
+.dark {
+  --field-shadow: var(--gaia-shadow-xs);
+}
+
 /* GAIA control dimensions: v2's sizes on v3's components, which ship pill radii,
    a 36px desktop button and font-weight 500. Read only by gaia.css. */
 :root {

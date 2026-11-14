@@ -276,6 +276,7 @@
   .combo-box__input-group {
     border-radius: var(--gaia-radius-md);
     background-color: var(--field-background);
+    box-shadow: var(--field-shadow);
   }
   /* inputVariants({ size: "sm" }) on a ComboBox: v2's sm Autocomplete, the 32px row. */
   .gaia-input-sm .combo-box__input-group {
@@ -419,10 +420,10 @@
   /* overlayVariants({ surface }): raised is v2's zinc-800 popover and tooltip
      surface off a zinc-900 page; secondary is the #1a1a1a sidebar surface. */
   .gaia-overlay-raised {
-    background-color: var(--gaia-overlay-raised);
+    --overlay: var(--gaia-overlay-raised);
   }
   .gaia-overlay-secondary {
-    background-color: var(--gaia-overlay-secondary);
+    --overlay: var(--gaia-overlay-secondary);
   }
   /* overlayVariants({ backdrop: "opaque" }): v2's backdrop="opaque" popover, the
      page dimmed behind it; a viewport-wide spread shadow, since v3 popovers have no backdrop. */
@@ -452,7 +453,6 @@
   .input::placeholder,
   .textarea::placeholder,
   .input-group__input::placeholder {
-    color: var(--field-placeholder);
     font-weight: 400;
   }
 
@@ -730,7 +730,6 @@
     padding: var(--gaia-tooltip-padding-y) var(--gaia-tooltip-padding-x);
     font-size: var(--gaia-tooltip-font-size);
     line-height: var(--gaia-tooltip-line-height);
-    color: var(--foreground);
     /* v3 breaks tooltip text mid-word (break-all); v2 wrapped between words */
     word-break: normal;
     overflow-wrap: break-word;
@@ -970,6 +969,11 @@
     border-radius: var(--gaia-checkbox-radius);
     background-color: transparent;
   }
+  /* HeroUI draws the field shadow on a toggle's control too; v2's toggles (and v3's dark radio) drew none */
+  .checkbox__control,
+  .radio__control {
+    --field-shadow: none;
+  }
   /* checked, the fill covers the whole box, outline included */
   .checkbox[data-selected="true"] .checkbox__control,
   .checkbox[aria-checked="true"] .checkbox__control {
@@ -1121,25 +1125,16 @@
   /* overlayVariants({ surface: accent | foreground | danger }): v2's coloured
      tooltips, body and arrow alike. */
   .gaia-overlay-accent {
-    --gaia-overlay-fill: var(--accent);
+    --overlay: var(--accent);
     color: var(--color-black);
   }
   .gaia-overlay-foreground {
-    --gaia-overlay-fill: var(--foreground);
+    --overlay: var(--foreground);
     color: var(--color-black);
   }
   .gaia-overlay-danger {
-    --gaia-overlay-fill: var(--danger);
+    --overlay: var(--danger);
     color: var(--color-white);
-  }
-  :is(.gaia-overlay-accent, .gaia-overlay-foreground, .gaia-overlay-danger) {
-    background-color: var(--gaia-overlay-fill);
-  }
-  .tooltip [data-slot="overlay-arrow"] {
-    fill: var(--overlay);
-  }
-  :is(.gaia-overlay-accent, .gaia-overlay-foreground, .gaia-overlay-danger) [data-slot="overlay-arrow"] {
-    fill: var(--gaia-overlay-fill);
   }
   /* v2's popover content: 4px by 10px around its body (v3: 16px). */
   .popover__dialog {
@@ -1164,20 +1159,9 @@
     padding-inline-end: var(--gaia-menu-indicator-inset);
   }
 
-  /* Fields, v2's: shadow-sm at rest (zero specificity, so focus and every
-     variant restate it). */
-  :where(.input:not(.combo-box__input-group .input, .input-group .input, .gaia-input-bare)),
-  :where(.textarea:not(.gaia-input-bare)),
-  :where(.select__trigger:not(.gaia-input-bare)),
-  :where(.combo-box__input-group) {
-    box-shadow: var(--gaia-shadow-xs);
-  }
   /* v2's Select value, white once chosen. */
   .select__value:not([data-placeholder="true"]) {
     color: var(--default-foreground);
-  }
-  .select__value[data-placeholder="true"] {
-    color: var(--field-placeholder);
   }
   /* Accordion title, v2's: 16px bold on 24px (its h2 heading), compact or not. */
   .accordion__trigger {
@@ -1273,12 +1257,17 @@
   :is(.button, .tabs__tab, .accordion__trigger, .menu-item):is(:focus-visible, [data-focus-visible="true"]) {
     box-shadow: none;
   }
+  /* a Select's focus is the outline above, so its trigger keeps the field shadow
+     through every HeroUI focus ring (zero specificity, so the variants restate it) */
+  :where(.select__trigger) {
+    box-shadow: var(--field-shadow);
+  }
   :is(.input, .textarea):not(.gaia-input-underlined, .gaia-input-bare):is(:focus-visible, [data-focus-visible="true"]),
   .combo-box__input-group:has(> .input:is(:focus-visible, [data-focus-visible="true"])) {
     box-shadow:
       0 0 0 2px var(--background),
       0 0 0 4px var(--focus),
-      var(--gaia-shadow-xs);
+      var(--field-shadow);
   }
   /* a toggle's keyboard ring, v2's: 2px focus colour 2px out on the page colour */
   .switch:focus-visible .switch__control,
