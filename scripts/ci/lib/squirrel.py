@@ -82,8 +82,10 @@ LAZY_BELOW_FOLD_PAGES = re.compile(
     r"^/(?:automate|learn|for|marketplace|blog)/[^/]+$|^/(?:pricing|inbox-zero-ai|ai-chief-of-staff)$"
 )
 # Images that sit below the first viewport on every page that renders them: the closing
-# section's wallpaper, and /brand's wordmarks under the logo.
-LAZY_BELOW_FOLD_IMAGES = re.compile(r"%2Fwallpapers%2Fcreation_of_adam\.|%2Fbrand%2Fgaia_wordmark_")
+# section's wallpaper, the use cases' publish-a-workflow banner, and /brand's wordmarks.
+LAZY_BELOW_FOLD_IMAGES = re.compile(
+    r"%2Fwallpapers%2F(?:creation_of_adam|blueprint)\.|%2Fbrand%2Fgaia_wordmark_"
+)
 # The checks an integration page fails on its tools' synced docs, not on our copy.
 SYNCED_DOC_RULES = frozenset(
     {"content/placeholder-contact", "content/placeholder-text", "content/keyword-stuffing"}
@@ -239,7 +241,8 @@ IGNORED = (
         "2204/3191 (its hero icon is eager), /blog/how-tool-calling-works 1845/2175 (its "
         "cover is priority), /pricing 1474/1833, /ai-chief-of-staff 1241/1337, "
         "/inbox-zero-ai 1260/1374; the closing wallpaper at least 940/1124 "
-        "(/marketplace/page/2), /brand's wordmark 1468/1672",
+        "(/marketplace/page/2), the publish banner 1361/2459 (/use-cases/rent-reminder), "
+        "/brand's wordmark 1468/1672",
         _lazy_below_fold,
     ),
 )

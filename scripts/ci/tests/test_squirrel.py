@@ -281,6 +281,7 @@ def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
         _row("/ko/ai-chief-of-staff", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Ficons%2Fgmail.webp&w=128&q=75"}]),
         _row("/faq", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Fwallpapers%2Fcreation_of_adam.webp&w=1920&q=75"}]),
         _row("/brand", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fbrand%2Fgaia_wordmark_black.png&w=1920&q=75"}]),
+        _row("/use-cases/rent-reminder", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Fwallpapers%2Fblueprint.webp&w=1920&q=75"}]),
     ],
 )  # fmt: skip
 def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -> None:
@@ -302,6 +303,7 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         "/ko/ai-chief-of-staff",
         "/faq",
         "/brand",
+        "/use-cases/rent-reminder",
     ]
     proc = _ratchet(tmp_path, [row], "", pages=pages)
     assert proc.returncode == 0, proc.stdout
