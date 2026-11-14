@@ -731,7 +731,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "outcome": "approved" | "denied";
+    "decision": "approved" | "denied";
     "tool_name": string;
     "via": "card" | "batch" | "chat" | "auto";
     "approval_id"?: string;
@@ -1500,7 +1500,7 @@ export interface EventProperties {
     "author"?: "gaia" | "user";
     "outcome": "run" | "skip" | "hold" | "bypass";
     "reason": "jev_run" | "jev_skip" | "jev_urgent" | "jev_can_wait" | "free_run" | "jev_error" | "jev_timeout" | "jev_malformed" | "jev_unconfigured";
-    "urgent_choice"?: "incident" | "service_down" | "meeting";
+    "urgent_choice"?: "incident" | "service_down" | "meeting" | "can_wait";
     "enforced": boolean;
     "latency_ms"?: number;
   };

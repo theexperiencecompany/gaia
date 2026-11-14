@@ -17,7 +17,6 @@ ungrounded quote, instruction-like arguments, or shipping secrets outward.
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
 import json
 import math
 import re
@@ -34,26 +33,6 @@ from shared.py.wide_events import log
 
 _NO_REQUEST_REASON = "Could not check this against anything you asked for."
 _JUDGE_FAILED_REASON = "The approval check could not run."
-
-
-class RiskFactor(StrEnum):
-    """Enumerated so risk is a checkbox, not prose the judge can rhetorically soften.
-
-    Naming the risks rather than asking "is this safe?" is the single biggest accuracy
-    lever available: judges are bottlenecked on *enumerating* risk, not on judging it
-    (arXiv 2401.10019 — 72% F1 unaided vs 99% F1 handed the risk list).
-    """
-
-    IRREVERSIBLE = "irreversible"
-    THIRD_PARTY_VISIBLE = "third_party_visible"
-    MOVES_MONEY = "moves_money"
-    CHANGES_ACCESS = "changes_access"
-    AGENT_CHOSE_TARGET = "agent_chose_target"
-    BULK_ACTION = "bulk_action"
-    CONTENT_NOT_SPECIFIED = "content_not_specified"
-    # The one unconditional block: no phrasing of a request auto-approves shipping
-    # secrets out. Enforced in code (see _accept), never left to the model's discretion.
-    EXFILTRATES_SECRETS = "exfiltrates_secrets"
 
 
 @dataclass(frozen=True)

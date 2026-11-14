@@ -35,6 +35,7 @@ from app.agents.prompts.delegation_prompts import (
     THREAD_BUSY_REFUSAL,
 )
 from app.constants.agents import AgentTag
+from app.constants.cache import RUNNING_SUBAGENT_THREAD_PREFIX
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, RunningSubagent
@@ -110,6 +111,13 @@ async def _drain() -> None:
         if t.get_name() in {delegation.BACKGROUND_SUBAGENT_TASK_NAME, "stream-publish"}
     ]:
         await asyncio.gather(*pending, return_exceptions=True)
+
+
+async def _thread_held() -> bool:
+    """Whether a live run's claim is on THREAD's checkpoint thread."""
+    client = redis_cache.client
+    assert client is not None
+    return bool(await client.exists(f"{RUNNING_SUBAGENT_THREAD_PREFIX}{THREAD}"))
 
 
 @pytest.fixture
@@ -215,7 +223,7 @@ class TestABlockingRun:
         held_during: list[bool] = []
 
         async def _run(**_kwargs: Any) -> SubagentOutcome:
-            held_during.append(await RunningSubagents(CONVERSATION).holds_thread(THREAD))
+            held_during.append(await _thread_held())
             return SubagentOutcome(text="done")
 
         with _blocking([]) as h:
@@ -224,14 +232,14 @@ class TestABlockingRun:
 
         assert result == "done"
         assert held_during == [True]
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
         assert _events(h.writer) == ["subagent_start", "subagent_end"]
 
     async def test_a_failed_run_frees_its_thread_and_closes_its_row(self, redis: Any) -> None:
         with _blocking([RuntimeError("graph exploded")]) as h, pytest.raises(RuntimeError):
             await delegate(_delegation(), background=False)
 
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
         assert _events(h.writer) == ["subagent_start", "subagent_end"]
 
     async def test_a_held_thread_refuses_in_whole_sentences(self, redis: Any) -> None:
@@ -268,7 +276,7 @@ class TestABackgroundDispatch:
         landed = client_edges.deliver.await_args
         assert landed.args[2] == "summarise the report (subagent row-1): the summary"
         assert landed.kwargs["tag"] is AgentTag.SUBAGENT_RESULT
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     async def test_a_replay_of_the_dispatching_node_does_not_run_it_twice(
         self, redis: Any, client_edges: SimpleNamespace
@@ -369,7 +377,7 @@ class TestABackgroundRunOwnsItsStream:
 
         (landed,) = [c.args[2] for c in client_edges.deliver.await_args_list]
         assert landed.endswith(": the summary")
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
         assert recorder.event("subagent_run")["errors"] == [
             {
                 "msg": f"{LogTag.AGENT} Could not log a detached run's end",
@@ -553,7 +561,7 @@ class TestABackgroundRunsBoundary:
             "error": "graph exploded",
         }
         assert await RunningSubagents(CONVERSATION).get("row-1") is None
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     async def test_a_landing_that_cannot_be_delivered_is_recorded(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder
@@ -590,7 +598,7 @@ class TestABackgroundRunTheUserStopped:
         assert result == delegation_prompts.STOPPED_BEFORE_START.format(name="summarise the report")
         execute.assert_not_awaited()
         assert await RunningSubagents(CONVERSATION).live() == []
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     @pytest.mark.regression
     async def test_it_lands_nothing_so_the_stopped_executor_does_not_restart(
@@ -602,7 +610,7 @@ class TestABackgroundRunTheUserStopped:
             await _drain()
 
         client_edges.deliver.assert_not_awaited()
-        assert not await RunningSubagents(CONVERSATION).holds_thread(THREAD)
+        assert not await _thread_held()
 
     @pytest.mark.regression
     async def test_its_record_names_its_own_stream_and_the_stream_that_dispatched_it(

@@ -2,7 +2,6 @@
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
-import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,8 +26,6 @@ from app.utils.agent_utils import (
     _registry_mcp_ui_metadata,
     _resolve_mcp_ui_metadata,
     format_browser_action_entry,
-    format_sse_data,
-    format_sse_response,
     format_tool_call_entry,
 )
 
@@ -706,27 +703,6 @@ class TestIntegrationIdentityOnToolCalls:
             None,
             None,
         )
-
-
-# ---------------------------------------------------------------------------
-# format_sse_response / format_sse_data
-# ---------------------------------------------------------------------------
-
-
-class TestSSEFormatters:
-    def test_format_sse_response(self) -> None:
-        result = format_sse_response("Hello world")
-        assert result.startswith("data: ")
-        assert result.endswith("\n\n")
-        parsed = json.loads(result[6:])
-        assert parsed["response"] == "Hello world"
-
-    def test_format_sse_data(self) -> None:
-        result = format_sse_data({"key": "value", "count": 42})
-        assert result.startswith("data: ")
-        parsed = json.loads(result[6:])
-        assert parsed["key"] == "value"
-        assert parsed["count"] == 42
 
 
 # ---------------------------------------------------------------------------

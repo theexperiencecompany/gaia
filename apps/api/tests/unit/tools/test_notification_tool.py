@@ -36,6 +36,7 @@ from app.utils.notification.orchestrator import Notified
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.notifications import NotificationAgentSent
 from tests.helpers import captured_wide_event
+from tests.tool_helpers import tool_coroutine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -93,7 +94,7 @@ class TestGetNotifications:
         notifications = [_make_notification()]
         mock_service.get_user_notifications = AsyncMock(return_value=notifications)
 
-        result = await get_notifications.coroutine(
+        result = await tool_coroutine(get_notifications)(
             config=_make_config(),
             status=NotificationStatus.READ,
             notification_type=NotificationType.WARNING,
@@ -128,7 +129,7 @@ class TestGetNotifications:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.get_user_notifications = AsyncMock(side_effect=Exception("DB error"))
 
-        result = await get_notifications.coroutine(config=_make_config())
+        result = await tool_coroutine(get_notifications)(config=_make_config())
 
         assert "DB error" in result["error"]
         assert result["notifications"] == []
@@ -144,7 +145,7 @@ class TestGetNotifications:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.get_user_notifications = AsyncMock(return_value=[])
 
-        await get_notifications.coroutine(
+        await tool_coroutine(get_notifications)(
             config=_make_config(),
             status=NotificationStatus.READ,
             notification_type=NotificationType.WARNING,
@@ -175,7 +176,7 @@ class TestGetNotifications:
         notifications = [_make_notification()]
         mock_service.get_user_notifications = AsyncMock(return_value=notifications)
 
-        await get_notifications.coroutine(config=_make_config())
+        await tool_coroutine(get_notifications)(config=_make_config())
 
         notif_calls = [c for c in writer.call_args_list if "notification_data" in c[0][0]]
         assert len(notif_calls) == 1
@@ -209,7 +210,7 @@ class TestSearchNotifications:
             ]
         )
 
-        result = await search_notifications.coroutine(
+        result = await tool_coroutine(search_notifications)(
             config=_make_config(),
             query="meeting",
             status=NotificationStatus.READ,
@@ -238,7 +239,7 @@ class TestSearchNotifications:
             ]
         )
 
-        result = await search_notifications.coroutine(
+        result = await tool_coroutine(search_notifications)(
             config=_make_config(),
             query="deployment",
         )
@@ -253,7 +254,7 @@ class TestSearchNotifications:
         """Empty search query returns error."""
         mock_writer_factory.return_value = _writer_mock()
 
-        result = await search_notifications.coroutine(
+        result = await tool_coroutine(search_notifications)(
             config=_make_config(),
             query="   ",
         )
@@ -277,7 +278,7 @@ class TestSearchNotifications:
         ]
         mock_service.get_user_notifications = AsyncMock(return_value=many_notifs)
 
-        result = await search_notifications.coroutine(
+        result = await tool_coroutine(search_notifications)(
             config=_make_config(),
             query="test",
             limit=3,
@@ -296,7 +297,7 @@ class TestSearchNotifications:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.get_user_notifications = AsyncMock(return_value=[])
 
-        await search_notifications.coroutine(
+        await tool_coroutine(search_notifications)(
             config=_make_config(),
             query="test",
             status=NotificationStatus.READ,
@@ -325,7 +326,7 @@ class TestGetNotificationCount:
         """Returns count of notifications."""
         mock_service.get_user_notifications_count = AsyncMock(return_value=5)
 
-        result = await get_notification_count.coroutine(config=_make_config())
+        result = await tool_coroutine(get_notification_count)(config=_make_config())
 
         assert result["count"] == 5
 
@@ -339,7 +340,7 @@ class TestGetNotificationCount:
             side_effect=Exception("connection lost")
         )
 
-        result = await get_notification_count.coroutine(config=_make_config())
+        result = await tool_coroutine(get_notification_count)(config=_make_config())
 
         assert result["count"] == 0
         assert "connection lost" in result["error"]
@@ -361,7 +362,7 @@ class TestMarkNotificationsRead:
         """Marks a single notification as read."""
         mock_service.mark_as_read = AsyncMock(return_value=True)
 
-        result = await mark_notifications_read.coroutine(
+        result = await tool_coroutine(mark_notifications_read)(
             config=_make_config(),
             notification_ids=["notif-1"],
         )
@@ -377,7 +378,7 @@ class TestMarkNotificationsRead:
         """Marks multiple notifications as read using bulk action."""
         mock_service.bulk_actions = AsyncMock(return_value={"notif-1": True, "notif-2": True})
 
-        result = await mark_notifications_read.coroutine(
+        result = await tool_coroutine(mark_notifications_read)(
             config=_make_config(),
             notification_ids=["notif-1", "notif-2"],
         )
@@ -389,7 +390,7 @@ class TestMarkNotificationsRead:
         self,
     ) -> None:
         """Empty notification IDs list returns error."""
-        result = await mark_notifications_read.coroutine(
+        result = await tool_coroutine(mark_notifications_read)(
             config=_make_config(),
             notification_ids=[],
         )
@@ -405,7 +406,7 @@ class TestMarkNotificationsRead:
         """Service exception returns error."""
         mock_service.mark_as_read = AsyncMock(side_effect=Exception("service down"))
 
-        result = await mark_notifications_read.coroutine(
+        result = await tool_coroutine(mark_notifications_read)(
             config=_make_config(),
             notification_ids=["notif-1"],
         )
@@ -432,7 +433,7 @@ class TestSendNotificationChannels:
         )
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config("web"),
             message="Build done",
@@ -453,7 +454,7 @@ class TestSendNotificationChannels:
         mock_resolve.return_value = InApp(reason="no_chat_app")
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        await send_notification.coroutine(
+        await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_make_config(),
             message="Build done",
@@ -472,7 +473,7 @@ class TestSendNotificationChannels:
         mock_writer_factory.return_value = _writer_mock()
         mock_resolve.return_value = InApp(reason="active_in_app")
 
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config(None, workflow_id="wf-1", execution_mode="background"),
             message="Build done",
@@ -494,7 +495,7 @@ class TestSendNotificationChannels:
         config = _chat_run_config(None, workflow_id="wf-1", execution_mode="background")
         config["configurable"]["workflow_notify_on_completion"] = False
 
-        await send_notification.coroutine(
+        await tool_coroutine(send_notification)(
             tool_call_id="call-1", config=config, message="Build done", title="Build"
         )
 
@@ -518,7 +519,7 @@ class TestSendNotificationChannels:
         )
         mock_todos.get = AsyncMock(return_value=MagicMock(notify_on_run=True))
 
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config(None, active_todo_id="todo-1", execution_mode="background"),
             message="Found it",
@@ -546,7 +547,7 @@ class TestSendNotificationChannels:
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
         mock_todos.get = AsyncMock(return_value=MagicMock(notify_on_run=False))
 
-        await send_notification.coroutine(
+        await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config(None, active_todo_id="todo-1", execution_mode="background"),
             message="Found it",
@@ -564,7 +565,7 @@ class TestSendNotificationChannels:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        await send_notification.coroutine(
+        await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config(None, workflow_id="wf-1", execution_mode="background"),
             message="Urgent",
@@ -590,7 +591,7 @@ class TestSendNotificationChannels:
         mock_resolve.return_value = InApp(reason="no_chat_app")
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        await send_notification.coroutine(
+        await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config(None, active_todo_id="todo-1", execution_mode="interactive"),
             message="Hi",
@@ -610,7 +611,7 @@ class TestSendNotificationChannels:
         mock_writer_factory.return_value = _writer_mock()
         mock_resolve.return_value = InApp(reason="active_in_app")
 
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1", config=_chat_run_config("web"), message="Done", title="Done"
         )
 
@@ -628,7 +629,7 @@ class TestSendNotificationChannels:
             source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="recent_activity"
         )
 
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1", config=_chat_run_config("telegram"), message="Done", title="Done"
         )
 
@@ -640,7 +641,7 @@ class TestSendNotificationChannels:
         self,
         mock_service: MagicMock,
     ) -> None:
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_make_config(),
             message="Build done",
@@ -684,7 +685,7 @@ async def test_a_sent_notification_is_streamed_as_the_result_it_returns(
     mock_writer_factory.return_value = writer
     mock_service.notify = AsyncMock(side_effect=deliver)
 
-    result = await send_notification.coroutine(
+    result = await tool_coroutine(send_notification)(
         tool_call_id="call-1",
         config=_make_config(),
         message=" Build done ",
@@ -801,7 +802,7 @@ class TestSendNotificationIsMeasured:
             patch(f"{MODULE}.resolve_proactive_target", AsyncMock(return_value=routed_to)),
         ):
             mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
-            await send_notification.coroutine(
+            await tool_coroutine(send_notification)(
                 tool_call_id="call-1",
                 config=_chat_run_config(source),
                 message="Build done",
@@ -829,7 +830,7 @@ class TestSendNotificationIsMeasured:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        await send_notification.coroutine(
+        await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config("telegram"),
             message="Booked",
@@ -850,7 +851,7 @@ class TestSendNotificationIsMeasured:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.notify = AsyncMock(side_effect=RuntimeError("mongo down"))
 
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_make_config(),
             message="Booked",
@@ -874,7 +875,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         mock_writer_factory.return_value = writer
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config("telegram"),
             message="Your flight is booked",
@@ -902,7 +903,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config("telegram"),
             message="Your flight is booked",
@@ -923,7 +924,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
         async with captured_wide_event() as event:
-            await send_notification.coroutine(
+            await tool_coroutine(send_notification)(
                 tool_call_id="call-1",
                 config=_chat_run_config("telegram"),
                 message="Your flight is booked",
@@ -941,7 +942,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         mock_writer_factory.return_value = _writer_mock()
 
         async with captured_wide_event() as event:
-            await send_notification.coroutine(
+            await tool_coroutine(send_notification)(
                 tool_call_id="call-1",
                 config=_chat_run_config("web"),
                 message="Your flight is booked",
@@ -961,7 +962,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
         async with captured_wide_event() as event:
-            await send_notification.coroutine(
+            await tool_coroutine(send_notification)(
                 tool_call_id="call-1",
                 config=_chat_run_config(source),
                 message="Your flight is booked",
@@ -979,7 +980,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
     ) -> None:
         mock_writer_factory.return_value = _writer_mock()
 
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config(source),
             message="Your flight is booked",
@@ -999,7 +1000,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        await send_notification.coroutine(
+        await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config("web"),
             message="Your flight is booked",
@@ -1017,7 +1018,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        await send_notification.coroutine(
+        await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config("web"),
             message="Your flight is booked",
@@ -1036,7 +1037,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         mock_writer_factory.return_value = _writer_mock()
         mock_service.notify = AsyncMock(side_effect=_delivered_on_every_channel)
 
-        await send_notification.coroutine(
+        await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=_chat_run_config(None, workflow_id="wf-1", execution_mode="background"),
             message="An urgent email arrived",
@@ -1056,7 +1057,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
         config = _chat_run_config("telegram")
         config["configurable"]["conversation_id"] = None
 
-        await send_notification.coroutine(
+        await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=config,
             message="Done",
@@ -1093,7 +1094,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
             ),
         )
 
-        result = await send_notification.coroutine(
+        result = await tool_coroutine(send_notification)(
             tool_call_id="call-1",
             config=executor,
             message="Done",
@@ -1109,7 +1110,7 @@ class TestSendNotificationNeverDuplicatesTheReply:
 async def test_the_run_users_channel_preferences_are_read(mock_fetch: AsyncMock) -> None:
     mock_fetch.return_value = {"email": False}
 
-    result = await get_notification_preferences.coroutine(config=_make_config())
+    result = await tool_coroutine(get_notification_preferences)(config=_make_config())
 
     mock_fetch.assert_awaited_once_with(FAKE_USER_ID)
     assert result["enabled_channels"] == ["inapp"]
@@ -1126,7 +1127,7 @@ def _required_args(tool: Any) -> dict[str, None]:
 @pytest.mark.parametrize("tool", notification_tool_module.tools, ids=lambda t: t.name)
 async def test_a_run_with_no_user_raises_instead_of_returning_a_tool_error(tool: Any) -> None:
     with pytest.raises(RunUserMissingError):
-        await tool.coroutine(config={"configurable": {}}, **_required_args(tool))
+        await tool_coroutine(tool)(config={"configurable": {}}, **_required_args(tool))
 
 
 class TestResultIsDeliveredAutomatically:

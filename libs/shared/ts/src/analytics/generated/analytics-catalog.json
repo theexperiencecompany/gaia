@@ -3292,9 +3292,9 @@
         "additionalProperties": false,
         "description": "A gated call was decided: a committed ledger decision, or auto mode's judge settling it with no card.",
         "properties": {
-          "outcome": {
+          "decision": {
             "enum": ["approved", "denied"],
-            "title": "Outcome",
+            "title": "Decision",
             "type": "string"
           },
           "tool_name": {
@@ -3345,7 +3345,7 @@
             "title": "Card Age Seconds"
           }
         },
-        "required": ["outcome", "tool_name", "via"],
+        "required": ["decision", "tool_name", "via"],
         "title": "HilDecisionSubmitted",
         "type": "object"
       }
@@ -7680,7 +7680,7 @@
           "urgent_choice": {
             "anyOf": [
               {
-                "enum": ["incident", "service_down", "meeting"],
+                "enum": ["incident", "service_down", "meeting", "can_wait"],
                 "type": "string"
               },
               {

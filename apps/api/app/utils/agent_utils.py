@@ -1,7 +1,6 @@
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import json
 from typing import Any, cast
 
 from langchain_core.messages import ToolCall
@@ -24,7 +23,6 @@ from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.models.oauth_models import OAuthIntegration
 from app.models.stream_events import (
-    ResponseFrame,
     SubagentAgentType,
     SubagentEndPayload,
     SubagentStartPayload,
@@ -442,13 +440,3 @@ async def _integration_display(integration_id: str) -> tuple[str | None, str | N
             error_type=type(e).__name__,
         )
         return None, None
-
-
-def format_sse_response(content: str) -> str:
-    """Wrap text content as a JSON-encoded SSE data: line."""
-    return f"data: {json.dumps(ResponseFrame(response=content).model_dump())}\n\n"
-
-
-def format_sse_data(data: Mapping[str, object]) -> str:
-    """Wrap a mapping as a JSON-encoded SSE data: line."""
-    return f"data: {json.dumps(data)}\n\n"

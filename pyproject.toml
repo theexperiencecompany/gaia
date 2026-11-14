@@ -504,7 +504,6 @@ unfixable = [
 "apps/api/app/services/composio/proxy_client.py" = ["ANN401", "PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/services/workflow/trigger_search.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/services/workflow/workflow_subagent.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
-"apps/api/app/utils/agent_utils.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/utils/workflow_utils.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 "apps/api/app/workers/tasks/maintenance_sweep_tasks.py" = ["PLC0415"]  # lazy imports on untested error/background paths; inline noqas trip the diff-coverage gate
 # ARG001: Composio's Modifier.apply() always calls before/after/schema hooks

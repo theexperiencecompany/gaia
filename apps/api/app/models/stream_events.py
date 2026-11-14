@@ -51,7 +51,7 @@ disagree.
 
 from typing import Any, Literal
 
-from pydantic import AwareDatetime, BaseModel
+from pydantic import AwareDatetime, BaseModel, JsonValue
 
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 
@@ -98,7 +98,7 @@ class ApprovalRequestEntryData(BaseModel):
     integration_name: str | None
     summary: str
     # The gated call's own arguments — arbitrary LLM-authored JSON, no fixed schema.
-    args_preview: dict[str, Any]
+    args_preview: dict[str, JsonValue]
     # How the approval ended (None while pending), who decided, and what the action did.
     # The card's label is read from these; nothing stores a label.
     outcome: ApprovalOutcome | None

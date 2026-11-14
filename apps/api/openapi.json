@@ -566,7 +566,9 @@
             "type": "string"
           },
           "args_preview": {
-            "additionalProperties": true,
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
             "title": "Args Preview",
             "type": "object"
           },

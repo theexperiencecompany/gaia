@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 import sys
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -462,7 +462,9 @@ class TestTextShape:
 
 class TestReadableSinksCarryFields:
     @pytest.mark.parametrize("format_name", ["console", "file"])
-    def test_a_log_lines_structured_fields_appear_in_the_readable_line(self, format_name: str):
+    def test_a_log_lines_structured_fields_appear_in_the_readable_line(
+        self, format_name: Literal["console", "file"]
+    ) -> None:
         from loguru import logger
 
         out = io.StringIO()

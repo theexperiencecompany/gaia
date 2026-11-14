@@ -299,7 +299,7 @@ class TestDecisionSubmittedEvent:
         assert user_id == UserId(USER_ID)
         assert isinstance(event, HilDecisionSubmitted)
         assert event.approval_id == "ap_abc"
-        assert event.outcome == "approved"
+        assert event.decision == "approved"
         assert event.ledger_version == 4
         assert event.card_age_seconds is not None
         assert event.card_age_seconds < 60
@@ -343,7 +343,7 @@ class TestDecisionSubmittedEvent:
             await decide_ledger("ap_abc", user_id=USER_ID, kind="deny", via="card")
 
         assert isinstance(_decision_events(capture)[-1][1], HilDecisionSubmitted)
-        assert _decision_events(capture)[-1][1].outcome == "denied"
+        assert _decision_events(capture)[-1][1].decision == "denied"
 
     async def test_a_committed_decision_is_counted_once_as_the_users_approval_decision(
         self, seams: "LedgerSeams"

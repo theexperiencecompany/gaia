@@ -129,7 +129,7 @@ def _event_outcome(edges: Edges) -> ApprovalOutcome:
         for call in edges.events.call_args_list
         if isinstance(call.args[1], HilDecisionSubmitted | HilRevoked)
     ]
-    return event.outcome
+    return event.decision if isinstance(event, HilDecisionSubmitted) else event.outcome
 
 
 @pytest.mark.parametrize(
