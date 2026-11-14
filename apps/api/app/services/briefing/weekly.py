@@ -26,19 +26,19 @@ from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.users import user_repository
 from app.models.brief_pool_models import DataSeries, SeriesShape
-from app.models.briefing_models import BriefingEvent, BriefingTallies
+from app.models.briefing_models import BriefingEvent, BriefingModel, BriefingTallies
+from app.models.user_models import UserDocument
 from app.services.briefing import context, dormancy
 from app.services.briefing.artifacts import gather_artifacts
 from app.services.briefing.candidates.memory import mark_placed_shown
 from app.services.briefing.candidates.pool import (
     CandidateSources,
-    GatheredCandidates,
     gather_candidates,
 )
 from app.services.briefing.composition.compose import compose_brief
 from app.services.briefing.editions.capabilities import split_drawable
 from app.services.briefing.errors import BriefingGenerationError
-from app.services.briefing.fact_pool.pool import PoolContext, PoolReads, build_fact_pool
+from app.services.briefing.fact_pool.pool import FactPool, PoolContext, PoolReads, build_fact_pool
 from app.services.briefing.fact_pool.window import week_window
 from app.services.briefing.facts import (
     WEEK_AHEAD,
@@ -90,12 +90,35 @@ def _recap_series(series: list[DataSeries]) -> list[DataSeries]:
     return [s for s in series if s.shape is SeriesShape.TIME_SERIES and s.source in _RECAP_SOURCES]
 
 
-def _is_empty_week(gathered: GatheredCandidates) -> bool:
+def _is_empty_week(pool: FactPool) -> bool:
     """Say whether the week holds nothing to recap: nothing done, due, waiting, found or ahead.
 
-    Undated todos of their own are backlog, never a week's news.
+    Undated todos of their own are backlog, never a week's news; a goal whose work moved or
+    sat stuck all week is the recap's first answer.
     """
-    return all(c.backlog for c in gathered.pool.values())
+    return all(c.backlog for c in pool.items.values()) and not any(
+        goal.done or goal.stalled for goal in pool.goals
+    )
+
+
+async def _send_quiet_week(
+    user: UserDocument,
+    clock: context.UserClock,
+    briefs: list[BriefingModel],
+    reads: tuple[list[BriefingEvent] | context.CalendarUnread, int],
+    pool: FactPool,
+) -> None:
+    """Send the week's quiet note, the daily's quiet path: reads are the week ahead and overdue."""
+    ahead, overdue = reads
+    gap = ahead.gap if isinstance(ahead, context.CalendarUnread) else None
+    facts = await quiet_facts(user.id, BRIEFING_KIND_WEEKLY, briefs, (gap, overdue))
+    await publish_quiet_note(
+        user,
+        clock,
+        BRIEFING_KIND_WEEKLY,
+        quiet_note(clock, BRIEFING_KIND_WEEKLY, facts),
+        PoolCounts.of(pool),
+    )
 
 
 async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
@@ -141,16 +164,6 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         ),
     )
     briefs = await briefing_repository.list_recent(user_id, limit=RECENT_BRIEFS_RECALLED)
-    if _is_empty_week(gathered):
-        gap = ahead.gap if isinstance(ahead, context.CalendarUnread) else None
-        note = quiet_note(
-            clock, BRIEFING_KIND_WEEKLY, quiet_facts(briefs, clock, gap, todos.overdue)
-        )
-        await publish_quiet_note(
-            user, clock, BRIEFING_KIND_WEEKLY, note, PoolCounts(items=len(gathered.pool), series=0)
-        )
-        return BriefingRunOutcome.SENT
-
     recent = recent_lines(briefs)
     goals = await context.stated_goals(user_id, user)
     goal_block, _ = context.format_goal_block(goals)
@@ -175,6 +188,9 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
         ),
         seen_at,
     )
+    if _is_empty_week(pool):
+        await _send_quiet_week(user, clock, briefs, (ahead, todos.overdue), pool)
+        return BriefingRunOutcome.SENT
     composed = await compose_brief(user_id, pool, BRIEFING_KIND_WEEKLY)
     laid = lay_out(composed.rendered, pool)
     log_composition(pool, laid)

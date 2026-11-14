@@ -193,11 +193,8 @@ QUIET_NOTE_NOTHING_NEW: Final[dict[str, str]] = {
     BRIEFING_KIND_WEEKLY: "Nothing moved this week",
 }
 QUIET_NOTE_STILL: Final[str] = "Still nothing new, as in your last briefs"
-QUIET_NOTE_STILL_SINCE: Final[str] = "Still nothing new: {run} quiet {unit} since your brief {when}"
-QUIET_NOTE_RUN_UNITS: Final[dict[str, str]] = {
-    BRIEFING_KIND_DAILY: "days",
-    BRIEFING_KIND_WEEKLY: "weeks",
-}
+QUIET_NOTE_STILL_SINCE: Final[str] = "Still nothing new since your brief {when}"
+QUIET_NOTE_STILL_FOR: Final[str] = "Still nothing new: {days} days since your brief {when}"
 QUIET_NOTE_CALENDAR_CLEAR: Final[dict[str, str]] = {
     BRIEFING_KIND_DAILY: ", and your calendar is clear.",
     BRIEFING_KIND_WEEKLY: ", and next week's calendar is clear.",

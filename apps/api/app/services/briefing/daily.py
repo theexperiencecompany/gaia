@@ -250,7 +250,11 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             user,
             clock,
             BRIEFING_KIND_DAILY,
-            quiet_note(clock, BRIEFING_KIND_DAILY, quiet_facts(briefs, clock, gap, todos.overdue)),
+            quiet_note(
+                clock,
+                BRIEFING_KIND_DAILY,
+                await quiet_facts(user_id, BRIEFING_KIND_DAILY, briefs, (gap, todos.overdue)),
+            ),
             PoolCounts.of(pool),
         )
         await _settle(user, ladder, gathered)

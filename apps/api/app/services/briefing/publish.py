@@ -4,7 +4,7 @@ Persistence precedes delivery so the dashboard never misses a brief that reached
 """
 
 from dataclasses import dataclass
-from itertools import takewhile
+from datetime import date
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
@@ -16,8 +16,8 @@ from app.constants.briefing import (
     QUIET_NOTE_NO_CALENDAR,
     QUIET_NOTE_NOTHING_NEW,
     QUIET_NOTE_OVERDUE,
-    QUIET_NOTE_RUN_UNITS,
     QUIET_NOTE_STILL,
+    QUIET_NOTE_STILL_FOR,
     QUIET_NOTE_STILL_SINCE,
     QUIET_NOTE_WATCH,
     WEEKLY_KICKER,
@@ -132,41 +132,51 @@ async def publish_brief(
 
 @dataclass(frozen=True)
 class QuietFacts:
-    """What a quiet note says beside its quiet: the calendar, the quiet streak it continues, overdue.
+    """What a quiet note says beside its quiet: the calendar, the quiet it continues, overdue.
 
-    quiet_run counts the quiet notes in a row this one makes, itself included; last_edition is
-    when the last drawn brief went out, said as the user would, None when no recent one was.
+    still_quiet says the brief of its kind before it was a quiet note too; last_edition is the
+    last drawn brief of any kind, None when none ever went out.
     """
 
     calendar: CalendarGap | None
-    quiet_run: int = 1
-    last_edition: str | None = None
+    still_quiet: bool = False
+    last_edition: BriefingModel | None = None
     overdue: int = 0
 
 
-def quiet_facts(
-    recent: list[BriefingModel], clock: UserClock, calendar: CalendarGap | None, overdue: int
+async def quiet_facts(
+    user_id: str,
+    kind: BriefingKind,
+    recent: list[BriefingModel],
+    reads: tuple[CalendarGap | None, int],
 ) -> QuietFacts:
-    """Read the quiet streak off the recent briefs, newest first, every kind among them."""
-    quiet = list(takewhile(lambda b: b.payload.form is BriefForm.QUIET_NOTE, recent))
-    edition = next((b for b in recent if b.payload.form is BriefForm.EDITION), None)
+    """Say how the quiet stands: whether the last brief of its kind was quiet, and the last edition.
+
+    recent is newest first; reads are the calendar's gap and the user's overdue todo count.
+    """
+    calendar, overdue = reads
+    previous = next((b for b in recent if b.kind == kind), None)
+    editions = await briefing_repository.list_recent(user_id, limit=1, editions_only=True)
     return QuietFacts(
         calendar=calendar,
-        quiet_run=len(quiet) + 1,
-        last_edition=when_sent(edition, clock) if edition is not None else None,
+        still_quiet=previous is not None and previous.payload.form is BriefForm.QUIET_NOTE,
+        last_edition=editions[0] if editions else None,
         overdue=overdue,
     )
 
 
-def _quiet_news(kind: BriefingKind, facts: QuietFacts) -> str:
-    """Say there is nothing new; after a quiet brief, how long it has stayed so and since when."""
-    if facts.quiet_run == 1:
+def _quiet_news(kind: BriefingKind, facts: QuietFacts, clock: UserClock) -> str:
+    """Say there is nothing new; after a quiet brief, since which brief and how many days ago."""
+    if not facts.still_quiet:
         return QUIET_NOTE_NOTHING_NEW[kind]
-    if facts.last_edition is None:
+    edition = facts.last_edition
+    if edition is None:
         return QUIET_NOTE_STILL
-    return QUIET_NOTE_STILL_SINCE.format(
-        run=facts.quiet_run, unit=QUIET_NOTE_RUN_UNITS[kind], when=facts.last_edition
-    )
+    when = when_sent(edition, clock)
+    days = (clock.now_local.date() - date.fromisoformat(edition.date)).days
+    if days == 1:
+        return QUIET_NOTE_STILL_SINCE.format(when=when)
+    return QUIET_NOTE_STILL_FOR.format(days=days, when=when)
 
 
 def quiet_note(clock: UserClock, kind: BriefingKind, facts: QuietFacts) -> BriefingPayload:
@@ -176,7 +186,7 @@ def quiet_note(clock: UserClock, kind: BriefingKind, facts: QuietFacts) -> Brief
         CalendarGap.NOT_CONNECTED: QUIET_NOTE_NO_CALENDAR,
         CalendarGap.UNAVAILABLE: QUIET_NOTE_CALENDAR_UNREAD,
     }[facts.calendar]
-    lines = [f"{_quiet_news(kind, facts)}{calendar}"]
+    lines = [f"{_quiet_news(kind, facts, clock)}{calendar}"]
     if facts.overdue:
         lines.append(QUIET_NOTE_OVERDUE.format(count=facts.overdue))
     lines.append(QUIET_NOTE_WATCH)

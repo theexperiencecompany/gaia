@@ -77,6 +77,7 @@ from app.models.brief_models import PendingBriefItemDocument
 from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_models import (
     BriefingEvent,
+    BriefingKind,
     BriefingModel,
     BriefingPayload,
     BriefingSchedule,
@@ -465,6 +466,15 @@ def _own_todos(open_count: int, overdue: int = 0) -> AsyncMock:
     return AsyncMock(
         side_effect=lambda _user, due_before=None: overdue if due_before else open_count
     )
+
+
+def _briefs_read(world: World, briefs: list[BriefingModel]) -> None:
+    """Have list_recent read these briefs, newest first: every kind, or the drawn ones alone."""
+    world.recent.side_effect = lambda user_id, *, limit, editions_only=False, **_k: [
+        b
+        for b in briefs
+        if user_id == _USER and (not editions_only or b.payload.form is BriefForm.EDITION)
+    ][:limit]
 
 
 def _patch_context_reads(monkeypatch: pytest.MonkeyPatch, w: World) -> None:
@@ -950,7 +960,7 @@ class TestDailyBrief:
         )
 
     @staticmethod
-    def _brief(day: str, form: BriefForm) -> BriefingModel:
+    def _brief(day: str, form: BriefForm, kind: BriefingKind = "daily") -> BriefingModel:
         payload = BriefingPayload(
             form=form,
             kicker="K",
@@ -961,7 +971,9 @@ class TestDailyBrief:
             caption="",
             template_family="",
         )
-        return BriefingModel(id=f"b-{day}", user_id=_USER, date=day, payload=payload)
+        return BriefingModel(
+            id=f"b-{day}-{kind}", user_id=_USER, date=day, kind=kind, payload=payload
+        )
 
     async def test_a_quiet_day_after_quiet_days_says_how_long_and_since_which_brief(
         self, world: World
@@ -969,17 +981,66 @@ class TestDailyBrief:
         """Replay: five quiet days in a row each sent the very same two lines."""
         self._quiet(world)
         world.calendar = []
-        world.recent.return_value = [
-            self._brief("2026-10-13", BriefForm.QUIET_NOTE),
-            self._brief("2026-10-12", BriefForm.QUIET_NOTE),
-            self._brief("2026-10-11", BriefForm.EDITION),
-        ]
+        quiet = [self._brief(f"2026-10-{day}", BriefForm.QUIET_NOTE) for day in (13, 12, 11, 10)]
+        # Past the briefs the writer recalls: the last edition is read on its own.
+        _briefs_read(world, [*quiet, *quiet, self._brief("2026-10-03", BriefForm.EDITION)])
 
         await daily.run_daily_briefing(_USER)
 
         assert _stored_payload(world).message.splitlines()[0] == (
-            "Still nothing new: 3 quiet days since your brief on Sunday Oct 11, and your calendar "
+            "Still nothing new: 11 days since your brief on Saturday Oct 3, and your calendar "
             "is clear."
+        )
+        assert call(_USER, limit=1, editions_only=True) in world.recent.await_args_list
+
+    async def test_a_quiet_day_after_yesterdays_edition_says_since_yesterday(
+        self, world: World
+    ) -> None:
+        self._quiet(world)
+        world.calendar = []
+        _briefs_read(
+            world,
+            [
+                self._brief("2026-10-13", BriefForm.EDITION, kind="weekly"),
+                self._brief("2026-10-13", BriefForm.QUIET_NOTE),
+            ],
+        )
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).message.splitlines()[0] == (
+            "Still nothing new since your brief yesterday, and your calendar is clear."
+        )
+
+    async def test_a_quiet_week_note_never_makes_a_daily_quiet_streak(self, world: World) -> None:
+        """Replay: the day after a drawn daily, a quiet weekly made it "2 quiet days"."""
+        self._quiet(world)
+        world.calendar = []
+        _briefs_read(
+            world,
+            [
+                self._brief("2026-10-13", BriefForm.QUIET_NOTE, kind="weekly"),
+                self._brief("2026-10-13", BriefForm.EDITION),
+            ],
+        )
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).message.splitlines()[0] == (
+            "Nothing new needs you today, and your calendar is clear."
+        )
+
+    async def test_a_quiet_streak_with_no_edition_ever_says_still_nothing_new(
+        self, world: World
+    ) -> None:
+        self._quiet(world)
+        world.calendar = []
+        _briefs_read(world, [self._brief("2026-10-13", BriefForm.QUIET_NOTE)])
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).message.splitlines()[0] == (
+            "Still nothing new, as in your last briefs, and your calendar is clear."
         )
 
     async def test_a_quiet_day_counts_the_users_overdue_todos(
@@ -1661,6 +1722,32 @@ class TestTheWeeklyAnswersTheWeek:
             "I'll flag anything that comes in."
         )
 
+    async def test_a_week_whose_goal_work_sat_stuck_is_recapped_never_quiet(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Replay: a quiet week dropped the stalled growth goal the old weekly recapped."""
+        world.calendar = []
+        world.reads["gather_completed_since"].return_value = context.CompletedWork()
+        goal = context.StatedGoal("Launch Atlas", GoalOrigin.MEMORY, terms=("Atlas",))
+        _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[goal]))
+        stuck = TodoDocument(
+            id="a2", user_id=_USER, title="Atlas pricing", updated_at=_NOW - timedelta(days=9)
+        )
+        world.reads["list_open_user_todos"].side_effect = lambda *_a, due_before=None, **_k: (
+            [stuck] if due_before is None else []
+        )
+        world.composer.side_effect = lambda schema, _prompt, **_k: schema.model_validate(
+            {"blocks": [{"kind": "progress", "goal_id": "g1"}]}
+        )
+        world.agent.return_value = _weekly_voiced()
+
+        await weekly.run_weekly_digest(_USER)
+
+        assert _stored_payload(world).form is BriefForm.EDITION
+        assert (
+            '- "Launch Atlas": nothing linked to it finished | stuck a week or more: Atlas pricing'
+        ) in _facts_shown(_prompt(world))
+
     async def test_the_weekly_is_sent_back_for_a_line_a_recent_daily_printed(
         self, world: World
     ) -> None:
@@ -1883,17 +1970,17 @@ class TestTheWeeklyReadsThisUsersWeek:
                 caption="",
                 template_family="",
             )
-            return BriefingModel(id=day, user_id=_USER, date=day, payload=payload)
+            return BriefingModel(id=day, user_id=_USER, date=day, kind="weekly", payload=payload)
 
-        world.recent.return_value = [
-            brief("2026-10-07", BriefForm.QUIET_NOTE),
-            brief("2026-10-05", BriefForm.EDITION),
-        ]
+        _briefs_read(
+            world,
+            [brief("2026-10-07", BriefForm.QUIET_NOTE), brief("2026-10-05", BriefForm.EDITION)],
+        )
 
         await weekly.run_weekly_digest(_USER)
 
         assert _stored_payload(world).message.splitlines() == [
-            "Still nothing new: 2 quiet weeks since your brief on Monday Oct 5. I couldn't read "
+            "Still nothing new: 9 days since your brief on Monday Oct 5. I couldn't read "
             "your calendar, so check it before you plan.",
             "3 of your own todos are past due.",
             "I'll flag anything that comes in.",
