@@ -42,9 +42,13 @@ from app.agents.llm.exceptions import (
     MalformedStructuredOutputError,
 )
 from app.agents.llm.types import LLMFallback, LLMProvider, ProviderLLM
+from app.agents.llm.workers_ai import ChatWorkersAI
 from app.config.settings import settings
 from app.constants.llm import (
     AUX_SESSION_SUFFIX,
+    CLOUDFLARE_AI_API_URL,
+    CLOUDFLARE_MAX_OUTPUT_TOKENS,
+    CLOUDFLARE_REASONING_EFFORT,
     COMMS_REASONING_EFFORT,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
@@ -86,6 +90,8 @@ from app.constants.providers import (
     HOSTED_ONE_SHOT_PROVIDERS,
     LLM_MODEL_PROFILES,
     LLM_PROVIDER_PRIORITY,
+    OVERRIDE_PROVIDER,
+    PINNED_FALLBACKS,
     CredentialProviderName,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -478,6 +484,43 @@ def init_openai_llm() -> LanguageModelLike:
     return llm.configurable_fields(model_name=_MODEL_FIELD)
 
 
+def _cloudflare_openai_url(config: ProviderConfig) -> str:
+    """Return Workers AI's OpenAI-wire API root for a config whose account_id is already required."""
+    return CLOUDFLARE_AI_API_URL.format(account_id=config.account_id)
+
+
+@lazy_provider(
+    name=LLMProviderKey.CLOUDFLARE,
+    required_keys=[],
+    strategy=MissingKeyStrategy.WARN,
+    warning_message="Cloudflare Workers AI not configured. Every lane keeps its usual provider.",
+)
+def init_cloudflare_llm() -> LanguageModelLike:
+    """Initialize the Workers AI client over its OpenAI-compatible chat completions API.
+
+    The effort is fixed on the client (reasoning_effort), as on the OpenAI lane:
+    the lane's reasoning key is OpenRouter-wire only.
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm()
+    config: ProviderConfig = _require_provider_config(LLMProviderName.CLOUDFLARE)
+    llm = without_sdk_retry(
+        ChatWorkersAI(
+            model=chat_model(LLMProviderName.CLOUDFLARE),
+            reasoning_effort=CLOUDFLARE_REASONING_EFFORT,
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            max_completion_tokens=CLOUDFLARE_MAX_OUTPUT_TOKENS,
+            max_retries=0,
+            api_key=SecretStr(str(config.api_key)),
+            base_url=_cloudflare_openai_url(config),
+        )
+    )
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm.configurable_fields(model_name=_MODEL_FIELD)
+
+
 def init_llm(
     preferred_provider: str | None = None,
     fallback_enabled: bool = True,
@@ -550,10 +593,9 @@ def _get_available_providers() -> dict[LLMProviderName, ProviderLLM]:
 
 def provider_configured(provider_name: LLMProviderName) -> bool:
     """Report whether provider_name can serve a request under the active runtime config."""
-    if settings.GAIA_SIM_MODE:
-        # Sim mode pins EVERY lane to the scripted stub (the loaders return
-        # _sim_llm), mirroring the old behavior where the stub key satisfied
-        # every import-time required_keys list.
+    if settings.GAIA_SIM_MODE and provider_name is not OVERRIDE_PROVIDER:
+        # Every loader returns _sim_llm, so every lane is usable; the override
+        # reroutes every role, so it stays the operator's choice even here.
         return True
     credential = CredentialProviderName(provider_name)
     return is_usable(credential, resolved_config(credential))
@@ -576,8 +618,12 @@ def chat_route(exclude: LLMProviderName | None = None) -> tuple[LLMProviderName,
     """Return the highest-priority usable chat provider other than exclude, and its model.
 
     The default lane takes it with no exclusion; a lane's fallback excludes the
-    provider that just failed. None when nothing (else) is usable.
+    provider that just failed, and goes to its PINNED_FALLBACKS target first when
+    that one is usable. None when nothing (else) is usable.
     """
+    pinned = PINNED_FALLBACKS.get(exclude) if exclude else None
+    if pinned is not None and provider_configured(pinned) and (model := chat_model(pinned)):
+        return pinned, model
     return next((route for route in chat_routes() if route[0] != exclude), None)
 
 
@@ -647,6 +693,7 @@ def register_llm_providers() -> None:
     init_openrouter_llm()
     init_openai_llm()
     init_ollama_llm()
+    init_cloudflare_llm()
     # The custom endpoint never registers under SaaS production, so a stray
     # DEV_LLM_* env var there still can't route real traffic. Dev and self-host
     # register it; availability still follows the resolver.
@@ -704,12 +751,15 @@ def _one_shot_model(provider: LLMProviderName, use: ModelUse) -> str | None:
 def one_shot_route(use: ModelUse) -> tuple[LLMProviderName, str] | None:
     """Return the provider and model a one-shot use runs on, or None when nothing configured can serve it.
 
-    Production runs the hosted table and nothing else. Elsewhere the hosted
-    provider still comes first, then every configured provider in priority order.
+    A configured OVERRIDE_PROVIDER comes first everywhere. Then production runs the
+    hosted table and nothing else; elsewhere the hosted provider, then every
+    configured provider in priority order.
     """
     hosted = HOSTED_ONE_SHOT_PROVIDERS[use]
     candidates = (
-        (hosted,) if settings.deployment.hosted_models else (hosted, *LLM_PROVIDER_PRIORITY)
+        (OVERRIDE_PROVIDER, hosted)
+        if settings.deployment.hosted_models
+        else (OVERRIDE_PROVIDER, hosted, *LLM_PROVIDER_PRIORITY)
     )
     for provider in candidates:
         if provider_configured(provider) and (model := _one_shot_model(provider, use)):
@@ -779,6 +829,18 @@ def resolve_model(
                 base_url=_ollama_openai_url(config),
                 reasoning_effort=None,
             )
+        case LLMProviderName.CLOUDFLARE:
+            config = _require_provider_config(provider)
+            return _build_openai_wire_one_shot(
+                model,
+                temperature,
+                api_key=str(config.api_key),
+                base_url=_cloudflare_openai_url(config),
+                # Workers AI takes OpenAI's none/low for this model, and no "minimal".
+                reasoning_effort=OPENAI_REASONING_EFFORT[reasoning or ReasoningLevel.OFF],
+                # A one-shot streams too under astream_events, onto the same doubled usage.
+                chat_class=ChatWorkersAI,
+            )
         case LLMProviderName.CUSTOM:
             return build_custom_chat_model(
                 temperature=temperature,
@@ -831,9 +893,10 @@ def _build_openai_wire_one_shot(
     api_key: str,
     base_url: str | None,
     reasoning_effort: str | None,
+    chat_class: type[ChatOpenAI] = ChatOpenAI,
 ) -> BaseChatModel:
-    """Build a one-shot client for OpenAI itself (base_url None) or Ollama's OpenAI-wire API."""
-    llm = ChatOpenAI(
+    """Build a one-shot client for OpenAI itself (base_url None) or another OpenAI-wire API."""
+    llm = chat_class(
         model=model,
         temperature=temperature,
         max_completion_tokens=HELPER_MAX_OUTPUT_TOKENS,
