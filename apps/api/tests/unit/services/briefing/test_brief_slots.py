@@ -128,6 +128,13 @@ class TestProblems:
     def test_a_figure_as_it_stands_in_a_title_may_be_typed(self) -> None:
         assert slot_problems("message", "the (Q4) deck, then the [Q4 deck](fact:7).", _VALUES) == []
 
+    def test_a_title_figure_said_in_the_plural_is_the_same_figure(self) -> None:
+        """Replay: a weekly failed outright for writing "1:1s" about its 1:1 events."""
+        values = SlotValues(facts={1: BriefFact(title="1:1 with Dana")}, counts={})
+
+        assert slot_problems("message", "Three 1:1s, then a demo.", values) == []
+        assert slot_problems("message", "Two 2:1s.", values) != []
+
     def test_a_typed_web_address_is_named(self) -> None:
         problems = slot_problems("message", "open https://linear.app/acme now", _VALUES)
 
