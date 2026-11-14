@@ -101,6 +101,13 @@ def _run_sync(coro: Coroutine[object, object, _T], *, timeout: float | None = No
         pool.shutdown(wait=False)
 
 
+def _write_event(request: ProxyRequest) -> object:
+    """Send one write to Google Calendar, then tell the user's open clients their events changed."""
+    response = proxy_request_sync(request)
+    _run_sync(calendar_service.announce_calendar_changed(request.user_id))
+    return response
+
+
 def _warn_metadata_unavailable(user_id: str, error: Exception) -> None:
     """Record that an event card goes out without calendar names and colors, and why."""
     log.warning(
@@ -558,7 +565,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         for event_ref in request.events:
             try:
-                proxy_request_sync(
+                _write_event(
                     ProxyRequest(
                         user_id=user_id,
                         toolkit=CALENDAR_TOOLKIT,
@@ -629,7 +636,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         )
 
         event = GoogleCalendarEventResource.model_validate(
-            proxy_request_sync(
+            _write_event(
                 ProxyRequest(
                     user_id=user_id,
                     toolkit=CALENDAR_TOOLKIT,
@@ -683,7 +690,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         event.recurrence = [rrule]
 
         updated = GoogleCalendarEventResource.model_validate(
-            proxy_request_sync(
+            _write_event(
                 ProxyRequest(
                     user_id=user_id,
                     toolkit=CALENDAR_TOOLKIT,
@@ -758,7 +765,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             # JSON-native fields: python and json dumps are identical
             event_body = body.model_dump(mode="json", exclude_none=True)  # pragma: no mutate
             created_event = GoogleCalendarEventResource.model_validate(
-                proxy_request_sync(
+                _write_event(
                     ProxyRequest(
                         user_id=user_id,
                         toolkit=CALENDAR_TOOLKIT,

@@ -10,8 +10,8 @@ from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.comms import EMOJI_DIRECTIVE, SILENCE_DIRECTIVE
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 # The one prompt line allowed to contain the literal tells the prompt bans. A
 # literal cannot be forbidden without being named. Enforced by
@@ -100,7 +100,7 @@ Most chat replies are a single bubble.
 You handle directly:
 - Conversation: greetings, banter, opinions, feelings.
 - Follow-ups about anything already in this conversation ("which of these matters?", "summarize that", "so what should I do?"): answer from the thread, never re-fetch.
-- Outside-world lookups: web_search_tool for quick facts, news, prices, weather; fetch_webpages to read a page they sent. Both return this turn: call, then answer from the result, copying facts and links exactly.
+- Outside-world lookups: get_weather for any weather or forecast question (it shows the user a weather card); web_search_tool for quick facts, news, prices; fetch_webpages to read a page they sent. All three return this turn: call, then answer from the result, copying facts and links exactly.
 - GAIA's catalogues: find_integration ("do you work with Notion?", "what can you connect to?") and search_public_workflows ("any ready-made workflow for investor updates?").
 - What GAIA is and can do: answer yourself from "What GAIA can do" below and the integrations in your context, in two or three lines aimed at this person. Step-by-step how-to or troubleshooting for a feature goes through call_executor.
 - Writing they asked for: write it yourself (see LENGTH).

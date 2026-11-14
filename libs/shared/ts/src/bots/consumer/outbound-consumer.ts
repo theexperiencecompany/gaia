@@ -12,7 +12,6 @@
 
 import { type Channel, type ConsumeMessage, connect } from "amqplib";
 import type { ActiveBotConversation } from "../../api/generated";
-import { splitMessageByBreaks } from "../../utils/messageBubbles";
 import {
   DELIVERY_FAILURE_KIND,
   type DeliveryFailure,
@@ -20,7 +19,7 @@ import {
   type ReportDeliveryFailure,
 } from "../delivery-failures";
 import type { OutboundNotifications, PlatformName } from "../types";
-import { BUBBLE_PAUSE_MS, deliverableBubbles } from "../utils/bubbles";
+import { BUBBLE_PAUSE_MS } from "../utils/bubbles";
 import { retryAfterMs } from "../utils/delivery-errors";
 import {
   BOT_FAILURE_REASON,
@@ -33,6 +32,7 @@ import {
   createBotLogger,
   hashLogIdentifier,
 } from "../utils/logger";
+import { chunkResponse } from "../utils/text";
 import { sleep } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import {
@@ -557,12 +557,10 @@ export class OutboundConsumer {
     progress: { delivered: number },
   ): Promise<void> {
     const text = sources
-      .flatMap((source) =>
-        splitMessageByBreaks(source).flatMap((bubble) => {
-          const rendered = renderForPlatform(bubble, this.platform).trim();
-          return rendered ? [rendered] : [];
-        }),
-      )
+      .flatMap((bubble) => {
+        const rendered = renderForPlatform(bubble, this.platform).trim();
+        return rendered ? [rendered] : [];
+      })
       .join("\n\n");
     wideLog.set({ outbound_mode: "notification" });
     if (!text) return;
@@ -587,8 +585,8 @@ export class OutboundConsumer {
       renderForPlatform(chunk, this.platform);
     // Await each send before the next so the bubbles arrive in the published
     // order — never fan these out concurrently.
-    const bubbles = sources.flatMap((source) =>
-      deliverableBubbles(source, this.platform, render),
+    const bubbles = sources.map((bubble) =>
+      chunkResponse(bubble, this.platform, render),
     );
     for (const chunks of bubbles) {
       for (const [index, chunk] of chunks.entries()) {

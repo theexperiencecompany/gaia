@@ -20,17 +20,13 @@ from app.agents.templates.agent_template import (
 )
 from app.agents.workspace.paths import safe_upload_filename
 from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
-from app.models.message_models import (
-    FileData,
-    ReplyToMessageData,
-    SelectedCalendarEventData,
-    SelectedWorkflowData,
-)
+from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.trigger_gate_models import QuietHoursBypass
 from app.models.webhook_models import TriggerEventAccount
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from app.services.workflow.service import WorkflowService
 from app.utils.timezone import Timezone
+from shared.py.conversation_wire import ReplyToMessageData
 from shared.py.wide_events import log
 
 

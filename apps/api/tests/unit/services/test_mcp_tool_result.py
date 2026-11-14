@@ -26,7 +26,7 @@ from PIL import Image
 
 from app.constants.mcp import EMPTY_TOOL_RESULT, MCP_UNSUPPORTED_CONTENT_NOTICE
 from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
-from app.helpers.agent_helpers import _json_safe_tool_result
+from app.services.conversation.graph_payloads import _json_safe_tool_result
 from app.services.mcp.langchain_adapter import _tool_result_to_content
 
 

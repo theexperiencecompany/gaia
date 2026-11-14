@@ -9,6 +9,7 @@ from hypothesis import given, settings, strategies as st
 import pytest
 
 from app.constants.general import CALL_EXECUTOR_NAME
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
@@ -17,10 +18,8 @@ from app.models.conversation_frame_models import (
 )
 from app.models.conversation_log_models import (
     Entry,
-    FailureReason,
     LoggedEntry,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     WorkFinished,
     WorkOutcome,
@@ -29,14 +28,15 @@ from app.models.conversation_log_models import (
 from app.models.conversation_screen_models import (
     ScreenInsertFrame,
     ScreenItem,
-    ScreenItemKind,
     ScreenPatch,
+    ScreenUpdateFrame,
+    WorkItem,
     WorkStatus,
 )
 from app.models.conversation_send_models import ConversationEvent
-from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
 from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
+from shared.py.conversation_wire import FailureReason, ReplyOutcome, ScreenItemKind, ToolDataEntry
 from tests.unit.services.conversation.log_helpers import asked, decided, logged, notice, user
 
 
@@ -77,7 +77,7 @@ class _Log:
 
     entries: list[LoggedEntry] = field(default_factory=list)
     screens: list[list[ScreenItem]] = field(default_factory=list)
-    tracker: ScreenTracker = field(default_factory=lambda: ScreenTracker([]))
+    tracker: ScreenTracker = field(default_factory=lambda: ScreenTracker("c1", [], {}))
     patched: list[ScreenItem] = field(default_factory=list)
     patches: list[ScreenPatch] = field(default_factory=list)
 
@@ -442,17 +442,22 @@ def test_a_projection_that_moves_a_shown_item_fails_loudly() -> None:
         screen_patches([first, second], [second])
 
 
-def test_a_handed_over_tasks_delta_streams_into_the_work_item_it_joined() -> None:
+async def test_a_handed_over_tasks_cards_show_on_the_work_item_it_joined() -> None:
     tracker = ScreenTracker(
+        "c1",
         [
             logged(1, user("u1")),
             logged(2, WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))),
-        ]
+        ],
+        {},
     )
     joined = WorkStarted(id="work:t2", task_id="t2", cause_through=1, answers=(), joins="t1")
     tracker.take(EntryFrame(seq=3, at=logged(3, joined).at, entry=joined))
     delta = WorkDeltaFrame(task_id="t2", index=0, payload=ToolDataEvent(tool_data=_card("x")))
-    assert tracker.on_its_item(delta).task_id == "t1"
+    (patch,) = await tracker.on_work(delta)
+    assert isinstance(patch, ScreenUpdateFrame)
+    assert isinstance(patch.item, WorkItem)
+    assert (patch.item.task_id, patch.item.tool_data) == ("t1", (_card("x"),))
     assert [item.id for item in tracker.items] == ["u1", "work:t1"]
 
 
@@ -489,6 +494,25 @@ def test_a_work_item_says_where_the_newest_approval_it_waits_on_was_logged() -> 
     [_, waiting, _] = project_screen(log)
     assert waiting.kind is ScreenItemKind.WORK
     assert (waiting.seq, waiting.asked_seq) == (2, 4)
+
+
+def test_a_work_items_approval_card_is_drawn_in_its_timeline_and_ends_with_its_decision() -> None:
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    log = [logged(1, user("u1")), logged(2, started), logged(3, asked("ask:a1", "t1", "a1"))]
+    [_, waiting] = project_screen(log)
+    assert waiting.kind is ScreenItemKind.WORK
+    [shown] = [entry.card for entry in waiting.timeline.cards]
+    [asking] = shown["data"]
+    assert (shown["tool_name"], asking["approval_id"], asking["outcome"]) == (
+        APPROVAL_REQUEST_TOOL_NAME,
+        "a1",
+        None,
+    )
+    [_, ended] = project_screen([*log, logged(4, decided("dec:a1", "a1"))])
+    assert ended.kind is ScreenItemKind.WORK
+    [card] = [entry.card for entry in ended.timeline.cards]
+    [answered] = card["data"]
+    assert (answered["outcome"], answered["decider"]) == ("approved", "user")
 
 
 def _artifact(path: str) -> ToolDataEntry:

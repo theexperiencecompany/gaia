@@ -1,7 +1,6 @@
 import { type ConversationView, SCREEN_ITEM_KIND } from "@shared/conversation";
 import { useMemo } from "react";
 import { useLiveConversationStore } from "@/features/chat/live/liveConversationStore";
-import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
 import type { IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 
@@ -36,9 +35,8 @@ const toConversationRow = (conv: IConversation, messageCount: number) => ({
 export type ConversationRow = ReturnType<typeof toConversationRow>;
 
 /**
- * The conversations the user browses: every one except a tracked todo's chat or
- * a bot DM, reached only from their own entry points (the server never lists
- * them either, but a client that opened one keeps it in its local store).
+ * The conversations the user browses: every one the server lists. A client that
+ * opened an unlisted chat (a todo's, a bot DM) keeps it in its local store.
  */
 export const useConversationList = () => {
   const conversations = useChatStore((state) => state.conversations);
@@ -49,7 +47,7 @@ export const useConversationList = () => {
   const list = useMemo(
     () =>
       conversations.flatMap((conv) =>
-        isUnlistedConversation(conv)
+        conv.listed === false
           ? []
           : [toConversationRow(conv, messageCount(live[conv.id]?.view))],
       ),

@@ -33,7 +33,6 @@ from app.models.conversation_log_models import (
     LiveWork,
     LoggedEntry,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     TodoReportForm,
     TodoWoke,
@@ -43,6 +42,7 @@ from app.models.conversation_log_models import (
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.services.checkpoint_thread_reset import ThreadReset
 from app.services.conversation.outcome import EntryOutcome
+from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.log_helpers import todo_run as typed_todo_run
 
 pytestmark = pytest.mark.unit

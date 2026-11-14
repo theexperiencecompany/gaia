@@ -9,7 +9,6 @@ call follows the same feed into its own run's stream while it blocks.
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from functools import partial
 
 from app.agents.core.background.folded_stream import close_folded_stream, open_folded_stream
 from app.agents.core.background.redis_writer import publish_to_stream
@@ -19,6 +18,7 @@ from app.services.browser.job_events import JOB_TERMINAL_FRAME, read_job_events
 from app.services.browser.job_lifetime import browser_job_ttl_seconds
 from app.services.browser.job_stop import browser_job_task_id, stop_job
 from app.services.browser.jobs import done_state, get_conversation_slot
+from app.services.conversation.work_deltas import WorkDeltas
 from shared.py.wide_events import log
 
 #: Takes one card frame of the feed, in order.
@@ -67,12 +67,16 @@ async def relay_job_cards(request: BrowserJobRequest) -> None:
         # A Stop landed before the relay could log the job: it stops the job it could not cover.
         await stop_job(request.job_id)
         return
+    deltas = WorkDeltas(request.conversation_id, stream_id)
+
+    async def publish(data: dict[str, object]) -> None:
+        await publish_to_stream(stream_id, data)
+        deltas(data)
+
     try:
         # Until the feed itself expires: past the latest the worker lets the job end.
         async with asyncio.timeout(browser_job_ttl_seconds()):
-            await follow_job_cards(
-                request.job_id, request.conversation_id, partial(publish_to_stream, stream_id)
-            )
+            await follow_job_cards(request.job_id, request.conversation_id, publish)
     except TimeoutError:
         log.warning(
             f"{LogTag.BROWSER} Browser job relay gave up before the job finished",
@@ -86,6 +90,7 @@ async def relay_job_cards(request: BrowserJobRequest) -> None:
             browser={"job_id": request.job_id},
         )
     finally:
+        await deltas.drain()
         await close_folded_stream(
             stream_id,
             conversation_id=request.conversation_id,

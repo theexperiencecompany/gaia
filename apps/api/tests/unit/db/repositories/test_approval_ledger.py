@@ -20,7 +20,7 @@ from app.db.repositories.approval_ledger import (
     approval_ledger_repository,
 )
 from app.models.hil_models import ApprovalProposal
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 
 _PROPOSAL = ApprovalProposal(
     conversation_id="c1", fingerprint="fp", tool_name="T", args={}, summary="s"

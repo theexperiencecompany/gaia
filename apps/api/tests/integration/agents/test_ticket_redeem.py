@@ -20,7 +20,7 @@ from app.agents.tools.execute.dispatch import ToolExecutionResult, dispatch_tool
 from app.agents.tools.execute.resolver import ResolvedTool
 from app.models.conversation_log_models import ApprovalDecided
 from app.services.hil import ledger_decide
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 CARD_FRAME = {"integration_connection_required": {"integration_id": "gmail"}}

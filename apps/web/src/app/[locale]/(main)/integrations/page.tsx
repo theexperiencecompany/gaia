@@ -25,7 +25,7 @@ import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrati
 import { useIntegrationStatusWebSocket } from "@/features/integrations/hooks/useIntegrationStatusWebSocket";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { usePendingDeepLink } from "@/features/integrations/hooks/usePendingDeepLink";
-import { usePostConnectSettlePolling } from "@/features/integrations/hooks/usePostConnectSettlePolling";
+import { usePostConnectSettling } from "@/features/integrations/hooks/usePostConnectSettling";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { usePlatform } from "@/hooks/ui/usePlatform";
@@ -123,9 +123,9 @@ export default function IntegrationsPage() {
     integrations,
     handleIntegrationClick,
   );
-  // Poll until a freshly-connected integration's tools finish discovering.
+  // A freshly-connected integration shows "Setting up tools" until the server pushes its tools.
   const { beginSettling, settlingIntegrationId } =
-    usePostConnectSettlePolling(integrations);
+    usePostConnectSettling(integrations);
 
   const isSelectedSettling = selectedIntegration
     ? settlingIntegrationId === selectedIntegration.id
@@ -151,8 +151,7 @@ export default function IntegrationsPage() {
       if (name) toast.success(`Connected to ${name}`);
       refetch();
       queryClient.invalidateQueries({ queryKey: toolKeys.all });
-      // Open the sidebar for the freshly-connected integration and poll until
-      // its tools finish discovering in the background (see the poller below).
+      // Open the sidebar for the freshly-connected integration; it settles when its tools land.
       markPending(integrationId);
       beginSettling(integrationId);
     },

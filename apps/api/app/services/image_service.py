@@ -9,7 +9,6 @@ from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
 from app.constants.files import BlobKind
 from app.constants.media import PNG_MIME
-from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
 from app.services.blob_store import blob_store
 from app.utils.chat_utils import do_prompt_no_stream
@@ -18,6 +17,7 @@ from app.utils.image_utils import (
     convert_image_to_text,
     generate_image,
 )
+from shared.py.conversation_wire import ImageData
 from shared.py.wide_events import get_trace_id, log, log_context
 
 

@@ -1,64 +1,17 @@
 """Human-in-the-loop approval events."""
 
-from enum import StrEnum
 from typing import ClassVar, Literal
 
 from shared.py.analytics.catalog.base import ServerEvent
 from shared.py.analytics.catalog.properties import Identifier
+from shared.py.approvals import DecidedOutcome, UndecidedOutcome
 
 __all__ = [
-    "ActionResult",
     "ApprovalDecided",
-    "ApprovalDecider",
-    "ApprovalOutcome",
-    "DECIDED_OUTCOMES",
-    "DecidedOutcome",
     "HilCardShown",
     "HilDecisionSubmitted",
     "HilResumed",
     "HilRevoked",
-    "UndecidedOutcome",
-]
-
-
-class ApprovalOutcome(StrEnum):
-    """How an approval ended; an approval with no outcome is still pending."""
-
-    APPROVED = "approved"
-    DENIED = "denied"
-    # Nobody answered before it ran out of time.
-    EXPIRED = "expired"
-    # The user stopped the work or moved on before deciding.
-    CANCELLED = "cancelled"
-    # GAIA closed the request itself: the agent withdrew it, or the run it held is gone.
-    WITHDRAWN = "withdrawn"
-
-
-class ApprovalDecider(StrEnum):
-    """Who approved or denied: the user, or auto mode's intent judge."""
-
-    USER = "user"
-    AUTO = "auto"
-
-
-class ActionResult(StrEnum):
-    """What happened to an approved action; none until it starts."""
-
-    EXECUTING = "executing"
-    EXECUTED = "executed"
-    FAILED = "failed"
-    # The run died mid-call, so whether the action landed cannot be known; never retried.
-    UNKNOWN = "unknown"
-
-
-#: The outcomes a user or auto mode decides; the rest the system assigns.
-DecidedOutcome = Literal[ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED]
-DECIDED_OUTCOMES: frozenset[ApprovalOutcome] = frozenset(
-    {ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED}
-)
-#: How an approval ends when nobody decided it.
-UndecidedOutcome = Literal[
-    ApprovalOutcome.EXPIRED, ApprovalOutcome.CANCELLED, ApprovalOutcome.WITHDRAWN
 ]
 
 

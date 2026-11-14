@@ -9,13 +9,13 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.conversation_models import ConversationEntry
 from app.models.search_models import MessageSearchResult, SearchResultsResponse
 from app.utils.log_identifiers import user_text_shape
 from app.utils.search.models import SearchResultItem, WebSearchResult
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.search import SearchPerformed
 from tests.conftest import FAKE_USER
+from tests.factories import make_reply_item
 
 SEARCH_BASE = "/api/v1"
 ANALYTICS_PATCH = "app.api.v1.endpoints.search.capture"
@@ -46,7 +46,7 @@ class TestSearchMessages:
             messages=[
                 MessageSearchResult(
                     conversation_id="conv-1",
-                    message=ConversationEntry(type="bot", response="hello", seq=1),
+                    item=make_reply_item("hello", seq=1),
                     snippet="hello",
                 )
             ],
@@ -105,7 +105,7 @@ class TestSearchAnalytics:
             messages=[
                 MessageSearchResult(
                     conversation_id="conv-1",
-                    message=ConversationEntry(type="bot", response="hello", seq=1),
+                    item=make_reply_item("hello", seq=1),
                     snippet="hello",
                 )
             ],

@@ -6,22 +6,22 @@ from uuid import uuid4
 from langchain_core.messages import ToolCall
 
 from app.db.repositories.conversations import conversation_repository
-from app.models.chat_models import (
-    SystemPurpose,
-    ToolDataEntry,
-)
+from app.models.chat_models import SystemPurpose
+from app.models.conversation_frame_models import StreamPayload, ToolDataEvent, ToolOutputEvent
 from app.models.conversation_log_models import Notice
 from app.models.message_models import SelectedWorkflowData
 from app.models.playbook_models import PlaybookDocument, PlaybookStep
+from app.models.stream_events import ToolOutputPayload
 from app.models.workflow_execution_models import RecordedCall
 from app.models.workflow_models import Workflow
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import runtime_ports
+from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation_service import (
     create_system_conversation,
 )
 from app.utils.agent_utils import format_tool_call_entry
-from app.utils.stream_utils import apply_outputs_to_tool_data
+from shared.py.conversation_wire import ToolDataEntry
 
 
 async def get_or_create_workflow_conversation(
@@ -87,12 +87,11 @@ def _playbook_plan(steps: Sequence[PlaybookStep]) -> list[str]:
 async def build_playbook_tool_data(
     trace: Sequence[RecordedCall], user_id: str, playbook: PlaybookDocument
 ) -> list[ToolDataEntry]:
-    """Replayed calls in the shape drain_executor_tool_data yields, led by a Run playbook card.
+    """Replayed calls folded as live work's cards fold, led by a Run playbook card.
 
     Built by format_tool_call_entry, the live stream's formatter; synthetic call ids carry results back.
     """
-    entries: list[ToolDataEntry] = []
-    outputs: dict[str, str] = {}
+    payloads: list[StreamPayload] = []
     lead_id = str(uuid4())
     plan = _playbook_plan(playbook.steps)
     lead = await format_tool_call_entry(
@@ -104,8 +103,9 @@ async def build_playbook_tool_data(
         user_id=user_id,
     )
     if lead is not None:
-        outputs[lead_id] = f"Replayed {len(plan)} frozen step(s): " + "; ".join(plan)
-        entries.append(lead)
+        payloads.append(ToolDataEvent(tool_data=lead))
+        summary = f"Replayed {len(plan)} frozen step(s): " + "; ".join(plan)
+        payloads.append(_output(lead_id, summary))
     for call in trace:
         call_id = str(uuid4())
         entry = await format_tool_call_entry(
@@ -116,7 +116,9 @@ async def build_playbook_tool_data(
             continue
         if call.subagent_id:
             entry["subagent_id"] = call.subagent_id
-        outputs[call_id] = call.result_digest
-        entries.append(entry)
-    apply_outputs_to_tool_data(entries, outputs, only_tool_name="tool_calls_data")
-    return entries
+        payloads.extend((ToolDataEvent(tool_data=entry), _output(call_id, call.result_digest)))
+    return list(fold_cards(payloads).tool_data)
+
+
+def _output(tool_call_id: str, output: str) -> ToolOutputEvent:
+    return ToolOutputEvent(tool_output=ToolOutputPayload(tool_call_id=tool_call_id, output=output))

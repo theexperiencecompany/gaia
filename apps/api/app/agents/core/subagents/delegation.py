@@ -47,6 +47,7 @@ from app.models.agent_models import (
     current_stream_writer,
 )
 from app.models.stream_events import SubagentAgentType
+from app.services.conversation.work_deltas import WorkDeltas
 from app.utils.agent_utils import (
     IntegrationMetadata,
     StreamWriterCallable,
@@ -287,7 +288,8 @@ async def _execute_on_own_stream(
     for configurable in (ctx.configurable, ctx.config.setdefault("configurable", {})):
         configurable["stream_id"] = stream_id
 
-    writer = make_redis_stream_writer(stream_id)
+    deltas = WorkDeltas(delegation.conversation_id, stream_id)
+    writer = deltas.wrap(make_redis_stream_writer(stream_id))
     _emit_start(writer, delegation)
     start_time = time.monotonic()
     try:
@@ -299,6 +301,8 @@ async def _execute_on_own_stream(
         )
     finally:
         _emit_end(writer, delegation, start_time)
+        # The run's cards are on its record before its work is logged as finished.
+        await deltas.drain()
 
 
 async def _land(delegation: Delegation, result: str) -> None:

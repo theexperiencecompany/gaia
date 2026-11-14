@@ -15,7 +15,8 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
-from app.models.chat_models import ToolDataEntry, tool_fields
+from app.models.chat_models import tool_fields
+from shared.py.conversation_wire import ToolDataEntry
 
 _JSON_OBJECT: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
 

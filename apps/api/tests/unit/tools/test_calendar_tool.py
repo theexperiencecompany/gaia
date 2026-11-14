@@ -934,6 +934,31 @@ class TestGetEvent:
 
 
 class TestDeleteEvent:
+    def test_only_the_writes_that_reached_google_tell_the_users_clients(self, tools) -> None:
+        def google(request: ProxyRequest) -> dict[str, str]:
+            if request.endpoint.endswith("gone"):
+                raise AppError(message="Not Found", why="deleted", status_code=404)
+            return {"id": "e1"}
+
+        with (
+            patch(f"{MODULE}.proxy_request_sync", side_effect=google),
+            patch(
+                f"{MODULE}.calendar_service.announce_calendar_changed", new_callable=AsyncMock
+            ) as announce,
+        ):
+            tools["CUSTOM_DELETE_EVENT"](
+                DeleteEventInput(
+                    events=[EventReference(event_id="e1"), EventReference(event_id="gone")]
+                ),
+                EXECUTE_REQUEST,
+                AUTH,
+            )
+            tools["CUSTOM_GET_EVENT"](
+                GetEventInput(events=[EventReference(event_id="e1")]), EXECUTE_REQUEST, AUTH
+            )
+
+        announce.assert_awaited_once_with("user-42")
+
     def test_deletes_each_event(self, tools) -> None:
         with patch(f"{MODULE}.proxy_request_sync", return_value=None) as proxy:
             out = tools["CUSTOM_DELETE_EVENT"](

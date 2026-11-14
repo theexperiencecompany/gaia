@@ -370,6 +370,7 @@ async def _process_updates_payload(run: _StreamRun, payload: dict[str, object]) 
             state_update=state_update,
             emitted_tool_calls=run.emitted_tool_calls,
             integration_metadata=run.integration_metadata,
+            user_id=run.ctx.user_id,
         )
         for tc_id, tool_entry in entries:
             # Announcing the call is what claims its result: "messages" mode

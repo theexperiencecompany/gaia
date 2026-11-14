@@ -44,13 +44,11 @@ from app.services.hil.ledger_decide import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import (
-    ActionResult,
     ApprovalDecided as ApprovalDecidedEvent,
-    ApprovalDecider,
-    ApprovalOutcome,
     HilDecisionSubmitted,
     HilRevoked,
 )
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from tests.helpers import ledger_facts
 
 from .conftest import tools_that_always_ask

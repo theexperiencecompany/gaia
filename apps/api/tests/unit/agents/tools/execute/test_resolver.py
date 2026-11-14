@@ -54,7 +54,7 @@ class TestResolveTool:
                 f"{MODULE}.get_tool_registry",
                 new=AsyncMock(return_value=_registry_with({"GMAIL_SEND_EMAIL": tool})),
             ),
-            patch(f"{MODULE}.get_mcp_client", new=AsyncMock()) as mcp,
+            patch("app.services.mcp.mcp_client.get_mcp_client", new=AsyncMock()) as mcp,
             patch(f"{MODULE}.get_composio_service") as composio,
         ):
             resolved = await resolver.resolve_tool("u1", "GMAIL_SEND_EMAIL")
@@ -81,7 +81,7 @@ class TestResolveTool:
         client.ensure_connected = AsyncMock(return_value=[mcp_tool])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
-            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch("app.services.mcp.mcp_client.get_mcp_client", new=AsyncMock(return_value=client)),
         ):
             resolved = await resolver.resolve_tool("u1", "NOTION_MCP_SEARCH")
         # MCP shapes are integration-scoped: a private server's observed shapes
@@ -99,7 +99,7 @@ class TestResolveTool:
         service.get_tools_by_name = AsyncMock(return_value=[catalog_tool])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
-            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch("app.services.mcp.mcp_client.get_mcp_client", new=AsyncMock(return_value=client)),
             patch(f"{MODULE}.get_composio_service", return_value=service),
         ):
             first = await resolver.resolve_tool("u1", "ASANA_CREATE_TASK")
@@ -116,7 +116,7 @@ class TestResolveTool:
         service.get_tools_by_name = AsyncMock(return_value=[])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
-            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch("app.services.mcp.mcp_client.get_mcp_client", new=AsyncMock(return_value=client)),
             patch(f"{MODULE}.get_composio_service", return_value=service),
         ):
             first = await resolver.resolve_tool("u1", "GMIAL_SNED_EMAIL")
@@ -139,7 +139,7 @@ class TestResolveTool:
         with (
             patch(f"{MODULE}.COMPOSIO_CATALOG_LOOKUP_TIMEOUT_SECONDS", 0.01),
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
-            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch("app.services.mcp.mcp_client.get_mcp_client", new=AsyncMock(return_value=client)),
             patch(f"{MODULE}.get_composio_service", return_value=service),
             pytest.raises(TimeoutError),
         ):
@@ -152,7 +152,7 @@ class TestResolveTool:
         service.get_tools_by_name = AsyncMock(return_value=[])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
-            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch("app.services.mcp.mcp_client.get_mcp_client", new=AsyncMock(return_value=client)),
             patch(f"{MODULE}.get_composio_service", return_value=service),
         ):
             resolved = await resolver.resolve_tool("u1", "not_a_catalog_slug")
@@ -164,7 +164,10 @@ class TestResolveTool:
         service.get_tools_by_name = AsyncMock(return_value=[])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
-            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(side_effect=RuntimeError("down"))),
+            patch(
+                "app.services.mcp.mcp_client.get_mcp_client",
+                new=AsyncMock(side_effect=RuntimeError("down")),
+            ),
             patch(f"{MODULE}.get_composio_service", return_value=service),
         ):
             resolved = await resolver.resolve_tool("u1", "GMAIL_SEND_EMAIL")
@@ -235,7 +238,7 @@ class TestMcpResolution:
         get_client = AsyncMock(return_value=client)
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
-            patch(f"{MODULE}.get_mcp_client", new=get_client),
+            patch("app.services.mcp.mcp_client.get_mcp_client", new=get_client),
         ):
             resolved = await resolver.resolve_tool("u1", "NOTION_MCP_SEARCH")
         get_client.assert_awaited_once_with(user_id="u1")
@@ -251,13 +254,16 @@ class TestMcpResolution:
         service.get_tools_by_name = AsyncMock(return_value=[])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
-            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(side_effect=RuntimeError("down"))),
+            patch(
+                "app.services.mcp.mcp_client.get_mcp_client",
+                new=AsyncMock(side_effect=RuntimeError("down")),
+            ),
             patch(f"{MODULE}.get_composio_service", return_value=service),
         ):
             async with captured_wide_event() as event:
                 await resolver.resolve_tool("u1", "GMAIL_SEND_EMAIL")
         (warning,) = event["warnings"]
-        assert warning["msg"].endswith("execute resolver: MCP client unavailable")
+        assert warning["msg"].endswith("MCP client unavailable for a tool owner lookup")
         assert warning["user_id"] == "u1"
         assert warning["error_type"] == "RuntimeError"
 
@@ -271,7 +277,7 @@ class TestCatalogMaterialization:
         service.get_tools_by_name = AsyncMock(return_value=[])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
-            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch("app.services.mcp.mcp_client.get_mcp_client", new=AsyncMock(return_value=client)),
             patch(f"{MODULE}.get_composio_service", return_value=service),
             patch(f"{MODULE}.UNKNOWN_CATALOG_SLUG_CACHE_MAX", 2),
         ):
@@ -288,7 +294,7 @@ class TestCatalogMaterialization:
         service.get_tools_by_name = AsyncMock(return_value=[])
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=_registry_with({}))),
-            patch(f"{MODULE}.get_mcp_client", new=AsyncMock(return_value=client)),
+            patch("app.services.mcp.mcp_client.get_mcp_client", new=AsyncMock(return_value=client)),
             patch(f"{MODULE}.get_composio_service", return_value=service),
         ):
             await resolver.resolve_tool("u1", "ASANA_CREATE_TASK")

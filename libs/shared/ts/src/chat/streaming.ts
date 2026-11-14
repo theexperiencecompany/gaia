@@ -1,5 +1,5 @@
 import type {
-  MessageReaction,
+  Reaction,
   ReactionBy,
   SubagentEndPayload,
   SubagentStartPayload,
@@ -78,7 +78,7 @@ export type ChatStreamEvent =
   | { type: "parse_error"; raw: string }
   // GAIA reacted to a user message (instantly, or the chat model's pick, which
   // replaces it). Not the turn's answer: the turn may still reply or keep working.
-  | { type: "reaction"; messageId: string; reaction: MessageReaction }
+  | { type: "reaction"; messageId: string; reaction: Reaction }
   | { type: "unknown"; payload: JsonObject };
 
 /** Every ReactionBy the server sends; the generated union is type-only. */
@@ -466,75 +466,6 @@ export function parseChatStreamEvent(data: string): ChatStreamEvent[] {
   ];
 
   return events.length > 0 ? events : [{ type: "unknown", payload }];
-}
-
-export function mergeToolOutputIntoToolData<T extends StreamToolDataEntry>(
-  entries: T[],
-  output: StreamToolOutput,
-): T[] {
-  return entries.map((entry) => {
-    if (!isObject(entry.data)) {
-      return entry;
-    }
-
-    const toolCallId = entry.data.tool_call_id;
-    if (toolCallId !== output.tool_call_id) {
-      return entry;
-    }
-
-    if (entry.tool_name === "mcp_app") {
-      return {
-        ...entry,
-        data: { ...entry.data, tool_result: output.output },
-      };
-    }
-
-    return {
-      ...entry,
-      data: { ...entry.data, output: output.output },
-    };
-  });
-}
-
-export function upsertTodoProgressToolData<T extends StreamToolDataEntry>(
-  entries: T[],
-  snapshot: TodoProgressSnapshot,
-): T[] {
-  const source = snapshot.source || "executor";
-
-  const existingIndex = entries.findIndex(
-    (entry) => entry.tool_name === "todo_progress",
-  );
-
-  const existingData =
-    existingIndex >= 0 && isObject(entries[existingIndex]?.data)
-      ? (entries[existingIndex].data as JsonObject)
-      : {};
-
-  const nextData: JsonObject = {
-    ...existingData,
-    [source]: snapshot,
-  };
-
-  // Preserve the FIRST tick's timestamp on replacement: the entry identity
-  // (and any key anchored to its creation time) must stay stable while the
-  // snapshot content updates, or the card remounts every streamed frame.
-  const nextEntry = {
-    tool_name: "todo_progress",
-    data: nextData,
-    timestamp:
-      existingIndex >= 0
-        ? (entries[existingIndex].timestamp ?? new Date().toISOString())
-        : new Date().toISOString(),
-  } as T;
-
-  if (existingIndex >= 0) {
-    return entries.map((entry, index) =>
-      index === existingIndex ? nextEntry : entry,
-    );
-  }
-
-  return [nextEntry, ...entries];
 }
 
 export function extractToolProgressMessage(

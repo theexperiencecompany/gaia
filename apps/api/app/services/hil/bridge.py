@@ -31,7 +31,8 @@ from app.services.hil.notify import notify_approval_pending
 from app.services.hil.utils import GatedApproval
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome, HilCardShown
+from shared.py.analytics.catalog.hil import HilCardShown
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log, spawn_logged_task
 
 

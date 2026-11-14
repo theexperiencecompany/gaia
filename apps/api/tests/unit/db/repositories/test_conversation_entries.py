@@ -10,14 +10,14 @@ from app.models.conversation_log_models import (
     Entry,
     LoggedEntry,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     UserMessage,
     WorkFinished,
     WorkOutcome,
     WorkStarted,
 )
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from shared.py.conversation_wire import ReplyOutcome
 
 
 def test_a_stored_row_carries_its_commit_time() -> None:

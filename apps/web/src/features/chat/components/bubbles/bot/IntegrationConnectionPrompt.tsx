@@ -9,7 +9,7 @@ import {
   PROMPT_ACTION_LABEL,
 } from "@shared/utils";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useInlineIntegrationConnect } from "@/features/integrations/hooks/useInlineIntegrationConnect";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type {
@@ -19,15 +19,6 @@ import type {
 
 interface IntegrationConnectionPromptProps {
   integration_connection_required: IntegrationConnectionData;
-}
-
-function cardIcon(integrationId: string) {
-  return getToolCategoryIcon(integrationId, {
-    size: 22,
-    width: 22,
-    height: 22,
-    showBackground: false,
-  });
 }
 
 interface IntegrationConnectCardProps {
@@ -161,7 +152,14 @@ function IntegrationConnectCard({
     <div className="w-fit max-w-2xl rounded-3xl bg-zinc-800/50 p-4 text-white">
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
-          <div className="shrink-0 pt-0.5">{cardIcon(integration.id)}</div>
+          <div className="shrink-0 pt-0.5">
+            <IntegrationIcon
+              integrationId={integration.id}
+              iconUrl={integration.iconUrl}
+              category={integration.category}
+              size={22}
+            />
+          </div>
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{integration.name}</span>
@@ -227,7 +225,14 @@ export default function IntegrationConnectionPrompt({
 
   return (
     <CollapsibleListWrapper
-      icon={cardIcon(integration_id)}
+      icon={
+        <IntegrationIcon
+          integrationId={integration_id}
+          iconUrl={integration?.iconUrl}
+          category={integration?.category}
+          size={22}
+        />
+      }
       count={1}
       label={
         expired

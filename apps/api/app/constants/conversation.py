@@ -82,8 +82,10 @@ EVENTS_STREAM_TTL_SECONDS = ONE_DAY_TTL
 EVENTS_BLOCK_MS = 15_000
 #: The cursor that reads a stream from its oldest retained frame.
 EVENTS_STREAM_START = "0-0"
-#: conv:work_index:{conversation_id}:{task_id}, the next work_delta index; a resumed run continues it.
-WORK_DELTA_INDEX_KEY_PREFIX = "conv:work_index:"
+#: conv:work_deltas:{conversation_id}:{task_id}, every payload a task's work published; a resumed run appends to it.
+WORK_DELTAS_KEY_PREFIX = "conv:work_deltas:"
+# Outlives the longest approval a paused run waits on, so a resumed run still has its cards.
+WORK_DELTAS_TTL_SECONDS = 7 * ONE_DAY_TTL
 # Seqs before a typed approval answer read for the turns the classifier weighs it against.
 CLASSIFIER_LOOKBACK_SEQS = 20
 # How often a running step polls its preempt hint while the model is silent.
@@ -108,3 +110,7 @@ APPROVAL_UNDECIDABLE_REPORT = (
 STEP_DRAIN_GRACE_SECONDS = 20.0
 # How far back a connect looks for work waiting on that integration.
 INTEGRATION_NEED_WINDOW = timedelta(days=1)
+
+# The WebSocket push a user's clients get after a change to a conversation's list row
+# (title, last activity, unread, star), so the conversation list re-syncs.
+CONVERSATION_LIST_CHANGED_EVENT = "conversation.list_changed"

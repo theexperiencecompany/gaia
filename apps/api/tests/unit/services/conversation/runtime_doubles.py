@@ -41,8 +41,8 @@ from app.services.conversation.ports import (
 )
 from app.services.conversation.reducer import reduce
 from shared.py.analytics import Dedupe
-from shared.py.analytics.catalog.hil import ApprovalDecider
 from shared.py.analytics.context import AnalyticsContext
+from shared.py.approvals import ApprovalDecider
 from tests.unit.services.conversation.log_helpers import EMPTY, T0
 
 LIVENESS = timedelta(seconds=10)

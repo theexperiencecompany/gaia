@@ -84,6 +84,10 @@
         "approvals": [],
         "handoff": null,
         "tool_data": [],
+        "timeline": {
+          "steps": [],
+          "cards": []
+        },
         "image": null
       }
     }
@@ -145,6 +149,20 @@
           }
         },
         "tool_data": [],
+        "timeline": {
+          "steps": [
+            {
+              "kind": "tool",
+              "key": "tc-call_1",
+              "data": {
+                "tool_name": "call_executor",
+                "tool_call_id": "call_1",
+                "message": "Working on it"
+              }
+            }
+          ],
+          "cards": []
+        },
         "image": null
       }
     }
@@ -186,6 +204,36 @@
             }
           }
         ],
+        "timeline": {
+          "steps": [
+            {
+              "kind": "tool",
+              "key": "tc-call_1",
+              "data": {
+                "tool_name": "call_executor",
+                "tool_call_id": "call_1",
+                "message": "Working on it"
+              }
+            },
+            {
+              "kind": "tool",
+              "key": "tc-search_todos",
+              "data": {
+                "tool_name": "search_todos",
+                "tool_call_id": "search_todos"
+              }
+            },
+            {
+              "kind": "tool",
+              "key": "tc-create_todo",
+              "data": {
+                "tool_name": "create_todo",
+                "tool_call_id": "create_todo"
+              }
+            }
+          ],
+          "cards": []
+        },
         "image": null
       }
     }
@@ -198,8 +246,12 @@
         "seq": 10,
         "at": "2026-11-12T09:00:10Z",
         "kind": "reply",
-        "text": "Buy milk was already on your list.",
+        "bubbles": ["Buy milk was already on your list."],
         "tool_data": [],
+        "timeline": {
+          "steps": [],
+          "cards": []
+        },
         "follow_up_actions": [],
         "image": null,
         "pinned": false,
@@ -219,8 +271,12 @@
         "seq": 10,
         "at": "2026-11-12T09:00:10Z",
         "kind": "reply",
-        "text": "Buy milk was already on your list.",
+        "bubbles": ["Buy milk was already on your list."],
         "tool_data": [],
+        "timeline": {
+          "steps": [],
+          "cards": []
+        },
         "follow_up_actions": [],
         "image": null,
         "pinned": false,

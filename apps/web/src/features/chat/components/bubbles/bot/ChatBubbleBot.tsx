@@ -4,12 +4,10 @@ import { type ReactNode, useMemo, useRef } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import MemoryIndicator from "@/features/chat/components/memory/MemoryIndicator";
 import {
-  logoDelayFor,
   type PartChoreography,
   resolvePartChoreography,
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
-import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import { BotBubbleAvatar, BotBubbleFooter } from "./BotBubbleChrome";
 import { describeBotBubbleContent } from "./botBubbleContent";
@@ -30,6 +28,7 @@ export default function ChatBubbleBot(
 ) {
   const {
     text,
+    bubbles,
     loading = false,
     message_id,
     pinned,
@@ -75,12 +74,10 @@ export default function ChatBubbleBot(
   const logoDelay = useMemo(
     () =>
       itShouldShowTextBubble
-        ? logoDelayFor(
-            parseThinkingFromText(text?.toString() || "").cleanText,
-            partChoreography.staggerSeconds,
-          )
+        ? Math.max(0, (bubbles?.length ?? 0) - 1) *
+          partChoreography.staggerSeconds
         : 0,
-    [text, itShouldShowTextBubble, partChoreography.staggerSeconds],
+    [bubbles, itShouldShowTextBubble, partChoreography.staggerSeconds],
   );
 
   // A failed turn with no response text still shows the quiet error bubble.

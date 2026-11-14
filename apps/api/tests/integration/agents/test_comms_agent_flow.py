@@ -9,14 +9,18 @@ three or more turns.
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from bson import ObjectId
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 import pytest
 
 from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
+from app.agents.tools.core.registry import init_tool_registry
 from app.constants.memory import ReconcileOutcome
+from app.core.lazy_loader import providers
 from app.memory.ingestion import RetainedMemory
 from app.models.integration_models import UserIntegrationCapabilities
+from app.models.integrations.weather import WeatherLocation, WeatherReport
 from app.models.memory_models import MemoryEntry
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 
@@ -26,7 +30,16 @@ from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 
 
 def _thread_config() -> dict:
-    return {"configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}}
+    """Return a step-path run's identity; the HIL gate refuses a tool call without stream and conversation ids."""
+    thread_id = str(uuid4())
+    return {
+        "configurable": {
+            "thread_id": thread_id,
+            "conversation_id": thread_id,
+            "stream_id": str(uuid4()),
+            "user_id": str(ObjectId()),
+        }
+    }
 
 
 def _make_chroma_store_mock() -> MagicMock:
@@ -59,12 +72,15 @@ def _common_patches(store_mock, checkpointer_return=None, memory_mock=None):
     if memory_mock is None:
         memory_mock = _make_memory_mock()
 
+    real_aget = providers.aget
+
+    async def tools_store_or_real(name: str) -> object:
+        # providers is one shared object: answering every name with the store hands the
+        # HIL gate a MagicMock tool registry whose stamps read as "always ask".
+        return store_mock if name == "chroma_tools_store" else await real_aget(name)
+
     return [
-        patch(
-            "app.agents.tools.core.store.providers.aget",
-            new_callable=AsyncMock,
-            return_value=store_mock,
-        ),
+        patch("app.agents.tools.core.store.providers.aget", new=tools_store_or_real),
         patch(
             "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
             new_callable=AsyncMock,
@@ -393,3 +409,45 @@ class TestCommsAgentFlow:
             "retain_single must be called with content 'User likes dark mode'. "
             f"Actual call args: {call_args_str}"
         )
+
+    async def test_weather_question_answered_with_weather_card(self):
+        # The HIL gate reads get_weather's read-only flag off the real tool registry.
+        if not providers.is_initialized("tool_registry"):
+            init_tool_registry()
+        tool_call = {
+            "name": "get_weather",
+            "args": {"location": "Mumbai,IN"},
+            "id": "call_get_weather_001",
+            "type": "tool_call",
+        }
+        fake_llm = create_fake_llm_with_tool_calls([tool_call, "Carry an umbrella."])
+        report = WeatherReport(
+            forecast=[],
+            location=WeatherLocation(city="Mumbai", country="IN", region="Maharashtra"),
+            main={"temp": 29.5},
+        )
+        patches = _common_patches(_make_chroma_store_mock())
+        custom_chunks: list[object] = []
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            patches[6],
+            patch("app.agents.tools.weather_tool.user_weather", new=AsyncMock(return_value=report)),
+        ):
+            async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
+                async for chunk in graph.astream(
+                    {"messages": [HumanMessage(content="What's the weather in Mumbai?")]},
+                    config=_thread_config(),
+                    stream_mode="custom",
+                ):
+                    custom_chunks.append(chunk)
+
+        cards = [c for c in custom_chunks if isinstance(c, dict) and "weather_data" in c]
+        assert len(cards) == 1
+        assert cards[0]["location"] == "Mumbai,IN"
+        assert cards[0]["weather_data"]["location"]["city"] == "Mumbai"
+        assert cards[0]["weather_data"]["main"]["temp"] == 29.5

@@ -18,15 +18,13 @@ from app.db.repositories import conversations as conversations_module
 from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import ConversationRepository
-from app.models.chat_models import (
-    ConversationSource,
-    SystemPurpose,
-    ToolDataEntry,
-)
+from app.models.chat_models import ConversationSource, SystemPurpose
 from app.models.conversation_log_models import Entry, Reply, UserMessage
 from app.models.conversation_models import ConversationDocument, ConversationSearchResults
+from app.models.conversation_screen_models import UserItem
 from app.services.conversation.mongo_log import MongoConversationLog
-from tests.helpers import shown_messages
+from shared.py.conversation_wire import ReplyItem, ToolDataEntry
+from tests.helpers import shown_items
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
 pytestmark = pytest.mark.usefixtures("entries_collection")
@@ -300,12 +298,14 @@ class TestMessages:
 
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        assert [(m.message_id, m.response) for m in shown_messages(fetched)] == [
+        [user, reply] = shown_items(fetched)
+        assert isinstance(user, UserItem) and isinstance(reply, ReplyItem)
+        assert [(user.id, user.message.text), (reply.id, reply.text)] == [
             (asked.id, "hi"),
             (replied.reply_id, "hello"),
         ]
 
-    async def test_pin_and_list(self, repo):
+    async def test_a_pinned_reply_is_listed_as_the_item_its_chat_shows(self, repo):
         doc = _doc()
         await repo.create(doc)
         replied = _replied("pin me")
@@ -316,13 +316,11 @@ class TestMessages:
         )
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        [one] = [m for m in shown_messages(fetched) if m.message_id == mid]
-        assert one.pinned is True
+        [one] = [item for item in shown_items(fetched) if item.id == mid]
+        assert isinstance(one, ReplyItem) and one.pinned is True
 
         pinned = await repo.list_pinned_messages(doc.user_id)
-        assert [(h.conversation_id, h.message.message_id) for h in pinned] == [
-            (doc.conversation_id, mid)
-        ]
+        assert [(h.conversation_id, h.item) for h in pinned] == [(doc.conversation_id, one)]
 
     async def test_a_reload_keeps_every_key_emitters_stamp_on_a_cards_entry(self, repo):
         """tool_category/mcp_ui/mcp_server_url/subagent_id are invisible live but break a reload when dropped."""
@@ -342,8 +340,8 @@ class TestMessages:
 
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        [stored] = [m for m in shown_messages(fetched) if m.message_id == replied.reply_id]
-        assert stored.tool_data is not None
+        [stored] = [item for item in shown_items(fetched) if item.id == replied.reply_id]
+        assert isinstance(stored, ReplyItem)
         entry = stored.tool_data[0]
         assert entry.get("tool_category") == "gmail"
         assert entry.get("subagent_id") == "sa-1"
@@ -516,9 +514,15 @@ class TestSearchAndSweeps:
         user = _uid()
         doc = _doc(user_id=user, description="grocery list")
         await repo.create(doc)
-        await _say(doc, _asked("go"), _replied("the weather is sunny"))
+        replied = _replied("the weather is sunny")
+        await _say(doc, _asked("go"), replied)
+        fetched = await repo.get(doc.conversation_id, user_id=user)
+        assert fetched is not None
+        [shown] = [item for item in shown_items(fetched) if item.id == replied.reply_id]
         by_message = await repo.search(user, pattern="weather")
-        assert [h.conversation_id for h in by_message.messages] == [doc.conversation_id]
+        assert [(h.conversation_id, h.item) for h in by_message.messages] == [
+            (doc.conversation_id, shown)
+        ]
         by_desc = await repo.search(user, pattern="grocery")
         assert [h.conversation_id for h in by_desc.conversations] == [doc.conversation_id]
 

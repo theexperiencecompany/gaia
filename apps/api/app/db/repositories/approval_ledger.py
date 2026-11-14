@@ -19,7 +19,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.db.repositories.base import MongoRepository
 from app.models.hil_models import ApprovalLedgerDocument, ApprovalProposal
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 
 #: The unique index that dedups live rows by (conversation_id, fingerprint).
 LIVE_ROW_INDEX_NAME = "conv_fingerprint_open_unique"

@@ -27,9 +27,6 @@ export interface NotifyAdapter {
 
 export interface CreateTodoStoreOptions {
   notify?: NotifyAdapter;
-  /** Called after a real (non-optimistic) todo is persisted. Web uses this
-   *  to start the workflow polling fallback. Optional. */
-  onTodoCreated?: (todoId: string) => void;
   /** Devtools store name. Defaults to "todo-store". */
   devtoolsName?: string;
 }
@@ -115,7 +112,7 @@ export function createTodoStore(
   api: TodoApiClient,
   options: CreateTodoStoreOptions = {},
 ): TodoStoreHook {
-  const { notify, onTodoCreated, devtoolsName = "todo-store" } = options;
+  const { notify, devtoolsName = "todo-store" } = options;
 
   return create<TodoStore>()(
     devtools(
@@ -259,7 +256,6 @@ export function createTodoStore(
                   .refreshCounts()
                   .catch(() => undefined);
                 notify?.info?.("Generating workflow...");
-                onTodoCreated?.(newTodo.id);
               })
               .catch((err) => {
                 get().removeTodo(tempId);

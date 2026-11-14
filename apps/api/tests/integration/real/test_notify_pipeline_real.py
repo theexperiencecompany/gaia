@@ -19,7 +19,7 @@ from app.agents.core.background.todo_run_delivery import FinishedTodoRun, finish
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.todos import todo_repository
-from app.models.conversation_log_models import ReplyOutcome, TodoReportForm
+from app.models.conversation_log_models import TodoReportForm
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.todo_models import TodoDocument
@@ -32,6 +32,7 @@ from app.services.integrations.integration_expiry import AccountExpired, announc
 from app.services.platform_link_service import PlatformLinkService
 from app.services.workflow.notifications import notify_workflow_result
 from app.tasks.reminder_tasks import _execute_static_reminder
+from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.runtime_doubles import (
     RecordingAnalytics,
     RecordingEffects,

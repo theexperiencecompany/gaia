@@ -21,11 +21,10 @@ from app.agents.core.background.todo_run_delivery import (
 )
 from app.agents.prompts.comms_prompts import tracked_todo_delivery_note
 from app.constants import todos as todo_constants
-from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.log_tags import LogTag
 from app.models import todo_models
 from app.models.chat_models import ConversationSource
-from app.models.conversation_log_models import ReplyOutcome, TodoRun
+from app.models.conversation_log_models import TodoRun
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRecord,
@@ -44,6 +43,7 @@ from app.utils.notification.orchestrator import Notified
 from app.workers.tasks import tracked_todo_tasks
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.todos import TodosRunResultDelivered
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, ReplyOutcome
 from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import todo_run as typed_todo_run
 

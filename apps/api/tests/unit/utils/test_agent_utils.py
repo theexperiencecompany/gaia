@@ -20,6 +20,7 @@ from app.services.composio.instance_toolkits import (
     InstanceToolkitRecord,
     build_instance_integration,
 )
+from app.services.mcp.mcp_client import McpToolOwner
 from app.utils.agent_utils import (
     IntegrationDisplayMetadata,
     _general_tool_category,
@@ -75,7 +76,7 @@ class TestFormatToolCallEntry:
             result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
 
         assert result is not None
-        assert result["data"]["message"] == "Getting ready"
+        assert result["data"]["message"] == "Finding the right tools"
         assert result["data"]["show_category"] is False
 
     @pytest.mark.asyncio
@@ -96,8 +97,38 @@ class TestFormatToolCallEntry:
         assert result is not None
         # "integrations" is the frontend icon-config key carrying ConnectIcon.
         assert result["data"]["tool_category"] == "integrations"
-        assert result["data"]["message"] == "Opening your app"
+        assert result["data"]["message"] == "Connecting to your app"
         assert result["data"]["show_category"] is False
+
+    @pytest.mark.asyncio
+    async def test_activate_integration_names_the_app_it_connects_to(self) -> None:
+        tool_call = {
+            "name": "activate_integration",
+            "args": {"integration_id": "int_weather"},
+            "id": "tc3b",
+        }
+        with (
+            patch(
+                "app.utils.agent_utils.get_tool_registry",
+                new_callable=AsyncMock,
+                return_value=_FakeRegistry({}),
+            ),
+            patch(
+                "app.utils.agent_utils._integration_display",
+                new_callable=AsyncMock,
+                return_value=(None, "Bundle Weather"),
+            ),
+            patch(
+                "app.utils.agent_utils.get_integration_target",
+                new_callable=AsyncMock,
+                return_value=MagicMock(id="int_weather"),
+            ),
+        ):
+            result = await format_tool_call_entry(tool_call)  # type: ignore[arg-type]  # hand-built dict stands in for a ToolCall
+
+        assert result is not None
+        assert result["data"]["message"] == "Connecting to Bundle Weather"
+        assert result["data"]["integration_name"] == "Bundle Weather"
 
     @pytest.mark.asyncio
     async def test_regular_tool_with_integration_id(self) -> None:
@@ -250,7 +281,7 @@ class TestResolveMcpUiMetadata:
         client._tools = {"notion_int": [tool]}
 
         with patch(
-            "app.services.mcp.mcp_client.get_mcp_client",
+            "app.utils.agent_utils.get_mcp_client",
             new_callable=AsyncMock,
             return_value=client,
         ):
@@ -277,9 +308,9 @@ class TestResolveMcpIconName:
                 return_value=mock_registry,
             ),
             patch(
-                "app.db.redis.get_cache", new_callable=AsyncMock, return_value=None
+                "app.utils.agent_utils.get_cache", new_callable=AsyncMock, return_value=None
             ) as mock_get_cache,
-            patch("app.db.redis.set_cache", new_callable=AsyncMock) as mock_set_cache,
+            patch("app.utils.agent_utils.set_cache", new_callable=AsyncMock) as mock_set_cache,
             patch(
                 "app.utils.agent_utils.integration_repository.get",
                 new_callable=AsyncMock,
@@ -323,7 +354,7 @@ class TestResolveMcpIconName:
                 new_callable=AsyncMock,
                 return_value=mock_registry,
             ),
-            patch("app.db.redis.get_cache", new_callable=AsyncMock, return_value=cached),
+            patch("app.utils.agent_utils.get_cache", new_callable=AsyncMock, return_value=cached),
             patch(
                 "app.utils.agent_utils.integration_repository.get",
                 new_callable=AsyncMock,
@@ -361,9 +392,9 @@ class _FakeRegistry:
 
 def _mcp_lookup(integration_id: str = "notion_int") -> Any:
     return patch(
-        "app.utils.agent_utils._resolve_mcp_integration_id",
+        "app.utils.agent_utils.mcp_tool_owner",
         new_callable=AsyncMock,
-        return_value=integration_id,
+        return_value=McpToolOwner(MagicMock(), integration_id),
     )
 
 
@@ -407,7 +438,7 @@ class TestGeneralToolCategory:
             )
 
         assert result == ("notion_int", "notion_int", False)
-        mock_resolve.assert_awaited_once_with("notion_tool", "u1")
+        mock_resolve.assert_awaited_once_with("u1", "notion_tool")
 
     @pytest.mark.asyncio
     async def test_an_unauthenticated_platform_mcp_tool_is_owned_by_its_integration(self) -> None:

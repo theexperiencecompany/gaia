@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.agent_config import StepTurnRef
-from app.models.chat_models import ImageData
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -20,13 +19,13 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.models.tool_data_models import ToolDataEntry
 from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reply_analytics import capture_unanswered_stop, stopped_waking
 from app.services.conversation.runtime import runtime_ports
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.conversation_wire import ImageData, ToolDataEntry
 from shared.py.wide_events import log
 
 

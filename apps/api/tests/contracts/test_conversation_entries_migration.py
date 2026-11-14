@@ -20,10 +20,12 @@ from app.db.repositories.conversation_entries_migration import (
     expected_messages,
     refuse_unmigrated_conversations,
 )
+from app.db.repositories.conversation_entries_oracle import legacy_messages
 from app.db.repositories.conversations import ConversationRepository
+from app.models.conversation_log_models import LoggedEntry
+from app.models.conversation_models import ConversationEntry, LogPage
 from app.scripts import migrate_conversation_entries as script
 from app.utils.errors import UnmigratedConversationError
-from tests.helpers import shown_messages
 
 pytestmark = pytest.mark.usefixtures("entries_collection")
 
@@ -179,9 +181,9 @@ async def test_every_old_shape_becomes_log_entries_that_read_back_as_the_old_arr
     assert shown["m8"].in_progress is None and shown["m8"].error == "server_restart"
     assert shown["m1"].fileIds == ["f1"] and shown["m1"].pinned and shown["m2"].pinned
     pinned = await ConversationRepository().list_pinned_messages(USER)
-    assert {hit.message.message_id for hit in pinned} == {"m1", "m2"}
+    assert {hit.item.id for hit in pinned} == {"m1", "m2"}
     found = await ConversationRepository().search(USER, pattern="message 5")
-    assert [hit.message.message_id for hit in found.messages] == ["m5"]
+    assert [hit.item.id for hit in found.messages] == ["m5"]
 
 
 async def test_a_rerun_finds_nothing_to_do_and_changes_nothing(
@@ -530,3 +532,8 @@ async def test_scans_walk_every_head_in_id_order_one_batch_at_a_time(
         seen += [ref.conversation_id for ref in batch]
         after = batch[-1].head_id
     assert seen == [ref.conversation_id for ref in refs]
+
+
+def shown_messages(page: LogPage) -> list[ConversationEntry]:
+    """Read a migrated page back in the old array's message shape, as verify does."""
+    return legacy_messages([LoggedEntry(seq=f.seq, at=f.at, entry=f.entry) for f in page.entries])

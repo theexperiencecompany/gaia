@@ -63,8 +63,9 @@ def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> Ba
         ],
         account: Annotated[
             str | None,
-            "Which of the user's connected accounts to act as, by the name listed for "
-            "the integration (e.g. 'work@acme.com'). Omit to use the primary account.",
+            "Only when an integration's activation text lists several connected accounts: "
+            "the name of the one to act as (e.g. 'work@acme.com'); omit to use the primary. "
+            "Never set it for an integration that lists no accounts.",
         ] = None,
     ) -> str:
         """Run an integration tool (Gmail, GitHub, Notion, MCP, ...) by name.

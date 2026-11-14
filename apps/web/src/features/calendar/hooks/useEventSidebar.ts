@@ -2,11 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { getBrowserTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
-import {
-  useAddEvent,
-  useRemoveEvent,
-  useUpdateEvent,
-} from "@/stores/calendarStore";
 import type {
   GoogleCalendarEvent,
   RecurrenceData,
@@ -110,13 +105,8 @@ const buildUpdatePayload = (
   return payload;
 };
 
-interface UseEventSidebarProps {
-  onEventUpdate?: () => void;
-}
-
-export const useEventSidebar = ({
-  onEventUpdate,
-}: UseEventSidebarProps = {}) => {
+/** The event sidebar's form; saved changes reach the calendar through the server's calendar push. */
+export const useEventSidebar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] =
     useState<GoogleCalendarEvent | null>(null);
@@ -133,10 +123,6 @@ export const useEventSidebar = ({
   const [customRecurrenceDays, setCustomRecurrenceDays] = useState<string[]>(
     [],
   );
-
-  const updateEventInStore = useUpdateEvent();
-  const removeEventFromStore = useRemoveEvent();
-  const addEventToStore = useAddEvent();
 
   const summaryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const descriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -273,10 +259,7 @@ export const useEventSidebar = ({
           updatePayload as Parameters<typeof calendarApi.updateEventByAgent>[0],
         );
 
-        updateEventInStore(selectedEvent.id, updatedEvent);
         syncFormFromEvent(updatedEvent);
-
-        onEventUpdate?.();
       } catch (error) {
         console.error("Event update error:", error);
         const errorMsg =
@@ -292,8 +275,6 @@ export const useEventSidebar = ({
       selectedCalendarId,
       startDate,
       endDate,
-      updateEventInStore,
-      onEventUpdate,
       syncFormFromEvent,
     ],
   );
@@ -418,15 +399,10 @@ export const useEventSidebar = ({
           summary: selectedEvent.summary,
         });
 
-        // Update store: remove old event and add new event
-        removeEventFromStore(selectedEvent.id);
-        addEventToStore(newEvent);
-
         // Update local state with the new event and sync all form fields
         syncFormFromEvent(newEvent);
         setSelectedCalendarId(newEvent.calendarId || calendarId);
 
-        onEventUpdate?.();
         toast.success("Event moved to new calendar");
       } catch (error) {
         console.error("Calendar change error:", error);
@@ -448,9 +424,6 @@ export const useEventSidebar = ({
       isAllDay,
       startDate,
       endDate,
-      removeEventFromStore,
-      addEventToStore,
-      onEventUpdate,
       syncFormFromEvent,
     ],
   );
@@ -491,12 +464,8 @@ export const useEventSidebar = ({
         ...(recurrence && { recurrence }),
       };
 
-      const createdEvent = await calendarApi.createEventDefault(payload);
+      await calendarApi.createEventDefault(payload);
 
-      // Add the created event to the store so it appears immediately
-      addEventToStore(createdEvent);
-
-      onEventUpdate?.();
       close();
       toast.success("Event created successfully");
     } catch (error) {
@@ -514,9 +483,7 @@ export const useEventSidebar = ({
     selectedCalendarId,
     recurrenceType,
     customRecurrenceDays,
-    onEventUpdate,
     close,
-    addEventToStore,
   ]);
 
   const handleDelete = useCallback(async () => {
@@ -531,24 +498,13 @@ export const useEventSidebar = ({
         summary: selectedEvent.summary,
       });
 
-      // Remove event from store immediately
-      removeEventFromStore(selectedEvent.id);
-
-      onEventUpdate?.();
       close();
     } catch (error) {
       console.error("Event deletion error:", error);
     } finally {
       setIsSaving(false);
     }
-  }, [
-    selectedEvent,
-    isCreating,
-    selectedCalendarId,
-    removeEventFromStore,
-    onEventUpdate,
-    close,
-  ]);
+  }, [selectedEvent, isCreating, selectedCalendarId, close]);
 
   useEffect(() => {
     return () => {

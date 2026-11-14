@@ -25,11 +25,11 @@ import type {
   ScreenItem,
 } from "../../conversation/types";
 import { applyFrame, EMPTY_CONVERSATION_VIEW } from "../../conversation/view";
-import { deliverableBubbles } from "../utils/bubbles";
 import { REPLY_FAILURE_LINE } from "../utils/error-lines";
 import { PLATFORM_MARKDOWN } from "../utils/formatters";
 import { createBotLogger } from "../utils/logger";
 import { REACTION_OUTCOME } from "../utils/reaction-outcome";
+import { chunkResponse } from "../utils/text";
 import { formatApprovalPrompt } from "./approval-prompt";
 import type {
   FollowSummary,
@@ -55,6 +55,9 @@ interface OpenReply {
   delivery: ReplyDelivery;
   attempts: Set<string>;
 }
+
+const sameBubbles = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((bubble, at) => bubble === b[at]);
 
 export class ConversationFollower {
   private view: ConversationView = EMPTY_CONVERSATION_VIEW;
@@ -153,9 +156,6 @@ export class ConversationFollower {
       case FRAME_KIND.STATE:
         this.renderTyping();
         return;
-      case FRAME_KIND.WORK_DELTA:
-        // Tool cards and progress are web-only; a bot hears about work in its reply.
-        return;
       case FRAME_KIND.CONVERSATION_UPDATED:
         // A chat platform shows no conversation title.
         return;
@@ -202,8 +202,14 @@ export class ConversationFollower {
         case SCREEN_ITEM_KIND.NOTICE:
           await this.sendNotice(item);
           break;
-        default:
+        // A fired workflow or woken todo shows nothing on a chat platform of its own.
+        case SCREEN_ITEM_KIND.WORKFLOW_FIRED:
+        case SCREEN_ITEM_KIND.TODO_WOKE:
           break;
+        default: {
+          const unhandled: never = item;
+          return unhandled;
+        }
       }
     }
   }
@@ -229,11 +235,9 @@ export class ConversationFollower {
     if (this.noticed.has(notice.id)) return;
     this.noticed.add(notice.id);
     const { platform } = this.options;
-    const bubbles = deliverableBubbles(
-      notice.text,
-      platform,
-      PLATFORM_MARKDOWN[platform],
-    ).flat();
+    const bubbles = notice.bubbles.flatMap((bubble) =>
+      chunkResponse(bubble, platform, PLATFORM_MARKDOWN[platform]),
+    );
     if (bubbles.length === 0) return;
     await this.surface.sendNotice(bubbles);
     this.summary.noticesDelivered += 1;
@@ -279,12 +283,11 @@ export class ConversationFollower {
     if (!this.options.streaming) return;
     const reply = this.replyFor(attemptId, replyId);
     if (!reply) return;
-    if (payload.type === "response") {
-      await reply.delivery.text(payload.chunk);
-      this.schedulePreview();
-    } else if (payload.type === "message_boundary") {
-      await reply.delivery.boundary(payload.discarded);
-    }
+    if (payload.type !== "bubble_text" && payload.type !== "bubbles") return;
+    const draft = this.view.drafts.find((held) => held.attemptId === attemptId);
+    if (!draft) return;
+    await reply.delivery.bubbles(draft.content.bubbles);
+    this.schedulePreview();
   }
 
   private async finishReply(reply: ReplyItem): Promise<void> {
@@ -293,10 +296,10 @@ export class ConversationFollower {
     this.clearPreview();
     const delivery = this.open?.delivery ?? this.newDelivery(reply);
     this.open = null;
-    if (delivery.streamed !== reply.text) {
-      // What streamed is not what was saved (a delta gap, or nothing streamed): show the saved text.
-      if (delivery.opened) await delivery.boundary(true);
-      await delivery.text(reply.text);
+    if (!sameBubbles(delivery.streamed, reply.bubbles)) {
+      // What streamed is not what was saved (a delta gap, or nothing streamed): show the saved bubbles.
+      if (delivery.opened) await delivery.retract();
+      await delivery.bubbles(reply.bubbles);
     }
     await delivery.end();
     if (delivery.opened) this.summary.repliesDelivered += 1;

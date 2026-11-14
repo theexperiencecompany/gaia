@@ -26,6 +26,7 @@ from app.models.conversation_models import (
     CreateConversationResponse,
     DeleteAllConversationsResponse,
     LoadedConversation,
+    LogPage,
     PinMessageResponse,
     PinnedMessagesResponse,
     StarConversationResponse,
@@ -34,7 +35,7 @@ from app.models.conversation_models import (
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
-from app.services.conversation.screen import project_screen
+from app.services.conversation.screen_patches import ScreenTracker
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from app.utils.errors import AppError
 from shared.py.analytics import UserId
@@ -171,6 +172,14 @@ async def get_conversations(
     )
 
 
+async def _screen(conversation_id: str, page: LogPage) -> ConversationEntriesPage:
+    """Return the screen the log page projects to, running work showing the cards it has published."""
+    tracker = await ScreenTracker.load(conversation_id, page.entries)
+    return ConversationEntriesPage(
+        items=tracker.items, state=page.state, has_older=page.has_older, cursor=page.cursor
+    )
+
+
 async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> LoadedConversation:
     """Fetch a conversation with the newest page of its log."""
     user_id = user.user_id
@@ -180,7 +189,10 @@ async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> Loa
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
-    return document.model_copy(update={"items": project_screen(document.entries)})
+    fields = dict(document)
+    del fields["entries"]
+    screen = await _screen(conversation_id, document)
+    return LoadedConversation.model_validate({**fields, **dict(screen)})
 
 
 async def get_entries_before(
@@ -195,7 +207,7 @@ async def get_entries_before(
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
-    return page.model_copy(update={"items": project_screen(page.entries)})
+    return await _screen(conversation_id, page)
 
 
 async def star_conversation(
@@ -455,6 +467,7 @@ async def batch_sync_conversations(
 
     rows: list[ConversationSyncRow] = []
     for document in documents:
+        screen = await _screen(document.conversation_id, document)
         rows.append(
             ConversationSyncRow(
                 conversation_id=document.conversation_id,
@@ -465,15 +478,15 @@ async def batch_sync_conversations(
                 is_unread=document.is_unread,
                 createdAt=document.createdAt,
                 updatedAt=document.updatedAt,
-                entries=document.entries,
-                items=project_screen(document.entries),
-                state=document.state,
-                has_older=document.has_older,
-                cursor=document.cursor,
+                items=screen.items,
+                state=screen.state,
+                has_older=screen.has_older,
+                cursor=screen.cursor,
                 artifacts=document.artifacts,
                 awaiting_approval=document.awaiting_approval,
                 todo_id=document.todo_id,
                 source=document.source,
+                listed=document.listed,
             )
         )
 

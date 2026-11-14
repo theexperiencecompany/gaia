@@ -111,25 +111,6 @@ export function parseOpenUISegments(
   return segments.filter((s) => s.content.trim().length > 0);
 }
 
-/** Character ranges `[start, end)` of every :::openui block, an unterminated one running to the end. */
-export function openUIBlockRanges(text: string): [number, number][] {
-  const ranges: [number, number][] = [];
-  let search = 0;
-  while (search < text.length) {
-    const openIdx = text.indexOf(OPENUI_OPEN, search);
-    if (openIdx === -1) break;
-    const closeStart = findFenceCloseStart(text, openIdx + OPENUI_OPEN.length);
-    if (closeStart === -1) {
-      ranges.push([openIdx, text.length]);
-      break;
-    }
-    const closeIdx = closeStart + OPENUI_CLOSE.length;
-    ranges.push([openIdx, closeIdx]);
-    search = closeIdx;
-  }
-  return ranges;
-}
-
 function splitTopLevelArgs(s: string): string[] {
   const args: string[] = [];
   let depth = 0;

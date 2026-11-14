@@ -19,7 +19,6 @@ from app.agents.context.assemble import AssembledContext
 from app.agents.context.slots import PromptSlot
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background import redis_writer as rw
-from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.redis_writer import make_redis_stream_writer
 from app.agents.core.background.session import RunKind, StreamSession, create_session
 from app.agents.core.background.subagent_channel import SubagentCancel
@@ -826,6 +825,7 @@ class TestProcessUpdatesPayload:
             "state_update": state_update,
             "emitted_tool_calls": {"tc-already"},
             "integration_metadata": metadata,
+            "user_id": "u1",
         }
 
     @pytest.mark.asyncio
@@ -1591,40 +1591,6 @@ class TestReasoningStreamsPerDeltaButPersistsPerBlock:
             assert _collected_reasoning(session) == ["abc", "d"]
 
     @pytest.mark.asyncio
-    async def test_the_entries_that_reach_tool_data_are_two_as_well(self):
-        """What is persisted is the DRAINED shape; the entry count has to survive absorb_collector_event too."""
-        with _real_stream_writer() as (writer, _stream_manager, _session):
-
-            async def _fake_astream(*args, **kwargs):
-                yield ("messages", (_thinking("a"), {}))
-                yield ("messages", (_thinking("b"), {}))
-                yield ("messages", (_thinking("c"), {}))
-                yield ("updates", {"agent": {"messages": []}})
-                yield ("messages", (_thinking("d"), {}))
-
-            mock_graph = MagicMock()
-            mock_graph.astream = _fake_astream
-            ctx = _make_ctx(subagent_graph=mock_graph)
-
-            with (
-                patch("app.agents.core.subagents.subagent_runner.log"),
-                patch(
-                    "app.agents.core.subagents.subagent_runner.extract_tool_entries_from_update",
-                    new_callable=AsyncMock,
-                    return_value=[("tc-1", {"name": "web_search"})],
-                ),
-            ):
-                await execute_subagent_stream(ctx, stream_writer=writer)
-
-            reasoning_entries = [
-                entry["data"]["reasoning"]
-                for entry in drain_executor_tool_data("s-reasoning")
-                if entry.get("tool_category") == "reasoning"
-            ]
-
-        assert reasoning_entries == ["abc", "d"]
-
-    @pytest.mark.asyncio
     async def test_thinking_with_no_tool_after_it_is_one_entry_not_dropped(self):
         with _real_stream_writer() as (writer, stream_manager, session):
 
@@ -2054,3 +2020,71 @@ class TestTheExecutorsCancel:
 
         assert _subagent_count("test", "cancelled") == count_before + 1
         assert _subagent_sum("test", "cancelled") == pytest.approx(sum_before + 0.75)
+
+
+class _ColdMcpClient:
+    """A user's MCPClient that has not loaded the tool in this process: only its owner lookup knows it."""
+
+    def __init__(self) -> None:
+        self._tools: dict[str, list[Any]] = {}
+
+    def find_integration(self, tool_name: str) -> str | None:
+        return None
+
+    async def resolve_tool_owner(self, tool_name: str) -> str | None:
+        return "int_weather" if tool_name == "get_forecast" else None
+
+
+class _UnknownToolRegistry:
+    def get_category_of_tool(self, tool_name: str) -> str:
+        return "unknown"
+
+    def get_all_tools_for_search(self) -> list[Any]:
+        return []
+
+
+@pytest.mark.asyncio
+async def test_an_executor_runs_custom_mcp_tool_card_names_the_integration_it_came_from() -> None:
+    forecast_call = AIMessage(
+        content="",
+        tool_calls=[{"name": "get_forecast", "args": {"city": "Pune"}, "id": "tc-fc"}],
+    )
+
+    async def _fake_astream(*args: Any, **kwargs: Any) -> Any:
+        yield ("updates", {"agent": {"messages": [forecast_call]}})
+
+    mock_graph = MagicMock()
+    mock_graph.astream = _fake_astream
+    stream_writer = MagicMock()
+
+    with (
+        patch("app.agents.core.subagents.subagent_runner.log"),
+        patch(
+            "app.utils.agent_utils.get_tool_registry",
+            new_callable=AsyncMock,
+            return_value=_UnknownToolRegistry(),
+        ),
+        patch(
+            "app.services.mcp.mcp_client.get_mcp_client",
+            new_callable=AsyncMock,
+            return_value=_ColdMcpClient(),
+        ),
+        patch(
+            "app.utils.agent_utils.get_mcp_client",
+            new_callable=AsyncMock,
+            return_value=_ColdMcpClient(),
+        ),
+        patch(
+            "app.utils.agent_utils._integration_display",
+            new_callable=AsyncMock,
+            return_value=("https://weather.example/icon.png", "Bundle Weather"),
+        ),
+    ):
+        await execute_subagent_stream(
+            _make_ctx(subagent_graph=mock_graph, user_id="u1"), stream_writer=stream_writer
+        )
+
+    card = stream_writer.call_args[0][0]["tool_data"]["data"]
+    assert card["tool_category"] == "int_weather"
+    assert card["integration_name"] == "Bundle Weather"
+    assert card["icon_url"] == "https://weather.example/icon.png"

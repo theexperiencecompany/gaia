@@ -99,9 +99,7 @@ export function useActiveReplyStreaming(): boolean {
   const conversationId = useChatStore((state) => state.activeConversationId);
   return useLiveConversationStore((state) =>
     conversationId
-      ? (state.conversations[conversationId]?.view.drafts.some(
-          (draft) => draft.source === "reply",
-        ) ?? false)
+      ? (state.conversations[conversationId]?.view.drafts.length ?? 0) > 0
       : false,
   );
 }

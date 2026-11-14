@@ -17,13 +17,7 @@ from app.db.repositories.conversation_entries import EntryWindow
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ConversationSyncItem
-from app.models.conversation_log_models import (
-    Entry,
-    Reply,
-    ReplyOutcome,
-    ReplySettled,
-    UserMessage,
-)
+from app.models.conversation_log_models import Entry, Reply, ReplySettled, UserMessage
 from app.models.conversation_models import (
     ConversationDescriptionHit,
     ConversationDocument,
@@ -35,6 +29,7 @@ from app.utils.errors import (
     ConversationNotFoundError,
     ConversationStoreError,
 )
+from shared.py.conversation_wire import ReplyOutcome
 from tests.contracts.conftest import HeldFlushes
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
@@ -371,12 +366,12 @@ async def test_cross_conversation_reads_see_flushed_and_outbox_entries(
     assert await repo.find_owner_of_message(uid, "b2") == pending
     assert await repo.find_owner_of_message(uid, "u1") is None
     pins = await repo.list_pinned_messages(uid)
-    assert {(h.conversation_id, h.message.message_id) for h in pins} == {
+    assert {(h.conversation_id, h.item.id) for h in pins} == {
         (flushed, "b1"),
         (pending, "b2"),
     }
     found = await repo.search(uid, pattern="weekly")
-    assert {(h.conversation_id, h.message.message_id) for h in found.messages} == {
+    assert {(h.conversation_id, h.item.id) for h in found.messages} == {
         (flushed, "b1"),
         (pending, "b2"),
         (workflow, "w1"),
@@ -398,9 +393,7 @@ async def test_search_skips_a_todos_chat(repo: ConversationRepository, held: Hel
     await _append(described, uid, [_message("d1", "needle")])
     await held.run_all()
     found = await repo.search(uid, pattern="needle")
-    assert [(h.conversation_id, h.message.message_id) for h in found.messages] == [
-        (described, "d1")
-    ]
+    assert [(h.conversation_id, h.item.id) for h in found.messages] == [(described, "d1")]
     assert await repo.has_sent_message(uid) is True
 
 
@@ -649,7 +642,7 @@ async def test_a_deleted_conversations_leftover_entries_never_reach_search_or_pi
     await held.run_all()
 
     found = await repo.search(uid, pattern="secret")
-    assert [(h.conversation_id, h.message.message_id) for h in found.messages] == [(live, "live-1")]
+    assert [(h.conversation_id, h.item.id) for h in found.messages] == [(live, "live-1")]
     assert await repo.list_pinned_messages(uid) == []
     assert await repo.find_owner_of_message(uid, "old-1") is None
 

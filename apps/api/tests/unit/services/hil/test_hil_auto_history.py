@@ -18,7 +18,7 @@ from app.services.hil.intent import (
     judge_intent,
     summarize_history,
 )
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from tests.helpers import ledger_facts
 
 MODULE = "app.services.hil.intent"

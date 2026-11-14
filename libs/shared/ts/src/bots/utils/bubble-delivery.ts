@@ -16,7 +16,6 @@
  * sent when its boundary arrives, bubble by bubble, a pause between them.
  */
 
-import { splitStreamingBubbles } from "../../utils/messageBubbles";
 import type {
   Carry,
   DeliveryConfig,
@@ -43,7 +42,7 @@ const FRESH_CARRY: Carry = { carried: "", from: 0 };
 export function initialDeliveryState(): DeliveryState {
   return {
     phase: "idle",
-    pending: "",
+    pending: [],
     sealedBubbles: 0,
     carry: FRESH_CARRY,
     reusable: { slot: FIRST_SLOT },
@@ -166,7 +165,7 @@ function sealBubble(draft: Draft, text: string, config: DeliveryConfig): void {
 
 /** Seals every bubble a break has closed since the last step. */
 function sealCompleteBubbles(draft: Draft, config: DeliveryConfig): void {
-  const { complete } = splitStreamingBubbles(draft.pending);
+  const complete = draft.pending.slice(0, -1);
   for (const bubble of complete.slice(draft.sealedBubbles)) {
     sealBubble(draft, untaken(draft, bubble), config);
   }
@@ -175,7 +174,7 @@ function sealCompleteBubbles(draft: Draft, config: DeliveryConfig): void {
 
 /** Shows the bubble being written, cutting a full message off it whenever it outgrows one. */
 function previewOpenBubble(draft: Draft, config: DeliveryConfig): void {
-  const { open } = splitStreamingBubbles(draft.pending);
+  const open = openBubble(draft);
   if (!open) return;
   let text = untaken(draft, open);
   while (text) {
@@ -209,9 +208,25 @@ function previewOpenBubble(draft: Draft, config: DeliveryConfig): void {
   }
 }
 
-/** The in-flight message is done with: what follows belongs to the next one. */
+/** The bubble a later one has not closed yet. */
+function openBubble(draft: Draft): string {
+  return draft.pending.at(-1) ?? "";
+}
+
+/** Whether now only grows the bubbles shown: the last one longer, or more after it. */
+function extendsShown(
+  shown: readonly string[],
+  now: readonly string[],
+): boolean {
+  if (now.length < shown.length) return false;
+  return shown.every((bubble, at) =>
+    at === shown.length - 1 ? now[at].startsWith(bubble) : now[at] === bubble,
+  );
+}
+
+/** The reply is done with: nothing of it is left to deliver. */
 function closeMessage(draft: Draft): void {
-  draft.pending = "";
+  draft.pending = [];
   draft.sealedBubbles = 0;
   draft.carry = FRESH_CARRY;
   draft.earlier = [];
@@ -221,7 +236,7 @@ function closeMessage(draft: Draft): void {
 /** Delivers whatever of the in-flight message is not on screen yet, as final bubbles. */
 function keepMessage(draft: Draft, config: DeliveryConfig): void {
   sealCompleteBubbles(draft, config);
-  const { open } = splitStreamingBubbles(draft.pending);
+  const open = openBubble(draft);
   if (open) sealBubble(draft, untaken(draft, open), config);
   closeMessage(draft);
 }
@@ -245,16 +260,17 @@ export function stepDelivery(
 ): { state: DeliveryState; ops: DeliveryOp[] } {
   const draft = toDraft(state);
   switch (event.kind) {
-    case "text":
-      draft.pending += event.chunk;
+    case "bubbles":
+      // Text the model took back: what is shown is withdrawn and the bubbles go out again.
+      if (!extendsShown(draft.pending, event.bubbles)) retractMessage(draft);
+      draft.pending = event.bubbles;
       if (config.live) sealCompleteBubbles(draft, config);
       break;
     case "tick":
       if (config.live) previewOpenBubble(draft, config);
       break;
-    case "boundary":
-      if (event.discarded) retractMessage(draft);
-      else keepMessage(draft, config);
+    case "retract":
+      retractMessage(draft);
       break;
     case "end":
       keepMessage(draft, config);

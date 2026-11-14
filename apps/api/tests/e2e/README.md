@@ -19,7 +19,7 @@ These tests are the highest-confidence signal that all the layers — nodes, rou
 
 Shared infrastructure, not tests:
 
-- **`transcript.py`** — parses SSE (either the chunks `frames_for_stream_event` yields, or a raw HTTP body) into typed frames, and joins each `tool_output` back to its `tool_data` by `tool_call_id`, exactly as the frontend does. Assert through `Transcript`, never on raw prose.
+- **`transcript.py`** — parses SSE (either the chunks `payloads_for_stream_event` yields, or a raw HTTP body) into typed frames, and joins each `tool_output` back to its `tool_data` by `tool_call_id`, exactly as the frontend does. Assert through `Transcript`, never on raw prose.
 - **`graph_double.py`** — a compiled-graph stand-in that replays a chosen LangGraph event sequence, for the frame-level cases a real run cannot be made to produce on demand.
 - **`graph_run.py`** — the offline graph driver. `comms_graph()` / `executor_graph()` build the **real** compiled graph with only the model and narrow I/O seams replaced (ChromaDB store → `InMemoryStore`, Postgres checkpointer → in-memory); `run_graph()` drives one turn and returns a `GraphRun` typed with what the graph did (`tool_names`, `ran()`, `nodes()`, `results_from()`, `last_prompt()`, `bound_tools()`).
 - **Recording fake models** (`graph_run.py`):

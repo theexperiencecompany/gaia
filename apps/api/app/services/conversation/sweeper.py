@@ -32,7 +32,7 @@ from app.services.conversation.work_log import (
     record_work_finished,
 )
 from app.services.hil.ledger_decide import cancel_ledger_approvals
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 from shared.py.wide_events import log
 
 

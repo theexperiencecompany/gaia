@@ -14,15 +14,19 @@ import { accordionItemStyles } from "../constants";
 
 export default function CalendarSidebar() {
   const router = useRouter();
-  const { calendars, selectedCalendars, handleCalendarSelect, loading } =
-    useSharedCalendar();
+  const {
+    calendars,
+    selectedCalendars,
+    handleCalendarSelect,
+    isLoadingCalendars,
+  } = useSharedCalendar();
 
   const handleCreateEvent = () => {
     // Navigate to calendar page which will trigger the event creation
     router.push("/calendar?create=true");
   };
 
-  if (loading.calendars) {
+  if (isLoadingCalendars) {
     return (
       <div className="flex h-40 w-full flex-1 items-center justify-center">
         <Spinner />

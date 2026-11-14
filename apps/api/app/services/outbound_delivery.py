@@ -167,12 +167,12 @@ async def publish_outbound_message(
 ) -> OutboundResult:
     """Enqueue text_parts as a single ordered envelope for user_id on platform.
 
-    One envelope stops a concurrent consumer reordering bubbles; the bot splits each part
-    with the streamed reply's splitter. destination_override + is_channel target a channel
+    One envelope stops a concurrent consumer reordering bubbles; each part is split into its
+    bubbles here, and the bot sends each as one message. destination_override + is_channel target a channel
     instead of the DM; ttl_seconds caps the wait before dead-lettering. Returns PUBLISHED,
     SKIPPED (unsupported/unlinked/empty) or FAILED; never raises into the caller.
     """
-    parts = [part for part in text_parts if split_message_bubbles(part)]
+    parts = [bubble for part in text_parts for bubble in split_message_bubbles(part)]
     if not parts:
         return OutboundResult.SKIPPED
 

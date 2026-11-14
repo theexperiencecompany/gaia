@@ -652,8 +652,8 @@ class TestNotifyAccountLinked:
 class TestOutboundBubbleSplitting:
     """Raw agent text carries bubble-break sentinels; outbound publish is the last place that can turn them into real bubbles."""
 
-    async def test_a_part_travels_whole_for_the_bot_to_split_into_bubbles(self) -> None:
-        """The bot consumer splits with the streamed reply's splitter, so the API never pre-splits."""
+    async def test_a_part_travels_as_the_bubbles_the_server_split(self) -> None:
+        """The server splits once; the bot sends each part as one bubble."""
         publisher = AsyncMock()
         with (
             patch.object(
@@ -673,10 +673,8 @@ class TestOutboundBubbleSplitting:
             )
         assert ok is od.OutboundResult.PUBLISHED
         envelope = json.loads(publisher.publish_outbound.await_args.args[1])
-        assert (
-            envelope["text"] == "all set.<NEW_MESSAGE_BREAK>8 tasks created[NEW_LINE_BREAK]2 nudges"
-        )
-        assert envelope.get("text_parts") is None
+        assert envelope["text_parts"] == ["all set.", "8 tasks created", "2 nudges"]
+        assert envelope.get("text") is None
 
     async def test_a_part_of_nothing_but_sentinels_is_not_published(self) -> None:
         publisher = AsyncMock()

@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 from httpx import AsyncClient
 
-from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
+from shared.py.conversation_wire import ImageData
 from tests.conftest import FAKE_USER
 
 API = "/api/v1"

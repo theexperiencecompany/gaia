@@ -1,4 +1,4 @@
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints
 from typing_extensions import TypedDict
@@ -60,14 +60,6 @@ class SelectedCalendarEventData(BaseModel):
     calendarTitle: str | None = None
     backgroundColor: str | None = None
     isAllDay: bool | None = False
-
-
-class ReplyToMessageData(BaseModel):
-    """Data for the message being replied to."""
-
-    id: str
-    content: str
-    role: Literal["user", "assistant"]
 
 
 class MessageRequest(BaseModel):

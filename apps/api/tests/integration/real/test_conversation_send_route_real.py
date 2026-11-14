@@ -19,7 +19,7 @@ from app.constants.outbound import OUTBOUND_QUEUES
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.bot_models import BotChatRequest
 from app.models.chat_models import ConversationSource
-from app.models.conversation_frame_models import ConversationUpdatedFrame, StateFrame
+from app.models.conversation_frame_models import StateFrame
 from app.models.conversation_log_models import BargeIn, DisplayState, Notice, UserMessage
 from app.models.conversation_send_models import ActiveBotConversation
 from app.models.notification.notification_models import NotificationStatus
@@ -37,6 +37,7 @@ from app.utils.notification.channels.conversation import (
     ConversationPayload,
 )
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
+from shared.py.conversation_wire import ConversationUpdatedFrame
 from shared.py.wide_events import _spawned_tasks
 from tests.conftest import FAKE_USER
 from tests.helpers import log_history

@@ -42,13 +42,13 @@ from app.constants.browser import (
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
 from app.models.hil_models import HILPreferences
-from app.models.tool_data_models import ToolDataEntry
 from app.schemas.browser_job import BrowserJobRequest
 from app.services.browser.exceptions import BrowserSessionGone
 from app.services.browser.tools import EngineSwitchFn, TakeoverFn
 from app.services.conversation.work_log import WorkReport
 from app.workers.tasks import browser_tasks
 from shared.py import wide_events
+from shared.py.conversation_wire import ToolDataEntry
 
 #: What the fake CDN hands back for a step screenshot, per step index.
 SHOT_URL_TEMPLATE = "https://cdn.test/shot-{index}.png"

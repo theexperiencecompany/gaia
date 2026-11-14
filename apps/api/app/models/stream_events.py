@@ -53,7 +53,7 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel
 
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 
 # ---------------------------------------------------------------------------
 # Structured payloads (wrapped in a one-word envelope key at the emit site)

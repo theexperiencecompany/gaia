@@ -13,20 +13,14 @@ from app.constants.conversation import (
     WORK_UNFINISHED_NOTE,
 )
 from app.models.chat_models import ReactionBy
-from app.models.conversation_log_models import (
-    Batch,
-    LoggedEntry,
-    Reaction,
-    Reply,
-    ReplyOutcome,
-    WorkOutcome,
-)
+from app.models.conversation_log_models import Batch, LoggedEntry, Reaction, Reply, WorkOutcome
 from app.services.conversation.comms_input import (
     AS_TYPED,
     absorbed_messages,
     attempt_messages,
     entry_messages,
 )
+from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.log_helpers import (
     barge,
     finished,

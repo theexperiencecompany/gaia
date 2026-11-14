@@ -4,7 +4,7 @@ import type {
   ImageData,
   LoadedConversation,
   MessageAccepted,
-  MessageReaction,
+  Reaction,
   ReplyToMessageData,
   SelectedWorkflowDataOutput,
   SendMessageRequest,
@@ -52,6 +52,8 @@ export interface Message {
   /** The message's place in its conversation's order; absent while a live row has none yet. */
   seq?: number;
   text: string;
+  /** A bot message's bubbles, split once by the server. */
+  bubbles?: readonly string[];
   isUser: boolean;
   timestamp: Date;
   fileIds?: string[];
@@ -68,7 +70,7 @@ export interface Message {
    */
   error?: string;
   /** GAIA's one emoji reaction on a user message. */
-  reaction?: MessageReaction | null;
+  reaction?: Reaction | null;
   /** A reply or task still streaming, or a send the server has not accepted yet. */
   inProgress?: boolean;
   /** A reply or task the user stopped. */
@@ -221,12 +223,11 @@ export async function stopConversation(conversationId: string): Promise<void> {
 /** Follow a conversation's events after seq `after`, handing each data line over raw; resolves when the stream ends. */
 export function subscribeToConversationEvents(
   conversationId: string,
-  after: number,
   onData: (raw: string) => void,
   signal: AbortSignal,
 ): Promise<void> {
   return readEventStream(
-    `/conversations/${encodeURIComponent(conversationId)}/events?after=${after}`,
+    `/conversations/${encodeURIComponent(conversationId)}/events`,
     onData,
     signal,
   );

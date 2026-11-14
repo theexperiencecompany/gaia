@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.core.background.executor_queue import build_lock_value, try_acquire_lock
 from app.agents.tools import executor_tool as et
+from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.db.redis import redis_cache
 from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentConfigurable
@@ -15,6 +17,7 @@ pytestmark = pytest.mark.usefixtures("fake_redis")
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 STEP: StepTurnRef = {"epoch": 3, "batch_start": 4, "cause_through": 5, "answers": ["m4", "m5"]}
+BUSY_KEY = f"{EXECUTOR_BUSY_PREFIX}conv-1"
 
 
 def _configurable() -> AgentConfigurable:
@@ -32,17 +35,14 @@ async def _dispatch() -> str:
 
 
 async def test_a_refused_work_started_dispatches_nothing_and_frees_the_lock() -> None:
-    release = AsyncMock()
     with (
-        patch.object(et, "try_acquire_lock", AsyncMock(return_value=True)),
         patch.object(et, "record_work_started", AsyncMock(return_value=False)) as record,
-        patch.object(et, "release_lock_if_owned", release),
         patch.object(et, "spawn_background_task") as spawn,
     ):
         result = await _dispatch()
     record.assert_awaited_once_with(STEP, "conv-1", USER_ID, "task-1", handoff="call_1")
     spawn.assert_not_called()
-    release.assert_awaited_once_with("conv-1", None, "task-1")
+    assert await redis_cache.client.get(BUSY_KEY) is None
     assert result == et._NOT_STARTED_STOPPED
 
 
@@ -59,7 +59,6 @@ async def test_work_started_is_logged_before_the_run_spawns() -> None:
         return MagicMock()
 
     with (
-        patch.object(et, "try_acquire_lock", AsyncMock(return_value=True)),
         patch.object(et, "record_work_started", side_effect=logged),
         patch.object(et, "spawn_background_task", side_effect=spawned),
     ):
@@ -71,7 +70,6 @@ async def test_work_started_is_logged_before_the_run_spawns() -> None:
 async def test_a_legacy_run_dispatches_without_touching_the_log() -> None:
     configurable: AgentConfigurable = {"user_id": USER_ID, "thread_id": "conv-1"}
     with (
-        patch.object(et, "try_acquire_lock", AsyncMock(return_value=True)),
         patch.object(et, "record_work_started") as record,
         patch.object(et, "spawn_background_task", side_effect=lambda coro, **_: coro.close()),
     ):
@@ -85,8 +83,13 @@ async def test_a_legacy_run_dispatches_without_touching_the_log() -> None:
     record.assert_not_called()
 
 
+async def _hold_lock() -> None:
+    """Take the conversation's busy lock as the running t-running would."""
+    assert await try_acquire_lock(BUSY_KEY, build_lock_value("other-stream", "t-running"))
+
+
 def _busy(stack: ExitStack, order: list[str], joined: bool) -> AsyncMock:
-    """Hold the busy lock for a running t-running; return the patched record_work_started."""
+    """Patch the inbox and record_work_started around a lock another run holds; return the record patch."""
 
     async def logged(*_: object, **__: object) -> bool:
         order.append("logged")
@@ -97,19 +100,17 @@ def _busy(stack: ExitStack, order: list[str], joined: bool) -> AsyncMock:
 
     inbox = MagicMock()
     inbox.return_value.append = AsyncMock(side_effect=handed)
-    stack.enter_context(patch.object(et, "try_acquire_lock", AsyncMock(return_value=False)))
     stack.enter_context(patch.object(et, "reclaim_dead_lock", AsyncMock(return_value=False)))
     stack.enter_context(
         patch.object(et, "_acquire_lock_through_redirect", AsyncMock(return_value=False))
     )
-    held = AsyncMock(return_value=b"other-stream:t-running")
-    stack.enter_context(patch.object(redis_cache.client, "get", held))
     stack.enter_context(patch.object(et, "ExecutorInbox", inbox))
     return stack.enter_context(patch.object(et, "record_work_started", side_effect=logged))
 
 
 async def test_work_handed_to_a_running_executor_is_logged_as_joining_it_first() -> None:
     order: list[str] = []
+    await _hold_lock()
     with ExitStack() as stack:
         record = _busy(stack, order, joined=True)
         result = await _dispatch()
@@ -122,6 +123,7 @@ async def test_work_handed_to_a_running_executor_is_logged_as_joining_it_first()
 
 async def test_work_whose_join_is_refused_is_not_handed_over() -> None:
     order: list[str] = []
+    await _hold_lock()
     with ExitStack() as stack:
         _busy(stack, order, joined=False)
         result = await _dispatch()

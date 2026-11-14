@@ -12,7 +12,6 @@ from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.conversation_log_models import (
     LoggedEntry,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     StepClaim,
     UserMessage,
@@ -23,6 +22,7 @@ from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.chat import ChatMessageCancelled, ChatMessageCompleted
 from shared.py.analytics.context import AnalyticsContext
+from shared.py.conversation_wire import ReplyOutcome
 
 # A truncated reply is one the user spoke over: it still answered them.
 _TURN_END: dict[ReplyOutcome, type[ChatMessageCompleted | ChatMessageCancelled]] = {

@@ -15,6 +15,7 @@ import type {
   SelectedWorkflowDataOutput,
   TodoRunWake,
   TodoWokeItem,
+  ToolTimeline,
   UserItem,
   UserMessage,
   WorkflowFiredItem,
@@ -221,7 +222,25 @@ export const WORK_STATUS = {
   LOST: "lost",
 } as const satisfies Record<string, WorkItem["status"]>;
 
+/** Work whose cards are still streaming onto its item. */
+export const LIVE_WORK_STATUS: ReadonlySet<string> = new Set([
+  WORK_STATUS.RUNNING,
+  WORK_STATUS.AWAITING_APPROVAL,
+]);
+
 const itemPlace = { id, seq: z.number().int().min(1), at: z.string() };
+
+/** The tool thread and stand-alone cards the server folded an item's cards into. */
+export const ToolTimelineSchema = z.object({
+  steps: z.array(
+    z.object({
+      kind: z.enum(["tool", "subagent"]),
+      key: z.string(),
+      data: z.unknown(),
+    }),
+  ),
+  cards: z.array(z.object({ key: z.string(), card: ToolDataEntrySchema })),
+}) satisfies z.ZodType<ToolTimeline>;
 
 const UserItemSchema = z.object({
   kind: z.literal(SCREEN_ITEM_KIND.USER),
@@ -232,8 +251,9 @@ const UserItemSchema = z.object({
 const ReplyItemSchema = z.object({
   kind: z.literal(SCREEN_ITEM_KIND.REPLY),
   ...itemPlace,
-  text: z.string(),
+  bubbles: z.array(z.string()),
   tool_data: z.array(ToolDataEntrySchema),
+  timeline: ToolTimelineSchema,
   follow_up_actions: z.array(z.string()),
   image: ImageDataSchema.nullable(),
   pinned: z.boolean(),
@@ -277,14 +297,16 @@ const WorkItemSchema = z.object({
   approvals: z.array(ApprovalCardSchema),
   handoff: ToolDataEntrySchema.nullable(),
   tool_data: z.array(ToolDataEntrySchema),
+  timeline: ToolTimelineSchema,
   image: ImageDataSchema.nullable(),
 }) satisfies z.ZodType<WorkItem>;
 
 const NoticeItemSchema = z.object({
   kind: z.literal(SCREEN_ITEM_KIND.NOTICE),
   ...itemPlace,
-  text: z.string(),
+  bubbles: z.array(z.string()),
   tool_data: z.array(ToolDataEntrySchema),
+  timeline: ToolTimelineSchema,
   follow_up_actions: z.array(z.string()),
 }) satisfies z.ZodType<NoticeItem>;
 

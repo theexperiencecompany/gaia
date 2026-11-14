@@ -158,7 +158,6 @@ export type {
   ToolDataMap,
   ToolFixture,
   ToolName,
-  TurnAccumulator,
   TwitterData,
   TwitterFollowersData,
   TwitterPostCreatedData,
@@ -174,17 +173,14 @@ export type {
 } from "./chat";
 export {
   APPROVAL_REQUEST_TOOL_NAME,
-  applyStreamEvent,
   approvalLabel,
   approvalOutcomeLabel,
-  createTurnAccumulator,
   DEFAULT_HIL_MODE,
   extractToolProgressMessage,
   getFixture,
   getToolData,
   isKnownTool,
   isSettled,
-  mergeToolOutputIntoToolData,
   parseChatStreamEvent,
   REASONING_TOOL_NAME,
   SUBAGENT_GROUP_TOOL_NAME,
@@ -193,7 +189,6 @@ export {
   toolAsks,
   toolOverrideValue,
   updateSubagentInToolData,
-  upsertTodoProgressToolData,
 } from "./chat";
 export {
   CLI_COMMAND_DESCRIPTIONS,
@@ -427,8 +422,6 @@ export {
   integrationConnectionState,
   isOverdue,
   isTokenExpired,
-  NEW_MESSAGE_BREAK_TOKEN,
-  NEW_MESSAGE_BREAK_TOKEN_LENGTH,
   normalizeOpenUICode,
   OPENUI_SAMPLES,
   PLAYFUL_THINKING_MESSAGES,
@@ -440,9 +433,7 @@ export {
   parseRelativeDateLabel,
   parseThinkingFromText,
   rateLimitResetInfo,
-  reconcileIntegrationStatus,
   shouldRefreshToken,
-  splitMessageByBreaks,
   truncateText,
 } from "./utils";
 export type {

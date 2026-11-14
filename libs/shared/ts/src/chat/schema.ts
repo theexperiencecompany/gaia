@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type {
-  MessageReaction,
+  Reaction,
   SubagentEndPayload,
   SubagentStartPayload,
   ToolDataEntry,
@@ -83,7 +83,7 @@ const ReactionFrameSchema = z.object({
       emoji: z.string(),
       by: z.enum(["jev", "chat_model"]),
     })
-    .loose() satisfies z.ZodType<MessageReaction & { message_id: string }>,
+    .loose() satisfies z.ZodType<Reaction & { message_id: string }>,
 });
 const ModelFallbackFrameSchema = z.object({
   model_fallback: z.object({ model: z.string().optional() }).loose(),

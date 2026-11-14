@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from app.constants.hil import ApprovalDecision
 from app.models.hil_models import ApprovalScope, HILMode, HILPreferences
 from app.schemas.common import ResponseModel
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 
 
 class ApprovalDecisionRequest(BaseModel):

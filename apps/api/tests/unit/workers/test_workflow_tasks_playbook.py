@@ -38,7 +38,6 @@ from app.constants.log_tags import LogTag
 from app.models.conversation_log_models import (
     ConversationState,
     LiveWork,
-    ReplyOutcome,
     ReplySettled,
     WorkflowFired,
 )
@@ -81,6 +80,7 @@ from app.workers.tasks.workflow_tasks import (
     execute_workflow_as_chat,
     execute_workflow_by_id,
 )
+from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.log_helpers import EMPTY
 
 MODULE = "app.workers.tasks.workflow_tasks"

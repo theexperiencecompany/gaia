@@ -1,108 +1,49 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { useCalendarStore } from "@/stores/calendarStore";
 
-import { calendarApi } from "../api/calendarApi";
-import { useCalendarOperations } from "./useCalendarOperations";
-import { useCalendarPreferences } from "./useCalendarPreferences";
+import {
+  useCalendarPreferences,
+  useUpdateCalendarPreferences,
+} from "./useCalendarPreferences";
 import { useCalendarsQuery } from "./useCalendarsQuery";
 
+const NO_CALENDARS: string[] = [];
+
+/** The user's calendars and their selection, both read from the server. */
 export const useSharedCalendar = () => {
-  // Use individual selectors to prevent unnecessary re-renders
-  const selectedCalendars = useCalendarStore(
-    (state) => state.selectedCalendars,
-  );
-  const events = useCalendarStore((state) => state.events);
-  const loading = useCalendarStore((state) => state.loading);
-  const error = useCalendarStore((state) => state.error);
-  const setSelectedCalendars = useCalendarStore(
-    (state) => state.setSelectedCalendars,
-  );
-  const toggleCalendarSelection = useCalendarStore(
-    (state) => state.toggleCalendarSelection,
-  );
-  const resetEvents = useCalendarStore((state) => state.resetEvents);
-  const clearError = useCalendarStore((state) => state.clearError);
-
-  const { loadEvents } = useCalendarOperations();
   const { getIntegrationStatus } = useIntegrations();
+  const isCalendarConnected =
+    getIntegrationStatus("googlecalendar")?.connected || false;
 
-  // Check if calendar integration is connected
-  const calendarStatus = getIntegrationStatus("googlecalendar");
-  const isCalendarConnected = calendarStatus?.connected || false;
-
-  // Fetch calendar preferences from backend (syncs to store automatically)
   const preferencesQuery = useCalendarPreferences({
     enabled: isCalendarConnected,
   });
+  const calendarsQuery = useCalendarsQuery({ enabled: isCalendarConnected });
+  const { mutate: saveSelection } = useUpdateCalendarPreferences();
 
-  // Use React Query for calendars with caching - only fetch if connected
-  const calendarsQuery = useCalendarsQuery({
-    enabled: isCalendarConnected,
-  });
   const calendars = calendarsQuery.data ?? [];
-  const isInitialized = calendarsQuery.isFetched && preferencesQuery.isFetched;
+  const selectedCalendars = preferencesQuery.data ?? NO_CALENDARS;
 
-  // Handle calendar selection
   const handleCalendarSelect = useCallback(
-    async (calendarId: string) => {
-      // Toggle in store (updates UI immediately)
-      toggleCalendarSelection(calendarId);
-
-      // Get updated selections after toggle
-      const updatedSelections = useCalendarStore.getState().selectedCalendars;
-
-      // Sync to backend
-      try {
-        await calendarApi.updateCalendarPreferences(updatedSelections);
-      } catch (error) {
-        console.error("[Calendar] Failed to sync selection to backend:", error);
-      }
+    (calendarId: string) => {
+      saveSelection(
+        selectedCalendars.includes(calendarId)
+          ? selectedCalendars.filter((id) => id !== calendarId)
+          : [...selectedCalendars, calendarId],
+      );
     },
-    [toggleCalendarSelection],
-  );
-
-  // Clear events
-  const clearEvents = useCallback(() => {
-    resetEvents();
-  }, [resetEvents]);
-
-  // Memoize loading object to prevent new references
-  const loadingState = useMemo(
-    () => ({
-      ...loading,
-      calendars: calendarsQuery.isLoading,
-    }),
-    [loading, calendarsQuery.isLoading],
-  );
-
-  // Memoize error object to prevent new references
-  const errorState = useMemo(
-    () => ({
-      ...error,
-      calendars: calendarsQuery.error?.message ?? null,
-    }),
-    [error, calendarsQuery.error],
+    [saveSelection, selectedCalendars],
   );
 
   return {
-    // State
     calendars,
     selectedCalendars,
-    events,
-    loading: loadingState,
-    error: errorState,
-    isInitialized,
-
-    // Actions
-    loadEvents,
-    clearEvents,
+    isInitialized: calendarsQuery.isFetched && preferencesQuery.isFetched,
+    isLoadingCalendars: calendarsQuery.isLoading,
+    calendarsError: calendarsQuery.error?.message ?? null,
     handleCalendarSelect,
-    setSelectedCalendars,
-    clearError,
-    refetchCalendars: calendarsQuery.refetch,
   };
 };

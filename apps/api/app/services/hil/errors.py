@@ -3,7 +3,7 @@
 from http import HTTPStatus
 
 from app.utils.errors import AppError
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome
 
 
 class ApprovalRequestNotFoundError(AppError):

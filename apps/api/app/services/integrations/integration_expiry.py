@@ -19,10 +19,8 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from app.config.oauth_config import get_integration_by_id
-from app.constants.integrations import INTEGRATION_STATUS_UPDATE_EVENT
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
-from app.core.websocket_manager import websocket_manager
 from app.models.integration_models import IntegrationAccount
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -42,6 +40,7 @@ from app.services.integrations.integration_accounts import (
     primary_account,
     save_accounts,
 )
+from app.services.integrations.user_integration_status import announce_integration_changed
 from app.services.integrations_fs import schedule_user_integrations_sync
 from app.services.notification_service import notification_service
 from shared.py.wide_events import log
@@ -186,16 +185,7 @@ async def announce_account_expiry(
     """Flip an open integrations page live, then leave a persistent Reconnect nudge."""
     integration = get_integration_by_id(integration_id)
     integration_name = integration.name if integration else integration_id
-    await websocket_manager.broadcast_to_user(
-        user_id=user_id,
-        message={
-            "type": INTEGRATION_STATUS_UPDATE_EVENT,
-            "data": {
-                "integration_id": integration_id,
-                "status": "expired" if expired.integration_expired else "connected",
-            },
-        },
-    )
+    await announce_integration_changed(user_id, integration_id)
 
     named = (
         f"{integration_name} ({expired.account.display_name})"

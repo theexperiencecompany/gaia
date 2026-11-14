@@ -40,17 +40,9 @@ export type {
 } from "./streaming";
 export {
   extractToolProgressMessage,
-  mergeToolOutputIntoToolData,
   parseChatStreamEvent,
   TOOL_CALLS_DATA_TOOL_NAME,
-  upsertTodoProgressToolData,
 } from "./streaming";
-export type { TurnAccumulator } from "./turnAccumulator";
-export {
-  applyStreamEvent,
-  createTurnAccumulator,
-  updateSubagentInToolData,
-} from "./turnAccumulator";
 export type {
   ApiFileData,
   ApiToolData,

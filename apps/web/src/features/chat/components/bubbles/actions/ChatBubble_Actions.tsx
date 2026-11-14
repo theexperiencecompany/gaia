@@ -49,11 +49,9 @@ export default function ChatBubble_Actions({
   };
 
   const copyToClipboard = async () => {
-    // Remove NEW_MESSAGE_BREAK tokens for cleaner copy
-    const cleanText = text.replace(/<NEW_MESSAGE_BREAK>/g, "\n\n");
-    if (!(await copyWithFeedback(cleanText))) return;
+    if (!(await copyWithFeedback(text))) return;
     toast.info("Copied to clipboard", {
-      description: `${cleanText.slice(0, 30)}...`,
+      description: `${text.slice(0, 30)}...`,
     });
   };
 

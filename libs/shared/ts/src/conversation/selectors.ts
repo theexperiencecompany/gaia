@@ -1,5 +1,9 @@
-import { extractToolProgressMessage } from "../chat/streaming";
-import { SCREEN_ITEM_KIND } from "./entries";
+import type { ConversationMessageHit } from "../api/generated";
+import {
+  extractToolProgressMessage,
+  type StreamToolDataEntry,
+} from "../chat/streaming";
+import { LIVE_WORK_STATUS, SCREEN_ITEM_KIND } from "./entries";
 import { DISPLAY_STATE } from "./frames";
 import type {
   ConversationView,
@@ -16,7 +20,7 @@ import type {
  */
 export type ScreenRow =
   | { kind: "item"; item: ScreenItem; draft: StreamDraft | null }
-  | { kind: "draft"; draft: Extract<StreamDraft, { source: "reply" }> }
+  | { kind: "draft"; draft: StreamDraft }
   | { kind: "pending"; send: PendingSend };
 
 export interface LoadingRow {
@@ -28,14 +32,11 @@ export interface LoadingRow {
 
 function streamKey(item: ScreenItem): string | null {
   if (item.kind === SCREEN_ITEM_KIND.REPLY) return `reply:${item.id}`;
-  if (item.kind === SCREEN_ITEM_KIND.WORK) return `work:${item.task_id}`;
   return null;
 }
 
 const draftKey = (draft: StreamDraft): string | null =>
-  draft.source === "work"
-    ? `work:${draft.taskId}`
-    : draft.replyId && `reply:${draft.replyId}`;
+  draft.replyId && `reply:${draft.replyId}`;
 
 /** The rows to render, in the server's order: its items, then replies streaming ahead of their item, then pending sends. */
 export function screenRows(view: ConversationView): ScreenRow[] {
@@ -52,20 +53,31 @@ export function screenRows(view: ConversationView): ScreenRow[] {
     return { kind: "item", item, draft };
   });
   for (const draft of view.drafts) {
-    if (draft.source === "reply" && !placed.has(draft))
-      rows.push({ kind: "draft", draft });
+    if (!placed.has(draft)) rows.push({ kind: "draft", draft });
   }
   for (const send of view.pending) rows.push({ kind: "pending", send });
   return rows;
 }
 
-/** The loading row: the server's display state, with the newest draft's progress line. */
+/** The cards streaming now: the newest reply draft's, else the newest running work's. */
+function newestCards(view: ConversationView): readonly StreamToolDataEntry[] {
+  const draft = view.drafts.at(-1);
+  if (draft) return draft.content.toolData;
+  const work = view.items.findLast(
+    (item) =>
+      item.kind === SCREEN_ITEM_KIND.WORK && LIVE_WORK_STATUS.has(item.status),
+  );
+  return work?.kind === SCREEN_ITEM_KIND.WORK
+    ? (work.tool_data as StreamToolDataEntry[])
+    : [];
+}
+
+/** The loading row: the server's display state, with the newest streaming cards' progress line. */
 export function loadingRow(view: ConversationView): LoadingRow {
   const visible = view.display !== DISPLAY_STATE.IDLE;
   const progress = visible
-    ? view.drafts
-        .at(-1)
-        ?.content.toolData.map(extractToolProgressMessage)
+    ? newestCards(view)
+        .map(extractToolProgressMessage)
         .findLast((message) => message !== null)
     : undefined;
   return { visible, status: view.display, detail: progress ?? null };
@@ -104,4 +116,11 @@ export function messageToRetry(
     .slice(0, at + 1)
     .findLast((item) => item.kind === SCREEN_ITEM_KIND.USER);
   return asked?.kind === SCREEN_ITEM_KIND.USER ? asked.message : null;
+}
+
+/** The words a pinned or searched item shows: the user's message, or a reply's or notice's bubbles. */
+export function itemText(item: ConversationMessageHit["item"]): string {
+  return item.kind === SCREEN_ITEM_KIND.USER
+    ? item.message.text
+    : item.bubbles.join("\n\n");
 }

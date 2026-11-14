@@ -1,22 +1,25 @@
-import type { FileData } from "@gaia/shared/api/generated";
+import type { FileData, ToolDataEntry } from "@gaia/shared/api/generated";
 import {
   type ConversationView,
-  ENTRY_KIND,
-  type LiveBubble,
-  quoteFor,
   replyFailureMessage,
-  type UserMessage,
-  visibleBubbles,
-  type WorkStatus,
+  SCREEN_ITEM_KIND,
+  type ScreenItem,
+  type ScreenRow,
+  type StreamDraft,
+  screenRows,
+  WORK_STATUS,
 } from "@gaia/shared/conversation";
-import type { ApiFileData, Message, ReplyToMessageData } from "../api/chat-api";
+import type { ApiFileData, Message } from "../api/chat-api";
 import type { MobileSend } from "./live-conversation-store";
 
-const RUNNING_WORK: ReadonlySet<WorkStatus> = new Set([
-  "running",
-  "awaiting_approval",
+const RUNNING_WORK: ReadonlySet<string> = new Set([
+  WORK_STATUS.RUNNING,
+  WORK_STATUS.AWAITING_APPROVAL,
 ]);
-const STOPPED_WORK: ReadonlySet<WorkStatus> = new Set(["cancelled", "lost"]);
+const STOPPED_WORK: ReadonlySet<string> = new Set([
+  WORK_STATUS.CANCELLED,
+  WORK_STATUS.LOST,
+]);
 
 /** The display data of a logged message's attachments, as the bubbles read it. */
 export const toApiFileData = (files: readonly FileData[]): ApiFileData[] =>
@@ -27,64 +30,115 @@ export const toApiFileData = (files: readonly FileData[]): ApiFileData[] =>
     contentType: file.type ?? undefined,
   }));
 
-interface RowContext {
-  view: ConversationView;
-  sends: Readonly<Record<string, MobileSend>>;
-  userMessages: ReadonlyMap<string, UserMessage>;
-  dates: ReadonlyMap<number, Date>;
-  /** For rows with no seq yet: a streaming draft that opened no entry. */
-  now: Date;
-}
+// The accumulator holds the same entries the server's items carry, typed loosely for its own merges.
+const cards = (entries: readonly unknown[]) => [...entries] as ToolDataEntry[];
 
-function quoted(
-  userMessages: ReadonlyMap<string, UserMessage>,
-  id: string | null,
-): ReplyToMessageData | null {
-  const message = id ? userMessages.get(id) : undefined;
-  return message
-    ? { id: message.id, content: message.text, role: "user" }
-    : null;
-}
-
-function settlement(view: ConversationView, replyId: string | null) {
-  if (!replyId) return null;
-  const settled = view.entries.find(
-    ({ entry }) =>
-      entry.kind === ENTRY_KIND.REPLY_SETTLED && entry.reply_id === replyId,
-  )?.entry;
-  return settled?.kind === ENTRY_KIND.REPLY_SETTLED ? settled : null;
-}
-
-const dateOf = (context: RowContext, seq: number | null): Date =>
-  (seq === null ? undefined : context.dates.get(seq)) ?? context.now;
-
-function rowFor(bubble: LiveBubble, context: RowContext): Message {
-  const { view, sends, userMessages } = context;
-  switch (bubble.kind) {
-    case "user": {
-      const { message } = bubble;
+function itemRow(item: ScreenItem, draft: StreamDraft | null): Message {
+  const placed = { id: item.id, seq: item.seq, timestamp: new Date(item.at) };
+  switch (item.kind) {
+    case SCREEN_ITEM_KIND.USER: {
+      const { message } = item;
       return {
-        id: bubble.messageId,
-        seq: bubble.seq,
+        ...placed,
         text: message.text,
         isUser: true,
-        timestamp: dateOf(context, bubble.seq),
         fileIds: message.file_ids,
         fileData: toApiFileData(message.files),
-        replyToMessage:
-          message.reply_to_message ?? quoted(userMessages, message.reply_to),
-        reaction: bubble.reaction,
+        replyToMessage: message.reply_to_message ?? null,
+        reaction: message.reaction,
         pinned: message.pinned,
         todoRunWake: message.todo_run_wake,
       };
     }
-    case "pending": {
-      const send = sends[bubble.send.id];
+    case SCREEN_ITEM_KIND.REPLY: {
+      const streamed = draft?.content;
       return {
-        id: bubble.messageId,
-        text: bubble.send.text,
+        ...placed,
+        text: (streamed?.bubbles ?? item.bubbles).join("\n\n"),
+        bubbles: streamed?.bubbles ?? item.bubbles,
+        isUser: false,
+        toolData: cards(streamed?.toolData ?? item.tool_data),
+        followUpActions: [
+          ...(streamed?.followUpActions ?? item.follow_up_actions),
+        ],
+        imageData: item.image,
+        pinned: item.pinned,
+        inProgress: item.outcome === null,
+        stopped: item.outcome === "stopped",
+        error:
+          item.outcome === "failed"
+            ? replyFailureMessage(item.failure)
+            : undefined,
+        replyToMessage: item.quote,
+      };
+    }
+    case SCREEN_ITEM_KIND.WORK:
+      return {
+        ...placed,
+        text: "",
+        isUser: false,
+        toolData: cards([
+          ...(item.handoff ? [item.handoff] : []),
+          ...(draft?.content.toolData ?? item.tool_data),
+        ]),
+        imageData: item.image,
+        inProgress: RUNNING_WORK.has(item.status),
+        stopped: STOPPED_WORK.has(item.status),
+      };
+    case SCREEN_ITEM_KIND.NOTICE:
+      return {
+        ...placed,
+        text: item.bubbles.join("\n\n"),
+        bubbles: item.bubbles,
+        isUser: false,
+        toolData: cards(item.tool_data),
+        followUpActions: [...item.follow_up_actions],
+      };
+    // The run's side of the chat: its card alone, as a message with no text.
+    case SCREEN_ITEM_KIND.WORKFLOW_FIRED:
+      return {
+        ...placed,
+        text: "",
         isUser: true,
-        timestamp: send ? new Date(send.sentAt) : context.now,
+        firedWorkflow: item.workflow,
+      };
+    case SCREEN_ITEM_KIND.TODO_WOKE:
+      return { ...placed, text: "", isUser: true, todoRunWake: item.wake };
+    default: {
+      const unhandled: never = item;
+      return unhandled;
+    }
+  }
+}
+
+function row(
+  shown: ScreenRow,
+  sends: Readonly<Record<string, MobileSend>>,
+  now: Date,
+): Message {
+  switch (shown.kind) {
+    case "item":
+      return itemRow(shown.item, shown.draft);
+    case "draft": {
+      const { draft } = shown;
+      return {
+        id: draft.replyId ?? `draft:${draft.attemptId}`,
+        text: draft.content.bubbles.join("\n\n"),
+        bubbles: draft.content.bubbles,
+        isUser: false,
+        timestamp: now,
+        toolData: cards(draft.content.toolData),
+        followUpActions: [...(draft.content.followUpActions ?? [])],
+        inProgress: true,
+      };
+    }
+    case "pending": {
+      const send = sends[shown.send.id];
+      return {
+        id: shown.send.id,
+        text: shown.send.text,
+        isUser: true,
+        timestamp: send ? new Date(send.sentAt) : now,
         fileIds: send?.body.file_ids ?? [],
         fileData: send?.fileData,
         replyToMessage: send?.body.reply_to_message ?? null,
@@ -92,70 +146,8 @@ function rowFor(bubble: LiveBubble, context: RowContext): Message {
         sendFailed: send?.failed ?? false,
       };
     }
-    case "reply": {
-      const settled = settlement(view, bubble.replyId);
-      return {
-        id: bubble.messageId,
-        seq: bubble.seq ?? undefined,
-        text: bubble.text,
-        isUser: false,
-        timestamp: dateOf(context, bubble.seq),
-        toolData: [...bubble.toolData],
-        followUpActions: [...bubble.followUpActions],
-        imageData: bubble.image,
-        pinned: bubble.pinned,
-        inProgress: bubble.streaming,
-        stopped: settled?.outcome === "stopped",
-        error:
-          settled?.outcome === "failed"
-            ? replyFailureMessage(settled.failure)
-            : undefined,
-        replyToMessage: bubble.replyId
-          ? quoted(userMessages, quoteFor(view, bubble.replyId))
-          : null,
-      };
-    }
-    case "work":
-      return {
-        id: bubble.messageId,
-        seq: bubble.seq ?? undefined,
-        text: "",
-        isUser: false,
-        timestamp: dateOf(context, bubble.seq),
-        toolData: [...bubble.toolData],
-        inProgress: RUNNING_WORK.has(bubble.status),
-        stopped: STOPPED_WORK.has(bubble.status),
-      };
-    case "notice":
-      return {
-        id: bubble.messageId,
-        seq: bubble.seq ?? undefined,
-        text: bubble.text,
-        isUser: false,
-        timestamp: dateOf(context, bubble.seq),
-        toolData: [...bubble.toolData],
-      };
-    // The run's side of the chat: its card alone, as a message with no text.
-    case "workflow_fired":
-      return {
-        id: bubble.messageId,
-        seq: bubble.seq ?? undefined,
-        text: "",
-        isUser: true,
-        timestamp: dateOf(context, bubble.seq),
-        firedWorkflow: bubble.workflow,
-      };
-    case "todo_woke":
-      return {
-        id: bubble.messageId,
-        seq: bubble.seq ?? undefined,
-        text: "",
-        isUser: true,
-        timestamp: dateOf(context, bubble.seq),
-        todoRunWake: bubble.wake,
-      };
     default: {
-      const unhandled: never = bubble;
+      const unhandled: never = shown;
       return unhandled;
     }
   }
@@ -167,13 +159,5 @@ export function liveMessages(
   sends: Readonly<Record<string, MobileSend>>,
   now: Date,
 ): Message[] {
-  const userMessages = new Map<string, UserMessage>();
-  const dates = new Map<number, Date>();
-  for (const { seq, at, entry } of view.entries) {
-    dates.set(seq, new Date(at));
-    if (entry.kind === ENTRY_KIND.USER_MESSAGE)
-      userMessages.set(entry.id, entry);
-  }
-  const context = { view, sends, userMessages, dates, now };
-  return visibleBubbles(view).map((bubble) => rowFor(bubble, context));
+  return screenRows(view).map((shown) => row(shown, sends, now));
 }

@@ -22,7 +22,7 @@ from app.services.hil.errors import (
     ToolAlwaysAsksError,
 )
 from app.services.hil.ledger_decide import LedgerDecision
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from tests.helpers import ledger_facts
 
 APPROVALS_BASE = "/api/v1/approvals"

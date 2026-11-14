@@ -11,7 +11,6 @@ import {
   apiRowAwaitsApproval,
   isApprovalFlagStale,
 } from "@/features/chat/utils/approvalFlag";
-import { isUnlistedConversation } from "@/features/chat/utils/unlistedConversation";
 import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
@@ -48,6 +47,7 @@ const toStoredConversation = (
   awaitingApproval: apiRowAwaitsApproval(conversation),
   todoId: conversation.todo_id ?? null,
   source: conversation.source ?? undefined,
+  listed: conversation.listed,
   artifacts,
   createdAt: new Date(conversation.createdAt ?? 0),
   updatedAt: conversation.updatedAt
@@ -136,8 +136,8 @@ const identifyDeletedConversations = (
     // Skip if conversation exists on remote
     if (remoteIds.has(local.id)) continue;
 
-    // A todo chat or bot DM is never in the remote list, by design: absent there is not deleted.
-    if (isUnlistedConversation(local)) continue;
+    // An unlisted chat is never in the remote list, by design: absent there is not deleted.
+    if (local.listed === false) continue;
 
     // Safety: Skip recently created/updated conversations
     // They might not have synced to the server yet, or might be beyond the pagination limit
@@ -167,11 +167,11 @@ export const batchSyncConversations = async (
       db.getAllConversations(),
     ]);
 
-    // An unlisted chat (todo chat, bot DM) is never in the list, so only asking about it by id
+    // An unlisted chat is never in the list, so only asking about it by id
     // shows a new message or its deletion. last_updated keeps the reply to what changed.
     const unlistedChatItems = localConversations.flatMap(
       (conv): ConversationSyncItem[] =>
-        isUnlistedConversation(conv)
+        conv.listed === false
           ? [
               {
                 conversation_id: conv.id,

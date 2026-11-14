@@ -13,12 +13,10 @@ from app.models.conversation_log_models import (
     ConversationState,
     Effect,
     Entry,
-    FailureReason,
     LoggedEntry,
     Notice,
     Rejected,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     StopBy,
     StopRequested,
@@ -38,8 +36,9 @@ from app.models.workflow_models import TriggerType
 from app.models.workflow_trigger_models import WorkflowTriggerContext
 from app.services.conversation.reducer import reduce
 from shared.py.analytics.catalog.attribution import Trigger
-from shared.py.analytics.catalog.hil import ApprovalDecider, ApprovalOutcome
 from shared.py.analytics.context import worker_context
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from shared.py.conversation_wire import FailureReason, ReplyOutcome
 
 EMPTY = ConversationState(
     head=0,

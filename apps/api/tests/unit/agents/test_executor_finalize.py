@@ -62,10 +62,12 @@ from app.constants.general import FINISH_TASK_NAME
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.models.agent_models import InboxEntry
-from app.models.chat_models import SourceCategory, ToolDataEntry
+from app.models.chat_models import SourceCategory
 from app.models.conversation_log_models import WorkOutcome
 from app.models.executor_activity_models import ExecutorActivity
 from app.models.user_models import AuthenticatedUser
+from app.services.conversation.tool_cards import FoldedCards
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log, log_context
 from tests.helpers import WideEventRecorder
 
@@ -260,32 +262,34 @@ class TestDoneSignalAndOrdering:
 
         assert session.done_event.is_set()
 
-    async def test_the_cards_are_snapshotted_before_done_signal(self, boundaries) -> None:
+    async def test_the_approval_cards_are_snapshotted_before_done_signal(self, boundaries) -> None:
         """Once done_event fires, a waiting todo run tears the session down — reading the cards after would race it."""
         session = create_session("s1", RunKind.LIVE)
         done_state_at_drain_time: list[bool] = []
 
-        def _drain(_sid: str) -> list[ToolDataEntry]:
+        def _drain(_sid: str) -> tuple[ToolDataEntry, ...]:
             done_state_at_drain_time.append(session.done_event.is_set())
-            return []
+            return ()
 
-        with patch.object(er, "drain_executor_tool_data", side_effect=_drain):
+        with patch.object(er, "session_approval_cards", side_effect=_drain):
             await er._finalize_executor_run(_run(RunKind.LIVE), "txt", "final")
 
         assert done_state_at_drain_time == [False]
 
 
-async def test_a_step_dispatched_live_run_logs_its_cards_on_work_finished(boundaries) -> None:
+async def test_a_live_run_carries_only_its_sessions_approval_cards_to_work_finished(
+    boundaries,
+) -> None:
     session = create_session("s1", RunKind.LIVE)
-    session.tool_events.append(
-        {"tool_data": {"tool_name": "tool_calls_data", "data": {"tool_call_id": "tc-1"}}}
+    session.tool_events.extend(
+        [
+            {"tool_data": {"tool_name": "tool_calls_data", "data": {"tool_call_id": "tc-1"}}},
+            {"tool_data": {"tool_name": "approval_request", "data": {"approval_id": "a1"}}},
+        ]
     )
-    run = replace(
-        _run(RunKind.LIVE),
-    )
-    await er._finalize_executor_run(run, "the digest", "final")
+    await er._finalize_executor_run(_run(RunKind.LIVE), "the digest", "final")
     outcome = boundaries.logged.await_args.args[1]
-    assert [card["tool_name"] for card in outcome.tool_data] == ["tool_calls_data"]
+    assert [card["tool_name"] for card in outcome.approval_cards] == ["approval_request"]
 
 
 class TestCancelStillCarriesHandedOverWork:
@@ -902,9 +906,11 @@ async def test_a_stopped_run_reports_that_the_user_stopped_it() -> None:
         result_text="The executor_agent run ended without reporting a result, so nothing confirms any of it happened.",
         result_type="final",
         was_cancelled=True,
-        tool_data=[],
     )
-    with patch.object(er, "record_work_finished", new_callable=AsyncMock) as record:
+    with (
+        patch.object(er, "record_work_finished", new_callable=AsyncMock) as record,
+        patch.object(er, "work_cards", new=AsyncMock(return_value=FoldedCards())),
+    ):
         await er._log_work_finished(_run(RunKind.LIVE), stopped, stopped=True)
     report = record.await_args.args[4]
     assert record.await_args.args[3] is WorkOutcome.CANCELLED

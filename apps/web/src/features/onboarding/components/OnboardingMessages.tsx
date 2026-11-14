@@ -3,7 +3,6 @@
  * alternating bot/user chat bubbles. No state, no effects.
  */
 
-import { NEW_MESSAGE_BREAK_TOKEN } from "@shared/utils";
 import * as m from "motion/react-m";
 import { memo } from "react";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
@@ -41,7 +40,7 @@ function OnboardingMessagesImpl({ messages }: OnboardingMessagesProps) {
             // are history and render at once. Both go through the same component
             // so answering never remounts (and replays) the bubbles already on screen.
             <OnboardingBotBubbles
-              lines={message.content.split(NEW_MESSAGE_BREAK_TOKEN)}
+              lines={message.lines}
               revealKey={questionRevealKey(message.id)}
               instant={index !== messages.length - 1}
             />

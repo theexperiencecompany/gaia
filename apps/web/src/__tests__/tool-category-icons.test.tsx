@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -40,5 +41,15 @@ describe("tool category icons", () => {
     // Pins the failure mode above: this is what an unconfigured category does,
     // so the assertions in the first test cannot pass vacuously.
     expect(getToolCategoryIcon("definitely_not_a_real_category")).toBeNull();
+  });
+
+  it("shows the card's own integration icon over its category glyph", () => {
+    const iconUrl = "https://example.com/gmail-from-server.png";
+    const { container } = render(
+      getToolCategoryIcon("gmail", { showBackground: false }, iconUrl),
+    );
+    expect(container.querySelector("img")?.getAttribute("src")).toContain(
+      encodeURIComponent(iconUrl),
+    );
   });
 });

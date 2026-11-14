@@ -3,7 +3,7 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.models.chat_models import ImageData
+from shared.py.conversation_wire import ImageData
 
 # ---------------------------------------------------------------------------
 # Helpers

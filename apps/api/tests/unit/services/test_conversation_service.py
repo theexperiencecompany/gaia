@@ -26,7 +26,7 @@ from app.models.chat_models import (
 from app.models.conversation_models import (
     ConversationMessageHit,
     ConversationSummary,
-    LoadedConversation,
+    StoredConversation,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services import conversation_service
@@ -58,6 +58,7 @@ from shared.py.analytics.catalog.chat import (
     ChatMessagePinned,
     ChatMessageUnpinned,
 )
+from tests.factories import make_reply_item
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -89,7 +90,7 @@ def _no_analytics():
         yield
 
 
-def _document(**overrides) -> LoadedConversation:
+def _document(**overrides) -> StoredConversation:
     data = {
         "user_id": USER_ID,
         "conversation_id": "conv_abc",
@@ -97,7 +98,7 @@ def _document(**overrides) -> LoadedConversation:
         "state": {"head": 0, "display": "idle", "work": []},
     }
     data.update(overrides)
-    return LoadedConversation.model_validate(data)
+    return StoredConversation.model_validate(data)
 
 
 class TestCreateConversationService:
@@ -381,16 +382,7 @@ class TestPinMessage:
 class TestGetStarredMessages:
     async def test_returns_pinned(self, mock_repo, test_user):
         mock_repo.list_pinned_messages.return_value = [
-            ConversationMessageHit(
-                conversation_id="conv_1",
-                message={
-                    "type": "bot",
-                    "response": "test",
-                    "message_id": "m1",
-                    "pinned": True,
-                    "seq": 1,
-                },
-            )
+            ConversationMessageHit(conversation_id="conv_1", item=make_reply_item("test"))
         ]
         result = await get_starred_messages(test_user)
         assert len(result.results) == 1
@@ -475,15 +467,24 @@ class TestBatchSyncConversations:
 
         assert result.conversations[0].awaiting_approval is False
 
-    async def test_a_todos_chat_tells_the_client_which_todo_it_belongs_to(
-        self, mock_repo, test_user
+    @pytest.mark.parametrize(
+        ("overrides", "listed"),
+        [
+            ({}, True),
+            ({"source": "web"}, True),
+            ({"todo_id": "todo-1"}, False),
+            ({"source": "telegram"}, False),
+        ],
+    )
+    async def test_a_row_says_whether_the_conversation_list_shows_it(
+        self, mock_repo, test_user, overrides: dict[str, str], listed: bool
     ):
-        """A client that opened a todo's chat keeps it in its own store; this is how it keeps it out of the list."""
-        mock_repo.find_updated_since = AsyncMock(return_value=[_document(todo_id="todo-1")])
+        """A client keeps an unlisted chat cached instead of reading its absence from the list as a delete."""
+        mock_repo.find_updated_since = AsyncMock(return_value=[_document(**overrides)])
         request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
         result = await batch_sync_conversations(request, test_user)
 
-        assert result.conversations[0].todo_id == "todo-1"
+        assert result.conversations[0].listed is listed
 
     async def test_an_asked_for_chat_the_user_no_longer_owns_comes_back_missing(
         self, mock_repo, test_user

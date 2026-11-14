@@ -17,7 +17,7 @@ from app.constants.hil import HIL_JEV_REPLY_APPROVE_LINE, UNRELATED_FEEDBACK
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.conversational import ledger_outcome_text, resolve_pending_from_message
 from app.services.hil.ledger_decide import LedgerDecision
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 
 from .conftest import CONVERSATION_ID, USER_ID, jev_reply_body, serve_jev
 

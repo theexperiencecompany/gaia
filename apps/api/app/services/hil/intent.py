@@ -29,7 +29,7 @@ from app.services.hil.utils import (
     PriorCall,
     args_preview,
 )
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log
 
 _NO_REQUEST_REASON = "Could not check this against anything you asked for."

@@ -25,7 +25,6 @@ SSE_DATA_PREFIX = "data:"
 FRONTEND_STREAM_TOPIC = "backend-stream-event"
 CONVERSATION_ID_TOPIC = "conversation-id"
 CONVERSATION_DESCRIPTION_TOPIC = "conversation-description"
-RESPONSE_KEY = "response"
 # The events stream dropped (a deploy, a network blip): wait this long before following again.
 FOLLOW_RECONNECT_DELAY_S = 1.0
 
@@ -58,10 +57,6 @@ MIN_ENDPOINTING_DELAY_S = 0.8
 # Single \s before the attribute tail (not \s+): [^>] also matches whitespace,
 # and the overlap between the two quantifiers is what makes backtracking blow up.
 TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9_-]*(?:\s[^>]*)?/?>")
-# Message-break sentinel only. TAG_RE (run earlier) strips the bracketed
-# <NEW_MESSAGE_BREAK> form; this catches any unbracketed residue. Matching the
-# FULL token name (never the bare word "new") so ordinary prose is left intact.
-SENTINEL_RE = re.compile(r"NEW_MESSAGE_BREAK")
 MARKDOWN_RE = re.compile(r"[*_#`]")
 WHITESPACE_RE = re.compile(r"\s+")
 # Fenced OpenUI blocks: ":::openui ... :::" or unterminated tail at end of stream.
@@ -85,7 +80,6 @@ __all__ = [
     "LogTag",
     "SSE_DATA_PREFIX",
     "FRONTEND_STREAM_TOPIC",
-    "RESPONSE_KEY",
     "CONVERSATION_ID_TOPIC",
     "CONVERSATION_DESCRIPTION_TOPIC",
     "FOLLOW_RECONNECT_DELAY_S",
@@ -99,7 +93,6 @@ __all__ = [
     "PROMETHEUS_MULTIPROC_DIR",
     "MIN_ENDPOINTING_DELAY_S",
     "TAG_RE",
-    "SENTINEL_RE",
     "MARKDOWN_RE",
     "WHITESPACE_RE",
     "OPENUI_FENCE_RE",

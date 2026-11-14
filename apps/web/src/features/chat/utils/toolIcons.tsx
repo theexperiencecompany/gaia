@@ -47,6 +47,7 @@ import {
   ZapIcon,
 } from "@icons";
 import Image from "next/image";
+import { useState } from "react";
 import {
   getIconPath,
   iconAliases,
@@ -164,11 +165,24 @@ const AutoInvertIcon: React.FC<{
   className?: string;
 }> = ({ src, alt, size, width, height, className }) => {
   // const { shouldInvert } = useIconColorDetection(src);
+  const [failed, setFailed] = useState(false);
   const displayWidth = width || size || 20;
   const displayHeight = height || size || 20;
+  if (failed) {
+    return (
+      <PackageOpenIcon
+        width={displayWidth}
+        height={displayHeight}
+        className={className ?? "text-zinc-400"}
+      />
+    );
+  }
   // Border radius scales with the icon size (percentage radius) so small icons
   // aren't disproportionately rounded. object-contain keeps the logo intact.
   const imgClassName = `${className ?? ""} aspect-square rounded-[18%] object-contain`;
+  // Eager: a lazy logo inside a clipped scroller (the slash menu's category
+  // tabs) is not fetched until scrolled into view, so it showed up blank.
+  const loading = "eager";
 
   // Use next/image in unoptimized mode for SVG URLs — SVGs can't pass through
   // the Next.js optimizer (they'd require dangerouslyAllowSVG), so they ship
@@ -181,8 +195,10 @@ const AutoInvertIcon: React.FC<{
         width={displayWidth}
         height={displayHeight}
         className={imgClassName}
+        loading={loading}
         src={src}
         unoptimized
+        onError={() => setFailed(true)}
       />
     );
   }
@@ -196,7 +212,9 @@ const AutoInvertIcon: React.FC<{
       height={displayHeight * 3}
       className={imgClassName}
       style={{ width: displayWidth, height: displayHeight }}
+      loading={loading}
       src={src}
+      onError={() => setFailed(true)}
     />
   );
 };
@@ -220,6 +238,30 @@ export const getToolCategoryIcon = (
     strokeWidth: restProps.strokeWidth || 0,
     className: restProps.className,
   };
+
+  // The card's own integration icon from the server wins; the category glyph is the fallback.
+  if (iconUrl && isRenderableIconSrc(iconUrl)) {
+    const iconElement = (
+      <AutoInvertIcon
+        alt={`${category} Icon`}
+        size={defaultProps.size}
+        width={defaultProps.width}
+        height={defaultProps.height}
+        className={restProps.className}
+        src={iconUrl}
+      />
+    );
+    return showBackground ? (
+      <div className="relative rounded-lg p-1">
+        <div
+          className={`absolute inset-0 rounded-lg bg-zinc-700 ${pulsating ? "animate-pulse" : ""}`}
+        />
+        <div className="relative">{iconElement}</div>
+      </div>
+    ) : (
+      iconElement
+    );
+  }
 
   // Normalize the input category name
   const normalizedCategory = normalizeCategoryName(category);
@@ -247,32 +289,7 @@ export const getToolCategoryIcon = (
     }
   }
 
-  // If no predefined config found, try iconUrl fallback for custom integrations
-  if (!config) {
-    if (iconUrl && isRenderableIconSrc(iconUrl)) {
-      const iconElement = (
-        <AutoInvertIcon
-          alt={`${category} Icon`}
-          size={defaultProps.size}
-          width={defaultProps.width}
-          height={defaultProps.height}
-          className={restProps.className}
-          src={iconUrl}
-        />
-      );
-      return showBackground ? (
-        <div className="relative rounded-lg p-1">
-          <div
-            className={`absolute inset-0 rounded-lg bg-zinc-700 ${pulsating ? "animate-pulse" : ""}`}
-          />
-          <div className="relative">{iconElement}</div>
-        </div>
-      ) : (
-        iconElement
-      );
-    }
-    return null;
-  }
+  if (!config) return null;
 
   const iconElement = config.isImage ? (
     <AutoInvertIcon

@@ -2,6 +2,7 @@ import json
 from typing import Any, ClassVar, TypeVar, cast
 
 from fastapi import WebSocket
+from redis.exceptions import RedisError
 
 from app.constants.log_tags import LogTag
 from app.constants.websocket import WEBSOCKET_BROADCAST_CHANNEL
@@ -76,6 +77,21 @@ class WebSocketManager:
             WEBSOCKET_BROADCAST_CHANNEL,
             json.dumps({"user_id": user_id, "message": message}),
         )
+
+    async def announce(self, user_id: str, message: dict[str, object]) -> None:
+        """Broadcast that something the user's clients cache changed, after the write committed; logs a failure instead of raising.
+
+        A missed announcement catches up on the client's reconnect, and raising would fail a write that already happened.
+        """
+        try:
+            await self.broadcast_to_user(user_id, message)
+        except (WebSocketBroadcastError, RedisError) as e:
+            log.warning(
+                f"{LogTag.STARTUP} Failed to announce a change to the user's clients",
+                announced=message.get("type"),
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def deliver_local(self, user_id: str, message: dict[str, Any]) -> int:
         """Write a broadcast to this process's sockets; returns how many survived.

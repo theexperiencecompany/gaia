@@ -5,12 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, Field
 
-from app.models.conversation_log_models import (
-    WIRE_CONFIG,
-    ConversationState,
-    DisplayState,
-    Entry,
-)
+from app.models.conversation_log_models import ConversationState, DisplayState, Entry
 from app.models.stream_events import (
     FollowUpActionsFrame,
     MessageBoundaryPayload,
@@ -21,22 +16,14 @@ from app.models.stream_events import (
     TodoProgressFrame,
     ToolOutputPayload,
 )
-from app.models.tool_data_models import ToolDataEntry
-
-
-class FrameKind(StrEnum):
-    """Discriminator of an output frame on the conversation's event stream."""
-
-    ENTRY = "entry"
-    ENTRY_UPDATED = "entry_updated"
-    REPLY_DELTA = "reply_delta"
-    WORK_DELTA = "work_delta"
-    RETRACT = "retract"
-    STATE = "state"
-    CONVERSATION_UPDATED = "conversation_updated"
-    SCREEN = "screen"
-    SCREEN_INSERT = "screen_insert"
-    SCREEN_UPDATE = "screen_update"
+from shared.py.conversation_wire import (
+    WIRE_CONFIG,
+    ConversationUpdatedFrame,
+    FrameKind,
+    ImageData,
+    ReplyDeltaFrame,
+    ToolDataEntry,
+)
 
 
 class StreamPayloadType(StrEnum):
@@ -51,6 +38,7 @@ class StreamPayloadType(StrEnum):
     SUBAGENT_END = "subagent_end"
     FOLLOW_UP_ACTIONS = "follow_up_actions"
     TODO_PROGRESS = "todo_progress"
+    IMAGE_DATA = "image_data"
 
 
 class ResponseEvent(ResponseFrame):
@@ -131,6 +119,15 @@ class SubagentEndEvent(BaseModel):
     subagent_end: SubagentEndPayload
 
 
+class ImageEvent(BaseModel):
+    """The image a run's image tool generated, tagged."""
+
+    model_config = WIRE_CONFIG
+
+    type: Literal[StreamPayloadType.IMAGE_DATA] = StreamPayloadType.IMAGE_DATA
+    image_data: ImageData
+
+
 StreamPayload = Annotated[
     ResponseEvent
     | ReasoningEvent
@@ -140,7 +137,8 @@ StreamPayload = Annotated[
     | SubagentStartEvent
     | SubagentEndEvent
     | FollowUpActionsEvent
-    | TodoProgressEvent,
+    | TodoProgressEvent
+    | ImageEvent,
     Field(discriminator="type"),
 ]
 
@@ -164,19 +162,6 @@ class EntryUpdatedFrame(BaseModel):
     kind: Literal[FrameKind.ENTRY_UPDATED] = FrameKind.ENTRY_UPDATED
     seq: int = Field(ge=1)
     entry: Entry
-
-
-class ReplyDeltaFrame(BaseModel):
-    """Streamed content of one comms attempt; reply_id is None until its reply entry exists."""
-
-    model_config = WIRE_CONFIG
-
-    kind: Literal[FrameKind.REPLY_DELTA] = FrameKind.REPLY_DELTA
-    attempt_id: str
-    reply_id: str | None
-    # 0-based, +1 per delta in the attempt; a client ignores an index it already applied.
-    index: int = Field(ge=0)
-    payload: StreamPayload
 
 
 class WorkDeltaFrame(BaseModel):
@@ -227,15 +212,6 @@ def state_frame(state: ConversationState) -> StateFrame:
         for item in state.work
     )
     return StateFrame(head=state.head, display=state.display, work=work)
-
-
-class ConversationUpdatedFrame(BaseModel):
-    """The conversation's own metadata changed: its title, once generated from the first message."""
-
-    model_config = WIRE_CONFIG
-
-    kind: Literal[FrameKind.CONVERSATION_UPDATED] = FrameKind.CONVERSATION_UPDATED
-    description: str
 
 
 OutputFrame = Annotated[

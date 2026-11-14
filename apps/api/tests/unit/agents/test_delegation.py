@@ -39,7 +39,6 @@ from app.constants.agents import AgentTag
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.agent_models import AgentConfigurable, RunningSubagent
-from app.models.chat_models import ToolDataEntry
 from app.models.conversation_log_models import (
     Entry,
     WorkFinished,
@@ -49,6 +48,7 @@ from app.models.conversation_log_models import (
 from app.services.conversation.runtime import install_runtime_ports
 from app.utils import background_tasks
 from app.utils.agent_utils import IntegrationMetadata
+from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log
 from tests.helpers import WideEventRecorder, captured_wide_event
 from tests.unit.services.conversation.log_helpers import user
@@ -344,19 +344,20 @@ class TestABackgroundRunOwnsItsStream:
         self, redis: Any, client_edges: SimpleNamespace
     ) -> None:
         cards: list[ToolDataEntry] = [{"tool_name": "search", "data": {"q": "x"}}]
-        with (
-            patch(
-                f"{MODULE}.execute_subagent_stream",
-                new=AsyncMock(return_value=SubagentOutcome(text="done")),
-            ),
-            patch(f"{FOLDED}.drain_executor_tool_data", return_value=cards),
-        ):
+
+        async def _run(**kwargs: Any) -> SubagentOutcome:
+            kwargs["stream_writer"]({"tool_data": cards[0]})
+            return SubagentOutcome(text="done")
+
+        with patch(f"{MODULE}.execute_subagent_stream", new=AsyncMock(side_effect=_run)):
             await delegate(_delegation(), background=True)
             await _drain()
 
         _, ended = await _logged(client_edges)
         assert isinstance(ended, WorkFinished)
-        assert list(ended.tool_data) == cards
+        # Its own subagent group opens the record, the card it showed follows.
+        assert [card["tool_name"] for card in ended.tool_data] == ["subagent_group", "search"]
+        assert ended.tool_data[1] == cards[0]
 
     async def test_cards_that_cannot_be_logged_do_not_cost_the_run_its_result(
         self, redis: Any, client_edges: SimpleNamespace, recorder: WideEventRecorder

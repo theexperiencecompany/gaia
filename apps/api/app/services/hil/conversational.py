@@ -39,7 +39,7 @@ from app.services.hil.errors import (
 from app.services.hil.jev_reply import ask_jev_reply, settle_reply
 from app.services.hil.ledger_decide import LedgerDecision, decide_ledger
 from app.services.hil.pending import pending_approvals
-from shared.py.analytics.catalog.hil import ActionResult, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log
 
 # Ground truth for a settled ledger row in the bot reply's words: the action's

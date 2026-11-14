@@ -37,9 +37,9 @@ from app.db.repositories.conversation_entries import (
     logged_of,
     store_errors,
 )
-from app.db.repositories.conversation_history import SYNCED_KINDS
 from app.db.repositories.conversations import ConversationRepository, union_with_outboxes
 from app.models.conversation_log_models import (
+    SYNCED_KINDS,
     CommsPhase,
     ConversationState,
     EntryKind,
@@ -137,6 +137,7 @@ class ConversationLogRepository(ConversationRepository):
         if epoch is not None:
             expected[f"{RUNNER_FIELD}.epoch"] = epoch
         document = log_document(head.conversation_id, head.user_id, logged)
+        advances_sync = unread or logged.entry.kind in SYNCED_KINDS
         with store_errors("log append"):  # pragma: no mutate — error label
             result = await self._raw_collection().update_one(
                 expected,
@@ -147,15 +148,13 @@ class ConversationLogRepository(ConversationRepository):
                         STATE_FIELD: state.model_dump(mode="json"),
                         **({"is_unread": True} if unread else {}),
                     },
-                    **(
-                        {"$currentDate": {"updatedAt": True}}
-                        if unread or logged.entry.kind in SYNCED_KINDS
-                        else {}
-                    ),
+                    **({"$currentDate": {"updatedAt": True}} if advances_sync else {}),
                 },
             )
         if not result.matched_count:
             return False
+        if advances_sync:
+            self._announce_row_changed(head.conversation_id, head.user_id)
         if flush:
             self._spawn_flush(
                 head.conversation_id,
@@ -255,6 +254,8 @@ class ConversationLogRepository(ConversationRepository):
             )
         if not result.matched_count:
             return False
+        if advances_sync:
+            self._announce_row_changed(conversation_id, user_id)
         self._spawn_flush(conversation_id, user_id, [StoredEntry.model_validate(document)])
         return True
 

@@ -38,7 +38,6 @@ from app.db.repositories.workflow_executions import workflow_executions_reposito
 from app.db.repositories.workflows import workflow_repository
 from app.models.conversation_log_models import (
     Reply,
-    ReplyOutcome,
     ReplySettled,
     WorkFinished,
     WorkflowFired,
@@ -62,6 +61,7 @@ from app.services.conversation.outcome import EntryOutcome
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.workers.tasks import workflow_tasks
 from app.workers.tasks.workflow_tasks import execute_workflow_by_id
+from shared.py.conversation_wire import ReplyOutcome
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel, users_get
 

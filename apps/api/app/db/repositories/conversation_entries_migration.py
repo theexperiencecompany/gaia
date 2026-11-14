@@ -40,17 +40,17 @@ from app.db.repositories.conversation_entries import (
     stored_at,
     unmigrated,
 )
-from app.db.repositories.conversation_history import PINNABLE_KINDS, TEXT_KINDS, project
+from app.db.repositories.conversation_entries_oracle import legacy_messages
 from app.db.repositories.conversations import ConversationRepository
 from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
+    PINNABLE_KINDS,
+    TEXT_KINDS,
     ConversationState,
     Entry,
-    FailureReason,
     LoggedEntry,
     Reaction,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     Transition,
     UserMessage,
@@ -66,6 +66,7 @@ from app.models.conversation_models import (
     _ConversationIdRow,
 )
 from app.services.conversation.reducer import reduce
+from shared.py.conversation_wire import FailureReason, ReplyOutcome
 
 #: A server-side hash of the whole embedded array: any append, trim or in-place edit changes it.
 EMBEDDED_FINGERPRINT: dict[str, object] = {"$toHashedIndexKey": {"$ifNull": ["$messages", []]}}
@@ -698,7 +699,7 @@ class ConversationEntriesMigration(ConversationRepository):
 
         heads = await self._read_heads(_of(ref))
         [(_, entries)] = await self._union_for(heads, EntryWindow())
-        history = shown(project([logged_of(entry) for entry in entries]))
+        history = shown(legacy_messages([logged_of(entry) for entry in entries]))
         if history != expected:
             report.mismatches.append(_difference("history", history, expected))
         for name, match, wanted in (
@@ -706,9 +707,9 @@ class ConversationEntriesMigration(ConversationRepository):
             ("pinned", {"kind": {"$in": sorted(PINNABLE_KINDS)}, "pinned": True}, "pinned"),
         ):
             rows = await self._find_entries(ref.user_id, {**_of(ref), **match})
-            hits = shown([hit.message for hit in await self._hits(ref.user_id, rows)])
-            want = [m for m in expected if m.get(wanted)]
-            if sorted(hits, key=_by_id) != sorted(want, key=_by_id):
+            hits = sorted(hit.item.id for hit in await self._hits(ref.user_id, rows))
+            want = sorted(_by_id(m) for m in expected if m.get(wanted))
+            if hits != want:
                 report.mismatches.append(_difference(name, hits, want))
 
     def _plan(

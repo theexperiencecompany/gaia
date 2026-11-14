@@ -1,6 +1,5 @@
 import type { EventProperties } from "@gaia/shared/analytics/events";
 import { ApiError } from "@shared/api";
-import { reconcileIntegrationStatus } from "@shared/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
@@ -69,13 +68,12 @@ export interface UseIntegrationsReturn {
 }
 
 /**
- * Single hook for managing all integrations (platform + custom).
- * Loads the catalog immediately and overlays connection statuses from a
- * separate refresh request so provider checks never block the initial list.
+ * Single hook for managing all integrations (platform + custom). Each
+ * integration's status is the server's; this hook only sorts for display.
  */
 export const useIntegrations = (): UseIntegrationsReturn => {
   const queryClient = useQueryClient();
-  // Both endpoints are personalized and require auth, so gate them on
+  // The catalog is personalized and requires auth, so gate it on
   // isAuthenticated — public pages (marketplace, use-cases) must not fire 401s
   // for anonymous visitors.
   const { isAuthenticated } = useAuth();
@@ -86,35 +84,18 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     isPending,
     error,
   } = useQuery({
-    ...integrationQueries.snapshot(),
-    staleTime: 0, // Always refetch - status changes externally (OAuth callbacks)
-    enabled: isAuthenticated,
-  });
-  const { data: integrationStatuses } = useQuery({
-    ...integrationQueries.statuses(),
-    staleTime: 30_000,
+    ...integrationQueries.mine(),
     enabled: isAuthenticated,
   });
 
-  // Map the personalized catalog into the Integration shape the app consumes,
-  // sorted by state (expired → created → connected → not_connected) then name.
-  const integrations = useMemo((): Integration[] => {
-    const items = myIntegrationsData?.integrations ?? [];
-    const statuses = integrationStatuses?.statuses;
-    return items
-      .map((item) =>
-        toIntegration({
-          ...item,
-          status: reconcileIntegrationStatus(
-            item.status,
-            statuses?.[item.id],
-            item.managedBy,
-            item.requiresAuth,
-          ),
-        }),
-      )
-      .toSorted(byConnectionStateThenName);
-  }, [myIntegrationsData, integrationStatuses]);
+  // Sorted by state (expired → created → connected → not_connected) then name.
+  const integrations = useMemo(
+    (): Integration[] =>
+      (myIntegrationsData?.integrations ?? [])
+        .map(toIntegration)
+        .toSorted(byConnectionStateThenName),
+    [myIntegrationsData],
+  );
 
   // Read the latest integrations inside callbacks without making the callbacks
   // depend on the array — otherwise every refetch changes their identity and
@@ -124,19 +105,17 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     integrationsRef.current = integrations;
   });
 
-  // Get the merged snapshot + live status for a specific integration.
+  // One integration's status, as the server reported it.
   const getIntegrationStatus = useCallback(
     (integrationId: string): IntegrationStatus | undefined => {
       const integration = integrationsRef.current.find(
         (item) => item.id.toLowerCase() === integrationId.toLowerCase(),
       );
       if (!integration) return undefined;
-      const status =
-        integration.status === "error" ? "created" : integration.status;
       return {
         integrationId: integration.id,
-        connected: status === "connected",
-        status,
+        connected: integration.status === "connected",
+        status: integration.status,
       };
     },
     [],

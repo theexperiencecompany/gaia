@@ -1,12 +1,12 @@
 """A new conversation's title, generated from its first message by the chat path's own generator."""
 
-from app.models.conversation_frame_models import ConversationUpdatedFrame
 from app.models.conversation_log_models import UserMessage
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation.runtime import runtime_ports
 from app.utils.chat_utils import generate_and_update_description
 from shared.py.analytics.catalog.attribution import Actor
 from shared.py.analytics.context import analytics_context, current_analytics_context
+from shared.py.conversation_wire import ConversationUpdatedFrame
 
 
 async def title_conversation(

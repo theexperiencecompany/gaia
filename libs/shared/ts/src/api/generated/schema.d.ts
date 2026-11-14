@@ -1966,31 +1966,9 @@ export interface paths {
         };
         /**
          * Get My Integrations Endpoint
-         * @description The current user's full integration catalog (platform + their custom),
-         *     each with connection status and tool count. One call replaces the old
-         *     /config + /status + /users/me/integrations merge.
+         * @description The current user's full integration catalog (platform + their custom), each with its one connection status.
          */
         get: operations["integrations_get_my_integrations_endpoint"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/me/snapshot": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get My Integrations Snapshot Endpoint
-         * @description Return the workspace catalog without waiting for connection checks.
-         */
-        get: operations["integrations_get_my_integrations_snapshot_endpoint"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2071,26 +2049,6 @@ export interface paths {
          * @description Search public integrations using semantic search.
          */
         get: operations["integrations_search_integrations"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/integrations/status": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Integration Statuses Endpoint
-         * @description Refresh connection state independently from the fast catalog snapshot.
-         */
-        get: operations["integrations_get_integration_statuses_endpoint"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5995,12 +5953,6 @@ export interface components {
             tokens: number;
         };
         /**
-         * Actor
-         * @description Who performed the action: a human request in this turn, or the agent acting on its own.
-         * @enum {string}
-         */
-        Actor: "user" | "agent";
-        /**
          * AddIntegrationResponse
          * @description Response for adding a public integration to user's workspace.
          */
@@ -6093,32 +6045,6 @@ export interface components {
             success_message?: string | null;
         };
         /**
-         * ApprovalDecided
-         * @description A pending approval ended; decider names who approved or denied it (None when nobody did).
-         *
-         *     An approved action's end is logged as the same decision restated with action set; the latest
-         *     one for an approval is its card's state.
-         */
-        ApprovalDecided: {
-            action: components["schemas"]["ActionResult"] | null;
-            /** Approval Id */
-            approval_id: string;
-            decider: components["schemas"]["ApprovalDecider"] | null;
-            /** Feedback */
-            feedback: string | null;
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "approval_decided";
-            outcome: components["schemas"]["ApprovalOutcome"];
-        };
-        /**
          * ApprovalDecider
          * @description Who approved or denied: the user, or auto mode's intent judge.
          * @enum {string}
@@ -6194,8 +6120,9 @@ export interface components {
             /** Integration Name */
             integration_name: string | null;
             /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
+             * Kind
+             * @default approval_requested
+             * @constant
              */
             kind: "approval_requested";
             /**
@@ -6330,15 +6257,6 @@ export interface components {
              * @default
              */
             workspace_id?: string;
-        };
-        /**
-         * Attribution
-         * @description The base properties stamped onto every attributed event by its surface's capture function.
-         */
-        Attribution: {
-            actor: components["schemas"]["Actor"];
-            surface: components["schemas"]["EntrySurface"];
-            trigger: components["schemas"]["Trigger"];
         };
         /**
          * AuthenticatedUserResponse
@@ -6479,26 +6397,6 @@ export interface components {
              * @default 0
              */
             skipped_count: number;
-        };
-        /**
-         * BargeIn
-         * @description The user spoke over a voice reply, having heard its text only up to heard_through characters.
-         */
-        BargeIn: {
-            /** Heard Through */
-            heard_through: number;
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "barge_in";
-            /** Reply Id */
-            reply_id: string;
         };
         /**
          * BargeInAccepted
@@ -7024,6 +6922,34 @@ export interface components {
             task: string;
         };
         /**
+         * BubblesDelta
+         * @description The reply's bubbles as they now stand, replacing every one shown: text the model took back is gone.
+         */
+        BubblesDelta: {
+            /** Bubbles */
+            bubbles: string[];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "bubbles";
+        };
+        /**
+         * BubbleTextDelta
+         * @description More text for one bubble of the reply; a bubble past the last opens it.
+         */
+        BubbleTextDelta: {
+            /** Bubble */
+            bubble: number;
+            /** Text */
+            text: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "bubble_text";
+        };
+        /**
          * BudgetWindow
          * @description One cost-budget window: how much of the allowance is used, and when it
          *     resets. Deliberately no raw USD — see ``cost_budget.get_budget_status``.
@@ -7312,6 +7238,20 @@ export interface components {
         CalendarPreferencesUpdateResponse: {
             /** Message */
             message: string;
+        };
+        /**
+         * CardsDelta
+         * @description The reply's cards as they now stand, with the timeline they fold to.
+         */
+        CardsDelta: {
+            timeline: components["schemas"]["ToolTimeline"];
+            /** Tool Data */
+            tool_data: components["schemas"]["ToolDataEntry"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "cards";
         };
         /**
          * ChangePasswordRequest
@@ -7777,18 +7717,14 @@ export interface components {
         };
         /**
          * ConversationEntriesPage
-         * @description A run of the log's entries, oldest first: the event stream's own entry frames.
+         * @description A page of the conversation's screen, oldest first: the items its log page projects to.
          *
-         *     A page never starts inside an open span: it reaches back to the Reply, WorkStarted or
-         *     ApprovalRequested of every settle, finish, join or decision it holds. state is the head's,
-         *     so a page alone shows the loading row, live work and approvals; cursor is the seq an
-         *     older page is read before, set exactly when has_older.
+         *     state is the head's, so a page alone shows the loading row, live work and approvals;
+         *     cursor is the seq an older page is read before, set exactly when has_older.
          */
         ConversationEntriesPage: {
             /** Cursor */
             cursor: number | null;
-            /** Entries */
-            entries: components["schemas"]["EntryFrame"][];
             /**
              * Has Older
              * @default false
@@ -7799,78 +7735,12 @@ export interface components {
             state: components["schemas"]["StateFrame"];
         };
         /**
-         * ConversationEntry
-         * @description One message of a conversation's log with the seq its append committed it under: order is seq, never a date.
-         */
-        ConversationEntry: {
-            /** Date */
-            date?: string | null;
-            /** Disclaimer */
-            disclaimer?: string | null;
-            /** Error */
-            error?: string | null;
-            /** File */
-            file?: string | null;
-            /**
-             * Filedata
-             * @default []
-             */
-            fileData?: components["schemas"]["FileData"][] | null;
-            /**
-             * Fileids
-             * @default []
-             */
-            fileIds?: string[] | null;
-            /** Filename */
-            filename?: string | null;
-            /** Filetype */
-            filetype?: string | null;
-            /** First Contact */
-            first_contact?: boolean | null;
-            /** Follow Up Actions */
-            follow_up_actions?: string[] | null;
-            image_data?: components["schemas"]["ImageData"] | null;
-            /** In Progress */
-            in_progress?: boolean | null;
-            /** Message Id */
-            message_id?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /** Pinned */
-            pinned?: boolean | null;
-            /** Platform Message Id */
-            platform_message_id?: string | null;
-            reaction?: components["schemas"]["MessageReaction"] | null;
-            replyToMessage?: components["schemas"]["ReplyToMessageData"] | null;
-            /** Response */
-            response: string;
-            selectedCalendarEvent?: components["schemas"]["SelectedCalendarEventData"] | null;
-            /** Selectedtool */
-            selectedTool?: string | null;
-            selectedWorkflow?: components["schemas"]["SelectedWorkflowDataOutput"] | null;
-            /** Seq */
-            seq: number;
-            /** Stopped */
-            stopped?: boolean | null;
-            /** Subtype */
-            subtype?: string | null;
-            todo_run_wake?: components["schemas"]["TodoRunWake"] | null;
-            /** Tool Data */
-            tool_data?: components["schemas"]["ToolDataEntry"][] | null;
-            /** Toolcategory */
-            toolCategory?: string | null;
-            /** Type */
-            type: string;
-        };
-        /**
          * ConversationEvent
          * @description One frame on a conversation's events stream: the screen, a patch to it, or a live delta.
          */
         ConversationEvent: {
             /** Frame */
-            frame: components["schemas"]["ScreenFrame"] | components["schemas"]["ScreenInsertFrame"] | components["schemas"]["ScreenUpdateFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["WorkDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
+            frame: components["schemas"]["ScreenFrame"] | components["schemas"]["ScreenInsertFrame"] | components["schemas"]["ScreenUpdateFrame"] | components["schemas"]["ReplyDeltaFrame"] | components["schemas"]["RetractFrame"] | components["schemas"]["StateFrame"] | components["schemas"]["ConversationUpdatedFrame"];
         };
         /**
          * ConversationListResponse
@@ -7891,13 +7761,13 @@ export interface components {
         };
         /**
          * ConversationMessageHit
-         * @description A single conversation message tagged with its conversation id — the shape of
-         *     the pinned-messages and message-search results.
+         * @description A message's screen item, as the conversation's screen shows it, tagged with its conversation id.
          */
         ConversationMessageHit: {
             /** Conversation Id */
             conversation_id: string;
-            message: components["schemas"]["ConversationEntry"];
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["NoticeItem"];
         };
         /**
          * ConversationModel
@@ -7991,7 +7861,7 @@ export interface components {
         };
         /**
          * ConversationSyncRow
-         * @description One batch-sync row: the conversation's client-visible fields, its newest page of entries and its artifacts.
+         * @description One batch-sync row: the conversation's client-visible fields, its newest page of items and its artifacts.
          */
         ConversationSyncRow: {
             /** Artifacts */
@@ -8009,8 +7879,6 @@ export interface components {
             cursor: number | null;
             /** Description */
             description: string;
-            /** Entries */
-            entries: components["schemas"]["EntryFrame"][];
             /**
              * Has Older
              * @default false
@@ -8022,6 +7890,8 @@ export interface components {
             is_unread: boolean | null;
             /** Items */
             items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
+            /** Listed */
+            listed: boolean;
             source: components["schemas"]["ConversationSource"] | null;
             /** Starred */
             starred: boolean | null;
@@ -8958,33 +8828,6 @@ export interface components {
             origin: "code" | "instance";
         };
         /**
-         * EntryFrame
-         * @description A newly appended entry.
-         */
-        EntryFrame: {
-            /**
-             * At
-             * Format: date-time
-             */
-            at: string;
-            /** Entry */
-            entry: components["schemas"]["UserMessage"] | components["schemas"]["StopRequested"] | components["schemas"]["BargeIn"] | components["schemas"]["WorkflowFired"] | components["schemas"]["TodoWoke"] | components["schemas"]["Notice"] | components["schemas"]["WorkStarted"] | components["schemas"]["ApprovalRequested"] | components["schemas"]["ApprovalDecided"] | components["schemas"]["WorkFinished"] | components["schemas"]["Reply"] | components["schemas"]["ReplySettled"] | components["schemas"]["IntegrationNeeded"] | components["schemas"]["IntegrationConnected"];
-            /**
-             * Kind
-             * @default entry
-             * @constant
-             */
-            kind: "entry";
-            /** Seq */
-            seq: number;
-        };
-        /**
-         * EntrySurface
-         * @description Where the run entered GAIA; WORKER is work no client started.
-         * @enum {string}
-         */
-        EntrySurface: "web" | "desktop" | "bot" | "voice" | "worker";
-        /**
          * ErrorEnvelope
          * @description Body of every 4xx/5xx response.
          */
@@ -9343,10 +9186,10 @@ export interface components {
             collapsed_at?: string | null;
         };
         /**
-         * FollowUpActionsEvent
-         * @description A chat stream follow_up_actions event, tagged.
+         * FollowUpsDelta
+         * @description The suggestions offered under the reply.
          */
-        FollowUpActionsEvent: {
+        FollowUpsDelta: {
             /** Follow Up Actions */
             follow_up_actions: string[];
             /**
@@ -10142,28 +9985,6 @@ export interface components {
             source?: "platform";
         };
         /**
-         * IntegrationConnected
-         * @description The user connected an integration this conversation's work was waiting on.
-         */
-        IntegrationConnected: {
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            /** Integration Id */
-            integration_id: string;
-            /** Integration Name */
-            integration_name: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "integration_connected";
-            /** Needed Id */
-            needed_id: string;
-        };
-        /**
          * IntegrationContent
          * @description Rich marketplace content shown only on the integration detail page.
          *
@@ -10229,26 +10050,6 @@ export interface components {
              * @description Integration status: 'created' or 'connected'
              */
             status: string;
-        };
-        /**
-         * IntegrationNeeded
-         * @description Work in this conversation is waiting on the user to connect an integration.
-         */
-        IntegrationNeeded: {
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            /** Integration Id */
-            integration_id: string;
-            /** Integration Name */
-            integration_name: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "integration_needed";
         };
         /**
          * IntegrationRef
@@ -10320,19 +10121,6 @@ export interface components {
         IntegrationsConfigResponse: {
             /** Integrations */
             integrations: components["schemas"]["IntegrationConfigItem"][];
-        };
-        /**
-         * IntegrationStatusesResponse
-         * @description Current connection status map, fetched independently of the catalog.
-         */
-        IntegrationStatusesResponse: {
-            /**
-             * Statuses
-             * @description Connection state keyed by integration id
-             */
-            statuses: {
-                [key: string]: boolean;
-            };
         };
         /** IntegrationSuccessResponse */
         IntegrationSuccessResponse: {
@@ -10574,7 +10362,7 @@ export interface components {
         };
         /**
          * LoadedConversation
-         * @description A conversation as a load returns it: its head's fields and the newest page of its log.
+         * @description A conversation as a load returns it: its head's fields and the newest page of its screen.
          */
         LoadedConversation: {
             /** Artifacts */
@@ -10590,8 +10378,6 @@ export interface components {
              * @default New Chat
              */
             description: string;
-            /** Entries */
-            entries: components["schemas"]["EntryFrame"][];
             /**
              * Has Older
              * @default false
@@ -11406,35 +11192,6 @@ export interface components {
             /** Seq */
             seq: number;
         };
-        /**
-         * MessageBoundaryEvent
-         * @description A chat stream message_boundary event, tagged.
-         */
-        MessageBoundaryEvent: {
-            message_boundary: components["schemas"]["MessageBoundaryPayload"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "message_boundary";
-        };
-        /**
-         * MessageBoundaryPayload
-         * @description End of one assistant message inside a turn.
-         *
-         *     ``discarded`` is true when that message turned out to carry tool calls, which
-         *     makes any text it streamed a MOMENT-1 preamble ("let me get that set up…")
-         *     the user must not keep — the real reply arrives as the next message. The
-         *     frame exists because the wire streams that text BEFORE the tool call, so a
-         *     live consumer has already shown it by the time we know, and has to retract
-         *     it rather than leave a duplicate reply on screen.
-         */
-        MessageBoundaryPayload: {
-            /** Discarded */
-            discarded: boolean;
-            /** Message Id */
-            message_id: string;
-        };
         /** MessageFeedbackRequest */
         MessageFeedbackRequest: {
             /**
@@ -11461,15 +11218,6 @@ export interface components {
             trace_id?: string | null;
         };
         /**
-         * MessageReaction
-         * @description GAIA's one emoji reaction on a user message.
-         */
-        MessageReaction: {
-            by: components["schemas"]["ReactionBy"];
-            /** Emoji */
-            emoji: string;
-        };
-        /**
          * MessageRequest
          * @description Minimal chat request with a single message.
          */
@@ -11484,7 +11232,8 @@ export interface components {
         MessageSearchResult: {
             /** Conversation Id */
             conversation_id: string;
-            message: components["schemas"]["ConversationEntry"];
+            /** Item */
+            item: components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["NoticeItem"];
             /** Snippet */
             snippet: string;
         };
@@ -11632,9 +11381,7 @@ export interface components {
         };
         /**
          * MyIntegrationsResponse
-         * @description The full integration catalog personalized for one user (platform + their
-         *     own custom integrations), each carrying connection status. Replaces the
-         *     client-side merge of /config + /status + /users/me/integrations.
+         * @description The full integration catalog personalized for one user (platform + their own custom), each with its connection status.
          */
         MyIntegrationsResponse: {
             /** Integrations */
@@ -11687,36 +11434,6 @@ export interface components {
             snippet: string;
         };
         /**
-         * Notice
-         * @description Text delivered to the user outside a step, with the cards of the work it reports.
-         */
-        Notice: {
-            /**
-             * Follow Up Actions
-             * @default []
-             */
-            follow_up_actions: string[];
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "notice";
-            /** Origin */
-            origin: string;
-            /** Text */
-            text: string;
-            /**
-             * Tool Data
-             * @default []
-             */
-            tool_data: components["schemas"]["ToolDataEntry"][];
-        };
-        /**
          * NoticeItem
          * @description A proactive message delivered outside a reply.
          */
@@ -11726,6 +11443,8 @@ export interface components {
              * Format: date-time
              */
             at: string;
+            /** Bubbles */
+            bubbles: string[];
             /** Follow Up Actions */
             follow_up_actions: string[];
             /** Id */
@@ -11737,8 +11456,7 @@ export interface components {
             kind: "notice";
             /** Seq */
             seq: number;
-            /** Text */
-            text: string;
+            timeline: components["schemas"]["ToolTimeline"];
             /** Tool Data */
             tool_data: components["schemas"]["ToolDataEntry"][];
         };
@@ -13245,30 +12963,6 @@ export interface components {
             start_hour: number;
         };
         /**
-         * QuietHoursBypass
-         * @description A run let through the user's quiet hours, with the reason it says it interrupts them.
-         */
-        QuietHoursBypass: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "bypass";
-            /** Reason */
-            reason: string;
-        };
-        /**
-         * QuietHoursHold
-         * @description A run held until the user's quiet hours ended.
-         */
-        QuietHoursHold: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "hold";
-        };
-        /**
          * Reaction
          * @description An emoji on a user message; a field updated in place, never a state change.
          */
@@ -13295,28 +12989,6 @@ export interface components {
              * @enum {string}
              */
             status: "ready" | "not_ready";
-        };
-        /**
-         * ReasoningEvent
-         * @description A chat stream reasoning event, tagged.
-         */
-        ReasoningEvent: {
-            reasoning: components["schemas"]["ReasoningPayload"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "reasoning";
-        };
-        /**
-         * ReasoningPayload
-         * @description A streamed reasoning ("thinking") delta from the model.
-         */
-        ReasoningPayload: {
-            /** Content */
-            content: string;
-            /** Subagent Id */
-            subagent_id?: string | null;
         };
         /**
          * RecordedCall
@@ -13627,66 +13299,6 @@ export interface components {
             user_id: string;
         };
         /**
-         * Reply
-         * @description GAIA's reply, appended when the user first sees it; its content is filled in place.
-         */
-        Reply: {
-            /** Attempt Id */
-            attempt_id: string;
-            /**
-             * Follow Up Actions
-             * @default []
-             */
-            follow_up_actions: string[];
-            /** Heard Through */
-            heard_through: number | null;
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            image: components["schemas"]["ImageData"] | null;
-            /**
-             * Imported
-             * @default false
-             */
-            imported: boolean;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "reply";
-            /**
-             * Narrates
-             * @default []
-             */
-            narrates: string[];
-            /**
-             * Pinned
-             * @default false
-             */
-            pinned: boolean;
-            /** Quote Target */
-            quote_target: string | null;
-            /** Reply Id */
-            reply_id: string;
-            /**
-             * Revision
-             * @default 0
-             */
-            revision: number;
-            /**
-             * Text
-             * @default
-             */
-            text: string;
-            /**
-             * Tool Data
-             * @default []
-             */
-            tool_data: components["schemas"]["ToolDataEntry"][];
-        };
-        /**
          * ReplyDeltaFrame
          * @description Streamed content of one comms attempt; reply_id is None until its reply entry exists.
          */
@@ -13701,7 +13313,7 @@ export interface components {
              */
             kind: "reply_delta";
             /** Payload */
-            payload: components["schemas"]["ResponseEvent"] | components["schemas"]["ReasoningEvent"] | components["schemas"]["ToolDataEvent"] | components["schemas"]["ToolOutputEvent"] | components["schemas"]["MessageBoundaryEvent"] | components["schemas"]["SubagentStartEvent"] | components["schemas"]["SubagentEndEvent"] | components["schemas"]["FollowUpActionsEvent"] | components["schemas"]["TodoProgressEvent"];
+            payload: components["schemas"]["BubbleTextDelta"] | components["schemas"]["BubblesDelta"] | components["schemas"]["CardsDelta"] | components["schemas"]["FollowUpsDelta"];
             /** Reply Id */
             reply_id: string | null;
         };
@@ -13717,7 +13329,7 @@ export interface components {
         };
         /**
          * ReplyItem
-         * @description GAIA's reply: its text and own cards; outcome is None while it is still being written.
+         * @description GAIA's reply: its bubbles and own cards; outcome is None while it is still being written.
          */
         ReplyItem: {
             /**
@@ -13725,6 +13337,8 @@ export interface components {
              * Format: date-time
              */
             at: string;
+            /** Bubbles */
+            bubbles: string[];
             failure: components["schemas"]["FailureReason"] | null;
             /** Files */
             files: components["schemas"]["ReplyFile"][];
@@ -13746,8 +13360,7 @@ export interface components {
             quote: components["schemas"]["ReplyToMessageData"] | null;
             /** Seq */
             seq: number;
-            /** Text */
-            text: string;
+            timeline: components["schemas"]["ToolTimeline"];
             /** Tool Data */
             tool_data: components["schemas"]["ToolDataEntry"][];
         };
@@ -13757,42 +13370,6 @@ export interface components {
          * @enum {string}
          */
         ReplyOutcome: "answered" | "stopped" | "truncated" | "failed" | "silent";
-        /**
-         * ReplySettled
-         * @description The open reply's attempt ended; through is the newest seq it answered.
-         */
-        ReplySettled: {
-            /** Answers */
-            answers: string[];
-            failure: components["schemas"]["FailureReason"] | null;
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            /**
-             * Imported
-             * @default false
-             */
-            imported: boolean;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "reply_settled";
-            /**
-             * Narrates
-             * @default []
-             */
-            narrates: string[];
-            outcome: components["schemas"]["ReplyOutcome"];
-            /** Quote Target */
-            quote_target: string | null;
-            /** Reply Id */
-            reply_id: string;
-            /** Through */
-            through: number;
-        };
         /**
          * ReplyToMessageData
          * @description Data for the message being replied to.
@@ -13839,19 +13416,6 @@ export interface components {
              * @description Whether the workflow was reset
              */
             success: boolean;
-        };
-        /**
-         * ResponseEvent
-         * @description A chat stream response event, tagged.
-         */
-        ResponseEvent: {
-            /** Response */
-            response: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "response";
         };
         /**
          * RetractFrame
@@ -14715,31 +14279,6 @@ export interface components {
             title: string;
         };
         /**
-         * StopBy
-         * @description Who asked for a Stop: the user's button or command, or GAIA's cancel_executor tool.
-         * @enum {string}
-         */
-        StopBy: "user" | "gaia";
-        /**
-         * StopRequested
-         * @description A Stop: cancels every input and piece of work caused at or before covers_through.
-         */
-        StopRequested: {
-            by: components["schemas"]["StopBy"];
-            /** Covers Through */
-            covers_through: number | null;
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "stop_requested";
-        };
-        /**
          * StoredIntegrationTool
          * @description Tool metadata for frontend display (not used by LLM).
          */
@@ -14748,67 +14287,6 @@ export interface components {
             description?: string | null;
             /** Name */
             name: string;
-        };
-        /**
-         * SubagentEndEvent
-         * @description A chat stream subagent_end event, tagged.
-         */
-        SubagentEndEvent: {
-            subagent_end: components["schemas"]["SubagentEndPayload"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "subagent_end";
-        };
-        /**
-         * SubagentEndPayload
-         * @description Lifecycle payload marking a delegated subagent finishing.
-         */
-        SubagentEndPayload: {
-            /** Duration Ms */
-            duration_ms: number;
-            /** Subagent Id */
-            subagent_id: string;
-            /** Token Count */
-            token_count?: number | null;
-        };
-        /**
-         * SubagentStartEvent
-         * @description A chat stream subagent_start event, tagged.
-         */
-        SubagentStartEvent: {
-            subagent_start: components["schemas"]["SubagentStartPayload"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "subagent_start";
-        };
-        /**
-         * SubagentStartPayload
-         * @description Lifecycle payload marking a delegated subagent beginning execution.
-         */
-        SubagentStartPayload: {
-            /**
-             * Agent Type
-             * @enum {string}
-             */
-            agent_type: "handoff" | "spawned";
-            /** Icon Url */
-            icon_url?: string | null;
-            /** Parent Subagent Id */
-            parent_subagent_id?: string | null;
-            /** Started At */
-            started_at: string;
-            /** Subagent */
-            subagent?: string | null;
-            /** Subagent Id */
-            subagent_id: string;
-            /** Subagent Name */
-            subagent_name: string;
-            /** Tool Category */
-            tool_category?: string | null;
         };
         /**
          * SubscriptionAction
@@ -15274,6 +14752,34 @@ export interface components {
          */
         SystemPurpose: "email_processing" | "reminder_processing" | "workflow_execution" | "getting_started" | "other";
         /**
+         * TimelineCard
+         * @description A card rendered on its own below the thread; a grouped tool's calls arrive as one card.
+         */
+        TimelineCard: {
+            card: components["schemas"]["ToolDataEntry"];
+            /** Key */
+            key: string;
+        };
+        /**
+         * TimelineStep
+         * @description One row of the tool thread, keyed stably across the stream.
+         *
+         *     data is the tool-call entry, or the subagent group with its handoff_input, handoff_output and
+         *     step_keys (one per tool call, in order) filled in.
+         */
+        TimelineStep: {
+            data: components["schemas"]["JsonValue"];
+            /** Key */
+            key: string;
+            kind: components["schemas"]["TimelineStepKind"];
+        };
+        /**
+         * TimelineStepKind
+         * @description What one row of a tool timeline shows: a tool call, or a subagent's group of them.
+         * @enum {string}
+         */
+        TimelineStepKind: "tool" | "subagent";
+        /**
          * TodoCanvasResponse
          * @description A tracked todo's notes: canvas.md and activity.md. Empty strings when unset.
          */
@@ -15455,27 +14961,6 @@ export interface components {
             workflow_id?: string | null;
         };
         /**
-         * TodoProgressEvent
-         * @description A chat stream todo_progress event, tagged.
-         */
-        TodoProgressEvent: {
-            /** Todo Progress */
-            todo_progress: {
-                [key: string]: unknown;
-            };
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "todo_progress";
-        };
-        /**
-         * TodoReportForm
-         * @description What a tracked todo's run owes the user: a write-up, or its report as the todo's guidance formed it.
-         * @enum {string}
-         */
-        TodoReportForm: "write_up" | "as_written";
-        /**
          * TodoResponse
          * @description Complete todo response with all fields
          */
@@ -15620,24 +15105,6 @@ export interface components {
             workflow_id: string | null;
         };
         /**
-         * TodoRun
-         * @description One run of a tracked todo: the todo, the run, what woke it and the report it owes.
-         */
-        TodoRun: {
-            attribution: components["schemas"]["Attribution"];
-            report_form: components["schemas"]["TodoReportForm"];
-            /** Run Id */
-            run_id: string;
-            /** Runs Once */
-            runs_once: boolean;
-            /** Title */
-            title: string;
-            /** Todo Id */
-            todo_id: string;
-            trigger_type: components["schemas"]["TriggerType"];
-            wake: components["schemas"]["TodoRunWake"];
-        };
-        /**
          * TodoRunWake
          * @description What woke one run of a tracked todo, shown on the user's side of its chat.
          */
@@ -15727,23 +15194,6 @@ export interface components {
          * @enum {string}
          */
         TodoWakeKind: "schedule" | "trigger" | "approval";
-        /**
-         * TodoWoke
-         * @description A tracked todo's run woke; the work it starts answers it, and so does the reply that reports that work.
-         */
-        TodoWoke: {
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "todo_woke";
-            run: components["schemas"]["TodoRun"];
-        };
         /**
          * TodoWokeItem
          * @description What woke a tracked todo's run; its write-up is its own item.
@@ -15836,22 +15286,10 @@ export interface components {
         };
         /**
          * ToolDataEntry
-         * @description Unified structure for tool execution data.
+         * @description One tool card: stored on messages and log entries, and streamed in frames.
          *
-         *     Every key an emitter can stamp must be declared here. This TypedDict is the
-         *     element type of ``MessageModel.tool_data``, and Pydantic drops undeclared
-         *     keys on ``model_dump()`` — which is how a message reaches Mongo. An emitted
-         *     key missing from this shape therefore survives the live SSE frame (the
-         *     frontend parses those against its own loose schema) and silently vanishes
-         *     from the stored turn, so the bug only ever appears on reload.
-         *
-         *     ``data`` is deliberately open: every tool owns the shape it puts here (a
-         *     calendar option list, an email thread, a rendered artifact), so the only
-         *     honest constraint is "JSON the frontend's per-tool card knows how to read".
-         *     Everything around it is closed.
-         *
-         *     The frontend mirror is ``ToolDataEntrySchema`` in
-         *     ``libs/shared/ts/src/chat/schema.ts``.
+         *     Every key an emitter stamps is declared, because Pydantic drops undeclared keys on dump.
+         *     data is open on purpose: each tool owns the JSON its card reads.
          */
         ToolDataEntry: {
             /** Data */
@@ -15870,18 +15308,6 @@ export interface components {
             tool_category?: string;
             /** Tool Name */
             tool_name: string;
-        };
-        /**
-         * ToolDataEvent
-         * @description A chat stream tool_data event (a tool card), tagged.
-         */
-        ToolDataEvent: {
-            tool_data: components["schemas"]["ToolDataEntry"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "tool_data";
         };
         /**
          * ToolInfo
@@ -15908,30 +15334,6 @@ export interface components {
             requires_integration: boolean;
         };
         /**
-         * ToolOutputEvent
-         * @description A chat stream tool_output event, tagged.
-         */
-        ToolOutputEvent: {
-            tool_output: components["schemas"]["ToolOutputPayload"];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "tool_output";
-        };
-        /**
-         * ToolOutputPayload
-         * @description Result text for a completed tool call, keyed by its ``tool_call_id``.
-         */
-        ToolOutputPayload: {
-            /** Output */
-            output: string;
-            /** Subagent Id */
-            subagent_id?: string | null;
-            /** Tool Call Id */
-            tool_call_id: string;
-        };
-        /**
          * ToolsCategoryResponse
          * @description Response model for tools by category.
          */
@@ -15954,6 +15356,22 @@ export interface components {
             tools: components["schemas"]["ToolInfo"][];
             /** Total Count */
             total_count: number;
+        };
+        /**
+         * ToolTimeline
+         * @description What an item's cards show, in order: the tool thread, then the cards rendered on their own.
+         */
+        ToolTimeline: {
+            /**
+             * Cards
+             * @default []
+             */
+            cards: components["schemas"]["TimelineCard"][];
+            /**
+             * Steps
+             * @default []
+             */
+            steps: components["schemas"]["TimelineStep"][];
         };
         /**
          * TranscribeAudioResponse
@@ -15994,12 +15412,6 @@ export interface components {
              */
             why_important?: string;
         };
-        /**
-         * Trigger
-         * @description What started the run an event belongs to.
-         * @enum {string}
-         */
-        Trigger: "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
         /**
          * TriggerConfig
          * @description Configuration for workflow triggers.
@@ -16069,27 +15481,6 @@ export interface components {
              * @enum {string}
              */
             type: "string" | "integer" | "boolean" | "number";
-        };
-        /**
-         * TriggerEmailData
-         * @description The ``email_data`` of a Gmail-triggered run, as the prompt reads it.
-         */
-        TriggerEmailData: {
-            /**
-             * Message Text
-             * @default
-             */
-            message_text?: string;
-            /**
-             * Sender
-             * @default Unknown
-             */
-            sender?: string;
-            /**
-             * Subject
-             * @default No Subject
-             */
-            subject?: string;
         };
         /**
          * TriggerOption
@@ -16640,8 +16031,9 @@ export interface components {
              */
             imported: boolean;
             /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
+             * Kind
+             * @default user_message
+             * @constant
              */
             kind: "user_message";
             /**
@@ -16976,65 +16368,6 @@ export interface components {
             subagent_ids: string[];
         };
         /**
-         * WorkDeltaFrame
-         * @description Streamed content of one background task.
-         */
-        WorkDeltaFrame: {
-            /** Index */
-            index: number;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "work_delta";
-            /** Payload */
-            payload: components["schemas"]["ResponseEvent"] | components["schemas"]["ReasoningEvent"] | components["schemas"]["ToolDataEvent"] | components["schemas"]["ToolOutputEvent"] | components["schemas"]["MessageBoundaryEvent"] | components["schemas"]["SubagentStartEvent"] | components["schemas"]["SubagentEndEvent"] | components["schemas"]["FollowUpActionsEvent"] | components["schemas"]["TodoProgressEvent"];
-            /** Task Id */
-            task_id: string;
-        };
-        /**
-         * WorkFinished
-         * @description Background work ended.
-         */
-        WorkFinished: {
-            /**
-             * Continued By Decision
-             * @default false
-             */
-            continued_by_decision: boolean;
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            image: components["schemas"]["ImageData"] | null;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "work_finished";
-            /**
-             * Note
-             * @default
-             */
-            note: string;
-            /**
-             * Nothing For User
-             * @default false
-             */
-            nothing_for_user: boolean;
-            outcome: components["schemas"]["WorkOutcome"];
-            /** Report */
-            report: string;
-            /** Task Id */
-            task_id: string;
-            /**
-             * Tool Data
-             * @default []
-             */
-            tool_data: components["schemas"]["ToolDataEntry"][];
-        };
-        /**
          * WorkflowCreator
          * @description The public-facing creator card built by ``format_creator``.
          *
@@ -17167,23 +16500,6 @@ export interface components {
             total: number;
         };
         /**
-         * WorkflowFired
-         * @description A workflow fired into this conversation; it is answered on its own, never merged.
-         */
-        WorkflowFired: {
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "workflow_fired";
-            run: components["schemas"]["WorkflowRun"];
-        };
-        /**
          * WorkflowFiredItem
          * @description The workflow card that started a run; the run's reply is its own item.
          */
@@ -17234,19 +16550,6 @@ export interface components {
              */
             message: string;
             workflow: components["schemas"]["WorkflowWithIntegrations"];
-        };
-        /**
-         * WorkflowRun
-         * @description What a workflow's turn runs: the workflow, the trigger that fired it, and the fire's bookkeeping.
-         */
-        WorkflowRun: {
-            attribution: components["schemas"]["Attribution"];
-            /** Execution Id */
-            execution_id: string;
-            /** Timezone */
-            timezone: string;
-            trigger: components["schemas"]["WorkflowTriggerContext"];
-            workflow: components["schemas"]["SelectedWorkflowDataOutput"];
         };
         /**
          * WorkflowStatusResponse
@@ -17328,44 +16631,6 @@ export interface components {
              * @description Clear, actionable title for the step
              */
             title: string;
-        };
-        /**
-         * WorkflowTriggerContext
-         * @description The keys ``format_workflow_execution_message`` reads off a run's trigger context.
-         *
-         *     The bag itself is open by construction — schedulers spread arbitrary provider
-         *     trigger data through it alongside the agent's own keys — so this is a view of
-         *     it, parsed once here, not its full shape.
-         */
-        WorkflowTriggerContext: {
-            email_data?: components["schemas"]["TriggerEmailData"];
-            /** Playbook Fallback */
-            playbook_fallback?: string | null;
-            /** Quiet Hours */
-            quiet_hours?: (components["schemas"]["QuietHoursBypass"] | components["schemas"]["QuietHoursHold"]) | null;
-            /**
-             * Tracked Todos Context
-             * @default
-             */
-            tracked_todos_context?: string;
-            /** Trigger Data */
-            trigger_data?: {
-                [key: string]: unknown;
-            };
-            /**
-             * Triggered At
-             * @default Unknown
-             */
-            triggered_at?: string;
-            /** Type */
-            type?: string | null;
-            /** Workflow Id */
-            workflow_id?: string | null;
-            /**
-             * Workflow Notify On Completion
-             * @default true
-             */
-            workflow_notify_on_completion?: boolean;
         };
         /**
          * WorkflowTriggerResponse
@@ -17632,53 +16897,9 @@ export interface components {
             status: components["schemas"]["WorkStatus"];
             /** Task Id */
             task_id: string;
+            timeline: components["schemas"]["ToolTimeline"];
             /** Tool Data */
             tool_data: components["schemas"]["ToolDataEntry"][];
-        };
-        /**
-         * WorkOutcome
-         * @description How a piece of background work ended.
-         * @enum {string}
-         */
-        WorkOutcome: "done" | "failed" | "cancelled" | "lost";
-        /**
-         * WorkStarted
-         * @description Background work dispatched for the inputs through cause_through.
-         */
-        WorkStarted: {
-            /**
-             * Answers
-             * @default []
-             */
-            answers: string[];
-            /** Cause Through */
-            cause_through: number;
-            /**
-             * Detached
-             * @default false
-             */
-            detached: boolean;
-            /**
-             * Exclusive
-             * @default false
-             */
-            exclusive: boolean;
-            /** Handoff */
-            handoff: string | null;
-            /**
-             * Id
-             * @description Producer-minted idempotency key
-             */
-            id: string;
-            /** Joins */
-            joins: string | null;
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "work_started";
-            /** Task Id */
-            task_id: string;
         };
         /**
          * WorkStatus
@@ -17744,13 +16965,11 @@ export type ActionStyle = components['schemas']['ActionStyle'];
 export type ActionType = components['schemas']['ActionType'];
 export type ActiveBotConversation = components['schemas']['ActiveBotConversation'];
 export type ActivityDay = components['schemas']['ActivityDay'];
-export type Actor = components['schemas']['Actor'];
 export type AddIntegrationResponse = components['schemas']['AddIntegrationResponse'];
 export type AddUserIntegrationRequest = components['schemas']['AddUserIntegrationRequest'];
 export type AddUserIntegrationResponse = components['schemas']['AddUserIntegrationResponse'];
 export type AgentType = components['schemas']['AgentType'];
 export type ApiCallConfig = components['schemas']['ApiCallConfig'];
-export type ApprovalDecided = components['schemas']['ApprovalDecided'];
 export type ApprovalDecider = components['schemas']['ApprovalDecider'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
@@ -17762,11 +16981,9 @@ export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
-export type Attribution = components['schemas']['Attribution'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
 export type AuthoredGateView = components['schemas']['AuthoredGateView'];
-export type BargeIn = components['schemas']['BargeIn'];
 export type BargeInAccepted = components['schemas']['BargeInAccepted'];
 export type BargeInRequest = components['schemas']['BargeInRequest'];
 export type BatchApprovalDecisionRequest = components['schemas']['BatchApprovalDecisionRequest'];
@@ -17809,6 +17026,8 @@ export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus']
 export type BrowserStopOutcome = components['schemas']['BrowserStopOutcome'];
 export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
 export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
+export type BubblesDelta = components['schemas']['BubblesDelta'];
+export type BubbleTextDelta = components['schemas']['BubbleTextDelta'];
 export type BudgetWindow = components['schemas']['BudgetWindow'];
 export type BuiltInEngine = components['schemas']['BuiltInEngine'];
 export type BuiltInOption = components['schemas']['BuiltInOption'];
@@ -17829,6 +17048,7 @@ export type CalendarListResponse = components['schemas']['CalendarListResponse']
 export type CalendarPreferencesResponse = components['schemas']['CalendarPreferencesResponse'];
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
+export type CardsDelta = components['schemas']['CardsDelta'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];
 export type ChannelDeliveryStatus = components['schemas']['ChannelDeliveryStatus'];
@@ -17856,7 +17076,6 @@ export type ConnectIntegrationResponse = components['schemas']['ConnectIntegrati
 export type ConversationActionResponse = components['schemas']['ConversationActionResponse'];
 export type ConversationDescriptionHit = components['schemas']['ConversationDescriptionHit'];
 export type ConversationEntriesPage = components['schemas']['ConversationEntriesPage'];
-export type ConversationEntry = components['schemas']['ConversationEntry'];
 export type ConversationEvent = components['schemas']['ConversationEvent'];
 export type ConversationListResponse = components['schemas']['ConversationListResponse'];
 export type ConversationMessageHit = components['schemas']['ConversationMessageHit'];
@@ -17917,8 +17136,6 @@ export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckRespon
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
-export type EntryFrame = components['schemas']['EntryFrame'];
-export type EntrySurface = components['schemas']['EntrySurface'];
 export type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
 export type EventCreateRequest = components['schemas']['EventCreateRequest'];
 export type EventDeleteRequest = components['schemas']['EventDeleteRequest'];
@@ -17939,7 +17156,7 @@ export type FirstStepKey = components['schemas']['FirstStepKey'];
 export type FirstStepsCollapseRequest = components['schemas']['FirstStepsCollapseRequest'];
 export type FirstStepsResponse = components['schemas']['FirstStepsResponse'];
 export type FirstStepsState = components['schemas']['FirstStepsState'];
-export type FollowUpActionsEvent = components['schemas']['FollowUpActionsEvent'];
+export type FollowUpsDelta = components['schemas']['FollowUpsDelta'];
 export type GateAuthor = components['schemas']['GateAuthor'];
 export type GateEdit = components['schemas']['GateEdit'];
 export type GateSkipRecord = components['schemas']['GateSkipRecord'];
@@ -17986,16 +17203,13 @@ export type InstructionsResponse = components['schemas']['InstructionsResponse']
 export type IntegrationAccountResponse = components['schemas']['IntegrationAccountResponse'];
 export type IntegrationAccountsResponse = components['schemas']['IntegrationAccountsResponse'];
 export type IntegrationConfigItem = components['schemas']['IntegrationConfigItem'];
-export type IntegrationConnected = components['schemas']['IntegrationConnected'];
 export type IntegrationContent = components['schemas']['IntegrationContent'];
 export type IntegrationFAQ = components['schemas']['IntegrationFAQ'];
 export type IntegrationHowItWorksStep = components['schemas']['IntegrationHowItWorksStep'];
 export type IntegrationInfo = components['schemas']['IntegrationInfo'];
-export type IntegrationNeeded = components['schemas']['IntegrationNeeded'];
 export type IntegrationRef = components['schemas']['IntegrationRef'];
 export type IntegrationResponse = components['schemas']['IntegrationResponse'];
 export type IntegrationsConfigResponse = components['schemas']['IntegrationsConfigResponse'];
-export type IntegrationStatusesResponse = components['schemas']['IntegrationStatusesResponse'];
 export type IntegrationSuccessResponse = components['schemas']['IntegrationSuccessResponse'];
 export type IntegrationTool = components['schemas']['IntegrationTool'];
 export type IntegrationToolApproval = components['schemas']['IntegrationToolApproval'];
@@ -18056,11 +17270,8 @@ export type MemorySourceType = components['schemas']['MemorySourceType'];
 export type MemoryTreeNode = components['schemas']['MemoryTreeNode'];
 export type MemoryTreeResponse = components['schemas']['MemoryTreeResponse'];
 export type MessageAccepted = components['schemas']['MessageAccepted'];
-export type MessageBoundaryEvent = components['schemas']['MessageBoundaryEvent'];
-export type MessageBoundaryPayload = components['schemas']['MessageBoundaryPayload'];
 export type MessageFeedbackRequest = components['schemas']['MessageFeedbackRequest'];
 export type MessageFeedbackResponse = components['schemas']['MessageFeedbackResponse'];
-export type MessageReaction = components['schemas']['MessageReaction'];
 export type MessageRequest = components['schemas']['MessageRequest'];
 export type MessageSearchResult = components['schemas']['MessageSearchResult'];
 export type MintPlatformLinkCodeResponse = components['schemas']['MintPlatformLinkCodeResponse'];
@@ -18072,7 +17283,6 @@ export type MyIntegrationsResponse = components['schemas']['MyIntegrationsRespon
 export type NoteModel = components['schemas']['NoteModel'];
 export type NoteResponse = components['schemas']['NoteResponse'];
 export type NoteSearchResult = components['schemas']['NoteSearchResult'];
-export type Notice = components['schemas']['Notice'];
 export type NoticeItem = components['schemas']['NoticeItem'];
 export type NotificationAction = components['schemas']['NotificationAction'];
 export type NotificationActionView = components['schemas']['NotificationActionView'];
@@ -18150,13 +17360,9 @@ export type PublishWorkflowResponse = components['schemas']['PublishWorkflowResp
 export type PushTokenRequest = components['schemas']['PushTokenRequest'];
 export type PushTokenResponse = components['schemas']['PushTokenResponse'];
 export type QuietHours = components['schemas']['QuietHours'];
-export type QuietHoursBypass = components['schemas']['QuietHoursBypass'];
-export type QuietHoursHold = components['schemas']['QuietHoursHold'];
 export type Reaction = components['schemas']['Reaction'];
 export type ReactionBy = components['schemas']['ReactionBy'];
 export type ReadinessResponse = components['schemas']['ReadinessResponse'];
-export type ReasoningEvent = components['schemas']['ReasoningEvent'];
-export type ReasoningPayload = components['schemas']['ReasoningPayload'];
 export type RecordedCall = components['schemas']['RecordedCall'];
 export type RecurrenceData = components['schemas']['RecurrenceData'];
 export type RecurrenceRule = components['schemas']['RecurrenceRule'];
@@ -18171,16 +17377,13 @@ export type RegistrationPolicy = components['schemas']['RegistrationPolicy'];
 export type RegistrationPolicyRequest = components['schemas']['RegistrationPolicyRequest'];
 export type RegistrationPolicyResponse = components['schemas']['RegistrationPolicyResponse'];
 export type ReminderResponse = components['schemas']['ReminderResponse'];
-export type Reply = components['schemas']['Reply'];
 export type ReplyDeltaFrame = components['schemas']['ReplyDeltaFrame'];
 export type ReplyFile = components['schemas']['ReplyFile'];
 export type ReplyItem = components['schemas']['ReplyItem'];
 export type ReplyOutcome = components['schemas']['ReplyOutcome'];
-export type ReplySettled = components['schemas']['ReplySettled'];
 export type ReplyToMessageData = components['schemas']['ReplyToMessageData'];
 export type ResetSessionResponse = components['schemas']['ResetSessionResponse'];
 export type ResetWorkflowResponse = components['schemas']['ResetWorkflowResponse'];
-export type ResponseEvent = components['schemas']['ResponseEvent'];
 export type RetractFrame = components['schemas']['RetractFrame'];
 export type SandboxExecuteRequest = components['schemas']['SandboxExecuteRequest'];
 export type SandboxExecuteResponse = components['schemas']['SandboxExecuteResponse'];
@@ -18232,13 +17435,7 @@ export type StartPairingResponse = components['schemas']['StartPairingResponse']
 export type StarVoiceRequest = components['schemas']['StarVoiceRequest'];
 export type StateFrame = components['schemas']['StateFrame'];
 export type StaticReminderPayload = components['schemas']['StaticReminderPayload'];
-export type StopBy = components['schemas']['StopBy'];
-export type StopRequested = components['schemas']['StopRequested'];
 export type StoredIntegrationTool = components['schemas']['StoredIntegrationTool'];
-export type SubagentEndEvent = components['schemas']['SubagentEndEvent'];
-export type SubagentEndPayload = components['schemas']['SubagentEndPayload'];
-export type SubagentStartEvent = components['schemas']['SubagentStartEvent'];
-export type SubagentStartPayload = components['schemas']['SubagentStartPayload'];
 export type SubscriptionAction = components['schemas']['SubscriptionAction'];
 export type SubscriptionCondition = components['schemas']['SubscriptionCondition'];
 export type SubscriptionDocument = components['schemas']['SubscriptionDocument'];
@@ -18264,6 +17461,9 @@ export type SupportRequestType = components['schemas']['SupportRequestType'];
 export type SystemGatePreset = components['schemas']['SystemGatePreset'];
 export type SystemGateView = components['schemas']['SystemGateView'];
 export type SystemPurpose = components['schemas']['SystemPurpose'];
+export type TimelineCard = components['schemas']['TimelineCard'];
+export type TimelineStep = components['schemas']['TimelineStep'];
+export type TimelineStepKind = components['schemas']['TimelineStepKind'];
 export type TodoCanvasResponse = components['schemas']['TodoCanvasResponse'];
 export type TodoConversationResponse = components['schemas']['TodoConversationResponse'];
 export type TodoCounts = components['schemas']['TodoCounts'];
@@ -18271,15 +17471,11 @@ export type TodoistNewTaskCreatedConfig = components['schemas']['TodoistNewTaskC
 export type TodoLabelCount = components['schemas']['TodoLabelCount'];
 export type TodoListResponse = components['schemas']['TodoListResponse'];
 export type TodoModel = components['schemas']['TodoModel'];
-export type TodoProgressEvent = components['schemas']['TodoProgressEvent'];
-export type TodoReportForm = components['schemas']['TodoReportForm'];
 export type TodoResponse = components['schemas']['TodoResponse'];
-export type TodoRun = components['schemas']['TodoRun'];
 export type TodoRunWake = components['schemas']['TodoRunWake'];
 export type TodoStats = components['schemas']['TodoStats'];
 export type TodoUpdateRequest = components['schemas']['TodoUpdateRequest'];
 export type TodoWakeKind = components['schemas']['TodoWakeKind'];
-export type TodoWoke = components['schemas']['TodoWoke'];
 export type TodoWokeItem = components['schemas']['TodoWokeItem'];
 export type TodoWorkflowGenerationResponse = components['schemas']['TodoWorkflowGenerationResponse'];
 export type TodoWorkflowGenerationStatus = components['schemas']['TodoWorkflowGenerationStatus'];
@@ -18287,18 +17483,14 @@ export type TodoWorkflowStatus = components['schemas']['TodoWorkflowStatus'];
 export type TodoWorkflowStatusResponse = components['schemas']['TodoWorkflowStatusResponse'];
 export type ToolContract = components['schemas']['ToolContract'];
 export type ToolDataEntry = components['schemas']['ToolDataEntry'];
-export type ToolDataEvent = components['schemas']['ToolDataEvent'];
 export type ToolInfo = components['schemas']['ToolInfo'];
-export type ToolOutputEvent = components['schemas']['ToolOutputEvent'];
-export type ToolOutputPayload = components['schemas']['ToolOutputPayload'];
 export type ToolsCategoryResponse = components['schemas']['ToolsCategoryResponse'];
 export type ToolsListResponse = components['schemas']['ToolsListResponse'];
+export type ToolTimeline = components['schemas']['ToolTimeline'];
 export type TranscribeAudioResponse = components['schemas']['TranscribeAudioResponse'];
 export type TriageEmailSummary = components['schemas']['TriageEmailSummary'];
-export type Trigger = components['schemas']['Trigger'];
 export type TriggerConfig = components['schemas']['TriggerConfig'];
 export type TriggerConfigFieldSchema = components['schemas']['TriggerConfigFieldSchema'];
-export type TriggerEmailData = components['schemas']['TriggerEmailData'];
 export type TriggerOption = components['schemas']['TriggerOption'];
 export type TriggerOptionGroup = components['schemas']['TriggerOptionGroup'];
 export type TriggerOptionsResponse = components['schemas']['TriggerOptionsResponse'];
@@ -18343,28 +17535,21 @@ export type VoiceSelectionResponse = components['schemas']['VoiceSelectionRespon
 export type VoiceTokenResponse = components['schemas']['VoiceTokenResponse'];
 export type WebSearchResult = components['schemas']['WebSearchResult'];
 export type WorkCancelled = components['schemas']['WorkCancelled'];
-export type WorkDeltaFrame = components['schemas']['WorkDeltaFrame'];
-export type WorkFinished = components['schemas']['WorkFinished'];
 export type WorkflowCreator = components['schemas']['WorkflowCreator'];
 export type WorkflowExecution = components['schemas']['WorkflowExecution'];
 export type WorkflowExecutionRequest = components['schemas']['WorkflowExecutionRequest'];
 export type WorkflowExecutionResponse = components['schemas']['WorkflowExecutionResponse'];
 export type WorkflowExecutionsResponse = components['schemas']['WorkflowExecutionsResponse'];
-export type WorkflowFired = components['schemas']['WorkflowFired'];
 export type WorkflowFiredItem = components['schemas']['WorkflowFiredItem'];
 export type WorkflowListResponse = components['schemas']['WorkflowListResponse'];
 export type WorkflowMessageResponse = components['schemas']['WorkflowMessageResponse'];
 export type WorkflowResponse = components['schemas']['WorkflowResponse'];
-export type WorkflowRun = components['schemas']['WorkflowRun'];
 export type WorkflowStatusResponse = components['schemas']['WorkflowStatusResponse'];
 export type WorkflowStepInput = components['schemas']['WorkflowStepInput'];
 export type WorkflowStepOutput = components['schemas']['WorkflowStepOutput'];
-export type WorkflowTriggerContext = components['schemas']['WorkflowTriggerContext'];
 export type WorkflowTriggerResponse = components['schemas']['WorkflowTriggerResponse'];
 export type WorkflowWithIntegrations = components['schemas']['WorkflowWithIntegrations'];
 export type WorkItem = components['schemas']['WorkItem'];
-export type WorkOutcome = components['schemas']['WorkOutcome'];
-export type WorkStarted = components['schemas']['WorkStarted'];
 export type WorkStatus = components['schemas']['WorkStatus'];
 export type WritingStyleEditRequest = components['schemas']['WritingStyleEditRequest'];
 export type WritingStyleExampleBlocks = components['schemas']['WritingStyleExampleBlocks'];
@@ -23827,53 +23012,6 @@ export interface operations {
             };
         };
     };
-    integrations_get_my_integrations_snapshot_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MyIntegrationsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
     integrations_get_public_integration: {
         parameters: {
             query?: never;
@@ -24073,53 +23211,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchIntegrationsResponse"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-        };
-    };
-    integrations_get_integration_statuses_endpoint: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Client Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IntegrationStatusesResponse"];
                 };
             };
             /** @description Unprocessable Entity */

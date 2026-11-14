@@ -10,7 +10,6 @@ it; it does not prove Browser-Use produces those snapshots.
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from functools import partial
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -19,7 +18,6 @@ import fakeredis.aioredis
 import pytest
 
 from app.agents.core.background import redis_writer as rw
-from app.agents.core.background.executor_capture import drain_executor_tool_data
 from app.agents.core.background.session import RunKind, create_session, teardown_session
 from app.constants.browser import (
     BROWSER_TASK_EVENT,
@@ -50,6 +48,7 @@ from app.services.browser.job_relay import follow_job_cards
 from app.services.browser.job_runner import execute_browser_job
 from app.services.browser.jobs import put_job_state
 from app.services.browser.ledger import RunLedger
+from app.services.conversation.work_deltas import WorkDeltas, work_cards
 
 pytestmark = pytest.mark.integration
 
@@ -202,9 +201,14 @@ async def _run_and_relay(request: BrowserJobRequest) -> None:
     """Run the job, which closes its own feed, then follow the feed onto the turn's stream."""
     await put_job_state(BrowserJobState.of(request, BrowserJobStatus.QUEUED))
     await execute_browser_job(request)
-    await follow_job_cards(
-        request.job_id, request.conversation_id, partial(rw.publish_to_stream, STREAM_ID)
-    )
+    deltas = WorkDeltas(request.conversation_id, STREAM_ID)
+
+    async def publish(data: dict[str, object]) -> None:
+        await rw.publish_to_stream(STREAM_ID, data)
+        deltas(data)
+
+    await follow_job_cards(request.job_id, request.conversation_id, publish)
+    await deltas.drain()
 
 
 def _frames(chunks: list[str]) -> list[dict[str, Any]]:
@@ -252,7 +256,7 @@ async def test_the_runs_cards_are_collected_onto_the_turns_message_under_one_gro
 
     await _run_and_relay(_request())
 
-    entries = drain_executor_tool_data(STREAM_ID)
+    entries = (await work_cards(_request().conversation_id, [STREAM_ID])).tool_data
     cards = [e for e in entries if e["tool_name"] == BROWSER_TASK_EVENT]
     assert [card["data"]["kind"] for card in cards] == ["session", "step", "result"]
     groups = [e for e in entries if e["tool_name"] == "subagent_group"]

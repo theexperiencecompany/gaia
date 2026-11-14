@@ -3,7 +3,7 @@ import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef } from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useComposerUI } from "@/stores/composerStore";
 
@@ -79,13 +79,12 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
           className="mx-3 mt-2 mb-1 flex w-fit items-center gap-2 rounded-xl bg-zinc-700 px-2 py-1 pl-1"
         >
           <div>
-            {getToolCategoryIcon(
-              toolCategory || "general",
-              {
-                size: 17,
-              },
-              resolvedIconUrl,
-            )}
+            <IntegrationIcon
+              integrationId={toolCategory || "general"}
+              iconUrl={resolvedIconUrl}
+              size={17}
+              showBackground
+            />
           </div>
           <span className="text-sm font-light text-zinc-200">
             {formatToolName(toolName)}

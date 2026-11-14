@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, assert_never
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
@@ -22,11 +22,15 @@ from app.constants.hil import (
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
+    BargeIn,
     Entry,
+    EntryKind,
+    IntegrationConnected,
+    IntegrationNeeded,
     Notice,
     Reply,
-    ReplyOutcome,
     ReplySettled,
+    StopRequested,
     TodoWoke,
     UserMessage,
     WorkFinished,
@@ -36,7 +40,6 @@ from app.models.conversation_log_models import (
 )
 from app.models.conversation_screen_models import (
     NoticeItem,
-    ReplyItem,
     ScreenItem,
     TodoWokeItem,
     UserItem,
@@ -44,15 +47,35 @@ from app.models.conversation_screen_models import (
     WorkItem,
     WorkStatus,
 )
-from app.models.message_models import ReplyToMessageData
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
-from app.models.tool_data_models import ToolDataEntry
 from app.services.conversation.reply_files import reply_files
-from shared.py.analytics.catalog.hil import ApprovalOutcome
+from app.services.conversation.tool_timeline import tool_timeline
+from app.utils.message_breaks import split_message_bubbles
+from shared.py.approvals import ApprovalOutcome
+from shared.py.conversation_wire import (
+    ReplyItem,
+    ReplyOutcome,
+    ReplyToMessageData,
+    ToolDataEntry,
+    ToolTimeline,
+)
 
 #: The card a tool call streams; a hand-off is one whose call is call_executor.
 TOOL_CALL_CARD = "tool_calls_data"
 _STOPPED_WORK = frozenset({WorkOutcome.CANCELLED, WorkOutcome.LOST})
+#: A work item whose cards are still being published.
+LIVE_WORK = frozenset({WorkStatus.RUNNING, WorkStatus.AWAITING_APPROVAL})
+#: The kinds a lone message's item reads beside it.
+RELATED_KINDS: frozenset[str] = frozenset(
+    {
+        EntryKind.REPLY_SETTLED,
+        EntryKind.USER_MESSAGE,
+        EntryKind.WORK_STARTED,
+        EntryKind.WORK_FINISHED,
+    }
+)
+#: The suffixes of the two entries that can end a task: its result, or the sweeper's lost marker.
+_ENDS = ("finished", "lost")
 
 
 class _CardData(BaseModel):
@@ -226,6 +249,43 @@ def project_screen(entries: Sequence[Positioned]) -> list[ScreenItem]:
     return items
 
 
+def text_item(
+    logged: Positioned, related: Iterable[Positioned]
+) -> UserItem | ReplyItem | NoticeItem | None:
+    """Return the item a message shows on its conversation's screen, reading related for what sits beside it."""
+    item = _item(logged, _Log.of([*related, logged]))
+    return item if isinstance(item, UserItem | ReplyItem | NoticeItem) else None
+
+
+def needed_beside(
+    window: Sequence[Positioned], related: Sequence[Positioned] = ()
+) -> tuple[list[str], list[str]]:
+    """Return the entry ids and reply ids the window's text items still read beside related.
+
+    Each answer can name more (a settle's quote, a request's work), so a read asks until none is left.
+    """
+    read = _Log.of([*window, *related])
+    wanted: set[str] = set()
+    replies: set[str] = set()
+    for logged in window:
+        match logged.entry:
+            case Reply() as reply:
+                settle = read.settles.get(reply.reply_id)
+                if settle is None:
+                    replies.add(reply.reply_id)
+                target = reply.quote_target if settle is None else settle.entry.quote_target
+                narrated = (*reply.narrates, *(() if settle is None else settle.entry.narrates))
+                wanted |= {target} if target else set()
+                wanted |= {
+                    f"work:{task}:{end}" for task in (*narrated, reply.reply_id) for end in _ENDS
+                }
+            case _:
+                pass
+    wanted |= {f"work:{work.joins}" for work in read.started.values() if work.joins}
+    present = {logged.entry.id for logged in (*window, *related)}
+    return sorted(wanted - present), sorted(replies)
+
+
 def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
     seq, at = logged.seq, logged.at
     match logged.entry:
@@ -240,21 +300,56 @@ def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
                 id=notice.id,
                 seq=seq,
                 at=at,
-                text=notice.text,
+                bubbles=tuple(split_message_bubbles(notice.text)),
                 tool_data=notice.tool_data,
+                timeline=tool_timeline(notice.tool_data),
                 follow_up_actions=notice.follow_up_actions,
             )
         case WorkflowFired() as fired:
             return WorkflowFiredItem(id=fired.id, seq=seq, at=at, workflow=fired.run.workflow)
         case TodoWoke() as woke:
             return TodoWokeItem(id=woke.id, seq=seq, at=at, wake=woke.run.wake)
-        case _:
+        # Shown through the items they change, or not at all.
+        case (
+            WorkStarted()
+            | StopRequested()
+            | BargeIn()
+            | ApprovalRequested()
+            | ApprovalDecided()
+            | WorkFinished()
+            | ReplySettled()
+            | IntegrationNeeded()
+            | IntegrationConnected()
+        ):
             return None
+        case unhandled:
+            assert_never(unhandled)
+
+
+def work_timeline(
+    handoff: ToolDataEntry | None,
+    cards: Iterable[ToolDataEntry],
+    approvals: Iterable[ApprovalRequestEntry],
+) -> ToolTimeline:
+    """Return the timeline a work item shows: its hand-off's card, its work's cards, then its approval cards."""
+    asked: list[ToolDataEntry] = [
+        {
+            "tool_name": approval.tool_name,
+            "tool_category": approval.tool_category,
+            "data": approval.data.model_dump(mode="json"),
+            "timestamp": approval.timestamp,
+        }
+        for approval in approvals
+    ]
+    return tool_timeline((*(() if handoff is None else (handoff,)), *cards, *asked))
 
 
 def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkItem:
     started = read.started[task_id]
     finished = read.finished.get(task_id)
+    cards = () if finished is None else finished.tool_data
+    handoff = None if started.handoff is None else read.handoffs.get(started.handoff)
+    approvals = read.approvals(task_id)
     return WorkItem(
         id=f"work:{task_id}",
         seq=seq,
@@ -266,9 +361,10 @@ def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkIte
             (read.request_seqs[request.approval_id] for request in read.asking(task_id)),
             default=0,
         ),
-        approvals=read.approvals(task_id),
-        handoff=None if started.handoff is None else read.handoffs.get(started.handoff),
-        tool_data=() if finished is None else finished.tool_data,
+        approvals=approvals,
+        handoff=handoff,
+        tool_data=cards,
+        timeline=work_timeline(handoff, cards, approvals),
         image=None if finished is None else finished.image,
     )
 
@@ -300,12 +396,14 @@ def _reply_item(seq: int, at: AwareDatetime, reply: Reply, read: _Log) -> ReplyI
         seq, at = settled_at.seq, settled_at.at
     target = reply.quote_target if settle is None else settle.quote_target
     quoted = None if target is None else read.users.get(target)
+    shown = tuple(own)
     return ReplyItem(
         id=reply.reply_id,
         seq=seq,
         at=at,
-        text=reply.text,
-        tool_data=tuple(own),
+        bubbles=tuple(split_message_bubbles(reply.text)),
+        tool_data=shown,
+        timeline=tool_timeline(shown),
         follow_up_actions=reply.follow_up_actions,
         image=reply.image,
         pinned=reply.pinned,

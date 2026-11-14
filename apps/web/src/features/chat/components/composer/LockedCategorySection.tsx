@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { SquareLock01Icon } from "@icons";
 import type React from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
 import type { SlashCommandMatch } from "../../hooks/useSlashCommands";
@@ -60,17 +60,13 @@ export const LockedCategorySection: React.FC<LockedCategorySectionProps> = ({
             size="sm"
             color="primary"
             variant="flat"
-            startContent={getToolCategoryIcon(
-              requiredIntegration.id,
-              {
-                size: 16,
-                width: 16,
-                height: 16,
-                showBackground: false,
-                className: "h-4 w-4 object-contain",
-              },
-              integration?.iconUrl,
-            )}
+            startContent={
+              <IntegrationIcon
+                integrationId={requiredIntegration.id}
+                iconUrl={integration?.iconUrl}
+                size={16}
+              />
+            }
             onPress={handleConnect}
           >
             Connect

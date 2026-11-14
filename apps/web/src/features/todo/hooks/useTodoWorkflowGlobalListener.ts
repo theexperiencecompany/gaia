@@ -1,7 +1,5 @@
 import { useCallback, useEffect } from "react";
 
-import { todoApi } from "@/features/todo/api/todoApi";
-import { subscribeToTodoCreated } from "@/features/todo/utils/todoCreatedSignal";
 import { useRouter } from "@/i18n/navigation";
 import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
@@ -52,7 +50,7 @@ function extractWorkflowCategories(steps: Workflow["steps"]): string[] {
   ].slice(0, 3);
 }
 
-/** Apply a completed workflow to the store (shared by WS handler and poller). */
+/** Apply a completed workflow to the store. */
 function applyWorkflowToStore(todoId: string, workflow: Workflow) {
   useTodoStore.getState().updateTodoOptimistic(todoId, {
     workflow_id: workflow.id,
@@ -72,66 +70,11 @@ function applyWorkflowToStore(todoId: string, workflow: Workflow) {
   }));
 }
 
-// Tracks todo IDs that are actively being polled so we can cancel on WS delivery
-const pendingPolls = new Set<string>();
-
-/** Poll delays in ms: 3s, 6s, 12s, 20s */
-const POLL_DELAYS = [3000, 6000, 12000, 20000];
-
-/**
- * Start polling workflow status for a newly-created todo.
- * Stops early if the WebSocket delivers first (pendingPolls check)
- * or if the workflow is found.
- */
-function startWorkflowPolling(todoId: string) {
-  if (pendingPolls.has(todoId)) return;
-  pendingPolls.add(todoId);
-
-  const poll = async (attempt: number) => {
-    // WebSocket already delivered — stop polling
-    if (!pendingPolls.has(todoId)) return;
-    if (attempt >= POLL_DELAYS.length) {
-      pendingPolls.delete(todoId);
-      return;
-    }
-
-    try {
-      const status = await todoApi.getWorkflowStatus(todoId);
-
-      if (!pendingPolls.has(todoId)) return; // WS arrived during fetch
-
-      if (status.has_workflow && status.workflow) {
-        pendingPolls.delete(todoId);
-        applyWorkflowToStore(todoId, status.workflow);
-        notifyWorkflowGenerated(todoId);
-        return;
-      }
-
-      if (
-        status.workflow_status === "failed" ||
-        status.workflow_status === "not_started"
-      ) {
-        pendingPolls.delete(todoId);
-        return;
-      }
-    } catch {
-      // Network error — continue polling
-    }
-
-    // Schedule next attempt
-    setTimeout(() => poll(attempt + 1), POLL_DELAYS[attempt]);
-  };
-
-  // Start first poll after initial delay
-  setTimeout(() => poll(0), POLL_DELAYS[0]);
-}
-
 /**
  * Global WebSocket listener for workflow generation events.
  *
  * Mount once at the app level (ProvidersLayout) so that workflow.generated
  * events update the todo store even when the WorkflowSection sidebar is closed.
- * Also cancels any active polling for the todo.
  */
 export function useTodoWorkflowGlobalListener() {
   const router = useRouter();
@@ -147,7 +90,6 @@ export function useTodoWorkflowGlobalListener() {
     const { todo_id, workflow } = msg as WorkflowGeneratedMessage;
     if (!todo_id || !workflow) return;
 
-    pendingPolls.delete(todo_id);
     applyWorkflowToStore(todo_id, workflow);
     notifyWorkflowGenerated(todo_id);
   }, []);
@@ -156,7 +98,6 @@ export function useTodoWorkflowGlobalListener() {
     const { todo_id } = msg as WorkflowFailedMessage;
     if (!todo_id) return;
 
-    pendingPolls.delete(todo_id);
     useTodoStore.setState((state) => {
       const { [todo_id]: _, ...rest } = state.workflowStatusCache;
       return { workflowStatusCache: rest };
@@ -172,8 +113,4 @@ export function useTodoWorkflowGlobalListener() {
       wsManager.off("workflow.generation_failed", handleFailed);
     };
   }, [handleGenerated, handleFailed]);
-
-  // The store signals todo creation rather than calling the poller directly, so
-  // that it does not import this module (which writes back through the store).
-  useEffect(() => subscribeToTodoCreated(startWorkflowPolling), []);
 }

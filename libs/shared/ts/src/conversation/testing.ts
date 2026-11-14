@@ -55,19 +55,22 @@ export function userItem(
   return frame.item;
 }
 
-/** A reply item; outcome null while it is still being written. */
+const NO_TIMELINE = { steps: [], cards: [] };
+
+/** A reply item of one bubble, or of the bubbles given; outcome null while it is still being written. */
 export const replyItem = (
   id: string,
   seq: number,
-  text: string,
+  text: string | string[],
   outcome: string | null = null,
 ): Extract<ScreenItem, { kind: "reply" }> => ({
   kind: "reply",
   id,
   seq,
   at: AT,
-  text,
+  bubbles: Array.isArray(text) ? text : text ? [text] : [],
   tool_data: [],
+  timeline: NO_TIMELINE,
   follow_up_actions: [],
   image: null,
   pinned: false,
@@ -88,8 +91,9 @@ export const noticeItem = (
   id,
   seq,
   at: AT,
-  text,
+  bubbles: [text],
   tool_data: [],
+  timeline: NO_TIMELINE,
   follow_up_actions: [],
 });
 
@@ -112,13 +116,14 @@ export const replyDelta = (
   attemptId: string,
   replyId: string | null,
   index: number,
-  chunk: string,
+  text: string,
+  bubble = 0,
 ): ConversationFrame => ({
   kind: "reply_delta",
   attempt_id: attemptId,
   reply_id: replyId,
   index,
-  payload: { type: "response", chunk },
+  payload: { type: "bubble_text", bubble, text },
 });
 
 /** A tool-call progress card, as work streams it and as items carry it. */
@@ -127,20 +132,6 @@ export const toolCallCard = (callId: string, message: string) => ({
   tool_category: "gmail",
   data: { tool_name: "send", tool_call_id: callId, message },
   timestamp: AT,
-});
-
-export const workCardDelta = (
-  taskId: string,
-  index: number,
-  message: string,
-): ConversationFrame => ({
-  kind: "work_delta",
-  task_id: taskId,
-  index,
-  payload: {
-    type: "tool_data",
-    entry: toolCallCard(`${taskId}-${index}`, message),
-  },
 });
 
 export const retractFrame = (attemptId: string): ConversationFrame => ({
@@ -215,5 +206,6 @@ export const workItem = (
   approvals: [],
   handoff: null,
   tool_data: [],
+  timeline: NO_TIMELINE,
   image: null,
 });

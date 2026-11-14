@@ -1,10 +1,7 @@
-"""The projection of log entries into flat messages, for the screens that list them: search and pins.
+"""The entries migration's verify oracle: a log read back in the embedded array's message shape.
 
-A UserMessage is a user message, a Reply with its ReplySettled a bot message carrying its
-outcome, a Notice a bot message, a TodoWoke or WorkflowFired the user-side message that woke
-the run, and finished work with cards its own bubble until a reply answers that work (the
-reply whose reply_id is its task_id carries them then). Approval cards are the conversation
-screen's to draw; these flat messages carry the cards the entries stored.
+The migration proves it lost nothing by reading each migrated log back as the old messages and
+comparing. No client reads this shape; it goes when the migration does.
 """
 
 from __future__ import annotations
@@ -15,11 +12,9 @@ from dataclasses import dataclass, field
 from app.constants.chat import BOT_MESSAGE_TYPE, USER_MESSAGE_TYPE
 from app.models.chat_models import MessageReaction
 from app.models.conversation_log_models import (
-    EntryKind,
     LoggedEntry,
     Notice,
     Reply,
-    ReplyOutcome,
     ReplySettled,
     TodoWoke,
     UserMessage,
@@ -29,34 +24,8 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.conversation_models import ConversationEntry
-from app.models.message_models import ReplyToMessageData
+from shared.py.conversation_wire import ReplyOutcome, ReplyToMessageData
 
-#: The kinds whose append advances a conversation's sync clock: each adds or ends a row a client shows.
-SYNCED_KINDS: frozenset[str] = frozenset(
-    {
-        EntryKind.USER_MESSAGE,
-        EntryKind.REPLY,
-        EntryKind.REPLY_SETTLED,
-        EntryKind.NOTICE,
-        EntryKind.TODO_WOKE,
-        EntryKind.WORKFLOW_FIRED,
-        EntryKind.WORK_STARTED,
-        EntryKind.WORK_FINISHED,
-    }
-)
-#: The kinds a message read looks up beside its window.
-RELATED_KINDS: frozenset[str] = frozenset(
-    {
-        EntryKind.REPLY_SETTLED,
-        EntryKind.USER_MESSAGE,
-        EntryKind.REPLY,
-        EntryKind.WORK_STARTED,
-        EntryKind.WORK_FINISHED,
-    }
-)
-#: The kinds whose text search reads and a pin marks.
-TEXT_KINDS: frozenset[str] = frozenset({EntryKind.USER_MESSAGE, EntryKind.REPLY, EntryKind.NOTICE})
-PINNABLE_KINDS: frozenset[str] = frozenset({EntryKind.USER_MESSAGE, EntryKind.REPLY})
 _STOPPED_WORK = frozenset({WorkOutcome.CANCELLED, WorkOutcome.LOST})
 
 
@@ -91,44 +60,10 @@ class _Beside:
         return beside
 
 
-def needed_beside(
-    window: Sequence[LoggedEntry], related: Sequence[LoggedEntry] = ()
-) -> tuple[list[str], list[str]]:
-    """Return the entry ids and reply ids the window's messages still need beside related.
-
-    Each answer can name more (a settle's quote, a request's work), so a read asks until none is left.
-    """
-    read = [*window, *related]
-    present = {logged.entry.id for logged in read}
-    beside = _Beside.of(read)
-    wanted = {target for logged in read if (target := _quote_target(logged.entry)) is not None}
-    for logged in window:
-        match logged.entry:
-            case WorkStarted(detached=True, task_id=task_id):
-                wanted |= {f"work:{task_id}:finished", f"work:{task_id}:lost"}
-            case WorkFinished(task_id=task_id):
-                wanted.add(f"work:{task_id}")
-            case _:
-                pass
-    replies = {
-        logged.entry.reply_id
-        for logged in window
-        if isinstance(logged.entry, Reply) and logged.entry.reply_id not in beside.settles
-    }
-    replies |= {
-        logged.entry.task_id
-        for logged in window
-        if isinstance(logged.entry, WorkFinished) and logged.entry.task_id not in beside.replies
-    }
-    return sorted(wanted - present), sorted(replies)
-
-
-def project(
-    window: Sequence[LoggedEntry], related: Iterable[LoggedEntry] = ()
-) -> list[ConversationEntry]:
-    """Project the window's entries, in order, into messages; related supplies what they read beside them."""
-    beside = _Beside.of([*window, *related])
-    return [message for logged in window if (message := _message(logged, beside)) is not None]
+def legacy_messages(log: Sequence[LoggedEntry]) -> list[ConversationEntry]:
+    """Read the whole log back, in order, as the embedded array's messages."""
+    beside = _Beside.of(log)
+    return [message for logged in log if (message := _message(logged, beside)) is not None]
 
 
 def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:
@@ -227,16 +162,6 @@ def _work_bubble(
         image_data=work.image,
         stopped=True if work.outcome in _STOPPED_WORK else None,
     )
-
-
-def _quote_target(entry: object) -> str | None:
-    match entry:
-        case UserMessage(reply_to_message=None, reply_to=target):
-            return target
-        case Reply(quote_target=target) | ReplySettled(quote_target=target):
-            return target
-        case _:
-            return None
 
 
 def _quote(beside: _Beside, target: str | None) -> ReplyToMessageData | None:

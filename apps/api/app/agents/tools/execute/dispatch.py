@@ -371,12 +371,13 @@ def _failure(user_id: str | None, tool_name: str, error: DispatchError) -> ToolE
 
 
 def _validate_args(tool: BaseTool, data: dict[str, object]) -> dict[str, object] | DispatchError:
-    """``data`` coerced through the tool's schema, or the correction to return.
+    """``data`` coerced through the tool's model-facing schema, or the correction to return.
 
     Provider-side constrained decoding is gone under the proxy — this check is
     what stands in for it, so it fails loud with the exact Pydantic errors.
+    tool_call_schema drops the args the runtime injects (InjectedToolArg).
     """
-    schema = tool.args_schema
+    schema = tool.tool_call_schema
     if not (isinstance(schema, type) and issubclass(schema, BaseModel)):
         # Dict-style JSON schemas (some MCP adapters) have no Pydantic model to
         # coerce through; the tool's own run performs its validation.

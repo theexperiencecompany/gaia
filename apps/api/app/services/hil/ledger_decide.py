@@ -57,13 +57,16 @@ from app.services.hil.preferences import set_tool_override
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import (
-    ActionResult,
     ApprovalDecided as ApprovalDecidedEvent,
-    ApprovalDecider,
-    ApprovalOutcome,
     HilDecisionSubmitted,
     HilDecisionVia,
     HilRevoked,
+)
+from shared.py.approvals import (
+    ActionResult,
+    ApprovalDecider,
+    ApprovalOutcome,
+    DecidedOutcome,
     UndecidedOutcome,
 )
 from shared.py.wide_events import log
@@ -113,10 +116,7 @@ async def decide_ledger(
 ) -> LedgerDecision:
     """Commit one decision and wake the model with the ticket. Never blocks."""
     row = await _owned_row(approval_id, user_id)
-    decision = await _commit_decision(row, user_id=user_id, kind=kind, feedback=feedback, via=via)
-    if decision.committed and decision.outcome is not None:
-        capture(UserId(user_id), ApprovalDecidedEvent(outcome=decision.outcome))
-    return decision
+    return await _commit_decision(row, user_id=user_id, kind=kind, feedback=feedback, via=via)
 
 
 async def decide_ledger_card(
@@ -129,8 +129,6 @@ async def decide_ledger_card(
     decision = await _commit_decision(
         row, user_id=user_id, kind=tap.decision, feedback=tap.feedback, via="card"
     )
-    if decision.committed and decision.outcome is not None:
-        capture(UserId(user_id), ApprovalDecidedEvent(outcome=decision.outcome))
     if (
         tap.scope == "always_tool"
         and decision.committed
@@ -167,7 +165,9 @@ async def _commit_decision(
     if kind == "approve" and feedback is not None and feedback.strip() != "":
         kind = "deny"
 
-    target = ApprovalOutcome.APPROVED if kind == "approve" else ApprovalOutcome.DENIED
+    target: DecidedOutcome = (
+        ApprovalOutcome.APPROVED if kind == "approve" else ApprovalOutcome.DENIED
+    )
     taken = await _decide_in_log(row, target, ApprovalDecider.USER, feedback=feedback)
     if not taken.taken:
         return LedgerDecision(
@@ -196,6 +196,7 @@ async def _commit_decision(
             ledger_version=row.v + 1,
         ),
     )
+    capture(UserId(user_id), ApprovalDecidedEvent(outcome=target))
     queued = bool(target is ApprovalOutcome.APPROVED and row.blocked_by)
     if target is ApprovalOutcome.APPROVED and not queued:
         # Permission granted: hand the ticket to the model. deliver_to_executor

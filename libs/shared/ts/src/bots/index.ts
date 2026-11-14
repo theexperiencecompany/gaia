@@ -146,7 +146,6 @@ export {
   convertToTelegramHtml,
   convertToWhatsAppMarkdown,
   createBotLogger,
-  deliverableBubbles,
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
   emitBotLogLine,

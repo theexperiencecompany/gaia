@@ -2,18 +2,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
-import {
-  prependNotification,
-  upsertNotification,
-} from "@/features/notification/api/notificationCache";
-import { markDeliveredAsReadInCache } from "@/features/notification/hooks/useNotifications";
+import { notificationKeys } from "@/features/notification/api/queryKeys";
 import { toast } from "@/lib/toast";
 import { isSafeInternalPath } from "@/lib/url-safety";
 import { wsManager } from "@/lib/websocket/WebSocketManager";
 import { batchSyncConversations } from "@/services/syncService";
 import type {
   NotificationAction,
-  NotificationUpdate,
   NotificationView,
 } from "@/types/features/notificationTypes";
 import {
@@ -21,20 +16,17 @@ import {
   NotificationType,
 } from "@/types/features/notificationTypes";
 
+/** Every notification push the server sends; each one means the list changed. */
+const NOTIFICATION_EVENTS = [
+  "notification.delivered",
+  "notification.updated",
+  "notification.read",
+  "notification.all_read",
+] as const;
+
 interface WebSocketMessage {
-  type:
-    | "notification.delivered"
-    | "notification.updated"
-    | "notification.read"
-    | "notification.reactivated"
-    | "notification.all_read"
-    | "ping"
-    | "error";
+  type: (typeof NOTIFICATION_EVENTS)[number];
   notification?: NotificationView;
-  notification_id?: string;
-  updates?: NotificationUpdate;
-  channel_type?: string | null;
-  message?: string;
 }
 
 type AppRouter = ReturnType<typeof useRouter>;
@@ -115,8 +107,6 @@ function handleDeliveredNotification(
 export function useNotificationWebSocket() {
   const user = useCurrentUser();
   const isAuthenticated = !!user?.email;
-  // Live pushes are written straight into the query cache the lists read —
-  // same keys, no parallel store to drift out of sync.
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
@@ -129,37 +119,12 @@ export function useNotificationWebSocket() {
   const handleMessage = useCallback(
     (msg: unknown) => {
       const message = msg as WebSocketMessage;
-      switch (message.type) {
-        case "notification.delivered":
-          if (message.notification) {
-            prependNotification(queryClient, message.notification);
-            const isOnboarding =
-              pathnameRef.current?.includes("/onboarding") ?? false;
-            handleDeliveredNotification(
-              message.notification,
-              router,
-              isOnboarding,
-            );
-          }
-          break;
-
-        case "notification.updated":
-          if (message.notification) {
-            upsertNotification(queryClient, message.notification);
-          }
-          break;
-
-        case "notification.all_read":
-          // Another tab/device marked everything read — mirror it in the cache.
-          markDeliveredAsReadInCache(queryClient, message.channel_type);
-          break;
-
-        case "error":
-          console.error("WebSocket error message:", message.message);
-          break;
-
-        default:
-          console.warn("Unknown notification message type:", message.type);
+      // The server's list is the truth: a push only says it changed.
+      void queryClient.invalidateQueries({ queryKey: notificationKeys.all });
+      if (message.type === "notification.delivered" && message.notification) {
+        const isOnboarding =
+          pathnameRef.current?.includes("/onboarding") ?? false;
+        handleDeliveredNotification(message.notification, router, isOnboarding);
       }
     },
     [queryClient, router],
@@ -172,17 +137,12 @@ export function useNotificationWebSocket() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    wsManager.on("notification.delivered", handleMessage);
-    wsManager.on("notification.updated", handleMessage);
-    wsManager.on("notification.all_read", handleMessage);
-    wsManager.on("error", handleMessage);
+    for (const event of NOTIFICATION_EVENTS) wsManager.on(event, handleMessage);
     wsManager.onError(handleError);
 
     return () => {
-      wsManager.off("notification.delivered", handleMessage);
-      wsManager.off("notification.updated", handleMessage);
-      wsManager.off("notification.all_read", handleMessage);
-      wsManager.off("error", handleMessage);
+      for (const event of NOTIFICATION_EVENTS)
+        wsManager.off(event, handleMessage);
       wsManager.offError(handleError);
     };
   }, [isAuthenticated, handleMessage, handleError]);
