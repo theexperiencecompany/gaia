@@ -225,7 +225,9 @@ class TestAccountChoice:
 
         assert _invoked_account(tool) == {"toolkit": "GMAIL", "connected_account_id": "ca_work"}
 
-    async def test_an_account_on_a_tool_without_accounts_is_refused(self) -> None:
+    async def test_an_account_on_a_tool_without_accounts_is_ignored_and_the_call_runs(
+        self,
+    ) -> None:
         tool = _tool(name="todo_create")
         with patch(
             f"{MODULE}.resolve_tool",
@@ -239,9 +241,12 @@ class TestAccountChoice:
                 account="work",
             )
 
-        assert result.error is not None
-        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
-        tool.ainvoke.assert_not_awaited()
+        assert result.ok is True
+        assert result.error is None
+        tool.ainvoke.assert_awaited_once()
+        assert "composio_account" not in (
+            tool.ainvoke.await_args.kwargs["config"].get("metadata") or {}
+        )
 
     async def test_a_personless_run_cannot_choose_an_account(
         self, account_record: AsyncMock
@@ -264,7 +269,7 @@ class TestAccountChoice:
         assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
         tool.ainvoke.assert_not_awaited()
 
-    async def test_an_integration_without_composio_has_no_accounts_to_choose(
+    async def test_an_integration_without_composio_ignores_a_named_account_and_runs(
         self, account_record: AsyncMock
     ) -> None:
         account_record.return_value = _gmail_accounts(WORK, PERSONAL)
@@ -275,9 +280,11 @@ class TestAccountChoice:
         ):
             result = await _dispatch_send("Personal", tool)
 
-        assert result.error is not None
-        assert result.error.kind is DispatchErrorKind.UNKNOWN_ACCOUNT
-        tool.ainvoke.assert_not_awaited()
+        assert result.ok is True
+        tool.ainvoke.assert_awaited_once()
+        assert "composio_account" not in (
+            tool.ainvoke.await_args.kwargs["config"].get("metadata") or {}
+        )
 
     async def test_the_chosen_account_joins_the_callers_metadata(
         self, account_record: AsyncMock
@@ -826,18 +833,6 @@ REFUSALS = {
         ),
         warning="execute: args failed schema validation",
         data={"recipient": "a@b.c"},
-    ),
-    "account_on_an_accountless_tool": _Refusal(
-        tool_name="create_todo",
-        resolved=ResolvedTool("create_todo", _INTERNAL, is_integration=False),
-        error=DispatchError(
-            kind=DispatchErrorKind.UNKNOWN_ACCOUNT,
-            detail="'create_todo' has no connected accounts to choose between.",
-            hint="Retry without `account`.",
-        ),
-        warning="execute: account not usable",
-        data={"recipient": "a@b.c", "subject": "hi"},
-        account="work",
     ),
     "unknown_account": _Refusal(
         tool_name="GMAIL_SEND_EMAIL",

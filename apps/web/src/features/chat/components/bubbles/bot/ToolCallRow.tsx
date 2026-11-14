@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import { PuzzleIcon, ToolsIcon } from "@icons";
+import { PackageOpenIcon, PuzzleIcon, ToolsIcon } from "@icons";
 import type { ApprovalStatus } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -89,6 +89,8 @@ function ToolCallIcon({
       </div>
     );
   }
+  // An integration's tool without a logo gets the generic integration glyph IntegrationIcon uses.
+  const FallbackIcon = call.integration_name ? PackageOpenIcon : ToolsIcon;
   return (
     getToolCategoryIcon(
       call.tool_category || "general",
@@ -96,7 +98,7 @@ function ToolCallIcon({
       call.icon_url,
     ) || (
       <div className="p-1 bg-zinc-800 rounded-lg">
-        <ToolsIcon width={21} height={21} />
+        <FallbackIcon width={21} height={21} />
       </div>
     )
   );
