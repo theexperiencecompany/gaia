@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 
-import { type Capture, captureParts, type Styles } from "./capture";
+import { captureParts } from "./capture";
 import {
   type Approval,
   compareCaptures,
@@ -16,6 +16,7 @@ import {
   type Side,
   STATE_TARGETS,
 } from "./parts";
+import type { Capture, Styles } from "./types";
 
 const FIXTURE = "/dev/primitive-parity";
 const HERE = import.meta.dirname;

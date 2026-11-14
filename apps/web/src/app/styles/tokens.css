@@ -110,6 +110,12 @@ html {
   --tooltip-close-delay: 500ms;
 }
 
+/* v2's fields sat on shadow-sm; v3's dark theme gives them a transparent one. */
+:root,
+.dark {
+  --field-shadow: var(--gaia-shadow-xs);
+}
+
 /* GAIA control dimensions: v2's sizes on v3's components, which ship pill radii,
    a 36px desktop button and font-weight 500. Read only by gaia.css. */
 :root {
@@ -135,7 +141,7 @@ html {
   --gaia-table-header-gap: 5px;
   --gaia-table-card-padding: 1rem;
   /* v2's shadow-sm (fields), shadow-small (tooltip, modal, kbd, toggles) and
-     shadow-medium (popover, menu, select list, card); v3's dark overlays draw
+     shadow-medium (popover, menu, ComboBox list, card); v3's dark overlays draw
      only a 30% white inner hairline, which reads as an outline */
   --gaia-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --gaia-shadow-small: 0 0 5px 0 rgb(0 0 0 / 0.05), 0 2px 10px 0 rgb(0 0 0 / 0.2), inset 0 0 1px 0 rgb(255 255 255 / 0.15);
@@ -231,16 +237,9 @@ html {
   --gaia-toggle-border-width: 2px;
   --gaia-toggle-border: var(--color-zinc-700);
   --gaia-checkbox-radius: calc(var(--gaia-radius-md) * 0.6);
-  --gaia-radio-size: 1.25rem;
-  --gaia-radio-dot: 0.5rem;
   --gaia-menu-indicator-inset: 1.75rem;
-  --gaia-radio-gap: 0.25rem;
-  --gaia-radio-group-gap: 0.5rem;
   --gaia-input-underlined-padding-top: 0.4375rem;
   --gaia-input-underlined-padding-bottom: 0.6875rem;
-  --gaia-pagination-inset: 0.625rem;
-  --gaia-pagination-gap: 0.25rem;
-  --gaia-pagination-size: 2.25rem;
   --gaia-tooltip-offset-extra: 4px;
   --gaia-tooltip-arrow-offset-extra: 3px;
   --gaia-tooltip-padding-y: 0.25rem;

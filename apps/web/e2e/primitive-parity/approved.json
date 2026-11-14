@@ -1,1 +1,10 @@
-[]
+[
+  { "key": "select/open/.*", "prop": ".*", "reason": "founder picked v3" },
+  {
+    "key": "pagination/faded::.*",
+    "prop": ".*",
+    "reason": "founder picked v3"
+  },
+  { "key": "progress/.*", "prop": ".*", "reason": "founder picked v3" },
+  { "key": "radio/.*", "prop": ".*", "reason": "founder picked v3" }
+]

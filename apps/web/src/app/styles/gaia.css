@@ -276,6 +276,7 @@
   .combo-box__input-group {
     border-radius: var(--gaia-radius-md);
     background-color: var(--field-background);
+    box-shadow: var(--field-shadow);
   }
   /* inputVariants({ size: "sm" }) on a ComboBox: v2's sm Autocomplete, the 32px row. */
   .gaia-input-sm .combo-box__input-group {
@@ -419,10 +420,10 @@
   /* overlayVariants({ surface }): raised is v2's zinc-800 popover and tooltip
      surface off a zinc-900 page; secondary is the #1a1a1a sidebar surface. */
   .gaia-overlay-raised {
-    background-color: var(--gaia-overlay-raised);
+    --overlay: var(--gaia-overlay-raised);
   }
   .gaia-overlay-secondary {
-    background-color: var(--gaia-overlay-secondary);
+    --overlay: var(--gaia-overlay-secondary);
   }
   /* overlayVariants({ backdrop: "opaque" }): v2's backdrop="opaque" popover, the
      page dimmed behind it; a viewport-wide spread shadow, since v3 popovers have no backdrop. */
@@ -452,7 +453,6 @@
   .input::placeholder,
   .textarea::placeholder,
   .input-group__input::placeholder {
-    color: var(--field-placeholder);
     font-weight: 400;
   }
 
@@ -730,7 +730,6 @@
     padding: var(--gaia-tooltip-padding-y) var(--gaia-tooltip-padding-x);
     font-size: var(--gaia-tooltip-font-size);
     line-height: var(--gaia-tooltip-line-height);
-    color: var(--foreground);
     /* v3 breaks tooltip text mid-word (break-all); v2 wrapped between words */
     word-break: normal;
     overflow-wrap: break-word;
@@ -950,14 +949,13 @@
     margin-top: 0;
   }
 
-  /* Checkbox and Radio: v2's 8px hit inset, 16px regular label, and an outlined
-     control with no fill (the checkbox's 7.2px corners, the radio 20px round). */
+  /* Checkbox: v2's 8px hit inset, 16px regular label, and an outlined control
+     with no fill on 7.2px corners. */
   .checkbox {
     padding: var(--gaia-toggle-hit-inset);
     margin: calc(var(--gaia-toggle-hit-inset) * -1);
   }
-  .checkbox__content,
-  .radio__content {
+  .checkbox__content {
     font-size: var(--text-base);
     line-height: 1.5rem;
     font-weight: 400;
@@ -966,43 +964,20 @@
   .checkbox__content {
     gap: 0;
   }
-  .radio__content {
-    gap: var(--gaia-radio-gap);
-  }
-  .radio-group,
-  .radio-group[data-orientation="horizontal"] {
-    gap: var(--gaia-radio-group-gap);
-  }
   .checkbox__control {
     border: var(--gaia-toggle-border-width) solid var(--gaia-toggle-border);
     border-radius: var(--gaia-checkbox-radius);
     background-color: transparent;
   }
+  /* HeroUI draws the field shadow on a toggle's control too; v2's toggles (and v3's dark radio) drew none */
+  .checkbox__control,
+  .radio__control {
+    --field-shadow: none;
+  }
   /* checked, the fill covers the whole box, outline included */
   .checkbox[data-selected="true"] .checkbox__control,
   .checkbox[aria-checked="true"] .checkbox__control {
     border-width: 0;
-  }
-  .radio__control {
-    width: var(--gaia-radio-size);
-    height: var(--gaia-radio-size);
-    border: var(--gaia-toggle-border-width) solid var(--gaia-toggle-border);
-    border-radius: var(--gaia-radius-pill);
-    background-color: transparent;
-  }
-  .radio[data-selected] .radio__control {
-    border-color: var(--accent);
-    background-color: transparent;
-  }
-  .radio__indicator:empty::before {
-    background-color: transparent;
-  }
-  .radio[data-selected] .radio__indicator:empty::before {
-    width: var(--gaia-radio-dot);
-    height: var(--gaia-radio-dot);
-    scale: 1;
-    border-radius: var(--gaia-radius-pill);
-    background-color: var(--accent);
   }
 
   /* shape="pill" (components/shared/shape.ts): v2's radius="full", one class for
@@ -1111,7 +1086,7 @@
   }
 
   /* Overlay surfaces, v2's: a tooltip and a modal lift on shadow-small, a
-     popover, menu or list on shadow-medium (v3 dark: a 30% white hairline, read
+     popover, menu or ComboBox list on shadow-medium (v3 dark: a 30% white hairline, read
      as an outline), and an arrow is the surface with no stroke. */
   .tooltip,
   .modal__dialog {
@@ -1119,7 +1094,6 @@
   }
   .popover,
   .dropdown__popover,
-  .select__popover,
   .combo-box__popover {
     box-shadow: var(--gaia-shadow-medium);
   }
@@ -1151,25 +1125,16 @@
   /* overlayVariants({ surface: accent | foreground | danger }): v2's coloured
      tooltips, body and arrow alike. */
   .gaia-overlay-accent {
-    --gaia-overlay-fill: var(--accent);
+    --overlay: var(--accent);
     color: var(--color-black);
   }
   .gaia-overlay-foreground {
-    --gaia-overlay-fill: var(--foreground);
+    --overlay: var(--foreground);
     color: var(--color-black);
   }
   .gaia-overlay-danger {
-    --gaia-overlay-fill: var(--danger);
+    --overlay: var(--danger);
     color: var(--color-white);
-  }
-  :is(.gaia-overlay-accent, .gaia-overlay-foreground, .gaia-overlay-danger) {
-    background-color: var(--gaia-overlay-fill);
-  }
-  .tooltip [data-slot="overlay-arrow"] {
-    fill: var(--overlay);
-  }
-  :is(.gaia-overlay-accent, .gaia-overlay-foreground, .gaia-overlay-danger) [data-slot="overlay-arrow"] {
-    fill: var(--gaia-overlay-fill);
   }
   /* v2's popover content: 4px by 10px around its body (v3: 16px). */
   .popover__dialog {
@@ -1194,31 +1159,9 @@
     padding-inline-end: var(--gaia-menu-indicator-inset);
   }
 
-  /* Fields, v2's: shadow-sm at rest (zero specificity, so focus and every
-     variant restate it). */
-  :where(.input:not(.combo-box__input-group .input, .input-group .input, .gaia-input-bare)),
-  :where(.textarea:not(.gaia-input-bare)),
-  :where(.select__trigger:not(.gaia-input-bare)),
-  :where(.combo-box__input-group) {
-    box-shadow: var(--gaia-shadow-xs);
-  }
   /* v2's Select value, white once chosen. */
   .select__value:not([data-placeholder="true"]) {
     color: var(--default-foreground);
-  }
-  .select__value[data-placeholder="true"] {
-    color: var(--field-placeholder);
-  }
-  /* v2's list rows: foreground text, the selected row white. */
-  .list-box-item {
-    color: var(--foreground);
-  }
-  .list-box-item[data-selected="true"] {
-    color: var(--default-foreground);
-  }
-  .list-box-item__indicator,
-  .list-box-item--danger .list-box-item__indicator {
-    color: inherit;
   }
   /* Accordion title, v2's: 16px bold on 24px (its h2 heading), compact or not. */
   .accordion__trigger {
@@ -1278,71 +1221,10 @@
     margin-inline-end: 0.125rem;
   }
 
-  /* Progress, v2's: a 4px (sm) or 12px (md) round track on zinc-600 at 50%. */
-  .progress-bar__track,
-  .progress-bar--sm .progress-bar__track,
-  .progress-bar--lg .progress-bar__track {
-    border-radius: var(--gaia-radius-pill);
-    background-color: var(--gaia-slider-track-bg);
-  }
-  .progress-bar__fill,
-  .progress-bar--sm .progress-bar__fill,
-  .progress-bar--lg .progress-bar__fill {
-    border-radius: var(--gaia-radius-pill);
-  }
-  /* v3 keeps an empty label row and its 4px gap above a bare track; v2 drew the track alone. */
-  .progress-bar:not(:has(> :not(.progress-bar__track))) {
-    row-gap: 0;
-  }
-  .progress-bar--sm .progress-bar__track {
-    height: 0.25rem;
-  }
-  .progress-bar--md .progress-bar__track {
-    height: 0.75rem;
-  }
-
   /* Skeleton, v2's: a zinc-800 block, square unless the call site rounds it. */
   .skeleton {
     border-radius: 0;
     background-color: var(--color-zinc-800);
-  }
-
-  /* Pagination, v2's faded: 36px zinc-900 cells with a 2px zinc-700 outline on
-     12px corners, 4px apart, regular 14px numbers, the current page an accent
-     cell with black text; the nav pads 10px out (v3: 32px bare cells). */
-  .pagination {
-    /* a block, as v2's nav was: v3's flex nav kept its pagination's width and clipped the inset */
-    display: block;
-    width: auto;
-    padding: var(--gaia-pagination-inset);
-    margin: calc(var(--gaia-pagination-inset) * -1);
-  }
-  .pagination__content {
-    gap: var(--gaia-pagination-gap);
-  }
-  .pagination__link {
-    width: var(--gaia-pagination-size);
-    min-width: var(--gaia-pagination-size);
-    height: var(--gaia-pagination-size);
-    border-radius: var(--gaia-radius-md);
-    background-color: var(--surface);
-    box-shadow: var(--gaia-shadow-xs);
-    font-size: var(--text-sm);
-    line-height: 1.25rem;
-    font-weight: 400;
-    color: var(--default-foreground);
-  }
-  .pagination__link:not(.pagination__link--nav) {
-    border: var(--gaia-toggle-border-width) solid var(--gaia-toggle-border);
-  }
-  .pagination__link:is(:hover, [data-hovered="true"]) {
-    background-color: var(--color-zinc-800);
-  }
-  .pagination__link[data-active="true"] {
-    border-color: transparent;
-    box-shadow: none;
-    background-color: var(--accent);
-    color: var(--color-black);
   }
 
   /* Spinner, v2's sizes: 20px sm, 32px md, 40px lg. */
@@ -1368,19 +1250,24 @@
   /* Keyboard focus, v2's: a button, tab, trigger or row draws a 2px focus
      outline 2px out; a field or toggle a 2px focus ring 2px out on the page
      colour. v3 rings a button on black and a field with no gap. */
-  :is(.button, .tabs__tab, .select__trigger, .accordion__trigger, .list-box-item, .menu-item):is(:focus-visible, [data-focus-visible="true"]) {
+  :is(.button, .tabs__tab, .select__trigger, .accordion__trigger, .menu-item):is(:focus-visible, [data-focus-visible="true"]) {
     outline: 2px solid var(--focus);
     outline-offset: 2px;
   }
-  :is(.button, .tabs__tab, .accordion__trigger, .list-box-item, .menu-item):is(:focus-visible, [data-focus-visible="true"]) {
+  :is(.button, .tabs__tab, .accordion__trigger, .menu-item):is(:focus-visible, [data-focus-visible="true"]) {
     box-shadow: none;
+  }
+  /* a Select's focus is the outline above, so its trigger keeps the field shadow
+     through every HeroUI focus ring (zero specificity, so the variants restate it) */
+  :where(.select__trigger) {
+    box-shadow: var(--field-shadow);
   }
   :is(.input, .textarea):not(.gaia-input-underlined, .gaia-input-bare):is(:focus-visible, [data-focus-visible="true"]),
   .combo-box__input-group:has(> .input:is(:focus-visible, [data-focus-visible="true"])) {
     box-shadow:
       0 0 0 2px var(--background),
       0 0 0 4px var(--focus),
-      var(--gaia-shadow-xs);
+      var(--field-shadow);
   }
   /* a toggle's keyboard ring, v2's: 2px focus colour 2px out on the page colour */
   .switch:focus-visible .switch__control,
@@ -1388,19 +1275,9 @@
   .checkbox:focus-visible .checkbox__control,
   .checkbox:has([data-slot="checkbox-content"][data-focus-visible="true"]) .checkbox__control,
   .checkbox [data-slot="checkbox-content"][data-focus-visible="true"] .checkbox__control,
-  .radio:has([data-slot="radio-content"]:focus-visible) .radio__control,
-  .radio [data-slot="radio-content"]:focus-visible .radio__control,
-  .radio:has([data-slot="radio-content"][data-focus-visible="true"]) .radio__control,
-  .radio [data-slot="radio-content"][data-focus-visible="true"] .radio__control,
   .slider .slider__thumb[data-focus-visible="true"] {
     box-shadow:
       0 0 0 2px var(--background),
       0 0 0 4px var(--focus);
-  }
-  /* a pressed selected radio keeps v2's look (restates HeroUI's pressed fill) */
-  .radio[data-selected]:has([data-slot="radio-content"]:active) .radio__control,
-  .radio[data-selected]:has([data-slot="radio-content"][data-pressed="true"]) .radio__control {
-    border-color: var(--accent);
-    background-color: transparent;
   }
 }
