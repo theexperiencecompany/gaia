@@ -5,12 +5,10 @@ import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/clien
 import JsonLd from "@/components/seo/JsonLd";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import {
-  getAllCommunityWorkflowsServer,
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
 } from "@/features/workflows/lib/serverWorkflowsApi";
 import { findCopiedTemplate } from "@/features/workflows/lib/templateCopies";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
 import type { UseCase } from "@/types/features/workflowTypes";
 import {
@@ -26,23 +24,12 @@ interface PageProps {
   params: Promise<{ readonly slug: string }>;
 }
 
-export const revalidate = 3600; // Revalidate every hour
+export const revalidate = 3600;
 
-async function allStaticParams() {
-  const [explore, community] = await Promise.all([
-    getExploreWorkflowsServer(1000),
-    getAllCommunityWorkflowsServer(),
-  ]);
-  return [...explore, ...community].flatMap((w) =>
-    w.slug ? [{ slug: w.slug }] : [],
-  );
-}
-
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
 export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
+  return [];
 }
-
-export const dynamicParams = true;
 
 export async function generateMetadata({
   params,

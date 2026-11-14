@@ -3,17 +3,17 @@
  * Verify the OpenNext build output still carries usable prerenders for the
  * fully-static (`dynamicParams = false`) detail routes.
  *
- * Background: learn/compare/automate detail pages are `fallback: false`, so a
- * cold incremental cache makes the worker throw NoFallbackError and serve a
- * 404 it then caches. CI deploys never uploaded `.open-next/cache` to R2 (raw
- * `wrangler deploy` skips `populateCache`), which 404'd every detail page on
- * heygaia.io (alternative-to/for/use-cases survived — they render on demand).
- * The deploy workflow now runs `populateCache remote` before `wrangler deploy`,
- * which uploads WHATEVER is in `.open-next/cache` — including prerendered 404s
- * if build-time data loading ever breaks (a notFound() during prerender keeps
- * the build green). This script fails the build visibly before that poison can
- * ship: each spot-check path must be a complete prerender whose HTML carries
- * the entry's own metaTitle.
+ * Background: the learn detail pages are `fallback: false`, so a cold
+ * incremental cache makes the worker throw NoFallbackError and serve a 404 it
+ * then caches. The deploy workflow runs `populateCache remote` before
+ * `wrangler deploy`, which uploads WHATEVER is in `.open-next/cache` —
+ * including prerendered 404s if build-time data loading ever breaks (a
+ * notFound() during prerender keeps the build green). This script fails the
+ * build visibly before that poison can ship: each spot-check path must be a
+ * complete prerender whose HTML carries the entry's own metaTitle. The
+ * API-backed families (compare, automate, alternative-to, for, use-cases,
+ * marketplace) have no build-time paths and render on their first request,
+ * so there is no prerender of theirs to check.
  *
  * Run after `opennextjs-cloudflare build`, before uploading the bundle:
  *   node scripts/verify-prerender-cache.mjs
@@ -26,13 +26,10 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NEXT_DIR = join(root, ".next");
 const OPEN_NEXT_CACHE_DIR = join(root, ".open-next", "cache");
 
-// One spot-check per fallback:false route family, plus a fallback:true control.
+// One spot-check per prerendered fallback:false detail family.
 // Markers come from the source JSON at check time — nothing hardcoded to rot.
 const SPOT_CHECKS = [
   { urlPath: "en/learn/ical", dataFile: "glossary/ical.json" },
-  { urlPath: "en/compare/hey-email", dataFile: "comparisons/hey-email.json" },
-  { urlPath: "en/automate/slack-teams", dataFile: "combos/slack-teams.json" },
-  { urlPath: "en/alternative-to/calendly", dataFile: "alternatives/calendly.json" },
 ];
 
 function escapeHtml(text) {
@@ -80,9 +77,6 @@ function findCacheEntry(dir, urlPath, depth = 0) {
     return null;
   }
   const wanted = `${urlPath}.cache`;
-  for (const entry of entries) {
-    if (entry.isFile() && entry.name === wanted.slice(wanted.lastIndexOf("/") + 1)) continue;
-  }
   for (const entry of entries) {
     const full = join(dir, entry.name);
     if (entry.isFile() && full.endsWith(`/${wanted}`)) return full;

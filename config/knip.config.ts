@@ -330,6 +330,8 @@ const config: KnipConfig = {
         "react-day-picker", // calendar + components/ui/calendar.tsx
         "chrono-node", // calendar natural-language date parsing
         "little-date", // calendar date formatting
+        "tinycolor2", // calendar event colour luminance (calendarUtils.isTooDark)
+        "@types/tinycolor2", // type stub for tinycolor2
         "input-otp", // components/ui/input-otp.tsx
         "react-twemoji", // emoji rendering in ignored UI
         "@types/react-twemoji", // type stub for react-twemoji

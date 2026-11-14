@@ -5,10 +5,8 @@ import { getTranslatedAlternative } from "@/features/alternatives/data/getTransl
 import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
 import {
-  getAllCommunityIntegrations,
   getCommunityIntegrations,
   getIntegrationWorkflows,
-  getNativeIntegrations,
   getPublicIntegration,
 } from "@/features/integrations/lib/serverMarketplaceApi";
 import type { CommunityIntegration } from "@/features/integrations/types";
@@ -17,7 +15,6 @@ import {
   getMarketplaceFallbackGuides,
   MARKETPLACE_DOCS_LINKS,
 } from "@/lib/docs-links";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -36,28 +33,13 @@ import {
 
 export const revalidate = 60;
 
-/**
- * Generate static params for all public integrations (community + native).
- * This enables search engines to crawl and index all integration pages.
- * Uses slug for SEO-friendly URLs.
- */
-async function allStaticParams() {
-  const [native, community] = await Promise.all([
-    getNativeIntegrations(),
-    getAllCommunityIntegrations(),
-  ]);
-  const slugs = new Set([...native, ...community].map((item) => item.slug));
-  return [...slugs].map((slug) => ({ slug }));
-}
-
-export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
-}
-
-export const dynamicParams = true;
-
 interface Props {
   readonly params: Promise<{ readonly slug: string }>;
+}
+
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
+export function generateStaticParams() {
+  return [];
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

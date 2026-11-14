@@ -2,10 +2,12 @@ import { serverApi, serverData, serverDataOrNull } from "@/lib/api/server";
 
 /** The community endpoint pages at most this many workflows per request. */
 const COMMUNITY_PAGE_SIZE = 100;
+/** How long a workflow listing serves from the data cache, the use-cases index's old ISR window. */
+const LISTING_REVALIDATE_S = 3600;
 
 /** The curated explore workflows; empty with no backend configured. */
 export async function getExploreWorkflowsServer(limit: number) {
-  const client = serverApi();
+  const client = serverApi({ revalidate: LISTING_REVALIDATE_S });
   if (!client) return [];
   const result = await client.GET("/api/v1/workflows/explore", {
     params: { query: { limit, offset: 0 } },
@@ -15,7 +17,7 @@ export async function getExploreWorkflowsServer(limit: number) {
 
 /** One page of community workflows. */
 export async function getCommunityWorkflowsServer(limit: number, offset = 0) {
-  const client = serverApi();
+  const client = serverApi({ revalidate: LISTING_REVALIDATE_S });
   if (!client) return { workflows: [], total: 0 };
   const result = await client.GET("/api/v1/workflows/community", {
     params: { query: { limit, offset } },

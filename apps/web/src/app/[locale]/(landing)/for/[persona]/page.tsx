@@ -24,10 +24,8 @@ import {
   getTranslatedPersona,
 } from "@/features/personas/data/getTranslatedPersona";
 import { resolvePersonaIntegrations } from "@/features/personas/data/personaIntegrations";
-import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
 import { defaultLocale } from "@/i18n/config";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -246,13 +244,11 @@ function specialPersonaConfig(
     : undefined;
 }
 
-async function allStaticParams() {
-  const slugs = await getAllPersonaSlugs();
-  return slugs.map((persona) => ({ persona }));
-}
+export const revalidate = 3600;
 
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
 export function generateStaticParams() {
-  return prerenderedMarketingParams(allStaticParams);
+  return [];
 }
 
 export async function generateMetadata({

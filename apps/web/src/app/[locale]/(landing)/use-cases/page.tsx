@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
 import { getCommunityWorkflowsServer } from "@/features/workflows/lib/serverWorkflowsApi";
@@ -27,9 +28,9 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-export const revalidate = 3600; // Revalidate every hour
-
 export default async function UseCasesPage() {
+  // Rendered per request from cached listings, so the build never reads the API.
+  await connection();
   const { workflows: communityWorkflows } =
     await getCommunityWorkflowsServer(8);
 

@@ -10,20 +10,7 @@ import { getImageDimensions } from "@/lib/imageDimensions";
 
 const BACKGROUND_LOGO = getImageDimensions("/images/logos/logo.webp");
 
-interface ToolMetadata {
-  title: string | null;
-  description: string | null;
-  favicon: string | null;
-  website_name: string | null;
-  website_image: string | null;
-  url: string;
-}
-
-interface ThanksProps {
-  toolsMetadata: Record<string, ToolMetadata>;
-}
-
-export default function Thanks({ toolsMetadata }: ThanksProps) {
+export default function Thanks() {
   useEffect(() => {
     track("thanks:page_viewed", {});
   }, []);
@@ -91,11 +78,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                   {categoryTools.map((tool) => (
-                    <ToolCard
-                      key={tool.name}
-                      tool={tool}
-                      metadata={toolsMetadata[tool.url]}
-                    />
+                    <ToolCard key={tool.name} tool={tool} />
                   ))}
                 </div>
               </section>

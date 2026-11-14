@@ -12,8 +12,7 @@ import {
   getNativeIntegrations,
 } from "@/features/integrations/lib/serverMarketplaceApi";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { hubPagePath, laterHubPageParams } from "@/lib/hubPagination";
-import { prerenderedMarketingParams } from "@/lib/selfhost";
+import { hubPagePath } from "@/lib/hubPagination";
 import {
   generateBreadcrumbSchema,
   generatePageMetadata,
@@ -35,21 +34,17 @@ async function loadDirectoryPages() {
   return marketplaceDirectoryPages(native, community);
 }
 
-export function generateStaticParams() {
-  return prerenderedMarketingParams(async () =>
-    laterHubPageParams(await loadDirectoryPages()),
-  );
-}
-
-// The directory grows with the marketplace, so a page added since the build renders on demand.
-export const dynamicParams = true;
-
 function pageTitle(page: number, total: number): string {
   return `AI Integration Marketplace: Page ${page} of ${total}`;
 }
 
 function pageDescription(page: number, total: number): string {
   return `Page ${page} of ${total} of the GAIA integration directory: every AI integration and MCP server you can connect, from Gmail and Slack to Notion and GitHub.`;
+}
+
+/** No build-time paths: the page reads the API, so each path renders on its first request into the ISR cache. */
+export function generateStaticParams() {
+  return [];
 }
 
 export async function generateMetadata({

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { tools } from "@/data/tools";
 import Thanks from "@/features/thanks/components/Thanks";
 import {
   generateBreadcrumbSchema,
@@ -9,16 +8,6 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
-import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
-
-interface ToolMetadata {
-  title: string | null;
-  description: string | null;
-  favicon: string | null;
-  website_name: string | null;
-  website_image: string | null;
-  url: string;
-}
 
 export const metadata: Metadata = generatePageMetadata({
   title: "Tools We Love: The Open-Source Projects Behind GAIA",
@@ -37,62 +26,7 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
-async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
-  const logPrefix = "[Thanks Page]";
-
-  try {
-    const apiUrl = getServerApiBaseUrl();
-    if (!apiUrl) {
-      console.error(`
-╔════════════════════════════════════════════════════════════════╗
-║  ${logPrefix} ERROR: API base URL not configured               ║
-║  NEXT_PUBLIC_API_BASE_URL environment variable is missing      ║
-║  Tool metadata will not be fetched                             ║
-╚════════════════════════════════════════════════════════════════╝
-      `);
-      return {};
-    }
-
-    const urls = tools.map((tool) => tool.url);
-    const response = await fetch(`${apiUrl}/fetch-url-metadata`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls }),
-      next: { revalidate: 2592000 }, // Revalidate once per month (30 days)
-    });
-
-    if (!response.ok) {
-      console.error(`
-╔════════════════════════════════════════════════════════════════╗
-║  ${logPrefix} ERROR: Failed to fetch tool metadata             ║
-║  API URL: ${apiUrl}
-║  Status: ${response.status} ${response.statusText}
-║  Tool icons and images will not be displayed                   ║
-╚════════════════════════════════════════════════════════════════╝
-      `);
-      return {};
-    }
-
-    const data = (await response.json()) as {
-      results?: Record<string, ToolMetadata>;
-    };
-    const _resultCount = Object.keys(data.results ?? {}).length;
-    return data.results ?? {};
-  } catch (error) {
-    console.error(`
-╔════════════════════════════════════════════════════════════════╗
-║  ${logPrefix} ERROR: Exception while fetching tool metadata    ║
-║  API URL: ${getServerApiBaseUrl() || "NOT SET"}
-║  Error: ${error instanceof Error ? error.message : String(error)}
-║  Tool icons and images will not be displayed                   ║
-╚════════════════════════════════════════════════════════════════╝
-    `);
-    return {};
-  }
-}
-
-export default async function ThanksPage() {
-  const toolsMetadata = await fetchToolsMetadata();
+export default function ThanksPage() {
   const webPageSchema = generateWebPageSchema(
     "Tools We Love",
     "Discover the incredible open-source projects and tools that power GAIA.",
@@ -110,7 +44,7 @@ export default async function ThanksPage() {
   return (
     <>
       <JsonLd data={[webPageSchema, breadcrumbSchema]} />
-      <Thanks toolsMetadata={toolsMetadata} />
+      <Thanks />
     </>
   );
 }
