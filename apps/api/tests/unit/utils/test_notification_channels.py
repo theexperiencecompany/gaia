@@ -5,11 +5,12 @@ tests/integration/real/test_notify_pipeline_real.py.
 """
 
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.constants.notifications import (
+    CHANNEL_TYPE_CONVERSATION,
     CHANNEL_TYPE_DISCORD,
     CHANNEL_TYPE_IMESSAGE,
     CHANNEL_TYPE_SLACK,
@@ -29,6 +30,10 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationType,
     RedirectConfig,
+)
+from app.utils.notification.channels.conversation import (
+    ConversationChannelAdapter,
+    ConversationPayload,
 )
 from app.utils.notification.channels.discord import DiscordChannelAdapter
 from app.utils.notification.channels.imessage import ImessageChannelAdapter
@@ -225,3 +230,61 @@ class TestExternalTransformBrutalEdges:
             s.FRONTEND_URL = "https://app.example.com"
             content = await DiscordChannelAdapter().transform(request)
         assert content.text == "**T**\nB"
+
+
+class TestConversationChannel:
+    def test_it_handles_only_a_notification_that_names_a_conversation(self) -> None:
+        adapter = ConversationChannelAdapter()
+        request = _make_request()
+
+        assert adapter.channel_type == CHANNEL_TYPE_CONVERSATION
+        assert adapter.can_handle(request) is False
+        assert adapter.can_handle(request.model_copy(update={"conversation_id": "c1"})) is True
+
+    async def test_transform_carries_the_conversation_the_text_and_the_origin(self) -> None:
+        request = _make_request(title="Standup").model_copy(
+            update={"conversation_id": "c1", "message": "standup moved to 10"}
+        )
+
+        payload = await ConversationChannelAdapter().transform(request)
+
+        assert payload == ConversationPayload(
+            conversation_id="c1",
+            notification_id="notif-1",
+            text="standup moved to 10",
+            origin=f'{NotificationSourceEnum.AI_TODO_ADDED.value} "Standup" (id notif-1)',
+        )
+
+    async def test_transform_refuses_a_notification_without_a_conversation(self) -> None:
+        with pytest.raises(ValueError, match="conversation_id"):
+            await ConversationChannelAdapter().transform(_make_request())
+
+    @pytest.mark.parametrize(
+        ("delivered", "status", "error"),
+        [
+            (True, NotificationStatus.DELIVERED, None),
+            (False, NotificationStatus.FAILED, "conversation: not delivered"),
+        ],
+    )
+    async def test_deliver_logs_the_notice_and_reports_whether_it_landed(
+        self, delivered: bool, status: NotificationStatus, error: str | None
+    ) -> None:
+        payload = ConversationPayload("c1", "notif-1", "hi", "origin")
+        with patch(
+            "app.utils.notification.channels.conversation.deliver_message_to_conversation",
+            new=AsyncMock(return_value=delivered),
+        ) as deliver:
+            result = await ConversationChannelAdapter().deliver(payload, "user-1")
+
+        deliver.assert_awaited_once_with(
+            conversation_id="c1",
+            user_id="user-1",
+            notification_id="notif-1",
+            text="hi",
+            origin="origin",
+        )
+        assert (result.channel_type, result.status, result.error_message) == (
+            CHANNEL_TYPE_CONVERSATION,
+            status,
+            error,
+        )
