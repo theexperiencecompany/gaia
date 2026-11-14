@@ -51,6 +51,8 @@ beforeEach(() => {
       conversation("todo-chat", {
         todoId: "todo-1",
         description: "Watch the deploy",
+        // The server lists a tracked todo's chat as unlisted.
+        listed: false,
       }),
     ],
   });
