@@ -633,7 +633,7 @@ async def test_a_result_landing_with_a_new_ask_is_delivered_in_the_same_reply(
     await advance(rig.ports, rig.conversation_id, rig.user_id)
     replies = await rig.of(Reply)
     shown = "\n".join(humans(model.prompts[1]))
-    assert [reply.reply_id for reply in replies][1:] == ["t1"]
+    assert [settled.narrates for settled in await rig.of(ReplySettled)][1:] == [("t1",)]
     assert len(replies) == 2
     assert "3 flights found" in shown
     assert "also book a hotel" in shown
@@ -1132,8 +1132,8 @@ async def test_work_waiting_on_an_approval_no_store_holds_is_settled_once(
     assert [(f.task_id, f.outcome) for f in finished] == [("t1", WorkOutcome.FAILED)]
     assert state.work == ()
     assert state.display is DisplayState.IDLE
-    # The step tells the user in the task's own reply.
-    assert "t1" in [reply.reply_id for reply in await rig.of(Reply)]
+    # The step tells the user in a reply that narrates the task.
+    assert any("t1" in settled.narrates for settled in await rig.of(ReplySettled))
 
 
 @pytest.mark.service
@@ -1762,8 +1762,8 @@ async def test_an_approval_decided_after_its_turn_ended_runs_its_work_under_the_
     [started] = [w for w in await rig.of(WorkStarted) if w.task_id == task_id]
     assert started.cause_through == decided_seq
     replies = await rig.of(Reply)
-    assert [(r.reply_id, r.text) for r in replies][-1] == (task_id, "Sent the invoice to Acme")
-    assert [r.reply_id for r in replies].count(task_id) == 1
+    [narrator] = [s.reply_id for s in await rig.of(ReplySettled) if task_id in s.narrates]
+    assert [(r.reply_id, r.text) for r in replies][-1] == (narrator, "Sent the invoice to Acme")
     assert any("invoice sent" in text for text in humans(model.prompts[1]))
     # What a client (web or a bot) follows: the task's reply is entered once, never twice.
     frames = await read_frames(rig.conversation_id, "0", block_ms=1)
@@ -1772,7 +1772,7 @@ async def test_an_approval_decided_after_its_turn_ended_runs_its_work_under_the_
         for f in frames
         if isinstance(f.frame, EntryFrame) and isinstance(f.frame.entry, Reply)
     ]
-    assert opened.count(task_id) == 1
+    assert opened.count(narrator) == 1
 
 
 @pytest.mark.service
@@ -1911,9 +1911,8 @@ async def test_a_todo_wake_gets_one_write_up_in_its_chat_and_that_write_up_is_wh
     replies = await rig.of(Reply)
     assert woke.run.run_id == "run_acme"
     assert started.answers == (woke.id,)
-    assert [(r.reply_id, r.text) for r in replies] == [
-        (started.task_id, "Acme accepted the quote and asked for the invoice")
-    ]
+    assert [r.text for r in replies] == ["Acme accepted the quote and asked for the invoice"]
+    assert [s.narrates for s in await rig.of(ReplySettled)] == [(started.task_id,)]
     assert [answers for _o, answers in await rig.answered()] == [
         (f"work:{started.task_id}:finished", woke.id)
     ]
