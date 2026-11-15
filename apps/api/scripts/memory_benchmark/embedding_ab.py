@@ -58,6 +58,12 @@ Vector = NDArray[np.float32]
 CF_RUN_URL: Final = "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
 CF_CONCURRENCY: Final = 8
 CF_RETRIES: Final = 4
+#: Workers AI sizes a batch as len(batch) x tokens(longest text) — every text is
+#: padded to the longest — and rejects one over the model's context (60k tokens
+#: for bge-m3). Measured: 100 texts totalling 19,470 chars billed 35,400 tokens.
+#: Batches are grouped by length against this padded budget, counting each char
+#: as at most one token; well under the limit, since near-limit batches time out.
+CF_MAX_PADDED_TOKENS: Final = 16_000
 #: Documents are cut to roughly a 512-token window for every arm alike, so the
 #: longer-context models get no extra text the 512-token baseline never sees.
 MAX_DOC_CHARS: Final = 2000
@@ -181,11 +187,20 @@ class _CloudflareClient:
         url = CF_RUN_URL.format(account_id=self._account, model=model)
         async with self._slots:
             for attempt in range(CF_RETRIES):
-                response = await self._http.post(url, json=body)
+                try:
+                    response = await self._http.post(url, json=body)
+                except httpx.TransportError:
+                    if attempt == CF_RETRIES - 1:
+                        raise
+                    await asyncio.sleep(2**attempt)
+                    continue
                 if response.status_code in (429, 500, 502, 503, 504) and attempt < CF_RETRIES - 1:
                     await asyncio.sleep(2**attempt)
                     continue
-                response.raise_for_status()
+                if response.is_error:
+                    raise RuntimeError(
+                        f"{model}: HTTP {response.status_code} {response.text[:300]}"
+                    )
                 payload = response.json()
                 if not payload.get("success", False):
                     raise RuntimeError(f"{model}: {payload.get('errors')}")
@@ -232,6 +247,21 @@ CLOUDFLARE_EMBEDDERS: Final[dict[str, CloudflareModelSpec]] = {
 }
 
 
+def padded_batches(texts: list[str], max_texts: int, max_padded: int) -> list[list[int]]:
+    """Group text indices by length so len(batch) x longest stays within max_padded."""
+    batches: list[list[int]] = []
+    current: list[int] = []
+    for index in sorted(range(len(texts)), key=lambda i: len(texts[i])):
+        longest = len(texts[index])
+        if current and (len(current) >= max_texts or (len(current) + 1) * longest > max_padded):
+            batches.append(current)
+            current = []
+        current.append(index)
+    if current:
+        batches.append(current)
+    return batches
+
+
 @dataclass
 class CloudflareEmbedder:
     name: str
@@ -246,16 +276,20 @@ class CloudflareEmbedder:
     async def _embed(
         self, texts: list[str], body: Callable[[list[str]], dict[str, object]]
     ) -> list[Vector]:
-        batches = [texts[i : i + self._spec.batch] for i in range(0, len(texts), self._spec.batch)]
+        batches = padded_batches(texts, self._spec.batch, CF_MAX_PADDED_TOKENS)
         results = await asyncio.gather(
-            *(self.client.run(self._spec.model, body(batch)) for batch in batches)
+            *(self.client.run(self._spec.model, body([texts[i] for i in b])) for b in batches)
         )
-        vectors: list[Vector] = []
-        for result in results:
+        vectors: list[Vector | None] = [None] * len(texts)
+        for batch, result in zip(batches, results, strict=True):
             data = result["data"]
             assert isinstance(data, list)
-            vectors.extend(np.asarray(v, dtype=np.float32) for v in data)
-        return vectors
+            for index, vector in zip(batch, data, strict=True):
+                vectors[index] = np.asarray(vector, dtype=np.float32)
+        missing = [i for i, v in enumerate(vectors) if v is None]
+        if missing:
+            raise RuntimeError(f"{self._spec.model}: no vector returned for {len(missing)} texts")
+        return [v for v in vectors if v is not None]
 
     async def embed_queries(self, texts: list[str]) -> list[Vector]:
         return await _cached(
