@@ -2,14 +2,16 @@
 
 import asyncio
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.chat import ConversationSource
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import EntryUpdatedFrame
 from app.models.conversation_log_models import LoggedEntry, Reaction, Reply
-from app.services.conversation import composition
+from app.models.jev_models import JevDecisionsResponse
+from app.services.conversation import ack, composition
 from app.services.conversation.composition import (
     PostHogTurnAnalytics,
     RuntimeEffects,
@@ -20,7 +22,7 @@ from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.catalog.chat import ChatTurnReacted
 from shared.py.analytics.context import AnalyticsContext, current_analytics_context
-from tests.helpers import captured_wide_event
+from tests.helpers import WideEventRecorder, captured_wide_event, reaction_answers
 from tests.unit.services.conversation.log_helpers import EMPTY, logged, user
 
 USER_ID = "6af8ad62a1e833e183aa7a4d"
@@ -140,7 +142,7 @@ async def test_the_instant_reaction_lands_on_the_message_and_reaches_every_clien
     await RuntimeEffects(log, frames, lambda: PORTS)._react("c1", USER_ID, "u1")
     log.state.assert_awaited_once_with("c1", USER_ID)
     log.read_after.assert_awaited_once_with("c1", USER_ID, 0)
-    decide.assert_awaited_once_with("text of u1", "How was the trip?")
+    decide.assert_awaited_once_with("text of u1", "How was the trip?", ConversationSource.WEB)
     log.react_once.assert_awaited_once_with(
         "c1", USER_ID, "u1", Reaction(emoji="\U0001f44d", by=ReactionBy.JEV)
     )
@@ -178,7 +180,7 @@ async def test_the_reaction_reads_the_named_message_and_the_last_reply_before_it
     monkeypatch.setattr(composition, "decide_reaction", decide)
     log = _reacting_log(5, recent)
     await RuntimeEffects(log, MagicMock(), lambda: PORTS)._react("c1", USER_ID, "u1")
-    decide.assert_awaited_once_with("text of u1", "How was the trip?")
+    decide.assert_awaited_once_with("text of u1", "How was the trip?", ConversationSource.WEB)
     log.react_once.assert_not_awaited()
 
 
@@ -189,7 +191,23 @@ async def test_a_message_that_opens_the_conversation_reacts_with_no_previous_rep
     monkeypatch.setattr(composition, "decide_reaction", decide)
     log = _reacting_log(1, [logged(1, user("u1"))])
     await RuntimeEffects(log, MagicMock(), lambda: PORTS)._react("c1", USER_ID, "u1")
-    decide.assert_awaited_once_with("text of u1", "")
+    decide.assert_awaited_once_with("text of u1", "", ConversationSource.WEB)
+
+
+async def test_the_instant_reaction_emits_its_decision_and_latency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answer = JevDecisionsResponse.model_validate(reaction_answers(task=0.0, emoji="\U0001f44d"))
+    monkeypatch.setattr(ack, "post_decisions", AsyncMock(return_value=answer))
+    log = _reacting_log(1, [logged(1, user("u1"))])
+    recorder = WideEventRecorder()
+    with patch("shared.py.wide_events._loguru", recorder):
+        before = asyncio.all_tasks()
+        await RuntimeEffects(log, MagicMock(), lambda: PORTS).start_ack("c1", USER_ID, "u1")
+        await asyncio.gather(*(asyncio.all_tasks() - before))
+    reaction = recorder.event("conversation_instant_reaction")["reaction_ack"]
+    assert reaction["reason"] == "needs_words"
+    assert isinstance(reaction["latency_ms"], int)
 
 
 async def test_a_message_no_longer_in_the_recent_entries_gets_no_reaction(

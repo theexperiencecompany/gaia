@@ -6,11 +6,13 @@ grades the same bytes production does.
 """
 
 import asyncio
+from collections.abc import Mapping
 import time
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+from app.constants.chat import ConversationSource
 from app.constants.reactions import (
     REACTION_CONTEXT_MAX_CHARS,
     REACTION_EMOJI_INSTRUCTIONS,
@@ -19,6 +21,7 @@ from app.constants.reactions import (
     REACTION_KIND_INSTRUCTIONS,
     REACTION_KIND_QUESTION_KEY,
     REACTION_PALETTE,
+    REACTION_PALETTE_BY_SURFACE,
     REACTION_STATE_PREVIOUS_ASSISTANT,
     REACTION_STATE_USER_MESSAGE,
     REACTION_THRESHOLD,
@@ -59,7 +62,9 @@ class ReactionDecision(BaseModel):
 
 
 def reaction_request(
-    message_text: str, previous_assistant_text: str
+    message_text: str,
+    previous_assistant_text: str,
+    palette: Mapping[str, str] = REACTION_PALETTE,
 ) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
     """Return the Decisions state and the three questions for one user message."""
     state: dict[str, object] = {
@@ -80,17 +85,19 @@ def reaction_request(
         REACTION_EMOJI_QUESTION_KEY: {
             "type": "choice",
             "instructions": REACTION_EMOJI_INSTRUCTIONS,
-            "criteria": dict(REACTION_PALETTE),
+            "criteria": dict(palette),
         },
     }
     return state, questions
 
 
-def read_reaction(body: JevDecisionsResponse) -> ReactionDecision:
+def read_reaction(
+    body: JevDecisionsResponse, palette: Mapping[str, str] = REACTION_PALETTE
+) -> ReactionDecision:
     """Apply the reaction rule to JEV's answers; raise ValueError on a missing or malformed answer."""
     upset = body.noul(REACTION_UPSET_QUESTION_KEY)
     kind = body.choice(REACTION_KIND_QUESTION_KEY, set(ReactionKind), label="reaction kind ")
-    emoji = body.choice(REACTION_EMOJI_QUESTION_KEY, REACTION_PALETTE, label="reaction emoji ")
+    emoji = body.choice(REACTION_EMOJI_QUESTION_KEY, palette, label="reaction emoji ")
     probabilities = kind.probabilities
     if not probabilities or not probabilities.keys() <= set(ReactionKind):
         raise ValueError(f"reaction kind answer has no usable probabilities: {probabilities!r}")
@@ -114,13 +121,18 @@ def read_reaction(body: JevDecisionsResponse) -> ReactionDecision:
     )
 
 
-async def decide_reaction(message_text: str, previous_assistant_text: str) -> ReactionDecision:
-    """Ask JEV whether to react to the message and with which emoji; any failure is no reaction."""
+async def decide_reaction(
+    message_text: str, previous_assistant_text: str, surface: ConversationSource
+) -> ReactionDecision:
+    """Ask JEV whether to react and with which emoji the surface accepts; any failure is no reaction."""
+    palette = REACTION_PALETTE_BY_SURFACE.get(surface, REACTION_PALETTE)
     started = time.perf_counter()
     try:
         async with asyncio.timeout(REACTION_TIMEOUT_SECONDS):
-            body = await post_decisions(*reaction_request(message_text, previous_assistant_text))
-        decision = read_reaction(body)
+            body = await post_decisions(
+                *reaction_request(message_text, previous_assistant_text, palette)
+            )
+        decision = read_reaction(body, palette)
     except Exception as e:
         # A missing tap-back is the whole degradation: the reply still comes.
         reason = ReactionReason(jev_failure(e))

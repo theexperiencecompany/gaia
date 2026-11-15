@@ -38,7 +38,7 @@ from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.context import AnalyticsContext, analytics_context
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 # The entries before a message the instant reaction reads GAIA's previous words from.
 _REACTION_CONTEXT_ENTRIES = 20
@@ -96,8 +96,10 @@ class RuntimeEffects:
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:
         """Decide the instant reaction beside the step; the accept that asked never waits for it."""
-        spawn_background_task(
-            self._react(conversation_id, user_id, message_id), name="conversation_instant_reaction"
+        spawn_logged_task(
+            "conversation_instant_reaction",
+            self._react(conversation_id, user_id, message_id),
+            conversation_id=conversation_id,
         )
 
     async def reset_workflow_threads(self, conversation_id: str) -> None:
@@ -120,7 +122,9 @@ class RuntimeEffects:
         )
         if said is None:
             return
-        decision = await decide_reaction(said.text, _previous_reply_text(recent, message_id))
+        decision = await decide_reaction(
+            said.text, _previous_reply_text(recent, message_id), said.surface
+        )
         if decision.emoji is None:
             return
         reacted = await self._log.react_once(
