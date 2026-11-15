@@ -37,11 +37,20 @@ class LogReadRepository(ConversationRepository):
         reply_ids: Sequence[str] | None = None,
     ) -> list[LoggedEntry] | None:
         """Return the log entries after after_seq (through through_seq, of ids) in seq order; None for a missing conversation."""
+        before = None if through_seq is None else through_seq + 1
+        window = EntryWindow(after_seq=after_seq, before_seq=before, ids=ids, reply_ids=reply_ids)
+        return await self._read_window(conversation_id, user_id, window)
+
+    async def read_pinned(self, conversation_id: str, *, user_id: str) -> list[LoggedEntry] | None:
+        """Return the entries the user pinned, in seq order; None for a missing conversation."""
+        return await self._read_window(conversation_id, user_id, EntryWindow(pinned=True))
+
+    async def _read_window(
+        self, conversation_id: str, user_id: str, window: EntryWindow
+    ) -> list[LoggedEntry] | None:
         heads = await self._read_heads({"conversation_id": conversation_id, "user_id": user_id})
         if not heads:
             return None
-        before = None if through_seq is None else through_seq + 1
-        window = EntryWindow(after_seq=after_seq, before_seq=before, ids=ids, reply_ids=reply_ids)
         [(_, entries)] = await self._union_for(heads, window)
         return [logged_of(entry) for entry in entries]
 

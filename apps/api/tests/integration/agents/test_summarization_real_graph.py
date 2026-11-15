@@ -14,7 +14,7 @@ import asyncio
 from collections.abc import Mapping
 import json
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from hypothesis import given, settings as hypothesis_settings, strategies as st
 from langchain.agents.middleware.summarization import ContextSize
@@ -44,19 +44,24 @@ from app.agents.context.slots import (
     is_conversation_summary,
     mark,
 )
-from app.agents.middleware.factory import create_comms_middleware
+from app.agents.core.graph_manager import GraphManager
+from app.agents.middleware.factory import create_comms_history_fold, create_comms_middleware
 from app.agents.middleware.summarization import (
     ArchiveReader,
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.config.settings import settings
+from app.constants.conversation import LOG_SEQ
 from app.constants.summarization import (
-    COMMS_SUMMARIZATION_KEEP_TOKENS,
     COMMS_SUMMARIZATION_TRIGGER_TOKENS,
 )
+from app.models.conversation_log_models import Batch, LoggedEntry, Reply, StepClaim
 from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
 from app.override.langgraph_bigtool.create_agent import create_agent
+from app.services.conversation.comms_runner import CommsGraphRunner, CommsTurn
+from app.services.conversation.ports import FoldPlan, Kept
 from tests.helpers import BindableToolsFakeModel
+from tests.unit.services.conversation.log_helpers import logged, user
 
 STATIC_PROMPT = "You are GAIA, the user's personal assistant."
 SUMMARY = "NEW SUMMARY"
@@ -648,7 +653,9 @@ def _comms_turns(first: int, count: int) -> list[BaseMessage]:
             tool_calls=[{"name": "web_search_tool", "args": {"q": f"q{n}"}, "id": f"w{n}"}],
         )
         messages += [
-            HumanMessage(content=f"[#{n}] question {n}", id=f"log:u{n}"),
+            HumanMessage(
+                content=f"[#{n}] question {n}", id=f"log:u{n}", additional_kwargs={LOG_SEQ: 10 * n}
+            ),
             call,
             ToolMessage(content="r" * _LOOKUP_RESULT_CHARS, tool_call_id=f"w{n}", id=f"res{n}"),
             AIMessage(content=f"answer {n} " + "a" * _REPLY_CHARS, id=f"ans{n}"),
@@ -677,68 +684,165 @@ async def _comms_turn(
     await graph.ainvoke(turn, config=_config(thread_id))
 
 
+def _history_fold(summarizer: BaseChatModel) -> CommsGraphRunner:
+    """Return the comms runner production folds settled threads with, archiving off."""
+    fold = create_comms_history_fold(summarizer)
+    fold.archive = None
+
+    async def no_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
+        raise AssertionError("a history fold builds no turn")
+
+    return CommsGraphRunner(no_turn, history_fold=fold)
+
+
+async def _plan(
+    graph: CompiledStateGraph,
+    runner: CommsGraphRunner,
+    thread_id: str,
+    owed: frozenset[str] = frozenset(),
+    pinned: tuple[LoggedEntry, ...] = (),
+) -> FoldPlan:
+    with patch.object(GraphManager, "get_graph", AsyncMock(return_value=graph)):
+        plan = await runner.plan_fold(thread_id, "u1", Kept(owed, pinned))
+    assert plan is not None
+    return plan
+
+
+async def _apply(
+    graph: CompiledStateGraph, runner: CommsGraphRunner, thread_id: str, plan: FoldPlan
+) -> bool:
+    claim = StepClaim(conversation_id=thread_id, user_id="u1", epoch=1)
+    with patch.object(GraphManager, "get_graph", AsyncMock(return_value=graph)):
+        return await runner.apply_fold(claim, plan)
+
+
+async def _thread(graph: CompiledStateGraph, thread_id: str) -> list[BaseMessage]:
+    return (await graph.aget_state(_config(thread_id))).values["messages"]
+
+
 @pytest.mark.integration
 @pytest.mark.asyncio
-class TestCommsHistoryBudget:
-    """A long comms thread reaches the model as prompt, summary, open requests and a recent window."""
+class TestCommsHistoryFoldOffTheReplyPath:
+    """A settled comms thread past its budget folds in the background; no turn waits on the summary."""
 
-    async def test_a_conversation_over_budget_reaches_the_model_under_it(self):
+    async def test_a_turn_over_the_trigger_never_calls_the_summarizer(self):
         model = RecordingModel(responses=[AIMessage(content="done")])
-        summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
-        graph = _compile(model, _comms_summarization(summarizer))
+        inline = RecordingSummarizer(messages=iter([]))
+        graph = _compile(model, _comms_summarization(inline))
         history = _comms_history(50)
+        assert count_tokens_approximately(history) > COMMS_SUMMARIZATION_TRIGGER_TOKENS
 
-        await _comms_turn(graph, history, "comms-budget", [])
+        await _comms_turn(graph, history, "comms-hot", [])
 
-        sent = model.seen[0]
-        sent_tokens = count_tokens_approximately(sent)
-        assert sent_tokens <= COMMS_SUMMARIZATION_TRIGGER_TOKENS
-        assert sent_tokens < count_tokens_approximately(history) / 2
-        # Cache-friendly prefix: the stable prompt, then the summary, then recent turns.
+        assert inline.prompts == []
+        assert _ids(model.seen[0]) == _ids(history)
+
+    async def test_the_background_fold_writes_the_summary_and_the_next_turn_reads_it(self):
+        model = RecordingModel(responses=[AIMessage(content="done")] * 2)
+        inline = RecordingSummarizer(messages=iter([]))
+        graph = _compile(model, _comms_summarization(inline))
+        background = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)]))
+        runner = _history_fold(background)
+        history = _comms_history(50)
+        await _comms_turn(graph, history, "comms-fold", [])
+
+        plan = await _plan(graph, runner, "comms-fold", owed=frozenset({"u3", "u20"}))
+        assert await _apply(graph, runner, "comms-fold", plan)
+        latest = HumanMessage(content="[#1000] next question", id="log:u1000")
+        await _comms_turn(graph, [latest], "comms-fold", [])
+
+        assert inline.prompts == []
+        sent = model.seen[1]
+        assert count_tokens_approximately(sent) <= COMMS_SUMMARIZATION_TRIGGER_TOKENS
+        # Cache-friendly prefix: the stable prompt, then the summary, then what stayed.
         assert sent[0].id == "static0"
         assert is_conversation_summary(sent[1])
-        assert sent[-1].content == "[#999] latest question"
+        assert SUMMARY in str(sent[1].content)
+        assert sent[-1].content == "[#1000] next question"
         verbatim = {m.id: m.content for m in history}
-        assert all(m.content == verbatim[m.id] for m in sent[2:])
-        assert count_tokens_approximately(sent[2:-1]) <= COMMS_SUMMARIZATION_KEEP_TOKENS
+        kept = [m for m in sent[2:] if m.id in verbatim]
+        assert all(m.content == verbatim[m.id] for m in kept)
+        assert [m.content for m in kept if m.id in {"log:u3", "log:u20"}] == [
+            "[#3] question 3",
+            "[#20] question 20",
+        ]
+        assert "[#3] question 3" not in background.prompts[0]
+        assert "[#4] question 4" in background.prompts[0]
         _assert_no_orphan_tool_results(sent)
 
-    async def test_open_requests_stay_verbatim_and_out_of_the_summary(self):
+    async def test_a_turn_between_plan_and_apply_loses_no_message(self):
+        model = RecordingModel(responses=[AIMessage(content="done", id="done1")] * 2)
+        graph = _compile(model, _comms_summarization(RecordingSummarizer(messages=iter([]))))
+        background = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 2))
+        runner = _history_fold(background)
+        await _comms_turn(graph, _comms_history(50), "comms-race", [])
+
+        stale = await _plan(graph, runner, "comms-race")
+        racing = HumanMessage(content="[#1000] asked while folding", id="log:u1000")
+        await _comms_turn(graph, [racing], "comms-race", [])
+        before = await _thread(graph, "comms-race")
+
+        assert not await _apply(graph, runner, "comms-race", stale)
+        assert _ids(await _thread(graph, "comms-race")) == _ids(before)
+        assert _summaries(before) == []
+
+        assert await _apply(graph, runner, "comms-race", await _plan(graph, runner, "comms-race"))
+        folded = await _thread(graph, "comms-race")
+        assert [m.content for m in folded if m.id == "log:u1000"] == ["[#1000] asked while folding"]
+        assert len(_summaries(folded)) == 1
+
+    async def test_pinned_messages_and_replies_stay_verbatim(self):
         model = RecordingModel(responses=[AIMessage(content="done")])
-        summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
-        graph = _compile(model, _comms_summarization(summarizer))
-        open_ids = ["log:u3", "log:u20"]
+        graph = _compile(model, _comms_summarization(RecordingSummarizer(messages=iter([]))))
+        background = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)]))
+        runner = _history_fold(background)
+        history = _comms_history(50)
+        await _comms_turn(graph, history, "comms-pins", [])
+        # Turn n's question is logged at seq 10n; its reply opens just after, at 10n + 5.
+        pinned = (
+            logged(30, user("u3")),
+            logged(55, Reply(id="r5", reply_id="r5", attempt_id="a5", pinned=True)),
+        )
 
-        await _comms_turn(graph, _comms_history(50), "comms-open", open_ids)
+        plan = await _plan(graph, runner, "comms-pins", pinned=pinned)
+        assert await _apply(graph, runner, "comms-pins", plan)
 
-        sent = model.seen[0]
-        kept_open = [m.content for m in sent if m.id in open_ids]
-        assert kept_open == ["[#3] question 3", "[#20] question 20"]
-        assert sent[0].id == "static0"
-        assert is_conversation_summary(sent[1])
-        assert "[#3] question 3" not in summarizer.prompts[0]
-        assert "[#4] question 4" in summarizer.prompts[0]
-        _assert_no_orphan_tool_results(sent)
+        by_id = {m.id: m.content for m in await _thread(graph, "comms-pins")}
+        verbatim = {m.id: m.content for m in history}
+        assert by_id["log:u3"] == verbatim["log:u3"]
+        assert by_id["ans5"] == verbatim["ans5"]
+        assert "ans4" not in by_id
+        prompt = background.prompts[0]
+        assert "[#3] question 3" not in prompt
+        assert "answer 5 a" not in prompt
+        assert "answer 4 a" in prompt
 
     async def test_the_summary_rolls_forward_from_the_last_one(self):
         model = RecordingModel(responses=[AIMessage(content="done")] * 2)
-        summarizer = RecordingSummarizer(
-            messages=iter([AIMessage(content=f"SUM-{i}") for i in range(5)])
+        graph = _compile(model, _comms_summarization(RecordingSummarizer(messages=iter([]))))
+        background = RecordingSummarizer(
+            messages=iter([AIMessage(content=f"SUM-{i}") for i in range(2)])
         )
-        graph = _compile(model, _comms_summarization(summarizer))
-        config = _config("comms-rolling")
+        runner = _history_fold(background)
+        owed = frozenset({"u3"})
 
-        await _comms_turn(graph, _comms_history(50), "comms-rolling", ["log:u3"])
-        later = [*_comms_turns(100, 25), HumanMessage(content="next", id="next")]
-        await _comms_turn(graph, later, "comms-rolling", ["log:u3"])
+        await _comms_turn(graph, _comms_history(50), "comms-rolling", [])
+        await _apply(
+            graph, runner, "comms-rolling", await _plan(graph, runner, "comms-rolling", owed)
+        )
+        later = [*_comms_turns(100, 40), HumanMessage(content="next", id="next")]
+        await _comms_turn(graph, later, "comms-rolling", [])
+        await _apply(
+            graph, runner, "comms-rolling", await _plan(graph, runner, "comms-rolling", owed)
+        )
 
-        assert len(summarizer.prompts) == 2
-        second = summarizer.prompts[1]
+        assert len(background.prompts) == 2
+        second = background.prompts[1]
         # Only the new overflow is read again, on top of the last summary.
         assert "SUM-0" in second
         assert "[#4] question 4" not in second
         assert "[#100] question 100" in second
-        kept = (await graph.aget_state(config)).values["messages"]
+        kept = await _thread(graph, "comms-rolling")
         summaries = [str(m.content) for m in _summaries(kept)]
         assert len(summaries) == 1
         assert summaries[0].endswith("SUM-1")
@@ -753,13 +857,17 @@ class TestCommsHistoryBudget:
 )
 def test_open_requests_always_reach_comms_verbatim(turns: int, open_turns: set[int]) -> None:
     model = RecordingModel(responses=[AIMessage(content="done")])
-    summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
-    graph = _compile(model, _comms_summarization(summarizer))
-    open_ids = [f"log:u{n}" for n in sorted(open_turns) if n < turns]
+    graph = _compile(model, _comms_summarization(RecordingSummarizer(messages=iter([]))))
+    runner = _history_fold(RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)])))
+    owed = frozenset(f"u{n}" for n in open_turns if n < turns)
 
-    asyncio.run(_comms_turn(graph, _comms_history(turns), "comms-prop", open_ids))
+    async def turn_then_fold() -> list[BaseMessage]:
+        await _comms_turn(graph, _comms_history(turns), "comms-prop", [])
+        await _apply(graph, runner, "comms-prop", await _plan(graph, runner, "comms-prop", owed))
+        return await _thread(graph, "comms-prop")
 
-    sent = model.seen[0]
-    by_id = {m.id: m.content for m in sent}
+    folded = asyncio.run(turn_then_fold())
+
+    by_id = {m.id: m.content for m in folded}
     assert all(by_id.get(f"log:u{n}") == f"[#{n}] question {n}" for n in open_turns if n < turns)
-    assert count_tokens_approximately(sent) <= COMMS_SUMMARIZATION_TRIGGER_TOKENS
+    assert count_tokens_approximately(folded) <= COMMS_SUMMARIZATION_TRIGGER_TOKENS

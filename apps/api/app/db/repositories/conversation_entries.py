@@ -425,6 +425,8 @@ class EntryWindow:
     # An entry whose field holds one of the names, as openers_outside names them.
     named: Mapping[str, Sequence[str]] | None = None
     kinds: frozenset[str] | None = None
+    # Only the entries the user pinned.
+    pinned: bool = False
 
     def upper(self, log_head: int) -> int:
         return log_head if self.before_seq is None else min(log_head, self.before_seq - 1)
@@ -438,7 +440,11 @@ class EntryWindow:
             *([{"reply_id": {"$in": list(self.reply_ids)}}] if self.reply_ids is not None else []),
             *({field: {"$in": list(names)}} for field, names in (self.named or {}).items()),
         ]
-        return {"kind": {"$in": sorted(self._kinds())}, **({"$or": named} if named else {})}
+        return {
+            "kind": {"$in": sorted(self._kinds())},
+            **({"$or": named} if named else {}),
+            **({"pinned": True} if self.pinned else {}),
+        }
 
     def admits(self, entry: StoredEntry, log_head: int) -> bool:
         in_range = self.after_seq < entry.seq <= self.upper(log_head)
@@ -446,6 +452,7 @@ class EntryWindow:
             in_range
             and entry.shape().kind in self._kinds()
             and self._names(entry.id, entry.shape())
+            and (entry.shape().pinned or not self.pinned)
         )
 
     def take(self, union: Mapping[int, StoredEntry]) -> list[StoredEntry]:

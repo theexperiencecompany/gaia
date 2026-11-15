@@ -25,6 +25,7 @@ from app.services.conversation.ports import (
     ClaimLost,
     CommsRun,
     Finished,
+    Kept,
     ModelOutput,
     RuntimePorts,
     Streamed,
@@ -85,7 +86,10 @@ async def _run_once(
             context,
             attempt.ledger,
             note,
-            owed=attempt.view.state.owed_answers,
+            kept=Kept(
+                attempt.view.state.owed_answers,
+                await ports.log.pinned(attempt.claim.conversation_id, attempt.claim.user_id),
+            ),
         )
     except Exception as error:  # a run that cannot start fails its inputs like one that crashed
         await fail_attempt(ports, attempt, error)

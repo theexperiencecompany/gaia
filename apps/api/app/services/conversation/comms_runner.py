@@ -20,6 +20,8 @@ from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import record_interruption
 from app.agents.core.messages import MessageAttachments, MessageScope, human_content
 from app.agents.core.nodes.drain_conversation_log import close_feed, feed, open_feed
+from app.agents.middleware.runtime_adapter import GaiaAgentState
+from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.agents.tools.executor_tool import call_executor
 from app.constants.agents import TimeHorizon
 from app.constants.conversation import (
@@ -50,8 +52,17 @@ from app.services.conversation.comms_input import (
     absorbed_messages,
     attempt_messages,
     entry_message_id,
+    verbatim_message_ids,
 )
-from app.services.conversation.ports import CancelReason, Finished, RunEvent, StepLimitReached
+from app.services.conversation.ports import (
+    NOTHING_KEPT,
+    CancelReason,
+    Finished,
+    FoldPlan,
+    Kept,
+    RunEvent,
+    StepLimitReached,
+)
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.analytics.context import AnalyticsContext, analytics_context
 
@@ -221,9 +232,12 @@ class CommsGraphRunner:
         self,
         build_turn: CommsTurnBuilder,
         cancel_confirm_seconds: float = COMMS_CANCEL_CONFIRM_SECONDS,
+        *,
+        history_fold: WorkspaceArchivingSummarizationMiddleware,
     ) -> None:
         self._build_turn = build_turn
         self._confirm = cancel_confirm_seconds
+        self._fold = history_fold
 
     async def start(
         self,
@@ -233,7 +247,7 @@ class CommsGraphRunner:
         ledger: str,
         note: str | None = None,
         *,
-        owed: frozenset[str] = frozenset(),
+        kept: Kept = NOTHING_KEPT,
     ) -> CommsGraphRun:
         """Start an attempt on batch with context as notes, its closing tools writing ledger; a re-sent batch upserts its own messages."""
         graph = await GraphManager.get_graph(GraphName.COMMS)
@@ -254,10 +268,45 @@ class CommsGraphRunner:
             *_turn_context(turn.closing, batch, len(turn.opening)),
             *([] if note is None else [_still_open_message(batch, note)]),
         ]
-        # Inputs still owed an answer outlive history summarization word for word.
-        verbatim = sorted(entry_message_id(i) for i in owed | set(_answered(batch.waking)))
+        # Inputs still owed an answer, and what the user pinned, outlive summarization word for word.
+        inputs = kept.owed | set(_answered(batch.waking))
+        verbatim = verbatim_message_ids(thread, inputs, kept.pinned)
         state = {**turn.state, "messages": messages, "verbatim_message_ids": verbatim}
         return CommsGraphRun(claim, graph, config, turn, state, self._confirm)
+
+    async def plan_fold(self, conversation_id: str, user_id: str, kept: Kept) -> FoldPlan | None:
+        """Summarize the thread's oldest turns past its budget, writing nothing; None under it."""
+        graph = await GraphManager.get_graph(GraphName.COMMS)
+        config = _thread_config(conversation_id, user_id)
+        thread = await _thread(graph, config)
+        state = GaiaAgentState(
+            messages=thread,
+            verbatim_message_ids=verbatim_message_ids(thread, kept.owed, kept.pinned),
+        )
+        update = await self._fold.afold(state, config)
+        if update is None:
+            return None
+        return FoldPlan(tuple(m.id for m in thread), tuple(update["messages"]))
+
+    async def apply_fold(self, claim: StepClaim, plan: FoldPlan) -> bool:
+        """Write the planned fold under the step's claim; False when a turn wrote the thread since."""
+        graph = await GraphManager.get_graph(GraphName.COMMS)
+        config = _thread_config(claim.conversation_id, claim.user_id)
+        if tuple(m.id for m in await _thread(graph, config)) != plan.thread:
+            return False
+        # as_node="tools" as record_interruption writes: the next turn's input starts a fresh run.
+        await graph.aupdate_state(config, {"messages": list(plan.messages)}, as_node="tools")
+        return True
+
+
+def _thread_config(conversation_id: str, user_id: str) -> AgentRunnableConfig:
+    configurable: AgentConfigurable = {"thread_id": conversation_id, "user_id": user_id}
+    return cast(AgentRunnableConfig, {CONF: configurable})
+
+
+async def _thread(graph: CompiledAgentGraph, config: AgentRunnableConfig) -> list[AnyMessage]:
+    snapshot = await graph.aget_state(config)
+    return cast(_ThreadValues, snapshot.values or {}).get("messages", [])
 
 
 def _still_open_message(batch: Batch, note: str) -> HumanMessage:

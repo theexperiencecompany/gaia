@@ -5,10 +5,10 @@ the entry's seq under additional_kwargs[LOG_SEQ], so re-sending a batch after a
 restart upserts in place and the model sees each input once.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
 
-from langchain_core.messages import AnyMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
 from app.agents.core.interruption import INTERRUPTION_MARKER, INTERRUPTION_SOURCE
 from app.constants.conversation import (
@@ -52,6 +52,31 @@ _SOURCE_KEY = "lc_source"
 def entry_message_id(entry_id: str) -> str:
     """Return the thread message id of the log entry with entry_id."""
     return f"{LOG_MESSAGE_ID_PREFIX}{entry_id}"
+
+
+def verbatim_message_ids(
+    thread: Sequence[AnyMessage], inputs: Iterable[str], pinned: Sequence[LoggedEntry]
+) -> list[str]:
+    """Return the thread ids history summarization keeps word for word: inputs, and what the user pinned.
+
+    A pinned reply keeps the text GAIA wrote between the last input logged before it and
+    the first logged after it: its turn's words, whose messages carry no entry id.
+    """
+    kept = {entry_message_id(i) for i in inputs}
+    kept |= {entry_message_id(p.entry.id) for p in pinned if isinstance(p.entry, UserMessage)}
+    replies = [p.seq for p in pinned if isinstance(p.entry, Reply)]
+    after = -1
+    words: list[str] = []
+    for message in [*thread, None]:
+        seq = None if message is None else message.additional_kwargs.get(LOG_SEQ)
+        if message is None or isinstance(seq, int):
+            before = seq if isinstance(seq, int) else None
+            if any(after < r and (before is None or r < before) for r in replies):
+                kept.update(words)
+            after, words = (before if before is not None else after), []
+        elif isinstance(message, AIMessage) and message.text and message.id is not None:
+            words.append(message.id)
+    return sorted(kept)
 
 
 def attempt_messages(

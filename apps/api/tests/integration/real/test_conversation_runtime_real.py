@@ -60,6 +60,7 @@ from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManag
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
 from app.agents.core.subagents.subagent_runner import prepare_executor_execution
+from app.agents.middleware.factory import create_comms_history_fold
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.run_record import append_call
 from app.api.v1.middleware.tiered_rate_limiter import CostBudgetExceededException
@@ -459,6 +460,7 @@ async def rig_for(
                 runner=CommsGraphRunner(
                     build_turn or _turn_builder(turns, user_id),
                     cancel_confirm_seconds=_CONFIRM_SECONDS,
+                    history_fold=create_comms_history_fold(model),
                 ),
                 frames=frames,
                 effects=effects,

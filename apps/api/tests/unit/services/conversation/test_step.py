@@ -24,7 +24,14 @@ from app.models.conversation_log_models import (
 )
 from app.services.conversation import step
 from app.services.conversation.log import accept
-from app.services.conversation.ports import Finished, ModelOutput, Reacted, Replied, Streamed
+from app.services.conversation.ports import (
+    Finished,
+    FoldPlan,
+    ModelOutput,
+    Reacted,
+    Replied,
+    Streamed,
+)
 from app.utils.liveness import keep_proving
 from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.log_helpers import asked, fired, todo_run, user
@@ -305,6 +312,7 @@ async def test_a_message_logged_during_an_attempt_is_found_by_the_next_serve() -
         state=4,
         append_fenced=4,
         amend=1,
+        pinned=2,
         release=1,
     )
 
@@ -329,3 +337,47 @@ async def test_a_message_landing_just_after_a_settle_is_served_without_releasing
     await run(rt)
     assert [item.answers for item in await settles(rt)] == [("u1",), ("u2",)]
     assert releases == ["release"]
+
+
+_FOLD = FoldPlan(thread=("log:u0",), messages=())
+
+
+async def test_a_settled_turn_asks_for_a_history_fold_and_never_plans_one_itself() -> None:
+    rt = Runtime()
+    rt.runner.script([Finished(Replied("hi"))])
+    rt.runner.fold_plans = [_FOLD]
+    await send(rt, user("u0"))
+    await run(rt)
+    assert rt.effects.folds == [CONVERSATION]
+    assert rt.runner.fold_plans == [_FOLD]
+
+
+async def test_a_history_fold_writes_under_the_claim_then_answers_what_arrived() -> None:
+    rt = Runtime()
+    rt.runner.script([Finished(Replied("hi"))])
+    rt.runner.fold_plans = [_FOLD]
+    await send(rt, user("u0"))
+    await step.fold_history(rt.ports, CONVERSATION, USER)
+    assert [plan for _, plan in rt.runner.applied] == [_FOLD]
+    assert [item.answers for item in await settles(rt)] == [("u0",)]
+    # Released once caught up: the next step can claim it.
+    assert await rt.log.claim(CONVERSATION, USER) is not None
+
+
+async def test_a_history_fold_never_writes_while_a_turn_holds_the_step() -> None:
+    rt = Runtime()
+    rt.runner.fold_plans = [_FOLD]
+    await send(rt, user("u0"))
+    assert await rt.log.claim(CONVERSATION, USER) is not None
+    await step.fold_history(rt.ports, CONVERSATION, USER)
+    assert rt.runner.applied == []
+
+
+async def test_a_pinned_message_rides_every_later_run() -> None:
+    rt = Runtime()
+    rt.runner.script([Finished(Replied("hi"))], [Finished(Replied("again"))])
+    await send(rt, user("u0").model_copy(update={"pinned": True}))
+    await run(rt)
+    await send(rt, user("u1"))
+    await run(rt)
+    assert rt.runner.pinned == [("u0",), ("u0",)]

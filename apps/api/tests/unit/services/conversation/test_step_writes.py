@@ -183,6 +183,8 @@ async def test_a_plain_turn_reads_nothing_its_own_writes_already_told_it() -> No
         hint=3,
         append_fenced=2,
         amend=1,
+        # What the user pinned is no write of the step's: each run reads it once.
+        pinned=1,
         release=1,
     )
 
@@ -212,6 +214,7 @@ async def test_a_turn_that_hands_its_run_a_message_spends_a_fixed_number_of_log_
         state=4,
         append_fenced=4,
         amend=2,
+        pinned=1,
         release=1,
     )
 

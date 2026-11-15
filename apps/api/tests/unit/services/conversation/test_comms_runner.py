@@ -8,6 +8,7 @@ from typing import Any, TypeVar, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import (
     AIMessage,
     AnyMessage,
@@ -25,6 +26,7 @@ from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import INTERRUPTION_MARKER
 from app.agents.core.messages import MessageAttachments, MessageScope
 from app.agents.core.nodes.drain_conversation_log import close_feed, open_feed
+from app.agents.middleware.factory import create_comms_history_fold
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.agents.tools.comms_turn_tools import react, stay_silent
 from app.agents.tools.core.registry import init_tool_registry
@@ -60,6 +62,7 @@ from app.services.conversation.log import accept
 from app.services.conversation.ports import (
     CancelReason,
     Finished,
+    Kept,
     ModelOutput,
     Reacted,
     Replied,
@@ -240,11 +243,15 @@ def runner(
             ),
         )
 
-    return CommsGraphRunner(build, cancel_confirm_seconds=CONFIRM_SECONDS)
+    return CommsGraphRunner(build, cancel_confirm_seconds=CONFIRM_SECONDS, history_fold=UNUSED_FOLD)
 
 
 def batch(*entries: LoggedEntry) -> Batch:
     return Batch(start=entries[0].seq, end=entries[-1].seq, waking=entries, first_at=entries[0].at)
+
+
+# These runs never fold history: a fold would ask the fake for a summary it has none of.
+UNUSED_FOLD = create_comms_history_fold(GenericFakeChatModel(messages=iter([])))
 
 
 def claim(conversation_id: str, user_id: str = USER) -> StepClaim:
@@ -324,7 +331,7 @@ async def test_owed_and_batch_inputs_are_kept_verbatim_through_summarization(
                 batch(logged(2, user("u1"))),
                 (),
                 LEDGER,
-                owed=frozenset({"u0"}),
+                kept=Kept(owed=frozenset({"u0"})),
             )
             await collect(run)
         snapshot = await graph.aget_state({"configurable": {"thread_id": conversation_id}})
@@ -1027,9 +1034,9 @@ async def test_a_run_reads_the_comms_graph_and_builds_its_turn_from_the_batch(
             patch.object(GraphManager, "get_graph", get_graph),
             patch("app.services.conversation.comms_runner.CommsEventMapper", mapper),
         ):
-            run = await CommsGraphRunner(recording_build, CONFIRM_SECONDS).start(
-                claim(conversation_id), first, (), LEDGER
-            )
+            run = await CommsGraphRunner(
+                recording_build, CONFIRM_SECONDS, history_fold=UNUSED_FOLD
+            ).start(claim(conversation_id), first, (), LEDGER)
             await collect(run)
     get_graph.assert_awaited_once_with(GraphName.COMMS)
     assert built == [(claim(conversation_id), first)]

@@ -10,6 +10,8 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 
 from app.agents.core.background.work_cancel import cancel_named_work
+from app.agents.llm.client import init_llm
+from app.agents.middleware.factory import create_comms_history_fold
 from app.config.settings import settings
 from app.constants.conversation import STEP_DRAIN_GRACE_SECONDS, STEP_TICK_SECONDS
 from app.db.repositories.conversation_log import conversation_log_repository
@@ -33,7 +35,7 @@ from app.services.conversation.event_stream import RedisStreamFrames
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import ConversationAnalyticsEvent, Frames, RuntimePorts
 from app.services.conversation.runtime import runtime_ports
-from app.services.conversation.step import advance
+from app.services.conversation.step import advance, fold_history
 from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import Dedupe, UserId
@@ -61,6 +63,17 @@ class _Steps:
 
 
 _steps = _Steps()
+
+
+class _Folds:
+    """The conversations folding their history in this process, and those asked to fold again."""
+
+    def __init__(self) -> None:
+        self.running: set[str] = set()  # pragma: no mutate — built at import
+        self.again: set[str] = set()  # pragma: no mutate — built at import
+
+
+_folds = _Folds()
 
 
 class RuntimeEffects:
@@ -106,6 +119,30 @@ class RuntimeEffects:
         """Clear the fire's threads when resets are on; the previous run reaches it as its recorded trace."""
         if settings.WORKFLOW_THREAD_RESET_ENABLED:
             await reset_workflow_threads(conversation_id)
+
+    async def fold_history(self, conversation_id: str, user_id: str) -> None:
+        """Fold the settled thread beside the step; asked while one folds, it folds once more after."""
+        if _steps.draining:
+            return
+        if conversation_id in _folds.running:
+            _folds.again.add(conversation_id)
+            return
+        _folds.running.add(conversation_id)
+        task = spawn_background_task(
+            self._fold(conversation_id, user_id), name="conversation_history_fold"
+        )
+        _steps.running.add(task)
+        task.add_done_callback(_steps.running.discard)
+
+    async def _fold(self, conversation_id: str, user_id: str) -> None:
+        try:
+            while True:
+                _folds.again.discard(conversation_id)
+                await fold_history(self._ports(), conversation_id, user_id)
+                if conversation_id not in _folds.again:
+                    return
+        finally:
+            _folds.running.discard(conversation_id)
 
     async def _react(self, conversation_id: str, user_id: str, message_id: str) -> None:
         state = await self._log.state(conversation_id, user_id)
@@ -168,7 +205,9 @@ def build_runtime_ports() -> RuntimePorts:
     frames = BotWakingFrames(RedisStreamFrames())
     return RuntimePorts(
         log=log,
-        runner=CommsGraphRunner(build_comms_turn),
+        runner=CommsGraphRunner(
+            build_comms_turn, history_fold=create_comms_history_fold(init_llm())
+        ),
         frames=frames,
         effects=RuntimeEffects(log, frames, runtime_ports),
         approvals=HilApprovalReplies(),

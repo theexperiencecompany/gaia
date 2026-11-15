@@ -35,6 +35,7 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.constants.summarization import (
+    COMMS_SUMMARIZATION_CEILING_TOKENS,
     COMMS_SUMMARIZATION_KEEP_TOKENS,
     COMMS_SUMMARIZATION_TRIGGER_TOKENS,
     COMPACTION_THRESHOLD,
@@ -263,7 +264,8 @@ def create_comms_middleware(
         context=ContextOptions(
             compact=False,
             archive="executor",
-            summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+            # Settled turns fold in the background at the trigger; inline only past the ceiling.
+            summarization_trigger=("tokens", COMMS_SUMMARIZATION_CEILING_TOKENS),
             summarization_keep=("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS),
         ),
     )
@@ -274,6 +276,18 @@ def create_comms_middleware(
     stack.append(EmptyCompletionRetryMiddleware())
     log.debug(f"{LogTag.AGENT} EmptyCompletionRetryMiddleware enabled", agent_name="comms_agent")
     return stack
+
+
+def create_comms_history_fold(
+    chat_llm: LanguageModelLike,
+) -> WorkspaceArchivingSummarizationMiddleware:
+    """Return the summarizer that folds a settled comms thread past its budget, off any reply's path."""
+    return WorkspaceArchivingSummarizationMiddleware(
+        model=cast("BaseChatModel", chat_llm),
+        trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+        keep=("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS),
+        archive="executor",
+    )
 
 
 def create_subagent_middleware(

@@ -33,6 +33,7 @@ from app.models.message_models import MessageDict
 from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
+    NOTHING_KEPT,
     Answered,
     Appended,
     ApprovalAnswer,
@@ -42,6 +43,8 @@ from app.services.conversation.ports import (
     ConversationLog,
     EntryRejected,
     Finished,
+    FoldPlan,
+    Kept,
     Reacted,
     RunEvent,
     RuntimePorts,
@@ -133,6 +136,14 @@ class InMemoryConversationLog:
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         await self.pause("state")
         return self._read(conversation_id, user_id).state
+
+    async def pinned(self, conversation_id: str, user_id: str) -> Sequence[LoggedEntry]:
+        await self.pause("pinned")
+        return [
+            item
+            for item in self._read(conversation_id, user_id).entries
+            if isinstance(item.entry, UserMessage | Reply) and item.entry.pinned
+        ]
 
     async def unsettled(self, conversation_id: str, user_id: str) -> Unsettled:
         await self.pause("unsettled")
@@ -272,6 +283,10 @@ class PausingLog:
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         await self.pause("state")
         return await self._inner.state(conversation_id, user_id)
+
+    async def pinned(self, conversation_id: str, user_id: str) -> Sequence[LoggedEntry]:
+        await self.pause("pinned")
+        return await self._inner.pinned(conversation_id, user_id)
 
     async def unsettled(self, conversation_id: str, user_id: str) -> Unsettled:
         await self.pause("unsettled")
@@ -536,6 +551,12 @@ class ScriptedRunner:
         self.calls: list[RunnerCall] = []
         # The owed answers each run was started with, in start order.
         self.owed: list[frozenset[str]] = []
+        # The pinned entry ids each run was started with, in start order.
+        self.pinned: list[tuple[str, ...]] = []
+        # What plan_fold returns, in order; none left is a thread under its budget.
+        self.fold_plans: list[FoldPlan] = []
+        # Each fold written, with the epoch of the claim it was written under.
+        self.applied: list[tuple[int, FoldPlan]] = []
         self.runs: list[ScriptedRun] = []
         self.overlaps = 0
         self.swallow_first_cancel = False
@@ -555,11 +576,12 @@ class ScriptedRunner:
         ledger: str,
         note: str | None = None,
         *,
-        owed: frozenset[str] = frozenset(),
+        kept: Kept = NOTHING_KEPT,
     ) -> ScriptedRun:
         if any(not run.task.done() for run in self.runs):
             self.overlaps += 1
-        self.owed.append(owed)
+        self.owed.append(kept.owed)
+        self.pinned.append(tuple(item.entry.id for item in kept.pinned))
         self.calls.append(
             Started(
                 tuple(item.seq for item in batch.waking),
@@ -573,6 +595,13 @@ class ScriptedRunner:
         )
         self.runs.append(run)
         return run
+
+    async def plan_fold(self, conversation_id: str, user_id: str, kept: Kept) -> FoldPlan | None:
+        return self.fold_plans.pop(0) if self.fold_plans else None
+
+    async def apply_fold(self, claim: StepClaim, plan: FoldPlan) -> bool:
+        self.applied.append((claim.epoch, plan))
+        return True
 
 
 @dataclass
@@ -599,6 +628,8 @@ class RecordingEffects:
     on_kick: Action | None = None
     # The (conversation, user) each effect was run for.
     addressed: list[tuple[str, str]] = field(default_factory=list)
+    # The conversations a settled step asked to fold, in order.
+    folds: list[str] = field(default_factory=list)
 
     async def kick(self, conversation_id: str, user_id: str) -> None:
         self.addressed.append((conversation_id, user_id))
@@ -620,6 +651,9 @@ class RecordingEffects:
     async def reset_workflow_threads(self, conversation_id: str) -> None:
         self.addressed.append((conversation_id, ""))
         self._record(EffectCall("reset_workflow_threads"))
+
+    async def fold_history(self, conversation_id: str, user_id: str) -> None:
+        self.folds.append(conversation_id)
 
     def _record(self, call: EffectCall) -> None:
         self.calls.append(call)
