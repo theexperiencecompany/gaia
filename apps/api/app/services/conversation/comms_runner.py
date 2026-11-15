@@ -93,7 +93,7 @@ class CommsGraphRun:
         self._turn = turn
         configurable: AgentConfigurable = agent_configurable(config)
         self._run_id = configurable["comms_run"]
-        self._mapper = CommsEventMapper(claim.user_id)
+        self._mapper = CommsEventMapper(claim.user_id, config)
         self._confirm = cancel_confirm_seconds
         self._out: asyncio.Queue[RunEvent | Exception] = asyncio.Queue()
         self._wanted: asyncio.Queue[None] = asyncio.Queue()

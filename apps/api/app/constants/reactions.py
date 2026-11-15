@@ -233,7 +233,9 @@ TELEGRAM_BOT_REACTION_EMOJI: Final = frozenset(
         "😡",
     }
 )
-# The palette for a Telegram message: all of TELEGRAM_BOT_REACTION_EMOJI, task-shaped ones first.
+# Emoji GAIA never reacts with, on any surface, even where the platform accepts them.
+OFFENSIVE_REACTION_EMOJI: Final = frozenset({"🖕", "💩"})
+# The palette for a Telegram message: TELEGRAM_BOT_REACTION_EMOJI less the offensive ones, task-shaped first.
 TELEGRAM_REACTION_PALETTE: Final[Mapping[str, str]] = MappingProxyType(
     {
         "👀": "looking something up, searching, researching, reading the inbox, a page or a file",
@@ -293,8 +295,6 @@ TELEGRAM_REACTION_PALETTE: Final[Mapping[str, str]] = MappingProxyType(
         "😡": "angry",
         "🤬": "furious, swearing",
         "🤮": "disgusted",
-        "💩": "something bad or worthless",
-        "🖕": "an obscene gesture",
         "😈": "mischievous, a little wicked",
         "👻": "spooky, a ghost, disappearing",
         "🎃": "Halloween",

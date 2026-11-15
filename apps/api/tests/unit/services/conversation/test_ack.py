@@ -15,6 +15,7 @@ import respx
 from app.constants.chat import ConversationSource
 from app.constants.hil import HIL_JEV_URL
 from app.constants.reactions import (
+    OFFENSIVE_REACTION_EMOJI,
     REACTION_CONTEXT_MAX_CHARS,
     REACTION_EMOJI_INSTRUCTIONS,
     REACTION_EMOJI_QUESTION_KEY,
@@ -86,7 +87,7 @@ class TestPlatformPalette:
         _, questions = post.await_args.args
         offered = questions[REACTION_EMOJI_QUESTION_KEY]["criteria"]
         assert isinstance(offered, dict)
-        assert set(offered) == TELEGRAM_BOT_REACTION_EMOJI
+        assert set(offered) == TELEGRAM_BOT_REACTION_EMOJI - OFFENSIVE_REACTION_EMOJI
         assert decision.emoji == "👀"
 
     async def test_a_telegram_answer_outside_telegrams_set_is_no_reaction(self) -> None:

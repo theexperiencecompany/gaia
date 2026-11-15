@@ -3,9 +3,11 @@
 from unittest.mock import AsyncMock
 
 from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.tools.core.registry import init_tool_registry
+from app.constants.chat import ConversationSource
 from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.core.lazy_loader import providers
 from app.models.conversation_frame_models import (
@@ -29,6 +31,11 @@ from app.services.conversation.ports import (
 from app.utils import agent_utils
 from shared.py.conversation_wire import ToolDataEntry
 
+WEB_RUN: RunnableConfig = {"configurable": {"conversation_source": ConversationSource.WEB.value}}
+TELEGRAM_RUN: RunnableConfig = {
+    "configurable": {"conversation_source": ConversationSource.TELEGRAM.value}
+}
+
 
 def silent_call(node: str = "agent") -> GraphEvent:
     chunk = AIMessageChunk(content="summary text", id="sum")
@@ -40,7 +47,7 @@ def answer(text: str) -> GraphEvent:
 
 
 async def test_a_hooks_raw_tool_payload_reaches_the_step_as_a_card() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     events = await mapper.map(((), "custom", {"email_fetch_data": [{"id": "e1"}]}))
     (card,) = [
         e.payload.tool_data
@@ -51,19 +58,19 @@ async def test_a_hooks_raw_tool_payload_reaches_the_step_as_a_card() -> None:
 
 
 async def test_the_silent_call_before_the_answer_is_the_summary_and_is_reported_once() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     assert await mapper.map(silent_call()) == [Summarized()]
     assert await mapper.map(silent_call()) == []
 
 
 async def test_a_silent_call_after_the_answer_is_follow_up_work_not_a_summary() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     await mapper.map(answer("done"))
     assert await mapper.map(silent_call("follow_up_actions")) == []
 
 
 async def test_an_answer_streams_its_text_then_reports_the_model_output() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     token: GraphEvent = (
         (),
         "messages",
@@ -78,7 +85,7 @@ async def test_an_answer_streams_its_text_then_reports_the_model_output() -> Non
 
 
 async def test_a_namespaced_update_is_not_the_comms_model_returning() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     nested: GraphEvent = (
         ("child:1",),
         "updates",
@@ -88,7 +95,7 @@ async def test_a_namespaced_update_is_not_the_comms_model_returning() -> None:
 
 
 async def test_only_the_model_nodes_own_output_streams_as_written_by_the_model() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     by_tool = await mapper.map(((), "custom", {"email_fetch_data": [{"id": "e1"}]}))
     by_model = await mapper.map(answer("hi"))
 
@@ -116,9 +123,37 @@ def ending(name: str, text: str = "", **args: str) -> GraphEvent:
 async def test_a_turn_ending_call_is_the_answer_and_its_outcome(
     event: GraphEvent, outcome: RunOutcome
 ) -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     assert ModelOutput(has_tool_calls=False) in await mapper.map(event)
     assert mapper.finish()[-1] == Finished(outcome=outcome)
+
+
+@pytest.mark.parametrize(
+    ("config", "emoji"),
+    [(TELEGRAM_RUN, "🔎"), (TELEGRAM_RUN, "❤️"), (TELEGRAM_RUN, "💩"), (WEB_RUN, "🖕")],
+    ids=[
+        "outside-telegrams-set",
+        "telegram-wants-no-fe0f",
+        "offensive-on-telegram",
+        "offensive-on-web",
+    ],
+)
+async def test_a_reaction_the_surface_refuses_does_not_end_the_turn(
+    config: RunnableConfig, emoji: str
+) -> None:
+    mapper = CommsEventMapper("u-1", config)
+    assert ModelOutput(has_tool_calls=True) in await mapper.map(
+        ending(REACT_TOOL_NAME, emoji=emoji)
+    )
+    finished = mapper.finish()[-1]
+    assert isinstance(finished, Finished)
+    assert not isinstance(finished.outcome, Reacted)
+
+
+async def test_a_reaction_in_telegrams_set_ends_a_telegram_turn() -> None:
+    mapper = CommsEventMapper("u-1", TELEGRAM_RUN)
+    await mapper.map(ending(REACT_TOOL_NAME, emoji="👀"))
+    assert mapper.finish()[-1] == Finished(outcome=Reacted(emoji="👀"))
 
 
 @pytest.mark.parametrize(
@@ -142,7 +177,7 @@ async def test_a_turn_ending_call_the_graph_does_not_end_on_is_work(event: Graph
     # The work call's card resolves its category through the real registry.
     if not providers.is_initialized("tool_registry"):
         init_tool_registry()
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     assert ModelOutput(has_tool_calls=True) in await mapper.map(event)
     finished = mapper.finish()[-1]
     assert isinstance(finished, Finished)
@@ -150,14 +185,14 @@ async def test_a_turn_ending_call_the_graph_does_not_end_on_is_work(event: Graph
 
 
 async def test_a_reply_written_as_a_tag_is_text() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     await mapper.map(answer("<❤️>"))
     assert mapper.finish()[-1] == Finished(outcome=Replied(text="<❤️>"))
 
 
 async def test_the_answer_is_reported_final_when_the_follow_up_pass_starts() -> None:
     """Regression (live test): the step learned of the answer only after the follow-up model call."""
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     await mapper.map(answer("hello"))
     started = await mapper.map(((), "custom", {"main_response_complete": True}))
     suggested = await mapper.map(((), "custom", {"follow_up_actions": ["Ask more"]}))
@@ -171,7 +206,7 @@ async def test_the_answer_is_reported_final_when_the_follow_up_pass_starts() -> 
 
 
 async def test_a_subagents_completion_marker_is_not_the_comms_answer() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     await mapper.map(answer("hello"))
     nested = await mapper.map((("tools:1",), "custom", {"main_response_complete": True}))
     assert not [event for event in nested if isinstance(event, Answered)]
@@ -199,28 +234,28 @@ async def shown_card(mapper: CommsEventMapper) -> ToolDataEntry:
 
 
 async def test_a_reply_carries_the_cards_its_run_showed() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     card = await shown_card(mapper)
     await mapper.map(answer("here"))
     assert mapper.finish()[-1] == Finished(outcome=Replied(text="here", tool_data=(card,)))
 
 
 async def test_a_reaction_beside_cards_is_a_reply_of_the_cards_alone() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     card = await shown_card(mapper)
     await mapper.map(ending(REACT_TOOL_NAME, emoji="👍"))
     assert mapper.finish()[-1] == Finished(outcome=Replied(text="", tool_data=(card,)))
 
 
 async def test_a_run_that_never_answered_ends_silent() -> None:
-    assert CommsEventMapper("u-1").finish() == [Finished(outcome=Silent())]
+    assert CommsEventMapper("u-1", WEB_RUN).finish() == [Finished(outcome=Silent())]
 
 
 async def test_a_model_turn_that_calls_tools_is_not_the_answer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(agent_utils, "get_tool_registry", AsyncMock())
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     calling = AIMessage(
         content="checking", id="m1", tool_calls=[{"name": "", "args": {}, "id": "c1"}]
     )
@@ -230,13 +265,13 @@ async def test_a_model_turn_that_calls_tools_is_not_the_answer(
 
 
 async def test_another_nodes_update_is_not_the_model_returning() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     events = await mapper.map(((), "updates", {"tools": {"messages": []}}))
     assert [event for event in events if isinstance(event, ModelOutput)] == []
 
 
 async def test_the_answer_is_reported_final_once() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     await mapper.map(answer("hello"))
     marker: GraphEvent = ((), "custom", {"main_response_complete": True})
     first = await mapper.map(marker)
@@ -247,7 +282,7 @@ async def test_the_answer_is_reported_final_once() -> None:
 
 
 async def test_text_still_held_when_the_stream_ends_is_streamed_before_the_outcome() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     streamed = await mapper.map(token("hi <"))
     owed = mapper.finish()
     texts = [
@@ -260,7 +295,7 @@ async def test_text_still_held_when_the_stream_ends_is_streamed_before_the_outco
 
 
 async def test_a_card_a_running_tool_shows_is_not_the_models_own_output() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     events = await mapper.map((("tools:1",), "custom", {"email_fetch_data": [{"id": "e1"}]}))
     assert [event.by_model for event in events if isinstance(event, Streamed)] == [False]
 
@@ -271,12 +306,12 @@ async def test_a_tool_calls_card_is_named_for_the_runs_own_user(
     named = AsyncMock(return_value=None)
     monkeypatch.setattr(graph_payloads, "format_tool_call_entry", named)
     calling = AIMessage(content="", id="m1", tool_calls=[{"name": "t", "args": {}, "id": "c1"}])
-    await CommsEventMapper("u-1").map(((), "updates", {"agent": {"messages": [calling]}}))
+    await CommsEventMapper("u-1", WEB_RUN).map(((), "updates", {"agent": {"messages": [calling]}}))
     named.assert_awaited_once_with(calling.tool_calls[0], user_id="u-1")
 
 
 async def test_text_held_when_the_answer_is_final_streams_before_it() -> None:
-    mapper = CommsEventMapper("u-1")
+    mapper = CommsEventMapper("u-1", WEB_RUN)
     # The half-written tag stays held until the answer is final.
     assert await mapper.map(token("hi <")) == [Streamed(payload=ResponseEvent(response="hi "))]
     final = await mapper.map(((), "custom", {"main_response_complete": True}))
