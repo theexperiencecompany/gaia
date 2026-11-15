@@ -63,16 +63,10 @@ const BACKDROP_LOOKS = {
 type LetterPresentation = keyof typeof BACKDROP_LOOKS;
 
 /**
- * The page frosts on the letter's own rise, on an even curve so the blur never
- * jumps ahead of the letter, and clears on its close. The blur radius and tint
- * ramp themselves rather than fading a finished blur in, which would cross a
- * sharp page with a blurred copy of it.
+ * The page frosts on the letter's own ease-out rise and clears on its ease-in
+ * close. Blur radius and tint ramp from clear rather than fading a finished
+ * blur in, which would cross a sharp page with a blurred copy of it.
  */
-const BACKDROP_OPEN_TRANSITION = {
-  duration: LETTER_OPEN_TRANSITION.duration,
-  ease: [0.25, 0.1, 0.25, 1],
-} as const;
-
 function backdropVariants(
   presentation: LetterPresentation,
   motion: "full" | "reduced",
@@ -88,9 +82,7 @@ function backdropVariants(
       backdropFilter: `blur(${blurPx}px)`,
       backgroundColor: tint,
       transition:
-        motion === "full"
-          ? BACKDROP_OPEN_TRANSITION
-          : LETTER_REDUCED_TRANSITION,
+        motion === "full" ? LETTER_OPEN_TRANSITION : LETTER_REDUCED_TRANSITION,
     },
     exit: {
       ...clear,
