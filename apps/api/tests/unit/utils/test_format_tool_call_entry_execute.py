@@ -89,3 +89,30 @@ class TestExecuteProxyRendering:
         assert entry is not None
         assert entry["data"]["tool_name"] == "get_weather"
         assert entry["data"]["inputs"] == {"city": "Berlin"}
+
+
+@pytest.mark.unit
+class TestTicketCards:
+    @pytest.mark.parametrize(
+        ("ticket", "label"),
+        [("approve", "Going ahead with what you approved"), ("revoke", "Withdrawing an approval")],
+    )
+    async def test_a_ticket_call_renders_as_an_approvals_card_with_its_own_label(
+        self, ticket: str, label: str
+    ) -> None:
+        call = _execute_call()
+        call["args"] = {
+            "task_description": "Running the approved creation of run3 pair-A",
+            "tool_name": ticket,
+            "data": {"id": "t1"},
+        }
+        with patch(REGISTRY_PATCH, new_callable=AsyncMock, return_value=_registry("unknown")):
+            entry = await format_tool_call_entry(cast(ToolCall, call))
+        assert entry is not None
+        data = entry["data"]
+        assert (data["tool_name"], data["tool_category"], data["message"]) == (
+            ticket,
+            "approvals",
+            label,
+        )
+        assert data["show_category"] is False
