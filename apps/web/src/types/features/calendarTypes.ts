@@ -4,6 +4,7 @@ export type RecurrenceFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 import type {
   EventCreateRequest,
   GoogleCalendarEventResource,
+  GoogleCalendarPerson,
   RecurrenceData,
 } from "@shared/api/generated";
 
@@ -33,11 +34,6 @@ export interface CalendarSelectorProps {
   calendars: CalendarItem[];
   selectedCalendars: string[];
   onCalendarSelect: (calendarId: string) => void;
-}
-
-export interface GoogleCalendarPerson {
-  email: string;
-  self?: boolean;
 }
 
 export interface BirthdayProperties {
