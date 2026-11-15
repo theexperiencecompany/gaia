@@ -677,6 +677,18 @@ class TestAnnouncePersonalization:
         with patch(f"{MODULE}.seed_holo_card_conversation", AsyncMock(return_value=None)):
             assert await _announce_personalization(USER, card_ready=True) is None
 
+    async def test_a_retried_announcement_reuses_the_one_id_this_fact_has(
+        self, announce_stack: Any
+    ) -> None:
+        """The id is the dedupe key, so a retry must reproduce it exactly or the user is notified twice."""
+        notifications, _ = announce_stack
+
+        await _announce_personalization(USER, card_ready=True)
+        await _announce_personalization(USER, card_ready=False)
+
+        first, retry = (call.args[0].id for call in notifications.notify.await_args_list)
+        assert first == retry == "6328267a-09ab-5046-aa8c-975e94fed809"
+
     async def test_the_notification_is_built_field_for_field(self, announce_stack: Any) -> None:
         """Every field here is rendered or acted on by the client — nothing is filler."""
         notifications, _ = announce_stack
