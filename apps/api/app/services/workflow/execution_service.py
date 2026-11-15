@@ -61,7 +61,6 @@ class PlaybookReplayRefused(Exception):
         super().__init__(
             f"conversation {conversation_id} refused the replay: other work runs there"
         )
-        self.conversation_id = conversation_id
 
 
 class WorkflowRunFailed(Exception):

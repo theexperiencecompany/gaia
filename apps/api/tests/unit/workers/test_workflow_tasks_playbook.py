@@ -83,7 +83,7 @@ from app.workers.tasks.workflow_tasks import (
     execute_workflow_as_chat,
     execute_workflow_by_id,
 )
-from shared.py.conversation_wire import ReplyOutcome
+from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
 from tests.unit.services.conversation.log_helpers import EMPTY
 
 MODULE = "app.workers.tasks.workflow_tasks"
@@ -2902,7 +2902,7 @@ class TestQuietHoursOnTheRecord:
 class TestTheReplayIsLoggedAsOneUnitOfWork:
     """A replay is carried and finished in its workflow's log under one task id, so the screen shows it start and end."""
 
-    CARDS: ClassVar[list[dict[str, str]]] = [{"tool_name": "list_events"}]
+    CARDS: ClassVar[list[ToolDataEntry]] = [{"tool_name": "list_events", "data": {}}]
 
     async def _replay(self, result: PlaybookRunResult | Exception) -> _LockedReplayHarness:
         workflow = _workflow()
