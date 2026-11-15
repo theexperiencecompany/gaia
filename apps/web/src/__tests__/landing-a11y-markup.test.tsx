@@ -72,7 +72,7 @@ vi.mock("@/features/landing/components/sections/PersonaSEOSection", () => ({
 }));
 
 vi.mock("@/features/use-cases/components/YouMightAlsoLike", () => ({
-  default: () => null,
+  YouMightAlsoLike: () => null,
 }));
 
 vi.mock("@/features/auth/hooks/useAuth", () => ({
@@ -229,6 +229,7 @@ describe("landing markup accessibility", () => {
         useCase={USE_CASE}
         communityWorkflow={null}
         slug="morning-briefing"
+        relatedUseCases={[]}
       />,
     );
     expect(doc.querySelector("h1")?.textContent).toBe("Morning briefing");
