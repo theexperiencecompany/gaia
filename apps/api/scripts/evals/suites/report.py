@@ -38,6 +38,7 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, ConfigDict
 
+from app.agents.core.call_ref import with_call_refs
 from app.agents.core.outcome_review import OutcomeReview, review_outcome
 from app.agents.core.task_report import finish_task_content
 from app.agents.llm.client import LLMInvokeOptions, ainvoke_llm, init_llm
@@ -194,7 +195,7 @@ async def file_report(setup: ReportSetup) -> tuple[OutcomeReview, int, int]:
     while True:
         reply: AIMessage = await ainvoke_llm(
             model,
-            [SystemMessage(content=get_executor_prompt()), *messages],
+            [SystemMessage(content=get_executor_prompt()), *with_call_refs(messages)],
             config=config,
             label=REPORT_LABEL,
             options=LLMInvokeOptions(timeout=REPORT_TIMEOUT_SECONDS, max_attempts=1),

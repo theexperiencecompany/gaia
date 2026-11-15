@@ -21,6 +21,7 @@ from langchain_core.tools import BaseTool, tool
 from pydantic import Field
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
+from app.agents.middleware.call_ref import CallRefMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.empty_completion import EmptyCompletionRetryMiddleware
 from app.agents.middleware.factory import (
@@ -501,6 +502,7 @@ class TestExecutorStackComposition:
             WorkspaceCompactionMiddleware,
             MediaDescriptionMiddleware,
             LoopGuardMiddleware,
+            CallRefMiddleware,
         ]
 
     def test_the_executor_spawn_wiring_reaches_the_middleware(self) -> None:

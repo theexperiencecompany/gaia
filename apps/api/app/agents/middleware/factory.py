@@ -15,6 +15,7 @@ from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
 
 from app.agents.middleware.accounting import LLMAccountingMiddleware
+from app.agents.middleware.call_ref import CallRefMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.empty_completion import EmptyCompletionRetryMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
@@ -228,12 +229,12 @@ def create_executor_middleware(
     chat_llm: LanguageModelLike | None = None,
     subagent: SubagentStackOptions | None = None,
 ) -> AgentMiddlewareStack:
-    """Create middleware stack for the executor agent: SubagentMiddleware plus summarization/compaction.
+    """Create middleware stack for the executor agent: SubagentMiddleware, summarization/compaction and call refs.
 
     The executor's SubagentMiddleware needs LLM and tool_registry set after
     creation via set_llm()/set_tools() since they aren't available at factory time.
     """
-    return create_middleware_stack(
+    stack = create_middleware_stack(
         agent_name="executor_agent",
         chat_llm=chat_llm,
         accounting=AccountingOptions(recursion_limit=EXECUTOR_RECURSION_LIMIT),
@@ -243,6 +244,9 @@ def create_executor_middleware(
             compaction_excluded_tools=CODING_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
         ),
     )
+    # Innermost, so the refs go on what summarization and compaction leave in the request.
+    stack.append(CallRefMiddleware())
+    return stack
 
 
 def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentMiddlewareStack:

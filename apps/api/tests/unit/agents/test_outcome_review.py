@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import re
 from types import SimpleNamespace
 from typing import Any
 
@@ -10,6 +11,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMes
 import pytest
 
 from app.agents.core import outcome_review
+from app.agents.core.call_ref import call_ref, with_call_refs
 from app.agents.core.outcome_review import (
     OutcomeReview,
     review_outcome,
@@ -343,8 +345,13 @@ class TestAnAbsentReportIsUnverified:
         assert "finish_task" in review.problem
 
 
+def _raw_fact(kind: str, *cited: str, text: str = "a fact") -> dict[str, Any]:
+    return {"text": text, "kind": kind, "source_call_ids": list(cited)}
+
+
 def _fact(kind: str, *call_ids: str, text: str = "a fact") -> dict[str, Any]:
-    return {"text": text, "kind": kind, "source_call_ids": list(call_ids)}
+    """Cite the calls by the refs the model is shown with their results."""
+    return _raw_fact(kind, *(call_ref(c) for c in call_ids), text=text)
 
 
 def _problem(delegation: list[AnyMessage], is_write: Callable[[str], bool] = _reads_only) -> str:
@@ -368,7 +375,7 @@ class TestDidFactsNeedASuccessfulCall:
             _writes_everything,
         )
 
-        assert "c1" in problem
+        assert call_ref("c1") in problem
         assert "errored" in problem
 
     def test_a_did_with_no_call_behind_it_is_refused(self) -> None:
@@ -423,7 +430,32 @@ class TestCitedCallsMustExist:
             [_task(), *_call("lookup", {}, "c1"), *_finish("done", facts=[_fact("observed", "c9")])]
         )
 
-        assert "c9" in problem
+        assert call_ref("c9") in problem
+
+    @pytest.mark.parametrize("cited", ["create_todo", "call_Na1Q8"])
+    def test_a_tool_name_or_a_raw_provider_id_is_refused(self, cited: str) -> None:
+        problem = _problem(
+            [
+                _task(),
+                *_call("create_todo", {}, "call_Na1Q8"),
+                *_finish("done", facts=[_raw_fact("observed", cited)]),
+            ]
+        )
+
+        assert cited in problem
+
+    def test_a_ref_read_off_the_tool_result_the_model_saw_is_accepted(self) -> None:
+        ran = _call("create_todo", {}, "call_Na1Q8")
+        seen = with_call_refs(ran)[1]
+        match = re.search(r"\[call (\S+)\]", str(seen.content))
+        assert match is not None
+
+        review = _review(
+            [_task(), *ran, *_finish("done", facts=[_raw_fact("did", match.group(1))])],
+            _writes_everything,
+        )
+
+        assert review.verified
 
     def test_ids_of_calls_that_ran_pass(self) -> None:
         review = _review(
@@ -445,7 +477,7 @@ class TestEverySuccessfulWriteIsAccountedFor:
         )
 
         assert "send_email" in problem
-        assert "c1" in problem
+        assert call_ref("c1") in problem
 
     def test_an_observed_fact_does_not_account_for_a_write(self) -> None:
         problem = _problem(
@@ -457,7 +489,7 @@ class TestEverySuccessfulWriteIsAccountedFor:
             _writes_everything,
         )
 
-        assert "c1" in problem
+        assert call_ref("c1") in problem
 
     @pytest.mark.parametrize("kind", ["did", "pending_confirmation", "not_done"])
     def test_did_pending_and_not_done_account_for_a_write(self, kind: str) -> None:
@@ -491,7 +523,7 @@ class TestEverySuccessfulWriteIsAccountedFor:
             *_finish("done", facts=[]),
         ]
 
-        assert "c1" in _problem(delegation, lambda name: name == "send_email")
+        assert call_ref("c1") in _problem(delegation, lambda name: name == "send_email")
         assert _review(delegation, lambda name: name == "delete_event").verified
 
 

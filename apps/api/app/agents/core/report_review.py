@@ -8,6 +8,7 @@ call exists, succeeded, or was a write is the run's.
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from app.agents.core.call_ref import call_ref
 from app.constants.agents import OutcomeState
 from app.constants.task_report import (
     FINDING_KINDS,
@@ -27,6 +28,11 @@ class RunCall:
     succeeded: bool
     is_write: bool
 
+    @property
+    def ref(self) -> str:
+        """The ref the executor model cites this call by."""
+        return call_ref(self.call_id)
+
 
 def _cited_ids(report: TaskReport, kinds: frozenset[FactKind] | None = None) -> set[str]:
     return {
@@ -40,7 +46,7 @@ def _cited_ids(report: TaskReport, kinds: frozenset[FactKind] | None = None) -> 
 def _unknown_calls(report: TaskReport, ran: Mapping[str, RunCall]) -> str | None:
     unknown = sorted(_cited_ids(report) - ran.keys())
     if unknown:
-        return f"the report cites call ids that did not run in this task: {', '.join(unknown)}"
+        return f"the report cites call refs that did not run in this task: {', '.join(unknown)}"
     return None
 
 
@@ -58,9 +64,9 @@ def _did_without_success(report: TaskReport, ran: Mapping[str, RunCall]) -> str 
 
 def _unreported_writes(report: TaskReport, ran: Mapping[str, RunCall]) -> str | None:
     accounted = _cited_ids(report, WRITE_ACCOUNTING_KINDS)
-    missing = [c for c in ran.values() if c.is_write and c.call_id not in accounted]
+    missing = [c for c in ran.values() if c.is_write and c.ref not in accounted]
     if missing:
-        listed = ", ".join(f"{c.tool} ({c.call_id})" for c in missing)
+        listed = ", ".join(f"{c.tool} ({c.ref})" for c in missing)
         return (
             "successful write calls are not accounted for by a did, pending_confirmation or "
             f"not_done fact: {listed}"
@@ -91,7 +97,7 @@ def _missing_scope(report: TaskReport) -> str | None:
 
 def report_problem(report: TaskReport, ran: Sequence[RunCall]) -> str | None:
     """Return the first way the report disagrees with the calls that ran, or None."""
-    by_id = {call.call_id: call for call in ran}
+    by_id = {call.ref: call for call in ran}
     return (
         _unknown_calls(report, by_id)
         or _did_without_success(report, by_id)

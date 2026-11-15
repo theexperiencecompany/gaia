@@ -48,7 +48,7 @@ Scope, answer, needs_you, failure.
 - counterparty: someone outside the user that you acted toward. quote: verbatim wording when it matters.
 - Correction: if this run shows that something GAIA reported earlier was wrong, add a fact starting "Correction:" saying what was reported and what is actually true.
 
-Cite your calls. source_call_ids holds the ids of the tool calls a fact comes from; empty only for inferred. A did fact must cite a call that succeeded. Never invent an id.
+Cite your calls. Every tool result starts with its ref, like [call c3f9a1b]. source_call_ids holds the refs of the tool calls a fact comes from, copied exactly; empty only for inferred. A did fact must cite a call that succeeded. Never cite a tool name or invent a ref.
 
 Short examples of the same rules on situations of their own.
 - Asked to book a tennis court for Saturday 10:00; the club's page answers "request received, you will get an email once a court is assigned". Facts: pending_confirmation "Requested a court at the club for Sat 15 Nov, 10:00; the club says an email will confirm which court." Outcome partial, because booking was the deliverable, not requesting. If the ask had been "send the club a booking request", the same page makes it did and the outcome done.
