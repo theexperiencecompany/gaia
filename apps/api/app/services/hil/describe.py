@@ -40,8 +40,13 @@ def describe_call(
     args: Mapping[str, object],
     integration_name: str | None,
     account: str | None = None,
+    amended_args: Mapping[str, object] | None = None,
 ) -> ApprovalDescription:
-    """Describe one gated call; tools with no curated entry get a humanised fallback."""
+    """Describe one gated call; tools with no curated entry get a humanised fallback.
+
+    amended_args is the call the user approved with a change; the details that differ from it
+    are the changes, listed first so the re-ask always shows them.
+    """
     if tool_name == "browser_task":
         return _describe_browser_task(args)
     spec = HIL_TOOL_DESCRIPTIONS.get(tool_name)
@@ -50,19 +55,31 @@ def describe_call(
         if integration_name:
             action = f"{action} in {integration_name}"
         spec = ToolDescription(action=action, confirm=HIL_DEFAULT_CONFIRM)
-    details = _curated_details(spec, args) if spec.fields else _fallback_details(args)
+    details = _details(spec, args)
     headline = _headline(spec, args)
     if not spec.fields and details:
         # No curated target to name, so the first argument stands in for it.
         headline += f": {details[0].value}"
     if account:
         headline += f" (as {account})"
+    changes = [] if amended_args is None else _changed(details, _details(spec, amended_args))
     return ApprovalDescription(
         action=spec.action,
         headline=headline,
         confirm=spec.confirm,
-        details=details[:HIL_DESCRIPTION_MAX_DETAILS],
+        details=[*changes, *(d for d in details if d not in changes)][:HIL_DESCRIPTION_MAX_DETAILS],
+        changes=changes,
     )
+
+
+def _details(spec: ToolDescription, args: Mapping[str, object]) -> list[ApprovalDetail]:
+    return _curated_details(spec, args) if spec.fields else _fallback_details(args)
+
+
+def _changed(details: list[ApprovalDetail], before: list[ApprovalDetail]) -> list[ApprovalDetail]:
+    """Return the details whose value the change set or moved."""
+    was = {detail.label: detail.value for detail in before}
+    return [detail for detail in details if was.get(detail.label) != detail.value]
 
 
 def _describe_browser_task(args: Mapping[str, object]) -> ApprovalDescription:

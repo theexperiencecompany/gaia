@@ -185,6 +185,7 @@ export const approvalAsked = (
     headline,
     confirm: "do it",
     details: [],
+    changes: [],
     ...described,
   },
   expires_at: expiresAt,

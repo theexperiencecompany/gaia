@@ -182,7 +182,14 @@ async def _decide_ledger(
         deny_note = _prior_denial_note(denied)
 
         integration_name = await _integration_name_for(request, context.user_id, call.name)
-        description = describe_call(call.name, call.args, integration_name, call.account)
+        amended = await approval_ledger_repository.find_amended(call.name, context.conversation_id)
+        description = describe_call(
+            call.name,
+            call.args,
+            integration_name,
+            call.account,
+            amended_args=None if amended is None else amended.args,
+        )
         summary = description.headline
         # Owner is the worker thread, stable across runs: subagent threads read
         # "<integration>_<conversation>", the executor "executor_<...>", so a

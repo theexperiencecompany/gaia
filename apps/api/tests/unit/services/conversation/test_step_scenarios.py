@@ -781,6 +781,22 @@ class StepScenarios:
         assert [item.pending_approvals for item in state.work] == [()]
         await assert_quiet(rt)
 
+    async def test_a_yes_with_a_change_settles_silent_so_the_re_ask_is_the_reply(
+        self, rt: Runtime
+    ) -> None:
+        """Run 4 bug 20: no "Got it, I'll create todo." before the work asks again."""
+        await start_work(rt)
+        await send(rt, asked("ask", "t1", "ap1"))
+        rt.approvals.decision = "approve"
+        rt.approvals.amend = True
+        await send(rt, bot_user("u6"))
+        await run(rt)
+        assert rt.runner.calls == []
+        assert (await replies(rt))[-1].text == ""
+        assert (await answered(rt))[-1] == (ReplyOutcome.SILENT, ("u6",))
+        assert (await settles(rt))[-1].quote_target is None
+        await assert_quiet(rt)
+
     async def test_a_mixed_typed_answer_logs_each_approval_once_with_its_own_decision(
         self, rt: Runtime
     ) -> None:

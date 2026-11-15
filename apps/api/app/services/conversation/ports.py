@@ -257,13 +257,20 @@ class Effects(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class ApprovalAnswer:
+    """A typed reply that answered pending approvals; ack is None when the work's re-ask is the reply."""
+
+    ack: str | None
+
+
 class ApprovalReplies(Protocol):
     """Reads a typed reply on a button-less surface as an answer to pending approvals."""
 
     async def resolve(
         self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
-    ) -> str | None:
-        """Return the acknowledgement of the answer the message gives, read against the turns before it; None when it is not one."""
+    ) -> ApprovalAnswer | None:
+        """Return the answer the message gives, read against the turns before it; None when it is not one."""
         ...
 
 

@@ -510,6 +510,13 @@
             "title": "Action",
             "type": "string"
           },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ApprovalDetail"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
           "confirm": {
             "title": "Confirm",
             "type": "string"

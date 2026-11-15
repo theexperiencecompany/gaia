@@ -237,7 +237,10 @@ async def _answered_as_approval(
     first: LoggedEntry,
     attempt_id: str,
 ) -> bool:
-    """Settle a button-less surface's typed answer to pending approvals with a text ack, no run."""
+    """Settle a button-less surface's typed answer to pending approvals with its ack, no run.
+
+    An answer with no ack (a yes with a change) settles silent: the work's re-ask is the reply.
+    """
     message = first.entry
     awaiting = sorted(approval for item in state.work for approval in item.pending_approvals)
     if not (
@@ -248,23 +251,28 @@ async def _answered_as_approval(
         return False
     history = await _turns_before(ports, claim, first.seq)
     # The resolver logs each approval's own decision; the step only acknowledges the reply.
-    text = await ports.approvals.resolve(
+    answer = await ports.approvals.resolve(
         claim.conversation_id, claim.user_id, message.text, history
     )
-    if text is None:
+    if answer is None:
         return False
     ack = Reply(
-        id=f"{attempt_id}:reply", reply_id=f"r{attempt_id}", attempt_id=attempt_id, text=text
+        id=f"{attempt_id}:reply",
+        reply_id=f"r{attempt_id}",
+        attempt_id=attempt_id,
+        text=answer.ack or "",
     )
     shown = await append_entry(ports, claim, ack)
     answers = (message.id,)
     settled = ReplySettled(
         id=f"{attempt_id}:settled",
         reply_id=ack.reply_id,
-        outcome=ReplyOutcome.ANSWERED,
+        outcome=ReplyOutcome.ANSWERED if answer.ack else ReplyOutcome.SILENT,
         answers=answers,
         through=first.seq,
-        quote_target=await quoted_target(ports, claim, answers, first, shown.seq),
+        quote_target=(
+            await quoted_target(ports, claim, answers, first, shown.seq) if answer.ack else None
+        ),
     )
     await settle_inputs(ports, claim, (first,), settled, None)
     return True

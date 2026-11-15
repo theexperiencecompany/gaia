@@ -67,6 +67,8 @@ class ApprovalReplyOutcome:
 
     action: DecisionAction
     decided: tuple[ApprovalLedgerDocument, ...] = ()
+    # The decided rows approved with a change: the work makes each call again, asking anew.
+    amended: tuple[ApprovalLedgerDocument, ...] = ()
 
 
 def ledger_outcome_text(outcome: ApprovalOutcome | None, action: ActionResult | None) -> str:
@@ -121,7 +123,8 @@ async def _resolve_single(
         return ApprovalReplyOutcome(action="unrelated")
 
     await _safe_resolve_ledger(record.approval_id, user_id, result.action, result.feedback)
-    return ApprovalReplyOutcome(action=result.action, decided=(record,))
+    amended = (record,) if result.action == "approve" and result.feedback else ()
+    return ApprovalReplyOutcome(action=result.action, decided=(record,), amended=amended)
 
 
 async def _resolve_batch(
@@ -144,11 +147,13 @@ async def _resolve_batch(
             return ApprovalReplyOutcome(action="unrelated")
         decisions = result.decisions
 
-    approved, denied = await _apply_decisions(pending, user_id, decisions)
+    approved, denied, amended = await _apply_decisions(pending, user_id, decisions)
     if not (approved or denied):
         return None
     return ApprovalReplyOutcome(
-        action="approve" if approved else "deny", decided=(*approved, *denied)
+        action="approve" if approved else "deny",
+        decided=(*approved, *denied),
+        amended=tuple(amended),
     )
 
 
@@ -164,17 +169,22 @@ async def _apply_decisions(
     pending: list[ApprovalLedgerDocument],
     user_id: str,
     decisions: list[BatchItemDecision],
-) -> tuple[list[ApprovalLedgerDocument], list[ApprovalLedgerDocument]]:
-    """Dispatch every in-range decision onto its pending item; returns the approved and denied rows."""
+) -> tuple[
+    list[ApprovalLedgerDocument], list[ApprovalLedgerDocument], list[ApprovalLedgerDocument]
+]:
+    """Dispatch every in-range decision onto its pending item; returns the approved, denied and amended rows."""
     approved: list[ApprovalLedgerDocument] = []
     denied: list[ApprovalLedgerDocument] = []
+    amended: list[ApprovalLedgerDocument] = []
     for decision in decisions:
         if decision.action == "leave" or not 1 <= decision.index <= len(pending):
             continue
         record = pending[decision.index - 1]
         await _safe_resolve_ledger(record.approval_id, user_id, decision.action, decision.feedback)
         (approved if decision.action == "approve" else denied).append(record)
-    return approved, denied
+        if decision.action == "approve" and decision.feedback:
+            amended.append(record)
+    return approved, denied, amended
 
 
 async def interpret_batch_decision_message(

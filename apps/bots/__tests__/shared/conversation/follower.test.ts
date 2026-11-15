@@ -458,6 +458,31 @@ describe("an approval the work waits on", () => {
     ]);
   });
 
+  it("asks again after a yes with a change by saying the change (run 4 bug 20)", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    const priority = { label: "Priority", value: "high" };
+    const reAsk = approvalAsked("t1", "ap4", "Create todo: Pay rent", null, {
+      action: "Create todo",
+      confirm: "create it",
+      details: [priority, { label: "Title", value: "Pay rent" }],
+      changes: [priority],
+    });
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11"), workItem("t1", 2, "running")]),
+      asking(reAsk),
+    ]);
+
+    expect(sent(calls).map(({ text }) => text)).toEqual([
+      "*Updated priority to high. OK to create it?*\nPriority: high\nTitle: Pay rent\n\nReply *yes* to create it, or *no* to cancel.",
+    ]);
+  });
+
   it("does not ask for an approval from before the follow", async () => {
     const { surface, calls } = recorder();
     const follower = new ConversationFollower(

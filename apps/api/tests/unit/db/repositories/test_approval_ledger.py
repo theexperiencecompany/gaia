@@ -378,6 +378,36 @@ class TestReads:
         assert collection.find_one.await_args.kwargs == {"sort": [("created_at", -1)]}
         assert doc is not None and doc.outcome == ApprovalOutcome.DENIED
 
+    @pytest.mark.parametrize(
+        ("outcome", "feedback", "action", "found"),
+        [
+            ("approved", "make it high priority", None, True),
+            ("approved", None, None, False),
+            ("approved", "make it high priority", "executed", False),
+            ("denied", "not that one", None, False),
+            (None, None, None, False),
+        ],
+    )
+    async def test_find_amended_is_the_tools_newest_row_only_when_approved_with_a_change(
+        self,
+        repo: ApprovalLedgerRepository,
+        collection: MagicMock,
+        outcome: str | None,
+        feedback: str | None,
+        action: str | None,
+        found: bool,
+    ) -> None:
+        collection.find_one = AsyncMock(
+            return_value={**_doc(outcome=outcome, action=action), "feedback": feedback}
+        )
+
+        doc = await repo.find_amended("T", "c1")
+
+        flt = collection.find_one.await_args.args[0]
+        assert flt == {"tool_name": "T", "conversation_id": "c1"}
+        assert collection.find_one.await_args.kwargs == {"sort": [("created_at", -1)]}
+        assert (doc is not None) is found
+
     async def test_singleton_exists(self) -> None:
         assert isinstance(approval_ledger_repository, ApprovalLedgerRepository)
 

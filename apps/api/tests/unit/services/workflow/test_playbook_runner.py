@@ -408,6 +408,7 @@ async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the
     ledger = MagicMock()
     ledger.find_live = AsyncMock(return_value=None)
     ledger.find_latest_denied = AsyncMock(return_value=None)
+    ledger.find_amended = AsyncMock(return_value=None)
     ledger.register = AsyncMock(return_value="ap_ledger01")
     runtime = Runtime()
     install_runtime_ports(runtime.ports)

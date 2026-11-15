@@ -74,6 +74,8 @@ class ApprovalDescription(BaseModel):
     # Closing verb for a single-action prompt, e.g. "send it".
     confirm: str
     details: list[ApprovalDetail]
+    # On a re-ask after "yes, but change X": the details that differ from the call the user changed.
+    changes: list[ApprovalDetail] = Field(default_factory=list)
 
 
 class ApprovalProposal(BaseModel):

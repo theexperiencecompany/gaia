@@ -7,6 +7,7 @@ from app.constants.hil import (
     HIL_ACK_DENIED_ONE,
 )
 from app.models.message_models import MessageDict
+from app.services.conversation.ports import ApprovalAnswer
 from app.services.hil.conversational import (
     ApprovalReplyOutcome,
     classifier_history,
@@ -20,8 +21,8 @@ class HilApprovalReplies:
 
     async def resolve(
         self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
-    ) -> str | None:
-        """Return the acknowledgement of what the reply decided; None when it decided nothing.
+    ) -> ApprovalAnswer | None:
+        """Return the answer acknowledging what the reply decided; None when it decided nothing.
 
         Each decided approval logs its own ApprovalDecided as the HIL resolution records it. A
         failure propagates: a retry re-reads what is still pending, so nothing is decided twice.
@@ -31,11 +32,18 @@ class HilApprovalReplies:
         )
         if outcome is None or outcome.action == "unrelated":
             return None
-        return _acknowledgement(outcome)
+        return ApprovalAnswer(ack=_acknowledgement(outcome))
 
 
-def _acknowledgement(outcome: ApprovalReplyOutcome) -> str:
-    """Name the action when the reply decided exactly one, so the user hears what it settled."""
+def _acknowledgement(outcome: ApprovalReplyOutcome) -> str | None:
+    """Name the action when the reply decided exactly one, so the user hears what it settled.
+
+    None when every approval was a yes with a change: the work asks again with the change shown,
+    and a "got it" before that ask would claim the action is under way.
+    """
+    amended = {record.approval_id for record in outcome.amended}
+    if outcome.decided and all(record.approval_id in amended for record in outcome.decided):
+        return None
     approved = outcome.action == "approve"
     if len(outcome.decided) != 1:
         return HIL_ACK_APPROVED if approved else HIL_ACK_DENIED

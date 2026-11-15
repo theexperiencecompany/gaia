@@ -234,3 +234,31 @@ class TestBrowserTaskSummary:
 
         assert summary == f"Start a browser task{SEPARATOR}{'y' * 140}"
         assert ELLIPSIS not in summary
+
+
+TODO_BEFORE: dict[str, object] = {
+    "title": "run4 change-ask",
+    "due_date": "2026-11-17T00:00:00+05:30",
+    "due_date_timezone": "Asia/Calcutta",
+    "priority": None,
+}
+TODO_AFTER: dict[str, object] = {**TODO_BEFORE, "priority": "high"}
+
+
+class TestAmendedCall:
+    """Run 4 bug 20: the re-ask after "yes but make it high priority" must show the change."""
+
+    def test_the_changed_field_is_named_as_the_change_and_leads_the_details(self) -> None:
+        described = describe_call("create_todo", TODO_AFTER, "todos", amended_args=TODO_BEFORE)
+
+        assert described.changes == [ApprovalDetail(label="Priority", value="high")]
+        assert described.details[0] == ApprovalDetail(label="Priority", value="high")
+        assert len(described.details) == HIL_DESCRIPTION_MAX_DETAILS
+
+    def test_a_first_ask_names_no_change(self) -> None:
+        assert describe_call("create_todo", TODO_AFTER, "todos").changes == []
+
+    def test_a_re_ask_that_changed_nothing_names_no_change(self) -> None:
+        described = describe_call("create_todo", TODO_BEFORE, "todos", amended_args=TODO_BEFORE)
+
+        assert described.changes == []

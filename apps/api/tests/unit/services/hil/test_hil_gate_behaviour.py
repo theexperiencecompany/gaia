@@ -88,6 +88,7 @@ def _ledger() -> MagicMock:
     ledger = MagicMock()
     ledger.find_live = AsyncMock(return_value=None)
     ledger.find_latest_denied = AsyncMock(return_value=None)
+    ledger.find_amended = AsyncMock(return_value=None)
     ledger.register = AsyncMock(return_value="ap_abc1234567")
     return ledger
 

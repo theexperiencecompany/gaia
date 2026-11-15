@@ -201,6 +201,28 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
         )
         return ApprovalLedgerDocument.model_validate(raw) if raw else None
 
+    async def find_amended(
+        self, tool_name: str, conversation_id: str
+    ) -> ApprovalLedgerDocument | None:
+        """Return the tool's newest row in the conversation when the user approved it with a change.
+
+        That stored call never runs, so the tool's next call in the conversation is its re-ask;
+        once the re-ask registers, it is the newest row and this returns None.
+        """
+        raw = await self._raw_collection().find_one(
+            {"tool_name": tool_name, "conversation_id": conversation_id},
+            sort=[("created_at", -1)],
+        )
+        if raw is None:
+            return None
+        row = ApprovalLedgerDocument.model_validate(raw)
+        amended = (
+            row.outcome is ApprovalOutcome.APPROVED
+            and row.feedback is not None
+            and row.action is None
+        )
+        return row if amended else None
+
     async def list_by_owners(
         self, owner_run_type: str, owner_ids: list[str], *, created_since: datetime
     ) -> list[ApprovalLedgerDocument]:

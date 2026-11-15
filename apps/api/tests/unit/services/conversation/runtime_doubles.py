@@ -35,6 +35,7 @@ from app.services.conversation.log import accept
 from app.services.conversation.ports import (
     Answered,
     Appended,
+    ApprovalAnswer,
     CancelReason,
     ClaimLost,
     ConversationAnalyticsEvent,
@@ -649,16 +650,18 @@ class ScriptedApprovals:
     asked: list[str] = field(default_factory=list)
     histories: list[list[MessageDict]] = field(default_factory=list)
     ports: RuntimePorts | None = None
+    # A yes with a change: the work asks again, so the answer carries no ack.
+    amend: bool = False
 
     async def resolve(
         self, conversation_id: str, user_id: str, message_text: str, history: list[MessageDict]
-    ) -> str | None:
+    ) -> ApprovalAnswer | None:
         self.asked.append(message_text)
         self.histories.append(history)
         if self.decision is None:
             return None
         if self.ports is None:
-            return _ACK[self.decision]
+            return ApprovalAnswer(ack=None if self.amend else _ACK[self.decision])
         state = await self.ports.log.state(conversation_id, user_id)
         pending = sorted(approval for item in state.work for approval in item.pending_approvals)
         decisions = [self.each.get(approval, self.decision) for approval in pending]
@@ -670,7 +673,8 @@ class ScriptedApprovals:
                 decider=ApprovalDecider.USER,
             )
             await accept(self.ports, conversation_id, user_id, entry)
-        return _ACK["approve" if "approve" in decisions else "deny"]
+        ack = _ACK["approve" if "approve" in decisions else "deny"]
+        return ApprovalAnswer(ack=None if self.amend else ack)
 
 
 _ACK: dict[ApprovalDecision, str] = {"approve": HIL_ACK_APPROVED, "deny": HIL_ACK_DENIED}

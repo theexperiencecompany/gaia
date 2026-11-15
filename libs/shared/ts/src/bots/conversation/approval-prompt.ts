@@ -4,7 +4,8 @@
  * answer; several open approvals are numbered oldest first, as the classifier
  * numbers them, and one already asked is never asked again: a later prompt names
  * only the new ones, under their numbers. Every word of what is asked comes from
- * the server's description.
+ * the server's description; an ask after a yes with a change says the change first,
+ * so the user sees it was applied before saying yes again.
  */
 
 import type { ScreenItem } from "../../conversation/types";
@@ -19,6 +20,9 @@ const MS_PER_MINUTE = 60_000;
 /** Every fixed string of the bot approval prompt, in one place. */
 const APPROVAL_PROMPT_COPY = {
   single: (action: string) => `**GAIA wants to ${action}**`,
+  updated: (changes: string, confirm: string) =>
+    `**Updated ${changes}. OK to ${confirm}?**`,
+  updatedLine: (changes: string) => `(updated ${changes})`,
   singleReply: (confirm: string) =>
     `Reply **yes** to ${confirm}, or **no** to cancel.`,
   several: (count: number) => `**${count} things need your OK:**`,
@@ -46,10 +50,22 @@ function inSentence(action: string): string {
   return action.charAt(0).toLowerCase() + action.slice(1);
 }
 
+/** What a yes with a change changed, as words: "priority to high and due date to Friday". */
+function changedWords(approval: ApprovalRequestedEntry): string | null {
+  const { changes } = approval.description;
+  if (changes.length === 0) return null;
+  return changes
+    .map(({ label, value }) => `${inSentence(label)} to ${value}`)
+    .join(" and ");
+}
+
 function singlePrompt(approval: ApprovalRequestedEntry, now: number): string {
   const { action, confirm, details } = approval.description;
+  const changed = changedWords(approval);
   const facts = [
-    APPROVAL_PROMPT_COPY.single(inSentence(action)),
+    changed
+      ? APPROVAL_PROMPT_COPY.updated(changed, confirm)
+      : APPROVAL_PROMPT_COPY.single(inSentence(action)),
     ...details.map(({ label, value }) => `${label}: ${value}`),
   ];
   const expiry = approval.expires_at
@@ -73,7 +89,13 @@ function numbered(
 ): { lines: string; first: number } {
   const numbers = named.map((approval) => open.indexOf(approval) + 1);
   const lines = named
-    .map((approval, at) => `${numbers[at]}. ${approval.description.headline}`)
+    .map((approval, at) => {
+      const changed = changedWords(approval);
+      const line = `${numbers[at]}. ${approval.description.headline}`;
+      return changed
+        ? `${line} ${APPROVAL_PROMPT_COPY.updatedLine(changed)}`
+        : line;
+    })
     .join("\n");
   return { lines, first: numbers[0] };
 }

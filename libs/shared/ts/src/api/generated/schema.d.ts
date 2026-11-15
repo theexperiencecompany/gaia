@@ -6125,6 +6125,8 @@ export interface components {
         ApprovalDescription: {
             /** Action */
             action: string;
+            /** Changes */
+            changes?: components["schemas"]["ApprovalDetail"][];
             /** Confirm */
             confirm: string;
             /** Details */
