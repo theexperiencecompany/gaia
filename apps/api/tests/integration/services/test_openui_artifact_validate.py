@@ -1,5 +1,6 @@
 """validate_program runs the real Node validator bundle built from the web artifact library."""
 
+from datetime import date
 import json
 from pathlib import Path
 import shutil
@@ -8,6 +9,8 @@ import subprocess
 import pytest
 
 from app.constants.openui_artifacts import ARTIFACT_VALIDATOR_BUNDLE, REPO_ROOT
+from app.models.openui_artifact_models import ArtifactKind
+from app.services.openui_artifacts.generate import ArtifactRequest, dated_brief
 from app.services.openui_artifacts.validate import ArtifactValidatorError, validate_program
 
 FIXTURES = REPO_ROOT / "apps" / "web" / "src" / "features" / "artifacts" / "openui" / "__fixtures__"
@@ -64,6 +67,23 @@ async def test_typed_figure_missing_from_the_brief_is_a_problem() -> None:
         "callout1.text: 142 is not in the source data; state it with a slot such as "
         "{funnel1.maxDrop}, {line1.avg~} for a rounded figure, or leave it out"
     ]
+
+
+async def test_the_date_the_model_was_given_grounds_the_date_it_writes() -> None:
+    request = ArtifactRequest(
+        kind=ArtifactKind.REPORT,
+        brief=SOURCE,
+        user_id="6ad86cdfb9e7ae0b43a0efea",
+        conversation_id=None,
+        today=date(2026, 11, 4),
+    )
+    program = _program('Callout("note", "As of 4 November 2026", "{funnel1.maxDrop} people left.")')
+
+    undated = await validate_program(program, SOURCE, interactive=False)
+    dated = await validate_program(program, dated_brief(request), interactive=False)
+
+    assert any("2026 is not in the source data" in p for p in undated.problems)
+    assert dated.ok, dated.problems
 
 
 @pytest.mark.parametrize("doc", ["launch", "report"])

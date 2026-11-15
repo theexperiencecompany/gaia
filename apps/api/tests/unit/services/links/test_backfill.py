@@ -14,7 +14,6 @@ import pytest
 from app.models.short_link_models import (
     LinkSnapshot,
     RenderMode,
-    RevokeReason,
     ShortLink,
     ShortLinkTargetType,
     ShortLinkUpdate,
@@ -46,6 +45,7 @@ class Seams:
     repo: AsyncMock
     source: AsyncMock
     publish: AsyncMock
+    revoke: AsyncMock
 
 
 @pytest.fixture
@@ -64,11 +64,11 @@ def seams() -> Iterator[Seams]:
         patch(f"{_MODULE}.REGISTRY", registry),
         patch(f"{_MODULE}.short_link_repository") as repo,
         patch(f"{_MODULE}.publish", AsyncMock(return_value=SNAPSHOT)) as publish,
+        patch(f"{_MODULE}.revoke_deleted_targets", AsyncMock(return_value=1)) as revoke,
     ):
         repo.live_without_snapshot = AsyncMock(return_value=[KEPT, GONE, KEPT_TOO, GONE_TOO])
-        repo.revoke = AsyncMock()
         repo.update = AsyncMock()
-        yield Seams(repo=repo, source=source, publish=publish)
+        yield Seams(repo=repo, source=source, publish=publish, revoke=revoke)
 
 
 async def test_a_dry_run_counts_only_file_types_and_touches_nothing(seams: Seams) -> None:
@@ -77,7 +77,7 @@ async def test_a_dry_run_counts_only_file_types_and_touches_nothing(seams: Seams
     assert report == BackfillReport(pending=4, published=0, target_deleted=0)
     seams.repo.live_without_snapshot.assert_awaited_once_with(SESSION)
     seams.source.assert_not_awaited()
-    seams.repo.revoke.assert_not_awaited()
+    seams.revoke.assert_not_awaited()
     seams.repo.update.assert_not_awaited()
 
 
@@ -95,8 +95,8 @@ async def test_an_applied_run_publishes_present_files_and_revokes_deleted_ones(
         call(slug, user_id="owner", update=ShortLinkUpdate(snapshot=SNAPSHOT))
         for slug in ("kept", "kept-too")
     ]
-    assert seams.repo.revoke.await_args_list == [
-        call("owner", slug, RevokeReason.TARGET_DELETED) for slug in ("gone", "gone-too")
+    assert seams.revoke.await_args_list == [
+        call("owner", SESSION, [link.target_id]) for link in (GONE, GONE_TOO)
     ]
 
 

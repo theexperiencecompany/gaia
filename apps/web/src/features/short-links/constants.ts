@@ -87,6 +87,9 @@ export const UNFURL_BOT_USER_AGENT_MARKERS = [
 /** The API's code for a viewer locked out after opening too many unknown slugs; not a LinkDenial. */
 export const LINK_LOOKUP_LOCKED_CODE = "link_lookup_locked";
 
+/** The API rate limiter's code for a viewer over their per-minute ceiling; not a LinkDenial. */
+export const RATE_LIMITED_CODE = "rate_limit_exceeded";
+
 /** What a dead link says, keyed by the API's code. No owner, title or type is ever disclosed. */
 export const DEAD_LINK_COPY: Record<DeadLinkState, string> = {
   link_not_found: "This link doesn't exist.",
@@ -98,6 +101,8 @@ export const DEAD_LINK_COPY: Record<DeadLinkState, string> = {
   link_removed: "This link was removed for breaking GAIA's terms.",
   [LINK_LOOKUP_LOCKED_CODE]:
     "Too many links that don't exist were opened from here. Try again in an hour.",
+  [RATE_LIMITED_CODE]:
+    "Too many links were opened from here. Try again in a minute.",
 };
 
 export const SIGN_IN_REQUIRED_COPY = "Sign in to open this";
@@ -108,6 +113,21 @@ export const GATED_LINK_DENIALS = [
   "link_sign_in_required",
   "link_forbidden",
 ] as const satisfies readonly LinkDenial[];
+
+/**
+ * Dead for everyone but the link's owner, who still opens what they turned off
+ * or let expire (the API's access rule), so the browser resolves them again too.
+ */
+export const OWNER_REOPENS_DENIALS = [
+  "link_revoked",
+  "link_expired",
+] as const satisfies readonly LinkDenial[];
+
+/** Every denial the server's anonymous resolve hands to the viewer's browser. */
+export const BROWSER_RESOLVED_DENIALS: ReadonlySet<string> = new Set([
+  ...GATED_LINK_DENIALS,
+  ...OWNER_REOPENS_DENIALS,
+]);
 
 /**
  * The sandbox an active (HTML) snapshot runs in: scripts and forms but no

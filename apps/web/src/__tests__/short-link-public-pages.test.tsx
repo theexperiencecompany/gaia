@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { ReactNode } from "react";
 import { renderToString } from "react-dom/server";
@@ -19,11 +19,20 @@ import {
 vi.mock("@/features/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isAuthenticated: false }),
 }));
+const logout = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+vi.mock("@/features/auth/hooks/useLogout", () => ({
+  useLogout: () => ({ logout }),
+}));
 vi.mock("@/features/chat/components/interface/RichContentRenderer", () => ({
   RichContentRenderer: ({ content }: { content: string }) => <p>{content}</p>,
 }));
 vi.mock("@/features/chat/components/interface/MarkdownRenderer", () => ({
   default: ({ content }: { content: string }) => <pre>{content}</pre>,
+}));
+vi.mock("@/features/artifacts/LazyArtifactRenderer", () => ({
+  LazyArtifactRenderer: ({ program }: { program: string }) => (
+    <pre>{program}</pre>
+  ),
 }));
 
 const CONTENT_URL = "https://c0ntent.gaiausercontent.test/?t=signed";
@@ -36,6 +45,7 @@ vi.mock("@/features/short-links/api/linkViewerApi", async (importOriginal) => ({
 }));
 
 import { LinkUnavailable } from "@/features/short-links/components/LinkUnavailable";
+import { PublicOpenUIArtifactView } from "@/features/short-links/components/PublicOpenUIArtifactView";
 import { PublicSessionArtifactView } from "@/features/short-links/components/PublicSessionArtifactView";
 import { PublicWorkflowRunView } from "@/features/short-links/components/PublicWorkflowRunView";
 import { DEAD_LINK_COPY } from "@/features/short-links/constants";
@@ -43,6 +53,7 @@ import { LINK_VIEWS } from "@/features/short-links/registry";
 import type { DeadLinkDenial } from "@/features/short-links/types";
 import type {
   LinkContent,
+  PublicOpenUIArtifact,
   PublicSessionArtifact,
   PublicWorkflowRun,
 } from "@/types/features/shortLinkTypes";
@@ -112,6 +123,7 @@ describe("a heygaia.link that doesn't open", () => {
         "link_removed",
         "link_revoked",
         "link_target_deleted",
+        "rate_limit_exceeded",
       ].sort(),
     );
   });
@@ -134,7 +146,11 @@ describe("a heygaia.link that doesn't open", () => {
   it("tells a signed-in viewer who isn't a grantee which account they're using", () => {
     render(
       <LinkUnavailable
-        state={{ denial: "link_forbidden", signedInAs: "sam@example.com" }}
+        state={{
+          denial: "link_forbidden",
+          signedInAs: "sam@example.com",
+          slug: "abcdefghijk",
+        }}
       />,
     );
 
@@ -144,6 +160,25 @@ describe("a heygaia.link that doesn't open", () => {
     expect(
       screen.getByText("You're signed in as sam@example.com."),
     ).toBeTruthy();
+  });
+
+  it("lets a viewer without access sign in with another account and come back", () => {
+    logout.mockClear();
+    render(
+      <LinkUnavailable
+        state={{
+          denial: "link_forbidden",
+          signedInAs: "sam@example.com",
+          slug: "abcdefghijk",
+        }}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sign in with another account" }),
+    );
+
+    expect(logout).toHaveBeenCalledWith("/l/abcdefghijk");
   });
 });
 
@@ -169,6 +204,29 @@ describe("a shared workflow run", () => {
       withLocale(<PublicWorkflowRunView view={RUN} />),
     );
 
+    expect(html).toMatch(
+      /<time dateTime="2026-11-10T06:27:00Z"[^>]*>Nov 10, 2026<\/time>/,
+    );
+  });
+});
+
+describe("a shared artifact", () => {
+  const ARTIFACT: PublicOpenUIArtifact = {
+    target_type: "openui_artifact",
+    kind: "report",
+    title: "Q3 revenue",
+    program: 'root = Report("Q3 revenue", [])',
+    version: 1,
+    created_at: "2026-11-10T06:27:00Z",
+    shared_by: "Ana",
+  };
+
+  it("says who shared it and when, like every other shared view", () => {
+    const html = renderToString(
+      withLocale(<PublicOpenUIArtifactView view={ARTIFACT} />),
+    );
+
+    expect(html).toMatch(/Shared by (<!-- -->)?Ana/);
     expect(html).toMatch(
       /<time dateTime="2026-11-10T06:27:00Z"[^>]*>Nov 10, 2026<\/time>/,
     );

@@ -11,18 +11,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/features/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isAuthenticated: true }),
 }));
+vi.mock("@/features/auth/hooks/useLogout", () => ({
+  useLogout: () => ({ logout: () => Promise.resolve() }),
+}));
 vi.mock("@/features/chat/components/interface/RichContentRenderer", () => ({
   RichContentRenderer: ({ content }: { content: string }) => <p>{content}</p>,
 }));
 
-const resolveLinkInBrowser = vi.hoisted(() => vi.fn());
-const recordShortLinkOpen = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+const openLinkInBrowser = vi.hoisted(() => vi.fn());
 vi.mock("@/features/short-links/api/linkViewerApi", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@/features/short-links/api/linkViewerApi")
   >()),
-  resolveLinkInBrowser,
-  recordShortLinkOpen,
+  openLinkInBrowser,
 }));
 
 import { GatedLinkView } from "@/features/short-links/components/GatedLinkView";
@@ -35,26 +36,23 @@ function denial(status: number, code: string, extra = {}) {
 
 describe("GatedLinkView", () => {
   beforeEach(() => {
-    resolveLinkInBrowser.mockReset();
-    recordShortLinkOpen.mockClear();
+    openLinkInBrowser.mockReset();
   });
 
   it("asks a signed-out viewer to sign in and return to the link", async () => {
-    resolveLinkInBrowser.mockRejectedValue(
-      denial(401, "link_sign_in_required"),
-    );
+    openLinkInBrowser.mockRejectedValue(denial(401, "link_sign_in_required"));
     render(<GatedLinkView slug="abcdefghijk" />);
 
     const signIn = await screen.findByRole("button", { name: "Sign in" });
     expect(signIn.getAttribute("href")).toBe(
       "/login?return_url=%2Fl%2Fabcdefghijk",
     );
-    expect(resolveLinkInBrowser).toHaveBeenCalledWith("abcdefghijk");
-    expect(recordShortLinkOpen).not.toHaveBeenCalled();
+    expect(openLinkInBrowser).toHaveBeenCalledOnce();
+    expect(openLinkInBrowser).toHaveBeenCalledWith("abcdefghijk");
   });
 
   it("names the account a signed-in viewer without access is using", async () => {
-    resolveLinkInBrowser.mockRejectedValue(
+    openLinkInBrowser.mockRejectedValue(
       denial(403, "link_forbidden", { signed_in_as: "sam@example.com" }),
     );
     render(<GatedLinkView slug="abcdefghijk" />);
@@ -62,10 +60,13 @@ describe("GatedLinkView", () => {
     expect(
       await screen.findByText("You're signed in as sam@example.com."),
     ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Sign in with another account" }),
+    ).toBeTruthy();
   });
 
-  it("opens the link for a grantee and counts the open", async () => {
-    resolveLinkInBrowser.mockResolvedValue({
+  it("opens the link for a grantee with the one call that counts the open", async () => {
+    openLinkInBrowser.mockResolvedValue({
       access: "people",
       target_type: "todo_deliverable",
       view: {
@@ -83,6 +84,6 @@ describe("GatedLinkView", () => {
       await screen.findByRole("heading", { name: "Trip plan" }),
     ).toBeTruthy();
     expect(screen.getByText("Day one: Lisbon")).toBeTruthy();
-    expect(recordShortLinkOpen).toHaveBeenCalledWith("abcdefghijk");
+    expect(openLinkInBrowser).toHaveBeenCalledOnce();
   });
 });

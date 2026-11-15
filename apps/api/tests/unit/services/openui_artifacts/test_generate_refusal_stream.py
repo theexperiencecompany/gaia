@@ -5,6 +5,7 @@ flagged ..."), and generate_reply let it escape as a crash instead of a refusal.
 """
 
 from collections.abc import AsyncIterator
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -19,7 +20,11 @@ from app.services.openui_artifacts.generate import (
 )
 
 REQUEST = ArtifactRequest(
-    kind=ArtifactKind.DASHBOARD, brief="b", user_id="6ad86cdfb9e7ae0b43a0efea", conversation_id=None
+    kind=ArtifactKind.DASHBOARD,
+    brief="b",
+    user_id="6ad86cdfb9e7ae0b43a0efea",
+    conversation_id=None,
+    today=date(2026, 11, 4),
 )
 
 

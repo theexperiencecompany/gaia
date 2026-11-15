@@ -45,7 +45,10 @@ from app.services.links.service import (
     link_response,
     live_share_link,
     optional_short_link,
+    record_open,
     resolve,
+    revoke_conversation_links,
+    revoke_deleted_targets,
     rotate,
     share,
     update_settings,
@@ -58,6 +61,7 @@ from shared.py.analytics.catalog.short_links import (
     ShortLinkAccessChanged,
     ShortLinkCreated,
     ShortLinkDenied,
+    ShortLinkOpened,
     ShortLinkRotated,
 )
 from tests.helpers import captured_wide_event
@@ -774,6 +778,42 @@ class TestUpdateSettings:
         assert raised.value.message == "Link not found"
 
 
+class TestDeletedTargets:
+    async def test_each_live_link_dies_as_target_deleted_and_drops_its_bytes(self, store: Store):
+        pinned = _link("file", target_type=SESSION, target_id=FILE_ID, snapshot=OLD)
+        page = _link("page", target_type=SESSION, target_id="conv-1/a.md")
+        raced = _link("raced", target_type=SESSION, target_id="conv-1/b.png", snapshot=FRESH)
+        ids = [FILE_ID, "conv-1/a.md", "conv-1/b.png"]
+        store.links.live_for_targets = AsyncMock(return_value=[pinned, page, raced])
+        # "raced" died between the read and the revoke: its bytes are someone else's to drop.
+        store.links.revoke = AsyncMock(
+            side_effect=lambda _u, slug, _r: None if slug == "raced" else pinned
+        )
+
+        revoked = await revoke_deleted_targets(OWNER, SESSION, ids)
+
+        assert revoked == 2
+        store.links.live_for_targets.assert_awaited_once_with(OWNER, SESSION, ids)
+        assert store.links.revoke.await_args_list == [
+            call(OWNER, slug, RevokeReason.TARGET_DELETED) for slug in ("file", "page", "raced")
+        ]
+        store.delete_snapshot.assert_awaited_once_with(OWNER, OLD)
+
+    async def test_a_conversation_revokes_what_each_type_finds_inside_it(self, store: Store):
+        inside = AsyncMock(return_value=[FILE_ID])
+        registry = {
+            TODO: REGISTRY[TODO],
+            SESSION: replace(REGISTRY[SESSION], in_conversation=inside),
+        }
+        store.links.live_for_targets = AsyncMock(return_value=[])
+
+        with patch(f"{_SVC}.REGISTRY", registry):
+            await revoke_conversation_links(OWNER, "conv-1")
+
+        inside.assert_awaited_once_with(OWNER, "conv-1")
+        store.links.live_for_targets.assert_awaited_once_with(OWNER, SESSION, [FILE_ID])
+
+
 class TestRotate:
     async def test_the_new_url_carries_the_revoked_docs_settings_and_file(
         self, store: Store, frozen: None
@@ -966,6 +1006,73 @@ class TestResolve:
             OWNER, FILE_ID, capped.model_copy(update={"content_id": None})
         )
         assert (envelope.content, envelope.downloadable) == (None, False)
+
+    @pytest.mark.parametrize(
+        "dead",
+        [
+            {"revoked": True, "revoked_reason": RevokeReason.OWNER},
+            {"expires_at": NOW},
+        ],
+    )
+    async def test_the_owner_opens_a_turned_off_file_without_its_bytes(
+        self, specs: Specs, frozen: None, monkeypatch: pytest.MonkeyPatch, dead: dict[str, object]
+    ) -> None:
+        monkeypatch.setattr(settings, "LINK_CONTENT_URL_TEMPLATE", "https://{content_id}.u.test")
+        monkeypatch.setattr(settings, "LINK_CONTENT_SIGNING_KEY", "k" * 32)
+        link = _link("s1", target_type=SESSION, target_id=FILE_ID, snapshot=FRESH, **dead)
+
+        envelope = await resolve(link, AS_OWNER)
+
+        specs.file_project.assert_awaited_once_with(
+            OWNER, FILE_ID, FRESH.model_copy(update={"content_id": None})
+        )
+        assert (envelope.content, envelope.downloadable, envelope.is_owner) == (None, False, True)
+
+
+class TestRecordOpen:
+    async def test_a_recipients_browser_gets_the_view_and_one_open_a_day(
+        self, specs: Specs, frozen: None
+    ) -> None:
+        viewer = LinkViewer(user_id="u-ana", email=None, ip=IP, user_agent=UA)
+
+        with patch(f"{_SVC}.capture") as capture:
+            async with captured_wide_event() as event:
+                envelope = await record_open(_link("s1"), viewer)
+
+        assert (envelope.view, envelope.is_owner, envelope.owner_target_id) == (VIEW, False, None)
+        capture.assert_called_once_with(
+            UserId(OWNER),
+            ShortLinkOpened(target_type=TODO.value, access="unlisted", viewer_signed_in=True),
+            _denied_dedupe("s1", "u-ana", "opened"),
+        )
+        assert event["short_link"] == {"viewer_kind": "recipient"}
+
+    @pytest.mark.parametrize(
+        ("viewer", "kind"),
+        [
+            (AS_OWNER, "owner"),
+            (LinkViewer(user_id=None, email=None, ip=IP, user_agent="Slackbot 1.0"), "unfurl_bot"),
+        ],
+    )
+    async def test_the_owner_and_unfurl_bots_are_never_counted(
+        self, specs: Specs, frozen: None, viewer: LinkViewer, kind: str
+    ) -> None:
+        with patch(f"{_SVC}.capture") as capture:
+            async with captured_wide_event() as event:
+                envelope = await record_open(_link("s1"), viewer)
+
+        capture.assert_not_called()
+        assert envelope.is_owner is (kind == "owner")
+        assert event["short_link"] == {"viewer_kind": kind}
+
+    async def test_a_viewer_the_link_does_not_open_for_gets_its_denial(
+        self, specs: Specs, frozen: None
+    ) -> None:
+        with patch(f"{_SVC}.capture"), pytest.raises(LinkDeniedError) as raised:
+            await record_open(_link("s1", access=LinkAccess.OWNER), RECIPIENT)
+
+        assert raised.value.code == "link_sign_in_required"
+        specs.todo_project.assert_not_awaited()
 
 
 class TestLinkResponse:

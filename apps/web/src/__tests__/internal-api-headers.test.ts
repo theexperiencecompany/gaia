@@ -44,6 +44,19 @@ describe("internalApiHeaders", () => {
     );
   });
 
+  it("on a self-host trusts only the address its own proxy wrote, never a client's CF-Connecting-IP", () => {
+    vi.stubEnv("INTERNAL_API_TOKEN", "t0ken");
+    vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "true");
+    const incoming = new Headers({
+      "cf-connecting-ip": "198.51.100.7",
+      "x-forwarded-for": "203.0.113.9",
+    });
+
+    expect(internalApiHeaders(incoming)["X-Gaia-Viewer-IP"]).toBe(
+      "203.0.113.9",
+    );
+  });
+
   it("sends nothing without a token, so the API applies its normal limits", () => {
     vi.stubEnv("INTERNAL_API_TOKEN", "");
     const incoming = new Headers({ "cf-connecting-ip": "198.51.100.7" });

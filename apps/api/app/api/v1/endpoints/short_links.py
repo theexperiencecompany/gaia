@@ -228,20 +228,22 @@ async def rotate_link_route(
     return link_response(await rotate(user.user_id, slug))
 
 
-@router.post("/{slug}/opened", status_code=status.HTTP_204_NO_CONTENT, responses=_DENIALS)
+@router.post("/{slug}/opened", responses=_DENIALS)
+@limiter.limit(RESOLVE_RATE_LIMIT)
 async def record_open_route(
     request: Request,
+    response: Response,
     slug: str,
     user: Annotated[AuthenticatedUser | None, Depends(get_optional_user)],
-) -> None:
-    """Count the link as opened, sent by the viewer's browser once the page shows.
+) -> LinkEnvelope:
+    """Open the link from the viewer's browser once the page shows: what they see, counted as an open.
 
     Not the resolve: public pages resolve during SSR, where neither the viewer's
     session nor their browser is visible, and unfurl bots resolve them too.
     """
     log.set(short_link={"operation": "opened", "slug_hash": hash_short_link_slug(slug)})
-    kind = await record_open(await get_link(slug), _viewer(request, user))
-    log.set(short_link={"viewer_kind": kind.value})
+    response.headers["Cache-Control"] = _NO_STORE  # pragma: no mutate — case-insensitive name
+    return await record_open(await _looked_up(request, slug), _viewer(request, user))
 
 
 @router.post("/{slug}/content-token", responses=_DENIALS)

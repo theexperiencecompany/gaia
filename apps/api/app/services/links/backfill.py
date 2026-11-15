@@ -3,9 +3,10 @@
 from dataclasses import dataclass
 
 from app.db.repositories.short_links import short_link_repository
-from app.models.short_link_models import RevokeReason, ShortLinkUpdate
+from app.models.short_link_models import ShortLinkUpdate
 from app.services.links.content import publish
 from app.services.links.registry import REGISTRY
+from app.services.links.service import revoke_deleted_targets
 from shared.py.wide_events import log
 
 
@@ -34,10 +35,9 @@ async def backfill_snapshots(*, apply: bool) -> BackfillReport:
                 continue
             source = await spec.source(link.user_id, link.target_id)
             if source is None:
-                await short_link_repository.revoke(
-                    link.user_id, link.slug, RevokeReason.TARGET_DELETED
+                deleted += await revoke_deleted_targets(
+                    link.user_id, link.target_type, [link.target_id]
                 )
-                deleted += 1
                 continue
             snapshot = await publish(link.user_id, link.target_type, source)
             await short_link_repository.update(

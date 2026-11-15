@@ -13,7 +13,9 @@ No CachePolicy: resolution is a public, low-volume read keyed by slug, not
 by the entity id an id-keyed cache would serve.
 """
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
+import re
 
 from pydantic import BaseModel
 
@@ -66,6 +68,35 @@ class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
                 "target_id": target_id,
                 "revoked": False,
             }
+        )
+
+    async def live_for_targets(
+        self, user_id: str, target_type: ShortLinkTargetType, target_ids: Sequence[str]
+    ) -> list[ShortLink]:
+        """Return the owner's live links to any of target_ids."""
+        if not target_ids:
+            return []
+        return await self._find(
+            {
+                "user_id": user_id,
+                "target_type": target_type,
+                "target_id": {"$in": list(target_ids)},
+                "revoked": False,
+            }
+        )
+
+    async def live_target_ids_under(
+        self, user_id: str, target_type: ShortLinkTargetType, prefix: str
+    ) -> list[str]:
+        """Return the ids of the owner's live-linked targets whose id starts with prefix."""
+        return await self._distinct(
+            "target_id",
+            {
+                "user_id": user_id,
+                "target_type": target_type,
+                "target_id": {"$regex": f"^{re.escape(prefix)}"},
+                "revoked": False,
+            },
         )
 
     async def get_latest_for_target(

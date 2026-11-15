@@ -2365,7 +2365,7 @@
         "type": "object"
       },
       "BriefingListResponse": {
-        "description": "Archive response shape (frontend is coded against this).",
+        "description": "One page of the archive, newest first, and where the next page starts.",
         "properties": {
           "briefings": {
             "items": {
@@ -2373,10 +2373,23 @@
             },
             "title": "Briefings",
             "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass as before to read the next page; None on the last page.",
+            "title": "Next Cursor"
           }
         },
         "required": [
-          "briefings"
+          "briefings",
+          "next_cursor"
         ],
         "title": "BriefingListResponse",
         "type": "object"
@@ -2681,8 +2694,8 @@
         "title": "BriefingPayload",
         "type": "object"
       },
-      "BriefingSchedule": {
-        "description": "When the user wants their briefs: how often, and the daily brief's local hour.",
+      "BriefingScheduleState": {
+        "description": "The stored schedule and whether it runs: briefs on a schedule are a Pro feature.",
         "properties": {
           "frequency": {
             "$ref": "#/components/schemas/BriefingFrequency",
@@ -2694,9 +2707,31 @@
             "minimum": 0.0,
             "title": "Hour",
             "type": "integer"
+          },
+          "next_daily_brief_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the next daily brief runs (UTC); None while no daily brief runs.",
+            "title": "Next Daily Brief At"
+          },
+          "paused_for_plan": {
+            "description": "The schedule sends briefs, but none run: the user is not on Pro.",
+            "title": "Paused For Plan",
+            "type": "boolean"
           }
         },
-        "title": "BriefingSchedule",
+        "required": [
+          "paused_for_plan",
+          "next_daily_brief_at"
+        ],
+        "title": "BriefingScheduleState",
         "type": "object"
       },
       "BriefingScheduleUpdate": {
@@ -26659,7 +26694,7 @@
     },
     "/api/v1/briefings": {
       "get": {
-        "description": "Archive of the user's briefings (daily + weekly), newest first.",
+        "description": "One page of the user's briefings archive (daily + weekly), newest first.",
         "operationId": "briefings_list_briefings",
         "parameters": [
           {
@@ -26672,6 +26707,24 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "The previous page's next_cursor; omit for the first page.",
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The previous page's next_cursor; omit for the first page.",
+              "title": "Before"
             }
           }
         ],
@@ -33235,7 +33288,7 @@
     },
     "/api/v1/l/{slug}/opened": {
       "post": {
-        "description": "Count the link as opened, sent by the viewer's browser once the page shows.\n\nNot the resolve: public pages resolve during SSR, where neither the viewer's\nsession nor their browser is visible, and unfurl bots resolve them too.",
+        "description": "Open the link from the viewer's browser once the page shows: what they see, counted as an open.\n\nNot the resolve: public pages resolve during SSR, where neither the viewer's\nsession nor their browser is visible, and unfurl bots resolve them too.",
         "operationId": "short_links_record_open_route",
         "parameters": [
           {
@@ -33249,7 +33302,14 @@
           }
         ],
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkEnvelope"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "401": {
@@ -36129,14 +36189,14 @@
     },
     "/api/v1/notifications/preferences/briefing-schedule": {
       "get": {
-        "description": "How often the user's briefs come, and the daily brief's hour on their clock.",
+        "description": "How often the user's briefs come, the daily brief's hour on their clock, and whether they run.",
         "operationId": "notification_read_briefing_schedule",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BriefingSchedule"
+                  "$ref": "#/components/schemas/BriefingScheduleState"
                 }
               }
             },
@@ -36179,7 +36239,7 @@
         ]
       },
       "put": {
-        "description": "Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored.",
+        "description": "Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs.",
         "operationId": "notification_update_briefing_schedule",
         "requestBody": {
           "content": {
@@ -36196,7 +36256,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BriefingSchedule"
+                  "$ref": "#/components/schemas/BriefingScheduleState"
                 }
               }
             },
@@ -45318,8 +45378,26 @@
     },
     "/api/v1/user/logout": {
       "post": {
-        "description": "Logout user and return logout URL for frontend redirection.",
+        "description": "Log the user out and return where the browser goes next.\n\nreturn_url, a path on this site, is for switching accounts: the identity\nprovider's logout lands on the sign-in page, which then returns there.",
         "operationId": "user_logout",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "return_url",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Return Url"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {

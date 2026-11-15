@@ -568,7 +568,7 @@ export interface paths {
         };
         /**
          * List Briefings
-         * @description Archive of the user's briefings (daily + weekly), newest first.
+         * @description One page of the user's briefings archive (daily + weekly), newest first.
          */
         get: operations["briefings_list_briefings"];
         put?: never;
@@ -2281,7 +2281,7 @@ export interface paths {
         put?: never;
         /**
          * Record Open Route
-         * @description Count the link as opened, sent by the viewer's browser once the page shows.
+         * @description Open the link from the viewer's browser once the page shows: what they see, counted as an open.
          *
          *     Not the resolve: public pages resolve during SSR, where neither the viewer's
          *     session nor their browser is visible, and unfurl bots resolve them too.
@@ -3132,12 +3132,12 @@ export interface paths {
         };
         /**
          * Read Briefing Schedule
-         * @description How often the user's briefs come, and the daily brief's hour on their clock.
+         * @description How often the user's briefs come, the daily brief's hour on their clock, and whether they run.
          */
         get: operations["notification_read_briefing_schedule"];
         /**
          * Update Briefing Schedule
-         * @description Replace the user's briefing schedule, moving their briefs onto it; echoes back what was stored.
+         * @description Replace the user's briefing schedule, moving their briefs onto it; echoes back how it now runs.
          */
         put: operations["notification_update_briefing_schedule"];
         post?: never;
@@ -5666,7 +5666,10 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description Logout user and return logout URL for frontend redirection.
+         * @description Log the user out and return where the browser goes next.
+         *
+         *     return_url, a path on this site, is for switching accounts: the identity
+         *     provider's logout lands on the sign-in page, which then returns there.
          */
         post: operations["user_logout"];
         delete?: never;
@@ -7169,11 +7172,16 @@ export interface components {
         };
         /**
          * BriefingListResponse
-         * @description Archive response shape (frontend is coded against this).
+         * @description One page of the archive, newest first, and where the next page starts.
          */
         BriefingListResponse: {
             /** Briefings */
             briefings: components["schemas"]["BriefingView"][];
+            /**
+             * Next Cursor
+             * @description Pass as before to read the next page; None on the last page.
+             */
+            next_cursor: string | null;
         };
         /**
          * BriefingPayload
@@ -7274,10 +7282,10 @@ export interface components {
             week: components["schemas"]["BriefingWeek"] | null;
         };
         /**
-         * BriefingSchedule
-         * @description When the user wants their briefs: how often, and the daily brief's local hour.
+         * BriefingScheduleState
+         * @description The stored schedule and whether it runs: briefs on a schedule are a Pro feature.
          */
-        BriefingSchedule: {
+        BriefingScheduleState: {
             /** @default daily */
             frequency?: components["schemas"]["BriefingFrequency"];
             /**
@@ -7285,6 +7293,16 @@ export interface components {
              * @default 8
              */
             hour?: number;
+            /**
+             * Next Daily Brief At
+             * @description When the next daily brief runs (UTC); None while no daily brief runs.
+             */
+            next_daily_brief_at: string | null;
+            /**
+             * Paused For Plan
+             * @description The schedule sends briefs, but none run: the user is not on Pro.
+             */
+            paused_for_plan: boolean;
         };
         /**
          * BriefingScheduleUpdate
@@ -17994,7 +18012,7 @@ export type BriefingFrequency = components['schemas']['BriefingFrequency'];
 export type BriefingItem = components['schemas']['BriefingItem'];
 export type BriefingListResponse = components['schemas']['BriefingListResponse'];
 export type BriefingPayload = components['schemas']['BriefingPayload'];
-export type BriefingSchedule = components['schemas']['BriefingSchedule'];
+export type BriefingScheduleState = components['schemas']['BriefingScheduleState'];
 export type BriefingScheduleUpdate = components['schemas']['BriefingScheduleUpdate'];
 export type BriefingSection = components['schemas']['BriefingSection'];
 export type BriefingStat = components['schemas']['BriefingStat'];
@@ -19997,6 +20015,8 @@ export interface operations {
     briefings_list_briefings: {
         parameters: {
             query?: {
+                /** @description The previous page's next_cursor; omit for the first page. */
+                before?: string | null;
                 limit?: number;
             };
             header?: never;
@@ -24915,11 +24935,13 @@ export interface operations {
                 };
             };
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LinkEnvelope"];
+                };
             };
             /** @description Sign in to open this. */
             401: {
@@ -27409,7 +27431,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BriefingSchedule"];
+                    "application/json": components["schemas"]["BriefingScheduleState"];
                 };
             };
             /** @description Unprocessable Entity */
@@ -27460,7 +27482,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BriefingSchedule"];
+                    "application/json": components["schemas"]["BriefingScheduleState"];
                 };
             };
             /** @description Briefs cannot turn off while workflows deliver to the brief */
@@ -34054,7 +34076,9 @@ export interface operations {
     };
     user_logout: {
         parameters: {
-            query?: never;
+            query?: {
+                return_url?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;

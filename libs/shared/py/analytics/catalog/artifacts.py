@@ -27,13 +27,13 @@ class ArtifactCreated(ServerEvent):
 
 
 class ArtifactFailed(ServerEvent):
-    """create_artifact gave up: a second validation failure, a refusal or a timeout."""
+    """create_artifact gave up: a second validation failure, a refusal, a cut-off reply or a timeout."""
 
     event: ClassVar[str] = "artifact:failed"
     budget_per_user_day: ClassVar[int] = 100
 
     kind: ArtifactKindName
-    reason: Literal["validation", "refused", "timeout"]
+    reason: Literal["validation", "refused", "timeout", "truncated"]
     problem_count: int
 
 

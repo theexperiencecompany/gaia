@@ -245,6 +245,33 @@ class TestShortLinksRevoke:
         assert found is not None and found.revoked_reason is RevokeReason.ROTATED
 
 
+class TestShortLinksDeletedTargets:
+    async def test_live_links_to_the_named_targets_are_found_for_their_owner_only(
+        self, repo, make_doc
+    ):
+        wanted = await repo.create(make_doc(user_id="owner", target_id="t1"))
+        await repo.create(make_doc(user_id="owner", target_id="t2"))
+        await repo.create(make_doc(user_id="other", target_id="t1"))
+        dead = await repo.create(make_doc(user_id="owner", target_id="t3"))
+        await repo.revoke("owner", dead.slug, RevokeReason.OWNER)
+
+        found = await repo.live_for_targets(
+            "owner", ShortLinkTargetType.TODO_DELIVERABLE, ["t1", "t3"]
+        )
+
+        assert [link.slug for link in found] == [wanted.slug]
+
+    async def test_a_conversations_files_match_its_id_literally(self, repo, make_doc):
+        session = ShortLinkTargetType.SESSION_ARTIFACT
+        for target_id in ("c.1/a.png", "c.1/b/c.md", "cX1/a.png", "c.10/a.png"):
+            await repo.create(make_doc(user_id="owner", target_type=session, target_id=target_id))
+        await repo.create(make_doc(user_id="other", target_type=session, target_id="c.1/z.png"))
+
+        found = await repo.live_target_ids_under("owner", session, "c.1/")
+
+        assert sorted(found) == ["c.1/a.png", "c.1/b/c.md"]
+
+
 class TestShortLinksUpdateLive:
     async def test_the_owner_changes_a_live_link(self, repo, make_doc):
         created = await repo.create(make_doc(user_id="owner"))

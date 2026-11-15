@@ -39,6 +39,7 @@ class PreviewFacts:
 Projector = Callable[[str, str, LinkSnapshot | None], Awaitable[PublicShortLinkView | None]]
 Previewer = Callable[[str, str, LinkSnapshot | None], Awaitable[PreviewFacts | None]]
 SourceReader = Callable[[str, str], Awaitable[SnapshotSource | None]]
+ConversationTargets = Callable[[str, str], Awaitable[list[str]]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +52,7 @@ class LinkTargetSpec:
     for types whose link serves bytes: those are published as a snapshot when
     the link is minted, and project then reads the snapshot, never the live file;
     the snapshot it gets has no content_id when the link may not serve its bytes.
+    in_conversation, for types a deleted chat takes with it, takes (owner_id, conversation_id).
     """
 
     type: ShortLinkTargetType
@@ -59,6 +61,8 @@ class LinkTargetSpec:
     project: Projector
     preview: Previewer
     source: SourceReader | None = None
+    #: The ids of this type's targets inside one conversation.
+    in_conversation: ConversationTargets | None = None
 
 
 def build_registry(

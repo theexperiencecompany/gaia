@@ -1,20 +1,18 @@
 """generate.py: what the artifact model is asked, how its stream is read and what the call is billed as."""
 
 from collections.abc import AsyncIterator, Iterator
-from datetime import UTC, datetime
-import os
-import time
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from openai.types.responses import (
     ResponseCompletedEvent,
+    ResponseIncompleteEvent,
     ResponseRefusalDeltaEvent,
     ResponseTextDeltaEvent,
 )
 import pytest
-import time_machine
 
 from app.constants.llm import ARTIFACT_MODEL_NAME, ARTIFACT_REASONING_EFFORT
 from app.constants.openui_artifacts import (
@@ -30,6 +28,8 @@ from app.services.openui_artifacts.generate import (
     ArtifactModelNotConfiguredError,
     ArtifactRefusedError,
     ArtifactRequest,
+    ArtifactTruncatedError,
+    dated_brief,
     generate_reply,
     repair_input,
     repair_program,
@@ -39,7 +39,11 @@ from app.services.openui_artifacts.generate import (
 _GEN = "app.services.openui_artifacts.generate"
 USER_ID = "6ad86cdfb9e7ae0b43a0efea"
 REQUEST = ArtifactRequest(
-    kind=ArtifactKind.REPORT, brief="Sign-ups 1,840", user_id=USER_ID, conversation_id="conv-1"
+    kind=ArtifactKind.REPORT,
+    brief="Sign-ups 1,840",
+    user_id=USER_ID,
+    conversation_id="conv-1",
+    today=date(2026, 11, 4),
 )
 
 
@@ -47,16 +51,28 @@ def _delta(text: str) -> ResponseTextDeltaEvent:
     return ResponseTextDeltaEvent.model_construct(delta=text)
 
 
-def _completed(
-    input_tokens: int = 100, output_tokens: int = 40, cached: int = 30, reasoning: int = 5
-) -> ResponseCompletedEvent:
-    usage = SimpleNamespace(
+def _usage(input_tokens: int, output_tokens: int, cached: int, reasoning: int) -> SimpleNamespace:
+    return SimpleNamespace(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         input_tokens_details=SimpleNamespace(cached_tokens=cached),
         output_tokens_details=SimpleNamespace(reasoning_tokens=reasoning),
     )
+
+
+def _completed(
+    input_tokens: int = 100, output_tokens: int = 40, cached: int = 30, reasoning: int = 5
+) -> ResponseCompletedEvent:
+    usage = _usage(input_tokens, output_tokens, cached, reasoning)
     return ResponseCompletedEvent.model_construct(response=SimpleNamespace(usage=usage))
+
+
+def _incomplete(reason: str | None) -> ResponseIncompleteEvent:
+    response = SimpleNamespace(
+        usage=_usage(900, ARTIFACT_MAX_OUTPUT_TOKENS, 0, 2_000),
+        incomplete_details=SimpleNamespace(reason=reason),
+    )
+    return ResponseIncompleteEvent.model_construct(response=response)
 
 
 def _stream(*events: object) -> AsyncIterator[object]:
@@ -228,6 +244,37 @@ async def test_a_refusal_in_the_stream_fails_loud_and_the_call_is_still_closed(
     assert refused.value.message == "the artifact model refused the request"
 
 
+@pytest.mark.parametrize("reason", ["max_output_tokens", None])
+async def test_a_reply_cut_off_before_it_finished_fails_as_truncated_and_is_still_billed(
+    model: Calls, reason: str | None
+) -> None:
+    model.create.return_value = _stream(_delta("root = Artifact("), _incomplete(reason))
+
+    with pytest.raises(ArtifactTruncatedError) as truncated:
+        await generate_reply(REQUEST, "in")
+
+    assert truncated.value.message == "the artifact reply stopped before the program was finished"
+    assert truncated.value.meta == {"reason": reason}
+    assert model.meter.call_args.kwargs["usage"] == {
+        "input_tokens": 900,
+        "output_tokens": ARTIFACT_MAX_OUTPUT_TOKENS,
+        "cached_tokens": 0,
+        "reasoning_tokens": 2_000,
+    }
+
+
+async def test_a_reply_its_content_filter_stopped_is_a_refusal_and_is_still_billed(
+    model: Calls,
+) -> None:
+    model.create.return_value = _stream(_delta("root = "), _incomplete("content_filter"))
+
+    with pytest.raises(ArtifactRefusedError) as refused:
+        await generate_reply(REQUEST, "in")
+
+    assert refused.value.message == "the artifact model's content filter stopped the reply"
+    model.meter.assert_called_once()
+
+
 @pytest.mark.parametrize("key", [None, ""])
 async def test_without_an_openai_key_the_error_says_where_to_set_one(key: str | None) -> None:
     config = None if key is None else SimpleNamespace(api_key=key)
@@ -253,39 +300,29 @@ async def test_a_configured_key_builds_the_client() -> None:
     assert built is client.return_value
 
 
-@time_machine.travel(datetime(2026, 11, 3, 9, 0, tzinfo=UTC), tick=False)
-async def test_a_first_draft_is_asked_for_with_the_date_above_the_brief(model: Calls) -> None:
+async def test_a_first_draft_is_asked_for_with_the_users_date_above_the_brief(
+    model: Calls,
+) -> None:
     model.create.return_value = _stream(_delta("root = A"), _completed())
     sink = AsyncMock()
 
     await write_program(REQUEST, sink)
 
-    assert model.create.await_args.kwargs["input"] == "Today is 03 November 2026.\n\nSign-ups 1,840"
+    assert model.create.await_args.kwargs["input"] == "Today is 04 November 2026.\n\nSign-ups 1,840"
     sink.assert_awaited_once_with("root = A")
 
 
-@time_machine.travel(datetime(2026, 11, 3, 20, 0, tzinfo=UTC), tick=False)
-async def test_the_date_is_todays_in_utc_whatever_zone_the_server_runs_in(model: Calls) -> None:
-    model.create.return_value = _stream(_completed())
-    with patch.dict(os.environ, {"TZ": "Pacific/Auckland"}):
-        time.tzset()
-        try:
-            await write_program(REQUEST, AsyncMock())
-        finally:
-            os.environ.pop("TZ", None)
-    time.tzset()
-
-    assert model.create.await_args.kwargs["input"].startswith("Today is 03 November 2026.")
+def test_the_dated_brief_is_the_users_date_above_the_brief() -> None:
+    assert dated_brief(REQUEST) == "Today is 04 November 2026.\n\nSign-ups 1,840"
 
 
-@time_machine.travel(datetime(2026, 11, 3, 9, 0, tzinfo=UTC), tick=False)
 async def test_a_repair_is_asked_for_with_the_program_and_each_problem(model: Calls) -> None:
     model.create.return_value = _stream(_completed())
 
     await repair_program(REQUEST, "root = A", ["p1", "p2"])
 
     assert model.create.await_args.kwargs["input"] == (
-        "Today is 03 November 2026.\n\nSign-ups 1,840\n\nYour program:\nroot = A\n\n"
+        "Today is 04 November 2026.\n\nSign-ups 1,840\n\nYour program:\nroot = A\n\n"
         f"Problems:\n- p1\n- p2\n{ARTIFACT_REPAIR_INSTRUCTION}."
     )
 

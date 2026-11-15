@@ -104,9 +104,77 @@ async def test_the_archive_lists_the_users_briefs_and_tags_the_wide_event() -> N
             response = await list_briefings(user=FAKE_USER, limit=7)
 
     assert response.briefings == [briefing_view(brief)]
-    list_recent.assert_awaited_once_with(FAKE_USER.user_id, limit=7)
+    assert response.next_cursor is None
+    # One past the page, to learn whether another page follows.
+    list_recent.assert_awaited_once_with(
+        FAKE_USER.user_id, limit=8, editions_only=True, before=None
+    )
     assert event["user"] == {"id": FAKE_USER.user_id}
     assert event["briefing"] == {"operation": "list", "limit": 7}
+
+
+def _dated(day: int) -> BriefingModel:
+    brief = _brief(opened=True)
+    return brief.model_copy(update={"id": f"brief_{day}", "date": f"2026-10-{day:02d}"})
+
+
+async def test_a_full_page_names_where_the_next_one_starts(client: AsyncClient) -> None:
+    briefs = [_dated(14), _dated(13), _dated(12), _dated(11)]
+    with patch(f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=briefs)):
+        response = await client.get(BASE, params={"limit": 3})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [b["id"] for b in body["briefings"]] == ["brief_14", "brief_13", "brief_12"]
+    assert body["next_cursor"] == "brief_12"
+
+
+async def test_a_page_that_takes_the_last_briefs_exactly_names_no_next_one(
+    client: AsyncClient,
+) -> None:
+    briefs = [_dated(14), _dated(13)]
+    with patch(f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=briefs)):
+        response = await client.get(BASE, params={"limit": 2})
+
+    assert response.json()["next_cursor"] is None
+
+
+async def test_the_archive_reads_thirty_briefs_a_page_unless_asked() -> None:
+    with patch(
+        f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=[])
+    ) as list_recent:
+        await list_briefings(user=FAKE_USER)
+
+    assert list_recent.await_args.kwargs["limit"] == 31
+
+
+async def test_the_next_page_is_read_from_after_the_cursors_brief(client: AsyncClient) -> None:
+    anchor = _dated(13)
+    with (
+        patch(f"{MODULE}.briefing_repository.get", AsyncMock(return_value=anchor)) as get,
+        patch(
+            f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=[_dated(12)])
+        ) as list_recent,
+    ):
+        response = await client.get(BASE, params={"limit": 2, "before": "brief_13"})
+
+    assert response.status_code == 200
+    assert response.json()["next_cursor"] is None
+    get.assert_awaited_once_with("brief_13", user_id=FAKE_USER.user_id)
+    list_recent.assert_awaited_once_with(
+        FAKE_USER.user_id, limit=3, editions_only=True, before=anchor
+    )
+
+
+async def test_a_cursor_naming_no_brief_of_the_users_is_a_404(client: AsyncClient) -> None:
+    with (
+        patch(f"{MODULE}.briefing_repository.get", AsyncMock(return_value=None)),
+        patch(f"{MODULE}.briefing_repository.list_recent", AsyncMock()) as list_recent,
+    ):
+        response = await client.get(BASE, params={"before": "brief_nope"})
+
+    assert (response.status_code, response.json()["message"]) == (404, "Briefing not found")
+    list_recent.assert_not_awaited()
 
 
 async def test_postmarks_returns_the_collection_and_reports_the_view(

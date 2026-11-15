@@ -7,3 +7,6 @@ export const EDITION_ROWS_SHOWN = 3;
  */
 export const BRIEF_STOP_WARNING =
   "The edition image keeps its own address, which may already be in your email, so it stays viewable.";
+
+/** Briefs the archive reads per page. */
+export const BRIEFING_ARCHIVE_PAGE_SIZE = 30;

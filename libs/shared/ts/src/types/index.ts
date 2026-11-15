@@ -37,7 +37,7 @@ export {
 export type { Note, NoteCreate, NoteListResponse, NoteUpdate } from "./notes";
 export type {
   BriefingFrequency,
-  BriefingSchedule,
+  BriefingScheduleState,
   ChannelPlatform,
   ChannelPreferences,
   InAppNotification,

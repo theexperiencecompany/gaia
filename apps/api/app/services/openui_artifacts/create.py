@@ -1,7 +1,7 @@
 """create_artifact's pipeline: write the program, validate it, repair it once, store it.
 
-A program that still fails after one repair, a provider refusal and a timeout all fail loud:
-nothing is stored and the caller gets ArtifactCreationError with the reason.
+A program that still fails after one repair, a refusal, a reply cut off at the output limit and
+a timeout all fail loud: nothing is stored and the caller gets ArtifactCreationError with the reason.
 """
 
 import asyncio
@@ -13,6 +13,7 @@ from app.constants.llm import ARTIFACT_MODEL_NAME
 from app.constants.openui_artifacts import (
     ARTIFACT_GENERATION_TIMEOUT_SECONDS,
     ARTIFACT_MAX_REPAIRS,
+    ARTIFACT_TRUNCATED_PROBLEM,
 )
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.models.openui_artifact_models import ArtifactFailureReason, OpenUIArtifact
@@ -20,7 +21,9 @@ from app.services.analytics_service import capture
 from app.services.openui_artifacts.generate import (
     ArtifactRefusedError,
     ArtifactRequest,
+    ArtifactTruncatedError,
     DeltaSink,
+    dated_brief,
     repair_program,
     write_program,
 )
@@ -69,8 +72,10 @@ def _fail(
 
 async def _validated(request: ArtifactRequest, on_delta: DeltaSink) -> _Validated:
     """Write the program, then repair it once if validation finds problems."""
+    # Grounded in what the model was given, so the date it was told is not an invented figure.
+    given = dated_brief(request)
     first = await write_program(request, on_delta)
-    validation = await validate_program(first.text, request.brief, interactive=request.interactive)
+    validation = await validate_program(first.text, given, interactive=request.interactive)
     output_tokens = first.output_tokens
     repairs = 0
     while not validation.ok and repairs < ARTIFACT_MAX_REPAIRS:
@@ -78,9 +83,7 @@ async def _validated(request: ArtifactRequest, on_delta: DeltaSink) -> _Validate
         log.set_ns("artifact", first_problems=validation.problems[:20])
         repaired = await repair_program(request, validation.program, validation.problems)
         output_tokens += repaired.output_tokens
-        validation = await validate_program(
-            repaired.text, request.brief, interactive=request.interactive
-        )
+        validation = await validate_program(repaired.text, given, interactive=request.interactive)
     return _Validated(validation, repairs, output_tokens, first.first_component_ms)
 
 
@@ -106,6 +109,8 @@ async def create_openui_artifact(
             request_body=request.brief,
         )
         raise _fail(request, ArtifactFailureReason.REFUSED, []) from exc
+    except ArtifactTruncatedError as exc:
+        raise _fail(request, ArtifactFailureReason.TRUNCATED, [ARTIFACT_TRUNCATED_PROBLEM]) from exc
     validation = result.validation
     if not validation.ok:
         raise _fail(request, ArtifactFailureReason.VALIDATION, validation.problems)

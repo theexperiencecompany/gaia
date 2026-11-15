@@ -261,6 +261,30 @@ describe("runEnvSetup env policy", () => {
     expect(content).toMatch(/^SETUP_MODE=selfhost$/m);
   });
 
+  it("gives the API and the web server one rate-limit token beside compose, kept across reruns", async () => {
+    const repo = makeRepo();
+    const composeEnvPath = path.join(
+      repo,
+      "packages",
+      "cli",
+      "selfhost",
+      ".env",
+    );
+    const token = (): string | undefined =>
+      readFileSync(composeEnvPath, "utf-8").match(
+        /^INTERNAL_API_TOKEN=([0-9a-f]{64})$/m,
+      )?.[1];
+
+    await runEnvSetup(makeHeadlessStore(), repo, "selfhost");
+    const first = token();
+    await runEnvSetup(makeHeadlessStore(), repo, "selfhost");
+
+    expect(first).toBeDefined();
+    expect(token()).toBe(first);
+    // Compose hands it to both containers; apps/api/.env never holds a second copy.
+    expect(readApiEnv(repo)).not.toContain("INTERNAL_API_TOKEN");
+  });
+
   it("serves selfhost from one origin: proxy profile on, API on the web port", async () => {
     const repo = makeRepo();
     await runEnvSetup(makeHeadlessStore(), repo, "selfhost", { 3000: 4000 });

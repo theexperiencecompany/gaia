@@ -4,16 +4,15 @@ import { Spinner } from "@heroui/spinner";
 import { ApiError } from "@shared/api";
 import { useEffect, useState } from "react";
 
-import { resolveLinkInBrowser } from "../api/linkViewerApi";
+import { openLinkInBrowser } from "../api/linkViewerApi";
 import type { GatedOutcome, LinkResolution } from "../types";
 import { linkUnavailableState } from "../utils/linkDenial";
-import { LinkOpenBeacon } from "./LinkOpenBeacon";
 import { LinkUnavailable } from "./LinkUnavailable";
 import { PublicLinkView } from "./PublicLinkView";
 
 async function resolveGated(slug: string): Promise<LinkResolution> {
   try {
-    return { kind: "open", envelope: await resolveLinkInBrowser(slug) };
+    return { kind: "open", envelope: await openLinkInBrowser(slug) };
   } catch (error) {
     const state =
       error instanceof ApiError
@@ -25,9 +24,10 @@ async function resolveGated(slug: string): Promise<LinkResolution> {
 }
 
 /**
- * A people- or owner-only link, opened in the browser: only the browser holds
- * the viewer's session (the cookie is host-only on the API host), so server
- * rendering got a sign-in denial whoever is reading.
+ * A link server rendering could not open, opened again in the browser: only the
+ * browser holds the viewer's session (the cookie is host-only on the API host),
+ * so a people- or owner-only link, or one its owner turned off, answered the
+ * server as it answers a stranger.
  */
 export function GatedLinkView({ slug }: { slug: string }) {
   const [outcome, setOutcome] = useState<GatedOutcome | null>(null);
@@ -60,10 +60,5 @@ export function GatedLinkView({ slug }: { slug: string }) {
   if (resolution.kind === "unavailable") {
     return <LinkUnavailable state={resolution.state} />;
   }
-  return (
-    <>
-      <LinkOpenBeacon slug={slug} />
-      <PublicLinkView slug={slug} envelope={resolution.envelope} />
-    </>
-  );
+  return <PublicLinkView slug={slug} envelope={resolution.envelope} />;
 }

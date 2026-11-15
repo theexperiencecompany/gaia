@@ -163,5 +163,12 @@
     init(fresh);
   });
 
+  /* size: the embedding page fits its frame to the document, so it never scrolls inside the page or clips in print */
+  function reportHeight() {
+    const post = () => window.parent.postMessage({ type: "gaia:height", height: Math.ceil(document.body.getBoundingClientRect().height) }, "*");
+    new ResizeObserver(post).observe(document.body);
+  }
+
   init(document);
+  reportHeight();
 })();

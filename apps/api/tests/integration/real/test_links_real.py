@@ -22,8 +22,12 @@ from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_optional_user
 from app.config.settings import settings
 from app.constants.short_links import MAX_RESOLVE_MISSES
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.todos import todo_repository
+from app.models.conversation_models import ConversationDocument
+from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
     LinkAccess,
     ReportReason,
@@ -58,6 +62,7 @@ REPORTERS = [
 ]
 TODO = "todo_deliverable"
 SESSION = "session_artifact"
+OPENUI = "openui_artifact"
 ORIGIN_TEMPLATE = "http://{content_id}.u.test/api/v1/usercontent/{content_id}"
 BROWSER = "Mozilla/5.0 (Macintosh) Safari/605.1.15"
 PNG = bytes.fromhex(
@@ -81,16 +86,19 @@ def viewer(test_app: FastAPI) -> Iterator[Viewer]:
     test_app.dependency_overrides.pop(get_optional_user, None)
 
 
+_COLLECTIONS = ("short_links", "link_reports", "todos", "artifacts", "conversations")
+
+
 @pytest.fixture(autouse=True)
 async def _clean(mongo_db, real_redis) -> AsyncIterator[None]:
-    for name in ("short_links", "link_reports", "todos"):
+    for name in _COLLECTIONS:
         await mongo_db[name].delete_many({})
     from app.db.mongodb import indexes
 
     with patch.object(indexes, "get_async_collection", lambda name: mongo_db[name]):
         await indexes.create_short_link_indexes()
     yield
-    for name in ("short_links", "link_reports", "todos"):
+    for name in _COLLECTIONS:
         await mongo_db[name].delete_many({})
 
 
@@ -165,6 +173,21 @@ def workspace(tmp_path: Path) -> Iterator[Workspace]:
     mod = "app.services.links.targets.session_artifact"
     with patch(f"{mod}.stat_artifact", stat), patch(f"{mod}.resolve_session_path", resolve):
         yield Workspace(root)
+
+
+async def _artifact(conversation_id: str) -> str:
+    artifact = await openui_artifact_repository.create(
+        OpenUIArtifact(
+            user_id=OWNER.user_id,
+            conversation_id=conversation_id,
+            kind=ArtifactKind.REPORT,
+            title="Q3 revenue",
+            program='root = Report("Q3 revenue", [])',
+            brief_hash="b",
+            model="m",
+        )
+    )
+    return artifact.id
 
 
 async def _todo(title: str = "Reply to Acme") -> str:
@@ -358,6 +381,40 @@ class TestRevokeRotateExpire:
             is None
         )
 
+    async def test_the_owner_still_opens_what_they_stopped_sharing_or_rotated_away(
+        self, client: AsyncClient, viewer: Viewer
+    ) -> None:
+        todo_id = await _todo()
+        old = (await _share(client, TODO, todo_id))["slug"]
+        new = (await client.post(f"/api/v1/l/{old}/rotate")).json()["slug"]
+        await client.post("/api/v1/l/unshare", json={"target_type": TODO, "target_id": todo_id})
+
+        viewer.user = OWNER
+        for slug in (old, new):
+            opened = await _open(client, slug)
+            assert opened.status_code == 200, opened.text
+            assert (opened.json()["is_owner"], opened.json()["view"]["title"]) == (
+                True,
+                "Reply to Acme",
+            )
+        viewer.user = STRANGER
+        assert (await _open(client, new)).json()["code"] == "link_revoked"
+
+    async def test_the_owner_of_a_stopped_file_sees_its_card_but_never_its_deleted_bytes(
+        self, client: AsyncClient, viewer: Viewer, workspace: Workspace, content_origin: None
+    ) -> None:
+        target = workspace.write("notes.md", b"# private")
+        slug = (await _share(client, SESSION, target))["slug"]
+        await client.post("/api/v1/l/unshare", json={"target_type": SESSION, "target_id": target})
+
+        viewer.user = OWNER
+        opened = (await _open(client, slug)).json()
+
+        assert (opened["view"]["filename"], opened["view"]["text"]) == ("notes.md", None)
+        assert (opened["content"], opened["downloadable"]) == (None, False)
+        assert (await client.post(f"/api/v1/l/{slug}/content-token")).status_code == 404
+        assert (await client.get(f"/api/v1/l/{slug}/download")).status_code == 404
+
     async def test_rotation_moves_every_setting_to_a_new_url(
         self, client: AsyncClient, viewer: Viewer
     ) -> None:
@@ -477,14 +534,17 @@ class TestOpens:
         captured.clear()
 
         viewer.user = OWNER
-        await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
+        as_owner = await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
         viewer.user = None
         await client.post(
             f"/api/v1/l/{slug}/opened", headers={"user-agent": "Slackbot-LinkExpanding 1.0"}
         )
         viewer.user = GRANTEE
-        await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
+        as_grantee = await client.post(f"/api/v1/l/{slug}/opened", headers={"user-agent": BROWSER})
 
+        # One browser call both counts the open and tells the owner apart.
+        assert (as_owner.json()["is_owner"], as_grantee.json()["is_owner"]) == (True, False)
+        assert as_grantee.json()["view"]["title"] == "Reply to Acme"
         assert _names(captured) == ["ShortLinkOpened"]
         assert captured[0][1].viewer_signed_in is True
         assert captured[0][1].access == "unlisted"
@@ -827,6 +887,40 @@ class TestReportsAndTakedown:
         await abuse.restore(await _stored(slug))
 
         assert (await _open(client, slug)).status_code == 200
+
+
+class TestDeletingTheSource:
+    async def test_deleting_a_chat_kills_the_links_to_its_files_and_artifacts(
+        self,
+        client: AsyncClient,
+        viewer: Viewer,
+        workspace: Workspace,
+        content_origin: None,
+        mongo_db,
+    ) -> None:
+        await conversation_repository.create(
+            ConversationDocument(
+                user_id=OWNER.user_id, conversation_id="conv-1", createdAt="2026-11-01T00:00:00Z"
+            )
+        )
+        file_slug = (await _share(client, SESSION, workspace.write("chart.png", PNG)))["slug"]
+        cid = (await _stored(file_slug)).snapshot.content_id
+        artifact_id = await _artifact("conv-1")
+        artifact_slug = (await _share(client, OPENUI, artifact_id))["slug"]
+        elsewhere_slug = (await _share(client, OPENUI, await _artifact("conv-2")))["slug"]
+
+        with patch("app.services.conversation_service.capture"):
+            deleted = await client.delete("/api/v1/conversations/conv-1")
+
+        assert deleted.status_code == 200, deleted.text
+        for slug in (file_slug, artifact_slug):
+            gone = await _open(client, slug)
+            assert (gone.status_code, gone.json()["code"]) == (410, "link_target_deleted")
+            assert (await _stored(slug)).revoked_reason is RevokeReason.TARGET_DELETED
+        with pytest.raises(FileNotFoundError):
+            await link_content.read_snapshot(OWNER.user_id, cid)
+        assert await mongo_db["artifacts"].count_documents({"conversation_id": "conv-1"}) == 0
+        assert (await _open(client, elsewhere_slug)).status_code == 200
 
 
 class TestBackfill:

@@ -4,6 +4,8 @@ import { Button } from "@heroui/button";
 import Link from "next/link";
 
 import { StandalonePage } from "@/components/layout/StandalonePage";
+import { useLogout } from "@/features/auth/hooks/useLogout";
+import { loginHref } from "@/features/auth/utils/loginHref";
 
 import {
   DEAD_LINK_COPY,
@@ -12,9 +14,18 @@ import {
 } from "../constants";
 import type { LinkUnavailableState } from "../types";
 
-/** The sign-in page, returning to the link once the viewer is signed in. */
-function signInHref(slug: string): string {
-  return `/login?return_url=${encodeURIComponent(`/l/${slug}`)}`;
+function linkPath(slug: string): string {
+  return `/l/${slug}`;
+}
+
+/** Sign out of the account that may not open the link, then sign in again and come back to it. */
+function SwitchAccountButton({ slug }: { slug: string }) {
+  const { logout } = useLogout();
+  return (
+    <Button variant="flat" onPress={() => logout(linkPath(slug))}>
+      Sign in with another account
+    </Button>
+  );
 }
 
 function Message({ state }: { state: LinkUnavailableState }) {
@@ -26,7 +37,7 @@ function Message({ state }: { state: LinkUnavailableState }) {
         </h1>
         <Button
           as={Link}
-          href={signInHref(state.slug)}
+          href={loginHref(linkPath(state.slug))}
           color="primary"
           className="mt-3"
         >
@@ -44,9 +55,12 @@ function Message({ state }: { state: LinkUnavailableState }) {
         <p className="max-w-sm text-sm text-pretty text-zinc-400">
           You're signed in as {state.signedInAs}.
         </p>
-        <Button as={Link} href="/" color="primary" className="mt-3">
-          Go to GAIA
-        </Button>
+        <div className="mt-3 flex flex-wrap justify-center gap-2">
+          <SwitchAccountButton slug={state.slug} />
+          <Button as={Link} href="/" color="primary">
+            Go to GAIA
+          </Button>
+        </div>
       </>
     );
   }

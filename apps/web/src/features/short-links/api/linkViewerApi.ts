@@ -10,13 +10,12 @@ import { REPORT_COPY } from "../constants";
 
 /**
  * Open a link from the viewer's browser, which carries the session cookie (it
- * is host-only on the API host, so server rendering never sees it). Throws the
+ * is host-only on the API host, so server rendering never sees it), and count
+ * the open: one call tells the owner apart and records the view. Throws the
  * ApiError whose code is the denial the page shows.
  */
-export async function resolveLinkInBrowser(
-  slug: string,
-): Promise<LinkEnvelope> {
-  return api.get("/api/v1/l/{slug}", { path: { slug }, silent: true });
+export async function openLinkInBrowser(slug: string): Promise<LinkEnvelope> {
+  return api.post("/api/v1/l/{slug}/opened", { path: { slug }, silent: true });
 }
 
 /** A short-lived URL that loads the link's file from the content origin. */
@@ -40,14 +39,6 @@ export async function reportLink(
     body: { reason, turnstile_token: turnstileToken },
     successMessage: REPORT_COPY.sent,
     errorMessage: REPORT_COPY.failed,
-  });
-}
-
-/** Tell the API this browser opened a link; it decides whether that counts. Never surfaces an error. */
-export async function recordShortLinkOpen(slug: string): Promise<void> {
-  await api.post("/api/v1/l/{slug}/opened", {
-    path: { slug },
-    silent: true,
   });
 }
 

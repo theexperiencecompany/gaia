@@ -396,12 +396,39 @@ async def stop_sharing(user_id: str, target_type: ShortLinkTargetType, target_id
     return True
 
 
-def _served_snapshot(link: ShortLink) -> LinkSnapshot | None:
-    """Return the snapshot as the link may serve it: no bytes when its access is wider than they allow."""
+async def revoke_deleted_targets(
+    user_id: str, target_type: ShortLinkTargetType, target_ids: list[str]
+) -> int:
+    """Kill every live link to targets their owner deleted, and delete the snapshots they pinned.
+
+    The one place a deleted source takes its links along: a snapshot outlives
+    its file by design, so only this revocation stops it serving.
+    """
+    revoked = 0
+    for link in await short_link_repository.live_for_targets(user_id, target_type, target_ids):
+        if await short_link_repository.revoke(user_id, link.slug, RevokeReason.TARGET_DELETED):
+            await _release_snapshot(user_id, link.snapshot)
+            revoked += 1
+    return revoked
+
+
+async def revoke_conversation_links(user_id: str, conversation_id: str) -> None:
+    """Kill the links to everything a conversation held, before the conversation's things are deleted."""
+    for spec in REGISTRY.values():
+        if spec.in_conversation is not None:
+            target_ids = await spec.in_conversation(user_id, conversation_id)
+            await revoke_deleted_targets(user_id, spec.type, target_ids)
+
+
+def _served(link: ShortLink) -> ShortLink:
+    """Return the link as it may serve its snapshot: no bytes once it is dead or wider than they allow.
+
+    A dead link opens only for its owner, and its bytes may already be deleted.
+    """
     snapshot = link.snapshot
-    if snapshot is None or servable(snapshot, link.access):
-        return snapshot
-    return snapshot.model_copy(update={"content_id": None})
+    if snapshot is None or (dead_state(link, _now()) is None and servable(snapshot, link.access)):
+        return link
+    return link.model_copy(update={"snapshot": snapshot.model_copy(update={"content_id": None})})
 
 
 def _viewer_key(viewer: LinkViewer) -> str:
@@ -441,12 +468,11 @@ async def _granted_view(
     decision = evaluate(link, viewer, _now())
     if isinstance(decision, Denied):
         raise _deny(link, viewer, decision.denial)
-    view = await REGISTRY[link.target_type].project(
-        link.user_id, link.target_id, _served_snapshot(link)
-    )
+    served = _served(link)
+    view = await REGISTRY[link.target_type].project(link.user_id, link.target_id, served.snapshot)
     if view is None:
         raise _deny(link, viewer, LinkDenial.TARGET_DELETED)
-    return link, decision.viewer_kind, view
+    return served, decision.viewer_kind, view
 
 
 async def resolve(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelope:
@@ -456,6 +482,10 @@ async def resolve(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelope:
     projection. A target the owner has since deleted is TARGET_DELETED.
     """
     granted, kind, view = await _granted_view(link, viewer)
+    return _envelope(granted, kind, view)
+
+
+def _envelope(granted: ShortLink, kind: LinkViewerKind, view: PublicShortLinkView) -> LinkEnvelope:
     return LinkEnvelope(
         access=granted.access,
         target_type=granted.target_type,
@@ -467,26 +497,25 @@ async def resolve(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelope:
     )
 
 
-async def record_open(link: ShortLink | None, viewer: LinkViewer) -> LinkViewerKind:
-    """Count a viewer opening a link for its owner, at most once a day per viewer.
+async def record_open(link: ShortLink | None, viewer: LinkViewer) -> LinkEnvelope:
+    """Open a link from the viewer's browser, counted for its owner at most once a day per viewer.
 
-    The owner and unfurl bots are classified but never counted; a viewer the
-    link does not open for raises its denial.
+    Only the browser carries the viewer's session, so this is the open that tells
+    the owner apart; the owner and unfurl bots are never counted.
     """
-    decision = evaluate(link, viewer, _now())
-    if isinstance(decision, Denied):
-        raise _deny(link, viewer, decision.denial)
-    if decision.viewer_kind is LinkViewerKind.RECIPIENT and link is not None:
+    granted, kind, view = await _granted_view(link, viewer)
+    log.set(short_link={"viewer_kind": kind.value})
+    if kind is LinkViewerKind.RECIPIENT:
         capture(
-            UserId(link.user_id),
+            UserId(granted.user_id),
             ShortLinkOpened(
-                target_type=link.target_type.value,
-                access=link.access.value,
+                target_type=granted.target_type.value,
+                access=granted.access.value,
                 viewer_signed_in=viewer.user_id is not None,
             ),
-            _day_dedupe(link.slug, viewer, "opened"),
+            _day_dedupe(granted.slug, viewer, "opened"),
         )
-    return decision.viewer_kind
+    return _envelope(granted, kind, view)
 
 
 async def openable_link(

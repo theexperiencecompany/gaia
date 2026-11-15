@@ -6,7 +6,10 @@ import * as envParser from "./env-parser.js";
 import * as envWriter from "./env-writer.js";
 import { apiEnvPath, detectSetupMode } from "./install-root.js";
 import type { LlmProvider } from "./llm-flags.js";
-import { collectMachineSecrets } from "./machine-secrets.js";
+import {
+  collectMachineSecrets,
+  ensureWebServerSecrets,
+} from "./machine-secrets.js";
 import { applyShareDomainApiEnv } from "./share-domains.js";
 import type { ShareDomains } from "./share-domains.types.js";
 
@@ -335,6 +338,7 @@ async function writeAllEnvFiles(
           ...served,
         },
       );
+      ensureWebServerSecrets(repoPath);
       store.setStatus("Saved Docker's settings");
     } catch (e) {
       throw new Error(

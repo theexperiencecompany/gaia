@@ -342,6 +342,16 @@ function writeDockerComposeEnvValues(
   writeFileOwnerOnly(envPath, lines.join("\n"));
 }
 
+/** Set each key a self-host install's compose env file has no value for, keeping every value it has. */
+export function addMissingDockerComposeEnvValues(
+  repoRoot: string,
+  values: EnvValues,
+): void {
+  const current = readDockerComposeEnv(repoRoot, "selfhost");
+  if (Object.keys(values).every((key) => key in current)) return;
+  writeDockerComposeEnvValues(repoRoot, { ...values, ...current }, "selfhost");
+}
+
 /** Set one key in a self-host install's compose env file, keeping every other value. */
 export function setDockerComposeEnvValue(
   repoRoot: string,
