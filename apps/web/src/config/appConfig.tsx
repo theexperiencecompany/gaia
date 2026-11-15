@@ -51,6 +51,8 @@ export interface AppLink {
   guestOnly?: boolean;
   commented?: boolean;
   description?: string;
+  /** Accessible name when the visible label is too generic out of context ("Download"). */
+  ariaLabel?: string;
   hideNavbar?: boolean;
 }
 
@@ -418,7 +420,7 @@ export const footerSections: LinkSection[] = [
     title: "Product",
     links: [
       { label: "Features", href: "/features" },
-      { label: "Download", href: "/download" },
+      { label: "Download", href: "/download", ariaLabel: "Download GAIA" },
       { label: "Self-Host CLI", href: "/cli" },
       { label: "Use Cases", href: "/use-cases" },
       { label: "Marketplace", href: "/marketplace" },

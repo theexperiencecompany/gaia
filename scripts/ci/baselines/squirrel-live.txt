@@ -113,6 +113,8 @@ score:Structured Data=93
 *	schema/entity-conflicts/entity-conflicts	syn:WebPage|name:dropbox ai integration - automate dropbox with ai url
 *	security/csp/csp-missing
 *	social/asset-divergence/asset-divergence	og-image:/api/og/integrations
+/	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
+/about	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
 /about	links/no-contextual-inbound/no-contextual-inbound
 /ai-assistant-that-can-see-your-screen	content/keyword-stuffing/keyword-stuffing	screen
 /ai-assistant-that-uses-your-computer	content/keyword-stuffing/keyword-stuffing	browser
@@ -196,6 +198,8 @@ score:Structured Data=93
 /automate/drive-notion	content/keyword-stuffing/keyword-stuffing	drive
 /automate/drive-notion	content/keyword-stuffing/keyword-stuffing	notion
 /automate/drive-slack	content/keyword-stuffing/keyword-stuffing	drive
+/automate/drive-slack	content/keyword-stuffing/keyword-stuffing	google
+/automate/drive-slack	content/keyword-stuffing/keyword-stuffing	slack
 /automate/drive-trello	content/keyword-stuffing/keyword-stuffing	card
 /automate/figma-notion	content/keyword-stuffing/keyword-stuffing	design
 /automate/figma-notion	content/keyword-stuffing/keyword-stuffing	notion
@@ -338,6 +342,8 @@ score:Structured Data=93
 /automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	meeting
 /automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	drive
 /automate/zoom-figma	content/keyword-stuffing/keyword-stuffing	figma
+/automate/zoom-figma	content/keyword-stuffing/keyword-stuffing	zoom
+/automate/zoom-notion	content/keyword-stuffing/keyword-stuffing	notion
 /automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	microsoft
 /best-ai-email-assistant	content/keyword-stuffing/keyword-stuffing	email
 /blog	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
@@ -487,6 +493,7 @@ score:Structured Data=93
 /de/automate/hubspot-zoom	core/meta-description/meta-description
 /de/automate/jira-figma	core/meta-description/meta-description
 /de/automate/jira-hubspot	core/meta-description/meta-description
+/de/automate/jira-loom	content/keyword-stuffing/keyword-stuffing	ticket
 /de/automate/jira-todoist	core/meta-description/meta-description
 /de/automate/jira-zoom	core/meta-description/meta-description
 /de/automate/linear-figma	core/meta-description/meta-description
@@ -605,6 +612,7 @@ score:Structured Data=93
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	meetings
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	planen
+/de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
 /de/automate/with/zoom	content/word-count/word-count
 /de/automate/with/zoom	core/meta-description/meta-description
 /de/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	aufgaben
