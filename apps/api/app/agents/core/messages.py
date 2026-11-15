@@ -9,6 +9,7 @@ from app.agents.context.assemble import assemble_context
 from app.agents.context.presence_note import presence_note_message
 from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
+from app.constants.chat import ConversationSource
 from app.helpers.message_helpers import (
     build_current_time_message,
     create_system_message,
@@ -36,7 +37,8 @@ class MessageScope:
     #: The full auth payload; its timezone and onboarding answers feed the context.
     user_dict: AuthenticatedUser | None = None
     conversation_id: str | None = None
-    source: str | None = None
+    #: The surface the reply is read on; a comms turn cannot be built without one.
+    source: ConversationSource | None = None
     agent_type: Literal["comms", "executor"] = "comms"
     active_todo_id: str | None = None
     execution_mode: Literal["interactive", "background"] = "interactive"
@@ -84,7 +86,7 @@ async def build_turn_context(query: str, scope: MessageScope) -> TurnContext:
 
     # Static per-channel main prompt, byte-identical across users on this
     # channel so the provider's implicit prompt cache matches across users.
-    # Web/mobile/desktop get the OpenUI variant; text-only platforms get theirs.
+    # The app surfaces get the OpenUI variant; a call and the text-only platforms get theirs.
     system_msg = create_system_message(
         user_id=user_id,
         user_name=user_name,

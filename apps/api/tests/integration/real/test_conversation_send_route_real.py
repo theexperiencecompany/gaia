@@ -147,7 +147,7 @@ async def test_a_spoken_turn_is_logged_as_voice_and_gets_no_instant_reaction(
     assert response.status_code == 202, response.text
     entries = await conversation_log_repository.read_log(conversation_id, user_id=FAKE_USER.user_id)
     [message] = [e.entry for e in entries or [] if isinstance(e.entry, UserMessage)]
-    assert message.voice is True
+    assert message.surface is ConversationSource.VOICE
     assert sends.effects.calls == [EffectCall("kick")]
 
 

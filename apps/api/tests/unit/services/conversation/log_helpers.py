@@ -62,9 +62,8 @@ def logged(seq: int, entry: Entry) -> LoggedEntry:
 
 
 def user(entry_id: str, *, voice: bool = False) -> UserMessage:
-    return UserMessage(
-        id=entry_id, text=f"text of {entry_id}", surface=ConversationSource.WEB, voice=voice
-    )
+    surface = ConversationSource.VOICE if voice else ConversationSource.WEB
+    return UserMessage(id=entry_id, text=f"text of {entry_id}", surface=surface)
 
 
 def stop(

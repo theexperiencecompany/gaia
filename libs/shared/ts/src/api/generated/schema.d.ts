@@ -7886,7 +7886,7 @@ export interface components {
          * @description Client or channel a conversation originated from.
          * @enum {string}
          */
-        ConversationSource: "web" | "mobile" | "desktop" | "telegram" | "discord" | "slack" | "whatsapp" | "imessage" | "workflow_system" | "background";
+        ConversationSource: "web" | "mobile" | "desktop" | "telegram" | "discord" | "slack" | "whatsapp" | "imessage" | "voice" | "workflow_system" | "background";
         /**
          * ConversationStopResponse
          * @description A conversation-level Stop: the work it stopped.
@@ -16208,11 +16208,6 @@ export interface components {
             todo_run_wake: components["schemas"]["TodoRunWake"] | null;
             /** Tool Category */
             tool_category: string | null;
-            /**
-             * Voice
-             * @default false
-             */
-            voice: boolean;
         };
         /**
          * UserSubscriptionStatus

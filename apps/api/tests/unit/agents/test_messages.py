@@ -26,6 +26,7 @@ from app.agents.core.messages import (
     MessageAttachments,
     MessageScope,
 )
+from app.constants.chat import ConversationSource
 from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
@@ -145,7 +146,7 @@ class TestConstructLangchainMessages:
         with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
             await comms_turn_messages(
                 query="Hello",
-                scope=MessageScope(agent_type="executor", source="web"),
+                scope=MessageScope(agent_type="executor", source=ConversationSource.WEB),
             )
         mock_sys.assert_called_once()
         kwargs = mock_sys.call_args.kwargs
@@ -170,7 +171,7 @@ class TestConstructLangchainMessages:
                     user_name="Alice",
                     user_dict=user_dict,
                     agent_type="comms",
-                    source="whatsapp",
+                    source=ConversationSource.WHATSAPP,
                 ),
             )
 
@@ -203,7 +204,7 @@ class TestConstructLangchainMessages:
                     user_dict=user_dict,
                     active_todo_id="todo-7",
                     execution_mode="background",
-                    source="slack",
+                    source=ConversationSource.SLACK,
                 ),
             )
 
@@ -248,7 +249,7 @@ class TestConstructLangchainMessages:
         with p["create_system"] as mock_sys, p["build_dynamic"], p["format_files"]:
             await comms_turn_messages(
                 query="hi",
-                scope=MessageScope(agent_type="comms", source="telegram"),
+                scope=MessageScope(agent_type="comms", source=ConversationSource.TELEGRAM),
             )
         assert mock_sys.call_args.kwargs["source"] == "telegram"
 
@@ -649,7 +650,7 @@ class TestOpenuiVariantReachesTheModel:
         with p["build_dynamic"], p["format_files"]:
             result = await comms_turn_messages(
                 query="hi",
-                scope=MessageScope(user_id="uid-1", source="web"),
+                scope=MessageScope(user_id="uid-1", source=ConversationSource.WEB),
             )
 
         assert "## Output Format (this app renders rich components)" in result[0].content
@@ -660,7 +661,7 @@ class TestOpenuiVariantReachesTheModel:
         with p["build_dynamic"], p["format_files"]:
             result = await comms_turn_messages(
                 query="hi",
-                scope=MessageScope(user_id="uid-1", source="whatsapp"),
+                scope=MessageScope(user_id="uid-1", source=ConversationSource.WHATSAPP),
             )
 
         assert "Platform Context" in result[0].content

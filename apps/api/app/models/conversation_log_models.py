@@ -105,7 +105,6 @@ class UserMessage(_Entry):
     file_ids: tuple[str, ...] = ()
     # The attached files as stored when the message was accepted, so every device shows them.
     files: tuple[FileData, ...] = ()
-    voice: bool = False
     # What reframes the turn, as a chat send carried it: a pinned tool, a workflow to run,
     # a calendar event, the message replied to.
     selected_tool: Identifier | None = None

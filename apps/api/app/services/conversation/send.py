@@ -90,12 +90,12 @@ async def send_message(
     message = UserMessage(
         id=body.message_id,
         text=body.text,
-        surface=surface,
+        # A spoken turn is read aloud, so it answers on the voice surface, not the app it came through.
+        surface=ConversationSource.VOICE if body.voice else surface,
         platform_message_id=platform_message_id,
         reply_to=body.reply_to or (reply_to_message.id if reply_to_message else None),
         file_ids=tuple(body.file_ids),
         files=tuple(files),
-        voice=body.voice,
         selected_tool=body.selected_tool,
         tool_category=body.tool_category,
         selected_workflow=body.selected_workflow,
@@ -152,7 +152,7 @@ async def submit_message(
     capture(
         UserId(user.user_id),
         ChatMessageSubmitted(
-            source=surface.value,
+            source=sent.message.surface.value,
             has_files=bool(body.file_ids),
             stream_id=sent.accepted.message_id,
             is_retry=False,

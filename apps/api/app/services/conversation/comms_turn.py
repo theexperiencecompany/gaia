@@ -93,7 +93,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
             tool_category=pinned.tool_category if pinned else None,
             active_todo_id=todo_id,
             execution_mode=mode,
-            source=source,
+            source=source.value,
             user_messages=_workflow_authorization(fired) if fired else texts,
             user_request=query,
             user_preferences=user_preferences,
@@ -120,7 +120,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
             mode=mode,
             conversation_id=claim.conversation_id,
             trigger_type=fired.trigger.type if fired else None,
-            source=source,
+            source=source.value,
         ),
         state={
             "query": query,
@@ -192,14 +192,14 @@ def _analytics(said: list[UserMessage], fired: WorkflowRun | None) -> AnalyticsC
 
 async def _answering_surface(
     claim: StepClaim, said: list[UserMessage], fired: WorkflowRun | None
-) -> str:
+) -> ConversationSource:
     """Return the surface the reply is read on, which picks its prompt: the newest message's, else the conversation's own.
 
     A workflow fire runs in the background.
     """
     if said:
-        return said[-1].surface.value
+        return said[-1].surface
     if fired is not None:
-        return ConversationSource.BACKGROUND.value
+        return ConversationSource.BACKGROUND
     stored = await conversation_repository.get_source(claim.conversation_id, user_id=claim.user_id)
-    return (stored or ConversationSource.BACKGROUND).value
+    return stored or ConversationSource.BACKGROUND

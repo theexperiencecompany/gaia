@@ -6,21 +6,11 @@ from typing import NamedTuple
 
 from shared.py.analytics import UserId
 from shared.py.wide_events import log
-from src.constants import (
-    DIRECTIVE_PREFIX_RE,
-    MARKDOWN_RE,
-    OPEN_OPENUI_FENCE_TAIL_RE,
-    OPENUI_FENCE_RE,
-    TAG_RE,
-    WHITESPACE_RE,
-    LogTag,
-)
+from src.constants import MARKDOWN_RE, TAG_RE, WHITESPACE_RE, LogTag
 
 
 def sanitize_for_tts(piece: str) -> str:
-    """Strip OpenUI fences, directive prefixes, tags (the bubble break among them) and markdown from a chunk."""
-    piece = OPENUI_FENCE_RE.sub(" ", piece)
-    piece = DIRECTIVE_PREFIX_RE.sub(" ", piece)
+    """Strip tags (the bubble break among them) and markdown from a chunk."""
     piece = TAG_RE.sub(" ", piece)
     piece = MARKDOWN_RE.sub(" ", piece)
     return WHITESPACE_RE.sub(" ", piece).strip()
@@ -32,11 +22,6 @@ def has_open_tag_at_tail(s: str) -> bool:
     if last_open == -1:
         return False
     return s.rfind(">") < last_open
-
-
-def has_open_openui_fence_at_tail(s: str) -> bool:
-    """Return True when the buffer has an open ':::openui' fence with no closing ':::'."""
-    return OPEN_OPENUI_FENCE_TAIL_RE.search(s) is not None
 
 
 class ParticipantMeta(NamedTuple):
@@ -97,7 +82,6 @@ def ms_since(t0: float) -> float:
 __all__ = [
     "sanitize_for_tts",
     "has_open_tag_at_tail",
-    "has_open_openui_fence_at_tail",
     "extract_meta_data",
     "ParticipantMeta",
     "ms_since",

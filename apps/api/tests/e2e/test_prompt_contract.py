@@ -21,6 +21,7 @@ import pytest
 
 from app.agents.core.messages import MessageScope
 from app.agents.templates.agent_template import get_comms_static_prompt
+from app.constants.chat import ConversationSource
 from tests._harness.context_chain import comms_turn_messages
 from tests.e2e._harness.graph_run import comms_graph, run_graph, scripted_model_of
 
@@ -60,7 +61,7 @@ class TestPromptContract:
 
         first = run.last_prompt()[0]
         assert isinstance(first, SystemMessage)
-        assert str(first.content) == get_comms_static_prompt("web")
+        assert str(first.content) == get_comms_static_prompt(ConversationSource.WEB)
 
     async def test_the_prompt_carries_todays_date(self):
         """The clock rides a HumanMessage tagged time_context, kept out of system_instruction so minute ticks never invalidate the cache prefix."""

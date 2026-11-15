@@ -51,7 +51,11 @@ async def record_turn_presence(user_id: str, source: ConversationSource) -> Pres
 
 async def presence_before(user_id: str, said: UserMessage | None) -> PresenceSnapshot:
     """Return where the user was before said, stamping its surface; a call or a turn no one typed stamps nothing."""
-    if said is None or said.voice or SourceCategory.from_source(said.surface) is SourceCategory.BG:
+    if (
+        said is None
+        or said.surface is ConversationSource.VOICE
+        or SourceCategory.from_source(said.surface) is SourceCategory.BG
+    ):
         return await read_presence(user_id)
     return await record_turn_presence(user_id, said.surface)
 

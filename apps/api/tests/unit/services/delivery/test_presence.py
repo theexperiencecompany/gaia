@@ -213,7 +213,7 @@ class TestPresenceBeforeAMessage:
     ) -> None:
         await fake_redis.hset(KEY, mapping={"web": str(NOW - 1500)})
 
-        before = await presence_before(USER_ID, _said(ConversationSource.WEB, voice=True))
+        before = await presence_before(USER_ID, _said(ConversationSource.VOICE))
 
         assert before["last_seen"] == {"web": NOW - 1500}
         assert await fake_redis.hgetall(KEY) == {"web": str(NOW - 1500)}
@@ -225,5 +225,5 @@ class TestPresenceBeforeAMessage:
         assert await fake_redis.hgetall(KEY) == {}
 
 
-def _said(surface: ConversationSource, *, voice: bool = False) -> UserMessage:
-    return UserMessage(id="u1", text="hi", surface=surface, voice=voice)
+def _said(surface: ConversationSource) -> UserMessage:
+    return UserMessage(id="u1", text="hi", surface=surface)
