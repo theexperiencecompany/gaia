@@ -25,6 +25,7 @@ from app.agents.core.interruption import INTERRUPTION_MARKER
 from app.agents.core.messages import MessageAttachments, MessageScope
 from app.agents.core.nodes.drain_conversation_log import close_feed, open_feed
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
+from app.agents.tools.comms_turn_tools import react, stay_silent
 from app.agents.tools.core.registry import init_tool_registry
 from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import ABSORBED_NOTE, LOG_SEQ
@@ -288,6 +289,11 @@ async def test_a_turn_ending_call_ends_the_run_with_its_outcome_and_no_second_mo
     assert "tool_data" not in shown
     assert "response" not in shown
     assert ModelOutput(has_tool_calls=False) in events
+
+
+async def test_a_turn_ending_call_tells_the_next_turn_what_the_user_got() -> None:
+    assert await react.ainvoke({"emoji": "👍"}) == "Reacted 👍."
+    assert await stay_silent.ainvoke({"reason": "a routine check"}) == "Sent nothing."
 
 
 async def test_a_reaction_the_schema_refuses_goes_back_to_the_model(conversation_id: str) -> None:
