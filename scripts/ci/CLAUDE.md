@@ -126,7 +126,13 @@ Each module's mutmut cap is 3x its cost, never under 720 s and never past the
 deadline less wrap-up. `shard` also keeps a deadline, `SHARD_DEADLINE_SECONDS` (1680, under the
 30-minute step timeout). Caps shrink to fit the time left, and a module the
 deadline has no room for gets a `timed_out` verdict with no run. So the step
-timeout can no longer kill a shard before it reports. The constants were fitted
+timeout can no longer kill a shard before it reports. Memory is capped the same
+way: on Linux mutmut gets an `RLIMIT_DATA` of `MUTANT_MEMORY_SHARE` (80%) of the
+shard's cgroup limit (else RAM) split over itself and its workers, inherited by
+every forked mutant. A mutant that loops while a test fake grows then dies of
+`MemoryError` and counts as killed. Before the cap, `conversation/step.py` went
+from 1.1 GB to 8 GB in 50 s and the OOM killer took the whole hosted runner,
+which GitHub reports as "the runner has received a shutdown signal". The constants were fitted
 to PR #1799 (runs 43665639573 and 43677307541), where packing by count left shard 3/6 with 54
 modules and a 30-minute timeout. The same run stopped
 `repositories/conversations.py` and `conversation/mongo_log.py` at the fixed
