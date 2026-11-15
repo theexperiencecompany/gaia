@@ -313,6 +313,122 @@ class CloudflareEmbedder:
         return await _cached(self._cache, "d", texts, lambda b: self._embed(b, self._spec.doc_body))
 
 
+@dataclass(frozen=True)
+class HostedSpec:
+    """One non-Cloudflare hosted embedder: endpoint, auth header and wire shape."""
+
+    url: str
+    auth_header: Callable[[], dict[str, str]]
+    batch: int
+    query_body: Callable[[list[str]], dict[str, object]]
+    doc_body: Callable[[list[str]], dict[str, object]]
+    vectors: Callable[[dict[str, object]], list[list[float]]]
+
+
+def _openai_body(model: str) -> Callable[[list[str]], dict[str, object]]:
+    return lambda texts: {"model": model, "input": texts}
+
+
+def _openai_vectors(payload: dict[str, object]) -> list[list[float]]:
+    data = payload["data"]
+    assert isinstance(data, list)
+    return [item["embedding"] for item in sorted(data, key=lambda item: item["index"])]
+
+
+def _gemini_body(task: str) -> Callable[[list[str]], dict[str, object]]:
+    model = "models/gemini-embedding-001"
+    return lambda texts: {
+        "requests": [
+            {"model": model, "content": {"parts": [{"text": t}]}, "taskType": task} for t in texts
+        ]
+    }
+
+
+def _gemini_vectors(payload: dict[str, object]) -> list[list[float]]:
+    embeddings = payload["embeddings"]
+    assert isinstance(embeddings, list)
+    return [item["values"] for item in embeddings]
+
+
+HOSTED_EMBEDDERS: Final[dict[str, HostedSpec]] = {
+    "openai-3-small": HostedSpec(
+        "https://api.openai.com/v1/embeddings",
+        lambda: {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+        256,
+        _openai_body("text-embedding-3-small"),
+        _openai_body("text-embedding-3-small"),
+        _openai_vectors,
+    ),
+    "gemini-embedding-001": HostedSpec(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents",
+        lambda: {"x-goog-api-key": str(settings.GOOGLE_API_KEY)},
+        100,
+        _gemini_body("RETRIEVAL_QUERY"),
+        _gemini_body("RETRIEVAL_DOCUMENT"),
+        _gemini_vectors,
+    ),
+}
+
+
+@dataclass
+class HostedEmbedder:
+    """An OpenAI- or Gemini-hosted embedder, batched under the same padded budget."""
+
+    name: str
+    _spec: HostedSpec = field(init=False)
+    _cache: _VectorCache = field(init=False)
+    _http: httpx.AsyncClient = field(init=False)
+    _slots: asyncio.Semaphore = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._spec = HOSTED_EMBEDDERS[self.name]
+        self._cache = _VectorCache(self.name)
+        self._http = httpx.AsyncClient(timeout=120, headers=self._spec.auth_header())
+        self._slots = asyncio.Semaphore(CF_CONCURRENCY)
+
+    async def _post(self, body: dict[str, object]) -> list[list[float]]:
+        async with self._slots:
+            for attempt in range(CF_RETRIES):
+                try:
+                    response = await self._http.post(self._spec.url, json=body)
+                except httpx.TransportError:
+                    if attempt == CF_RETRIES - 1:
+                        raise
+                    await asyncio.sleep(2**attempt)
+                    continue
+                if response.status_code in (429, 500, 502, 503, 504) and attempt < CF_RETRIES - 1:
+                    await asyncio.sleep(2 ** (attempt + 2))
+                    continue
+                if response.is_error:
+                    raise RuntimeError(
+                        f"{self.name}: HTTP {response.status_code} {response.text[:300]}"
+                    )
+                return self._spec.vectors(response.json())
+        raise RuntimeError(f"{self.name}: retries exhausted")
+
+    async def _embed(
+        self, texts: list[str], body: Callable[[list[str]], dict[str, object]]
+    ) -> list[Vector]:
+        batches = padded_batches(texts, self._spec.batch, CF_MAX_PADDED_TOKENS * 4)
+        results = await asyncio.gather(*(self._post(body([texts[i] for i in b])) for b in batches))
+        vectors: list[Vector | None] = [None] * len(texts)
+        for batch, result in zip(batches, results, strict=True):
+            for index, vector in zip(batch, result, strict=True):
+                vectors[index] = np.asarray(vector, dtype=np.float32)
+        missing = [i for i, v in enumerate(vectors) if v is None]
+        if missing:
+            raise RuntimeError(f"{self.name}: no vector returned for {len(missing)} texts")
+        return [v for v in vectors if v is not None]
+
+    async def embed_queries(self, texts: list[str]) -> list[Vector]:
+        return await _cached(
+            self._cache, "q", texts, lambda b: self._embed(b, self._spec.query_body)
+        )
+
+    async def embed_docs(self, texts: list[str]) -> list[Vector]:
+        return await _cached(self._cache, "d", texts, lambda b: self._embed(b, self._spec.doc_body))
+
+
 @dataclass
 class CloudflareReranker:
     client: _CloudflareClient
@@ -488,7 +604,8 @@ def per_query(dataset: Dataset, rankings: list[list[int]]) -> dict[str, list[flo
 async def run(datasets: list[Dataset], embedder_names: list[str], seed: int) -> dict[str, object]:
     client = _CloudflareClient()
     embedders: list[Embedder] = [LocalFastembed()] + [
-        CloudflareEmbedder(name, client) for name in embedder_names
+        HostedEmbedder(name) if name in HOSTED_EMBEDDERS else CloudflareEmbedder(name, client)
+        for name in embedder_names
     ]
     rerankers: list[Reranker] = [LocalJinaReranker(), CloudflareReranker(client)]
 
@@ -539,7 +656,7 @@ async def main() -> None:
     parser.add_argument(
         "--embedders",
         default=",".join(CLOUDFLARE_EMBEDDERS),
-        help="Comma-separated Workers AI embedders to compare against the baseline",
+        help="Comma-separated hosted embedders (Workers AI, OpenAI, Gemini) to compare against the baseline",
     )
     parser.add_argument("--out", type=Path, default=Path("/tmp/embedding_ab_report.json"))
     args = parser.parse_args()
