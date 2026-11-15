@@ -242,14 +242,25 @@ async def _move(
     log.info("briefing.schedule_moved", user_id=user.id, key=key, cron=cron, timezone=timezone)
 
 
+#: Where a brief-delivery workflow goes, per schedule with no daily brief, when none was chosen:
+#: weekly-only already sends its results at once; with briefs off it has nowhere to go, so refuse.
+_UNCHOSEN_DELIVERY: dict[BriefingFrequency, BriefFreeDelivery | None] = {
+    BriefingFrequency.WEEKLY_ONLY: WorkflowDelivery.NOW,
+    BriefingFrequency.OFF: None,
+}
+
+
 async def _move_off_the_brief(
     user_id: str,
-    deliveries: Mapping[str, BriefFreeDelivery],
+    frequency: BriefingFrequency,
+    chosen: Mapping[str, BriefFreeDelivery],
     via: BriefingScheduleChangedVia,
 ) -> None:
     """Give every brief-delivery workflow its new delivery; refuse, changing nothing, if one has none."""
     on_brief = await workflow_repository.find_brief_delivery_for_user(user_id)
-    unresolved = [workflow for workflow in on_brief if workflow.id not in deliveries]
+    fallback = _UNCHOSEN_DELIVERY[frequency]
+    deliveries = {workflow.id: chosen.get(workflow.id, fallback) for workflow in on_brief}
+    unresolved = [workflow for workflow in on_brief if deliveries[workflow.id] is None]
     if unresolved:
         capture(UserId(user_id), SettingsBriefsOffBlocked(workflow_count=len(unresolved), via=via))
         raise BriefDeliveryWorkflowsError(unresolved)
@@ -259,13 +270,13 @@ async def _move_off_the_brief(
         )
         if moved is None:
             raise LookupError(f"Workflow {workflow.id} vanished while it was moved off the brief")
-    if on_brief:
-        chosen = [deliveries[workflow.id] for workflow in on_brief]
+    if on_brief and frequency is BriefingFrequency.OFF:
+        moved_to = list(deliveries.values())
         capture(
             UserId(user_id),
             SettingsBriefsOffResolved(
-                moved_to_now=chosen.count(WorkflowDelivery.NOW),
-                moved_to_silent=chosen.count(WorkflowDelivery.SILENT),
+                moved_to_now=moved_to.count(WorkflowDelivery.NOW),
+                moved_to_silent=moved_to.count(WorkflowDelivery.SILENT),
                 via=via,
             ),
         )
@@ -279,12 +290,12 @@ async def set_briefing_schedule(
 ) -> UserDocument:
     """Store the user's briefing schedule and move their briefing workflows onto it.
 
-    Turning briefs off first moves each brief-delivery workflow to its delivery in
-    workflow_deliveries, and raises BriefDeliveryWorkflowsError while any has none.
-    A schedule with no daily brief releases what was held for it.
+    A schedule with no daily brief first moves each brief-delivery workflow off the brief:
+    weekly-only to Tell me now, off to its delivery in workflow_deliveries, raising
+    BriefDeliveryWorkflowsError while any has none. It also releases what was held.
     """
-    if schedule.frequency is BriefingFrequency.OFF:
-        await _move_off_the_brief(user_id, workflow_deliveries or {}, via)
+    if schedule.frequency in _UNCHOSEN_DELIVERY:
+        await _move_off_the_brief(user_id, schedule.frequency, workflow_deliveries or {}, via)
     await user_repository.set_briefing_schedule(user_id, schedule)
     user = await user_repository.get(user_id)
     if user is None:

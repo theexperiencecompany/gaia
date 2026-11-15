@@ -11,6 +11,7 @@ import pytest
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
 from app.constants.scouts import SCOUT_MAX_BOUND_TOOLS, SCOUT_TOOL_QUERY
 from app.models.hil_models import ToolReadOnlyVerdict
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.services.briefing.scouts import tools as scout_tools_module
 from app.services.briefing.scouts.tools import (
     ScoutIntegration,
@@ -23,6 +24,7 @@ from app.services.briefing.scouts.tools import (
 )
 from app.services.hil import read_only as read_only_module
 from app.services.hil.read_only import _ReadOnlyJudgement
+from app.services.integrations import user_integrations as user_integrations_module
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.utils.errors import AppError
@@ -133,7 +135,59 @@ def native(monkeypatch: pytest.MonkeyPatch) -> _Registry:
     return registry
 
 
+def _account(identity: dict[str, str]) -> IntegrationAccount:
+    return IntegrationAccount(
+        id="acct_1", connected_account_id="ca_1", identity=identity, label="account"
+    )
+
+
 class TestWhichIntegrations:
+    @pytest.fixture(autouse=True)
+    def accounts(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+        listing = AsyncMock(return_value=[])
+        monkeypatch.setattr(
+            scout_tools_module.user_integration_repository, "list_for_user", listing
+        )
+        return listing
+
+    @pytest.mark.usefixtures("native")
+    async def test_each_app_carries_the_users_own_handles_from_the_accounts_they_connected(
+        self, monkeypatch: pytest.MonkeyPatch, accounts: AsyncMock
+    ) -> None:
+        accounts.return_value = [
+            UserIntegrationDocument(
+                user_id=USER_ID,
+                integration_id="linear",
+                accounts=[
+                    _account(
+                        {
+                            "user_id": "7b23",
+                            "username": "Dhruv",
+                            "email": "D@x.io",
+                            "team_name": "GAIA",
+                            "workspace_name": "",
+                        }
+                    ),
+                    _account({"email": ""}),
+                ],
+            ),
+        ]
+        connected = [{"id": "linear", "name": "Linear"}, {"id": "notes", "name": "Notes"}]
+        monkeypatch.setattr(
+            scout_tools_module,
+            "get_connected_integrations_named",
+            AsyncMock(return_value=connected),
+        )
+        monkeypatch.setattr(
+            scout_tools_module, "get_signed_out_integrations_named", AsyncMock(return_value=[])
+        )
+
+        linear, notes = await scout_integrations(USER_ID)
+
+        assert linear.handles == frozenset({"7b23", "dhruv", "d@x.io"})
+        assert notes.handles == frozenset()
+        accounts.assert_awaited_once_with(USER_ID)
+
     @pytest.mark.usefixtures("native")
     async def test_gaias_own_features_are_not_apps_to_scout(
         self, monkeypatch: pytest.MonkeyPatch
@@ -143,10 +197,32 @@ class TestWhichIntegrations:
             return [{"id": "todos", "name": "Todos"}, {"id": "linear", "name": "Linear"}]
 
         monkeypatch.setattr(scout_tools_module, "get_connected_integrations_named", connected)
+        monkeypatch.setattr(
+            scout_tools_module, "get_signed_out_integrations_named", AsyncMock(return_value=[])
+        )
 
         assert await scout_integrations(USER_ID) == [
             ScoutIntegration(integration_id="linear", name="Linear")
         ]
+
+    @pytest.mark.usefixtures("native")
+    async def test_an_app_whose_sign_in_died_is_still_listed_as_signed_out(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        records = [
+            {"integration_id": "linear", "status": "connected"},
+            {"integration_id": "github", "status": "expired"},
+            {"integration_id": "slack", "status": "created"},
+            {"integration_id": "googlecalendar", "status": "expired"},
+        ]
+        read = AsyncMock(return_value=records)
+        monkeypatch.setattr(user_integrations_module, "get_user_integration_records", read)
+
+        assert await scout_integrations(USER_ID) == [
+            ScoutIntegration(integration_id="linear", name="Linear"),
+            ScoutIntegration(integration_id="github", name="GitHub", signed_out=True),
+        ]
+        assert [c.args for c in read.await_args_list] == [(USER_ID,), (USER_ID,)]
 
     async def test_mail_and_calendar_are_left_to_their_own_sections(
         self, monkeypatch: pytest.MonkeyPatch
@@ -161,6 +237,9 @@ class TestWhichIntegrations:
             scout_tools_module,
             "get_connected_integrations_named",
             AsyncMock(return_value=connected),
+        )
+        monkeypatch.setattr(
+            scout_tools_module, "get_signed_out_integrations_named", AsyncMock(return_value=[])
         )
 
         assert await scout_integrations(USER_ID) == [
