@@ -100,6 +100,10 @@ function makeSlackClient(tsOverride?: string) {
       delete: vi.fn().mockResolvedValue({}),
       postEphemeral: vi.fn().mockResolvedValue({}),
     },
+    reactions: {
+      add: vi.fn().mockResolvedValue({}),
+      remove: vi.fn().mockResolvedValue({}),
+    },
   };
 }
 
@@ -421,22 +425,35 @@ describe("SlackAdapter - postSlackMessage", () => {
     );
   });
 
-  it("shows Thinking... while a reply is prepared, and takes it down once GAIA stops", async () => {
+  it("marks the user's message with eyes while a reply is prepared, and takes the mark off once GAIA stops", async () => {
     await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
 
-    const stopTyping = lastSurface().startTyping();
+    const stopTyping = lastSurface().startTyping("111.222");
     stopTyping();
 
     await vi.waitFor(() =>
-      expect(appClient.chat.delete).toHaveBeenCalledExactlyOnceWith({
+      expect(appClient.reactions.remove).toHaveBeenCalledExactlyOnceWith({
         channel: "C789",
-        ts: "ts-sent",
+        timestamp: "111.222",
+        name: "eyes",
       }),
     );
-    expect(appClient.chat.postMessage).toHaveBeenCalledExactlyOnceWith({
+    expect(appClient.reactions.add).toHaveBeenCalledExactlyOnceWith({
       channel: "C789",
-      text: "Thinking...",
+      timestamp: "111.222",
+      name: "eyes",
     });
+    expect(appClient.chat.postMessage).not.toHaveBeenCalled();
+    expect(appClient.chat.delete).not.toHaveBeenCalled();
+  });
+
+  it("shows no typing mark when there is no user message to put it on", async () => {
+    await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
+
+    lastSurface().startTyping(null)();
+
+    expect(appClient.reactions.add).not.toHaveBeenCalled();
+    expect(appClient.chat.postMessage).not.toHaveBeenCalled();
   });
 
   it("reacts to a message in the conversation's channel", async () => {

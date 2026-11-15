@@ -476,6 +476,16 @@ export class ConversationFollower {
     }
   }
 
+  /** The platform message of the newest user message on screen, which a coming reply answers. */
+  private latestUserMessage(): string | null {
+    const latest = this.view.items.findLast(
+      (item) => item.kind === SCREEN_ITEM_KIND.USER,
+    );
+    return latest?.kind === SCREEN_ITEM_KIND.USER
+      ? latest.message.platform_message_id
+      : null;
+  }
+
   /** The platform message of the user message a reply quotes, when this follow holds it. */
   private quoteTarget(messageId: string | null): string | null {
     if (!messageId) return null;
@@ -564,7 +574,7 @@ export class ConversationFollower {
   private renderTyping(): void {
     const typing = TYPING_DISPLAYS.has(this.view.display);
     if (typing && !this.stopTyping) {
-      this.stopTyping = this.surface.startTyping();
+      this.stopTyping = this.surface.startTyping(this.latestUserMessage());
     } else if (!typing && this.stopTyping) {
       this.stopTyping();
       this.stopTyping = null;

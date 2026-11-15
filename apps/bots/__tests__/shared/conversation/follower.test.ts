@@ -45,7 +45,8 @@ type Call =
   | { op: "edit"; id: string; text: string }
   | { op: "delete"; id: string }
   | { op: "react"; target: string; emoji: string; replaces: string | null }
-  | { op: "typing"; state: "start" | "stop" }
+  | { op: "typing"; state: "start"; on: string | null }
+  | { op: "typing"; state: "stop" }
   | { op: "notice"; bubbles: string[] }
   | { op: "dm"; bubbles: string[] }
   | { op: "photo"; url: string; caption: string }
@@ -114,8 +115,8 @@ function recorder(behaviour: PlatformBehaviour = {}): {
       calls.push({ op: "react", target, emoji, replaces });
       return REACTION_OUTCOME.ATTACHED;
     },
-    startTyping: () => {
-      calls.push({ op: "typing", state: "start" });
+    startTyping: (on) => {
+      calls.push({ op: "typing", state: "start", on });
       return () => calls.push({ op: "typing", state: "stop" });
     },
   };
@@ -1210,5 +1211,24 @@ describe("a browser run on a work item", () => {
 
     await expect(feed(follower, frames)).rejects.toThrow("chat not found");
     expect(follower.deliveryFailed).toBe(true);
+  });
+});
+
+describe("the follower's typing indicator", () => {
+  it("marks typing on the latest user message the reply answers, and stops once GAIA is idle", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(startAfter(0), EDITING, surface);
+
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11"), inbound("u2", 2, "12")]),
+      stateFrame(2, "thinking"),
+      ...answer(3, "r1", "Both done."),
+      stateFrame(3, "idle"),
+    ]);
+
+    expect(calls.filter((call) => call.op === "typing")).toEqual([
+      { op: "typing", state: "start", on: "12" },
+      { op: "typing", state: "stop" },
+    ]);
   });
 });

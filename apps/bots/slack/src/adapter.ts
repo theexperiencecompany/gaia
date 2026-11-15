@@ -45,7 +45,8 @@ import { App, type CodedError, type Context } from "@slack/bolt";
 import { which } from "node-emoji";
 
 /** What Slack shows while GAIA prepares a reply: it has no typing indicator for bots. */
-const SLACK_THINKING_TEXT = "Thinking...";
+/** The reaction on the user's message while GAIA prepares its reply; Slack gives bots no typing indicator. */
+const SLACK_TYPING_REACTION = "eyes";
 
 /** Bolt's respond function for slash command responses. */
 type SlackRespondFn = (
@@ -500,40 +501,44 @@ export class SlackAdapter extends BaseBotAdapter {
           true,
           replaces,
         ),
-      startTyping: () => this.showThinking(channelId),
+      startTyping: (answering) => this.markAnswering(channelId, answering),
     };
   }
 
   /**
-   * Slack has no typing indicator for bots, so a "Thinking..." message stands in
-   * while GAIA prepares a reply, and is deleted once it stops. A placeholder Slack
-   * would not post or delete costs only the indicator, so the miss is logged.
+   * Puts eyes on the message GAIA is answering while it prepares the reply, and
+   * takes them off once it stops. A reaction Slack would not add costs only the
+   * indicator, so the miss is logged.
    */
-  private showThinking(channelId: string): () => void {
-    const { client } = this.app;
-    const logMiss = (event: string) => (err: unknown) => {
-      this.adapterLogger.warn(event, {
-        channel_hash: hashLogIdentifier(channelId),
-        ...(err instanceof Error
-          ? { error_type: err.name, error: err.message }
-          : { error: String(err) }),
-      });
-    };
-    const posted = client.chat
-      .postMessage({ channel: channelId, text: SLACK_THINKING_TEXT })
+  private markAnswering(
+    channelId: string,
+    answering: string | null,
+  ): () => void {
+    if (!answering) return () => undefined;
+    const added = this.app.client.reactions
+      .add({
+        channel: channelId,
+        timestamp: answering,
+        name: SLACK_TYPING_REACTION,
+      })
       .then(
-        ({ ts }) => ts ?? null,
+        () => true,
         (err: unknown) => {
-          logMiss("thinking_indicator_not_posted")(err);
-          return null;
+          this.adapterLogger.warn("typing_reaction_not_added", {
+            channel_hash: hashLogIdentifier(channelId),
+            ...(err instanceof Error
+              ? { error_type: err.name, error: err.message }
+              : { error: String(err) }),
+          });
+          return false;
         },
       );
     return () => {
-      void posted
-        .then(async (ts) => {
-          if (ts) await client.chat.delete({ channel: channelId, ts });
-        })
-        .catch(logMiss("thinking_indicator_not_removed"));
+      void added.then((wasAdded) =>
+        wasAdded
+          ? this.removeReaction(channelId, answering, SLACK_TYPING_REACTION)
+          : undefined,
+      );
     };
   }
 

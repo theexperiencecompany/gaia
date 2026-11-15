@@ -43,8 +43,8 @@ export interface ConversationSurface {
     emoji: string,
     replaces: string | null,
   ) => Promise<ReactionOutcome>;
-  /** Starts the platform's typing indicator; the returned function stops it. */
-  startTyping: () => () => void;
+  /** Starts the platform's typing indicator, on the user message being answered where the platform marks one; the returned function stops it. */
+  startTyping: (answering: string | null) => () => void;
 }
 
 /** A chat only the requester reads: their DM, which is the chat itself when they follow in one. */
