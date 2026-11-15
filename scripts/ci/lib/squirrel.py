@@ -84,7 +84,12 @@ LAZY_BELOW_FOLD_IMAGES = re.compile(
 )
 # The checks an integration page fails on its tools' synced docs, not on our copy.
 SYNCED_DOC_RULES = frozenset(
-    {"content/placeholder-contact", "content/placeholder-text", "content/keyword-stuffing"}
+    {
+        "content/placeholder-contact",
+        "content/placeholder-text",
+        "content/keyword-stuffing",
+        "perf/dom-size",
+    }
 )
 BASELINE_HEADER = """\
 # squirrelscan's findings, which `scripts/ci/smoke-web.sh` holds to this file:
@@ -208,12 +213,13 @@ IGNORED = (
     ),
     Ignore(
         "an integration page shows its tools' documentation as the API syncs it from the "
-        "provider (Composio), sample addresses and the tool names they repeat included; it "
-        "changes with no deploy of ours, so no baseline can pin it",
+        "provider (Composio), sample addresses and the tool names they repeat included, one row "
+        "per tool; its text and size change with no deploy of ours, so no baseline can pin them",
         "/marketplace/googlesheets gained jane@example.com and john@example.com from its "
         "Composio tool docs between two crawls on 2026-11-12, with no commit in between; "
         "/marketplace/linear's keyword-stuffing item flipped from 'issue' to 'linear' between "
-        "two CI runs on 2026-11-15, and /marketplace/twitter's [social] appeared on a CI-only change",
+        "two CI runs on 2026-11-15, /marketplace/twitter's [social] appeared on a CI-only change, "
+        "and /marketplace/gmail's dom-max-children read fixed, then new, on two runs of one commit",
         _synced_tool_docs,
     ),
     Ignore(

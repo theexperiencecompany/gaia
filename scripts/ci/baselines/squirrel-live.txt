@@ -1995,7 +1995,6 @@ score:Structured Data=93
 /marketplace/arxiv-mcp-education	perf/cache-headers/cache-control
 /marketplace/asana	images/svg-inline/svg-inline
 /marketplace/asana	perf/cache-headers/cache-control
-/marketplace/asana	perf/dom-size/dom-max-children
 /marketplace/astro-docs-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
 /marketplace/astro-docs-mcp-developer	images/svg-inline/svg-inline
 /marketplace/astro-docs-mcp-developer	links/orphan-pages/orphan-pages
@@ -2016,7 +2015,6 @@ score:Structured Data=93
 /marketplace/calendly	perf/cache-headers/cache-control
 /marketplace/clickup	images/svg-inline/svg-inline
 /marketplace/clickup	perf/cache-headers/cache-control
-/marketplace/clickup	perf/dom-size/dom-max-children
 /marketplace/code-interpreter-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
 /marketplace/code-interpreter-mcp-developer	images/svg-inline/svg-inline
 /marketplace/code-interpreter-mcp-developer	perf/cache-headers/cache-control
@@ -2031,7 +2029,6 @@ score:Structured Data=93
 /marketplace/doi-resolver-mcp-education	perf/cache-headers/cache-control
 /marketplace/dropbox	images/svg-inline/svg-inline
 /marketplace/dropbox	perf/cache-headers/cache-control
-/marketplace/dropbox	perf/dom-size/dom-max-children
 /marketplace/dropbox-mcp-productivity	images/svg-inline/svg-inline
 /marketplace/dropbox-mcp-productivity	perf/cache-headers/cache-control
 /marketplace/duckduckgo-search-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
@@ -2042,11 +2039,8 @@ score:Structured Data=93
 /marketplace/fetch-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/github	images/svg-inline/svg-inline
 /marketplace/github	perf/cache-headers/cache-control
-/marketplace/github	perf/dom-size/dom-max-children
-/marketplace/github	perf/dom-size/dom-total-nodes
 /marketplace/gmail	images/svg-inline/svg-inline
 /marketplace/gmail	perf/cache-headers/cache-control
-/marketplace/gmail	perf/dom-size/dom-max-children
 /marketplace/google-classroom-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
 /marketplace/google-classroom-mcp-education	images/svg-inline/svg-inline
 /marketplace/google-classroom-mcp-education	perf/cache-headers/cache-control
@@ -2062,7 +2056,6 @@ score:Structured Data=93
 /marketplace/googledocs	perf/cache-headers/cache-control
 /marketplace/googledrive	images/svg-inline/svg-inline
 /marketplace/googledrive	perf/cache-headers/cache-control
-/marketplace/googledrive	perf/dom-size/dom-max-children
 /marketplace/googlemeet	images/svg-inline/svg-inline
 /marketplace/googlemeet	perf/cache-headers/cache-control
 /marketplace/googlesheets	images/svg-inline/svg-inline
@@ -2079,12 +2072,10 @@ score:Structured Data=93
 /marketplace/hackernews	perf/cache-headers/cache-control
 /marketplace/hubspot	images/svg-inline/svg-inline
 /marketplace/hubspot	perf/cache-headers/cache-control
-/marketplace/hubspot	perf/dom-size/dom-max-children
 /marketplace/instagram	images/svg-inline/svg-inline
 /marketplace/instagram	perf/cache-headers/cache-control
 /marketplace/jira	images/svg-inline/svg-inline
 /marketplace/jira	perf/cache-headers/cache-control
-/marketplace/jira	perf/dom-size/dom-max-children
 /marketplace/keyloom-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/keyloom-mcp-capabilities	images/svg-inline/svg-inline
 /marketplace/keyloom-mcp-capabilities	perf/cache-headers/cache-control
@@ -2114,8 +2105,6 @@ score:Structured Data=93
 /marketplace/open-web-search-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/outlook	images/svg-inline/svg-inline
 /marketplace/outlook	perf/cache-headers/cache-control
-/marketplace/outlook	perf/dom-size/dom-max-children
-/marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
 /marketplace/page/2	links/no-contextual-inbound/no-contextual-inbound
 /marketplace/page/2	perf/cache-headers/cache-control
@@ -2176,7 +2165,6 @@ score:Structured Data=93
 /marketplace/resend-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/resend-mcp-communication	images/svg-inline/svg-inline
 /marketplace/resend-mcp-communication	perf/cache-headers/cache-control
-/marketplace/resend-mcp-communication	perf/dom-size/dom-max-children
 /marketplace/scientific-computation-mcp-analytics	images/svg-inline/svg-inline
 /marketplace/scientific-computation-mcp-analytics	perf/cache-headers/cache-control
 /marketplace/scrapegraph-ai-mcp-ai-ml	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
@@ -2192,7 +2180,6 @@ score:Structured Data=93
 /marketplace/shopify-mcp-finance	perf/cache-headers/cache-control
 /marketplace/slack	images/svg-inline/svg-inline
 /marketplace/slack	perf/cache-headers/cache-control
-/marketplace/slack	perf/dom-size/dom-max-children
 /marketplace/strava-mcp-personal	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
 /marketplace/strava-mcp-personal	images/svg-inline/svg-inline
 /marketplace/strava-mcp-personal	perf/cache-headers/cache-control
@@ -2203,14 +2190,10 @@ score:Structured Data=93
 /marketplace/supabase-mcp-developer	perf/cache-headers/cache-control
 /marketplace/todoist	images/svg-inline/svg-inline
 /marketplace/todoist	perf/cache-headers/cache-control
-/marketplace/todoist	perf/dom-size/dom-max-children
 /marketplace/trello	images/svg-inline/svg-inline
 /marketplace/trello	perf/cache-headers/cache-control
-/marketplace/trello	perf/dom-size/dom-max-children
-/marketplace/trello	perf/dom-size/dom-total-nodes
 /marketplace/twitter	images/svg-inline/svg-inline
 /marketplace/twitter	perf/cache-headers/cache-control
-/marketplace/twitter	perf/dom-size/dom-max-children
 /marketplace/wakatime-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	GWNzsIGGO33nMDvAMWjVBWUvq2otiHKiyVYBnMXPqN8
 /marketplace/wakatime-mcp-analytics	images/svg-inline/svg-inline
 /marketplace/wakatime-mcp-analytics	perf/cache-headers/cache-control
