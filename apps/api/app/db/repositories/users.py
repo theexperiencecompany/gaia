@@ -503,11 +503,11 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         self, user_id: str, choices: Mapping[str, EditionChoice]
     ) -> None:
         """Store which daily edition families the user took out of the rotation or favourited."""
-        await self._apply_raw_update(
+        await self._apply_raw_update_unfetched(
             {"_id": self._id_value(user_id)},
             {"$set": {"briefing_editions": dict(choices)}},
             scope=REPO_GLOBAL_SCOPE,
-            return_document=False,
+            doc_id=user_id,
         )
 
     async def clear_name_if_unchanged(self, user_id: str, name: str) -> bool:
