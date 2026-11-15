@@ -401,11 +401,13 @@ def build_briefing_voice_prompt(
 ## YESTERDAY (context for tone, not new facts)
 {blocks.lookback}
 
-## WHAT THE USER SAID SINCE THE LAST BRIEF (their bot-chat replies; continuity, not new facts)
+## WHAT THE USER TOLD YOU IN CHAT SINCE THE LAST BRIEF (what matters to them, never text for the brief)
 {blocks.replies}
-Weigh these when choosing the lead and the ask: never re-ask what a reply already
-answered, and acknowledge a redirect only when today's facts show the work
-actually changed in response.
+Use these only to choose what leads and what you ask: what they asked for or care about
+now ranks first among today's facts, and never re-ask what a message already answered.
+Never restate, list, summarise or confirm back what they said ("I've noted your weekly
+targets"): they know what they told you. A message earns a mention only when one of
+today's facts is the work it asked for, and then you voice that fact, not the message.
 
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {blocks.goal}
