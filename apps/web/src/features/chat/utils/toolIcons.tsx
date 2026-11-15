@@ -36,6 +36,7 @@ import {
   NotificationIcon,
   PackageOpenIcon,
   PuzzleIcon,
+  ShieldIcon,
   SourceCodeCircleIcon,
   SquareArrowUpRight02Icon,
   Target02Icon,
@@ -121,6 +122,7 @@ const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   WorkflowCircle06Icon,
   TaskDailyIcon,
   ZapIcon,
+  ShieldIcon,
 };
 
 /** Build runtime icon configs from shared config */

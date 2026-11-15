@@ -16,7 +16,11 @@ from app.agents.tools.execute.unwrap import (
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
 from app.constants.browser import BROWSER_TOOL_CATEGORY
 from app.constants.cache import CUSTOM_INT_METADATA_CACHE_PREFIX, CUSTOM_INT_METADATA_TTL
-from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
+from app.constants.execute import (
+    ACTIVATE_INTEGRATION_TOOL_NAME,
+    TICKET_APPROVE_NAME,
+    TICKET_REVOKE_NAME,
+)
 from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.redis import get_cache, set_cache
@@ -207,7 +211,7 @@ async def format_tool_call_entry(
             icon_url = None
             integration_name = None
 
-    if task_description:
+    if task_description and tool_name_raw not in _SPECIAL_TOOLS:
         # A curated, user-facing primary label — the thread shows the raw tool
         # name as the secondary line (same contract as TOOL_DISPLAY_NAMES).
         tool_display_name = task_description
@@ -312,6 +316,8 @@ _SPECIAL_TOOLS: dict[str, tuple[str, str, bool]] = {
     "run_playbook": ("playbooks", "Following your usual steps", True),
     "update_tasks": ("plan_tasks", "Updating the plan", False),
     "finish_task": ("finish_task", "Wrapping up", False),
+    TICKET_APPROVE_NAME: ("approvals", "Going ahead with what you approved", False),
+    TICKET_REVOKE_NAME: ("approvals", "Withdrawing an approval", False),
 }
 
 # The activate card's label once the integration's name is known.

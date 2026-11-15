@@ -2443,7 +2443,7 @@ class TestWireEdgesPinning:
         assert (FINISH_TASK_NAME, END) in edges
 
 
-def _ends_on_react(message: AIMessage) -> str | None:
+def _ends_on_react(message: AIMessage, _config: RunnableConfig) -> str | None:
     return "ended" if message.tool_calls[-1]["name"] == "react" else None
 
 
@@ -2480,9 +2480,9 @@ class TestTheToolsNodeEndsATurnOnlyAfterACallThatEndsIt:
         route, path_map = self._tools_branch(deps)
 
         assert path_map == ["agent", exit_node]
-        assert route(_after_calls("react")) == exit_node
-        assert route(_after_calls("web_search")) == "agent"
-        assert route(_make_state(messages=[HumanMessage(content="hi")])) == "agent"
+        assert route(_after_calls("react"), {}) == exit_node
+        assert route(_after_calls("web_search"), {}) == "agent"
+        assert route(_make_state(messages=[HumanMessage(content="hi")]), {}) == "agent"
 
     def test_without_turn_endings_the_tools_node_always_returns_to_the_model(self) -> None:
         builder = MagicMock()

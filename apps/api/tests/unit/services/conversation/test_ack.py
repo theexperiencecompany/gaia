@@ -12,8 +12,10 @@ from pydantic import ValidationError
 import pytest
 import respx
 
+from app.constants.chat import ConversationSource
 from app.constants.hil import HIL_JEV_URL
 from app.constants.reactions import (
+    OFFENSIVE_REACTION_EMOJI,
     REACTION_CONTEXT_MAX_CHARS,
     REACTION_EMOJI_INSTRUCTIONS,
     REACTION_EMOJI_QUESTION_KEY,
@@ -24,6 +26,7 @@ from app.constants.reactions import (
     REACTION_UPSET_CRITERIA,
     REACTION_UPSET_INSTRUCTIONS,
     REACTION_UPSET_QUESTION_KEY,
+    TELEGRAM_BOT_REACTION_EMOJI,
     ReactionReason,
 )
 from app.models.jev_models import JevDecisionsResponse
@@ -70,6 +73,39 @@ def _failures(event: Mapping[str, object]) -> list[dict[str, object]]:
     warnings = event.get("warnings", [])
     assert isinstance(warnings, list)
     return [w for w in warnings if w["msg"] == "reaction_ack.jev_failed"]
+
+
+class TestPlatformPalette:
+    async def test_a_telegram_message_is_offered_only_emoji_telegram_lets_a_bot_set(self) -> None:
+        post = AsyncMock(return_value=_body(emoji="👀"))
+        with patch(_POST, post):
+            decision = await decide_reaction(
+                "find my flight email", "", ConversationSource.TELEGRAM
+            )
+
+        assert post.await_args is not None
+        _, questions = post.await_args.args
+        offered = questions[REACTION_EMOJI_QUESTION_KEY]["criteria"]
+        assert isinstance(offered, dict)
+        assert set(offered) == TELEGRAM_BOT_REACTION_EMOJI - OFFENSIVE_REACTION_EMOJI
+        assert decision.emoji == "👀"
+
+    async def test_a_telegram_answer_outside_telegrams_set_is_no_reaction(self) -> None:
+        with patch(_POST, AsyncMock(return_value=_body(emoji=SEARCH))):
+            decision = await decide_reaction(
+                "find my flight email", "", ConversationSource.TELEGRAM
+            )
+
+        assert decision.reason is ReactionReason.MALFORMED
+        assert decision.emoji is None
+
+    async def test_a_web_message_keeps_the_full_palette(self) -> None:
+        post = AsyncMock(return_value=_body())
+        with patch(_POST, post):
+            await decide_reaction("find my flight email", "", ConversationSource.WEB)
+
+        assert post.await_args is not None
+        assert post.await_args.args == reaction_request("find my flight email", "")
 
 
 class TestReactionRequest:
@@ -234,7 +270,7 @@ class TestDecideReaction:
         post = AsyncMock(return_value=_body(upset=0.1, task=0.9))
         with patch(_POST, post), patch.object(ack, "time", clock):
             async with captured_wide_event() as event:
-                decision = await decide_reaction("find my flight email", "")
+                decision = await decide_reaction("find my flight email", "", ConversationSource.WEB)
 
         assert decision.emoji == SEARCH
         assert post.await_args is not None
@@ -255,7 +291,7 @@ class TestDecideReaction:
         before = REGISTRY.get_sample_value("reaction_ack_decision_total", labels) or 0.0
 
         with patch(_POST, AsyncMock(return_value=_body(emoji="🍕"))):
-            await decide_reaction("order pizza", "")
+            await decide_reaction("order pizza", "", ConversationSource.WEB)
 
         assert REGISTRY.get_sample_value("reaction_ack_decision_total", labels) == before + 1
 
@@ -279,7 +315,7 @@ class TestDecideReaction:
     ) -> None:
         with patch(_POST, AsyncMock(side_effect=error)):
             async with captured_wide_event() as event:
-                decision = await decide_reaction("send it", "Drafted.")
+                decision = await decide_reaction("send it", "Drafted.", ConversationSource.WEB)
 
         assert decision.emoji is None
         assert decision.reason is reason
@@ -293,7 +329,7 @@ class TestDecideReaction:
     async def test_a_long_failure_message_is_cut_to_300_characters(self) -> None:
         with patch(_POST, AsyncMock(side_effect=RuntimeError("x" * 400))):
             async with captured_wide_event() as event:
-                await decide_reaction("send it", "")
+                await decide_reaction("send it", "", ConversationSource.WEB)
 
         (failure,) = _failures(event)
         assert failure["error"] == "x" * 300
@@ -301,7 +337,7 @@ class TestDecideReaction:
     async def test_an_out_of_palette_emoji_is_malformed(self) -> None:
         with patch(_POST, AsyncMock(return_value=_body(emoji="🍕"))):
             async with captured_wide_event() as event:
-                decision = await decide_reaction("order pizza", "")
+                decision = await decide_reaction("order pizza", "", ConversationSource.WEB)
 
         assert decision.emoji is None
         assert decision.reason is ReactionReason.MALFORMED
@@ -314,7 +350,7 @@ class TestDecideReaction:
 
         with patch.object(ack, "REACTION_TIMEOUT_SECONDS", 0.01), patch(_POST, never_answers):
             async with captured_wide_event() as event:
-                decision = await decide_reaction("find it", "")
+                decision = await decide_reaction("find it", "", ConversationSource.WEB)
 
         assert decision.reason is ReactionReason.TIMEOUT
         assert decision.emoji is None
@@ -323,7 +359,7 @@ class TestDecideReaction:
     async def test_no_openrouter_key_is_unconfigured_and_does_not_warn(self) -> None:
         with patch(_POST, AsyncMock(side_effect=JevUnconfiguredError("no key"))):
             async with captured_wide_event() as event:
-                decision = await decide_reaction("find it", "")
+                decision = await decide_reaction("find it", "", ConversationSource.WEB)
 
         assert decision.reason is ReactionReason.UNCONFIGURED
         assert decision.emoji is None
@@ -391,7 +427,7 @@ class TestTheDeadlineIsAWallClockBound:
             patch("httpx.AsyncClient", side_effect=AssertionError("client built on the call")),
         ):
             router.post(HIL_JEV_URL).respond(json=reaction_answers())
-            decision = await decide_reaction("find my flight email", "")
+            decision = await decide_reaction("find my flight email", "", ConversationSource.WEB)
 
         assert decision.reason is ReactionReason.REACTED
 
@@ -406,7 +442,7 @@ class TestTheDeadlineIsAWallClockBound:
         with respx.mock(assert_all_called=False) as router:
             router.post(HIL_JEV_URL).mock(side_effect=never_connects)
             decision, elapsed, lateness = await _timed_beside_a_probe(
-                decide_reaction("find it", "")
+                decide_reaction("find it", "", ConversationSource.WEB)
             )
 
         assert reached.is_set()
@@ -419,7 +455,7 @@ class TestTheDeadlineIsAWallClockBound:
         async with _silent_jev() as url:
             with patch("app.services.hil.jev_client.HIL_JEV_URL", url):
                 decision, elapsed, lateness = await _timed_beside_a_probe(
-                    decide_reaction("find it", "")
+                    decide_reaction("find it", "", ConversationSource.WEB)
                 )
 
         assert decision.reason is ReactionReason.TIMEOUT

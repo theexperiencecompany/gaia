@@ -85,7 +85,7 @@ JEV_QUESTION: dict[str, object] = {
 # asked once per action in a single call. {number} is the action's position in
 # state.pending_actions. Tuned through the hil-reply calibration suite.
 
-JEV_REPLY_QUESTIONS_VERSION = "v2-per-action-scoped"
+JEV_REPLY_QUESTIONS_VERSION = "v3-amend"
 
 JEV_REPLY_INSTRUCTIONS = (
     "The assistant paused and asked the user to approve or decline the numbered "
@@ -106,12 +106,15 @@ JEV_REPLY_CRITERIA: dict[ReplyChoice, str] = {
         "targets a different action ('yes, but cc finance on the email' approves "
         "every action that is not the email)."
     ),
+    ReplyChoice.AMEND: (
+        "reply says yes to action {number} but with a change, addition, or condition "
+        "to it ('yes but cc finance', 'ok but change the subject', 'go ahead but make "
+        "it high priority', 'yes, but shorten it first')."
+    ),
     ReplyChoice.DENY: (
         "reply declines action {number} ('no', 'cancel', 'not now', 'hold off'), "
-        "corrects or redirects it ('send it to Alice instead', 'make it tomorrow'), "
-        "accepts it only with a change, addition, or condition ('yes but cc finance', "
-        "'ok but change the subject', 'shorten it first'), or approves other actions "
-        "exclusively ('just the email', 'only the second one', 'skip the rest') so "
+        "corrects or redirects it without saying yes ('send it to Alice instead', "
+        "'make it tomorrow'), or approves other actions exclusively ('just the email', 'only the second one', 'skip the rest') so "
         "this one is excluded."
     ),
     ReplyChoice.LEAVE: (

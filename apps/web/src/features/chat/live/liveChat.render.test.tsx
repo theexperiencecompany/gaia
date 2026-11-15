@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import {
   type ConversationFrame,
+  DISPLAY_STATE,
   SEND_NOT_DELIVERED,
 } from "@shared/conversation";
 import {
@@ -134,6 +135,34 @@ describe("the chat rendered from the server's screen patches", () => {
       shown = now;
     }
     expect(shownRows()).toEqual(FOUNDER_ROWS);
+  });
+
+  // Bug 16: a reload replays the streaming reply's deltas back to back, each SSE message its own
+  // store write. Applied faster than React gets to the markdown's follow-up render, past 50 in a
+  // row React threw "Maximum update depth exceeded" out of the write and the events stream dropped.
+  it("applies a replayed burst of reply deltas without a nested-update loop", async () => {
+    renderChat();
+    await feed(
+      insertFrame(userItem("m1", 1, "write an essay")),
+      insertFrame(replyItem("r1", 2, "")),
+      stateFrame(2, DISPLAY_STATE.THINKING),
+    );
+    const deltas = 120;
+    for (let index = 0; index < deltas; index++) {
+      useLiveConversationStore
+        .getState()
+        .applyFrames(CONVERSATION, [replyDelta("a1", "r1", index, " word")]);
+      // Each SSE message is its own task: React's sync work flushes, its scheduled render waits.
+      await Promise.resolve();
+    }
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    const loops = vi
+      .mocked(console.error)
+      .mock.calls.filter((call) =>
+        String(call[0]).includes("Maximum update depth"),
+      );
+    expect(loops).toEqual([]);
+    expect(document.body.textContent).toContain(" word".repeat(deltas).trim());
   });
 
   it("shows this device's send under the streaming reply, then in the server's place", async () => {

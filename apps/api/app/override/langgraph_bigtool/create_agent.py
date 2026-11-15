@@ -125,7 +125,7 @@ class _AgentDeps:
     pre_model_hooks: list[HookType] | None
     end_graph_hooks: list[HookType] | None
     require_finish_to_end: bool
-    turn_ending: Callable[[AIMessage], object | None] | None
+    turn_ending: Callable[[AIMessage, RunnableConfig], object | None] | None
 
 
 def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfig:
@@ -857,16 +857,16 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
 
 
 def _after_tools(
-    turn_ending: Callable[[AIMessage], object | None], exit_node: str
-) -> Callable[[State], str]:
+    turn_ending: Callable[[AIMessage, RunnableConfig], object | None], exit_node: str
+) -> Callable[[State, RunnableConfig], str]:
     """Route out of the tools node: end the turn after calls that end it, else back to the model.
 
     A turn-ending call that failed goes back to the model like any failed call, to correct it.
     """
 
-    def route(state: State) -> str:
+    def route(state: State, config: RunnableConfig) -> str:
         message = _last_tool_calling_message(state)
-        if message is None or turn_ending(message) is None:
+        if message is None or turn_ending(message, config) is None:
             return "agent"
         call_ids = {call["id"] for call in message.tool_calls}
         failed = any(

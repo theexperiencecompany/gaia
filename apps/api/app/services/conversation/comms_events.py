@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from typing import cast
 
 from langchain_core.messages import ToolMessage
+from langchain_core.runnables import RunnableConfig
 from pydantic import ValidationError
 
 from app.agents.core.held_replies import last_ai_message
@@ -73,8 +74,9 @@ def _marks_answer_complete(payload: object) -> bool:
 class CommsEventMapper:
     """The per-run state of the translation: held text, cards shown, and the model's last answer."""
 
-    def __init__(self, user_id: str) -> None:
+    def __init__(self, user_id: str, config: RunnableConfig) -> None:
         self._user_id = user_id
+        self._config = config
         self._graph = GraphStreamState()
         self._summarized = False  # pragma: no mutate — only read as truthiness
         self._answered = False  # pragma: no mutate — only read as truthiness
@@ -143,7 +145,7 @@ class CommsEventMapper:
         answer = last_ai_message(NodeMessagesUpdate.model_validate(update).messages)
         if answer is None:
             return []
-        self._ending = turn_ending(answer)
+        self._ending = turn_ending(answer, self._config)
         # A call that ends the turn is the answer: no model call follows it.
         has_tool_calls = bool(answer.tool_calls) and self._ending is None
         if not has_tool_calls:

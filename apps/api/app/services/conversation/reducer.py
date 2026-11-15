@@ -204,8 +204,13 @@ def _request_approval(state: ConversationState, entry: ApprovalRequested) -> Tra
 
 
 def _decide_approval(state: ConversationState, entry: ApprovalDecided) -> Transition:
-    """Release the approval; parked work the user decided ends, as the work the decision starts continues it."""
+    """Release the approval; parked work the user decided ends, as the work the decision starts continues it.
+
+    The executor run under way when it is decided may still ask it (it resumed an earlier
+    decision of the same work), so the approval counts as decided for that run too.
+    """
     continued = entry.outcome in CONTINUED_DECISIONS
+    answers_an_ask = continued and entry.approval_id in state.asking
     released = (
         item.model_copy(
             update={
@@ -214,7 +219,8 @@ def _decide_approval(state: ConversationState, entry: ApprovalDecided) -> Transi
                 ),
                 "decided_approvals": (
                     (*item.decided_approvals, entry.approval_id)
-                    if continued and entry.approval_id in item.pending_approvals
+                    if answers_an_ask
+                    and (entry.approval_id in item.pending_approvals or _carries_decisions(item))
                     else item.decided_approvals
                 ),
             }
@@ -225,6 +231,11 @@ def _decide_approval(state: ConversationState, entry: ApprovalDecided) -> Transi
         item for item in released if not (item.ended and continued and not item.pending_approvals)
     )
     return Transition(state=state.model_copy(update={"work": work}), effects=())
+
+
+def _carries_decisions(item: LiveWork) -> bool:
+    """Return whether item is the executor run under way with nothing of its own to ask."""
+    return not (item.ended or item.detached or item.pending_approvals)
 
 
 def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Transition:

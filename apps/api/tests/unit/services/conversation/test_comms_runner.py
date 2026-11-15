@@ -28,6 +28,7 @@ from app.agents.core.nodes.drain_conversation_log import close_feed, open_feed
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.agents.tools.comms_turn_tools import react, stay_silent
 from app.agents.tools.core.registry import init_tool_registry
+from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import ABSORBED_NOTE, LOG_SEQ
 from app.constants.graphs import GraphName
@@ -187,7 +188,10 @@ def conversation_id() -> str:
 
 
 def _config(
-    conversation_id: str, recursion_limit: int = 25, step: StepTurnRef | None = None
+    conversation_id: str,
+    recursion_limit: int = 25,
+    step: StepTurnRef | None = None,
+    source: ConversationSource = ConversationSource.WEB,
 ) -> AgentRunnableConfig:
     step_ref = {} if step is None else {"conversation_step": step}
     return cast(
@@ -197,6 +201,7 @@ def _config(
                 "conversation_id": conversation_id,
                 "user_id": USER,
                 "agent_name": "comms_agent",
+                "conversation_source": source.value,
                 **step_ref,
             },
             "metadata": {"user_id": USER},
@@ -217,10 +222,11 @@ def runner(
     history: Sequence[AnyMessage] = (),
     recursion_limit: int = 25,
     step: StepTurnRef | None = None,
+    source: ConversationSource = ConversationSource.WEB,
 ) -> CommsGraphRunner:
     async def build(claim: StepClaim, batch: Batch) -> CommsTurn:
         return CommsTurn(
-            config=_config(conversation_id, recursion_limit, step),
+            config=_config(conversation_id, recursion_limit, step, source),
             opening=[
                 SystemMessage(content="STATIC PROMPT"),
                 mark(SystemMessage(content="DYNAMIC CONTEXT"), DYNAMIC_CONTEXT_MARKER),
@@ -359,6 +365,25 @@ async def test_a_reaction_the_schema_refuses_goes_back_to_the_model(conversation
             events = await collect(run)
     assert len(model.prompts) == 2
     assert events[-1] == Finished(outcome=Replied(text="glad it worked"))
+
+
+async def test_a_reaction_telegram_refuses_goes_back_to_the_model_with_telegrams_set(
+    conversation_id: str,
+) -> None:
+    model = gated(
+        ending_call(REACT_TOOL_NAME, emoji="🔎", message_id=1),
+        ending_call(REACT_TOOL_NAME, emoji="👀", message_id=1),
+    )
+    async with comms_graph([], model=model) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id, source=ConversationSource.TELEGRAM).start(
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
+            )
+            events = await collect(run)
+    assert events[-1] == Finished(outcome=Reacted(emoji="👀"))
+    (refusal,) = [m for m in model.prompts[1] if isinstance(m, ToolMessage)]
+    assert "Telegram does not accept 🔎" in str(refusal.content)
+    assert "👀" in str(refusal.content)
 
 
 @pytest.mark.parametrize(
@@ -991,7 +1016,9 @@ async def test_a_run_reads_the_comms_graph_and_builds_its_turn_from_the_batch(
             await collect(run)
     get_graph.assert_awaited_once_with(GraphName.COMMS)
     assert built == [(claim(conversation_id), first)]
-    mapper.assert_called_once_with(USER)
+    (args, _kwargs) = mapper.call_args
+    assert args[0] == USER
+    assert args[1]["configurable"]["conversation_source"] == ConversationSource.WEB.value
 
 
 async def test_a_first_run_on_a_fresh_thread_says_the_stop_in_its_context(

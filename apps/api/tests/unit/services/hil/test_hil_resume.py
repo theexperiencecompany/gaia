@@ -41,6 +41,7 @@ def _row(**overrides: Any) -> MagicMock:
     row.summary = "Send briefing"
     row.outcome = ApprovalOutcome.APPROVED
     row.action = None
+    row.feedback = None
     row.owner_run_type = ""
     row.owner_id = ""
     row.created_at = None

@@ -4,7 +4,7 @@ import "streamdown/styles.css";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import type React from "react";
-import { useMemo } from "react";
+import { useDeferredValue, useMemo } from "react";
 import rehypeKatex from "rehype-katex";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -24,6 +24,7 @@ import {
 import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
 import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
+import { remarkBareListMarker } from "@/features/chat/utils/remarkBareListMarker";
 import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";
 
@@ -67,6 +68,7 @@ const REMARK_PLUGINS = [
   remarkBreaks,
   remarkSmartypants,
   remarkSupersub,
+  remarkBareListMarker,
 ];
 
 interface MarkdownImageProps {
@@ -165,7 +167,7 @@ function buildMarkdownComponents(
       <hr className="my-8 border-t border-zinc-700" {...props} />
     ),
     p: ({ ...props }) => <p className="mb-4 last:mb-0" {...props} />,
-    li: ({ ...props }) => <li className="mb-2" {...props} />,
+    li: ({ ...props }) => <li className="mb-2 last:mb-0" {...props} />,
     img: MarkdownImageNode,
     pre: ({ ...props }) => <pre className="font-serif! text-wrap" {...props} />,
     table: ({ ...props }) => (
@@ -233,6 +235,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   extraLinkProtocols,
   lightBackground,
 }) => {
+  // Streamdown sets state in an effect on every new text while animating; rendered at the
+  // stream's own priority, a burst of deltas chains those into React's nested-update limit.
+  const shownContent = useDeferredValue(content);
   const urlTransform = useMemo<UrlTransform>(() => {
     if (!extraLinkProtocols?.length) return defaultUrlTransform;
     return (url, key, node) =>
@@ -276,7 +281,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         parseIncompleteMarkdown
         controls={false}
       >
-        {content}
+        {shownContent}
       </Streamdown>
     </div>
   );

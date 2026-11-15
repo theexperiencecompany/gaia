@@ -16,8 +16,11 @@ from langgraph.prebuilt import InjectedState
 from pydantic import BaseModel, Field, ValidationError
 
 from app.agents.core.comms_ledger import Closing, close
+from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import LOG_SEQ
+from app.constants.reactions import OFFENSIVE_REACTION_EMOJI, REACTION_PALETTE_BY_SURFACE
+from app.models.agent_config import read_agent_configurable
 from app.utils.multimodal import extract_text_content
 from shared.py.analytics.catalog.properties import Emoji
 
@@ -38,6 +41,20 @@ class StaySilentArgs(BaseModel):
     message_ids: list[int] = Field(
         default_factory=list,
         description=f"{_HANDLES} Empty when no message is open (a background result, a hand-off).",
+    )
+
+
+def reaction_refusal(emoji: str, config: RunnableConfig) -> str | None:
+    """Return why emoji cannot be this run's reaction, for the model to pick again; None when it can."""
+    if emoji in OFFENSIVE_REACTION_EMOJI:
+        return f"{emoji} is not a reaction GAIA uses. Pick another emoji, or reply in words."
+    surface = ConversationSource.coerce(read_agent_configurable(config).conversation_source)
+    allowed = REACTION_PALETTE_BY_SURFACE.get(surface) if surface is not None else None
+    if allowed is None or emoji in allowed:
+        return None
+    return (
+        f"{surface.display_name} does not accept {emoji} as a reaction. "
+        f"Pick exactly one of: {' '.join(allowed)}"
     )
 
 
@@ -86,6 +103,9 @@ async def react(emoji: str, message_id: int, config: RunnableConfig) -> str:
     It shows as a reaction on that message, or as the bare emoji where the platform has
     none. Write no text beside it.
     """
+    refusal = reaction_refusal(emoji, config)
+    if refusal is not None:
+        return refusal
     close(config, Closing.REACTED, [message_id], emoji)
     return f"Reacted {emoji}."
 
@@ -108,11 +128,13 @@ _ENDINGS: dict[str, type[AnsweredArgs | ReactArgs | StaySilentArgs]] = {
 }
 
 
-def turn_ending(message: AIMessage) -> AnsweredArgs | ReactArgs | StaySilentArgs | None:
+def turn_ending(
+    message: AIMessage, config: RunnableConfig
+) -> AnsweredArgs | ReactArgs | StaySilentArgs | None:
     """Return how a model message ends the turn; None when it calls work, or calls nothing.
 
-    Only a message whose every call is a turn ending, each valid by its schema, ends the
-    turn: an invalid one fails as a tool call and goes back to the model, like any other.
+    Only a message whose every call is a turn ending, each valid by its schema and a reaction
+    the run's surface accepts, ends the turn: an invalid one goes back to the model as a failed call.
     A reaction or silence wins over answered when a step makes both: it decides the outcome.
     """
     calls: list[ToolCall] = message.tool_calls
@@ -121,6 +143,11 @@ def turn_ending(message: AIMessage) -> AnsweredArgs | ReactArgs | StaySilentArgs
     try:
         endings = [_ENDINGS[call["name"]].model_validate(call["args"]) for call in calls]
     except ValidationError:
+        return None
+    if any(
+        isinstance(ending, ReactArgs) and reaction_refusal(ending.emoji, config)
+        for ending in endings
+    ):
         return None
     wordless = [ending for ending in endings if not isinstance(ending, AnsweredArgs)]
     return wordless[0] if wordless else endings[0]
