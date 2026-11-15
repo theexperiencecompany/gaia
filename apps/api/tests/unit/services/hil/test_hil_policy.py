@@ -114,6 +114,38 @@ class TestResolvePolicy:
         ):
             assert await resolve_policy(make_request(), USER_ID, "send_email") == "allow"
 
+    @pytest.mark.parametrize(
+        ("mode", "should_ask", "expected"),
+        [
+            ("always_allow", True, "ask"),
+            ("auto", True, "ask"),  # the user's choice, never the judge's
+            ("always_ask", False, "allow"),
+            ("auto", False, "allow"),
+        ],
+    )
+    async def test_a_per_tool_override_outranks_the_approval_mode(
+        self, mode: HILMode, should_ask: bool, expected: str
+    ) -> None:
+        with (
+            patch(
+                f"{MODULE}.get_hil_preferences",
+                new=AsyncMock(return_value=prefs(mode, send_email=should_ask)),
+            ),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=not should_ask)),
+        ):
+            assert await resolve_policy(make_request(), USER_ID, "send_email") == expected
+
+    async def test_an_mcp_override_is_read_on_the_pending_calls_own_server(self) -> None:
+        choice = HILPreferences(mode="auto", tool_overrides={"mcp:srv_a:delete_item": True})
+        request = make_request(
+            name="delete_item", tool=_mcp_tool("delete_item", integration_id="srv_a")
+        )
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=choice)),
+            patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=False)),
+        ):
+            assert await resolve_policy(request, USER_ID, "delete_item") == "ask"
+
     async def test_the_pending_calls_tool_object_reaches_the_classifier(self) -> None:
         # Attack: dropping the request's tool loses its description and MCP
         # destructiveHint — the exact regression that let a hint-gated call

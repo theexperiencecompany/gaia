@@ -433,8 +433,12 @@ async def test_message_shaped_entries_are_rewritten_in_place_with_settles_at_the
         h.conversation_id
         for h in await migration.heads_with_message_entries(after_head_id=None, batch=5)
     ] == [conversation_id]
-    with pytest.raises(UnmigratedConversationError, match="migrate_conversation_entries --apply"):
+    with pytest.raises(UnmigratedConversationError) as refused:
         await refuse_unmigrated_conversations()
+    assert refused.value.message == (
+        f"conversation {conversation_id} still holds messages in the old shape: run "
+        "python -m scripts.migrate_conversation_entries --apply, then --verify"
+    )
 
     outcome = await migration.migrate(ref, apply=True)
 
@@ -524,3 +528,26 @@ async def test_scans_walk_every_head_in_id_order_one_batch_at_a_time(
 def shown_messages(page: LogPage) -> list[ConversationEntry]:
     """Read a migrated page back in the old array's message shape, as verify does."""
     return legacy_messages([LoggedEntry(seq=f.seq, at=f.at, entry=f.entry) for f in page.entries])
+
+
+@pytest.mark.parametrize("field", ["summary", "decision", "heard_text", "run.reservation"])
+async def test_the_boot_check_names_an_entry_holding_a_renamed_field_and_its_migration(
+    entries_collection: Any, field: str
+) -> None:
+    await entries_collection.insert_one(
+        {"user_id": USER, "conversation_id": "c-current", "seq": 1, "id": "e1", "kind": "reply"}
+    )
+    await refuse_unmigrated_conversations()
+    head, _, leaf = field.rpartition(".")
+    stored: dict[str, object] = {leaf: "old"}
+    renamed = {head: stored} if head else stored
+    await entries_collection.insert_one(
+        {"user_id": USER, "conversation_id": "c-renamed", "seq": 1, "id": "e2", **renamed}
+    )
+
+    with pytest.raises(UnmigratedConversationError) as refused:
+        await refuse_unmigrated_conversations()
+    assert refused.value.message == (
+        "conversation c-renamed still holds log entries with renamed fields: run "
+        "python -m scripts.migrate_approval_vocabulary --apply, then --verify"
+    )

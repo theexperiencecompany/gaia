@@ -124,7 +124,12 @@ async def test_finished_work_is_logged_with_its_report_under_the_users_conversat
     shown: ToolDataEntry = {"tool_name": "weather", "data": {"city": "Pune"}}
     image = ImageData(url="https://img", prompt="a map")
     report = WorkReport(
-        text="done it", tool_data=[shown], note="checked", nothing_for_user=True, image=image
+        text="done it",
+        tool_data=[shown],
+        note="checked",
+        nothing_for_user=True,
+        image=image,
+        awaits_decision=True,
     )
     await record_work_finished(
         CONVERSATION, USER, "t1", WorkOutcome.DONE, report, continued_by_decision=True
@@ -139,6 +144,7 @@ async def test_finished_work_is_logged_with_its_report_under_the_users_conversat
         nothing_for_user=True,
         image=image,
         continued_by_decision=True,
+        awaits_decision=True,
     )
 
 
