@@ -145,6 +145,8 @@ async def test_a_message_landing_as_the_step_releases_rearms_the_heartbeat_and_i
     await run(rt)
     assert len(armed) == 2
     assert [item.answers for item in await settles(rt)] == [("u1",), ("u2",)]
+    # The re-armed beat proves the same claim, which the step has now released.
+    assert await armed[1].prove() is False
 
 
 async def _dead_holder_left_thinking(rt: Runtime) -> None:
