@@ -274,12 +274,22 @@ jobs:
       # anywhere, and every lane below runs under `!cancelled()` on the outputs
       # already written. Diff-based, so a push or dispatch plans nothing. Both
       # tiers: the PR finds a survivor before the queue would eject it.
+      # What this PR's earlier runs measured per module, so the plan packs by real cost.
+      - name: Fetch the mutation durations this PR measured before
+        if: contains(fromJSON(steps.affected.outputs.jobs), 'test-mutation')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ github.head_ref }}
+          MUTATION_HISTORY_DIR: ${{ runner.temp }}/mutation-history
+        run: python3 scripts/ci/mutation.py history
+
       - name: Plan the mutation shards (one per changed module)
         id: plan
         if: contains(fromJSON(steps.affected.outputs.jobs), 'test-mutation')
         shell: python3 scripts/ci/verdict.py check -- bash -e {0}
         env:
           GAIA_PR_BASE: ${{ steps.base.outputs.base_ref }}
+          MUTATION_HISTORY_DIR: ${{ runner.temp }}/mutation-history
         run: python3 scripts/ci/mutation.py plan
 
       - name: Upload the verdict
@@ -1415,6 +1425,15 @@ jobs:
             shard.log
             shard.verdict.json
           retention-days: 3
+          if-no-files-found: ignore
+      - name: Upload the module durations
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          # mutation.py history reads these on the PR's next run; tiny, unlike the log.
+          name: mutation-durations-${{ strategy.job-index }}
+          path: shard.durations.json
+          retention-days: 14
           if-no-files-found: ignore
       - name: Upload the verdict
         if: always()
