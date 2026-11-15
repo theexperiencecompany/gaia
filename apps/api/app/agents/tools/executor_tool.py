@@ -39,6 +39,7 @@ from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
+from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.ownership_models import ExecutorIntent
 from app.models.work_cancel_models import WorkCancelled
@@ -162,7 +163,8 @@ async def call_executor(
     if not conversation_id:
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
         return "Internal error: conversation context unavailable. Please try again."
-    if not configurable["conversation_step"]["asked"]:
+    step: StepTurnRef = configurable["conversation_step"]
+    if not step["asked"]:
         log.warning(
             f"{LogTag.TOOL} call_executor refused: the attempt only reports finished work",
             conversation_id=conversation_id,

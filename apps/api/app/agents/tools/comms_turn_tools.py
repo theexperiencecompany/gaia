@@ -4,7 +4,7 @@ Each is a tool call, so the choice arrives as arguments its schema validated, ne
 reply text. The comms graph ends the turn after one (turn_ending), so no model call follows.
 """
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolCall
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field, ValidationError
 
@@ -52,7 +52,7 @@ def turn_ending(message: AIMessage) -> ReactArgs | StaySilentArgs | None:
     Only a message whose every call is a turn ending, each valid by its schema, ends the
     turn: an invalid one fails as a tool call and goes back to the model, like any other.
     """
-    calls = message.tool_calls
+    calls: list[ToolCall] = message.tool_calls
     if not calls or any(call["name"] not in _ENDINGS for call in calls):
         return None
     try:
