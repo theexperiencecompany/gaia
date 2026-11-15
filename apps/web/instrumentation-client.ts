@@ -6,6 +6,7 @@
 // so their chunks do not execute during the critical rendering path. Without
 // deferral Sentry alone causes ~630ms of long tasks (TBT) at page load.
 
+import { config as configureZod } from "zod/v4/core";
 import { DODO_RETURN_IDENTIFYING_PARAMS } from "@/features/pricing/lib/dodoReturnUrl";
 import { onFirstInteraction } from "@/lib/firstInteraction";
 import { whenIdle } from "@/lib/idle";
@@ -17,6 +18,9 @@ import {
 } from "@/lib/observability/exception-filter";
 // Type-only import — zero runtime cost.
 import type * as SentryNs from "@/lib/observability/sentryClient";
+
+// The CSP allows no eval, so zod skips its new Function() probe instead of tripping a violation on every app page.
+configureZod({ jitless: true });
 
 // Holds the real Sentry function once the module loads at idle time.
 let _captureRouterTransitionStart:

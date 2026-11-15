@@ -69,14 +69,14 @@ import TodoSection from "../TodoSection";
 import TwitterSearchSection from "../TwitterSearchSection";
 import TwitterUserSection from "../TwitterUserSection";
 
-// @mcp-ui/client (~65 KB gzip) loads only for a conversation that has an MCP app card.
+// @mcp-ui/client ships its own zod, whose eval probe the CSP reports; load it only when an MCP app renders.
 // Its own loading card keeps the suspend local instead of blanking the surrounding messages.
 const MCPAppRenderer = dynamic(
   () =>
     import("@/features/chat/components/tools/MCPAppRenderer").then(
-      (module) => module.MCPAppRenderer,
+      (m) => m.MCPAppRenderer,
     ),
-  { loading: MCPAppLoading },
+  { ssr: false, loading: MCPAppLoading },
 );
 
 // Utility type: union of all possible tool_name/data pairs

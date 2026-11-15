@@ -6,7 +6,13 @@
  *
  * Plain-js on purpose: `next.config.mjs` (Node) imports it and cannot load TS.
  */
-import { FASTLANE_HOST, POSTHOG_HOST, RYBBIT_HOST } from "./third-party-origins.mjs";
+import {
+  CLOUDFLARE_INSIGHTS_HOST,
+  FASTLANE_HOST,
+  POSTHOG_HOST,
+  RYBBIT_HOST,
+  TURNSTILE_HOST,
+} from "./third-party-origins.mjs";
 
 /** Same-origin MCP-UI sandbox proxy, iframed by MCPAppRenderer; the one page the app frames. */
 export const SANDBOX_PROXY_PATH = "/mcp-sandbox-proxy.html";
@@ -26,9 +32,9 @@ const apiOrigin = apiBaseUrl ? URL.parse(apiBaseUrl)?.origin : undefined;
 // React needs eval in development for its debugging features (Next.js CSP guide).
 const devScriptSources = process.env.NODE_ENV === "development" ? ["'unsafe-eval'"] : [];
 
-// Report-Only: a wrong enforced CSP silently breaks the app, so violations are
-// collected first. Images, media and fetches are open-ended (OAuth avatars,
-// LLM-supplied media, LiveKit, user MCP servers), so those stay scheme-wide.
+// Report-Only: self-host, Electron and `next start` have no nonce. On Cloudflare the worker
+// adds one (voiding 'unsafe-inline') and enforces per CSP_MODE (scripts/inline-worker-css.mjs).
+// Images, media and fetches are open-ended (OAuth avatars, LiveKit, user MCP), so scheme-wide.
 const CSP_DIRECTIVES = [
   ["default-src", "'self'"],
   [
@@ -41,6 +47,8 @@ const CSP_DIRECTIVES = [
     "https://*.dodopayments.com",
     RYBBIT_HOST,
     FASTLANE_HOST,
+    TURNSTILE_HOST,
+    CLOUDFLARE_INSIGHTS_HOST,
   ],
   ["style-src", "'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
   ["font-src", "'self'", "data:", "https://cdn.jsdelivr.net"],
@@ -55,6 +63,7 @@ const CSP_DIRECTIVES = [
     "https://www.youtube.com",
     "https://player.vimeo.com",
     "https://*.dodopayments.com",
+    TURNSTILE_HOST,
     ...(apiOrigin ? [apiOrigin] : []),
   ],
   ["worker-src", "'self'", "blob:"],
