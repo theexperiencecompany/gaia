@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Final, Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
+from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
 from shared.py.approvals import ApprovalOutcome, DecidedOutcome
@@ -170,6 +171,8 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
         "update_tasks",
         "add_memory",
         "search_memory",
+        REACT_TOOL_NAME,
+        STAY_SILENT_TOOL_NAME,
     }
 )
 

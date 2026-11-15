@@ -7,7 +7,9 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import ToolMessage
+import pytest
 
+from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.hil import HIL_EXEMPT_TOOLS
 
 from .conftest import make_request, run_through_gate
@@ -35,3 +37,17 @@ class TestExemptToolsAreNeverGated:
         assert ran is True
         assert result.content == "collected"
         policy.assert_not_awaited()
+
+
+@pytest.mark.parametrize("name", [REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME])
+async def test_a_turn_ending_call_runs_without_resolving_any_policy(name: str) -> None:
+    """Regression (live e2e): a failed classification gated stay_silent and left the chat waiting on an approval."""
+
+    async def handler(_request: Any) -> ToolMessage:
+        return ToolMessage(content="ended", tool_call_id="call-1")
+
+    with patch(f"{GATE}.resolve_policy", new=AsyncMock()) as policy:
+        result = await run_through_gate(make_request(name=name), handler)
+
+    assert result.content == "ended"
+    policy.assert_not_awaited()
