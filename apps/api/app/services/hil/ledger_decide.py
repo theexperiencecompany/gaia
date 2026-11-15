@@ -62,6 +62,7 @@ from app.services.hil.resolution import (
 )
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
 from app.services.hil.utils import GatedCall
+from app.utils.timezone import age_since
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilDecisionVia, HilRevoked
 from shared.py.wide_events import log
@@ -305,11 +306,7 @@ async def decide_ledger_batch(
 
 def _ticket_task(row: ApprovalLedgerDocument) -> str:
     """Build the wake that turns an approval into a redeem: id, age, and the execute call that honors it."""
-    age = "unknown age"
-    if row.created_at is not None:
-        elapsed_minutes = int((datetime.now(UTC) - row.created_at).total_seconds()) // 60
-        hours, minutes = divmod(elapsed_minutes, 60)
-        age = f"{hours}h{minutes}m old"
+    age = "unknown age" if row.created_at is None else f"{age_since(row.created_at)} old"
     return (
         f"APPROVAL_READY {row.approval_id}: the user approved {row.summary} "
         f'({age}). Run it now with execute(tool_name="approve", '
