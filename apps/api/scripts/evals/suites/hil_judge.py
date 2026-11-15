@@ -1,13 +1,13 @@
 """hil-judge suite — calibrate the auto-mode judge to 95% before it ships.
 
 Drives judge backends directly (no chat stream, no dev user): the LLM judge
-(real ``judge_intent``, blank history) and the JEV choice judge (Decisions
-API). Each run journals choice + confidence + probabilities per case, so
+(real ``judge_intent``, blank history) and the Decisions choice judge (OpenAI
+Decisions API). Each run journals choice + confidence + probabilities per case, so
 threshold tuning is a free offline sweep over the journal — not another
 model-spending run.
 
 Run:  uv run --group backend python -m scripts.evals run --suite hil-judge
-  HIL_JUDGE_EVAL_BACKEND=jev|llm (default jev)
+  HIL_JUDGE_EVAL_BACKEND=jev|llm (default jev: the Decisions judge, on OpenAI's API)
   HIL_JUDGE_ACCEPT_LINE (default 0.8)  HIL_JUDGE_REJECT_FLOOR (default 0.5)
 Sweep:  uv run --group backend python -m scripts.evals.sweep_hil_judge [run-id]
 
@@ -27,8 +27,8 @@ from typing import Any, TypedDict
 
 import httpx
 
-from app.config.settings import get_settings
 from app.constants.hil import (
+    HIL_DECISIONS_MODEL_NAME,
     HIL_JEV_ACCEPT_LINE,
     HIL_JEV_REJECT_FLOOR,
     JEV_FORBID_CHECK_FAILED,
@@ -54,6 +54,7 @@ from app.services.hil.jev_judge import (
     needs_forbid_check,
     settle_forbid,
 )
+from app.services.hil.openai_decisions import OpenAIDecisionsUnconfiguredError
 from app.services.hil.prompts import JEV_QUESTIONS_VERSION
 from app.services.hil.utils import PriorCall
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
@@ -64,8 +65,6 @@ from scripts.evals.core.transport_suite import TransportSuite
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "hil-judge"
-
-JEV_MODEL = "typesafe/jev-1.13"
 
 
 class JudgeBackend(StrEnum):
@@ -179,7 +178,7 @@ class JudgeTransport:
             model = "llm-judge"
         elif self._backend == JudgeBackend.JEV:
             outcome, detail, usage, verdict = await self._run_jev(setup, provider)
-            model = JEV_MODEL
+            model = HIL_DECISIONS_MODEL_NAME
         else:
             raise ProviderError(provider.name, f"unknown judge backend {self._backend!r}")
         duration_s = time.monotonic() - start
@@ -234,9 +233,6 @@ class JudgeTransport:
     async def _run_jev(
         self, setup: Mapping[str, Any], provider: ProviderConfig
     ) -> tuple[str, str, tuple[int, int], JevJournalFields]:
-        key = get_settings().OPENROUTER_API_KEY
-        if not key:
-            raise ProviderError(provider.name, "OPENROUTER_API_KEY unset")
         case = _eval_case(setup)
         turns, call, history = case.user_messages, case.call, case.history
         try:
@@ -247,7 +243,7 @@ class JudgeTransport:
                 history=history,
                 assistant_turns=_eval_assistant_turns(setup),
             )
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, OpenAIDecisionsUnconfiguredError) as e:
             raise ProviderError(provider.name, f"decisions API failed: {e}") from e
         choice, confidence, probs = asked.choice, asked.confidence, dict(asked.probabilities or {})
         # Mirror prod: mapped accept + tripped forbid language earns the
@@ -263,6 +259,7 @@ class JudgeTransport:
                 reject_floor=HIL_JEV_REJECT_FLOOR,
             ),
             turns,
+            contained=asked.contained,
         ):
             try:
                 forbid, forbid_conf, forbid_in, forbid_out = await ask_jev_forbid(

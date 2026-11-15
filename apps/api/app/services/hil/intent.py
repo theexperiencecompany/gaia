@@ -325,7 +325,7 @@ class _LLMIntentJudge:
         if (
             outcome == "ask"
             and _contained(verdict)
-            and not user_has_objected(user_messages, history)
+            and not user_held_or_denied(user_messages, history)
         ):
             outcome = "accept"
             verdict = verdict.model_copy(
@@ -438,7 +438,6 @@ def forbid_tripwire(user_messages: list[str]) -> bool:
 _HOLD_PATTERNS = (
     r"\bnot yet\b",
     r"\bhold off\b",
-    r"\bwait (for|until)\b",
     r"\bcheck with me\b",
     r"\bask me (first|before)\b",
     r"\buntil i (say|confirm)\b",
@@ -460,9 +459,13 @@ def _matches_any(turn: str, patterns: tuple[str, ...]) -> bool:
     return any(re.search(pattern, lowered) for pattern in patterns)
 
 
-def user_has_objected(user_messages: list[str], history: AutoHistory) -> bool:
-    """Whether the user's words or recent denials argue against acting without their go-ahead."""
-    return _unlifted(user_messages, _FORBID_PATTERNS + _HOLD_PATTERNS) or _history_blocks(history)
+def user_held_or_denied(user_messages: list[str], history: AutoHistory) -> bool:
+    """Whether an unlifted hold or recent denials ask for the user's go-ahead before any run.
+
+    Forbid words are not here: "can't" and "never" fill ordinary chat, so a forbid
+    is the judge's call (the LLM judge's reject, JEV's focused forbid question).
+    """
+    return _unlifted(user_messages, _HOLD_PATTERNS) or _history_blocks(history)
 
 
 def _history_blocks(history: AutoHistory) -> bool:

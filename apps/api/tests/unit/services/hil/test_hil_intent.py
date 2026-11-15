@@ -514,6 +514,12 @@ class TestContainedActionsRunWithoutExplicitWords:
 
         assert decision.outcome == "ask"
 
+    async def test_casual_forbid_words_leave_the_judgment_to_the_judge(self) -> None:
+        turns = ["for MCP we can't generate a link?", "ok check the flags in posthog"]
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
+
+        assert decision.outcome == "accept"
+
     async def test_a_lifted_hold_lets_it_run(self) -> None:
         turns = ["check with me first", "actually, go ahead and tidy the notes page"]
         decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)

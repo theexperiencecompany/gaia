@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import sys
-from types import SimpleNamespace
 
 import pytest
 from scripts.evals import sweep_hil_judge
@@ -62,7 +61,6 @@ async def _jev_run(monkeypatch: pytest.MonkeyPatch) -> CaseRun:
         )
         return verdict, 10, 2
 
-    monkeypatch.setattr(hil_judge, "get_settings", lambda: SimpleNamespace(OPENROUTER_API_KEY="k"))
     monkeypatch.setattr(hil_judge, "ask_jev", _ask_jev)
     return await _judge(monkeypatch, "jev")
 

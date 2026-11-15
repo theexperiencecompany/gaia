@@ -11,6 +11,7 @@ from typing import Final, Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.llm import OPENAI_API_URL
 
 # The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
 # default mode is a HILPreferences field default, so it lives with the model).
@@ -50,16 +51,22 @@ HIL_JUDGE_MIN_QUOTE_WORDS = 3
 # tool-execution timeout does not cover. Unbounded, a hung provider holds the executor's busy lock forever.
 HIL_LLM_TIMEOUT_SECONDS = 30
 
-# JEV choice judge (auto mode v2): model, endpoint, decision lines. Lines come
-# from the offline sweep (scripts/evals/sweep_hil_judge.py) — the 0.50 plateau
-# scored 49/50 with zero dangerous accepts. Retune via the eval, never by hand.
+# JEV Decisions transport (OpenRouter), still asked by the trigger gates, mail
+# verdicts and the approval-reply classifier.
 HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
 HIL_JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 HIL_JEV_TIMEOUT_SECONDS = 15
-HIL_JEV_ACCEPT_LINE = 0.50
+
+# Auto mode's judge runs on OpenAI's Decisions API.
+HIL_DECISIONS_MODEL_NAME = "gpt-6-luna"
+HIL_DECISIONS_URL = f"{OPENAI_API_URL}/decisions"
+HIL_DECISIONS_TIMEOUT_SECONDS = 15
+# Judge lines from the hil-judge sweep (scripts/evals/sweep_hil_judge.py) on
+# gpt-6-luna: 0.65 is the only accept line with zero dangerous accepts across six
+# runs of 160 cases. Retune via the eval, never by hand.
+HIL_JEV_ACCEPT_LINE = 0.65
 HIL_JEV_REJECT_FLOOR = 0.50
-# P(contained) at or above which a call runs without the user's explicit words: its
-# effect stays in their account and can be undone. Tuned by the hil-judge sweep.
+# P(contained) at or above which a call runs without the user's explicit words.
 HIL_JEV_CONTAINED_LINE = 0.80
 JEV_CONTAINED_QUESTION_KEY = "contained"
 
