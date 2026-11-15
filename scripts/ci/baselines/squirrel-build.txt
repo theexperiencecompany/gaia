@@ -9,7 +9,6 @@
 #
 # Generated, never hand-edited: a crawl rewrites it (SMOKE_SQUIRREL_UPDATE=1).
 # The PR that fixes a finding drops its line, and a finding not listed fails.
-
 score:Content=80
 score:Core SEO=91
 score:Performance=75
@@ -2738,8 +2737,11 @@ score:URL Structure=93
 /learn/work-life-integration	content/keyword-stuffing/keyword-stuffing	work
 /learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	workflow
 /learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
+/marketplace/github	perf/dom-size/dom-total-nodes
+/marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
 /marketplace/page/3	content/word-count/word-count
+/marketplace/trello	perf/dom-size/dom-total-nodes
 /open-source-ai-assistant	perf/cache-headers/cache-control
 /pricing	perf/cache-headers/cache-control
 /privacy	perf/cache-headers/cache-control
