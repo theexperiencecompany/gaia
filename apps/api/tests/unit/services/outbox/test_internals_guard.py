@@ -47,6 +47,18 @@ async def _leaks(*texts: str, todo: bool = False, run: bool = False) -> list[str
         ("the executor agent finished", ["executor agent"]),
         ("a subagent made a tool call", ["subagent", "tool call"]),
         ("cancel task_id 12", ["task_id"]),
+        (
+            "The report says Renew my passport was added",
+            ["The report says"],
+        ),
+        ("According to the report, the call is Monday", ["According to the report"]),
+        ("the run showed it failed", ["the run showed"]),
+        (
+            "Sending remains subject to the user's approval.",
+            ["the user's approval"],
+        ),
+        ("It is still waiting on the user\u2019s confirmation", ["the user\u2019s confirmation"]),
+        ("the user has not replied yet", ["the user has"]),
     ],
 )
 async def test_machinery_is_flagged(text: str, leaked: list[str]) -> None:
@@ -68,3 +80,18 @@ async def test_product_words_and_ordinary_underscores_are_not_internals() -> Non
 
 async def test_the_plain_word_executor_is_ordinary_english() -> None:
     assert await _leaks("she is the executor of the will") == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I attached the report you asked for",
+        "The quarterly report is due Friday",
+        "I will send the report tomorrow and the run starts at 9",
+        "The user interface of the app changed, and the user manual is online",
+        "Your approval is needed before I send it",
+        "She said the user guide covers it",
+    ],
+)
+async def test_ordinary_english_about_reports_and_users_is_not_flagged(text: str) -> None:
+    assert await _leaks(text) == []

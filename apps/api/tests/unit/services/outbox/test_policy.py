@@ -19,8 +19,16 @@ from app.services.outbox.models import (
     SubjectKind,
     UrgencyClass,
 )
-from app.services.outbox.policy import DecisionKind, decide, is_answer, must_include
+from app.services.outbox.policy import (
+    DecisionKind,
+    decide,
+    is_answer,
+    must_include,
+    urgency_of,
+    waits_for_batch,
+)
 
+INTERRUPTING = DeliveryPolicy(timing=DeliveryTiming.AT_TIME, may_wake=True)
 SUBJECT = Subject(kind=SubjectKind.TODO_RUN, id="s", label="L")
 
 
@@ -204,3 +212,24 @@ def test_a_handoff_that_needs_the_user_is_timely_whether_or_not_they_are_watchin
     report = _notice(outcome=NoticeOutcome.NEEDS_YOU, initiative=Initiative.ASKED)
 
     assert decide(report, None, watched_live=False).urgency is UrgencyClass.TIMELY
+
+
+def _late() -> NoticeReport:
+    return _notice(outcome=NoticeOutcome.LATE, delivery_policy=DeliveryPolicy())
+
+
+def test_a_late_notice_is_background_so_it_never_interrupts() -> None:
+    assert urgency_of(_late()) is UrgencyClass.BACKGROUND
+    assert urgency_of(_late().model_copy(update={"delivery_policy": INTERRUPTING})) is (
+        UrgencyClass.BACKGROUND
+    )
+
+
+def test_a_late_notice_is_not_an_answer_even_when_the_user_scheduled_it() -> None:
+    assert is_answer(_late()) is False
+    assert waits_for_batch(_late()) is True
+    assert decide(_late(), None).mode is ComposeMode.UNSOLICITED
+
+
+def test_a_late_notice_must_be_said_even_though_it_is_background() -> None:
+    assert must_include(UrgencyClass.BACKGROUND, _late())

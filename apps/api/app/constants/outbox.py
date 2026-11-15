@@ -2,7 +2,7 @@
 
 from typing import Final
 
-from app.constants.cache import ONE_DAY_TTL
+from app.constants.cache import ONE_DAY_TTL, THIRTY_MINUTES_TTL
 
 ITEMS_COLLECTION: Final = "outbox_items"
 MESSAGES_COLLECTION: Final = "outbox_messages"
@@ -51,6 +51,9 @@ COMPOSE_LEDGER_MESSAGES: Final = 5
 
 #: The locale the prerendered copy falls back to when it has none for the user's.
 DEFAULT_LOCALE: Final = "en"
+
+#: A scheduled occurrence that fires this long after its time was missed: it is told as late, never as happening now.
+SCHEDULE_LATE_AFTER_SECONDS: Final = THIRTY_MINUTES_TTL
 
 #: A user who wrote on a surface this recently is watching it live; progress older than that is not worth a ping.
 LIVE_WATCH_WINDOW_SECONDS: Final = 5 * 60

@@ -84,9 +84,17 @@ class Decision:
     interrupt_capped: bool = False
 
 
+def is_missed(report: OutboxReport) -> bool:
+    """Whether the report says a scheduled occurrence was missed: it is told as a catch-up, never as the moment."""
+    return isinstance(report, NoticeReport) and report.outcome is NoticeOutcome.LATE
+
+
 def is_answer(report: OutboxReport) -> bool:
-    """Whether the user asked for it, or scheduled it themselves: never an unsolicited update."""
-    return report.initiative in {Initiative.ASKED, Initiative.USER_SCHEDULED}
+    """Whether the user asked for it, or scheduled it themselves and it came on time: never an unsolicited update."""
+    return not is_missed(report) and report.initiative in {
+        Initiative.ASKED,
+        Initiative.USER_SCHEDULED,
+    }
 
 
 def _requires_user_action(report: OutboxReport) -> bool:
@@ -100,6 +108,8 @@ def _requires_user_action(report: OutboxReport) -> bool:
 def urgency_of(report: OutboxReport) -> UrgencyClass:
     """Return how much the report may interrupt, from what its creator chose and what it says."""
     policy = report.delivery_policy
+    if is_missed(report):
+        return UrgencyClass.BACKGROUND
     if policy.timing in _USER_SET_TIMINGS and policy.may_wake:
         return UrgencyClass.INTERRUPT
     if _requires_user_action(report):
@@ -110,8 +120,8 @@ def urgency_of(report: OutboxReport) -> UrgencyClass:
 
 
 def must_include(urgency: UrgencyClass, report: OutboxReport) -> bool:
-    """Whether a message covering this item has to say it: an answer, or timely and above."""
-    return is_answer(report) or urgency >= UrgencyClass.TIMELY
+    """Whether a message covering this item has to say it: an answer, a missed occurrence, or timely and above."""
+    return is_answer(report) or is_missed(report) or urgency >= UrgencyClass.TIMELY
 
 
 def waits_for_batch(report: OutboxReport) -> bool:

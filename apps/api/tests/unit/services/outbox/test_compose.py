@@ -9,7 +9,11 @@ from unittest.mock import AsyncMock, patch
 from langchain_core.messages import AIMessage
 import pytest
 
-from app.agents.prompts.compose_prompts import OUTCOME_REPLY_SHAPES, SPOKEN_COMPOSE_RULES
+from app.agents.prompts.compose_prompts import (
+    COMPOSE_RULES,
+    OUTCOME_REPLY_SHAPES,
+    SPOKEN_COMPOSE_RULES,
+)
 from app.constants.agents import OutcomeState
 from app.constants.chat import ConversationSource
 from app.constants.outbound import OUTBOUND_TTL_SECONDS_DEFAULT, OUTBOUND_TTL_SECONDS_GREETING
@@ -292,6 +296,38 @@ def _run_item(
 
 def _context(model: AsyncMock) -> dict[str, Any]:
     return json.loads(model.await_args_list[0].args[1][1].content)
+
+
+class TestHowTheMessageIsAddressed:
+    @pytest.mark.parametrize(
+        "rule",
+        [
+            "second person",
+            "Never refer to the report, the run, the item",
+            "Never write the user in the third person",
+            "No header or label line",
+            "missed",
+        ],
+    )
+    def test_the_rules_name_the_leaks_a_live_run_produced(self, rule: str) -> None:
+        assert rule in COMPOSE_RULES
+
+    def test_a_late_notice_is_shown_with_when_it_was_due(self) -> None:
+        item = _item("late", UrgencyClass.BACKGROUND, Initiative.USER_SCHEDULED)
+        item.report = item.report.model_copy(update={"outcome": NoticeOutcome.LATE})
+
+        view = _item_view(item)
+
+        assert view["outcome"] == "late"
+        assert view["was_due_at"] == "2026-11-10T00:00:00+00:00"
+
+    def test_a_late_notice_is_must_say_and_cannot_be_skipped(self) -> None:
+        late = _item("late", UrgencyClass.BACKGROUND, Initiative.USER_SCHEDULED)
+        late.report = late.report.model_copy(update={"outcome": NoticeOutcome.LATE})
+
+        assert _item_view(late)["must_say"] is True
+        skipped = _result(("late", "skip"), parts=[])
+        assert "must be said" in (_validate(skipped, [late]) or "")
 
 
 class TestASpokenMessage:

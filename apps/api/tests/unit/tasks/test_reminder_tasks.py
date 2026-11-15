@@ -4,11 +4,12 @@ The reminder task never sends: it submits a NoticeReport whose id names the
 occurrence, so a second fire of the same occurrence is the same report.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.constants.outbox import SCHEDULE_LATE_AFTER_SECONDS
 from app.models.ownership_models import DeliveryTiming
 from app.models.reminder_models import AgentType, ReminderModel, StaticReminderPayload
 from app.models.scheduler_models import TaskOutcome
@@ -32,6 +33,12 @@ FIRES_AT = datetime(2026, 11, 10, 9, 0, tzinfo=UTC)
 @pytest.fixture(autouse=True)
 def paying_user():
     with patch(f"{MODULE}.is_paid", AsyncMock(return_value=True)):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def fires_on_time():
+    with patch(f"{MODULE}.clock.now", return_value=FIRES_AT + timedelta(seconds=2)):
         yield
 
 
@@ -151,3 +158,37 @@ async def test_a_reminder_with_no_id_is_refused_and_named_in_the_wide_event() ->
     ]
     is_active.assert_not_awaited()
     submit.assert_not_awaited()
+
+
+def _fired_after(delay: timedelta):
+    return patch(f"{MODULE}.clock.now", return_value=FIRES_AT + delay)
+
+
+async def test_a_fire_within_the_late_window_is_still_told_as_the_moment() -> None:
+    with _fired_after(timedelta(seconds=SCHEDULE_LATE_AFTER_SECONDS)):
+        report = await _submitted(_reminder())
+
+    assert report.outcome is NoticeOutcome.INFO
+    assert report.delivery_policy.may_wake is True
+
+
+async def test_a_fire_past_the_late_window_is_a_late_notice_that_cannot_wake_the_user() -> None:
+    with _fired_after(timedelta(days=2)):
+        report = await _submitted(_reminder())
+
+    assert report.outcome is NoticeOutcome.LATE
+    assert report.delivery_policy.may_wake is False
+    assert report.delivery_policy.timing is not DeliveryTiming.AT_TIME
+    assert report.facts == ["Water the plants", "Now"]
+    assert report.occurred_at == FIRES_AT
+
+
+async def test_a_late_fire_keeps_the_occurrence_identity_so_the_next_occurrence_is_unaffected() -> (
+    None
+):
+    on_time = await _submitted(_reminder())
+    with _fired_after(timedelta(days=2)):
+        late = await _submitted(_reminder())
+
+    assert late.report_id == on_time.report_id
+    assert late.subject.id == on_time.subject.id

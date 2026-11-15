@@ -52,6 +52,7 @@ from app.models.attention_settings_models import AttentionSettings
 from app.models.chat_models import ConversationSource, WorkRunOutcome
 from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
 from app.models.platform_models import PlatformLinkResult
+from app.models.reminder_models import ReminderModel, StaticReminderPayload
 from app.models.task_report_models import (
     FinishTaskArgs,
     ReportFact,
@@ -92,6 +93,7 @@ from app.services.outbox.transport.bot_queue import OutboundResult
 from app.services.outbox.updates import read_updates
 from app.services.platform_link_completion import complete_platform_link
 from app.services.platform_link_service import PlatformLinkService
+from app.tasks.reminder_tasks import execute_reminder_by_agent
 from shared.py.analytics.catalog.delivery import DeliveryDigestSent
 from tests._harness.judge import ScriptedJudge, verdict
 from tests.e2e._harness.outbox_timeline import (
@@ -2355,3 +2357,37 @@ async def test_a_user_silent_for_15_days_is_dormant_though_gaia_kept_messaging_t
 
     assert [event.reason for event in tl.sinks.held] == ["dormant"]
     assert (await _states(tl))["run-1"] is ItemState.HELD
+
+
+async def test_reminders_that_fire_two_days_late_are_told_together_and_never_interrupt(
+    tl: OutboxTimeline,
+) -> None:
+    due = T0 - timedelta(days=2)
+    reminders = [
+        ReminderModel.model_validate(
+            {
+                "_id": f"6812f0b3c9a14e2b7d5a91d{n}",
+                "user_id": USER,
+                "agent": "static",
+                "payload": StaticReminderPayload(title=f"Stretch {n}", body="Time to stretch"),
+                "scheduled_at": due + timedelta(minutes=n),
+                "source_conversation_id": "web-1",
+            }
+        )
+        for n in range(3)
+    ]
+    await tl.at(0)
+    with patch("app.tasks.reminder_tasks.is_paid", AsyncMock(return_value=True)):
+        for reminder in reminders:
+            await execute_reminder_by_agent(reminder)
+    await tl.drain()
+    await tl.at(1)
+    await tl.drain()
+    await tl.at(1440)
+    await tl.drain()
+
+    [message] = await tl.ledger()
+    assert message.mode.value == "unsolicited"
+    assert message.max_class is UrgencyClass.BACKGROUND
+    assert len(message.report_ids) == 3
+    assert {item.report.outcome for item in await tl.items()} == {NoticeOutcome.LATE}

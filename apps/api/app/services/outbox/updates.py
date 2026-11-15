@@ -29,6 +29,7 @@ from app.services.outbox.models import (
 )
 
 _FAILED = frozenset({OutcomeState.FAILED.value, OutcomeState.UNVERIFIED.value})
+_INFORMING = frozenset({NoticeOutcome.INFO.value, NoticeOutcome.LATE.value})
 _PROGRESS = frozenset({NoticeOutcome.PROGRESS.value})
 
 _LISTED_STATES = frozenset(ItemState) - {ItemState.SUPERSEDED}
@@ -49,7 +50,7 @@ def update_outcome(report: OutboxReport) -> UpdateOutcome:
         return UpdateOutcome.NEEDS_YOU
     if value in _FAILED:
         return UpdateOutcome.FAILED
-    if value == NoticeOutcome.INFO.value:
+    if value in _INFORMING:
         return UpdateOutcome.INFO
     return UpdateOutcome.DONE
 

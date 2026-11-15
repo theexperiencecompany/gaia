@@ -132,6 +132,8 @@ def _item_view(item: OutboxItemDocument) -> dict[str, object]:
         case NoticeReport():
             view["outcome"] = report.outcome.value
             view["facts"] = report.facts
+            if report.outcome is NoticeOutcome.LATE:
+                view["was_due_at"] = report.occurred_at.isoformat()
     return view
 
 

@@ -78,6 +78,8 @@ class NoticeOutcome(StrEnum):
     FAILED = "failed"
     #: Where a run is on its way; told only to someone watching it live.
     PROGRESS = "progress"
+    #: A scheduled occurrence that was missed and fires long after its time: told with what was due, never as happening now.
+    LATE = "late"
 
 
 #: The outcomes, of a run or of a notice, that ask something of the user.

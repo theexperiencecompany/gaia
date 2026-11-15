@@ -1,5 +1,8 @@
 """Reminder task handlers for static reminders only."""
 
+from datetime import timedelta
+
+from app.constants.outbox import SCHEDULE_LATE_AFTER_SECONDS
 from app.decorators.entitlements import capture_paywall_block, is_paid
 from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
 from app.models.reminder_models import (
@@ -17,6 +20,7 @@ from app.services.outbox.models import (
     Subject,
     SubjectKind,
 )
+from app.utils import clock
 from app.utils.occurrence import occurrence_stamp
 from shared.py.wide_events import log
 
@@ -30,9 +34,10 @@ UNTITLED_REMINDER_LABEL = "Reminder"
 
 
 def _reminder_report(reminder: ReminderModel, payload: StaticReminderPayload) -> NoticeReport:
-    """Return the report of one fire: the user set this time themselves, so it is told at that time."""
+    """Return the report of one fire: told at the time the user set, or as late when it fired long after."""
     if reminder.id is None or reminder.scheduled_at is None:
         raise ValueError("A fired reminder has an id and the time it was armed for")
+    is_late = clock.now() - reminder.scheduled_at > timedelta(seconds=SCHEDULE_LATE_AFTER_SECONDS)
     occurrence = f"{reminder.id}:{occurrence_stamp(reminder.scheduled_at)}"
     return NoticeReport(
         report_id=f"rem:{occurrence}",
@@ -46,8 +51,10 @@ def _reminder_report(reminder: ReminderModel, payload: StaticReminderPayload) ->
         ),
         occurred_at=reminder.scheduled_at,
         initiative=Initiative.USER_SCHEDULED,
-        delivery_policy=DeliveryPolicy(timing=DeliveryTiming.AT_TIME, may_wake=True),
-        outcome=NoticeOutcome.INFO,
+        delivery_policy=DeliveryPolicy()
+        if is_late
+        else DeliveryPolicy(timing=DeliveryTiming.AT_TIME, may_wake=True),
+        outcome=NoticeOutcome.LATE if is_late else NoticeOutcome.INFO,
         facts=[segment for segment in (payload.title, payload.body) if segment],
     )
 
