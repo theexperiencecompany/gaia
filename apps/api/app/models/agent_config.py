@@ -50,6 +50,8 @@ class StepTurnRef(TypedDict):
     cause_through: int
     #: The ids of the user messages the attempt answers.
     answers: list[str]
+    #: Whether the attempt answers a request; one that only reports finished work starts none.
+    asked: bool
 
 
 class AgentConfigurable(TypedDict, total=False):

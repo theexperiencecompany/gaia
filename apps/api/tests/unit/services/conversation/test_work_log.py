@@ -55,6 +55,7 @@ async def step_answering(rt: Runtime, *message_ids: str) -> StepTurnRef:
         "batch_start": 1,
         "cause_through": len(message_ids),
         "answers": list(message_ids),
+        "asked": True,
     }
 
 

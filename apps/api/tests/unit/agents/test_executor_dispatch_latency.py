@@ -52,7 +52,13 @@ def _configurable(stream_id: str) -> AgentConfigurable:
         "bot_message_id": "bmsg-1",
         "user_id": USER_ID,
         "thread_id": "conv-1",
-        "conversation_step": {"epoch": 1, "batch_start": 1, "cause_through": 1, "answers": []},
+        "conversation_step": {
+            "epoch": 1,
+            "batch_start": 1,
+            "cause_through": 1,
+            "answers": [],
+            "asked": True,
+        },
     }
 
 

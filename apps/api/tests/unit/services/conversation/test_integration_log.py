@@ -19,7 +19,13 @@ from tests.unit.services.conversation.runtime_doubles import USER, Runtime
 
 MODULE = "app.services.conversation.integration_log"
 
-STEP: StepTurnRef = {"epoch": 3, "batch_start": 2, "cause_through": 7, "answers": ["u1"]}
+STEP: StepTurnRef = {
+    "epoch": 3,
+    "batch_start": 2,
+    "cause_through": 7,
+    "answers": ["u1"],
+    "asked": True,
+}
 
 
 def _need(need_id: str, integration_id: str = "gmail") -> IntegrationNeeded:

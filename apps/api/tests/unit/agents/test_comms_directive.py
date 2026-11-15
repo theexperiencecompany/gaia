@@ -157,6 +157,26 @@ class TestAReactTagIsAReaction:
         assert visible_comms_text(text) == ""
         assert visible_comms_text_so_far(f"<{tag}>👍</REAC") == ""
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "text", ["<❤️>", " < 👍 > ", "</🙏>", "<👍/>", "<❤️><NEW_MESSAGE_BREAK>"]
+    )
+    def test_an_emoji_written_as_a_tag_is_the_reaction_it_means(self, text: str) -> None:
+        """Seen live on web: comms answered with <❤️>, which the chat showed as a bubble."""
+        d = interpret_comms_output(text)
+
+        assert d.kind is CommsDirectiveKind.REACT
+        assert visible_comms_text(text) == ""
+        assert all(visible_comms_text_so_far(text[:end]) == "" for end in range(len(text) + 1))
+
+    def test_an_emoji_tag_inside_a_reply_never_shows_while_it_streams(self) -> None:
+        text = "Done <❤️> and filed, a < b."
+        shown = [visible_comms_text_so_far(text[:end]) for end in range(len(text) + 1)]
+        shown.append(visible_comms_text(text))
+        for earlier, later in pairwise(shown):
+            assert later.startswith(earlier)
+        assert shown[-1] == "Done and filed, a < b."
+
     def test_a_react_tag_around_a_word_stays_text(self) -> None:
         assert interpret_comms_output("<REACT>done</REACT>").kind is CommsDirectiveKind.REPLY
 
@@ -242,12 +262,15 @@ class TestADirectiveBesideAReplyIsNeverDelivered:
             (f"{PASSPORT}\n< SILENCE >threshold</ SILENCE >\nBook it.", f"{PASSPORT}\nBook it."),
             ("Done <EMOJI>👍</EMOJI> and filed.", "Done and filed."),
             ("Done. <EMOJI>👍</EMOJI>", "Done. "),
+            ("Done <❤️> and filed.", "Done and filed."),
+            ("Done. </👍>", "Done. "),
             # A tag ending its line keeps the line break, so the next line stays its own.
             (f"{PASSPORT} <SILENCE>threshold</SILENCE>\nBook it.", f"{PASSPORT} \nBook it."),
             (f"{PASSPORT} <SILENCE>never closed\nBook it.", f"{PASSPORT} \nBook it."),
             # Not a directive, so it is the model's text and stays.
             ("Say <EMOJI>ok</EMOJI> back.", "Say <EMOJI>ok</EMOJI> back."),
             ("Use <b>bold</b> here.", "Use <b>bold</b> here."),
+            ("I <3 it, a < b > c.", "I <3 it, a < b > c."),
         ],
     )
     def test_a_directive_anywhere_in_a_bubble_never_shows(self, text: str, payload: str) -> None:
