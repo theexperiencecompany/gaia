@@ -13,9 +13,10 @@ function frameOf(container: HTMLElement): HTMLIFrameElement {
   return frame;
 }
 
-function post(source: Window | null, data: unknown) {
+// A frame sandboxed without allow-same-origin posts with the opaque origin "null".
+function post(source: Window | null, data: unknown, origin = "null") {
   act(() => {
-    window.dispatchEvent(new MessageEvent("message", { data, source }));
+    window.dispatchEvent(new MessageEvent("message", { data, source, origin }));
   });
 }
 
@@ -30,11 +31,16 @@ describe("HtmlArtifact", () => {
     expect(frame.style.height).toBe("1240px");
   });
 
-  it("ignores a height from any window but its own frame's", () => {
+  it("ignores a height from any window or origin but its own sandboxed frame's", () => {
     const { container } = render(<ArtifactRenderer program={PROGRAM} />);
     const frame = frameOf(container);
 
     post(window, { type: ARTIFACT_HEIGHT_MESSAGE, height: 1240 });
+    post(
+      frame.contentWindow,
+      { type: ARTIFACT_HEIGHT_MESSAGE, height: 1240 },
+      "https://evil.example",
+    );
     post(frame.contentWindow, {
       type: ARTIFACT_HEIGHT_MESSAGE,
       height: "tall",
