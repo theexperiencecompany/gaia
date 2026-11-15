@@ -3145,7 +3145,6 @@ score:URL Structure=93
 /marketplace/dropbox	perf/dom-size/dom-max-children
 /marketplace/github	perf/dom-size/dom-max-children
 /marketplace/github	perf/dom-size/dom-total-nodes
-/marketplace/gmail	perf/dom-size/dom-max-children
 /marketplace/googledrive	perf/dom-size/dom-max-children
 /marketplace/hubspot	perf/dom-size/dom-max-children
 /marketplace/jira	perf/dom-size/dom-max-children
