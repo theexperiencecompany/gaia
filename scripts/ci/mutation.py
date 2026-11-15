@@ -1284,13 +1284,30 @@ def _incomplete_run(module: str, workdir: Path, counts: Counter[str], total: int
             "the run was interrupted."
         )
     unbucketed = sum(n for status, n in counts.items() if status not in COUNTED_STATUSES)
-    if counts["segfault"] or unbucketed:
+    if unbucketed or (counts["segfault"] and not crashes_count_as_detected(counts)):
         return _error(
             f"MUTATION RUN INCOMPLETE — {counts['segfault']} segfault(s) and {unbucketed} "
             f"unbucketed mutant(s) of {total} reached NO verdict (on macOS see the NO_PROXY "
             "note in tests/conftest.py)."
         )
     return None
+
+
+def crashes_count_as_detected(counts: Counter[str]) -> bool:
+    """Say whether a crashed mutant counts as caught: on Linux, beside real verdicts.
+
+    Under the memory cap a runaway mutant can die as a segfault instead of MemoryError; the
+    suite failed, so it is detected, like a timeout. Off Linux a segfault is the fork crash,
+    and a module where nothing but crashes came back proves nothing either way.
+    """
+    return sys.platform == "linux" and bool(counts["killed"] or counts["survived"])
+
+
+def _crash_note(counts: Counter[str]) -> str:
+    return (
+        f"{counts['segfault']} mutant(s) crashed their test process (segfault) — counted as "
+        "detected, like a timeout"
+    )
 
 
 def _ungraded_outcome(
@@ -1373,6 +1390,9 @@ def graded_outcome(request: ModuleRequest, venv: Path, workdir: Path, phase: Pha
         )
     if not counts["killed"] and not counts["survived"]:
         return _ungraded_outcome(request, workdir, counts, total)
+    crashed = _crash_note(counts) if counts["segfault"] else ""
+    if crashed:
+        _say(f"NOTE: {crashed}.")
 
     phase("classify survivors")
     classified = _classified(request, venv, workdir, results, "survived")
@@ -1390,7 +1410,12 @@ def graded_outcome(request: ModuleRequest, venv: Path, workdir: Path, phase: Pha
         phase("collect survivor diffs")
         diffs = _survivor_diffs(venv, workdir, real)
         _say(diffs)
-    return Outcome(Status.SURVIVORS if real else Status.PASS, classified=classified, diffs=diffs)
+    return Outcome(
+        Status.SURVIVORS if real else Status.PASS,
+        reason=crashed,
+        classified=classified,
+        diffs=diffs,
+    )
 
 
 def _notes(classified: list[tuple[str, str]], uncovered_changed: list[str], no_tests: int) -> None:
