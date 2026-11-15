@@ -30,6 +30,7 @@ import {
   hashLogIdentifier,
   type IncomingMedia,
   type MediaOutcome,
+  neverReopened,
   type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
@@ -516,8 +517,9 @@ export class DiscordAdapter extends BaseBotAdapter {
       send: async (content) => {
         if (!replyFilled) {
           replyFilled = true;
-          await interaction.editReply({ content });
+          const reply = await interaction.editReply({ content });
           return {
+            id: reply.id,
             edit: async (updated: string) => {
               await interaction.editReply({ content: updated });
             },
@@ -525,11 +527,13 @@ export class DiscordAdapter extends BaseBotAdapter {
         }
         const followUp = await interaction.followUp({ content });
         return {
+          id: followUp.id,
           edit: async (updated: string) => {
             await followUp.edit({ content: updated });
           },
         };
       },
+      reopen: neverReopened("discord"),
       react: (platformMessageId, emoji, replaces) =>
         this.reactToMessage(
           interaction.channelId,
@@ -586,11 +590,13 @@ export class DiscordAdapter extends BaseBotAdapter {
             : {}),
         });
         return {
+          id: sent.id,
           edit: async (updated: string) => {
             await sent.edit(updated);
           },
         };
       },
+      reopen: neverReopened("discord"),
       react: (platformMessageId, emoji, replaces) =>
         this.reactToMessage(
           reactDestination,

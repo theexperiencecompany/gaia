@@ -11,6 +11,7 @@ import {
   type ActiveBotConversation,
   BaseBotAdapter,
   type ConversationSurface,
+  neverReopened,
   REACTION_OUTCOME,
 } from "@gaia/shared/bots";
 import { describe, expect, it, vi } from "vitest";
@@ -80,8 +81,9 @@ class RestartedAdapter extends BaseBotAdapter {
         const refusal = this.refusals.shift();
         if (refusal) throw refusal;
         this.sent.push(text);
-        return { edit: async () => undefined };
+        return { id: `m${this.sent.length}`, edit: async () => undefined };
       },
+      reopen: neverReopened("telegram"),
       react: async () => REACTION_OUTCOME.ATTACHED,
       startTyping: () => () => undefined,
     };

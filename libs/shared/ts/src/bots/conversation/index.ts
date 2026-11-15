@@ -1,4 +1,4 @@
-export { STREAMING_DEFAULTS } from "./delivery-options";
+export { neverReopened, STREAMING_DEFAULTS } from "./delivery-options";
 export { ConversationFollower } from "./follower";
 export type {
   AwaitedDecision,
@@ -6,6 +6,7 @@ export type {
   DeliveryCursor,
   FollowStart,
   FollowSurface,
+  ReopenedBubble,
   SentBubble,
   StreamingOptions,
 } from "./follower.types";

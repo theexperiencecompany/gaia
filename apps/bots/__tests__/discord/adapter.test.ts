@@ -236,6 +236,7 @@ vi.mock("@gaia/shared/bots", async () => {
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),
+    neverReopened: actual.neverReopened,
     STREAMING_DEFAULTS: {
       discord: { editIntervalMs: 1200, streaming: false, platform: "discord" },
     },
@@ -296,7 +297,7 @@ function makeChatInteraction(overrides: {
     replied,
     deferred,
     deferReply: vi.fn().mockResolvedValue(undefined),
-    editReply: vi.fn().mockResolvedValue(undefined),
+    editReply: vi.fn().mockResolvedValue({ id: "reply" }),
     followUp: vi.fn().mockResolvedValue({ edit: vi.fn() }),
     isChatInputCommand: () => true,
     isMessageContextMenuCommand: () => false,
@@ -900,7 +901,7 @@ describe("DiscordAdapter - context menu interaction", () => {
       replied: false,
       deferred: false,
       deferReply: vi.fn().mockResolvedValue(undefined),
-      editReply: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue({ id: "reply" }),
       isChatInputCommand: () => false,
       isMessageContextMenuCommand: () => true,
     };
@@ -927,7 +928,7 @@ describe("DiscordAdapter - context menu interaction", () => {
       replied: false,
       deferred: false,
       deferReply: vi.fn().mockResolvedValue(undefined),
-      editReply: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue({ id: "reply" }),
       isChatInputCommand: () => false,
       isMessageContextMenuCommand: () => true,
     };
@@ -1762,7 +1763,7 @@ describe("DiscordAdapter - interaction surface", () => {
       channelId: "channel-ctx",
       guild: { id: "guild-1" },
       deferReply: vi.fn().mockResolvedValue(undefined),
-      editReply: vi.fn().mockResolvedValue(undefined),
+      editReply: vi.fn().mockResolvedValue({ id: "reply" }),
       followUp,
     };
     await (

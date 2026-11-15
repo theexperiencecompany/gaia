@@ -49,3 +49,17 @@ def test_a_follow_starts_after_the_sessions_delivered_cursor_in_its_dm_or_channe
         after_seq=6,
         partial_reply=partial,
     )
+
+
+def test_a_reply_cut_off_mid_bubble_keeps_the_open_message_for_the_restart() -> None:
+    partial = PartialReply(reply_id="r7", bubbles=0, open_message_ids=["2459"])
+
+    assert partial.open_message_ids == ["2459"]
+
+
+def test_a_partial_reply_with_nothing_on_the_platform_is_refused() -> None:
+    with pytest.raises(ValidationError) as refused:
+        PartialReply(reply_id="r7", bubbles=0)
+
+    [error] = refused.value.errors()
+    assert error["msg"] == "Value error, a partial reply has a final bubble or an open message"

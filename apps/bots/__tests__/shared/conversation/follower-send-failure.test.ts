@@ -11,6 +11,7 @@ import {
   ConversationFollowers,
   type DeliveryRecorder,
   type FollowSurface,
+  neverReopened,
   REACTION_OUTCOME,
   type StreamingOptions,
 } from "@gaia/shared/bots";
@@ -54,11 +55,13 @@ function surface(sent: string[], refuse: (() => Error) | null): FollowSurface {
       if (refuse) throw refuse();
       sent.push(text);
       return {
+        id: `m${sent.length}`,
         edit: async (updated) => {
           sent.push(updated);
         },
       };
     },
+    reopen: neverReopened("telegram"),
     react: async () => REACTION_OUTCOME.ATTACHED,
     startTyping: () => () => undefined,
   };

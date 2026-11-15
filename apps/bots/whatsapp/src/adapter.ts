@@ -33,6 +33,7 @@ import {
   type IncomingMedia,
   type LinkState,
   MEDIA_READ_TIMEOUT_MS,
+  neverReopened,
   type OutboundFile,
   type OutboundNotifications,
   type PlatformName,
@@ -709,14 +710,16 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   ): ConversationSurface {
     return {
       send: async (text, replyTo) => {
-        await this.sendWhatsAppText(waId, text, replyTo);
+        const sent = await this.sendWhatsAppText(waId, text, replyTo);
         // WhatsApp cannot edit or delete: the follower never streams here.
         return {
+          id: sent.id,
           edit: async (updated: string) => {
             await this.sendWhatsAppText(waId, updated);
           },
         };
       },
+      reopen: neverReopened("whatsapp"),
       react: (platformMessageId, emoji, replaces) =>
         this.reactToMessage(waId, platformMessageId, emoji, false, replaces),
       startTyping: () =>

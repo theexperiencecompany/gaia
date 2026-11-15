@@ -9,6 +9,7 @@ import {
   type ActiveBotConversation,
   BaseBotAdapter,
   type ConversationSurface,
+  neverReopened,
   REACTION_OUTCOME,
   type ReactionOutcome,
 } from "@gaia/shared/bots";
@@ -60,7 +61,8 @@ class ReactingAdapter extends BaseBotAdapter {
   }
   protected async resumeSurface(): Promise<ConversationSurface> {
     return {
-      send: async () => ({ edit: async () => undefined }),
+      send: async () => ({ id: "m1", edit: async () => undefined }),
+      reopen: neverReopened("telegram"),
       react: async () => this.outcome,
       startTyping: () => () => undefined,
     };

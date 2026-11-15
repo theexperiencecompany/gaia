@@ -348,6 +348,9 @@ function deliveredTexts(
       } else {
         texts[index] = event.text;
       }
+    } else if (event.type === "delete") {
+      const index = indexById.get(event.messageId);
+      if (index !== undefined) texts[index] = null;
     } else if (
       proactive &&
       (event.type === "outbound-delivery" ||

@@ -637,6 +637,15 @@ export class TelegramAdapter extends BaseBotAdapter {
           { channel_hash: hashLogIdentifier(chatId), message_id: messageId },
           e,
         );
+    const bubble = (messageId: number) => ({
+      id: String(messageId),
+      edit: (updated: string) =>
+        this.editHtml(
+          (t, opts) => this.bot.api.editMessageText(chatId, messageId, t, opts),
+          updated,
+          logEditFailure(messageId),
+        ),
+    });
     return {
       send: async (text, replyTo) => {
         const quote = replyTo
@@ -652,14 +661,15 @@ export class TelegramAdapter extends BaseBotAdapter {
             this.bot.api.sendMessage(chatId, t, { ...opts, ...quote }),
           text,
         );
+        return bubble(sent.message_id);
+      },
+      reopen: (platformMessageId) => {
+        const messageId = Number(platformMessageId);
         return {
-          edit: (updated: string) =>
-            this.editHtml(
-              (t, opts) =>
-                this.bot.api.editMessageText(chatId, sent.message_id, t, opts),
-              updated,
-              logEditFailure(sent.message_id),
-            ),
+          ...bubble(messageId),
+          delete: async () => {
+            await this.bot.api.deleteMessage(chatId, messageId);
+          },
         };
       },
       react: (platformMessageId, emoji, replaces) =>

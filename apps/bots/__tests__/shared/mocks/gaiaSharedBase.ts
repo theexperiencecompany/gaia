@@ -23,6 +23,7 @@ import {
   platformIdentity,
 } from "../../../../../libs/shared/ts/src/analytics";
 import { ArrivalOrder } from "../../../../../libs/shared/ts/src/bots/adapter/arrival-order";
+import { neverReopened } from "../../../../../libs/shared/ts/src/bots/conversation/delivery-options";
 import {
   consumeInboundLinkCode,
   redeemLinkCode,
@@ -197,6 +198,7 @@ export function makeGaiaSharedMock(
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),
     STREAMING_DEFAULTS: streamingDefaults,
+    neverReopened,
     // Shared non-streaming chokepoint; mocked as identity here (returns raw text) —
     // real conversion is covered by the shared formatters tests.
     renderForPlatform: vi.fn((text: string) => text),

@@ -389,11 +389,13 @@ async function driveDiscord(script: ApiScript): Promise<Canonical> {
     }),
     editReply: vi.fn(async ({ content }: { content: string }) => {
       ops.push({ op: "update", id: "reply", text: content });
+      return { id: "reply" };
     }),
     followUp: vi.fn(async ({ content }: { content: string }) => {
       const id = `f${fid++}`;
       ops.push({ op: "create", id, text: content });
       return {
+        id,
         edit: vi.fn(async ({ content: c }: { content: string }) => {
           ops.push({ op: "update", id, text: c });
         }),

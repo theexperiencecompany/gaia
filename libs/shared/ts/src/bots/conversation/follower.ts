@@ -69,7 +69,9 @@ const sameBubbles = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((bubble, at) => bubble === b[at]);
 
 const samePartial = (a: PartialReply | null, b: PartialReply | null): boolean =>
-  a?.reply_id === b?.reply_id && a?.bubbles === b?.bubbles;
+  a?.reply_id === b?.reply_id &&
+  a?.bubbles === b?.bubbles &&
+  sameBubbles(a?.open_message_ids ?? [], b?.open_message_ids ?? []);
 
 /** The log position at which an item has something for the platform: a work item's newest approval. */
 const deliverySeq = (item: ScreenItem): number =>
@@ -439,13 +441,27 @@ export class ConversationFollower {
   private newDelivery(reply: ReplyItem): ReplyDelivery {
     const { platform, streaming } = this.options;
     const { partialReply } = this.start;
+    const earlier =
+      partialReply?.reply_id === reply.id
+        ? {
+            bubbles: partialReply.bubbles,
+            openMessageIds: partialReply.open_message_ids ?? [],
+          }
+        : { bubbles: 0, openMessageIds: [] };
     return new ReplyDelivery(
       { live: streaming, platform, render: PLATFORM_MARKDOWN[platform] },
       this.surface,
       this.quoteTarget(reply.quote?.id ?? null),
-      partialReply?.reply_id === reply.id ? partialReply.bubbles : 0,
-      async (bubbles) => {
-        this.progress = bubbles > 0 ? { reply_id: reply.id, bubbles } : null;
+      earlier,
+      async (bubbles, openMessageIds) => {
+        this.progress =
+          bubbles > 0 || openMessageIds.length > 0
+            ? {
+                reply_id: reply.id,
+                bubbles,
+                open_message_ids: openMessageIds,
+              }
+            : null;
         await this.recordDelivered();
       },
     );

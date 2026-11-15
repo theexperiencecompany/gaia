@@ -339,25 +339,31 @@ export class HarnessAdapter extends BaseBotAdapter {
       });
       return id;
     };
-    return {
-      send: (text, replyTo) => {
-        const id = record(text, replyTo);
-        return Promise.resolve({
-          edit: (updated: string) => {
-            if (!this.emulation.supportsEdit) {
-              record(updated, null);
-            } else {
-              this.transcript.record({
-                type: "edit",
-                messageId: id,
-                text: updated,
-                length: updated.length,
-              });
-            }
-            return Promise.resolve();
-          },
-        });
+    const bubble = (id: string) => ({
+      id,
+      edit: (updated: string) => {
+        if (!this.emulation.supportsEdit) {
+          record(updated, null);
+        } else {
+          this.transcript.record({
+            type: "edit",
+            messageId: id,
+            text: updated,
+            length: updated.length,
+          });
+        }
+        return Promise.resolve();
       },
+    });
+    return {
+      send: (text, replyTo) => Promise.resolve(bubble(record(text, replyTo))),
+      reopen: (id) => ({
+        ...bubble(id),
+        delete: () => {
+          this.transcript.record({ type: "delete", messageId: id });
+          return Promise.resolve();
+        },
+      }),
       react: (platformMessageId, emoji, replaces) =>
         this.reactToMessage(
           channelId,

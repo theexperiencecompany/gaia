@@ -12128,11 +12128,16 @@ export interface components {
         };
         /**
          * PartialReply
-         * @description A reply a bot follower had put only its first bubbles of on the platform.
+         * @description A reply a bot follower had put only part of on the platform.
+         *
+         *     bubbles are final; open_message_ids are the platform messages of the next bubble, still being
+         *     written, which a restarted follower finishes by editing instead of posting again.
          */
         PartialReply: {
             /** Bubbles */
             bubbles: number;
+            /** Open Message Ids */
+            open_message_ids?: string[];
             /** Reply Id */
             reply_id: string;
         };

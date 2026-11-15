@@ -43,6 +43,7 @@ import type {
 type Call =
   | { op: "send"; id: string; text: string; replyTo: string | null }
   | { op: "edit"; id: string; text: string }
+  | { op: "delete"; id: string }
   | { op: "react"; target: string; emoji: string; replaces: string | null }
   | { op: "typing"; state: "start" | "stop" }
   | { op: "notice"; bubbles: string[] }
@@ -71,11 +72,21 @@ function recorder(privateChat = true): {
       const id = `m${next++}`;
       calls.push({ op: "send", id, text, replyTo });
       return {
+        id,
         edit: async (updated) => {
           calls.push({ op: "edit", id, text: updated });
         },
       };
     },
+    reopen: (id) => ({
+      id,
+      edit: async (updated) => {
+        calls.push({ op: "edit", id, text: updated });
+      },
+      delete: async () => {
+        calls.push({ op: "delete", id });
+      },
+    }),
     react: async (target, emoji, replaces) => {
       calls.push({ op: "react", target, emoji, replaces });
       return REACTION_OUTCOME.ATTACHED;
@@ -122,6 +133,7 @@ function screen(calls: Call[]): string[] {
   const shown = new Map<string, string>();
   for (const call of calls) {
     if (call.op === "send" || call.op === "edit") shown.set(call.id, call.text);
+    if (call.op === "delete") shown.delete(call.id);
   }
   return [...shown.values()];
 }
@@ -737,6 +749,81 @@ describe.each([
     ]);
     expect(sent(resumed.calls)).toEqual([{ text: "Three.", replyTo: null }]);
     expect(kept).toEqual(cursorAt(2));
+  });
+});
+
+describe("a live bot that stops while a bubble is still being written (run 4 bug 21)", () => {
+  const GUIDE = "1. Preheat the oven to 200C and line a tray.";
+  const reply = replyItem("r1", 2, GUIDE, "answered");
+
+  /** The first follow previews the bubble's first words, then the process dies. */
+  async function crashMidBubble() {
+    let kept: DeliveryCursor = cursorAt(1);
+    const keep = async (cursor: DeliveryCursor) => {
+      kept = cursor;
+    };
+    const chat = recorder();
+    const first = new ConversationFollower(
+      { floor: 1, partialReply: null, record: keep },
+      EDITING,
+      chat.surface,
+      "c1",
+    );
+    await feed(first, [
+      screenFrame([inbound("u1", 1, "11")]),
+      insertFrame(replyItem("r1", 2, "1")),
+      replyDelta("a-r1", "r1", 0, "1"),
+      // The preview the delta scheduled has run by the next frame.
+      stateFrame(1, "thinking"),
+    ]);
+    first.close();
+    expect(screen(chat.calls)).toEqual(["1"]);
+    const restartWith = (surface: FollowSurface) =>
+      new ConversationFollower(
+        {
+          floor: kept.delivered_seq,
+          partialReply: kept.partial_reply,
+          record: keep,
+        },
+        EDITING,
+        surface,
+        "c1",
+      );
+    return { chat, kept: () => kept, restartWith };
+  }
+
+  const settledWhileDown: ConversationFrame[] = [
+    screenFrame([inbound("u1", 1, "11"), reply]),
+    stateFrame(2, "idle"),
+  ];
+
+  it("finishes the half-written bubble by editing it after the restart, posting nothing new", async () => {
+    const { chat, kept, restartWith } = await crashMidBubble();
+    const sendsBefore = sent(chat.calls).length;
+
+    await feed(restartWith(chat.surface), settledWhileDown);
+
+    expect(screen(chat.calls)).toEqual([GUIDE]);
+    expect(sent(chat.calls)).toHaveLength(sendsBefore);
+    expect(kept()).toEqual(cursorAt(2));
+  });
+
+  it("deletes the half-written bubble and sends the reply when the platform refuses the edit", async () => {
+    const { chat, kept, restartWith } = await crashMidBubble();
+    const refusing: FollowSurface = {
+      ...chat.surface,
+      reopen: (id) => ({
+        ...chat.surface.reopen(id),
+        edit: async () => {
+          throw new Error("Bad Request: message can't be edited");
+        },
+      }),
+    };
+
+    await feed(restartWith(refusing), settledWhileDown);
+
+    expect(screen(chat.calls)).toEqual([GUIDE]);
+    expect(kept()).toEqual(cursorAt(2));
   });
 });
 

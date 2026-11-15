@@ -17,6 +17,7 @@ import {
   MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,
+  neverReopened,
   type OutboundFile,
   type PlatformName,
   REACTION_OUTCOME,
@@ -423,14 +424,16 @@ export class ImessageAdapter extends BaseBotAdapter {
             target_platform_message_id: replyTo,
           });
         }
-        await space.send(target ? reply(text, target) : text);
+        const sent = await space.send(target ? reply(text, target) : text);
         // iMessage cannot edit or unsend here: the follower never streams to it.
         return {
+          id: sent?.id ?? "",
           edit: async (updated: string) => {
             await space.send(updated);
           },
         };
       },
+      reopen: neverReopened("imessage"),
       react: (platformMessageId, emoji, replaces) =>
         this.reactToMessage(handle, platformMessageId, emoji, false, replaces),
       startTyping: () => {

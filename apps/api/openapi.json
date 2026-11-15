@@ -13286,12 +13286,19 @@
         "type": "object"
       },
       "PartialReply": {
-        "description": "A reply a bot follower had put only its first bubbles of on the platform.",
+        "description": "A reply a bot follower had put only part of on the platform.\n\nbubbles are final; open_message_ids are the platform messages of the next bubble, still being\nwritten, which a restarted follower finishes by editing instead of posting again.",
         "properties": {
           "bubbles": {
-            "minimum": 1.0,
+            "minimum": 0.0,
             "title": "Bubbles",
             "type": "integer"
+          },
+          "open_message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Open Message Ids",
+            "type": "array"
           },
           "reply_id": {
             "minLength": 1,

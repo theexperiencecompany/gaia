@@ -3,7 +3,7 @@
 Pydantic models for bot chat, sessions, and related operations.
 """
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.constants.platform_links import Platform
 from app.models.document_models import MongoDocument
@@ -257,12 +257,23 @@ class BotSettingsResponse(BaseModel):
 
 
 class PartialReply(BaseModel):
-    """A reply a bot follower had put only its first bubbles of on the platform."""
+    """A reply a bot follower had put only part of on the platform.
+
+    bubbles are final; open_message_ids are the platform messages of the next bubble, still being
+    written, which a restarted follower finishes by editing instead of posting again.
+    """
 
     model_config = ConfigDict(frozen=True)
 
     reply_id: str = Field(min_length=1)
-    bubbles: int = Field(ge=1)
+    bubbles: int = Field(ge=0)
+    open_message_ids: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _something_delivered(self) -> "PartialReply":
+        if self.bubbles == 0 and not self.open_message_ids:
+            raise ValueError("a partial reply has a final bubble or an open message")
+        return self
 
 
 class BotDelivery(BaseModel):

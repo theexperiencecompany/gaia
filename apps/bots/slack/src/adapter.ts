@@ -463,6 +463,12 @@ export class SlackAdapter extends BaseBotAdapter {
   /** The channel a conversation follows into; a quoted reply is a thread reply also shown in the channel. */
   private conversationSurface(channelId: string): ConversationSurface {
     const { client } = this.app;
+    const bubble = (ts: string) => ({
+      id: ts,
+      edit: async (updatedText: string) => {
+        await client.chat.update({ channel: channelId, ts, text: updatedText });
+      },
+    });
     return {
       send: async (text, replyTo) => {
         const posted = await (replyTo
@@ -475,16 +481,14 @@ export class SlackAdapter extends BaseBotAdapter {
           : client.chat.postMessage({ channel: channelId, text }));
         const sentTs = posted.ts;
         if (!sentTs) throw new Error("chat.postMessage returned no ts");
-        return {
-          edit: async (updatedText: string) => {
-            await client.chat.update({
-              channel: channelId,
-              ts: sentTs,
-              text: updatedText,
-            });
-          },
-        };
+        return bubble(sentTs);
       },
+      reopen: (ts) => ({
+        ...bubble(ts),
+        delete: async () => {
+          await client.chat.delete({ channel: channelId, ts });
+        },
+      }),
       react: (platformMessageId, emoji, replaces) =>
         this.reactToMessage(
           channelId,

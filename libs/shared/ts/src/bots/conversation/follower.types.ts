@@ -18,7 +18,14 @@ export interface StreamingOptions {
 
 /** A message the follower posted, edited in place as its bubble grows. */
 export interface SentBubble {
+  /** The platform message id, kept in the delivery cursor while the bubble is still being written. */
+  id: string;
   edit: (text: string) => Promise<void>;
+}
+
+/** A message an earlier follow left mid-bubble: finished by an edit, or deleted where it cannot be edited. */
+export interface ReopenedBubble extends SentBubble {
+  delete: () => Promise<void>;
 }
 
 /**
@@ -28,6 +35,8 @@ export interface SentBubble {
 export interface ConversationSurface {
   /** Posts a message; replyTo is a platform message id to answer natively, where the platform can. */
   send: (text: string, replyTo: string | null) => Promise<SentBubble>;
+  /** A message an earlier follow posted in this chat and left mid-bubble, by its platform id. */
+  reopen: (platformMessageId: string) => ReopenedBubble;
   /** Puts emoji on a platform message, replacing the emoji GAIA put there before. */
   react: (
     platformMessageId: string,

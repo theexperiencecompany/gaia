@@ -52,12 +52,14 @@ export type {
   DeliveryRecorder,
   FollowStart,
   FollowSurface,
+  ReopenedBubble,
   SentBubble,
   StreamingOptions,
 } from "./conversation";
 export {
   ConversationFollower,
   ConversationFollowers,
+  neverReopened,
   STREAMING_DEFAULTS,
 } from "./conversation";
 export type {
