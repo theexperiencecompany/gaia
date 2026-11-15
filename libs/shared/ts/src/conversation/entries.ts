@@ -56,6 +56,7 @@ const ConversationSourceSchema = z.enum([
   "slack",
   "whatsapp",
   "imessage",
+  "voice",
   "workflow_system",
   "background",
 ]) satisfies z.ZodType<ConversationSource>;
@@ -148,7 +149,6 @@ const UserMessageSchema = z.object({
   selected_workflow: SelectedWorkflowSchema.nullable().default(null),
   selected_calendar_event: SelectedCalendarEventSchema.nullable().default(null),
   reply_to_message: ReplyToMessageSchema.nullable().default(null),
-  voice: z.boolean().default(false),
   reaction: ReactionSchema.nullable().default(null),
   todo_run_wake: TodoRunWakeSchema.nullable().default(null),
   posthog_session_id: nullableString,

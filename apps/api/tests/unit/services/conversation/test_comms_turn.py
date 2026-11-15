@@ -297,3 +297,18 @@ async def test_finished_work_is_answered_with_the_prompt_of_the_conversations_ow
     with patch("app.agents.core.messages.assemble_context", AsyncMock(return_value=stable)):
         system = (await build_turn_context("report", scope)).chain[0]
     assert (OPENUI_INSTRUCTIONS in str(system.content)) is renders_openui
+
+
+async def test_a_spoken_turn_is_answered_with_the_voice_prompt_not_the_apps(seams: Seams) -> None:
+    await build_comms_turn(CLAIM, _batch(1, [_said("u1", ConversationSource.VOICE)]))
+
+    scope = seams.turn_context.await_args.args[1]
+    assert scope.source is ConversationSource.VOICE
+    stable = AssembledContext(stable=HumanMessage(content="context"), volatile=None)
+    with (
+        patch("app.agents.core.messages.assemble_context", AsyncMock(return_value=stable)),
+        patch("app.agents.core.messages.presence_note_message", AsyncMock(return_value=None)),
+    ):
+        system = (await build_turn_context("what's on today", scope)).chain[0]
+    assert OPENUI_INSTRUCTIONS not in str(system.content)
+    assert "read aloud" in str(system.content)

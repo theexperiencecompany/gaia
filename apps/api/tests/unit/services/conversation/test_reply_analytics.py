@@ -23,25 +23,23 @@ def _at(seq: int, entry: object, millis: float) -> LoggedEntry:
     )
 
 
-def _said(surface: ConversationSource, *, voice: bool = False) -> UserMessage:
-    return UserMessage(
-        id="u1", text="hi", surface=surface, voice=voice, posthog_session_id="sess-1"
-    )
+def _said(surface: ConversationSource) -> UserMessage:
+    return UserMessage(id="u1", text="hi", surface=surface, posthog_session_id="sess-1")
 
 
 @pytest.mark.parametrize(
-    ("surface", "voice", "expected"),
+    ("surface", "expected"),
     [
-        (ConversationSource.DESKTOP, False, EntrySurface.DESKTOP),
-        (ConversationSource.WEB, False, EntrySurface.WEB),
-        (ConversationSource.TELEGRAM, False, EntrySurface.BOT),
-        (ConversationSource.DESKTOP, True, EntrySurface.VOICE),
+        (ConversationSource.DESKTOP, EntrySurface.DESKTOP),
+        (ConversationSource.WEB, EntrySurface.WEB),
+        (ConversationSource.TELEGRAM, EntrySurface.BOT),
+        (ConversationSource.VOICE, EntrySurface.VOICE),
     ],
 )
 def test_a_message_is_counted_on_the_surface_it_was_sent_from(
-    surface: ConversationSource, voice: bool, expected: EntrySurface
+    surface: ConversationSource, expected: EntrySurface
 ) -> None:
-    assert spoken_context(_said(surface, voice=voice)) == AnalyticsContext(
+    assert spoken_context(_said(surface)) == AnalyticsContext(
         attribution=Attribution(actor=Actor.USER, trigger=Trigger.INTERACTIVE, surface=expected),
         posthog_session_id="sess-1",
     )

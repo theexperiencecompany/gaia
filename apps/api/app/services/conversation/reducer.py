@@ -1,5 +1,6 @@
 """The pure fold of a conversation's log into its state: state_n = reduce(state_{n-1}, entry_n)."""
 
+from app.constants.chat import ConversationSource
 from app.models.conversation_log_models import (
     ApprovalDecided,
     ApprovalRequested,
@@ -95,7 +96,7 @@ def amend_refusal(stored: Reply | UserMessage, revised: Reply | UserMessage) -> 
 
 def _wake_effects(entry: UserMessage | WorkflowFired | IntegrationConnected) -> tuple[Effect, ...]:
     match entry:
-        case UserMessage(voice=False, id=message_id):
+        case UserMessage(id=message_id, surface=surface) if surface is not ConversationSource.VOICE:
             return (KickStep(), StartAck(message_id=message_id))
         case _:
             return (KickStep(),)

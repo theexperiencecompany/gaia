@@ -43,6 +43,8 @@ class ConversationSource(str, Enum):
     SLACK = "slack"
     WHATSAPP = "whatsapp"
     IMESSAGE = "imessage"
+    #: A turn spoken on a voice call; its reply is read aloud.
+    VOICE = "voice"
     WORKFLOW_SYSTEM = "workflow_system"
     BACKGROUND = "background"
 
@@ -105,7 +107,12 @@ class SourceCategory(str, Enum):
 # "which sources are messaging-platform bots" — used by delivery routing and the
 # web conversation-list filter. Members are enums, so comparisons never use str.
 _UI_SOURCES: frozenset[ConversationSource] = frozenset(
-    {ConversationSource.WEB, ConversationSource.MOBILE, ConversationSource.DESKTOP}
+    {
+        ConversationSource.WEB,
+        ConversationSource.MOBILE,
+        ConversationSource.DESKTOP,
+        ConversationSource.VOICE,
+    }
 )
 BOT_CONVERSATION_SOURCES: frozenset[ConversationSource] = frozenset(
     {

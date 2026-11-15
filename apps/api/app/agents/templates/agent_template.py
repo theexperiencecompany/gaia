@@ -23,15 +23,30 @@ from app.agents.workspace.operational_docs import GAIA_CORE
 from app.constants.chat import ConversationSource
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
-# Output-format addendum for renderable channels (web, mobile, desktop).
-_OPENUI_ADDENDUM: Final[str] = (
-    "\n" + OPENUI_INSTRUCTIONS + "\n## Approvals in the app\n"
+# Approvals inside the app (web, mobile, desktop and a voice call) are decided on a card.
+_APP_APPROVALS: Final[str] = (
+    "\n## Approvals in the app\n"
     "An action that needs the user's go-ahead renders as an approval card they can "
     "approve or decline on screen. While one is pending, tell them an approval needs "
     "their decision and point them at the card; they decide from the card, so do not "
     "ask them to type a reply in chat.\n"
 )
 
+# Output-format addendum for renderable channels (web, mobile, desktop).
+_OPENUI_ADDENDUM: Final[str] = "\n" + OPENUI_INSTRUCTIONS + _APP_APPROVALS
+
+# A voice reply is spoken by text-to-speech, so it carries no markup or components.
+_VOICE_ADDENDUM: Final[str] = """
+
+## Platform Context (IMPORTANT)
+The user is talking to you on a voice call, and your reply is read aloud to them. Write only what a person would say out loud.
+
+OUTPUT RESTRICTIONS for a call:
+- NO markdown of any kind: no headings, bold, italics, tables, lists, code blocks or links. The speech engine reads symbols literally or drops them.
+- NO components, cards or rich UI in your reply. Describe a result in a sentence or two instead.
+- NO URLs read out. Say where they can find it in the app instead.
+- Keep it short and conversational, a few spoken sentences. Give the key fact first; offer more if they want it.
+"""
 
 # Text-only channels have no approval card, so an action awaiting go-ahead must
 # invite a chat reply. Approval is permission, not execution: the action stays unrun
@@ -123,40 +138,29 @@ _SLACK_ADDENDUM: Final[str] = _text_only_addendum(
 )
 
 
-# Pre-assembled static comms prompts per channel. Each is a single Python
-# string literal that lives for the process lifetime, so the bytes sent to
-# the LLM are identical for every user on that channel.
-COMMS_PROMPT_BY_SOURCE: Final[dict[str, str]] = {
-    ConversationSource.WEB.value: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
-    ConversationSource.MOBILE.value: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
-    ConversationSource.DESKTOP.value: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM + _DESKTOP_ADDENDUM,
-    ConversationSource.WHATSAPP.value: COMMS_AGENT_PROMPT + _WHATSAPP_ADDENDUM,
-    ConversationSource.TELEGRAM.value: COMMS_AGENT_PROMPT + _TELEGRAM_ADDENDUM,
-    ConversationSource.DISCORD.value: COMMS_AGENT_PROMPT + _DISCORD_ADDENDUM,
-    ConversationSource.SLACK.value: COMMS_AGENT_PROMPT + _SLACK_ADDENDUM,
-    ConversationSource.IMESSAGE.value: COMMS_AGENT_PROMPT + _IMESSAGE_ADDENDUM,
+# One byte-identical prompt per surface, so the provider cache matches across users.
+# Background and workflow runs are read in the app, so they take its prompt.
+COMMS_PROMPT_BY_SOURCE: Final[dict[ConversationSource, str]] = {
+    ConversationSource.WEB: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
+    ConversationSource.MOBILE: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
+    ConversationSource.DESKTOP: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM + _DESKTOP_ADDENDUM,
+    ConversationSource.WORKFLOW_SYSTEM: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
+    ConversationSource.BACKGROUND: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
+    ConversationSource.VOICE: COMMS_AGENT_PROMPT + _APP_APPROVALS + _VOICE_ADDENDUM,
+    ConversationSource.WHATSAPP: COMMS_AGENT_PROMPT + _WHATSAPP_ADDENDUM,
+    ConversationSource.TELEGRAM: COMMS_AGENT_PROMPT + _TELEGRAM_ADDENDUM,
+    ConversationSource.DISCORD: COMMS_AGENT_PROMPT + _DISCORD_ADDENDUM,
+    ConversationSource.SLACK: COMMS_AGENT_PROMPT + _SLACK_ADDENDUM,
+    ConversationSource.IMESSAGE: COMMS_AGENT_PROMPT + _IMESSAGE_ADDENDUM,
 }
 
-# Default (web-style) static prompt used when ``source`` is unknown/None.
-COMMS_PROMPT_DEFAULT: Final[str] = COMMS_PROMPT_BY_SOURCE[ConversationSource.WEB.value]
 
+def get_comms_static_prompt(source: ConversationSource) -> str:
+    """Return the static comms prompt of the surface the reply is read on.
 
-def get_comms_static_prompt(source: str | None) -> str:
-    """Return the per-channel static comms prompt.
-
-    The choice of channel-specific static prompt means the provider's
-    implicit prompt cache can match byte-for-byte across all users on the
-    same channel. Unknown sources fall back to the web variant.
+    Every surface has one, so a value outside the enum raises KeyError rather than reading as web.
     """
-    if not source:
-        return COMMS_PROMPT_DEFAULT
-    return COMMS_PROMPT_BY_SOURCE.get(source.strip().lower(), COMMS_PROMPT_DEFAULT)
-
-
-# Legacy name still imported by a few call sites. Kept as an alias for the
-# default web-style prompt; all per-channel users should go through
-# ``get_comms_static_prompt``.
-COMMS_PROMPT_TEMPLATE: Final[str] = COMMS_PROMPT_DEFAULT
+    return COMMS_PROMPT_BY_SOURCE[source]
 
 
 def get_executor_prompt() -> str:

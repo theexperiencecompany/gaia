@@ -244,9 +244,8 @@ async def test_a_send_into_an_open_conversation_is_neither_created_nor_titled(
         UserMessage(
             id="m1",
             text="again",
-            surface=ConversationSource.WEB,
+            surface=ConversationSource.VOICE,
             reply_to="m0",
-            voice=True,
             selected_workflow=workflow_run().workflow,
             selected_calendar_event=CALENDAR_EVENT,
         )
@@ -256,7 +255,22 @@ async def test_a_send_into_an_open_conversation_is_neither_created_nor_titled(
     world.files.attach_uploads.assert_not_awaited()
     world.files.get_uploads.assert_not_awaited()
     world.spawn.assert_not_called()
-    world.capture.assert_called_once_with(UserId(USER), _submitted(is_reply=True))
+    world.capture.assert_called_once_with(UserId(USER), _submitted(source="voice", is_reply=True))
+
+
+async def test_a_spoken_first_send_opens_the_conversation_in_the_app_it_was_spoken_in(
+    world: World,
+) -> None:
+    body = SendMessageRequest(message_id="m1", text="what's on today", voice=True)
+
+    await submit_message(CONVERSATION, world.user, body, ConversationSource.DESKTOP)
+
+    [message] = await world.entries()
+    assert message.surface is ConversationSource.VOICE
+    world.create.assert_awaited_once_with(
+        ConversationModel(conversation_id=CONVERSATION, source=ConversationSource.DESKTOP),
+        world.user,
+    )
 
 
 async def test_a_resent_message_keeps_its_first_seq_and_is_counted_once(world: World) -> None:

@@ -4495,6 +4495,7 @@
           "slack",
           "whatsapp",
           "imessage",
+          "voice",
           "workflow_system",
           "background"
         ],
@@ -22004,11 +22005,6 @@
               }
             ],
             "title": "Tool Category"
-          },
-          "voice": {
-            "default": false,
-            "title": "Voice",
-            "type": "boolean"
           }
         },
         "required": [
@@ -22021,7 +22017,6 @@
           "retry_of",
           "file_ids",
           "files",
-          "voice",
           "selected_tool",
           "tool_category",
           "selected_workflow",

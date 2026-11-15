@@ -1,7 +1,10 @@
 """Unit tests for the experiment variants in agent_template."""
 
+from typing import cast
+
 import pytest
 
+from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.agents.templates.agent_template import (
     COMMS_PROMPT_BY_SOURCE,
@@ -19,38 +22,67 @@ TELEGRAM_REACTIONS_MARKER = "REACTIONS ON TELEGRAM"
 
 class TestOpenuiVariants:
     def test_renderable_channels_carry_openui(self) -> None:
-        for source in ("web", "mobile", "desktop"):
+        for source in (
+            ConversationSource.WEB,
+            ConversationSource.MOBILE,
+            ConversationSource.DESKTOP,
+        ):
             assert OPENUI_MARKER in get_comms_static_prompt(source)
 
     def test_renderable_channels_write_math_in_double_dollars(self) -> None:
-        for source in ("web", "mobile", "desktop"):
+        for source in (
+            ConversationSource.WEB,
+            ConversationSource.MOBILE,
+            ConversationSource.DESKTOP,
+        ):
             prompt = get_comms_static_prompt(source)
             assert "$$...$$" in prompt
             assert "a single $ is a literal dollar sign" in prompt
 
     def test_desktop_keeps_desktop_context_and_openui(self) -> None:
-        desktop = get_comms_static_prompt("desktop")
+        desktop = get_comms_static_prompt(ConversationSource.DESKTOP)
         assert "Desktop Context" in desktop
         assert OPENUI_MARKER in desktop
 
     def test_text_channels_get_platform_context_not_openui(self) -> None:
-        for source in ("whatsapp", "telegram", "discord", "slack", "imessage"):
+        for source in (
+            ConversationSource.WHATSAPP,
+            ConversationSource.TELEGRAM,
+            ConversationSource.DISCORD,
+            ConversationSource.SLACK,
+            ConversationSource.IMESSAGE,
+        ):
             prompt = get_comms_static_prompt(source)
             assert PLATFORM_MARKER in prompt
             assert OPENUI_MARKER not in prompt
 
     def test_only_telegram_lists_its_reaction_set(self) -> None:
-        for source in ("whatsapp", "discord", "slack", "imessage"):
+        for source in (
+            ConversationSource.WHATSAPP,
+            ConversationSource.DISCORD,
+            ConversationSource.SLACK,
+            ConversationSource.IMESSAGE,
+        ):
             assert TELEGRAM_REACTIONS_MARKER not in get_comms_static_prompt(source)
-        assert TELEGRAM_REACTIONS_MARKER in get_comms_static_prompt("telegram")
+        assert TELEGRAM_REACTIONS_MARKER in get_comms_static_prompt(ConversationSource.TELEGRAM)
 
     def test_reaction_rules_close_the_platform_block(self) -> None:
         assert _text_only_addendum("X", "fmt", "\n\nREACT").endswith("brevity.\n\nREACT")
         assert _text_only_addendum("X", "fmt").endswith("outranks brevity.")
 
-    def test_unknown_source_falls_back_to_web(self) -> None:
-        assert get_comms_static_prompt("nope") == get_comms_static_prompt("web")
-        assert get_comms_static_prompt(None) == get_comms_static_prompt("web")
+    def test_every_surface_has_its_own_prompt(self) -> None:
+        assert set(COMMS_PROMPT_BY_SOURCE) == set(ConversationSource)
+
+    def test_an_unknown_surface_raises_instead_of_reading_as_web(self) -> None:
+        with pytest.raises(KeyError):
+            get_comms_static_prompt(cast(ConversationSource, "nope"))
+
+    def test_a_voice_turn_is_spoken_so_it_gets_no_openui(self) -> None:
+        prompt = get_comms_static_prompt(ConversationSource.VOICE)
+        assert OPENUI_INSTRUCTIONS not in prompt
+        assert "read aloud" in prompt
+        # A call runs inside the app, so an approval is still decided on its card.
+        assert "## Approvals in the app" in prompt
 
 
 class TestExecutorPrompt:
@@ -72,16 +104,10 @@ class TestExecutorPrompt:
         assert "approval card" not in get_executor_prompt()
 
 
-MESSAGING_SOURCES = tuple(sorted(source.value for source in BOT_CONVERSATION_SOURCES))
+MESSAGING_SOURCES = tuple(sorted(BOT_CONVERSATION_SOURCES))
+# Everything read in the app, a call and background work included, decides approvals on a card.
 UI_SOURCES = tuple(
-    sorted(
-        source.value
-        for source in (
-            ConversationSource.WEB,
-            ConversationSource.MOBILE,
-            ConversationSource.DESKTOP,
-        )
-    )
+    sorted(source for source in ConversationSource if source not in BOT_CONVERSATION_SOURCES)
 )
 
 

@@ -119,7 +119,14 @@ async def _platform_banner(ctx: SectionContext) -> str:
 
 #: The sources a user chats from, as the executor's platform line names them.
 _USER_PLATFORMS: frozenset[ConversationSource] = (
-    frozenset({ConversationSource.WEB, ConversationSource.MOBILE, ConversationSource.DESKTOP})
+    frozenset(
+        {
+            ConversationSource.WEB,
+            ConversationSource.MOBILE,
+            ConversationSource.DESKTOP,
+            ConversationSource.VOICE,
+        }
+    )
     | BOT_CONVERSATION_SOURCES
 )
 

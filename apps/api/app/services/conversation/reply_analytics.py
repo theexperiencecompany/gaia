@@ -34,7 +34,7 @@ _TURN_END: dict[ReplyOutcome, type[ChatMessageCompleted | ChatMessageCancelled]]
 
 def spoken_context(message: UserMessage) -> AnalyticsContext:
     """Return the analytics context of what a user message causes: the user, on its surface and session."""
-    if message.voice:
+    if message.surface is ConversationSource.VOICE:
         surface = EntrySurface.VOICE
     elif message.surface in BOT_CONVERSATION_SOURCES:
         surface = EntrySurface.BOT

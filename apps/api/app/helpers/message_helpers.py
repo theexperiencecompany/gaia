@@ -19,7 +19,7 @@ from app.agents.templates.agent_template import (
     get_comms_static_prompt,
 )
 from app.agents.workspace.paths import safe_upload_filename
-from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS, ConversationSource
 from app.models.message_models import FileData, SelectedCalendarEventData, SelectedWorkflowData
 from app.models.trigger_gate_models import QuietHoursBypass
 from app.models.webhook_models import TriggerEventAccount
@@ -34,7 +34,7 @@ def create_system_message(
     user_id: str | None = None,
     user_name: str | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
-    source: str | None = None,
+    source: ConversationSource | None = None,
 ) -> SystemMessage:
     """Return the STATIC main system prompt for the given agent.
 
@@ -46,6 +46,8 @@ def create_system_message(
     del user_id, user_name  # intentionally unused — static prefix only
     if agent_type == "executor":
         return SystemMessage(content=EXECUTOR_PROMPT_TEMPLATE)
+    if source is None:
+        raise ValueError("a comms prompt needs the surface its reply is read on")
     return SystemMessage(content=get_comms_static_prompt(source))
 
 

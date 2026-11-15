@@ -1347,7 +1347,7 @@ class StepScenarios:
                 True,
                 False,
                 False,
-                "web",
+                "voice",
             )
         ]
 

@@ -61,14 +61,6 @@ MIN_ENDPOINTING_DELAY_S = 0.8
 TAG_RE = re.compile(r"</?[A-Za-z][A-Za-z0-9_-]*(?:\s[^>]*)?/?>")
 MARKDOWN_RE = re.compile(r"[*_#`]")
 WHITESPACE_RE = re.compile(r"\s+")
-# Fenced OpenUI blocks: ":::openui ... :::" or unterminated tail at end of stream.
-# The lazy quantifier DOES expand (verified): "\Z" only matches at end-of-input,
-# so the alternation is position-anchored, not an always-empty match.
-OPENUI_FENCE_RE = re.compile(r":::openui[\s\S]*?(?::::|\Z)")  # NOSONAR python:S6019
-# Lingering ":::directive" prefixes after fence stripping (defence in depth)
-DIRECTIVE_PREFIX_RE = re.compile(r":::[a-zA-Z]+\b")
-# Open OpenUI fence at the tail of a buffer (used to defer TTS flush)
-OPEN_OPENUI_FENCE_TAIL_RE = re.compile(r":::openui(?![\s\S]*:::)")
 
 VOICE_SYSTEM_PROMPT = (
     "You are a voice assistant. Respond in spoken, conversational language. "
@@ -97,9 +89,6 @@ __all__ = [
     "TAG_RE",
     "MARKDOWN_RE",
     "WHITESPACE_RE",
-    "OPENUI_FENCE_RE",
-    "DIRECTIVE_PREFIX_RE",
-    "OPEN_OPENUI_FENCE_TAIL_RE",
     "VOICE_SYSTEM_PROMPT",
 ]
 

@@ -12,7 +12,7 @@ from src.constants import (
     TTS_MIN_EMIT_CHARS,
     TTS_MIN_SENTENCE_CHARS,
 )
-from src.utils import has_open_openui_fence_at_tail, has_open_tag_at_tail, sanitize_for_tts
+from src.utils import has_open_tag_at_tail, sanitize_for_tts
 
 
 @dataclass(frozen=True)
@@ -79,14 +79,13 @@ class ReplySpeech:
         return through
 
     def _should_flush(self) -> bool:
-        """Sentence-or-size flush, deferred while a tag or an OpenUI fence straddles the boundary."""
+        """Sentence-or-size flush, deferred while a tag straddles the boundary."""
         pending = self.text[self._flushed_to :]
         if pending.endswith(SENTENCE_ENDINGS):
             ready = len(pending) >= TTS_MIN_SENTENCE_CHARS
         else:
             ready = len(pending) >= TTS_HARD_FLUSH_CHARS
-        if not ready or has_open_openui_fence_at_tail(pending):
-            # A split fence leaks its markup into TTS, so it waits until it closes or the reply ends.
+        if not ready:
             return False
         if has_open_tag_at_tail(pending) and self._deferrals < OPEN_TAG_DEFER_CAP:
             self._deferrals += 1
