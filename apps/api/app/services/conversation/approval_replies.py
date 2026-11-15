@@ -40,6 +40,6 @@ def _acknowledgement(outcome: ApprovalReplyOutcome) -> str:
     if len(outcome.decided) != 1:
         return HIL_ACK_APPROVED if approved else HIL_ACK_DENIED
     [record] = outcome.decided
-    action = describe_call(record.tool_name, record.args, None, record.account).action
+    action = describe_call(record.tool_name, record.args, None).action
     template = HIL_ACK_APPROVED_ONE if approved else HIL_ACK_DENIED_ONE
     return template.format(action=action[:1].lower() + action[1:])
