@@ -229,6 +229,17 @@ class TestTheScreenAPageProjectsTo:
             "conv_abc", user_id=USER_ID, before_seq=9, limit=20
         )
 
+    async def test_an_older_page_of_someone_elses_conversation_is_not_found(
+        self, mock_repo, test_user
+    ):
+        mock_repo.read_entries_before.return_value = None
+
+        with pytest.raises(HTTPException) as raised:
+            await get_entries_before("conv_abc", test_user, before_seq=9, limit=20)
+
+        assert raised.value.status_code == 404
+        assert raised.value.detail == "Conversation not found or does not belong to the user"
+
     async def test_a_loaded_conversation_projects_its_own_page(self, mock_repo, test_user):
         page = self._page()
         mock_repo.get.return_value = _document(
@@ -507,7 +518,18 @@ class TestBatchSyncConversations:
         mock_repo.find_updated_since.return_value = [_document(description="Updated Chat")]
         mock_repo.owned_ids.return_value = {"conv_abc"}
         request = BatchSyncRequest(conversations=[ConversationSyncItem(conversation_id="conv_abc")])
-        result = await batch_sync_conversations(request, test_user)
+        loads: list[str] = []
+        real_load = ScreenTracker.load
+
+        async def load(conversation_id: str, entries: Any) -> ScreenTracker:
+            loads.append(conversation_id)
+            return await real_load(conversation_id, entries)
+
+        with patch.object(ScreenTracker, "load", load):
+            result = await batch_sync_conversations(request, test_user)
+
+        # Each row's screen is projected for its own conversation.
+        assert loads == ["conv_abc"]
 
         assert len(result.conversations) == 1
         row = result.conversations[0]

@@ -81,6 +81,9 @@ async def test_a_fired_reminder_is_one_notification_keyed_by_its_occurrence(
     assert request.conversation_id == "conv-1"
     # Routed by the pipeline, not pinned by the producer.
     assert request.channels == []
+    # The client opens the reminder from this id; priority 1 is what a reminder's push ranks at.
+    assert request.metadata == {"reminder_id": REMINDER_ID}
+    assert request.priority == 1
 
 
 @pytest.mark.parametrize(
