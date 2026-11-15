@@ -105,6 +105,25 @@ path, writes its record to `verify-logs/mutation/<module>.verdict.json`, and
 prints that view on failure — the local proof step, with no lane and nothing
 to poll.
 
+Shards are sized by estimated cost, not by module count. The detector stamps
+each module with `mutants`, its count of mutable AST nodes inside functions on
+the changed lines (rank correlation 0.92 with mutmut's real count on PR #1799).
+A module's `cost` is `20 s + mutants x test files x rate`, at 0.03 s for the
+unit pool (eight mutant workers) and 0.18 s for services (one worker, because
+contract tests share a Redis DB). `plan` gives the spare shards to the pool with
+the most cost per shard and places the costliest module first onto the cheapest
+shard. It warns when a shard's estimate passes `SHARD_BUDGET_SECONDS` (1200).
+Each module's mutmut cap is 3x its cost, never under 720 s and never over the
+budget. `shard` also keeps a deadline, `SHARD_DEADLINE_SECONDS` (1680, under the
+30-minute step timeout). Caps shrink to fit the time left, and a module the
+deadline has no room for gets a `timed_out` verdict with no run. So the step
+timeout can no longer kill a shard before it reports. The constants were fitted
+to PR #1799 (run 43665639573), where packing by count left shard 3/6 with 54
+modules and a 30-minute timeout. The same run stopped
+`repositories/conversations.py` and `conversation/mongo_log.py` at the fixed
+720 s cap with 452/519 and 383/521 mutants graded. Refit them from a later
+run's `shard.log` phases when the lane's machines or worker counts change.
+
 The bots scanner and the three `mutation_*.py` modules live in `lib/` rather
 than inline because they are large bodies with their own tests and a second
 consumer: inlining the 1000-line bots scanner

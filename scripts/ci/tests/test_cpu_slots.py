@@ -141,7 +141,9 @@ def test_an_explicit_pool_size_wins_over_the_default(tmp_path: Path) -> None:
 
 def _shard_budget(tmp_path: Path, env: dict[str, str]) -> tuple[int, int]:
     """Run `mutation.py shard` on a missing module and return (workers, tokens)."""
-    group = json.dumps([{"module": "app/nope.py", "testfiles": '["t.py"]', "ranges": "[[1,1]]"}])
+    group = json.dumps(
+        [{"module": "app/nope.py", "testfiles": '["t.py"]', "ranges": "[[1,1]]", "mutants": "1"}]
+    )
     r = subprocess.run(
         [sys.executable, str(MUTATION), "shard"],
         capture_output=True,
