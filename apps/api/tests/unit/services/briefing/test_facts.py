@@ -97,12 +97,18 @@ class TestTheFactLines:
         facts = build_facts(_chosen((item, candidate)), _sources(open_todos=4), _CLOCK)
 
         assert facts.values.counts == {CountSlot.NEEDS_YOU: 1, CountSlot.OPEN_TODOS: 4}
-        assert facts.values.facts[1] == BriefFact(title="Reply to Maya", time="Fri Nov 13", count=3)
+        assert facts.values.facts[1] == BriefFact(
+            title="Reply to Maya",
+            time="Fri Nov 13",
+            count=3,
+            kind="you",
+            words="Re: term sheet needs sign-off",
+        )
         assert facts.block.splitlines()[:3] == [
             "[COUNTS] [[count:needs_you]] (1) · [[count:open_todos]] (4)",
             "[Waiting]",
             "- fact 1 | Waiting on you: Reply to Maya | in Gmail | time: [[fact:1.time]] "
-            "(Fri Nov 13) | detail: needs sign-off | [[fact:1.count]] (3) requests, one item",
+            "(Fri Nov 13) | detail: needs sign-off | [[fact:1.count]] (3) todos on this one subject",
         ]
 
     def test_the_users_own_todo_has_no_deliverable_and_reads_as_a_plain_line(self) -> None:
@@ -408,9 +414,9 @@ class TestTheWeekRecap:
             "- Tasks GAIA finished: [[series:gaia_finished.total]] (6 tasks)",
             "- Runs: [[series:runs.total]] (6)",
             "[GOALS THIS WEEK]",
-            '- "Ship Atlas": moved forward: Atlas v11 build; Atlas docs'
-            " | stuck a week or more: Atlas pricing; Atlas press",
-            '- "Run a marathon": nothing linked to it finished',
+            '- "Ship Atlas": moved forward, 2 finished (2 by an event, or no one recorded),'
+            " 2 open: Atlas v11 build; Atlas docs | stuck a week or more: Atlas pricing; Atlas press",
+            '- "Run a marathon": nothing linked to it finished, 0 finished, 0 open',
         ]
         assert facts.values.series["gaia_finished"][SeriesField.TOTAL] == "6"
         assert {"Q3", "v11"} <= facts.values.quoted

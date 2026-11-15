@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from app.constants.briefing import GAIA_SOURCE
+from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent, UnreadSource
@@ -24,6 +26,7 @@ from app.services.briefing.candidates.tracked import (
 )
 from app.services.briefing.context import TrackedWork, UserClock, day_start_utc
 from app.services.briefing.scouts.service import ScoutSignals
+from app.services.integrations.user_integrations import get_connected_integration_ids
 
 
 @dataclass(frozen=True)
@@ -115,6 +118,20 @@ def _numbered(candidates: list[BriefCandidate]) -> tuple[dict[int, BriefCandidat
     return pool, duplicates
 
 
+#: GAIA's built-in surfaces it writes to once connected: its own work, mail drafts, calendar events.
+_BUILT_IN_WRITERS = frozenset({GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID})
+
+
+async def _acting_sources(user_id: str, scouts: ScoutSignals) -> set[str]:
+    """Return the sources GAIA can act in: its own work, its connected built-ins, apps with write tools."""
+    connected = await get_connected_integration_ids(user_id)
+    return {
+        GAIA_SOURCE,
+        *(_BUILT_IN_WRITERS & set(connected)),
+        *(r.integration_id for r in scouts.results if r.can_write),
+    }
+
+
 def _unavailable(scouts: ScoutSignals) -> list[UnreadSource]:
     return [
         UnreadSource(app=r.app, reason=r.skip_reason)
@@ -140,9 +157,11 @@ async def gather_candidates(
         *app_signal_candidates(sources.scouts.remembered, clock),
         *await held_candidates(user_id, sources.held),
         *user_done_candidates(sources.user_done),
-        *gaia_work_candidates(work),
+        *gaia_work_candidates(work, clock),
         *calendar_candidates(sources.calendar, clock.date_str),
     ]
+    acting = await _acting_sources(user_id, sources.scouts)
+    candidates = [c.model_copy(update={"gaia_acts": c.source in acting}) for c in candidates]
     remembered = await remember_candidates(user_id, _one_per_thing(candidates), now)
     pool, duplicates = _numbered(remembered)
     return GatheredCandidates(pool, duplicates, _unavailable(sources.scouts))

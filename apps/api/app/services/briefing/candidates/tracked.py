@@ -12,14 +12,20 @@ from app.constants.briefing import (
     BriefOutcome,
 )
 from app.constants.integrations import GMAIL_INTEGRATION_ID
-from app.constants.todos import NEEDS_REPLY_LABEL, WAITING_FOR_APPROVAL_LABEL
+from app.constants.todos import (
+    NEEDS_REPLY_LABEL,
+    WAITING_FOR_APPROVAL_LABEL,
+    WAITING_FOR_REPLY_LABEL,
+    WaitingOn,
+)
 from app.db.repositories.todos import todo_repository
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.briefing_models import BriefingItemKind
+from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import ExternalRefSource, TodoDocument
 from app.services.briefing.candidates.app_names import integration_name
 from app.services.briefing.candidates.subjects import subject_key
-from app.services.briefing.context import TrackedWork
+from app.services.briefing.context import TrackedWork, UserClock, due_on, finished_by
 
 
 def _source(doc: TodoDocument) -> tuple[str, str]:
@@ -37,6 +43,8 @@ _ASKED_BY_LABEL: dict[str, BriefAction] = {
 
 
 def _asked(doc: TodoDocument) -> BriefAction:
+    if doc.waiting_on is WaitingOn.USER:
+        return BriefAction.REPLY
     return next(
         (action for label, action in _ASKED_BY_LABEL.items() if label in doc.labels),
         BriefAction.REVIEW,
@@ -56,7 +64,8 @@ def _grouped(
     state: BriefingItemKind,
     *,
     action: Callable[[TodoDocument], BriefAction] | None = None,
-    outcome: BriefOutcome | None = None,
+    outcome: Callable[[TodoDocument], BriefOutcome | None] | None = None,
+    standing: Callable[[TodoDocument], str | None] | None = None,
 ) -> list[BriefCandidate]:
     """One candidate per subject, counting the todos it stands for, in first-seen order."""
     by_subject: dict[str, BriefCandidate] = {}
@@ -73,11 +82,15 @@ def _grouped(
             ref=f"{source}:{ref.id}" if ref is not None and source != GAIA_SOURCE else None,
             state=state,
             title=doc.title,
-            detail=doc.description or None,
+            detail=(doc.question if doc.waiting_on is WaitingOn.USER else None)
+            or doc.description
+            or None,
             due_at=doc.due_date,
             todo_id=doc.id,
             action=action(doc) if action is not None else None,
-            outcome=outcome,
+            outcome=outcome(doc) if outcome is not None else None,
+            finished_by=finished_by(doc) if doc.completed else None,
+            standing=standing(doc) if standing is not None else None,
         )
     return list(by_subject.values())
 
@@ -116,13 +129,50 @@ async def own_todo_candidates(
     ]
 
 
-def gaia_work_candidates(work: TrackedWork) -> list[BriefCandidate]:
-    """Return what GAIA finished since the last brief, then what it is still working on."""
-    return _grouped(work.completed, "lookback", outcome=BriefOutcome.FINISHED) + _grouped(
-        work.running, "gaia", outcome=BriefOutcome.STARTED
+_PAUSED_BECAUSE: dict[DeactivationReason, str] = {
+    DeactivationReason.USER_DORMANT: "while the user was away",
+    DeactivationReason.INTEGRATION_EXPIRED: "its app's connection expired",
+    DeactivationReason.INTEGRATION_NEVER_CONNECTED: "the app it needs was never connected",
+    DeactivationReason.SUBSCRIPTION_LAPSED: "the user's plan lapsed",
+    DeactivationReason.INVALID_SCHEDULE: "its schedule is invalid",
+    DeactivationReason.OWNER_NOT_FOUND: "its owner is gone",
+}
+
+
+def standing(doc: TodoDocument, clock: UserClock) -> str | None:
+    """Say where open tracked work stands when it is not simply GAIA working: paused, waiting, unplanned."""
+    when = due_on(doc.scheduled_at, clock) if doc.scheduled_at is not None else None
+    if doc.pause_reason is not None:
+        return f"paused: {_PAUSED_BECAUSE[doc.pause_reason]}"
+    if WAITING_FOR_REPLY_LABEL in doc.labels:
+        return "waiting on someone else's reply, not the user's"
+    waits = {
+        WaitingOn.EVENT: "waiting on an event it watches",
+        WaitingOn.SUB_TODOS: "its sub-todos are doing the work",
+        WaitingOn.TIME: "GAIA looks at it again" + (f" {when}" if when else ""),
+        WaitingOn.UNPLANNED: "captured, not started: GAIA plans it" + (f" {when}" if when else ""),
+    }
+    return waits.get(doc.waiting_on) if doc.waiting_on is not None else None
+
+
+def _started(doc: TodoDocument) -> BriefOutcome | None:
+    """Open work GAIA took up is started; paused or never-planned work is not."""
+    if doc.pause_reason is not None or doc.waiting_on is WaitingOn.UNPLANNED:
+        return None
+    return BriefOutcome.STARTED
+
+
+def _finished(_doc: TodoDocument) -> BriefOutcome:
+    return BriefOutcome.FINISHED
+
+
+def gaia_work_candidates(work: TrackedWork, clock: UserClock) -> list[BriefCandidate]:
+    """Return what was done of GAIA's tracked work since the last brief, then what is still open."""
+    return _grouped(work.completed, "lookback", outcome=_finished) + _grouped(
+        work.running, "gaia", outcome=_started, standing=lambda doc: standing(doc, clock)
     )
 
 
 def user_done_candidates(docs: list[TodoDocument]) -> list[BriefCandidate]:
     """Return what the user finished themselves, one candidate per subject."""
-    return _grouped(docs, "lookback", outcome=BriefOutcome.FINISHED)
+    return _grouped(docs, "lookback", outcome=_finished)

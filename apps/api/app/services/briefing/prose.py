@@ -1,8 +1,7 @@
 """Voice the brief, hold its slots to its facts, and build the payload from it.
 
 Code builds every fact; the agent writes only the voice. Prose whose slots break a fact is sent
-back once with the problems named, and a second failure fails the run before anything is
-stored or sent.
+back once with the problems named; a second failure voices the brief plainly from its facts.
 """
 
 from dataclasses import dataclass, field
@@ -22,7 +21,10 @@ from app.agents.prompts.briefing_prompts import (
 from app.constants.briefing import (
     BRIEF_VOICE_LABEL,
     FREQUENCY_CLAIMS,
+    MAX_BRIEF_MESSAGE_CHARS,
     MAX_VOICE_ATTEMPTS,
+    PLAIN_BRIEF_EMPTY,
+    PLAIN_BRIEF_HEADLINE,
     hue_for_day,
 )
 from app.models.briefing_models import (
@@ -33,6 +35,7 @@ from app.models.briefing_models import (
 )
 from app.models.short_link_models import ShortLinkTargetType
 from app.models.user_models import UserDocument
+from app.services.briefing.claims import claim_problems
 from app.services.briefing.context import UserClock
 from app.services.briefing.errors import BriefingGenerationError, VoiceUnreadableError
 from app.services.briefing.facts import (
@@ -200,6 +203,7 @@ def _held_to_facts(voice: BriefVoice, writing: Writing) -> BriefVoice | list[str
         for name in _VOICED_FIELDS
         for problem in slot_problems(name, getattr(voice, name), writing.values)
     ]
+    problems += claim_problems("message", voice.message, writing.values)
     lead = writing.lead
     if lead is not None and lead not in referenced_facts(voice.message):
         problems.append(
@@ -223,8 +227,8 @@ async def written_brief(
     """Voice the brief and hold it to its facts; return what the model wrote and its rendered draft.
 
     An unreadable reply, a bad slot, a missing lead or an overlong field is sent back to
-    the model once with the problems named; a second failure fails the run before anything is
-    stored or sent.
+    the model once with the problems named; after a second failure the brief is voiced plainly
+    from its facts, and the failure is logged as an error.
     """
     note = ""
     failure: BriefingGenerationError
@@ -245,7 +249,31 @@ async def written_brief(
             f"The brief's prose does not hold to its facts: {'; '.join(checked)}"
         )
         note = voice_correction_note(checked, voice.model_dump_json(indent=2))
-    raise failure
+    # Loud, but never the user's loss: the brief goes out in plain words built from its facts.
+    log.error("briefing.voice_salvaged", problems=str(failure))
+    plain = plain_voice(writing)
+    return plain, _draft(plain, writing.values)
+
+
+def plain_voice(writing: Writing) -> BriefVoice:
+    """Write the brief from its facts alone, every placed fact by its slot, the lead first."""
+    facts = writing.values.facts
+    order = [writing.lead] if writing.lead is not None else []
+    order += [fact_id for fact_id in facts if fact_id != writing.lead]
+    lines = [
+        f"- [[fact:{fact_id}]]" + (f" ([[fact:{fact_id}.time]])" if facts[fact_id].time else "")
+        for fact_id in order
+    ]
+    message = "\n".join(lines) or PLAIN_BRIEF_EMPTY
+    while len(_draft_message(message, writing)) > MAX_BRIEF_MESSAGE_CHARS and "\n" in message:
+        message = message.rsplit("\n", 1)[0]
+    return BriefVoice(
+        headline=PLAIN_BRIEF_HEADLINE, lede="", caption="", mood="clear", message=message
+    )
+
+
+def _draft_message(message: str, writing: Writing) -> str:
+    return render_slots(message, writing.values, {})
 
 
 @dataclass(frozen=True)

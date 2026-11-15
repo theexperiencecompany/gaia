@@ -158,6 +158,9 @@ FREQUENCY_CLAIMS: Final[tuple[str, ...]] = (
 # Voice attempts per brief: one mend of the last brief when its slots fail the facts (the
 # mend shows it what it wrote), then the run fails rather than ship it.
 MAX_VOICE_ATTEMPTS: Final[int] = 2
+#: The plain voice a brief gets when the model's never holds to its facts.
+PLAIN_BRIEF_HEADLINE: Final[str] = "Your brief"
+PLAIN_BRIEF_EMPTY: Final[str] = "Here is your brief."
 
 # The user's own todos due today or overdue the daily brief weighs as candidates.
 DUE_TODO_CANDIDATES_LIMIT: Final[int] = 20
@@ -206,6 +209,9 @@ QUIET_NOTE_CALENDAR_UNREAD: Final[str] = (
     ". I couldn't read your calendar, so check it before you plan."
 )
 QUIET_NOTE_OVERDUE: Final[str] = "{count} of your own todos are past due."
+#: A quiet brief that could not read every app: its quiet is only of what it read.
+QUIET_NOTE_UNREAD_HEADLINE: Final[str] = "Nothing new in what I could read"
+QUIET_NOTE_UNREAD: Final[str] = "I couldn't read {apps} this time, so I can't say what they hold."
 QUIET_NOTE_WATCH: Final[str] = "I'll flag anything that comes in."
 
 
@@ -312,6 +318,8 @@ class BriefingRunOutcome(StrEnum):
     DORMANT = "dormant"
     BOOTSTRAP_PENDING = "bootstrap_pending"
     WINBACK_BACKOFF = "winback_backoff"
+    #: Another quiet day after a quiet note: nothing is sent until something real happens.
+    SILENT = "silent"
 
 
 # The workflow execution's summary for each outcome, shown in the run history.
@@ -321,6 +329,7 @@ BRIEFING_RUN_SUMMARIES: Final[dict[BriefingRunOutcome, str]] = {
     BriefingRunOutcome.DORMANT: "Skipped: briefings are paused until the user is active again",
     BriefingRunOutcome.BOOTSTRAP_PENDING: "Skipped: held until the user's goal is known",
     BriefingRunOutcome.WINBACK_BACKOFF: "Skipped: backing off after an unanswered winback",
+    BriefingRunOutcome.SILENT: "Skipped: still quiet since the last quiet note",
 }
 
 # Every surface shows the edition at most 540 CSS px wide (email column, chat

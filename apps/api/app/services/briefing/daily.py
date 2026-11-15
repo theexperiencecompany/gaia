@@ -14,6 +14,7 @@ from app.constants.briefing import (
     RECENT_BRIEFS_RECALLED,
     TODAY_SPAN,
     UNNAMED_READER,
+    BriefForm,
     BriefingRunOutcome,
 )
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
@@ -24,6 +25,7 @@ from app.db.repositories.users import user_repository
 from app.models.brief_composition_models import ChartBlock, QuoteBlock
 from app.models.briefing_models import (
     BriefingEvent,
+    BriefingModel,
     BriefingPayload,
     BriefingTallies,
     UnreadSource,
@@ -113,6 +115,12 @@ async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: b
 def _is_empty_day(payload: BriefingPayload) -> bool:
     """Say whether the composition placed nothing and the user's calendar is empty."""
     return not payload.blocks and not payload.calendar
+
+
+def _last_daily_was_quiet(briefs: list[BriefingModel]) -> bool:
+    """Say whether the latest daily brief, of the recent ones newest first, was a quiet note."""
+    last = next((b for b in briefs if b.kind == BRIEFING_KIND_DAILY), None)
+    return last is not None and last.payload.form is BriefForm.QUIET_NOTE
 
 
 def _is_quiet_day(laid: Laid, events: list[BriefingEvent], ladder: dormancy.IdleLadder) -> bool:
@@ -219,7 +227,9 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             clock=clock,
             calendar=day.tally,
             calendar_span=TODAY_SPAN,
+            done_since=since,
             recent_openings=recent.openings,
+            unread=gathered.sources_unavailable,
         ),
     )
     remembered = chosen_signals(laid.chosen, scouts.remembered)
@@ -231,9 +241,11 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             calendar=day.today,
             event_ids=event_ids(gathered.pool),
             span=TODAY,
-            todos_note=user_todos_note(todos.open, todos.overdue),
+            todos_note=user_todos_note(todos.open, todos.overdue, work.open_subjects.total),
             blocks=laid.blocks,
             overdue_todos=todos.overdue,
+            open_tracked=work.open_subjects.total,
+            unread=gathered.sources_unavailable,
         ),
         clock,
     )
@@ -245,20 +257,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
         user, dstate, clock.date_str, has_news=gathered.has_news, has_goal=has_goal
     )
     if not winback.is_winback and not is_first and _is_quiet_day(laid, day.events, ladder):
-        gap = day.today.gap if isinstance(day.today, context.CalendarUnread) else None
-        await publish_quiet_note(
-            user,
-            clock,
-            BRIEFING_KIND_DAILY,
-            quiet_note(
-                clock,
-                BRIEFING_KIND_DAILY,
-                await quiet_facts(user_id, BRIEFING_KIND_DAILY, briefs, (gap, todos.overdue)),
-            ),
-            PoolCounts.of(pool),
-        )
-        await _settle(user, ladder, gathered)
-        return BriefingRunOutcome.SENT
+        return await _quiet_day(user, clock, (day, todos.overdue), (gathered, pool, ladder), briefs)
 
     # A user who stopped coming back is offered fewer briefs, never silently dropped.
     offer_lighter = await activity_status_of(user_id) == ActivityStatus.IDLE
@@ -335,6 +334,35 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
     )
     await mark_placed_shown(
         user_id, [c for picked in laid.chosen.picked for _, c in picked], datetime.now(UTC)
+    )
+    await _settle(user, ladder, gathered)
+    return BriefingRunOutcome.SENT
+
+
+async def _quiet_day(
+    user: UserDocument,
+    clock: context.UserClock,
+    reads: tuple[context.DayCalendar, int],
+    run: tuple[GatheredCandidates, FactPool, dormancy.IdleLadder],
+    briefs: list[BriefingModel],
+) -> BriefingRunOutcome:
+    """Send the quiet note, or nothing when the last daily already was one: until something real happens."""
+    day, overdue = reads
+    gathered, pool, ladder = run
+    if _last_daily_was_quiet(briefs):
+        # Nothing is shown: no question went out, and the held results wait for the next brief.
+        log.info("briefing.quiet_day_silent", user_id=user.id)
+        return BriefingRunOutcome.SILENT
+    gap = day.today.gap if isinstance(day.today, context.CalendarUnread) else None
+    facts = await quiet_facts(
+        user.id, BRIEFING_KIND_DAILY, briefs, (gap, overdue, gathered.sources_unavailable)
+    )
+    await publish_quiet_note(
+        user,
+        clock,
+        BRIEFING_KIND_DAILY,
+        quiet_note(clock, BRIEFING_KIND_DAILY, facts),
+        PoolCounts.of(pool),
     )
     await _settle(user, ladder, gathered)
     return BriefingRunOutcome.SENT

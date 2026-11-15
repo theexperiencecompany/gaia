@@ -5,7 +5,6 @@ from datetime import date
 from itertools import groupby
 
 from app.constants.briefing import (
-    BACKLOG_STATE,
     CALENDAR_UNAVAILABLE,
     GAIA_APP_NAME,
     NO_CALENDAR_CONNECTED,
@@ -14,16 +13,16 @@ from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, SectionBlock
 from app.models.brief_pool_models import DataSeries, GoalState
 from app.models.briefing_models import (
-    BRIEFING_ITEM_STATES,
     NEEDS_YOU_ITEM_KINDS,
     BriefingEvent,
     BriefingItem,
     BriefingSection,
     BriefingStat,
+    UnreadSource,
 )
 from app.services.briefing import context
 from app.services.briefing.artifacts import ArtifactFact
-from app.services.briefing.candidates.calendar import start_time
+from app.services.briefing.candidates.calendar import event_detail, start_time
 from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.composition.voiced_blocks import (
     block_words,
@@ -31,7 +30,13 @@ from app.services.briefing.composition.voiced_blocks import (
     voiced_block_lines,
 )
 from app.services.briefing.context import CalendarGap, CalendarUnread, UserClock, due_on
-from app.services.briefing.fact_pool.render import repeat_note
+from app.services.briefing.fact_pool.render import (
+    ON_ONE_SUBJECT,
+    goal_progress,
+    item_state,
+    repeat_note,
+    unread_note,
+)
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import (
     BriefFact,
@@ -46,16 +51,19 @@ from app.services.briefing.slots import (
 def _fact_line(
     fact_id: int, item: BriefingItem, fact: BriefFact, candidate: BriefCandidate, clock: UserClock
 ) -> str:
-    state = BACKLOG_STATE.capitalize() if candidate.backlog else BRIEFING_ITEM_STATES[item.kind]
+    said = item_state(candidate)
+    state = said[:1].upper() + said[1:]
     line = f"- fact {fact_id} | {state}: {item.text}"
     if item.app and item.app != GAIA_APP_NAME:
         line += f" | in {item.app}"
+    if candidate.standing is not None:
+        line += f" | stands: {candidate.standing}"
     if fact.time:
         line += f" | time: [[fact:{fact_id}.time]] ({fact.time})"
     if candidate.detail:
         line += f" | detail: {candidate.detail}"
     if fact.count > 1:
-        line += f" | [[fact:{fact_id}.count]] ({fact.count}) requests, one item"
+        line += f" | [[fact:{fact_id}.count]] ({fact.count}) {ON_ONE_SUBJECT}"
     if (repeat := repeat_note(candidate, clock)) is not None:
         line += f" | {repeat}"
     return line
@@ -161,8 +169,12 @@ class FactSources:
     blocks: list[BriefBlock] = field(default_factory=list)
     #: The user's own open todos past their due date, however many: counted, never listed.
     overdue_todos: int = 0
+    #: GAIA's open tracked work, each subject once.
+    open_tracked: int = 0
     #: The weekly's recap of the week: what each count series totals and how each goal moved.
     recap: WeekRecap | None = None
+    #: The connected apps that went unread, the calendar aside: never empty, only unknown.
+    unread: list[UnreadSource] = field(default_factory=list)
 
 
 def _counts(
@@ -184,6 +196,7 @@ def _counts(
         CountSlot.WHILE_AWAY: sum(1 for _, c in placed if c.held_id is not None),
         CountSlot.OPEN_TODOS: sources.open_todos,
         CountSlot.OVERDUE_TODOS: sources.overdue_todos,
+        CountSlot.OPEN_TRACKED: sources.open_tracked,
         CountSlot.EVENTS: events,
     }
     return {slot: n for slot, n in counts.items() if n}
@@ -211,13 +224,16 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
                 deliverables[fact_id] = it.todo_id
             elif candidate.url:
                 addresses[fact_id] = candidate.url
+            words = _own_words(candidate, it, art)
             facts[fact_id] = BriefFact(
                 title=it.text,
                 time=due_on(candidate.due_at, clock) if candidate.due_at else None,
                 count=it.count,
+                kind=it.kind,
+                words=" ".join(words),
             )
             linkable = fact_id in deliverables or fact_id in addresses
-            own_words += _own_words(candidate, it, art)
+            own_words += words
             placed.append((it, candidate))
             if candidate.signal is not None:
                 continue
@@ -235,15 +251,9 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
     events = list(zip(sources.event_ids, calendar, strict=True))
     for fact_id, event in events:
         facts[fact_id] = BriefFact(title=event.title, time=start_time(event))
-    if not chosen.sections:
-        fact_lines.append(sources.span.no_items)
-    fact_lines += voiced_block_lines(sources.blocks)
+    fact_lines += _closing_lines(chosen, sources, events)
     if sources.recap is not None:
-        fact_lines += _recap_lines(sources.recap)
         own_words += [title for goal in sources.recap.goals for title in goal.linked]
-    if sources.todos_note is not None:
-        fact_lines.append(sources.todos_note)
-    fact_lines.append(_calendar_note(events, sources))
     return Facts(
         sections=chosen.sections,
         block="\n".join(fact_lines),
@@ -263,6 +273,21 @@ def build_facts(chosen: Chosen, sources: FactSources, clock: UserClock) -> Facts
         addresses=addresses,
         lead=_lead(chosen, sources.blocks),
     )
+
+
+def _closing_lines(
+    chosen: Chosen, sources: FactSources, events: list[tuple[int, BriefingEvent]]
+) -> list[str]:
+    """Return what follows the items: an empty day, what went unread, the blocks, the recap, todos, the calendar."""
+    lines = [sources.span.no_items] if not chosen.sections else []
+    if (unread := unread_note(sources.unread)) is not None:
+        lines.append(unread)
+    lines += voiced_block_lines(sources.blocks)
+    if sources.recap is not None:
+        lines += _recap_lines(sources.recap)
+    if sources.todos_note is not None:
+        lines.append(sources.todos_note)
+    return [*lines, _calendar_note(events, sources)]
 
 
 def _lead(chosen: Chosen, blocks: list[BriefBlock]) -> int | None:
@@ -289,6 +314,7 @@ def _event_slot(fact_id: int, time: str | None) -> str:
 def _event_lines(events: list[tuple[int, BriefingEvent]]) -> list[str]:
     return [
         f"- fact {fact_id} | {_event_slot(fact_id, start_time(e))}: {e.title}"
+        + (f" | {detail}" if (detail := event_detail(e)) else "")
         for fact_id, e in events
     ]
 
@@ -346,15 +372,31 @@ def _recap_lines(recap: WeekRecap) -> list[str]:
 
 def _goal_week_line(goal: GoalState) -> str:
     done = goal.linked[: goal.done]
-    moved = f"moved forward: {'; '.join(done)}" if done else "nothing linked to it finished"
+    moved = (
+        f"moved forward, {goal_progress(goal)}: {'; '.join(done)}"
+        if done
+        else f"nothing linked to it finished, {goal_progress(goal)}"
+    )
     line = f'- "{goal.statement}": {moved}'
     if goal.stalled:
         line += f" | stuck a week or more: {'; '.join(goal.stalled)}"
     return line
 
 
-def user_todos_note(open_count: int, overdue: int = 0) -> str:
+def user_todos_note(open_count: int, overdue: int = 0, tracked_open: int = 0) -> str:
+    """Say what the user's todo list holds: their own todos, and beside them GAIA's open tracked ones."""
+    tracked = (
+        f" GAIA's tracked work holds [[count:{CountSlot.OPEN_TRACKED.value}]] open beside them."
+        if tracked_open
+        else ""
+    )
     if not open_count:
+        if tracked_open:
+            return (
+                "The user has no todos of their own outside GAIA's tracked work, which holds "
+                f"[[count:{CountSlot.OPEN_TRACKED.value}]] open: never call their todo list "
+                "empty or clear."
+            )
         return "The user's own todo list is empty."
     note = (
         "The user's own open todos are counted in [COUNTS]"
@@ -365,4 +407,4 @@ def user_todos_note(open_count: int, overdue: int = 0) -> str:
             " [[count:overdue_todos]] of them are past due: say that count in one plain line,"
             " never list them."
         )
-    return note
+    return note + tracked

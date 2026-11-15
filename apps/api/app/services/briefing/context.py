@@ -21,7 +21,13 @@ from app.constants.briefing import (
 )
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.constants.memory import MemoryKind
-from app.constants.todos import FAILED_LABEL, GAIA_TRACKED_LABEL, NEEDS_USER_LABELS
+from app.constants.todos import (
+    FAILED_LABEL,
+    GAIA_TRACKED_LABEL,
+    NEEDS_USER_LABELS,
+    TodoCompleter,
+    WaitingOn,
+)
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
@@ -30,6 +36,7 @@ from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.brief_pool_models import GoalOrigin
 from app.models.briefing_models import (
+    BRIEFING_ITEM_STATES,
     BriefingEvent,
     BriefingKind,
     BriefingModel,
@@ -83,8 +90,28 @@ class WinbackState:
 
 @dataclass
 class CompletedWork:
+    """What got done since a cutoff, by who finished it."""
+
     gaia: list[TodoDocument] = field(default_factory=list)
     user: list[TodoDocument] = field(default_factory=list)
+    #: Closed by an event it watched, or before who closed a todo was recorded.
+    closed: list[TodoDocument] = field(default_factory=list)
+
+
+def finished_by(doc: TodoDocument) -> TodoCompleter | None:
+    """Return who closed a completed todo; None for a tracked one closed before that was recorded.
+
+    Before completed_by existed only the user ever closed a todo of their own.
+    """
+    if doc.completed_by is not None:
+        return doc.completed_by
+    return None if is_gaia_tracked(doc) else TodoCompleter.USER
+
+
+#: Who closed a todo the brief reports as done, besides the user, who never reads as GAIA.
+_REPORTED_CLOSERS: frozenset[TodoCompleter | None] = frozenset(
+    {TodoCompleter.GAIA, TodoCompleter.TRIGGER, None}
+)
 
 
 @dataclass(frozen=True)
@@ -94,6 +121,10 @@ class OpenSubjects:
     running: int = 0
     blocked: int = 0
     failed: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.running + self.blocked + self.failed
 
 
 @dataclass
@@ -241,7 +272,7 @@ async def gather_tracked_work(user_id: str, since: datetime) -> TrackedWork:
     """
     work = TrackedWork()
     for doc in await todo_repository.list_completed_since(user_id, since=since):
-        if is_gaia_tracked(doc):
+        if is_gaia_tracked(doc) and finished_by(doc) in _REPORTED_CLOSERS:
             work.completed.append(doc)
     # Every open one is read so the totals are whole; the brief reports on the newest.
     everything = [
@@ -258,14 +289,14 @@ async def gather_tracked_work(user_id: str, since: datetime) -> TrackedWork:
 def _by_state(
     docs: list[TodoDocument],
 ) -> tuple[list[TodoDocument], list[TodoDocument], list[TodoDocument]]:
-    """Split open tracked todos into running, waiting on the user, and failed."""
+    """Split open tracked todos into GAIA's open work, what waits on the user (a question asked too), and failed."""
     running: list[TodoDocument] = []
     blocked: list[TodoDocument] = []
     failed: list[TodoDocument] = []
     for doc in docs:
         if FAILED_LABEL in doc.labels:
             failed.append(doc)
-        elif NEEDS_USER_LABELS.intersection(doc.labels):
+        elif NEEDS_USER_LABELS.intersection(doc.labels) or doc.waiting_on is WaitingOn.USER:
             blocked.append(doc)
         else:
             running.append(doc)
@@ -273,10 +304,23 @@ def _by_state(
 
 
 async def gather_completed_since(user_id: str, since: datetime) -> CompletedWork:
+    """Return what got done since, by who finished it; housekeeping's closures are nobody's work."""
     work = CompletedWork()
+    lists = {
+        TodoCompleter.GAIA: work.gaia,
+        TodoCompleter.USER: work.user,
+        TodoCompleter.TRIGGER: work.closed,
+        None: work.closed,
+    }
     for doc in await todo_repository.list_completed_since(user_id, since=since):
-        (work.gaia if is_gaia_tracked(doc) else work.user).append(doc)
+        finisher = finished_by(doc)
+        if finisher in lists:
+            lists[finisher].append(doc)
     return work
+
+
+def _title(doc: TodoDocument) -> str:
+    return doc.title or "untitled"
 
 
 async def format_lookback_block(
@@ -306,16 +350,22 @@ async def format_lookback_block(
             f"ago; what it said is stale, so this looks back over the last {LOOKBACK_MAX_DAYS} days."
         )
     else:
-        planned = [item.text for section in last.payload.sections for item in section.items]
-        if planned:
+        told = [
+            f"- {BRIEFING_ITEM_STATES[item.kind].lower()}: {item.text}"
+            for section in last.payload.sections
+            for item in section.items
+            if item.text
+        ]
+        if told:
             parts.append(
-                f"Your last brief, {when_sent(last, clock)}, told the user you'd focus on:\n"
-                + "\n".join(f"- {p}" for p in planned if p)
+                f"Your last brief, {when_sent(last, clock)}, told the user about:\n"
+                + "\n".join(told)
             )
 
-    if completed.gaia or completed.user:
-        done = [f"- GAIA finished: {d.title or 'untitled'}" for d in completed.gaia]
-        done += [f"- You finished: {d.title or 'untitled'}" for d in completed.user]
+    if completed.gaia or completed.user or completed.closed:
+        done = [f"- GAIA finished: {_title(d)}" for d in completed.gaia]
+        done += [f"- The user finished: {_title(d)}" for d in completed.user]
+        done += [f"- {_closed_how(d)}: {_title(d)}" for d in completed.closed]
         parts.append("Actually completed since then:\n" + "\n".join(done))
     else:
         parts.append("Nothing was completed since the last briefing.")
@@ -329,6 +379,12 @@ async def format_lookback_block(
         parts.append("Background workflow runs since then:\n" + "\n".join(ex_lines))
 
     return "\n\n".join(parts)
+
+
+def _closed_how(doc: TodoDocument) -> str:
+    if finished_by(doc) is TodoCompleter.TRIGGER:
+        return "Closed when an event it watched fired"
+    return "Closed (who closed it is not recorded)"
 
 
 def _aware(moment: datetime) -> datetime:
@@ -365,16 +421,29 @@ def _to_event(event: GoogleCalendarEventResource, tz: ZoneInfo) -> BriefingEvent
     if start is None:
         return None
     title = (event.summary or "").strip() or "Untitled event"
+    about = BriefingEvent(
+        date=start.date or "",
+        title=title,
+        location=event.location,
+        calendar=event.calendarTitle,
+        response=event.response,
+        organizer=event.organizer_name,
+        guests=event.guests,
+    )
     if start.dateTime:
         local = datetime.fromisoformat(start.dateTime).astimezone(tz)
-        return BriefingEvent(
-            date=local.date().isoformat(),
-            start=local.strftime("%H:%M"),
-            title=title,
-            location=event.location,
+        ends = event.end.dateTime if event.end is not None else None
+        end = datetime.fromisoformat(ends).astimezone(tz) if ends else None
+        timed = end is not None and end > local and end.date() == local.date()
+        return about.model_copy(
+            update={
+                "date": local.date().isoformat(),
+                "start": local.strftime("%H:%M"),
+                "end": end.strftime("%H:%M") if end is not None and timed else None,
+            }
         )
     if start.date:
-        return BriefingEvent(date=start.date, title=title, location=event.location)
+        return about
     return None
 
 

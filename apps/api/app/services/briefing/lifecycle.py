@@ -49,7 +49,9 @@ async def wake_or_skip(user: UserDocument) -> dormancy.DormancyState | None:
     if await dormancy.latest_activity_since(user.id, dstate.dormant_since) is not None:
         await dormancy.clear_dormancy(user.id)
         log.info("briefing.dormancy_cleared", user_id=user.id)
-        return dormancy.DormancyState(idle_days=0, date=None, dormant_since=None)
+        return dormancy.DormancyState(
+            idle_days=0, date=None, dormant_since=None, goal_asked_at=dstate.goal_asked_at
+        )
     log.info("briefing.dormant_skip", user_id=user.id)
     return None
 

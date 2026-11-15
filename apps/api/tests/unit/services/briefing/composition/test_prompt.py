@@ -1,6 +1,6 @@
 """The composition prompt: every placeholder filled from the pool, the constants and the day."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 from tests.helpers import user_clock
 
@@ -15,6 +15,7 @@ _CONTEXT = PoolContext(
     clock=user_clock("Asia/Kolkata", date(2026, 11, 11)),
     calendar=0,
     calendar_span="today",
+    done_since=datetime(2026, 11, 10, tzinfo=UTC),
     recent_openings=[],
 )
 

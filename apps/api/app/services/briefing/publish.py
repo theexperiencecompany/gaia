@@ -3,7 +3,7 @@
 Persistence precedes delivery so the dashboard never misses a brief that reached a channel.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from app.constants.briefing import (
@@ -19,6 +19,8 @@ from app.constants.briefing import (
     QUIET_NOTE_STILL,
     QUIET_NOTE_STILL_FOR,
     QUIET_NOTE_STILL_SINCE,
+    QUIET_NOTE_UNREAD,
+    QUIET_NOTE_UNREAD_HEADLINE,
     QUIET_NOTE_WATCH,
     WEEKLY_KICKER,
     BriefForm,
@@ -33,6 +35,7 @@ from app.models.briefing_models import (
     BriefingKind,
     BriefingModel,
     BriefingPayload,
+    UnreadSource,
 )
 from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
@@ -142,19 +145,22 @@ class QuietFacts:
     still_quiet: bool = False
     last_edition: BriefingModel | None = None
     overdue: int = 0
+    #: The connected apps that went unread: the quiet is only of what was read.
+    unread: list[str] = field(default_factory=list)
 
 
 async def quiet_facts(
     user_id: str,
     kind: BriefingKind,
     recent: list[BriefingModel],
-    reads: tuple[CalendarGap | None, int],
+    reads: tuple[CalendarGap | None, int, list[UnreadSource]],
 ) -> QuietFacts:
     """Say how the quiet stands: whether the last brief of its kind was quiet, and the last edition.
 
-    recent is newest first; reads are the calendar's gap and the user's overdue todo count.
+    recent is newest first; reads are the calendar's gap, the user's overdue todo count and
+    the apps that went unread.
     """
-    calendar, overdue = reads
+    calendar, overdue, unread = reads
     previous = next((b for b in recent if b.kind == kind), None)
     editions = await briefing_repository.list_recent(user_id, limit=1, editions_only=True)
     return QuietFacts(
@@ -162,13 +168,14 @@ async def quiet_facts(
         still_quiet=previous is not None and previous.payload.form is BriefForm.QUIET_NOTE,
         last_edition=editions[0] if editions else None,
         overdue=overdue,
+        unread=list(dict.fromkeys(source.app for source in unread)),
     )
 
 
 def _quiet_news(kind: BriefingKind, facts: QuietFacts, clock: UserClock) -> str:
     """Say there is nothing new; after a quiet brief, since which brief and how many days ago."""
     if not facts.still_quiet:
-        return QUIET_NOTE_NOTHING_NEW[kind]
+        return QUIET_NOTE_UNREAD_HEADLINE if facts.unread else QUIET_NOTE_NOTHING_NEW[kind]
     edition = facts.last_edition
     if edition is None:
         return QUIET_NOTE_STILL
@@ -187,6 +194,8 @@ def quiet_note(clock: UserClock, kind: BriefingKind, facts: QuietFacts) -> Brief
         CalendarGap.UNAVAILABLE: QUIET_NOTE_CALENDAR_UNREAD,
     }[facts.calendar]
     lines = [f"{_quiet_news(kind, facts, clock)}{calendar}"]
+    if facts.unread:
+        lines.append(QUIET_NOTE_UNREAD.format(apps=" or ".join(facts.unread)))
     if facts.overdue:
         lines.append(QUIET_NOTE_OVERDUE.format(count=facts.overdue))
     lines.append(QUIET_NOTE_WATCH)
@@ -194,7 +203,7 @@ def quiet_note(clock: UserClock, kind: BriefingKind, facts: QuietFacts) -> Brief
         form=BriefForm.QUIET_NOTE,
         kicker=_KICKERS[kind],
         date=clock.date_str,
-        headline=QUIET_NOTE_HEADLINES[kind],
+        headline=QUIET_NOTE_UNREAD_HEADLINE if facts.unread else QUIET_NOTE_HEADLINES[kind],
         lede="",
         caption="",
         mood="idle",

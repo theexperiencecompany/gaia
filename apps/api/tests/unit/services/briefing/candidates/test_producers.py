@@ -25,6 +25,9 @@ from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     NEEDS_REPLY_LABEL,
     WAITING_FOR_APPROVAL_LABEL,
+    WAITING_FOR_REPLY_LABEL,
+    TodoCompleter,
+    WaitingOn,
 )
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.approval_ledger import approval_ledger_repository
@@ -37,6 +40,7 @@ from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalRecord
 from app.models.reminder_models import AgentType, ReminderDocument
+from app.models.scheduler_models import DeactivationReason
 from app.models.scout_models import (
     RememberedSignal,
     Signal,
@@ -84,7 +88,7 @@ class TestTrackedTodos:
         )
 
         [waiting] = waiting_candidates(work)
-        [running] = gaia_work_candidates(work)
+        [running] = gaia_work_candidates(work, CLOCK)
 
         assert (waiting.detail, waiting.due_at) == ("Acme, net 30", due)
         assert (running.detail, running.due_at) == (None, None)
@@ -163,25 +167,88 @@ class TestTrackedTodos:
 
     def test_gaias_finished_work_then_its_running_work(self) -> None:
         work = TrackedWork(
-            completed=[_todo("c1", "Investor update")], running=[_todo("r1", "Vet the Q4 leads")]
+            completed=[
+                _todo("c1", "Investor update", completed=True, completed_by=TodoCompleter.GAIA),
+                _todo(
+                    "c2", "Wait for Sam's yes", completed=True, completed_by=TodoCompleter.TRIGGER
+                ),
+            ],
+            running=[_todo("r1", "Vet the Q4 leads")],
         )
 
-        found = gaia_work_candidates(work)
+        found = gaia_work_candidates(work, CLOCK)
 
-        assert [(c.title, c.state, c.outcome) for c in found] == [
-            ("Investor update", "lookback", BriefOutcome.FINISHED),
-            ("Vet the Q4 leads", "gaia", BriefOutcome.STARTED),
+        assert [(c.title, c.state, c.outcome, c.finished_by) for c in found] == [
+            ("Investor update", "lookback", BriefOutcome.FINISHED, TodoCompleter.GAIA),
+            ("Wait for Sam's yes", "lookback", BriefOutcome.FINISHED, TodoCompleter.TRIGGER),
+            ("Vet the Q4 leads", "gaia", BriefOutcome.STARTED, None),
         ]
         assert all(c.action is None for c in found)
 
+    @pytest.mark.parametrize(
+        ("fields", "stands", "outcome"),
+        [
+            (
+                {"labels": [GAIA_TRACKED_LABEL, WAITING_FOR_REPLY_LABEL]},
+                "waiting on someone else's reply, not the user's",
+                BriefOutcome.STARTED,
+            ),
+            (
+                {"pause_reason": DeactivationReason.INTEGRATION_EXPIRED},
+                "paused: its app's connection expired",
+                None,
+            ),
+            (
+                {"waiting_on": WaitingOn.UNPLANNED, "scheduled_at": NOW + timedelta(days=2)},
+                "captured, not started: GAIA plans it Thu Nov 12",
+                None,
+            ),
+            (
+                {"waiting_on": WaitingOn.EVENT},
+                "waiting on an event it watches",
+                BriefOutcome.STARTED,
+            ),
+        ],
+    )
+    def test_open_work_gaia_is_not_running_says_where_it_stands(
+        self, fields: dict[str, Any], stands: str, outcome: BriefOutcome | None
+    ) -> None:
+        """Audit: work waiting on a reply, paused or never planned read as "in progress | started"."""
+        doc = TodoDocument(
+            id="r1",
+            user_id=USER_ID,
+            title="Chase the venue",
+            **{"labels": [GAIA_TRACKED_LABEL], **fields},
+        )
+
+        [found] = gaia_work_candidates(TrackedWork(running=[doc]), CLOCK)
+
+        assert (found.standing, found.outcome) == (stands, outcome)
+
+    def test_a_question_gaia_asked_waits_on_the_user_as_a_reply(self) -> None:
+        asked = _todo(
+            "q1", "Pick the venue", waiting_on=WaitingOn.USER, question="Lisbon or Porto?"
+        )
+
+        [found] = waiting_candidates(TrackedWork(blocked=[asked]))
+
+        assert (found.state, found.action, found.detail) == (
+            "you",
+            BriefAction.REPLY,
+            "Lisbon or Porto?",
+        )
+
     def test_what_the_user_finished_is_an_update_one_per_subject(self) -> None:
         done = [
-            _todo("u1", "Send the deck to Priya"),
-            _todo("u2", "send the  deck to priya"),
-            _todo("u3", "File the VAT return"),
+            _own_todo("u1", "Send the deck to Priya", completed=True),
+            _own_todo("u2", "send the  deck to priya", completed=True),
+            _own_todo("u3", "File the VAT return", completed=True),
         ]
 
         found = user_done_candidates(done)
+
+        # Audit: the user's own finished todos read as GAIA's; they are the user's.
+        assert {c.finished_by for c in found} == {TodoCompleter.USER}
 
         assert [(c.title, c.state, c.todo_id, c.count) for c in found] == [
             ("Send the deck to Priya", "lookback", "u1", 2),

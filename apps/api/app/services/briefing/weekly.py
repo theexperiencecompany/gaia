@@ -109,7 +109,8 @@ async def _send_quiet_week(
     """Send the week's quiet note, the daily's quiet path: reads are the week ahead and overdue."""
     ahead, overdue = reads
     gap = ahead.gap if isinstance(ahead, context.CalendarUnread) else None
-    facts = await quiet_facts(user.id, BRIEFING_KIND_WEEKLY, briefs, (gap, overdue))
+    unread = pool.context.unread
+    facts = await quiet_facts(user.id, BRIEFING_KIND_WEEKLY, briefs, (gap, overdue, unread))
     await publish_quiet_note(
         user,
         clock,
@@ -182,7 +183,9 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
             clock=clock,
             calendar=len(ahead_events) if isinstance(ahead, list) else ahead.gap,
             calendar_span=WEEK_AHEAD_SPAN,
+            done_since=since,
             recent_openings=recent.openings,
+            unread=gathered.sources_unavailable,
         ),
         seen_at,
     )
@@ -201,9 +204,11 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
             calendar=ahead,
             event_ids=event_ids(gathered.pool),
             span=WEEK_AHEAD,
-            todos_note=user_todos_note(todos.open, todos.overdue),
+            todos_note=user_todos_note(todos.open, todos.overdue, work.open_subjects.total),
             blocks=laid.blocks,
             overdue_todos=todos.overdue,
+            open_tracked=work.open_subjects.total,
+            unread=gathered.sources_unavailable,
             recap=WeekRecap(series=_recap_series(pool.series), goals=pool.goals),
         ),
         clock,

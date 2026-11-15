@@ -15,6 +15,7 @@ from app.db.repositories.workflow_executions import workflow_executions_reposito
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan
+from app.models.briefing_models import UnreadSource
 from app.models.calendar_models import GoogleCalendarEventResource
 from app.models.scout_models import Signal
 from app.models.todo_models import ExternalRefSource, TodoDocument
@@ -32,10 +33,6 @@ from app.services.briefing.fact_pool.signal_series import signal_series
 from app.services.briefing.fact_pool.window import SeriesWindow
 from app.services.briefing.fact_pool.work_series import work_series
 
-# The open todos a goal's linked work is read from: the user's own, and GAIA's tracked ones.
-_OPEN_USER_TODOS_READ = 50
-_OPEN_TRACKED_TODOS_READ = 20
-
 
 @dataclass(frozen=True)
 class PoolContext:
@@ -47,8 +44,12 @@ class PoolContext:
     calendar: int | CalendarGap
     #: The span the calendar covers: "today", "in the week ahead".
     calendar_span: str
+    #: When the window an item counts as done in opens: the last brief, or the week's Monday.
+    done_since: datetime
     #: The opening line of each recent brief, newest first, so today's opens differently.
     recent_openings: list[str] = field(default_factory=list)
+    #: The connected apps the brief could not read, the calendar aside (it has its own line).
+    unread: list[UnreadSource] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -127,15 +128,16 @@ async def build_fact_pool(
 ) -> FactPool:
     """Build the brief's fact pool: the numbered items, then every series, quote and goal."""
     series, completed = await _series(user_id, window, reads, now)
+    # Every open todo, so a goal's open count is whole: the user's own and GAIA's tracked ones.
     open_todos = [
-        *await todo_repository.list_open_user_todos(user_id, limit=_OPEN_USER_TODOS_READ),
-        *await todo_repository.list_active_tracked(user_id, limit=_OPEN_TRACKED_TODOS_READ),
+        *await todo_repository.list_open_user_todos(user_id, limit=0),
+        *await todo_repository.list_active_tracked(user_id, limit=0),
     ]
     return FactPool(
         items=reads.items,
         series=series,
         quotes=quote_spans(reads.items),
-        goals=goal_states(reads.goals, _distinct([*completed, *open_todos]), now),
+        goals=goal_states(reads.goals, _distinct([*completed, *open_todos]), now, window.dates[0]),
         context=context,
         criteria=reads.criteria,
     )

@@ -20,6 +20,7 @@ from enum import StrEnum
 import re
 
 from app.models.brief_pool_models import DataSeries, SeriesShape
+from app.models.briefing_models import BriefingItemKind
 
 
 class CountSlot(StrEnum):
@@ -31,6 +32,8 @@ class CountSlot(StrEnum):
     WHILE_AWAY = "while_away"
     OPEN_TODOS = "open_todos"
     OVERDUE_TODOS = "overdue_todos"
+    #: GAIA's open tracked work, each subject once, however much the brief places.
+    OPEN_TRACKED = "open_tracked"
     EVENTS = "events"
 
 
@@ -43,11 +46,17 @@ class FactField(StrEnum):
 
 @dataclass(frozen=True)
 class BriefFact:
-    """What one fact's slots render; time is None when it has none."""
+    """What one fact's slots render; time is None when it has none.
+
+    kind is the item's state and words its line's own words beyond the title, which hold
+    what prose may claim of it; None for a fact that is no item (an event).
+    """
 
     title: str
     time: str | None = None
     count: int = 1
+    kind: BriefingItemKind | None = None
+    words: str | None = None
 
 
 class SeriesField(StrEnum):
@@ -261,6 +270,16 @@ def _echo_problems(field: str, text: str, values: SlotValues) -> tuple[list[str]
     for start, end in reversed(spans):
         text = text[:start] + text[end:]
     return problems, text
+
+
+def sentences(text: str) -> list[str]:
+    """Split prose into its sentences and lines."""
+    return [s for s in _SENTENCE_END_RE.split(text) if s.strip()]
+
+
+def unslotted(text: str) -> str:
+    """Return the text as the model typed it outside its slots: each link's phrase, no value slot."""
+    return LINK_SLOT_RE.sub(r"\1", _VALUE_SLOT_RE.sub("", text))
 
 
 def _names_in_words(title: str, sentence: str) -> bool:

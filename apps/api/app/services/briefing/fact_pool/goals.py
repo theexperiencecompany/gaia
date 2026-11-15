@@ -6,13 +6,14 @@ with no names (the onboarding focus) has none: it is stated, never guessed at.
 """
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime
 import re
 
 from app.constants.briefing import GOAL_WORK_STALLED_AFTER
+from app.constants.todos import TodoCompleter
 from app.models.brief_pool_models import GoalState
 from app.models.todo_models import TodoDocument
-from app.services.briefing.context import StatedGoal
+from app.services.briefing.context import StatedGoal, finished_by
 from app.utils.timezone import as_utc
 
 
@@ -31,17 +32,19 @@ def _stuck(todo: TodoDocument, now: datetime) -> bool:
 
 
 def goal_states(
-    goals: Sequence[StatedGoal], todos: Sequence[TodoDocument], now: datetime
+    goals: Sequence[StatedGoal], todos: Sequence[TodoDocument], now: datetime, since: date
 ) -> list[GoalState]:
-    """Return each goal with the finished, open and stuck todos linked to it, numbered g1 up.
+    """Return each goal with the finished (by whom), open and stuck todos linked to it, numbered g1 up.
 
-    todos are the ones the brief read: finished in its window, or still open.
+    todos are the ones the brief read: finished in its window, opening on since, or still open.
     """
     states: list[GoalState] = []
     for goal in goals:
         names = _names(goal)
         linked = [t for t in todos if any(n.search(t.title) for n in names)]
-        done = [t.title for t in linked if t.completed]
+        finished = [t for t in linked if t.completed]
+        done = [t.title for t in finished]
+        by = [finished_by(t) for t in finished]
         still_open = [t for t in linked if not t.completed]
         states.append(
             GoalState(
@@ -49,6 +52,9 @@ def goal_states(
                 statement=goal.statement,
                 origin=goal.origin,
                 done=len(done),
+                done_by_gaia=by.count(TodoCompleter.GAIA),
+                done_by_you=by.count(TodoCompleter.USER),
+                since=since.isoformat(),
                 open=len(still_open),
                 linked=[*done, *(t.title for t in still_open)],
                 stalled=[t.title for t in still_open if _stuck(t, now)],

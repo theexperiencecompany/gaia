@@ -23,6 +23,16 @@ class SignalImportance(StrEnum):
     NORMAL = "normal"
 
 
+class PeopleRole(StrEnum):
+    """What the people an app names on an item are to it, when the app says."""
+
+    AUTHOR = "author"
+    ASSIGNEE = "assignee"
+    REQUESTER = "requester"
+    REVIEWER = "reviewer"
+    RECIPIENT = "recipient"
+
+
 class Signal(BaseModel):
     """One thing in one integration that needs the user's attention now or soon."""
 
@@ -35,6 +45,8 @@ class Signal(BaseModel):
     importance: SignalImportance = SignalImportance.NORMAL
     due_at: datetime | None = None
     people: list[str] = Field(default_factory=list)
+    #: What those people are to the item, when the app says; None when it does not.
+    people_role: PeopleRole | None = None
     url: str | None = None
     state: str | None = Field(default=None, description="The item's status as the app shows it")
     #: The item's own figure (an invoice's total, a payout), when it carries one.
@@ -43,6 +55,8 @@ class Signal(BaseModel):
     amount_unit: str | None = None
     #: The item's own words (a message, a comment), verbatim; None when it has none.
     text: str | None = None
+    #: Who wrote those words, read from the same item; None when the app does not say.
+    author: str | None = None
     #: When the item was created and last changed in the app; None when the app does not say.
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -59,8 +73,12 @@ class SignalFields(BaseModel):
     due_at: str | None = None
     state: str | None = None
     people: str | None = None
+    #: What the people at that path are to the item; None when the app does not say.
+    people_role: PeopleRole | None = None
     amount: str | None = None
     text: str | None = None
+    #: The path to who wrote the text; a quote is attributed only through it.
+    author: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -91,11 +109,13 @@ class LearnedSignal(BaseModel):
     importance: SignalImportance
     due_at: datetime | None = None
     people: list[str] = Field(default_factory=list)
+    people_role: PeopleRole | None = None
     url: str | None = None
     state: str | None = None
     amount: float | None = None
     amount_unit: str | None = None
     text: str | None = None
+    author: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -220,6 +240,8 @@ class ScoutResult(BaseModel):
     criteria: str | None = None
     skip_reason: ScoutSkipReason | None = None
     error: str | None = None
+    #: Whether the integration has tools that change things, so GAIA can act in it, not only read.
+    can_write: bool = False
 
 
 class SignalMemoryDocument(UserScopedDocument):

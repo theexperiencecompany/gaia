@@ -10,6 +10,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.constants.briefing import BriefAction, BriefOutcome
+from app.constants.todos import TodoCompleter
 from app.models.briefing_models import BriefingItemKind
 from app.models.scout_models import Signal, SignalImportance, SignalMemoryDocument
 
@@ -30,6 +31,10 @@ class BriefCandidate(BaseModel):
     #: What the item asks or where it got to, when its producer knows; else the composition says.
     action: BriefAction | None = None
     outcome: BriefOutcome | None = None
+    #: Who closed a done todo; None for anything else, or a tracked one closed before it was recorded.
+    finished_by: TodoCompleter | None = None
+    #: Where open tracked work stands when GAIA is not simply working on it ("paused: ...").
+    standing: str | None = None
     people: list[str] = Field(default_factory=list)
     due_at: datetime | None = None
     #: When it happens on the user's clock, as the brief says it ("4:00 PM"): an event's start.
@@ -51,6 +56,8 @@ class BriefCandidate(BaseModel):
     seen_as: str | None = None
     #: An undated todo of the user's own: on their list, not news, so it never leads.
     backlog: bool = False
+    #: Whether GAIA can act on it (it has tools that change its app), so an offer about it is real.
+    gaia_acts: bool = False
     #: What earlier briefs remember of it, as it stood before today; None the first time.
     memory: SignalMemoryDocument | None = None
     #: Whether its state changed since an earlier brief saw it.
