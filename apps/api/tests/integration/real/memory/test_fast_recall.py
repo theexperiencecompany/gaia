@@ -1,10 +1,34 @@
-"""The comms fast lane against real Postgres: one query, pinned rows plus OR-matched text."""
+"""The comms fast lane against real Postgres and Redis: semantic hits, pins and shared words."""
+
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.memory import fast_recall
+from app.constants.memory import MEMORY_VECTOR_MODEL
+from app.memory import fast_recall, hosted_embeddings, vector_index
 from app.memory.pg_store.memories import mark_forgotten
+from app.memory.pg_store.vectors import upsert_vectors
 from tests.integration.real.memory.store import seed_memories
+
+# Hand-made unit directions stand in for a model: these tests prove the lane's
+# plumbing (held vectors, versioning, liveness, ordering), not a model's quality.
+GIRLFRIEND, DOG, MOTHER = [1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]
+CELLO = [0.0, 0.0, 0.0, 1.0]
+NEAR_GIRLFRIEND = [0.95, 0.05, 0.0, 0.0]
+
+
+@contextmanager
+def query_embeds_to(vector: Sequence[float]) -> Iterator[None]:
+    """Report Workers AI configured and make the hosted query embedding return vector."""
+    fast_recall._inflight.clear()
+    with (
+        patch.object(hosted_embeddings, "configured", return_value=True),
+        patch.object(hosted_embeddings, "embed_query", new=AsyncMock(return_value=list(vector))),
+    ):
+        yield
+
 
 pytestmark = pytest.mark.memory
 
@@ -57,3 +81,76 @@ async def test_nothing_to_match_returns_nothing(memory_user: str) -> None:
     await seed_memories(memory_user, [{"content": "Allergic to peanuts."}])
 
     assert await fast_recall.fast_recall(memory_user, "?!", conversation_id=None) == []
+
+
+async def _seed_with_vectors(user_id: str) -> tuple[str, str, str]:
+    girlfriend, dog, mother = await seed_memories(
+        user_id,
+        [
+            {"content": "Girlfriend is Priya; they met in college in Pune."},
+            {"content": "Dog's name is Max, a golden retriever."},
+            {"content": "Mother's name is Sunita."},
+        ],
+    )
+    await upsert_vectors(
+        user_id,
+        MEMORY_VECTOR_MODEL,
+        [(girlfriend.id, GIRLFRIEND), (dog.id, DOG), (mother.id, MOTHER)],
+    )
+    await vector_index.bump_version(user_id)
+    return girlfriend.content, dog.content, mother.content
+
+
+async def test_a_semantic_hit_needs_no_shared_word(memory_user: str) -> None:
+    girlfriend, _dog, _mother = await _seed_with_vectors(memory_user)
+    with query_embeds_to(NEAR_GIRLFRIEND):
+        entries = await fast_recall.fast_recall(
+            memory_user, "who am I dating", conversation_id=None
+        )
+
+    assert entries[0].content == girlfriend
+
+
+async def test_a_semantic_hit_outranks_word_matches_that_mislead(memory_user: str) -> None:
+    """The word name matches the dog and the mother; the semantic hit still comes first."""
+    girlfriend, dog, mother = await _seed_with_vectors(memory_user)
+    with query_embeds_to(NEAR_GIRLFRIEND):
+        entries = await fast_recall.fast_recall(
+            memory_user, "what's my gf's name", conversation_id=None
+        )
+
+    assert entries[0].content == girlfriend
+    assert {e.content for e in entries[1:]} >= {dog, mother}
+
+
+async def test_a_memory_written_after_the_set_was_held_is_found_next_turn(
+    memory_user: str,
+) -> None:
+    await _seed_with_vectors(memory_user)
+    with query_embeds_to(CELLO):
+        assert await fast_recall.fast_recall(memory_user, "zzz", conversation_id=None) == []
+
+    (late,) = await seed_memories(memory_user, [{"content": "Plays the cello on Sundays."}])
+    with (
+        patch.object(hosted_embeddings, "configured", return_value=True),
+        patch.object(hosted_embeddings, "embed_documents", new=AsyncMock(return_value=[CELLO])),
+    ):
+        await vector_index.index_memories(memory_user, [(late.id, late.content)])
+    await vector_index.bump_version(memory_user)
+
+    with query_embeds_to(CELLO):
+        entries = await fast_recall.fast_recall(memory_user, "zzz", conversation_id=None)
+
+    assert [e.content for e in entries] == [late.content]
+
+
+async def test_a_forgotten_memory_with_a_held_vector_never_renders(memory_user: str) -> None:
+    await _seed_with_vectors(memory_user)
+    with query_embeds_to(NEAR_GIRLFRIEND):
+        before = await fast_recall.fast_recall(memory_user, "zzz", conversation_id=None)
+    await mark_forgotten(str(before[0].id), memory_user, "user asked to forget")
+
+    with query_embeds_to(NEAR_GIRLFRIEND):
+        after = await fast_recall.fast_recall(memory_user, "zzz", conversation_id=None)
+
+    assert before[0].content not in [e.content for e in after]

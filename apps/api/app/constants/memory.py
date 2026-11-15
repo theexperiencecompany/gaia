@@ -167,8 +167,25 @@ MEMORY_SEARCH_CACHE_TTL = 60
 MEMORY_SEARCH_CACHE_PATTERN = "user:{user_id}:memories:*"
 CORE_CONTEXT_CACHE_KEY = "user:{user_id}:memory:core"
 
-# Comms fast lane: pinned ids + one OR-matched FTS query, never embed/ANN/rerank.
-FAST_RECALL_BUDGET_SECONDS = 0.08
+# Comms fast lane: hosted query embed (started at request arrival) + in-process
+# vector match + one Postgres query for vector hits, pins and OR-matched words.
+# Covers the query embed's p95 (306ms from prod) less the setup it overlaps.
+FAST_RECALL_BUDGET_SECONDS = 0.25
+FAST_RECALL_SEMANTIC_K = 5
+# Noise floor only: gold scored p50 0.47 but abstention probes reached 0.36
+# (text-embedding-3-small, 2026-11-15); 0.20 keeps 98%+ of gold on both sets.
+FAST_RECALL_MIN_SIMILARITY = 0.20
+# Hosted model whose vectors live in memory_vectors; changing it means a backfill.
+MEMORY_VECTOR_MODEL = "text-embedding-3-small"
+HOSTED_EMBEDDING_TIMEOUT_SECONDS = 30.0
+HOSTED_EMBEDDING_RETRIES = 2
+# Memory facts are short; 256 stays far inside OpenAI's 300k-token request cap.
+HOSTED_EMBEDDING_BATCH_TEXTS = 256
+# A process holds each active user's vectors; Redis carries the version that
+# every memory write bumps, so the API and the worker never serve a stale set.
+MEMORY_VECTORS_VERSION_KEY = "user:{user_id}:memory:vectors_version"
+VECTOR_CACHE_MAX_USERS = 4096
+QUERY_EMBEDDING_TTL_SECONDS = 60
 FAST_RECALL_MAX_TOKENS = 32
 PRECOMPUTED_RECALL_LIMIT = 8
 PRECOMPUTED_RECALL_TTL = 86_400

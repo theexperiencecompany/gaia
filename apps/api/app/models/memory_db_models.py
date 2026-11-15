@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -107,6 +108,29 @@ class MemoryRecord(Base):
         Index("ix_memories_user_created", "user_id", "created_at"),
         Index("ix_memories_search_tsv", "search_tsv", postgresql_using="gin"),
     )
+
+
+class MemoryVector(Base):
+    """One memory's embedding under one hosted model, as packed little-endian float32.
+
+    Keyed by model so a model change backfills beside the vectors in use, and the
+    fast lane reads a user's whole set in one query without dragging vectors into
+    every memory row read.
+    """
+
+    __tablename__ = "memory_vectors"
+
+    memory_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("memories.id", ondelete="CASCADE"), primary_key=True
+    )
+    model: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, nullable=False)
+    vector: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), nullable=False
+    )
+
+    __table_args__ = (Index("ix_memory_vectors_user_model", "user_id", "model"),)
 
 
 class MemoryEntity(Base):
