@@ -1651,6 +1651,31 @@
       }
     },
     {
+      "event": "chat:background_update_resolved",
+      "class": "ChatBackgroundUpdateResolved",
+      "owner": "server",
+      "domain": "chat",
+      "description": "Comms resolved finished background work: it wrote a message about it, or stayed silent.",
+      "previous_names": [],
+      "budget_per_user_day": 100,
+      "at_most_once_ttl_seconds": null,
+      "base_properties": "Attribution",
+      "properties": {
+        "additionalProperties": false,
+        "description": "Comms resolved finished background work: it wrote a message about it, or stayed silent.",
+        "properties": {
+          "outcome": {
+            "enum": ["message", "silence"],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": ["outcome"],
+        "title": "ChatBackgroundUpdateResolved",
+        "type": "object"
+      }
+    },
+    {
       "event": "chat:composer_plus_menu_clicked",
       "class": "ChatComposerPlusMenuClicked",
       "owner": "web",

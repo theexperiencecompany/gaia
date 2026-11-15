@@ -20,6 +20,7 @@ from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.services.conversation.comms_turn import build_comms_turn
 from app.services.conversation.reply_analytics import spoken_context
+from app.utils.errors import ConversationNotFoundError
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext
 from tests.factories import make_authenticated_user
@@ -88,7 +89,7 @@ def seams() -> Iterator[Seams]:
     ):
         conversations.get_todo_id = AsyncMock(return_value=None)
         conversations.is_workflow_execution = AsyncMock(return_value=False)
-        conversations.get_source = AsyncMock(return_value=None)
+        conversations.get_source = AsyncMock(return_value=ConversationSource.BACKGROUND)
         agent_config.side_effect = lambda **_: {"configurable": {}}
         yield Seams(
             user,
@@ -276,6 +277,17 @@ async def test_a_todos_finished_run_is_written_up_by_its_note(seams: Seams) -> N
     seams.write_up.assert_awaited_once_with(run)
     seams.conversations.is_workflow_execution.assert_not_awaited()
     assert turn.closing == [HumanMessage(content="write it up"), seams.context.clock]
+
+
+async def test_finished_work_in_a_conversation_with_no_head_is_refused_not_answered_on_a_default_surface(
+    seams: Seams,
+) -> None:
+    seams.conversations.get_source.return_value = None
+
+    with pytest.raises(ConversationNotFoundError, match=CONVERSATION):
+        await build_comms_turn(CLAIM, _batch(6, [finished("w6", "t1")]))
+
+    seams.turn_context.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

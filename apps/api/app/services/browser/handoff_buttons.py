@@ -13,7 +13,6 @@ from app.constants.browser import (
     HandoffDecision,
     HandoffStatus,
 )
-from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
 from app.models.conversation_send_models import SendMessageRequest
@@ -23,6 +22,7 @@ from app.services.analytics_service import capture
 from app.services.browser.exceptions import BrowserHandoffNotOwned
 from app.services.browser.handoff import cancel_handoff, get_handoff, resolve_handoff
 from app.services.browser.job_stop import stop_job
+from app.services.conversation.mongo_log_base import not_found
 from app.services.conversation.send import send_message
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserHandoffResolved
@@ -58,6 +58,8 @@ async def decide_handoff_by_button(
         words = f"{decision.value}: {note}" if note else decision.value
         conversation_id = pending.conversation_id
         surface = await conversation_repository.get_source(conversation_id, user_id=user_id)
+        if surface is None:
+            raise not_found(conversation_id)
         await send_message(
             conversation_id,
             AuthenticatedUser(user_id=user_id),
@@ -65,7 +67,7 @@ async def decide_handoff_by_button(
                 message_id=f"handoff:{handoff_id}",
                 text=BROWSER_HANDOFF_CARD_DECISION.format(decision=words),
             ),
-            surface or ConversationSource.WEB,
+            surface,
         )
     return resolved
 

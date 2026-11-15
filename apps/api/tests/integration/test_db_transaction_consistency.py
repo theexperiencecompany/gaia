@@ -22,7 +22,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 import pytest
 
-from app.models.chat_models import ConversationModel
+from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.conversation_models import ConversationDocument
 from app.models.todo_models import (
     BulkUpdateRequest,
@@ -96,7 +96,9 @@ class TestConversationCreationConsistency:
             captured["document"] = document
             return document
 
-        conversation = ConversationModel(conversation_id=conv_id, description="Hello world")
+        conversation = ConversationModel(
+            conversation_id=conv_id, description="Hello world", source=ConversationSource.WEB
+        )
 
         with patch(
             "app.services.conversation_service.conversation_repository.create",
@@ -112,7 +114,9 @@ class TestConversationCreationConsistency:
 
     async def test_create_conversation_unacknowledged_raises(self) -> None:
         """If the repository cannot persist the document, the service must raise 500."""
-        conversation = ConversationModel(conversation_id=str(uuid4()), description="Should fail")
+        conversation = ConversationModel(
+            conversation_id=str(uuid4()), description="Should fail", source=ConversationSource.WEB
+        )
 
         with (
             patch(
@@ -125,7 +129,9 @@ class TestConversationCreationConsistency:
 
     async def test_create_conversation_db_error_raises(self) -> None:
         """A repository exception during create propagates unchanged to the error handler."""
-        conversation = ConversationModel(conversation_id=str(uuid4()), description="DB down")
+        conversation = ConversationModel(
+            conversation_id=str(uuid4()), description="DB down", source=ConversationSource.WEB
+        )
 
         with (
             patch(
@@ -138,7 +144,9 @@ class TestConversationCreationConsistency:
 
     async def test_create_conversation_requires_user_id(self) -> None:
         """An empty user_id must raise 403."""
-        conversation = ConversationModel(conversation_id=str(uuid4()), description="No user")
+        conversation = ConversationModel(
+            conversation_id=str(uuid4()), description="No user", source=ConversationSource.WEB
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             await create_conversation_service(conversation, AuthenticatedUser(user_id=""))
@@ -317,7 +325,9 @@ class TestPartialFailureHandling:
     async def test_conversation_insert_failure_does_not_leave_orphan(self) -> None:
         """If the repository create throws, the service must raise and call create exactly once."""
         mock_create = AsyncMock(side_effect=Exception("disk full"))
-        conversation = ConversationModel(conversation_id=str(uuid4()), description="Will fail")
+        conversation = ConversationModel(
+            conversation_id=str(uuid4()), description="Will fail", source=ConversationSource.WEB
+        )
 
         with (
             patch("app.services.conversation_service.conversation_repository.create", mock_create),

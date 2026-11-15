@@ -12,6 +12,7 @@ import composio_client
 from composio_client.types.tool_list_response import ItemDeprecated, ItemToolkit
 import httpx
 
+from app.constants.chat import ConversationSource
 from app.models.conversation_frame_models import EntryFrame, StateFrame
 from app.models.conversation_log_models import DisplayState, Entry
 from app.models.conversation_models import StoredConversation
@@ -52,6 +53,7 @@ def make_loaded_conversation(
     return StoredConversation(
         user_id=user_id,
         conversation_id=conversation_id,
+        source=ConversationSource.WEB,
         createdAt=created_at,
         entries=[
             EntryFrame(seq=seq, at=datetime(2026, 1, 1, tzinfo=UTC), entry=entry)

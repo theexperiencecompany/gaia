@@ -51,6 +51,7 @@ async def conversation(repo: ConversationRepository) -> ConversationDocument:
         {
             "user_id": f"u-{uuid.uuid4().hex}",
             "conversation_id": f"c-{uuid.uuid4().hex}",
+            "source": "web",
             "createdAt": datetime.now(UTC).isoformat(),
         }
     )
@@ -312,6 +313,7 @@ async def test_deleting_conversations_deletes_their_entries(
             {
                 "user_id": user_id,
                 "conversation_id": f"c-{uuid.uuid4().hex}",
+                "source": "web",
                 "createdAt": datetime.now(UTC).isoformat(),
                 **fields,
             }
@@ -344,6 +346,7 @@ async def _chat(repo: ConversationRepository, user_id: str, **fields: object) ->
         {
             "user_id": user_id,
             "conversation_id": f"c-{uuid.uuid4().hex}",
+            "source": "web",
             "createdAt": datetime.now(UTC).isoformat(),
             **fields,
         }
@@ -597,6 +600,7 @@ async def test_a_created_conversation_head_holds_no_messages_and_an_empty_log(
         {
             "user_id": f"u-{uuid.uuid4().hex}",
             "conversation_id": f"c-{uuid.uuid4().hex}",
+            "source": "web",
             "createdAt": datetime.now(UTC).isoformat(),
         }
     )

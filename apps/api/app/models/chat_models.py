@@ -88,7 +88,8 @@ class ConversationModel(BaseModel):
     is_system_generated: bool | None = False
     system_purpose: SystemPurpose | None = None
     is_unread: bool | None = False
-    source: ConversationSource | None = None
+    #: The surface the conversation lives on; it picks the prompt a reply without a newer message is written for.
+    source: ConversationSource
     is_onboarding_demo: bool = False
 
 

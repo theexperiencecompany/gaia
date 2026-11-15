@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES
 from app.models.artifact_models import ArtifactRegistryEntry
@@ -34,13 +34,6 @@ from app.models.conversation_log_models import ConversationState
 from app.models.conversation_screen_models import ScreenItem, TextItem
 from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
-
-
-def _coerce_source(value: object) -> object:
-    """Map a stored source string to the enum, tolerating unknown legacy values."""
-    if isinstance(value, (ConversationSource, str)):
-        return ConversationSource.coerce(value)
-    return value
 
 
 class ConversationDocument(UserScopedDocument, ConversationModel):
@@ -61,8 +54,6 @@ class ConversationDocument(UserScopedDocument, ConversationModel):
     artifacts: list[ArtifactRegistryEntry] = Field(default_factory=list)
     createdAt: str | None = None
     updatedAt: datetime | None = None
-
-    _coerce_source = field_validator("source", mode="before")(_coerce_source)
 
     @property
     def listed(self) -> bool:
@@ -100,8 +91,6 @@ class ConversationSummary(ResponseModel):
     createdAt: str | None = None
     updatedAt: datetime | None = None
 
-    _coerce_source = field_validator("source", mode="before")(_coerce_source)
-
 
 class ConversationMessageHit(BaseModel):
     """A message's screen item, as the conversation's screen shows it, tagged with its conversation id."""
@@ -125,11 +114,11 @@ class ConversationSearchResults(BaseModel):
 
 
 class _SourceRow(BaseModel):
-    """Projection of just a conversation's stored source string."""
+    """Projection of just a conversation's source."""
 
     model_config = ConfigDict(extra="ignore")
 
-    source: str | None = None
+    source: ConversationSource
 
 
 class _TodoBindingRow(BaseModel):

@@ -268,6 +268,7 @@ def make_conversation(conversations_collection):
             "user_id": user_id,
             "conversation_id": conv_id,
             "description": "Test conversation",
+            "source": "web",
             "createdAt": created_at,
             "updatedAt": datetime.now(UTC),
             **overrides,

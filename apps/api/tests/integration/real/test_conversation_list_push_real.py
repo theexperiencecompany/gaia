@@ -38,7 +38,7 @@ async def _conversation(user_id: str) -> str:
     conversation_id = f"c-{uuid4().hex}"
     await conversation_repository.create(
         ConversationDocument.model_validate(
-            {"user_id": user_id, "conversation_id": conversation_id}
+            {"user_id": user_id, "conversation_id": conversation_id, "source": "web"}
         )
     )
     return conversation_id

@@ -100,6 +100,7 @@ def _document(**overrides) -> StoredConversation:
     data = {
         "user_id": USER_ID,
         "conversation_id": "conv_abc",
+        "source": "web",
         "createdAt": "2026-01-01T00:00:00+00:00",
         "state": {"head": 0, "display": "idle", "work": []},
     }
@@ -110,7 +111,9 @@ def _document(**overrides) -> StoredConversation:
 class TestCreateConversationService:
     async def test_creates_conversation_and_returns_response(self, mock_repo, test_user):
         mock_repo.create.return_value = _document()
-        conversation = ConversationModel(conversation_id="conv_abc", description="Test Chat")
+        conversation = ConversationModel(
+            conversation_id="conv_abc", description="Test Chat", source=ConversationSource.WEB
+        )
 
         result = await create_conversation_service(conversation, test_user)
 
@@ -126,19 +129,24 @@ class TestCreateConversationService:
     async def test_raises_403_when_no_user_id(self, mock_repo):
         with pytest.raises(HTTPException) as exc_info:
             await create_conversation_service(
-                ConversationModel(conversation_id="c"), AuthenticatedUser(user_id="")
+                ConversationModel(conversation_id="c", source=ConversationSource.WEB),
+                AuthenticatedUser(user_id=""),
             )
         assert exc_info.value.status_code == 403
 
     async def test_an_id_another_user_holds_is_refused_as_a_conflict(self, mock_repo, test_user):
         mock_repo.create.side_effect = ConversationIdTakenError(message="taken")
         with pytest.raises(ConversationIdTakenError) as exc_info:
-            await create_conversation_service(ConversationModel(conversation_id="c"), test_user)
+            await create_conversation_service(
+                ConversationModel(conversation_id="c", source=ConversationSource.WEB), test_user
+            )
         assert exc_info.value.status_code == 409
 
     async def test_captures_conversation_created(self, mock_repo, test_user):
         mock_repo.create.return_value = _document()
-        conversation = ConversationModel(conversation_id="conv_abc", description="Test Chat")
+        conversation = ConversationModel(
+            conversation_id="conv_abc", description="Test Chat", source=ConversationSource.WEB
+        )
 
         with patch("app.services.conversation_service.capture") as mock_capture:
             await create_conversation_service(conversation, test_user)
@@ -154,7 +162,9 @@ class TestCreateConversationService:
             pytest.raises(ConversationStoreError),
             patch("app.services.conversation_service.capture") as mock_capture,
         ):
-            await create_conversation_service(ConversationModel(conversation_id="c"), test_user)
+            await create_conversation_service(
+                ConversationModel(conversation_id="c", source=ConversationSource.WEB), test_user
+            )
         mock_capture.assert_not_called()
 
     async def test_persists_source_and_flags(self, mock_repo, test_user):

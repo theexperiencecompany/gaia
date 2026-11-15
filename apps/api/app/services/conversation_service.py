@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 from psycopg_pool import AsyncConnectionPool
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
+from app.constants.chat import ConversationSource
 from app.constants.error_codes import CONVERSATION_NOT_FOUND
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversation_log import conversation_log_repository
@@ -297,6 +298,7 @@ async def get_or_create_todo_conversation(user_id: str, todo_id: str, title: str
         conversation_id=str(uuid4()),
         description=title,
         todo_id=todo_id,
+        source=ConversationSource.BACKGROUND,
         createdAt=datetime.now(UTC).isoformat(),
     )
     if await conversation_repository.try_create(document):
@@ -348,7 +350,7 @@ async def get_starred_messages(user: AuthenticatedUser) -> PinnedMessagesRespons
 async def create_system_conversation(
     user_id: str, description: str, system_purpose: SystemPurpose
 ) -> SystemConversationCreated:
-    """Create a system-generated conversation with proper flags."""
+    """Create a system-generated conversation, which GAIA's own workflow runs write to."""
     conversation_id = str(uuid4())
     created_at = datetime.now(UTC).isoformat()
 
@@ -359,6 +361,7 @@ async def create_system_conversation(
         is_system_generated=True,
         system_purpose=system_purpose,
         is_unread=True,
+        source=ConversationSource.WORKFLOW_SYSTEM,
         createdAt=created_at,
     )
 

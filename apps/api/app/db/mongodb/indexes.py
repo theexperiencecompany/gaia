@@ -273,6 +273,9 @@ UNMIGRATED_HEAD_OPTIONS: IndexOptions = {
     "name": "embedded_messages_migrated",
     "partialFilterExpression": {"messages.0": {"$exists": True}},
 }
+# The boot check: a head with no source this build knows (SOURCELESS_HEADS reads its bounds).
+CONVERSATION_SOURCE_KEYS: IndexKeys = [("source", 1)]
+CONVERSATION_SOURCE_OPTIONS: IndexOptions = {"name": "conversation_source"}
 CONVERSATION_TODO_BINDING_KEYS: IndexKeys = [("user_id", 1), ("todo_id", 1)]
 CONVERSATION_TODO_BINDING_OPTIONS: IndexOptions = {
     "unique": True,
@@ -350,6 +353,9 @@ async def create_conversation_indexes() -> None:
                 CONVERSATION_ID_UNIQUE_KEYS, **CONVERSATION_ID_UNIQUE_OPTIONS
             ),
             conversations_collection.create_index(UNMIGRATED_HEAD_KEYS, **UNMIGRATED_HEAD_OPTIONS),
+            conversations_collection.create_index(
+                CONVERSATION_SOURCE_KEYS, **CONVERSATION_SOURCE_OPTIONS
+            ),
             # For starred conversations queries
             conversations_collection.create_index(
                 [("user_id", 1), ("starred", 1), ("createdAt", -1)]
