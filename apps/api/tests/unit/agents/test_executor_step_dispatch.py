@@ -16,7 +16,13 @@ from app.models.agent_models import AgentConfigurable
 pytestmark = pytest.mark.usefixtures("fake_redis")
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
-STEP: StepTurnRef = {"epoch": 3, "batch_start": 4, "cause_through": 5, "answers": ["m4", "m5"]}
+STEP: StepTurnRef = {
+    "epoch": 3,
+    "batch_start": 4,
+    "cause_through": 5,
+    "answers": ["m4", "m5"],
+    "asked": True,
+}
 BUSY_KEY = f"{EXECUTOR_BUSY_PREFIX}conv-1"
 
 

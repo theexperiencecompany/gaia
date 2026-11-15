@@ -67,6 +67,10 @@ class DBEventEmitter extends EventEmitter {
     this.emit("conversationUpdated", conversation);
   }
 
+  emitConversationsUpsertedBulk(conversations: IConversation[]) {
+    this.emit("conversationsUpsertedBulk", conversations);
+  }
+
   emitConversationDeleted(conversationId: string) {
     this.emit("conversationDeleted", conversationId);
   }
@@ -204,7 +208,7 @@ class ChatDexie extends Dexie {
     await this.run(undefined, () =>
       messageQueue.enqueue(() => this.conversations.bulkPut(conversations)),
     );
-    conversations.forEach((conv) => dbEventEmitter.emitConversationAdded(conv));
+    dbEventEmitter.emitConversationsUpsertedBulk(conversations);
     return conversations.map((conversation) => conversation.id);
   }
 

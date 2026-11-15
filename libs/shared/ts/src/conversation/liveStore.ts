@@ -34,12 +34,21 @@ export interface SavedConversation<Send extends QueuedSend> {
   sends: Readonly<Record<string, Send>>;
 }
 
+/** A page of one conversation's screen, with what this device saved of it for when it is not live yet. */
+export interface SavedPage<Send extends QueuedSend> {
+  conversationId: string;
+  saved: SavedConversation<Send>;
+  page: ConversationPage;
+}
+
 export interface LiveConversationState<Send extends QueuedSend> {
   conversations: Readonly<Record<string, LiveConversation<Send>>>;
   /** Seed a conversation from what this device saved; a conversation already live keeps what it has. */
   restore: (conversationId: string, saved: SavedConversation<Send>) => void;
   /** Take a page of the server's screen (a load, a sync, a page back) into the view. */
   applyPage: (conversationId: string, page: ConversationPage) => void;
+  /** Restore and page many conversations in one write, so a sync of all of them re-renders once. */
+  applyPages: (pages: readonly SavedPage<Send>[]) => void;
   /** Fold frames in order; returns the first gap, after which nothing more is applied. */
   applyFrames: (
     conversationId: string,
@@ -78,45 +87,76 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
     olderBefore: null,
   };
 
+  const seeded = ({
+    items,
+    head,
+    olderBefore,
+    sends,
+  }: SavedConversation<Send>): LiveConversation<Send> => {
+    // The saved screen is as far as this device knew it; the stream's screen frame moves it on.
+    const known = {
+      ...EMPTY_CONVERSATION_VIEW,
+      items,
+      head,
+      screenHead: head,
+    };
+    const view = Object.entries(sends).reduce(
+      (current, [id, send]) =>
+        addPendingSend(current, { id, text: send.body.text }),
+      known,
+    );
+    return { view, sends, olderBefore };
+  };
+
+  const paged = (
+    live: LiveConversation<Send>,
+    page: ConversationPage,
+  ): LiveConversation<Send> => {
+    const view = applyPage(live.view, page.items, page.state);
+    return {
+      ...live,
+      view,
+      olderBefore: olderBefore(view, page, live.olderBefore),
+    };
+  };
+
   const useLiveConversationStore = create<LiveConversationState<Send>>()(
     (set, get) => ({
       conversations: {},
 
-      restore: (conversationId, { items, head, olderBefore, sends }) => {
+      restore: (conversationId, saved) => {
         if (get().conversations[conversationId]) return;
-        // The saved screen is as far as this device knew it; the stream's screen frame moves it on.
-        const known = {
-          ...EMPTY_CONVERSATION_VIEW,
-          items,
-          head,
-          screenHead: head,
-        };
-        const view = Object.entries(sends).reduce(
-          (current, [id, send]) =>
-            addPendingSend(current, { id, text: send.body.text }),
-          known,
-        );
         set((state) => ({
           conversations: {
             ...state.conversations,
-            [conversationId]: { view, sends, olderBefore },
+            [conversationId]: seeded(saved),
           },
         }));
       },
 
-      applyPage: (conversationId, page) => {
-        const live = get().conversations[conversationId] ?? empty;
-        const view = applyPage(live.view, page.items, page.state);
+      applyPage: (conversationId, page) =>
         set((state) => ({
           conversations: {
             ...state.conversations,
-            [conversationId]: {
-              ...live,
-              view,
-              olderBefore: olderBefore(view, page, live.olderBefore),
-            },
+            [conversationId]: paged(
+              state.conversations[conversationId] ?? empty,
+              page,
+            ),
           },
-        }));
+        })),
+
+      applyPages: (pages) => {
+        if (pages.length === 0) return;
+        set((state) => {
+          const conversations = { ...state.conversations };
+          for (const { conversationId, saved, page } of pages) {
+            conversations[conversationId] = paged(
+              conversations[conversationId] ?? seeded(saved),
+              page,
+            );
+          }
+          return { conversations };
+        });
       },
 
       applyFrames: (conversationId, frames) => {

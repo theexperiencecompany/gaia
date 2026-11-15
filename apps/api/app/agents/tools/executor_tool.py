@@ -162,6 +162,12 @@ async def call_executor(
     if not conversation_id:
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
         return "Internal error: conversation context unavailable. Please try again."
+    if not configurable["conversation_step"]["asked"]:
+        log.warning(
+            f"{LogTag.TOOL} call_executor refused: the attempt only reports finished work",
+            conversation_id=conversation_id,
+        )
+        return NOTHING_NEW_ASKED
     task_id = str(uuid4())
     # Read off the configurable, never a tool argument: asking the comms model to
     # re-transcribe the request corrupted 3 of 4 recipient addresses on a pasted
@@ -453,6 +459,10 @@ def _cancel_report(work: WorkCancelled, *, targeted: bool) -> str:
     return f"{result} {browser}" if browser else result
 
 
+NOTHING_NEW_ASKED = (
+    "Not dispatched: nothing new was asked. This turn reports work that already finished; "
+    "tell the user its result and what they need to do. Start work only when they ask."
+)
 _NOT_STARTED_STOPPED = (
     "Not dispatched: the user stopped this request, or this turn was replaced by a newer one. "
     "Do not say the work is underway."

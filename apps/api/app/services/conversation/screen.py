@@ -143,6 +143,7 @@ class _Log:
     request_ats: dict[str, AwareDatetime] = field(default_factory=dict)
     decisions: dict[str, ApprovalDecided] = field(default_factory=dict)
     handoffs: dict[str, ToolDataEntry] = field(default_factory=dict)
+    stopped_through: int = 0
 
     @classmethod
     def of(cls, entries: Iterable[Positioned]) -> _Log:
@@ -163,6 +164,9 @@ class _Log:
                     read.request_ats[request.approval_id] = logged.at
                 case ApprovalDecided() as decision:
                     read.decide(decision)
+                case StopRequested(covers_through=covers):
+                    through = logged.seq - 1 if covers is None else covers
+                    read.stopped_through = max(read.stopped_through, through)
                 case Reply(tool_data=cards):
                     read.handoffs.update(
                         (call_id, card) for card in cards if (call_id := handoff_call_id(card))
@@ -187,12 +191,14 @@ class _Log:
 
     def _approval_card(self, request: ApprovalRequested) -> ApprovalRequestEntry:
         decision = self.decisions.get(request.approval_id)
-        work = self.finished.get(self.root(request.task_id))
+        root = self.root(request.task_id)
+        work = self.finished.get(root)
+        stopped = self._stopped(root) or (work is not None and work.outcome in _STOPPED_WORK)
         outcome = (
             decision.outcome
             if decision is not None
             else ApprovalOutcome.CANCELLED
-            if work is not None and work.outcome in _STOPPED_WORK
+            if stopped
             else None
         )
         asked_at = self.request_ats[request.approval_id]
@@ -217,9 +223,22 @@ class _Log:
             timestamp=asked_at.isoformat(),
         )
 
+    def _stopped(self, root: str) -> bool:
+        started = self.started.get(root)
+        return started is not None and started.cause_through <= self.stopped_through
+
+    def _waits(self, root: str) -> bool:
+        """Return whether work under root still waits on its approvals, as the reducer keeps it live."""
+        if self._stopped(root):
+            return False
+        finished = self.finished.get(root)
+        return finished is None or (
+            finished.continued_by_decision and finished.outcome is WorkOutcome.DONE
+        )
+
     def asking(self, root: str) -> tuple[ApprovalRequested, ...]:
-        """Return the approvals live work under root waits on, oldest first."""
-        if root in self.finished:
+        """Return the approvals work under root waits on, oldest first, its run ended or not."""
+        if not self._waits(root):
             return ()
         return tuple(
             request
@@ -238,10 +257,10 @@ class _Log:
         return next((user for user in reversed(self.users) if user in ids), None)
 
     def work_status(self, root: str) -> WorkStatus:
+        if self.asking(root):
+            return WorkStatus.AWAITING_APPROVAL
         finished = self.finished.get(root)
-        if finished is not None:
-            return WorkStatus(finished.outcome.value)
-        return WorkStatus.AWAITING_APPROVAL if self.asking(root) else WorkStatus.RUNNING
+        return WorkStatus.RUNNING if finished is None else WorkStatus(finished.outcome.value)
 
 
 def project_screen(entries: Sequence[Positioned]) -> list[ScreenItem]:

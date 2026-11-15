@@ -2,7 +2,7 @@ import type { ConversationSyncRow } from "@shared/api/generated";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { db } from "@/lib/db/chatDb";
-import { applySyncedConversation } from "@/services/syncService";
+import { applySyncedConversations } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
 
 vi.mock("@/features/chat/api/chatApi", () => ({
@@ -10,12 +10,12 @@ vi.mock("@/features/chat/api/chatApi", () => ({
 }));
 
 vi.mock("@/features/chat/live/connection", () => ({
-  applyConversationPage: vi.fn(),
+  applyConversationPages: vi.fn(),
 }));
 
 vi.mock("@/lib/db/chatDb", () => ({
   db: {
-    putConversation: vi.fn(),
+    putConversationsBulk: vi.fn(),
   },
 }));
 
@@ -51,18 +51,22 @@ describe("a conversation the server marked unread", () => {
   it("lights the dot when the user is elsewhere", async () => {
     useChatStore.getState().setActiveConversationId("other");
 
-    await applySyncedConversation("c1", noticedRow("c1"));
+    await applySyncedConversations([noticedRow("c1")]);
 
-    expect(vi.mocked(db.putConversation).mock.calls[0][0].isUnread).toBe(true);
+    expect(
+      vi.mocked(db.putConversationsBulk).mock.calls[0][0][0].isUnread,
+    ).toBe(true);
     expect(chatApi.markAsRead).not.toHaveBeenCalled();
   });
 
   it("is read at once when it is the conversation on screen", async () => {
     useChatStore.getState().setActiveConversationId("c1");
 
-    await applySyncedConversation("c1", noticedRow("c1"));
+    await applySyncedConversations([noticedRow("c1")]);
 
-    expect(vi.mocked(db.putConversation).mock.calls[0][0].isUnread).toBe(false);
+    expect(
+      vi.mocked(db.putConversationsBulk).mock.calls[0][0][0].isUnread,
+    ).toBe(false);
     expect(chatApi.markAsRead).toHaveBeenCalledWith("c1");
   });
 });

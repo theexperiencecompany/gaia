@@ -3,7 +3,7 @@ import { useEffect } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
 import { db } from "@/lib/db/chatDb";
-import { applySyncedConversation } from "@/services/syncService";
+import { applySyncedConversations } from "@/services/syncService";
 
 /**
  * Refresh a conversation's stored row and its newest page of entries on open. One
@@ -30,10 +30,7 @@ export const useConversationSync = (conversationId: string | null): void => {
               : undefined,
         },
       ]);
-      const conversation = conversations.at(0);
-      if (conversation) {
-        await applySyncedConversation(conversationId, conversation);
-      }
+      await applySyncedConversations(conversations);
     };
     sync().catch((error) => {
       console.error("[useConversationSync] sync failed:", error);

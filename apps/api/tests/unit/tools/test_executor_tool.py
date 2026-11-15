@@ -29,7 +29,12 @@ from app.agents.core.background.session import get_session, teardown_session
 from app.agents.core.background.work_cancel import cancel_named_work
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.agents.tools import executor_tool
-from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
+from app.agents.tools.executor_tool import (
+    NOTHING_NEW_ASKED,
+    call_executor,
+    cancel_executor,
+    tools,
+)
 from app.constants.agents import (
     IRREVERSIBLE_APPROVED_BRIEF,
     IRREVERSIBLE_UNAPPROVED_BRIEF,
@@ -176,6 +181,7 @@ async def turn_config(
             "batch_start": seq,
             "cause_through": seq,
             "answers": ["m0"],
+            "asked": True,
         }
     return config_for(
         stream_id,
@@ -251,6 +257,7 @@ async def stopping(
         "batch_start": seq,
         "cause_through": seq,
         "answers": ["m2"],
+        "asked": True,
     }
     for task_id in joined:
         assert await record_work_started(
@@ -439,6 +446,20 @@ class TestCallExecutorDispatch:
         assert run.kind.value == "live"
         session = get_session("stream-1")
         assert session is not None and session.executor_spawned is True
+
+    async def test_an_attempt_that_only_reports_finished_work_starts_no_more_work(
+        self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]
+    ) -> None:
+        config = await turn_config()
+        step = config["configurable"]["conversation_step"]
+        config["configurable"]["conversation_step"] = {**step, "asked": False}
+        response = await call_executor_with(config=config, task="check my Gmail inbox")
+        await drain_background_tasks()
+
+        assert response == NOTHING_NEW_ASKED
+        assert spawned_runs == []
+        assert await fake_redis.get(LOCK_KEY) is None
+        assert (await runtime_ports().log.state(CONVERSATION_ID, "user-1")).work == ()
 
     async def test_a_dispatch_with_no_stream_carries_an_empty_stream_id(
         self, fake_redis: AsyncRedisCommands, spawned_runs: list[dict[str, Any]]

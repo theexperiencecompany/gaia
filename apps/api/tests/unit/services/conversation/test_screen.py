@@ -539,6 +539,27 @@ def test_work_lists_the_approvals_it_waits_on_until_each_is_decided() -> None:
     assert decided_work.asking == ()
 
 
+def test_a_run_that_ended_leaving_its_approval_to_the_user_still_asks_for_it() -> None:
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    ended = WorkFinished(
+        id="fin:t1",
+        task_id="t1",
+        outcome=WorkOutcome.DONE,
+        report="asked",
+        continued_by_decision=True,
+    )
+    log = [
+        logged(1, user("u1")),
+        logged(2, started),
+        logged(3, asked("ask:a1", "t1", "a1")),
+        logged(4, ended),
+    ]
+    [_, parked] = project_screen(log)
+    assert parked.kind is ScreenItemKind.WORK
+    assert [request.approval_id for request in parked.asking] == ["a1"]
+    assert (parked.status, parked.asked_seq) == (WorkStatus.AWAITING_APPROVAL, 3)
+
+
 def test_a_work_item_says_where_the_newest_approval_it_waits_on_was_logged() -> None:
     started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
     log = [logged(1, user("u1")), logged(2, started)]

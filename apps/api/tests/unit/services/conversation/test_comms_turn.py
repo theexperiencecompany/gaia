@@ -156,6 +156,7 @@ async def test_a_users_messages_are_answered_on_the_surface_they_last_spoke_from
         "batch_start": 1,
         "cause_through": 2,
         "answers": ["u1", "u2"],
+        "asked": True,
     }
     assert UUID(configurable["stream_id"])
     assert "workflow_id" not in configurable

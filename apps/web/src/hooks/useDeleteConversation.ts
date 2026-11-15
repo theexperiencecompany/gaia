@@ -8,8 +8,8 @@ type ChatStoreState = ReturnType<typeof useChatStore.getState>;
 
 const selectRemoveConversation = (state: ChatStoreState) =>
   state.removeConversation;
-const selectUpsertConversation = (state: ChatStoreState) =>
-  state.upsertConversation;
+const selectUpsertConversations = (state: ChatStoreState) =>
+  state.upsertConversations;
 
 // Best-effort restore of the deleted conversation's row into IndexedDB during rollback; its log
 // refetches on the next open. If local persistence fails we proceed with the store update only.
@@ -42,7 +42,7 @@ function resolveDeletionFailure(
 
 export const useDeleteConversation = () => {
   const removeConversation = useChatStore(selectRemoveConversation);
-  const upsertConversation = useChatStore(selectUpsertConversation);
+  const upsertConversations = useChatStore(selectUpsertConversations);
 
   return useCallback(
     async (conversationId: string) => {
@@ -70,7 +70,7 @@ export const useDeleteConversation = () => {
 
       if (conversation) {
         await restoreConversationCache(conversation);
-        upsertConversation(conversation);
+        upsertConversations([conversation]);
       }
 
       const failure = resolveDeletionFailure(
@@ -80,6 +80,6 @@ export const useDeleteConversation = () => {
       );
       if (failure) throw failure;
     },
-    [removeConversation, upsertConversation],
+    [removeConversation, upsertConversations],
   );
 };
