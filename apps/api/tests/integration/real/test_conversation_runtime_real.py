@@ -3109,6 +3109,24 @@ async def test_an_approval_tapped_twice_resumes_its_work_once(
 
 
 @pytest.mark.service
+async def test_a_new_request_while_an_approval_waits_is_not_answered_with_the_old_ask(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression for conversation 1737e031: a new todo request got the parked work's approval ask back."""
+    model = gated("I need your approval to send it", "On it: adding groceries")
+    rig = await rig_for(model)
+    await _parked_on_a_ledger_approval(rig, model)
+
+    await rig.send("m2", "add a todo called groceries")
+    await rig.settle()
+
+    assert not any("Approve the send?" in text for text in humans(model.prompts[-1]))
+    assert "add a todo called groceries" in humans(model.prompts[-1])
+    assert (await rig.answered())[-1] == (ReplyOutcome.ANSWERED, ("m2",))
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
 async def test_an_approval_decided_before_its_run_ends_is_never_asked_again(
     rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
 ) -> None:
