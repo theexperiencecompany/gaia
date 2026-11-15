@@ -866,7 +866,7 @@ def _verdicts_from_json(path: Path) -> list[ModuleVerdict]:
             f"mutation: {path} is not a mutation record (no 'module'/'modules' key).\n"
             "  Pass shard.verdict.json, a directory of module records, or shard.log."
         )
-    return [from_dict(data)]
+    return [_record_from_dict(data, path)]
 
 
 def _record_from_dict(data: dict[str, object], path: Path) -> ModuleVerdict:
