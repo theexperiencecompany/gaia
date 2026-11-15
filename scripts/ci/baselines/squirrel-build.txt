@@ -1178,10 +1178,8 @@ score:Security=96
 /learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	workflow
 /learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
 /marketplace/github	perf/dom-size/dom-total-nodes
-/marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
 /marketplace/page/3	content/word-count/word-count
-/marketplace/trello	perf/dom-size/dom-total-nodes
 /pt-br/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /pt-br/alternative-to/bear	content/keyword-stuffing/keyword-stuffing	bear
 /pt-br/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
