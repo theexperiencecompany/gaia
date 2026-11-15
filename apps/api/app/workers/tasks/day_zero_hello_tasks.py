@@ -18,6 +18,7 @@ from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.services.analytics_service import capture
 from app.services.briefing import context
+from app.services.briefing.schedule import next_brief_lands
 from app.services.briefing.service import run_silent_turn
 from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult
@@ -98,6 +99,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             first_name=display_first_name(user) or "there",
             goal_block=goal_block,
             has_goal=has_goal,
+            first_brief=next_brief_lands(user, context.resolve_clock(user.timezone).now_local),
         )
         auth_user = build_user_context(user, auth_provider=None)
         reply = await run_silent_turn(

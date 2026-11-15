@@ -31,6 +31,7 @@ from app.constants.todos import (
     REOPEN_RESET_COUNTERS,
     SUB_TODO_PARENT_WAKE_DELAY,
     TodoActivityEvent,
+    TodoCompleter,
     WaitingOn,
 )
 from app.db.repositories.todos import todo_repository
@@ -217,6 +218,7 @@ async def _reconcile_parent_completion(user_id: str, parent_todo_id: str, child_
             child_id,
             user_id,
             summary="Parent completed while this sub-todo was being created.",
+            by=TodoCompleter.SYSTEM,
         )
 
 
@@ -529,8 +531,10 @@ class TrackedTodoService:
         return response
 
     @staticmethod
-    async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
-        """Complete a tracked todo and its open sub-todos: log it, mark it done, stop its watches."""
+    async def complete_tracked_todo(
+        todo_id: str, user_id: str, summary: str, *, by: TodoCompleter
+    ) -> bool:
+        """Complete a tracked todo and its open sub-todos, as by: log it, mark it done, stop its watches."""
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             return False
@@ -540,7 +544,7 @@ class TrackedTodoService:
             return True
 
         # Sub-todos first, so a retry after a partial failure finds the parent still open.
-        await TrackedTodoService._complete_open_sub_todos(doc, summary)
+        await TrackedTodoService._complete_open_sub_todos(doc, summary, by)
 
         now = datetime.now(UTC)
 
@@ -551,7 +555,12 @@ class TrackedTodoService:
         await todo_repository.update(
             todo_id,
             user_id=user_id,
-            update=TodoUpdate(completed=True, completed_at=now, vfs_path=build_vfs_label(todo_id)),
+            update=TodoUpdate(
+                completed=True,
+                completed_at=now,
+                completed_by=by,
+                vfs_path=build_vfs_label(todo_id),
+            ),
         )
 
         await set_canvas_completed(todo_id, completed=True)
@@ -561,7 +570,7 @@ class TrackedTodoService:
         await teardown_subscriptions(todo_id, user_id, reason="completed")
 
         # Again, for any sub-todo created after the first sweep and before the parent closed.
-        await TrackedTodoService._complete_open_sub_todos(doc, summary)
+        await TrackedTodoService._complete_open_sub_todos(doc, summary, by)
         # A sub-todo reports to its parent: its outcome is in the parent's next run.
         if doc.parent_todo_id:
             await record_activity(
@@ -591,13 +600,16 @@ class TrackedTodoService:
         await TrackedTodoService.schedule_execution(parent_id, wake_at)
 
     @staticmethod
-    async def _complete_open_sub_todos(parent: TodoDocument, summary: str) -> None:
+    async def _complete_open_sub_todos(
+        parent: TodoDocument, summary: str, by: TodoCompleter
+    ) -> None:
         for child in await todo_repository.find_sub_todos(parent.user_id, [parent.id]):
             if not child.completed:
                 await TrackedTodoService.complete_tracked_todo(
                     child.id,
                     parent.user_id,
                     summary=f'Parent "{parent.title}" completed: {summary}',
+                    by=by,
                 )
 
     @staticmethod
@@ -756,7 +768,7 @@ class TrackedTodoService:
         """
         try:
             return await TrackedTodoService.complete_tracked_todo(
-                todo_id, user_id, summary=f"Auto-archived: {reason}"
+                todo_id, user_id, summary=f"Auto-archived: {reason}", by=TodoCompleter.SYSTEM
             )
         except Exception as e:
             log.warning("tracked_todo.archive_failed", todo_id=todo_id, error=str(e))
