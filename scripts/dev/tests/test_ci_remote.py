@@ -104,6 +104,20 @@ PASSED_CHECK: dict[str, Any] = {
     "app": {"slug": "github-actions"},
 }
 
+# The two checks master's ruleset requires, both green: what a finished run has.
+REQUIRED_GREEN: list[dict[str, Any]] = [
+    dict(
+        PASSED_CHECK,
+        name="quality-gate",
+        html_url="https://github.com/o/r/actions/runs/99/job/1299",
+    ),
+    dict(
+        PASSED_CHECK,
+        name="Validate PR Title",
+        html_url="https://github.com/o/r/actions/runs/55/job/5500",
+    ),
+]
+
 
 # The master ruleset's required checks, as `rules/branches/master` returns them.
 MASTER_RULES: list[dict[str, Any]] = [
@@ -382,11 +396,11 @@ def test_a_failing_verdict_whose_lane_matches_no_check_is_still_printed(
 def test_a_green_pr_prints_a_header_and_nothing_that_looks_like_a_failure(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    wire(FakeGh(checks=[PASSED_CHECK]))
+    wire(FakeGh(checks=[PASSED_CHECK, *REQUIRED_GREEN]))
     assert run_cli(monkeypatch, []) == 0
     out = capsys.readouterr().out
     assert "PR #7 feat: a thing" in out
-    assert "checks: 1 pass / 0 fail / 0 pending / 0 skipped" in out
+    assert "checks: 3 pass / 0 fail / 0 pending / 0 skipped" in out
     assert "FAIL" not in out and "PEND" not in out
     assert "Nothing blocking on GitHub's side" in out
 
@@ -1560,7 +1574,13 @@ def test_without_fail_fast_watch_waits_for_every_check_to_finish(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fake = wire(
-        SequencedGh([[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK], [FAILED_CHECK, PASSED_CHECK]])
+        SequencedGh(
+            [
+                [PENDING_CHECK],
+                [FAILED_CHECK, PENDING_CHECK],
+                [FAILED_CHECK, PASSED_CHECK, *REQUIRED_GREEN],
+            ]
+        )
     )
     assert run_cli(monkeypatch, ["--watch", "--no-stack"]) == 1
     assert fake.check_polls == 3
@@ -1570,7 +1590,7 @@ def test_without_fail_fast_watch_waits_for_every_check_to_finish(
 def test_fail_fast_on_a_green_run_waits_for_it_to_finish_and_exits_zero(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fake = wire(SequencedGh([[PENDING_CHECK], [PENDING_CHECK], [PASSED_CHECK]]))
+    fake = wire(SequencedGh([[PENDING_CHECK], [PENDING_CHECK], [PASSED_CHECK, *REQUIRED_GREEN]]))
     assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
     assert fake.check_polls == 3
 
@@ -1579,9 +1599,47 @@ def test_a_watch_started_before_the_run_registers_any_check_keeps_waiting(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Regression: right after a push the head had no checks yet, and the watch exited green on it."""
-    fake = wire(SequencedGh([[], [], [PENDING_CHECK], [PASSED_CHECK]]))
+    fake = wire(SequencedGh([[], [], [PENDING_CHECK], [PASSED_CHECK, *REQUIRED_GREEN]]))
     assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
     assert fake.check_polls == 4
+
+
+def test_a_watch_does_not_settle_until_every_required_check_has_reported(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: 12 georgetown watches exited green on poll 1 with `0 pass / 0 fail / 0 pending / 1 skipped`."""
+    skipped = dict(PASSED_CHECK, name="changelog-sync", conclusion="skipped")
+    fake = wire(SequencedGh([[skipped], [skipped, PENDING_CHECK], [skipped, *REQUIRED_GREEN]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 3
+    assert "gate: quality-gate passed" in capsys.readouterr().out
+
+
+def test_a_head_whose_lanes_finished_before_the_gate_exists_is_not_nothing_blocking(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    run_cli(monkeypatch, ["--no-stack"])
+    out = capsys.readouterr().out
+    assert "Nothing blocking" not in out
+    assert "Required Validate PR Title, quality-gate not reported yet: `mise ci:watch" in out
+
+
+def test_compact_json_names_the_required_checks_not_reported_yet(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    run_cli(monkeypatch, ["--json", "--compact", "--no-stack"])
+    report = json.loads(capsys.readouterr().out)
+    assert report["unreported_required"] == ["Validate PR Title", "quality-gate"]
+
+
+def test_a_watch_out_of_time_names_the_required_check_that_never_reported(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(SequencedGh([[PASSED_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--no-stack", "--max-wait", "1"]) == 1
+    assert "(Validate PR Title, quality-gate never reported)" in capsys.readouterr().out
 
 
 def test_a_watch_that_runs_out_of_time_is_not_green(
@@ -1600,7 +1658,7 @@ def test_fail_fast_does_not_stop_at_a_red_check_that_does_not_block_merge(
             [
                 [REACT_DOCTOR_RED, SONAR_RED, PENDING_CHECK],
                 [REACT_DOCTOR_RED, SONAR_RED, PENDING_CHECK],
-                [REACT_DOCTOR_RED, SONAR_RED, PASSED_CHECK],
+                [REACT_DOCTOR_RED, SONAR_RED, PASSED_CHECK, *REQUIRED_GREEN],
             ]
         )
     )
@@ -1648,6 +1706,41 @@ def test_compact_json_says_which_red_checks_do_not_block_merge(
         "react-doctor": False,
         "SonarCloud Code Analysis": False,
     }
+
+
+def test_a_fail_fast_stop_never_advises_the_watch_that_would_stop_on_the_same_failure(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: ci:watch 1463 stopped on lint-python and advised `mise ci:watch 1463` for its 8 pending lanes."""
+    wire(SequencedGh([[FAILED_CHECK, PENDING_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    out = capsys.readouterr().out
+    assert "`mise ci:watch" not in out
+    assert "1 check still running behind the failure: `mise ci:remote --watch feat/thing`" in out
+
+
+def test_a_green_pr_with_running_checks_still_advises_ci_watch(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK, PENDING_CHECK]))
+    run_cli(monkeypatch, ["--no-stack"])
+    assert "1 check still running: `mise ci:watch feat/thing`" in capsys.readouterr().out
+
+
+def test_the_watch_line_counts_the_red_check_that_stopped_it(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: ci:watch 1735 printed `0 failed, 3 pending` and then stopped at the first failure."""
+    wire(
+        SequencedGh(
+            [[RUNNING_LINT, PENDING_CHECK]],
+            artifacts=[{"id": 70, "name": "verdict-lint-python", "expired": False}],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("watch[1]"))
+    assert ": 1 failed (1 still running), 1 pending " in line
 
 
 def test_fail_fast_without_watch_is_a_usage_error(

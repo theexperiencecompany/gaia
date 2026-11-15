@@ -27,6 +27,8 @@ explained twice.
 base's ruleset requires, or a job of the same workflow run, such as a lane
 quality-gate needs) and prints that failure. Other red checks (react-doctor,
 SonarCloud) are printed as not required for merge and the watch keeps going.
+It settles only once every check the base requires has reported: quality-gate
+is created after the last lane it needs, so "nothing pending" alone is not done.
 `mise ci:watch` is `--watch --fail-fast --max-wait 3600`.
 `--stack` prints the gh stack alone, one line per PR.
 `--verbose` adds full finding details, passing lanes, and the source used.
@@ -1303,9 +1305,20 @@ def state_advice(report: dict, branch: str) -> list[str]:
             f"{plural(report['unresolved_thread_count'], 'unresolved review thread')}: "
             f"`mise pr:comments {branch}`."
         )
-    if counts["pending"]:
+    if report["blocking_red"] and counts["pending"]:
+        # ci:watch would stop on the same red check at once; the rest are worth one wait.
+        advice.append(
+            f"{plural(counts['pending'], 'check')} still running behind the failure: "
+            f"`mise ci:remote --watch {branch}` waits for all of them, so one push fixes every red lane."
+        )
+    elif counts["pending"]:
         advice.append(
             f"{plural(counts['pending'], 'check')} still running: `mise ci:watch {branch}`."
+        )
+    elif report["unreported_required"] and not report["blocking_red"]:
+        advice.append(
+            f"Required {', '.join(report['unreported_required'])} not reported yet: "
+            f"`mise ci:watch {branch}`."
         )
     if any(is_timeout_only(s) for s in report["shards"]):
         advice.append(
@@ -1446,12 +1459,17 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
         "fetched_at": datetime.now(UTC).isoformat(),
         "durationMs": int((time.monotonic() - t0) * 1000),
     }
-    report["advice"] = collect_advice(report, branch)
     report["early_failures"] = [c["name"] for c in early_failures(report)]
-    report["merge_blocked"] = pr_meta["mergeable"] == "CONFLICTING" or any(
-        c["blocks_merge"] and (c["status"] in FAILING or c["name"] in report["early_failures"])
+    report["blocking_red"] = [
+        c["name"]
         for c in checks
-    )
+        if c["blocks_merge"] and (c["status"] in FAILING or c["name"] in report["early_failures"])
+    ]
+    # quality-gate is only created once every lane it needs has finished, so a
+    # head whose lanes are all done can still be waiting on it.
+    report["unreported_required"] = sorted(gate.required - {c["name"] for c in checks})
+    report["advice"] = collect_advice(report, branch)
+    report["merge_blocked"] = pr_meta["mergeable"] == "CONFLICTING" or bool(report["blocking_red"])
     red = counts["failed"] or counts["error"] or counts["timeout"] or report["early_failures"]
     return report, (1 if (red or pr_meta["mergeable"] == "CONFLICTING") else 0)
 
@@ -1508,6 +1526,7 @@ def compact_report(report: dict) -> dict:
             for check in red
         ],
         "early_failures": report["early_failures"],
+        "unreported_required": report["unreported_required"],
         "verdicts": verdicts,
         "shards": shards,
         "fallback_tails": tails,
@@ -1649,26 +1668,35 @@ def watch(repo: Repo, pr_number: int, branch: str, options: Options) -> tuple[di
     while True:
         poll += 1
         report, exit_code = snapshot_once(repo, pr_number, branch, options.with_stack)
-        pending = report["counts"]["pending"]
+        counts = report["counts"]
+        pending = counts["pending"]
         if not options.as_json:
             elapsed = int(time.monotonic() - (deadline - options.max_wait))
+            early = len(report["early_failures"])
+            red = counts["failed"] + counts["error"] + counts["timeout"] + early
+            running_red = f" ({early} still running)" if early else ""
             print(
                 f"watch[{poll}] {datetime.now(UTC).strftime('%H:%M:%S')}: "
-                f"{report['counts']['failed']} failed, {pending} pending "
+                f"{red} failed{running_red}, {pending - early} pending "
                 f"(elapsed {elapsed}s / max {options.max_wait}s)"
             )
         if options.fail_fast and report["merge_blocked"]:
             if not options.as_json:
                 print("watch: stopping at the first failure that blocks merge (--fail-fast).")
             break
-        # No check at all is a run GitHub has not registered yet, not a finished one.
-        settled = pending == 0 and bool(report["checks"])
+        # A required check that has not reported is a run still starting or a gate not yet created.
+        unreported = report["unreported_required"]
+        settled = pending == 0 and bool(report["checks"]) and not unreported
         if settled or time.monotonic() + options.interval > deadline:
             if not settled:
                 # Out of time is not green: the run is pending, stalled or never started.
                 exit_code = 1
                 if not options.as_json:
-                    print(f"watch: stopped after {options.max_wait}s with {pending} still pending.")
+                    missing = f" ({', '.join(unreported)} never reported)" if unreported else ""
+                    print(
+                        f"watch: stopped after {options.max_wait}s with {pending} still pending"
+                        f"{missing}."
+                    )
             break
         time.sleep(options.interval)
     if not options.as_json:
