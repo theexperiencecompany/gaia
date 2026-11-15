@@ -472,6 +472,10 @@ def test_a_shard_reports_every_module_and_fails_on_any(tmp_path: Path) -> None:
     assert f"mutation failed for: {second}" in result.stdout
     replay = json.loads((root / "shard.verdict.json").read_text())
     assert [m["module"] for m in replay["modules"]] == [MODULE, second]
+    # The next plan packs from these: every module the shard ran, timed.
+    durations = json.loads((root / "shard.durations.json").read_text())
+    assert sorted(durations) == [MODULE, second]
+    assert all(isinstance(seconds, float) and seconds > 0 for seconds in durations.values())
 
 
 def test_local_runs_each_module_as_its_own_shard_and_summarises(tmp_path: Path) -> None:

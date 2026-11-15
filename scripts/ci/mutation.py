@@ -5,8 +5,11 @@ Subcommands:
   matrix                   Emit the changed app modules + their test files as
                            JSON — the input `plan` and `local` fan out from.
                            Fails loudly when changed app code has no test.
+  history                  Download the module durations this PR's earlier
+                           runs measured into $MUTATION_HISTORY_DIR, for plan.
   plan                     Emit the lane's GitHub Actions matrix — as many
-                           shards as the estimated cost needs to fit
+                           shards as the cost (measured on an earlier run of
+                           the PR, else estimated) needs to fit
                            SHARD_BUDGET_SECONDS each (at least a wave, at
                            most MAX_SHARDS), balanced by cost. Writes shards (the
                            labels), shard_defs and count to $GITHUB_OUTPUT.
@@ -32,10 +35,12 @@ Subcommands:
 
 Env contract:
   matrix  none directly; delegates the diff to `changes.sh files py`.
-  plan    GITHUB_OUTPUT (stdout-only when unset).
+  history GITHUB_REPOSITORY, PR_BRANCH, GITHUB_RUN_ID, MUTATION_HISTORY_DIR, GH_TOKEN.
+  plan    GITHUB_OUTPUT (stdout-only when unset), MUTATION_HISTORY_DIR.
   shard   GROUP (required, compact JSON array of {module,testfiles,ranges,mutants});
           SHARD_LOG (shard.log), GITHUB_STEP_SUMMARY. Writes <shard>.verdict.json
-          beside the log (the replay artifact) and one verdict per module through
+          beside the log (the replay artifact), <shard>.durations.json (each
+          started module's seconds, which the next plan reads) and one verdict per module through
           `verdict.py emit` into the directory `verdict.py dir` reports.
   module  MUTMUT_WORKDIR_BASE, MUTMUT_MAX_CHILDREN, MUTMUT_KEEP_WORKDIR,
           MUTATION_VERDICT_DIR (where the module RECORD lands),
@@ -55,6 +60,7 @@ from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
+import dataclasses
 from dataclasses import dataclass, field
 from enum import StrEnum
 import json
@@ -123,6 +129,11 @@ MUTMUT_TIMED_OUT = 124
 # instead of OOM-killing the runner ("received a shutdown signal").
 MUTANT_MEMORY_SHARE = 0.8
 CGROUP_ROOT = Path("/sys/fs/cgroup")
+# What a shard measured, uploaded as its own small artifact so `history` never
+# downloads the multi-MB shard logs; the newest of this many earlier runs wins.
+DURATIONS_ARTIFACT = "mutation-durations"
+DURATIONS_FILE = "shard.durations.json"
+HISTORY_RUNS = 5
 # Per-mutant pytest timeout; timeout_func_only keeps fixture setup (a 30-40 s
 # app build when cold sessions start together) off the test's own budget.
 MUTANT_TEST_TIMEOUT = 120
@@ -197,6 +208,8 @@ class ModuleWork:
     testfiles: tuple[str, ...]
     ranges: str
     mutants: int
+    # Seconds an earlier run of this PR took on the module; None plans from the estimate.
+    measured: float | None = None
 
     @property
     def needs_services(self) -> bool:
@@ -204,7 +217,9 @@ class ModuleWork:
 
     @property
     def cost(self) -> float:
-        """Estimate the shard seconds this module takes."""
+        """Return the shard seconds this module takes: as measured, else estimated."""
+        if self.measured is not None:
+            return self.measured
         if not self.needs_services:
             return MODULE_OVERHEAD_SECONDS + self.mutants * UNIT_SECONDS_PER_MUTANT
         per_mutant = SERVICES_SECONDS_PER_MUTANT + len(self.testfiles) * (
@@ -240,15 +255,19 @@ class ModuleWork:
             testfiles=tuple(testfiles),
             ranges=item["ranges"],
             mutants=int(item["mutants"]),
+            measured=float(item["seconds"]) if "seconds" in item else None,
         )
 
     def to_group(self) -> dict[str, str]:
-        return {
+        group = {
             "module": self.module,
             "testfiles": _compact(list(self.testfiles)),
             "ranges": self.ranges,
             "mutants": str(self.mutants),
         }
+        if self.measured is not None:
+            group["seconds"] = str(self.measured)
+        return group
 
 
 @dataclass(frozen=True)
@@ -283,6 +302,7 @@ class ModuleRun:
     exit_code: int
     # Why the shard never started the module: its deadline left no room.
     not_started: str = ""
+    seconds: float = 0.0
 
 
 @dataclass
@@ -477,8 +497,70 @@ def pack(modules: Sequence[ModuleWork]) -> list[Shard]:
     ]
 
 
+def measured_durations(history: Path) -> dict[str, float]:
+    """Read the seconds earlier runs measured per module; a newer run's measurement wins."""
+    durations: dict[str, float] = {}
+    if not history.is_dir():
+        return durations
+    runs = sorted((d for d in history.iterdir() if d.name.isdigit()), key=lambda d: -int(d.name))
+    for run in runs:
+        for path in sorted(run.glob(f"*/{DURATIONS_FILE}")):
+            for module, seconds in json.loads(path.read_text()).items():
+                durations.setdefault(module, float(seconds))
+    return durations
+
+
+def cmd_history(_args: list[str]) -> int:
+    """Land the durations this PR's earlier runs uploaded, one directory per run id."""
+    out = Path(os.environ["MUTATION_HISTORY_DIR"])
+    out.mkdir(parents=True, exist_ok=True)
+    branch = os.environ.get("PR_BRANCH", "")
+    if not branch:
+        print("mutation history: not a pull request — the plan uses the estimates")
+        return 0
+    repo = os.environ["GITHUB_REPOSITORY"]
+    # Same-repo runs only: a fork's run could upload any durations it liked.
+    listing = subprocess.run(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/actions/workflows/ci.yml/runs?branch={branch}"
+            f"&event=pull_request&per_page={HISTORY_RUNS + 1}",
+            "--jq",
+            f'[.workflow_runs[] | select(.head_repository.full_name == "{repo}") | .id]',
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if listing.returncode != 0:
+        print(
+            f"::warning::mutation history: this PR's runs are unreadable "
+            f"({listing.stderr.strip()}); the plan uses the estimates"
+        )
+        return 0
+    current = os.environ.get("GITHUB_RUN_ID", "")
+    earlier = [str(run) for run in json.loads(listing.stdout) if str(run) != current]
+    for run in earlier[:HISTORY_RUNS]:
+        # No such artifact (a run that mutated nothing) is not an error: the next run may have it.
+        subprocess.run(
+            ["gh", "run", "download", run, "--repo", repo, "-p", f"{DURATIONS_ARTIFACT}-*"]
+            + ["-D", str(out / run)],
+            capture_output=True,
+            check=False,
+        )
+    measured = measured_durations(out)
+    print(f"mutation history: {len(measured)} module(s) measured by {len(earlier)} earlier run(s)")
+    return 0
+
+
 def cmd_plan(_args: list[str]) -> int:
-    modules = _parse_matrix(changed_matrix())
+    history = os.environ.get("MUTATION_HISTORY_DIR")
+    measured = measured_durations(Path(history)) if history else {}
+    modules = [
+        dataclasses.replace(work, measured=measured.get(work.module))
+        for work in _parse_matrix(changed_matrix())
+    ]
     shards = pack(modules)
     include = [shard.matrix_entry(n, len(shards)) for n, shard in enumerate(shards, start=1)]
     # The label alone is the matrix value, so the job row reads `mutation
@@ -501,7 +583,11 @@ def cmd_plan(_args: list[str]) -> int:
     else:
         print(f"{len(modules)} module(s) to mutate, one shard each")
     for entry, shard in zip(include, shards, strict=True):
-        print(f"  [{entry['pool']:8}] ~{int(shard.cost):>5}s  {entry['label']}")
+        known = sum(work.measured is not None for work in shard.work)
+        print(
+            f"  [{entry['pool']:8}] ~{int(shard.cost):>5}s  {entry['label']} "
+            f"({known} of {len(shard.work)} measured)"
+        )
         if shard.cost > SHARD_BUDGET_SECONDS:
             print(
                 f"::warning::mutation plan: {entry['label']} is estimated at {int(shard.cost)}s, "
@@ -642,6 +728,7 @@ def run_module(work: ModuleWork, log_path: Path, env: dict[str, str], deadline: 
         # mutation_report reads the marker line back, so the estimate goes on its own line.
         log.write(f"=== {work.module} ===\nestimated {int(work.cost)}s, mutmut cap {cap}s\n")
         log.flush()
+        started = time.monotonic()
         proc = subprocess.Popen(
             [
                 sys.executable,
@@ -663,12 +750,13 @@ def run_module(work: ModuleWork, log_path: Path, env: dict[str, str], deadline: 
             os.killpg(proc.pid, signal.SIGKILL)
             proc.wait()
             rc = KILLED_BY_CAP
+    seconds = round(time.monotonic() - started, 1)
     if rc in report.TIMEOUT_EXIT_CODES:
         print(
             f"::error::mutation for {work.module} exceeded its timeout and was killed "
             "— see the log for the last phase reached"
         )
-    return ModuleRun(work.module, rc)
+    return ModuleRun(work.module, rc, seconds=seconds)
 
 
 def _without_log_suffix(path: Path) -> str:
@@ -702,6 +790,7 @@ def cmd_shard(_args: list[str]) -> int:
     # Both names derive from SHARD_LOG: `local` runs one shard per module in
     # one directory, and fixed names would overwrite each other's record.
     shard_verdict = Path(_without_log_suffix(log_path) + ".verdict.json")
+    shard_durations = Path(_without_log_suffix(log_path) + ".durations.json")
     record_dir = Path(_without_log_suffix(log_path) + ".records")
     shutil.rmtree(record_dir, ignore_errors=True)
     record_dir.mkdir(parents=True)
@@ -718,6 +807,9 @@ def cmd_shard(_args: list[str]) -> int:
         if base is not None:
             env["MUTMUT_SHARD_BASE"] = str(base)
         runs = [run_module(entry, log_path, env, deadline) for entry in work]
+    shard_durations.write_text(
+        json.dumps({run.module: run.seconds for run in runs if not run.not_started})
+    )
 
     # tail, never the whole file: a busy shard log is 13MB, and feeding that
     # through the runner's live-log pipe is where this step used to freeze.
@@ -1566,6 +1658,7 @@ def cmd_replay(args: list[str]) -> int:
 
 COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "matrix": cmd_matrix,
+    "history": cmd_history,
     "plan": cmd_plan,
     "shard": cmd_shard,
     "module": cmd_module,
