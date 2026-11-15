@@ -141,6 +141,17 @@ def test_an_ordinary_morning_goes_straight_from_goal_memory_to_the_goal_guidance
         assert situation[0] not in prompt
 
 
+def test_the_users_chat_messages_steer_the_lead_and_are_never_said_back() -> None:
+    """Replay of Dhruv's Nov 3 brief: it closed by reciting the weekly targets he had sent in chat."""
+    prompt = _prompt()
+    section = prompt[prompt.index("## WHAT THE USER TOLD YOU IN CHAT") :]
+    rule = section[: section.index("\n## ")]
+
+    assert rule.splitlines()[1] == _BLOCKS.replies
+    assert "only to choose what leads" in rule
+    assert "Never restate, list, summarise or confirm back what they said" in rule
+
+
 @pytest.mark.parametrize(
     ("situation", "expected"),
     [
