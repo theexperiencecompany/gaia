@@ -49,7 +49,11 @@ from app.constants.llm import (
     ModelUse,
     ReasoningLevel,
 )
-from app.constants.providers import LLM_MODEL_PROFILES, CredentialProviderName
+from app.constants.providers import (
+    LLM_MODEL_PROFILES,
+    LLM_PROVIDER_PRIORITY,
+    CredentialProviderName,
+)
 from app.core.lazy_loader import LazyLoader
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
@@ -237,19 +241,22 @@ _CLOUDFLARE_MODEL = "@cf/deepseek-ai/deepseek-v4.1-flash-1017"
 _CLOUDFLARE_URL = "https://api.cloudflare.com/client/v4/accounts/acct-1/ai/v1"
 
 
+@pytest.fixture
+def hosted_with_cloudflare(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Production with every hosted provider keyed, Workers AI credentials included."""
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+    monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or")
+    monkeypatch.setattr(settings, "OPENROUTER_BASE_URL", None)
+    monkeypatch.setattr(settings, "GOOGLE_API_KEY", "g-key")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-openai")
+    monkeypatch.setattr(settings, "CLOUDFLARE_AI_ACCOUNT_ID", "acct-1")
+    monkeypatch.setattr(settings, "CLOUDFLARE_AI_API_TOKEN", "cf-token")
+
+
+@pytest.mark.usefixtures("hosted_with_cloudflare")
 class TestCloudflareConfiguredButNotOverriding:
     """Workers AI credentials alone change nothing: it serves only once listed as an override."""
-
-    @pytest.fixture(autouse=True)
-    def _hosted_with_cloudflare(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(settings, "ENV", "production")
-        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
-        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or")
-        monkeypatch.setattr(settings, "OPENROUTER_BASE_URL", None)
-        monkeypatch.setattr(settings, "GOOGLE_API_KEY", "g-key")
-        monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-openai")
-        monkeypatch.setattr(settings, "CLOUDFLARE_AI_ACCOUNT_ID", "acct-1")
-        monkeypatch.setattr(settings, "CLOUDFLARE_AI_API_TOKEN", "cf-token")
 
     async def test_agent_tiers_keep_their_usual_providers(self) -> None:
         comms, _ = await resolve_lane(None, AgentRole.COMMS)
@@ -272,27 +279,16 @@ def cloudflare_override(monkeypatch: pytest.MonkeyPatch) -> None:
     overrides = (LLMProviderName.CLOUDFLARE,)
     priority = (
         *overrides,
-        *(p for p in client_module.LLM_PROVIDER_PRIORITY if p not in overrides),
+        *(p for p in LLM_PROVIDER_PRIORITY if p not in overrides),
     )
     monkeypatch.setattr(client_module, "OVERRIDE_PROVIDERS", overrides)
     monkeypatch.setattr(lane_module, "OVERRIDE_PROVIDERS", overrides)
     monkeypatch.setattr(client_module, "LLM_PROVIDER_PRIORITY", priority)
 
 
-@pytest.mark.usefixtures("cloudflare_override")
+@pytest.mark.usefixtures("hosted_with_cloudflare", "cloudflare_override")
 class TestCloudflareOverridesProduction:
     """Workers AI listed as the override: every role on DeepSeek, every chat failover to direct OpenAI."""
-
-    @pytest.fixture(autouse=True)
-    def _hosted_with_cloudflare(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(settings, "ENV", "production")
-        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
-        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or")
-        monkeypatch.setattr(settings, "OPENROUTER_BASE_URL", None)
-        monkeypatch.setattr(settings, "GOOGLE_API_KEY", "g-key")
-        monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-openai")
-        monkeypatch.setattr(settings, "CLOUDFLARE_AI_ACCOUNT_ID", "acct-1")
-        monkeypatch.setattr(settings, "CLOUDFLARE_AI_API_TOKEN", "cf-token")
 
     @pytest.mark.parametrize("role", [AgentRole.COMMS, AgentRole.EXECUTOR, AgentRole.SUBAGENT])
     async def test_every_agent_tier_runs_on_cloudflare(self, role: AgentRole) -> None:
