@@ -16,6 +16,8 @@ from app.constants.briefing import (
     QUIET_NOTE_NO_CALENDAR,
     QUIET_NOTE_NOTHING_NEW,
     QUIET_NOTE_OVERDUE,
+    QUIET_NOTE_SIGNED_OUT,
+    QUIET_NOTE_SIGNED_OUT_MANY,
     QUIET_NOTE_STILL,
     QUIET_NOTE_STILL_FOR,
     QUIET_NOTE_STILL_SINCE,
@@ -37,6 +39,7 @@ from app.models.briefing_models import (
     BriefingPayload,
     UnreadSource,
 )
+from app.models.scout_models import ScoutSkipReason
 from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
 from app.services.briefing.context import CalendarGap, UserClock, when_sent
@@ -145,18 +148,18 @@ class QuietFacts:
     still_quiet: bool = False
     last_edition: BriefingModel | None = None
     overdue: int = 0
-    #: The connected apps that went unread: the quiet is only of what was read.
-    unread: list[str] = field(default_factory=list)
+    #: The connected apps that went unread, and why: the quiet is only of what was read.
+    unread: list[UnreadSource] = field(default_factory=list)
 
     @classmethod
     def of(cls, reads: tuple[CalendarGap | None, int, list[UnreadSource]]) -> "QuietFacts":
         """Read what every quiet note states: the calendar's gap, the overdue count, the apps unread."""
         calendar, overdue, unread = reads
-        return cls(
-            calendar=calendar,
-            overdue=overdue,
-            unread=list(dict.fromkeys(source.app for source in unread)),
-        )
+        return cls(calendar=calendar, overdue=overdue, unread=unread)
+
+    def apps_unread(self, *reasons: ScoutSkipReason) -> list[str]:
+        """Return each unread app once, in order; only those unread for one of reasons, when given."""
+        return list(dict.fromkeys(s.app for s in self.unread if not reasons or s.reason in reasons))
 
 
 def last_was_quiet(recent: list[BriefingModel], kind: BriefingKind) -> bool:
@@ -202,7 +205,10 @@ def quiet_note(clock: UserClock, kind: BriefingKind, facts: QuietFacts) -> Brief
     }[facts.calendar]
     lines = [f"{_quiet_news(kind, facts, clock)}{calendar}"]
     if facts.unread:
-        lines.append(QUIET_NOTE_UNREAD.format(apps=" or ".join(facts.unread)))
+        lines.append(QUIET_NOTE_UNREAD.format(apps=" or ".join(facts.apps_unread())))
+    if signed_out := facts.apps_unread(ScoutSkipReason.SIGNED_OUT):
+        reconnect = QUIET_NOTE_SIGNED_OUT_MANY if len(signed_out) > 1 else QUIET_NOTE_SIGNED_OUT
+        lines.append(reconnect.format(apps=" and ".join(signed_out)))
     if facts.overdue:
         lines.append(QUIET_NOTE_OVERDUE.format(count=facts.overdue))
     lines.append(QUIET_NOTE_WATCH)
@@ -216,6 +222,7 @@ def quiet_note(clock: UserClock, kind: BriefingKind, facts: QuietFacts) -> Brief
         mood="idle",
         template_family="",
         message="\n".join(lines),
+        sources_unavailable=facts.unread,
     )
 
 

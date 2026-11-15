@@ -8,6 +8,7 @@ then replayed with no model through the production runner, exactly as the brief 
 import asyncio
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import json
 import re
@@ -236,6 +237,35 @@ class TestLearnFreezeReplay:
         # A replayed row is only a candidate: the judge decides what matters.
         assert signal.importance is SignalImportance.NORMAL
         assert scout.criteria == CRITERIA
+
+    async def test_the_user_is_marked_on_what_the_learn_run_reports_and_on_the_replay(
+        self,
+    ) -> None:
+        signals = [
+            {
+                "external_id": "ENG-12",
+                "kind": "open issue",
+                "title": "Fix the login redirect",
+                "why": "due this evening",
+                "importance": "high",
+                "people": ["Priya", "Sam"],
+            }
+        ]
+        app = _App([_ISSUE])
+        mine = replace(LINEAR, handles=frozenset({"priya"}))
+        with _seams(app, _report(signals=signals)):
+            learned = await learn_scout(USER, USER_ID, mine, _tools(app), _SPEND)
+            assert learned.scout is not None
+            assert learned.scout.playbook is not None
+            replayed = await watch(
+                USER,
+                USER_ID,
+                FrozenWatch(mine, learned.scout.playbook, learned.scout.sources),
+                app.tools(),
+            )
+
+        assert [s.people_you for s in learned.signals] == [["Priya"]]
+        assert [s.people_you for s in replayed] == [["Priya"]]
 
     async def test_a_malformed_item_neither_stops_the_freeze_nor_the_replay(self) -> None:
         """A nameless creator or an untitled issue failed the freeze, so the scout never learned."""

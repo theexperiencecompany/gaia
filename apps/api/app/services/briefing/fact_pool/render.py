@@ -12,7 +12,7 @@ from app.constants.todos import TodoCompleter
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_pool_models import DataSeries, GoalState, QuoteSpan, SeriesShape
 from app.models.briefing_models import BRIEFING_ITEM_STATES, UnreadSource
-from app.models.scout_models import SignalImportance
+from app.models.scout_models import ScoutSkipReason, SignalImportance
 from app.services.briefing.context import CalendarGap, UserClock
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.scouts.facts import people_note, seen_note
@@ -100,7 +100,7 @@ def item_line(item_id: int, item: BriefCandidate, clock: UserClock) -> str:
     if item.people:
         signal = item.signal
         role = signal.people_role if signal is not None and item.people == signal.people else None
-        parts.append(people_note(item.people, role))
+        parts.append(people_note(item.people, role, signal.people_you if signal else ()))
     parts += _what_it_asks(item)
     if item.also_in:
         parts.append(f"also found by {', '.join(item.also_in)}")
@@ -198,14 +198,22 @@ def _calendar_line(context: PoolContext) -> str:
 
 
 def unread_note(unread: list[UnreadSource]) -> str | None:
-    """Say which connected apps went unread, so nothing is said about what they hold; None when all were read."""
+    """Say which connected apps went unread, and which of them need a reconnect; None when all were read."""
     if not unread:
         return None
     apps = ", ".join(dict.fromkeys(source.app for source in unread))
-    return (
+    note = (
         f"Not read this time: {apps}. Nothing is known about what they hold today: never say "
         "they hold nothing, or that nothing there needs the user."
     )
+    signed_out = [s.app for s in unread if s.reason is ScoutSkipReason.SIGNED_OUT]
+    if signed_out:
+        note += (
+            f" Signed out: {', '.join(dict.fromkeys(signed_out))}. Their sign-in expired, so "
+            "they stay unread until the user reconnects them in Settings, Integrations: say so "
+            "in one short line."
+        )
+    return note
 
 
 def context_block(context: PoolContext) -> str:

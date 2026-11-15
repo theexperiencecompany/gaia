@@ -17,7 +17,13 @@ from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.tools.core.registry import get_composio_service, get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
-from app.constants.scouts import SCOUT_MAX_BOUND_TOOLS, SCOUT_TOOL_QUERY, SCOUTED_ELSEWHERE
+from app.constants.scouts import (
+    ACCOUNT_PERSON_KEYS,
+    SCOUT_MAX_BOUND_TOOLS,
+    SCOUT_TOOL_QUERY,
+    SCOUTED_ELSEWHERE,
+)
+from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.subagent_models import Subagent
 from app.services.hil.read_only import is_read_only
@@ -25,6 +31,7 @@ from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import (
     ConnectedIntegration,
     get_connected_integrations_named,
+    get_signed_out_integrations_named,
 )
 from app.services.mcp.mcp_client import get_mcp_client
 from app.utils.errors import AppError
@@ -32,10 +39,16 @@ from app.utils.errors import AppError
 
 @dataclass(frozen=True, slots=True)
 class ScoutIntegration:
-    """A connected integration a scout watches."""
+    """A connected integration a scout watches; signed_out when its sign-in died and it waits on a reconnect.
+
+    handles are the user's own identity on the app (login, user id, email), casefolded: a
+    person on an item holding one is the user. Empty when the account carries none.
+    """
 
     integration_id: str
     name: str
+    signed_out: bool = False
+    handles: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,13 +62,34 @@ class ScoutTools:
 
 
 async def scout_integrations(user_id: str) -> list[ScoutIntegration]:
-    """Return the user's connected external integrations the rest of the brief does not cover."""
+    """Return the user's external integrations the rest of the brief does not cover, signed-out ones too."""
     connected: list[ConnectedIntegration] = await get_connected_integrations_named(user_id)
+    signed_out: list[ConnectedIntegration] = await get_signed_out_integrations_named(user_id)
+    handles = await _own_handles(user_id)
     return [
-        ScoutIntegration(integration_id=entry["id"], name=entry["name"])
-        for entry in connected
+        ScoutIntegration(
+            integration_id=entry["id"],
+            name=entry["name"],
+            signed_out=dead,
+            handles=handles.get(entry["id"], frozenset()),
+        )
+        for entries, dead in ((connected, False), (signed_out, True))
+        for entry in entries
         if entry["id"] not in SCOUTED_ELSEWHERE and _is_external(entry["id"])
     ]
+
+
+async def _own_handles(user_id: str) -> dict[str, frozenset[str]]:
+    """Map each integration to the user's own identity on it, from the accounts they connected."""
+    return {
+        record.integration_id: frozenset(
+            value.casefold()
+            for account in record.accounts
+            for key, value in account.identity.items()
+            if key in ACCOUNT_PERSON_KEYS and value
+        )
+        for record in await user_integration_repository.list_for_user(user_id)
+    }
 
 
 def _is_external(integration_id: str) -> bool:

@@ -3,7 +3,9 @@
 from dataclasses import dataclass
 
 from app.services.briefing import context
+from app.services.briefing.slots import sentences
 from app.services.canvas_markdown import deliverable_markdown, deliverable_size
+from app.utils.general_utils import ELLIPSIS
 
 _ARTIFACT_PREVIEW_CHARS = 240
 
@@ -33,7 +35,23 @@ def _deliverable_snippet(canvas: str) -> str:
         for ln in deliverable_markdown(canvas).splitlines()
         if ln.strip() and not ln.lstrip().startswith(("#", "<!--", "|", "---"))
     ]
-    return " ".join(lines)[:_ARTIFACT_PREVIEW_CHARS].rstrip()
+    return _whole_sentences(" ".join(lines), _ARTIFACT_PREVIEW_CHARS)
+
+
+def _whole_sentences(text: str, limit: int) -> str:
+    """Return the text's leading sentences that fit in limit; a longer first one, cut at a word and marked.
+
+    The voice restates what it reads, so a preview cut mid-sentence ends the brief mid-figure.
+    """
+    kept = ""
+    for sentence in sentences(text):
+        longer = f"{kept} {sentence}" if kept else sentence
+        if len(longer) > limit:
+            break
+        kept = longer
+    if kept or not text:
+        return kept
+    return text[: limit - len(ELLIPSIS) + 1].rsplit(" ", 1)[0] + ELLIPSIS
 
 
 def gather_artifacts(work: context.TrackedWork) -> dict[str, ArtifactFact]:
