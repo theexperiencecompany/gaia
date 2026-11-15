@@ -420,31 +420,29 @@ def _to_event(event: GoogleCalendarEventResource, tz: ZoneInfo) -> BriefingEvent
     start = event.start
     if start is None:
         return None
-    title = (event.summary or "").strip() or "Untitled event"
-    about = BriefingEvent(
-        date=start.date or "",
-        title=title,
+    if start.dateTime:
+        local = datetime.fromisoformat(start.dateTime).astimezone(tz)
+        ends = event.end.dateTime if event.end is not None else None
+        end = datetime.fromisoformat(ends).astimezone(tz) if ends else None
+        timed = end is not None and end > local and end.date() == local.date()
+        day = local.date().isoformat()
+        at = local.strftime("%H:%M")
+        until = end.strftime("%H:%M") if end is not None and timed else None
+    elif start.date:
+        day, at, until = start.date, None, None
+    else:
+        return None
+    return BriefingEvent(
+        date=day,
+        start=at,
+        end=until,
+        title=(event.summary or "").strip() or "Untitled event",
         location=event.location,
         calendar=event.calendarTitle,
         response=event.response,
         organizer=event.organizer_name,
         guests=event.guests,
     )
-    if start.dateTime:
-        local = datetime.fromisoformat(start.dateTime).astimezone(tz)
-        ends = event.end.dateTime if event.end is not None else None
-        end = datetime.fromisoformat(ends).astimezone(tz) if ends else None
-        timed = end is not None and end > local and end.date() == local.date()
-        return about.model_copy(
-            update={
-                "date": local.date().isoformat(),
-                "start": local.strftime("%H:%M"),
-                "end": end.strftime("%H:%M") if end is not None and timed else None,
-            }
-        )
-    if start.date:
-        return about
-    return None
 
 
 class CalendarGap(StrEnum):
@@ -475,8 +473,8 @@ async def read_calendar(
         response = await get_calendar_events(
             user_id, time_min=start.isoformat(), time_max=end.isoformat(), fetch_all=True
         )
-    except (IntegrationNotConnectedError, HTTPException) as exc:
-        log.warning("briefing.calendar_unavailable", error_type=type(exc).__name__)
+    except (IntegrationNotConnectedError, HTTPException):
+        log.warning("briefing.calendar_unavailable")
         return CalendarUnread(CalendarGap.UNAVAILABLE)
     if response.calendars_failed:
         log.warning(
