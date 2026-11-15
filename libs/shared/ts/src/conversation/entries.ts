@@ -158,14 +158,20 @@ const UserMessageSchema = z.object({
   revision,
 }) satisfies z.ZodType<UserMessage>;
 
-const ApprovalDetailSchema = z.object({ label: z.string(), value: z.string() });
+const ApprovalDetailSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  expandable: z.boolean().default(false),
+});
 
 const ApprovalDescriptionSchema = z.object({
   action: z.string(),
   headline: z.string(),
+  question: z.string().nullable().default(null),
   confirm: z.string(),
   details: z.array(ApprovalDetailSchema),
   changes: z.array(ApprovalDetailSchema).default([]),
+  change_note: z.string().nullable().default(null),
 }) satisfies z.ZodType<ApprovalDescription>;
 
 const ApprovalRequestedSchema = z.object({

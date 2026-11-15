@@ -62,6 +62,8 @@ class ApprovalDetail(BaseModel):
 
     label: str
     value: str
+    # Long text (an email body): the web card keeps it behind its details toggle.
+    expandable: bool = False
 
 
 class ApprovalDescription(BaseModel):
@@ -69,13 +71,19 @@ class ApprovalDescription(BaseModel):
 
     # Verb + object, e.g. "Send an email".
     action: str
-    # The action with its target, for lists and the model: Send an email to bob@x.com: "Q3".
+    # The action as one sentence, for the card, lists and the model: Email bob@x.com about “Q3”.
     headline: str
-    # Closing verb for a single-action prompt, e.g. "send it".
+    # What a single-action prompt asks: OK to email bob@x.com about “Q3”? None on entries
+    # logged before questions were phrased; those read their headline.
+    question: str | None = None
+    # Closing verb, e.g. "send it".
     confirm: str
+    # Facts the sentence does not already say.
     details: list[ApprovalDetail]
-    # On a re-ask after "yes, but change X": the details that differ from the call the user changed.
+    # On a re-ask after "yes, but change X": the facts that differ from the call the user changed.
     changes: list[ApprovalDetail] = Field(default_factory=list)
+    # The same change in words, e.g. Updated priority to high.
+    change_note: str | None = None
 
 
 class ApprovalProposal(BaseModel):

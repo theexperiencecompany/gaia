@@ -13,7 +13,7 @@ from app.services.hil.conversational import (
     classifier_history,
     resolve_pending_from_message,
 )
-from app.services.hil.describe import describe_call
+from app.services.hil.describe import describe_action
 
 
 class HilApprovalReplies:
@@ -48,6 +48,6 @@ def _acknowledgement(outcome: ApprovalReplyOutcome) -> str | None:
     if len(outcome.decided) != 1:
         return HIL_ACK_APPROVED if approved else HIL_ACK_DENIED
     [record] = outcome.decided
-    action = describe_call(record.tool_name, record.args, None).action
+    action = describe_action(record.tool_name, None)
     template = HIL_ACK_APPROVED_ONE if approved else HIL_ACK_DENIED_ONE
     return template.format(action=action[:1].lower() + action[1:])

@@ -359,27 +359,28 @@ describe("a failed reply", () => {
 
 const SAM_EMAIL = {
   action: "Send an email",
+  question: "OK to email sam@x.com about \u201cQ3 numbers\u201d?",
   confirm: "send it",
   details: [
-    { label: "To", value: "sam@x.com" },
-    { label: "Subject", value: '"Q3 numbers"' },
+    {
+      label: "Message",
+      value: "\u201cHi Sam, the Q3 numbers are attached.\u201d",
+      expandable: true,
+    },
   ],
 };
+const SAM_HEADLINE = "Email sam@x.com about \u201cQ3 numbers\u201d";
+const SAM_PROMPT =
+  "*OK to email sam@x.com about \u201cQ3 numbers\u201d?*\nMessage: \u201cHi Sam, the Q3 numbers are attached.\u201d\n\nReply *yes* or *no*.";
 
 describe("an approval the work waits on", () => {
   const asking = (...approvals: ReturnType<typeof approvalAsked>[]) =>
     updateFrame(workItem("t1", 2, "awaiting_approval", approvals));
-  const sam = approvalAsked(
-    "t1",
-    "ap1",
-    'Send an email to sam@x.com: "Q3 numbers"',
-    null,
-    SAM_EMAIL,
-  );
+  const sam = approvalAsked("t1", "ap1", SAM_HEADLINE, null, SAM_EMAIL);
   const flight = approvalAsked("t1", "ap2", "Book the 9am flight");
   const invoice = approvalAsked("t1", "ap3", "Pay the invoice");
 
-  it("asks once, as a yes/no prompt with its expiry, and not again on a reconnect", async () => {
+  it("asks once, as one yes/no question without its expiry, and not again on a reconnect", async () => {
     const { surface, calls } = recorder();
     const follower = new ConversationFollower(
       startAfter(0),
@@ -392,7 +393,7 @@ describe("an approval the work waits on", () => {
     const expiring = approvalAsked(
       "t1",
       "ap1",
-      'Send an email to sam@x.com: "Q3 numbers"',
+      SAM_HEADLINE,
       expiresAt,
       SAM_EMAIL,
     );
@@ -406,12 +407,7 @@ describe("an approval the work waits on", () => {
       ]),
     ]);
 
-    expect(sent(calls)).toEqual([
-      {
-        text: '*GAIA wants to send an email*\nTo: sam@x.com\nSubject: "Q3 numbers"\n\nThis expires in 2 hours.\n\nReply *yes* to send it, or *no* to cancel.',
-        replyTo: null,
-      },
-    ]);
+    expect(sent(calls)).toEqual([{ text: SAM_PROMPT, replyTo: null }]);
     expect(follower.finished).toBe(false);
   });
 
@@ -432,7 +428,7 @@ describe("an approval the work waits on", () => {
     ]);
 
     expect(sent(calls).map(({ text }) => text)).toEqual([
-      '*GAIA wants to send an email*\nTo: sam@x.com\nSubject: "Q3 numbers"\n\nReply *yes* to send it, or *no* to cancel.',
+      SAM_PROMPT,
       '*One more needs your OK:*\n2. Book the 9am flight\n\nReply by number: "yes 2" or "no 2".',
       '*One more needs your OK:*\n2. Pay the invoice\n\nReply by number: "yes 2" or "no 2".',
     ]);
@@ -453,7 +449,7 @@ describe("an approval the work waits on", () => {
     ]);
 
     expect(sent(calls).map(({ text }) => text)).toEqual([
-      "*GAIA wants to book the 9am flight*\n\nReply *yes* to do it, or *no* to cancel.",
+      "*Book the 9am flight*\n\nReply *yes* or *no*.",
       '*One more needs your OK:*\n2. Pay the invoice\n\nReply by number: "yes 2" or "no 2".',
     ]);
   });
@@ -466,20 +462,53 @@ describe("an approval the work waits on", () => {
       surface,
       "c1",
     );
-    const priority = { label: "Priority", value: "high" };
-    const reAsk = approvalAsked("t1", "ap4", "Create todo: Pay rent", null, {
-      action: "Create todo",
-      confirm: "create it",
-      details: [priority, { label: "Title", value: "Pay rent" }],
-      changes: [priority],
-    });
+    const priority = { label: "Priority", value: "high", expandable: false };
+    const reAsk = approvalAsked(
+      "t1",
+      "ap4",
+      "Add \u201cPay rent\u201d to your todos",
+      null,
+      {
+        action: "Add a todo",
+        question: "Updated priority to high \u2014 still OK to add it?",
+        confirm: "add it",
+        details: [priority],
+        changes: [priority],
+        change_note: "Updated priority to high",
+      },
+    );
     await feed(follower, [
       screenFrame([inbound("u1", 1, "11"), workItem("t1", 2, "running")]),
       asking(reAsk),
     ]);
 
     expect(sent(calls).map(({ text }) => text)).toEqual([
-      "*Updated priority to high. OK to create it?*\nPriority: high\nTitle: Pay rent\n\nReply *yes* to create it, or *no* to cancel.",
+      "*Updated priority to high \u2014 still OK to add it?*\n\nReply *yes* or *no*.",
+    ]);
+  });
+
+  it("lists several at once by headline, a changed one with its change", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    const rent = approvalAsked(
+      "t1",
+      "ap5",
+      "Add \u201cPay rent\u201d to your todos for tomorrow",
+      null,
+      { change_note: "Updated priority to high" },
+    );
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11"), workItem("t1", 2, "running")]),
+      asking(sam, rent),
+    ]);
+
+    expect(sent(calls).map(({ text }) => text)).toEqual([
+      '*2 things need your OK:*\n1. Email sam@x.com about \u201cQ3 numbers\u201d\n2. Add \u201cPay rent\u201d to your todos for tomorrow (updated priority to high)\n\nReply *yes* to all, *no* to all, or pick some: "yes 1 and 3".',
     ]);
   });
 
@@ -545,7 +574,7 @@ describe("an approval logged after the follow's floor on work started before it"
     ]);
 
     expect(sent(calls).map(({ text }) => text)).toEqual([
-      "*GAIA wants to send email to Sam*\n\nReply *yes* to do it, or *no* to cancel.",
+      "*Send email to Sam*\n\nReply *yes* or *no*.",
     ]);
   });
   it("is asked, once", async () => {
@@ -565,7 +594,7 @@ describe("an approval logged after the follow's floor on work started before it"
     ]);
 
     expect(sent(calls).map(({ text }) => text)).toEqual([
-      "*GAIA wants to send email to Sam*\n\nReply *yes* to do it, or *no* to cancel.",
+      "*Send email to Sam*\n\nReply *yes* or *no*.",
     ]);
   });
 });

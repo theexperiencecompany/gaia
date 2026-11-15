@@ -84,8 +84,10 @@ from app.services.hil.utils import (
     tool_schema,
     unpack_tool_call,
 )
+from app.services.hil.when import UserClock
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.utils.general_utils import clip_text
+from app.utils.timezone import Timezone
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted
 from shared.py.approvals import ApprovalOutcome
@@ -193,6 +195,7 @@ async def _decide_ledger(
             integration_name,
             call.account,
             amended_args=amended.args if amended and amended.tool_name == call.name else None,
+            clock=_user_clock(request),
         )
         summary = description.headline
         # Owner is the worker thread, stable across runs: subagent threads read
@@ -419,7 +422,9 @@ async def _auto_ledger_verdict(
     if policy != "auto":
         return _AutoVerdict()
     integration_name = await _integration_name_for(request, context.user_id, call.name)
-    summary = describe_call(call.name, call.args, integration_name, call.account).headline
+    summary = describe_call(
+        call.name, call.args, integration_name, call.account, clock=_user_clock(request)
+    ).headline
     decision = await _judge(request, context, call, summary)
     if decision.outcome == "accept":
         log.info(
@@ -565,6 +570,11 @@ def _tool_message(call: GatedCall, content: str, status: HILToolMessageStatus) -
         name=call.name,
         additional_kwargs={HIL_STATUS_KWARG: status},
     )
+
+
+def _user_clock(request: ToolCallRequest) -> UserClock:
+    """Return the run's home clock, so a description says "tomorrow" on the user's calendar."""
+    return UserClock.current(Timezone.parse(configurable_of(request).get("user_timezone")))
 
 
 async def _integration_name_for(

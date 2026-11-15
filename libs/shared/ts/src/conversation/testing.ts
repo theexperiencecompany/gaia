@@ -1,4 +1,4 @@
-import type { ApprovalDescription, UserItem, WorkItem } from "../api/generated";
+import type { UserItem, WorkItem } from "../api/generated";
 import founderFrames from "./fixtures/c41f18c5.frames.json";
 import { parseConversationEvent } from "./frames";
 import type {
@@ -174,7 +174,7 @@ export const approvalAsked = (
   approvalId: string,
   headline: string,
   expiresAt: string | null = null,
-  described: Partial<ApprovalDescription> = {},
+  described: Partial<WorkItem["asking"][number]["description"]> = {},
 ): WorkItem["asking"][number] => ({
   kind: "approval_requested",
   id: `${approvalId}:asked`,
@@ -183,9 +183,11 @@ export const approvalAsked = (
   description: {
     action: headline,
     headline,
+    question: null,
     confirm: "do it",
     details: [],
     changes: [],
+    change_note: null,
     ...described,
   },
   expires_at: expiresAt,

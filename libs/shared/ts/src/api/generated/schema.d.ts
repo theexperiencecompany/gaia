@@ -6125,6 +6125,8 @@ export interface components {
         ApprovalDescription: {
             /** Action */
             action: string;
+            /** Change Note */
+            change_note?: string | null;
             /** Changes */
             changes?: components["schemas"]["ApprovalDetail"][];
             /** Confirm */
@@ -6133,12 +6135,19 @@ export interface components {
             details: components["schemas"]["ApprovalDetail"][];
             /** Headline */
             headline: string;
+            /** Question */
+            question?: string | null;
         };
         /**
          * ApprovalDetail
          * @description One labelled fact about a gated call, e.g. To: bob@x.com.
          */
         ApprovalDetail: {
+            /**
+             * Expandable
+             * @default false
+             */
+            expandable?: boolean;
             /** Label */
             label: string;
             /** Value */
