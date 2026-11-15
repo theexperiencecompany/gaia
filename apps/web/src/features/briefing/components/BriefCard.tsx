@@ -34,17 +34,13 @@ const NOTABLE_NEEDS_YOU = 3;
 const TONE_CLASSES = {
   raised: "bg-zinc-800 data-[hover=true]:bg-zinc-700/80",
   inset: "bg-zinc-900 data-[hover=true]:bg-zinc-950/80",
-  /** No surface at rest, so the edition itself is the object on the page; one appears under the pointer. */
-  open: "bg-transparent data-[hover=true]:bg-zinc-800/60",
 } as const;
 
 export type BriefCardTone = keyof typeof TONE_CLASSES;
 
 interface BriefCardProps {
   brief: FoldedBriefSummary;
-  /** "feature" lays the weekly recap out wide, preview beside its words. */
-  variant?: "card" | "feature";
-  /** "raised" on the page background, "inset" inside a zinc-800 card, "open" bare on the page. */
+  /** "raised" on the page background, "inset" inside a zinc-800 card. */
   tone?: BriefCardTone;
   isBusy?: boolean;
   onPress: () => void;
@@ -87,31 +83,20 @@ function creaseInPreview(
 function Preview({
   imageUrl,
   editionFold,
-  isFeature,
 }: {
   imageUrl?: string | null;
   editionFold?: number | null;
-  isFeature: boolean;
 }) {
   const [editionAspect, setEditionAspect] = useState<number | null>(null);
   const crease = creaseInPreview(editionFold, editionAspect);
   return (
-    <div
-      className={cn(
-        "relative aspect-[3/2] overflow-hidden rounded-[10px] bg-zinc-700/40 transition-[translate,box-shadow] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group-data-[hover=true]:-translate-y-0.5 group-data-[hover=true]:shadow-[0_14px_28px_-14px_rgba(0,0,0,0.8)]",
-        isFeature && "sm:w-60 sm:shrink-0",
-      )}
-    >
+    <div className="relative aspect-[3/2] overflow-hidden rounded-[10px] bg-zinc-700/40 transition-[translate,box-shadow] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group-data-[hover=true]:-translate-y-0.5 group-data-[hover=true]:shadow-[0_14px_28px_-14px_rgba(0,0,0,0.8)]">
       {imageUrl ? (
         <Image
           src={imageUrl}
           alt=""
           fill
-          sizes={
-            isFeature
-              ? "(max-width: 640px) 50vw, 300px"
-              : "(max-width: 640px) 50vw, 240px"
-          }
+          sizes="(max-width: 640px) 50vw, 240px"
           className="object-cover object-top"
           onLoad={(event) => {
             const image = event.currentTarget;
@@ -139,16 +124,15 @@ function Preview({
   );
 }
 
-/** A brief folded to a letter: its edition's masthead, then the date, headline and edition that tell it apart. */
+/** A brief folded to a letter: its edition's masthead, then the date, what it said, and the edition. */
 export function BriefCard({
   brief,
-  variant = "card",
   tone = "raised",
   isBusy = false,
   onPress,
   onWarm,
 }: BriefCardProps) {
-  const isFeature = variant === "feature";
+  const isWeekly = brief.kind === "weekly";
   const date = dateLabel(brief);
   const edition = editionLabel(brief);
   const needsYou = brief.needsYouCount ?? 0;
@@ -163,22 +147,12 @@ export function BriefCard({
       aria-label={`Open brief: ${brief.headline}`}
       aria-busy={isBusy}
       className={cn(
-        "group h-full w-full min-w-0 items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal transition-[background-color,scale] data-[pressed=true]:scale-[0.97]",
-        isFeature ? "flex-col sm:flex-row" : "flex-col",
+        "group h-full w-full min-w-0 flex-col items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal transition-[background-color,scale] data-[pressed=true]:scale-[0.97]",
         TONE_CLASSES[tone],
       )}
     >
-      <Preview
-        imageUrl={brief.imageUrl}
-        editionFold={brief.editionFold}
-        isFeature={isFeature}
-      />
-      <span
-        className={cn(
-          "flex min-w-0 flex-1 flex-col gap-1 px-1.5 pt-2 pb-1",
-          isFeature && "sm:justify-center sm:px-4 sm:py-3",
-        )}
-      >
+      <Preview imageUrl={brief.imageUrl} editionFold={brief.editionFold} />
+      <span className="flex min-w-0 flex-1 flex-col gap-1 px-1.5 pt-2 pb-1">
         {(date || needsYou >= NOTABLE_NEEDS_YOU) && (
           <span className="flex items-baseline justify-between gap-2 text-xs text-zinc-500">
             <span
@@ -196,21 +170,21 @@ export function BriefCard({
             )}
           </span>
         )}
-        <span
-          className={cn(
-            "line-clamp-2 font-medium leading-snug text-balance text-zinc-100",
-            isFeature ? "text-base" : "text-[13px]",
-          )}
-        >
+        <span className="line-clamp-2 text-sm font-medium leading-snug text-balance text-zinc-100">
           {brief.headline}
         </span>
-        {isFeature && brief.lede && (
+        {brief.lede && (
           <span className="line-clamp-2 text-xs leading-relaxed text-pretty text-zinc-400">
             {brief.lede}
           </span>
         )}
         {edition && (
-          <span className="mt-auto truncate pt-0.5 text-xs text-zinc-500">
+          <span
+            className={cn(
+              "mt-auto truncate pt-0.5 text-xs",
+              isWeekly ? "font-medium text-zinc-300" : "text-zinc-500",
+            )}
+          >
             {edition}
           </span>
         )}

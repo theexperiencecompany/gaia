@@ -12,6 +12,12 @@ import * as m from "motion/react-m";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
+  LETTER_CLOSE_TRANSITION,
+  LETTER_OPEN_TRANSITION,
+  LETTER_REDUCED_TRANSITION,
+} from "@/components/shared/LetterModal";
+
+import {
   LETTER_PERSPECTIVE_PX,
   LETTER_TILT_DEG,
   type PreparedEdition,
@@ -21,17 +27,12 @@ import {
 /** A panel stops short of a flat 180deg fold so stacked panels never z-fight. */
 const FOLDED_DEG = 177;
 
-/** One spring drives the whole letter open, so every panel shares its rhythm. */
-const FOLD_SPRING = { type: "spring", visualDuration: 0.6, bounce: 0 } as const;
-/** Closing plays the opening backwards: slow where it settled, quick where it lifted off. */
-const REFOLD = { duration: 0.45, ease: [0.4, 0, 0.7, 0.2] } as const;
-const REDUCED_FADE = { duration: 0.2, ease: "easeOut" } as const;
-/** The letter lifts off the page over the first stretch of the spring, before the creases open. */
+/** The letter lifts off the page over the first stretch of the opening, before the creases open. */
 const LIFT_END = 0.22;
 /** A letter opened from the chat travels from where it lay over this stretch. */
 const TRAVEL_END = 0.7;
 const FIRST_CREASE_START = 0.08;
-/** Each crease opens over this share of the spring; the next starts long before it ends. */
+/** Each crease opens over this share of the opening; the next starts long before it ends. */
 const CREASE_SPAN = 0.55;
 const CORNER_RADIUS_PX = 8;
 /** The page behind frosts fully by the time the first crease is open, and clears as it refolds. */
@@ -174,9 +175,9 @@ export interface EditionUnfoldProps {
 }
 
 /**
- * The edition as a letter folded in panels. One spring takes it from folded to
- * open on mount and back the same way when the modal closes; creases overlap so
- * the letter opens as one motion, and once open it rests as the one whole sheet.
+ * The edition as a letter folded in panels. One progress value takes it from
+ * folded to open on mount and back when the modal closes; creases overlap so the
+ * letter opens as one motion, and once open it rests as the one whole sheet.
  * Reduced motion gets a fade.
  */
 export function EditionUnfold({
@@ -217,7 +218,11 @@ export function EditionUnfold({
     const controls = animate(
       progress,
       isPresent ? 1 : 0,
-      reduceMotion ? REDUCED_FADE : isPresent ? FOLD_SPRING : REFOLD,
+      reduceMotion
+        ? LETTER_REDUCED_TRANSITION
+        : isPresent
+          ? LETTER_OPEN_TRANSITION
+          : LETTER_CLOSE_TRANSITION,
     );
     controls.then(() => {
       setIsMoving(false);

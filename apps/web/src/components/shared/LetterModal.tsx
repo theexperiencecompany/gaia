@@ -7,11 +7,27 @@ import { useReducedMotion } from "motion/react";
 import { type ReactNode, useState } from "react";
 
 /**
+ * A letter opens unhurried and leaves at once: an ease-out entrance with a soft
+ * start, a short ease-in exit. Every letter surface shares these two timings.
+ */
+export const LETTER_OPEN_TRANSITION = {
+  duration: 0.4,
+  ease: [0.33, 1, 0.68, 1],
+} as const;
+export const LETTER_CLOSE_TRANSITION = {
+  duration: 0.18,
+  ease: [0.32, 0, 0.67, 0],
+} as const;
+export const LETTER_REDUCED_TRANSITION = {
+  duration: 0.15,
+  ease: "easeOut",
+} as const;
+
+/**
  * The sheet tilts and settles onto the screen rather than fading in. HeroUI
  * animates between two variants, so the pose it enters from is the pose it
  * exits to; reduced motion gets a plain fade instead.
  */
-const LETTER_EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
 const SHEET_MOTION = {
   full: {
     variants: {
@@ -20,21 +36,21 @@ const SHEET_MOTION = {
         scale: 1,
         rotate: 0,
         y: 0,
-        transition: { duration: 0.55, ease: LETTER_EASE },
+        transition: LETTER_OPEN_TRANSITION,
       },
       exit: {
         opacity: 0,
         scale: 0.95,
         rotate: 1,
         y: 22,
-        transition: { duration: 0.3, ease: LETTER_EASE },
+        transition: LETTER_CLOSE_TRANSITION,
       },
     },
   },
   reduced: {
     variants: {
-      enter: { opacity: 1, transition: { duration: 0.15 } },
-      exit: { opacity: 0, transition: { duration: 0.15 } },
+      enter: { opacity: 1, transition: LETTER_REDUCED_TRANSITION },
+      exit: { opacity: 0, transition: LETTER_REDUCED_TRANSITION },
     },
   },
 };

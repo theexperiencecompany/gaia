@@ -19,6 +19,9 @@ def _brief(brief_id: str, date: str, stamp_city: str) -> BriefingModel:
         id=brief_id,
         user_id=USER_ID,
         date=date,
+        edition_image_url=f"https://cdn.example/{brief_id}.png",
+        edition_fold=0.31,
+        edition_paper=[0.1, 0.05, 0.9, 0.95],
         payload=BriefingPayload(
             kicker="AIR MAIL",
             date=date,
@@ -55,6 +58,9 @@ async def test_each_city_counts_once_on_the_day_it_first_arrived() -> None:
             stamp_url="https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/tokyo.webp",
             date="2026-09-01",
             briefing_id="brief_1",
+            edition_image_url="https://cdn.example/brief_1.png",
+            edition_fold=0.31,
+            edition_paper=[0.1, 0.05, 0.9, 0.95],
         ),
         Postmark(
             city_slug="lima",
@@ -65,8 +71,26 @@ async def test_each_city_counts_once_on_the_day_it_first_arrived() -> None:
             stamp_url="https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/lima.webp",
             date="2026-09-04",
             briefing_id="brief_2",
+            edition_image_url="https://cdn.example/brief_2.png",
+            edition_fold=0.31,
+            edition_paper=[0.1, 0.05, 0.9, 0.95],
         ),
     ]
+
+
+async def test_a_postmark_carries_its_briefs_edition_so_the_stamp_opens_without_fetching_it() -> (
+    None
+):
+    briefs = [_brief("brief_1", "2026-09-01", "tokyo")]
+    with patch(f"{MODULE}.briefing_repository.list_stamped", AsyncMock(return_value=briefs)):
+        result = await collected_postmarks(USER_ID)
+
+    [tokyo] = result.postmarks
+    assert (tokyo.edition_image_url, tokyo.edition_fold, tokyo.edition_paper) == (
+        "https://cdn.example/brief_1.png",
+        0.31,
+        [0.1, 0.05, 0.9, 0.95],
+    )
 
 
 async def test_no_stamped_briefs_is_an_empty_collection_of_the_full_set() -> None:

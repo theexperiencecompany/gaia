@@ -15850,7 +15850,7 @@
         "type": "object"
       },
       "Postmark": {
-        "description": "One collected Air Mail stamp: its city, where it sits, and the brief it came on.",
+        "description": "One collected Air Mail stamp: its city, where it sits, and the brief it came on.\n\nIt carries that brief's edition, so the page can ready the letter before the\nstamp is pressed without fetching the brief, which would mark it opened.",
         "properties": {
           "briefing_id": {
             "description": "The brief that first carried the stamp.",
@@ -15874,6 +15874,45 @@
             "title": "Date",
             "type": "string"
           },
+          "edition_fold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the edition's height where its letter folds.",
+            "title": "Edition Fold"
+          },
+          "edition_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That brief's hosted edition render.",
+            "title": "Edition Image Url"
+          },
+          "edition_paper": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The paper's box on its desk as [left, top, right, bottom] shares.",
+            "title": "Edition Paper"
+          },
           "lat": {
             "title": "Lat",
             "type": "number"
@@ -15895,7 +15934,10 @@
           "lng",
           "stamp_url",
           "date",
-          "briefing_id"
+          "briefing_id",
+          "edition_image_url",
+          "edition_fold",
+          "edition_paper"
         ],
         "title": "Postmark",
         "type": "object"

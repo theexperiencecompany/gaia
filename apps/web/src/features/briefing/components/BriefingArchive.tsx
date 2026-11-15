@@ -24,6 +24,7 @@ import { BriefingFold } from "./BriefingFold";
 
 const WEEK_OPTIONS = { weekStartsOn: 1 } as const;
 const GRID_CLASSES = "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4";
+const SKELETON_KEYS = ["first", "second", "third", "fourth"];
 
 export interface BriefingArchiveProps {
   className?: string;
@@ -78,12 +79,13 @@ function weekRange(start: Date, now: Date): string {
   return isSameYear(end, now) ? range : `${range}, ${format(end, "yyyy")}`;
 }
 
+/** Pinned while its week scrolls by, so the reader always knows which week they are in. */
 function WeekHeader({ start, count }: { start: Date; count: number }) {
   const now = new Date();
   const range = weekRange(start, now);
   const title = weekTitle(start, now);
   return (
-    <header className="mb-3 flex items-baseline gap-3">
+    <header className="sticky top-0 z-10 flex items-baseline gap-3 bg-primary-bg py-3">
       <h2 className="text-base font-medium text-zinc-100">{title ?? range}</h2>
       {title && <span className="text-xs text-zinc-500">{range}</span>}
       <span className="ml-auto text-xs text-zinc-500 tabular-nums">
@@ -117,7 +119,10 @@ function ArchiveEmpty() {
   );
 }
 
-/** Every brief folded to a letter card, grouped by week, newest first; each unfolds above the page. */
+/**
+ * Every brief as the same folded card, grouped by week, newest first, the
+ * weekly recap leading its week; each unfolds above the page.
+ */
 export function BriefingArchive({ className }: BriefingArchiveProps) {
   const {
     data,
@@ -133,10 +138,9 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
   if (isLoading) {
     return (
       <div className={cn(GRID_CLASSES, className)}>
-        <Skeleton className="aspect-square w-full rounded-2xl" />
-        <Skeleton className="aspect-square w-full rounded-2xl" />
-        <Skeleton className="aspect-square w-full rounded-2xl" />
-        <Skeleton className="aspect-square w-full rounded-2xl" />
+        {SKELETON_KEYS.map((key) => (
+          <Skeleton key={key} className="aspect-[4/5] w-full rounded-2xl" />
+        ))}
       </div>
     );
   }
@@ -157,29 +161,21 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
   }
 
   return (
-    <div className={cn("flex flex-col gap-12", className)}>
+    <div className={cn("flex flex-col gap-10", className)}>
       {groupByWeek(briefings).map((group) => (
         <section key={group.start.getTime()}>
           <WeekHeader start={group.start} count={group.briefings.length} />
-          <div className={GRID_CLASSES}>
-            {group.briefings.map((briefing) => {
-              const isWeekly = briefing.kind === "weekly";
-              return (
-                <div
-                  key={briefing.id}
-                  className={cn(isWeekly && "col-span-full")}
-                >
-                  <BriefingFold
-                    brief={foldedBriefOf(briefing)}
-                    variant={isWeekly ? "feature" : "card"}
-                    tone="open"
-                    payload={briefing.payload}
-                    briefingId={briefing.id}
-                  />
-                </div>
-              );
-            })}
-          </div>
+          <ul className={GRID_CLASSES}>
+            {group.briefings.map((briefing) => (
+              <li key={briefing.id}>
+                <BriefingFold
+                  brief={foldedBriefOf(briefing)}
+                  payload={briefing.payload}
+                  briefingId={briefing.id}
+                />
+              </li>
+            ))}
+          </ul>
         </section>
       ))}
       {hasNextPage && (

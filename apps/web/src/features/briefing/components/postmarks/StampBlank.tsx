@@ -1,11 +1,12 @@
-/** The stamp art's canvas, so a blank lines up with a collected stamp cell for cell. */
+/** The stamp art's canvas, so a blank has a collected stamp's proportions. */
 const STAMP_WIDTH = 600;
 const STAMP_HEIGHT = 850;
-/** Distance between perforation holes, and each hole's radius, in stamp units. */
-const PERFORATION_PITCH = 50;
-const PERFORATION_RADIUS = 13;
-/** Where the artwork would sit inside the perforated margin. */
-const ART_INSET = 52;
+/**
+ * Distance between perforation holes, and each hole's radius, in stamp units:
+ * coarse, so the holes still read on a blank a dozen pixels wide.
+ */
+const PERFORATION_PITCH = 150;
+const PERFORATION_RADIUS = 40;
 
 type Point = [number, number];
 
@@ -43,7 +44,7 @@ function perforatedOutline(width: number, height: number): string {
 
 const STAMP_OUTLINE = perforatedOutline(STAMP_WIDTH, STAMP_HEIGHT);
 
-/** A city still to collect: the stamp's perforated shape and empty art frame, without artwork. */
+/** A city still to collect: the stamp's perforated silhouette, small, for the album's sheet of blanks. */
 export function StampBlank() {
   return (
     <svg
@@ -51,22 +52,7 @@ export function StampBlank() {
       aria-hidden
       className="h-full w-full"
     >
-      <path
-        d={STAMP_OUTLINE}
-        className="fill-zinc-800/50 stroke-zinc-700/70"
-        strokeWidth={1.5}
-        vectorEffect="non-scaling-stroke"
-      />
-      <rect
-        x={ART_INSET}
-        y={ART_INSET}
-        width={STAMP_WIDTH - ART_INSET * 2}
-        height={STAMP_HEIGHT - ART_INSET * 2}
-        rx={6}
-        className="fill-zinc-900/60 stroke-zinc-700/50"
-        strokeWidth={1}
-        vectorEffect="non-scaling-stroke"
-      />
+      <path d={STAMP_OUTLINE} className="fill-zinc-700/60" />
     </svg>
   );
 }

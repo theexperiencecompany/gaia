@@ -7,7 +7,9 @@ import { Skeleton } from "@heroui/skeleton";
 import { FavouriteIcon } from "@icons";
 import type { BriefingEdition } from "@shared/api/generated";
 import Image from "next/image";
+import { SettingsSectionHeader } from "@/features/settings/components/ui/SettingsSection";
 import { useBriefingEditionsSettings } from "@/features/settings/hooks/useBriefingEditionsSettings";
+import { cn } from "@/lib/utils";
 
 /** Built by apps/api/scripts/build_edition_thumbnails.py, one per daily family. */
 const thumbnailSrc = (family: string) =>
@@ -30,12 +32,14 @@ export function BriefingEditionsSettings() {
 
   return (
     <section aria-label="Editions">
-      <p className="mb-2 text-sm font-medium text-zinc-300">Editions</p>
-      <p className="mb-3 text-sm text-zinc-500">
-        {loadFailed
-          ? "Couldn't load your editions. Reload the page to try again."
-          : "Tap an edition to take it out of your rotation. Favourites come up twice as often."}
-      </p>
+      <SettingsSectionHeader
+        title="Editions"
+        description={
+          loadFailed
+            ? "Couldn't load your editions. Reload the page to try again."
+            : "Tap an edition to take it out of your rotation. Favourites come up twice as often."
+        }
+      />
       {!loadFailed && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {editions
@@ -110,11 +114,15 @@ function EditionCard({
         >
           {edition.name}
         </p>
-        {isOff && (
-          <Chip size="sm" variant="flat" className="shrink-0 text-zinc-400">
-            Disabled
-          </Chip>
-        )}
+        {/* Always laid out, so turning an edition off never moves its row. */}
+        <Chip
+          size="sm"
+          variant="flat"
+          aria-hidden={isOff ? undefined : true}
+          className={cn("shrink-0 text-zinc-400", !isOff && "invisible")}
+        >
+          Disabled
+        </Chip>
       </div>
     </div>
   );

@@ -267,7 +267,7 @@ function PoolItemRow({ item }: { item: BriefPoolItem }) {
 
 const ON_YOUR_RADAR_TITLE = "Also on your radar";
 const ON_YOUR_RADAR_NOTE =
-  "Not in today's brief. GAIA read these and left them for another day.";
+  "Other things GAIA found that didn't make the brief.";
 
 /**
  * The pool the composition left out, set apart from the brief as a quiet aside

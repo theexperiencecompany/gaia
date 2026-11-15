@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/map";
 import { useGlobeSpin } from "../../hooks/useGlobeSpin";
 import { useNightGlobeBasemap } from "../../hooks/useNightGlobeBasemap";
+import { postmarkBrief } from "../../utils/postmarkBrief";
 import { BriefingFold } from "../BriefingFold";
 import { PostmarkCard } from "./PostmarkCard";
 
@@ -91,7 +92,7 @@ function CityLight({ postmark, isLatest }: CityLightProps) {
   return (
     <BriefingFold
       briefingId={postmark.briefing_id}
-      brief={{ headline: `Your brief from ${postmark.city}` }}
+      brief={postmarkBrief(postmark)}
       renderTrigger={({ open }) => (
         <CityMarker postmark={postmark} isLatest={isLatest} onOpen={open} />
       )}

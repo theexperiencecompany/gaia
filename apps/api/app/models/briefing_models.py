@@ -469,7 +469,11 @@ class BriefingListResponse(BaseModel):
 
 
 class Postmark(ResponseModel):
-    """One collected Air Mail stamp: its city, where it sits, and the brief it came on."""
+    """One collected Air Mail stamp: its city, where it sits, and the brief it came on.
+
+    It carries that brief's edition, so the page can ready the letter before the
+    stamp is pressed without fetching the brief, which would mark it opened.
+    """
 
     city_slug: str
     city: str
@@ -479,6 +483,13 @@ class Postmark(ResponseModel):
     stamp_url: str
     date: str = Field(description="User-local YYYY-MM-DD the stamp first arrived.")
     briefing_id: str = Field(description="The brief that first carried the stamp.")
+    edition_image_url: str | None = Field(description="That brief's hosted edition render.")
+    edition_fold: float | None = Field(
+        description="Share of the edition's height where its letter folds."
+    )
+    edition_paper: list[float] | None = Field(
+        description="The paper's box on its desk as [left, top, right, bottom] shares."
+    )
 
 
 class PostmarksResponse(ResponseModel):

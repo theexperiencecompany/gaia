@@ -189,6 +189,9 @@ async def test_postmarks_returns_the_collection_and_reports_the_view(
         stamp_url="https://cdn.example/tokyo.webp",
         date="2026-09-01",
         briefing_id="brief_abc123",
+        edition_image_url="https://cdn.example/edition.png",
+        edition_fold=0.3,
+        edition_paper=None,
     )
     collection = PostmarksResponse(total=85, postmarks=[tokyo])
     with (

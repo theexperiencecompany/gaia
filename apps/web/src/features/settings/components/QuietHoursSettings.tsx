@@ -3,6 +3,7 @@
 import { Slider } from "@heroui/slider";
 import { Switch } from "@heroui/switch";
 import { Moon02Icon } from "@icons";
+import { SettingsSectionHeader } from "@/features/settings/components/ui/SettingsSection";
 import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
 import {
   formatHour,
@@ -38,10 +39,10 @@ export function QuietHoursSettings() {
 
   return (
     <section aria-label="Quiet hours">
-      <p className="mb-2 text-sm font-medium text-zinc-300">Quiet hours</p>
-      <p className="mb-3 text-pretty text-sm text-zinc-500">
-        {QUIET_HOURS_DESCRIPTION}
-      </p>
+      <SettingsSectionHeader
+        title="Quiet hours"
+        description={QUIET_HOURS_DESCRIPTION}
+      />
       <div className="rounded-2xl bg-zinc-900/60 px-4 pt-3.5 pb-6">
         <div className="flex items-center gap-3">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/15">

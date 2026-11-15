@@ -26,7 +26,7 @@ export function BriefingsSettings() {
       <SettingsSection title="Delivery">
         <SettingsRow
           label="Where briefs land"
-          description="In GAIA, by email while email notifications are on, and in the chat app GAIA texts you on. Quiet hours hold them until they end."
+          description="In GAIA, by email if email is on, and in the chat app GAIA texts you on. Quiet hours hold them."
           icon={
             <div className="flex size-9 items-center justify-center rounded-xl bg-zinc-800">
               <NotificationIcon className="size-4 text-zinc-400" />

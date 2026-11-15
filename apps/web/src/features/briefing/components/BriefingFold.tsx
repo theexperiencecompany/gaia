@@ -9,7 +9,9 @@ import Link from "next/link";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 
 import {
+  LETTER_CLOSE_TRANSITION,
   LETTER_CONTROL_CLASSES,
+  LETTER_OPEN_TRANSITION,
   LetterModal,
 } from "@/components/shared/LetterModal";
 import { cn } from "@/lib/utils";
@@ -33,8 +35,8 @@ import { BriefLetter } from "./BriefLetter";
 import { EditionUnfold } from "./EditionUnfold";
 
 const SHEET_VARIANTS: Variants = {
-  enter: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } },
-  exit: { opacity: 0, y: 12, transition: { duration: 0.18, ease: "easeIn" } },
+  enter: { opacity: 1, y: 0, transition: LETTER_OPEN_TRANSITION },
+  exit: { opacity: 0, y: 12, transition: LETTER_CLOSE_TRANSITION },
 };
 
 /**
@@ -45,16 +47,17 @@ type BriefingFoldContent =
   | { payload: BriefingEditionPayload; briefingId?: string }
   | { briefingId: string; payload?: never };
 
-/** What a custom trigger gets: open the letter in place, and whether it is being prepared. */
+/** What a custom trigger gets: open the letter in place, ready it ahead of a press, and whether it is being prepared. */
 export interface BriefingFoldTrigger {
   open: () => void;
+  warm: () => void;
   isBusy: boolean;
 }
 
 export type BriefingFoldProps = BriefingFoldContent & {
   brief: FoldedBriefSummary;
-  /** "letter" is the bare folded paper GAIA's chat message carries; the others are archive cards. */
-  variant?: "card" | "feature" | "letter";
+  /** "letter" is the bare folded paper GAIA's chat message carries; "card" the folded card everywhere else. */
+  variant?: "card" | "letter";
   tone?: BriefCardTone;
   /** Draws the folded brief itself in place of the variants (a postmark's stamp, say). */
   renderTrigger?: (trigger: BriefingFoldTrigger) => ReactNode;
@@ -152,7 +155,11 @@ export function BriefingFold({
   return (
     <>
       {renderTrigger ? (
-        renderTrigger({ open: () => void open(), isBusy: isPreparing })
+        renderTrigger({
+          open: () => void open(),
+          warm: warmEdition,
+          isBusy: isPreparing,
+        })
       ) : variant === "letter" ? (
         <BriefLetter
           headline={headline}
@@ -165,7 +172,6 @@ export function BriefingFold({
       ) : (
         <BriefCard
           brief={brief}
-          variant={variant}
           tone={tone}
           isBusy={isPreparing}
           onPress={() => open()}

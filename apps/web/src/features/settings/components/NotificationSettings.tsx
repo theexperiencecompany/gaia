@@ -1,69 +1,73 @@
 "use client";
 
-import { EMAIL_CHANNEL_DESCRIPTION, NOTIFICATION_CHANNELS } from "@gaia/shared";
+import { EMAIL_CHANNEL_DESCRIPTION } from "@gaia/shared";
 import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
+import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
-import { Link01Icon } from "@icons";
 import Image from "next/image";
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { PhoneLinkModal } from "@/components/shared/PhoneLinkModal";
 import { isBotPlatform } from "@/config/botPlatforms";
 import {
   NOTIFICATION_CHANNEL_ICONS,
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_PLATFORMS,
 } from "@/features/notification/constants";
-import { ChatChannelSettings } from "@/features/settings/components/ChatChannelSettings";
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { api } from "@/lib/api/typed";
+import { useChatChannelSettings } from "@/features/settings/hooks/useChatChannelSettings";
+import { usePlatformLinks } from "@/features/settings/hooks/usePlatformLinks";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
-import type { PlatformLinks } from "@/types/platform";
-
-const PLATFORM_NAME_LIST = new Intl.ListFormat("en", {
-  style: "long",
-  type: "conjunction",
-});
 
 export default function NotificationSettings() {
-  const [platformLinks, setPlatformLinks] = useState<PlatformLinks>({});
   // Null until the stored preferences load. There is no safe placeholder: an
   // all-true stand-in renders a channel the user switched off as enabled, and
   // toggling from that reading writes the wrong value back.
   const [channelPrefs, setChannelPrefs] = useState<ChannelPreferences | null>(
     null,
   );
-  const [loading, setLoading] = useState(true);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
+  const [prefsFailed, setPrefsFailed] = useState(false);
+  const [togglingChannel, setTogglingChannel] =
+    useState<ChannelPlatform | null>(null);
+  const {
+    links,
+    loadFailed: linksFailed,
+    refetch: refetchLinks,
+    isLoading: linksLoading,
+    isLinked,
+    linkedAs,
+    isLockedBehindPro,
+    connectingPlatform,
+    connect,
+    phoneLinkModal,
+  } = usePlatformLinks();
+  const linkedPlatforms = NOTIFICATION_PLATFORMS.filter(isLinked);
+  const unlinkedPlatforms = NOTIFICATION_PLATFORMS.filter(
+    (platform) => !isLinked(platform),
+  );
+  const { linkedOrder, saving, putFirst } =
+    useChatChannelSettings(linkedPlatforms);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
-    setLoadFailed(false);
+  const fetchPrefs = useCallback(async () => {
+    setPrefsFailed(false);
     try {
-      const [linksData, prefs] = await Promise.all([
-        api.get("/api/v1/platform-links", { silent: true }),
-        NotificationsAPI.getChannelPreferences(),
-      ]);
-      setPlatformLinks(linksData.platform_links || {});
-      setChannelPrefs(prefs);
+      setChannelPrefs(await NotificationsAPI.getChannelPreferences());
     } catch {
-      setLoadFailed(true);
-    } finally {
-      setLoading(false);
+      setPrefsFailed(true);
     }
   }, []);
 
   useEffect(() => {
-    void fetchAll();
-  }, [fetchAll]);
+    void fetchPrefs();
+  }, [fetchPrefs]);
 
   const handleToggle = async (channel: ChannelPlatform, enabled: boolean) => {
-    setTogglingPlatform(channel);
+    setTogglingChannel(channel);
     try {
       await NotificationsAPI.updateChannelPreference(channel, enabled);
       setChannelPrefs((prev) =>
@@ -72,97 +76,133 @@ export default function NotificationSettings() {
     } catch {
       toast.error(`Failed to update ${channel} notification preference`);
     } finally {
-      setTogglingPlatform(null);
+      setTogglingChannel(null);
     }
   };
 
-  if (loadFailed) {
+  if (prefsFailed || linksFailed) {
     return (
       <SettingsPage>
-        <PreferencesError onRetry={() => void fetchAll()} />
+        <PreferencesError
+          onRetry={() => {
+            if (prefsFailed) void fetchPrefs();
+            if (linksFailed) void refetchLinks();
+          }}
+        />
       </SettingsPage>
     );
   }
 
-  const linkedPlatforms = NOTIFICATION_PLATFORMS.filter(
-    (platform) => !!platformLinks[platform]?.platformUserId,
-  );
-  // Email reaches the user through their GAIA address; a bot platform only
-  // once it is linked, so unlinked ones fold into a single row below.
-  const switchableChannels = NOTIFICATION_CHANNELS.filter(
-    (channel) =>
-      !isBotPlatform(channel) || !!platformLinks[channel]?.platformUserId,
-  );
-  const unlinkedChannels = NOTIFICATION_CHANNELS.filter(
-    (channel) =>
-      isBotPlatform(channel) && !platformLinks[channel]?.platformUserId,
+  const channelSwitch = (channel: ChannelPlatform, description: string) => (
+    <ChannelRow key={channel} channel={channel} description={description}>
+      <Switch
+        size="sm"
+        isSelected={!!channelPrefs?.[channel]}
+        isDisabled={togglingChannel === channel}
+        onValueChange={(enabled) => handleToggle(channel, enabled)}
+        aria-label={`Enable ${NOTIFICATION_CHANNEL_LABELS[channel]} notifications`}
+      />
+    </ChannelRow>
   );
 
   return (
     <SettingsPage>
       <QuietHoursSettings />
-      {!loading && <ChatChannelSettings linkedPlatforms={linkedPlatforms} />}
-      <SettingsSection
-        title="Notification channels"
-        description="Choose where to receive GAIA notifications."
-      >
-        {switchableChannels.map((channel) => {
-          const label = NOTIFICATION_CHANNEL_LABELS[channel];
-          return (
-            <SettingsRow
-              key={channel}
-              label={label}
-              description={
-                channel === "email"
-                  ? EMAIL_CHANNEL_DESCRIPTION
-                  : "Send notifications to this channel"
-              }
-              icon={
-                <Image
-                  src={NOTIFICATION_CHANNEL_ICONS[channel]}
-                  alt={label}
-                  width={36}
-                  height={36}
-                  className="rounded-xl"
-                />
-              }
+      {channelPrefs && links && (
+        <SettingsSection
+          title="Channels"
+          description="Where GAIA can reach you."
+        >
+          {channelSwitch("email", EMAIL_CHANNEL_DESCRIPTION)}
+          {linkedOrder.map((platform) => {
+            const user = linkedAs(platform);
+            return channelSwitch(
+              platform,
+              user ? `Connected as ${user}` : "Connected",
+            );
+          })}
+          {unlinkedPlatforms.map((platform) => (
+            <ChannelRow
+              key={platform}
+              channel={platform}
+              description="Not connected"
             >
-              <Switch
-                size="sm"
-                isSelected={!!channelPrefs && channelPrefs[channel]}
-                isDisabled={
-                  loading || !channelPrefs || togglingPlatform === channel
-                }
-                onValueChange={(enabled) => handleToggle(channel, enabled)}
-                aria-label={`Enable ${label} notifications`}
-              />
-            </SettingsRow>
-          );
-        })}
-        {!loading && unlinkedChannels.length > 0 && (
-          <SettingsRow
-            label={PLATFORM_NAME_LIST.format(
-              unlinkedChannels.map(
-                (channel) => NOTIFICATION_CHANNEL_LABELS[channel],
-              ),
-            )}
-            description="Link them to get notifications there too."
-            icon={
-              <div className="flex size-9 items-center justify-center rounded-xl bg-zinc-800">
-                <Link01Icon className="size-4 text-zinc-400" />
+              <div className="flex items-center gap-3">
+                {isLockedBehindPro(platform) && (
+                  <Chip size="sm" variant="flat" color="warning">
+                    Pro
+                  </Chip>
+                )}
+                <Button
+                  size="sm"
+                  variant="flat"
+                  color="primary"
+                  aria-label={`Connect ${NOTIFICATION_CHANNEL_LABELS[platform]}`}
+                  isLoading={connectingPlatform === platform}
+                  isDisabled={linksLoading || connectingPlatform != null}
+                  onPress={() => connect(platform)}
+                >
+                  Connect
+                </Button>
               </div>
-            }
-          >
-            <Link
-              href="/settings/linked-accounts"
-              className="text-sm text-primary"
+            </ChannelRow>
+          ))}
+          {linkedOrder.length > 1 && (
+            <SettingsRow
+              label="Text me first on"
+              description="When you haven't chatted lately, GAIA starts here."
             >
-              Linked Accounts
-            </Link>
-          </SettingsRow>
-        )}
-      </SettingsSection>
+              <Select
+                size="sm"
+                className="w-36"
+                aria-label="Text me first on"
+                disallowEmptySelection
+                selectedKeys={[linkedOrder[0]]}
+                isDisabled={saving}
+                onSelectionChange={(keys) => {
+                  const [next] = Array.from(keys, String);
+                  if (next && isBotPlatform(next)) void putFirst(next);
+                }}
+              >
+                {linkedOrder.map((platform) => (
+                  <SelectItem key={platform}>
+                    {NOTIFICATION_CHANNEL_LABELS[platform]}
+                  </SelectItem>
+                ))}
+              </Select>
+            </SettingsRow>
+          )}
+        </SettingsSection>
+      )}
+      <PhoneLinkModal {...phoneLinkModal} />
     </SettingsPage>
+  );
+}
+
+interface ChannelRowProps {
+  channel: ChannelPlatform;
+  description: string;
+  children: ReactNode;
+}
+
+function ChannelRow({ channel, description, children }: ChannelRowProps) {
+  const label = NOTIFICATION_CHANNEL_LABELS[channel];
+  return (
+    <SettingsRow
+      label={label}
+      description={description}
+      icon={
+        <Image
+          src={NOTIFICATION_CHANNEL_ICONS[channel]}
+          alt={label}
+          width={36}
+          height={36}
+          className="rounded-xl"
+        />
+      }
+    >
+      {children}
+    </SettingsRow>
   );
 }
 

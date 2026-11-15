@@ -13475,6 +13475,9 @@ export interface components {
         /**
          * Postmark
          * @description One collected Air Mail stamp: its city, where it sits, and the brief it came on.
+         *
+         *     It carries that brief's edition, so the page can ready the letter before the
+         *     stamp is pressed without fetching the brief, which would mark it opened.
          */
         Postmark: {
             /**
@@ -13493,6 +13496,21 @@ export interface components {
              * @description User-local YYYY-MM-DD the stamp first arrived.
              */
             date: string;
+            /**
+             * Edition Fold
+             * @description Share of the edition's height where its letter folds.
+             */
+            edition_fold: number | null;
+            /**
+             * Edition Image Url
+             * @description That brief's hosted edition render.
+             */
+            edition_image_url: string | null;
+            /**
+             * Edition Paper
+             * @description The paper's box on its desk as [left, top, right, bottom] shares.
+             */
+            edition_paper: number[] | null;
             /** Lat */
             lat: number;
             /** Lng */

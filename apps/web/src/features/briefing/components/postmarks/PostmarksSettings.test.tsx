@@ -4,12 +4,23 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as preparedEditionModule from "@/features/briefing/utils/preparedEdition";
+import { prepareEdition } from "@/features/briefing/utils/preparedEdition";
 import { api } from "@/lib/api/typed";
 import { PostmarksSettings } from "./PostmarksSettings";
 
 vi.mock("@/lib/api/typed", () => ({
   api: { get: vi.fn() },
 }));
+
+// jsdom cannot decode an edition; what matters is when the stamp asks for it.
+vi.mock(
+  "@/features/briefing/utils/preparedEdition",
+  async (importOriginal) => ({
+    ...(await importOriginal<typeof preparedEditionModule>()),
+    prepareEdition: vi.fn(() => new Promise(() => undefined)),
+  }),
+);
 
 // maplibre needs WebGL, which jsdom has none of; the globe is driven in the browser.
 vi.mock("./PostmarksGlobe", () => ({
@@ -25,6 +36,9 @@ const TOKYO = {
   stamp_url: "https://cdn.example/tokyo.webp",
   date: "2026-09-01",
   briefing_id: "brief_tokyo",
+  edition_image_url: null,
+  edition_fold: null,
+  edition_paper: null,
 } satisfies PostmarksResponse["postmarks"][number];
 
 const LISBON = {
@@ -62,9 +76,11 @@ const TOKYO_BRIEF = {
   },
 };
 
-/** The album's blanks: hidden from assistive tech, each drawn as the stamp's outline. */
-function blanksIn(album: HTMLElement): Element[] {
-  return Array.from(album.querySelectorAll(":scope > li[aria-hidden] svg"));
+/** The compact sheet of cities still to collect, read as one picture with its count. */
+function stillToCollect(count: number): HTMLElement {
+  return screen.getByRole("img", {
+    name: `${count} ${count === 1 ? "city" : "cities"} still to collect`,
+  });
 }
 
 function renderPostmarks(collection: PostmarksResponse) {
@@ -82,6 +98,7 @@ function renderPostmarks(collection: PostmarksResponse) {
 describe("PostmarksSettings", () => {
   beforeEach(() => {
     vi.mocked(api.get).mockReset();
+    vi.mocked(prepareEdition).mockClear();
   });
 
   it("reads the collection from the postmarks endpoint", async () => {
@@ -93,35 +110,27 @@ describe("PostmarksSettings", () => {
     });
   });
 
-  it("lays out a blank for every city and says why when no stamp has arrived", async () => {
+  it("shows every city still to collect as one compact sheet when no stamp has arrived", async () => {
     renderPostmarks({ total: 85, postmarks: [] });
 
     expect(await screen.findByText("No stamps yet")).toBeTruthy();
-    const album = screen.getByRole("list", { name: "Stamp collection" });
-    expect(within(album).queryAllByRole("button")).toHaveLength(0);
-    expect(blanksIn(album)).toHaveLength(85);
-    expect(album.textContent).toContain("85 cities still to collect");
+    expect(screen.queryByRole("list", { name: "Stamp collection" })).toBeNull();
+    expect(stillToCollect(85).querySelectorAll("svg")).toHaveLength(85);
     expect(screen.getByText(/of 85/).textContent).toBe("0 of 85 cities");
   });
 
-  it("files the collected stamps first, then a blank for each city still to come", async () => {
+  it("shows the collected stamps in full, in arrival order, and the rest as small blanks", async () => {
     renderPostmarks({ total: 85, postmarks: [TOKYO, LISBON] });
 
     await screen.findByRole("button", { name: "Tokyo, Japan" });
     const album = screen.getByRole("list", { name: "Stamp collection" });
-    const cells = Array.from(album.children);
-    expect(cells).toHaveLength(85 + 1);
-    expect(cells[0].querySelector("button")?.getAttribute("aria-label")).toBe(
-      "Tokyo, Japan",
-    );
-    expect(cells[1].querySelector("button")?.getAttribute("aria-label")).toBe(
-      "Lisbon, Portugal",
-    );
     expect(
-      cells.slice(2, 85).every((cell) => cell.getAttribute("aria-hidden")),
-    ).toBe(true);
-    expect(blanksIn(album)).toHaveLength(83);
-    expect(album.textContent).toContain("83 cities still to collect");
+      within(album)
+        .getAllByRole("button")
+        .map((stamp) => stamp.getAttribute("aria-label")),
+    ).toEqual(["Tokyo, Japan", "Lisbon, Portugal"]);
+    expect(album.querySelectorAll("svg")).toHaveLength(0);
+    expect(stillToCollect(83).querySelectorAll("svg")).toHaveLength(83);
     expect(screen.queryByText("No stamps yet")).toBeNull();
     expect(screen.getByText(/of 85/).textContent).toBe("2 of 85 cities");
   });
@@ -130,9 +139,7 @@ describe("PostmarksSettings", () => {
     renderPostmarks({ total: 1, postmarks: [TOKYO] });
 
     await screen.findByRole("button", { name: "Tokyo, Japan" });
-    const album = screen.getByRole("list", { name: "Stamp collection" });
-    expect(blanksIn(album)).toHaveLength(0);
-    expect(album.textContent).not.toContain("still to collect");
+    expect(screen.queryByRole("img", { name: /still to collect/ })).toBeNull();
   });
 
   it("unfolds the stamp's brief in place, with a way to its full page", async () => {
@@ -155,6 +162,25 @@ describe("PostmarksSettings", () => {
         silent: true,
       },
     );
+  });
+
+  it("readies the stamp's edition when the pointer reaches it, without opening the brief", async () => {
+    const edition = "https://cdn.example/tokyo-edition.png";
+    renderPostmarks({
+      total: 85,
+      postmarks: [{ ...TOKYO, edition_image_url: edition, edition_fold: 0.3 }],
+    });
+    const stamp = await screen.findByRole("button", { name: "Tokyo, Japan" });
+    expect(prepareEdition).not.toHaveBeenCalled();
+
+    fireEvent.pointerEnter(stamp);
+
+    expect(prepareEdition).toHaveBeenCalledWith(edition, {
+      fold: 0.3,
+      paper: null,
+    });
+    // Fetching the brief is what marks it opened, so hovering must not.
+    expect(api.get).toHaveBeenCalledTimes(1);
   });
 
   it("captions each stamp with its city on phones, where there is no hover", async () => {

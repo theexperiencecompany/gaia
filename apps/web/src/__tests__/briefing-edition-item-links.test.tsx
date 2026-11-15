@@ -194,9 +194,7 @@ describe("brief item links", () => {
       screen.getByRole("heading", { name: "Also on your radar" }),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        "Not in today's brief. GAIA read these and left them for another day.",
-      ),
+      screen.getByText("Other things GAIA found that didn't make the brief."),
     ).toBeTruthy();
     expect(screen.getByText("Linear")).toBeTruthy();
     expect(screen.queryByText("Your morning")).toBeNull();
