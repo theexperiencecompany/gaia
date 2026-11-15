@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { StandalonePage } from "@/components/layout/StandalonePage";
 
+import { BACK_TO_BRIEFINGS } from "../constants";
 import { useBriefingQuery } from "../hooks/useBriefingQuery";
 import { StandaloneBriefing } from "./StandaloneBriefing";
 
@@ -15,14 +16,14 @@ export function BriefingPage({ briefingId }: { briefingId: string }) {
 
   if (isLoading) {
     return (
-      <StandalonePage>
+      <StandalonePage width="letter" back={BACK_TO_BRIEFINGS}>
         <Skeleton className="mx-auto h-[70vh] w-full max-w-[540px] rounded-2xl" />
       </StandalonePage>
     );
   }
   if (isError || !briefing) {
     return (
-      <StandalonePage>
+      <StandalonePage width="letter" back={BACK_TO_BRIEFINGS}>
         <div className="flex flex-col items-center gap-4 py-24 text-center">
           <p className="text-sm text-zinc-400">
             This brief isn&apos;t available anymore.

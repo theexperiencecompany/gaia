@@ -70,6 +70,10 @@ const PRESENTATIONS = {
   },
 } as const;
 
+/** The close button's surface, for any control pinned beside it to match. */
+export const LETTER_CONTROL_CLASSES =
+  "bg-zinc-800 text-zinc-200 shadow-[0_6px_20px_-6px_rgba(0,0,0,0.6)] data-[hover=true]:bg-zinc-700";
+
 interface LetterModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -79,6 +83,8 @@ interface LetterModalProps {
    * it is and lets the children animate on the modal's enter/exit variants.
    */
   presentation?: keyof typeof PRESENTATIONS;
+  /** Controls pinned beside the close button, reachable however far the letter scrolls. */
+  actions?: ReactNode;
   /** The sheet itself; it brings its own surface. */
   children: ReactNode;
 }
@@ -93,6 +99,7 @@ export function LetterModal({
   onClose,
   ariaLabel,
   presentation = "sheet",
+  actions,
   children,
 }: LetterModalProps) {
   const reduceMotion = useReducedMotion();
@@ -124,16 +131,19 @@ export function LetterModal({
       }}
     >
       <ModalContent>
-        <Button
-          isIconOnly
-          radius="full"
-          variant="flat"
-          aria-label="Close"
-          onPress={onClose}
-          className="fixed top-3 right-3 z-50 bg-zinc-800 text-zinc-200 shadow-[0_6px_20px_-6px_rgba(0,0,0,0.6)] data-[hover=true]:bg-zinc-700"
-        >
-          <Cancel01Icon className="size-5" />
-        </Button>
+        <div className="fixed top-3 right-3 z-50 flex items-center gap-2">
+          {actions}
+          <Button
+            isIconOnly
+            radius="full"
+            variant="flat"
+            aria-label="Close"
+            onPress={onClose}
+            className={LETTER_CONTROL_CLASSES}
+          >
+            <Cancel01Icon className="size-5" />
+          </Button>
+        </div>
         {children}
       </ModalContent>
     </Modal>

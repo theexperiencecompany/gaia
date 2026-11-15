@@ -1,11 +1,18 @@
 "use client";
 
+import { Button } from "@heroui/button";
+import { ArrowExpand01Icon } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReducedMotion, type Variants } from "motion/react";
 import * as m from "motion/react-m";
-import { useCallback, useMemo, useState } from "react";
+import Link from "next/link";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 
-import { LetterModal } from "@/components/shared/LetterModal";
+import {
+  LETTER_CONTROL_CLASSES,
+  LetterModal,
+} from "@/components/shared/LetterModal";
+import { cn } from "@/lib/utils";
 
 import { briefingQuery } from "../hooks/useBriefingQuery";
 import {
@@ -30,16 +37,27 @@ const SHEET_VARIANTS: Variants = {
   exit: { opacity: 0, y: 12, transition: { duration: 0.18, ease: "easeIn" } },
 };
 
-/** What the open view shows: the brief itself, or the id to load it by. */
+/**
+ * What the open view shows: the brief itself, or the id to load it by. With an id
+ * the open letter also offers the brief's full page.
+ */
 type BriefingFoldContent =
-  | { payload: BriefingEditionPayload; briefingId?: never }
+  | { payload: BriefingEditionPayload; briefingId?: string }
   | { briefingId: string; payload?: never };
+
+/** What a custom trigger gets: open the letter in place, and whether it is being prepared. */
+export interface BriefingFoldTrigger {
+  open: () => void;
+  isBusy: boolean;
+}
 
 export type BriefingFoldProps = BriefingFoldContent & {
   brief: FoldedBriefSummary;
   /** "letter" is the bare folded paper GAIA's chat message carries; the others are archive cards. */
   variant?: "card" | "feature" | "letter";
   tone?: BriefCardTone;
+  /** Draws the folded brief itself in place of the variants (a postmark's stamp, say). */
+  renderTrigger?: (trigger: BriefingFoldTrigger) => ReactNode;
 };
 
 /** The rendered edition unfolds as a letter; a brief with no edition opens as its text sheet. */
@@ -53,6 +71,7 @@ export function BriefingFold({
   brief,
   variant,
   tone,
+  renderTrigger,
   ...content
 }: BriefingFoldProps) {
   const { headline, imageUrl } = brief;
@@ -80,7 +99,7 @@ export function BriefingFold({
   const resolveBrief = async (): Promise<OpenedBrief> => {
     // The edition it carries is already cut, so it opens at once; the brief is still
     // fetched alongside, which is what marks it opened.
-    if (content.briefingId && imageUrl) {
+    if (content.briefingId && !content.payload && imageUrl) {
       const edition = await prepareEdition(imageUrl, layout).catch(() => null);
       if (edition) {
         void queryClient.prefetchQuery(briefingQuery(content.briefingId));
@@ -90,7 +109,7 @@ export function BriefingFold({
     let payload = content.payload;
     let src = imageUrl;
     let editionLayout = layout;
-    if (content.briefingId) {
+    if (content.briefingId && !payload) {
       const briefing = await queryClient
         .fetchQuery(briefingQuery(content.briefingId))
         .catch(() => null);
@@ -132,7 +151,9 @@ export function BriefingFold({
 
   return (
     <>
-      {variant === "letter" ? (
+      {renderTrigger ? (
+        renderTrigger({ open: () => void open(), isBusy: isPreparing })
+      ) : variant === "letter" ? (
         <BriefLetter
           headline={headline}
           imageUrl={imageUrl}
@@ -157,6 +178,20 @@ export function BriefingFold({
         onClose={() => setIsOpen(false)}
         ariaLabel={headline}
         presentation="floating"
+        actions={
+          content.briefingId && opened?.kind !== "missing" ? (
+            <Button
+              as={Link}
+              href={`/brief/${content.briefingId}`}
+              radius="full"
+              variant="flat"
+              startContent={<ArrowExpand01Icon className="size-4" />}
+              className={cn(LETTER_CONTROL_CLASSES, "font-medium")}
+            >
+              Open full brief
+            </Button>
+          ) : null
+        }
       >
         {opened?.kind === "edition" ? (
           <EditionUnfold

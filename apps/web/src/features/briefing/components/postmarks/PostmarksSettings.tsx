@@ -33,7 +33,7 @@ export function PostmarksSettings() {
 }
 
 const POSTMARKS_DESCRIPTION =
-  "Some mornings your brief arrives as Air Mail, stamped from a city somewhere in the world. Every stamp you've received is kept here.";
+  "When your brief arrives as Air Mail, it is posted from a city somewhere in the world and carries that city's stamp. Each new city is kept here, and the album fills in one morning at a time.";
 
 interface PostmarksCollectionProps {
   collection: PostmarksResponse;
@@ -63,10 +63,10 @@ function PostmarksCollection({ collection }: PostmarksCollectionProps) {
             <span className="font-medium text-zinc-100">
               {postmarks.length}
             </span>{" "}
-            of {total}
+            of {total} cities
           </p>
         }
-        className="p-4"
+        className="p-5"
       >
         <StampCollection postmarks={postmarks} total={total} />
       </SettingsSection>

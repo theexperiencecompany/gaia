@@ -2,18 +2,22 @@
 
 import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
+import { News01Icon } from "@icons";
 import type { BriefingView } from "@shared/api/generated";
 import {
   endOfWeek,
   format,
   isSameWeek,
+  isSameYear,
   parseISO,
   startOfWeek,
   subWeeks,
 } from "date-fns";
+import Link from "next/link";
 
 import { cn } from "@/lib/utils";
 
+import { BRIEFINGS_SETTINGS_PATH } from "../constants";
 import { useBriefingsQuery } from "../hooks/useBriefingsQuery";
 import type { FoldedBriefSummary } from "./BriefCard";
 import { BriefingFold } from "./BriefingFold";
@@ -68,16 +72,48 @@ function weekTitle(start: Date, now: Date): string | null {
   return null;
 }
 
-function WeekHeader({ start }: { start: Date }) {
-  const range = `${format(start, "MMM d")} – ${format(endOfWeek(start, WEEK_OPTIONS), "MMM d")}`;
-  const title = weekTitle(start, new Date());
+function weekRange(start: Date, now: Date): string {
+  const end = endOfWeek(start, WEEK_OPTIONS);
+  const range = `${format(start, "MMM d")} – ${format(end, "MMM d")}`;
+  return isSameYear(end, now) ? range : `${range}, ${format(end, "yyyy")}`;
+}
+
+function WeekHeader({ start, count }: { start: Date; count: number }) {
+  const now = new Date();
+  const range = weekRange(start, now);
+  const title = weekTitle(start, now);
   return (
-    <h2 className="mb-2.5 flex items-baseline justify-between text-sm font-medium text-zinc-200">
-      {title ?? range}
-      {title && (
-        <span className="text-xs font-normal text-zinc-500">{range}</span>
-      )}
-    </h2>
+    <header className="mb-3 flex items-baseline gap-3">
+      <h2 className="text-base font-medium text-zinc-100">{title ?? range}</h2>
+      {title && <span className="text-xs text-zinc-500">{range}</span>}
+      <span className="ml-auto text-xs text-zinc-500 tabular-nums">
+        {count} {count === 1 ? "brief" : "briefs"}
+      </span>
+    </header>
+  );
+}
+
+/** No brief has arrived yet: what this page will hold, and where to set when they come. */
+function ArchiveEmpty() {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-900 px-6 py-14 text-center">
+      <span className="flex size-11 items-center justify-center rounded-2xl bg-zinc-800">
+        <News01Icon className="size-5 text-zinc-400" />
+      </span>
+      <p className="text-sm font-medium text-zinc-100">No briefs yet</p>
+      <p className="max-w-xs text-sm text-pretty text-zinc-500">
+        Every brief GAIA sends you is filed here by week, ready to unfold again.
+      </p>
+      <Button
+        as={Link}
+        href={BRIEFINGS_SETTINGS_PATH}
+        size="sm"
+        variant="flat"
+        className="mt-1"
+      >
+        Set your brief schedule
+      </Button>
+    </div>
   );
 }
 
@@ -117,14 +153,14 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
   }
 
   if (!briefings || briefings.length === 0) {
-    return <p className="text-sm text-zinc-500">No past briefings yet.</p>;
+    return <ArchiveEmpty />;
   }
 
   return (
-    <div className={cn("flex flex-col gap-8", className)}>
+    <div className={cn("flex flex-col gap-12", className)}>
       {groupByWeek(briefings).map((group) => (
         <section key={group.start.getTime()}>
-          <WeekHeader start={group.start} />
+          <WeekHeader start={group.start} count={group.briefings.length} />
           <div className={GRID_CLASSES}>
             {group.briefings.map((briefing) => {
               const isWeekly = briefing.kind === "weekly";
@@ -136,7 +172,9 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
                   <BriefingFold
                     brief={foldedBriefOf(briefing)}
                     variant={isWeekly ? "feature" : "card"}
+                    tone="open"
                     payload={briefing.payload}
+                    briefingId={briefing.id}
                   />
                 </div>
               );

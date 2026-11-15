@@ -1,3 +1,7 @@
+import type { BriefPoolItem } from "@shared/api/generated";
+
+import type { StandalonePageBack } from "@/components/layout/StandalonePage";
+
 /** Rows an edition prints per items block or calendar; the rest wait on the full brief page. Mirrors EDITION_ROWS_SHOWN in apps/api/app/constants/briefing.py. */
 export const EDITION_ROWS_SHOWN = 3;
 
@@ -7,6 +11,27 @@ export const EDITION_ROWS_SHOWN = 3;
  */
 export const BRIEF_STOP_WARNING =
   "The edition image keeps its own address, which may already be in your email, so it stays viewable.";
+
+/** Where the reader sets how often briefs come and which editions they draw. */
+export const BRIEFINGS_SETTINGS_PATH = "/settings/briefings";
+
+/** The stamp album. Mirrors POSTMARKS_PATH in apps/api/app/constants/briefing.py. */
+export const POSTMARKS_SETTINGS_PATH = "/settings/postmarks";
+
+/** A brief's own page leads back to the archive it is filed in. */
+export const BACK_TO_BRIEFINGS: StandalonePageBack = {
+  href: "/briefings",
+  label: "Briefings",
+};
+
+/** Where a brief item stands, in a few words. Mirrors BRIEFING_ITEM_STATES in apps/api/app/models/briefing_models.py. */
+export const BRIEF_ITEM_STATES: Record<BriefPoolItem["kind"], string> = {
+  you: "Waiting on you",
+  gaia: "In progress",
+  lookback: "Done",
+  failed: "Failed",
+  note: "Note",
+};
 
 /** Briefs the archive reads per page. */
 export const BRIEFING_ARCHIVE_PAGE_SIZE = 30;

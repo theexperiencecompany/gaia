@@ -2,6 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Card } from "@heroui/card";
+import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
 import { FavouriteIcon } from "@icons";
 import type { BriefingEdition } from "@shared/api/generated";
@@ -11,6 +12,10 @@ import { useBriefingEditionsSettings } from "@/features/settings/hooks/useBriefi
 /** Built by apps/api/scripts/build_edition_thumbnails.py, one per daily family. */
 const thumbnailSrc = (family: string) =>
   `/images/briefing/editions/${family}.webp`;
+
+/** @icons is a solid set: the heart's own path, stroked and left unfilled, is its outline. */
+const OUTLINED_HEART_CLASSES =
+  "text-zinc-200 [&_path]:fill-transparent [&_path]:stroke-current [&_path]:stroke-[1.75]";
 
 const SKELETON_KEYS = Array.from({ length: 6 }, (_, i) => `edition-${i}`);
 
@@ -96,14 +101,21 @@ function EditionCard({
       >
         <FavouriteIcon
           size={16}
-          className={isFavourite ? "text-red-500" : "text-zinc-300"}
+          className={isFavourite ? "text-red-500" : OUTLINED_HEART_CLASSES}
         />
       </Button>
-      <p
-        className={`mt-2 text-sm font-medium ${isOff ? "text-zinc-500" : "text-zinc-200"}`}
-      >
-        {edition.name}
-      </p>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p
+          className={`truncate text-sm font-medium ${isOff ? "text-zinc-500" : "text-zinc-200"}`}
+        >
+          {edition.name}
+        </p>
+        {isOff && (
+          <Chip size="sm" variant="flat" className="shrink-0 text-zinc-400">
+            Disabled
+          </Chip>
+        )}
+      </div>
     </div>
   );
 }

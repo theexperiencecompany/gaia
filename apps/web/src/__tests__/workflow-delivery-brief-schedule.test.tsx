@@ -78,7 +78,7 @@ describe("adding a workflow's results to the brief", () => {
     expect(briefButton().hasAttribute("disabled")).toBe(true);
     expect(
       screen.getByRole("link", { name: "Turn on briefs" }).getAttribute("href"),
-    ).toBe("/settings/notifications");
+    ).toBe("/settings/briefings");
   });
 
   it("says once why a workflow already set to the brief has nowhere to go", async () => {

@@ -27,6 +27,46 @@ const TOKYO = {
   briefing_id: "brief_tokyo",
 } satisfies PostmarksResponse["postmarks"][number];
 
+const LISBON = {
+  ...TOKYO,
+  city_slug: "lisbon",
+  city: "Lisbon",
+  country: "Portugal",
+  briefing_id: "brief_lisbon",
+} satisfies PostmarksResponse["postmarks"][number];
+
+// No edition image, so the brief opens as its text sheet: jsdom cannot decode an edition.
+const TOKYO_BRIEF = {
+  id: "brief_tokyo",
+  user_id: "u1",
+  date: "2026-09-01",
+  kind: "daily",
+  delivered_channels: ["inapp"],
+  edition_image_url: null,
+  edition_fold: null,
+  edition_paper: null,
+  opened_at: null,
+  created_at: "2026-09-01T02:30:00Z",
+  updated_at: null,
+  payload: {
+    kicker: "THE MORNING BRIEF",
+    date: "2026-09-01",
+    headline: "A quiet Tuesday from Tokyo",
+    lede: "",
+    caption: "",
+    mood: "calm",
+    hue: 10,
+    stats: [],
+    calendar: [],
+    sections: [],
+  },
+};
+
+/** The album's blanks: hidden from assistive tech, each drawn as the stamp's outline. */
+function blanksIn(album: HTMLElement): Element[] {
+  return Array.from(album.querySelectorAll(":scope > li[aria-hidden] svg"));
+}
+
 function renderPostmarks(collection: PostmarksResponse) {
   vi.mocked(api.get).mockResolvedValue(collection);
   const client = new QueryClient({
@@ -53,49 +93,81 @@ describe("PostmarksSettings", () => {
     });
   });
 
-  it("shows one tile for the whole album and says why when no stamp has arrived", async () => {
+  it("lays out a blank for every city and says why when no stamp has arrived", async () => {
     renderPostmarks({ total: 85, postmarks: [] });
 
     expect(await screen.findByText("No stamps yet")).toBeTruthy();
-    expect(screen.queryByRole("link")).toBeNull();
     const album = screen.getByRole("list", { name: "Stamp collection" });
-    expect(within(album).getAllByRole("listitem")).toHaveLength(1);
-    expect(album.textContent).toContain("85 cities to collect");
-    expect(screen.getByText("of 85").textContent).toBe("0 of 85");
+    expect(within(album).queryAllByRole("button")).toHaveLength(0);
+    expect(blanksIn(album)).toHaveLength(85);
+    expect(album.textContent).toContain("85 cities still to collect");
+    expect(screen.getByText(/of 85/).textContent).toBe("0 of 85 cities");
   });
 
-  it("files each stamp before a single tile for the cities still to come", async () => {
-    renderPostmarks({ total: 85, postmarks: [TOKYO] });
+  it("files the collected stamps first, then a blank for each city still to come", async () => {
+    renderPostmarks({ total: 85, postmarks: [TOKYO, LISBON] });
 
-    const stamp = await screen.findByRole("link", { name: "Tokyo, Japan" });
-    expect(stamp.getAttribute("href")).toBe("/brief/brief_tokyo");
+    await screen.findByRole("button", { name: "Tokyo, Japan" });
     const album = screen.getByRole("list", { name: "Stamp collection" });
-    const items = within(album).getAllByRole("listitem");
-    expect(items).toHaveLength(2);
-    expect(items[1].textContent).toContain("84 more cities");
+    const cells = Array.from(album.children);
+    expect(cells).toHaveLength(85 + 1);
+    expect(cells[0].querySelector("button")?.getAttribute("aria-label")).toBe(
+      "Tokyo, Japan",
+    );
+    expect(cells[1].querySelector("button")?.getAttribute("aria-label")).toBe(
+      "Lisbon, Portugal",
+    );
+    expect(
+      cells.slice(2, 85).every((cell) => cell.getAttribute("aria-hidden")),
+    ).toBe(true);
+    expect(blanksIn(album)).toHaveLength(83);
+    expect(album.textContent).toContain("83 cities still to collect");
     expect(screen.queryByText("No stamps yet")).toBeNull();
-    expect(screen.getByText("of 85").textContent).toBe("1 of 85");
+    expect(screen.getByText(/of 85/).textContent).toBe("2 of 85 cities");
   });
 
-  it("drops the to-come tile once every city is collected", async () => {
+  it("leaves no blank once every city is collected", async () => {
     renderPostmarks({ total: 1, postmarks: [TOKYO] });
 
-    await screen.findByRole("link", { name: "Tokyo, Japan" });
+    await screen.findByRole("button", { name: "Tokyo, Japan" });
     const album = screen.getByRole("list", { name: "Stamp collection" });
-    expect(within(album).getAllByRole("listitem")).toHaveLength(1);
+    expect(blanksIn(album)).toHaveLength(0);
+    expect(album.textContent).not.toContain("still to collect");
+  });
+
+  it("unfolds the stamp's brief in place, with a way to its full page", async () => {
+    renderPostmarks({ total: 85, postmarks: [TOKYO] });
+    vi.mocked(api.get).mockResolvedValueOnce(TOKYO_BRIEF);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Tokyo, Japan" }),
+    );
+
+    const fullBrief = await screen.findByText("Open full brief");
+    expect(fullBrief.closest("a")?.getAttribute("href")).toBe(
+      "/brief/brief_tokyo",
+    );
+    expect(screen.getByText(TOKYO_BRIEF.payload.headline)).toBeTruthy();
+    expect(api.get).toHaveBeenLastCalledWith(
+      "/api/v1/briefings/{briefing_id}",
+      {
+        path: { briefing_id: "brief_tokyo" },
+        silent: true,
+      },
+    );
   });
 
   it("captions each stamp with its city on phones, where there is no hover", async () => {
     renderPostmarks({ total: 85, postmarks: [TOKYO] });
 
-    const stamp = await screen.findByRole("link", { name: "Tokyo, Japan" });
+    const stamp = await screen.findByRole("button", { name: "Tokyo, Japan" });
     const caption = within(stamp).getByText("Tokyo");
     expect(caption.className).toContain("sm:hidden");
   });
 
   it("names the city, country and arrival date in the stamp's tooltip", async () => {
     renderPostmarks({ total: 85, postmarks: [TOKYO] });
-    const stamp = await screen.findByRole("link", { name: "Tokyo, Japan" });
+    const stamp = await screen.findByRole("button", { name: "Tokyo, Japan" });
 
     // react-aria opens a tooltip on keyboard focus without the hover delay.
     await act(async () => {

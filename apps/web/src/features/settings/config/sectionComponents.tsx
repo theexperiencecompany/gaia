@@ -3,6 +3,7 @@
 import type React from "react";
 import { PostmarksSettings } from "@/features/briefing";
 import AccountSettings from "@/features/settings/components/AccountSettings";
+import { BriefingsSettings } from "@/features/settings/components/BriefingsSettings";
 import BrowserSettings from "@/features/settings/components/BrowserSettings";
 import { ComposioSetupSettings } from "@/features/settings/components/ComposioSetupSettings";
 import DesktopSettings from "@/features/settings/components/DesktopSettings";
@@ -53,6 +54,7 @@ const SECTION_PANELS: Record<
   memory: () => <MemorySettings />,
   skills: () => <SkillsSettings />,
   notifications: () => <NotificationSettings />,
+  briefings: () => <BriefingsSettings />,
   postmarks: () => <PostmarksSettings />,
   devices: () => <DevicesSettings />,
   browser: () => <BrowserSettings />,

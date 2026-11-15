@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { NewsIcon } from "@icons";
-import { format, parseISO } from "date-fns";
+import { format, isToday, isYesterday, parseISO } from "date-fns";
 import Image from "next/image";
 import { useState } from "react";
 
@@ -34,6 +34,8 @@ const NOTABLE_NEEDS_YOU = 3;
 const TONE_CLASSES = {
   raised: "bg-zinc-800 data-[hover=true]:bg-zinc-700/80",
   inset: "bg-zinc-900 data-[hover=true]:bg-zinc-950/80",
+  /** No surface at rest, so the edition itself is the object on the page; one appears under the pointer. */
+  open: "bg-transparent data-[hover=true]:bg-zinc-800/60",
 } as const;
 
 export type BriefCardTone = keyof typeof TONE_CLASSES;
@@ -42,17 +44,23 @@ interface BriefCardProps {
   brief: FoldedBriefSummary;
   /** "feature" lays the weekly recap out wide, preview beside its words. */
   variant?: "card" | "feature";
-  /** "raised" on the page background, "inset" inside a zinc-800 card. */
+  /** "raised" on the page background, "inset" inside a zinc-800 card, "open" bare on the page. */
   tone?: BriefCardTone;
   isBusy?: boolean;
   onPress: () => void;
   onWarm: () => void;
 }
 
+const TODAY_LABEL = "Today";
+
 function dateLabel(brief: FoldedBriefSummary): string | null {
   if (!brief.date) return null;
-  const day = format(parseISO(brief.date), "EEE d MMM");
-  return brief.kind === "weekly" ? `Week to ${day}` : day;
+  const date = parseISO(brief.date);
+  const day = format(date, "EEE d MMM");
+  if (brief.kind === "weekly") return `Week to ${day}`;
+  if (isToday(date)) return TODAY_LABEL;
+  if (isYesterday(date)) return "Yesterday";
+  return day;
 }
 
 function editionLabel(brief: FoldedBriefSummary): string | null {
@@ -90,7 +98,7 @@ function Preview({
   return (
     <div
       className={cn(
-        "relative aspect-[3/2] overflow-hidden rounded-[10px] bg-zinc-700/40",
+        "relative aspect-[3/2] overflow-hidden rounded-[10px] bg-zinc-700/40 transition-[translate,box-shadow] duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group-data-[hover=true]:-translate-y-0.5 group-data-[hover=true]:shadow-[0_14px_28px_-14px_rgba(0,0,0,0.8)]",
         isFeature && "sm:w-60 sm:shrink-0",
       )}
     >
@@ -155,7 +163,7 @@ export function BriefCard({
       aria-label={`Open brief: ${brief.headline}`}
       aria-busy={isBusy}
       className={cn(
-        "h-full w-full min-w-0 items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal transition-[background-color,scale] data-[pressed=true]:scale-[0.97]",
+        "group h-full w-full min-w-0 items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal transition-[background-color,scale] data-[pressed=true]:scale-[0.97]",
         isFeature ? "flex-col sm:flex-row" : "flex-col",
         TONE_CLASSES[tone],
       )}
@@ -173,7 +181,14 @@ export function BriefCard({
       >
         {(date || needsYou >= NOTABLE_NEEDS_YOU) && (
           <span className="flex items-baseline justify-between gap-2 text-xs text-zinc-500">
-            <span className="truncate">{date}</span>
+            <span
+              className={cn(
+                "truncate",
+                date === TODAY_LABEL && "font-medium text-primary",
+              )}
+            >
+              {date}
+            </span>
             {needsYou >= NOTABLE_NEEDS_YOU && (
               <span className="shrink-0 text-amber-300/90 tabular-nums">
                 {needsYou} waiting

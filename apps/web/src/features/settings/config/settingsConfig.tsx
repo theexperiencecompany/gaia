@@ -9,6 +9,7 @@ import {
   LabsIcon,
   Link04Icon,
   MessageMultiple02Icon,
+  News01Icon,
   NoteEditIcon,
   NotificationIcon,
   PlugSocketIcon,
@@ -22,6 +23,10 @@ import type { InstanceRole } from "@shared/api/generated";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { PostageStampIcon } from "@/components/shared/icons";
+import {
+  BRIEFINGS_SETTINGS_PATH,
+  POSTMARKS_SETTINGS_PATH,
+} from "@/features/briefing/constants";
 import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
 import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
 
@@ -96,10 +101,16 @@ export const settingsPageItems: SettingsMenuItem[] = [
     href: "/settings/notifications",
   },
   {
+    key: "briefings",
+    label: "Briefings",
+    icon: News01Icon,
+    href: BRIEFINGS_SETTINGS_PATH,
+  },
+  {
     key: "postmarks",
     label: "Postmarks",
     icon: EarthIcon,
-    href: "/settings/postmarks",
+    href: POSTMARKS_SETTINGS_PATH,
   },
   {
     key: "subscription",
