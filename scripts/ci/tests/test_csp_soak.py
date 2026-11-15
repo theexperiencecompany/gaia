@@ -8,13 +8,12 @@ the live project answered QUERY with.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 import importlib.util
 import json
 from pathlib import Path
 import subprocess
 import sys
-from types import ModuleType
 from typing import Any
 
 from http_stub import Routes, serve
@@ -29,7 +28,7 @@ DISABLE = "/repos/acme/gaia/actions/workflows/csp-soak.yml/disable"
 DAY = 86_400
 
 
-def _load() -> ModuleType:
+def _load() -> Any:
     spec = importlib.util.spec_from_file_location("analytics_csp_cli", SCRIPT)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
@@ -87,11 +86,11 @@ class Site:
             return analytics.main(["csp-soak"])
 
     def slack(self) -> list[str]:
-        return [json.loads(body)["text"] for path, body in self.posts if path == "/slack"]
+        return [str(json.loads(body)["text"]) for path, body in self.posts if path == "/slack"]
 
 
 @pytest.fixture
-def site(monkeypatch: pytest.MonkeyPatch) -> Iterator[Site]:
+def site(monkeypatch: pytest.MonkeyPatch) -> Site:
     return Site(monkeypatch, REPORT_ONLY, [])
 
 
@@ -170,6 +169,25 @@ def test_an_enforced_header_without_script_src_is_still_a_soak(site: Site) -> No
 
     assert site.slack()[0].startswith("*CSP soak, day ?")
     assert DISABLE not in [path for path, _ in site.posts]
+
+
+def test_a_comma_joined_policy_with_script_src_is_enforced(site: Site) -> None:
+    site.headers = {
+        **REPORT_ONLY,
+        "Content-Security-Policy": "frame-ancestors 'none', script-src 'self'",
+    }
+
+    assert site.run() == 0
+
+    assert DISABLE in [path for path, _ in site.posts]
+
+
+def test_report_derived_values_are_slack_escaped(site: Site) -> None:
+    site.rows = [row("script-src", "<!channel>&x", "/", 1, "2026-11-01", 100)]
+
+    assert site.run() == 0
+
+    assert "• `script-src` &lt;!channel&gt;&amp;x on /: 1" in site.slack()[0]
 
 
 def test_a_missing_header_posts_a_warning_and_fails(site: Site) -> None:

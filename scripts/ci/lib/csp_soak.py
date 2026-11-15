@@ -59,7 +59,12 @@ class Policy(StrEnum):
 
 
 def _directives(policy: str) -> set[str]:
-    return {part.split()[0].lower() for part in policy.split(";") if part.strip()}
+    return {
+        directive.split()[0].lower()
+        for one_policy in policy.split(",")
+        for directive in one_policy.split(";")
+        if directive.strip()
+    }
 
 
 def policy_of(headers: Mapping[str, str]) -> Policy:
@@ -134,11 +139,18 @@ def verdict(soak: Soak) -> str:
     return f"Keep soaking: {soak.sources_24h} source(s) to allow or fix"
 
 
+def _slack_escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def soak_message(soak: Soak, host: str) -> str:
     """Render the daily message: headline, top sources, verdict, and what day 1 is."""
     day = "?" if soak.day is None else str(soak.day)
     lines = [f"*CSP soak, day {day}: {soak.violations_24h} violations in 24h*"]
-    lines += [f"• `{s.directive}` {s.blocked} on {s.page}: {s.count}" for s in soak.top]
+    lines += [
+        f"• `{_slack_escape(s.directive)}` {_slack_escape(s.blocked)} on {_slack_escape(s.page)}: {s.count}"
+        for s in soak.top
+    ]
     lines.append(verdict(soak))
     if soak.first_day is not None:
         lines.append(
