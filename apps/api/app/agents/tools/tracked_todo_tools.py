@@ -39,6 +39,7 @@ from app.constants.todos import (
     MAX_NEXT_CHECK_AHEAD,
     MAX_QUESTION_EXPIRY,
     NoReplyPlan,
+    TodoCompleter,
     WaitingOn,
 )
 from app.constants.trigger_gates import GateAuthor
@@ -528,7 +529,7 @@ async def complete_tracked_todo(
         )
 
     success = await tracked_todo_service.complete_tracked_todo(
-        todo_id=todo_id, user_id=user_id, summary=summary
+        todo_id=todo_id, user_id=user_id, summary=summary, by=TodoCompleter.GAIA
     )
     if not success:
         return f"Error: could not complete tracked todo {todo_id}, not found or missing vfs_path"
