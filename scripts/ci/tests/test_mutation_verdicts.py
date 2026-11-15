@@ -223,6 +223,7 @@ def _group(*modules: str) -> str:
                 "module": module,
                 "testfiles": json.dumps([f"tests/unit/test_{Path(module).stem}.py"]),
                 "ranges": "[[2,2]]",
+                "mutants": "1",
             }
             for module in modules
         ]
@@ -409,7 +410,9 @@ def test_a_module_that_refuses_to_run_is_an_error(
     tmp_path: Path, ranges: str, testfiles: str
 ) -> None:
     root = _sandbox(tmp_path)
-    group = json.dumps([{"module": MODULE, "testfiles": testfiles, "ranges": ranges}])
+    group = json.dumps(
+        [{"module": MODULE, "testfiles": testfiles, "ranges": ranges, "mutants": "1"}]
+    )
     result = subprocess.run(
         _command(root, "shard"),
         cwd=root,
@@ -469,6 +472,7 @@ def test_local_runs_each_module_as_its_own_shard_and_summarises(tmp_path: Path) 
             "module": m,
             "testfiles": [f"tests/unit/test_{Path(m).stem}.py"],
             "changed_lines": [[2, 2]],
+            "mutants": 1,
         }
         for m in (MODULE, second)
     ]
@@ -500,6 +504,7 @@ def test_local_names_the_refusal_when_a_shard_never_ran(tmp_path: Path) -> None:
             "module": MODULE,
             "testfiles": [f"tests/contracts/test_{Path(MODULE).stem}.py"],
             "changed_lines": [[2, 2]],
+            "mutants": 1,
         }
     ]
     detector = root / "scripts" / "ci" / "lib" / "mutation_matrix.py"
@@ -604,7 +609,9 @@ def test_a_group_whose_testfiles_is_not_a_path_list_is_unreadable(tmp_path: Path
     time; the plan never emits one, so either way it is a broken plan job.
     """
     root = _sandbox(tmp_path)
-    group = json.dumps([{"module": MODULE, "testfiles": '"tests/unit/test_x.py"', "ranges": "[]"}])
+    group = json.dumps(
+        [{"module": MODULE, "testfiles": '"tests/unit/test_x.py"', "ranges": "[]", "mutants": "1"}]
+    )
     result = subprocess.run(
         _command(root, "shard"),
         cwd=root,
