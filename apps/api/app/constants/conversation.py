@@ -41,10 +41,17 @@ LOG_SEQ = "log_seq"
 LOG_MESSAGE_ID_PREFIX = "log:"
 #: Suffix of the id of the note that says a user message was already reacted to.
 REACTION_NOTE_SUFFIX = ":reaction"
+#: Suffix of the id of the note after user messages handed to a run already working on earlier ones.
+ABSORBED_NOTE_SUFFIX = ":absorbed"
 #: Suffix of the ids of the turn context messages around a batch (system prompt, context, clock).
 TURN_CONTEXT_ID_SUFFIX = ":turn"
 
 REACTION_NOTE = "[You already reacted {emoji} to this message.]"
+ABSORBED_NOTE = (
+    "[The user sent this while you were still working on their earlier message. If it changes "
+    "or cancels that request, follow it. Otherwise answer it and still finish the earlier "
+    "request, in this same reply.]"
+)
 NOTICE_DELIVERED_NOTE = "[You already sent the user this message: {text}]"
 WORK_DONE_NOTE = (
     "[Background work finished. The user has not seen this result yet, so report it in your "

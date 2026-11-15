@@ -70,8 +70,10 @@ from tests.integration.real.db_fixtures import (
     real_redis,
     redis_url,
 )
+from tests.integration.real.ledger_fixtures import edges
 
 __all__ = [
+    "edges",
     "hil_approvals_collection",
     "mongo_db",
     "mongodb_url",

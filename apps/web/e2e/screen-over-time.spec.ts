@@ -451,9 +451,15 @@ test.describe("screen over time — approvals", () => {
   test.beforeEach(async () => askBefore(["create_todo"]));
   test.afterEach(async () => askBefore([]));
 
-  async function askForApproval(page: Page, title: string, reply: string) {
+  /** Ask to approve a todo; `before` scripts what the work does after the ask and before `reply`. */
+  async function askForApproval(
+    page: Page,
+    title: string,
+    reply: string,
+    before = "",
+  ) {
     await openNewChat(page);
-    await sendAndOpen(page, `${todo(title)} [[say:${reply}]]`);
+    await sendAndOpen(page, `${todo(title)} ${before}[[say:${reply}]]`);
     const card = page.getByText(APPROVAL_COPY.needsApproval).first();
     await expect(card).toBeVisible({ timeout: TURN_MS });
     await expectScreenOnlyGrew(page);
@@ -473,6 +479,29 @@ test.describe("screen over time — approvals", () => {
       botLinesReading(live, APPROVAL_COPY.needsApproval),
       "the card resolved",
     ).toBe(0);
+  });
+
+  // Conversation 741603c7: Approve tapped while the run still wound down read "please approve" after.
+  test("approving before the work's run ends is never followed by a stale ask", async ({
+    page,
+  }) => {
+    const ask = "Approve fa-1 in the card.";
+    const done = "Added fa-1.";
+    const finishAsking = `[[tool:finish_task {"result":"${ask}","outcome":"ask"}]]`;
+    // The run holds its last step, so the tap lands before it ends asking.
+    await askForApproval(
+      page,
+      "fa-1",
+      done,
+      `[[wait:${HOLD_MS}]] ${finishAsking} `,
+    );
+    await page
+      .getByRole("button", { name: APPROVAL_COPY.approve, exact: true })
+      .click();
+    const live = await finish(page, done);
+    expect(botLinesReading(live, ask), "the decided ask is never said").toBe(0);
+    expect(botLinesReading(live, done), "the work is reported once").toBe(1);
+    expect(toolSections(live)).toBe(1);
   });
 
   test("denying leaves the call unrun and the card resolved", async ({

@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from bson import ObjectId
+import httpx
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
 from langchain_core.messages import (
     AIMessage,
@@ -69,7 +70,7 @@ from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, HIL_JEV_URL
 from app.constants.todos import TodoWakeKind
 from app.core.lazy_loader import providers
 from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_KEYS, CONVERSATION_ID_UNIQUE_OPTIONS
@@ -149,6 +150,7 @@ from app.services.conversation import (
     step as step_module,
     sweeper,
 )
+from app.services.conversation.approval_replies import HilApprovalReplies
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
     CommsGraphRunner,
@@ -174,7 +176,12 @@ from app.services.conversation.integration_log import (
 )
 from app.services.conversation.log import Accepted, accept
 from app.services.conversation.mongo_log import MongoConversationLog
-from app.services.conversation.ports import Appended, EntryRejected, RuntimePorts
+from app.services.conversation.ports import (
+    Appended,
+    ApprovalReplies,
+    EntryRejected,
+    RuntimePorts,
+)
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.screen import project_screen
 from app.services.conversation.send import send_message, submit_message
@@ -194,9 +201,10 @@ from app.services.conversation.work_log import (
 )
 from app.services.conversation_stop_service import press_stop
 from app.services.delivery.chat_channel import ChatChannel
-from app.services.hil import ledger_decide
+from app.services.hil import jev_client, ledger_decide
 from app.services.hil.gate import GateContext, read_gate_context
 from app.services.notification_service import notification_service
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
@@ -249,6 +257,7 @@ from shared.py.conversation_wire import (
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
 from tests.helpers import item_text, shown_items
+from tests.integration.real.ledger_fixtures import Edges
 from tests.unit.services.conversation.log_helpers import described, workflow_run
 from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
 from tests.unit.services.conversation.test_comms_runner import (
@@ -305,12 +314,14 @@ class Rig:
     effects: _Effects
     turns: list[tuple[StepClaim, Batch]] = field(default_factory=list)
 
-    async def send(self, message_id: str, text: str) -> int:
+    async def send(
+        self, message_id: str, text: str, source: ConversationSource = ConversationSource.WEB
+    ) -> int:
         sent = await send_message(
             self.conversation_id,
             AuthenticatedUser(user_id=self.user_id),
             SendMessageRequest(message_id=message_id, text=text),
-            ConversationSource.WEB,
+            source,
         )
         return sent.accepted.seq
 
@@ -358,6 +369,7 @@ class RigFactory(Protocol):
         history: Sequence[dict[str, str]] = (),
         build_turn: CommsTurnBuilder | None = None,
         tick: Callable[[], Awaitable[None]] = ...,
+        approvals: ApprovalReplies | None = None,
     ) -> Awaitable[Rig]: ...
 
 
@@ -431,6 +443,7 @@ async def rig_for(
             history: Sequence[dict[str, str]] = (),
             build_turn: CommsTurnBuilder | None = None,
             tick: Callable[[], Awaitable[None]] = _quick_tick,
+            approvals: ApprovalReplies | None = None,
         ) -> Rig:
             conversation_id = f"convrt-{uuid4().hex[:10]}"
             await make_conversation(user_id, conversation_id, messages=list(history))
@@ -447,7 +460,7 @@ async def rig_for(
                 ),
                 frames=frames,
                 effects=effects,
-                approvals=ScriptedApprovals(),
+                approvals=approvals or ScriptedApprovals(),
                 analytics=PostHogTurnAnalytics(),
                 clock=_now,
                 tick=tick,
@@ -2998,7 +3011,31 @@ async def _parked_on_a_ledger_approval(
     owner_run_type: str = "",
     owner_id: str = "",
 ) -> str:
-    """Start t1 in a chat turn, register its gated call and log it as the gate does, then end t1 waiting on it."""
+    """Start t1 asking for a ledger approval, then end t1 waiting on it."""
+    approval_id = await _asking_on_a_ledger_approval(
+        rig, model, expires_at=expires_at, owner_run_type=owner_run_type, owner_id=owner_id
+    )
+    await record_work_finished(
+        rig.conversation_id,
+        rig.user_id,
+        "t1",
+        WorkOutcome.DONE,
+        WorkReport("Approve the send?"),
+        continued_by_decision=not owner_run_type,
+    )
+    await rig.settle()
+    return approval_id
+
+
+async def _asking_on_a_ledger_approval(
+    rig: Rig,
+    model: GatedModel,
+    *,
+    expires_at: datetime | None = None,
+    owner_run_type: str = "",
+    owner_id: str = "",
+) -> str:
+    """Start t1 in a chat turn, register its gated call and log it as the gate does; t1 is still running."""
     _during(model, 0, lambda: rig.start_work("t1"))
     await rig.send("m1", "send the invoice")
     await rig.settle()
@@ -3029,15 +3066,6 @@ async def _parked_on_a_ledger_approval(
             args_preview={"to": "acme@example.com"},
         ),
     )
-    await record_work_finished(
-        rig.conversation_id,
-        rig.user_id,
-        "t1",
-        WorkOutcome.DONE,
-        WorkReport("Approve the send?"),
-        continued_by_decision=not owner_run_type,
-    )
-    await rig.settle()
     return approval_id
 
 
@@ -3077,6 +3105,58 @@ async def test_an_approval_tapped_twice_resumes_its_work_once(
     row = await approval_ledger_repository.get_by_approval_id(approval_id)
     assert row is not None and row.outcome is ApprovalOutcome.APPROVED
     assert _approval_card(await rig.entries()).data.outcome is ApprovalOutcome.APPROVED
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
+async def test_a_new_request_while_an_approval_waits_is_not_answered_with_the_old_ask(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression for conversation 1737e031: a new todo request got the parked work's approval ask back."""
+    model = gated("I need your approval to send it", "On it: adding groceries")
+    rig = await rig_for(model)
+    await _parked_on_a_ledger_approval(rig, model)
+
+    await rig.send("m2", "add a todo called groceries")
+    await rig.settle()
+
+    assert not any("Approve the send?" in text for text in humans(model.prompts[-1]))
+    assert "add a todo called groceries" in humans(model.prompts[-1])
+    assert (await rig.answered())[-1] == (ReplyOutcome.ANSWERED, ("m2",))
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
+async def test_an_approval_decided_before_its_run_ends_is_never_asked_again(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression for conversation 741603c7: a fast Approve was followed by "please approve it in the card"."""
+    model = gated("I need your approval to send it", "Sent the invoice to Acme")
+    rig = await rig_for(model)
+    approval_id = await _asking_on_a_ledger_approval(rig, model)
+    spawned = _Spawned(rig, finish_with="invoice sent")
+
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        await ledger_decide.decide_ledger(
+            approval_id, user_id=rig.user_id, kind="approve", via="card"
+        )
+    await record_work_finished(
+        rig.conversation_id,
+        rig.user_id,
+        "t1",
+        WorkOutcome.DONE,
+        WorkReport("Approve the send?", awaits_decision=True),
+        continued_by_decision=True,
+    )
+    await asyncio.gather(*spawned.finishing)
+    await rig.settle()
+
+    narrated = [task for settled in await rig.of(ReplySettled) for task in settled.narrates]
+    assert narrated == spawned.task_ids
+    assert not any(
+        "Approve the send?" in text for prompt in model.prompts for text in humans(prompt)
+    )
+    assert [r.text for r in await rig.of(Reply)][-1] == "Sent the invoice to Acme"
     await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
 
 
@@ -3354,3 +3434,80 @@ async def test_a_tool_heavy_turn_shows_the_same_screen_live_and_on_reload(
     (settled,) = [item for item in shown if isinstance(item, WorkItem)]
     assert settled.tool_data == live.tool_data
     assert shown == await _reloaded(rig)
+
+
+@contextmanager
+def _jev_out_of_credit() -> Iterator[None]:
+    """Refuse every classifier call, as OpenRouter does with no credit left."""
+    refused = httpx.Response(402, request=httpx.Request("POST", HIL_JEV_URL))
+    with (
+        patch.object(jev_client.jev_http_client, "post", AsyncMock(return_value=refused)),
+        patch.object(jev_client, "resolve", AsyncMock(return_value=ProviderConfig(api_key="k"))),
+    ):
+        yield
+
+
+async def _ask_on_a_bot(rig: Rig, model: GatedModel) -> str:
+    """Start work from a Telegram message and leave one approval of it pending, on the ledger and in the log."""
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "add a todo called milk", ConversationSource.TELEGRAM)
+    await rig.settle()
+    approval_id = await approval_ledger_repository.register(
+        ApprovalProposal(
+            conversation_id=rig.conversation_id,
+            user_id=rig.user_id,
+            fingerprint="fp-todo",
+            tool_name="create_todo",
+            args={"title": "milk"},
+            summary="Create todo",
+            owner_agent=f"todos_{rig.conversation_id}",
+            task_id="t1",
+        )
+    )
+    await record_approval_requested(
+        rig.conversation_id,
+        rig.user_id,
+        ApprovalRequested(
+            id=f"approval:{approval_id}",
+            task_id="t1",
+            approval_id=approval_id,
+            description=described("Create todo"),
+            expires_at=None,
+        ),
+    )
+    return approval_id
+
+
+@pytest.mark.service
+@pytest.mark.parametrize("reply", ["yes", "Yes!"])
+async def test_a_plain_yes_on_a_bot_decides_its_approval_with_the_classifier_down(
+    rig_for: RigFactory, edges: Edges, reply: str
+) -> None:
+    model = gated("on it")
+    rig = await rig_for(model, approvals=HilApprovalReplies())
+    approval_id = await _ask_on_a_bot(rig, model)
+    with _jev_out_of_credit():
+        await rig.send("m2", reply, ConversationSource.TELEGRAM)
+        await rig.settle()
+
+    [decided] = edges.logged.await_args_list
+    assert decided.args[2:4] == (approval_id, ApprovalOutcome.APPROVED)
+    assert len(model._prompts) == 1  # the ack, not a comms run, answered it
+    assert [r.text for r in await rig.of(Reply)][1:] == ["Got it, I'll create todo."]
+
+
+@pytest.mark.service
+async def test_a_new_request_on_a_bot_runs_with_the_classifier_down_and_the_approval_waits(
+    rig_for: RigFactory, edges: Edges
+) -> None:
+    model = gated("on it", "added bread")
+    rig = await rig_for(model, approvals=HilApprovalReplies())
+    approval_id = await _ask_on_a_bot(rig, model)
+    with _jev_out_of_credit():
+        await rig.send("m2", "also add a todo called bread", ConversationSource.TELEGRAM)
+        await rig.settle()
+
+    edges.logged.assert_not_awaited()
+    assert [r.text for r in await rig.of(Reply)] == ["on it", "added bread"]
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert state.asking == (approval_id,)

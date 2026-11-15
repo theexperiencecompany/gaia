@@ -4,6 +4,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 
 from app.agents.core.interruption import INTERRUPTION_MARKER, INTERRUPTION_SOURCE
 from app.constants.conversation import (
+    ABSORBED_NOTE,
     BARGE_IN_NOTE,
     INTEGRATION_CONNECTED_NOTE,
     LOG_SEQ,
@@ -149,12 +150,35 @@ def test_a_stop_whose_inputs_never_reached_the_thread_is_said() -> None:
     )
 
 
+def test_a_chat_runs_finish_its_approvals_decision_carries_on_is_not_reported_again() -> None:
+    """Regression for conversation 741603c7: the decided ask reached the continuation's reply."""
+    asked = finished("f1", "t1").model_copy(
+        update={"continued_by_decision": True, "awaits_decision": True}
+    )
+    continuation = logged(5, finished("f2", "t2"))
+    in_context = attempt_messages(batch(continuation), [logged(3, asked)], [], AS_TYPED)
+    assert ids(in_context) == ["log:f2"]
+    in_batch = attempt_messages(batch(logged(3, asked)), [], [], AS_TYPED)
+    assert ids(in_batch) == ["log:f1"]
+
+
+def test_messages_handed_to_a_working_run_say_the_earlier_request_is_still_owed() -> None:
+    """Regression for conversation ac1f090c: a side question mid-research got "36" and no research."""
+    u2, u3 = logged(2, user("u2")), logged(3, user("u3"))
+    messages, _ = absorbed_messages([u2, u3], AS_TYPED)
+    assert ids(messages) == ["log:u2", "log:u3", "log:u3:absorbed"]
+    assert messages[-1].content == ABSORBED_NOTE
+    assert messages[-1].additional_kwargs == {LOG_SEQ: 3}
+    work, _ = absorbed_messages([logged(4, finished("f", "t1"))], AS_TYPED)
+    assert ids(work) == ["log:f"]
+
+
 def test_absorbing_stops_at_the_first_stop() -> None:
     u2, u5 = logged(2, user("u2")), logged(5, user("u5"))
     messages, joined = absorbed_messages(
         [u2, logged(3, stop("s3", 2)), logged(4, user("u4"))], AS_TYPED
     )
-    assert (ids(messages), joined) == (["log:u2"], (u2,))
+    assert (ids(messages), joined) == (["log:u2", "log:u2:absorbed"], (u2,))
     assert absorbed_messages([u5], AS_TYPED)[1] == (u5,)
 
 

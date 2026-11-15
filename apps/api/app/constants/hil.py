@@ -100,6 +100,13 @@ HIL_JEV_REPLY_DECIDE_FLOOR = 0.50
 # Decisions question name per pending action: "action_1", "action_2", ...
 HIL_JEV_REPLY_QUESTION_PREFIX = "action_"
 
+# The bot approval prompt's own answer words (approval-prompt.ts): a reply that is
+# one of them, optionally followed by item numbers, decides without the classifier.
+HIL_PLAIN_REPLY_WORDS: Final[dict[str, ApprovalDecision]] = {
+    **dict.fromkeys(("yes", "y", "yep", "yeah", "ok", "okay", "sure", "approve"), "approve"),
+    **dict.fromkeys(("no", "n", "nope", "cancel", "deny"), "deny"),
+}
+
 
 class ReplyChoice(StrEnum):
     """What a chat reply means for one pending action: the JEV reply question's labels."""

@@ -1,8 +1,7 @@
 """Every way a ledger approval ends reads the same in its log entry, on the row that follows it, and in its event."""
 
-from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock, patch
+from collections.abc import Awaitable, Callable
+from unittest.mock import MagicMock
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
@@ -12,77 +11,17 @@ from app.db.repositories.approval_ledger import (
     LIVE_ROW_INDEX_NAME,
     approval_ledger_repository,
 )
-from app.models.conversation_log_models import ApprovalDecided
 from app.models.hil_models import ApprovalProposal
-from app.services.conversation.work_log import DecisionTaken
 from app.services.hil import ledger_decide
 from shared.py.analytics.catalog.hil import HilDecisionSubmitted, HilRevoked
 from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from tests.integration.real.ledger_fixtures import Edges
 
 USER_ID = "65f1a2b3c4d5e6f708192a3b"
 CONVERSATION_ID = "conv-vocabulary"
 OWNER = "gmail_conv-vocabulary"
 
 pytestmark = [pytest.mark.integration, pytest.mark.service]
-
-
-@dataclass
-class Edges:
-    """What left the ledger path: the log entries and the analytics events."""
-
-    logged: AsyncMock
-    events: MagicMock
-    dispatch: AsyncMock
-    acted: AsyncMock
-
-
-@pytest.fixture
-async def edges(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[Edges]:
-    await mongo_db["approval_ledger"].delete_many({})
-    decided: dict[str, ApprovalDecided] = {}
-
-    async def _decide(
-        conversation_id: str,
-        user_id: str,
-        approval_id: str,
-        outcome: ApprovalOutcome,
-        decider: ApprovalDecider | None,
-        *,
-        feedback: str | None = None,
-    ) -> DecisionTaken:
-        taken = approval_id not in decided
-        decided.setdefault(
-            approval_id,
-            ApprovalDecided(
-                id=f"approval:{approval_id}:decided",
-                approval_id=approval_id,
-                outcome=outcome,
-                decider=decider,
-                feedback=feedback,
-            ),
-        )
-        return DecisionTaken(stands=decided[approval_id], taken=taken)
-
-    async def _read(conversation_id: str, user_id: str, approval_id: str) -> ApprovalDecided | None:
-        return decided.get(approval_id)
-
-    with (
-        patch.object(
-            ledger_decide, "record_approval_decided", new=AsyncMock(side_effect=_decide)
-        ) as logged,
-        patch.object(ledger_decide, "logged_decision", new=AsyncMock(side_effect=_read)),
-        patch.object(ledger_decide, "record_approved_action_ended", new=AsyncMock()) as acted,
-        patch.object(ledger_decide, "capture") as events,
-        patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
-        patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()),
-        patch.object(ledger_decide, "_wake_agent", new=AsyncMock()),
-        patch.object(ledger_decide, "resume_owner_after_approval", new=AsyncMock()),
-        patch.object(ledger_decide, "record_owner_deny", new=AsyncMock()),
-        patch.object(ledger_decide, "dispatch_tool", new=AsyncMock()) as dispatch,
-        patch.object(ledger_decide, "dispatch_config_for", return_value={}),
-    ):
-        yield Edges(logged, events, dispatch, acted)
-    await mongo_db["approval_ledger"].delete_many({})
 
 
 async def _propose() -> str:

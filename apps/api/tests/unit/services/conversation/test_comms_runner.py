@@ -26,7 +26,7 @@ from app.agents.core.messages import MessageAttachments, MessageScope
 from app.agents.core.nodes.drain_conversation_log import close_feed, open_feed
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.agents.tools.core.registry import init_tool_registry
-from app.constants.conversation import LOG_SEQ
+from app.constants.conversation import ABSORBED_NOTE, LOG_SEQ
 from app.constants.graphs import GraphName
 from app.core.lazy_loader import providers
 from app.models.agent_config import StepTurnRef
@@ -451,8 +451,9 @@ async def test_absorbed_input_reaches_the_next_model_call(conversation_id: str) 
     assert events[-1].outcome == Replied(text="answered both", tool_data=ANY)
     assert "text of u3" not in humans(model.prompts[0])
     assert humans(model.prompts[1]).count("text of u3") == 1
+    assert humans(model.prompts[1])[-1] == ABSORBED_NOTE
     joined = [m for m in left if m.additional_kwargs.get(LOG_SEQ) == 3]
-    assert [m.id for m in joined] == ["log:u3"]
+    assert [m.id for m in joined] == ["log:u3", "log:u3:absorbed"]
     # Work the run dispatches from now on answers the joiner too.
     assert step == {"epoch": 1, "batch_start": 1, "cause_through": 3, "answers": ["u1", "u3"]}
 
