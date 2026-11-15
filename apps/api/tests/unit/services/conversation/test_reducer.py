@@ -26,7 +26,7 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.services.conversation.reducer import reduce
-from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.log_helpers import (
     asked,
@@ -922,3 +922,49 @@ def test_a_stop_cancels_parked_work_and_the_approval_it_waits_on() -> None:
     result = _accept(_parked(), 7, stop("s"))
     assert result.state.work == ()
     assert CancelWork(task_ids=("t1",), approval_ids=("ap1",)) in result.effects
+
+
+def _resumed_by_the_first_of_two() -> ConversationState:
+    """t1 parks on ap1 and ap2; "yes 1" approves ap1 and starts t2, which carries it out."""
+    approve = ApprovalDecided(
+        id="d1", approval_id="ap1", outcome=ApprovalOutcome.APPROVED, decider=ApprovalDecider.USER
+    )
+    state, _ = fold(
+        [
+            user("u1"),
+            started("w", "t1", 1),
+            asked("a1", "t1", "ap1"),
+            asked("a2", "t1", "ap2"),
+            *replied("r", ["u1"], 1),
+            _left_to_the_user("f", "t1"),
+            approve,
+            started("w2", "t2", 8),
+        ]
+    )
+    return state
+
+
+def test_a_resumed_run_asking_about_an_approval_decided_during_it_narrates_nothing() -> None:
+    """Regression for conversation a0a0b079: after "no 2", the run "yes 1" resumed still asked "Approve pair-B?"."""
+    deny = ApprovalDecided(
+        id="d2", approval_id="ap2", outcome=ApprovalOutcome.DENIED, decider=ApprovalDecider.USER
+    )
+    decided = _accept(_resumed_by_the_first_of_two(), 10, deny).state
+    result = _accept(decided, 11, _asking("f2", "t2"))
+    assert result.state.work == ()
+    assert result.state.finished_work == ()
+    assert result.effects == ()
+
+
+def test_a_resumed_run_asking_about_an_approval_still_pending_reports_its_finish() -> None:
+    acted = ApprovalDecided(
+        id="d1:acted",
+        approval_id="ap1",
+        outcome=ApprovalOutcome.APPROVED,
+        decider=ApprovalDecider.USER,
+        action=ActionResult.EXECUTED,
+    )
+    carried = _accept(_resumed_by_the_first_of_two(), 10, acted).state
+    result = _accept(carried, 11, _asking("f2", "t2"))
+    assert [item.task_id for item in result.state.finished_work] == ["t2"]
+    assert result.effects == (KickStep(),)
