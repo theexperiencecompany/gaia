@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncClient, Response as HttpxResponse
 from posthog.contexts import get_context_distinct_id
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -33,6 +33,7 @@ from app.constants.analytics import AT_MOST_ONCE_TASK_NAME, POSTHOG_SESSION_HEAD
 from app.constants.auth import (
     DEV_USER_HEADER,
     DEV_USER_MISSING_HINT,
+    SESSION_HINT_COOKIE,
     WOS_SESSION_COOKIE,
     WOS_SESSION_MAX_AGE_SECONDS,
 )
@@ -43,7 +44,7 @@ from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.analytics_service import capture
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
-from tests.helpers import captured_wide_event, session_set_cookie
+from tests.helpers import captured_wide_event, session_hint_set_cookie, session_set_cookie
 
 
 @pytest.fixture(autouse=True)
@@ -190,26 +191,6 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         assert resp.status_code == 200
         assert resp.json()["authenticated"] is True
 
-    def test_session_refresh_sets_cookie(self) -> None:
-        user_info = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
-        new_session = "refreshed_session_token"
-        app = _build_test_app()
-        with patch.object(
-            WorkOSAuthMiddleware,
-            "_authenticate_session",
-            new_callable=AsyncMock,
-            return_value=(user_info, new_session),
-        ):
-            client = TestClient(app)
-            client.cookies.set("wos_session", "old_tok")
-            resp = client.get("/api/v1/protected")
-        assert resp.status_code == 200
-        assert resp.headers.get_list("set-cookie") == [
-            session_set_cookie(
-                WOS_SESSION_COOKIE, new_session, WOS_SESSION_MAX_AGE_SECONDS, secure=False
-            )
-        ]
-
     def test_failed_session_sets_auth_failure_state(self) -> None:
         app = _build_test_app()
         with patch.object(
@@ -238,6 +219,80 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         # Request should still go through, just unauthenticated
         assert resp.status_code == 200
         assert resp.json()["authenticated"] is False
+
+
+@pytest.fixture
+def _hosted_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.config.settings import settings
+
+    monkeypatch.setattr(settings, "HOST", "https://api.heygaia.io")
+    monkeypatch.setattr(settings, "FRONTEND_URL", "https://heygaia.io")
+
+
+HOSTED_HINT = session_hint_set_cookie(
+    WOS_SESSION_MAX_AGE_SECONDS, secure=False, domain=".heygaia.io"
+)
+
+
+def _get_protected(
+    session: tuple[AuthenticatedUser | None, str | None] | Exception, cookies: dict[str, str]
+) -> HttpxResponse:
+    authenticate = (
+        AsyncMock(side_effect=session)
+        if isinstance(session, Exception)
+        else AsyncMock(return_value=session)
+    )
+    with patch.object(WorkOSAuthMiddleware, "_authenticate_session", authenticate):
+        client = TestClient(_build_test_app())
+        for name, value in cookies.items():
+            client.cookies.set(name, value)
+        return client.get("/api/v1/protected")
+
+
+@pytest.mark.usefixtures("_hosted_urls")
+class TestSessionHint:
+    USER = AuthenticatedUser(user_id="u1", email="a@b.com", name="Test")
+
+    def test_a_refreshed_session_reissues_its_hint(self) -> None:
+        resp = _get_protected((self.USER, "fresh_tok"), {WOS_SESSION_COOKIE: "old_tok"})
+
+        assert resp.headers.get_list("set-cookie") == [
+            session_set_cookie(
+                WOS_SESSION_COOKIE, "fresh_tok", WOS_SESSION_MAX_AGE_SECONDS, secure=False
+            ),
+            HOSTED_HINT,
+        ]
+
+    def test_a_session_from_before_the_hint_gets_one(self) -> None:
+        resp = _get_protected((self.USER, None), {WOS_SESSION_COOKIE: "tok"})
+
+        assert resp.headers.get_list("set-cookie") == [HOSTED_HINT]
+
+    def test_a_session_that_has_its_hint_sets_nothing(self) -> None:
+        resp = _get_protected(
+            (self.USER, None), {WOS_SESSION_COOKIE: "tok", SESSION_HINT_COOKIE: "1"}
+        )
+
+        assert resp.headers.get_list("set-cookie") == []
+
+    @pytest.mark.parametrize(
+        "cookies",
+        [{WOS_SESSION_COOKIE: "expired_tok", SESSION_HINT_COOKIE: "1"}, {SESSION_HINT_COOKIE: "1"}],
+        ids=["rejected-session", "no-session"],
+    )
+    def test_a_hint_without_a_live_session_is_dropped(self, cookies: dict[str, str]) -> None:
+        resp = _get_protected((None, None), cookies)
+
+        (cleared,) = resp.headers.get_list("set-cookie")
+        assert cleared.startswith(f'{SESSION_HINT_COOKIE}=""; Domain=.heygaia.io;')
+        assert "Max-Age=0" in cleared
+
+    def test_a_transient_auth_error_keeps_the_hint(self) -> None:
+        resp = _get_protected(
+            RuntimeError("WorkOS down"), {WOS_SESSION_COOKIE: "tok", SESSION_HINT_COOKIE: "1"}
+        )
+
+        assert resp.headers.get_list("set-cookie") == []
 
 
 class TestWorkOSAuthMiddlewareAgentAuth:
@@ -1013,6 +1068,21 @@ class TestDevBypassWithAMongoUser:
             True,
             False,
         )
+
+    @pytest.mark.usefixtures("_hosted_urls")
+    def test_the_bypass_user_gets_the_signed_in_hint_once(self) -> None:
+        with patch(
+            "app.utils.auth_utils.user_repository.get_by_email",
+            new_callable=AsyncMock,
+            return_value=self._USER,
+        ):
+            client = TestClient(_build_test_app())
+            first = client.get("/api/v1/protected")
+            client.cookies.set(SESSION_HINT_COOKIE, "1")
+            second = client.get("/api/v1/protected")
+
+        assert first.headers.get_list("set-cookie") == [HOSTED_HINT]
+        assert second.headers.get_list("set-cookie") == []
 
     def test_the_bypass_user_is_published_to_the_request_context(self) -> None:
         app = _build_test_app()

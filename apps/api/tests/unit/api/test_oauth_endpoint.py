@@ -20,7 +20,7 @@ from app.services.integrations.integration_account_lifecycle import AccountConne
 from app.services.oauth.composio_callback import ConnectionCompleted, ConnectionRejected
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
-from tests.helpers import session_set_cookie
+from tests.helpers import session_set_cookies
 
 OAUTH_BASE = "/api/v1/oauth"
 FRONTEND = settings.FRONTEND_URL
@@ -413,11 +413,9 @@ class TestWorkOSCallback:
             f"{OAUTH_BASE}/workos/callback?code=abc&state=xyz",
             follow_redirects=False,
         )
-        assert response.headers.get_list("set-cookie") == [
-            session_set_cookie(
-                WOS_SESSION_COOKIE, "sealed_token_abc", WOS_SESSION_MAX_AGE_SECONDS, secure=False
-            )
-        ]
+        assert response.headers.get_list("set-cookie") == session_set_cookies(
+            WOS_SESSION_COOKIE, "sealed_token_abc", WOS_SESSION_MAX_AGE_SECONDS, secure=False
+        )
 
     @pytest.mark.regression
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)

@@ -113,8 +113,6 @@ score:Structured Data=93
 *	schema/entity-conflicts/entity-conflicts	syn:WebPage|name:dropbox ai integration - automate dropbox with ai url
 *	security/csp/csp-missing
 *	social/asset-divergence/asset-divergence	og-image:/api/og/integrations
-/	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
-/about	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
 /about	links/no-contextual-inbound/no-contextual-inbound
 /ai-assistant-that-can-see-your-screen	content/keyword-stuffing/keyword-stuffing	screen
 /ai-assistant-that-uses-your-computer	content/keyword-stuffing/keyword-stuffing	browser
@@ -2682,7 +2680,6 @@ score:Structured Data=93
 /settings/linked-accounts	links/internal-links/internal-links
 /settings/linked-accounts	links/weak-internal-links/weak-internal-links
 /settings/linked-accounts	perf/lazy-above-fold/lazy-above-fold	/cdn-cgi/image/width=64,quality=75,format=auto/images/logos/logo.webp
-/signup	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
 /signup	content/word-count/word-count
 /signup	core/robots-meta/robots-meta
 /signup	images/offscreen-lazy/offscreen-images-not-lazy	logo.webp

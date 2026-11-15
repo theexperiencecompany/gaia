@@ -9,6 +9,7 @@ import { PUBLIC_PAGES, SESSION_RESUMED_KEY } from "@/features/auth/constants";
 import {
   clearCurrentUser,
   currentUserQueryOptions,
+  useMayHaveSession,
 } from "@/features/auth/hooks/useCurrentUser";
 import { usePendingCheckout } from "@/features/pricing/hooks/usePendingCheckout";
 import { usePathname } from "@/i18n/navigation";
@@ -22,16 +23,8 @@ let hasTrackedOAuthLogin = false;
 const isUnauthorized = (error: Error | null): boolean =>
   error instanceof ApiError && error.status === HTTP_UNAUTHORIZED;
 
-/**
- * Drive the current-user query. knownSessionOnly (marketing pages) asks /me only
- * when this browser holds a signed-in user or carries OAuth tokens: the session
- * cookie is the API's own, so the web cannot see it and a stranger would get a 401.
- */
-const useFetchUser = ({
-  knownSessionOnly = false,
-}: {
-  knownSessionOnly?: boolean;
-} = {}) => {
+/** Drive the current-user query; OAuth tokens in the URL always ask /me. */
+const useFetchUser = () => {
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const currentPath = usePathname();
@@ -42,14 +35,14 @@ const useFetchUser = ({
   const accessToken = searchParams.get("access_token");
   const refreshToken = searchParams.get("refresh_token");
   const hasOAuthTokens = Boolean(accessToken && refreshToken);
+  const mayHaveSession = useMayHaveSession();
 
   // The one driver of the current-user query: re-validates the persisted user on mount.
   // enabled reads the live query, so a user the persister restores after mount counts.
   const { data, error } = useQuery({
     ...currentUserQueryOptions,
     refetchOnMount: "always",
-    enabled: (query) =>
-      !knownSessionOnly || hasOAuthTokens || query.state.data !== undefined,
+    enabled: (query) => hasOAuthTokens || mayHaveSession(query),
   });
 
   useEffect(() => {
@@ -111,7 +104,7 @@ const useFetchUser = ({
   useEffect(() => {
     if (!error || hasClearedOnError.current) return;
     hasClearedOnError.current = true;
-    // A 401 is the API's answer for a signed-out browser, not a failure.
+    // A 401 is the API's answer for a signed-out browser (its response drops the hint), not a failure.
     if (!isUnauthorized(error)) {
       console.error("Error fetching user info:", error);
     }

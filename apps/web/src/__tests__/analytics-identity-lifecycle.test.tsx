@@ -9,16 +9,7 @@
  */
 
 import { ApiError } from "@shared/api";
-import {
-  dehydrate,
-  QueryClient,
-  QueryClientProvider,
-} from "@tanstack/react-query";
-import {
-  type PersistedClient,
-  type Persister,
-  PersistQueryClientProvider,
-} from "@tanstack/react-query-persist-client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import type { InternalAxiosRequestConfig } from "axios";
 import type { ReactNode } from "react";
@@ -68,16 +59,13 @@ const SIGNED_IN_USER = {
   onboarding: { completed: true },
 };
 
-function renderFetchUser(
-  cachedUser: typeof SIGNED_IN_USER | null,
-  options?: Parameters<typeof useFetchUser>[0],
-) {
+function renderFetchUser(cachedUser: typeof SIGNED_IN_USER | null) {
   const queryClient = new QueryClient();
   if (cachedUser) queryClient.setQueryData(CURRENT_USER_QUERY_KEY, cachedUser);
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
-  return renderHook(() => useFetchUser(options), { wrapper });
+  return renderHook(() => useFetchUser(), { wrapper });
 }
 
 /** Let the rejected /me reach the hook's effects. */
@@ -167,63 +155,6 @@ describe("useFetchUser identity reset", () => {
     flushPendingAnalytics();
 
     expect(posthogMock.reset).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("useFetchUser on marketing pages", () => {
-  it("asks /me nothing for a visitor this browser never signed in", async () => {
-    fetchUserInfo.mockResolvedValue(SIGNED_IN_USER);
-
-    renderFetchUser(null, { knownSessionOnly: true });
-    await settle();
-
-    expect(fetchUserInfo).not.toHaveBeenCalled();
-  });
-
-  it("re-validates a browser that holds a signed-in user", async () => {
-    fetchUserInfo.mockResolvedValue(SIGNED_IN_USER);
-
-    renderFetchUser(SIGNED_IN_USER, { knownSessionOnly: true });
-
-    await waitFor(() => expect(fetchUserInfo).toHaveBeenCalledTimes(1));
-  });
-
-  it("re-validates a signed-in user the persister restores after mount", async () => {
-    fetchUserInfo.mockResolvedValue(SIGNED_IN_USER);
-    const queryClient = new QueryClient();
-    const seeded = new QueryClient();
-    seeded.setQueryData(CURRENT_USER_QUERY_KEY, SIGNED_IN_USER);
-    const persisted: PersistedClient = {
-      timestamp: Date.now(),
-      buster: "",
-      clientState: dehydrate(seeded),
-    };
-    const persister: Persister = {
-      persistClient: async () => undefined,
-      restoreClient: () =>
-        new Promise((resolve) => setTimeout(() => resolve(persisted), 10)),
-      removeClient: async () => undefined,
-    };
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <PersistQueryClientProvider
-        client={queryClient}
-        persistOptions={{ persister }}
-      >
-        {children}
-      </PersistQueryClientProvider>
-    );
-
-    renderHook(() => useFetchUser({ knownSessionOnly: true }), { wrapper });
-
-    await waitFor(() => expect(fetchUserInfo).toHaveBeenCalledTimes(1));
-  });
-
-  it("still asks /me on every app page", async () => {
-    fetchUserInfo.mockResolvedValue(SIGNED_IN_USER);
-
-    renderFetchUser(null);
-
-    await waitFor(() => expect(fetchUserInfo).toHaveBeenCalledTimes(1));
   });
 });
 
