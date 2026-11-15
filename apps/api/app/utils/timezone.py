@@ -178,6 +178,13 @@ def as_utc(dt: datetime | None) -> datetime | None:
     return dt.replace(tzinfo=UTC) if dt and dt.tzinfo is None else dt
 
 
+def age_since(moment: datetime) -> str:
+    """How long ago moment was, as whole hours and minutes ("72h5m"), for a model to judge staleness."""
+    elapsed_minutes = int((datetime.now(UTC) - moment).total_seconds()) // 60
+    hours, minutes = divmod(elapsed_minutes, 60)
+    return f"{hours}h{minutes}m"
+
+
 class TimezoneSource(str, Enum):
     """Which input produced a resolved home timezone (emitted for observability)."""
 
