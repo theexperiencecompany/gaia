@@ -1053,6 +1053,51 @@ def test_replay_fails_loudly_when_the_diff_no_longer_matches(tmp_path: Path) -> 
     assert "does not match the file on disk" in result.stderr
 
 
+COUNTER_SOURCE = '''class Counter:
+    def __init__(self, start: int) -> None:
+        """Start one past the seed.
+
+        The seed itself is reserved.
+        """
+        self.value = start + 1
+
+    def bump(self, by: int) -> int:
+        return self.value + by
+'''
+# Verbatim `mutmut show` (3.7) output for two methods of COUNTER_SOURCE: a method
+# prints dedented to column 0, while a docstring's continuation lines keep their
+# file column, and the hunk can open on a blank context line.
+COUNTER_INIT_DIFF = (
+    "--- app/calc.py\n+++ app/calc.py\n@@ -3,4 +3,4 @@\n \n"
+    "         The seed itself is reserved.\n"
+    '         """\n'
+    "-    self.value = start + 1\n"
+    "+    self.value = None"
+)
+COUNTER_BUMP_DIFF = (
+    "--- app/calc.py\n+++ app/calc.py\n@@ -1,2 +1,2 @@\n"
+    " def bump(self, by: int) -> int:\n"
+    "-    return self.value + by\n"
+    "+    return self.value - by"
+)
+
+
+@pytest.mark.parametrize(
+    ("diff", "hint", "before", "after"),
+    [
+        (COUNTER_INIT_DIFF, 7, "start + 1", "None"),
+        (COUNTER_BUMP_DIFF, 10, "self.value + by", "self.value - by"),
+    ],
+)
+def test_replay_applies_a_method_mutant_at_the_methods_indent(
+    diff: str, hint: int, before: str, after: str
+) -> None:
+    patched, line = report_lib.apply_hunk(COUNTER_SOURCE.splitlines(), diff, hint)
+
+    assert patched == COUNTER_SOURCE.replace(before, after).splitlines()
+    assert line == hint
+
+
 def test_mutation_py_asks_for_the_verdict_directory_instead_of_deriving_it() -> None:
     """`verdict.py dir` is the only thing that knows where verdicts go.
 

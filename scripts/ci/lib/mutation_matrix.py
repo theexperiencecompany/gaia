@@ -453,7 +453,10 @@ def main() -> int:
         unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
         failures.append(
             f"changed module {rel} has no test file anywhere (looked for {unit_mirror} "
-            "and AST importers/patch targets). Changed code must ship tests."
+            "and AST importers/patch targets). Changed code must ship tests: add "
+            f"apps/api/{unit_mirror} or any test that imports the module, or mutate it "
+            f"against a test file you name with `python3 scripts/ci/mutation.py module {rel} "
+            "<tests/...py>`."
         )
     if failures:
         for failure in failures:

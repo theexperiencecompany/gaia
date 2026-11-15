@@ -262,7 +262,10 @@ def test_a_failing_detector_fails_the_plan(tmp_path: Path) -> None:
         env={"PATH": "/usr/bin:/bin", "GITHUB_OUTPUT": str(tmp_path / "out")},
     )
 
-    assert process.returncode != 0
+    assert process.returncode == 1
+    # The detector's own line is the whole message: a traceback after it buries it.
+    assert "no test file for app/a.py" in process.stderr
+    assert "Traceback" not in process.stderr
 
 
 def test_matrix_only_offers_the_detector_mutatable_app_modules(tmp_path: Path) -> None:
