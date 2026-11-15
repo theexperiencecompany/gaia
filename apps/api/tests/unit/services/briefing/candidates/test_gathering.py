@@ -11,7 +11,7 @@ import pytest
 from tests.factories import make_user_id
 
 from app.constants.briefing import BriefAction
-from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, NEEDS_REPLY_LABEL, WaitingOn
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.hil import hil_approval_repository
 from app.db.repositories.reminders import reminder_repository
@@ -299,6 +299,70 @@ class TestWhatEarlierBriefsShowedIsNotNews:
         (candidate,) = gathered.pool.values()
         assert candidate.backlog
         assert not gathered.has_news
+
+
+class TestWhereGaiaCanAct:
+    async def test_gaia_acts_in_its_own_work_its_connected_built_ins_and_apps_it_can_write_to(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        connected = AsyncMock(return_value=["gmail", "notion"])
+        monkeypatch.setattr(candidates_pool, "get_connected_integration_ids", connected)
+        notion = _gmail_signal("n-1", "Roadmap page shared").signal.model_copy(
+            update={"integration_id": "notion", "app": "Notion"}
+        )
+        linear = _gmail_signal("l-1", "Fix the login redirect").signal.model_copy(
+            update={"integration_id": "linear", "app": "Linear"}
+        )
+        scouts = ScoutSignals(
+            results=[
+                ScoutResult(integration_id="notion", app="Notion", outcome=ScoutOutcome.REPLAYED),
+                ScoutResult(
+                    integration_id="linear",
+                    app="Linear",
+                    outcome=ScoutOutcome.REPLAYED,
+                    can_write=True,
+                ),
+            ],
+            remembered=[RememberedSignal(signal=notion), RememberedSignal(signal=linear)],
+            criteria={},
+        )
+        work = TrackedWork(
+            blocked=[
+                _thread_todo("t-maya", "Reply to Maya on the term sheet"),
+                _tracked("t1", "Approve the MSA", NEEDS_REPLY_LABEL),
+            ]
+        )
+        events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
+
+        gathered = await gather_candidates(
+            USER_ID, CLOCK, NOW, NOW, CandidateSources(work, scouts, events)
+        )
+
+        assert [(c.source, c.gaia_acts) for c in gathered.pool.values()] == [
+            ("gmail", True),
+            ("gaia", True),
+            ("notion", False),
+            ("linear", True),
+            ("googlecalendar", False),
+        ]
+        connected.assert_awaited_once_with(USER_ID)
+
+
+class TestGaiasOpenWorkJoinsThePool:
+    async def test_when_gaia_looks_again_is_said_on_the_users_own_day(self) -> None:
+        later = TodoDocument(
+            id="r1",
+            user_id=USER_ID,
+            title="Chase the venue",
+            labels=[GAIA_TRACKED_LABEL],
+            waiting_on=WaitingOn.TIME,
+            scheduled_at=datetime(2026, 11, 11, 20, 0, tzinfo=UTC),
+        )
+
+        gathered = await _gathered(TrackedWork(running=[later]), _scouts())
+
+        [item] = gathered.pool.values()
+        assert item.standing == "GAIA looks at it again Thu Nov 12"
 
 
 class TestOneItemPerThing:

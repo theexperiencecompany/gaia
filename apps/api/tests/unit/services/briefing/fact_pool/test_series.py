@@ -92,12 +92,21 @@ class TestWorkSeries:
             GAIA_TRACKED_LABEL,
             completed=True,
             completed_at=_local(6, 10),
+            completed_by=TodoCompleter.GAIA,
             external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-1"),
+        )
+        triaged = _todo(
+            "Invoice from Acme",
+            GAIA_TRACKED_LABEL,
+            completed=True,
+            completed_at=_local(7, 10),
+            completed_by=TodoCompleter.USER,
+            external_ref=ExternalRef(source=ExternalRefSource.INBOX_DESK, id="gmail"),
         )
         done = _done("Board memo", TodoCompleter.GAIA, _local(6, 11))
 
-        assert [s.points for s in work_series([thread, done], WINDOW)] == [
-            _ys([0, 1, 0, 0, 0, 0, 0])
+        assert [(s.id, s.points) for s in work_series([thread, triaged, done], WINDOW)] == [
+            ("gaia_finished", _ys([0, 1, 0, 0, 0, 0, 0]))
         ]
 
     def test_nothing_finished_is_no_series(self) -> None:

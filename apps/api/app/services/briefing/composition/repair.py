@@ -76,7 +76,7 @@ def repaired(composition: BriefComposition, pool: FactPool) -> BriefComposition:
     for block in composition.blocks:
         if isinstance(block, ComposedLead):
             candidate = pool.items.get(block.item.id)
-            if blocks or candidate is None or block.item.id in seen or not left:
+            if blocks or candidate is None:
                 continue
             seen.add(block.item.id)
             left -= 1

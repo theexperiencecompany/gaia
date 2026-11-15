@@ -79,6 +79,18 @@ def test_each_kind_of_block_is_told_to_the_voice_under_one_header() -> None:
     ]
 
 
+def test_a_chart_over_one_page_of_an_app_tells_the_voice_its_total_is_not_the_apps() -> None:
+    paged = _series("prs", [1, 2, 3]).model_copy(update={"shown_not_total": True})
+    chart = CHART.model_copy(update={"series": [_series("meetings", [2, 1, 4]), paged]})
+
+    assert voiced_block_lines([chart]) == [
+        BLOCKS_HEADER,
+        "- a chart, This week (series meetings, prs): Thursday was heaviest. | "
+        "summed over the items read from one page of the app: its total is of those items, "
+        "never the app's whole total",
+    ]
+
+
 def test_no_blocks_beyond_the_items_tell_the_voice_nothing() -> None:
     assert voiced_block_lines([]) == []
 

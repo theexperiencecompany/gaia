@@ -20,8 +20,13 @@ from app.models.brief_pool_models import (
     SeriesPoint,
     SeriesShape,
 )
-from app.models.briefing_models import BriefingEvent, BriefingItem, BriefingSection
-from app.models.scout_models import Signal, SignalMemoryDocument
+from app.models.briefing_models import (
+    BriefingEvent,
+    BriefingItem,
+    BriefingSection,
+    UnreadSource,
+)
+from app.models.scout_models import ScoutSkipReason, Signal, SignalMemoryDocument
 from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.context import CalendarGap, CalendarUnread, UserClock
 from app.services.briefing.facts import (
@@ -154,6 +159,9 @@ class TestWhatProseMayQuote:
         facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
 
         assert facts.values.quoted == {"17"}
+        assert facts.block.splitlines()[2] == (
+            "- fact 1 | Open: Pitch prep | stands: GAIA looks at it again Tue Nov 17"
+        )
 
     def test_the_figures_in_every_items_own_words_may_be_quoted(self) -> None:
         first = (
@@ -230,6 +238,50 @@ class TestTheCalendarAndTheCharts:
             "- fact 8 | all day: Offsite",
         ]
 
+    @pytest.mark.parametrize("days", [2, 7], ids=["two-days", "a-week"])
+    def test_a_span_of_several_days_lists_its_events_under_each_days_count(self, days: int) -> None:
+        events = [
+            BriefingEvent(date="2026-11-12", start="15:00", title="Board call"),
+            BriefingEvent(date="2026-11-12", start=None, title="Offsite"),
+            BriefingEvent(date="2026-11-13", start="09:30", title="Dentist"),
+        ]
+        span = BriefSpan(heading="The days ahead", empty="Nothing.", no_items="None.", days=days)
+
+        facts = build_facts(
+            Chosen(sections=[], picked=[]),
+            _sources(calendar=events, event_ids=[7, 8, 9], span=span),
+            _CLOCK,
+        )
+
+        assert facts.block.splitlines()[-6:] == [
+            "The days ahead, 3 event(s):",
+            "Thursday Nov 12, 2 event(s), the week's busiest:",
+            "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
+            "- fact 8 | all day: Offsite",
+            "Friday Nov 13, 1 event(s):",
+            "- fact 9 | [[fact:9.time]] (9:30 AM): Dentist",
+        ]
+
+    def test_days_with_as_many_events_as_each_other_have_no_busiest(self) -> None:
+        events = [
+            BriefingEvent(date="2026-11-12", start="15:00", title="Board call"),
+            BriefingEvent(date="2026-11-13", start=None, title="Offsite"),
+        ]
+
+        facts = build_facts(
+            Chosen(sections=[], picked=[]),
+            _sources(calendar=events, event_ids=[7, 8], span=WEEK_AHEAD),
+            _CLOCK,
+        )
+
+        assert facts.block.splitlines()[-5:] == [
+            "The week ahead, 2 event(s):",
+            "Thursday Nov 12, 1 event(s):",
+            "- fact 7 | [[fact:7.time]] (3:00 PM): Board call",
+            "Friday Nov 13, 1 event(s):",
+            "- fact 8 | all day: Offsite",
+        ]
+
     def test_with_no_calendar_connected_the_note_says_so_not_that_it_is_empty(self) -> None:
         unconnected = _sources(calendar=CalendarUnread(CalendarGap.NOT_CONNECTED))
 
@@ -278,6 +330,34 @@ class TestEachCountClaimsOnlyItsOwn:
 
         assert facts.values.counts == {CountSlot.NEEDS_YOU: 1, CountSlot.WHILE_AWAY: 1}
         assert "- fact 4 | On their list, undated: Plan Q1" in facts.block
+
+    def test_done_and_in_progress_count_one_each_of_their_own_kind(self) -> None:
+        done = BriefCandidate(source="gaia", app="GAIA", state="lookback", title="Filed taxes")
+        running = BriefCandidate(source="gaia", app="GAIA", state="gaia", title="Venue search")
+        placed = [
+            (
+                BriefingItem(text="Filed taxes", kind="lookback", outcome=BriefOutcome.FINISHED),
+                done,
+            ),
+            (BriefingItem(text="Venue", kind="gaia", outcome=BriefOutcome.STARTED), running),
+            (BriefingItem(text="Venue 2", kind="gaia", outcome=BriefOutcome.STARTED), running),
+        ]
+
+        facts = build_facts(_chosen(*placed), _sources(), _CLOCK)
+
+        assert facts.values.counts == {CountSlot.DONE: 1, CountSlot.IN_PROGRESS: 2}
+
+    def test_the_spans_events_are_counted(self) -> None:
+        events = [
+            BriefingEvent(date="2026-11-11", start="15:00", title="Board call"),
+            BriefingEvent(date="2026-11-11", start=None, title="Offsite"),
+        ]
+
+        facts = build_facts(
+            Chosen(sections=[], picked=[]), _sources(calendar=events, event_ids=[7, 8]), _CLOCK
+        )
+
+        assert facts.values.counts == {CountSlot.EVENTS: 2}
 
 
 class TestARepeatIsSaidAsStillOpen:
@@ -450,7 +530,42 @@ class TestTheWeekRecap:
         assert {"Q3", "v11"} <= facts.values.quoted
 
 
+class TestTheClosingLines:
+    def test_an_empty_brief_says_so_then_what_went_unread_the_recap_todos_and_calendar(
+        self,
+    ) -> None:
+        sources = FactSources(
+            artifacts={},
+            open_todos=0,
+            calendar=[],
+            event_ids=[],
+            span=WEEK_AHEAD,
+            todos_note="The user's own todo list is empty.",
+            recap=WeekRecap(series=[TestTheWeekRecap._FINISHED], goals=[]),
+            unread=[UnreadSource(app="Linear", reason=ScoutSkipReason.FAILED)],
+        )
+
+        facts = build_facts(Chosen(sections=[], picked=[]), sources, _CLOCK)
+
+        assert facts.block.splitlines() == [
+            "The digest holds no items from this week. Do not claim anything ran, finished, or "
+            "is pending beyond what is stated here.",
+            "Not read this time: Linear. Nothing is known about what they hold today: never say "
+            "they hold nothing, or that nothing there needs the user.",
+            "[THE WEEK IN NUMBERS] (voice these as one grouped recap of the week, never as a list)",
+            "- Tasks GAIA finished: [[series:gaia_finished.total]] (6 tasks)",
+            "The user's own todo list is empty.",
+            "The user's calendar has nothing in the week ahead.",
+        ]
+
+
 class TestTheOwnTodosNote:
+    def test_with_only_gaias_tracked_work_open_the_list_is_never_called_empty(self) -> None:
+        assert user_todos_note(0, tracked_open=3) == (
+            "The user has no todos of their own outside GAIA's tracked work, which holds "
+            "[[count:open_tracked]] open: never call their todo list empty or clear."
+        )
+
     def test_overdue_todos_are_counted_by_their_slot_and_never_listed(self) -> None:
         assert user_todos_note(80, 70) == (
             "The user's own open todos are counted in [COUNTS]; never voice that list as clear or"
