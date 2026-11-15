@@ -48,13 +48,13 @@ class CalendarRepository(MongoRepository[CalendarPreferencesDocument, CalendarPr
                 {"$setOnInsert": {"selected_calendars": repaired}},
                 scope=REPO_GLOBAL_SCOPE,
                 upsert=True,
-            )
+            )  # pragma: no mutate — cache_policy None: no cache, so scope is inert
             return
         await self._apply_raw_update_unfetched(
             {"user_id": user_id, "selected_calendars": loaded},
             {"$set": {"selected_calendars": repaired}},
             scope=REPO_GLOBAL_SCOPE,
-        )
+        )  # pragma: no mutate — cache_policy None: no cache, so scope is inert
 
 
 calendar_repository = CalendarRepository()
