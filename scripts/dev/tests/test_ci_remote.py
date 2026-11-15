@@ -1741,6 +1741,27 @@ def test_the_stack_rollup_skips_a_superseded_runs_checks() -> None:
     assert ci_remote.rollup_contexts(pr_state) == [("quality-gate", "passed")]
 
 
+def test_a_cancelled_run_with_no_replacement_still_shows_its_failures(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(FakeGh(checks=[SUPERSEDED_GATE], job_log=""))
+    fake.workflow_runs = [ci_run(98, "completed", "cancelled")]
+
+    assert run_cli(monkeypatch, ["--no-stack"]) == 1
+    assert "FAIL  quality-gate" in capsys.readouterr().out
+
+
+def test_a_cancelled_run_newer_than_its_passed_twin_is_the_one_reported(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    passed_gate = job_in(dict(PASSED_CHECK, name="quality-gate"), 97)
+    fake = wire(FakeGh(checks=[passed_gate, SUPERSEDED_GATE], job_log=""))
+    fake.workflow_runs = [ci_run(97, "completed", "success"), ci_run(98, "completed", "cancelled")]
+
+    assert run_cli(monkeypatch, ["--no-stack"]) == 1
+    assert "FAIL  quality-gate" in capsys.readouterr().out
+
+
 def test_fail_fast_without_watch_is_a_usage_error(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1799,6 +1820,86 @@ def test_a_running_jobs_failing_verdict_is_printed_in_full_and_reds_the_exit(
     # A finding the tool gave no location prints as its message, not as ":0".
     assert "    npm ERR! code ERESOLVE" in out
     assert ":0" not in out
+
+
+def test_a_rerun_job_ignores_the_failing_verdict_of_its_previous_attempt(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: after `gh run rerun --failed` the watch exited red on attempt 1's verdict."""
+    rerun = dict(RUNNING_LINT, started_at="2026-11-12T16:31:09Z")
+    wire(
+        FakeGh(
+            checks=[rerun],
+            artifacts=[
+                {
+                    "id": 70,
+                    "name": "verdict-lint-python",
+                    "expired": False,
+                    "created_at": "2026-11-12T16:22:00Z",
+                }
+            ],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 0
+    out = capsys.readouterr().out
+    assert "[still running" not in out
+    assert "verdict with no matching check run" not in out
+    assert "PEND  lint-python" in out
+
+
+def test_a_verdict_uploaded_by_the_current_attempt_still_reds_a_running_job(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rerun = dict(RUNNING_LINT, started_at="2026-11-12T16:31:09Z")
+    wire(
+        FakeGh(
+            checks=[rerun],
+            artifacts=[
+                {
+                    "id": 70,
+                    "name": "verdict-lint-python",
+                    "expired": False,
+                    "created_at": "2026-11-12T16:33:00Z",
+                }
+            ],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 1
+    assert "FAIL  lint-python  [still running" in capsys.readouterr().out
+
+
+def test_a_rerun_shard_ignores_its_stale_rollup_when_a_passed_sibling_shares_the_lane(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: shard 2's lane prefix kept shard 3's attempt-1 rollup alive after a rerun."""
+    rerun = dict(
+        SHARD_3_CHECK, status="in_progress", conclusion=None, started_at="2026-11-12T16:31:09Z"
+    )
+    sibling = dict(
+        SHARD_3_CHECK,
+        name="mutation (shard 2/6 (20 modules))",
+        conclusion="success",
+        html_url="https://github.com/o/r/actions/runs/99/job/1233",
+        started_at="2026-11-12T16:00:00Z",
+    )
+    wire(
+        FakeGh(
+            checks=[rerun, sibling],
+            artifacts=[
+                {
+                    "id": 77,
+                    "name": "verdict-test-mutation-2",
+                    "expired": False,
+                    "created_at": "2026-11-12T16:22:00Z",
+                }
+            ],
+            zip_blobs={77: verdict_zip(SHARD_2_ROLLUP)},
+        )
+    )
+    assert run_cli(monkeypatch, []) == 0
+    assert "[still running" not in capsys.readouterr().out
 
 
 def test_a_running_job_with_no_failing_verdict_is_only_pending(

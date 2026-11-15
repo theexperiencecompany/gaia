@@ -151,6 +151,7 @@ class Verdict(TypedDict, total=False):
     advice: list[str]
     artifact: str
     run_id: int
+    created_at: str | None
 
 
 class Shard(TypedDict):
@@ -396,6 +397,7 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
                 parsed: Verdict = json.loads(archive.read(member))
                 parsed["artifact"] = artifact["name"]
                 parsed["run_id"] = run_id
+                parsed["created_at"] = artifact.get("created_at")
                 verdicts.append(parsed)
     return verdicts
 
@@ -404,6 +406,25 @@ def run_artifacts(repo: Repo, run_id: int) -> list[dict]:
     return repo.github.get(repo.api(f"actions/runs/{run_id}/artifacts?per_page=100")).get(
         "artifacts", []
     )
+
+
+def is_current_attempt(verdict: Verdict, checks: list[Check]) -> bool:
+    """Return False for a verdict uploaded before the job that owns it last (re)started.
+
+    A re-run keeps the run id and its artifacts, so the previous attempt's
+    failing verdict sits beside a job that is running again. Artifacts carry no
+    run_attempt; the owning job's started_at does. A verdict no check owns, or
+    one with no upload time, cannot be proven stale and is kept.
+    """
+    same_run = [c for c in checks if c["run_id"] == verdict.get("run_id")]
+    # A shard's artifact index names its one owner; a lane prefix can also claim a sibling shard.
+    owners = [c for c in same_run if matches_by_matrix_index(verdict, c["name"])] or [
+        c for c in same_run if verdict_matches(verdict, c["name"])
+    ]
+    uploaded = verdict.get("created_at")
+    if not owners or not uploaded:
+        return True
+    return any(c["started_at"] is None or c["started_at"] <= uploaded for c in owners)
 
 
 def cached_artifact(repo: Repo, artifact_id: int) -> bytes:
@@ -712,7 +733,7 @@ def diagnose(
 
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
         batches = list(pool.map(lambda r: fetch_run_verdicts(repo, r), run_ids))
-    verdicts = [v for batch in batches for v in batch]
+    verdicts = [v for batch in batches for v in batch if is_current_attempt(v, checks)]
 
     # Only a mutation job can own a shard record, so a PR whose red lanes are
     # all other jobs never pays for the listing.
