@@ -18,6 +18,7 @@ from scripts.evals.suites.hil_judge import JudgeTransport, sweep_journal
 
 from app.constants.hil import JevChoice
 from app.services.hil.intent import IntentDecision
+from app.services.hil.jev_judge import JevVerdict
 
 from .conftest import eval_config
 
@@ -52,8 +53,14 @@ async def _llm_run(monkeypatch: pytest.MonkeyPatch) -> CaseRun:
 
 
 async def _jev_run(monkeypatch: pytest.MonkeyPatch) -> CaseRun:
-    async def _ask_jev(**kwargs: object) -> tuple[str, float, dict[str, float], int, int]:
-        return JevChoice.AUTHORIZED, 0.95, {JevChoice.AUTHORIZED: 0.95}, 10, 2
+    async def _ask_jev(**kwargs: object) -> tuple[JevVerdict, int, int]:
+        verdict = JevVerdict(
+            choice=JevChoice.AUTHORIZED,
+            confidence=0.95,
+            probabilities={JevChoice.AUTHORIZED: 0.95},
+            contained=0.2,
+        )
+        return verdict, 10, 2
 
     monkeypatch.setattr(hil_judge, "get_settings", lambda: SimpleNamespace(OPENROUTER_API_KEY="k"))
     monkeypatch.setattr(hil_judge, "ask_jev", _ask_jev)
@@ -96,6 +103,7 @@ async def test_a_jev_run_journals_the_verdict_it_was_graded_on(
     assert end_state["confidence"] == 0.95
     assert end_state["probabilities"] == {JevChoice.AUTHORIZED: 0.95}
     assert end_state["forbid_choice"] is None
+    assert end_state["contained"] == 0.2
 
 
 async def test_the_sweep_refuses_a_journal_of_llm_judge_rows(

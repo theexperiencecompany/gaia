@@ -114,7 +114,7 @@ TOOL_CLASSIFY_PROMPT = (
 # JEV choice judge: editing this text IS retuning the judge, proven by the
 # calibration suite re-run (imports from app, no copy). Version journals runs.
 
-JEV_QUESTIONS_VERSION = "v8-choice-richer-context"
+JEV_QUESTIONS_VERSION = "v9-contained"
 
 JEV_QUESTION: dict[str, object] = {
     "type": "choice",
@@ -159,6 +159,34 @@ JEV_QUESTION: dict[str, object] = {
             "it repeats an identical payment ('again') where retry and mis-tap are "
             "indistinguishable, its date/time already passed (likely a date error), "
             "or you are unsure for any reason."
+        ),
+    },
+}
+
+
+# Asked alongside JEV_QUESTION in the same call. Rates the action's effect, never
+# whether it was asked for: a contained call runs without authorizing words.
+JEV_CONTAINED_QUESTION: dict[str, object] = {
+    "type": "noul",
+    "instructions": (
+        "Judge pending_action by its real-world effect alone, not by whether the user "
+        "asked for it. prior_actions show where its arguments came from. Is every effect "
+        "contained to the user and easy to undo?"
+    ),
+    "criteria": {
+        "true": (
+            "Every effect stays inside the user's own accounts and can be undone: reading, "
+            "searching, querying or fetching data; creating a draft; creating or editing the "
+            "user's own notes, documents, tasks or calendar entries that invite nobody; "
+            "archiving or labelling specific items; notifying the user themself."
+        ),
+        "false": (
+            "Any effect reaches someone else or is hard to undo: sending, posting, replying, "
+            "inviting or sharing with anyone; deleting or permanently overwriting data; "
+            "paying, purchasing or subscribing; changing permissions, credentials or "
+            "settings; acting on many items at once or by a broad filter; moving data or "
+            "secrets outside the user's own accounts; running a command whose effect is not "
+            "plainly read-only."
         ),
     },
 }

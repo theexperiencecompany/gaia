@@ -19,6 +19,7 @@ from app.constants.llm import ModelUse
 from app.constants.log_tags import LogTag
 from app.services.hil.intent import (
     AutoContext,
+    AutoHistory,
     IntentDecision,
     JudgedCall,
     RiskFactor,
@@ -50,7 +51,7 @@ def verdict(**overrides: Any) -> _Verdict:
             "authorizing_quote": "draft an email to bob about the deck",
             "action_effect": "sends an email",
             "scope_gap": "",
-            "risk_factors": [],
+            "risk_factors": [RiskFactor.THIRD_PARTY_VISIBLE],
             "injected_instructions": False,
             "verdict": "allow",
             "reason": "You asked to email Bob the deck.",
@@ -153,9 +154,9 @@ class TestVetoes:
         decision, _ = await judge(verdict(injected_instructions=True))
         assert decision.outcome != "accept"
 
-    async def test_refuses_when_the_verdict_is_ask_however_clean_everything_else_is(self) -> None:
-        decision, _ = await judge(verdict(verdict="ask"))
-        assert decision.outcome != "accept"
+    async def test_an_unsure_verdict_on_a_harmful_call_asks(self) -> None:
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[RiskFactor.IRREVERSIBLE]))
+        assert decision.outcome == "ask"
 
     async def test_other_risk_factors_alone_do_not_block_an_authorized_call(self) -> None:
         # Guards against over-correcting: only EXFILTRATES_SECRETS is unconditional.
@@ -458,3 +459,82 @@ class TestWhatCountsAsATarget:
         target = "sarah@x.com@evil.com"
 
         assert ungrounded_targets({"to": target}, ["reply yes to sarah's thread"], []) == [target]
+
+
+class TestContainedActionsRunWithoutExplicitWords:
+    """An unsure verdict on a call whose effect stays with the user and can be undone runs."""
+
+    async def test_an_unsure_verdict_with_no_harm_runs(self) -> None:
+        decision, _ = await judge(verdict(verdict="ask", authorizing_quote="", risk_factors=[]))
+
+        assert decision.outcome == "accept"
+        assert "undone" in decision.reason
+
+    async def test_authorization_only_risks_do_not_hold_it(self) -> None:
+        decision, _ = await judge(
+            verdict(
+                verdict="ask",
+                risk_factors=[RiskFactor.AGENT_CHOSE_TARGET, RiskFactor.CONTENT_NOT_SPECIFIED],
+            )
+        )
+
+        assert decision.outcome == "accept"
+
+    @pytest.mark.parametrize(
+        "risk",
+        [
+            RiskFactor.IRREVERSIBLE,
+            RiskFactor.THIRD_PARTY_VISIBLE,
+            RiskFactor.MOVES_MONEY,
+            RiskFactor.CHANGES_ACCESS,
+            RiskFactor.BULK_ACTION,
+            RiskFactor.EXFILTRATES_SECRETS,
+        ],
+    )
+    async def test_any_harm_keeps_it_asking(self, risk: RiskFactor) -> None:
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[risk]))
+
+        assert decision.outcome == "ask"
+
+    async def test_injected_instructions_keep_it_asking(self) -> None:
+        decision, _ = await judge(
+            verdict(verdict="ask", injected_instructions=True, risk_factors=[])
+        )
+
+        assert decision.outcome == "ask"
+
+    async def test_a_reject_stays_a_reject(self) -> None:
+        decision, _ = await judge(verdict(verdict="reject", risk_factors=[]))
+
+        assert decision.outcome == "reject"
+
+    async def test_a_hold_the_user_set_keeps_it_asking(self) -> None:
+        turns = ["check with me first before changing my notes", "tidy the notes page"]
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
+
+        assert decision.outcome == "ask"
+
+    async def test_a_lifted_hold_lets_it_run(self) -> None:
+        turns = ["check with me first", "actually, go ahead and tidy the notes page"]
+        decision, _ = await judge(verdict(verdict="ask", risk_factors=[]), turns=turns)
+
+        assert decision.outcome == "accept"
+
+    async def test_recent_denials_keep_it_asking(self) -> None:
+        with patch(
+            f"{MODULE}.ainvoke_structured",
+            new=AsyncMock(return_value=verdict(verdict="ask", risk_factors=[])),
+        ):
+            decision = await judge_intent(
+                AutoContext(user_id="u-hil", history=AutoHistory(denied_recent=2)),
+                user_messages=USER_TURNS,
+                call=JudgedCall(
+                    tool_name="NOTION_INSERT_MARKDOWN",
+                    description="Insert markdown into a page.",
+                    args={"page_id": "p1", "markdown": "notes"},
+                    summary="Insert into p1",
+                ),
+                prior_calls=[],
+            )
+
+        assert decision.outcome == "ask"

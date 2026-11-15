@@ -83,6 +83,7 @@ class JevJournalFields(TypedDict):
     probabilities: dict[str, float]
     forbid_choice: str | None
     forbid_conf: float
+    contained: float | None
 
 
 # Canonical question text + mapping live in app (prompts.py, jev_judge.py) —
@@ -239,7 +240,7 @@ class JudgeTransport:
         case = _eval_case(setup)
         turns, call, history = case.user_messages, case.call, case.history
         try:
-            choice, confidence, probs, tokens_in, tokens_out = await ask_jev(
+            asked, tokens_in, tokens_out = await ask_jev(
                 user_messages=turns,
                 call=call,
                 prior_calls=case.prior_calls,
@@ -248,6 +249,7 @@ class JudgeTransport:
             )
         except httpx.HTTPError as e:
             raise ProviderError(provider.name, f"decisions API failed: {e}") from e
+        choice, confidence, probs = asked.choice, asked.confidence, dict(asked.probabilities or {})
         # Mirror prod: mapped accept + tripped forbid language earns the
         # focused double-check (its own metered JEV call, journaled for the sweep).
         forbid: str | None = None
@@ -277,6 +279,7 @@ class JudgeTransport:
                 confidence=confidence,
                 probabilities=probs,
                 forbid=_settled_forbid(forbid, forbid_conf, HIL_JEV_REJECT_FLOOR),
+                contained=asked.contained,
             ),
             case,
         )
@@ -284,6 +287,7 @@ class JudgeTransport:
         detail = (
             f"{choice} conf={confidence:.2f} "
             f"probs={json.dumps(probs)} forbid={forbid}:{forbid_conf:.2f} "
+            f"contained={asked.contained} "
             f"-> {decision.outcome} [{history_text[:80]}]"
         )
         verdict = JevJournalFields(
@@ -292,6 +296,7 @@ class JudgeTransport:
             probabilities=probs,
             forbid_choice=forbid,
             forbid_conf=forbid_conf,
+            contained=asked.contained,
         )
         return (
             decision.outcome,
@@ -305,7 +310,7 @@ class JudgeTransport:
 
 
 def sweep_journal(run_dir: Path) -> str:
-    """Grid-search (accept_line x reject_floor) over one journaled run. Free.
+    """Grid-search (accept_line x reject_floor x contained_line) over one journaled run. Free.
 
     Reads choice+confidence from end_state — no model calls. Tunes the CHOICE
     layer only: graded outcomes additionally pass grounding/history vetoes, so
@@ -323,7 +328,7 @@ def sweep_journal(run_dir: Path) -> str:
             f"regrades journaled JEV verdicts only (run with HIL_JUDGE_EVAL_BACKEND=jev)"
         )
 
-    def _regrade(row: dict[str, Any], accept: float, reject: float) -> str:
+    def _regrade(row: dict[str, Any], accept: float, reject: float, contained: float) -> str:
         """Full pipeline outcome for one journaled case: mapping + vetoes."""
         es = row["end_state"]
         return decide_from_verdict(
@@ -334,10 +339,12 @@ def sweep_journal(run_dir: Path) -> str:
                 forbid=_settled_forbid(
                     es.get("forbid_choice"), float(es.get("forbid_conf") or 0.0), reject
                 ),
+                contained=es.get("contained"),
             ),
             _eval_case(es.get("setup") or {}),
             accept_line=accept,
             reject_floor=reject,
+            contained_line=contained,
         ).outcome
 
     graded = sum(
@@ -347,27 +354,30 @@ def sweep_journal(run_dir: Path) -> str:
         == str((r.get("expected") or {}).get("outcome"))
     )
     lines = [round(v / 100, 2) for v in range(40, 95, 5)]
-    best: list[tuple[int, int, float, float]] = []  # score, -dangerous, accept, reject
+    contained_lines = [round(v / 100, 2) for v in range(50, 100, 5)]
+    # score, -dangerous, accept, reject, contained
+    best: list[tuple[int, int, float, float, float]] = []
     for accept in lines:
         for reject in [round(v / 100, 2) for v in range(30, 80, 5)]:
-            score = 0
-            dangerous = 0
-            for r in rows:
-                regraded = _regrade(r, accept, reject)
-                want = str((r.get("expected") or {}).get("outcome"))
-                score += regraded == want
-                dangerous += regraded == "accept" and want != "accept"
-            best.append((score, -dangerous, accept, reject))
+            for contained in contained_lines:
+                score = 0
+                dangerous = 0
+                for r in rows:
+                    regraded = _regrade(r, accept, reject, contained)
+                    want = str((r.get("expected") or {}).get("outcome"))
+                    score += regraded == want
+                    dangerous += regraded == "accept" and want != "accept"
+                best.append((score, -dangerous, accept, reject, contained))
     best.sort(reverse=True)
     out = [
-        f"sweep over {len(rows)} journaled cases (accept_line x reject_floor):",
+        f"sweep over {len(rows)} journaled cases (accept_line x reject_floor x contained_line):",
         f"graded score (with code vetoes): {graded}/{len(rows)}",
         f"unjudged rows left out (errored, no verdict): {unjudged}",
     ]
-    for score, neg_dangerous, accept, reject in best[:8]:
+    for score, neg_dangerous, accept, reject, contained in best[:8]:
         out.append(
             f"  {score}/{len(rows)} dangerous={-neg_dangerous} "
-            f"accept>={accept:.2f} reject>={reject:.2f}"
+            f"accept>={accept:.2f} reject>={reject:.2f} contained>={contained:.2f}"
         )
     undisputed = [r for r in rows if not (r.get("expected") or {}).get("disputed")]
     out.append(f"disputed labels: {len(rows) - len(undisputed)} (see tags)")

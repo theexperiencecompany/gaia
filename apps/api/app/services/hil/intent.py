@@ -66,6 +66,20 @@ class RiskFactor(StrEnum):
     EXFILTRATES_SECRETS = "exfiltrates_secrets"
 
 
+#: Risks about the action's effect. The others (agent_chose_target,
+#: content_not_specified) are about authorization alone.
+_HARM_FACTORS: frozenset[RiskFactor] = frozenset(
+    {
+        RiskFactor.IRREVERSIBLE,
+        RiskFactor.THIRD_PARTY_VISIBLE,
+        RiskFactor.MOVES_MONEY,
+        RiskFactor.CHANGES_ACCESS,
+        RiskFactor.BULK_ACTION,
+        RiskFactor.EXFILTRATES_SECRETS,
+    }
+)
+
+
 @dataclass(frozen=True)
 class JudgedCall:
     """The tool call put to the judge, as the judge sees it.
@@ -308,7 +322,16 @@ class _LLMIntentJudge:
         # Grounded against EVERY user turn, not just the latest: "looks good, send
         # it" is authorized by the earlier "draft an email to Bob about the deck".
         outcome = _outcome(verdict, "\n".join(user_messages), call.tool_name)
-        if outcome == "accept" and _history_blocks(history):
+        if (
+            outcome == "ask"
+            and _contained(verdict)
+            and not user_has_objected(user_messages, history)
+        ):
+            outcome = "accept"
+            verdict = verdict.model_copy(
+                update={"reason": "Auto mode ran this: it stays in your account and can be undone."}
+            )
+        elif outcome == "accept" and _history_blocks(history):
             outcome = "ask"
             verdict = verdict.model_copy(
                 update={
@@ -362,6 +385,84 @@ async def _ask_judge(
         config=silent_metered_config(user_id),
         options=StructuredCallOptions(timeout=HIL_LLM_TIMEOUT_SECONDS, use=ModelUse.JUDGE),
     )
+
+
+#: Forbid double-check on the accept path: crisp prohibitions, not moods.
+#: Temporary boundaries ask on merits; these claim the act itself is off limits.
+#: Bare "no" absent — "no, send it" lifts, not forbids.
+_FORBID_PATTERNS = (
+    r"\bnever\b",
+    r"\bdon'?t\b",
+    r"\bdo not\b",
+    r"\bdoesn'?t\b",
+    r"\bcan'?t\b",
+    r"\bcannot\b",
+    r"\bwon'?t\b",
+    r"\bcancel that\b",
+    r"\bforbid",
+    r"\bprohibit",
+    r"\bkeep\b.{0,24}\bprivate\b",
+    r"\bkeep (everything|all)\b",
+    r"\bhold (everything|all)\b",
+    r"\bdon'?t touch\b",
+)
+
+#: Later-turn language that lifts a forbid. Searched only AFTER the forbid turn.
+_LIFT_PATTERNS = (
+    r"\bactually\b",
+    r"\bgo ahead\b",
+    r"\bnever mind\b",
+    r"\bnevermind\b",
+    r"\byes do it\b",
+    r"\bdo it now\b",
+    r"\boverride\b",
+    r"\bignore (that|my last|the last)\b",
+    r"\bchange of plans\b",
+    r"\bon second thought\b",
+)
+
+
+def forbid_tripwire(user_messages: list[str]) -> bool:
+    """Whether an earlier turn forbids with no later lift — check needed.
+
+    A tripwire, not a verdict: it only ever downgrades an accept into a
+    focused forbid-check (or an ask), never into a run. Matching is
+    deterministic keyword/regex on the user's own words; the JUDGMENT of
+    whether the forbid covers this call belongs to the focused JEV question.
+    """
+    return _unlifted(user_messages, _FORBID_PATTERNS)
+
+
+#: A hold the user put on acting at all. Not a forbid (the authorized path still judges
+#: it on merits), but it stops a contained call running without their go-ahead.
+_HOLD_PATTERNS = (
+    r"\bnot yet\b",
+    r"\bhold off\b",
+    r"\bwait (for|until)\b",
+    r"\bcheck with me\b",
+    r"\bask me (first|before)\b",
+    r"\buntil i (say|confirm)\b",
+)
+
+
+def _unlifted(user_messages: list[str], patterns: tuple[str, ...]) -> bool:
+    """Whether some turn matches patterns and no later turn carries lift language."""
+    for index, turn in enumerate(user_messages):
+        if _matches_any(turn, patterns) and not any(
+            _matches_any(later, _LIFT_PATTERNS) for later in user_messages[index + 1 :]
+        ):
+            return True
+    return False
+
+
+def _matches_any(turn: str, patterns: tuple[str, ...]) -> bool:
+    lowered = turn.lower()
+    return any(re.search(pattern, lowered) for pattern in patterns)
+
+
+def user_has_objected(user_messages: list[str], history: AutoHistory) -> bool:
+    """Whether the user's words or recent denials argue against acting without their go-ahead."""
+    return _unlifted(user_messages, _FORBID_PATTERNS + _HOLD_PATTERNS) or _history_blocks(history)
 
 
 def _history_blocks(history: AutoHistory) -> bool:
@@ -509,6 +610,11 @@ def _outcome(verdict: _Verdict, user_text: str, tool_name: str) -> AutoOutcome:
     # NOSONAR justification: _accept returns True on a grounded allow (test_hil_intent's
     # accept cases pin it); Sonar's cross-function flow analysis wrongly calls it unreachable
     return "accept" if _accept(verdict, user_text, tool_name) else "ask"  # NOSONAR pythonbugs:S2583
+
+
+def _contained(verdict: _Verdict) -> bool:
+    """Whether the call's effect stays with the user and can be undone, by the judge's own risk list."""
+    return not verdict.injected_instructions and not (set(verdict.risk_factors) & _HARM_FACTORS)
 
 
 def _accept(verdict: _Verdict, user_text: str, tool_name: str) -> bool:

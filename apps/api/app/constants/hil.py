@@ -58,6 +58,10 @@ HIL_JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 HIL_JEV_TIMEOUT_SECONDS = 15
 HIL_JEV_ACCEPT_LINE = 0.50
 HIL_JEV_REJECT_FLOOR = 0.50
+# P(contained) at or above which a call runs without the user's explicit words: its
+# effect stays in their account and can be undone. Tuned by the hil-judge sweep.
+HIL_JEV_CONTAINED_LINE = 0.80
+JEV_CONTAINED_QUESTION_KEY = "contained"
 
 
 # The forbid double-check itself failed; the verdict asks rather than trusting either way.
