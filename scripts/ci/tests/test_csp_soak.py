@@ -83,7 +83,7 @@ class Site:
             self.monkeypatch.setenv("GITHUB_REPOSITORY", "acme/gaia")
             self.monkeypatch.setenv("GH_TOKEN", "ghs_test")
             self.monkeypatch.setattr(analytics, "client_from_env", self._client)
-            return analytics.main(["csp-soak"])
+            return int(analytics.main(["csp-soak"]))
 
     def slack(self) -> list[str]:
         return [str(json.loads(body)["text"]) for path, body in self.posts if path == "/slack"]
