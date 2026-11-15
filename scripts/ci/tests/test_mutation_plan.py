@@ -113,8 +113,15 @@ def harness(tmp_path: Path) -> PlanRun:
     return run
 
 
-def _entry(module: str, testfiles: list[str], changed_lines: list[int]) -> dict[str, object]:
-    return {"module": module, "testfiles": testfiles, "changed_lines": changed_lines}
+def _entry(
+    module: str, testfiles: list[str], changed_lines: list[int], mutants: int = 1
+) -> dict[str, object]:
+    return {
+        "module": module,
+        "testfiles": testfiles,
+        "changed_lines": changed_lines,
+        "mutants": mutants,
+    }
 
 
 def _matrix(outputs: dict[str, str]) -> list[dict[str, str]]:
@@ -420,3 +427,66 @@ def test_the_matrix_runs_as_many_shards_at_once_as_the_plan_makes() -> None:
     # runner.py sizes the box's services pool for one wave of them.
     runner = (REPO_ROOT / "scripts" / "ci" / "runner.py").read_text()
     assert re.search(rf"^MUTATION_WAVE = {MAX_SHARDS}$", runner, re.MULTILINE)
+
+
+# ---------------------------------------------------------------------------
+# Cost — shards are balanced by estimated work, not by module count.
+#
+# PR #1799 packed 222 modules six ways by count: shard 3/6 drew 54 modules and
+# hit the 30-minute step timeout, while the two services shards each carried a
+# ~15-minute module beside thirty others. A module's cost is its estimated
+# mutant count times its mapped test files, at the pool's per-test rate.
+# ---------------------------------------------------------------------------
+
+HEAVY_MUTANTS = 2000
+
+
+def _shard_of(outputs: dict[str, str], module: str) -> list[str]:
+    """Return the modules sharing a shard with `module`, itself included."""
+    for group in _groups(outputs):
+        modules = [entry["module"] for entry in group]
+        if module in modules:
+            return modules
+    raise AssertionError(f"{module} is in no shard")
+
+
+def test_two_heavy_modules_never_share_a_shard(harness: PlanRun) -> None:
+    # Round-robin by index put modules 0 and 6 together whatever they weighed.
+    entries = [_entry("app/heavy0.py", [UNIT_TEST], [1], mutants=HEAVY_MUTANTS)]
+    entries += [_entry(f"app/light{i}.py", [UNIT_TEST], [1]) for i in range(1, 6)]
+    entries += [_entry("app/heavy6.py", [UNIT_TEST], [1], mutants=HEAVY_MUTANTS)]
+    entries += [_entry(f"app/light{i}.py", [UNIT_TEST], [1]) for i in range(7, 12)]
+
+    _, outputs = harness(entries)
+
+    assert _shard_of(outputs, "app/heavy0.py") == ["app/heavy0.py"]
+    assert _shard_of(outputs, "app/heavy6.py") == ["app/heavy6.py"]
+
+
+def test_a_few_costly_services_modules_get_shards_of_their_own(harness: PlanRun) -> None:
+    # Three repository modules each worth ~12 serial minutes outweigh twenty
+    # cheap unit modules; by count the services pool got one shard for all three.
+    contracts = [f"tests/contracts/test_repo{n}.py" for n in range(8)]
+    entries = [_entry(f"app/repo{i}.py", contracts, [1], mutants=500) for i in range(3)]
+    entries += [_entry(f"app/unit{i}.py", [UNIT_TEST], [i]) for i in range(20)]
+
+    _, outputs = harness(entries)
+
+    services = [item for item in _matrix(outputs) if item["pool"] == "services"]
+    assert len(services) == 3
+    assert int(outputs["count"]) == MAX_SHARDS
+
+
+def test_a_shard_over_the_budget_is_announced_by_the_plan(harness: PlanRun) -> None:
+    contracts = [f"tests/contracts/test_repo{n}.py" for n in range(8)]
+
+    process, _ = harness([_entry("app/repo.py", contracts, [1], mutants=5000)])
+
+    assert process.returncode == 0, process.stderr
+    assert "::warning::mutation plan: app/repo.py (services) is estimated at" in process.stdout
+
+
+def test_each_module_carries_its_mutant_estimate_to_the_shard(harness: PlanRun) -> None:
+    _, outputs = harness([_entry("app/a.py", [UNIT_TEST], [1], mutants=42)])
+
+    assert _groups(outputs)[0][0]["mutants"] == "42"

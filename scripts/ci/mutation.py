@@ -6,11 +6,12 @@ Subcommands:
                            JSON — the input `plan` and `local` fan out from.
                            Fails loudly when changed app code has no test.
   plan                     Emit the lane's GitHub Actions matrix — one shard
-                           per changed module, capped at MAX_SHARDS. Writes
-                           shards (the labels), shard_defs and count to
-                           $GITHUB_OUTPUT.
-  shard                    Run every module in $GROUP, in order; the shard's
-                           exit code is the last failing module's.
+                           per changed module, capped at MAX_SHARDS and
+                           balanced by estimated cost. Writes shards (the
+                           labels), shard_defs and count to $GITHUB_OUTPUT.
+  shard                    Run every module in $GROUP, in order, each under a
+                           cap derived from its cost and the shard's deadline;
+                           the exit code is the last failing module's.
   module <mod> [tests] [ranges]
                            Mutate ONE module with mutmut and require the suite
                            to kill every mutant on the PR's changed lines.
@@ -31,12 +32,13 @@ Subcommands:
 Env contract:
   matrix  none directly; delegates the diff to `changes.sh files py`.
   plan    GITHUB_OUTPUT (stdout-only when unset).
-  shard   GROUP (required, compact JSON array of {module,testfiles,ranges});
+  shard   GROUP (required, compact JSON array of {module,testfiles,ranges,mutants});
           SHARD_LOG (shard.log), GITHUB_STEP_SUMMARY. Writes <shard>.verdict.json
           beside the log (the replay artifact) and one verdict per module through
           `verdict.py emit` into the directory `verdict.py dir` reports.
   module  MUTMUT_WORKDIR_BASE, MUTMUT_MAX_CHILDREN, MUTMUT_KEEP_WORKDIR,
-          MUTATION_VERDICT_DIR (where the module RECORD lands).
+          MUTATION_VERDICT_DIR (where the module RECORD lands),
+          MUTMUT_CAP_SECONDS (the cap the shard gave this module).
   local   MUTATION_JOBS, MUTATION_CPU_BUDGET, MUTMUT_MAX_CHILDREN.
   survivors none.
   replay  none.
@@ -87,10 +89,28 @@ POOLS = ("unit", "services")
 # `shard` re-derives its own pool from it, through `needs_services`.
 SERVICES_TIER = "tests/contracts/"
 
-# A shard's per-module cap, enforced from outside the module process.
-MODULE_TIMEOUT_SECONDS = 1500
-# mutmut's own cap inside a module: ~10x the slowest honest module (1.2 min).
-MUTMUT_TIMEOUT_SECONDS = 720
+# A module's cost in shard seconds: a fixed clean+stats run, then each mutant
+# runs its mapped test files. Fitted to PR #1799's 218 modules (run
+# 43665639573): rank correlation 0.75 unit, 0.93 services. Services is 6x per
+# mutant because a contract-mapped module runs ONE mutant worker (run_mutmut).
+MODULE_OVERHEAD_SECONDS = 20
+UNIT_SECONDS_PER_MUTANT_TEST = 0.03
+SERVICES_SECONDS_PER_MUTANT_TEST = 0.18
+# The step's 30-minute timeout less the log tail and report: the shard starts
+# no module it cannot finish by then, so the step never kills it unreported.
+SHARD_DEADLINE_SECONDS = 1680
+# What the plan aims to fit in one shard, under the deadline for estimate error
+# and the CPU-slot wait.
+SHARD_BUDGET_SECONDS = 1200
+# mutmut's cap inside a module: CAP_FACTOR x its estimate, never under the old
+# fixed 720 s, never over the shard budget.
+CAP_FACTOR = 3
+MUTMUT_CAP_FLOOR_SECONDS = 720
+MUTMUT_CAP_ENV = "MUTMUT_CAP_SECONDS"
+# Copy, results and classify around the mutmut run: the outer kill is the cap
+# plus this, and a module needs a floor's worth of deadline left to start.
+MODULE_WRAPUP_SECONDS = 180
+MIN_MODULE_CAP_SECONDS = 120
 KILLED_BY_CAP = 137
 MUTMUT_TIMED_OUT = 124
 # Per-mutant pytest timeout; timeout_func_only keeps fixture setup (a 30-40 s
@@ -168,10 +188,27 @@ class ModuleWork:
     module: str
     testfiles: tuple[str, ...]
     ranges: str
+    mutants: int
 
     @property
     def needs_services(self) -> bool:
         return any(f.startswith(SERVICES_TIER) for f in self.testfiles)
+
+    @property
+    def cost(self) -> float:
+        """Estimate the shard seconds this module takes."""
+        per_test = (
+            SERVICES_SECONDS_PER_MUTANT_TEST
+            if self.needs_services
+            else UNIT_SECONDS_PER_MUTANT_TEST
+        )
+        return MODULE_OVERHEAD_SECONDS + self.mutants * len(self.testfiles) * per_test
+
+    @property
+    def mutmut_cap(self) -> int:
+        """Return mutmut's cap for this module, before the shard's deadline shrinks it."""
+        scaled = max(CAP_FACTOR * self.cost, MUTMUT_CAP_FLOOR_SECONDS)
+        return int(min(scaled, SHARD_BUDGET_SECONDS))
 
     @classmethod
     def from_matrix(cls, item: dict[str, object]) -> ModuleWork:
@@ -182,6 +219,7 @@ class ModuleWork:
             module=str(item["module"]),
             testfiles=tuple(str(f) for f in testfiles),
             ranges=_compact(item["changed_lines"]),
+            mutants=int(str(item["mutants"])),
         )
 
     @classmethod
@@ -189,13 +227,19 @@ class ModuleWork:
         testfiles = json.loads(item["testfiles"])
         if not isinstance(testfiles, list) or not all(isinstance(f, str) for f in testfiles):
             raise ValueError(f"testfiles of {item['module']} is not a JSON list of paths")
-        return cls(module=item["module"], testfiles=tuple(testfiles), ranges=item["ranges"])
+        return cls(
+            module=item["module"],
+            testfiles=tuple(testfiles),
+            ranges=item["ranges"],
+            mutants=int(item["mutants"]),
+        )
 
     def to_group(self) -> dict[str, str]:
         return {
             "module": self.module,
             "testfiles": _compact(list(self.testfiles)),
             "ranges": self.ranges,
+            "mutants": str(self.mutants),
         }
 
 
@@ -203,6 +247,10 @@ class ModuleWork:
 class Shard:
     pool: str
     work: tuple[ModuleWork, ...]
+
+    @property
+    def cost(self) -> float:
+        return sum(w.cost for w in self.work)
 
     def matrix_entry(self, number: int, total: int) -> dict[str, str]:
         # A lone module names its own check; a packed shard says how many it
@@ -225,6 +273,8 @@ class Shard:
 class ModuleRun:
     module: str
     exit_code: int
+    # Why the shard never started the module: its deadline left no room.
+    not_started: str = ""
 
 
 @dataclass
@@ -352,29 +402,35 @@ def cmd_matrix(_args: list[str]) -> int:
 
 
 def pack(modules: Sequence[ModuleWork]) -> list[Shard]:
-    """Split modules into at most MAX_SHARDS homogeneous shards, round-robin per pool.
+    """Split modules into at most MAX_SHARDS homogeneous shards, balanced by estimated cost.
 
     The budget is the whole plan's: every live pool gets one shard and the
-    rest go to whichever pool carries the most modules per shard it has.
+    rest go to whichever pool carries the most cost per shard it has. Inside a
+    pool the costliest module goes next onto the cheapest shard (LPT), so one
+    heavy module never shares its shard with a pile of others.
     """
     members = {
         "services": [m for m in modules if m.needs_services],
         "unit": [m for m in modules if not m.needs_services],
     }
     live = {pool: members[pool] for pool in POOLS if members[pool]}
+    totals = {pool: sum(w.cost for w in live[pool]) for pool in live}
     counts = dict.fromkeys(live, 1)
     while sum(counts.values()) < MAX_SHARDS:
         hungry = [pool for pool in live if counts[pool] < len(live[pool])]
         if not hungry:
             break
-        counts[max(hungry, key=lambda pool: len(live[pool]) / counts[pool])] += 1
+        counts[max(hungry, key=lambda pool: totals[pool] / counts[pool])] += 1
     shards: list[Shard] = []
     for pool in POOLS:
         if pool not in live:
             continue
         packed: list[list[ModuleWork]] = [[] for _ in range(counts[pool])]
-        for index, work in enumerate(live[pool]):
-            packed[index % len(packed)].append(work)
+        loads = [0.0] * counts[pool]
+        for work in sorted(live[pool], key=lambda w: w.cost, reverse=True):
+            lightest = loads.index(min(loads))
+            packed[lightest].append(work)
+            loads[lightest] += work.cost
         shards.extend(Shard(pool, tuple(group)) for group in packed)
     return shards
 
@@ -398,8 +454,14 @@ def cmd_plan(_args: list[str]) -> int:
         print(f"{len(modules)} module(s) packed into {len(shards)} shards (matrix job limit)")
     else:
         print(f"{len(modules)} module(s) to mutate, one shard each")
-    for entry in include:
-        print(f"  [{entry['pool']:8}] {entry['label']}")
+    for entry, shard in zip(include, shards, strict=True):
+        print(f"  [{entry['pool']:8}] ~{int(shard.cost):>5}s  {entry['label']}")
+        if shard.cost > SHARD_BUDGET_SECONDS:
+            print(
+                f"::warning::mutation plan: {entry['label']} is estimated at {int(shard.cost)}s, "
+                f"over the {SHARD_BUDGET_SECONDS}s shard budget — the shard stops starting "
+                f"modules at {SHARD_DEADLINE_SECONDS}s and reports the rest as timed out"
+            )
     return 0
 
 
@@ -514,10 +576,25 @@ def shard_base() -> Iterator[Path | None]:
             shutil.rmtree(staged, ignore_errors=True)
 
 
-def run_module(work: ModuleWork, log_path: Path, env: dict[str, str]) -> ModuleRun:
-    """Run `module` for one entry as its own process group, killed at the per-module cap."""
+def module_cap(work: ModuleWork, seconds_left: float) -> int | None:
+    """Return mutmut's cap for this module given the shard's remaining time; None to not start it."""
+    cap = min(work.mutmut_cap, int(seconds_left - MODULE_WRAPUP_SECONDS))
+    return cap if cap >= MIN_MODULE_CAP_SECONDS else None
+
+
+def run_module(work: ModuleWork, log_path: Path, env: dict[str, str], deadline: float) -> ModuleRun:
+    """Run `module` for one entry as its own process group, under a cap that ends by the deadline."""
+    cap = module_cap(work, deadline - time.monotonic())
+    if cap is None:
+        reason = (
+            f"not started: the shard reached its {SHARD_DEADLINE_SECONDS}s deadline first "
+            f"(this module was estimated at {int(work.cost)}s) — nothing was proven here"
+        )
+        print(f"::error::mutation for {work.module} {reason}")
+        return ModuleRun(work.module, MUTMUT_TIMED_OUT, not_started=reason)
     with log_path.open("a") as log:
-        log.write(f"=== {work.module} ===\n")
+        # mutation_report reads the marker line back, so the estimate goes on its own line.
+        log.write(f"=== {work.module} ===\nestimated {int(work.cost)}s, mutmut cap {cap}s\n")
         log.flush()
         proc = subprocess.Popen(
             [
@@ -530,12 +607,12 @@ def run_module(work: ModuleWork, log_path: Path, env: dict[str, str]) -> ModuleR
             ],
             stdout=log,
             stderr=subprocess.STDOUT,
-            env=env,
+            env={**env, MUTMUT_CAP_ENV: str(cap)},
             cwd=REPO_ROOT,
             start_new_session=True,
         )
         try:
-            rc = proc.wait(timeout=MODULE_TIMEOUT_SECONDS)
+            rc = proc.wait(timeout=cap + MODULE_WRAPUP_SECONDS)
         except subprocess.TimeoutExpired:
             os.killpg(proc.pid, signal.SIGKILL)
             proc.wait()
@@ -554,6 +631,8 @@ def _without_log_suffix(path: Path) -> str:
 
 
 def cmd_shard(_args: list[str]) -> int:
+    # The step's clock starts with this process, CPU-slot wait included.
+    deadline = time.monotonic() + SHARD_DEADLINE_SECONDS
     os.chdir(REPO_ROOT)
     raw = os.environ.get("GROUP", "")
     if not raw:
@@ -592,7 +671,7 @@ def cmd_shard(_args: list[str]) -> int:
     with cpu_slots(children), shard_base() as base:
         if base is not None:
             env["MUTMUT_SHARD_BASE"] = str(base)
-        runs = [run_module(entry, log_path, env) for entry in work]
+        runs = [run_module(entry, log_path, env, deadline) for entry in work]
 
     # tail, never the whole file: a busy shard log is 13MB, and feeding that
     # through the runner's live-log pipe is where this step used to freeze.
@@ -605,7 +684,16 @@ def cmd_shard(_args: list[str]) -> int:
     verdicts = []
     for run in runs:
         record = record_dir / f"{report.module_slug(run.module)}.json"
-        if record.exists():
+        if run.not_started:
+            verdicts.append(
+                report.ModuleVerdict(
+                    module=run.module,
+                    status=Status.TIMED_OUT.value,
+                    path=f"apps/api/{run.module}",
+                    reason=run.not_started,
+                )
+            )
+        elif record.exists():
             verdicts.append(report.from_dict(json.loads(record.read_text())))
         else:
             verdicts.append(report.missing_record_verdict(run.module, run.exit_code, "apps/api"))
@@ -883,6 +971,11 @@ def configure_mutmut(request: ModuleRequest, workdir: Path) -> None:
     pyproject.write_text(text)
 
 
+def mutmut_cap_seconds() -> int:
+    """Return the cap the shard gave this module; a bare `module` run gets the floor."""
+    return int(os.environ.get(MUTMUT_CAP_ENV) or MUTMUT_CAP_FLOOR_SECONDS)
+
+
 def _tee(source: IO[bytes], log: IO[bytes]) -> None:
     for chunk in iter(source.readline, b""):
         log.write(chunk)
@@ -939,7 +1032,7 @@ def run_mutmut(request: ModuleRequest, venv: Path, workdir: Path) -> tuple[int, 
         tee = threading.Thread(target=_tee, args=(proc.stdout, log), daemon=True)
         tee.start()
         try:
-            rc = proc.wait(timeout=MUTMUT_TIMEOUT_SECONDS)
+            rc = proc.wait(timeout=mutmut_cap_seconds())
         except subprocess.TimeoutExpired:
             rc = MUTMUT_TIMED_OUT
         finally:
@@ -1297,6 +1390,12 @@ def mutate(request: ModuleRequest, venv: Path, workdir: Path) -> Outcome:
     phase("mutmut run")
     _say(f"mutating {request.module} (tests: {' '.join(request.testfiles)}) ...")
     rc, log = run_mutmut(request, venv, workdir)
+    if rc == MUTMUT_TIMED_OUT:
+        return Outcome(
+            Status.TIMED_OUT,
+            f"mutmut ran past its {mutmut_cap_seconds()}s cap for {request.module} and was "
+            "stopped — nothing was proven here",
+        )
     if rc != 0:
         judged = failed_run_outcome(request, venv, workdir, log)
         if judged is not None:
