@@ -99,6 +99,7 @@ const shownRows = () =>
 const failedReply = (id: string, seq: number, retryTarget: string | null) => ({
   ...replyItem(id, seq, "", "failed"),
   failure: "model_error" as const,
+  failure_line: "Something went wrong on my side.",
   retry_target: retryTarget,
 });
 
@@ -177,20 +178,19 @@ describe("the chat rendered from the server's screen patches", () => {
     expect(screen.getAllByText("second")).toHaveLength(1);
   });
 
-  it("words a failed reply with nothing shown by why it failed", async () => {
+  it("words a failed reply with nothing shown in the server's failure line", async () => {
     renderChat();
     const failed = {
       ...replyItem("r1", 2, "", "failed"),
       failure: "step_limit" as const,
+      failure_line: "The server's own words for a step-limit stop.",
     };
     await feed(
       insertFrame(userItem("m1", 1, "do it all")),
       insertFrame(failed),
     );
     expect(
-      screen.getByText(
-        "GAIA took too many steps on this and stopped before answering.",
-      ),
+      screen.getByText("The server's own words for a step-limit stop."),
     ).toBeDefined();
   });
 

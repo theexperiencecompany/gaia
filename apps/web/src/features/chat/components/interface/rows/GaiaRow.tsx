@@ -1,6 +1,5 @@
 import {
   REPLY_OUTCOME,
-  replyFailureMessage,
   SCREEN_ITEM_KIND,
   type ScreenItem,
   type StreamDraft,
@@ -51,7 +50,7 @@ function itemContent(item: GaiaItem, draft: StreamDraft | null): GaiaContent {
         // With text shown, the bubble words this as the cut-short strip under it.
         error:
           item.outcome === REPLY_OUTCOME.FAILED
-            ? replyFailureMessage(item.failure)
+            ? (item.failure_line ?? undefined)
             : undefined,
         replyToMessage: item.quote ?? undefined,
         retryFrom: item.retry_target === null ? null : item.id,

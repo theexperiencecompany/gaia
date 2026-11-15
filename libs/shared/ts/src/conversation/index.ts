@@ -1,8 +1,6 @@
 export {
   DISPLAY_STATUS_TEXT,
   REPLY_CUT_SHORT,
-  REPLY_FAILURE_MESSAGE,
-  replyFailureMessage,
   SEND_NOT_DELIVERED,
   STOPPED_NOTE,
 } from "./copy";

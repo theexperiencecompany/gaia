@@ -1,7 +1,6 @@
 import type { FileData, ToolDataEntry } from "@gaia/shared/api/generated";
 import {
   type ConversationView,
-  replyFailureMessage,
   SCREEN_ITEM_KIND,
   type ScreenItem,
   type ScreenRow,
@@ -67,7 +66,7 @@ function itemRow(item: ScreenItem, draft: StreamDraft | null): Message {
         stopped: item.outcome === "stopped",
         error:
           item.outcome === "failed"
-            ? replyFailureMessage(item.failure)
+            ? (item.failure_line ?? undefined)
             : undefined,
         replyToMessage: item.quote,
       };
