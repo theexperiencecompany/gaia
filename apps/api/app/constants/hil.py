@@ -113,6 +113,8 @@ class ReplyChoice(StrEnum):
     """What a chat reply means for one pending action: the JEV reply question's labels."""
 
     APPROVE = "approve"
+    # Accepted with a change: it approves, and the change goes to the work with it.
+    AMEND = "amend"
     DENY = "deny"
     LEAVE = "leave"
     UNRELATED = "unrelated"

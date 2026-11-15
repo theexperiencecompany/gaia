@@ -133,10 +133,16 @@ async def decide_ledger_card(
         tap.scope == "always_tool"
         and decision.committed
         and decision.outcome is ApprovalOutcome.APPROVED
+        and _change(tap.feedback) is None
     ):
         tool_key = row.tool_key or await resolved_tool_key(user_id, row.tool_name)
         await set_tool_override(user_id, tool_key, False)
     return decision
+
+
+def _change(feedback: str | None) -> str | None:
+    """Return what the user asked to change, None for a decision with nothing to say."""
+    return feedback if feedback and feedback.strip() else None
 
 
 async def _owned_row(approval_id: str, user_id: str) -> ApprovalLedgerDocument:
@@ -159,12 +165,7 @@ async def _commit_decision(
     via: HilDecisionVia,
 ) -> LedgerDecision:
     approval_id = row.approval_id
-    # Approve+feedback is a conditional approval, but envelopes carry no
-    # conditions: route it to deny (as the chat classifier does) so nothing
-    # runs beyond the granted permission; the note is attached to the denial.
-    if kind == "approve" and feedback is not None and feedback.strip() != "":
-        kind = "deny"
-
+    feedback = _change(feedback)
     target: DecidedOutcome = (
         ApprovalOutcome.APPROVED if kind == "approve" else ApprovalOutcome.DENIED
     )
@@ -177,6 +178,8 @@ async def _commit_decision(
             action=taken.stands.action,
         )
     await _follow_in_ledger(row, target, decided_by=user_id, feedback=feedback)
+    # The ticket reads the change off the row, as the ledger now holds it.
+    row.feedback = feedback
 
     log.set(hil={"approval_id": approval_id, "decision": kind, "tool": row.tool_name})
     # Server-owned funnel event: exactly once per committed decision (stale-v
@@ -337,6 +340,37 @@ async def _deliver_verdict_task(conversation_id: str, user_id: str, task: str) -
     await deliver_to_executor(conversation_id, AuthenticatedUser(user_id=user_id), task)
 
 
+def _redeem_refusal(
+    row: ApprovalLedgerDocument, decided: ApprovalDecided | None, caller: str
+) -> RedeemResult | None:
+    """Return why this ticket cannot run its stored call now, None when it may."""
+    if decided is None or decided.outcome is not ApprovalOutcome.APPROVED or decided.action:
+        return RedeemResult(
+            ok=False,
+            approval_id=row.approval_id,
+            action=None if decided is None else decided.action,
+            detail=f"Already {_standing(decided)}; report that instead of retrying.",
+        )
+    if decided.feedback:
+        return RedeemResult(
+            ok=False,
+            approval_id=row.approval_id,
+            action=None,
+            detail=(
+                f"Approved with a change ({decided.feedback!r}); this stored call lacks it. "
+                "Make the call again with the change applied."
+            ),
+        )
+    if caller != row.owner_agent and not caller.startswith(EXECUTOR_THREAD_PREFIX):
+        return RedeemResult(
+            ok=False,
+            approval_id=row.approval_id,
+            action=row.action,
+            detail="This ticket belongs to another worker; only its proposer or the executor may redeem it.",
+        )
+    return None
+
+
 async def redeem_approved(
     approval_id: str,
     *,
@@ -361,20 +395,9 @@ async def redeem_approved(
     if row.user_id != user_id:
         raise ApprovalRequestForbiddenError()
     decided = await logged_decision(row.conversation_id, row.user_id, approval_id)
-    if decided is None or decided.outcome is not ApprovalOutcome.APPROVED or decided.action:
-        return RedeemResult(
-            ok=False,
-            approval_id=approval_id,
-            action=None if decided is None else decided.action,
-            detail=f"Already {_standing(decided)}; report that instead of retrying.",
-        )
-    if caller != row.owner_agent and not caller.startswith(EXECUTOR_THREAD_PREFIX):
-        return RedeemResult(
-            ok=False,
-            approval_id=approval_id,
-            action=row.action,
-            detail="This ticket belongs to another worker; only its proposer or the executor may redeem it.",
-        )
+    refused = _redeem_refusal(row, decided, caller)
+    if refused is not None:
+        return refused
     claimed = await approval_ledger_repository.claim_executing(approval_id)
     if not claimed:
         current = await approval_ledger_repository.get_by_approval_id(approval_id)
