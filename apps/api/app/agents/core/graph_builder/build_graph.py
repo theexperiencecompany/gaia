@@ -230,6 +230,10 @@ async def build_executor_agent() -> CompiledAgentGraph:
     return graph
 
 
+#: The outside-world lookups comms runs itself; they close once the user interrupts the run.
+COMMS_LOOKUPS: tuple[BaseTool, ...] = (web_search_tool, fetch_webpages, get_weather)
+
+
 @asynccontextmanager
 async def build_comms_graph(
     chat_llm: LanguageModelLike | None = None,
@@ -242,7 +246,9 @@ async def build_comms_graph(
     tool_registry = comms_tools()
     store = await get_tools_store()
 
-    middleware = create_comms_middleware(chat_llm=chat_llm)
+    middleware = create_comms_middleware(
+        lookup_tools=frozenset(lookup.name for lookup in COMMS_LOOKUPS), chat_llm=chat_llm
+    )
 
     pre_model_hooks = comms_pre_model_hooks()
 
@@ -300,9 +306,7 @@ def comms_tools() -> dict[str, BaseTool]:
         tell_browser_task.name: tell_browser_task,
         "find_integration": find_integration,
         "search_public_workflows": search_public_workflows,
-        web_search_tool.name: web_search_tool,
-        fetch_webpages.name: fetch_webpages,
-        get_weather.name: get_weather,
+        **{lookup.name: lookup for lookup in COMMS_LOOKUPS},
         answered.name: answered,
         react.name: react,
         stay_silent.name: stay_silent,

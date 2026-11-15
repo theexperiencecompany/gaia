@@ -70,8 +70,9 @@ FALLBACK_HANDOFF_OUTCOME = "every one of these messages gets an answer"
 STILL_OPEN_QUOTE_CHARS = 80
 ABSORBED_NOTE = (
     "[The user sent this while you were still working on their earlier message. If it changes "
-    "or cancels that request, follow it. Otherwise answer it and name it, then carry on: the "
-    "earlier request stays open until you name it too.]"
+    "or cancels that request, follow it. Otherwise answer it now and name it. Your lookups are "
+    "closed for the rest of this turn: hand what is left of the earlier request to "
+    "call_executor, or answer it with what you have; it stays open until you name it too.]"
 )
 NOTICE_DELIVERED_NOTE = "[You already sent the user this message: {text}]"
 WORK_DONE_NOTE = (
