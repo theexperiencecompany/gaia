@@ -576,7 +576,7 @@ calls = pathlib.Path(os.environ["GH_CALLS"])
 calls.write_text(calls.read_text() + " ".join(sys.argv[1:]) + "\\n")
 if sys.argv[1] == "api":
     print(json.dumps([9, 7, 5]))
-elif sys.argv[1:3] == ["run", "download"] and sys.argv[3] == "5":
+elif sys.argv[1:3] == ["run", "download"] and sys.argv[3] == "9":
     out = pathlib.Path(sys.argv[sys.argv.index("-D") + 1]) / "mutation-durations-0"
     out.mkdir(parents=True)
     (out / "shard.durations.json").write_text(json.dumps({"app/a.py": 42.0}))
@@ -602,15 +602,14 @@ def test_history_lands_the_durations_of_this_prs_earlier_runs(tmp_path: Path) ->
             "GH_CALLS": str(calls),
             "GITHUB_REPOSITORY": "acme/gaia",
             "PR_BRANCH": "feat/x",
-            "GITHUB_RUN_ID": "9",
             "MUTATION_HISTORY_DIR": str(history),
         },
     )
 
     assert process.returncode == 0, process.stderr
     downloads = [line for line in calls.read_text().splitlines() if line.startswith("run download")]
-    # The run in progress is not history; the others are asked for their durations only.
-    assert [line.split()[2] for line in downloads] == ["7", "5"]
+    # Each run is asked for its durations only, never its multi-MB shard logs.
+    assert [line.split()[2] for line in downloads] == ["9", "7", "5"]
     assert all("-p mutation-durations-*" in line for line in downloads)
     assert "branch=feat/x&event=pull_request" in calls.read_text()
-    assert "1 module(s) measured by 2 earlier run(s)" in process.stdout
+    assert "1 module(s) measured across 3 run(s)" in process.stdout
