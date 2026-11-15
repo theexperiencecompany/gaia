@@ -4,7 +4,7 @@ import "streamdown/styles.css";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import type React from "react";
-import { useMemo } from "react";
+import { useDeferredValue, useMemo } from "react";
 import rehypeKatex from "rehype-katex";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -235,6 +235,9 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   extraLinkProtocols,
   lightBackground,
 }) => {
+  // Streamdown sets state in an effect on every new text while animating; rendered at the
+  // stream's own priority, a burst of deltas chains those into React's nested-update limit.
+  const shownContent = useDeferredValue(content);
   const urlTransform = useMemo<UrlTransform>(() => {
     if (!extraLinkProtocols?.length) return defaultUrlTransform;
     return (url, key, node) =>
@@ -278,7 +281,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         parseIncompleteMarkdown
         controls={false}
       >
-        {content}
+        {shownContent}
       </Streamdown>
     </div>
   );
