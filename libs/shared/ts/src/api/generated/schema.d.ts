@@ -9985,6 +9985,8 @@ export interface components {
          *     client reads.
          */
         GoogleCalendarEventResource: {
+            /** Attendees */
+            attendees?: components["schemas"]["GoogleCalendarPerson"][] | null;
             /** Calendarid */
             calendarId?: string | null;
             /** Calendartitle */
@@ -10000,6 +10002,7 @@ export interface components {
             id?: string | null;
             /** Location */
             location?: string | null;
+            organizer?: components["schemas"]["GoogleCalendarPerson"] | null;
             /** Recurrence */
             recurrence?: string[] | null;
             start?: components["schemas"]["GoogleCalendarEventDateTime"] | null;
@@ -10028,6 +10031,30 @@ export interface components {
             primary?: boolean | null;
             /** Summary */
             summary?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * GoogleCalendarPerson
+         * @description An event's organizer or one of its attendees; Google marks the calendar's owner self.
+         */
+        GoogleCalendarPerson: {
+            /** Displayname */
+            displayName?: string | null;
+            /** Email */
+            email?: string | null;
+            /**
+             * Resource
+             * @default false
+             */
+            resource?: boolean;
+            /** Responsestatus */
+            responseStatus?: string | null;
+            /**
+             * Self
+             * @default false
+             */
+            self?: boolean;
         } & {
             [key: string]: unknown;
         };
@@ -17758,6 +17785,7 @@ export type GoalState = components['schemas']['GoalState'];
 export type GoogleCalendarEventDateTime = components['schemas']['GoogleCalendarEventDateTime'];
 export type GoogleCalendarEventResource = components['schemas']['GoogleCalendarEventResource'];
 export type GoogleCalendarListEntry = components['schemas']['GoogleCalendarListEntry'];
+export type GoogleCalendarPerson = components['schemas']['GoogleCalendarPerson'];
 export type GoogleDocsDocumentDeletedConfig = components['schemas']['GoogleDocsDocumentDeletedConfig'];
 export type GoogleDocsDocumentUpdatedConfig = components['schemas']['GoogleDocsDocumentUpdatedConfig'];
 export type GoogleDocsNewDocumentConfig = components['schemas']['GoogleDocsNewDocumentConfig'];

@@ -10,7 +10,7 @@ case of each kind is a heading a live brief got wrong: "Landed overnight" over a
 waiting on approval got through, and "Ready when you are" over finished research was rejected.
 """
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -20,6 +20,7 @@ from app.models.brief_composition_models import BriefComposition
 from app.models.briefing_models import BriefingItemKind
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
+from tests.helpers import user_clock
 
 pytestmark = pytest.mark.model_onboarding
 
@@ -47,11 +48,10 @@ _POOL = FactPool(
     goals=[],
     context=PoolContext(
         reader="Ada",
-        timezone="UTC",
-        today=date(2026, 11, 11),
-        calendar_events=0,
-        calendar_connected=True,
+        clock=user_clock("UTC", date(2026, 11, 11)),
+        calendar=0,
         calendar_span="today",
+        done_since=datetime(2026, 11, 10, tzinfo=UTC),
         recent_openings=[],
     ),
     criteria={},

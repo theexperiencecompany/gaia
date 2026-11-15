@@ -95,7 +95,7 @@ async def test_opening_a_brief_tags_the_wide_event_with_the_user_and_brief() -> 
     assert event["briefing"] == {"operation": "get", "id": "brief_abc123"}
 
 
-async def test_the_archive_lists_the_users_briefs_and_tags_the_wide_event() -> None:
+async def test_the_archive_lists_only_the_users_editions_and_tags_the_wide_event() -> None:
     brief = _brief(opened=True)
     with patch(
         f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=[brief])
@@ -104,7 +104,8 @@ async def test_the_archive_lists_the_users_briefs_and_tags_the_wide_event() -> N
             response = await list_briefings(user=FAKE_USER, limit=7)
 
     assert response.briefings == [briefing_view(brief)]
-    list_recent.assert_awaited_once_with(FAKE_USER.user_id, limit=7)
+    # A quiet day's note has no edition to show, so the archive leaves notes out.
+    list_recent.assert_awaited_once_with(FAKE_USER.user_id, limit=7, editions_only=True)
     assert event["user"] == {"id": FAKE_USER.user_id}
     assert event["briefing"] == {"operation": "list", "limit": 7}
 
