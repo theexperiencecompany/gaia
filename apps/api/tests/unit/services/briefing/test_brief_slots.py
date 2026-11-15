@@ -14,6 +14,7 @@ from app.services.briefing.slots import (
     render_slots,
     series_figures,
     slot_problems,
+    unslotted,
 )
 
 pytestmark = pytest.mark.unit
@@ -349,6 +350,13 @@ class TestEchoes:
             "the message writes '11:00 AM' after [[fact:9.time]], which already renders "
             "'11:00 AM'; drop it",
         ]
+
+
+class TestUnslotted:
+    def test_a_link_keeps_its_phrase_and_a_value_slot_leaves_nothing(self) -> None:
+        typed = "Sign [the MSA](fact:3) before [[fact:9.time]] with [[count:needs_you]] left."
+
+        assert unslotted(typed) == "Sign the MSA before  with  left."
 
 
 class TestFiguresIn:

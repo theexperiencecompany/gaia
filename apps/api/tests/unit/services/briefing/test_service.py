@@ -52,6 +52,7 @@ from app.constants.briefing import (
     BriefingRunOutcome,
     BriefItemSource,
     BriefOutcome,
+    EditionChoice,
 )
 from app.constants.desk_buckets import DeskBucket
 from app.constants.integrations import GMAIL_INTEGRATION_ID
@@ -1104,6 +1105,62 @@ class TestDailyBrief:
             "I couldn't read Notion this time, so I can't say what they hold.",
         ]
 
+    async def test_a_day_of_repeats_whose_chart_shows_what_moved_is_an_edition(
+        self, world: World
+    ) -> None:
+        self._quiet(world)
+        world.calendar = []
+        world.work = context.TrackedWork(blocked=[_todo("b1", "Approve the Acme MSA")])
+        self._shown_before(world, "b1", times=2)
+        world.reads["list_completed_since"].return_value = [
+            _todo("c1", "Investor update").model_copy(
+                update={
+                    "completed": True,
+                    "completed_at": _NOW - timedelta(hours=1),
+                    "completed_by": TodoCompleter.GAIA,
+                }
+            )
+        ]
+        placed = _composed({"Waiting": ["Approve the Acme MSA"]})
+
+        def with_a_chart(
+            schema: type[BriefComposition], prompt: str, **kw: object
+        ) -> BriefComposition:
+            chart = {
+                "kind": "chart",
+                "chart": "bar",
+                "series_ids": ["gaia_finished"],
+                "title": "Finished",
+                "takeaway": "One thing done.",
+            }
+            blocks = [b.model_dump() for b in placed(schema, prompt, **kw).blocks]
+            return schema.model_validate({"blocks": [*blocks, chart]})
+
+        world.composer.side_effect = with_a_chart
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).form is BriefForm.EDITION
+
+    async def test_a_quiet_day_names_every_app_it_could_not_read(self, world: World) -> None:
+        self._quiet(world)
+        world.calendar = []
+        world.scouts = [
+            ScoutResult(
+                integration_id=integration,
+                app=app,
+                outcome=ScoutOutcome.SKIPPED,
+                skip_reason=ScoutSkipReason.FAILED,
+            )
+            for integration, app in (("notion", "Notion"), ("linear", "Linear"))
+        ]
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).message.splitlines()[1] == (
+            "I couldn't read Notion or Linear this time, so I can't say what they hold."
+        )
+
     async def test_a_quiet_day_counts_the_users_overdue_todos(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -2119,6 +2176,76 @@ class TestTheWeeklyReadsThisUsersWeek:
             ),
         )
 
+    async def test_a_quiet_week_a_day_after_an_edition_says_since_yesterday(
+        self, world: World
+    ) -> None:
+        world.calendar = []
+        world.reads["gather_completed_since"].return_value = context.CompletedWork()
+
+        def brief(day: str, form: BriefForm, kind: BriefingKind) -> BriefingModel:
+            payload = BriefingPayload(
+                form=form,
+                kicker="K",
+                date=day,
+                headline="h",
+                lede="",
+                mood="idle",
+                caption="",
+                template_family="",
+            )
+            return BriefingModel(id=day, user_id=_USER, date=day, kind=kind, payload=payload)
+
+        _briefs_read(
+            world,
+            [
+                brief("2026-10-13", BriefForm.EDITION, "daily"),
+                brief("2026-10-12", BriefForm.EDITION, "daily"),
+                brief("2026-10-07", BriefForm.QUIET_NOTE, "weekly"),
+            ],
+        )
+
+        await weekly.run_weekly_digest(_USER)
+
+        assert _stored_payload(world).message.splitlines()[0] == (
+            "Still nothing new since your brief yesterday, and next week's calendar is clear."
+        )
+        assert call(_USER, limit=1, editions_only=True) in world.recent.await_args_list
+
+    async def test_a_quiet_week_names_every_app_it_could_not_read(self, world: World) -> None:
+        world.calendar = []
+        world.reads["gather_completed_since"].return_value = context.CompletedWork()
+        world.scouts = [
+            ScoutResult(
+                integration_id=integration,
+                app=app,
+                outcome=ScoutOutcome.SKIPPED,
+                skip_reason=ScoutSkipReason.FAILED,
+            )
+            for integration, app in (("notion", "Notion"), ("linear", "Linear"))
+        ]
+
+        await weekly.run_weekly_digest(_USER)
+
+        assert _stored_payload(world).message.splitlines() == [
+            "Nothing new in what I could read, and next week's calendar is clear.",
+            "I couldn't read Notion or Linear this time, so I can't say what they hold.",
+            "I'll flag anything that comes in.",
+        ]
+
+    async def test_the_weekly_never_calls_an_empty_own_list_clear_beside_gaias_open_work(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _a_full_week(monkeypatch, world)
+        world.work = replace(world.work, running=[_todo("r1", "Research the venue")])
+        world.agent.return_value = _weekly_voiced()
+
+        await weekly.run_weekly_digest(_USER)
+
+        assert (
+            "The user has no todos of their own outside GAIA's tracked work, which holds "
+            "[[count:open_tracked]] open: never call their todo list empty or clear."
+        ) in _facts_shown(_prompt(world)).splitlines()
+
 
 class TestHeldItemsJoinTheBrief:
     """Results held for the brief are candidates like any other.
@@ -2753,6 +2880,7 @@ class TestTheDailyRunWiring:
         )
         lookback = world.reads["format_lookback_block"].await_args.args
         assert lookback[:3] == (_USER, None, _DAY_START)
+        assert (lookback[3].date_str, lookback[3].tz.key) == (_DATE, _TZ)
         assert world.reads["compute_winback_state"].await_args.args[0].id == _USER
         world.reads["has_daily_briefing"].assert_awaited_once_with(_USER)
         world.reads["gather_tracked_work"].assert_awaited_once_with(_USER, _DAY_START)
@@ -2951,6 +3079,24 @@ class TestTheDailyRunWiring:
         payload = _stored_payload(world)
         assert [b.kind for b in payload.undrawn] == ["progress"]
         assert [b.kind for b in payload.blocks] == ["items"]
+
+    async def test_a_brief_its_only_edition_cannot_draw_is_still_sent(self, world: World) -> None:
+        """Regression (#1804 review): with only Menu on, a progress-only brief drew nothing and was never pushed."""
+        world.calendar = []
+        world.work = _brief_work()
+        world.user.briefing_editions = {
+            family: EditionChoice.OFF for family in DAILY_FAMILY_WEIGHTS if family != "menu"
+        }
+        world.composer.side_effect = lambda schema, _prompt, **_k: schema.model_validate(
+            {"blocks": [{"kind": "progress", "goal_id": "g1"}]}
+        )
+
+        await daily.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        assert (payload.template_family, payload.blocks) == ("menu", [])
+        assert [b.kind for b in payload.undrawn] == ["progress"]
+        world.post.assert_awaited_once()
 
     async def test_a_chart_in_the_brief_is_counted_among_its_blocks(self, world: World) -> None:
         world.work = _brief_work()
@@ -3444,6 +3590,20 @@ class TestTheIdleLadder:
             idle_days=0, date=None, dormant_since=None
         )
         world.upsert.assert_awaited()
+
+    async def test_a_woken_user_asked_for_a_goal_two_days_ago_is_not_asked_again(
+        self, world: World, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _dormant(world)
+        assert world.user.briefing_dormancy is not None
+        world.user.briefing_dormancy.goal_asked_at = _NOW - timedelta(days=2)
+        _seam(monkeypatch, world, context, "stated_goals", AsyncMock(return_value=[]))
+        _seam(monkeypatch, world, dormancy, "latest_activity_since", AsyncMock(return_value=_NOW))
+
+        await daily.run_daily_briefing(_USER)
+
+        world.goal_asked.assert_not_awaited()
+        assert world.voice_prompt.call_args.kwargs["situation"].goal_asked_recently is True
 
     @pytest.mark.parametrize(
         ("work", "held", "has_goal", "idle"),

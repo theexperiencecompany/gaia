@@ -118,7 +118,7 @@ export const GATED_LINK_DENIALS = [
  * Dead for everyone but the link's owner, who still opens what they turned off
  * or let expire (the API's access rule), so the browser resolves them again too.
  */
-export const OWNER_REOPENS_DENIALS = [
+const OWNER_REOPENS_DENIALS = [
   "link_revoked",
   "link_expired",
 ] as const satisfies readonly LinkDenial[];

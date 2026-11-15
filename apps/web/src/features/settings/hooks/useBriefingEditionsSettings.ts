@@ -1,7 +1,7 @@
 "use client";
 
 import type { BriefingEdition, EditionChoice } from "@shared/api/generated";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 
@@ -22,32 +22,45 @@ const LAST_ONE_ON = "Keep at least one edition on.";
 /**
  * Owns which daily editions the user's brief draws: each one on, off or a
  * favourite, saved on every change and rolled back on failure.
+ *
+ * Each save sends the whole map, so saves run one after another: the last one
+ * to land is always the newest choice.
  */
 export function useBriefingEditionsSettings(): UseBriefingEditionsSettings {
   const [editions, setEditions] = useState<BriefingEdition[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+  // What the server last confirmed, which a refused save rolls back to.
+  const confirmed = useRef<BriefingEdition[] | null>(null);
+  const saving = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     NotificationsAPI.getBriefingEditions().then(
-      (stored) => setEditions(stored.editions),
+      (stored) => {
+        confirmed.current = stored.editions;
+        setEditions(stored.editions);
+      },
       () => setLoadFailed(true),
     );
   }, []);
 
-  const choose = async (family: string, choice: EditionChoice) => {
+  const choose = (family: string, choice: EditionChoice) => {
     if (!editions) return;
     const next = editions.map((edition) =>
       edition.family === family ? { ...edition, choice } : edition,
     );
     setEditions(next);
-    try {
-      await NotificationsAPI.updateBriefingEditions({
-        choices: Object.fromEntries(next.map((e) => [e.family, e.choice])),
-      });
-    } catch {
-      setEditions(editions);
-      toast.error(SAVE_FAILED);
-    }
+    const choices = Object.fromEntries(next.map((e) => [e.family, e.choice]));
+    saving.current = saving.current.then(async () => {
+      try {
+        const stored = await NotificationsAPI.updateBriefingEditions({
+          choices,
+        });
+        confirmed.current = stored.editions;
+      } catch {
+        setEditions(confirmed.current);
+        toast.error(SAVE_FAILED);
+      }
+    });
   };
 
   const choiceOf = (family: string) =>
@@ -56,7 +69,7 @@ export function useBriefingEditionsSettings(): UseBriefingEditionsSettings {
   const toggleOn = (family: string) => {
     if (!editions) return;
     if (choiceOf(family) === "off") {
-      void choose(family, "on");
+      choose(family, "on");
       return;
     }
     const onCount = editions.filter((e) => e.choice !== "off").length;
@@ -64,11 +77,11 @@ export function useBriefingEditionsSettings(): UseBriefingEditionsSettings {
       toast.info(LAST_ONE_ON);
       return;
     }
-    void choose(family, "off");
+    choose(family, "off");
   };
 
   const toggleFavourite = (family: string) => {
-    void choose(family, choiceOf(family) === "favourite" ? "on" : "favourite");
+    choose(family, choiceOf(family) === "favourite" ? "on" : "favourite");
   };
 
   return { editions, loadFailed, toggleOn, toggleFavourite };

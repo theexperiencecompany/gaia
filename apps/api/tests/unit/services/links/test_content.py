@@ -73,7 +73,9 @@ def _pdf() -> bytes:
     with pymupdf.open() as document:
         page = document.new_page()
         page.insert_text((72, 72), "Quarterly report")
-        return document.tobytes()
+        # A fresh /ID is stamped from the clock, and this PDF names parametrized tests: every
+        # xdist worker must build the same bytes or they collect different tests.
+        return document.tobytes(no_new_id=True)
 
 
 def _wav() -> bytes:

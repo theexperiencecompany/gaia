@@ -278,7 +278,7 @@ def plain_voice(writing: Writing) -> BriefVoice:
 
 
 def _draft_message(message: str, writing: Writing) -> str:
-    return render_slots(message, writing.values, {})
+    return render_slots(message, writing.values, {})  # pragma: no mutate — no link slot to look up
 
 
 @dataclass(frozen=True)

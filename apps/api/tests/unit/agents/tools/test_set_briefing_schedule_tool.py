@@ -63,7 +63,9 @@ class TestSetBriefingSchedule:
         with (
             patch(
                 f"{MODULE}.user_repository.get",
-                new=AsyncMock(return_value=_user(BriefingSchedule(frequency="off"))),
+                new=AsyncMock(
+                    return_value=_user(BriefingSchedule(frequency=BriefingFrequency.OFF))
+                ),
             ),
             patch(
                 f"{MODULE}.briefing_schedule.set_briefing_schedule",

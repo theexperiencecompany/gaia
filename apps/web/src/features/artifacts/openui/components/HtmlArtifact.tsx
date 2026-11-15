@@ -8,6 +8,8 @@ import { describeArtifactComponent, htmlArtifactSchema } from "../specs";
 // The stylesheet and runtime the markup is written against (apps/web/public/artifact/).
 const STYLESHEET_PATH = "/artifact/gaia-artifact.css";
 const RUNTIME_PATH = "/artifact/gaia-runtime.js";
+// What a frame sandboxed without allow-same-origin posts as its origin.
+const OPAQUE_ORIGIN = "null";
 
 /**
  * The sandboxed document: an opaque origin (no allow-same-origin), and a CSP that loads only
@@ -40,7 +42,8 @@ function useReportedHeight(
   useEffect(() => {
     const onMessage = (event: MessageEvent<HeightMessage | null>) => {
       const own = frame.current?.contentWindow;
-      if (!own || event.source !== own) return;
+      if (!own || event.source !== own || event.origin !== OPAQUE_ORIGIN)
+        return;
       const reported = event.data?.height;
       if (
         event.data?.type === ARTIFACT_HEIGHT_MESSAGE &&

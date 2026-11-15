@@ -190,6 +190,7 @@ class TestTrackedWork:
                 return_value=[
                     _todo("c1", "Research", GAIA_TRACKED_LABEL),
                     _todo("c2", "Groceries"),
+                    _todo("c3", "Book flights", GAIA_TRACKED_LABEL, by=TodoCompleter.USER),
                 ]
             ),
         )
@@ -558,8 +559,12 @@ class TestCalendar:
         async with captured_wide_event() as event:
             await context.gather_calendar(_USER, _clock(), days=1)
 
-        assert event["warnings"][0]["msg"] == "briefing.calendar_unavailable"
-        assert event["warnings"][0]["error_type"] == "HTTPException"
+        warning = event["warnings"][0]
+        assert (warning["msg"], warning["error_type"], warning["error"]) == (
+            "briefing.calendar_unavailable",
+            "HTTPException",
+            "401: Invalid Credentials",
+        )
 
     async def test_the_week_ahead_holds_only_its_own_days(
         self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
@@ -580,6 +585,22 @@ class TestCalendar:
 
         assert isinstance(ahead, list)
         assert [e.title for e in ahead] == ["Tomorrow", "Last day"]
+
+    async def test_the_days_read_holds_today_and_keeps_the_whole_window(
+        self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
+    ) -> None:
+        raw = [
+            _event("Standup", {"dateTime": "2026-10-14T03:30:00Z"}),
+            _event("Offsite", {"date": "2026-10-15"}),
+        ]
+        monkeypatch.setattr(context, "get_calendar_events", AsyncMock(return_value=_response(raw)))
+        clock = _clock()
+        start = context.day_start_utc(clock)
+
+        day = await context.read_day_calendar(_USER, clock, start, start + timedelta(days=7))
+
+        assert day.today == [BriefingEvent(date="2026-10-14", start="09:00", title="Standup")]
+        assert day.week == raw
 
     async def test_an_event_the_user_declined_is_not_on_their_day(
         self, monkeypatch: pytest.MonkeyPatch, connected: AsyncMock
@@ -650,6 +671,17 @@ class TestClockIsTheUsers:
 
     def test_day_start_is_expressed_in_utc(self) -> None:
         assert context.day_start_utc(_clock()).tzinfo is UTC
+
+    @pytest.mark.parametrize(
+        ("due_at", "said"),
+        [
+            (datetime(2026, 10, 14, 17, 0, tzinfo=UTC), "today"),
+            (datetime(2026, 10, 14, 19, 0, tzinfo=UTC), "Thu Oct 15"),
+        ],
+        ids=["late-on-the-users-day", "past-the-users-midnight"],
+    )
+    def test_a_due_date_is_said_on_the_users_own_day(self, due_at: datetime, said: str) -> None:
+        assert context.due_on(due_at, _clock()) == said
 
 
 class TestGoalBlockEdges:

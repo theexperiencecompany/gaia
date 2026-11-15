@@ -8807,6 +8807,20 @@
         "additionalProperties": true,
         "description": "A single Google Calendar ``events`` resource, forwarded to the client verbatim.\n\nOnly the fields GAIA itself reads (filtering, sorting, display) or injects\n(``calendarId``/``calendarTitle``) are declared. Google owns the rest of this\nschema and varies it by event type, so everything else passes through untouched\nrather than guessing at a structure that would silently drop fields the web\nclient reads.",
         "properties": {
+          "attendees": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/GoogleCalendarPerson"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attendees"
+          },
           "calendarId": {
             "anyOf": [
               {
@@ -8893,6 +8907,16 @@
               }
             ],
             "title": "Location"
+          },
+          "organizer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GoogleCalendarPerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "recurrence": {
             "anyOf": [
@@ -8990,6 +9014,57 @@
           "id"
         ],
         "title": "GoogleCalendarListEntry",
+        "type": "object"
+      },
+      "GoogleCalendarPerson": {
+        "additionalProperties": true,
+        "description": "An event's organizer or one of its attendees; Google marks the calendar's owner self.",
+        "properties": {
+          "displayName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayname"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "resource": {
+            "default": false,
+            "title": "Resource",
+            "type": "boolean"
+          },
+          "responseStatus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responsestatus"
+          },
+          "self": {
+            "default": false,
+            "title": "Self",
+            "type": "boolean"
+          }
+        },
+        "title": "GoogleCalendarPerson",
         "type": "object"
       },
       "GoogleDocsDocumentDeletedConfig": {
