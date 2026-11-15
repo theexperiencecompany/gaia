@@ -63,6 +63,7 @@ import math
 import os
 from pathlib import Path
 import re
+import resource
 import shutil
 import signal
 import socket
@@ -117,6 +118,12 @@ MODULE_WRAPUP_SECONDS = 180
 MIN_MODULE_CAP_SECONDS = 120
 KILLED_BY_CAP = 137
 MUTMUT_TIMED_OUT = 124
+# Of the memory this shard may use, the share split between mutmut and its
+# mutant workers. A mutant that loops while a test fake grows (conversation/
+# step.py on #1799: 1.1 GB to 8 GB in 50 s) gets MemoryError and is killed,
+# instead of OOM-killing the runner ("received a shutdown signal").
+MUTANT_MEMORY_SHARE = 0.8
+CGROUP_ROOT = Path("/sys/fs/cgroup")
 # Per-mutant pytest timeout; timeout_func_only keeps fixture setup (a 30-40 s
 # app build when cold sessions start together) off the test's own budget.
 MUTANT_TEST_TIMEOUT = 120
@@ -313,6 +320,20 @@ def mutant_workers() -> int:
     """Return half the threads: eight workers measured clean on the 16-thread box (2026-09-17)."""
     threads = os.cpu_count() or 2
     return max(threads // 2, 1)
+
+
+def memory_available() -> int:
+    """Return the bytes this process may use: its cgroup v2 limit when one is set, else RAM."""
+    own = Path("/proc/self/cgroup").read_text().strip().removeprefix("0::/")
+    limit_file = CGROUP_ROOT / own / "memory.max"
+    if limit_file.is_file() and limit_file.read_text().strip() != "max":
+        return int(limit_file.read_text())
+    return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+
+
+def mutant_memory_cap(children: int) -> int:
+    """Return the per-process data limit that keeps mutmut and every worker inside the share."""
+    return int(memory_available() * MUTANT_MEMORY_SHARE / (children + 1))
 
 
 def workdir_base() -> Path:
@@ -1056,6 +1077,10 @@ def run_mutmut(request: ModuleRequest, venv: Path, workdir: Path) -> tuple[int, 
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        if sys.platform == "linux":
+            # Before the stats run allocates; every forked mutant inherits it.
+            cap = mutant_memory_cap(int(children))
+            resource.prlimit(proc.pid, resource.RLIMIT_DATA, (cap, cap))
         assert proc.stdout is not None
         tee = threading.Thread(target=_tee, args=(proc.stdout, log), daemon=True)
         tee.start()
