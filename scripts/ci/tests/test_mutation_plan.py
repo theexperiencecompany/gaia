@@ -45,7 +45,7 @@ def _constant(name: str) -> float:
 MAX_SHARDS = int(_constant("MAX_SHARDS"))
 MUTATION_WAVE = int(_constant("MUTATION_WAVE"))
 SHARD_BUDGET_SECONDS = _constant("SHARD_BUDGET_SECONDS")
-UNIT_RATE = _constant("UNIT_SECONDS_PER_MUTANT_TEST")
+UNIT_RATE = _constant("UNIT_SECONDS_PER_MUTANT")
 OVERHEAD = _constant("MODULE_OVERHEAD_SECONDS")
 
 # Heavy enough that the whole diff needs more than MAX_SHARDS budgets, so the
@@ -271,7 +271,7 @@ def test_a_costly_diff_gets_as_many_shards_as_it_needs_to_fit_the_budget(
     # PR #1799: 222 modules worth ~10,000 s were forced into six shards, and
     # every shard ran past its 28-minute deadline. The count follows the cost,
     # and shards past the wave queue behind max-parallel.
-    mutants = 16_000  # ~500 s per module
+    mutants = 800  # ~260 s per module
     entries = [_entry(f"app/m{i}.py", [UNIT_TEST], [i], mutants=mutants) for i in range(40)]
 
     process, outputs = harness(entries)
