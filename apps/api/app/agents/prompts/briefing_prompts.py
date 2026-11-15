@@ -454,8 +454,22 @@ phrased as one question the user can answer with a single word. Never a generic
 """
 
 
-def build_day_zero_hello_prompt(*, first_name: str, goal_block: str, has_goal: bool) -> str:
-    """Build the first text GAIA sends a user right after they link a chat platform."""
+def _first_brief_close(first_brief: str | None) -> str:
+    if first_brief is None:
+        return "Their briefs are turned off, so never promise them one."
+    return (
+        f"Close by letting them know their first brief lands {first_brief}.\n"
+        "Keep it light, one short line for that, not a sales pitch."
+    )
+
+
+def build_day_zero_hello_prompt(
+    *, first_name: str, goal_block: str, has_goal: bool, first_brief: str | None
+) -> str:
+    """Build the first text GAIA sends a user right after they link a chat platform.
+
+    first_brief is when their first brief lands ("tomorrow at 7 AM"); None when briefs are off.
+    """
 
     if has_goal:
         task = f"""Say hi to {first_name} by name, warm and quick. Then, from what you know
@@ -483,8 +497,7 @@ friend, not an onboarding email.
 ## YOUR MESSAGE
 {task}
 
-Close by letting them know their first brief lands tomorrow morning around 8.
-Keep it light, one short line for that, not a sales pitch.
+{_first_brief_close(first_brief)}
 
 ## VOICE
 Text like a real person who is genuinely glad they showed up. Contractions

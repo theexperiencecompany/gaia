@@ -16,10 +16,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import time_machine
 
+from app.constants.briefing import BriefingFrequency
 from app.constants.chat import ConversationSource
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
 from app.db.repositories.users import user_repository
+from app.models.briefing_models import BriefingSchedule
 from app.models.user_models import DayZeroHello, UserDocument
 from app.services.briefing import context, service as briefing_service
 from app.services.delivery.chat_channel import ChatChannel
@@ -217,6 +219,41 @@ class TestDelivery:
         assert re.fullmatch(rf"dayzero-{_USER}-[0-9a-f]{{6}}", run["conversation_id"])
         assert run["options"].trigger_context == {"execution_mode": "background"}
         assert run["options"].source == "day_zero_hello"
+
+    @pytest.mark.parametrize(
+        ("schedule", "promised"),
+        [
+            # 09:00 UTC is 14:30 in Kolkata, past a 9 AM brief: the first lands tomorrow.
+            (BriefingSchedule(hour=9), "their first brief lands tomorrow at 9 AM."),
+            (BriefingSchedule(hour=18), "their first brief lands today at 6 PM."),
+            # 14 Oct 2026 is a Wednesday: the weekly digest is Sunday's.
+            (
+                BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY),
+                "their first brief lands Sunday at 5 PM.",
+            ),
+        ],
+    )
+    async def test_the_hello_promises_the_first_brief_when_it_really_lands(
+        self, seams: Seams, schedule: BriefingSchedule, promised: str
+    ) -> None:
+        seams.get_user.return_value = _user(timezone="Asia/Kolkata", briefing_schedule=schedule)
+
+        await seams.send()
+
+        prompt = seams.agent.await_args.kwargs["request"].message
+        assert promised in prompt
+        assert "around 8" not in prompt
+
+    async def test_a_user_with_briefs_off_is_promised_none(self, seams: Seams) -> None:
+        seams.get_user.return_value = _user(
+            briefing_schedule=BriefingSchedule(frequency=BriefingFrequency.OFF)
+        )
+
+        await seams.send()
+
+        prompt = seams.agent.await_args.kwargs["request"].message
+        assert "first brief lands" not in prompt
+        assert "never promise them one" in prompt
 
     @pytest.mark.parametrize("name", [None, "   "])
     async def test_a_user_without_a_name_is_greeted_as_there(
