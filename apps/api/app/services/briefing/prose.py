@@ -232,24 +232,29 @@ async def written_brief(
     """
     note = ""
     failure: BriefingGenerationError
-    for _ in range(MAX_VOICE_ATTEMPTS):
+    rejections: list[str] = []
+    for attempt in range(1, MAX_VOICE_ATTEMPTS + 1):
         attempt_prompt = f"{prompt}\n\n{note}" if note else prompt
         try:
             voice = await _voice(user_id, attempt_prompt)
         except VoiceUnreadableError as exc:
             # Logged here, not where the reply failed: that error's text quotes the reply.
             log.warning("briefing.voice_unreadable", problems=exc.problems)
+            rejections.append("; ".join(exc.problems))
             failure, note = exc, voice_unreadable_note(exc.problems, exc.reply)
             continue
         checked = _held_to_facts(voice, writing)
         if isinstance(checked, BriefVoice):
+            log.set_ns("brief_voice", attempts=attempt, plain=False, rejections=rejections)
             return voice, checked
         log.warning("briefing.voice_rejected", problems=checked)
+        rejections.append("; ".join(checked))
         failure = BriefingGenerationError(
             f"The brief's prose does not hold to its facts: {'; '.join(checked)}"
         )
         note = voice_correction_note(checked, voice.model_dump_json(indent=2))
     # Loud, but never the user's loss: the brief goes out in plain words built from its facts.
+    log.set_ns("brief_voice", attempts=MAX_VOICE_ATTEMPTS, plain=True, rejections=rejections)
     log.error("briefing.voice_salvaged", problems=str(failure))
     plain = plain_voice(writing)
     return plain, _draft(plain, writing.values)

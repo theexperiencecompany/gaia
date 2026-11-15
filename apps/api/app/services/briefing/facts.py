@@ -77,7 +77,7 @@ def _work_fact_line(
     art: ArtifactFact,
     clock: UserClock,
 ) -> str:
-    line = _fact_line(fact_id, item, fact, candidate.model_copy(update={"detail": None}), clock)
+    line = _fact_line(fact_id, item, fact, candidate, clock)
     if art.snippet:
         line += f" | summary: {art.snippet}"
     line += f" | artifact holds ~{art.chars} chars"
@@ -301,7 +301,13 @@ def _own_words(
 ) -> list[str]:
     """Return the words an item's fact line shows beside its title, which prose may quote."""
     signal = candidate.signal
-    words = [candidate.title, candidate.detail, item.detail, art.snippet if art else None]
+    words = [
+        candidate.title,
+        candidate.standing,
+        candidate.detail,
+        item.detail,
+        art.snippet if art else None,
+    ]
     if signal is not None:
         words += [signal.why, signal.state, signal.text]
     return [w for w in words if w]

@@ -3028,7 +3028,7 @@ class TestTheFactsTheModelVoices:
         assert (
             "[COUNTS] [[count:needs_you]] (3) · [[count:done]] (1) · [[count:in_progress]] (2) · [[count:while_away]] (1) · [[count:open_tracked]] (5) · [[count:events]] (1)\n"
             "[Needs you]\n"
-            "- fact 1 | Waiting on you: Approve the reply | summary: Draft ready"
+            "- fact 1 | Waiting on you: Approve the reply"
             " | artifact holds ~11 chars | waiting on you | linkable\n"
             "- fact 2 | Failed: Sync | artifact holds ~0 chars\n"
             "- fact 3 | Failed: Scrape | artifact holds ~0 chars\n"
@@ -3095,10 +3095,7 @@ class TestTheFactsTheModelVoices:
             "- fact 3 | In progress: Deck | summary: One | artifact holds ~3 chars | linkable\n"
             in prompt
         )
-        assert (
-            "- fact 1 | Waiting on you: Reply | summary: Three | artifact holds ~5 chars | waiting"
-            in prompt
-        )
+        assert "- fact 1 | Waiting on you: Reply | artifact holds ~5 chars | waiting" in prompt
 
     async def test_with_nothing_tracked_the_model_is_told_nothing_ran(self, world: World) -> None:
         await daily.run_daily_briefing(_USER)

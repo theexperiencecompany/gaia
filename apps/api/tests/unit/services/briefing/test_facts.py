@@ -125,8 +125,36 @@ class TestTheFactLines:
         assert "- fact 1 | Waiting on you: Sort the garage\n" in f"{facts.block}\n"
         assert facts.deliverables == {}
 
+    def test_tracked_work_waiting_on_the_user_says_the_question_it_asks_them(self) -> None:
+        item = BriefingItem(text="Venue", kind="you", todo_id="t1", action=BriefAction.REPLY)
+        candidate = BriefCandidate(
+            source="gaia", app="GAIA", state="you", title="Venue", detail="Lisbon or Porto?"
+        )
+        art = ArtifactFact(snippet="", chars=0, action=True)
+
+        facts = build_facts(_chosen((item, candidate)), _sources(artifacts={"t1": art}), _CLOCK)
+
+        assert (
+            "- fact 1 | Waiting on you: Venue | detail: Lisbon or Porto? | artifact holds ~0 chars"
+            " | waiting on you"
+        ) in facts.block
+
 
 class TestWhatProseMayQuote:
+    def test_the_date_an_items_standing_says_may_be_quoted(self) -> None:
+        item = BriefingItem(text="Pitch prep", kind="gaia", outcome=BriefOutcome.STARTED)
+        candidate = BriefCandidate(
+            source="gaia",
+            app="GAIA",
+            state="gaia",
+            title="Pitch prep",
+            standing="GAIA looks at it again Tue Nov 17",
+        )
+
+        facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
+
+        assert facts.values.quoted == {"17"}
+
     def test_the_figures_in_every_items_own_words_may_be_quoted(self) -> None:
         first = (
             BriefingItem(text="Q3 plan", kind="you", todo_id="t1", action=BriefAction.REPLY),

@@ -80,17 +80,21 @@ def _todo(todo_id: str, title: str, *labels: str, **fields: Any) -> TodoDocument
 
 
 class TestTrackedTodos:
-    def test_a_todos_description_and_due_date_travel_with_its_candidate(self) -> None:
+    def test_a_todos_due_date_travels_with_its_candidate_and_its_description_never_does(
+        self,
+    ) -> None:
+        """Replay of Dhruv's set: GAIA's own instructions on a todo were voiced to the user."""
         due = NOW + timedelta(days=2)
+        rule = "Do not make a payment without explicit approval."
         work = TrackedWork(
-            blocked=[_todo("d1", "Pay the invoice", description="Acme, net 30", due_date=due)],
-            running=[_todo("d2", "Draft the memo")],
+            blocked=[_todo("d1", "Pay the invoice", description=rule, due_date=due)],
+            running=[_todo("d2", "Draft the memo", description=rule)],
         )
 
         [waiting] = waiting_candidates(work)
         [running] = gaia_work_candidates(work, CLOCK)
 
-        assert (waiting.detail, waiting.due_at) == ("Acme, net 30", due)
+        assert (waiting.detail, waiting.due_at) == (None, due)
         assert (running.detail, running.due_at) == (None, None)
 
     def test_what_waits_on_the_user_comes_first_then_what_failed(self) -> None:
@@ -227,7 +231,11 @@ class TestTrackedTodos:
 
     def test_a_question_gaia_asked_waits_on_the_user_as_a_reply(self) -> None:
         asked = _todo(
-            "q1", "Pick the venue", waiting_on=WaitingOn.USER, question="Lisbon or Porto?"
+            "q1",
+            "Pick the venue",
+            waiting_on=WaitingOn.USER,
+            question="Lisbon or Porto?",
+            description="Book only after the user picks.",
         )
 
         [found] = waiting_candidates(TrackedWork(blocked=[asked]))
@@ -285,7 +293,7 @@ class TestOwnTodos:
         found = await own_todo_candidates(USER_ID, cutoff, TrackedWork())
 
         assert [(c.title, c.detail, c.due_at, c.todo_id) for c in found] == [
-            ("File the VAT return", "Q3", overdue, "o1"),
+            ("File the VAT return", None, overdue, "o1"),
             ("Renew the passport", None, NOW, "o2"),
         ]
         assert {(c.state, c.action, c.app) for c in found} == {("you", BriefAction.ATTEND, "GAIA")}

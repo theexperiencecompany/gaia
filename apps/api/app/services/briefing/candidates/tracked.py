@@ -82,9 +82,9 @@ def _grouped(
             ref=f"{source}:{ref.id}" if ref is not None and source != GAIA_SOURCE else None,
             state=state,
             title=doc.title,
-            detail=(doc.question if doc.waiting_on is WaitingOn.USER else None)
-            or doc.description
-            or None,
+            # Of a todo the brief says only what is meant for the user: the question GAIA asks
+            # them. Its description is GAIA's own brief to itself, never theirs to read.
+            detail=(doc.question if doc.waiting_on is WaitingOn.USER else None) or None,
             due_at=doc.due_date,
             todo_id=doc.id,
             action=action(doc) if action is not None else None,

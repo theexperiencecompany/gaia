@@ -1,23 +1,37 @@
 """The voice's reader, its unreadable replies and the way a rejected voice is sent back."""
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
+from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 import pytest
+from tests.helpers import captured_wide_event
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import RecentLines, voice_correction_note
-from app.models.briefing_models import BriefVoice
+from app.constants.briefing import BriefOutcome
+from app.constants.todos import GAIA_TRACKED_LABEL, WaitingOn
+from app.models.briefing_models import BriefingItem, BriefingSection, BriefVoice
+from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.services.briefing import prose
+from app.services.briefing.artifacts import gather_artifacts
+from app.services.briefing.candidates.tracked import gaia_work_candidates
+from app.services.briefing.context import TrackedWork, UserClock
 from app.services.briefing.errors import VoiceUnreadableError
+from app.services.briefing.facts import TODAY, FactSources, build_facts
 from app.services.briefing.prose import Writing, opening_line, reader_block, written_brief
+from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import BriefFact, SlotValues
 
 pytestmark = pytest.mark.unit
 
 _USER_ID = "64f1c0ffee0000000000abcd"
 _VALUES = SlotValues(facts={1: BriefFact(title="Reply to Dan")}, counts={})
+_TZ = ZoneInfo("Asia/Kolkata")
+_NOW = datetime(2026, 11, 9, 2, 30, tzinfo=UTC)
+_CLOCK = UserClock(tz=_TZ, now_local=_NOW.astimezone(_TZ), date_str="2026-11-09", day_of_year=313)
 
 
 def _voice(**fields: str) -> BriefVoice:
@@ -265,3 +279,75 @@ class TestAVoiceThatSaysATitleTwice:
 )
 def test_a_messages_opening_is_its_first_non_blank_line(message: str, opening: str) -> None:
     assert opening_line(message) == opening
+
+
+class TestAFigureTheFactsShow:
+    """Replay of Dhruv's 2026-11-09: "another look set for Tue Nov 17" fell back to the plain voice."""
+
+    async def test_a_date_an_items_standing_says_may_be_voiced_as_it_stands(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        doc = TodoDocument(
+            id="t1",
+            user_id=_USER_ID,
+            title="Pitch prep research",
+            labels=[GAIA_TRACKED_LABEL],
+            waiting_on=WaitingOn.TIME,
+            scheduled_at=datetime(2026, 11, 17, 9, 0, tzinfo=UTC),
+        )
+        [candidate] = gaia_work_candidates(TrackedWork(running=[doc]), _CLOCK)
+        item = BriefingItem(
+            text="Pitch prep research", kind="gaia", todo_id="t1", outcome=BriefOutcome.STARTED
+        )
+        chosen = Chosen(
+            sections=[BriefingSection(numeral="I", title="Open", items=[item])],
+            picked=[[(1, candidate)]],
+        )
+        facts = build_facts(
+            chosen,
+            FactSources(
+                artifacts=gather_artifacts(TrackedWork(running=[doc])),
+                open_todos=0,
+                calendar=[],
+                event_ids=[],
+                span=TODAY,
+                todos_note=None,
+            ),
+            _CLOCK,
+        )
+        quoted = _voice(message="[The pitch research](fact:1) gets another look Tue Nov 17.")
+        asked = AsyncMock(side_effect=[quoted, _voice()])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=facts.values, lead=1))
+
+        assert "stands: GAIA looks at it again Tue Nov 17" in facts.block
+        assert voice == quoted
+        asked.assert_awaited_once()
+
+
+class TestTheBriefsWideEvent:
+    async def test_every_rejected_draft_and_the_plain_fallback_are_on_the_brief_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Dhruv's 2026-11-06/09 fell back plainly and prod could not say why each draft failed."""
+        asked = AsyncMock(side_effect=[_voice(message="Nothing."), _voice(message="Still none.")])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        async with captured_wide_event() as event:
+            voice, _ = await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
+
+        missed = (
+            "the message never refers to the lead, fact 1 (Reply to Dan); say it in your own "
+            "words as [your phrase](fact:1)"
+        )
+        assert voice == prose.plain_voice(Writing(values=_VALUES, lead=1))
+        assert event["brief_voice"] == {"attempts": 2, "plain": True, "rejections": [missed] * 2}
+
+    async def test_a_brief_voiced_first_time_says_so(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(prose, "ainvoke_structured", AsyncMock(side_effect=[_voice()]))
+
+        async with captured_wide_event() as event:
+            await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
+
+        assert event["brief_voice"] == {"attempts": 1, "plain": False, "rejections": []}
