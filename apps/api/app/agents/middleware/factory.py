@@ -35,6 +35,7 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_MIN_MESSAGES
 from app.constants.summarization import (
+    COMMS_SUMMARIZATION_KEEP_TOKENS,
     COMMS_SUMMARIZATION_TRIGGER_TOKENS,
     COMPACTION_THRESHOLD,
     MAX_OUTPUT_CHARS,
@@ -263,6 +264,7 @@ def create_comms_middleware(
             compact=False,
             archive="executor",
             summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+            summarization_keep=("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS),
         ),
     )
     stack.append(InterruptedLookupsMiddleware(lookup_tools))

@@ -60,11 +60,7 @@ def entry_outcome(
 
     entries are the log after seq, with their current content: all that answers the entry.
     """
-    if (
-        seq in state.unsettled_waking
-        or any(entry_id in work.answers for work in state.work)
-        or any(entry_id in work.answers for work in state.finished_work)
-    ):
+    if seq in state.unsettled_waking or entry_id in state.owed_answers:
         return None
     started = [e.entry for e in entries if isinstance(e.entry, WorkStarted)]
     tasks = {work.joins or work.task_id for work in started if entry_id in work.answers}

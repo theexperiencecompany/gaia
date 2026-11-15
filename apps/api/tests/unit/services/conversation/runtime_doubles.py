@@ -534,6 +534,8 @@ class ScriptedRunner:
         self._ticks = ticks
         self._scripts: list[Sequence[ScriptItem]] = []
         self.calls: list[RunnerCall] = []
+        # The owed answers each run was started with, in start order.
+        self.owed: list[frozenset[str]] = []
         self.runs: list[ScriptedRun] = []
         self.overlaps = 0
         self.swallow_first_cancel = False
@@ -552,9 +554,12 @@ class ScriptedRunner:
         context: Sequence[LoggedEntry],
         ledger: str,
         note: str | None = None,
+        *,
+        owed: frozenset[str] = frozenset(),
     ) -> ScriptedRun:
         if any(not run.task.done() for run in self.runs):
             self.overlaps += 1
+        self.owed.append(owed)
         self.calls.append(
             Started(
                 tuple(item.seq for item in batch.waking),

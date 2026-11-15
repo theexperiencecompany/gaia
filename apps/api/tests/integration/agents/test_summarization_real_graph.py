@@ -10,11 +10,13 @@ and what the checkpoint holds after several turns.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 import json
 from typing import Any
 from unittest.mock import patch
 
+from hypothesis import given, settings as hypothesis_settings, strategies as st
 from langchain.agents.middleware.summarization import ContextSize
 from langchain_core.language_models import BaseChatModel
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -26,6 +28,7 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.outputs import ChatResult
 from langchain_core.tools import BaseTool, tool
 from langgraph.checkpoint.memory import InMemorySaver
@@ -41,11 +44,16 @@ from app.agents.context.slots import (
     is_conversation_summary,
     mark,
 )
+from app.agents.middleware.factory import create_comms_middleware
 from app.agents.middleware.summarization import (
     ArchiveReader,
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.config.settings import settings
+from app.constants.summarization import (
+    COMMS_SUMMARIZATION_KEEP_TOKENS,
+    COMMS_SUMMARIZATION_TRIGGER_TOKENS,
+)
 from app.override.langgraph_bigtool.agent_config import AgentConfig, ToolRetrievalConfig
 from app.override.langgraph_bigtool.create_agent import create_agent
 from tests.helpers import BindableToolsFakeModel
@@ -98,14 +106,20 @@ def _build(
     archive: ArchiveReader | None = None,
     tool_registry: Mapping[str, BaseTool] | None = None,
 ) -> CompiledStateGraph:
-    middleware = [
-        WorkspaceArchivingSummarizationMiddleware(
-            model=summarizer,
-            trigger=("messages", trigger) if isinstance(trigger, int) else trigger,
-            keep=("messages", keep) if isinstance(keep, int) else keep,
-            archive=archive,
-        )
-    ]
+    middleware = WorkspaceArchivingSummarizationMiddleware(
+        model=summarizer,
+        trigger=("messages", trigger) if isinstance(trigger, int) else trigger,
+        keep=("messages", keep) if isinstance(keep, int) else keep,
+        archive=archive,
+    )
+    return _compile(model, middleware, tool_registry)
+
+
+def _compile(
+    model: BindableToolsFakeModel,
+    middleware: WorkspaceArchivingSummarizationMiddleware,
+    tool_registry: Mapping[str, BaseTool] | None = None,
+) -> CompiledStateGraph:
     # An ambient GOOGLE_API_KEY would give create_agent a real fallback model,
     # so nothing below would ever reach the fakes this file asserts on.
     with patch.object(settings, "GOOGLE_API_KEY", None):
@@ -116,7 +130,7 @@ def _build(
                 disable_retrieve_tools=True,
                 initial_tool_ids=list(tool_registry) if tool_registry else None,
             ),
-            agent_config=AgentConfig(middleware=middleware),
+            agent_config=AgentConfig(middleware=[middleware]),
         )
     return builder.compile(checkpointer=InMemorySaver(), store=InMemoryStore())
 
@@ -608,3 +622,144 @@ class TestExecutorRunWithIntegrationTools:
         assert _ids(sent) == ["static0", "summary", "new-task", "call3", "res3"]
         assert is_conversation_summary(sent[1])
         _assert_no_orphan_tool_results(sent)
+
+
+# Founder-shaped comms thread: a long prompt slot, then turns that each looked
+# something up on the web (comms runs its own lookups) and answered.
+_COMMS_PROMPT_CHARS = 68_000
+_LOOKUP_RESULT_CHARS = 6_000
+_REPLY_CHARS = 1_200
+
+
+def _comms_summarization(summarizer: BaseChatModel) -> WorkspaceArchivingSummarizationMiddleware:
+    """Return the summarization middleware production builds for comms, archiving off."""
+    stack = create_comms_middleware(frozenset(), chat_llm=summarizer)
+    middleware = next(m for m in stack if isinstance(m, WorkspaceArchivingSummarizationMiddleware))
+    middleware.archive = None
+    return middleware
+
+
+def _comms_turns(first: int, count: int) -> list[BaseMessage]:
+    messages: list[BaseMessage] = []
+    for n in range(first, first + count):
+        call = AIMessage(
+            content="",
+            id=f"look{n}",
+            tool_calls=[{"name": "web_search_tool", "args": {"q": f"q{n}"}, "id": f"w{n}"}],
+        )
+        messages += [
+            HumanMessage(content=f"[#{n}] question {n}", id=f"log:u{n}"),
+            call,
+            ToolMessage(content="r" * _LOOKUP_RESULT_CHARS, tool_call_id=f"w{n}", id=f"res{n}"),
+            AIMessage(content=f"answer {n} " + "a" * _REPLY_CHARS, id=f"ans{n}"),
+        ]
+    return messages
+
+
+def _comms_history(turns: int) -> list[BaseMessage]:
+    return [
+        SystemMessage(content="p" * _COMMS_PROMPT_CHARS, id="static0"),
+        *_comms_turns(0, turns),
+        HumanMessage(content="[#999] latest question", id="log:u999"),
+    ]
+
+
+async def _comms_turn(
+    graph: CompiledStateGraph, messages: list[BaseMessage], thread_id: str, open_ids: list[str]
+) -> None:
+    """Run one comms turn the way the runner starts one: its open requests ride on the input."""
+    turn = {
+        "messages": messages,
+        "selected_tool_ids": [],
+        "todos": [],
+        "verbatim_message_ids": open_ids,
+    }
+    await graph.ainvoke(turn, config=_config(thread_id))
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+class TestCommsHistoryBudget:
+    """A long comms thread reaches the model as prompt, summary, open requests and a recent window."""
+
+    async def test_a_conversation_over_budget_reaches_the_model_under_it(self):
+        model = RecordingModel(responses=[AIMessage(content="done")])
+        summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
+        graph = _compile(model, _comms_summarization(summarizer))
+        history = _comms_history(50)
+
+        await _comms_turn(graph, history, "comms-budget", [])
+
+        sent = model.seen[0]
+        sent_tokens = count_tokens_approximately(sent)
+        assert sent_tokens <= COMMS_SUMMARIZATION_TRIGGER_TOKENS
+        assert sent_tokens < count_tokens_approximately(history) / 2
+        # Cache-friendly prefix: the stable prompt, then the summary, then recent turns.
+        assert sent[0].id == "static0"
+        assert is_conversation_summary(sent[1])
+        assert sent[-1].content == "[#999] latest question"
+        verbatim = {m.id: m.content for m in history}
+        assert all(m.content == verbatim[m.id] for m in sent[2:])
+        assert count_tokens_approximately(sent[2:-1]) <= COMMS_SUMMARIZATION_KEEP_TOKENS
+        _assert_no_orphan_tool_results(sent)
+
+    async def test_open_requests_stay_verbatim_and_out_of_the_summary(self):
+        model = RecordingModel(responses=[AIMessage(content="done")])
+        summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
+        graph = _compile(model, _comms_summarization(summarizer))
+        open_ids = ["log:u3", "log:u20"]
+
+        await _comms_turn(graph, _comms_history(50), "comms-open", open_ids)
+
+        sent = model.seen[0]
+        kept_open = [m.content for m in sent if m.id in open_ids]
+        assert kept_open == ["[#3] question 3", "[#20] question 20"]
+        assert sent[0].id == "static0"
+        assert is_conversation_summary(sent[1])
+        assert "[#3] question 3" not in summarizer.prompts[0]
+        assert "[#4] question 4" in summarizer.prompts[0]
+        _assert_no_orphan_tool_results(sent)
+
+    async def test_the_summary_rolls_forward_from_the_last_one(self):
+        model = RecordingModel(responses=[AIMessage(content="done")] * 2)
+        summarizer = RecordingSummarizer(
+            messages=iter([AIMessage(content=f"SUM-{i}") for i in range(5)])
+        )
+        graph = _compile(model, _comms_summarization(summarizer))
+        config = _config("comms-rolling")
+
+        await _comms_turn(graph, _comms_history(50), "comms-rolling", ["log:u3"])
+        later = [*_comms_turns(100, 25), HumanMessage(content="next", id="next")]
+        await _comms_turn(graph, later, "comms-rolling", ["log:u3"])
+
+        assert len(summarizer.prompts) == 2
+        second = summarizer.prompts[1]
+        # Only the new overflow is read again, on top of the last summary.
+        assert "SUM-0" in second
+        assert "[#4] question 4" not in second
+        assert "[#100] question 100" in second
+        kept = (await graph.aget_state(config)).values["messages"]
+        summaries = [str(m.content) for m in _summaries(kept)]
+        assert len(summaries) == 1
+        assert summaries[0].endswith("SUM-1")
+        assert "[#3] question 3" in [m.content for m in kept]
+
+
+@pytest.mark.integration
+@hypothesis_settings(max_examples=20, deadline=None)
+@given(
+    turns=st.integers(min_value=30, max_value=60),
+    open_turns=st.sets(st.integers(min_value=0, max_value=59), max_size=6),
+)
+def test_open_requests_always_reach_comms_verbatim(turns: int, open_turns: set[int]) -> None:
+    model = RecordingModel(responses=[AIMessage(content="done")])
+    summarizer = RecordingSummarizer(messages=iter([AIMessage(content=SUMMARY)] * 5))
+    graph = _compile(model, _comms_summarization(summarizer))
+    open_ids = [f"log:u{n}" for n in sorted(open_turns) if n < turns]
+
+    asyncio.run(_comms_turn(graph, _comms_history(turns), "comms-prop", open_ids))
+
+    sent = model.seen[0]
+    by_id = {m.id: m.content for m in sent}
+    assert all(by_id.get(f"log:u{n}") == f"[#{n}] question {n}" for n in open_turns if n < turns)
+    assert count_tokens_approximately(sent) <= COMMS_SUMMARIZATION_TRIGGER_TOKENS

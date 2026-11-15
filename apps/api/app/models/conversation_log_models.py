@@ -461,6 +461,13 @@ class ConversationState(BaseModel):
     unsettled_fires: tuple[int, ...] = ()
 
     @property
+    def owed_answers(self) -> frozenset[str]:
+        """Return the ids of the inputs whose work, running or finished, no reply has answered yet."""
+        running = (entry_id for work in self.work for entry_id in work.answers)
+        finished = (entry_id for work in self.finished_work for entry_id in work.answers)
+        return frozenset((*running, *finished))
+
+    @property
     def display(self) -> DisplayState:
         """Return the status to show: comms first, then approvals, then work.
 
