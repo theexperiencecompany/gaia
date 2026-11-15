@@ -58,7 +58,6 @@ def _view(n: int, subject: str) -> GmailMessageView:
         snippet="",
         time="",
         is_read=False,
-        has_attachment=False,
         attachments=[],
         labels=["INBOX"],
         cc="",
