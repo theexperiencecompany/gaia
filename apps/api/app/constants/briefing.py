@@ -31,7 +31,9 @@ DAILY_BRIEFING_HOUR: Final[int] = 8
 # Cron day-of-week field for a brief that runs every day, and for Monday to Friday.
 EVERY_DAY_CRON_DAYS: Final[str] = "*"
 WEEKDAYS_CRON_DAYS: Final[str] = "1-5"
-WEEKLY_DIGEST_CRON: Final[str] = "0 17 * * 0"  # Sunday 17:00
+#: The weekly digest's local hour, on Sunday.
+WEEKLY_DIGEST_HOUR: Final[int] = 17
+WEEKLY_DIGEST_CRON: Final[str] = f"0 {WEEKLY_DIGEST_HOUR} * * 0"
 
 # Briefing kinds — key the payload variant and the unique-per-day constraint.
 BRIEFING_KIND_DAILY: Final[Literal["daily"]] = "daily"

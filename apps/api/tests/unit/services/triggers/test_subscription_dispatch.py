@@ -18,7 +18,7 @@ from redis.exceptions import RedisError
 import respx
 import time_machine
 
-from app.constants.todos import TodoActivityEvent
+from app.constants.todos import TodoActivityEvent, TodoCompleter
 from app.constants.trigger_gates import GateAuthor
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
@@ -601,6 +601,7 @@ class TestActions:
         assert (
             deps.complete.await_args.kwargs["summary"] == f"Completed automatically: {GMAIL} fired."
         )
+        assert deps.complete.await_args.kwargs["by"] is TodoCompleter.TRIGGER
 
     async def test_unblock_removes_only_the_blocking_labels(self, deps) -> None:
         deps.repo.find_active_by_user_and_trigger.return_value = [
