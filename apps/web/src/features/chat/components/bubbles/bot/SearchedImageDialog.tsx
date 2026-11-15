@@ -17,8 +17,10 @@ export default function SearchedImageDialog() {
       <ModalContent>
         <ModalBody className="max-h-[80vh] overflow-auto">
           {selectedImage && (
+            // Opened on search results and browser screenshots from any host, which remotePatterns cannot list.
             <Image
               src={selectedImage}
+              unoptimized
               alt="Search result image"
               fill
               sizes="(max-width: 1024px) 100vw, 944px"
