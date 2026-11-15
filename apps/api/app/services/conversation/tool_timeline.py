@@ -60,15 +60,13 @@ def tool_timeline(cards: Sequence[ToolDataEntry]) -> ToolTimeline:
         for name, data in buckets.grouped.items()
     ]
     shown.extend(buckets.single)
-    step_keys = _stable_keys(steps, _step_key)
-    card_keys = _stable_keys(shown, _card_key)
     return ToolTimeline(
         steps=tuple(
             TimelineStep(kind=kind, key=key, data=_keyed(kind, data))
-            for (kind, data), key in zip(steps, step_keys, strict=True)
+            for key, (kind, data) in _stable_keys(steps, _step_key)
         ),
         cards=tuple(
-            TimelineCard(key=key, card=card) for card, key in zip(shown, card_keys, strict=True)
+            TimelineCard(key=key, card=card) for key, card in _stable_keys(shown, _card_key)
         ),
         progress=_progress(cards),
     )
@@ -101,7 +99,7 @@ def _bucket(cards: Sequence[ToolDataEntry]) -> _Buckets:
         name, data = card["tool_name"], card["data"]
         if name == TOOL_CALLS_CARD:
             calls = data if isinstance(data, list) else [data]
-            buckets.calls.extend(copy.deepcopy(call) for call in calls if isinstance(call, dict))
+            buckets.calls.extend(call for call in calls if isinstance(call, dict))
         elif name == SUBAGENT_GROUP_TOOL_NAME and isinstance(data, dict):
             buckets.groups.append(copy.deepcopy(data))
         elif name in GROUPED_TOOL_CARDS:
@@ -278,7 +276,8 @@ def _backend_steps(calls: list[_Json], raw_groups: list[_Json]) -> list[_Step]:
     return steps
 
 
-def _synthetic_group(call: _Json, index: int, *, handoff: bool) -> _Json:
+def _synthetic_group(call: _Json, index: int, agent_type: str) -> _Json:
+    handoff = agent_type == _HANDOFF
     inputs = call.get("inputs")
     subagent = _text(inputs.get("subagent_id")) if isinstance(inputs, dict) else ""
     named = _text(call.get("message"))
@@ -289,7 +288,7 @@ def _synthetic_group(call: _Json, index: int, *, handoff: bool) -> _Json:
         "subagent_name": (named[len(prefix) :] if named.lower().startswith(prefix) else "Subagent")
         if handoff
         else "Task Agent",
-        "agent_type": _HANDOFF if handoff else _SPAWNED,
+        "agent_type": agent_type,
         "tool_calls": [],
         "duration_ms": _UNMEASURED,
         "token_count": _UNMEASURED,
@@ -312,14 +311,14 @@ def _synthetic_steps(calls: list[_Json]) -> list[_Step]:
     made = 0
     for call in calls:
         if _is_handoff(call):
-            current = _synthetic_group(call, made, handoff=True)
+            current = _synthetic_group(call, made, _HANDOFF)
             made += 1
             steps.append((TimelineStepKind.SUBAGENT, current))
             # A hand-off that failed at once already has its output: later calls are not in it.
             if "handoff_output" in current:
                 current = None
         elif _is_spawn(call):
-            spawned = _synthetic_group(call, made, handoff=False)
+            spawned = _synthetic_group(call, made, _SPAWNED)
             made += 1
             if current is None:
                 steps.append((TimelineStepKind.SUBAGENT, spawned))
@@ -348,18 +347,18 @@ def _coalesced_steps(steps: list[_Step]) -> list[_Step]:
     return out
 
 
-def _stable_keys(items: Sequence[_T], key_of: Callable[[_T], str | None]) -> list[str]:
+def _stable_keys(items: Sequence[_T], key_of: Callable[[_T], str | None]) -> list[tuple[str, _T]]:
     """Key each item by its stream-stable id, else by a slot after the nearest identified one."""
-    keys: list[str] = []
+    keys: list[tuple[str, _T]] = []
     anchor, unanchored = "head", 0
     for item in items:
         key = key_of(item)
         if key is None:
-            keys.append(f"{anchor}#{unanchored}")
+            keys.append((f"{anchor}#{unanchored}", item))
             unanchored += 1
         else:
             anchor, unanchored = key, 0
-            keys.append(key)
+            keys.append((key, item))
     return keys
 
 
@@ -387,12 +386,10 @@ def _with_step_keys(group: _Json) -> _Json:
     """Key the group's calls within it, and its nested groups' the same way."""
     scope = _text(group.get("subagent_id"))
     calls = _dicts(group.get("tool_calls"))
-    group["step_keys"] = list(
-        _stable_keys(
-            calls,
-            lambda call: f"{scope}-tc-{i}" if (i := _text(call.get("tool_call_id"))) else None,
-        )
+    keyed = _stable_keys(
+        calls, lambda call: f"{scope}-tc-{i}" if (i := _text(call.get("tool_call_id"))) else None
     )
+    group["step_keys"] = [key for key, _ in keyed]
     group["nested_subagents"] = [
         _with_step_keys(nested) for nested in _dicts(group.get("nested_subagents"))
     ]
