@@ -134,6 +134,7 @@ class Scouts:
     stored: dict[str, ScoutDocument] = field(default_factory=dict)
     fingerprint: str = "fp-1"
     read_only: dict[str, BaseTool] = field(default_factory=lambda: dict(READ_ONLY))
+    total: int = 3
     plan: PlanType = PlanType.PRO
     activity: ActivityStatus = ActivityStatus.ACTIVE
     learn: AsyncMock = field(default_factory=AsyncMock)
@@ -166,7 +167,7 @@ def scouts(
         return ScoutTools(
             integration_id=integration_id,
             read_only=s.read_only,
-            total=3,
+            total=s.total,
             fingerprint=s.fingerprint,
         )
 
@@ -398,6 +399,16 @@ class TestTypedSkips:
         assert result.skip_reason is ScoutSkipReason.NO_READ_ONLY_TOOLS
         scouts.learn.assert_not_awaited()
         assert scouts.stored == {}
+
+    @pytest.mark.parametrize(("total", "can_write"), [(1, False), (2, True)])
+    async def test_gaia_can_write_to_an_app_only_when_it_has_a_tool_beyond_the_read_only_ones(
+        self, scouts: Scouts, total: int, can_write: bool
+    ) -> None:
+        scouts.total = total
+
+        [result] = await service.run_scouts(USER)
+
+        assert (result.outcome, result.can_write) == (ScoutOutcome.LEARNED, can_write)
 
 
 class TestBackoff:
