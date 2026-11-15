@@ -9,9 +9,11 @@ from uuid import UUID
 from langchain_core.messages import HumanMessage, SystemMessage
 import pytest
 
-from app.agents.core.messages import TurnContext
+from app.agents.context.assemble import AssembledContext
+from app.agents.core.messages import TurnContext, build_turn_context
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
+from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.constants.chat import ConversationSource
 from app.models.conversation_log_models import Batch, Entry, StepClaim, UserMessage
 from app.models.presence_models import PresenceSnapshot
@@ -86,6 +88,7 @@ def seams() -> Iterator[Seams]:
     ):
         conversations.get_todo_id = AsyncMock(return_value=None)
         conversations.is_workflow_execution = AsyncMock(return_value=False)
+        conversations.get_source = AsyncMock(return_value=None)
         agent_config.side_effect = lambda **_: {"configurable": {}}
         yield Seams(
             user,
@@ -209,6 +212,7 @@ async def test_a_workflow_fire_runs_in_the_background_on_its_own_record(seams: S
         }
     )
     batch = _batch(3, [entry.model_copy(update={"run": run})])
+    seams.conversations.get_source.return_value = ConversationSource.WEB
 
     turn = await build_comms_turn(CLAIM, batch)
 
@@ -272,3 +276,24 @@ async def test_a_todos_finished_run_is_written_up_by_its_note(seams: Seams) -> N
     seams.write_up.assert_awaited_once_with(run)
     seams.conversations.is_workflow_execution.assert_not_awaited()
     assert turn.closing == [HumanMessage(content="write it up"), seams.context.clock]
+
+
+@pytest.mark.parametrize(
+    ("surface", "renders_openui"),
+    [(ConversationSource.TELEGRAM, False), (ConversationSource.WEB, True)],
+)
+async def test_finished_work_is_answered_with_the_prompt_of_the_conversations_own_surface(
+    seams: Seams, surface: ConversationSource, renders_openui: bool
+) -> None:
+    seams.conversations.get_source.return_value = surface
+
+    await build_comms_turn(CLAIM, _batch(6, [finished("w6", "t1")]))
+
+    scope = seams.turn_context.await_args.args[1]
+    assert seams.agent_config.await_args.kwargs["turn"].source == surface.value
+    seams.presence.assert_not_awaited()
+    assert scope.presence is None
+    stable = AssembledContext(stable=HumanMessage(content="context"), volatile=None)
+    with patch("app.agents.core.messages.assemble_context", AsyncMock(return_value=stable)):
+        system = (await build_turn_context("report", scope)).chain[0]
+    assert (OPENUI_INSTRUCTIONS in str(system.content)) is renders_openui
