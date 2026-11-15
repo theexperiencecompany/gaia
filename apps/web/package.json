@@ -170,6 +170,7 @@
     "p-retry": "^8.0.1",
     "postcss": "^8.5.32",
     "posthog-js": "^1.422.5",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.3",
     "react-best-gradient-color-picker": "^3.0.14",
     "react-day-picker": "^9.14.0",

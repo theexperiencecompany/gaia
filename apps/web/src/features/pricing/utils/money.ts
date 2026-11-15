@@ -14,19 +14,33 @@ const WELL_FORMED_CURRENCY = /^[A-Za-z]{3}$/;
  *  `Intl.NumberFormat` is the expensive part, and prices re-render. */
 const MONEY_FORMATTERS = new Map<string, Intl.NumberFormat>();
 
+type TrailingZeroDisplay = "auto" | "stripIfInteger";
+
+/** The Intl options of every money figure; "stripIfInteger" is formatWholeOrCents's rule. */
+export function moneyFormatOptions(
+  currency: string,
+  trailingZeroDisplay: TrailingZeroDisplay,
+) {
+  return {
+    style: "currency",
+    currency,
+    // "$" in every locale, where en-IN and most others would read "US$".
+    currencyDisplay: "narrowSymbol",
+    trailingZeroDisplay,
+  } as const satisfies Intl.NumberFormatOptions;
+}
+
 function moneyFormatter(
   code: string,
-  trailingZeroDisplay: "auto" | "stripIfInteger" = "auto",
+  trailingZeroDisplay: TrailingZeroDisplay = "auto",
 ): Intl.NumberFormat {
   const key = `${code}:${trailingZeroDisplay}`;
   const cached = MONEY_FORMATTERS.get(key);
   if (cached) return cached;
-  const formatter = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: code,
-    currencyDisplay: "narrowSymbol",
-    trailingZeroDisplay,
-  });
+  const formatter = new Intl.NumberFormat(
+    "en-US",
+    moneyFormatOptions(code, trailingZeroDisplay),
+  );
   MONEY_FORMATTERS.set(key, formatter);
   return formatter;
 }

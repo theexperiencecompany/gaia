@@ -5,6 +5,7 @@ import {
   ComputerIcon,
   CreditCardIcon,
   DiscordIcon,
+  GiftIcon,
   LabsIcon,
   Link04Icon,
   MessageMultiple02Icon,
@@ -107,6 +108,13 @@ export const settingsPageItems: SettingsMenuItem[] = [
     href: "/settings/usage",
   },
   {
+    key: "referrals",
+    label: "Invite Friends",
+    icon: GiftIcon,
+    href: "/settings/referrals",
+    isNew: true,
+  },
+  {
     key: "preferences",
     label: "Preferences",
     icon: MessageMultiple02Icon,
@@ -173,7 +181,14 @@ export const DESKTOP_ONLY_SETTINGS_KEYS = new Set(["desktop"]);
  * Settings sections that only make sense when the instance bills — hidden
  * from navigation and redirected away on self-host (deployment.bills=false).
  */
-export const BILLING_ONLY_SETTINGS_KEYS = new Set(["subscription", "usage"]);
+/** The section the referral program owns; it drops out of navigation while the program is off. */
+export const REFERRALS_SECTION = "referrals";
+
+export const BILLING_ONLY_SETTINGS_KEYS = new Set([
+  "subscription",
+  "usage",
+  REFERRALS_SECTION,
+]);
 
 /**
  * Sections that configure the instance itself (its people, model keys and

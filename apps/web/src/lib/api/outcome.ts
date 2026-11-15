@@ -10,7 +10,11 @@ import { ApiError, REQUEST_ID_HEADER } from "@shared/api";
 import { SUBSCRIPTION_REQUIRED_CODE } from "@shared/types/subscription";
 import axios, { AxiosError } from "axios";
 import { track } from "@/lib/analytics";
-import { API_ERROR_CODES } from "@/lib/api/errorCodes";
+import {
+  API_ERROR_CODES,
+  type ApiErrorCode,
+  isDeclaredAnswer,
+} from "@/lib/api/errorCodes";
 import { toast } from "@/lib/toast";
 
 export interface ApiOptions {
@@ -23,6 +27,8 @@ export interface ApiOptions {
    * never counts its user as active.
    */
   background?: boolean;
+  /** Envelope codes the caller renders as an answer, so none is logged, tracked or toasted as a failure. */
+  expectedErrorCodes?: readonly ApiErrorCode[];
 }
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -87,14 +93,16 @@ export function toApiError(error: unknown): ApiError {
 
 /**
  * The states the app expects rather than suffers: a logged-out visitor's 401
- * (the same check the interceptor uses to open the login modal) and the
- * paywall's 402, which the server already records as paywall:blocked.
+ * (the same check the interceptor uses to open the login modal), the paywall's
+ * 402, which the server already records as paywall:blocked, and any code the
+ * request declared as an answer its caller renders.
  */
-const isExpectedState = (error: ApiError): boolean =>
+const isExpectedState = (error: ApiError, options: ApiOptions): boolean =>
   (error.status === HTTP_UNAUTHORIZED &&
     error.code === API_ERROR_CODES.NOT_AUTHENTICATED) ||
   (error.status === HTTP_PAYMENT_REQUIRED &&
-    error.code === SUBSCRIPTION_REQUIRED_CODE);
+    error.code === SUBSCRIPTION_REQUIRED_CODE) ||
+  isDeclaredAnswer(options.expectedErrorCodes, error.code);
 
 /** The envelope's machine code, or for a request that got no response, a fixed transport code. */
 const failureCode = (error: ApiError): string | undefined => {
@@ -112,7 +120,6 @@ function trackRequestFailure(
   url: string,
   error: ApiError,
 ): void {
-  if (isExpectedState(error)) return;
   // No PII to PostHog: the query string can carry search terms or tokens, and
   // the envelope's message can echo user input; the machine code cannot.
   const path = url.split("?")[0];
@@ -147,9 +154,8 @@ export function announceSuccess(options: ApiOptions): void {
 /**
  * Log, track and toast a failed request, then hand back the error to throw.
  *
- * A 401 is an expected state for anonymous visitors on public pages (which
- * never mount the error handler) — the app shell surfaces it with the login
- * modal, so it is never toasted as a generic failure.
+ * An expected state is handed back untouched. No 401 is toasted: the app
+ * shell answers it with the login modal.
  */
 export function reportFailure(
   method: HttpMethod,
@@ -158,6 +164,8 @@ export function reportFailure(
   options: ApiOptions,
   handled: boolean,
 ): ApiError {
+  if (isExpectedState(error, options)) return error;
+
   console.error(`${method} ${url} failed:`, error);
 
   // Track failed requests in PostHog (client-only; analytics.ts is "use client").

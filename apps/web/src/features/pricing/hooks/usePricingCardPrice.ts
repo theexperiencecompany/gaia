@@ -8,11 +8,24 @@ import {
   type PriceDisplay,
 } from "../utils/priceDisplay";
 
+/** What a viewer pays on one billing cycle while their gift lasts, and the line saying for how long. */
+export interface GiftCyclePrice {
+  /** Minor units of each monthly charge, or of the first yearly one, while the gift lasts. */
+  minor: number;
+  note: string;
+}
+
+/** A price only this viewer pays, such as a referred friend's gift; null on a cycle checkout does not apply it to. */
+export interface GiftPrice {
+  monthly: GiftCyclePrice | null;
+  yearly: GiftCyclePrice | null;
+}
+
 interface PricingCardPriceInput {
   price: number;
   originalPrice: number | undefined;
   durationIsMonth: boolean;
-  currency: string;
+  gift: GiftPrice | null;
 }
 
 interface PricingCardPrice {
@@ -23,6 +36,8 @@ interface PricingCardPrice {
    * strike the list price.
    */
   offer: PriceDisplay | null;
+  /** Replaces the billing sub-line while a gift price is shown. */
+  note: string | null;
 }
 
 /**
@@ -37,22 +52,30 @@ export function usePricingCardPrice({
   price,
   originalPrice,
   durationIsMonth,
-  currency,
+  gift,
 }: PricingCardPriceInput): PricingCardPrice {
   // Only an offer that names a percentage can restate the prices; the
   // enforcement path's offer (a checkout link, a code) leaves them as-is.
   const discountPercent = useUpgradeModalStore(
     (s) => s.offer?.discountPercent ?? null,
   );
+  const list = getPriceDisplay(price, originalPrice, durationIsMonth);
+  const cycleGift = durationIsMonth ? gift?.monthly : gift?.yearly;
+  if (cycleGift && price > 0)
+    return {
+      list,
+      offer: getPriceDisplay(cycleGift.minor, originalPrice, durationIsMonth),
+      note: cycleGift.note,
+    };
   return {
-    list: getPriceDisplay(price, originalPrice, durationIsMonth, currency),
+    list,
+    note: null,
     offer:
       discountPercent && price > 0
         ? getPriceDisplay(
             getOfferPrice(price, discountPercent),
             originalPrice,
             durationIsMonth,
-            currency,
           )
         : null,
   };

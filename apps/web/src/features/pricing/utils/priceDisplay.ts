@@ -1,11 +1,12 @@
 import { DAYS_PER_BILLING_MONTH, MONTHS_PER_YEAR } from "../constants";
 import { getAnnualSavingsPercent, monthsFreeFromPrices } from "./annualSavings";
-import { toMajorUnits } from "./money";
 
-/** Every price figure a pricing card renders, derived from minor units. */
+/** Every price figure a pricing card renders, in the plan currency's minor units. */
 export interface PriceDisplay {
-  perMonthDollars: number;
-  yearlyTotalDollars: number | null;
+  /** A month's price; a yearly one is spread over twelve months, rounded to the minor unit. */
+  perMonthMinor: number;
+  /** The yearly charge; null on a monthly or free card. */
+  yearlyTotalMinor: number | null;
   priceSubLine: string;
   showSavings: boolean;
   monthsFree: number;
@@ -17,29 +18,25 @@ export function getPriceDisplay(
   price: number,
   originalPrice: number | undefined,
   durationIsMonth: boolean,
-  currency: string,
 ): PriceDisplay {
-  const isPaidTier = price > 0;
-  const priceMajor = toMajorUnits(price, currency);
-  const perMonthDollars =
-    !durationIsMonth && isPaidTier
-      ? Math.round(priceMajor / MONTHS_PER_YEAR)
-      : Math.round(priceMajor);
-  const yearlyTotalDollars =
-    !durationIsMonth && isPaidTier ? Math.round(priceMajor) : null;
+  const isYearlyPaid = !durationIsMonth && price > 0;
+  const perMonthMinor = isYearlyPaid
+    ? Math.round(price / MONTHS_PER_YEAR)
+    : price;
+  const yearlyTotalMinor = isYearlyPaid ? price : null;
   // Savings vs paying monthly (originalPrice = 12× the monthly rate).
   const savePercent = originalPrice
     ? getAnnualSavingsPercent(originalPrice, price)
     : 0;
   let priceSubLine: string;
   if (price === 0) priceSubLine = "Free forever";
-  else if (yearlyTotalDollars) priceSubLine = "Billed yearly";
+  else if (yearlyTotalMinor) priceSubLine = "Billed yearly";
   else priceSubLine = "Billed monthly";
   return {
-    perMonthDollars,
-    yearlyTotalDollars,
+    perMonthMinor,
+    yearlyTotalMinor,
     priceSubLine,
-    showSavings: !!yearlyTotalDollars && savePercent > 0,
+    showSavings: !!yearlyTotalMinor && savePercent > 0,
     monthsFree: originalPrice ? monthsFreeFromPrices(originalPrice, price) : 0,
   };
 }

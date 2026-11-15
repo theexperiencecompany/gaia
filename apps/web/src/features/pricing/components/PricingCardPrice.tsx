@@ -4,24 +4,21 @@ import { Chip } from "@heroui/chip";
 import NumberFlow from "@number-flow/react";
 import { TextMorph } from "torph/react";
 
+import {
+  formatWholeOrCents,
+  moneyFormatOptions,
+  toMajorUnits,
+} from "../utils/money";
 import type { PriceDisplay } from "../utils/priceDisplay";
 
 interface PricingCardPriceProps {
   list: PriceDisplay;
   /** Non-null when an offer applies — the list figures are then struck. */
   offer: PriceDisplay | null;
-  /** The plan row's currency; every figure is in its major unit. */
+  /** Replaces the billing sub-line, e.g. how long a gift price lasts. */
+  note: string | null;
+  /** The plan row's currency; every figure is in its minor units. */
   currency: string;
-}
-
-/** A whole major-unit figure with the currency's narrow symbol ("$30"). */
-function formatWholeMajor(amount: number, currency: string): string {
-  return amount.toLocaleString("en-US", {
-    style: "currency",
-    currency,
-    currencyDisplay: "narrowSymbol",
-    maximumFractionDigits: 0,
-  });
 }
 
 /**
@@ -35,33 +32,26 @@ export const PRICE_HEADLINE_ROW_CLASS = "flex min-h-18 items-baseline gap-2";
 export function PricingCardPrice({
   list,
   offer,
+  note,
   currency,
 }: PricingCardPriceProps) {
-  const { perMonthDollars, yearlyTotalDollars, priceSubLine, showSavings } =
-    list;
-  const offerPerMonthDollars = offer?.perMonthDollars ?? null;
+  const { perMonthMinor, yearlyTotalMinor, priceSubLine, showSavings } = list;
+  const offerPerMonthMinor = offer?.perMonthMinor ?? null;
 
   return (
     <div className="px-6 pb-5">
       <div className={PRICE_HEADLINE_ROW_CLASS}>
-        {offerPerMonthDollars !== null && (
+        {offerPerMonthMinor !== null && (
           <span className="text-2xl font-normal text-zinc-500 line-through">
-            {formatWholeMajor(perMonthDollars, currency)}
+            {formatWholeOrCents(perMonthMinor, currency)}
           </span>
         )}
         <NumberFlow
-          value={offerPerMonthDollars ?? perMonthDollars}
-          format={{
-            style: "currency",
-            currency,
-            // A phone in en-IN (and most non-US locales) would render "US$30";
-            // the narrow symbol is "$" everywhere, matching the rest of the card.
-            currencyDisplay: "narrowSymbol",
-            maximumFractionDigits: 0,
-          }}
+          value={toMajorUnits(offerPerMonthMinor ?? perMonthMinor, currency)}
+          format={moneyFormatOptions(currency, "stripIfInteger")}
           willChange
           className={`text-5xl font-semibold tracking-tight${
-            offerPerMonthDollars !== null ? " text-success" : ""
+            offerPerMonthMinor !== null ? " text-success" : ""
           }`}
         />
         <span className="text-base font-normal text-zinc-400">/ month</span>
@@ -73,14 +63,14 @@ export function PricingCardPrice({
           className="text-sm font-normal text-zinc-400"
           ease={{ stiffness: 200, damping: 20 }}
         >
-          {priceSubLine}
+          {note ?? priceSubLine}
         </TextMorph>
-        {!!yearlyTotalDollars && (
+        {!!yearlyTotalMinor && (
           <>
             <span aria-hidden className="size-1 rounded-full bg-zinc-600" />
             <YearlyTotal
-              yearlyTotalDollars={yearlyTotalDollars}
-              offerYearlyTotalDollars={offer?.yearlyTotalDollars ?? null}
+              yearlyTotalMinor={yearlyTotalMinor}
+              offerYearlyTotalMinor={offer?.yearlyTotalMinor ?? null}
               currency={currency}
             />
           </>
@@ -99,29 +89,29 @@ export function PricingCardPrice({
 }
 
 interface YearlyTotalProps {
-  yearlyTotalDollars: number;
-  offerYearlyTotalDollars: number | null;
+  yearlyTotalMinor: number;
+  offerYearlyTotalMinor: number | null;
   currency: string;
 }
 
 function YearlyTotal({
-  yearlyTotalDollars,
-  offerYearlyTotalDollars,
+  yearlyTotalMinor,
+  offerYearlyTotalMinor,
   currency,
 }: YearlyTotalProps) {
-  if (offerYearlyTotalDollars === null)
+  if (offerYearlyTotalMinor === null)
     return (
       <span className="text-sm font-normal text-zinc-400">
-        {formatWholeMajor(yearlyTotalDollars, currency)}
+        {formatWholeOrCents(yearlyTotalMinor, currency)}
       </span>
     );
   return (
     <span className="flex items-center gap-1.5 text-sm font-normal">
       <span className="text-zinc-500 line-through">
-        {formatWholeMajor(yearlyTotalDollars, currency)}
+        {formatWholeOrCents(yearlyTotalMinor, currency)}
       </span>
       <span className="text-success">
-        {formatWholeMajor(offerYearlyTotalDollars, currency)}
+        {formatWholeOrCents(offerYearlyTotalMinor, currency)}
       </span>
     </span>
   );

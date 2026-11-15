@@ -10,6 +10,7 @@ export type Stage =
   | "questions"
   | "payment"
   | "paidReveal"
+  | "invite"
   | "platformPick"
   | "chat";
 
@@ -33,6 +34,8 @@ export interface OnboardingState {
   preferencesPersisted: boolean;
 
   paidRevealAcked: boolean;
+  /** Past the share-your-gift step, whether or not they sent it. */
+  inviteAcked: boolean;
   platformsConfirmed: boolean;
   connectedPlatform: string | null;
 
@@ -57,6 +60,7 @@ export type Action =
   | { type: "submitNeeds" }
   | { type: "preferencesPersisted" }
   | { type: "ackPaidReveal" }
+  | { type: "ackInvite" }
   | { type: "platformConnected"; platform: string }
   | { type: "skipPlatforms" }
   | { type: "introSeen" }

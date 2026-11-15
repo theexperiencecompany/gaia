@@ -27,7 +27,7 @@ function TermsIntro() {
   return (
     <>
       <h1 className="mb-4 text-3xl font-bold">Terms of Service Agreement</h1>
-      <p className="mb-4 text-sm">Effective Date: August 14, 2026</p>
+      <p className="mb-4 text-sm">Effective Date: November 12, 2026</p>
       <p className="mb-4">
         This Terms of Service Agreement (this "Agreement") is entered into by
         and between The Experience Company, Inc., a Delaware corporation
@@ -240,7 +240,7 @@ function TermsPayments() {
             </li>
             <li>
               <strong>Refund Requests:</strong> Refund requests should be
-              submitted to support@heygaia.io within thirty (30) days of the
+              submitted to support@heygaia.io within seven (7) days of the
               original charge and will be reviewed on a case-by-case basis.
             </li>
           </ul>
@@ -275,6 +275,40 @@ function TermsPayments() {
               <strong>Reactivation:</strong> You may reactivate your
               subscription at any time, subject to the then-current pricing and
               terms.
+            </li>
+          </ul>
+        </div>
+
+        <h3 className="mt-4 mb-2 text-lg font-semibold">
+          5.4 Referral Program
+        </h3>
+        <div className="mb-4">
+          <p className="mb-2">
+            Company may offer a referral program that lets you invite friends to
+            the Service:
+          </p>
+          <ul className="mb-4 ml-6 list-disc">
+            <li>
+              <strong>Eligibility:</strong> Only active subscribers to Premium
+              Features may earn referral rewards;
+            </li>
+            <li>
+              <strong>Your Reward:</strong> The reward is a one-month extension
+              of your current billing period. It has no cash value and cannot be
+              exchanged, transferred, or refunded;
+            </li>
+            <li>
+              <strong>Friend Discount:</strong> The discount offered to a friend
+              is single-use and available only to first-time subscribers;
+            </li>
+            <li>
+              <strong>Revocation:</strong> Company may revoke a reward if the
+              friend's payment is refunded or charged back, or if the referral
+              is fraudulent or a self-referral;
+            </li>
+            <li>
+              <strong>Changes:</strong> Company may change or end the referral
+              program at any time.
             </li>
           </ul>
         </div>

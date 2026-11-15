@@ -10,6 +10,7 @@ export const initialState: OnboardingState = {
   preferencesPersisted: false,
 
   paidRevealAcked: false,
+  inviteAcked: false,
   platformsConfirmed: false,
   connectedPlatform: null,
 

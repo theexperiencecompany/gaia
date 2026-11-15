@@ -5,10 +5,12 @@ import { Chip } from "@heroui/chip";
 import { usePathname, useRouter } from "next/navigation";
 
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+import { useReferralMe } from "@/features/referrals/hooks/useReferrals";
 import {
   BILLING_ONLY_SETTINGS_KEYS,
   DESKTOP_ONLY_SETTINGS_KEYS,
   isSettingsSectionAllowed,
+  REFERRALS_SECTION,
   settingsPageItems,
 } from "@/features/settings/config/settingsConfig";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
@@ -22,11 +24,13 @@ export default function SettingsSidebar() {
   // Self-host instances have no billing — the entries make no sense there.
   const billingHidden = !useDeployment().bills;
   const { role } = useCurrentUser();
+  const referralsOff = useReferralMe().status === "disabled";
 
   const visibleItems = settingsPageItems.filter(
     (item) =>
       (isElectron || !DESKTOP_ONLY_SETTINGS_KEYS.has(item.key)) &&
       !(billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(item.key)) &&
+      !(referralsOff && item.key === REFERRALS_SECTION) &&
       isSettingsSectionAllowed(item.key, role),
   );
 

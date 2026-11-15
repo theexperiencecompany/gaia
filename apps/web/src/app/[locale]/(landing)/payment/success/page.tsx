@@ -25,6 +25,7 @@ import {
 } from "@/features/pricing/lib/dodoReturnUrl";
 import { buildReceiptDetails } from "@/features/pricing/utils/receiptDetails";
 import { verifyPaymentWithRetry } from "@/features/pricing/utils/verifyPaymentWithRetry";
+import { PostPaymentReferral } from "@/features/referrals/components/PostPaymentShareCard";
 import UseCreateConfetti from "@/hooks/ui/useCreateConfetti";
 import { track } from "@/lib/analytics";
 
@@ -198,6 +199,12 @@ export default function PaymentSuccessPage() {
                 stage={printerStage}
                 subscriptionRef={receipt.subscriptionRef}
               />
+              {/* A first payment comes before onboarding: ask to share only once they have used GAIA. */}
+              {user.onboarding?.completed && (
+                <div className="mt-6">
+                  <PostPaymentReferral />
+                </div>
+              )}
             </m.div>
           )}
         </div>

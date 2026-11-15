@@ -27,6 +27,7 @@ import createClient, {
   type MaybeOptionalInit,
 } from "openapi-fetch";
 import { apiauth, apiOrigin, requestOriginHeaders } from "./client";
+import type { ApiErrorCode } from "./errorCodes";
 import {
   type ApiOptions,
   announceSuccess,
@@ -117,7 +118,10 @@ async function readBody(request: Request): Promise<unknown> {
  * calls exactly as it does to `apiService` ones. The payload is left to axios's
  * default parsing so the error handler still sees the body it branches on.
  */
-async function axiosFetch(request: Request): Promise<Response> {
+async function axiosFetch(
+  request: Request,
+  expectedErrorCodes?: readonly ApiErrorCode[],
+): Promise<Response> {
   const data = await readBody(request);
   // axios must set its own multipart boundary; the one openapi-fetch's
   // Request produced belongs to a body we have already re-read.
@@ -136,6 +140,7 @@ async function axiosFetch(request: Request): Promise<Response> {
         data,
         headers,
         signal: request.signal,
+        expectedErrorCodes,
       }),
     );
   } catch (error) {
@@ -171,12 +176,18 @@ async function call<R>(
     errorMessage,
     silent,
     background,
+    expectedErrorCodes,
     headers,
     ...fetchOptions
   } = (init ?? {}) as ApiOptions & {
     headers?: Record<string, string>;
   } & Record<string, unknown>;
-  const options: ApiOptions = { successMessage, errorMessage, silent };
+  const options: ApiOptions = {
+    successMessage,
+    errorMessage,
+    silent,
+    expectedErrorCodes,
+  };
   const httpMethod = method.toUpperCase() as HttpMethod;
 
   let result: CallResult;
@@ -186,6 +197,7 @@ async function call<R>(
       path as never,
       {
         ...fetchOptions,
+        fetch: (request: Request) => axiosFetch(request, expectedErrorCodes),
         headers: { ...headers, ...requestOriginHeaders(background) },
         params: { path: pathParams, query },
         body,

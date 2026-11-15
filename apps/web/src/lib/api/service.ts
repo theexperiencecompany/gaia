@@ -38,6 +38,7 @@ async function request<T = unknown>(
       // axios's default `labels[]=a` is invisible to it.
       paramsSerializer: { indexes: null },
       headers: requestOriginHeaders(options.background),
+      expectedErrorCodes: options.expectedErrorCodes,
       ...config,
     });
 
@@ -77,7 +78,8 @@ export const apiService = {
       ("successMessage" in dataOrOptions ||
         "errorMessage" in dataOrOptions ||
         "silent" in dataOrOptions ||
-        "background" in dataOrOptions)
+        "background" in dataOrOptions ||
+        "expectedErrorCodes" in dataOrOptions)
     ) {
       return request<T>("DELETE", url, undefined, dataOrOptions as ApiOptions);
     }

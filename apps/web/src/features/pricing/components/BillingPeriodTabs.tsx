@@ -7,12 +7,15 @@ import {
   type AnnualSavings,
   useAnnualSavings,
 } from "../hooks/useAnnualSavings";
+import type { GiftPrice } from "../hooks/usePricingCardPrice";
 
 interface BillingPeriodTabsProps {
   isYearly: boolean;
   onChange: (isYearly: boolean) => void;
   /** Server-fetched plans, so the chip renders with the page. */
   initialPlans?: Plan[];
+  /** The viewer's gift, so the chip counts the months free the cards show. */
+  gift?: GiftPrice | null;
 }
 
 /** "2 months free" reads as a gift; "Save 17%" reads as a sum. Falls back to
@@ -30,8 +33,12 @@ export function BillingPeriodTabs({
   isYearly,
   onChange,
   initialPlans,
+  gift,
 }: BillingPeriodTabsProps) {
-  const savings = useAnnualSavings({ initialPlans });
+  const savings = useAnnualSavings({
+    initialPlans,
+    yearlyPriceMinor: gift?.yearly?.minor,
+  });
 
   return (
     <Tabs

@@ -35,10 +35,17 @@ describe("money", () => {
     expect(formatWholeOrCents(0, "USD")).toBe("Free");
   });
 
-  it("a pricing card prices a zero-exponent currency in whole units", () => {
-    expect(getPriceDisplay(1000, undefined, true, "JPY").perMonthDollars).toBe(
-      1000,
-    );
+  it("a pricing card spreads a yearly price over twelve months to the minor unit, never a whole one", () => {
+    const perMonth = (amountMinor: number, isMonthly: boolean, code: string) =>
+      formatWholeOrCents(
+        getPriceDisplay(amountMinor, undefined, isMonthly).perMonthMinor,
+        code,
+      );
+
+    expect(perMonth(27000, false, "USD")).toBe("$22.50");
+    expect(perMonth(30000, false, "USD")).toBe("$25");
+    expect(perMonth(10000, false, "JPY")).toBe("¥833");
+    expect(perMonth(1000, true, "JPY")).toBe("¥1,000");
   });
 
   it("the settings summary prices a resolved plan in the plan's own currency", () => {

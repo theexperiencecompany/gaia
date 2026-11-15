@@ -1,9 +1,18 @@
+import { toErrorEnvelope } from "@shared/api";
 import { getUserTimezone } from "@shared/api/timezone";
 import type { AxiosError, InternalAxiosRequestConfig } from "axios";
 import axios from "axios";
 import { analyticsRequestHeaders } from "@/lib/analytics-headers";
 import { desktopClientHeaders } from "@/lib/electron/api";
+import { type ApiErrorCode, isDeclaredAnswer } from "./errorCodes";
 import { toApiOrigin } from "./origin";
+
+declare module "axios" {
+  interface AxiosRequestConfig {
+    /** ApiOptions.expectedErrorCodes, carried to the app-shell error handler. */
+    expectedErrorCodes?: readonly ApiErrorCode[];
+  }
+}
 
 /**
  * API Client Configuration
@@ -92,7 +101,8 @@ export type ApiErrorHandler = (
 ) => void;
 
 /**
- * Mount the app shell's error UI on every response.
+ * Mount the app shell's error UI on every failed response, bar the codes the
+ * request declared as answers its caller renders.
  *
  * Returns the eject function; only the (main) provider tree registers one, so
  * landing pages never surface background-fetch toasts to anonymous visitors.
@@ -101,7 +111,10 @@ export function registerApiErrorHandler(handle: ApiErrorHandler): () => void {
   const interceptor = apiauth.interceptors.response.use(
     (response) => response,
     (error: AxiosError) => {
-      handle(error);
+      const code = toErrorEnvelope(error.response?.data)?.code;
+      if (!isDeclaredAnswer(error.config?.expectedErrorCodes, code)) {
+        handle(error);
+      }
       return Promise.reject(error);
     },
   );
