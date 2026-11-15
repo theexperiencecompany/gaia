@@ -33,6 +33,7 @@ from app.agents.tools.browser_chat_tools import (
     stop_browser_task,
     tell_browser_task,
 )
+from app.agents.tools.comms_turn_tools import react, stay_silent, turn_ending
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
@@ -254,6 +255,7 @@ async def build_comms_graph(
         ),
         hooks_config=HookConfig(
             pre_model_hooks=pre_model_hooks,
+            turn_ending=turn_ending,
             end_graph_hooks=[
                 follow_up_actions_node,
                 # Learn durable user memories from every comms turn (passive
@@ -301,6 +303,8 @@ def comms_tools() -> dict[str, BaseTool]:
         web_search_tool.name: web_search_tool,
         fetch_webpages.name: fetch_webpages,
         get_weather.name: get_weather,
+        react.name: react,
+        stay_silent.name: stay_silent,
         **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},
     }
 

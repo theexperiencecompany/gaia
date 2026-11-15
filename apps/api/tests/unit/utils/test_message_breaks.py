@@ -1,5 +1,6 @@
 """Bubble-break sentinel parsing — every spelling the model actually emits."""
 
+from itertools import pairwise
 import re
 
 import pytest
@@ -12,6 +13,7 @@ from app.utils.message_breaks import (
     _partial_sequence,
     _word_prefixes,
     normalize_message_breaks,
+    shown_so_far,
     split_message_bubbles,
     strip_partial_message_break,
 )
@@ -234,3 +236,28 @@ class TestNormalizeMessageBreaks:
     def test_is_idempotent(self) -> None:
         once = normalize_message_breaks(f"{BR}a{BR * 2}b{BR}")
         assert normalize_message_breaks(once) == once
+
+
+class TestShownSoFar:
+    @pytest.mark.parametrize(
+        ("text", "shown"),
+        [
+            ("Hello", "Hello"),
+            ("Hello there.<NEW_MESS", "Hello there."),
+            ("Hello there. <", "Hello there. "),
+            ("Hello [", "Hello "),
+            (f"Hello.{BR}Sure", f"Hello.{BR}Sure"),
+            ("< 5 items left", "< 5 items left"),
+            ("<❤️>", "<❤️>"),
+        ],
+    )
+    def test_only_a_break_still_being_written_is_held(self, text: str, shown: str) -> None:
+        assert shown_so_far(text) == shown
+
+    def test_what_was_shown_is_always_a_prefix_of_what_is_shown_next(self) -> None:
+        """Clients append each delta; text shown early and then retracted would stay on screen."""
+        text = f"Hi <b>there</b>.{BR}Re: your trip<NEW_LINE_BREAK>ok [then] <❤️>\ndone <"
+        shown = [shown_so_far(text[:end]) for end in range(len(text) + 1)]
+        shown.append(strip_partial_message_break(text))
+        for earlier, later in pairwise(shown):
+            assert later.startswith(earlier)

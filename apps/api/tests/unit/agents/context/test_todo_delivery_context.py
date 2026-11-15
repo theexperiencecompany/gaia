@@ -18,6 +18,7 @@ from tests.unit.services.conversation.log_helpers import todo_run as typed_todo_
 from app.agents.context.tiers import AgentTier
 from app.agents.core.background import todo_run_delivery
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE
+from app.constants.comms import STAY_SILENT_TOOL_NAME
 from app.constants.conversation import WORK_DONE_NOTE
 from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
 from app.models.todo_models import TodoDocument
@@ -38,7 +39,7 @@ BRIEFING = "FYI: HDFC statement for September.\nToday: dentist at 16:00."
 DEFAULTS = "Anything else is not worth a message"
 BINDING = (
     "They bind this decision above every default here and in your instructions, the "
-    "SILENCE rule included: when one asks to hear this todo's results, a report with "
+    f"{STAY_SILENT_TOOL_NAME} rule included: when one asks to hear this todo's results, a report with "
     "content is sent whole"
 )
 PASS_THROUGH = (

@@ -5,6 +5,9 @@ from unittest.mock import AsyncMock
 from langchain_core.messages import AIMessage, AIMessageChunk
 import pytest
 
+from app.agents.tools.core.registry import init_tool_registry
+from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
+from app.core.lazy_loader import providers
 from app.models.conversation_frame_models import (
     MessageBoundaryEvent,
     ResponseEvent,
@@ -93,16 +96,63 @@ async def test_only_the_model_nodes_own_output_streams_as_written_by_the_model()
     assert {e.by_model for e in by_model if isinstance(e, Streamed)} == {True}
 
 
+def updated(message: AIMessage) -> GraphEvent:
+    return ((), "updates", {"agent": {"messages": [message]}})
+
+
+def ending(name: str, text: str = "", **args: str) -> GraphEvent:
+    call = {"name": name, "args": args, "id": f"call_{name}"}
+    return updated(AIMessage(content=text, tool_calls=[call], id="m1"))
+
+
 @pytest.mark.parametrize(
-    ("text", "outcome"),
-    [("👍", Reacted(emoji="👍")), ("<SILENCE>nothing to add</SILENCE>", Silent())],
+    ("event", "outcome"),
+    [
+        (ending(REACT_TOOL_NAME, emoji="👍"), Reacted(emoji="👍")),
+        (ending(STAY_SILENT_TOOL_NAME, reason="nothing to add"), Silent()),
+        (ending(REACT_TOOL_NAME, "glad it worked", emoji="👍"), Replied(text="glad it worked")),
+    ],
 )
-async def test_a_directive_answer_ends_as_a_reaction_or_silence(
-    text: str, outcome: RunOutcome
+async def test_a_turn_ending_call_is_the_answer_and_its_outcome(
+    event: GraphEvent, outcome: RunOutcome
 ) -> None:
     mapper = CommsEventMapper("u-1")
-    await mapper.map(answer(text))
+    assert ModelOutput(has_tool_calls=False) in await mapper.map(event)
     assert mapper.finish()[-1] == Finished(outcome=outcome)
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        ending(REACT_TOOL_NAME, emoji="ok"),
+        updated(
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {"name": REACT_TOOL_NAME, "args": {"emoji": "👍"}, "id": "a"},
+                    {"name": "search_memory", "args": {"query": "q"}, "id": "b"},
+                ],
+                id="m1",
+            )
+        ),
+    ],
+    ids=["refused-emoji", "beside-work"],
+)
+async def test_a_turn_ending_call_the_graph_does_not_end_on_is_work(event: GraphEvent) -> None:
+    # The work call's card resolves its category through the real registry.
+    if not providers.is_initialized("tool_registry"):
+        init_tool_registry()
+    mapper = CommsEventMapper("u-1")
+    assert ModelOutput(has_tool_calls=True) in await mapper.map(event)
+    finished = mapper.finish()[-1]
+    assert isinstance(finished, Finished)
+    assert not isinstance(finished.outcome, Reacted)
+
+
+async def test_a_reply_written_as_a_tag_is_text() -> None:
+    mapper = CommsEventMapper("u-1")
+    await mapper.map(answer("<❤️>"))
+    assert mapper.finish()[-1] == Finished(outcome=Replied(text="<❤️>"))
 
 
 async def test_the_answer_is_reported_final_when_the_follow_up_pass_starts() -> None:
@@ -158,7 +208,7 @@ async def test_a_reply_carries_the_cards_its_run_showed() -> None:
 async def test_a_reaction_beside_cards_is_a_reply_of_the_cards_alone() -> None:
     mapper = CommsEventMapper("u-1")
     card = await shown_card(mapper)
-    await mapper.map(answer("👍"))
+    await mapper.map(ending(REACT_TOOL_NAME, emoji="👍"))
     assert mapper.finish()[-1] == Finished(outcome=Replied(text="", tool_data=(card,)))
 
 

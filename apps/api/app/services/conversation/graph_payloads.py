@@ -14,9 +14,9 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Tool
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from app.agents.core.background.session import claim_tool_output
-from app.agents.core.comms_directive import visible_comms_text, visible_comms_text_so_far
 from app.agents.core.held_replies import HeldReplies, last_ai_message
 from app.agents.llm.reasoning import extract_reasoning_delta
+from app.agents.tools.comms_turn_tools import TURN_ENDING_TOOL_NAMES
 from app.models.agent_models import StreamChunkMetadata
 from app.models.conversation_frame_models import (
     MessageBoundaryEvent,
@@ -32,6 +32,7 @@ from app.models.stream_events import MessageBoundaryPayload, ReasoningPayload, T
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import NodeMessagesUpdate, ToolCallView, format_tool_call_entry
 from app.utils.errors import ShownReplyRetriedError
+from app.utils.message_breaks import shown_so_far, strip_partial_message_break
 from app.utils.multimodal import MessageContent, extract_text_content, has_media_blocks
 from app.utils.tool_events import normalize_custom_event
 from shared.py.conversation_wire import ToolDataEntry
@@ -230,7 +231,8 @@ async def _tool_call_cards(
         return
     for tc in msg.tool_calls:
         call = ToolCallView.model_validate(tc)
-        if not call.id or call.id in emitted_tool_calls:
+        # Ending the turn is not work, so it shows no card.
+        if not call.id or call.id in emitted_tool_calls or call.name in TURN_ENDING_TOOL_NAMES:
             continue
         tool_entry = await format_tool_call_entry(tc, user_id=user_id)
         if tool_entry:
@@ -279,6 +281,7 @@ async def _tool_message_payloads(
     # Todo tools already stream todo_progress.
     if (
         chunk.name in _TODO_TOOLS
+        or chunk.name in TURN_ENDING_TOOL_NAMES
         or _ToolMessageKwargs.model_validate(chunk.additional_kwargs).todo_tool
     ):
         return
@@ -304,7 +307,7 @@ async def _tool_message_payloads(
 
 def _stream_visible_text(state: GraphStreamState, message_id: str) -> str:
     """Return the next piece of a streaming comms message a user may see, and mark it streamed."""
-    visible = visible_comms_text_so_far(state.held.texts[message_id])
+    visible = shown_so_far(state.held.texts[message_id])
     new = visible[len(state.released_text.get(message_id, "")) :]
     if new:
         state.released_text[message_id] = visible
@@ -314,7 +317,7 @@ def _stream_visible_text(state: GraphStreamState, message_id: str) -> str:
 def _finish_visible_text(state: GraphStreamState, message_id: str) -> str:
     """Return the rest of a finished comms message a user may see, and forget it streamed."""
     sent = state.released_text.pop(message_id, "")
-    return visible_comms_text(state.held.texts.get(message_id, ""))[len(sent) :]
+    return strip_partial_message_break(state.held.texts.get(message_id, ""))[len(sent) :]
 
 
 async def _messages(

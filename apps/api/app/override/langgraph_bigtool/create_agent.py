@@ -125,6 +125,7 @@ class _AgentDeps:
     pre_model_hooks: list[HookType] | None
     end_graph_hooks: list[HookType] | None
     require_finish_to_end: bool
+    turn_ending: Callable[[AIMessage], object | None] | None
 
 
 def _fallback_config(config: RunnableConfig, lane: "ModelLane") -> RunnableConfig:
@@ -855,6 +856,20 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
     return should_continue
 
 
+def _after_tools(
+    turn_ending: Callable[[AIMessage], object | None], exit_node: str
+) -> Callable[[State], str]:
+    """Route out of the tools node: end the turn after calls that end it, else back to the model."""
+
+    def route(state: State) -> str:
+        message = _last_tool_calling_message(state)
+        if message is not None and turn_ending(message) is not None:
+            return exit_node
+        return "agent"
+
+    return route
+
+
 def _tool_node(deps: _AgentDeps) -> DynamicToolNode:
     return DynamicToolNode(
         deps.tool_registry,
@@ -890,8 +905,13 @@ def _wire_edges(builder: StateGraph, deps: _AgentDeps) -> None:
         path_map=path_map,
     )
 
-    builder.add_edge("tools", "agent")
     exit_node = "end_graph_hooks" if deps.end_graph_hooks else END
+    if deps.turn_ending is not None:
+        builder.add_conditional_edges(
+            "tools", _after_tools(deps.turn_ending, exit_node), path_map=["agent", exit_node]
+        )
+    else:
+        builder.add_edge("tools", "agent")
     if deps.require_finish_to_end:
         builder.add_conditional_edges(
             FINISH_TASK_NAME,
@@ -940,6 +960,7 @@ def create_agent(
         pre_model_hooks=hooks.pre_model_hooks,
         end_graph_hooks=hooks.end_graph_hooks,
         require_finish_to_end=hooks.require_finish_to_end,
+        turn_ending=hooks.turn_ending,
     )
 
     builder = StateGraph(State, context_schema=agent_cfg.context_schema)

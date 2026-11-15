@@ -86,8 +86,8 @@ async def test_a_model_call_retried_after_its_text_showed_fails_instead_of_takin
 
 async def test_a_model_call_retried_before_any_text_showed_streams_the_new_attempt() -> None:
     state = GraphStreamState()
-    # An emoji alone may end as a reaction, so nothing of the first attempt was released.
-    assert await _payloads(state, _chunk("m1", "\U0001f44d")) == []
+    # A lone "<" may still open a bubble break, so nothing of the first attempt was released.
+    assert await _payloads(state, _chunk("m1", "<")) == []
     assert await _payloads(state, _chunk("m2", "Sure, done.")) == [
         ResponseEvent(response="Sure, done.")
     ]
@@ -370,19 +370,19 @@ def _boundary_of(message_id: str) -> MessageBoundaryEvent:
 
 async def test_what_a_message_held_back_while_streaming_is_said_when_its_node_ends() -> None:
     state = GraphStreamState()
-    # An emoji alone may end as a reaction, so it stays held until its message is whole.
-    assert await _payloads(state, _chunk("m1", "\U0001f44d")) == []
-    ended = await _payloads(state, _node_end(AIMessage(id="m1", content="\U0001f44d")))
-    assert ended == [ResponseEvent(response="\U0001f44d"), _boundary_of("m1")]
-    assert state.complete_message == "\U0001f44d"
+    # A lone "<" may still open a bubble break, so it stays held until its message is whole.
+    assert await _payloads(state, _chunk("m1", "<")) == []
+    ended = await _payloads(state, _node_end(AIMessage(id="m1", content="<")))
+    assert ended == [ResponseEvent(response="<"), _boundary_of("m1")]
+    assert state.complete_message == "<"
 
 
 async def test_a_message_with_no_id_is_said_whole_when_its_node_ends() -> None:
     state = GraphStreamState()
-    unnamed = ((), "messages", (AIMessageChunk(content="\U0001f44d"), _NODE_RUN))
+    unnamed = ((), "messages", (AIMessageChunk(content="<"), _NODE_RUN))
     assert await _payloads(state, unnamed) == []
-    ended = await _payloads(state, _node_end(AIMessage(content="\U0001f44d")))
-    assert ended == [ResponseEvent(response="\U0001f44d"), _boundary_of("")]
+    ended = await _payloads(state, _node_end(AIMessage(content="<")))
+    assert ended == [ResponseEvent(response="<"), _boundary_of("")]
 
 
 async def test_a_node_message_that_never_streamed_only_closes_its_bubble() -> None:
@@ -448,6 +448,6 @@ async def test_a_stream_mode_it_does_not_read_yields_nothing() -> None:
 async def test_text_a_cancelled_run_never_closed_is_owed_and_kept() -> None:
     state = GraphStreamState()
     await _payloads(state, _chunk("m1", "Done."), _node_end(AIMessage(id="m1", content="Done.")))
-    await _payloads(state, _chunk("m2", "\U0001f44d"))
-    assert flush_held_payloads(state) == [ResponseEvent(response="\U0001f44d")]
-    assert state.complete_message == f"Done.{NEW_MESSAGE_BREAKER}\U0001f44d"
+    await _payloads(state, _chunk("m2", "<"))
+    assert flush_held_payloads(state) == [ResponseEvent(response="<")]
+    assert state.complete_message == f"Done.{NEW_MESSAGE_BREAKER}<"

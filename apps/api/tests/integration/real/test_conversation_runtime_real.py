@@ -68,6 +68,7 @@ from app.constants.agents import AgentTag
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
+from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, HIL_JEV_URL
@@ -82,7 +83,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.playbooks import playbook_repository
 from app.models.agent_config import AgentConfigurable, StepTurnRef, agent_configurable
 from app.models.agent_models import AgentRunnableConfig
-from app.models.chat_models import SourceCategory
+from app.models.chat_models import ReactionBy, SourceCategory
 from app.models.conversation_frame_models import (
     EntryFrame,
     EntryUpdatedFrame,
@@ -101,6 +102,7 @@ from app.models.conversation_log_models import (
     IntegrationConnected,
     LoggedEntry,
     Notice,
+    Reaction,
     Reply,
     ReplySettled,
     StepClaim,
@@ -503,6 +505,49 @@ async def test_a_message_sent_before_the_reply_commits_gets_one_reply_using_both
     assert [reply.text for reply in await rig.of(Reply)] == ["booked at $900"]
     assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1", "m2"))]
     assert humans(model.prompts[1]).count("actually make it $900") == 1
+
+
+def _ending(name: str, **args: str) -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": f"call_{name}"}])
+
+
+@pytest.mark.service
+async def test_a_react_call_puts_the_chat_models_reaction_on_the_message_and_says_nothing(
+    rig_for: RigFactory,
+) -> None:
+    model = gated(_ending(REACT_TOOL_NAME, emoji="🙏"), "a second model call")
+    rig = await rig_for(model)
+    await rig.send("m1", "thanks!")
+    await rig.settle()
+    [message] = await rig.of(UserMessage)
+    assert message.reaction == Reaction(emoji="🙏", by=ReactionBy.CHAT_MODEL)
+    assert [reply.text for reply in await rig.of(Reply) if reply.text] == []
+    assert len(model.prompts) == 1
+
+
+@pytest.mark.service
+async def test_a_stay_silent_call_answers_with_nothing(rig_for: RigFactory) -> None:
+    model = gated(_ending(STAY_SILENT_TOOL_NAME, reason="nothing to add"), "a second model call")
+    rig = await rig_for(model)
+    await rig.send("m1", "ok")
+    await rig.settle()
+    [message] = await rig.of(UserMessage)
+    assert message.reaction is None
+    assert [reply.text for reply in await rig.of(Reply) if reply.text] == []
+    assert len(model.prompts) == 1
+
+
+@pytest.mark.service
+async def test_a_reply_that_looks_like_a_reaction_tag_is_shown_as_the_text_it_is(
+    rig_for: RigFactory,
+) -> None:
+    rig = await rig_for(gated("<❤️>"))
+    await rig.send("m1", "add milk to my list")
+    await rig.settle()
+    [message] = await rig.of(UserMessage)
+    assert message.reaction is None
+    assert [reply.text for reply in await rig.of(Reply)] == ["<❤️>"]
+    assert await rig.answered() == [(ReplyOutcome.ANSWERED, ("m1",))]
 
 
 @pytest.mark.service

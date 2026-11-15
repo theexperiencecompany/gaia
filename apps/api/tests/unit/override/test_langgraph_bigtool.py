@@ -1668,6 +1668,7 @@ def _make_deps(
         pre_model_hooks=None,
         end_graph_hooks=None,
         require_finish_to_end=False,
+        turn_ending=None,
     )
 
 
@@ -1951,6 +1952,7 @@ class TestExecutableCallsRouting:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            turn_ending=None,
         )
         ai_msg = AIMessage(
             content="",
@@ -1997,6 +1999,7 @@ class TestExecutableCallsRouting:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            turn_ending=None,
         )
         ai_msg = AIMessage(
             content="",
@@ -2050,6 +2053,7 @@ class TestGetBoundToolNamesChannels:
             pre_model_hooks=None,
             end_graph_hooks=None,
             require_finish_to_end=False,
+            turn_ending=None,
         )
 
         bound = _get_bound_tool_names(deps, cast("State", {}))
@@ -2203,6 +2207,7 @@ def _make_branch_deps(
         pre_model_hooks=None,
         end_graph_hooks=None,
         require_finish_to_end=False,
+        turn_ending=None,
     )
 
 

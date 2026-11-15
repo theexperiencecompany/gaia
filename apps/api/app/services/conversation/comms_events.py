@@ -11,9 +11,8 @@ from typing import cast
 from langchain_core.messages import ToolMessage
 from pydantic import ValidationError
 
-from app.agents.core.comms_directive import interpret_comms_output
 from app.agents.core.held_replies import last_ai_message
-from app.constants.comms import CommsDirectiveKind
+from app.agents.tools.comms_turn_tools import ReactArgs, StaySilentArgs, turn_ending
 from app.models.agent_models import StreamChunkMetadata
 from app.models.conversation_frame_models import (
     FollowUpActionsEvent,
@@ -39,6 +38,7 @@ from app.services.conversation.ports import (
     Summarized,
 )
 from app.utils.agent_utils import NodeMessagesUpdate
+from app.utils.message_breaks import strip_partial_message_break
 from app.utils.multimodal import extract_text_content
 from shared.py.conversation_wire import ToolDataEntry
 
@@ -81,6 +81,7 @@ class CommsEventMapper:
         self._cards: list[ToolDataEntry] = []
         self._follow_ups: tuple[str, ...] = ()
         self._answer = ""
+        self._ending: ReactArgs | StaySilentArgs | None = None
         self._final_reported = False  # pragma: no mutate — only read as truthiness
 
     async def map(self, event: GraphEvent) -> list[RunEvent]:
@@ -140,21 +141,23 @@ class CommsEventMapper:
         answer = last_ai_message(NodeMessagesUpdate.model_validate(update).messages)
         if answer is None:
             return []
-        has_tool_calls = bool(answer.tool_calls)
+        self._ending = turn_ending(answer)
+        # A call that ends the turn is the answer: no model call follows it.
+        has_tool_calls = bool(answer.tool_calls) and self._ending is None
         if not has_tool_calls:
             self._answered = True
             self._answer = extract_text_content(answer.content)
         return [ModelOutput(has_tool_calls=has_tool_calls)]
 
     def _outcome(self) -> RunOutcome:
-        directive = interpret_comms_output(self._answer)
-        match directive.kind:
-            case CommsDirectiveKind.REACT if not self._cards:
-                return Reacted(emoji=directive.payload)
-            case CommsDirectiveKind.REPLY:
-                text = directive.payload
-            case _:
-                text = ""
-        if not text and not self._cards:
-            return Silent()
-        return Replied(text=text, tool_data=tuple(self._cards), follow_up_actions=self._follow_ups)
+        text = strip_partial_message_break(self._answer)
+        # Words written beside a turn ending were shown, so they are the reply.
+        if text.strip() or self._cards:
+            return Replied(
+                text=text if text.strip() else "",
+                tool_data=tuple(self._cards),
+                follow_up_actions=self._follow_ups,
+            )
+        if isinstance(self._ending, ReactArgs):
+            return Reacted(emoji=self._ending.emoji)
+        return Silent()

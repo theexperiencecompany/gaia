@@ -71,9 +71,10 @@ from typing import Any
 
 DEFAULT_REPLY = "ok (llm-stub)"
 # The front door's turn right after a hand-off: the result arrives on its own, so
-# comms stays silent (SILENCE_DIRECTIVE, apps/api/app/constants/comms.py) rather
+# comms stays silent (STAY_SILENT_TOOL_NAME, apps/api/app/constants/comms.py) rather
 # than saying the script's reply, which the result then says a second time.
-HAND_OFF_SILENCE = "<SILENCE>the result arrives on its own</SILENCE>"
+STAY_SILENT_TOOL = "stay_silent"
+HAND_OFF_SILENCE_ARGS = {"reason": "the result arrives on its own"}
 CALL_EXECUTOR_TOOL = "call_executor"
 # call_executor's required args beyond the task, so a scripted hand-off is a call
 # the real tool accepts. Exported rather than inlined so the stub's tests pin the
@@ -594,7 +595,7 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
     emitted = _emitted_tool_names(messages[latest + 1 :])
     di = _cursor(tool_dirs, emitted, available_tools)
     if di >= len(tool_dirs) and CALL_EXECUTOR_TOOL in emitted and not _scripts_front_door(script):
-        return SayResponse(HAND_OFF_SILENCE)
+        return ToolCallResponse(name=STAY_SILENT_TOOL, args=HAND_OFF_SILENCE_ARGS)
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
         # Only the executor tier runs a tool itself, so the execute/retrieve

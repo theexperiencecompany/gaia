@@ -26,6 +26,7 @@ from app.agents.core.messages import MessageAttachments, MessageScope
 from app.agents.core.nodes.drain_conversation_log import close_feed, open_feed
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.agents.tools.core.registry import init_tool_registry
+from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import ABSORBED_NOTE, LOG_SEQ
 from app.constants.graphs import GraphName
 from app.core.lazy_loader import providers
@@ -57,9 +58,11 @@ from app.services.conversation.ports import (
     CancelReason,
     Finished,
     ModelOutput,
+    Reacted,
     Replied,
     RunEvent,
     RuntimePorts,
+    Silent,
     StepLimitReached,
     Streamed,
 )
@@ -256,6 +259,65 @@ async def test_plain_answer_streams_text_then_finishes_replied(conversation_id: 
     assert events[-1] == Finished(outcome=Replied(text="hello there"))
     assert run.task.done()
     assert humans(model.prompts[0]) == ["text of u1", "[clock]"]
+
+
+def ending_call(name: str, **args: str) -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": f"call_{name}"}])
+
+
+@pytest.mark.parametrize(
+    ("call", "outcome"),
+    [
+        (ending_call(REACT_TOOL_NAME, emoji="👍"), Reacted(emoji="👍")),
+        (ending_call(STAY_SILENT_TOOL_NAME, reason="the result arrives on its own"), Silent()),
+    ],
+)
+async def test_a_turn_ending_call_ends_the_run_with_its_outcome_and_no_second_model_call(
+    conversation_id: str, call: AIMessage, outcome: Reacted | Silent
+) -> None:
+    model = gated(call, "a second call the turn must never make")
+    async with comms_graph([], model=model) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id).start(
+                claim(conversation_id), batch(logged(1, user("u1"))), ()
+            )
+            events = await collect(run)
+    assert events[-1] == Finished(outcome=outcome)
+    assert len(model.prompts) == 1
+    shown = [e.payload.type.value for e in events if isinstance(e, Streamed)]
+    assert "tool_data" not in shown
+    assert "response" not in shown
+    assert ModelOutput(has_tool_calls=False) in events
+
+
+async def test_a_reaction_the_schema_refuses_goes_back_to_the_model(conversation_id: str) -> None:
+    model = gated(ending_call(REACT_TOOL_NAME, emoji="ok"), "glad it worked")
+    async with comms_graph([], model=model) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id).start(
+                claim(conversation_id), batch(logged(1, user("u1"))), ()
+            )
+            events = await collect(run)
+    assert len(model.prompts) == 2
+    assert events[-1] == Finished(outcome=Replied(text="glad it worked"))
+
+
+@pytest.mark.parametrize(
+    "text", ["<❤️>", "<EMOJI>👍</EMOJI>", "<SILENCE>nothing new</SILENCE>", "👍"]
+)
+async def test_reply_text_is_only_ever_a_reply(conversation_id: str, text: str) -> None:
+    async with comms_graph([], model=gated(text)) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id).start(
+                claim(conversation_id), batch(logged(1, user("u1"))), ()
+            )
+            events = await collect(run)
+    streamed = "".join(
+        e.payload.response
+        for e in events
+        if isinstance(e, Streamed) and isinstance(e.payload, ResponseEvent)
+    )
+    assert (streamed, events[-1]) == (text, Finished(outcome=Replied(text=text)))
 
 
 async def test_a_run_that_fails_before_it_streams_raises_through_its_events(

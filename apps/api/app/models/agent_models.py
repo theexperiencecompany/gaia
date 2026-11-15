@@ -10,7 +10,6 @@ from langgraph.config import get_config, get_stream_writer
 from langgraph.types import StreamWriter
 
 from app.constants.agents import AgentTag
-from app.constants.comms import CommsDirectiveKind
 
 # The configurable bag's shape and its typed read live in app.models.agent_config,
 # a leaf with no langchain import, so app.utils.timezone can read a home timezone
@@ -42,7 +41,6 @@ __all__ = [
     "AgentRunnableConfig",
     "AgentUserContext",
     "AnyAgentMiddleware",
-    "CommsDirective",
     "ExecutionMode",
     "ExecutorRunItem",
     "InboxDrain",
@@ -231,15 +229,6 @@ class InboxDrain:
 
     def __bool__(self) -> bool:
         return bool(self.inject or self.retire)
-
-
-@dataclass(frozen=True, slots=True)
-class CommsDirective:
-    """A parsed comms narration outcome. ``payload`` is the reply text, the silence
-    reason, or the emoji, depending on ``kind``."""
-
-    kind: CommsDirectiveKind
-    payload: str
 
 
 @dataclass(frozen=True, slots=True)

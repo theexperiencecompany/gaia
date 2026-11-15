@@ -37,6 +37,7 @@ import pytest
 from app.agents.core.background.todo_run import TodoRunFailedError
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
+from app.constants.comms import STAY_SILENT_TOOL_NAME
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     TodoActivityEvent,
@@ -1027,7 +1028,14 @@ class TestTheChatFollowsItsTodo:
         todo_id = await _new_tracked_todo(owner)
 
         async with open_stack(
-            executor=executor_run(REPORT), comms=["<SILENCE>nothing changed</SILENCE>"]
+            executor=executor_run(REPORT),
+            comms=[
+                {
+                    "name": STAY_SILENT_TOOL_NAME,
+                    "args": {"reason": "nothing changed"},
+                    "id": "call_silent",
+                }
+            ],
         ):
             await _run(todo_id, owner)
 

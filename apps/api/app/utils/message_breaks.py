@@ -73,6 +73,19 @@ def strip_partial_message_break(text: str) -> str:
     return PARTIAL_MESSAGE_BREAK_RE.sub("", text)
 
 
+#: A streamed tail that may still become a break, down to a lone "<" or "[".
+_BREAK_TAIL_RE = re.compile(rf"{PARTIAL_MESSAGE_BREAK_RE.pattern}|[<\[]\s*/?\s*$", re.IGNORECASE)
+
+
+def shown_so_far(text: str) -> str:
+    """Return what of a reply still streaming a client may see: all of it but a break being written.
+
+    Each result extends the one before, so a client can append the difference.
+    """
+    tail = _BREAK_TAIL_RE.search(text)
+    return text[: tail.start()] if tail else text
+
+
 def append_message_bubble(message: str, bubble: str) -> str:
     """Append one finished bubble, sentinel-separated from what came before.
 

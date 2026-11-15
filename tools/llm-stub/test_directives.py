@@ -21,8 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from directives import (
     CALL_EXECUTOR_TOOL,
     DEFAULT_REPLY,
-    HAND_OFF_SILENCE,
+    HAND_OFF_SILENCE_ARGS,
     SCRIPTED_HAND_OFF_ARGS,
+    STAY_SILENT_TOOL,
     VERBATIM_REQUEST_HEADER,
     DirectiveError,
     FailDirective,
@@ -345,7 +346,9 @@ def test_comms_after_forwarding_stays_silent():
         _assistant_tool_call(CALL_EXECUTOR_TOOL, {"task": script}),
         _tool_result(CALL_EXECUTOR_TOOL),
     ]
-    assert resolve_response(messages, COMMS_TOOLS) == SayResponse(text=HAND_OFF_SILENCE)
+    assert resolve_response(messages, COMMS_TOOLS) == ToolCallResponse(
+        name=STAY_SILENT_TOOL, args=HAND_OFF_SILENCE_ARGS
+    )
 
 
 @pytest.mark.parametrize(
@@ -376,7 +379,9 @@ def test_comms_single_forward_covers_multiple_executor_tools():
         _assistant_tool_call(CALL_EXECUTOR_TOOL, {"task": script}),
         _tool_result(CALL_EXECUTOR_TOOL),
     ]
-    assert resolve_response(messages, COMMS_TOOLS) == SayResponse(text=HAND_OFF_SILENCE)
+    assert resolve_response(messages, COMMS_TOOLS) == ToolCallResponse(
+        name=STAY_SILENT_TOOL, args=HAND_OFF_SILENCE_ARGS
+    )
 
 
 def test_comms_direct_tool_when_bound():
