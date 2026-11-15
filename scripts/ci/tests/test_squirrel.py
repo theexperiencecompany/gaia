@@ -270,6 +270,8 @@ def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
         _row("/contact", "content/word-count", "word-count"),
         _row("/marketplace/googlesheets", "content/placeholder-contact", "placeholder-contact", [{"id": "email", "snippet": "john@example.com"}]),
         _row("/ja/marketplace/twitter", "content/placeholder-contact", "placeholder-contact", [{"id": "social"}]),
+        _row("/marketplace/linear", "content/keyword-stuffing", "keyword-stuffing", [{"id": "linear"}]),
+        _row("/ja/marketplace/linear", "content/keyword-stuffing", "keyword-stuffing", [{"id": "issue"}]),
     ],
 )  # fmt: skip
 def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -> None:
@@ -281,6 +283,7 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         "/learn/cron-job",
         "/ja/compare/asana",
         "/ko/compare/asana",
+        "/marketplace/googlesheets",
     ]
     proc = _ratchet(tmp_path, [row], "", pages=pages)
     assert proc.returncode == 0, proc.stdout
@@ -297,6 +300,8 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         _row("/b", "content/unrendered-markup", "unrendered-markup", message="2 unrendered markup occurrence(s) in visible text (markdown-emphasis): example *bold* text"),
         _row("/b", "content/placeholder-text", "placeholder-content", [{"id": "unrendered-template", "snippet": "[['L-12345',85,'Hot']]"}]),
         _row("/b", "content/word-count", "word-count"),
+        _row("/blog/launch", "content/placeholder-contact", "placeholder-contact", [{"id": "email"}]),
+        _row("/marketplace/page/2", "content/placeholder-contact", "placeholder-contact", [{"id": "email"}]),
     ],
 )  # fmt: skip
 def test_the_same_rules_still_count_a_real_finding(tmp_path: Path, row: Row) -> None:
@@ -309,6 +314,8 @@ def test_the_same_rules_still_count_a_real_finding(tmp_path: Path, row: Row) -> 
         "/pt-br/compare",
         "/de/compare/asana",
         "/ja/compare/asana",
+        "/blog/launch",
+        "/marketplace/page/2",
     ]
     assert _ratchet(tmp_path, [row], "", pages=pages).returncode == 1
 
