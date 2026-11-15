@@ -68,7 +68,7 @@ function startConversation(): {
     updatedAt: now,
   };
   const chatStore = useChatStore.getState();
-  chatStore.upsertConversation(conversation);
+  chatStore.upsertConversations([conversation]);
   chatStore.setActiveConversationId(conversationId);
   if (/^\/c(\/|$)/.test(globalThis.location.pathname)) {
     globalThis.history.replaceState({}, "", `/c/${conversationId}`);

@@ -44,15 +44,15 @@ interface ChatState {
   // Only ONE optimistic message can exist at a time - enforced by using single object instead of array
   optimisticMessage: OptimisticMessage | null;
   setConversations: (conversations: IConversation[]) => void;
-  upsertConversation: (conversation: IConversation) => void;
+  upsertConversations: (conversations: readonly IConversation[]) => void;
   updateConversation: (
     conversationId: string,
     updates: Partial<IConversation>,
   ) => void;
   removeConversation: (conversationId: string) => void;
+  /** Replace the artifact registries of the conversations named, in one write. */
   setConversationArtifacts: (
-    conversationId: string,
-    artifacts: ArtifactData[],
+    artifactsByConversation: Readonly<Record<string, ArtifactData[]>>,
   ) => void;
   setActiveConversationId: (id: string | null) => void;
   setHydrationCompleted: (completed: boolean) => void;
@@ -75,20 +75,17 @@ export const useChatStore = create<ChatState>((set) => ({
   setConversations: (conversations) =>
     set({ conversations: [...conversations] }),
 
-  upsertConversation: (conversation) =>
+  upsertConversations: (incoming) =>
     set((state) => {
-      const index = state.conversations.findIndex(
-        (existing) => existing.id === conversation.id,
+      const byId = new Map(
+        incoming.map((conversation) => [conversation.id, conversation]),
       );
-
-      const conversations =
-        index === -1
-          ? [...state.conversations, conversation]
-          : state.conversations.map((existing) =>
-              existing.id === conversation.id ? conversation : existing,
-            );
-
-      return { conversations };
+      const conversations = state.conversations.map((existing) => {
+        const replacement = byId.get(existing.id);
+        byId.delete(existing.id);
+        return replacement ?? existing;
+      });
+      return { conversations: [...conversations, ...byId.values()] };
     }),
 
   updateConversation: (conversationId, updates) =>
@@ -115,19 +112,20 @@ export const useChatStore = create<ChatState>((set) => ({
   // Server registry entries persist only per-file fields (path, size, mtime, content type) —
   // the conversation id is the document key, not an element field. Stamp it back on as
   // session_id so every map entry is complete ArtifactData (fetch URLs are built from it).
-  setConversationArtifacts: (conversationId, artifacts) =>
+  setConversationArtifacts: (artifactsByConversation) =>
     set((state) => {
-      const registry: Record<string, ArtifactData> = {};
-      for (const artifact of artifacts) {
-        if (!artifact?.path) continue;
-        registry[artifact.path] = { ...artifact, session_id: conversationId };
+      const next = { ...state.artifactsByConversation };
+      for (const [conversationId, artifacts] of Object.entries(
+        artifactsByConversation,
+      )) {
+        const registry: Record<string, ArtifactData> = {};
+        for (const artifact of artifacts) {
+          if (!artifact?.path) continue;
+          registry[artifact.path] = { ...artifact, session_id: conversationId };
+        }
+        next[conversationId] = registry;
       }
-      return {
-        artifactsByConversation: {
-          ...state.artifactsByConversation,
-          [conversationId]: registry,
-        },
-      };
+      return { artifactsByConversation: next };
     }),
 
   setActiveConversationId: (id) => set({ activeConversationId: id }),
@@ -162,13 +160,17 @@ const startHydration = async () => {
     useChatStore.getState().setConversations(conversations);
 
     // Seed the artifact lookup map from each conversation's persisted registry.
-    for (const conversation of conversations) {
-      if (conversation.artifacts?.length) {
-        useChatStore
-          .getState()
-          .setConversationArtifacts(conversation.id, conversation.artifacts);
-      }
-    }
+    useChatStore
+      .getState()
+      .setConversationArtifacts(
+        Object.fromEntries(
+          conversations.flatMap((conversation) =>
+            conversation.artifacts?.length
+              ? [[conversation.id, conversation.artifacts]]
+              : [],
+          ),
+        ),
+      );
   } catch (error) {
     console.error("Failed to hydrate from IndexedDB:", error);
   } finally {
@@ -199,11 +201,17 @@ export const useChatStoreSync = () => {
     // Event handlers for real-time updates from IndexedDB
 
     const handleConversationAdded = (conversation: IConversation) => {
-      useChatStore.getState().upsertConversation(conversation);
+      useChatStore.getState().upsertConversations([conversation]);
     };
 
     const handleConversationUpdated = (conversation: IConversation) => {
-      useChatStore.getState().upsertConversation(conversation);
+      useChatStore.getState().upsertConversations([conversation]);
+    };
+
+    const handleConversationsUpsertedBulk = (
+      conversations: IConversation[],
+    ) => {
+      useChatStore.getState().upsertConversations(conversations);
     };
 
     const handleConversationDeleted = (conversationId: string) => {
@@ -220,6 +228,10 @@ export const useChatStoreSync = () => {
     dbEventEmitter.on("conversationUpdated", handleConversationUpdated);
     dbEventEmitter.on("conversationDeleted", handleConversationDeleted);
     dbEventEmitter.on(
+      "conversationsUpsertedBulk",
+      handleConversationsUpsertedBulk,
+    );
+    dbEventEmitter.on(
       "conversationsDeletedBulk",
       handleConversationsDeletedBulk,
     );
@@ -228,6 +240,10 @@ export const useChatStoreSync = () => {
       dbEventEmitter.off("conversationAdded", handleConversationAdded);
       dbEventEmitter.off("conversationUpdated", handleConversationUpdated);
       dbEventEmitter.off("conversationDeleted", handleConversationDeleted);
+      dbEventEmitter.off(
+        "conversationsUpsertedBulk",
+        handleConversationsUpsertedBulk,
+      );
       dbEventEmitter.off(
         "conversationsDeletedBulk",
         handleConversationsDeletedBulk,

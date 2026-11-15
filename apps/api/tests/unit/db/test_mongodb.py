@@ -513,6 +513,16 @@ class TestCreateConversationIndexes:
                 ([("type", 1)],),
                 {"name": "message_shaped", "partialFilterExpression": {"type": {"$exists": True}}},
             ),
+            *[
+                (
+                    ([(field, 1)],),
+                    {
+                        "name": f"renamed_{field}",
+                        "partialFilterExpression": {field: {"$exists": True}},
+                    },
+                )
+                for field in ("summary", "decision", "heard_text", "run.reservation")
+            ],
         ]
         heads = [call.args[0] for call in collections["conversations"].create_index.await_args_list]
         assert [("user_id", 1), ("messages.message_id", 1)] not in heads

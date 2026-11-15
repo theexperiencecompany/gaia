@@ -945,6 +945,27 @@ async def test_a_stopped_run_reports_that_the_user_stopped_it() -> None:
     assert report.text == WORK_STOPPED_REPORT
 
 
+@pytest.mark.parametrize(
+    ("declared", "awaits"),
+    [(OutcomeState.ASK, True), (OutcomeState.DONE, False), (OutcomeState.BLOCKED, False)],
+)
+async def test_only_a_run_that_ended_asking_leaves_its_work_awaiting_the_users_decision(
+    declared: OutcomeState, awaits: bool
+) -> None:
+    finished = er.TerminalOutcome(
+        result_text="report",
+        result_type="final",
+        was_cancelled=False,
+        review=OutcomeReview(declared, None),
+    )
+    with (
+        patch.object(er, "record_work_finished", new_callable=AsyncMock) as record,
+        patch.object(er, "work_cards", new=AsyncMock(return_value=FoldedCards())),
+    ):
+        await er._log_work_finished(_run(RunKind.LIVE), finished, stopped=False)
+    assert record.await_args.args[4].awaits_decision is awaits
+
+
 class TestWhatAStopCancels:
     async def test_a_finished_answer_is_not_cancelled_by_a_late_stop(self, boundaries) -> None:
         boundaries.stop_requested.return_value = True

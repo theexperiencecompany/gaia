@@ -2,7 +2,7 @@ import { createOlderHistoryLoader } from "@shared/conversation";
 import { useEffect, useMemo } from "react";
 import { useMessageScrollerScrollable } from "@/components/ui/message-scroller";
 import { chatApi } from "@/features/chat/api/chatApi";
-import { applyConversationPage } from "@/features/chat/live/connection";
+import { applyConversationPages } from "@/features/chat/live/connection";
 import {
   liveConversation,
   useLiveConversation,
@@ -21,7 +21,7 @@ export const useOlderHistory = (): void => {
       olderBefore: () => liveConversation(conversationId).olderBefore,
       fetchPage: (beforeSeq, limit) =>
         chatApi.fetchEntriesBefore(conversationId, beforeSeq, limit),
-      applyPage: (page) => applyConversationPage(conversationId, page),
+      applyPage: (page) => applyConversationPages([{ conversationId, page }]),
     });
   }, [conversationId]);
 

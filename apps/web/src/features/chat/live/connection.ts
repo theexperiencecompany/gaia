@@ -1,5 +1,8 @@
 import type { ConversationPage } from "@shared/conversation";
-import { createConversationFollower } from "@shared/conversation/live";
+import {
+  createConversationFollower,
+  type SavedConversation,
+} from "@shared/conversation/live";
 import { v4 as uuidv4 } from "uuid";
 import {
   ConversationNotFoundError,
@@ -8,6 +11,7 @@ import {
 import { db } from "@/lib/db/chatDb";
 import { streamLog, streamLogError } from "@/lib/streamLogger";
 import {
+  type LocalSend,
   liveConversation,
   useLiveConversationStore,
 } from "./liveConversationStore";
@@ -48,24 +52,39 @@ export function persistConversation(
   );
 }
 
-async function restore(conversationId: string): Promise<void> {
+async function savedConversation(
+  conversationId: string,
+): Promise<SavedConversation<LocalSend>> {
   const saved = await db.getConversationLog(conversationId);
-  useLiveConversationStore.getState().restore(conversationId, {
+  return {
     items: saved?.items ?? [],
     head: saved?.head ?? 0,
     olderBefore: saved?.olderBefore ?? null,
     sends: saved?.sends ?? {},
-  });
+  };
 }
 
-/** Take a page of the server's screen into the conversation, over what this device saved of it, and save the result. */
-export async function applyConversationPage(
-  conversationId: string,
-  page: ConversationPage,
+async function restore(conversationId: string): Promise<void> {
+  useLiveConversationStore
+    .getState()
+    .restore(conversationId, await savedConversation(conversationId));
+}
+
+/** Take pages of the server's screen into their conversations, over what this device saved of them, in one store write, and save the results. */
+export async function applyConversationPages(
+  pages: readonly { conversationId: string; page: ConversationPage }[],
 ): Promise<void> {
-  await restore(conversationId);
-  useLiveConversationStore.getState().applyPage(conversationId, page);
-  persistConversation(conversationId, { immediately: true });
+  const saved = await Promise.all(
+    pages.map(async ({ conversationId, page }) => ({
+      conversationId,
+      page,
+      saved: await savedConversation(conversationId),
+    })),
+  );
+  useLiveConversationStore.getState().applyPages(saved);
+  for (const { conversationId } of pages) {
+    persistConversation(conversationId, { immediately: true });
+  }
 }
 
 // The sidebar and the header read the title from the conversation list, which this update feeds.

@@ -1,5 +1,6 @@
 import { type ConversationView, SCREEN_ITEM_KIND } from "@shared/conversation";
 import { useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useLiveConversationStore } from "@/features/chat/live/liveConversationStore";
 import type { IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
@@ -40,18 +41,27 @@ export type ConversationRow = ReturnType<typeof toConversationRow>;
  */
 export const useConversationList = () => {
   const conversations = useChatStore((state) => state.conversations);
-  const live = useLiveConversationStore((state) => state.conversations);
+  // Counts, compared shallowly: a streamed frame that adds no message leaves the list as it is.
+  const counts = useLiveConversationStore(
+    useShallow((state) =>
+      Object.fromEntries(
+        Object.entries(state.conversations).map(([id, live]) => [
+          id,
+          messageCount(live.view),
+        ]),
+      ),
+    ),
+  );
 
-  // Memoized so consumers (ChatsList accordions) can safely depend on array
-  // identity — a fresh map() result per render caused an infinite effect loop.
+  // Memoized so consumers can depend on array identity.
   const list = useMemo(
     () =>
       conversations.flatMap((conv) =>
         conv.listed === false
           ? []
-          : [toConversationRow(conv, messageCount(live[conv.id]?.view))],
+          : [toConversationRow(conv, counts[conv.id] ?? 0)],
       ),
-    [conversations, live],
+    [conversations, counts],
   );
 
   return {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { db, type IConversation } from "@/lib/db/chatDb";
 import {
-  applySyncedConversation,
+  applySyncedConversations,
   batchSyncConversations,
 } from "@/services/syncService";
 
@@ -11,14 +11,14 @@ vi.mock("@/features/chat/api/chatApi", () => ({
 }));
 
 vi.mock("@/features/chat/live/connection", () => ({
-  applyConversationPage: vi.fn(),
+  applyConversationPages: vi.fn(),
 }));
 
 vi.mock("@/lib/db/chatDb", () => ({
   db: {
     getAllConversations: vi.fn(),
     deleteConversationsAndLogsBulk: vi.fn(),
-    putConversation: vi.fn(),
+    putConversationsBulk: vi.fn(),
   },
 }));
 
@@ -131,27 +131,31 @@ describe("syncing a tracked todo's chat", () => {
   });
 
   it("stores which todo the chat belongs to", async () => {
-    await applySyncedConversation("todo-chat", {
-      conversation_id: "todo-chat",
-      description: "Watch the deploy",
-      items: [],
-      state: { kind: "state", head: 0, display: "idle", work: [] },
-      cursor: null,
-      artifacts: [],
-      awaiting_approval: false,
-      has_older: false,
-      todo_id: "todo-1",
-      source: null,
-      listed: false,
-      starred: null,
-      is_system_generated: null,
-      system_purpose: null,
-      is_unread: null,
-      createdAt: LONG_AGO.toISOString(),
-      updatedAt: null,
-    });
+    await applySyncedConversations([
+      {
+        conversation_id: "todo-chat",
+        description: "Watch the deploy",
+        items: [],
+        state: { kind: "state", head: 0, display: "idle", work: [] },
+        cursor: null,
+        artifacts: [],
+        awaiting_approval: false,
+        has_older: false,
+        todo_id: "todo-1",
+        source: null,
+        listed: false,
+        starred: null,
+        is_system_generated: null,
+        system_purpose: null,
+        is_unread: null,
+        createdAt: LONG_AGO.toISOString(),
+        updatedAt: null,
+      },
+    ]);
 
-    expect(vi.mocked(db.putConversation).mock.calls[0][0]).toMatchObject({
+    expect(
+      vi.mocked(db.putConversationsBulk).mock.calls[0][0][0],
+    ).toMatchObject({
       id: "todo-chat",
       title: "Watch the deploy",
       todoId: "todo-1",
@@ -189,27 +193,31 @@ describe("syncing a bot DM chat", () => {
   });
 
   it("stores the source so the chat stays cached after it is opened", async () => {
-    await applySyncedConversation("telegram-dm", {
-      conversation_id: "telegram-dm",
-      description: "Telegram Chat",
-      items: [],
-      state: { kind: "state", head: 0, display: "idle", work: [] },
-      cursor: null,
-      artifacts: [],
-      awaiting_approval: false,
-      has_older: false,
-      todo_id: null,
-      source: "telegram",
-      listed: false,
-      starred: null,
-      is_system_generated: null,
-      system_purpose: null,
-      is_unread: null,
-      createdAt: LONG_AGO.toISOString(),
-      updatedAt: null,
-    });
+    await applySyncedConversations([
+      {
+        conversation_id: "telegram-dm",
+        description: "Telegram Chat",
+        items: [],
+        state: { kind: "state", head: 0, display: "idle", work: [] },
+        cursor: null,
+        artifacts: [],
+        awaiting_approval: false,
+        has_older: false,
+        todo_id: null,
+        source: "telegram",
+        listed: false,
+        starred: null,
+        is_system_generated: null,
+        system_purpose: null,
+        is_unread: null,
+        createdAt: LONG_AGO.toISOString(),
+        updatedAt: null,
+      },
+    ]);
 
-    expect(vi.mocked(db.putConversation).mock.calls[0][0]).toMatchObject({
+    expect(
+      vi.mocked(db.putConversationsBulk).mock.calls[0][0][0],
+    ).toMatchObject({
       id: "telegram-dm",
       source: "telegram",
       listed: false,
