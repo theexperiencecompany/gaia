@@ -8,7 +8,7 @@ snapshot refresh, and aux-cache resets.
 import asyncio
 from types import SimpleNamespace
 from typing import Any, ClassVar, cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from pydantic import SecretStr
 import pytest
@@ -164,11 +164,12 @@ class TestOllamaInit:
         assert client_module.resolved_config(LLMProviderName.OLLAMA) is None
 
     def test_sim_mode_returns_stub(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        sentinel = object()
+        stub = MagicMock()
         monkeypatch.setattr(client_module.settings, "GAIA_SIM_MODE", True)
-        monkeypatch.setattr(client_module, "_sim_llm", lambda temperature=0.0: sentinel)
+        monkeypatch.setattr(client_module, "_sim_llm", lambda temperature=0.0: stub)
 
-        assert init_ollama_llm().loader_func() is sentinel
+        assert init_ollama_llm().loader_func() is stub.configurable_fields.return_value
+        stub.configurable_fields.assert_called_once_with(streaming=client_module._STREAMING_FIELD)
 
 
 # ---------------------------------------------------------------------------

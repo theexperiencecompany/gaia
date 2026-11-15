@@ -17,6 +17,7 @@ from app.constants.outbox import (
     OUTBOX_INTAKE_TASK,
     OUTBOX_ITEM_RETENTION_SECONDS,
     OUTBOX_JOB_ID_PREFIX,
+    OUTBOX_JOB_QUEUE,
 )
 from app.constants.outbox_attention import HoldReason
 from app.constants.outbox_judge import (
@@ -76,6 +77,7 @@ async def _enqueue(report: OutboxReport, *, batched: bool) -> None:
         report.model_dump(mode="json"),
         batched,
         _job_id=f"{OUTBOX_JOB_ID_PREFIX}{report.report_id}{suffix}",
+        _queue_name=OUTBOX_JOB_QUEUE,
         _defer_by=JUDGE_BATCH_WINDOW_SECONDS if batched else None,
     )
 

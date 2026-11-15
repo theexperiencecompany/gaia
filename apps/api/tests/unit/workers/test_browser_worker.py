@@ -6,16 +6,15 @@ again until that key expires. These build the real arq Worker objects and read
 the TTL arq computes, rather than restating the formula.
 """
 
-import asyncio
 import signal
 import socket
 from typing import Any
-from unittest.mock import MagicMock
 
 from arq.connections import RedisSettings
 from arq.worker import create_worker
 import pytest
 
+from app.config.settings import settings
 from app.constants.browser import BROWSER_JOB_QUEUE, BROWSER_JOB_TASK
 from app.services.browser.job_lifetime import browser_job_deadline_seconds
 from app.workers import browser_worker as browser_worker_mod
@@ -79,7 +78,6 @@ async def test_the_browser_worker_shares_the_main_workers_redis_and_limits(
     worker = browser_worker_mod.build_browser_worker()
 
     assert worker.redis_settings == WorkerSettings.redis_settings
-    assert worker.max_jobs == WorkerSettings.max_jobs
     assert worker.health_check_interval == WorkerSettings.health_check_interval
 
 
@@ -121,93 +119,6 @@ async def test_the_browser_worker_serves_only_browser_jobs_on_their_own_queue() 
     )
 
 
-class _FakeWorker:
-    """Stands in for arq's Worker: runs until closed, or dies when told to."""
-
-    def __init__(self, dies_with: Exception | None = None) -> None:
-        self.dies_with = dies_with
-        self.closed = False
-        self._stop = asyncio.Event()
-
-    async def async_run(self) -> None:
-        if self.dies_with is not None:
-            raise self.dies_with
-        await self._stop.wait()
-        raise asyncio.CancelledError
-
-    async def close(self) -> None:
-        self.closed = True
-        self._stop.set()
-
-
-@pytest.fixture
-def raised_signals(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    raise_signal = MagicMock()
-    monkeypatch.setattr(browser_worker_mod.signal, "raise_signal", raise_signal)
-    return raise_signal
-
-
-async def test_the_browser_worker_runs_beside_the_main_one_and_stops_with_it(
-    monkeypatch: pytest.MonkeyPatch, raised_signals: MagicMock
-) -> None:
-    fake = _FakeWorker()
-    monkeypatch.setattr(browser_worker_mod, "build_browser_worker", lambda: fake)
-    ctx: dict[str, Any] = {}
-
-    browser_worker_mod.start_browser_worker(ctx)
-    await asyncio.sleep(0)
-    await browser_worker_mod.stop_browser_worker(ctx)
-
-    assert fake.closed
-    raised_signals.assert_not_called()
-
-
-async def test_a_browser_worker_that_dies_takes_the_process_down_to_be_restarted(
-    monkeypatch: pytest.MonkeyPatch, raised_signals: MagicMock
-) -> None:
-    fake = _FakeWorker(dies_with=ConnectionError("redis went away"))
-    monkeypatch.setattr(browser_worker_mod, "build_browser_worker", lambda: fake)
-    ctx: dict[str, Any] = {}
-
-    browser_worker_mod.start_browser_worker(ctx)
-    for _ in range(3):
-        await asyncio.sleep(0)
-
-    raised_signals.assert_called_once_with(browser_worker_mod.signal.SIGTERM)
-    await browser_worker_mod.stop_browser_worker(ctx)
-
-
-async def test_a_dying_browser_worker_says_why_the_process_is_going_down(
-    monkeypatch: pytest.MonkeyPatch, raised_signals: MagicMock
-) -> None:
-    fake_log = MagicMock()
-    monkeypatch.setattr(browser_worker_mod, "log", fake_log)
-    task = MagicMock(cancelled=MagicMock(return_value=False))
-
-    browser_worker_mod._stop_process_if_it_ended(task)
-
-    (message,), _ = fake_log.error.call_args
-    assert "Browser worker stopped" in message
-
-
-async def test_the_browser_workers_task_is_named_for_it(
-    monkeypatch: pytest.MonkeyPatch, raised_signals: MagicMock
-) -> None:
-    """The name is what a stuck-task dump or an unobserved failure reports it by."""
-    monkeypatch.setattr(browser_worker_mod, "build_browser_worker", _FakeWorker)
-    ctx: dict[str, Any] = {}
-
-    browser_worker_mod.start_browser_worker(ctx)
-    try:
-        assert ctx[browser_worker_mod.BROWSER_WORKER_CTX_KEY].task.get_name() == "browser_worker"
-    finally:
-        await browser_worker_mod.stop_browser_worker(ctx)
-
-
-async def test_shutdown_after_a_startup_that_never_started_it_is_a_no_op() -> None:
-    await browser_worker_mod.stop_browser_worker({})
-
-
 async def test_the_reaper_runs_every_few_seconds_on_the_main_workers_queue() -> None:
     """Never behind the browser jobs it watches: their slots are held for hours."""
     reaper = browser_worker_mod.browser_reaper_cron()
@@ -215,3 +126,14 @@ async def test_the_reaper_runs_every_few_seconds_on_the_main_workers_queue() -> 
     assert reaper.name == "cron:reap_browser_jobs"
     assert reaper.second == {0, 15, 30, 45}
     assert browser_worker_mod.build_browser_worker().cron_jobs == []
+
+
+async def test_the_browser_worker_has_its_own_slots_apart_from_the_main_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Chromium session is not a coroutine: raising the main worker's slots must not raise these."""
+    monkeypatch.setattr(settings, "ARQ_BROWSER_MAX_JOBS", 4)
+    monkeypatch.setattr(settings, "ARQ_MAX_JOBS", 99)
+
+    assert browser_worker_mod.build_browser_worker().max_jobs == 4
+    assert settings.ARQ_BROWSER_MAX_JOBS != settings.ARQ_MAX_JOBS

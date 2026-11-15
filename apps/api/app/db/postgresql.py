@@ -148,8 +148,8 @@ async def init_postgresql_engine() -> AsyncEngine:
         url=url,
         future=True,
         pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
+        pool_size=settings.sqlalchemy_pool_size,
+        max_overflow=settings.sqlalchemy_max_overflow,
         connect_args=connect_args,
         # A DBAPIError's text otherwise carries the bound values: user queries, verbatim.
         hide_parameters=True,

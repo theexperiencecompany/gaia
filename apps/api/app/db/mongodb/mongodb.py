@@ -41,7 +41,7 @@ class MongoDB:
                 server_api=ServerApi("1"),
                 tz_aware=True,
                 tzinfo=UTC,
-                maxPoolSize=20,
+                maxPoolSize=settings.mongo_max_pool_size,
                 minPoolSize=0,
             )
             self.database = self.client.get_database(db_name)

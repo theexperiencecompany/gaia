@@ -70,6 +70,7 @@ from app.constants.llm import (
     MAX_COMPLETION_NUDGES,
     RECURSION_WRAPUP_MIN_STEPS,
     RECURSION_WRAPUP_REMAINING_FRACTION,
+    STREAMING_FIELD_ID,
 )
 from app.constants.log_tags import LogTag
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -155,6 +156,14 @@ def _prepare_fallback(
     # tool-binding chat model, LanguageModelLike just doesn't declare bind_tools.
     bindable = cast(BaseChatModel, llm)
     return (lambda: bindable.bind_tools(tools_to_bind), fallback_lane)
+
+
+def _unstreamed_when_background(config: RunnableConfig) -> RunnableConfig:
+    """Return config with token streaming off when the run is background: no one watches its tokens live."""
+    if agent_configurable(config).get("execution_mode") != "background":
+        return config
+    configurable = config.get("configurable") or {}
+    return {**config, "configurable": {**configurable, STREAMING_FIELD_ID: False}}
 
 
 def _bind_session_id(
@@ -380,6 +389,7 @@ def _model_node(deps: _AgentDeps) -> RunnableCallable:
 
     async def acall_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         """Async model invocation with middleware support."""
+        config = _unstreamed_when_background(config)
         state = await execute_hooks(pre_model_hooks, state, config, store)
         tombstones = pop_pruned_tombstones(state)
         injected = pop_injected_messages(state)

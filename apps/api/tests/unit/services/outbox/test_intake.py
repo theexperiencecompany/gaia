@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.outbox import OUTBOX_INTAKE_TASK
+from app.constants.outbox import OUTBOX_INTAKE_TASK, OUTBOX_JOB_QUEUE
 from app.services.outbox.intake import submit
 from app.services.outbox.models import (
     Initiative,
@@ -42,6 +42,7 @@ async def test_submit_enqueues_a_job_keyed_by_the_report_id() -> None:
         OUTBOX_INTAKE_TASK,
         REPORT.model_dump(mode="json"),
         False,
+        _queue_name=OUTBOX_JOB_QUEUE,
         _job_id="outbox:rem:1:2",
         _defer_by=None,
     )

@@ -191,6 +191,27 @@ class Settings(BrowserHostSettings):
         )
 
     @property
+    def mongo_max_pool_size(self) -> int:
+        """Return this process's Mongo pool cap: the worker's when it is the ARQ worker, else the API's."""
+        return self.WORKER_MONGO_MAX_POOL_SIZE if self._is_worker else self.MONGO_MAX_POOL_SIZE
+
+    @property
+    def sqlalchemy_pool_size(self) -> int:
+        """Return this process's SQLAlchemy pool size."""
+        return self.WORKER_SQLALCHEMY_POOL_SIZE if self._is_worker else self.SQLALCHEMY_POOL_SIZE
+
+    @property
+    def sqlalchemy_max_overflow(self) -> int:
+        """Return this process's SQLAlchemy pool overflow."""
+        return (
+            self.WORKER_SQLALCHEMY_MAX_OVERFLOW if self._is_worker else self.SQLALCHEMY_MAX_OVERFLOW
+        )
+
+    @property
+    def _is_worker(self) -> bool:
+        return self.WORKER_TYPE == "arq_worker"
+
+    @property
     def telegram_bot_username(self) -> str | None:
         """The Telegram bot for this instance, from env or the shared identity file."""
         return self.TELEGRAM_BOT_USERNAME
@@ -230,10 +251,32 @@ class Settings(BrowserHostSettings):
     ENABLE_PROFILING: bool = False  # Must be explicitly enabled via .env
     PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
 
-    # Concurrent jobs PER WORKER; sized via Little's Law (mean task 10.9s at
-    # 0.72 tasks/s needs ~8). Fleet ceiling is 10 x M workers — scale this DOWN
-    # (~ceil(8/M)) per worker added, since pools sum to 35 conns vs max 100.
-    ARQ_MAX_JOBS: int = 10
+    # Concurrent jobs PER WORKER PROCESS. A tracked-todo, executor or workflow run is
+    # almost all I/O wait (LLM and tool APIs), so a slot costs a coroutine, not a core.
+    # Measured in one process, 10/25/50/100 concurrent 3-LLM-call runs on a 3 s stub
+    # against the real pools: event-loop lag p99 175-260 ms up to 50 runs and 250-410 ms
+    # at 100; Mongo and SQLAlchemy queue at 100 (p99 ~280 ms / ~1 s); peak RSS stayed
+    # under 310 MB at every N. 50 is the last size with no queueing; real runs are
+    # heavier than the probe, so the rest is headroom.
+    ARQ_MAX_JOBS: int = 50
+    # The browser sidecar Worker's slots: each job is a Chromium session, not a coroutine.
+    ARQ_BROWSER_MAX_JOBS: int = 10
+    # Outbox jobs run on their own Worker (OUTBOX_JOB_QUEUE) in the same process, so they
+    # never wait behind a long run for a slot; each is a short Mongo/LLM round trip.
+    ARQ_OUTBOX_MAX_JOBS: int = 10
+
+    # Connection pools. The API keeps the sizes it always had; the worker's are sized so
+    # ARQ_MAX_JOBS concurrent runs do not queue on them (read via the properties below).
+    # Each is an upper bound: connections open on demand and idle ones close.
+    MONGO_MAX_POOL_SIZE: int = 20
+    WORKER_MONGO_MAX_POOL_SIZE: int = 50
+    # The checkpointer wrote through 2 connections at 100 concurrent runs (writes are
+    # short and autocommit); 20 is headroom, and every worker and API pod adds its own.
+    CHECKPOINTER_MAX_POOL_SIZE: int = 20
+    SQLALCHEMY_POOL_SIZE: int = 5
+    SQLALCHEMY_MAX_OVERFLOW: int = 10
+    WORKER_SQLALCHEMY_POOL_SIZE: int = 10
+    WORKER_SQLALCHEMY_MAX_OVERFLOW: int = 10
 
     # Process-wide cap on concurrent Chromium instances (see constants/search.py).
     # Falls back to the default on non-integer input; clamped to at least

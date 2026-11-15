@@ -41,9 +41,7 @@ class WorkerSettings:
     on_startup: StartupShutdown | None = None
     on_shutdown: StartupShutdown | None = None
 
-    # Performance settings — sized from measured load: 10.9s mean duration at
-    # 0.72 tasks/s needs ~8 concurrent (Little's Law, peaks ~16); below ~8 the
-    # queue grows unbounded. PER PROCESS: scale via ARQ_MAX_JOBS, not more workers.
+    # Performance settings. max_jobs is PER PROCESS (see settings.ARQ_MAX_JOBS for the sizing).
     max_jobs = settings.ARQ_MAX_JOBS
     job_timeout = WORKER_JOB_TIMEOUT_SECONDS + ARQ_BACKSTOP_GRACE_SECONDS
     keep_result = 0  # Don't keep results in Redis

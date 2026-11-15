@@ -28,6 +28,7 @@ from app.services.outbox.receipt_consumer import start_receipt_consumer
 from app.utils.browser_reaper import start_browser_reaper
 from app.workers.browser_worker import start_browser_worker
 from app.workers.metrics import start_metrics_server
+from app.workers.outbox_worker import start_outbox_worker
 from shared.py.wide_events import log, log_context
 
 # Set up common warning filters
@@ -79,5 +80,6 @@ async def startup(ctx: MutableMapping[str, object]) -> None:
         # Files the delivery receipts the bots publish for each outbound envelope part.
         start_receipt_consumer(ctx)
 
-        # Last: browser jobs run on the services everything above just started.
+        # Last: browser and outbox jobs run on the services everything above just started.
         start_browser_worker(ctx)
+        start_outbox_worker(ctx)

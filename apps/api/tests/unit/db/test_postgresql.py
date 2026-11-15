@@ -370,14 +370,16 @@ class TestInitPostgresqlEngine:
             patch("app.db.postgresql.log"),
         ):
             mock_settings.POSTGRES_URL = "postgresql://localhost/test"
+            mock_settings.sqlalchemy_pool_size = 7
+            mock_settings.sqlalchemy_max_overflow = 3
 
             await _get_original_init_fn()()
 
             call_kwargs = mock_create.call_args.kwargs
             assert call_kwargs["future"] is True
             assert call_kwargs["pool_pre_ping"] is True
-            assert call_kwargs["pool_size"] == 5
-            assert call_kwargs["max_overflow"] == 10
+            assert call_kwargs["pool_size"] == 7
+            assert call_kwargs["max_overflow"] == 3
 
     async def test_url_already_asyncpg_not_double_rewritten(self) -> None:
         """If URL already uses asyncpg, the replace should still work correctly."""

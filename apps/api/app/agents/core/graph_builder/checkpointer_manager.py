@@ -34,7 +34,9 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 class CheckpointerManager:
     """A manager class to handle checkpointer initialization and lifecycle."""
 
-    def __init__(self, conninfo: str, max_pool_size: int = 20) -> None:
+    def __init__(
+        self, conninfo: str, max_pool_size: int = settings.CHECKPOINTER_MAX_POOL_SIZE
+    ) -> None:
         self.conninfo = conninfo
         self.max_pool_size = max_pool_size
         # Tuple rows, deliberately — see the note in setup() on the dict_row cast.

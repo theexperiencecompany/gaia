@@ -33,7 +33,8 @@ def browser_worker_calls() -> Iterator[list[str]]:
 
     with (
         patch("app.workers.lifecycle.startup.start_browser_worker", _start),
-        patch("app.workers.lifecycle.shutdown.stop_browser_worker", _stop),
+        patch("app.workers.lifecycle.startup.start_outbox_worker"),
+        patch("app.workers.lifecycle.shutdown.stop_sidecar_workers", _stop),
     ):
         yield calls
 
@@ -202,7 +203,7 @@ class TestWorkerShutdown:
 
         ctx = {"startup_time": 0}
         with (
-            patch("app.workers.lifecycle.shutdown.stop_browser_worker", _stop),
+            patch("app.workers.lifecycle.shutdown.stop_sidecar_workers", _stop),
             patch("app.workers.lifecycle.shutdown.unified_shutdown", AsyncMock()),
         ):
             await shutdown(ctx)
@@ -408,8 +409,8 @@ class TestWorkerSettings:
         assert WorkerSettings.allow_abort_jobs is True
 
     def test_max_jobs_value(self):
-        """max_jobs default is 10."""
-        assert WorkerSettings.max_jobs == 10
+        """max_jobs default is 50."""
+        assert WorkerSettings.max_jobs == 50
 
     def test_health_check_interval_value(self):
         """health_check_interval default is 30 seconds."""

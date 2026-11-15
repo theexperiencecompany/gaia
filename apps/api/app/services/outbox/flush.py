@@ -14,6 +14,7 @@ from app.constants.log_tags import LogTag
 from app.constants.outbox import (
     OUTBOX_INTAKE_TASK,
     OUTBOX_JOB_ID_PREFIX,
+    OUTBOX_JOB_QUEUE,
     OUTBOX_RECOVERY_AFTER_SECONDS,
     OUTBOX_RECOVERY_BATCH,
     OUTBOX_RECOVERY_JOB_ID_SUFFIX,
@@ -197,6 +198,7 @@ async def _recover(item: OutboxItemDocument) -> None:
             OUTBOX_INTAKE_TASK,
             item.report.model_dump(mode="json"),
             False,
+            _queue_name=OUTBOX_JOB_QUEUE,
             _job_id=(
                 f"{OUTBOX_JOB_ID_PREFIX}{item.report_id}"
                 f"{OUTBOX_RECOVERY_JOB_ID_SUFFIX}{item.recovery_attempts}"

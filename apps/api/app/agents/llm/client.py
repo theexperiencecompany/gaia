@@ -74,6 +74,7 @@ from app.constants.llm import (
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
+    STREAMING_FIELD_ID,
     UNKNOWN_MODEL_NAME,
     LLMProviderKey,
     LLMProviderName,
@@ -262,9 +263,19 @@ def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> ChatOpenRouter:
     return llm
 
 
+def _sim_graph_llm() -> LanguageModelLike:
+    """Return the stub as a graph-lane client: only streaming is per-request configurable."""
+    return _sim_llm().configurable_fields(streaming=_STREAMING_FIELD)
+
+
 # Gemini's own attribute is ``model``; OpenRouter's is ``model_name`` (see
 # _openrouter_wire_configurables). One id, one meaning across both lanes.
 _MODEL_FIELD = ConfigurableField(id=MODEL_FIELD_ID, name="Model", description="Which model to use")
+# Every graph-lane client exposes it: a run no one watches live turns streaming off per call.
+# The stream=False call kwarg does not do it: ChatOpenRouter keeps streaming on its own field.
+_STREAMING_FIELD = ConfigurableField(
+    id=STREAMING_FIELD_ID, name="Streaming", description="Whether tokens stream as they arrive"
+)
 
 
 def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
@@ -286,6 +297,7 @@ def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
             name="Model kwargs",
             description="Extra request params (e.g. provider routing pin)",
         ),
+        streaming=_STREAMING_FIELD,
     )
 
 
@@ -298,7 +310,7 @@ def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
 def init_gemini_llm() -> LanguageModelLike:
     """Initialize Gemini LLM with default model."""
     if settings.GAIA_SIM_MODE:
-        return _sim_llm()
+        return _sim_graph_llm()
     config: ProviderConfig = _require_provider_config(LLMProviderName.GEMINI)
     llm = ChatGoogleGenerativeAI(
         model=config.model or LLM_MODEL_PROFILES[LLMProviderName.GEMINI].chat,
@@ -310,7 +322,7 @@ def init_gemini_llm() -> LanguageModelLike:
     # middleware (summarization/compaction triggers) raises without it. Same
     # contract as _build_default_llm/_sim_llm/init_custom_llm.
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
-    return llm.configurable_fields(model=_MODEL_FIELD)
+    return llm.configurable_fields(model=_MODEL_FIELD, streaming=_STREAMING_FIELD)
 
 
 class _AppAttribution(TypedDict):
@@ -356,7 +368,7 @@ def init_openrouter_llm() -> LanguageModelLike:
     (model_kwargs) are both per-request configurable.
     """
     if settings.GAIA_SIM_MODE:
-        return _sim_llm()
+        return _sim_graph_llm()
     config: ProviderConfig = _require_provider_config(LLMProviderName.OPENROUTER)
     # No base_url kwarg unless the resolved config carries one: passing None
     # would override the field's OPENROUTER_API_BASE env default_factory.
@@ -402,7 +414,7 @@ def init_ollama_llm() -> LanguageModelLike:
     Available only with a configured endpoint: a store credential or OLLAMA_BASE_URL.
     """
     if settings.GAIA_SIM_MODE:
-        return _sim_llm()
+        return _sim_graph_llm()
     config: ProviderConfig = _require_provider_config(LLMProviderName.OLLAMA)
     llm = ChatOpenAI(
         model=config.model or LLM_MODEL_PROFILES[LLMProviderName.OLLAMA].chat,
@@ -415,7 +427,7 @@ def init_ollama_llm() -> LanguageModelLike:
     # Same reason as _build_default_llm: fractional-window middleware needs a
     # context-window profile at graph-build time.
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
-    return llm
+    return llm.configurable_fields(streaming=_STREAMING_FIELD)
 
 
 @lazy_provider(
@@ -432,14 +444,14 @@ def init_custom_llm() -> LanguageModelLike:
     endpoint, which is how the discounted dev lanes keep working.
     """
     if settings.GAIA_SIM_MODE:
-        return _sim_llm()
+        return _sim_graph_llm()
     # model_name is the field id both ChatOpenAI and ChatOpenRouter expose, so the
     # per-request lane can retarget the model on this client.
     return build_custom_chat_model(
         temperature=DEFAULT_LLM_TEMPERATURE,
         max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
         endpoint=custom_endpoint(),
-    ).configurable_fields(model_name=_MODEL_FIELD)
+    ).configurable_fields(model_name=_MODEL_FIELD, streaming=_STREAMING_FIELD)
 
 
 def _ollama_openai_url(config: ProviderConfig) -> str:
@@ -460,7 +472,7 @@ def init_openai_llm() -> LanguageModelLike:
     Responses API, while comms stays on chat completions.
     """
     if settings.GAIA_SIM_MODE:
-        return _sim_llm()
+        return _sim_graph_llm()
     config: ProviderConfig = _require_provider_config(LLMProviderName.OPENAI)
     llm = without_sdk_retry(
         ChatOpenAI(
@@ -475,7 +487,7 @@ def init_openai_llm() -> LanguageModelLike:
         )
     )
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
-    return llm.configurable_fields(model_name=_MODEL_FIELD)
+    return llm.configurable_fields(model_name=_MODEL_FIELD, streaming=_STREAMING_FIELD)
 
 
 def init_llm(

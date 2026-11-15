@@ -3,6 +3,7 @@
 from collections.abc import Collection
 from datetime import datetime, timedelta
 
+from app.constants.outbox import OUTBOX_JOB_QUEUE
 from app.constants.outbox_attention import (
     OUTBOX_FLUSH_JOB_ID_PREFIX,
     OUTBOX_FLUSH_TASK,
@@ -25,6 +26,7 @@ async def schedule_flush(user_id: str, at: datetime) -> None:
         pool,
         OUTBOX_FLUSH_TASK,
         user_id,
+        _queue_name=OUTBOX_JOB_QUEUE,
         _job_id=f"{OUTBOX_FLUSH_JOB_ID_PREFIX}{user_id}:{int(at.timestamp())}",
         _defer_until=at,
     )

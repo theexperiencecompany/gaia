@@ -11,6 +11,10 @@ MESSAGES_COLLECTION: Final = "outbox_messages"
 OUTBOX_ITEM_RETENTION_SECONDS: Final = 90 * ONE_DAY_TTL
 OUTBOX_MESSAGE_RETENTION_SECONDS: Final = 180 * ONE_DAY_TTL
 
+#: The ARQ queue every outbox job rides, served by its own worker (app.outbox_worker) so a
+#: message to the user never waits behind a long run on the main queue.
+OUTBOX_JOB_QUEUE: Final = "arq:queue:outbox"
+
 #: The ARQ job that takes a submitted report; its job id is OUTBOX_JOB_ID_PREFIX + report_id.
 OUTBOX_INTAKE_TASK: Final = "outbox_intake"
 OUTBOX_JOB_ID_PREFIX: Final = "outbox:"

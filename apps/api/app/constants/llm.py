@@ -129,6 +129,8 @@ MODEL_FIELD_ID = "model"
 PROVIDER_FIELD_ID = "provider"
 REASONING_FIELD_ID = "reasoning"
 MODEL_KWARGS_FIELD_ID = "model_kwargs"
+# Not a lane key: set per call by the graph for a run no one watches live.
+STREAMING_FIELD_ID = "streaming"
 
 # The configurable key the whole resolved ModelLane rides under.
 LANE_FIELD_ID = "lane"

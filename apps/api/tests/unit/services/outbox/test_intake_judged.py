@@ -11,6 +11,7 @@ from app.constants.outbox import (
     OUTBOX_BATCHED_JOB_ID_SUFFIX,
     OUTBOX_INTAKE_TASK,
     OUTBOX_JOB_ID_PREFIX,
+    OUTBOX_JOB_QUEUE,
 )
 from app.constants.outbox_judge import (
     JUDGE_BATCH_WINDOW_SECONDS,
@@ -212,6 +213,7 @@ async def test_a_report_that_waits_for_its_users_others_is_handed_back_deferred_
     )
     assert kwargs["_job_id"] == f"{OUTBOX_JOB_ID_PREFIX}wait{OUTBOX_BATCHED_JOB_ID_SUFFIX}"
     assert kwargs["_defer_by"] == JUDGE_BATCH_WINDOW_SECONDS
+    assert kwargs["_queue_name"] == OUTBOX_JOB_QUEUE
     world.judge.assert_not_awaited()
     world.repo.queue.assert_not_awaited()
     world.flush.assert_not_awaited()

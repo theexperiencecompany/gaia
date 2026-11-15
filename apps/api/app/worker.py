@@ -15,8 +15,6 @@ from app.constants.delivery_alerts import (
 )
 from app.constants.email import SIGNUP_EMAIL_TASK
 from app.constants.onboarding import INTELLIGENCE_TASK
-from app.constants.outbox import OUTBOX_INTAKE_TASK, OUTBOX_TASK_MAX_TRIES
-from app.constants.outbox_attention import FLUSH_SWEEP_INTERVAL_MINUTES, OUTBOX_FLUSH_TASK
 from app.constants.payments import PAID_PERSON_SYNC_TASK, SUBSCRIPTION_WORKFLOW_SYNC_TASK
 from app.constants.run_trace import RUN_REAP_EVERY_MINUTES
 from app.constants.todos import (
@@ -65,7 +63,6 @@ from app.workers.tasks.inbox_desk_tasks import (
     provision_inbox_desk_task,
 )
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
-from app.workers.tasks.outbox_tasks import outbox_flush, outbox_flush_sweep, outbox_intake
 from app.workers.tasks.paid_person_tasks import sync_paid_person_properties_task
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.subscription_workflow_tasks import sync_workflows_for_subscription_state
@@ -118,13 +115,6 @@ _prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
 # Named from the constant its per-occurrence job ids are built from.
 _execute_tracked_todo = func(arq_task(execute_tracked_todo), name=EXECUTE_TRACKED_TODO_TASK)
 _provision_inbox_desk = func(arq_task(provision_inbox_desk_task), name=PROVISION_INBOX_DESK_TASK)
-_outbox_intake = func(
-    arq_task(outbox_intake), name=OUTBOX_INTAKE_TASK, max_tries=OUTBOX_TASK_MAX_TRIES
-)
-_outbox_flush = func(
-    arq_task(outbox_flush), name=OUTBOX_FLUSH_TASK, max_tries=OUTBOX_TASK_MAX_TRIES
-)
-_outbox_flush_sweep = arq_task(outbox_flush_sweep)
 _resume_tracked_todo = arq_task(resume_tracked_todo)
 _dispatch_todo_subscriptions = arq_task(dispatch_todo_subscriptions)
 _safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)
@@ -169,7 +159,8 @@ _refresh_delivery_incident = func(
 )
 
 # Every job on the default queue. Browser jobs have their own worker
-# (app.workers.browser_worker), started from the worker lifecycle.
+# (app.workers.browser_worker), started from the worker lifecycle; outbox jobs
+# have their own process (app.outbox_worker).
 TASK_FUNCTIONS: list[WorkerFunction] = [
     _sweep_hil_approvals,
     _reap_abandoned_executor_runs,
@@ -189,9 +180,6 @@ TASK_FUNCTIONS: list[WorkerFunction] = [
     _prune_inactive_sessions,
     _prune_checkpoint_versions,
     _execute_tracked_todo,
-    _outbox_intake,
-    _outbox_flush,
-    _outbox_flush_sweep,
     _resume_tracked_todo,
     _finish_tracked_todo_run,
     _dispatch_todo_subscriptions,
@@ -218,12 +206,6 @@ WorkerSettings.cron_jobs = [
         # approval hijacks the conversation's next messages and holds the
         # executor's claim on the thread.
         _sweep_hil_approvals,
-        second=0,
-    ),
-    # A held item whose flush job was lost is flushed within one interval.
-    cron(
-        _outbox_flush_sweep,
-        minute=set(range(0, 60, FLUSH_SWEEP_INTERVAL_MINUTES)),
         second=0,
     ),
     # A run whose process died stays "running" in its trace until this closes it.

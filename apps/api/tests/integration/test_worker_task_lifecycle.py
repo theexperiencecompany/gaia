@@ -529,7 +529,10 @@ class TestWorkerStartupHooks:
     @pytest.fixture(autouse=True)
     def _no_browser_worker(self) -> Iterator[None]:
         # A real one would start consuming the browser queue on whatever Redis is up.
-        with patch("app.workers.lifecycle.startup.start_browser_worker"):
+        with (
+            patch("app.workers.lifecycle.startup.start_browser_worker"),
+            patch("app.workers.lifecycle.startup.start_outbox_worker"),
+        ):
             yield
 
     async def test_startup_calls_unified_startup(self):
