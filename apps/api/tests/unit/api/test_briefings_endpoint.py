@@ -95,7 +95,7 @@ async def test_opening_a_brief_tags_the_wide_event_with_the_user_and_brief() -> 
     assert event["briefing"] == {"operation": "get", "id": "brief_abc123"}
 
 
-async def test_the_archive_lists_the_users_briefs_and_tags_the_wide_event() -> None:
+async def test_the_archive_lists_only_the_users_editions_and_tags_the_wide_event() -> None:
     brief = _brief(opened=True)
     with patch(
         f"{MODULE}.briefing_repository.list_recent", AsyncMock(return_value=[brief])

@@ -4,38 +4,9 @@
  * `artifact_done` tool_data entry. Both fold into a single card entry keyed by stream_id.
  */
 import type { StreamToolDataEntry } from "../chat/streaming";
+import type { ArtifactCardData, ArtifactDeltaFrame } from "./types";
 
 export const ARTIFACT_CARD_TOOL_NAME = "artifact_done";
-
-/** "stopped" is the client's own: the user stopped the turn before the artifact was done. */
-export type ArtifactCardStatus = "streaming" | "ready" | "failed" | "stopped";
-
-/** Why a failed artifact gave up: ArtifactFailureReason in apps/api/app/models/openui_artifact_models.py. */
-export type ArtifactFailureReason =
-  | "validation"
-  | "refused"
-  | "timeout"
-  | "truncated";
-
-export interface ArtifactCardData {
-  stream_id: string;
-  kind: string;
-  title: string;
-  status: ArtifactCardStatus;
-  /** Present once stored (status "ready"). */
-  artifact_id?: string;
-  /** Present on a failure the tool caught (status "failed"). */
-  reason?: ArtifactFailureReason;
-  /** The first draft as it streams; the stored program is fetched by artifact_id. */
-  program?: string;
-}
-
-export interface ArtifactDeltaFrame {
-  stream_id: string;
-  kind: string;
-  title: string;
-  delta: string;
-}
 
 const cardOf = (entry: StreamToolDataEntry): ArtifactCardData | null =>
   entry.tool_name === ARTIFACT_CARD_TOOL_NAME

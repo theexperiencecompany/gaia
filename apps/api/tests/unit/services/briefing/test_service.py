@@ -2753,6 +2753,7 @@ class TestTheDailyRunWiring:
         )
         lookback = world.reads["format_lookback_block"].await_args.args
         assert lookback[:3] == (_USER, None, _DAY_START)
+        assert (lookback[3].date_str, lookback[3].tz.key) == (_DATE, _TZ)
         assert world.reads["compute_winback_state"].await_args.args[0].id == _USER
         world.reads["has_daily_briefing"].assert_awaited_once_with(_USER)
         world.reads["gather_tracked_work"].assert_awaited_once_with(_USER, _DAY_START)

@@ -3,7 +3,7 @@
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import date, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, _Call, patch
 
 from bson import ObjectId
 import pytest
@@ -48,8 +48,12 @@ class Seeded:
     upsert: AsyncMock
     deliver: AsyncMock
 
+    def stored(self) -> list[_Call]:
+        """Return the upserts that store each brief with its edition, not the earlier one its link needs."""
+        return [call for call in self.upsert.await_args_list if call.kwargs["edition"]]
+
     def payloads(self) -> list[BriefingPayload]:
-        return [call.args[3] for call in self.upsert.await_args_list]
+        return [call.args[3] for call in self.stored()]
 
 
 @pytest.fixture
@@ -116,14 +120,23 @@ async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its
 
     keys = [key for _, key in seeded.rendered]
     assert len(set(keys)) == 3
-    for (payload, key), upsert_call, deliver_call in zip(
-        seeded.rendered, seeded.upsert.await_args_list, seeded.deliver.await_args_list, strict=True
+    linked = seeded.upsert.await_args_list[::2]
+    for (payload, key), first_call, upsert_call, deliver_call in zip(
+        seeded.rendered,
+        linked,
+        seeded.stored(),
+        seeded.deliver.await_args_list,
+        strict=True,
     ):
+        assert first_call.args == upsert_call.args
+        assert first_call.kwargs == {"briefing_id": f"brief_{payload.date}", "edition": None}
         assert upsert_call.args == (user.id, payload.date, BRIEFING_KIND_DAILY, payload)
         assert payload.link == SHORT_LINK
         assert upsert_call.kwargs == {
             "briefing_id": f"brief_{payload.date}",
-            "edition": EditionRender(image_url=f"https://cdn.test/{key}.png"),
+            "edition": EditionRender(
+                image_url=f"https://cdn.test/{key}.png", fold=None, paper=None
+            ),
         }
         assert deliver_call.args == (
             user.id,
@@ -186,7 +199,7 @@ async def test_every_city_can_be_seeded_but_not_one_more(user, seeded) -> None:
     seeded.upsert.assert_not_awaited()
 
     await seed_dev_postmarks(user, len(CITIES))
-    assert seeded.upsert.await_count == len(CITIES)
+    assert len(seeded.payloads()) == len(CITIES)
 
 
 NON_POSTAL_FAMILIES = sorted(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
@@ -195,7 +208,7 @@ NON_POSTAL_FAMILIES = sorted(set(DAILY_FAMILY_WEIGHTS) - {POSTAL_FAMILY})
 async def test_editions_draw_one_brief_per_other_family_then_a_weekly_recap(user, seeded) -> None:
     await seed_dev_editions(user, 4)
 
-    kinds = [call.args[2] for call in seeded.upsert.await_args_list]
+    kinds = [call.args[2] for call in seeded.stored()]
     payloads = seeded.payloads()
     assert kinds == [BRIEFING_KIND_DAILY] * 4 + [BRIEFING_KIND_WEEKLY]
     assert [p.template_family for p in payloads] == [*NON_POSTAL_FAMILIES[:4], WEEKLY_FAMILY]

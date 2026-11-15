@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ArtifactCardData } from "../artifacts/openuiArtifacts";
+import type { ArtifactCardData } from "../artifacts/types";
 import { parseChatStreamEvent } from "./streaming";
 import { applyStreamEvent, createTurnAccumulator } from "./turnAccumulator";
 

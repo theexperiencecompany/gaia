@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ToolDataEntry, WorkflowDelivery } from "../api/generated";
-import type { ArtifactCardData } from "../artifacts/openuiArtifacts";
+import type { ArtifactCardData } from "../artifacts/types";
 
 export type {
   RecurrenceData,
