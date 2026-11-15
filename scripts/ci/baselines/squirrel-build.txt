@@ -1178,23 +1178,8 @@ score:Security=96
 /learn/workflow-automation	content/keyword-stuffing/keyword-stuffing	automation
 /learn/workflow-orchestration	content/keyword-stuffing/keyword-stuffing	workflow
 /learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
-/marketplace/asana	perf/dom-size/dom-max-children
-/marketplace/clickup	perf/dom-size/dom-max-children
-/marketplace/dropbox	perf/dom-size/dom-max-children
-/marketplace/github	perf/dom-size/dom-max-children
-/marketplace/github	perf/dom-size/dom-total-nodes
-/marketplace/gmail	perf/dom-size/dom-max-children
-/marketplace/googledrive	perf/dom-size/dom-max-children
-/marketplace/hubspot	perf/dom-size/dom-max-children
-/marketplace/jira	perf/dom-size/dom-max-children
-/marketplace/outlook	perf/dom-size/dom-max-children
 /marketplace/page/2	content/word-count/word-count
 /marketplace/page/3	content/word-count/word-count
-/marketplace/resend-mcp-communication	perf/dom-size/dom-max-children
-/marketplace/slack	perf/dom-size/dom-max-children
-/marketplace/todoist	perf/dom-size/dom-max-children
-/marketplace/trello	perf/dom-size/dom-max-children
-/marketplace/twitter	perf/dom-size/dom-max-children
 /pt-br/alternative-to/airtable	content/keyword-stuffing/keyword-stuffing	airtable
 /pt-br/alternative-to/bear	content/keyword-stuffing/keyword-stuffing	bear
 /pt-br/alternative-to/bee	content/keyword-stuffing/keyword-stuffing	bee
