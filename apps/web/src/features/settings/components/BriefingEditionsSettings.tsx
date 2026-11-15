@@ -4,9 +4,11 @@ import { Button } from "@heroui/button";
 import { Card } from "@heroui/card";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
-import { FavouriteIcon } from "@icons";
+import { FavouriteIcon, FullScreenIcon } from "@icons";
 import type { BriefingEdition } from "@shared/api/generated";
 import Image from "next/image";
+import { useState } from "react";
+import { EditionDemoModal } from "@/features/settings/components/EditionDemoModal";
 import { SettingsSectionHeader } from "@/features/settings/components/ui/SettingsSection";
 import { useBriefingEditionsSettings } from "@/features/settings/hooks/useBriefingEditionsSettings";
 import { cn } from "@/lib/utils";
@@ -14,6 +16,8 @@ import { cn } from "@/lib/utils";
 /** Built by apps/api/scripts/build_edition_thumbnails.py, one per daily family. */
 const thumbnailSrc = (family: string) =>
   `/images/briefing/editions/${family}.webp`;
+
+const CARD_CONTROL_CLASSES = "absolute top-2 z-20 bg-black/50 backdrop-blur";
 
 /** @icons is a solid set: the heart's own path, stroked and left unfilled, is its outline. */
 const OUTLINED_HEART_CLASSES =
@@ -24,11 +28,14 @@ const SKELETON_KEYS = Array.from({ length: 6 }, (_, i) => `edition-${i}`);
 /**
  * "Editions": every daily edition the brief can draw. Tapping a card takes it
  * out of the rotation (greyed) or puts it back; the heart makes it a
- * favourite, drawn twice as often.
+ * favourite, drawn twice as often; the corner button shows it full screen
+ * drawing a sample brief.
  */
 export function BriefingEditionsSettings() {
   const { editions, loadFailed, toggleOn, toggleFavourite } =
     useBriefingEditionsSettings();
+  const [previewed, setPreviewed] = useState<BriefingEdition | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   return (
     <section aria-label="Editions">
@@ -49,6 +56,10 @@ export function BriefingEditionsSettings() {
                   edition={edition}
                   onToggle={() => toggleOn(edition.family)}
                   onFavourite={() => toggleFavourite(edition.family)}
+                  onPreview={() => {
+                    setPreviewed(edition);
+                    setIsPreviewOpen(true);
+                  }}
                 />
               ))
             : SKELETON_KEYS.map((key) => (
@@ -56,6 +67,11 @@ export function BriefingEditionsSettings() {
               ))}
         </div>
       )}
+      <EditionDemoModal
+        edition={previewed}
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+      />
     </section>
   );
 }
@@ -64,16 +80,18 @@ function EditionCard({
   edition,
   onToggle,
   onFavourite,
+  onPreview,
 }: {
   edition: BriefingEdition;
   onToggle: () => void;
   onFavourite: () => void;
+  onPreview: () => void;
 }) {
   const isOff = edition.choice === "off";
   const isFavourite = edition.choice === "favourite";
 
   return (
-    <div className="relative">
+    <div className="group relative">
       <Card
         isPressable
         onPress={onToggle}
@@ -101,12 +119,26 @@ function EditionCard({
         }
         aria-pressed={isFavourite}
         onPress={onFavourite}
-        className="absolute top-2 right-2 z-20 bg-black/50 backdrop-blur"
+        className={cn(CARD_CONTROL_CLASSES, "right-2")}
       >
         <FavouriteIcon
           size={16}
           className={isFavourite ? "text-red-500" : OUTLINED_HEART_CLASSES}
         />
+      </Button>
+      <Button
+        isIconOnly
+        size="sm"
+        radius="full"
+        variant="flat"
+        aria-label={`See ${edition.name} full screen`}
+        onPress={onPreview}
+        className={cn(
+          CARD_CONTROL_CLASSES,
+          "left-2 opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100",
+        )}
+      >
+        <FullScreenIcon size={16} className="text-zinc-200" />
       </Button>
       <div className="mt-2 flex items-center justify-between gap-2">
         <p

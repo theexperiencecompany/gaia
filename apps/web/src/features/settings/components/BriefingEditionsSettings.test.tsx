@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { BriefingEdition } from "@shared/api/generated";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { NotificationsAPI } from "@/services/api/notifications";
@@ -55,5 +55,27 @@ describe("BriefingEditionsSettings", () => {
     }
     expect(chipOf("The Almanac")?.closest(".invisible")).toBeTruthy();
     expect(chipOf("GAIA Band")?.closest(".invisible")).toBeNull();
+  });
+
+  it("opens an edition full screen on its sample brief without changing its choice", async () => {
+    vi.mocked(NotificationsAPI.getBriefingEditions).mockResolvedValue({
+      editions: EDITIONS,
+    });
+    render(<BriefingEditionsSettings />);
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "See The Almanac full screen",
+      }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    const demo = within(dialog).getByAltText(
+      "The Almanac edition drawing a sample brief",
+    );
+    expect(demo.getAttribute("src")).toContain(
+      encodeURIComponent("/images/briefing/editions/demo/almanac.webp"),
+    );
+    expect(NotificationsAPI.updateBriefingEditions).not.toHaveBeenCalled();
   });
 });

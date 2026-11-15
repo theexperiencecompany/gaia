@@ -1,12 +1,9 @@
 /** The stamp art's canvas, so a blank has a collected stamp's proportions. */
 const STAMP_WIDTH = 600;
 const STAMP_HEIGHT = 850;
-/**
- * Distance between perforation holes, and each hole's radius, in stamp units:
- * coarse, so the holes still read on a blank a dozen pixels wide.
- */
-const PERFORATION_PITCH = 150;
-const PERFORATION_RADIUS = 40;
+/** Distance between perforation holes, and each hole's radius, in stamp units: a real sheet's gauge at album size. */
+const PERFORATION_PITCH = 75;
+const PERFORATION_RADIUS = 20;
 
 type Point = [number, number];
 
@@ -44,7 +41,7 @@ function perforatedOutline(width: number, height: number): string {
 
 const STAMP_OUTLINE = perforatedOutline(STAMP_WIDTH, STAMP_HEIGHT);
 
-/** A city still to collect: the stamp's perforated silhouette, small, for the album's sheet of blanks. */
+/** A city still to collect: the stamp's perforated silhouette, in the album's grid. */
 export function StampBlank() {
   return (
     <svg
@@ -52,7 +49,7 @@ export function StampBlank() {
       aria-hidden
       className="h-full w-full"
     >
-      <path d={STAMP_OUTLINE} className="fill-zinc-700/60" />
+      <path d={STAMP_OUTLINE} className="fill-zinc-800" />
     </svg>
   );
 }

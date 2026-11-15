@@ -13,6 +13,7 @@ import type { z } from "zod";
 
 import type { briefingSchema } from "@/config/openui/promptSpecs";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { cn } from "@/lib/utils";
 
 import { BRIEF_ITEM_STATES, EDITION_ROWS_SHOWN } from "../constants";
 
@@ -194,6 +195,7 @@ function BriefingText({ payload }: { payload: BriefingEditionPayload }) {
                 <PoolItemRow
                   key={`${item.app}-${item.todo_id ?? item.title}`}
                   item={item}
+                  className="py-3 first:pt-0 last:pb-0"
                 />
               ))}
             </ul>
@@ -244,10 +246,16 @@ function PoolItemContext({ item }: { item: BriefPoolItem }) {
 }
 
 /** What GAIA read but left out of the brief, one row each, opening its source when it has one. */
-function PoolItemRow({ item }: { item: BriefPoolItem }) {
+function PoolItemRow({
+  item,
+  className,
+}: {
+  item: BriefPoolItem;
+  className: string;
+}) {
   const href = poolItemHref(item);
   return (
-    <li className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
+    <li className={cn("flex flex-col gap-1", className)}>
       {href ? (
         <Link
           href={href}
@@ -279,20 +287,23 @@ function OnYourRadar({ items }: { items: BriefPoolItem[] }) {
       aria-labelledby="brief-on-your-radar"
       className="mx-auto w-full max-w-[540px] rounded-2xl bg-zinc-900 p-4"
     >
-      <h2
-        id="brief-on-your-radar"
-        className="text-sm font-medium text-zinc-200"
-      >
-        {ON_YOUR_RADAR_TITLE}
-      </h2>
-      <p className="mt-0.5 mb-4 text-xs text-pretty text-zinc-500">
-        {ON_YOUR_RADAR_NOTE}
-      </p>
-      <ul className="divide-y divide-white/5">
+      <header className="mb-4 px-1">
+        <h2
+          id="brief-on-your-radar"
+          className="text-base font-medium text-zinc-100"
+        >
+          {ON_YOUR_RADAR_TITLE}
+        </h2>
+        <p className="mt-1 text-sm text-pretty text-zinc-500">
+          {ON_YOUR_RADAR_NOTE}
+        </p>
+      </header>
+      <ul className="flex flex-col gap-2">
         {items.map((item) => (
           <PoolItemRow
             key={`${item.app}-${item.todo_id ?? item.title}`}
             item={item}
+            className="rounded-xl bg-zinc-800 px-3 py-2.5"
           />
         ))}
       </ul>

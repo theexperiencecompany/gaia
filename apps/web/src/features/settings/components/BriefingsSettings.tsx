@@ -8,6 +8,7 @@ import { BriefingScheduleSettings } from "@/features/settings/components/Briefin
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { NOTIFICATIONS_SETTINGS_PATH } from "@/features/settings/constants";
 
 // The editions grid carries its own thumbnails; load it after the schedule has painted.
 const BriefingEditionsSettings = dynamic(() =>
@@ -15,8 +16,6 @@ const BriefingEditionsSettings = dynamic(() =>
     (m) => m.BriefingEditionsSettings,
   ),
 );
-
-const NOTIFICATIONS_SETTINGS_PATH = "/settings/notifications";
 
 /** Settings > Briefings: when briefs come, where they land, and which editions they draw. */
 export function BriefingsSettings() {

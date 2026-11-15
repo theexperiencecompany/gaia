@@ -22,6 +22,11 @@ vi.mock(
   }),
 );
 
+// jsdom lays out no grid; the album is read at a five-column width.
+vi.mock("@/features/briefing/hooks/useGridColumnCount", () => ({
+  useGridColumnCount: () => [{ current: null }, 5],
+}));
+
 // maplibre needs WebGL, which jsdom has none of; the globe is driven in the browser.
 vi.mock("./PostmarksGlobe", () => ({
   PostmarksGlobe: () => null,
@@ -76,11 +81,13 @@ const TOKYO_BRIEF = {
   },
 };
 
-/** The compact sheet of cities still to collect, read as one picture with its count. */
-function stillToCollect(count: number): HTMLElement {
-  return screen.getByRole("img", {
-    name: `${count} ${count === 1 ? "city" : "cities"} still to collect`,
-  });
+/** The album's blank cells, the cities still to collect. */
+function blanks(): Element[] {
+  return Array.from(
+    screen
+      .getByRole("list", { name: "Stamp collection" })
+      .querySelectorAll("li[aria-hidden]"),
+  );
 }
 
 function renderPostmarks(collection: PostmarksResponse) {
@@ -110,16 +117,18 @@ describe("PostmarksSettings", () => {
     });
   });
 
-  it("shows every city still to collect as one compact sheet when no stamp has arrived", async () => {
+  it("lays one row of blanks when no stamp has arrived, the last counting the rest", async () => {
     renderPostmarks({ total: 85, postmarks: [] });
 
     expect(await screen.findByText("No stamps yet")).toBeTruthy();
-    expect(screen.queryByRole("list", { name: "Stamp collection" })).toBeNull();
-    expect(stillToCollect(85).querySelectorAll("svg")).toHaveLength(85);
+    const album = screen.getByRole("list", { name: "Stamp collection" });
+    expect(within(album).queryAllByRole("button")).toHaveLength(0);
+    expect(blanks()).toHaveLength(5);
+    expect(blanks().at(-1)?.textContent).toBe("+81");
     expect(screen.getByText(/of 85/).textContent).toBe("0 of 85 cities");
   });
 
-  it("shows the collected stamps in full, in arrival order, and the rest as small blanks", async () => {
+  it("shows the collected stamps in full, in arrival order, then blanks only to finish their row", async () => {
     renderPostmarks({ total: 85, postmarks: [TOKYO, LISBON] });
 
     await screen.findByRole("button", { name: "Tokyo, Japan" });
@@ -129,8 +138,8 @@ describe("PostmarksSettings", () => {
         .getAllByRole("button")
         .map((stamp) => stamp.getAttribute("aria-label")),
     ).toEqual(["Tokyo, Japan", "Lisbon, Portugal"]);
-    expect(album.querySelectorAll("svg")).toHaveLength(0);
-    expect(stillToCollect(83).querySelectorAll("svg")).toHaveLength(83);
+    expect(blanks()).toHaveLength(3);
+    expect(blanks().map((blank) => blank.textContent)).toEqual(["", "", "+81"]);
     expect(screen.queryByText("No stamps yet")).toBeNull();
     expect(screen.getByText(/of 85/).textContent).toBe("2 of 85 cities");
   });
@@ -139,7 +148,7 @@ describe("PostmarksSettings", () => {
     renderPostmarks({ total: 1, postmarks: [TOKYO] });
 
     await screen.findByRole("button", { name: "Tokyo, Japan" });
-    expect(screen.queryByRole("img", { name: /still to collect/ })).toBeNull();
+    expect(blanks()).toHaveLength(0);
   });
 
   it("unfolds the stamp's brief in place, with a way to its full page", async () => {

@@ -122,7 +122,10 @@ describe("BriefingArchive", () => {
     ]);
     expect(screen.getByText("Oct 12 – Oct 18")).toBeTruthy();
     expect(screen.getByText("Oct 5 – Oct 11")).toBeTruthy();
-    expect(screen.getByText("Weekly recap")).toBeTruthy();
+    expect(screen.getByText("Weekly")).toBeTruthy();
+    expect(screen.getAllByText("Daily")).toHaveLength(2);
+    expect(screen.getByText("The Week")).toBeTruthy();
+    expect(screen.queryByText("Weekly recap")).toBeNull();
     expect(screen.getByText("4 waiting")).toBeTruthy();
     expect(screen.getAllByText("Air Mail, Bogotá")).toHaveLength(2);
     expect(screen.queryByText(/1 waiting/)).toBeNull();

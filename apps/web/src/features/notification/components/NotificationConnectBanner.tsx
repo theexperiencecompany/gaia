@@ -5,6 +5,7 @@ import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { NOTIFICATIONS_SETTINGS_PATH } from "@/features/settings/constants";
 import { api } from "@/lib/api/typed";
 import { useNotificationBannerStore } from "@/stores/notificationBannerStore";
 import type { PlatformLinks } from "@/types/platform";
@@ -82,7 +83,7 @@ export function NotificationConnectBanner({
               variant="flat"
               color="primary"
               className="rounded-xl text-xs"
-              onPress={() => router.push("/settings/linked-accounts")}
+              onPress={() => router.push(NOTIFICATIONS_SETTINGS_PATH)}
             >
               Connect
             </Button>
@@ -123,7 +124,7 @@ export function NotificationConnectBanner({
           variant="flat"
           color="primary"
           className="rounded-xl text-xs"
-          onPress={() => router.push("/settings/linked-accounts")}
+          onPress={() => router.push(NOTIFICATIONS_SETTINGS_PATH)}
         >
           Connect
         </Button>

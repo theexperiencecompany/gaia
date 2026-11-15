@@ -22,6 +22,10 @@ import { NotificationsAPI } from "@/services/api/notifications";
  * preferences actually load.
  */
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
 vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
@@ -154,7 +158,7 @@ describe("NotificationSettings", () => {
     expect(await screen.findByText(EMAIL_CHANNEL_DESCRIPTION)).toBeTruthy();
   });
 
-  it("lists every channel in one section: switches for linked, an inline Connect for the rest", async () => {
+  it("lists every chat app in one section: switches for linked, an inline Connect for the rest", async () => {
     render(<NotificationSettings />);
 
     const channels = await findChannels();
@@ -168,10 +172,55 @@ describe("NotificationSettings", () => {
         channels.getByRole("button", { name: `Connect ${label}` }),
       ).toBeTruthy();
     }
-    expect(channels.getAllByText("Not connected")).toHaveLength(4);
+    expect(
+      channels.getByText("Bring GAIA into your Slack workspace"),
+    ).toBeTruthy();
     expect(screen.getAllByRole("region")).toHaveLength(1);
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText(/Linked Accounts/)).toBeNull();
+  });
+
+  it("says how to reach GAIA on a linked app that has no chat to open", async () => {
+    mockLinked("slack");
+
+    render(<NotificationSettings />);
+
+    expect(
+      await (await findChannels()).findByText(
+        "Connected · Use /gaia in Slack to chat with GAIA",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("disconnects a linked platform from its row and offers Connect again", async () => {
+    vi.mocked(api.delete).mockResolvedValue({});
+
+    render(<NotificationSettings />);
+    const channels = await findChannels();
+    await channels.findByRole("switch", {
+      name: "Enable Telegram notifications",
+    });
+
+    mockLinked();
+    fireEvent.click(
+      channels.getByRole("button", { name: "More for Telegram" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Disconnect" }),
+    );
+
+    await waitFor(() =>
+      expect(api.delete).toHaveBeenCalledWith(
+        "/api/v1/platform-links/{platform}",
+        expect.objectContaining({ path: { platform: "telegram" } }),
+      ),
+    );
+    expect(
+      await channels.findByRole("button", { name: "Connect Telegram" }),
+    ).toBeTruthy();
+    expect(
+      channels.queryByRole("switch", { name: "Enable Telegram notifications" }),
+    ).toBeNull();
   });
 
   it("names the linked account on its row", async () => {

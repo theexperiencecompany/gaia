@@ -47,7 +47,7 @@ export const settingsCommand: BotCommand = {
             "❌ Not linked yet.\n\n" +
               "🔗 Link your account to GAIA to view settings:\n" +
               `${authUrl}\n\n` +
-              "Sign in to GAIA and connect your account in Settings → Linked Accounts.",
+              "Sign in to GAIA and connect your account in Settings → Notifications.",
           );
         } catch (error) {
           recordBotFailure("create_link_token_failed", error);

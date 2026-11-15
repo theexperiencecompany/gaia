@@ -1,7 +1,7 @@
 /**
  * Telegram / WhatsApp / iMessage platform-link picker for the `platformPick`
  * stage. Slack and Discord are deliberately absent — they live in
- * Settings → Linked accounts, which offers all five.
+ * Settings → Notifications, which offers all five.
  *
  * The button's behaviour comes entirely from `onConnect`; this component
  * knows nothing about deep links or phone registration. Phase 7 upgrades

@@ -114,14 +114,14 @@ export function buildLinkCodeFailureMessage(
     return (
       "**Your account already has a different account connected here**\n\n" +
       "Disconnect the one you have in settings, then tap the link again.\n" +
-      `${frontendUrl}/settings?section=linked-accounts`
+      `${frontendUrl}/settings/notifications`
     );
   }
   if (reason === "conflict") {
     return (
       "**This account is already connected to someone else**\n\n" +
       "Disconnect it from the other GAIA account first, then try again.\n" +
-      `${frontendUrl}/settings?section=linked-accounts`
+      `${frontendUrl}/settings/notifications`
     );
   }
   return (

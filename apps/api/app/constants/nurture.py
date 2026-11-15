@@ -91,7 +91,7 @@ NURTURE_STEPS: tuple[NurtureStep, ...] = (
         template="nurture_channels.html",
         subject="You don't actually have to open the app",
         skip_predicate="linked_platform",
-        cta_path="/settings/linked-accounts",
+        cta_path="/settings/notifications",
         cta_label="Link a channel",
     ),
     NurtureStep(

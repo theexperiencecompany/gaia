@@ -40,7 +40,7 @@
     {
       "heading": "AI personal assistant on iMessage",
       "paragraphs": [
-        "On an iPhone or Mac, link iMessage from Settings, then Linked accounts in GAIA by adding your phone number. GAIA then lives in Messages as an ordinary conversation, with no app to install.",
+        "On an iPhone or Mac, link iMessage from Settings, then Notifications in GAIA by adding your phone number. GAIA then lives in Messages as an ordinary conversation, with no app to install.",
         "Two details matter. iMessage works in one-to-one chats only, so GAIA ignores group threads. And Messages must send from your phone number rather than your Apple ID email; if yours sends from email, switch it under Settings, Messages, Send & Receive on your iPhone."
       ]
     },

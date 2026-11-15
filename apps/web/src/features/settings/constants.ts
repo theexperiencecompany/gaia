@@ -1,5 +1,8 @@
 import type { BotPlatform } from "@/config/botPlatforms";
 
+/** Where chat apps are connected and every channel GAIA reaches you on is set. */
+export const NOTIFICATIONS_SETTINGS_PATH = "/settings/notifications";
+
 interface LinkedPlatformDetails {
   description: string;
   connectedDescription: string;

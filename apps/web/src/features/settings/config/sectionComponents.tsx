@@ -10,7 +10,6 @@ import DesktopSettings from "@/features/settings/components/DesktopSettings";
 import DevicesSettings from "@/features/settings/components/DevicesSettings";
 import ExperimentalFeaturesSettings from "@/features/settings/components/ExperimentalFeaturesSettings";
 import { IntegrationInstructionsSettings } from "@/features/settings/components/IntegrationInstructionsSettings";
-import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
 import { MembersSettings } from "@/features/settings/components/MembersSettings";
 import MemorySettings from "@/features/settings/components/MemorySettings";
 import NotificationSettings from "@/features/settings/components/NotificationSettings";
@@ -40,7 +39,6 @@ const SECTION_PANELS: Record<
     <AccountSettings setModalAction={setModalAction} />
   ),
   profile: () => <ProfileCardSettings />,
-  "linked-accounts": () => <LinkedAccountsSettings />,
   providers: () => <ProvidersSettings />,
   "integrations-setup": () => <ComposioSetupSettings />,
   members: () => <MembersSettings />,

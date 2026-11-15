@@ -1,5 +1,6 @@
 import { BOT_URLS, TELEGRAM_BOT_USERNAME } from "@shared/constants/bots";
 import { BOT_PLATFORM_ICONS, type BotPlatform } from "@/config/botPlatforms";
+import { NOTIFICATIONS_SETTINGS_PATH } from "@/features/settings/constants";
 import { siteConfig } from "@/lib/seo";
 
 export type { BotPlatform };
@@ -10,7 +11,7 @@ export const BOT_LINKS: Record<BotPlatform, string> = {
   telegram: BOT_URLS.telegram,
   slack: "/slack-bot",
   whatsapp: BOT_URLS.whatsapp,
-  imessage: "/settings/linked-accounts",
+  imessage: NOTIFICATIONS_SETTINGS_PATH,
 };
 
 export interface BotAction {

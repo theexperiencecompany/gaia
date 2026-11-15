@@ -286,7 +286,7 @@ export default function SettingsMenu({
 
   // Entries surfaced directly in this menu; billing-only ones drop out on self-host.
   const quickSettingsKeys = new Set(
-    ["memory", "linked-accounts", "providers", "usage"].filter(
+    ["memory", "notifications", "providers", "usage"].filter(
       (key) => !(billingHidden && BILLING_ONLY_SETTINGS_KEYS.has(key)),
     ),
   );

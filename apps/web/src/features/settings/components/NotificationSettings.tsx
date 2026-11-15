@@ -4,21 +4,30 @@ import { EMAIL_CHANNEL_DESCRIPTION } from "@gaia/shared";
 import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownMenu,
+  DropdownTrigger,
+} from "@heroui/dropdown";
 import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
+import { MoreHorizontalIcon, Unlink04Icon } from "@icons";
 import Image from "next/image";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { PhoneLinkModal } from "@/components/shared/PhoneLinkModal";
-import { isBotPlatform } from "@/config/botPlatforms";
+import { type BotPlatform, isBotPlatform } from "@/config/botPlatforms";
 import {
   NOTIFICATION_CHANNEL_ICONS,
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_PLATFORMS,
 } from "@/features/notification/constants";
+import { OpenPlatformChatButton } from "@/features/settings/components/OpenPlatformChatButton";
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
+import { LINKED_PLATFORM_DETAILS } from "@/features/settings/constants";
 import { useChatChannelSettings } from "@/features/settings/hooks/useChatChannelSettings";
 import { usePlatformLinks } from "@/features/settings/hooks/usePlatformLinks";
 import { toast } from "@/lib/toast";
@@ -44,6 +53,7 @@ export default function NotificationSettings() {
     isLockedBehindPro,
     connectingPlatform,
     connect,
+    disconnect,
     phoneLinkModal,
   } = usePlatformLinks();
   const linkedPlatforms = NOTIFICATION_PLATFORMS.filter(isLinked);
@@ -93,16 +103,14 @@ export default function NotificationSettings() {
     );
   }
 
-  const channelSwitch = (channel: ChannelPlatform, description: string) => (
-    <ChannelRow key={channel} channel={channel} description={description}>
-      <Switch
-        size="sm"
-        isSelected={!!channelPrefs?.[channel]}
-        isDisabled={togglingChannel === channel}
-        onValueChange={(enabled) => handleToggle(channel, enabled)}
-        aria-label={`Enable ${NOTIFICATION_CHANNEL_LABELS[channel]} notifications`}
-      />
-    </ChannelRow>
+  const channelSwitch = (channel: ChannelPlatform) => (
+    <Switch
+      size="sm"
+      isSelected={!!channelPrefs?.[channel]}
+      isDisabled={togglingChannel === channel}
+      onValueChange={(enabled) => handleToggle(channel, enabled)}
+      aria-label={`Enable ${NOTIFICATION_CHANNEL_LABELS[channel]} notifications`}
+    />
   );
 
   return (
@@ -111,21 +119,56 @@ export default function NotificationSettings() {
       {channelPrefs && links && (
         <SettingsSection
           title="Channels"
-          description="Where GAIA can reach you."
+          description="The apps you chat with GAIA in, and where it reaches you."
         >
-          {channelSwitch("email", EMAIL_CHANNEL_DESCRIPTION)}
-          {linkedOrder.map((platform) => {
-            const user = linkedAs(platform);
-            return channelSwitch(
-              platform,
-              user ? `Connected as ${user}` : "Connected",
-            );
-          })}
+          <ChannelRow channel="email" description={EMAIL_CHANNEL_DESCRIPTION}>
+            {channelSwitch("email")}
+          </ChannelRow>
+          {linkedOrder.map((platform) => (
+            <ChannelRow
+              key={platform}
+              channel={platform}
+              description={linkedDescription(platform, linkedAs(platform))}
+            >
+              <div className="flex items-center gap-2">
+                {LINKED_PLATFORM_DETAILS[platform].chat && (
+                  <OpenPlatformChatButton platform={platform} />
+                )}
+                <Dropdown placement="bottom-end">
+                  <DropdownTrigger>
+                    <Button
+                      isIconOnly
+                      size="sm"
+                      variant="light"
+                      aria-label={`More for ${NOTIFICATION_CHANNEL_LABELS[platform]}`}
+                      isDisabled={connectingPlatform != null}
+                    >
+                      <MoreHorizontalIcon className="size-4 text-zinc-400" />
+                    </Button>
+                  </DropdownTrigger>
+                  <DropdownMenu
+                    aria-label={`${NOTIFICATION_CHANNEL_LABELS[platform]} actions`}
+                    onAction={() => void disconnect(platform)}
+                  >
+                    <DropdownItem
+                      key="disconnect"
+                      color="danger"
+                      className="text-danger"
+                      startContent={<Unlink04Icon className="size-4" />}
+                    >
+                      Disconnect
+                    </DropdownItem>
+                  </DropdownMenu>
+                </Dropdown>
+                {channelSwitch(platform)}
+              </div>
+            </ChannelRow>
+          ))}
           {unlinkedPlatforms.map((platform) => (
             <ChannelRow
               key={platform}
               channel={platform}
-              description="Not connected"
+              description={LINKED_PLATFORM_DETAILS[platform].description}
             >
               <div className="flex items-center gap-3">
                 {isLockedBehindPro(platform) && (
@@ -177,6 +220,20 @@ export default function NotificationSettings() {
       <PhoneLinkModal {...phoneLinkModal} />
     </SettingsPage>
   );
+}
+
+/** Who the link is, and for the apps with no chat to open, how to reach GAIA there. */
+function linkedDescription(
+  platform: BotPlatform,
+  user: string | undefined,
+): string {
+  const details = LINKED_PLATFORM_DETAILS[platform];
+  return [
+    user ? `Connected as ${user}` : "Connected",
+    details.chat ? null : details.connectedDescription,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 interface ChannelRowProps {

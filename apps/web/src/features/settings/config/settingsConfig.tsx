@@ -7,7 +7,6 @@ import {
   DiscordIcon,
   EarthIcon,
   LabsIcon,
-  Link04Icon,
   MessageMultiple02Icon,
   News01Icon,
   NoteEditIcon,
@@ -29,6 +28,7 @@ import {
 } from "@/features/briefing/constants";
 import { COMPOSIO_SETUP_PATH } from "@/features/settings/api/composioSetupApi";
 import { PROVIDERS_SETTINGS_PATH } from "@/features/settings/components/providers/providerRows";
+import { NOTIFICATIONS_SETTINGS_PATH } from "@/features/settings/constants";
 
 /** The Providers & Tools entry's mark: the custom lane's gateway logo, before any catalog loads. */
 const PROVIDERS_MENU_ICON_URL =
@@ -62,12 +62,6 @@ export const settingsPageItems: SettingsMenuItem[] = [
     href: "/settings/account",
   },
   {
-    key: "linked-accounts",
-    label: "Linked Accounts",
-    icon: Link04Icon,
-    href: "/settings/linked-accounts",
-  },
-  {
     key: "providers",
     label: "Providers & Tools",
     iconElement: (
@@ -98,7 +92,7 @@ export const settingsPageItems: SettingsMenuItem[] = [
     key: "notifications",
     label: "Notifications",
     icon: NotificationIcon,
-    href: "/settings/notifications",
+    href: NOTIFICATIONS_SETTINGS_PATH,
   },
   {
     key: "briefings",

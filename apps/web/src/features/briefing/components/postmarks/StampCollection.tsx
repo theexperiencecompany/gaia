@@ -3,7 +3,9 @@ import { Tooltip } from "@heroui/tooltip";
 import type { Postmark } from "@shared/api/generated";
 import Image from "next/image";
 
+import { useGridColumnCount } from "../../hooks/useGridColumnCount";
 import { postmarkBrief } from "../../utils/postmarkBrief";
+import { stampSheet } from "../../utils/stampSheet";
 import { BriefingFold } from "../BriefingFold";
 import { PostmarkCard } from "./PostmarkCard";
 import { StampBlank } from "./StampBlank";
@@ -56,52 +58,54 @@ function CollectedStamp({ postmark }: { postmark: Postmark }) {
   );
 }
 
-/** The cities still to collect as one small sheet of blank stamps: the whole set stays in view without the height. */
-function StillToCollect({ count }: { count: number }) {
-  // A blank has no city of its own; its place on the sheet is all that tells it apart.
-  const blankKeys = Array.from(
-    { length: count },
-    (_, index) => `blank-${index}`,
-  );
-  const label = `${count} ${count === 1 ? "city" : "cities"} still to collect`;
+/** A city still to collect, at a collected stamp's size; the last one counts every city the sheet leaves out. */
+function BlankStamp({ counts }: { counts: number | null }) {
   return (
-    <div className="flex flex-col gap-2.5">
-      <p aria-hidden className="text-xs text-zinc-500">
-        Still to collect
-      </p>
-      <div role="img" aria-label={label} className="flex flex-wrap gap-1.5">
-        {blankKeys.map((key) => (
-          <span key={key} className="block aspect-[600/850] w-3">
-            <StampBlank />
-          </span>
-        ))}
-      </div>
-    </div>
+    <li aria-hidden className="relative block aspect-[600/850] w-full">
+      <StampBlank />
+      {counts !== null && (
+        <span className="absolute inset-0 flex items-center justify-center text-sm font-medium text-zinc-400 tabular-nums">
+          +{counts}
+        </span>
+      )}
+    </li>
   );
 }
 
 /**
- * The album: the stamps collected so far in full, in arrival order, then every
- * city still to come as a small blank. Each stamp is captioned with its city
- * below sm, where there is no hover.
+ * The album: the stamps collected so far in full, in arrival order, then blanks
+ * only to finish their row (a full row when they end flush), the last blank
+ * counting the rest. Each stamp is captioned with its city below sm, where
+ * there is no hover.
  */
 export function StampCollection({ postmarks, total }: StampCollectionProps) {
-  const remaining = Math.max(total - postmarks.length, 0);
+  const [gridRef, columns] = useGridColumnCount<HTMLUListElement>();
+  const sheet =
+    columns === null ? null : stampSheet(postmarks.length, total, columns);
+  // A blank has no city of its own; its place on the sheet is all that tells it apart.
+  const blankKeys = Array.from(
+    { length: sheet?.blanks ?? 0 },
+    (_, index) => `blank-${index}`,
+  );
   return (
-    <div className="flex flex-col gap-6">
-      {postmarks.length > 0 && (
-        <ul
-          aria-label="Stamp collection"
-          className="grid grid-cols-3 gap-x-4 gap-y-5 sm:grid-cols-4 md:grid-cols-5"
-        >
-          {postmarks.map((postmark) => (
-            <li key={postmark.city_slug}>
-              <CollectedStamp postmark={postmark} />
-            </li>
-          ))}
-        </ul>
-      )}
-      {remaining > 0 && <StillToCollect count={remaining} />}
-    </div>
+    <ul
+      ref={gridRef}
+      aria-label="Stamp collection"
+      className="grid grid-cols-3 gap-x-4 gap-y-5 sm:grid-cols-4 md:grid-cols-5"
+    >
+      {postmarks.map((postmark) => (
+        <li key={postmark.city_slug}>
+          <CollectedStamp postmark={postmark} />
+        </li>
+      ))}
+      {blankKeys.map((key, index) => (
+        <BlankStamp
+          key={key}
+          counts={
+            index === blankKeys.length - 1 ? (sheet?.lastCounts ?? null) : null
+          }
+        />
+      ))}
+    </ul>
   );
 }
