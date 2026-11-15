@@ -21,7 +21,7 @@ class LLMProviderName(StrEnum):
     # OLLAMA_BASE_URL picks the endpoint at load time; nothing keys off the name
     # beyond registration.
     OLLAMA = "ollama"
-    # Workers AI's OpenAI-compatible API. Configured, it serves every role ahead of the rest.
+    # Workers AI's OpenAI-compatible API. Takes every role only when listed in OVERRIDE_PROVIDERS.
     CLOUDFLARE = "cloudflare"
 
 

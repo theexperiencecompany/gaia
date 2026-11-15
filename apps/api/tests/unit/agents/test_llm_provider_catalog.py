@@ -16,7 +16,7 @@ from langchain_openrouter import ChatOpenRouter
 from pydantic import SecretStr
 import pytest
 
-from app.agents.llm import client as client_module
+from app.agents.llm import client as client_module, lane as lane_module
 from app.agents.llm.client import (
     _build_default_llm,
     _build_gemini_one_shot,
@@ -237,8 +237,51 @@ _CLOUDFLARE_MODEL = "@cf/deepseek-ai/deepseek-v4.1-flash-1017"
 _CLOUDFLARE_URL = "https://api.cloudflare.com/client/v4/accounts/acct-1/ai/v1"
 
 
+class TestCloudflareConfiguredButNotOverriding:
+    """Workers AI credentials alone change nothing: it serves only once listed as an override."""
+
+    @pytest.fixture(autouse=True)
+    def _hosted_with_cloudflare(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        monkeypatch.setattr(settings, "OPENROUTER_API_KEY", "sk-or")
+        monkeypatch.setattr(settings, "OPENROUTER_BASE_URL", None)
+        monkeypatch.setattr(settings, "GOOGLE_API_KEY", "g-key")
+        monkeypatch.setattr(settings, "OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setattr(settings, "CLOUDFLARE_AI_ACCOUNT_ID", "acct-1")
+        monkeypatch.setattr(settings, "CLOUDFLARE_AI_API_TOKEN", "cf-token")
+
+    async def test_agent_tiers_keep_their_usual_providers(self) -> None:
+        comms, _ = await resolve_lane(None, AgentRole.COMMS)
+        executor, _ = await resolve_lane(None, AgentRole.EXECUTOR)
+
+        assert provider_configured(LLMProviderName.CLOUDFLARE)
+        assert (comms.provider, executor.provider) == ("openai", "openrouter")
+
+    @pytest.mark.parametrize("use", list(ModelUse))
+    def test_one_shot_roles_keep_their_hosted_provider(self, use: ModelUse) -> None:
+        route = one_shot_route(use)
+
+        assert route is not None
+        assert route[0] != LLMProviderName.CLOUDFLARE
+
+
+@pytest.fixture
+def cloudflare_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """List Workers AI as the override, exactly as the one-line constant change would."""
+    overrides = (LLMProviderName.CLOUDFLARE,)
+    priority = (
+        *overrides,
+        *(p for p in client_module.LLM_PROVIDER_PRIORITY if p not in overrides),
+    )
+    monkeypatch.setattr(client_module, "OVERRIDE_PROVIDERS", overrides)
+    monkeypatch.setattr(lane_module, "OVERRIDE_PROVIDERS", overrides)
+    monkeypatch.setattr(client_module, "LLM_PROVIDER_PRIORITY", priority)
+
+
+@pytest.mark.usefixtures("cloudflare_override")
 class TestCloudflareOverridesProduction:
-    """Workers AI configured: every role on DeepSeek, every chat failover to direct OpenAI."""
+    """Workers AI listed as the override: every role on DeepSeek, every chat failover to direct OpenAI."""
 
     @pytest.fixture(autouse=True)
     def _hosted_with_cloudflare(self, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -39,7 +39,7 @@ from app.constants.llm import DEFAULT_LLM_PROVIDER, LLMProviderName
 from app.constants.providers import (
     LLM_MODEL_PROFILES,
     LLM_PROVIDER_PRIORITY,
-    OVERRIDE_PROVIDER,
+    OVERRIDE_PROVIDERS,
     CredentialProviderName,
 )
 from app.core.lazy_loader import MissingKeyStrategy, ProviderRegistry
@@ -268,8 +268,8 @@ class TestProviderConstants:
         assert set(LLM_PROVIDER_PRIORITY) <= set(LLM_MODEL_PROFILES)
 
     def test_default_priority_matches_the_default_provider(self) -> None:
-        """The override leads, then the provider serving DEFAULT_MODEL_NAME."""
-        assert LLM_PROVIDER_PRIORITY[:2] == (OVERRIDE_PROVIDER, DEFAULT_LLM_PROVIDER)
+        """Any override leads, then the provider serving DEFAULT_MODEL_NAME."""
+        assert LLM_PROVIDER_PRIORITY[len(OVERRIDE_PROVIDERS)] == DEFAULT_LLM_PROVIDER
         assert DEFAULT_LLM_PROVIDER == "openrouter"
 
 
