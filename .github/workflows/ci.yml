@@ -1581,7 +1581,8 @@ jobs:
     if: ${{ always() && github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.quality-gate.result == 'success' && needs.web-build.result == 'success' }}
     uses: ./.github/workflows/deploy-web.yml
     permissions:
-      contents: read
+      contents: write # seo-crawl pushes the branch of the baseline PR it opens
       deployments: write
       actions: read # IndexNow reads earlier runs' deploy jobs
+      pull-requests: write # seo-crawl opens that PR
     secrets: inherit # pragma: allowlist secret

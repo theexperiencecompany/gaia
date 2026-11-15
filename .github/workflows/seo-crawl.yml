@@ -1,0 +1,61 @@
+name: SEO crawl
+
+# squirrelscan over the live site as a plain `squirrel audit --level full` sees it:
+# every sitemap page and every page they link to, squirrel's default rules, links
+# to other sites checked (`scripts/ci/smoke-web.sh squirrel`), held to
+# scripts/ci/baselines/squirrel-live.txt: any finding on a page, check and item
+# the baseline does not list, or a category scoring below its line, turns the run
+# red and posts a short alert to Slack and Discord. A crawl that fixed something
+# opens (or updates) the PR that drops it from the baseline.
+#
+# Runs nightly and behind every production web deploy (deploy-web.yml calls it).
+# Alerting only: it runs after the deploy, so it never blocks or rolls one back.
+on:
+  schedule:
+    - cron: "41 1 * * *"
+  workflow_dispatch:
+  workflow_call:
+
+# Two crawls of the same site at once would only race to open the same baseline PR.
+concurrency:
+  group: seo-crawl
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    name: squirrel full crawl
+    runs-on: ubuntu-latest
+    # The sitemap is ~4,400 pages: 20 min against heygaia.io with external links, measured on a laptop.
+    timeout-minutes: 90
+    permissions:
+      contents: write # push the baseline branch
+      pull-requests: write # open the baseline PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Crawl the live site with squirrelscan as a plain full audit does
+        id: squirrel
+        run: bash scripts/ci/smoke-web.sh squirrel
+
+      - name: Open the PR that drops what the crawl fixed from the baseline
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/smoke-web.sh tighten
+
+      # continue-on-error on the send only: a lost webhook must not hide the red crawl.
+      - name: Notify — SEO crawl regressed
+        if: ${{ failure() && steps.squirrel.outcome == 'failure' }}
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          USERNAME: Gaia SEO
+          COLOR: "#ff6b6b"
+          MESSAGE: "${{ steps.squirrel.outputs.alert || '🔴 **SEO crawl of heygaia.io** did not finish, squirrel could not audit the site (log in the run)' }}"
+        run: bash scripts/ci/deploy.sh notify
