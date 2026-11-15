@@ -47,6 +47,9 @@ class Signal(BaseModel):
     people: list[str] = Field(default_factory=list)
     #: What those people are to the item, when the app says; None when it does not.
     people_role: PeopleRole | None = None
+    #: Which of people is the user, by the identity of the account they connected; empty when
+    #: none is, or when the app's account carries no identity to tell.
+    people_you: list[str] = Field(default_factory=list)
     url: str | None = None
     state: str | None = Field(default=None, description="The item's status as the app shows it")
     #: The item's own figure (an invoice's total, a payout), when it carries one.

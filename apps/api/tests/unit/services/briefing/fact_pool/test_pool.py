@@ -470,6 +470,30 @@ class TestAnItemLine:
             " | GAIA can only read GitHub: no offer on it | also found by Slack, Linear"
         )
 
+    def test_an_app_item_marks_the_person_who_is_the_user(self) -> None:
+        signal = Signal(
+            integration_id="github",
+            app="GitHub",
+            external_id="7",
+            kind="pull request",
+            title="PR 7",
+            people=["Aryan", "Sam"],
+            people_you=["Aryan"],
+        )
+        item = BriefCandidate(
+            source="github",
+            app="GitHub",
+            state="you",
+            title="PR 7",
+            people=["Aryan", "Sam"],
+            signal=signal,
+        )
+
+        assert item_line(3, item, CONTEXT.clock).split(" | ")[1] == (
+            "names Aryan (this is the user: say you, never their name), Sam"
+            " (the app does not say their part in it)"
+        )
+
     @pytest.mark.parametrize(
         ("finished_by", "state"),
         [

@@ -11,6 +11,7 @@ import pytest
 from app.constants.hil import COMPOSIO_TAGS_METADATA_KEY
 from app.constants.scouts import SCOUT_MAX_BOUND_TOOLS, SCOUT_TOOL_QUERY
 from app.models.hil_models import ToolReadOnlyVerdict
+from app.models.integration_models import IntegrationAccount, UserIntegrationDocument
 from app.services.briefing.scouts import tools as scout_tools_module
 from app.services.briefing.scouts.tools import (
     ScoutIntegration,
@@ -134,7 +135,59 @@ def native(monkeypatch: pytest.MonkeyPatch) -> _Registry:
     return registry
 
 
+def _account(identity: dict[str, str]) -> IntegrationAccount:
+    return IntegrationAccount(
+        id="acct_1", connected_account_id="ca_1", identity=identity, label="account"
+    )
+
+
 class TestWhichIntegrations:
+    @pytest.fixture(autouse=True)
+    def accounts(self, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+        listing = AsyncMock(return_value=[])
+        monkeypatch.setattr(
+            scout_tools_module.user_integration_repository, "list_for_user", listing
+        )
+        return listing
+
+    @pytest.mark.usefixtures("native")
+    async def test_each_app_carries_the_users_own_handles_from_the_accounts_they_connected(
+        self, monkeypatch: pytest.MonkeyPatch, accounts: AsyncMock
+    ) -> None:
+        accounts.return_value = [
+            UserIntegrationDocument(
+                user_id=USER_ID,
+                integration_id="linear",
+                accounts=[
+                    _account(
+                        {
+                            "user_id": "7b23",
+                            "username": "Dhruv",
+                            "email": "D@x.io",
+                            "team_name": "GAIA",
+                            "workspace_name": "",
+                        }
+                    ),
+                    _account({"email": ""}),
+                ],
+            ),
+        ]
+        connected = [{"id": "linear", "name": "Linear"}, {"id": "notes", "name": "Notes"}]
+        monkeypatch.setattr(
+            scout_tools_module,
+            "get_connected_integrations_named",
+            AsyncMock(return_value=connected),
+        )
+        monkeypatch.setattr(
+            scout_tools_module, "get_signed_out_integrations_named", AsyncMock(return_value=[])
+        )
+
+        linear, notes = await scout_integrations(USER_ID)
+
+        assert linear.handles == frozenset({"7b23", "dhruv", "d@x.io"})
+        assert notes.handles == frozenset()
+        accounts.assert_awaited_once_with(USER_ID)
+
     @pytest.mark.usefixtures("native")
     async def test_gaias_own_features_are_not_apps_to_scout(
         self, monkeypatch: pytest.MonkeyPatch

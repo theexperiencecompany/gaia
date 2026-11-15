@@ -1,5 +1,6 @@
 """Reading a replayed result into signals by the learned paths, and refusing a moved shape."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -49,6 +50,7 @@ class TestReadingItems:
             "importance": SignalImportance.NORMAL,
             "people": ["ana"],
             "people_role": None,
+            "people_you": [],
             "url": "https://gh/7",
             "state": "open",
             "amount": None,
@@ -59,6 +61,35 @@ class TestReadingItems:
             "updated_at": None,
         }
         assert signal.due_at == datetime(2026, 10, 30, tzinfo=UTC)
+
+    def test_the_user_is_told_apart_from_a_teammate_by_their_own_handle(self) -> None:
+        """Aryan's brief said "Aryan is waiting on your review" about Aryan himself."""
+        source = SOURCE.model_copy(
+            update={"fields": SOURCE.fields.model_copy(update={"people": "assignees"})}
+        )
+        pr = _pr(7, state="open", author="ana", due="2026-10-30")
+        pr["assignees"] = [
+            {"name": "Aryan Randeriya", "login": "Aryan-Randeriya"},
+            {"name": "Sam Lee", "login": "samlee"},
+            "ARYAN@HEYGAIA.IO",
+        ]
+        mine = replace(GITHUB, handles=frozenset({"aryan-randeriya", "aryan@heygaia.io"}))
+
+        [signal] = extract_signals(mine, [source], {"reviews": {"items": [pr]}})
+
+        assert signal.people == ["Aryan Randeriya", "Sam Lee", "ARYAN@HEYGAIA.IO"]
+        assert signal.people_you == ["Aryan Randeriya", "ARYAN@HEYGAIA.IO"]
+
+    def test_an_app_with_no_known_handle_marks_nobody_as_the_user(self) -> None:
+        source = SOURCE.model_copy(
+            update={"fields": SOURCE.fields.model_copy(update={"people": "assignees"})}
+        )
+        pr = _pr(7, state="open", author="ana", due="2026-10-30")
+        pr["assignees"] = [{"name": "Aryan Randeriya", "login": "Aryan-Randeriya"}, 7]
+
+        [signal] = extract_signals(GITHUB, [source], {"reviews": {"items": [pr]}})
+
+        assert (signal.people, signal.people_you) == (["Aryan Randeriya"], [])
 
     def test_the_peoples_part_and_the_texts_author_are_read_as_the_scout_learned_them(
         self,

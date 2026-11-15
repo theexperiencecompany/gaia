@@ -100,7 +100,7 @@ def item_line(item_id: int, item: BriefCandidate, clock: UserClock) -> str:
     if item.people:
         signal = item.signal
         role = signal.people_role if signal is not None and item.people == signal.people else None
-        parts.append(people_note(item.people, role))
+        parts.append(people_note(item.people, role, signal.people_you if signal else ()))
     parts += _what_it_asks(item)
     if item.also_in:
         parts.append(f"also found by {', '.join(item.also_in)}")
