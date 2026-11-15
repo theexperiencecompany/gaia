@@ -12,7 +12,7 @@ from langchain_core.messages import ToolMessage
 from pydantic import ValidationError
 
 from app.agents.core.held_replies import last_ai_message
-from app.agents.tools.comms_turn_tools import ReactArgs, StaySilentArgs, turn_ending
+from app.agents.tools.comms_turn_tools import AnsweredArgs, ReactArgs, StaySilentArgs, turn_ending
 from app.models.agent_models import StreamChunkMetadata
 from app.models.conversation_frame_models import (
     FollowUpActionsEvent,
@@ -82,7 +82,7 @@ class CommsEventMapper:
         self._follow_ups: tuple[str, ...] = ()
         self._answer = ""
         # pragma: no mutate start — before a model update only isinstance reads it
-        self._ending: ReactArgs | StaySilentArgs | None = None
+        self._ending: AnsweredArgs | ReactArgs | StaySilentArgs | None = None
         # pragma: no mutate end
         self._final_reported = False  # pragma: no mutate — only read as truthiness
 

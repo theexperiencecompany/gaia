@@ -73,8 +73,10 @@ from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
     USER,
     Action,
+    Close,
     Do,
     Fail,
+    Forgetful,
     Pause,
     Runtime,
     ScriptItem,
@@ -255,6 +257,9 @@ RUN_STEPS = (
     "output_c2",
     "boundary",
     "retry",
+    # The model names every message still open (answered), or never names anything (forget).
+    "name",
+    "forget",
 )
 RUN_ENDS = ("replied", "empty", "reacted", "silent", "fail", "answered")
 
@@ -282,6 +287,8 @@ _FIXED_ITEMS: dict[str, tuple[ScriptItem, ...]] = {
     "tool_call": (ModelOutput(has_tool_calls=True),),
     "model": (ModelOutput(has_tool_calls=False),),
     "summary": (Summarized(),),
+    "name": (Close(),),
+    "forget": (Forgetful(),),
     **{f"call_{call}": (Streamed(payload=_call_card(call)),) for call in ("c1", "c2")},
     **{f"output_{call}": (_tool_result(call),) for call in ("c1", "c2")},
     "answered": (Answered(Replied("an answer")), Finished(Replied("an answer"))),
@@ -394,26 +401,34 @@ def _causes(entries: Sequence[LoggedEntry]) -> dict[str, tuple[str, ...]]:
 
 
 def _assert_every_input_answered_once_or_stopped(entries: Sequence[LoggedEntry]) -> None:
+    """Check no run ended owing: every input is named by exactly one settle, or a Stop took it out."""
     removed_by = _removals(entries)
     causes = _causes(entries)
+    settles = [item.entry for item in entries if isinstance(item.entry, ReplySettled)]
     owed: dict[str, set[str]] = {}
     for woken in _woken(entries):
         remover = removed_by.get(woken.seq)
         assert remover is not None, f"seq {woken.seq} ({woken.entry.id}) never settled"
-        match remover.entry:
-            case ReplySettled(answers=answers, id=settle_id):
-                assert woken.entry.id in answers, f"{settle_id} settled {woken.entry.id} unanswered"
-                owed.setdefault(settle_id, set()).update(
-                    {woken.entry.id, *causes.get(woken.entry.id, ())}
-                )
-            case StopRequested():
-                pass
-            case other:
-                raise AssertionError(f"seq {woken.seq} removed by {other.kind}")
-    for logged in entries:
-        if isinstance(logged.entry, ReplySettled):
-            extra = set(logged.entry.answers) - owed.get(logged.entry.id, set())
-            assert not extra, f"{logged.entry.id} answers {extra}, which it did not cover"
+        # A settle that delivers finished work also names the messages that caused it.
+        naming = [
+            settled
+            for settled in settles
+            if woken.entry.id in settled.answers
+            and not any(woken.entry.id in causes.get(answer, ()) for answer in settled.answers)
+        ]
+        assert len(naming) <= 1, f"{woken.entry.id} answered by {[n.id for n in naming]}"
+        naming = naming or [settled for settled in settles if woken.entry.id in settled.answers][:1]
+        if not naming:
+            assert isinstance(remover.entry, StopRequested), (
+                f"{woken.entry.id} was dropped: removed by {remover.entry.kind}, named by no reply"
+            )
+            continue
+        owed.setdefault(naming[0].id, set()).update(
+            {woken.entry.id, *causes.get(woken.entry.id, ())}
+        )
+    for settled in settles:
+        extra = set(settled.answers) - owed.get(settled.id, set())
+        assert not extra, f"{settled.id} answers {extra}, which it did not cover"
 
 
 def _assert_no_reply_settled_twice(entries: Sequence[LoggedEntry]) -> None:

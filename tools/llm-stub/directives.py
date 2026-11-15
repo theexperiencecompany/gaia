@@ -74,6 +74,9 @@ DEFAULT_REPLY = "ok (llm-stub)"
 # comms stays silent (STAY_SILENT_TOOL_NAME, apps/api/app/constants/comms.py) rather
 # than saying the script's reply, which the result then says a second time.
 STAY_SILENT_TOOL = "stay_silent"
+# Comms names the user's messages each reply answers by their [#n] handle.
+ANSWERED_TOOL = "answered"
+_HANDLE_RE = re.compile(r"^\[#(\d+)\] |^#(\d+) \"", re.MULTILINE)
 HAND_OFF_SILENCE_ARGS = {"reason": "the result arrives on its own"}
 CALL_EXECUTOR_TOOL = "call_executor"
 # call_executor's required args beyond the task, so a scripted hand-off is a call
@@ -594,6 +597,7 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
 
     emitted = _emitted_tool_names(messages[latest + 1 :])
     di = _cursor(tool_dirs, emitted, available_tools)
+    handles = _open_handles(messages)
     if di >= len(tool_dirs) and CALL_EXECUTOR_TOOL in emitted and not _scripts_front_door(script):
         return ToolCallResponse(name=STAY_SILENT_TOOL, args=HAND_OFF_SILENCE_ARGS)
     if di < len(tool_dirs):
@@ -603,11 +607,38 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
         if nxt.name not in available_tools and CALL_EXECUTOR_TOOL in available_tools:
             return ToolCallResponse(
                 name=CALL_EXECUTOR_TOOL,
-                args={"task": task_text, **SCRIPTED_HAND_OFF_ARGS},
+                args={"task": task_text, **SCRIPTED_HAND_OFF_ARGS, "for_messages": handles},
                 **_narration(script),
             )
         return ToolCallResponse(name=nxt.name, args=nxt.args, delay_ms=script.tool_waits[di])
-    return _terminal(script)
+    return _naming(_terminal(script), handles, available_tools)
+
+
+def _open_handles(messages: Sequence[dict[str, Any]]) -> list[int]:
+    """Return the handles of the user's messages since the model last spoke, oldest first."""
+    last_assistant = max(
+        (i for i, message in enumerate(messages) if message.get("role") == "assistant"),
+        default=-1,
+    )
+    return [
+        int(first or second)
+        for message in messages[last_assistant + 1 :]
+        if message.get("role") == "user"
+        for first, second in _HANDLE_RE.findall(message_text(message))
+    ]
+
+
+def _naming(reply: SayResponse, handles: list[int], available_tools: frozenset[str]) -> Response:
+    """Return the reply as words beside an answered call naming handles, as comms is told to."""
+    if reply.fail is not None or not handles or ANSWERED_TOOL not in available_tools:
+        return reply
+    return ToolCallResponse(
+        name=ANSWERED_TOOL,
+        args={"message_ids": handles},
+        delay_ms=reply.delay_ms,
+        text=reply.text,
+        pace_ms=reply.pace_ms,
+    )
 
 
 # Payloads a tier hands the next one to re-voice: a run's result, never a context slot.

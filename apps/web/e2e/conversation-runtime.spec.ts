@@ -135,6 +135,36 @@ test.describe("conversation runtime — messages during work", () => {
     expect(final[4].text).toBe("Background work finished.");
   });
 
+  test("a side question while GAIA is still looking something up answers both", async ({
+    page,
+  }) => {
+    await page.goto("/c");
+    // The lookup is called, then the model holds its write-up: the side question lands mid-run.
+    await sendMessage(
+      page,
+      `research artemis [[tool:web_search_tool {"query_text":"artemis news"}]] ` +
+        `[[wait:${WORK_HOLD_MS}]] [[say:Research summary.]]`,
+    );
+    await expect(page).toHaveURL(CONVERSATION_URL, {
+      timeout: TURN_TIMEOUT_MS,
+    });
+    await sendWhen(
+      page,
+      "quick side question: what is 15% of 240? [[say:36.]]",
+      async () => botBubbles(await listBubbles(page)).length > 0,
+      TURN_TIMEOUT_MS,
+    );
+
+    const final = await settled(page, "36.");
+    expect(final.map((b) => b.role)).toEqual(["user", "bot", "user", "bot"]);
+    expect(
+      linesReading(final, "Research summary."),
+      "the first request still gets its write-up",
+    ).toBe(1);
+    expect(final[1].text).toContain("Research summary.");
+    expect(final[3].text).toBe("36.");
+  });
+
   test("an addition during running work reaches that work, and one result comes back", async ({
     page,
   }) => {

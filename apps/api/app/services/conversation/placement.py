@@ -1,68 +1,32 @@
-"""Which inputs each reply segment of a comms attempt answers, derived from log order alone.
+"""What a comms attempt owes and how far its settles move the log's settled mark, from log order alone.
 
-A segment answers only the inputs logged below the seq its reply opened at; an input handed
-to the run after that is answered by the next segment, which opens below it.
+A user message is owed until a closing tool names it; one an instant reaction already
+answered is not owed. Every other input (finished work, a workflow fire, a connection) rides
+with the attempt's last settle. Inputs settle out of order, so the settled mark only moves
+past an input once every input handed below it is answered too.
 """
 
-from collections.abc import Sequence
-from dataclasses import dataclass
-from itertools import pairwise
+from collections.abc import Collection, Sequence
 
-from app.models.conversation_log_models import LoggedEntry
-
-
-class PlacementError(Exception):
-    """A fact that would put a reply above an input it answers or move a segment already placed."""
+from app.models.chat_models import ReactionBy
+from app.models.conversation_log_models import LoggedEntry, UserMessage
 
 
-@dataclass(frozen=True)
-class Segment:
-    """One reply segment: the inputs it answers and the seq its reply opened at, None until it opens."""
-
-    covers: tuple[LoggedEntry, ...]
-    slot: int | None
-
-
-def segments(handed: Sequence[LoggedEntry], slots: Sequence[int]) -> tuple[Segment, ...]:
-    """Split the inputs handed to a run among the segments that opened at slots, then one unopened tail."""
-    _ascending("handed input", [logged.seq for logged in handed])
-    _ascending("slot", slots)
-    placed: list[Segment] = []
-    rest = tuple(handed)
-    for slot in slots:
-        below = tuple(
-            entry
-            for entry in rest
-            if entry.seq < slot  # pragma: no mutate — seqs are unique: no input sits at a slot
-        )
-        if not below:
-            raise PlacementError(f"the segment opened at seq {slot} answers no input below it")
-        placed.append(Segment(covers=below, slot=slot))
-        rest = rest[len(below) :]
-    if rest or not placed:
-        placed.append(Segment(covers=rest, slot=None))
-    return tuple(placed)
+def owed(entries: Sequence[LoggedEntry]) -> dict[int, str]:
+    """Return the user messages among entries that a reply still has to close, log seq -> message id."""
+    return {
+        logged.seq: logged.entry.id
+        for logged in entries
+        if isinstance(logged.entry, UserMessage)
+        and not (logged.entry.reaction is not None and logged.entry.reaction.by is ReactionBy.JEV)
+    }
 
 
-def hand(
-    handed: Sequence[LoggedEntry], slots: Sequence[int], settled: int, more: Sequence[LoggedEntry]
-) -> tuple[LoggedEntry, ...]:
-    """Return handed with more after it; refused when that changes what a settled segment answered."""
-    joined = (*handed, *more)
-    if segments(joined, slots)[:settled] != segments(handed, slots)[:settled]:
-        raise PlacementError(
-            f"inputs {[logged.seq for logged in more]} fall into a segment already settled"
-        )
-    return joined
-
-
-def open_slot(slots: Sequence[int], segment: int, seq: int) -> tuple[int, ...]:
-    """Return slots with segment opened at seq; refused when the segment already sits somewhere."""
-    if len(slots) != segment:
-        raise PlacementError(f"segment {segment} already opened; it cannot move to seq {seq}")
-    return (*slots, seq)
-
-
-def _ascending(what: str, seqs: Sequence[int]) -> None:
-    if any(a >= b for a, b in pairwise(seqs)):
-        raise PlacementError(f"{what} seqs {list(seqs)} are not ascending")
+def watermark(handed: Sequence[LoggedEntry], answered: Collection[int], floor: int) -> int:
+    """Return the newest handed seq with every handed input up to it answered; floor when the oldest is not."""
+    through = floor
+    for logged in handed:
+        if logged.seq not in answered:
+            break
+        through = logged.seq
+    return through

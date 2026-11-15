@@ -204,14 +204,26 @@ class CommsRun(Protocol):
         """Cancel the run and return only once it is certainly dead."""
         ...
 
+    async def hand_off(self, claim: StepClaim, messages: Sequence[LoggedEntry]) -> bool:
+        """Hand messages the finished run never closed to the executor, as call_executor does; False when it would not start."""
+        ...
+
 
 class CommsRunner(Protocol):
     """Starts comms runs."""
 
     async def start(
-        self, claim: StepClaim, batch: Batch, context: Sequence[LoggedEntry]
+        self,
+        claim: StepClaim,
+        batch: Batch,
+        context: Sequence[LoggedEntry],
+        ledger: str,
+        note: str | None = None,
     ) -> CommsRun:
-        """Start a run on batch; context is every entry since the last settled input the batch does not carry, given again on a restart."""
+        """Start a run on batch whose closing tools write ledger; context is every entry since the last settled input the batch does not carry, given again on a restart.
+
+        A note is said after the batch: the attempt goes on in this run, so it is not counted as a new one.
+        """
         ...
 
 

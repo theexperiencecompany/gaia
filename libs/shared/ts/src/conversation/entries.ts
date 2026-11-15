@@ -38,6 +38,7 @@ export const REPLY_OUTCOME = {
   TRUNCATED: "truncated",
   FAILED: "failed",
   SILENT: "silent",
+  INTERIM: "interim",
 } as const;
 
 export const FAILURE_REASON = {
@@ -282,6 +283,7 @@ const ReplyItemSchema = z.object({
       REPLY_OUTCOME.TRUNCATED,
       REPLY_OUTCOME.FAILED,
       REPLY_OUTCOME.SILENT,
+      REPLY_OUTCOME.INTERIM,
     ])
     .nullable(),
   failure: z

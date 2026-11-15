@@ -251,6 +251,8 @@ SCRIPTED_ACCEPTANCE_CRITERIA = ["scripted e2e hand-off"]
 SCRIPTED_HANDOFF_DEFAULTS: dict[str, Any] = {
     "desired_outcome": "scripted e2e outcome",
     "time_horizon": "one_shot",
+    # The handle of the message a scripted turn hands off; a run outside the step closes nothing.
+    "for_messages": [1],
 }
 
 

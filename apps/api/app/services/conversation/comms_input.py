@@ -18,6 +18,7 @@ from app.constants.conversation import (
     INTEGRATION_CONNECTED_NOTE,
     LOG_MESSAGE_ID_PREFIX,
     LOG_SEQ,
+    MESSAGE_HANDLE,
     NOTICE_DELIVERED_NOTE,
     REACTION_NOTE,
     REACTION_NOTE_SUFFIX,
@@ -108,7 +109,8 @@ def entry_messages(logged: LoggedEntry, said: Mapping[str, str] = AS_TYPED) -> l
     """Return the messages one log entry shows the model; most bookkeeping entries show nothing."""
     entry = logged.entry
     if isinstance(entry, UserMessage):
-        message = _message(logged, said.get(entry.id, entry.text))
+        handle = MESSAGE_HANDLE.format(seq=logged.seq)
+        message = _message(logged, f"{handle}{said.get(entry.id, entry.text)}")
         reaction = entry.reaction
         if reaction is None or reaction.by is not ReactionBy.JEV:
             return [message]

@@ -7,24 +7,32 @@ ModelOutput reaches the very next model call through the drain hook.
 
 import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TypedDict, cast
-from uuid import uuid4
 
-from langchain_core.messages import AnyMessage
+from langchain_core.messages import AnyMessage, HumanMessage, ToolCall
 from langgraph.constants import CONF
 from langgraph.errors import GraphRecursionError
 from langgraph.types import StreamMode
 
+from app.agents.core.comms_ledger import still_open
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import record_interruption
 from app.agents.core.messages import MessageAttachments, MessageScope, human_content
 from app.agents.core.nodes.drain_conversation_log import close_feed, feed, open_feed
+from app.agents.tools.executor_tool import call_executor
+from app.constants.agents import TimeHorizon
 from app.constants.conversation import (
     COMMS_CANCEL_CONFIRM_SECONDS,
+    FALLBACK_HANDOFF_DONE,
+    FALLBACK_HANDOFF_OUTCOME,
+    FALLBACK_HANDOFF_TASK,
+    STILL_OPEN_LINE,
+    STILL_OPEN_NOTE_SUFFIX,
     TURN_CONTEXT_ID_SUFFIX,
     WORKFLOW_RUN_REQUEST,
 )
+from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.graphs import GraphName
 from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig, agent_configurable
@@ -70,6 +78,8 @@ class CommsTurn:
     # Who caused the inputs; the run and everything it dispatches are attributed to them.
     analytics: AnalyticsContext
     run_started: AgentRunStarted
+    # False for a run that continues its attempt: the attempt is one agent run, counted once.
+    counted: bool = True
 
 
 CommsTurnBuilder = Callable[[StepClaim, Batch], Awaitable[CommsTurn]]
@@ -126,6 +136,29 @@ class CommsGraphRun:
             _join(step, joined)
         self._sealed = len(joined) < len(entries)
 
+    async def hand_off(self, claim: StepClaim, messages: Sequence[LoggedEntry]) -> bool:
+        """Hand messages the finished run never closed to the executor through call_executor itself."""
+        seqs = [logged.seq for logged in messages]
+        said = [
+            STILL_OPEN_LINE.format(seq=logged.seq, text=logged.entry.text)
+            for logged in messages
+            if isinstance(logged.entry, UserMessage)
+        ]
+        call: ToolCall = {
+            "name": CALL_EXECUTOR_NAME,
+            "args": {
+                "task": FALLBACK_HANDOFF_TASK.format(messages="\n".join(said)),
+                "for_messages": seqs,
+                "acceptance_criteria": [FALLBACK_HANDOFF_DONE.format(seq=seq) for seq in seqs],
+                "desired_outcome": FALLBACK_HANDOFF_OUTCOME,
+                "time_horizon": TimeHorizon.ONE_SHOT,
+            },
+            "id": f"fallback:{claim.conversation_id}:{seqs[0]}",
+            "type": "tool_call",
+        }
+        await call_executor.ainvoke(call, config=self._config)
+        return not set(seqs) & set(still_open(self._run_id))
+
     async def cancel(self, reason: CancelReason) -> None:
         """Cancel until the task is done, then record a Stop in the thread; any other reason leaves no trace."""
         self._sealed = True
@@ -148,9 +181,10 @@ class CommsGraphRun:
 
     async def _drive_counted(self, state: dict[str, object]) -> None:
         turn = self._turn
+        # A run that continues its attempt is the same agent run, so it is counted once.
         with (
             analytics_context(turn.analytics),
-            agent_run_lifecycle(self._claim.user_id, turn.run_started),
+            agent_run_lifecycle(self._claim.user_id if turn.counted else None, turn.run_started),
         ):
             await self._stream(state)
             *tail, finished = self._mapper.finish()
@@ -192,15 +226,20 @@ class CommsGraphRunner:
         self._confirm = cancel_confirm_seconds
 
     async def start(
-        self, claim: StepClaim, batch: Batch, context: Sequence[LoggedEntry]
+        self,
+        claim: StepClaim,
+        batch: Batch,
+        context: Sequence[LoggedEntry],
+        ledger: str,
+        note: str | None = None,
     ) -> CommsGraphRun:
-        """Start an attempt on batch with context as notes; a re-sent batch upserts its own messages."""
+        """Start an attempt on batch with context as notes, its closing tools writing ledger; a re-sent batch upserts its own messages."""
         graph = await GraphManager.get_graph(GraphName.COMMS)
-        turn = await self._build_turn(claim, batch)
+        turn = replace(await self._build_turn(claim, batch), counted=note is None)
         configurable: AgentConfigurable = {
             **agent_configurable(turn.config),
             "thread_id": claim.conversation_id,
-            "comms_run": uuid4().hex,
+            "comms_run": ledger,
         }
         config = cast(AgentRunnableConfig, {**turn.config, CONF: configurable})
         snapshot = await graph.aget_state(config)
@@ -211,10 +250,16 @@ class CommsGraphRunner:
             *_turn_context(turn.opening, batch, 0),
             *attempt_messages(batch, context, thread, said),
             *_turn_context(turn.closing, batch, len(turn.opening)),
+            *([] if note is None else [_still_open_message(batch, note)]),
         ]
         return CommsGraphRun(
             claim, graph, config, turn, {**turn.state, "messages": messages}, self._confirm
         )
+
+
+def _still_open_message(batch: Batch, note: str) -> HumanMessage:
+    anchor = entry_message_id(batch.waking[0].entry.id)
+    return HumanMessage(content=note, id=f"{anchor}{STILL_OPEN_NOTE_SUFFIX}")
 
 
 def step_turn_ref(claim: StepClaim, batch: Batch) -> StepTurnRef:

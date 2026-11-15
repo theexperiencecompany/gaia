@@ -153,7 +153,12 @@ _ASKING_STEP = StepTurnRef(epoch=1, batch_start=1, cause_through=1, answers=["m1
 
 async def _dispatched_brief(tool_args: dict, configurable: dict) -> str:
     """Invoke call_executor and return the brief it handed to _dispatch_executor."""
-    tool_args = {"desired_outcome": "it is done", "time_horizon": "one_shot", **tool_args}
+    tool_args = {
+        "desired_outcome": "it is done",
+        "time_horizon": "one_shot",
+        "for_messages": [1],
+        **tool_args,
+    }
     with patch(
         "app.agents.tools.executor_tool._dispatch_executor",
         new=AsyncMock(return_value="Task accepted"),

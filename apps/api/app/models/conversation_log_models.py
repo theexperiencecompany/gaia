@@ -326,7 +326,7 @@ class Reply(_Entry):
     revision: int = Field(default=0, ge=0)
 
 
-_MAY_ANSWER_NOTHING = frozenset({ReplyOutcome.STOPPED, ReplyOutcome.FAILED})
+_MAY_ANSWER_NOTHING = frozenset({ReplyOutcome.STOPPED, ReplyOutcome.FAILED, ReplyOutcome.INTERIM})
 
 
 class ReplySettled(_Entry):

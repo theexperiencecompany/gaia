@@ -100,7 +100,7 @@ def updated(message: AIMessage) -> GraphEvent:
     return ((), "updates", {"agent": {"messages": [message]}})
 
 
-def ending(name: str, text: str = "", **args: str) -> GraphEvent:
+def ending(name: str, text: str = "", **args: object) -> GraphEvent:
     call = {"name": name, "args": args, "id": f"call_{name}"}
     return updated(AIMessage(content=text, tool_calls=[call], id="m1"))
 
@@ -108,9 +108,12 @@ def ending(name: str, text: str = "", **args: str) -> GraphEvent:
 @pytest.mark.parametrize(
     ("event", "outcome"),
     [
-        (ending(REACT_TOOL_NAME, emoji="👍"), Reacted(emoji="👍")),
-        (ending(STAY_SILENT_TOOL_NAME, reason="nothing to add"), Silent()),
-        (ending(REACT_TOOL_NAME, "glad it worked", emoji="👍"), Replied(text="glad it worked")),
+        (ending(REACT_TOOL_NAME, emoji="👍", message_id=1), Reacted(emoji="👍")),
+        (ending(STAY_SILENT_TOOL_NAME, reason="nothing to add", message_ids=[1]), Silent()),
+        (
+            ending(REACT_TOOL_NAME, "glad it worked", emoji="👍", message_id=1),
+            Replied(text="glad it worked"),
+        ),
     ],
 )
 async def test_a_turn_ending_call_is_the_answer_and_its_outcome(
@@ -124,12 +127,12 @@ async def test_a_turn_ending_call_is_the_answer_and_its_outcome(
 @pytest.mark.parametrize(
     "event",
     [
-        ending(REACT_TOOL_NAME, emoji="ok"),
+        ending(REACT_TOOL_NAME, emoji="ok", message_id=1),
         updated(
             AIMessage(
                 content="",
                 tool_calls=[
-                    {"name": REACT_TOOL_NAME, "args": {"emoji": "👍"}, "id": "a"},
+                    {"name": REACT_TOOL_NAME, "args": {"emoji": "👍", "message_id": 1}, "id": "a"},
                     {"name": "search_memory", "args": {"query": "q"}, "id": "b"},
                 ],
                 id="m1",
@@ -208,7 +211,7 @@ async def test_a_reply_carries_the_cards_its_run_showed() -> None:
 async def test_a_reaction_beside_cards_is_a_reply_of_the_cards_alone() -> None:
     mapper = CommsEventMapper("u-1")
     card = await shown_card(mapper)
-    await mapper.map(ending(REACT_TOOL_NAME, emoji="👍"))
+    await mapper.map(ending(REACT_TOOL_NAME, emoji="👍", message_id=1))
     assert mapper.finish()[-1] == Finished(outcome=Replied(text="", tool_data=(card,)))
 
 

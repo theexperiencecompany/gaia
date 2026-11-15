@@ -165,12 +165,14 @@ async def _serve(
         reply_id=f"r{attempt_id}",
         batch=batch,
         handed=batch.waking,
+        ledger=f"{conversation_id}:{attempt_id}",
         seen=batch.end,
         view=view,
         hint_head=state.head,
     )
     if await nothing_to_report(ports.log, conversation_id, claim.user_id, batch):
         # The run said so itself, and its todo lets it: nothing is shown, its report stays on its WorkFinished.
+        attempt.covers = batch.waking
         await conclude(ports, attempt, empty_reply(attempt), ReplyOutcome.SILENT)
         return True, attempt.settled_view()
     if isinstance(batch.waking[0].entry, WorkflowFired) and not state.work:

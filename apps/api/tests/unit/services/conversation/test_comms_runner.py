@@ -2,7 +2,8 @@
 
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
+import re
 from typing import Any, TypeVar, cast
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -27,7 +28,7 @@ from app.agents.core.nodes.drain_conversation_log import close_feed, open_feed
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.agents.tools.comms_turn_tools import react, stay_silent
 from app.agents.tools.core.registry import init_tool_registry
-from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
+from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import ABSORBED_NOTE, LOG_SEQ
 from app.constants.graphs import GraphName
 from app.core.lazy_loader import providers
@@ -85,6 +86,8 @@ from tests.unit.services.conversation.log_helpers import (
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
 USER = "507f1f77bcf86cd799439011"
+#: A ledger no attempt opened: the closing tools close nothing on it.
+LEDGER = "ledger-under-test"
 CONFIRM_SECONDS = 0.05
 EntryT = TypeVar("EntryT")
 # The text streams, the translator closes the message, the model node returns, the answer is
@@ -99,10 +102,42 @@ ANSWER_SHAPE = [
 ]
 
 
+@dataclass(frozen=True)
+class _Worded:
+    """A scripted reply of words; the model names the messages it answers as comms is told to."""
+
+    text: str
+
+
+_HANDLE = re.compile(r"\[#(\d+)\]|^#(\d+) \"", re.MULTILINE)
+
+
+def _naming(text: str, prompt: Sequence[BaseMessage]) -> AIMessage:
+    """Return text with an answered call naming every handle the user sent since the model last spoke or was stopped."""
+    last_ai = max(
+        (
+            i
+            for i, m in enumerate(prompt)
+            if isinstance(m, AIMessage) or m.content == INTERRUPTION_MARKER
+        ),
+        default=-1,
+    )
+    handles = [
+        int(first or second)
+        for message in prompt[last_ai + 1 :]
+        if isinstance(message, HumanMessage)
+        for first, second in _HANDLE.findall(str(message.content))
+    ]
+    if not handles:
+        return AIMessage(content=text)
+    call = {"name": ANSWERED_TOOL_NAME, "args": {"message_ids": handles}, "id": f"named_{text[:8]}"}
+    return AIMessage(content=text, tool_calls=[call])
+
+
 class GatedModel(RecordingFakeModel):
     """Answers call i with replies[i]; a call in hold never returns until cancelled."""
 
-    _replies: list[BaseMessage] = PrivateAttr(default_factory=list)
+    _replies: list[BaseMessage | _Worded] = PrivateAttr(default_factory=list)
     _hold: set[int] = PrivateAttr(default_factory=set)
     _entered: dict[int, asyncio.Event] = PrivateAttr(default_factory=dict)
     # Run while call i is in flight, before it answers.
@@ -119,12 +154,15 @@ class GatedModel(RecordingFakeModel):
             await self._during[call]()
         if call in self._hold:
             await asyncio.Event().wait()
-        return ChatResult(generations=[ChatGeneration(message=self._replies[call])])
+        reply = self._replies[call]
+        if isinstance(reply, _Worded):
+            reply = _naming(reply.text, messages)
+        return ChatResult(generations=[ChatGeneration(message=reply)])
 
 
 def gated(*replies: BaseMessage | str, hold: Sequence[int] = ()) -> GatedModel:
     model = GatedModel(responses=[AIMessage(content="unused")], profile={"max_input_tokens": 10**6})
-    model._replies = [AIMessage(content=r) if isinstance(r, str) else r for r in replies]
+    model._replies = [_Worded(r) if isinstance(r, str) else r for r in replies]
     model._hold = set(hold)
     return model
 
@@ -236,7 +274,15 @@ def shape(events: Sequence[RunEvent]) -> list[str]:
 
 
 def humans(prompt: Sequence[BaseMessage]) -> list[str]:
-    return [str(m.content) for m in prompt if isinstance(m, HumanMessage)]
+    """Return what each human message says, without the handle a user message starts with."""
+    return [
+        _HANDLE_PREFIX.sub("", str(m.content), count=1)
+        for m in prompt
+        if isinstance(m, HumanMessage)
+    ]
+
+
+_HANDLE_PREFIX = re.compile(r"^\[#\d+\] ")
 
 
 async def thread_of(graph: CompiledAgentGraph, conversation_id: str) -> list[AnyMessage]:
@@ -253,7 +299,7 @@ async def test_plain_answer_streams_text_then_finishes_replied(conversation_id: 
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             events = await collect(run)
     assert shape(events) == ANSWER_SHAPE
@@ -262,15 +308,20 @@ async def test_plain_answer_streams_text_then_finishes_replied(conversation_id: 
     assert humans(model.prompts[0]) == ["text of u1", "[clock]"]
 
 
-def ending_call(name: str, **args: str) -> AIMessage:
+def ending_call(name: str, **args: object) -> AIMessage:
     return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": f"call_{name}"}])
 
 
 @pytest.mark.parametrize(
     ("call", "outcome"),
     [
-        (ending_call(REACT_TOOL_NAME, emoji="👍"), Reacted(emoji="👍")),
-        (ending_call(STAY_SILENT_TOOL_NAME, reason="the result arrives on its own"), Silent()),
+        (ending_call(REACT_TOOL_NAME, emoji="👍", message_id=1), Reacted(emoji="👍")),
+        (
+            ending_call(
+                STAY_SILENT_TOOL_NAME, reason="the result arrives on its own", message_ids=[1]
+            ),
+            Silent(),
+        ),
     ],
 )
 async def test_a_turn_ending_call_ends_the_run_with_its_outcome_and_no_second_model_call(
@@ -280,7 +331,7 @@ async def test_a_turn_ending_call_ends_the_run_with_its_outcome_and_no_second_mo
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             events = await collect(run)
     assert events[-1] == Finished(outcome=outcome)
@@ -292,16 +343,18 @@ async def test_a_turn_ending_call_ends_the_run_with_its_outcome_and_no_second_mo
 
 
 async def test_a_turn_ending_call_tells_the_next_turn_what_the_user_got() -> None:
-    assert await react.ainvoke({"emoji": "👍"}) == "Reacted 👍."
-    assert await stay_silent.ainvoke({"reason": "a routine check"}) == "Sent nothing."
+    assert await react.ainvoke({"emoji": "👍", "message_id": 1}) == "Reacted 👍."
+    assert await stay_silent.ainvoke({"reason": "a routine check", "message_ids": [1]}) == (
+        "Sent nothing."
+    )
 
 
 async def test_a_reaction_the_schema_refuses_goes_back_to_the_model(conversation_id: str) -> None:
-    model = gated(ending_call(REACT_TOOL_NAME, emoji="ok"), "glad it worked")
+    model = gated(ending_call(REACT_TOOL_NAME, emoji="ok", message_id=1), "glad it worked")
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             events = await collect(run)
     assert len(model.prompts) == 2
@@ -315,7 +368,7 @@ async def test_reply_text_is_only_ever_a_reply(conversation_id: str, text: str) 
     async with comms_graph([], model=gated(text)) as graph:
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             events = await collect(run)
     streamed = "".join(
@@ -334,7 +387,10 @@ async def test_a_run_that_fails_before_it_streams_raises_through_its_events(
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id, user_id="not-an-object-id"), batch(logged(1, user("u1"))), ()
+                claim(conversation_id, user_id="not-an-object-id"),
+                batch(logged(1, user("u1"))),
+                (),
+                LEDGER,
             )
             async with asyncio.timeout(10):
                 with pytest.raises(ValueError, match="ObjectId"):
@@ -348,7 +404,7 @@ async def test_answer_with_a_tool_card_carries_the_card_on_the_reply(conversatio
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             events = await collect(run)
     streamed_cards = [
@@ -392,7 +448,7 @@ async def test_summarization_is_reported_before_any_visible_output(conversation_
             )
             with patched_graph(graph):
                 run = await runner(conversation_id).start(
-                    claim(conversation_id), batch(logged(1, user("u1"))), ()
+                    claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
                 )
                 events = await collect(run)
     assert shape(events) == ["Summarized", *ANSWER_SHAPE]
@@ -408,7 +464,7 @@ async def test_cancel_before_output_leaves_only_the_input_and_a_resend_shows_eac
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
             comms = runner(conversation_id)
-            run = await comms.start(claim(conversation_id), batch(first), ())
+            run = await comms.start(claim(conversation_id), batch(first), (), LEDGER)
             consumer = asyncio.create_task(collect(run))
             await model.entered(0).wait()
             await run.cancel(CancelReason.RESTART)
@@ -418,7 +474,7 @@ async def test_cancel_before_output_leaves_only_the_input_and_a_resend_shows_eac
             assert not any(isinstance(m, AIMessage) for m in left)
             assert humans(left) == ["text of u1", "[clock]"]
 
-            rerun = await comms.start(claim(conversation_id), batch(first, second), ())
+            rerun = await comms.start(claim(conversation_id), batch(first, second), (), LEDGER)
             events = await collect(rerun)
     assert events[-1] == Finished(outcome=Replied(text="both answered"))
     shown = humans(model.prompts[1])
@@ -435,7 +491,7 @@ async def test_stop_after_a_tool_call_records_the_interruption(conversation_id: 
         )
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             seen: list[RunEvent] = []
             async for event in run.events():
@@ -461,7 +517,7 @@ async def test_restart_leaves_no_interruption_marker(conversation_id: str) -> No
         )
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             async for event in run.events():
                 if isinstance(event, ModelOutput):
@@ -491,7 +547,7 @@ async def test_a_swallowed_cancel_is_sent_again_until_the_run_is_dead(conversati
 
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             # Armed after start's own state read; the run task has not stepped yet.
             with patch.object(saver, "aget_tuple", pool_check_then_get):
@@ -510,7 +566,9 @@ async def test_absorbed_input_reaches_the_next_model_call(conversation_id: str) 
     step = step_turn_ref(claim(conversation_id), first)
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
-            run = await runner(conversation_id, step=step).start(claim(conversation_id), first, ())
+            run = await runner(conversation_id, step=step).start(
+                claim(conversation_id), first, (), LEDGER
+            )
 
             async def absorb_on_tool_call(event: RunEvent) -> None:
                 if event == ModelOutput(has_tool_calls=True):
@@ -564,7 +622,9 @@ async def test_input_absorbed_past_a_stop_never_reaches_the_model(conversation_i
     step = step_turn_ref(claim(conversation_id), first)
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
-            run = await runner(conversation_id, step=step).start(claim(conversation_id), first, ())
+            run = await runner(conversation_id, step=step).start(
+                claim(conversation_id), first, (), LEDGER
+            )
 
             async def absorb_on_tool_call(event: RunEvent) -> None:
                 if event == ModelOutput(has_tool_calls=True):
@@ -596,7 +656,9 @@ async def test_a_request_joining_an_attempt_that_only_reported_work_lets_it_star
     assert step["asked"] is False
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
-            run = await runner(conversation_id, step=step).start(claim(conversation_id), first, ())
+            run = await runner(conversation_id, step=step).start(
+                claim(conversation_id), first, (), LEDGER
+            )
 
             async def absorb_on_tool_call(event: RunEvent) -> None:
                 if event == ModelOutput(has_tool_calls=True):
@@ -618,7 +680,9 @@ async def test_a_stop_absorbed_alone_joins_nothing_to_the_step(conversation_id: 
     step = step_turn_ref(claim(conversation_id), first)
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
-            run = await runner(conversation_id, step=step).start(claim(conversation_id), first, ())
+            run = await runner(conversation_id, step=step).start(
+                claim(conversation_id), first, (), LEDGER
+            )
 
             async def absorb_on_tool_call(event: RunEvent) -> None:
                 if event == ModelOutput(has_tool_calls=True):
@@ -647,7 +711,7 @@ async def test_frames_owed_at_the_end_of_the_stream_reach_the_step_before_finish
     async with comms_graph([], model=gated("hello there")) as graph:
         with patched_graph(graph), patch.object(CommsEventMapper, "finish", finish_owing):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             events = await collect(run)
     assert events[-2:] == [owed, Finished(outcome=Replied(text="hello there"))]
@@ -881,7 +945,7 @@ async def test_a_run_out_of_steps_ends_with_the_step_limit(conversation_id: str)
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
             run = await runner(conversation_id, recursion_limit=1).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             with pytest.raises(StepLimitReached, match="Recursion limit of 1"):
                 await collect(run)
@@ -892,7 +956,10 @@ async def test_the_turn_context_is_keyed_on_the_batchs_oldest_input(conversation
     async with comms_graph([], model=gated("hello there")) as graph:
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1")), logged(2, user("u2"))), ()
+                claim(conversation_id),
+                batch(logged(1, user("u1")), logged(2, user("u2"))),
+                (),
+                LEDGER,
             )
             await collect(run)
             left = await thread_of(graph, conversation_id)
@@ -919,7 +986,7 @@ async def test_a_run_reads_the_comms_graph_and_builds_its_turn_from_the_batch(
             patch("app.services.conversation.comms_runner.CommsEventMapper", mapper),
         ):
             run = await CommsGraphRunner(recording_build, CONFIRM_SECONDS).start(
-                claim(conversation_id), first, ()
+                claim(conversation_id), first, (), LEDGER
             )
             await collect(run)
     get_graph.assert_awaited_once_with(GraphName.COMMS)
@@ -934,7 +1001,10 @@ async def test_a_first_run_on_a_fresh_thread_says_the_stop_in_its_context(
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(2, user("u2"))), [logged(1, stop("s1"))]
+                claim(conversation_id),
+                batch(logged(2, user("u2"))),
+                [logged(1, stop("s1"))],
+                LEDGER,
             )
             events = await collect(run)
     assert events[-1] == Finished(outcome=Replied(text="after the stop"))
@@ -947,7 +1017,7 @@ async def test_every_absorb_reaches_the_next_model_call_until_a_stop(
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
 
             async def absorb_twice(event: RunEvent) -> None:
@@ -966,7 +1036,9 @@ async def test_nothing_joins_a_run_once_it_is_being_cancelled(conversation_id: s
     step = step_turn_ref(claim(conversation_id), first)
     async with comms_graph([], model=model) as graph:
         with patched_graph(graph):
-            run = await runner(conversation_id, step=step).start(claim(conversation_id), first, ())
+            run = await runner(conversation_id, step=step).start(
+                claim(conversation_id), first, (), LEDGER
+            )
             await model.entered(0).wait()
             cancelling = asyncio.create_task(run.cancel(CancelReason.RESTART))
             await asyncio.sleep(0)
@@ -991,7 +1063,7 @@ async def test_a_finished_run_closes_the_feed_it_opened(conversation_id: str) ->
             patch("app.services.conversation.comms_runner.close_feed", closed),
         ):
             run = await runner(conversation_id).start(
-                claim(conversation_id), batch(logged(1, user("u1"))), ()
+                claim(conversation_id), batch(logged(1, user("u1"))), (), LEDGER
             )
             await collect(run)
     (run_id,) = opened.call_args.args

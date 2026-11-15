@@ -11,7 +11,7 @@ from app.models.conversation_frame_models import (
 )
 from app.models.conversation_log_models import Batch, Entry, Reply, StepClaim
 from app.models.stream_events import ReasoningPayload
-from app.services.conversation.ports import Reacted, Replied
+from app.services.conversation.ports import Replied
 from app.services.conversation.reply_text import ReplyText
 from app.services.conversation.step_attempt import (
     Attempt,
@@ -30,7 +30,6 @@ from app.services.conversation.tool_timeline import tool_timeline
 from shared.py.conversation_wire import (
     BubbleTextDelta,
     CardsDelta,
-    FailureReason,
     FollowUpsDelta,
     ReplyOutcome,
     ToolDataEntry,
@@ -54,6 +53,7 @@ def _attempt(progress: Showing | None, woken_by: Entry | None = None) -> Attempt
         reply_id="r1",
         batch=Batch(start=1, end=1, waking=(waking,), first_at=at(1)),
         handed=(waking,),
+        ledger="c1:run",
         seen=1,
         view=StepView(state=EMPTY, after=0, entries=[]),
         hint_head=EMPTY.head,
@@ -88,22 +88,22 @@ def test_a_shown_slot_that_kept_nothing_saves_the_runs_replied_content() -> None
     attempt = _showing(_reply("r1"))
     outcome = Replied("the answer", tool_data=(CARD,), follow_up_actions=("And next?",))
 
-    reply, settled_as, failure = final_reply(attempt, outcome)
+    reply, worded = final_reply(attempt, outcome)
 
     assert (reply.text, reply.tool_data, reply.follow_up_actions) == (
         "the answer",
         (CARD,),
         ("And next?",),
     )
-    assert (settled_as, failure) == (ReplyOutcome.ANSWERED, None)
+    assert worded
 
 
 def test_a_shown_reply_keeps_what_it_streamed_over_the_runs_replied_content() -> None:
     attempt = _showing(_reply("r1", "streamed"))
 
-    reply, settled_as, _ = final_reply(attempt, Replied("never shown"))
+    reply, worded = final_reply(attempt, Replied("never shown"))
 
-    assert (reply.text, settled_as) == ("streamed", ReplyOutcome.ANSWERED)
+    assert (reply.text, worded) == ("streamed", True)
 
 
 @pytest.mark.parametrize(
@@ -173,22 +173,12 @@ def test_a_payload_that_shows_no_card_changes_nothing_and_sends_nothing() -> Non
     assert reply_deltas(shown, shown, payload, (), ()) == []
 
 
-def test_an_empty_answer_to_a_user_fails_with_a_retry() -> None:
-    reply, settled_as, failure = final_reply(_showing(_reply("r1")), Replied(""))
-    assert (reply.text, settled_as, failure) == ("", ReplyOutcome.FAILED, FailureReason.MODEL_ERROR)
-
-
-def test_a_reaction_or_an_answer_nobody_asked_for_settles_silently() -> None:
-    reacted = final_reply(_showing(_reply("r1")), Reacted("👍"))
-    unasked = final_reply(_attempt(None, finished("f1", "t1")), Replied(""))
-    assert [(outcome, failure) for _, outcome, failure in (reacted, unasked)] == [
-        (ReplyOutcome.SILENT, None),
-        (ReplyOutcome.SILENT, None),
-    ]
+def test_an_empty_answer_holds_no_words() -> None:
+    assert final_reply(_showing(_reply("r1")), Replied("")) == (_reply("r1"), False)
 
 
 def test_a_run_that_showed_nothing_saves_a_fresh_reply_narrating_the_work_it_answers() -> None:
-    reply, _, _ = final_reply(_attempt(None, finished("f1", "t1")), Replied("t1 is done"))
+    reply, _ = final_reply(_attempt(None, finished("f1", "t1")), Replied("t1 is done"))
 
     assert (reply.id, reply.reply_id, reply.attempt_id) == ("run:reply", "r1", "run")
     assert (reply.text, reply.narrates) == ("t1 is done", ("t1",))

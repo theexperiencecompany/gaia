@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from app.agents.core.background.session import claim_tool_output
 from app.agents.core.held_replies import HeldReplies, last_ai_message
 from app.agents.llm.reasoning import extract_reasoning_delta
-from app.agents.tools.comms_turn_tools import TURN_ENDING_TOOL_NAMES
+from app.constants.comms import TURN_ENDING_TOOL_NAMES
 from app.models.agent_models import StreamChunkMetadata
 from app.models.conversation_frame_models import (
     MessageBoundaryEvent,

@@ -139,7 +139,7 @@ async def test_a_claim_lost_after_the_reply_showed_leaves_it_to_the_next_holder(
     assert [reply.text for reply in await replies(rt)] == ["a"]
 
 
-async def test_a_store_failure_mid_attempt_settles_the_passed_segment_and_fails_the_rest(
+async def test_a_store_failure_mid_attempt_ends_the_shown_reply_and_fails_every_open_message(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     rt = Runtime()
@@ -157,8 +157,8 @@ async def test_a_store_failure_mid_attempt_settles_the_passed_segment_and_fails_
         await run(rt)
     assert LOST in rt.runner.calls
     assert [(item.outcome, item.answers) for item in await settles(rt)][:2] == [
-        (ReplyOutcome.ANSWERED, ("u1",)),
-        (ReplyOutcome.FAILED, ("u2",)),
+        (ReplyOutcome.INTERIM, ()),
+        (ReplyOutcome.FAILED, ("u1", "u2")),
     ]
     assert [error["error"] for error in event["errors"]] == ["store down"]
 

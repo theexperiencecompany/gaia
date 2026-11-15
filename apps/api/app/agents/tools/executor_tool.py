@@ -33,6 +33,7 @@ from app.agents.core.background.session import (
     mark_executor_spawned,
 )
 from app.agents.core.background.work_cancel import cancel_named_work
+from app.agents.core.comms_ledger import Closing, close, named
 from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.constants.agents import TimeHorizon
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
@@ -103,6 +104,10 @@ async def call_executor(
         str,
         "The task to execute - describe what needs to be done",
     ],
+    for_messages: Annotated[
+        list[int],
+        "The [#n] handles of the user's messages this task handles, as numbers (#7 is 7).",
+    ],
     acceptance_criteria: Annotated[
         list[str],
         "What must be TRUE for this task to count as done, as a checklist (e.g. "
@@ -164,6 +169,10 @@ async def call_executor(
         log.error(f"{LogTag.TOOL} call_executor: missing thread_id in configurable")
         return "Internal error: conversation context unavailable. Please try again."
     step: StepTurnRef = configurable["conversation_step"]
+    # Checked before dispatch, closed only once handed: a failed hand-off still owes them.
+    handled = named(config, for_messages)
+    if handled is not None:
+        configurable["conversation_step"] = {**step, "answers": list(handled)}
     if not step["asked"]:
         log.warning(
             f"{LogTag.TOOL} call_executor refused: the attempt only reports finished work",
@@ -210,7 +219,7 @@ async def call_executor(
     )
 
     try:
-        return await _dispatch_executor(
+        dispatched = await _dispatch_executor(
             task=composed_task,
             task_id=task_id,
             configurable=configurable,
@@ -224,6 +233,9 @@ async def call_executor(
         # letting a second concurrent executor start in the same conversation.
         await release_lock_if_owned(conversation_id, configurable.get("stream_id"), task_id)
         return f"Error starting task: {e!s}"
+    if dispatched != _NOT_STARTED_STOPPED:
+        close(config, Closing.HANDED, for_messages)
+    return dispatched
 
 
 async def _dispatch_executor(

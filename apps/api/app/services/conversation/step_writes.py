@@ -2,6 +2,8 @@
 
 from collections.abc import Sequence
 
+from app.agents.core.comms_ledger import Closure, drain, still_open
+from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryUpdatedFrame,
     RetractFrame,
@@ -13,17 +15,18 @@ from app.models.conversation_log_models import (
     ConversationState,
     Entry,
     LoggedEntry,
+    Reaction,
     Reply,
     ReplySettled,
     StepClaim,
     UserMessage,
 )
 from app.services.conversation.log import publish_appended
-from app.services.conversation.placement import open_slot
+from app.services.conversation.placement import owed
 from app.services.conversation.ports import (
     RuntimePorts,
 )
-from app.services.conversation.reply_analytics import capture_reply_ended
+from app.services.conversation.reply_analytics import capture_reply_ended, spoken_context
 from app.services.conversation.reply_text import ReplyText
 from app.services.conversation.step_attempt import (
     Attempt,
@@ -35,6 +38,8 @@ from app.services.conversation.step_attempt import (
     settled_entry,
 )
 from app.services.conversation.step_view import StepView
+from shared.py.analytics import Dedupe
+from shared.py.analytics.catalog.chat import ChatTurnReacted
 from shared.py.conversation_wire import (
     BubblesDelta,
     BubbleTextDelta,
@@ -45,17 +50,93 @@ from shared.py.conversation_wire import (
 )
 
 
-async def settle_segment_if_passed(ports: RuntimePorts, attempt: Attempt) -> None:
-    """Settle the open segment where it stands once inputs handed after its slot wait; the next segment answers them below."""
-    if len(attempt.placed) == attempt.segment + 1:
-        return
-    await conclude(ports, attempt, base_reply(attempt), ReplyOutcome.ANSWERED)
+async def settle_passed(ports: RuntimePorts, attempt: Attempt) -> LoggedEntry | None:
+    """Settle what the run closed since the last model-written signal, then end a reply inputs were handed below; return the reply the closures settled."""
+    closures = drain(attempt.ledger)
+    settled = await _settle_named(ports, attempt, closures) if closures else None
+    if attempt.split:
+        await end_interim(ports, attempt)
+    return settled
+
+
+async def end_above(ports: RuntimePorts, attempt: Attempt, covers: Sequence[LoggedEntry]) -> None:
+    """End the open reply as interim when it sits above an input covers holds: a reply never answers one below it."""
+    if attempt.slot is not None and any(logged.seq > attempt.slot for logged in covers):
+        await end_interim(ports, attempt)
+
+
+async def end_interim(ports: RuntimePorts, attempt: Attempt) -> None:
+    """End the shown reply naming no message; nothing it covered counts answered."""
+    attempt.split = False
+    if isinstance(attempt.progress, Showing):
+        await conclude(ports, attempt, base_reply(attempt), ReplyOutcome.INTERIM)
+        next_segment(attempt)
+
+
+async def _settle_named(
+    ports: RuntimePorts, attempt: Attempt, closures: Sequence[Closure]
+) -> LoggedEntry | None:
+    """Settle the open segment as answering exactly the messages the closing tools named.
+
+    The settle that closes the last owed message also answers every other input handed
+    (finished work, a fire), so a reply that delivers a result with an answer is one reply.
+    """
+    named = {seq for closure in closures for seq in closure.seqs}
+    for closure in closures:
+        if closure.emoji is not None:
+            await react_on(ports, attempt, closure.reacted, closure.emoji)
+    if not named:
+        return None
+    await end_above(ports, attempt, [logged for logged in attempt.handed if logged.seq in named])
+    riders = () if still_open(attempt.ledger) else _riders(attempt)
+    attempt.covers = tuple(
+        logged for logged in attempt.handed if logged.seq in named or logged in riders
+    )
+    reply = base_reply(attempt)
+    worded = bool(reply.text or reply.tool_data)
+    stored = await conclude(
+        ports, attempt, reply, ReplyOutcome.ANSWERED if worded else ReplyOutcome.SILENT
+    )
+    next_segment(attempt)
+    return stored
+
+
+def _riders(attempt: Attempt) -> tuple[LoggedEntry, ...]:
+    """Return the unanswered inputs no closing tool names: everything but owed user messages."""
+    owing = owed(attempt.handed)
+    return tuple(logged for logged in attempt.unanswered if logged.seq not in owing)
+
+
+def next_segment(attempt: Attempt) -> None:
+    """Count the settled segment's inputs answered and start the next segment, unopened."""
+    attempt.answered_seqs |= {logged.seq for logged in attempt.covers}
+    attempt.covers = ()
     attempt.segment += 1
     attempt.reply_id = f"r{attempt.attempt_id}"
     attempt.progress = Quiet(reason=CommitReason.MODEL_OUTPUT)
+    attempt.slot = None
+    attempt.split = False
     attempt.deltas = 0
     attempt.text = ReplyText()
     attempt.shown = ()
+
+
+async def react_on(ports: RuntimePorts, attempt: Attempt, seqs: Sequence[int], emoji: str) -> None:
+    """Put the chat model's reaction on each named message."""
+    for logged in attempt.handed:
+        message = logged.entry
+        if logged.seq not in seqs or not isinstance(message, UserMessage):
+            continue
+        reaction = Reaction(emoji=emoji, by=ReactionBy.CHAT_MODEL)
+        amended = await amend_seen(
+            ports, attempt, message.model_copy(update={"reaction": reaction})
+        )
+        ports.analytics.capture(
+            attempt.claim.user_id,
+            ChatTurnReacted(emoji=emoji),
+            spoken_context(message),
+            Dedupe(key=f"reacted:{message.id}:{emoji}", occurred_at=amended.at),
+        )
 
 
 async def publish_delta(ports: RuntimePorts, attempt: Attempt, change: ReplyDelta) -> None:
@@ -78,18 +159,20 @@ async def conclude(
     settled_as: ReplyOutcome,
     failure: FailureReason | None = None,
 ) -> LoggedEntry:
-    """Save the reply's final content, settle it as answering everything the attempt covered, and return it."""
+    """Save the reply's final content, settle it as answering the segment's covers, and return it."""
     stored = await put_reply(ports, attempt, reply)
     answers, quote = await _answers_and_quote(ports, attempt, stored.seq)
     if settled_as is ReplyOutcome.SILENT:
         quote = None
+    settled = settled_entry(attempt, settled_as, answers, attempt.through, quote, failure)
     await settle_inputs(
         ports,
         attempt.claim,
-        attempt.covers,
-        settled_entry(attempt, settled_as, answers, attempt.through, quote, failure),
+        attempt.covers or attempt.unanswered or attempt.handed,
+        settled,
         attempt.view,
     )
+    attempt.last_settle = settled.id
     return stored
 
 
@@ -98,15 +181,19 @@ async def _answers_and_quote(
     attempt: Attempt,
     reply_seq: int,
     state: ConversationState | None = None,
+    covers: Sequence[LoggedEntry] | None = None,
 ) -> tuple[tuple[str, ...], str | None]:
     """Answer every covered input, plus the user messages that caused covered finished work."""
+    covers = attempt.covers if covers is None else covers
+    if not covers:
+        return (), None
     if state is None:
         state = await _state(ports, attempt)
-    covered = {logged.seq for logged in attempt.covers}
+    covered = {logged.seq for logged in covers}
     work = [item for item in state.finished_work if item.seq in covered]
-    ids = [logged.entry.id for logged in attempt.covers]
+    ids = [logged.entry.id for logged in covers]
     answers = tuple(dict.fromkeys([*ids, *(cause for item in work for cause in item.answers)]))
-    since = min([attempt.covers[0].seq, *(item.cause_through for item in work)]) - 1
+    since = min([covers[0].seq, *(item.cause_through for item in work)]) - 1
     known = attempt.view.entries_after(since, max(attempt.hint_head, reply_seq - 1))
     if known is None:
         known = await ports.log.read_after(
@@ -139,14 +226,18 @@ async def put_reply(ports: RuntimePorts, attempt: Attempt, reply: Reply) -> Logg
 async def append_opening(ports: RuntimePorts, attempt: Attempt, reply: Reply) -> LoggedEntry:
     """Open the current segment's reply: the seq it takes is its slot, and never changes."""
     opened = await _append_seen(ports, attempt, reply)
-    attempt.slots = open_slot(attempt.slots, attempt.segment, opened.seq)
+    attempt.slot = opened.seq
     return opened
 
 
 async def opening_reply(ports: RuntimePorts, attempt: Attempt, reply: Reply) -> Reply:
     """Stamp the reply about to open with the message it quotes, as if it took the next seq."""
     state = await _state(ports, attempt)
-    _, quote = await _answers_and_quote(ports, attempt, state.head + 1, state)
+    # What the reply will answer is named only when it settles: until then it quotes as answering
+    # every input still unanswered, and its settle carries the final quote.
+    _, quote = await _answers_and_quote(
+        ports, attempt, state.head + 1, state, attempt.covers or attempt.unanswered
+    )
     return reply.model_copy(update={"quote_target": quote})
 
 

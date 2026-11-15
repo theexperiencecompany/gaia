@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Protocol
 
+from app.agents.core.comms_ledger import Closing, close, still_open
 from app.constants.hil import (
     DECISION_OUTCOME,
     HIL_ACK_APPROVED,
@@ -32,6 +33,7 @@ from app.models.message_models import MessageDict
 from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
+    Answered,
     Appended,
     CancelReason,
     ClaimLost,
@@ -39,8 +41,10 @@ from app.services.conversation.ports import (
     ConversationLog,
     EntryRejected,
     Finished,
+    Reacted,
     RunEvent,
     RuntimePorts,
+    Silent,
     TurnAnalytics,
     Unsettled,
 )
@@ -355,13 +359,34 @@ class Fail:
     error: Exception
 
 
-ScriptItem = RunEvent | Do | Pause | Fail
+@dataclass(frozen=True)
+class Close:
+    """The model closes messages with a closing tool: seqs None closes every one still open."""
+
+    how: Closing = Closing.ANSWERED
+    seqs: tuple[int, ...] | None = None
+    emoji: str | None = None
+
+
+@dataclass(frozen=True)
+class Forgetful:
+    """The model never names what it answered: the run ends with nothing closed by itself."""
+
+
+ScriptItem = RunEvent | Do | Pause | Fail | Close | Forgetful
 
 
 @dataclass(frozen=True)
 class Started:
     batch: tuple[int, ...]
     context: tuple[int, ...]
+    # Said after the batch when the attempt goes on in this run.
+    note: str | None = None
+
+
+@dataclass(frozen=True)
+class HandedOff:
+    seqs: tuple[int, ...]
 
 
 @dataclass(frozen=True)
@@ -374,7 +399,7 @@ class Cancelled:
     reason: CancelReason
 
 
-RunnerCall = Started | Absorbed | Cancelled
+RunnerCall = Started | Absorbed | Cancelled | HandedOff
 
 
 class ScriptedRun:
@@ -385,10 +410,14 @@ class ScriptedRun:
         script: Sequence[ScriptItem],
         ticks: TickGate,
         calls: list[RunnerCall],
+        ledger: str,
         *,
         swallow_first_cancel: bool,
     ) -> None:
         self._script = script
+        self._ledger = ledger
+        # A compliant model names every message still open as its run ends, as the prompt asks.
+        self._names_on_end = not any(isinstance(item, Forgetful) for item in script)
         self._ticks = ticks
         self._calls = calls
         self._swallow = swallow_first_cancel
@@ -411,6 +440,32 @@ class ScriptedRun:
 
     async def absorb(self, entries: Sequence[LoggedEntry]) -> None:
         self._calls.append(Absorbed(tuple(item.seq for item in entries)))
+
+    async def hand_off(self, claim: StepClaim, messages: Sequence[LoggedEntry]) -> bool:
+        seqs = tuple(item.seq for item in messages)
+        self._calls.append(HandedOff(seqs))
+        self._close(Closing.HANDED, seqs)
+        return True
+
+    def _close(self, how: Closing, seqs: Sequence[int] | None, emoji: str | None = None) -> None:
+        named = list(still_open(self._ledger)) if seqs is None else list(seqs)
+        if named:
+            close({"configurable": {"comms_run": self._ledger}}, how, named, emoji)
+
+    def _name_on_end(self, item: RunEvent) -> None:
+        if not self._names_on_end or not isinstance(item, Finished | Answered):
+            return
+        self._names_on_end = False
+        match item.outcome:
+            case Reacted(emoji=emoji):
+                # The tap-back lands on the newest message; the rest close silently beside it.
+                owing = list(still_open(self._ledger))
+                self._close(Closing.REACTED, owing[-1:], emoji)
+                self._close(Closing.SILENT, owing[:-1])
+            case Silent():
+                self._close(Closing.SILENT, None)
+            case _:
+                self._close(Closing.ANSWERED, None)
 
     async def cancel(self, reason: CancelReason) -> None:
         self._calls.append(Cancelled(reason))
@@ -450,7 +505,12 @@ class ScriptedRun:
                 case Fail(error=error):
                     self._emit(error)
                     return True
+                case Close(how=how, seqs=seqs, emoji=emoji):
+                    self._close(how, seqs, emoji)
+                case Forgetful():
+                    pass
                 case _:
+                    self._name_on_end(item)
                     self._emit(item)
                     if isinstance(item, Finished):
                         return True
@@ -485,16 +545,25 @@ class ScriptedRunner:
         self._scripts.extend(scripts)
 
     async def start(
-        self, claim: StepClaim, batch: Batch, context: Sequence[LoggedEntry]
+        self,
+        claim: StepClaim,
+        batch: Batch,
+        context: Sequence[LoggedEntry],
+        ledger: str,
+        note: str | None = None,
     ) -> ScriptedRun:
         if any(not run.task.done() for run in self.runs):
             self.overlaps += 1
         self.calls.append(
-            Started(tuple(item.seq for item in batch.waking), tuple(item.seq for item in context))
+            Started(
+                tuple(item.seq for item in batch.waking),
+                tuple(item.seq for item in context),
+                note,
+            )
         )
         script = self._scripts.pop(0) if self._scripts else self.unscripted
         run = ScriptedRun(
-            script, self._ticks, self.calls, swallow_first_cancel=self.swallow_first_cancel
+            script, self._ticks, self.calls, ledger, swallow_first_cancel=self.swallow_first_cancel
         )
         self.runs.append(run)
         return run

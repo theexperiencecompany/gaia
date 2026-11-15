@@ -2,6 +2,8 @@
 
 from collections.abc import Sequence
 
+from app.agents.core.comms_ledger import close_ledger, open_ledger, owe, still_open
+from app.constants.conversation import STILL_OPEN_LINE, STILL_OPEN_NOTE, STILL_OPEN_QUOTE_CHARS
 from app.models.conversation_frame_models import (
     MessageBoundaryEvent,
     ResponseEvent,
@@ -13,9 +15,10 @@ from app.models.conversation_log_models import (
     LoggedEntry,
     MergeGroup,
     StopRequested,
+    UserMessage,
     Verdict,
 )
-from app.services.conversation.placement import hand
+from app.services.conversation.placement import owed
 from app.services.conversation.ports import (
     Answered,
     CancelReason,
@@ -47,7 +50,7 @@ from app.services.conversation.step_writes import (
     publish_delta,
     retract_attempt,
     set_comms,
-    settle_segment_if_passed,
+    settle_passed,
 )
 from app.services.conversation.verdict import merge_group, verdict
 from app.utils.hot_path import first_text_shown
@@ -56,13 +59,30 @@ from app.utils.hot_path import first_text_shown
 async def run_attempt(
     ports: RuntimePorts, attempt: Attempt, context: Sequence[LoggedEntry]
 ) -> None:
-    """Run one comms attempt to its end; the run is certainly dead when this returns or raises."""
+    """Run one comms attempt to its end, in a second run when the first ends owing messages; every run is dead when this returns."""
     attempt.view.phase_set(await set_comms(ports, attempt.claim, CommsPhase.THINKING))
+    open_ledger(attempt.ledger, owed(attempt.batch.waking))
     try:
-        run = await ports.runner.start(attempt.claim, attempt.batch, context)
+        note = None
+        while True:
+            if not await _run_once(ports, attempt, context, note) or not attempt.continuing:
+                return
+            attempt.continuing = False
+            attempt.answered = None
+            note = still_open_note(attempt)
+    finally:
+        close_ledger(attempt.ledger)
+
+
+async def _run_once(
+    ports: RuntimePorts, attempt: Attempt, context: Sequence[LoggedEntry], note: str | None
+) -> bool:
+    """Run one graph run of the attempt; False when it ended the attempt failed."""
+    try:
+        run = await ports.runner.start(attempt.claim, attempt.batch, context, attempt.ledger, note)
     except Exception as error:  # a run that cannot start fails its inputs like one that crashed
         await fail_attempt(ports, attempt, error)
-        return
+        return False
     try:
         ending = await _watch(ports, attempt, run)
     except ClaimLost:
@@ -72,9 +92,9 @@ async def run_attempt(
         raise
     except Exception as error:  # a store or stream failure mid-attempt fails it, under the claim
         await run.cancel(CancelReason.LOST)
-        await settle_segment_if_passed(ports, attempt)
+        await settle_passed(ports, attempt)
         await fail_attempt(ports, attempt, error)
-        return
+        return False
     except BaseException:
         await run.cancel(CancelReason.LOST)
         raise
@@ -86,6 +106,19 @@ async def run_attempt(
         Exception
     ) as error:  # settling failed part-way: its idempotent ids let fail_attempt finish it
         await fail_attempt(ports, attempt, error)
+        return False
+    return True
+
+
+def still_open_note(attempt: Attempt) -> str:
+    """Return the note telling the run which messages it still owes."""
+    owing = still_open(attempt.ledger)
+    lines = [
+        STILL_OPEN_LINE.format(seq=logged.seq, text=logged.entry.text[:STILL_OPEN_QUOTE_CHARS])
+        for logged in attempt.handed
+        if logged.seq in owing and isinstance(logged.entry, UserMessage)
+    ]
+    return STILL_OPEN_NOTE.format(messages="\n".join(lines))
 
 
 async def _watch(ports: RuntimePorts, attempt: Attempt, run: CommsRun) -> Ending:
@@ -94,8 +127,8 @@ async def _watch(ports: RuntimePorts, attempt: Attempt, run: CommsRun) -> Ending
     try:
         while True:
             signal = await next_signal(pump, ports.tick)
-            if attempt.answered is not None:
-                # Settled: later inputs are the next attempt's, so only the run's end matters.
+            if attempt.answered is not None or attempt.continuing:
+                # Settled, or going on in another run: later inputs are the next attempt's.
                 if isinstance(signal, Finished | Crashed):
                     return signal
                 continue
@@ -108,8 +141,7 @@ async def _watch(ports: RuntimePorts, attempt: Attempt, run: CommsRun) -> Ending
             if isinstance(signal, Finished | Crashed):
                 return signal
             if isinstance(signal, Answered):
-                await settle_segment_if_passed(ports, attempt)
-                attempt.answered = await finish_run(ports, attempt, signal.outcome)
+                attempt.answered = await finish_run(ports, attempt, run, signal.outcome)
             elif not isinstance(signal, Tick | Summarized):
                 await _handle(ports, attempt, run, signal)
     finally:
@@ -160,17 +192,18 @@ async def _handle(
     # A model output or summary was committed as it arrived, before the verdict.
     match event:
         case ModelOutput(has_tool_calls=has_tool_calls):
-            await settle_segment_if_passed(ports, attempt)
+            await settle_passed(ports, attempt)
             if has_tool_calls and attempt.joiners:
                 await run.absorb(attempt.joiners)
-                attempt.handed = hand(
-                    attempt.handed, attempt.slots, attempt.segment, attempt.joiners
-                )
+                owe(attempt.ledger, owed(attempt.joiners))
+                attempt.handed = (*attempt.handed, *attempt.joiners)
                 attempt.joiners = ()
+                # The open reply sits above them: it can answer none, so it ends before more shows.
+                attempt.split = isinstance(attempt.progress, Showing)
         case Streamed(payload=payload, by_model=by_model):
             # What a running tool shows stays beside its call, above inputs handed since.
             if by_model:
-                await settle_segment_if_passed(ports, attempt)
+                await settle_passed(ports, attempt)
             await _show(ports, attempt, payload)
 
 

@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
-from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
+from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
@@ -85,6 +85,15 @@ Each turn, pick one:
 - REACT: the message deserves a tap-back and no words ("thanks", "ok cool", "haha", "perfect", a sign-off, a funny one-liner that needs no answer). Call {REACT_TOOL_NAME} with one emoji and write no text. It shows as a reaction on their message, or as the bare emoji where the platform has no reactions. Lean toward reacting: when a tap-back says everything a short reply would, react instead of typing, since fewer words usually land better. This is the one place an emoji is always welcome. Never react in place of an answer: a question you answer yourself, or a result that just arrived, gets words. Work you hand off is the exception: a reaction is its acknowledgment (see Actions).
 - SILENCE (right after a hand-off, or a background update; never in place of an answer to the user's message): the hand-off itself (see Actions), or a background result with nothing new for them: a routine check, a no-op, or a repeat check that found nothing since your last message (even on something they asked you to watch). Call {STAY_SILENT_TOOL_NAME} and write no text. Never for the first result of something they asked for, never for a run that hit errors, and never for anything that created, sent, deleted, booked or changed their data.
 Either call is the whole turn: it ends it, so write nothing beside it and decide first. If something is worth saying, say it; if nothing is, make the call alone, with no recap or reminder. The {STAY_SILENT_TOOL_NAME} reason is for the logs, never a summary for the user. A reaction is always the {REACT_TOOL_NAME} call, never an emoji or a tag written as text.
+
+## Naming what you answered
+
+Every user message reaches you as "[#n] <their words>"; #n is its handle. Each message stays open until you close it, and every way of closing names it by handle:
+- {ANSWERED_TOOL_NAME}(message_ids): write the answer as your reply text first, in the same message, then name what it answers. It only names; it never says anything to the user, so naming a message you wrote nothing for leaves them with no answer. Alone, it ends your turn; beside a lookup or a hand-off, you keep going.
+- {REACT_TOOL_NAME}(emoji, message_id): the reaction lands on that message (also how you acknowledge a hand-off).
+- {STAY_SILENT_TOOL_NAME}(reason, message_ids): nothing to say to them.
+- call_executor(for_messages): the messages that work handles.
+Name only what that step dealt with. A message that arrives while you are working on an earlier one: answer it and name it, then carry on with the earlier one, which stays open until you name it too. One reply that answers several messages names them all. Never write a handle in your reply text.
 
 ## Bubbles
 

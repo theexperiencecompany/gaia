@@ -859,13 +859,23 @@ def _should_continue(deps: _AgentDeps) -> Callable[..., str | Send | list[Send]]
 def _after_tools(
     turn_ending: Callable[[AIMessage], object | None], exit_node: str
 ) -> Callable[[State], str]:
-    """Route out of the tools node: end the turn after calls that end it, else back to the model."""
+    """Route out of the tools node: end the turn after calls that end it, else back to the model.
+
+    A turn-ending call that failed goes back to the model like any failed call, to correct it.
+    """
 
     def route(state: State) -> str:
         message = _last_tool_calling_message(state)
-        if message is not None and turn_ending(message) is not None:
-            return exit_node
-        return "agent"
+        if message is None or turn_ending(message) is None:
+            return "agent"
+        call_ids = {call["id"] for call in message.tool_calls}
+        failed = any(
+            isinstance(result, ToolMessage)
+            and result.tool_call_id in call_ids
+            and result.status == "error"
+            for result in state.get("messages", [])
+        )
+        return "agent" if failed else exit_node
 
     return route
 

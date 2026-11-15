@@ -1,16 +1,14 @@
 """How an attempt ends: a finished, failed, restarted, stopped, spoken-over or lost run, and its follow-ups."""
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 
-from app.models.chat_models import ReactionBy
+from app.agents.core.comms_ledger import still_open
 from app.models.conversation_log_models import (
     BargeIn,
     CommsPhase,
     LoggedEntry,
-    Reaction,
     Reply,
     StepClaim,
-    UserMessage,
     Verdict,
 )
 from app.services.conversation.ports import (
@@ -18,13 +16,11 @@ from app.services.conversation.ports import (
     ClaimLost,
     CommsRun,
     Finished,
-    Reacted,
     Replied,
     RunOutcome,
     RuntimePorts,
     StepLimitReached,
 )
-from app.services.conversation.reply_analytics import spoken_context
 from app.services.conversation.step_attempt import (
     Attempt,
     Drafting,
@@ -38,14 +34,14 @@ from app.services.conversation.step_writes import (
     amend_entry,
     amend_seen,
     conclude,
+    end_above,
+    end_interim,
     put_reply,
     retract_attempt,
     set_comms,
     settle_inputs,
-    settle_segment_if_passed,
+    settle_passed,
 )
-from shared.py.analytics import Dedupe
-from shared.py.analytics.catalog.chat import ChatTurnReacted
 from shared.py.conversation_wire import (
     FailureReason,
     ReplyOutcome,
@@ -61,15 +57,17 @@ _CANCEL_REASON: dict[Verdict, CancelReason] = {
 
 
 async def end_attempt(ports: RuntimePorts, attempt: Attempt, run: CommsRun, ending: Ending) -> None:
-    # A run that ended on its own settles what was shown above the inputs handed after it and
-    # answers those below; a cancelled one ends the shown segment as cancelled, leaving them open.
-    if not isinstance(ending, Verdict):
-        await settle_segment_if_passed(ports, attempt)
+    # A crashed run settles what its tools closed first; a cancelled one ends the shown segment
+    # as cancelled, leaving its messages open.
+    if isinstance(ending, Crashed):
+        await settle_passed(ports, attempt)
     match ending:
+        case Finished() if attempt.continuing:
+            pass
         case Finished(outcome=outcome) if attempt.answered is not None:
             await _add_follow_ups(ports, attempt, attempt.answered, outcome)
         case Finished(outcome=outcome):
-            await finish_run(ports, attempt, outcome)
+            attempt.answered = await finish_run(ports, attempt, run, outcome)
         case Crashed(error=error) if attempt.answered is not None:
             await run.cancel(CancelReason.LOST)
             log.warning(
@@ -99,6 +97,7 @@ async def _stop(ports: RuntimePorts, attempt: Attempt) -> None:
         return
     await put_reply(ports, attempt, progress.reply)
     state = await ports.log.state(attempt.claim.conversation_id, attempt.claim.user_id)
+    attempt.covers = attempt.unanswered
     await settle_inputs(
         ports,
         attempt.claim,
@@ -112,15 +111,15 @@ async def _stop(ports: RuntimePorts, attempt: Attempt) -> None:
 async def _truncate(ports: RuntimePorts, attempt: Attempt) -> None:
     """Note how much of the reply the user heard before speaking over it; it still answered its inputs."""
     progress = attempt.progress
+    attempt.covers = attempt.unanswered
     if isinstance(progress, Drafting):
         await conclude(ports, attempt, progress.reply, ReplyOutcome.TRUNCATED)
         return
-    if not isinstance(progress, Showing):
+    if not isinstance(progress, Showing) or attempt.slot is None:
         await retract_attempt(ports, attempt)
         return
-    # A reply shows only once its segment's slot opened.
     after = await ports.log.read_after(
-        attempt.claim.conversation_id, attempt.claim.user_id, attempt.slots[attempt.segment]
+        attempt.claim.conversation_id, attempt.claim.user_id, attempt.slot
     )
     barges = [
         logged.entry
@@ -176,12 +175,64 @@ _AFTER_CANCEL: dict[Verdict, Callable[[RuntimePorts, Attempt], Awaitable[None]]]
 }
 
 
-async def finish_run(ports: RuntimePorts, attempt: Attempt, outcome: RunOutcome) -> LoggedEntry:
-    """Settle a finished run and return its stored reply; a reaction-only answer settles silently with no visible bubble."""
-    if isinstance(outcome, Reacted):
-        await _react(ports, attempt, outcome.emoji)
-    reply, settled_as, failure = final_reply(attempt, outcome)
-    return await conclude(ports, attempt, reply, settled_as, failure)
+async def finish_run(
+    ports: RuntimePorts, attempt: Attempt, run: CommsRun, outcome: RunOutcome
+) -> LoggedEntry | None:
+    """Settle a run that ended on its own, or mark the attempt continuing while it owes messages.
+
+    The first end that owes messages goes on in a run told which; the next hands them to the
+    executor, as a hand-off the user sees. Inputs no message answers settle with the last reply.
+    """
+    if attempt.split:
+        await end_interim(ports, attempt)
+    reply, worded = final_reply(attempt, outcome)
+    if worded and not isinstance(attempt.progress, Showing):
+        # Words the run said but never streamed are what this segment shows before it settles.
+        attempt.progress = Drafting(reply=reply)
+    named = await settle_passed(ports, attempt)
+    owing = still_open(attempt.ledger)
+    if owing and not attempt.reminded:
+        attempt.reminded = True
+        attempt.continuing = True
+        return None
+    if owing:
+        if not await run.hand_off(attempt.claim, _owed_entries(attempt, owing)):
+            return await _settle_rest(
+                ports, attempt, ReplyOutcome.FAILED, FailureReason.MODEL_ERROR
+            )
+        named = await settle_passed(ports, attempt) or named
+    return await _settle_rest(ports, attempt) or named
+
+
+async def _settle_rest(
+    ports: RuntimePorts,
+    attempt: Attempt,
+    failed: ReplyOutcome | None = None,
+    failure: FailureReason | None = None,
+) -> LoggedEntry | None:
+    """Settle the inputs still unanswered on the open segment; None when there is nothing to settle.
+
+    Only a failure settles a message still owed: otherwise a closing tool names every one.
+    """
+    owing = still_open(attempt.ledger)
+    covers = tuple(
+        logged for logged in attempt.unanswered if failed is not None or logged.seq not in owing
+    )
+    await end_above(ports, attempt, covers)
+    reply = base_reply(attempt)
+    worded = bool(reply.text or reply.tool_data)
+    attempt.covers = covers
+    if failed is not None:
+        return await conclude(ports, attempt, reply, failed, failure)
+    if not attempt.covers:
+        return await conclude(ports, attempt, reply, ReplyOutcome.INTERIM) if worded else None
+    return await conclude(
+        ports, attempt, reply, ReplyOutcome.ANSWERED if worded else ReplyOutcome.SILENT
+    )
+
+
+def _owed_entries(attempt: Attempt, owing: Mapping[int, str]) -> tuple[LoggedEntry, ...]:
+    return tuple(logged for logged in attempt.handed if logged.seq in owing)
 
 
 async def _add_follow_ups(
@@ -195,21 +246,6 @@ async def _add_follow_ups(
         return
     await amend_seen(
         ports, attempt, reply.model_copy(update={"follow_up_actions": outcome.follow_up_actions})
-    )
-
-
-async def _react(ports: RuntimePorts, attempt: Attempt, emoji: str) -> None:
-    messages = [logged.entry for logged in attempt.covers if isinstance(logged.entry, UserMessage)]
-    if not messages:
-        return
-    message = messages[-1]
-    reaction = Reaction(emoji=emoji, by=ReactionBy.CHAT_MODEL)
-    amended = await amend_seen(ports, attempt, message.model_copy(update={"reaction": reaction}))
-    ports.analytics.capture(
-        attempt.claim.user_id,
-        ChatTurnReacted(emoji=emoji),
-        spoken_context(message),
-        Dedupe(key=f"reacted:{message.id}:{emoji}", occurred_at=amended.at),
     )
 
 
@@ -227,4 +263,4 @@ async def fail_attempt(ports: RuntimePorts, attempt: Attempt, error: Exception) 
         if isinstance(error, StepLimitReached)
         else FailureReason.MODEL_ERROR
     )
-    await conclude(ports, attempt, base_reply(attempt), ReplyOutcome.FAILED, failure)
+    await _settle_rest(ports, attempt, ReplyOutcome.FAILED, failure)

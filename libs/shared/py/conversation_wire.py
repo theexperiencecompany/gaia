@@ -77,6 +77,8 @@ class ReplyOutcome(StrEnum):
     TRUNCATED = "truncated"
     FAILED = "failed"
     SILENT = "silent"
+    # Shown while the run worked on, naming no message: a later reply answers what it covered.
+    INTERIM = "interim"
 
 
 class FailureReason(StrEnum):

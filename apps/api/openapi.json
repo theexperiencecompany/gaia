@@ -16083,7 +16083,8 @@
           "stopped",
           "truncated",
           "failed",
-          "silent"
+          "silent",
+          "interim"
         ],
         "title": "ReplyOutcome",
         "type": "string"

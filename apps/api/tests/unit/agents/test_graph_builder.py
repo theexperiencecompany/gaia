@@ -449,6 +449,7 @@ class TestBuildCommsGraph:
                 web_search_tool.name,
                 fetch_webpages.name,
                 get_weather.name,
+                "answered",
                 "react",
                 "stay_silent",
                 *[memory_tool.name for memory_tool in memory_tools.tools],

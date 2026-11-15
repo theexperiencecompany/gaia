@@ -13456,7 +13456,7 @@ export interface components {
          * @description How a finished reply ended.
          * @enum {string}
          */
-        ReplyOutcome: "answered" | "stopped" | "truncated" | "failed" | "silent";
+        ReplyOutcome: "answered" | "stopped" | "truncated" | "failed" | "silent" | "interim";
         /**
          * ReplyToMessageData
          * @description Data for the message being replied to.

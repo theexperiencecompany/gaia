@@ -68,7 +68,7 @@ from app.constants.agents import AgentTag
 from app.constants.browser import HandoffDecision, HandoffStatus
 from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
-from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
+from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, HIL_JEV_URL
@@ -507,7 +507,7 @@ async def test_a_message_sent_before_the_reply_commits_gets_one_reply_using_both
     assert humans(model.prompts[1]).count("actually make it $900") == 1
 
 
-def _ending(name: str, **args: str) -> AIMessage:
+def _ending(name: str, **args: object) -> AIMessage:
     return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": f"call_{name}"}])
 
 
@@ -515,7 +515,7 @@ def _ending(name: str, **args: str) -> AIMessage:
 async def test_a_react_call_puts_the_chat_models_reaction_on_the_message_and_says_nothing(
     rig_for: RigFactory,
 ) -> None:
-    model = gated(_ending(REACT_TOOL_NAME, emoji="🙏"), "a second model call")
+    model = gated(_ending(REACT_TOOL_NAME, emoji="🙏", message_id=1), "a second model call")
     rig = await rig_for(model)
     await rig.send("m1", "thanks!")
     await rig.settle()
@@ -527,7 +527,10 @@ async def test_a_react_call_puts_the_chat_models_reaction_on_the_message_and_say
 
 @pytest.mark.service
 async def test_a_stay_silent_call_answers_with_nothing(rig_for: RigFactory) -> None:
-    model = gated(_ending(STAY_SILENT_TOOL_NAME, reason="nothing to add"), "a second model call")
+    model = gated(
+        _ending(STAY_SILENT_TOOL_NAME, reason="nothing to add", message_ids=[1]),
+        "a second model call",
+    )
     rig = await rig_for(model)
     await rig.send("m1", "ok")
     await rig.settle()
@@ -578,10 +581,42 @@ async def test_a_side_question_during_work_is_answered_while_the_work_runs(
 
 @pytest.mark.service
 @pytest.mark.usefixtures("tool_registry")
+async def test_a_side_question_mid_run_gets_its_own_reply_and_the_ask_is_still_answered(
+    rig_for: RigFactory,
+) -> None:
+    model = gated(recall_call("c1"), recall_call("c2"), "36", "the summary")
+    rig = await rig_for(model)
+    # m2 lands while the committed run is still calling tools: it joins that run.
+    _during(model, 1, lambda: rig.send("m2", "quick side question: what is 15% of 240?"))
+    await rig.send("m1", "research the latest artemis news")
+    await rig.settle()
+    assert humans(model.prompts[2]).count("quick side question: what is 15% of 240?") == 1
+    # The run answered only m2, so it went on with a note that m1 is still open.
+    assert '#1 "research the latest artemis news"' in humans(model.prompts[3])[-1]
+    assert [(reply.text, bool(reply.tool_data)) for reply in await rig.of(Reply)] == [
+        ("", True),
+        ("36", False),
+        ("the summary", False),
+    ]
+    assert await rig.answered() == [
+        (ReplyOutcome.INTERIM, ()),
+        (ReplyOutcome.ANSWERED, ("m2",)),
+        (ReplyOutcome.ANSWERED, ("m1",)),
+    ]
+    assert (await rig.of(ReplySettled))[-1].quote_target == "m1"
+
+
+@pytest.mark.service
+@pytest.mark.usefixtures("tool_registry")
 async def test_work_started_after_a_message_joined_the_attempt_answers_that_message_too(
     rig_for: RigFactory,
 ) -> None:
-    model = gated(recall_call("c1"), recall_call("c2"), "on it", "both done")
+    # "on it" names both messages: m1 (seq 1) and m2, logged below the cards' reply (seq 3).
+    on_it = AIMessage(
+        content="on it",
+        tool_calls=[{"name": ANSWERED_TOOL_NAME, "args": {"message_ids": [1, 3]}, "id": "named"}],
+    )
+    model = gated(recall_call("c1"), recall_call("c2"), on_it, "both done")
     rig = await rig_for(model)
     # m2 lands after the first tool call committed the attempt, so it joins rather than restarts.
     _during(model, 1, lambda: rig.send("m2", "and a hotel"))
@@ -599,7 +634,7 @@ async def test_work_started_after_a_message_joined_the_attempt_answers_that_mess
         ("t1", m2_seq, ("m1", "m2"))
     ]
     assert {"m1", "m2"} <= set(write_up.answers)
-    # Absorbing m2 settles the cards already shown; "on it" opens the next segment below m2.
+    # The cards sit above m2, so they end answering nothing; "on it" opens below m2 and names both.
     assert [(reply.text, bool(reply.tool_data)) for reply in await rig.of(Reply)] == [
         ("", True),
         ("on it", False),
@@ -2684,12 +2719,20 @@ class _TrickleModel(GatedModel):
         **kwargs: Any,
     ) -> AsyncIterator[ChatGenerationChunk]:
         self._prompts.append(list(messages))
-        for char in str(self._replies[len(self._prompts) - 1].content):
+        reply = self._replies[len(self._prompts) - 1]
+        assert isinstance(reply, AIMessage)
+        for char in str(reply.content):
             await asyncio.sleep(_TRICKLE_SECONDS)
             chunk = ChatGenerationChunk(message=AIMessageChunk(content=char))
             if run_manager is not None:
                 await run_manager.on_llm_new_token(char, chunk=chunk)
             yield chunk
+        # The call that names what the words answered streams after them, as a model's does.
+        for index, call in enumerate(reply.tool_calls):
+            named = {"name": call["name"], "args": json.dumps(call["args"]), "id": call["id"]}
+            yield ChatGenerationChunk(
+                message=AIMessageChunk(content="", tool_call_chunks=[{**named, "index": index}])
+            )
 
 
 async def _production_tick() -> None:
@@ -2704,7 +2747,8 @@ async def test_a_reply_streaming_longer_than_the_claims_ttl_is_answered_once(
     model = _TrickleModel(
         responses=[AIMessage(content="unused")], profile={"max_input_tokens": 10**6}
     )
-    model._replies = [AIMessage(content=text)]
+    named = {"name": ANSWERED_TOOL_NAME, "args": {"message_ids": [1]}, "id": "named"}
+    model._replies = [AIMessage(content=text, tool_calls=[named])]
     rig = await rig_for(model, tick=_production_tick)
     with (
         patch.object(mongo_log_claim, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),

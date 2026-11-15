@@ -23,6 +23,7 @@ from tests.unit.services.conversation.runtime_doubles import (
     USER,
     Absorbed,
     Action,
+    Close,
     Do,
     RecordingAnalytics,
     Runtime,
@@ -79,6 +80,7 @@ async def test_each_handed_message_opens_its_own_numbered_segment_below_it() -> 
             Do(arrive(rt, "u2")),
             ModelOutput(True),
             text("b"),
+            Close(seqs=(3,)),
             Do(arrive(rt, "u3")),
             ModelOutput(True),
             text("c"),
@@ -92,10 +94,11 @@ async def test_each_handed_message_opens_its_own_numbered_segment_below_it() -> 
         ("b", "1.1/1"),
         ("c", "1.1/2"),
     ]
+    # "a" sits above u2, so it answers nothing; "b" names u2; "c" closes what is left.
     assert [(item.answers, item.outcome) for item in await settles(rt)] == [
-        (("u1",), ReplyOutcome.ANSWERED),
+        ((), ReplyOutcome.INTERIM),
         (("u2",), ReplyOutcome.ANSWERED),
-        (("u3",), ReplyOutcome.ANSWERED),
+        (("u1", "u3"), ReplyOutcome.ANSWERED),
     ]
 
 
@@ -123,7 +126,7 @@ async def test_a_settled_segment_stays_committed_so_a_later_message_waits_instea
         (seq_of["u3"],)
     ]
     assert [reply.text for reply in await replies(rt)] == ["on it", "both", "three"]
-    assert [item.answers for item in await settles(rt)] == [("u1",), ("u2",), ("u3",)]
+    assert [item.answers for item in await settles(rt)] == [(), ("u1", "u2"), ("u3",)]
 
 
 async def test_a_reply_opening_below_a_message_that_arrived_after_commit_quotes_what_it_answers() -> (
@@ -205,8 +208,8 @@ async def test_a_turn_that_hands_its_run_a_message_spends_a_fixed_number_of_log_
         unsettled=2,
         set_comms=1,
         hint=4,
-        read_after=7,
-        state=5,
+        read_after=6,
+        state=4,
         append_fenced=4,
         amend=2,
         release=1,

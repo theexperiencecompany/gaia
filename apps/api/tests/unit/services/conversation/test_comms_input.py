@@ -58,7 +58,7 @@ def test_a_user_message_is_one_human_message_keyed_on_its_entry_and_seq() -> Non
     assert isinstance(message, HumanMessage)
     assert (message.id, message.content, message.additional_kwargs) == (
         "log:u1",
-        "text of u1",
+        "[#4] text of u1",
         {LOG_SEQ: 4},
     )
 
@@ -185,8 +185,8 @@ def test_absorbing_stops_at_the_first_stop() -> None:
 def test_a_user_message_reads_as_its_reframed_content_when_it_has_one() -> None:
     [message] = entry_messages(logged(4, user("u1")), {"u1": "text of u1\n\nFiles: invoice.pdf"})
     [plain] = entry_messages(logged(5, user("u2")), {"u1": "other"})
-    assert message.content == "text of u1\n\nFiles: invoice.pdf"
-    assert plain.content == "text of u2"
+    assert message.content == "[#4] text of u1\n\nFiles: invoice.pdf"
+    assert plain.content == "[#5] text of u2"
 
 
 def test_a_workflow_fire_reads_as_its_run_request_or_what_was_said_for_it() -> None:
@@ -204,7 +204,7 @@ def test_what_was_said_for_a_message_reaches_both_the_attempt_and_an_absorbed_in
     reframed = {"u1": "text of u1\n\nFiles: a.pdf"}
     [attempt] = attempt_messages(batch(logged(1, user("u1"))), [], [], reframed)
     absorbed, _ = absorbed_messages([logged(1, user("u1"))], reframed)
-    assert [attempt.content, absorbed[0].content] == [reframed["u1"]] * 2
+    assert [attempt.content, absorbed[0].content] == [f"[#1] {reframed['u1']}"] * 2
 
 
 def test_detached_work_that_delivered_its_own_result_says_nothing_and_any_other_work_reports() -> (

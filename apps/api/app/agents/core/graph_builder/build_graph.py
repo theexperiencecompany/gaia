@@ -33,7 +33,7 @@ from app.agents.tools.browser_chat_tools import (
     stop_browser_task,
     tell_browser_task,
 )
-from app.agents.tools.comms_turn_tools import react, stay_silent, turn_ending
+from app.agents.tools.comms_turn_tools import answered, react, stay_silent, turn_ending
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
@@ -303,6 +303,7 @@ def comms_tools() -> dict[str, BaseTool]:
         web_search_tool.name: web_search_tool,
         fetch_webpages.name: fetch_webpages,
         get_weather.name: get_weather,
+        answered.name: answered,
         react.name: react,
         stay_silent.name: stay_silent,
         **{memory_tool.name: memory_tool for memory_tool in memory_tools.tools},

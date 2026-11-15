@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from directives import (
+    ANSWERED_TOOL,
     CALL_EXECUTOR_TOOL,
     DEFAULT_REPLY,
     HAND_OFF_SILENCE_ARGS,
@@ -212,7 +213,7 @@ def test_nested_handoff_script_resolves_through_all_three_tiers():
     # comms: handoff is unbound, call_executor is -> forward the script verbatim.
     assert resolve_response([_user(script)], COMMS_TOOLS) == ToolCallResponse(
         name=CALL_EXECUTOR_TOOL,
-        args={"task": script, **SCRIPTED_HAND_OFF_ARGS},
+        args={"task": script, **SCRIPTED_HAND_OFF_ARGS, "for_messages": []},
     )
     # executor: handoff is bound -> emit it, carrying the subagent's script intact.
     assert resolve_response([_user(script)], frozenset({"handoff"})) == ToolCallResponse(
@@ -334,7 +335,7 @@ def test_comms_forwards_executor_tool_via_call_executor():
     got = resolve_response([_user(script)], COMMS_TOOLS)
     assert got == ToolCallResponse(
         name=CALL_EXECUTOR_TOOL,
-        args={"task": script, **SCRIPTED_HAND_OFF_ARGS},
+        args={"task": script, **SCRIPTED_HAND_OFF_ARGS, "for_messages": []},
     )
 
 
@@ -897,7 +898,7 @@ def test_consecutive_waits_add_up_and_a_trailing_wait_delays_the_reply():
 def test_the_front_door_forwards_at_once_and_the_executor_waits():
     script = '[[wait:2000]] [[tool:create_reminder {"title": "x"}]] [[say:Set]]'
     assert resolve_response([_user(script)], COMMS_TOOLS) == ToolCallResponse(
-        name=CALL_EXECUTOR_TOOL, args={"task": script, **SCRIPTED_HAND_OFF_ARGS}
+        name=CALL_EXECUTOR_TOOL, args={"task": script, **SCRIPTED_HAND_OFF_ARGS, "for_messages": []}
     )
     assert resolve_response([_user(script)], EXECUTOR_TOOLS) == ToolCallResponse(
         name="create_reminder", args={"title": "x"}, delay_ms=2000
@@ -989,7 +990,7 @@ def test_the_front_door_streams_narration_with_its_hand_off():
     script = '[[pace:20]] [[narrate:On it, checking.]] [[tool:create_reminder {"title": "x"}]] [[say:Done.]]'
     assert resolve_response([_user(script)], COMMS_TOOLS) == ToolCallResponse(
         name=CALL_EXECUTOR_TOOL,
-        args={"task": script, **SCRIPTED_HAND_OFF_ARGS},
+        args={"task": script, **SCRIPTED_HAND_OFF_ARGS, "for_messages": []},
         text="On it, checking.",
         pace_ms=20,
     )
@@ -1016,3 +1017,24 @@ def test_narration_streams_word_by_word_before_the_tool_call():
     assert _content_pieces(lines) == ["Let ", "me ", "look."]
     assert all("tool_calls" not in d for d in deltas[:first_call] if "content" in d)
     assert max(i for i, d in enumerate(deltas) if "content" in d) < first_call
+
+
+def test_comms_names_the_messages_its_reply_answers() -> None:
+    messages = [
+        {"role": "assistant", "content": "earlier"},
+        {"role": "user", "content": "[#3] hi [[say:Hello.]]"},
+        {"role": "user", "content": "[#4] and you?"},
+    ]
+    tools = frozenset({CALL_EXECUTOR_TOOL, ANSWERED_TOOL})
+    assert resolve_response(messages, tools) == ToolCallResponse(
+        name=ANSWERED_TOOL, args={"message_ids": [3, 4]}, text="Hello."
+    )
+
+
+def test_a_hand_off_names_the_messages_it_handles() -> None:
+    script = '[#2] remind me [[tool:create_reminder {"title": "x"}]] [[say:Done.]]'
+    response = resolve_response(
+        [{"role": "user", "content": script}], frozenset({CALL_EXECUTOR_TOOL})
+    )
+    assert isinstance(response, ToolCallResponse)
+    assert response.args["for_messages"] == [2]

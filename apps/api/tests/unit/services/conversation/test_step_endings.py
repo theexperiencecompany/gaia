@@ -41,7 +41,7 @@ from app.services.conversation.step_endings import end_attempt
 from app.services.conversation.step_view import StepView
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
-from shared.py.conversation_wire import FailureReason, ReplyOutcome, ToolDataEntry
+from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
 from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import barge, user
 from tests.unit.services.conversation.runtime_doubles import (
@@ -151,6 +151,7 @@ async def _attempt_on(rt: Runtime, progress: Drafting | None) -> tuple[Attempt, 
         reply_id="r1.1",
         batch=batch,
         handed=batch.waking,
+        ledger="c1:1.1",
         seen=1,
         view=StepView(state=unsettled.state, after=0, entries=list(unsettled.entries)),
         hint_head=unsettled.state.head,
@@ -163,7 +164,7 @@ async def test_speaking_over_a_drafted_hand_off_saves_the_draft_as_truncated() -
     rt = Runtime()
     draft = Reply(id="1.1:reply", reply_id="r1.1", attempt_id="1.1", tool_data=(HANDOFF_CARD,))
     attempt, claim = await _attempt_on(rt, Drafting(reply=draft))
-    run_ = await rt.runner.start(claim, attempt.batch, ())
+    run_ = await rt.runner.start(claim, attempt.batch, (), attempt.ledger)
     await end_attempt(rt.ports, attempt, run_, Verdict.TRUNCATE)
     assert rt.runner.calls[-1] == Cancelled(CancelReason.TRUNCATE)
     [saved] = await replies(rt)
@@ -176,7 +177,7 @@ async def test_speaking_over_a_drafted_hand_off_saves_the_draft_as_truncated() -
 async def test_speaking_over_an_attempt_that_showed_nothing_withdraws_it() -> None:
     rt = Runtime()
     attempt, claim = await _attempt_on(rt, None)
-    run_ = await rt.runner.start(claim, attempt.batch, ())
+    run_ = await rt.runner.start(claim, attempt.batch, (), attempt.ledger)
     await end_attempt(rt.ports, attempt, run_, Verdict.TRUNCATE)
     assert [item.entry.id for item in await rt.entries()] == ["u1"]
     assert rt.frames.published[-1] == RetractFrame(attempt_id="1.1")
@@ -221,10 +222,14 @@ async def test_the_next_run_reads_a_settled_reply_as_the_part_the_user_heard(
     start = rt.runner.start
 
     async def recording_start(
-        claim: StepClaim, batch: Batch, context: Sequence[LoggedEntry]
+        claim: StepClaim,
+        batch: Batch,
+        context: Sequence[LoggedEntry],
+        ledger: str,
+        note: str | None = None,
     ) -> ScriptedRun:
         contexts.append(context)
-        return await start(claim, batch, context)
+        return await start(claim, batch, context, ledger, note)
 
     monkeypatch.setattr(rt.runner, "start", recording_start)
     rt.runner.script([text("hello there friend"), Finished(Replied("hello there friend"))])
@@ -299,26 +304,16 @@ async def test_suggestions_made_after_the_reply_settled_are_added_to_it() -> Non
     assert (reply.text, reply.follow_up_actions, reply.revision) == ("done", ("Book it",), 2)
 
 
-async def test_a_run_finishing_after_a_handed_message_answers_it_below_what_showed() -> None:
+async def test_naming_a_message_below_the_shown_reply_ends_that_reply_and_answers_below() -> None:
     rt = Runtime()
     rt.runner.script(
-        [text("a"), Do(arrive(rt, user("u2"))), ModelOutput(True), Finished(Replied("a"))]
+        [text("a"), Do(arrive(rt, user("u2"))), ModelOutput(True), Finished(Replied(""))]
     )
     await send(rt, user("u1"))
     await run(rt)
     assert [(item.outcome, item.answers) for item in await settles(rt)] == [
-        (ReplyOutcome.ANSWERED, ("u1",)),
-        (ReplyOutcome.ANSWERED, ("u2",)),
-    ]
-
-
-async def test_an_empty_answer_to_a_user_fails_as_a_model_error() -> None:
-    rt = Runtime()
-    rt.runner.script([Finished(Replied(""))])
-    await send(rt, user("u1"))
-    await run(rt)
-    assert [(item.outcome, item.failure) for item in await settles(rt)] == [
-        (ReplyOutcome.FAILED, FailureReason.MODEL_ERROR)
+        (ReplyOutcome.INTERIM, ()),
+        (ReplyOutcome.SILENT, ("u1", "u2")),
     ]
 
 

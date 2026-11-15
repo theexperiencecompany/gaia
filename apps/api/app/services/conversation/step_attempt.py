@@ -25,9 +25,8 @@ from app.models.conversation_log_models import (
     WorkFinished,
     WorkflowFired,
 )
-from app.services.conversation.placement import Segment, segments
+from app.services.conversation.placement import watermark
 from app.services.conversation.ports import (
-    Reacted,
     Replied,
     RunOutcome,
 )
@@ -71,14 +70,16 @@ class Showing:
 
 @dataclass
 class Attempt:
-    """One comms attempt: the inputs handed to its run, where its segments opened, and how far it got."""
+    """One comms attempt: the inputs handed to its runs, the replies it settled, and how far it got."""
 
     claim: StepClaim
     run_id: str
     reply_id: str
     batch: Batch
-    # Every input the run was given, in log order; which segment answers each is derived.
+    # Every input the runs were given, in log order.
     handed: tuple[LoggedEntry, ...]
+    # The key of the attempt's ledger of open messages, which its runs' closing tools write.
+    ledger: str
     # Highest seq examined for joiners.
     seen: int
     view: StepView
@@ -87,8 +88,21 @@ class Attempt:
     progress: Quiet | Drafting | Showing | None = None
     # Segments this attempt settled; the current one is the next.
     segment: int = 0
-    # The seq each segment's reply opened at, in order.
-    slots: tuple[int, ...] = ()
+    # The seq the current segment's reply opened at, None until it opens.
+    slot: int | None = None
+    # The inputs the current segment's settle answers, set as it settles.
+    covers: tuple[LoggedEntry, ...] = ()
+    # Seqs of handed inputs a settled segment answered.
+    answered_seqs: frozenset[int] = frozenset()
+    # Inputs were handed below the open reply's slot: it can answer none of them, so it ends at
+    # the next model-written signal and the next segment opens below them.
+    split: bool = False
+    # The runs were already told which messages are still open; this attempt never tells them twice.
+    reminded: bool = False
+    # The run ended owing messages: the attempt goes on in a run that is told which.
+    continuing: bool = False
+    # The id of the newest settle this attempt appended.
+    last_settle: str | None = None
     # Waking entries after handed, of the batch's group, not past a Stop.
     joiners: tuple[LoggedEntry, ...] = ()
     # A Stop or another group's input ended the run of joinable entries.
@@ -109,7 +123,7 @@ class Attempt:
     def settled_view(self) -> StepView | None:
         """Return the view when its newest entry is this attempt's own settle, so it holds everything through it."""
         newest = self.view.entries[-1].entry if self.view.entries else None
-        return self.view if newest is not None and newest.id == _settle_id(self) else None
+        return self.view if newest is not None and newest.id == self.last_settle else None
 
     @property
     def committed(self) -> CommitReason | None:
@@ -126,24 +140,18 @@ class Attempt:
         return merge_group(waking_entry(self.batch.waking[0]))
 
     @property
-    def placed(self) -> tuple[Segment, ...]:
-        """Return every segment the handed inputs and opened slots place."""
-        return segments(self.handed, self.slots)
-
-    @property
-    def covers(self) -> tuple[LoggedEntry, ...]:
-        """Return the inputs the current segment answers: those handed and logged below its slot."""
-        return self.placed[self.segment].covers
-
-    @property
-    def slot(self) -> int | None:
-        """Return the seq the current segment's reply opened at, None until it opens."""
-        return self.slots[self.segment] if len(self.slots) > self.segment else None
-
-    @property
     def through(self) -> int:
-        """Return the newest seq the current segment covers."""
-        return self.covers[-1].seq
+        """Return the newest seq below which every handed input is answered once covers settle."""
+        return watermark(
+            self.handed,
+            self.answered_seqs | {logged.seq for logged in self.covers},
+            self.batch.start - 1,
+        )
+
+    @property
+    def unanswered(self) -> tuple[LoggedEntry, ...]:
+        """Return the handed inputs no settled segment answered yet."""
+        return tuple(logged for logged in self.handed if logged.seq not in self.answered_seqs)
 
 
 def waking_entry(logged: LoggedEntry) -> WakingEntry:
@@ -177,13 +185,10 @@ def _own_cards(reply: Reply) -> tuple[ToolDataEntry, ...]:
     return tuple(card for card in reply.tool_data if handoff_call_id(card) is None)
 
 
-def final_reply(
-    attempt: Attempt, outcome: RunOutcome
-) -> tuple[Reply, ReplyOutcome, FailureReason | None]:
-    """Save what was shown; a run's Replied content is used only when nothing it streamed stayed."""
+def final_reply(attempt: Attempt, outcome: RunOutcome) -> tuple[Reply, bool]:
+    """Return what was shown, and whether it holds words or cards; a run's Replied content is used only when nothing it streamed stayed."""
     filled = base_reply(attempt)
-    streamed = isinstance(attempt.progress, Showing | Drafting)
-    if isinstance(outcome, Replied) and not (streamed and (filled.text or filled.tool_data)):
+    if isinstance(outcome, Replied) and not (filled.text or filled.tool_data):
         filled = filled.model_copy(
             update={
                 "text": outcome.text,
@@ -191,16 +196,7 @@ def final_reply(
                 "follow_up_actions": outcome.follow_up_actions,
             }
         )
-    if filled.text or filled.tool_data:
-        return filled, ReplyOutcome.ANSWERED, None
-    if isinstance(outcome, Reacted) or not _asked(attempt):
-        return filled, ReplyOutcome.SILENT, None
-    # A user who asked never gets nothing back: an empty answer fails, with its Retry.
-    return filled, ReplyOutcome.FAILED, FailureReason.MODEL_ERROR
-
-
-def _asked(attempt: Attempt) -> bool:
-    return any(isinstance(logged.entry, UserMessage) for logged in attempt.covers)
+    return filled, bool(filled.text or filled.tool_data)
 
 
 def _settle_id(attempt: Attempt) -> str:
@@ -258,9 +254,11 @@ def is_visible(payload: StreamPayload) -> bool:
 
 
 def _narrated(attempt: Attempt) -> tuple[str, ...]:
-    """Return the tasks whose finished work the attempt's reply answers."""
+    """Return the tasks whose finished work the reply answers: its covers once named, until then every unanswered input."""
     return tuple(
-        logged.entry.task_id for logged in attempt.covers if isinstance(logged.entry, WorkFinished)
+        logged.entry.task_id
+        for logged in attempt.covers or attempt.unanswered
+        if isinstance(logged.entry, WorkFinished)
     )
 
 

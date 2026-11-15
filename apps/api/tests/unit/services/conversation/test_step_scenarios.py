@@ -74,8 +74,11 @@ from tests.unit.services.conversation.runtime_doubles import (
     Absorbed,
     Action,
     Cancelled,
+    Close,
     Do,
     Fail,
+    Forgetful,
+    HandedOff,
     Pause,
     RecordingFrames,
     Runtime,
@@ -286,47 +289,91 @@ class StepScenarios:
         await assert_quiet(rt)
         assert [settled.quote_target for settled in await settles(rt)] == [None, None]
 
-    async def test_a_message_absorbed_after_text_was_read_continues_in_a_reply_below_it(
+    async def test_a_side_question_mid_run_is_answered_in_its_own_reply_and_the_ask_still_after(
         self, rt: Runtime
     ) -> None:
-        # The text the user read keeps its slot; what the attempt says after the absorb answers below u2.
+        # The live bug: the research reply settled card-only and only "36" was ever written.
         rt.runner.script(
             [
-                text("on it"),
+                ModelOutput(True),
+                card(),
                 Do(arrive(rt, user("u2"))),
                 ModelOutput(True),
-                text("both"),
-                Finished(Replied("on it")),
+                text("36"),
+                Close(seqs=(3,)),
+                ModelOutput(True),
+                text("the summary"),
+                Close(seqs=(1,)),
+                Finished(Replied("the summary")),
             ]
         )
         await send(rt, user("u1"))
         await run(rt)
         assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((3,))]
-        assert await kinds(rt) == [
-            "user_message",
-            "reply",
-            "user_message",
-            "reply_settled",
-            "reply",
-            "reply_settled",
+        assert [(reply.text, len(reply.tool_data)) for reply in await replies(rt)] == [
+            ("", 1),
+            ("36", 0),
+            ("the summary", 0),
         ]
-        assert [reply.text for reply in await replies(rt)] == ["on it", "both"]
         assert await answered(rt) == [
-            (ReplyOutcome.ANSWERED, ("u1",)),
+            (ReplyOutcome.INTERIM, ()),
             (ReplyOutcome.ANSWERED, ("u2",)),
+            (ReplyOutcome.ANSWERED, ("u1",)),
         ]
-        assert [settled.through for settled in await settles(rt)] == [1, 3]
-        assert [settled.quote_target for settled in await settles(rt)] == [None, None]
-        first, second = await replies(rt)
-        assert first.reply_id != second.reply_id
-        assert first.attempt_id != second.attempt_id
-        # Each segment streams as its own draft, so settling the first never swallows the second's deltas.
-        deltas = [f for f in rt.frames.published if isinstance(f, ReplyDeltaFrame)]
-        assert [(f.attempt_id, f.index, f.reply_id) for f in deltas] == [
-            (first.attempt_id, 0, first.reply_id),
-            (second.attempt_id, 0, second.reply_id),
+        # u2 is answered first, so nothing settles past u1 until the ask is answered too.
+        assert [settled.through for settled in await settles(rt)] == [0, 0, 3]
+        assert [settled.quote_target for settled in await settles(rt)] == [None, None, "u1"]
+        await assert_quiet(rt)
+
+    async def test_one_reply_naming_two_messages_answers_both(self, rt: Runtime) -> None:
+        rt.runner.script(
+            [
+                text("on it"),
+                Do(arrive(rt, user("u2"))),
+                ModelOutput(True),
+                text("both done"),
+                Close(seqs=(1, 3)),
+                Finished(Replied("both done")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert [reply.text for reply in await replies(rt)] == ["on it", "both done"]
+        assert await answered(rt) == [
+            (ReplyOutcome.INTERIM, ()),
+            (ReplyOutcome.ANSWERED, ("u1", "u2")),
         ]
-        assert set(rt.frames.conversations) == {CONVERSATION}
+        await assert_quiet(rt)
+
+    async def test_a_run_ending_owing_a_message_is_told_and_naming_it_answers_with_what_showed(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script(
+            [Forgetful(), text("36"), Finished(Replied("36"))],
+            [Close(seqs=(1,)), Finished(Silent())],
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        first, again = rt.runner.calls
+        assert (first, again.batch) == (Started(batch=(1,), context=()), (1,))
+        assert again.note is not None and '#1 "text of u1"' in again.note
+        assert "just name it" in again.note
+        assert [reply.text for reply in await replies(rt)] == ["36"]
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
+        await assert_quiet(rt)
+
+    async def test_a_message_still_open_after_the_note_is_handed_to_the_executor(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script(
+            [Forgetful(), Finished(Silent())],
+            [Forgetful(), Finished(Silent())],
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert [type(call) for call in rt.runner.calls] == [Started, Started, HandedOff]
+        assert rt.runner.calls[-1] == HandedOff((1,))
+        assert await answered(rt) == [(ReplyOutcome.SILENT, ("u1",))]
         await assert_quiet(rt)
 
     @pytest.mark.parametrize(
@@ -338,7 +385,7 @@ class StepScenarios:
         ],
         ids=["finished", "answered", "model-output"],
     )
-    async def test_the_first_signal_after_an_absorb_settles_the_read_text_above_the_message(
+    async def test_text_read_above_an_absorbed_message_ends_interim_and_the_answer_follows_it(
         self, rt: Runtime, after_absorb: list[ScriptItem]
     ) -> None:
         rt.runner.script(
@@ -360,10 +407,12 @@ class StepScenarios:
         assert (first.text, second.text) == ("on it", "done")
         assert first.attempt_id != second.attempt_id
         assert await answered(rt) == [
-            (ReplyOutcome.ANSWERED, ("u1",)),
-            (ReplyOutcome.ANSWERED, ("u2",)),
+            (ReplyOutcome.INTERIM, ()),
+            (ReplyOutcome.ANSWERED, ("u1", "u2")),
         ]
-        assert [settled.through for settled in await settles(rt)] == [1, 3]
+        # Each segment streams as its own draft, so settling the first never swallows the second's deltas.
+        deltas = {f.attempt_id for f in rt.frames.published if isinstance(f, ReplyDeltaFrame)}
+        assert first.attempt_id in deltas
         await assert_quiet(rt)
 
     async def test_a_shown_tool_calls_result_card_stays_with_it_above_the_absorbed_message(
@@ -386,8 +435,8 @@ class StepScenarios:
         assert (cards.text, cards.tool_data) == ("", (CARD, CARD))
         assert (answer.text, answer.tool_data) == ("both done", ())
         assert await answered(rt) == [
-            (ReplyOutcome.ANSWERED, ("u1",)),
-            (ReplyOutcome.ANSWERED, ("u2",)),
+            (ReplyOutcome.INTERIM, ()),
+            (ReplyOutcome.ANSWERED, ("u1", "u2")),
         ]
 
     @pytest.mark.parametrize(
@@ -395,7 +444,7 @@ class StepScenarios:
         [Finished(Replied("")), Fail(RuntimeError("model down"))],
         ids=["replied-empty", "failed"],
     )
-    async def test_a_run_ending_right_after_an_absorb_answers_the_absorbed_below_them(
+    async def test_a_run_ending_right_after_an_absorb_settles_every_reply_below_what_it_answers(
         self, rt: Runtime, ending: ScriptItem
     ) -> None:
         # Regression: the shown reply above u2 was settled as answering u2 when the model never wrote again.
@@ -410,7 +459,7 @@ class StepScenarios:
             if isinstance(logged.entry, Reply)
         }
         settled = await settles(rt)
-        assert [settle.answers for settle in settled] == [("u1",), ("u2",)]
+        assert [settle.answers for settle in settled] == [(), ("u1", "u2")]
         for settle in settled:
             assert all(reply_seq[settle.reply_id] > seq_of[answered] for answered in settle.answers)
         assert [reply.text for reply in await replies(rt)][0] == "on it"
@@ -447,8 +496,8 @@ class StepScenarios:
         assert (cards.text, cards.tool_data) == ("", (CARD, CARD))
         assert (answer.text, answer.tool_data) == ("PDEU is a university", ())
         assert await answered(rt) == [
-            (ReplyOutcome.ANSWERED, ("u1",)),
-            (ReplyOutcome.ANSWERED, ("u2",)),
+            (ReplyOutcome.INTERIM, ()),
+            (ReplyOutcome.ANSWERED, ("u1", "u2")),
         ]
         entry_seqs = [f.seq for f in rt.frames.published if isinstance(f, EntryFrame)]
         assert entry_seqs == sorted(entry_seqs)
@@ -1028,15 +1077,14 @@ class StepScenarios:
         await send(rt, fired("wf3", "ex_3"))
         assert (await rt.log.state(CONVERSATION, USER)).unsettled_waking == (4,)
 
-    async def test_a_silent_run_for_a_user_fails_its_reply_so_the_user_can_retry(
+    async def test_a_message_the_model_chose_silence_for_settles_silently(
         self, rt: Runtime
     ) -> None:
         rt.runner.script([Finished(Silent())])
         await send(rt, user("u1"))
         await run(rt)
         assert (await replies(rt))[0].text == ""
-        assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
-        assert [s.failure for s in await settles(rt)] == [FailureReason.MODEL_ERROR]
+        assert await answered(rt) == [(ReplyOutcome.SILENT, ("u1",))]
 
     async def test_a_silent_run_for_a_workflow_settles_silently(self, rt: Runtime) -> None:
         rt.runner.script([Finished(Silent())])
