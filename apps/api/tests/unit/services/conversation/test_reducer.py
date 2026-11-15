@@ -485,6 +485,18 @@ def test_a_reply_answering_an_input_logged_below_its_slot_is_refused() -> None:
     assert _reason(state, 4, above) is RejectReason.REPLY_ABOVE_ITS_INPUT
 
 
+def test_a_reply_answering_through_its_own_slot_is_not_above_its_input() -> None:
+    state, _ = fold([user("u1"), opened("o")])
+    assert _accept(state, 3, settled("r", ["u1"], 2)).state.settled_through == 2
+
+
+def test_an_imported_settle_drops_the_live_input_it_answers_from_the_waking() -> None:
+    state, _ = fold([user("u1")])
+    old = settled("r0:settled", ["u1"], 1, reply_id="r0").model_copy(update={"imported": True})
+    result = _accept(state, 2, old)
+    assert (result.state.settled_through, result.state.unsettled_waking) == (1, ())
+
+
 def test_a_stopped_reply_settles_through_inputs_below_it_since_it_answers_none() -> None:
     state, _ = fold([user("u1"), opened("o"), user("u2")])
     stopped = settled("r", [], 3, outcome=ReplyOutcome.STOPPED)

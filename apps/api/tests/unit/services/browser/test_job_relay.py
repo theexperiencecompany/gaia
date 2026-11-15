@@ -222,6 +222,21 @@ async def test_the_relay_replays_every_card_onto_its_stream_and_closes_it(
     ]
 
 
+async def test_the_relay_follows_its_own_job_in_its_own_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    Relay(monkeypatch)
+    followed: list[tuple[str, str]] = []
+
+    async def follow(job_id: str, conversation_id: str, sink: object) -> None:
+        followed.append((job_id, conversation_id))
+
+    monkeypatch.setattr(job_relay, "follow_job_cards", follow)
+    await relay_job_cards(REQUEST)
+
+    assert followed == [("job-1", "conv-1")]
+
+
 async def test_a_stop_that_beat_the_relay_stops_the_job_and_opens_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

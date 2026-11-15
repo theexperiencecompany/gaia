@@ -12,6 +12,7 @@ from pymongo.errors import ServerSelectionTimeoutError
 import pytest
 
 from app.constants.chat import ConversationSource
+from app.db.mongodb import indexes
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_entries import EntryWindow
 from app.db.repositories.conversation_log import conversation_log_repository
@@ -27,10 +28,12 @@ from app.models.conversation_models import (
 from app.services.conversation import mongo_log as mongo_log_module
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.utils.errors import (
+    ConversationAlreadyExistsError,
+    ConversationIdTakenError,
     ConversationNotFoundError,
     ConversationStoreError,
 )
-from shared.py.conversation_wire import ReplyOutcome
+from shared.py.conversation_wire import ReplyItem, ReplyOutcome
 from tests.contracts.conftest import HeldFlushes
 
 # Every test here writes entries, so each needs the collection with its unique indexes.
@@ -790,3 +793,94 @@ async def test_a_page_never_splits_a_reply_from_the_settle_that_completes_it(
     assert _seqs(older) == [2, 3, 4, 5]
     rest = await repo.read_entries_before(cid, user_id=uid, before_seq=2, limit=2)
     assert rest is not None and (_seqs(rest), rest.has_older) == ([1], False)
+
+
+async def test_a_second_create_of_an_id_says_whose_it_is(
+    repo: ConversationRepository, conversation: ConversationDocument, raw_collection: Any
+) -> None:
+    await raw_collection.create_index(
+        indexes.CONVERSATION_ID_UNIQUE_KEYS, **indexes.CONVERSATION_ID_UNIQUE_OPTIONS
+    )
+    cid = conversation.conversation_id
+    # Created after another user's chat, so only a lookup by its own id finds its holder.
+    later = conversation.model_copy(
+        update={"conversation_id": f"c-{uuid.uuid4().hex}", "user_id": f"u-{uuid.uuid4().hex}"}
+    )
+    await repo.create(later)
+    with pytest.raises(ConversationAlreadyExistsError) as mine:
+        await repo.create(later.model_copy())
+    assert (mine.value.message, mine.value.meta) == (
+        f"conversation {later.conversation_id} already exists",
+        {"conversation_id": later.conversation_id},
+    )
+
+    theirs = conversation.model_copy(update={"user_id": f"u-{uuid.uuid4().hex}"})
+    with pytest.raises(ConversationIdTakenError) as taken:
+        await repo.create(theirs)
+    assert (taken.value.message, taken.value.meta) == (
+        f"conversation id {cid} belongs to another user",
+        {"conversation_id": cid},
+    )
+
+
+async def test_an_unpin_still_in_the_outbox_hides_the_stored_pinned_copy(
+    repo: ConversationRepository, held: HeldFlushes
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    cid = await _chat(repo, uid)
+    await _append(cid, uid, [_reply("b1", "weekly plan")])
+    await held.run_all()
+    await repo.flush_outbox(cid, user_id=uid)
+    assert [h.item.id for h in await repo.list_pinned_messages(uid)] == ["b1"]
+
+    assert await conversation_log_repository.set_pinned(
+        cid, user_id=uid, message_id="b1", pinned=False
+    )
+    held.drop_all()
+
+    assert await repo.list_pinned_messages(uid) == []
+
+
+async def test_a_hit_shows_the_message_its_settle_quotes(
+    repo: ConversationRepository, held: HeldFlushes
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    cid = await _chat(repo, uid)
+    settle = ReplySettled(
+        id="settle-r1",
+        reply_id="r1",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("m1",),
+        through=1,
+        quote_target="m1",
+    )
+    await _append(cid, uid, [_message("m1", "the question"), _reply("r1", "needle"), settle])
+    await held.run_all()
+    await repo.flush_outbox(cid, user_id=uid)
+
+    [hit] = (await repo.search(uid, pattern="needle")).messages
+
+    assert isinstance(hit.item, ReplyItem) and hit.item.quote is not None
+    assert (hit.item.quote.id, hit.item.quote.content) == ("m1", "the question")
+
+
+async def test_a_flush_of_an_older_revision_keeps_the_entry_restaged_after_it(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: HeldFlushes,
+    raw_collection: Any,
+) -> None:
+    cid, uid = conversation.conversation_id, conversation.user_id
+    await _append(cid, uid, [_reply("r1", "draft")])
+    held.drop_all()
+    [first] = ConversationHead.model_validate(
+        await raw_collection.find_one({"conversation_id": cid})
+    ).outbox.values()
+    assert await conversation_log_repository.set_pinned(
+        cid, user_id=uid, message_id="r1", pinned=False
+    )
+    held.drop_all()
+
+    await repo._flush(cid, uid, [first])
+
+    assert list(await _outbox(raw_collection, conversation)) == ["1"]

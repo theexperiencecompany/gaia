@@ -494,7 +494,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         with store_errors("create"):  # pragma: no mutate — error label only
             holder = await self._raw_collection().find_one(
                 {"conversation_id": doc.conversation_id},
-                {"_id": 0, "conversation_id": 1, "user_id": 1},
+                # Any truthy value includes a field, and the owner row ignores _id.
+                {"_id": 0, "conversation_id": 1, "user_id": 1},  # pragma: no mutate
             )
         meta: dict[str, object] = {"conversation_id": doc.conversation_id}
         if holder is None:
@@ -740,7 +741,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             missing = openers_outside(page)
             if not missing:
                 return page
-            named = EntryWindow(before_seq=page[0].seq, named=missing, kinds=OPENER_KINDS)
+            # Both only narrow the read: an opener is the earliest entry naming it, before the page.
+            named = EntryWindow(  # pragma: no mutate
+                before_seq=page[0].seq, named=missing, kinds=OPENER_KINDS
+            )
             [(_, openers)] = await self._union_for([head], named)
             if not openers:
                 return page
@@ -750,26 +754,25 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return page
 
     async def _holds_before(self, head: Head, seq: int) -> bool:
-        [(_, stored)] = await self._union_for([head], EntryWindow(before_seq=seq, limit=1))
+        # Any limit, or none, holds an entry exactly when one exists; one is the cheapest read.
+        window = EntryWindow(before_seq=seq, limit=1)  # pragma: no mutate
+        [(_, stored)] = await self._union_for([head], window)
         return bool(stored)
 
     async def _hits(self, user_id: str, rows: Sequence[StoredRow]) -> list[ConversationMessageHit]:
         """Project cross-conversation rows one message apiece, with their settles and quotes."""
-        beside: list[StoredRow] = []
 
-        async def lookup(ids: Sequence[str], reply_ids: Sequence[str]) -> list[LoggedEntry]:
-            found = await self._related_rows(user_id, ids, reply_ids)
-            beside.extend(found)
-            return [row.logged for row in found]
+        async def lookup(ids: Sequence[str], reply_ids: Sequence[str]) -> list[StoredRow]:
+            return await self._related_rows(user_id, ids, reply_ids)
 
-        await _read_beside([row.logged for row in rows], lookup)
+        beside = await _read_beside(rows, lookup)
         related: dict[str, list[LoggedEntry]] = {}
         for row in [*rows, *beside]:
             related.setdefault(row.conversation_id, []).append(row.logged)
         return [
             ConversationMessageHit(conversation_id=row.conversation_id, item=item)
             for row in rows
-            if (item := text_item(row.logged, related.get(row.conversation_id, []))) is not None
+            if (item := text_item(row.logged, related[row.conversation_id])) is not None
         ]
 
     async def _related_rows(
@@ -841,8 +844,16 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 self._raw_collection()
                 .aggregate(
                     [
-                        *outbox_entries_matching(user_id, {}, excluding=excluding),
-                        {"$project": {"_id": 0, "conversation_id": 1, "seq": 1}},
+                        # Every head: an excluded head's stored entries never count anyway.
+                        *outbox_entries_matching(user_id, {}, excluding=None),
+                        {
+                            "$project": {
+                                # Equivalent under mutation: any truthy value includes, and EntryAddress ignores _id.
+                                "_id": 0,  # pragma: no mutate
+                                "conversation_id": 1,  # pragma: no mutate
+                                "seq": 1,  # pragma: no mutate
+                            }
+                        },
                     ]
                 )
                 .to_list(length=None)
@@ -867,7 +878,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         for raw in rows:
             row = stored_row(raw)
             key = (row.conversation_id, row.logged.seq)
-            if key not in found and key not in staged:
+            if key not in staged:
                 found[key] = row
         return sorted(found.values(), key=lambda row: (row.logged.at, row.logged.seq))
 
@@ -957,16 +968,17 @@ conversation_repository = ConversationRepository()
 
 
 async def _read_beside(
-    window: Sequence[LoggedEntry],
-    lookup: Callable[[Sequence[str], Sequence[str]], Awaitable[list[LoggedEntry]]],
-) -> list[LoggedEntry]:
+    window: Sequence[StoredRow],
+    lookup: Callable[[Sequence[str], Sequence[str]], Awaitable[list[StoredRow]]],
+) -> list[StoredRow]:
     """Look up what the window needs, pass by pass, as each answer names more; never the same id twice."""
-    related: list[LoggedEntry] = []
+    related: list[StoredRow] = []
     asked: set[str] = set()
+    logged = [row.logged for row in window]
     for _ in range(_BESIDE_PASSES):
         ids, reply_ids = (
             [name for name in names if name not in asked]
-            for names in needed_beside(window, related)
+            for names in needed_beside(logged, [row.logged for row in related])
         )
         if not ids and not reply_ids:
             break

@@ -9,15 +9,36 @@ in the base repository goes through.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import asyncio
+from collections.abc import Iterator, Sequence
+from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.chat import ConversationSource
+from app.core.websocket_manager import websocket_manager
 from app.db.repositories.cache import CachePolicy
-from app.db.repositories.conversations import ConversationRepository
-from shared.py.conversation_wire import ToolDataEntry
+from app.db.repositories.conversation_entries import (
+    EntryWindow,
+    StoredRow,
+    head_from_raw,
+    log_document,
+)
+from app.db.repositories.conversations import (
+    ConversationRepository,
+    _read_beside,
+    union_with_outboxes,
+)
+from app.models.conversation_log_models import (
+    Entry,
+    LoggedEntry,
+    Reply,
+    ReplySettled,
+    UserMessage,
+)
+from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
 
 CONVERSATION_ID = "conv-1"
 USER_ID = "user-1"
@@ -137,3 +158,74 @@ class TestOwnerIds:
         args = collection.distinct.await_args.args
         assert args[0] == "user_id"
         assert args[1] == {"conversation_id": CONVERSATION_ID}
+
+
+_AT = datetime(2026, 1, 2, tzinfo=UTC)
+
+
+def _row(seq: int, entry: Entry) -> StoredRow:
+    return StoredRow(
+        conversation_id=CONVERSATION_ID, logged=LoggedEntry(seq=seq, at=_AT, entry=entry)
+    )
+
+
+async def test_a_field_write_tells_the_users_clients_the_row_changed(
+    repo: ConversationRepository, collection: MagicMock
+) -> None:
+    announce = AsyncMock()
+    with patch.object(websocket_manager, "announce", announce):
+        assert await repo.set_starred(CONVERSATION_ID, user_id=USER_ID, starred=True) is True
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    announce.assert_awaited_once_with(
+        USER_ID, {"type": "conversation.list_changed", "conversation_id": CONVERSATION_ID}
+    )
+
+
+async def test_a_hit_reads_its_settle_then_the_message_the_settle_quotes_asking_each_once() -> None:
+    reply = Reply(id="o-r1", reply_id="r1", attempt_id="a1", text="the answer")
+    settle = ReplySettled(
+        id="settle:r1",
+        reply_id="r1",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("u1",),
+        through=1,
+        quote_target="u1",
+    )
+    asked = UserMessage(id="u1", text="the question", surface=ConversationSource.WEB)
+    stored = [_row(1, asked), _row(3, settle)]
+    calls: list[tuple[list[str], list[str]]] = []
+
+    async def lookup(ids: Sequence[str], reply_ids: Sequence[str]) -> list[StoredRow]:
+        calls.append((list(ids), list(reply_ids)))
+        return [
+            row
+            for row in stored
+            if row.logged.entry.id in ids
+            or getattr(row.logged.entry, "reply_id", None) in reply_ids
+        ]
+
+    related = await _read_beside([_row(2, reply)], lookup)
+
+    assert related == [_row(3, settle), _row(1, asked)]
+    assert calls == [(["work:r1:finished", "work:r1:lost"], ["r1"]), (["u1"], [])]
+
+
+def test_a_stored_copy_newer_than_the_heads_outbox_snapshot_wins_the_read() -> None:
+    draft = Reply(id="o-r1", reply_id="r1", attempt_id="a1", text="dra", revision=1)
+    done = draft.model_copy(update={"text": "draft", "revision": 2})
+    staged = log_document(CONVERSATION_ID, USER_ID, LoggedEntry(seq=1, at=_AT, entry=draft))
+    head = head_from_raw(
+        {
+            "conversation_id": CONVERSATION_ID,
+            "user_id": USER_ID,
+            "log_head": 1,
+            "outbox": {"1": staged},
+        }
+    )
+    flushed = log_document(CONVERSATION_ID, USER_ID, LoggedEntry(seq=1, at=_AT, entry=done))
+
+    [(_, entries)] = union_with_outboxes([head], [flushed], EntryWindow())
+
+    assert [(entry.seq, entry.revision) for entry in entries] == [(1, 2)]

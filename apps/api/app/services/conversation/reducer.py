@@ -112,12 +112,13 @@ def _wake_input(
     state: ConversationState, seq: int, entry: UserMessage | WorkflowFired | IntegrationConnected
 ) -> Transition | Rejected:
     """Wake for an input; a fire is refused while the previous fire is unanswered or work still runs here."""
+    effects = _wake_effects(entry)
     if not isinstance(entry, WorkflowFired):
-        return Transition(state=_wake(state, seq), effects=_wake_effects(entry))
+        return Transition(state=_wake(state, seq), effects=effects)
     if state.unsettled_fires or state.work:
         return Rejected(reason=RejectReason.FIRE_OVERLAPS)
     woken = _wake(state, seq).model_copy(update={"unsettled_fires": (*state.unsettled_fires, seq)})
-    return Transition(state=woken, effects=_wake_effects(entry))
+    return Transition(state=woken, effects=effects)
 
 
 def _wake(state: ConversationState, seq: int) -> ConversationState:
