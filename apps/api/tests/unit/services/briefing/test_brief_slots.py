@@ -231,6 +231,14 @@ class TestATypedFigureNamesItsSlot:
             f"the message types {typed!r} itself; write [[fact:9.time]] where it says {typed}"
         ]
 
+    def test_a_typed_date_names_the_due_slot_it_came_from(self) -> None:
+        """Replay of Dhruv's 2026-11-14: "overdue from Fri Nov 13" was told no fact carries 13."""
+        values = SlotValues(facts={4: BriefFact(title="Brex email", time="Fri Nov 13")}, counts={})
+
+        assert slot_problems("message", "The Brex email is overdue from Fri Nov 13.", values) == [
+            "the message types '13' itself; write [[fact:4.time]] where it says 13"
+        ]
+
     @pytest.mark.parametrize(
         "written", ["You have 2 asks today.", "The renewal stands for 3 requests."]
     )

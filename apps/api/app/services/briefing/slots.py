@@ -229,10 +229,11 @@ def _typed_figures(text: str, values: SlotValues) -> list[str]:
 
 def _typed_figure_problem(field: str, word: str, values: SlotValues) -> str:
     """Name the slot that renders a typed figure, so the retry writes it; else ask for words."""
+    # Any word of what a slot renders: the "13" of "Fri Nov 13", the "11" of "11:00 AM".
     slots = [
         slot
         for slot, value in _rendered_by_slot(values)
-        if word in (value, value.split()[0], value.split()[0].split(":")[0])
+        if word == value or any(word in (part, part.split(":")[0]) for part in value.split())
     ]
     if slots:
         return f"the {field} types {word!r} itself; write {' or '.join(slots)} where it says {word}"
