@@ -10,7 +10,7 @@ from tests.helpers import captured_wide_event
 
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.agents.prompts.briefing_prompts import RecentLines, voice_correction_note
-from app.constants.briefing import BriefOutcome
+from app.constants.briefing import MAX_BRIEF_MESSAGE_CHARS, BriefOutcome
 from app.constants.todos import GAIA_TRACKED_LABEL, WaitingOn
 from app.models.briefing_models import BriefingItem, BriefingSection, BriefVoice
 from app.models.todo_models import TodoDocument
@@ -23,7 +23,7 @@ from app.services.briefing.errors import VoiceUnreadableError
 from app.services.briefing.facts import TODAY, FactSources, build_facts
 from app.services.briefing.prose import Writing, opening_line, reader_block, written_brief
 from app.services.briefing.sections import Chosen
-from app.services.briefing.slots import BriefFact, SlotValues
+from app.services.briefing.slots import BriefFact, SlotValues, render_slots
 
 pytestmark = pytest.mark.unit
 
@@ -351,3 +351,84 @@ class TestTheBriefsWideEvent:
             await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
 
         assert event["brief_voice"] == {"attempts": 1, "plain": False, "rejections": []}
+
+    async def test_an_unreadable_reply_is_on_the_event_as_every_field_it_got_wrong(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with pytest.raises(ValidationError) as invalid:
+            BriefVoice.model_validate({"headline": "x", "lede": "y", "caption": "z"})
+        malformed = MalformedStructuredOutputError("bad", llm_output="half")
+        malformed.__cause__ = invalid.value
+        asked = AsyncMock(side_effect=[malformed, _voice()])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+
+        async with captured_wide_event() as event:
+            await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1))
+
+        assert event["brief_voice"]["rejections"] == [
+            "mood: Field required; message: Field required"
+        ]
+
+    async def test_a_draft_broken_two_ways_is_on_the_event_as_both(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        stale = _voice(headline="An open day", message="[Reply to Dan](fact:1) before lunch.")
+        asked = AsyncMock(side_effect=[stale, _voice()])
+        monkeypatch.setattr(prose, "ainvoke_structured", asked)
+        recent = RecentLines(headlines=["An open day"], openings=["Reply to Dan before lunch."])
+
+        async with captured_wide_event() as event:
+            await written_brief(_USER_ID, "PROMPT", Writing(values=_VALUES, lead=1, recent=recent))
+
+        assert event["brief_voice"]["rejections"] == [
+            "the headline repeats a recent brief's line ('An open day'); write today's in fresh "
+            "words; the message's opening repeats a recent brief's line "
+            "('Reply to Dan before lunch.'); write today's in fresh words"
+        ]
+
+
+class TestThePlainVoice:
+    def test_it_lists_the_lead_first_then_every_fact_by_its_slot_and_time(self) -> None:
+        values = SlotValues(
+            facts={1: BriefFact(title="Reply to Dan"), 2: BriefFact(title="Board", time="3 PM")},
+            counts={},
+        )
+
+        assert prose.plain_voice(Writing(values=values, lead=2)) == BriefVoice(
+            headline="Your brief",
+            lede="",
+            caption="",
+            mood="clear",
+            message="- [[fact:2]] ([[fact:2.time]])\n- [[fact:1]]",
+        )
+
+    def test_it_drops_the_last_lines_until_the_rendered_message_fits(self) -> None:
+        """The first two lines render to exactly the limit, so they stay and the third goes."""
+        first = "a" * 100
+        second = "b" * (MAX_BRIEF_MESSAGE_CHARS - len(f"- {first}\n- "))
+        values = SlotValues(
+            facts={1: BriefFact(title=first), 2: BriefFact(title=second), 3: BriefFact(title="c")},
+            counts={},
+        )
+
+        voice = prose.plain_voice(Writing(values=values, lead=None))
+
+        assert voice.message == "- [[fact:1]]\n- [[fact:2]]"
+        assert len(render_slots(voice.message, values, {})) == MAX_BRIEF_MESSAGE_CHARS
+
+    def test_a_dropped_line_goes_whole_its_time_with_it(self) -> None:
+        """Without its time the third line would fit exactly, so only a whole-line cut drops it."""
+        first = "a" * 100
+        second = "b" * (MAX_BRIEF_MESSAGE_CHARS - len(f"- {first}\n- \n- c"))
+        values = SlotValues(
+            facts={
+                1: BriefFact(title=first),
+                2: BriefFact(title=second),
+                3: BriefFact(title="c", time="9 AM"),
+            },
+            counts={},
+        )
+
+        voice = prose.plain_voice(Writing(values=values, lead=None))
+
+        assert voice.message == "- [[fact:1]]\n- [[fact:2]]"

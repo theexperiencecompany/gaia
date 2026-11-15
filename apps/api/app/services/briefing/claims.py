@@ -19,10 +19,10 @@ from app.services.briefing.slots import (
 )
 
 _SAYS_DONE = re.compile(
-    r"\b(done|finished|completed|succeeded|successful(?:ly)?|resolved|fixed|submitted|sorted)\b",
+    r"\b(?:done|finished|completed|succeeded|successful(?:ly)?|resolved|fixed|submitted|sorted)\b",
     re.IGNORECASE,
 )
-_SAYS_FAILED = re.compile(r"\b(failed|failing|broke|broken|bounced|rejected)\b", re.IGNORECASE)
+_SAYS_FAILED = re.compile(r"\b(?:failed|failing|broke|broken|bounced|rejected)\b", re.IGNORECASE)
 _NEGATES = re.compile(r"\b(?:not|no longer|never|yet)\b|n't\b", re.IGNORECASE)
 
 #: The claims each item state cannot carry, as the pattern that finds them.
