@@ -182,21 +182,12 @@ function allPages(): Promise<RenderedPage[]> {
   return renderedPages;
 }
 
-/** Full-width CJK and Hangul characters, each as wide in a result snippet as two Latin ones. */
-const WIDE_CHARACTER = /[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/gu;
-
-/** A short title is one that says too little; in CJK, half the characters say as much. */
-function titleWidth(title: string): number {
-  return title.length + (title.match(WIDE_CHARACTER)?.length ?? 0);
-}
-
 async function outOfRange(
   field: "title" | "description",
   { min, max }: Range,
 ): Promise<string[]> {
-  const shortness = field === "title" ? titleWidth : (s: string) => s.length;
   return (await allPages()).flatMap(({ page, locale, [field]: value }) =>
-    shortness(value) < min || value.length > max
+    value.length < min || value.length > max
       ? [`${value.length} ${locale} ${page}`]
       : [],
   );

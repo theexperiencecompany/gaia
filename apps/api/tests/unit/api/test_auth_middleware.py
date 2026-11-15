@@ -1032,6 +1032,40 @@ class TestDevBypassWithAMongoUser:
         assert resp.json() == {"user_id": "507f1f77bcf86cd799439011"}
 
 
+class TestDevBypassLeavesWorkOSSignInPublic:
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/api/v1/oauth/login/workos",
+            "/api/v1/oauth/login/workos/desktop",
+            "/api/v1/oauth/workos/callback",
+            "/api/v1/oauth/workos/mobile/callback",
+            "/api/v1/oauth/workos/desktop/callback",
+        ],
+    )
+    def test_sign_in_reaches_its_route_without_the_bypass_user(self, monkeypatch, path) -> None:
+        from app.config.settings import settings
+
+        monkeypatch.setattr(settings, "ENV", "development")
+        monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", "dev@example.com")
+        app = _build_test_app()
+
+        @app.get(path)
+        async def sign_in(request: Request) -> dict[str, bool]:
+            return {"authenticated": getattr(request.state, "authenticated", False)}
+
+        with patch(
+            "app.api.v1.middleware.auth.resolve_dev_bypass_user",
+            new_callable=AsyncMock,
+            return_value=("ghost@example.com", None),
+        ) as resolve:
+            resp = TestClient(app).get(path)
+
+        assert (resp.status_code, resp.json()) == (200, {"authenticated": False})
+        assert resolve.await_count == 0
+
+
 # ---------------------------------------------------------------------------
 # AUTH_MODE=local: the self-host session path
 # ---------------------------------------------------------------------------

@@ -169,7 +169,7 @@
   "asana": {
     "name": "Asana",
     "tagline": "팀 과제 및 프로젝트 관리 플랫폼",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Asana 대안",
+    "metaTitle": "Asana 대안 {{CURRENT_YEAR}}: 프로젝트 관리를 먼저 챙기는 AI",
     "metaDescription": "정말로 일 처리가 잘되는 Asana 대안을 찾고 계신가요? GAIA는 AI로 업무, 이메일, 캘린더까지 적극적으로 관리합니다. 비상업적 용도라면 셀프 호스팅은 무료입니다.",
     "keywords": [
       "asana 대안",
@@ -432,7 +432,7 @@
   "basecamp": {
     "name": "Basecamp",
     "tagline": "메시지와 할 일 기능이 있는 간편한 팀 프로젝트 관리",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Basecamp 대안",
+    "metaTitle": "Basecamp 대안 {{CURRENT_YEAR}}: 메일과 작업을 자동으로 정리하는 AI",
     "metaDescription": "더 똑똑한 Basecamp 대안을 찾고 계신가요? GAIA는 이메일, 캘린더, 업무 관리 기능이 포함된 능동형 AI 어시스턴트입니다. 비상업적 용도의 자체 호스팅은 무료입니다.",
     "keywords": [
       "basecamp 대안",
@@ -1623,7 +1623,7 @@
   "anydo": {
     "name": "Any.do",
     "tagline": "AI 일일 플래너 비서가 함께하는 작업 및 캘린더 플래너",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Any.do 대안",
+    "metaTitle": "Any.do 대안 {{CURRENT_YEAR}}: 메일과 일정에서 할 일을 만드는 AI",
     "metaDescription": "Any.do의 AI는 표면적 수준에 그칩니다. GAIA는 작업, 이메일, 캘린더를 깊이 있게 통합 관리하는 완전한 프로액티브 AI 비서입니다. 비상업적 자가 호스팅은 무료입니다.",
     "keywords": [
       "any.do 대안",
@@ -1787,7 +1787,7 @@
   "make": {
     "name": "Make",
     "tagline": "고급 시나리오 빌딩이 가능한 비주얼 워크플로 자동화 플랫폼",
-    "metaTitle": "Make 대안: 대화로 자동화하는 AI",
+    "metaTitle": "Make 대안: 시나리오 없이 대화로 자동화를 만드는 AI",
     "metaDescription": "Make는 시각적 편집기가 필요하고 작업 단위로 과금합니다. GAIA는 대화로 워크플로우를 만들고 단계마다 판단합니다. 기능과 요금을 비교하세요.",
     "keywords": [
       "make.com 대안",
@@ -1853,7 +1853,7 @@
   "n8n": {
     "name": "n8n",
     "tagline": "셀프 호스팅과 400개 이상의 통합을 지원하는 오픈소스 워크플로 자동화",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 n8n 대안 AI 비서",
+    "metaTitle": "n8n 대안 {{CURRENT_YEAR}}: 노드 없이 대화로 만드는 AI 자동화",
     "metaDescription": "n8n은 강력하지만 기술적입니다. GAIA는 비개발자도 쉽게 사용할 수 있는 자동화 기능 내장 소스 공개형 AI 비서입니다. 비상업적 셀프 호스팅은 무료입니다.",
     "keywords": [
       "n8n 대안",
@@ -1919,7 +1919,7 @@
   "bardeen": {
     "name": "Bardeen",
     "tagline": "웹 스크래핑과 반복 작업을 위한 브라우저 기반 AI 자동화",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Bardeen 대안",
+    "metaTitle": "Bardeen 대안 {{CURRENT_YEAR}}: 대화로 만드는 AI 워크플로 자동화",
     "metaDescription": "Bardeen은 브라우저 전용입니다. GAIA는 이메일, 캘린더, 작업, 워크플로우를 여러분의 모든 디지털 생활에서 관리하는 능동형 AI 어시스턴트입니다. 소스 공개형입니다.",
     "keywords": [
       "bardeen 대안",
@@ -2050,7 +2050,7 @@
   "logseq": {
     "name": "Logseq",
     "tagline": "오픈소스, 로컬 우선 양방향 연결 아웃라이너",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Logseq 대안",
+    "metaTitle": "Logseq 대안 {{CURRENT_YEAR}}: 메모를 작업과 일정으로 잇는 AI",
     "metaDescription": "Logseq는 노트 관리를 수동으로 해야 하고 능동적인 AI가 없습니다. GAIA는 내장 그래프 메모리를 갖춘 능동형 AI 어시스턴트입니다. 소스 공개, 비상업적 자체 호스팅은 무료.",
     "keywords": [
       "logseq 대안",
@@ -2116,7 +2116,7 @@
   "mem-ai": {
     "name": "Mem",
     "tagline": "AI가 자동으로 지식을 정리해주는 노트",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Mem 대안 AI 비서",
+    "metaTitle": "Mem 대안 {{CURRENT_YEAR}}: 기억한 내용으로 직접 행동하는 AI 비서",
     "metaDescription": "Mem.ai는 가격이 비싸고 노트를 직접 입력해야 합니다. GAIA는 이메일과 캘린더에서 자동으로 지식을 수집하는 적극적인 AI 어시스턴트입니다. 비상업적 셀프 호스팅은 무료입니다.",
     "keywords": [
       "mem ai 대안",
@@ -2182,7 +2182,7 @@
   "reflect-app": {
     "name": "Reflect",
     "tagline": "네트워크 사고와 백링크가 적용된 AI 기반 노트 작성",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Reflect 대안",
+    "metaTitle": "Reflect 대안 {{CURRENT_YEAR}}: 메모에서 메일과 작업까지 처리하는 AI",
     "metaDescription": "Reflect는 단순히 노트만 작성합니다. GAIA는 이메일, 작업, 캘린더를 관리하고 지식을 자동으로 구축하는 능동형 AI 어시스턴트입니다. 비상업적 셀프 호스팅은 무료.",
     "keywords": [
       "reflect 앱 대안",
@@ -2312,7 +2312,7 @@
   "evernote": {
     "name": "에버노트",
     "tagline": "웹 클리퍼와 문서 스캔 기능이 있는 고전적인 노트 앱",
-    "metaTitle": "에버노트 대체: 요금 비교와 GAIA로 옮기는 법",
+    "metaTitle": "에버노트 대체 {{CURRENT_YEAR}}: 요금 비교와 GAIA로 옮기는 방법",
     "metaDescription": "에버노트는 유료 요금제를 계속 바꾸고 있습니다. GAIA는 메일과 일정에서 지식을 자동으로 쌓습니다. 요금과 이전 방법을 확인하세요.",
     "keywords": [
       "에버노트 대안",
@@ -2568,7 +2568,7 @@
   "airtable": {
     "name": "Airtable",
     "tagline": "팀과 개인을 위한 유연한 데이터베이스-스프레드시트 하이브리드",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Airtable 대안",
+    "metaTitle": "Airtable 대안 {{CURRENT_YEAR}}: 표 대신 대화로 업무를 자동화하는 AI",
     "metaDescription": "Airtable의 인당 과금은 빠르게 누적되고, 선제적 AI 기능이 없습니다. GAIA는 AI로 자동으로 작업, 이메일, 캘린더를 관리합니다. 비상업적 용도라면 자가 호스팅은 무료입니다.",
     "keywords": [
       "airtable 대안",
@@ -2835,7 +2835,7 @@
   "missive": {
     "name": "Missive",
     "tagline": "내부 댓글 및 할당이 있는 팀을 위한 협업 공유 받은 편지함",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Missive 대안",
+    "metaTitle": "Missive 대안 {{CURRENT_YEAR}}: AI가 분류하고 초안을 쓰는 이메일 관리",
     "metaDescription": "Missive는 비용이 많이 들고 팀 중심적입니다. GAIA는 개인 이메일, 캘린더 및 작업 관리를 위한 적극적인 AI 비서입니다. 소스 공개, 비상업적 자체 호스팅 무료.",
     "keywords": [
       "미시브 대안",
@@ -2900,7 +2900,7 @@
   "pipedream": {
     "name": "Pipedream",
     "tagline": "코드 우선 API 통합을 통한 개발자 중심 워크플로 자동화",
-    "metaTitle": "{{CURRENT_YEAR}}년 최고의 Pipedream 대안",
+    "metaTitle": "Pipedream 대안 {{CURRENT_YEAR}}: 코드 없이 대화로 만드는 AI 자동화",
     "metaDescription": "Pipedream에는 코딩 지식이 필요하며 AI 비서가 없습니다. GAIA는 자연어를 통해 워크플로를 자동화하고 이메일, 작업 및 캘린더를 관리합니다. 비상업적 셀프 호스팅은 무료입니다.",
     "keywords": [
       "파이프드림 대안",
@@ -3823,7 +3823,7 @@
   "dot-app": {
     "name": "Dot",
     "tagline": "동행은 사라졌습니다. 습관은 남길 수 있습니다.",
-    "metaTitle": "종료 이후 Dot 앱 대안 추천",
+    "metaTitle": "Dot 앱 대안: 서비스 종료 후 옮겨 갈 AI 어시스턴트",
     "metaDescription": "Dot은 서비스를 종료했습니다. GAIA는 이메일, 캘린더, 할 일에서 기억이 움직이는 소스 공개형 Dot 대안으로, 매일의 습관과 지난 대화의 맥락을 다시 쌓을 수 있습니다.",
     "keywords": [
       "dot app 대안",
@@ -3910,7 +3910,7 @@
   "friend-pendant": {
     "name": "Friend",
     "tagline": "동행은 남깁니다. 능력을 더합니다.",
-    "metaTitle": "Friend 대안 추천. 움직이는 조수",
+    "metaTitle": "Friend 펜던트 대안: 기록을 넘어 직접 일하는 AI 어시스턴트",
     "metaDescription": "249달러(v2)의 동행 이상을 원하시나요. GAIA는 받은함, 캘린더, 업무를 치우는 소스 공개형 Friend 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
     "keywords": [
       "friend 펜던트 대안",
@@ -3997,7 +3997,7 @@
   "omi": {
     "name": "OMI",
     "tagline": "열린 기록은 업무의 절반입니다. 나머지는 GAIA가 합니다.",
-    "metaTitle": "OMI 대안 추천. 움직이는 열린 AI",
+    "metaTitle": "OMI 대안: 듣기만 하지 않고 직접 일하는 AI 어시스턴트",
     "metaDescription": "OMI의 열린 자세는 좋지만 행동이 필요하신가요. GAIA는 기억한 맥락을 끝난 업무로 바꾸는 소스 공개형 OMI 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
     "keywords": [
       "omi 대안",
@@ -4171,7 +4171,7 @@
   "siri": {
     "name": "Siri",
     "tagline": "Siri는 기계를 챙깁니다. GAIA는 하루를 챙깁니다.",
-    "metaTitle": "Siri 대안 추천. 업무를 하는 AI",
+    "metaTitle": "Siri 대안: 음성 명령을 넘어 업무를 처리하는 AI 어시스턴트",
     "metaDescription": "음성 명령 이상이 필요하신가요. GAIA는 받은함, 일정, 업무를 대신 챙기는 소스 공개형 Siri 대안입니다. 어울리는 사람과 시작 방법도 비교합니다.",
     "keywords": [
       "siri 대안",

@@ -26,6 +26,8 @@ from typing import TypedDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 NX_JSON = REPO_ROOT / "nx.json"
+# A checkout made by `git worktree add` has none until `pnpm install` runs in it.
+NX_BIN = REPO_ROOT / "node_modules" / ".bin" / "nx"
 # The images build.yml publishes; no ci.yml job runs them, so they carry no ci metadata.
 IMAGE_TARGET = "docker:build"
 # A check that names no events runs on every one; off CI there is no event.
@@ -89,14 +91,19 @@ def _target(task: str) -> str:
 
 
 def _nx(*args: str) -> str:
-    return subprocess.run(
+    if not NX_BIN.exists():
+        sys.exit(f"{NX_BIN} is missing: run `pnpm install --frozen-lockfile` in {REPO_ROOT}")
+    proc = subprocess.run(
         ["pnpm", "exec", "nx", *args],
         cwd=REPO_ROOT,
         env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
         capture_output=True,
         text=True,
-        check=True,
-    ).stdout
+        check=False,
+    )
+    if proc.returncode != 0:
+        sys.exit(f"nx {args[0]} exited {proc.returncode}:\n{proc.stderr or proc.stdout}")
+    return proc.stdout
 
 
 def _json_after_banner(out: str, opener: str) -> object:
