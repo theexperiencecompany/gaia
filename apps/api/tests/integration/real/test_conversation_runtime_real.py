@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from bson import ObjectId
+import httpx
 from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
 from langchain_core.messages import (
     AIMessage,
@@ -69,7 +70,7 @@ from app.constants.cache import EXECUTOR_BUSY_PREFIX
 from app.constants.chat import ConversationSource
 from app.constants.conversation import EVENTS_STREAM_MAXLEN, STEP_TICK_SECONDS
 from app.constants.graphs import GraphName
-from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME, HIL_JEV_URL
 from app.constants.todos import TodoWakeKind
 from app.core.lazy_loader import providers
 from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_KEYS, CONVERSATION_ID_UNIQUE_OPTIONS
@@ -149,6 +150,7 @@ from app.services.conversation import (
     step as step_module,
     sweeper,
 )
+from app.services.conversation.approval_replies import HilApprovalReplies
 from app.services.conversation.bot_followers import list_active_bot_conversations
 from app.services.conversation.comms_runner import (
     CommsGraphRunner,
@@ -174,7 +176,12 @@ from app.services.conversation.integration_log import (
 )
 from app.services.conversation.log import Accepted, accept
 from app.services.conversation.mongo_log import MongoConversationLog
-from app.services.conversation.ports import Appended, EntryRejected, RuntimePorts
+from app.services.conversation.ports import (
+    Appended,
+    ApprovalReplies,
+    EntryRejected,
+    RuntimePorts,
+)
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.screen import project_screen
 from app.services.conversation.send import send_message, submit_message
@@ -194,9 +201,10 @@ from app.services.conversation.work_log import (
 )
 from app.services.conversation_stop_service import press_stop
 from app.services.delivery.chat_channel import ChatChannel
-from app.services.hil import ledger_decide
+from app.services.hil import jev_client, ledger_decide
 from app.services.hil.gate import GateContext, read_gate_context
 from app.services.notification_service import notification_service
+from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.workflow import thread_reset
 from app.services.workflow.conversation_service import log_playbook_run
 from app.services.workflow.execution_service import WorkflowFireOverlapped, WorkflowTurnFailed
@@ -249,6 +257,7 @@ from shared.py.conversation_wire import (
 from shared.py.wide_events import _spawned_tasks
 from tests.e2e._harness.graph_run import comms_graph
 from tests.helpers import item_text, shown_items
+from tests.integration.real.ledger_fixtures import Edges
 from tests.unit.services.conversation.log_helpers import described, workflow_run
 from tests.unit.services.conversation.runtime_doubles import ScriptedApprovals
 from tests.unit.services.conversation.test_comms_runner import (
@@ -305,12 +314,14 @@ class Rig:
     effects: _Effects
     turns: list[tuple[StepClaim, Batch]] = field(default_factory=list)
 
-    async def send(self, message_id: str, text: str) -> int:
+    async def send(
+        self, message_id: str, text: str, source: ConversationSource = ConversationSource.WEB
+    ) -> int:
         sent = await send_message(
             self.conversation_id,
             AuthenticatedUser(user_id=self.user_id),
             SendMessageRequest(message_id=message_id, text=text),
-            ConversationSource.WEB,
+            source,
         )
         return sent.accepted.seq
 
@@ -358,6 +369,7 @@ class RigFactory(Protocol):
         history: Sequence[dict[str, str]] = (),
         build_turn: CommsTurnBuilder | None = None,
         tick: Callable[[], Awaitable[None]] = ...,
+        approvals: ApprovalReplies | None = None,
     ) -> Awaitable[Rig]: ...
 
 
@@ -431,6 +443,7 @@ async def rig_for(
             history: Sequence[dict[str, str]] = (),
             build_turn: CommsTurnBuilder | None = None,
             tick: Callable[[], Awaitable[None]] = _quick_tick,
+            approvals: ApprovalReplies | None = None,
         ) -> Rig:
             conversation_id = f"convrt-{uuid4().hex[:10]}"
             await make_conversation(user_id, conversation_id, messages=list(history))
@@ -447,7 +460,7 @@ async def rig_for(
                 ),
                 frames=frames,
                 effects=effects,
-                approvals=ScriptedApprovals(),
+                approvals=approvals or ScriptedApprovals(),
                 analytics=PostHogTurnAnalytics(),
                 clock=_now,
                 tick=tick,
@@ -3403,3 +3416,80 @@ async def test_a_tool_heavy_turn_shows_the_same_screen_live_and_on_reload(
     (settled,) = [item for item in shown if isinstance(item, WorkItem)]
     assert settled.tool_data == live.tool_data
     assert shown == await _reloaded(rig)
+
+
+@contextmanager
+def _jev_out_of_credit() -> Iterator[None]:
+    """Refuse every classifier call, as OpenRouter does with no credit left."""
+    refused = httpx.Response(402, request=httpx.Request("POST", HIL_JEV_URL))
+    with (
+        patch.object(jev_client.jev_http_client, "post", AsyncMock(return_value=refused)),
+        patch.object(jev_client, "resolve", AsyncMock(return_value=ProviderConfig(api_key="k"))),
+    ):
+        yield
+
+
+async def _ask_on_a_bot(rig: Rig, model: GatedModel) -> str:
+    """Start work from a Telegram message and leave one approval of it pending, on the ledger and in the log."""
+    _during(model, 0, lambda: rig.start_work("t1"))
+    await rig.send("m1", "add a todo called milk", ConversationSource.TELEGRAM)
+    await rig.settle()
+    approval_id = await approval_ledger_repository.register(
+        ApprovalProposal(
+            conversation_id=rig.conversation_id,
+            user_id=rig.user_id,
+            fingerprint="fp-todo",
+            tool_name="create_todo",
+            args={"title": "milk"},
+            summary="Create todo",
+            owner_agent=f"todos_{rig.conversation_id}",
+            task_id="t1",
+        )
+    )
+    await record_approval_requested(
+        rig.conversation_id,
+        rig.user_id,
+        ApprovalRequested(
+            id=f"approval:{approval_id}",
+            task_id="t1",
+            approval_id=approval_id,
+            description=described("Create todo"),
+            expires_at=None,
+        ),
+    )
+    return approval_id
+
+
+@pytest.mark.service
+@pytest.mark.parametrize("reply", ["yes", "Yes!"])
+async def test_a_plain_yes_on_a_bot_decides_its_approval_with_the_classifier_down(
+    rig_for: RigFactory, edges: Edges, reply: str
+) -> None:
+    model = gated("on it")
+    rig = await rig_for(model, approvals=HilApprovalReplies())
+    approval_id = await _ask_on_a_bot(rig, model)
+    with _jev_out_of_credit():
+        await rig.send("m2", reply, ConversationSource.TELEGRAM)
+        await rig.settle()
+
+    [decided] = edges.logged.await_args_list
+    assert decided.args[2:4] == (approval_id, ApprovalOutcome.APPROVED)
+    assert len(model._prompts) == 1  # the ack, not a comms run, answered it
+    assert [r.text for r in await rig.of(Reply)][1:] == ["Got it, I'll create todo."]
+
+
+@pytest.mark.service
+async def test_a_new_request_on_a_bot_runs_with_the_classifier_down_and_the_approval_waits(
+    rig_for: RigFactory, edges: Edges
+) -> None:
+    model = gated("on it", "added bread")
+    rig = await rig_for(model, approvals=HilApprovalReplies())
+    approval_id = await _ask_on_a_bot(rig, model)
+    with _jev_out_of_credit():
+        await rig.send("m2", "also add a todo called bread", ConversationSource.TELEGRAM)
+        await rig.settle()
+
+    edges.logged.assert_not_awaited()
+    assert [r.text for r in await rig.of(Reply)] == ["on it", "added bread"]
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert state.asking == (approval_id,)

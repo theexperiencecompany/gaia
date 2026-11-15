@@ -152,7 +152,9 @@ class TestSingleApproval:
         self, decide: AsyncMock
     ) -> None:
         with _pending(_row("ap_1", "Send email")), serve_jev(httpx.ConnectError("down")):
-            assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") is None
+            assert (
+                await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "hmm, maybe") is None
+            )
         decide.assert_not_awaited()
 
 
@@ -189,7 +191,7 @@ class TestBatch:
             _pending(_row("ap_1", "Send A"), _row("ap_2", "Send B")),
             serve_jev(httpx.ConnectError("down")),
         ):
-            assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes") is None
+            assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "hmm") is None
         decide.assert_not_awaited()
 
 
@@ -199,9 +201,9 @@ class TestWhatTheClassifierReads:
     ) -> None:
         row = _row("ap_1", "Send email")
         with _pending(row), serve_jev(jev_reply_body(("approve", 0.99))) as jev:
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes", HISTORY)
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes, go", HISTORY)
 
-        assert _asked_state(jev) == _expected_state("yes", row)
+        assert _asked_state(jev) == _expected_state("yes, go", row)
 
     async def test_a_batch_is_asked_with_every_detail_and_the_history(
         self, decide: AsyncMock
@@ -238,7 +240,7 @@ class TestWhatIsLogged:
     ) -> None:
         pending_rows = [_row(approval_id, "Send") for approval_id in rows]
         with _pending(*pending_rows), serve_jev(httpx.ConnectError("down")):
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "hmm")
 
         logged.error.assert_called_once_with(
             "[HIL] JEV reply classifier failed; the approvals stay pending",
@@ -266,13 +268,85 @@ class TestWhatIsLogged:
             serve_jev(jev_reply_body(("approve", 0.99))),
             patch(f"{MODULE}.decide_ledger", new=AsyncMock(return_value=lost)),
         ):
-            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes, go")
 
         logged.warning.assert_called_once_with(
             "[HIL] Ledger bot decision lost the race",
             approval_id="ap_1",
             outcome=said,
         )
+
+
+class TestThePromptsOwnGrammarNeedsNoModel:
+    """The bot prompt offers yes / no, and "yes 1 and 3" for several: those replies decide with JEV down."""
+
+    @pytest.mark.parametrize("reply", ["yes", "Yes!", "*yes*", " y ", "ok", "approve", "yes 1"])
+    async def test_a_plain_yes_approves_the_one_approval(
+        self, decide: AsyncMock, reply: str
+    ) -> None:
+        row = _row("ap_1", "Send email")
+        with _pending(row), serve_jev(httpx.HTTPError("402 Payment Required")) as jev:
+            outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, reply)
+
+        assert outcome is not None
+        assert (outcome.action, outcome.decided) == ("approve", (row,))
+        assert _decided(decide) == [("ap_1", "approve", None)]
+        jev.post.assert_not_awaited()
+
+    @pytest.mark.parametrize("reply", ["no", "No.", "nope", "cancel"])
+    async def test_a_plain_no_denies_the_one_approval_with_no_correction(
+        self, decide: AsyncMock, reply: str
+    ) -> None:
+        with _pending(_row("ap_1", "Send email")), serve_jev(httpx.HTTPError("402")) as jev:
+            outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, reply)
+
+        assert outcome is not None
+        assert outcome.action == "deny"
+        assert _decided(decide) == [("ap_1", "deny", None)]
+        jev.post.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("reply", "expected"),
+        [
+            ("yes", [("ap_1", "approve"), ("ap_2", "approve"), ("ap_3", "approve")]),
+            ("no", [("ap_1", "deny"), ("ap_2", "deny"), ("ap_3", "deny")]),
+            ("yes 1 and 3", [("ap_1", "approve"), ("ap_3", "approve")]),
+            ("Yes 3, 1", [("ap_1", "approve"), ("ap_3", "approve")]),
+            ("no 2", [("ap_2", "deny")]),
+        ],
+    )
+    async def test_a_batch_reply_in_the_prompts_grammar_decides_the_named_items(
+        self, decide: AsyncMock, reply: str, expected: list[tuple[str, str]]
+    ) -> None:
+        rows = [_row(f"ap_{n}", f"Send {n}", age_minutes=10 - n) for n in (1, 2, 3)]
+        with _pending(*rows), serve_jev(httpx.HTTPError("402")) as jev:
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, reply)
+
+        assert [(approval_id, kind) for approval_id, kind, _ in _decided(decide)] == expected
+        jev.post.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("reply", "pending"),
+        [
+            ("yes but cc finance", 1),
+            ("yes 2", 1),  # no item 2: not the grammar, so the classifier reads it
+            ("yes 4", 3),
+            ("yes 0", 3),
+            ("1", 1),
+            ("add a todo called yes", 1),
+        ],
+    )
+    async def test_anything_else_goes_to_the_classifier(
+        self, decide: AsyncMock, reply: str, pending: int
+    ) -> None:
+        rows = [_row(f"ap_{n}", f"Send {n}") for n in range(1, pending + 1)]
+        verdicts = [("unrelated", 0.95)] * pending
+        with _pending(*rows), serve_jev(jev_reply_body(*verdicts)) as jev:
+            outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, reply)
+
+        jev.post.assert_awaited_once()
+        assert outcome is not None and outcome.action == "unrelated"
+        decide.assert_not_awaited()
 
 
 class TestLedgerOutcomeText:

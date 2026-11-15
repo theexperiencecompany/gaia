@@ -7,9 +7,10 @@ web/mobile/desktop resolve via POST /approvals/{id}/decision instead.
 A reply approves (runs EXACTLY as proposed), denies (any change is a deny with
 the change as feedback), or is a new request (the approvals stay pending and the
 message runs). Several pending approvals decide per item: unnamed items deny on
-an exclusive reply and stay pending on a partial one. JEV (jev_reply.py) classifies first when the
-user's flag is on, the LLM on its transport failure. Fails safe: a classifier
-error leaves approvals pending, never approves.
+an exclusive reply and stay pending on a partial one. A reply in the prompt's own
+grammar ("yes", "no", "yes 1 and 3") decides with no model (reply_grammar.py);
+anything else goes to JEV (jev_reply.py). Fails safe: a classifier error leaves
+the approvals pending and the message runs as a new one, never approves.
 """
 
 from collections.abc import Sequence
@@ -39,6 +40,7 @@ from app.services.hil.errors import (
 from app.services.hil.jev_reply import ask_jev_reply, settle_reply
 from app.services.hil.ledger_decide import LedgerDecision, decide_ledger
 from app.services.hil.pending import pending_approvals
+from app.services.hil.reply_grammar import PlainReply, read_plain_reply
 from shared.py.approvals import ActionResult, ApprovalOutcome
 from shared.py.wide_events import log
 
@@ -104,6 +106,10 @@ async def _resolve_single(
     message: str,
     history: list[MessageDict] | None,
 ) -> ApprovalReplyOutcome | None:
+    plain = read_plain_reply(message, 1)
+    if plain is not None:
+        await _safe_resolve_ledger(record.approval_id, user_id, plain.decision, None)
+        return ApprovalReplyOutcome(action=plain.decision, decided=(record,))
     action_detail = build_action_detail(record.summary, record.args)
     result = await interpret_decision_message(message, action_detail, history)
     if result is None:
@@ -129,17 +135,30 @@ async def _resolve_batch(
 
     Each decision commits through decide_ledger, one by one.
     """
-    action_details = [build_action_detail(r.summary, r.args) for r in pending]
-    result = await interpret_batch_decision_message(message, action_details, history)
-    if result.unrelated:
-        return ApprovalReplyOutcome(action="unrelated")
+    plain = read_plain_reply(message, len(pending))
+    if plain is not None:
+        decisions = _plain_decisions(plain, len(pending))
+    else:
+        action_details = [build_action_detail(r.summary, r.args) for r in pending]
+        result = await interpret_batch_decision_message(message, action_details, history)
+        if result.unrelated:
+            return ApprovalReplyOutcome(action="unrelated")
+        decisions = result.decisions
 
-    approved, denied = await _apply_decisions(pending, user_id, result.decisions)
+    approved, denied = await _apply_decisions(pending, user_id, decisions)
     if not (approved or denied):
         return None
     return ApprovalReplyOutcome(
         action="approve" if approved else "deny", decided=(*approved, *denied)
     )
+
+
+def _plain_decisions(plain: PlainReply, pending: int) -> list[BatchItemDecision]:
+    """Apply a plain yes/no to the items it names, or to every one when it names none."""
+    return [
+        BatchItemDecision(index=index, action=plain.decision)
+        for index in plain.items or range(1, pending + 1)
+    ]
 
 
 async def _apply_decisions(

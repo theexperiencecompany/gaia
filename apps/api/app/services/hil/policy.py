@@ -5,7 +5,8 @@ This module answers two questions and nothing else, so the gate can stay about a
 1. **Is this tool gated?** is_gated — the user's per-tool override, else the
    destructive classification. This set is identical in both gating modes.
 2. **What happens to the gated set?** resolve_policy — ask (confirm with the
-   user) or auto (let the intent judge decide). always_allow gates nothing.
+   user) or auto (let the intent judge decide). always_allow gates nothing the
+   user did not set to "always ask" themselves.
 """
 
 from collections.abc import Mapping
@@ -127,18 +128,29 @@ async def resolve_policy(request: ToolCallRequest, user_id: str, tool_name: str)
 
     Forced-ask tools short-circuit BEFORE the preferences read, so they pause
     even when the preference store itself is unreachable (fail closed for the
-    calls that must never slip through).
+    calls that must never slip through). A per-tool override outranks the mode:
+    "always ask" asks even in always_allow or auto, "never ask" runs in every mode.
     """
     call = unpack_tool_call(request)
     if await asks_every_time(tool_name, call.args):
         return "ask"
     prefs = await _preferences(user_id)
+    if prefs.mode == "always_allow" and not prefs.tool_overrides:
+        return "allow"  # nothing can ask, so skip resolving the tool
+    tool = await gated_tool_object(request, user_id, tool_name)
+    override = _tool_override(prefs, tool_name, tool)
+    if override is not None:
+        return "ask" if override else "allow"
     if prefs.mode == "always_allow":
         return "allow"
-    tool = await gated_tool_object(request, user_id, tool_name)
     if not await is_gated(prefs, tool_name, tool):  # args resolved above
         return "allow"
     return "auto" if prefs.mode == "auto" else "ask"
+
+
+def _tool_override(prefs: HILPreferences, tool_name: str, tool: BaseTool | None) -> bool | None:
+    """Return the user's explicit should-ask choice for this tool, or None when they made none."""
+    return prefs.tool_overrides.get(hil_tool_key(tool_name, mcp_tool_identity(tool)))
 
 
 async def is_gated(
@@ -156,10 +168,10 @@ async def is_gated(
     """
     if await asks_every_time(tool_name, args):
         return True
-    mcp_tool = mcp_tool_identity(tool)
-    override = prefs.tool_overrides.get(hil_tool_key(tool_name, mcp_tool))
+    override = _tool_override(prefs, tool_name, tool)
     if override is not None:
         return override
+    mcp_tool = mcp_tool_identity(tool)
     return await is_tool_destructive(
         tool_name,
         getattr(tool, "description", "") or "",
