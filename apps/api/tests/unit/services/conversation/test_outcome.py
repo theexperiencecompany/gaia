@@ -237,3 +237,21 @@ async def test_an_outcome_that_never_settles_times_out(stream: _Stream) -> None:
     first = await log.append(CONVERSATION, USER, user("u1"))
     with pytest.raises(TimeoutError):
         await await_outcome(log, CONVERSATION, USER, first.logged, timeout=0.05)
+
+
+async def test_a_block_of_replayed_frames_keeps_the_wait_at_its_cursor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    delta = ReplyDeltaFrame(
+        attempt_id="a1", reply_id="r1", index=0, payload=BubbleTextDelta(bubble=0, text="he")
+    )
+    blocks = [[StreamedFrame(stream_id=None, frame=delta)], []]
+    cursors: list[str] = []
+
+    async def read(conversation_id: str, cursor: str) -> list[StreamedFrame]:
+        cursors.append(cursor)
+        return blocks.pop(0)
+
+    monkeypatch.setattr(outcome_module, "read_frames", read)
+    assert await outcome_module._until_the_log_moves(CONVERSATION, "7-0") == "7-0"
+    assert cursors == ["7-0", "7-0"]

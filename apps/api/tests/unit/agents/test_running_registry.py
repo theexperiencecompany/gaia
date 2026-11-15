@@ -205,6 +205,18 @@ class TestStopStreams:
 
         cancel.assert_not_called()
 
+    async def test_a_stopped_run_reports_itself_and_the_runs_it_dispatched(self) -> None:
+        reg = RunningSubagents(CONV)
+        assert await reg.claim(_run("parent", "subagent_parent", dispatched_by="turn"))
+        assert await reg.claim(_run("child", "subagent_child", dispatched_by="subagent_parent"))
+        assert await reg.claim(_run("other", "subagent_other", dispatched_by="turn"))
+
+        stopped = await reg.stop_streams(["subagent_parent"])
+
+        assert [s.subagent_id for s in stopped] == ["parent", "child"]
+        assert await stop_requested("subagent_child")
+        assert not await stop_requested("subagent_other")
+
     async def test_a_run_already_stopped_is_not_reported_stopped_again(self) -> None:
         """A second Stop finds the first one's runs still unwinding; it stopped none of them."""
         reg = RunningSubagents(CONV)

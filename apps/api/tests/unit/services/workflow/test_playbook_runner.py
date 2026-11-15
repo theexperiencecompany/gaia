@@ -364,9 +364,11 @@ async def test_a_replay_its_stream_was_told_to_stop_runs_no_step() -> None:
     result, _ = await _run(_playbook(AGENDA_STEPS), _FakeRegistry(_tools(recorder)))
 
     assert recorder.calls == []
-    assert result.ok is False
-    assert result.failure is not None
-    assert "the replay was stopped" in result.failure
+    assert (result.ok, result.stopped) == (False, True)
+    assert result.failure == (
+        "Playbook stopped at step 1 (list_events): the replay was stopped. "
+        "Completed: nothing. Nothing after that step ran."
+    )
 
 
 async def test_a_stop_for_another_stream_does_not_stop_this_replay() -> None:

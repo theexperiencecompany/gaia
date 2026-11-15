@@ -34,7 +34,7 @@ async def test_the_bot_is_owed_the_rendered_entries_and_woken_from_its_cursor() 
             "conv-1", _frame(4, user("u1")), _frame(5, notice("n1")), _frame(7, notice("n2"))
         )
 
-    assert len(frames.published) == 3
+    assert (len(frames.published), frames.conversations) == (3, ["conv-1"])
     owe.assert_awaited_once_with("conv-1", first_seq=5, last_seq=7)
     wake.assert_awaited_once_with(session)
 

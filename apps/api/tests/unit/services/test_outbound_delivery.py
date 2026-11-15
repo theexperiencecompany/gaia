@@ -663,4 +663,32 @@ class TestPublishConversationWake:
 
         body = json.loads(publisher.publish_outbound.await_args.args[1])
         assert (body["destination_id"], body["follow"]["conversation_id"]) == ("556677", "conv-1")
-        assert body["follow"]["after_seq"] == 3
+        assert (body["follow"]["after_seq"], body["is_channel"]) == (3, False)
+
+    async def test_a_wake_the_broker_refused_is_logged_and_reported_failed(self) -> None:
+        publisher = AsyncMock()
+        publisher.publish_outbound.side_effect = ConnectionError("broker gone")
+        with (
+            patch.object(
+                od, "get_rabbitmq_publisher", new_callable=AsyncMock, return_value=publisher
+            ),
+            patch.object(od, "_report_enqueue_failure", new_callable=AsyncMock) as report,
+            patch.object(od, "log") as logger,
+        ):
+            result = await od.publish_conversation_wake(
+                _session("telegram", BotDelivery(delivered_seq=3))
+            )
+
+        envelope = json.loads(publisher.publish_outbound.await_args.args[1])
+        assert result == od.OutboundResult.FAILED
+        logger.error.assert_called_once_with(
+            "conversation wake publish failed",
+            platform="telegram",
+            user_id=None,
+            envelope_id=envelope["id"],
+            destination_hash=hash_platform_user_id("556677"),
+            conversation_id="conv-1",
+            error="broker gone",
+            error_type="ConnectionError",
+        )
+        report.assert_awaited_once()

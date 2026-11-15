@@ -24,13 +24,10 @@ from shared.py.wide_events import log
 class TestScheduleLastActiveTouch:
     async def test_plain_exception_is_caught_and_logged(self) -> None:
         """A non-JuiceFS failure must be swallowed, not raised into the caller."""
+        touch = AsyncMock(side_effect=RuntimeError("mongo timeout"))
         with (
             patch.object(workspace, "spawn_background_task") as mock_spawn,
-            patch.object(
-                workspace,
-                "touch_session_last_active",
-                new=AsyncMock(side_effect=RuntimeError("mongo timeout")),
-            ),
+            patch.object(workspace, "touch_session_last_active", new=touch),
             patch.object(log, "warning") as mock_warning,
         ):
             schedule_last_active_touch("user-1", "conv-1")
@@ -38,7 +35,10 @@ class TestScheduleLastActiveTouch:
             coro = mock_spawn.call_args.args[0]
             await coro  # must not raise
 
-        mock_warning.assert_called_once()
+        touch.assert_awaited_once_with("user-1", "conv-1")
+        mock_warning.assert_called_once_with(
+            "[CHAT] last_active touch failed", error="mongo timeout", error_type="RuntimeError"
+        )
 
     async def test_juicefs_unavailable_is_a_silent_no_op(self) -> None:
         """The dev-mode no-mount case returns quietly without logging a warning."""

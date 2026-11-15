@@ -92,6 +92,21 @@ class TestSearchMessagesHappyPath:
         assert result.messages[0].conversation_id == "conv1"
         assert result.notes[0].id == "n1"
 
+    async def test_a_reply_snippet_spans_its_bubbles_with_thirty_characters_before_the_match(
+        self, mock_conversation_repo, mock_note_repo
+    ):
+        item = make_reply_item("x", reply_id="m1").model_copy(
+            update={"bubbles": ("A" * 40, "Python rocks")}
+        )
+        mock_conversation_repo.search.return_value = ConversationSearchResults(
+            messages=[ConversationMessageHit(conversation_id="conv1", item=item)], conversations=[]
+        )
+        mock_note_repo.search_by_plaintext.return_value = []
+
+        result = await search_messages("python", FAKE_USER_ID)
+
+        assert [m.snippet for m in result.messages] == ["..." + "A" * 28 + "\n\nPython rocks"]
+
 
 class TestSearchMessagesLogsNoUserText:
     async def test_the_event_records_the_query_shape_and_never_its_words(

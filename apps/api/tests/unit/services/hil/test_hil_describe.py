@@ -117,6 +117,12 @@ class TestFallback:
             == "Delete label in Gmail (as work@acme.com)"
         )
 
+    def test_an_uncurated_call_names_its_first_argument_after_the_action(self) -> None:
+        assert (
+            headline("GMAIL_DELETE_LABEL", {"label_id": "Receipts"}, "Gmail")
+            == "Delete label in Gmail: Receipts"
+        )
+
     def test_the_fallback_confirm_verb_is_generic(self) -> None:
         assert describe_call("GMAIL_DELETE_LABEL", {}, "Gmail").confirm == "go ahead"
 

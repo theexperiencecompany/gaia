@@ -294,10 +294,9 @@ async def _until(
 ) -> AsyncIterator[ScreenStreamFrame | None]:
     """Yield frames until stopping is set, cutting off the read it is blocked in."""
     stopped = asyncio.ensure_future(stopping.wait())
-    following: asyncio.Future[ScreenStreamFrame | None] | None = None
+    following = asyncio.ensure_future(anext(frames))
     try:
         while True:
-            following = asyncio.ensure_future(anext(frames))
             await asyncio.wait({following, stopped}, return_when=asyncio.FIRST_COMPLETED)
             if not following.done():
                 return
@@ -306,11 +305,12 @@ async def _until(
             except StopAsyncIteration:
                 return
             yield streamed
+            following = asyncio.ensure_future(anext(frames))
     finally:
         stopped.cancel()
         # The pending read is still inside frames (a stop, or the client leaving mid-wait);
         # it must end before frames can be closed.
-        if following is not None and not following.done():
+        if not following.done():
             following.cancel()
             await asyncio.wait({following})
             if not following.cancelled():

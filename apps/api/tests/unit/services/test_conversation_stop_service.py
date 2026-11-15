@@ -1,6 +1,7 @@
 """stop_conversation / press_stop: a logged Stop cancels the work it covers, and nothing else."""
 
 from collections.abc import Iterator
+import re
 from unittest.mock import AsyncMock, MagicMock
 
 import fakeredis.aioredis
@@ -67,6 +68,15 @@ class TestStopConversation:
         assert result.work == WorkCancelled()
         logged_stops.assert_awaited_once()
         assert await fake_redis.keys("*") == []
+
+    async def test_each_stop_is_logged_under_its_own_id(self, logged_stops: AsyncMock) -> None:
+        await stop_conversation(CONVERSATION, USER)
+        await stop_conversation(CONVERSATION, USER)
+
+        [first, second] = [args for args, _ in logged_stops.await_args_list]
+        assert (first[:2], second[:2]) == ((CONVERSATION, USER), (CONVERSATION, USER))
+        assert first[2] != second[2]
+        assert all(re.fullmatch(r"[0-9a-f]{32}", args[2]) for args in (first, second))
 
     async def test_the_answer_is_what_the_logged_stop_cancelled(
         self, logged_stops: AsyncMock

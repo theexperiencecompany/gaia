@@ -70,9 +70,7 @@ class WorkDeltas:
     def __call__(self, data: dict[str, object]) -> None:
         """Queue the event's cards behind every earlier write; thinking is held until its block ends."""
         payloads: list[StreamPayload] = []
-        for payload in payloads_of_custom(data):
-            if payload.type not in _WORK_PAYLOADS:
-                continue
+        for payload in [p for p in payloads_of_custom(data) if p.type in _WORK_PAYLOADS]:
             if isinstance(payload, ReasoningEvent):
                 payloads.extend(self._think(payload))
             else:

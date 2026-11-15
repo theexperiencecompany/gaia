@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from datetime import UTC
 from functools import partial
 from unittest.mock import AsyncMock, MagicMock, call, patch
+from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
@@ -256,6 +257,15 @@ class TestTheAnnouncement:
 
         request = announce_seams["notify"].notify.await_args.args[0]
         assert request.content.title == "Notion disconnected"
+
+    async def test_each_lost_account_is_its_own_notification(
+        self, announce_seams: dict[str, MagicMock]
+    ) -> None:
+        await announce_account_expiry(USER_ID, INTEGRATION_ID, _expired(), [], None)
+
+        request = announce_seams["notify"].notify.await_args.args[0]
+        expected = f"gaia-notification:{USER_ID}:integration_expired:notion:ca_1"
+        assert request.id == str(uuid5(NAMESPACE_URL, expected))
 
     async def test_one_of_several_accounts_is_named_so_the_user_knows_which_to_reconnect(
         self, announce_seams: dict[str, MagicMock]

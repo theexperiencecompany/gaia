@@ -24,6 +24,7 @@ from app.models.conversation_frame_models import (
     ToolDataEvent,
     ToolOutputEvent,
     WorkDeltaFrame,
+    state_frame,
 )
 from app.models.conversation_log_models import (
     CommsPhase,
@@ -303,3 +304,13 @@ def test_a_delta_index_is_never_negative() -> None:
 )
 def test_output_frames_round_trip_on_their_kind(frame: BaseModel) -> None:
     assert _FRAMES.validate_json(frame.model_dump_json()) == frame
+
+
+def test_the_state_frame_marks_the_live_work_waiting_on_an_approval() -> None:
+    waiting = LiveWork(task_id="t1", cause_through=1, answers=(), pending_approvals=("ap_1",))
+    running = LiveWork(task_id="t2", cause_through=1, answers=(), pending_approvals=())
+    frame = state_frame(_state(CommsPhase.IDLE, waiting, running))
+    assert frame.work == (
+        LiveTask(task_id="t1", awaiting_approval=True),
+        LiveTask(task_id="t2", awaiting_approval=False),
+    )

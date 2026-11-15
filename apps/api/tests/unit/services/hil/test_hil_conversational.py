@@ -110,11 +110,12 @@ class TestNothingPending:
 
 class TestSingleApproval:
     async def test_a_confident_yes_approves_it(self, decide: AsyncMock) -> None:
-        with _pending(_row("ap_1", "Send email")), serve_jev(jev_reply_body(("approve", 0.99))):
+        row = _row("ap_1", "Send email")
+        with _pending(row), serve_jev(jev_reply_body(("approve", 0.99))):
             outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes send it")
 
         assert outcome is not None
-        assert outcome.action == "approve"
+        assert (outcome.action, outcome.decided) == ("approve", (row,))
         assert _decided(decide) == [("ap_1", "approve", None)]
         assert decide.await_args.kwargs["via"] == "chat"
 
@@ -169,8 +170,19 @@ class TestBatch:
             )
 
         assert outcome is not None
-        assert outcome.action == "approve"
+        assert (outcome.action, outcome.decided) == ("approve", (older, newer))
         assert _decided(decide) == [("ap_1", "approve", None), ("ap_2", "deny", "yes to A, not B")]
+
+    async def test_declining_every_one_is_a_deny_of_them_all(self, decide: AsyncMock) -> None:
+        older, newer = _row("ap_1", "Send A", age_minutes=9), _row("ap_2", "Send B")
+        with (
+            _pending(older, newer),
+            serve_jev(jev_reply_body(("deny", 0.99), ("deny", 0.97))),
+        ):
+            outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "neither")
+
+        assert outcome is not None
+        assert (outcome.action, outcome.decided) == ("deny", (older, newer))
 
     async def test_a_failing_classifier_decides_none_of_them(self, decide: AsyncMock) -> None:
         with (

@@ -63,6 +63,7 @@ from tests.hypothesis_profiles import property_examples
 from tests.unit.services.conversation.log_helpers import (
     asked,
     decided,
+    finished,
     logged,
     notice,
     todo_woke,
@@ -667,6 +668,13 @@ def test_a_reply_quoting_a_newer_message_than_it_answers_retries_the_quoted_one(
     assert item.retry_target == "u2"
 
 
+def test_a_reply_showing_only_its_own_card_is_on_the_screen() -> None:
+    reply = Reply(id="r:reply", reply_id="r", attempt_id="1", tool_data=(_card("search"),))
+    [*_, item] = project_screen([logged(1, user("u1")), logged(2, reply)])
+    assert isinstance(item, ReplyItem)
+    assert (item.bubbles, item.tool_data) == ((), (_card("search"),))
+
+
 def test_the_progress_line_skips_other_cards_and_silent_calls_down_to_the_newest_that_speaks() -> (
     None
 ):
@@ -877,3 +885,34 @@ def test_an_approval_card_on_a_work_item_carries_wire_json() -> None:
     [card] = [entry.card for entry in ended.timeline.cards]
     [answered] = card["data"]
     assert type(answered["outcome"]) is str
+
+
+async def test_loading_reads_the_record_of_running_work_and_its_hand_overs_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entries = [
+        *_RUNNING,
+        logged(3, WorkStarted(id="work:t2", task_id="t2", cause_through=1, joins="t1")),
+        logged(4, user("u2")),
+        logged(5, WorkStarted(id="work:t3", task_id="t3", cause_through=4, answers=("u2",))),
+        logged(6, finished("f3", "t3")),
+    ]
+    records = {"t1": [ToolDataEvent(tool_data=_card("x"))], "t2": [], "t3": []}
+    reads: list[tuple[str, str]] = []
+
+    async def record(conversation_id: str, task_id: str) -> list[StreamPayload]:
+        reads.append((conversation_id, task_id))
+        return list(records[task_id])
+
+    monkeypatch.setattr(screen_patches_module, "work_payloads", record)
+    tracker = await ScreenTracker.load("c1", entries)
+    assert reads == [("c1", "t1"), ("c1", "t2")]
+    running = next(
+        item for item in tracker.items if isinstance(item, WorkItem) and item.task_id == "t1"
+    )
+    assert running.tool_data == (_card("x"),)
+    records["t1"].append(ToolDataEvent(tool_data=_card("y")))
+    await tracker.on_work(
+        WorkDeltaFrame(task_id="t1", index=5, payload=ToolDataEvent(tool_data=_card("z")))
+    )
+    assert reads[-1] == ("c1", "t1")

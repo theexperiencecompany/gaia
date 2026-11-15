@@ -1,11 +1,30 @@
 """follow_screen: a follow opens on the newest page of the screen, at the log's head."""
 
 import asyncio
+from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 
 import pytest
 
-from app.models.conversation_screen_models import ScreenFrame
-from app.services.conversation.event_stream import event_lines, follow_screen
+from app.models.conversation_frame_models import (
+    EntryFrame,
+    StreamPayload,
+    ToolDataEvent,
+    WorkDeltaFrame,
+)
+from app.models.conversation_log_models import WorkStarted
+from app.models.conversation_screen_models import ScreenFrame, ScreenUpdateFrame, WorkItem
+from app.services.conversation import event_stream, screen_patches
+from app.services.conversation.event_stream import (
+    StreamedFrame,
+    _unlogged,
+    _until,
+    event_lines,
+    follow_screen,
+)
+from app.services.conversation.ports import ConversationLog
+from app.services.conversation.screen import TOOL_CALL_CARD
+from shared.py.conversation_wire import BubbleTextDelta, ReplyDeltaFrame, ToolDataEntry
 from tests.unit.services.conversation.log_helpers import user
 from tests.unit.services.conversation.runtime_doubles import Runtime
 
@@ -53,3 +72,90 @@ async def test_a_client_leaving_mid_wait_closes_the_follow_without_an_aclose_rac
 
 async def _never_disconnected() -> bool:
     return False
+
+
+_CARD: ToolDataEntry = {
+    "tool_name": TOOL_CALL_CARD,
+    "data": {"tool_name": "search", "tool_call_id": "c1"},
+}
+
+
+async def test_a_follow_patches_running_work_and_passes_deltas_through(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = Runtime()
+    await runtime.log.append(CONVERSATION, USER, user("u1"))
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    await runtime.log.append(CONVERSATION, USER, started)
+    records: list[tuple[str, str]] = []
+
+    async def work_payloads(conversation_id: str, task_id: str) -> list[StreamPayload]:
+        records.append((conversation_id, task_id))
+        return []
+
+    delta = ReplyDeltaFrame(
+        attempt_id="a1", reply_id="r1", index=0, payload=BubbleTextDelta(bubble=0, text="he")
+    )
+    followed: list[tuple[str, str, int]] = []
+
+    async def follow(
+        log: ConversationLog, conversation_id: str, user_id: str, after_seq: int
+    ) -> AsyncGenerator[StreamedFrame | None]:
+        followed.append((conversation_id, user_id, after_seq))
+        card = WorkDeltaFrame(task_id="t1", index=0, payload=ToolDataEvent(tool_data=_CARD))
+        yield StreamedFrame(stream_id="1-0", frame=card)
+        yield None
+        yield StreamedFrame(stream_id="2-0", frame=delta)
+
+    monkeypatch.setattr(screen_patches, "work_payloads", work_payloads)
+    monkeypatch.setattr(event_stream, "follow", follow)
+    frames = follow_screen(runtime.log, CONVERSATION, USER)
+    opening, patch, keepalive, passed = [await anext(frames) for _ in range(4)]
+    await frames.aclose()
+
+    assert isinstance(opening, ScreenFrame)
+    assert (records, followed) == ([(CONVERSATION, "t1")], [(CONVERSATION, USER, 2)])
+    assert isinstance(patch, ScreenUpdateFrame)
+    assert isinstance(patch.item, WorkItem)
+    assert patch.item.tool_data == (_CARD,)
+    assert (keepalive, passed) == (None, delta)
+
+
+def test_a_frame_the_log_carries_is_never_replayed_from_the_stream() -> None:
+    logged = EntryFrame(seq=3, at=datetime(2026, 1, 1, tzinfo=UTC), entry=user("u3"))
+    assert _unlogged(logged, None, set(), 2) is False
+
+
+async def _counted(*values: int) -> AsyncGenerator[ScreenFrame | None]:
+    for value in values:
+        yield ScreenFrame(items=(), head=value)
+
+
+async def test_a_follow_that_ends_ends_the_stream_after_its_last_frame() -> None:
+    stream = _until(asyncio.Event(), _counted(1, 2))
+    heads = [frame.head async for frame in stream if isinstance(frame, ScreenFrame)]
+    assert heads == [1, 2]
+
+
+async def test_a_stop_cuts_off_the_read_the_follow_is_blocked_in() -> None:
+    blocked = asyncio.Event()
+    cut_off = asyncio.Event()
+
+    async def hangs() -> AsyncGenerator[ScreenFrame | None]:
+        yield ScreenFrame(items=(), head=1)
+        blocked.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cut_off.set()
+        yield None
+
+    stopping = asyncio.Event()
+    stream = _until(stopping, hangs())
+    assert await anext(stream) == ScreenFrame(items=(), head=1)
+    rest = asyncio.ensure_future(anext(stream))
+    await blocked.wait()
+    stopping.set()
+    with pytest.raises(StopAsyncIteration):
+        await rest
+    assert cut_off.is_set()

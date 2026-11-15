@@ -118,15 +118,15 @@ async def _stop(subagent: RunningSubagent) -> bool:
         # Recorded before runs carried a stream (an older replica, mid-rollout): the
         # thread's cancel flag is the stop that replica still reads.
         await SubagentCancel(subagent.subagent_thread_id).request()
-        return True
-    if await stop_requested(subagent.stream_id):
+    elif await stop_requested(subagent.stream_id):
         return False
-    await request_stop(subagent.stream_id)
-    log.info(
-        f"{LogTag.AGENT} Stopped a running subagent",
-        subagent_id=subagent.subagent_id,
-        stream_id=subagent.stream_id,
-    )
+    else:
+        await request_stop(subagent.stream_id)
+        log.info(
+            f"{LogTag.AGENT} Stopped a running subagent",
+            subagent_id=subagent.subagent_id,
+            stream_id=subagent.stream_id,
+        )
     return True
 
 

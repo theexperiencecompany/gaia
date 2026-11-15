@@ -8,7 +8,7 @@ import pytest
 
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import EntryUpdatedFrame
-from app.models.conversation_log_models import Reaction, Reply
+from app.models.conversation_log_models import LoggedEntry, Reaction, Reply
 from app.services.conversation import composition
 from app.services.conversation.composition import (
     PostHogTurnAnalytics,
@@ -138,8 +138,66 @@ async def test_the_instant_reaction_lands_on_the_message_and_reaches_every_clien
     decide = AsyncMock(return_value=MagicMock(emoji="\U0001f44d"))
     monkeypatch.setattr(composition, "decide_reaction", decide)
     await RuntimeEffects(log, frames, lambda: PORTS)._react("c1", USER_ID, "u1")
+    log.state.assert_awaited_once_with("c1", USER_ID)
+    log.read_after.assert_awaited_once_with("c1", USER_ID, 0)
     decide.assert_awaited_once_with("text of u1", "How was the trip?")
     log.react_once.assert_awaited_once_with(
         "c1", USER_ID, "u1", Reaction(emoji="\U0001f44d", by=ReactionBy.JEV)
     )
     frames.publish.assert_awaited_once_with("c1", EntryUpdatedFrame(seq=2, entry=reacted))
+
+
+def _reacting_log(head: int, recent: list[LoggedEntry]) -> MagicMock:
+    log = MagicMock()
+    log.state = AsyncMock(return_value=EMPTY.model_copy(update={"head": head}))
+    log.read_after = AsyncMock(return_value=recent)
+    log.react_once = AsyncMock(return_value=None)
+    return log
+
+
+async def test_the_reaction_reads_only_the_entries_just_before_the_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log = _reacting_log(45, [logged(45, user("u1"))])
+    monkeypatch.setattr(
+        composition, "decide_reaction", AsyncMock(return_value=MagicMock(emoji=None))
+    )
+    await RuntimeEffects(log, MagicMock(), lambda: PORTS)._react("c1", USER_ID, "u1")
+    log.read_after.assert_awaited_once_with("c1", USER_ID, 25)
+
+
+async def test_the_reaction_reads_the_named_message_and_the_last_reply_before_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    before = Reply(id="o0", reply_id="r0", attempt_id="a0", text="How was the trip?")
+    blank = Reply(id="o1", reply_id="r1", attempt_id="a1", text="")
+    after = Reply(id="o2", reply_id="r2", attempt_id="a2", text="Glad to hear it")
+    recent = [logged(1, before), logged(2, user("u0")), logged(3, blank)]
+    recent += [logged(4, user("u1")), logged(5, after)]
+    decide = AsyncMock(return_value=MagicMock(emoji=None))
+    monkeypatch.setattr(composition, "decide_reaction", decide)
+    log = _reacting_log(5, recent)
+    await RuntimeEffects(log, MagicMock(), lambda: PORTS)._react("c1", USER_ID, "u1")
+    decide.assert_awaited_once_with("text of u1", "How was the trip?")
+    log.react_once.assert_not_awaited()
+
+
+async def test_a_message_that_opens_the_conversation_reacts_with_no_previous_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    decide = AsyncMock(return_value=MagicMock(emoji=None))
+    monkeypatch.setattr(composition, "decide_reaction", decide)
+    log = _reacting_log(1, [logged(1, user("u1"))])
+    await RuntimeEffects(log, MagicMock(), lambda: PORTS)._react("c1", USER_ID, "u1")
+    decide.assert_awaited_once_with("text of u1", "")
+
+
+async def test_a_message_no_longer_in_the_recent_entries_gets_no_reaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    decide = AsyncMock()
+    monkeypatch.setattr(composition, "decide_reaction", decide)
+    log = _reacting_log(1, [logged(1, user("u0"))])
+    await RuntimeEffects(log, MagicMock(), lambda: PORTS)._react("c1", USER_ID, "u1")
+    decide.assert_not_awaited()
+    log.react_once.assert_not_awaited()

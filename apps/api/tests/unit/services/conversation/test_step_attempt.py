@@ -6,6 +6,7 @@ from app.models.conversation_frame_models import (
     FollowUpActionsEvent,
     ReasoningEvent,
     ResponseEvent,
+    StreamPayload,
     ToolDataEvent,
 )
 from app.models.conversation_log_models import Batch, Entry, Reply, StepClaim
@@ -17,8 +18,11 @@ from app.services.conversation.step_attempt import (
     Showing,
     final_reply,
     folded_reply,
+    is_visible,
     quote_in,
+    reply_bubbles,
     reply_deltas,
+    settled_entry,
     waking_entry,
 )
 from app.services.conversation.step_view import StepView
@@ -120,6 +124,23 @@ def test_a_reply_showing_text_or_its_own_cards_interrupts_the_answered_message(
 def test_a_reply_is_never_the_message_a_reply_quotes() -> None:
     entries = [logged(1, _reply("r0", "an earlier answer")), logged(2, user("u5"))]
     assert quote_in(("r0",), 3, entries) is None
+
+
+def test_a_settle_keeps_the_quote_and_names_the_work_its_reply_narrates() -> None:
+    settle = settled_entry(
+        _attempt(None, finished("f1", "t1")), ReplyOutcome.ANSWERED, ("u1",), 1, "u1"
+    )
+    assert (settle.quote_target, settle.narrates) == ("u1", ("t1",))
+
+
+def test_reply_text_splits_into_its_bubbles() -> None:
+    assert reply_bubbles("first<NEW_MESSAGE_BREAK>second") == ("first", "second")
+
+
+def test_only_text_and_cards_other_than_a_hand_over_show_a_reply() -> None:
+    shown: list[StreamPayload] = [ResponseEvent(response="hi"), ToolDataEvent(tool_data=CARD)]
+    assert [is_visible(payload) for payload in shown] == [True, True]
+    assert is_visible(ResponseEvent(response="")) is False
 
 
 def test_streamed_text_folds_into_the_reply_and_sends_only_what_grew() -> None:

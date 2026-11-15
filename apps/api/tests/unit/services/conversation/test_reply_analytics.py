@@ -59,7 +59,7 @@ def test_an_answered_reply_counts_its_first_text_and_full_turn_to_the_hundredth_
     [(user_id, event, context, dedupe)] = analytics.ended
     assert user_id == USER
     assert isinstance(event, ChatMessageCompleted)
-    assert (event.ttft_ms, event.e2e_full_ms) == (1234.57, 2500.0)
+    assert (event.ttft_ms, event.e2e_full_ms, event.source) == (1234.57, 2500.0, "web")
     assert context == spoken_context(_said(ConversationSource.WEB))
     assert dedupe == Dedupe(key="s3", occurred_at=ended_at)
 

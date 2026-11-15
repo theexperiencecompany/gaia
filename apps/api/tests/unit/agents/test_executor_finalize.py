@@ -319,6 +319,7 @@ class TestCancelStillCarriesHandedOverWork:
         assert boundaries.prepare.await_args.args[1]["task"] == EXECUTOR_CARRY_TASK
         boundaries.inbox_cls.return_value.retire.assert_not_awaited()
         spawn.assert_awaited_once()
+        assert boundaries.logged.await_args.kwargs == {"stopped": True}
 
     async def test_a_run_that_failed_setup_does_not_restart_itself_for_its_pending_work(
         self, boundaries
