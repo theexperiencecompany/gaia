@@ -1161,6 +1161,57 @@ class TestDailyBrief:
             "I couldn't read Notion or Linear this time, so I can't say what they hold."
         )
 
+    async def test_a_quiet_day_asks_for_the_reconnect_a_signed_out_app_needs(
+        self, world: World
+    ) -> None:
+        self._quiet(world)
+        world.calendar = []
+        world.scouts = [
+            ScoutResult(
+                integration_id=integration,
+                app=app,
+                outcome=ScoutOutcome.SKIPPED,
+                skip_reason=reason,
+            )
+            for integration, app, reason in (
+                ("github", "GitHub", ScoutSkipReason.SIGNED_OUT),
+                ("notion", "Notion", ScoutSkipReason.FAILED),
+            )
+        ]
+
+        await daily.run_daily_briefing(_USER)
+
+        payload = _stored_payload(world)
+        assert payload.message.splitlines()[1:3] == [
+            "I couldn't read GitHub or Notion this time, so I can't say what they hold.",
+            "Your GitHub sign-in expired: reconnect it in Settings, Integrations and I'll read "
+            "it again.",
+        ]
+        assert [(u.app, u.reason) for u in payload.sources_unavailable] == [
+            ("GitHub", ScoutSkipReason.SIGNED_OUT),
+            ("Notion", ScoutSkipReason.FAILED),
+        ]
+
+    async def test_a_quiet_day_asks_for_every_reconnect_in_one_line(self, world: World) -> None:
+        self._quiet(world)
+        world.calendar = []
+        world.scouts = [
+            ScoutResult(
+                integration_id=integration,
+                app=app,
+                outcome=ScoutOutcome.SKIPPED,
+                skip_reason=ScoutSkipReason.SIGNED_OUT,
+            )
+            for integration, app in (("github", "GitHub"), ("linear", "Linear"))
+        ]
+
+        await daily.run_daily_briefing(_USER)
+
+        assert _stored_payload(world).message.splitlines()[2] == (
+            "Your GitHub and Linear sign-ins expired: reconnect them in Settings, Integrations "
+            "and I'll read them again."
+        )
+
     async def test_a_quiet_day_counts_the_users_overdue_todos(
         self, world: World, monkeypatch: pytest.MonkeyPatch
     ) -> None:

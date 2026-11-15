@@ -373,6 +373,24 @@ class TestTheContextBlock:
             " never say they hold nothing, or that nothing there needs the user.",
         ]
 
+    def test_an_app_whose_sign_in_died_is_named_for_a_reconnect(self) -> None:
+        unread = replace(
+            CONTEXT,
+            unread=[
+                UnreadSource(app="GitHub", reason=ScoutSkipReason.SIGNED_OUT),
+                UnreadSource(app="Slack", reason=ScoutSkipReason.FAILED),
+                UnreadSource(app="GitHub", reason=ScoutSkipReason.SIGNED_OUT),
+                UnreadSource(app="Linear", reason=ScoutSkipReason.SIGNED_OUT),
+            ],
+        )
+
+        assert context_block(unread).splitlines()[2] == (
+            "Not read this time: GitHub, Slack, Linear. Nothing is known about what they hold"
+            " today: never say they hold nothing, or that nothing there needs the user. Signed"
+            " out: GitHub, Linear. Their sign-in expired, so they stay unread until the user"
+            " reconnects them in Settings, Integrations: say so in one short line."
+        )
+
 
 class TestAnItemLine:
     def test_a_due_date_is_the_users_own_day_not_utcs(self) -> None:
@@ -640,6 +658,21 @@ class TestAnEmptyPool:
 
 
 class TestSeriesAndGoalLines:
+    def test_a_series_without_a_unit_names_none(self) -> None:
+        series = DataSeries(
+            id="s",
+            label="Runs",
+            unit=None,
+            source="gaia",
+            app="GAIA",
+            shape=SeriesShape.CATEGORICAL,
+            points=[SeriesPoint(x="Done", y=1)],
+        )
+
+        assert series_line(series, date(2026, 11, 11)).split(" | ")[1] == (
+            "Runs (GAIA), categorical of 1 points"
+        )
+
     def test_a_categorical_series_joins_its_points_with_a_middle_dot(self) -> None:
         series = DataSeries(
             id="s",

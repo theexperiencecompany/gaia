@@ -226,6 +226,8 @@ class ScoutSkipReason(StrEnum):
     NO_READ_ONLY_TOOLS = "no_read_only_tools"
     #: The connection record names an integration that no longer exists.
     UNKNOWN_INTEGRATION = "unknown_integration"
+    #: The app's sign-in expired or was revoked: only the user reconnecting it brings it back.
+    SIGNED_OUT = "signed_out"
 
 
 class ScoutResult(BaseModel):

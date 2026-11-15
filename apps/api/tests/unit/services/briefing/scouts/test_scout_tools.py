@@ -23,6 +23,7 @@ from app.services.briefing.scouts.tools import (
 )
 from app.services.hil import read_only as read_only_module
 from app.services.hil.read_only import _ReadOnlyJudgement
+from app.services.integrations import user_integrations as user_integrations_module
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 from app.utils.errors import AppError
@@ -143,10 +144,32 @@ class TestWhichIntegrations:
             return [{"id": "todos", "name": "Todos"}, {"id": "linear", "name": "Linear"}]
 
         monkeypatch.setattr(scout_tools_module, "get_connected_integrations_named", connected)
+        monkeypatch.setattr(
+            scout_tools_module, "get_signed_out_integrations_named", AsyncMock(return_value=[])
+        )
 
         assert await scout_integrations(USER_ID) == [
             ScoutIntegration(integration_id="linear", name="Linear")
         ]
+
+    @pytest.mark.usefixtures("native")
+    async def test_an_app_whose_sign_in_died_is_still_listed_as_signed_out(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        records = [
+            {"integration_id": "linear", "status": "connected"},
+            {"integration_id": "github", "status": "expired"},
+            {"integration_id": "slack", "status": "created"},
+            {"integration_id": "googlecalendar", "status": "expired"},
+        ]
+        read = AsyncMock(return_value=records)
+        monkeypatch.setattr(user_integrations_module, "get_user_integration_records", read)
+
+        assert await scout_integrations(USER_ID) == [
+            ScoutIntegration(integration_id="linear", name="Linear"),
+            ScoutIntegration(integration_id="github", name="GitHub", signed_out=True),
+        ]
+        assert [c.args for c in read.await_args_list] == [(USER_ID,), (USER_ID,)]
 
     async def test_mail_and_calendar_are_left_to_their_own_sections(
         self, monkeypatch: pytest.MonkeyPatch
@@ -161,6 +184,9 @@ class TestWhichIntegrations:
             scout_tools_module,
             "get_connected_integrations_named",
             AsyncMock(return_value=connected),
+        )
+        monkeypatch.setattr(
+            scout_tools_module, "get_signed_out_integrations_named", AsyncMock(return_value=[])
         )
 
         assert await scout_integrations(USER_ID) == [

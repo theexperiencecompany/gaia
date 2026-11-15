@@ -25,6 +25,7 @@ from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import (
     ConnectedIntegration,
     get_connected_integrations_named,
+    get_signed_out_integrations_named,
 )
 from app.services.mcp.mcp_client import get_mcp_client
 from app.utils.errors import AppError
@@ -32,10 +33,11 @@ from app.utils.errors import AppError
 
 @dataclass(frozen=True, slots=True)
 class ScoutIntegration:
-    """A connected integration a scout watches."""
+    """A connected integration a scout watches; signed_out when its sign-in died and it waits on a reconnect."""
 
     integration_id: str
     name: str
+    signed_out: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,11 +51,13 @@ class ScoutTools:
 
 
 async def scout_integrations(user_id: str) -> list[ScoutIntegration]:
-    """Return the user's connected external integrations the rest of the brief does not cover."""
+    """Return the user's external integrations the rest of the brief does not cover, signed-out ones too."""
     connected: list[ConnectedIntegration] = await get_connected_integrations_named(user_id)
+    signed_out: list[ConnectedIntegration] = await get_signed_out_integrations_named(user_id)
     return [
-        ScoutIntegration(integration_id=entry["id"], name=entry["name"])
-        for entry in connected
+        ScoutIntegration(integration_id=entry["id"], name=entry["name"], signed_out=dead)
+        for entries, dead in ((connected, False), (signed_out, True))
+        for entry in entries
         if entry["id"] not in SCOUTED_ELSEWHERE and _is_external(entry["id"])
     ]
 
