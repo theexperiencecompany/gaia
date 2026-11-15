@@ -115,11 +115,12 @@ async def _truncate(ports: RuntimePorts, attempt: Attempt) -> None:
     if isinstance(progress, Drafting):
         await conclude(ports, attempt, progress.reply, ReplyOutcome.TRUNCATED)
         return
-    if not isinstance(progress, Showing) or attempt.slot is None:
+    if not isinstance(progress, Showing):
         await retract_attempt(ports, attempt)
         return
+    # A reply shows only once its segment's slot opened.
     after = await ports.log.read_after(
-        attempt.claim.conversation_id, attempt.claim.user_id, attempt.slot
+        attempt.claim.conversation_id, attempt.claim.user_id, attempt.slots[attempt.segment]
     )
     barges = [
         logged.entry

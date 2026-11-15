@@ -24,6 +24,7 @@ from app.services.conversation.graph_payloads import (
 )
 from app.services.conversation.reply_text import ReplyText
 from app.utils.errors import ShownReplyRetriedError
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 _NODE_RUN = {"langgraph_checkpoint_ns": "agent:1"}
 
@@ -446,6 +447,7 @@ async def test_a_stream_mode_it_does_not_read_yields_nothing() -> None:
 
 async def test_text_a_cancelled_run_never_closed_is_owed_and_kept() -> None:
     state = GraphStreamState()
-    await _payloads(state, _chunk("m1", "\U0001f44d"))
+    await _payloads(state, _chunk("m1", "Done."), _node_end(AIMessage(id="m1", content="Done.")))
+    await _payloads(state, _chunk("m2", "\U0001f44d"))
     assert flush_held_payloads(state) == [ResponseEvent(response="\U0001f44d")]
-    assert state.complete_message == "\U0001f44d"
+    assert state.complete_message == f"Done.{NEW_MESSAGE_BREAKER}\U0001f44d"

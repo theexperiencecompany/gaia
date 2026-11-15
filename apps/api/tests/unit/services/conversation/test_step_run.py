@@ -1,5 +1,7 @@
 """One attempt's run, scenario by scenario: a run that cannot start, a claim lost mid-run, store failures, joiners and the run's end."""
 
+import asyncio
+
 import pytest
 
 from app.models.conversation_frame_models import ResponseEvent, RetractFrame
@@ -23,6 +25,7 @@ from app.services.conversation.ports import (
     Streamed,
 )
 from app.services.conversation.step import advance
+from app.utils.hot_path import after_first_text
 from shared.py.conversation_wire import ReplyOutcome
 from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import fired, stop, user
@@ -236,3 +239,21 @@ async def test_a_message_after_a_stop_never_joins_the_run() -> None:
     await run(rt)
     assert not [call for call in rt.runner.calls if isinstance(call, Absorbed)]
     assert [item.answers for item in await settles(rt)] == [("u1",), ("u2",)]
+
+
+async def test_the_first_text_releases_the_writes_waiting_on_it() -> None:
+    rt = Runtime()
+    released: list[bool] = []
+
+    async def note_whether_released() -> None:
+        try:
+            await asyncio.wait_for(after_first_text(), timeout=1)
+        except TimeoutError:
+            released.append(False)
+        else:
+            released.append(True)
+
+    rt.runner.script([text("hi"), Do(note_whether_released), Finished(Replied("hi"))])
+    await send(rt, user("u1"))
+    await run(rt)
+    assert released == [True]

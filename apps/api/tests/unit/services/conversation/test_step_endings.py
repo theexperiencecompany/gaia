@@ -5,6 +5,7 @@ from collections.abc import Sequence
 import pytest
 
 from app.constants.general import CALL_EXECUTOR_NAME
+from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryUpdatedFrame,
     ResponseEvent,
@@ -15,9 +16,11 @@ from app.models.conversation_log_models import (
     Batch,
     Entry,
     LoggedEntry,
+    Reaction,
     Reply,
     ReplySettled,
     StepClaim,
+    UserMessage,
     Verdict,
 )
 from app.services.conversation.log import accept
@@ -25,10 +28,12 @@ from app.services.conversation.ports import (
     Answered,
     CancelReason,
     Finished,
+    ModelOutput,
     Reacted,
     Replied,
     Streamed,
 )
+from app.services.conversation.reply_analytics import spoken_context
 from app.services.conversation.screen import TOOL_CALL_CARD
 from app.services.conversation.step import advance
 from app.services.conversation.step_attempt import Attempt, Drafting
@@ -36,7 +41,7 @@ from app.services.conversation.step_endings import end_attempt
 from app.services.conversation.step_view import StepView
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
-from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
+from shared.py.conversation_wire import FailureReason, ReplyOutcome, ToolDataEntry
 from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import barge, user
 from tests.unit.services.conversation.runtime_doubles import (
@@ -44,6 +49,7 @@ from tests.unit.services.conversation.runtime_doubles import (
     USER,
     Action,
     Cancelled,
+    Do,
     Fail,
     Pause,
     RecordingAnalytics,
@@ -119,6 +125,7 @@ async def test_a_run_that_fails_logs_what_failed_on_which_attempt() -> None:
     await send(rt, user("u1"))
     async with captured_wide_event() as event:
         await run(rt)
+    assert rt.runner.calls[-1] == Cancelled(CancelReason.LOST)
     assert event["errors"] == [
         {
             "msg": "comms run failed",
@@ -265,6 +272,76 @@ async def test_a_reaction_is_counted_once_per_message_and_emoji() -> None:
         if isinstance(event, ChatTurnReacted)
     ]
     message = (await rt.entries())[0]
+    assert isinstance(message.entry, UserMessage)
+    assert message.entry.reaction == Reaction(emoji="👍", by=ReactionBy.CHAT_MODEL)
+    assert [
+        (user_id, context)
+        for user_id, event, context, _ in analytics.ended
+        if isinstance(event, ChatTurnReacted)
+    ] == [(USER, spoken_context(message.entry))]
     assert [(event.emoji, dedupe.key) for event, dedupe in reacted] == [("👍", "reacted:u1:👍")]
     [(_, dedupe)] = reacted
     assert dedupe == Dedupe(key="reacted:u1:👍", occurred_at=message.at)
+
+
+async def test_suggestions_made_after_the_reply_settled_are_added_to_it() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [
+            text("done"),
+            Answered(Replied("done")),
+            Finished(Replied("done", follow_up_actions=("Book it",))),
+        ]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    [reply] = await replies(rt)
+    assert (reply.text, reply.follow_up_actions, reply.revision) == ("done", ("Book it",), 2)
+
+
+async def test_a_run_finishing_after_a_handed_message_answers_it_below_what_showed() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [text("a"), Do(arrive(rt, user("u2"))), ModelOutput(True), Finished(Replied("a"))]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    assert [(item.outcome, item.answers) for item in await settles(rt)] == [
+        (ReplyOutcome.ANSWERED, ("u1",)),
+        (ReplyOutcome.ANSWERED, ("u2",)),
+    ]
+
+
+async def test_an_empty_answer_to_a_user_fails_as_a_model_error() -> None:
+    rt = Runtime()
+    rt.runner.script([Finished(Replied(""))])
+    await send(rt, user("u1"))
+    await run(rt)
+    assert [(item.outcome, item.failure) for item in await settles(rt)] == [
+        (ReplyOutcome.FAILED, FailureReason.MODEL_ERROR)
+    ]
+
+
+async def _settled_voice_reply(rt: Runtime) -> None:
+    rt.runner.script([text("hello there friend"), Finished(Replied("hello there friend"))])
+    await send(rt, user("u1", voice=True))
+    await run(rt)
+    rt.runner.script([Finished(Replied("go on"))])
+
+
+async def test_a_barge_heard_to_the_end_of_a_settled_reply_changes_nothing() -> None:
+    rt = Runtime()
+    await _settled_voice_reply(rt)
+    await send(rt, barge("b1", "r1.1", len("hello there friend")), user("u2", voice=True))
+    await run(rt)
+    [first, _] = await replies(rt)
+    assert (first.heard_through, first.revision) == (None, 1)
+
+
+async def test_only_the_first_barge_on_a_settled_reply_cuts_it() -> None:
+    rt = Runtime()
+    await _settled_voice_reply(rt)
+    await send(rt, barge("b1", "r1.1", 5), barge("b2", "r1.1", 3), user("u2", voice=True))
+    await run(rt)
+    [first, _] = await replies(rt)
+    assert (first.heard_through, first.revision) == (5, 2)

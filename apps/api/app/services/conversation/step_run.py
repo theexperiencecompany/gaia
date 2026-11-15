@@ -1,7 +1,6 @@
 """One attempt's run: started on its batch, watched delta by delta, and judged against new entries."""
 
 from collections.abc import Sequence
-from dataclasses import replace
 
 from app.models.conversation_frame_models import (
     MessageBoundaryEvent,
@@ -189,18 +188,16 @@ async def _show(ports: RuntimePorts, attempt: Attempt, payload: StreamPayload) -
     if isinstance(payload, ResponseEvent | MessageBoundaryEvent):
         attempt.text = attempt.text.take(payload)
     folded = folded_reply(before, payload, attempt.text)
-    if not isinstance(attempt.progress, Showing) and is_visible(payload):
+    showing = isinstance(attempt.progress, Showing)
+    if not showing and is_visible(payload):
         folded = await opening_reply(ports, attempt, folded)
         opened = await append_opening(ports, attempt, folded)
-        attempt.progress = Showing(reply=folded)
+        showing = True
         if opened.seq == attempt.seen + 1:
             # Its own entry: no need to read the log for joiners the next verdict.
             attempt.seen = opened.seq
         if is_text(payload):
             first_text_shown()
-    shown = attempt.progress
-    attempt.progress = (
-        replace(shown, reply=folded) if isinstance(shown, Showing) else Drafting(reply=folded)
-    )
+    attempt.progress = Showing(reply=folded) if showing else Drafting(reply=folded)
     for change in reply_deltas(before, folded, payload, attempt.shown, attempt.text.bubbles):
         await publish_delta(ports, attempt, change)
