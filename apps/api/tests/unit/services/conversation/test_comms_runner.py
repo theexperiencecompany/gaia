@@ -314,6 +314,23 @@ async def test_plain_answer_streams_text_then_finishes_replied(conversation_id: 
     assert humans(model.prompts[0]) == ["text of u1", "[clock]"]
 
 
+async def test_owed_and_batch_inputs_are_kept_verbatim_through_summarization(
+    conversation_id: str,
+) -> None:
+    async with comms_graph([], model=gated("hello there")) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id).start(
+                claim(conversation_id),
+                batch(logged(2, user("u1"))),
+                (),
+                LEDGER,
+                owed=frozenset({"u0"}),
+            )
+            await collect(run)
+        snapshot = await graph.aget_state({"configurable": {"thread_id": conversation_id}})
+    assert snapshot.values["verbatim_message_ids"] == ["log:u0", "log:u1"]
+
+
 def ending_call(name: str, **args: object) -> AIMessage:
     return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": f"call_{name}"}])
 

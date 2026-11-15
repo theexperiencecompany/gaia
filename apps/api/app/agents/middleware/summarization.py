@@ -42,6 +42,7 @@ from app.agents.context.slots import (
 )
 from app.agents.core.delegation_window import running_turn_start
 from app.agents.llm.client import SILENT_LLM_CONFIG
+from app.agents.middleware.runtime_adapter import GaiaAgentState
 from app.constants.log_tags import LogTag
 from app.constants.summarization import SUMMARY_INPUT_BUDGET_FRACTION
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -164,7 +165,8 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         conversation = [m for m in state["messages"] if slot_of(m) not in LEADING_SLOTS]
         cutoff_index = self._determine_cutoff_index(conversation)
         fold = _foldable(conversation, cutoff_index)
-        summarized = self._fitting_prefix(_removable([*fold.older, *fold.progress]))
+        verbatim = frozenset(cast("GaiaAgentState", state).get("verbatim_message_ids") or ())
+        summarized = self._fitting_prefix(_removable([*fold.older, *fold.progress], verbatim))
         if not summarized:
             return None
 
@@ -398,21 +400,25 @@ def _foldable(conversation: list[AnyMessage], cutoff: int) -> _FoldedMessages:
     return _FoldedMessages(older=before, progress=steps)
 
 
-def _removable(prefix: list[AnyMessage]) -> list[AnyMessage]:
+def _removable(prefix: list[AnyMessage], verbatim: frozenset[str]) -> list[AnyMessage]:
     """Return the prefix messages a RemoveMessage can target, keeping tool pairs whole.
 
-    Threads written before out-of-band writes carried ids hold id-less messages;
-    those stay verbatim, and so does any AI message whose tool call one answers,
-    or the provider would get a tool result with no call.
+    The verbatim ids stay word for word, and so do id-less messages (threads written
+    before out-of-band writes carried ids). A kept message keeps its tool pair, or the
+    provider would get a tool result with no call, or a call with no result.
     """
-    pinned_calls = {m.tool_call_id for m in prefix if isinstance(m, ToolMessage) and m.id is None}
+    kept = [m for m in prefix if m.id is None or m.id in verbatim]
+    kept_results = {m.tool_call_id for m in kept if isinstance(m, ToolMessage)}
+    kept_calls = {tc["id"] for m in kept if isinstance(m, AIMessage) for tc in m.tool_calls}
     removable: list[AnyMessage] = []
     for m in prefix:
-        if m.id is None:
+        if m in kept:
             continue
         if isinstance(m, AIMessage):
             tool_calls: list[ToolCall] = m.tool_calls
-            if {tc["id"] for tc in tool_calls} & pinned_calls:
+            if {tc["id"] for tc in tool_calls} & kept_results:
                 continue
+        if isinstance(m, ToolMessage) and m.tool_call_id in kept_calls:
+            continue
         removable.append(m)
     return removable

@@ -226,6 +226,19 @@ async def test_a_workflow_fire_beside_live_work_keeps_its_threads() -> None:
     assert EffectCall("reset_workflow_threads") not in rt.effects.calls
 
 
+async def test_a_request_live_work_still_owes_rides_every_later_run() -> None:
+    rt = Runtime()
+    work = WorkStarted(id="w", task_id="t1", cause_through=1, answers=("u0",))
+    rt.runner.script(
+        [Do(lambda: send(rt, work)), Finished(Replied("on it"))], [Finished(Replied("hi"))]
+    )
+    await send(rt, user("u0"))
+    await run(rt)
+    await send(rt, user("u1"))
+    await run(rt)
+    assert rt.runner.owed == [frozenset(), frozenset({"u0"})]
+
+
 async def test_a_fire_waiting_behind_a_message_is_neither_batched_nor_shown_to_its_run() -> None:
     rt = Runtime()
     rt.runner.script([Finished(Replied("hi"))], [Finished(Replied("ran"))])

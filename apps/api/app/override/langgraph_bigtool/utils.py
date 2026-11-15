@@ -81,6 +81,8 @@ class State(_BigtoolState):
     todos: Annotated[list, _replace_todos]
     intent: str | None
     integration_usernames: dict[str, str]
+    # Message ids summarization never folds; comms sets its open requests each run.
+    verbatim_message_ids: list[str]
     # LangGraph-managed countdown of supersteps left before the recursion
     # limit. acall_model reads it to warn the model to wrap up before the
     # hard GraphRecursionError.
