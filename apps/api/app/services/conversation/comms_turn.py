@@ -55,9 +55,12 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     mode: Literal["interactive", "background"] = "interactive"
     if fired is not None:
         user, mode = user.with_timezone(fired.timezone), "background"
-    source = _source(said)
+    source = await _answering_surface(claim, said, fired)
     pinned = next((message for message in reversed(said) if message.selected_tool), None)
-    presence = await presence_before(claim.user_id, said[-1] if said else None)
+    # Work that finished with no one asking switched no surface, so it gets no presence note.
+    presence = (
+        await presence_before(claim.user_id, said[-1] if said else None) if said or fired else None
+    )
     if said:
         schedule_last_active_touch(claim.user_id, claim.conversation_id)
     todo_id = await conversation_repository.get_todo_id(
@@ -187,6 +190,16 @@ def _analytics(said: list[UserMessage], fired: WorkflowRun | None) -> AnalyticsC
     return _UNPROMPTED
 
 
-def _source(said: list[UserMessage]) -> str:
-    """Answer on the surface of the newest message; work with no message behind it answers in the background."""
-    return said[-1].surface.value if said else ConversationSource.BACKGROUND.value
+async def _answering_surface(
+    claim: StepClaim, said: list[UserMessage], fired: WorkflowRun | None
+) -> str:
+    """Return the surface the reply is read on, which picks its prompt: the newest message's, else the conversation's own.
+
+    A workflow fire runs in the background.
+    """
+    if said:
+        return said[-1].surface.value
+    if fired is not None:
+        return ConversationSource.BACKGROUND.value
+    stored = await conversation_repository.get_source(claim.conversation_id, user_id=claim.user_id)
+    return (stored or ConversationSource.BACKGROUND).value
