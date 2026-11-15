@@ -34,9 +34,16 @@ from app.models.brief_pool_models import (
     SeriesPoint,
     SeriesShape,
 )
+from app.models.briefing_models import UnreadSource
 from app.models.calendar_models import GoogleCalendarEventDateTime, GoogleCalendarEventResource
 from app.models.email_verdict_models import EmailVerdictDocument
-from app.models.scout_models import Signal, SignalImportance, SignalMemoryDocument
+from app.models.scout_models import (
+    PeopleRole,
+    ScoutSkipReason,
+    Signal,
+    SignalImportance,
+    SignalMemoryDocument,
+)
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
 from app.models.workflow_execution_models import RunMoment
 from app.services.briefing.context import CalendarGap, StatedGoal
@@ -228,6 +235,16 @@ class TestTheFactPool:
         stores.open_todos.assert_awaited_once_with(USER_ID, limit=0)
         stores.tracked.assert_awaited_once_with(USER_ID, limit=0)
 
+    async def test_a_goals_open_work_untouched_a_week_by_now_is_stuck(self, stores: Stores) -> None:
+        stores.open_todos.return_value = [
+            _todo("GAIA beta invite email", updated_at=_at(10, 9)),
+            _todo("GAIA store listing", updated_at=_at(3, 9)),
+        ]
+
+        [goal] = (await _pool()).goals
+
+        assert goal.stalled == ["GAIA store listing"]
+
     async def test_each_apps_criteria_ride_with_the_pool(self, stores: Stores) -> None:
         pool = await _pool()
 
@@ -339,6 +356,23 @@ class TestTheContextBlock:
             CALENDAR_UNAVAILABLE,
         ]
 
+    def test_each_app_that_went_unread_is_named_once(self) -> None:
+        unread = replace(
+            CONTEXT,
+            unread=[
+                UnreadSource(app="Slack", reason=ScoutSkipReason.FAILED),
+                UnreadSource(app="Notion", reason=ScoutSkipReason.BUDGET),
+                UnreadSource(app="Slack", reason=ScoutSkipReason.SOURCE_FAILED),
+            ],
+        )
+
+        assert context_block(unread).splitlines() == [
+            "Wednesday 11 November 2026, Asia/Kolkata.",
+            "Calendar today: 2 event(s), every one listed below.",
+            "Not read this time: Slack, Notion. Nothing is known about what they hold today:"
+            " never say they hold nothing, or that nothing there needs the user.",
+        ]
+
 
 class TestAnItemLine:
     def test_a_due_date_is_the_users_own_day_not_utcs(self) -> None:
@@ -418,6 +452,85 @@ class TestAnItemLine:
             " | GAIA can only read GitHub: no offer on it | also found by Slack, Linear"
         )
 
+    @pytest.mark.parametrize(
+        ("finished_by", "state"),
+        [
+            (TodoCompleter.GAIA, "done by GAIA"),
+            (TodoCompleter.USER, "done by the user"),
+            (None, "done, who finished it is not recorded"),
+        ],
+    )
+    def test_a_done_todo_says_who_finished_it(
+        self, finished_by: TodoCompleter | None, state: str
+    ) -> None:
+        item = BriefCandidate(
+            source="gaia",
+            app="GAIA",
+            state="lookback",
+            title="Investor update",
+            todo_id="t1",
+            finished_by=finished_by,
+            gaia_acts=True,
+        )
+
+        assert item_line(1, item, CONTEXT.clock) == (
+            f"1. [GAIA] {state}: Investor update | linkable | GAIA can act on it"
+        )
+
+    def test_a_done_item_that_is_no_todo_reads_as_done(self) -> None:
+        item = BriefCandidate(source="github", app="GitHub", state="lookback", title="PR merged")
+
+        assert item_line(1, item, CONTEXT.clock) == (
+            "1. [GitHub] done: PR merged | GAIA can only read GitHub: no offer on it"
+        )
+
+    def test_gaias_work_not_being_worked_on_reads_open_and_says_where_it_stands(self) -> None:
+        item = BriefCandidate(
+            source="gaia",
+            app="GAIA",
+            state="gaia",
+            title="Draft the deck",
+            standing="paused: waiting on your notes",
+            todo_id="t2",
+            gaia_acts=True,
+        )
+
+        assert item_line(5, item, CONTEXT.clock) == (
+            "5. [GAIA] open: Draft the deck | stands: paused: waiting on your notes"
+            " | linkable | GAIA can act on it"
+        )
+
+    def test_the_people_take_the_part_their_app_names_only_when_they_are_its_people(
+        self,
+    ) -> None:
+        review = Signal(
+            integration_id="github",
+            app="GitHub",
+            external_id="pr-1",
+            kind="pull request awaiting your review",
+            title="Fix login",
+            people=["Ravi Rao"],
+            people_role=PeopleRole.REVIEWER,
+        )
+        item = BriefCandidate(
+            source="github",
+            app="GitHub",
+            state="you",
+            title="Fix login",
+            people=["Ravi Rao"],
+            signal=review,
+        )
+        folded = item.model_copy(update={"people": ["Ravi Rao", "Maya Chen"]})
+
+        assert item_line(1, item, CONTEXT.clock) == (
+            "1. [GitHub] waiting on you: Fix login | reviewer: Ravi Rao"
+            " | GAIA can only read GitHub: no offer on it"
+        )
+        assert item_line(1, folded, CONTEXT.clock) == (
+            "1. [GitHub] waiting on you: Fix login | names Ravi Rao, Maya Chen"
+            " (the app does not say their part in it) | GAIA can only read GitHub: no offer on it"
+        )
+
     def test_a_plain_item_is_only_its_head(self) -> None:
         item = BriefCandidate(source="stripe", app="Stripe", state="note", title="Payout sent")
 
@@ -494,6 +607,19 @@ class TestAnEmptyPool:
             "(none)",
         ]
 
+    def test_the_items_part_opens_by_saying_what_each_state_means(self) -> None:
+        pool = FactPool(items={}, series=[], quotes=[], goals=[], context=CONTEXT, criteria={})
+
+        assert pool_block(pool).split("\n")[0] == (
+            "ITEMS (done by GAIA / done by the user / closed: finished since Tue 10 Nov, 5:30 AM,"
+            " by whoever its state names; in progress: GAIA is working on it; open: GAIA's work"
+            " that is not being worked on now, its line says where it stands; waiting on you:"
+            " needs the user; failed: broke and needs the user; note: news that needs nothing;"
+            " on their list, undated: an undated todo of their own, never news and never the"
+            " lead. An item marked already shown, still open was already shown, unchanged: not"
+            " news, so it never leads)"
+        )
+
     def test_several_items_each_take_a_line(self) -> None:
         reads = _reads()
         pool = FactPool(
@@ -548,3 +674,39 @@ class TestSeriesAndGoalLines:
         goal = GoalState(id="g1", statement="Ship", origin=GoalOrigin.MEMORY, done=0, open=0)
 
         assert goal_line(goal) == 'g1 | "Ship" (from memory) | no todo names what it is about'
+
+    def test_a_goal_says_who_finished_its_work_and_what_is_stuck(self) -> None:
+        goal = GoalState(
+            id="g2",
+            statement="Close the Atlas round",
+            origin=GoalOrigin.MEMORY,
+            done=4,
+            done_by_gaia=1,
+            done_by_you=2,
+            open=2,
+            linked=["Atlas deck", "Atlas model", "Atlas memo", "Atlas data room", "Atlas pricing"],
+            stalled=["Atlas pricing", "Atlas press"],
+        )
+
+        assert goal_line(goal) == (
+            'g2 | "Close the Atlas round" (from memory) | linked todos: 4 finished (1 by GAIA,'
+            " 2 by the user, 1 by an event, or no one recorded), 2 open: Atlas deck; Atlas model;"
+            " Atlas memo; Atlas data room; Atlas pricing | stuck a week or more: Atlas pricing;"
+            " Atlas press"
+        )
+
+    def test_a_goal_with_nothing_finished_names_no_one_and_says_since_when(self) -> None:
+        goal = GoalState(
+            id="g1",
+            statement="Ship",
+            origin=GoalOrigin.MEMORY,
+            done=0,
+            since="2026-11-05",
+            open=1,
+            linked=["Ship the beta"],
+        )
+
+        assert goal_line(goal) == (
+            'g1 | "Ship" (from memory) | linked todos: 0 finished since Thu 5 Nov, 1 open:'
+            " Ship the beta"
+        )

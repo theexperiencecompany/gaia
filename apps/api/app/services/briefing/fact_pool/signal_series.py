@@ -22,7 +22,7 @@ _MONEY_DECIMALS = 2
 
 def _in_whole_units(amount: float, unit: str | None) -> tuple[float, str | None]:
     """Return an amount in the unit people say: 1250 USD cents is 12.5 USD."""
-    match = _HUNDREDTHS.match(unit or "")
+    match = _HUNDREDTHS.match(unit or "")  # pragma: no mutate — any non-"cents" blank misses alike
     if match is None:
         return amount, unit
     return round(amount / _CENTS_PER_UNIT, _MONEY_DECIMALS), match.group("unit")
@@ -33,7 +33,8 @@ def _slug(text: str) -> str:
 
 
 def _group(signal: Signal) -> tuple[str, str, str | None]:
-    return (signal.integration_id, signal.kind, _in_whole_units(0, signal.amount_unit)[1])
+    _, unit = _in_whole_units(0, signal.amount_unit)  # pragma: no mutate — amount unread
+    return (signal.integration_id, signal.kind, unit)
 
 
 def _order(signal: Signal) -> tuple[str, str, str]:
