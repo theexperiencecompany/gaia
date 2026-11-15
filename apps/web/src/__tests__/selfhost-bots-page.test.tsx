@@ -25,6 +25,7 @@ vi.mock("@/features/auth/hooks/useCurrentUser", () => ({
   useCurrentUser: () => currentUser,
 }));
 
+import { WORKOS_SIGNUP_URL } from "@/features/auth/utils/signupCta";
 import BotsPage from "@/features/bots/components/BotsPage";
 
 const NO_BOTS: InstanceBots = {
@@ -129,12 +130,12 @@ describe("BotsPage", () => {
     expect(fetchSetupStatus).not.toHaveBeenCalled();
   });
 
-  it("sends a signed-out visitor to sign up before connecting iMessage", () => {
+  it("sends a signed-out visitor straight to WorkOS sign-up before connecting iMessage", () => {
     vi.stubEnv("NEXT_PUBLIC_GAIA_SELFHOST", "");
 
     renderPage();
 
-    expect(imessageAction()).toBe("/signup");
+    expect(imessageAction()).toBe(WORKOS_SIGNUP_URL);
     expect(hrefs()).not.toContain("/settings/linked-accounts");
   });
 

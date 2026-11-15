@@ -79,7 +79,15 @@
     "category_page_title": "{category}の比較",
     "category_page_subtitle": "{category}の{count}ツールとGAIAを項目ごとに比べ、それぞれが合う場面を示します。",
     "category_meta_title": "{category}ツールの比較：GAIAと{count}製品を機能と使い方で詳しく検証",
-    "category_meta_description": "{category}の{count}ツールとGAIAを、機能、料金、向いている使い方で項目ごとに比較します。あなたに合うツール選びにお役立てください。各ツールの強みと、GAIAが先回りして手伝える場面もわかります。"
+    "category_meta_description": "{category}の{count}ツールとGAIAを、機能、料金、向いている使い方で項目ごとに比較します。あなたに合うツール選びにお役立てください。各ツールの強みと、GAIAが先回りして手伝える場面もわかります。",
+    "category_ai_assistants": "AIアシスタント",
+    "category_automation": "自動化",
+    "category_task_management": "タスク管理",
+    "category_project_management": "プロジェクト管理",
+    "category_calendar_scheduling": "カレンダー＆スケジュール",
+    "category_email": "メール",
+    "category_notes_knowledge": "ノート＆ナレッジ",
+    "category_other": "その他"
   },
   "automate": {
     "breadcrumb": "自動化",

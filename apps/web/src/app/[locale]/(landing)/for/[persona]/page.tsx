@@ -206,7 +206,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
   "agency-owners": {
     metaTitle: "GAIA for Agency Owners: Automate Client Reports",
     metaDescription:
-      "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active automatically. Scale your agency without scaling your overhead.",
+      "GAIA monitors every client project, writes your weekly status reports and keeps your pipeline active. Scale your agency without scaling your overhead.",
     schemaDescription:
       "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active automatically.",
     keywords: [

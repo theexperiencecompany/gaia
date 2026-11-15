@@ -1,25 +1,37 @@
 import type { Metadata } from "next";
 
-import { RedirectLoader } from "@/components/shared/RedirectLoader";
+import JsonLd from "@/components/seo/JsonLd";
 import { getSetupStatusServer } from "@/features/auth/api/serverSetupStatusApi";
 import { AuthShell } from "@/features/auth/components/AuthShell";
+import { HostedSignupActions } from "@/features/auth/components/HostedSignupActions";
 import { RegistrationClosedNotice } from "@/features/auth/components/RegistrationClosedNotice";
 import { SignupForm } from "@/features/auth/components/SignupForm";
 import {
   resolveSignupMode,
   type SignupMode,
 } from "@/features/auth/utils/signupMode";
-import { apiBaseUrl } from "@/lib/api/client";
 import { isSelfhostWeb } from "@/lib/selfhost";
-import { generatePageMetadata } from "@/lib/seo";
+import {
+  generateBreadcrumbSchema,
+  generatePageMetadata,
+  generateWebPageSchema,
+  siteConfig,
+} from "@/lib/seo";
+
+const TITLE = "Sign Up for GAIA: Your Proactive Personal AI Assistant";
+const DESCRIPTION =
+  "Create your GAIA account and get a proactive AI assistant that handles your email, calendar, tasks and workflows, and acts before you have to ask.";
+const PAGE_URL = `${siteConfig.url}/signup`;
+const BREADCRUMBS = [
+  { name: "Home", url: siteConfig.url },
+  { name: "Sign Up", url: PAGE_URL },
+];
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Sign Up",
-  description:
-    "Create your GAIA account. Get started with your personal AI assistant to automate tasks, manage workflows, and boost productivity today.",
+  title: TITLE,
+  description: DESCRIPTION,
   path: "/signup",
-  keywords: ["GAIA Sign Up", "Create Account", "Register", "Get Started"],
-  noIndex: true,
+  keywords: ["GAIA sign up", "create GAIA account", "AI assistant sign up"],
 });
 
 const LOCAL_SIGNUP_SUBTITLES: Record<SignupMode, string> = {
@@ -32,8 +44,8 @@ interface SignupPageProps {
   searchParams: Promise<{ invite?: string }>;
 }
 
-// Self-host instances run local email/password auth; everything else keeps
-// the classic WorkOS OAuth redirect.
+// Self-host instances run local email/password auth; everything else signs up
+// through WorkOS from this page.
 export default async function SignupPage({ searchParams }: SignupPageProps) {
   const status = isSelfhostWeb() ? await getSetupStatusServer() : null;
   if (status?.auth_mode === "local") {
@@ -59,12 +71,19 @@ export default async function SignupPage({ searchParams }: SignupPageProps) {
   }
 
   return (
-    <div className="h-screen">
-      {/* AuthKit opens on Sign in by default; a visitor who chose sign-up backed out of it. */}
-      <RedirectLoader
-        url={`${apiBaseUrl}/oauth/login/workos?screen_hint=sign-up`}
-        replace
+    <>
+      <JsonLd
+        data={[
+          generateWebPageSchema(TITLE, DESCRIPTION, PAGE_URL, BREADCRUMBS),
+          generateBreadcrumbSchema(BREADCRUMBS),
+        ]}
       />
-    </div>
+      <AuthShell
+        title="Create your GAIA account"
+        subtitle="Your proactive AI assistant for email, calendar, tasks and workflows."
+      >
+        <HostedSignupActions />
+      </AuthShell>
+    </>
   );
 }

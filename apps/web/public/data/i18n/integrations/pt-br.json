@@ -244,7 +244,7 @@
       "automação Gmail Linear",
       "e-mail de cliente para ticket de engenharia"
     ],
-    "metaDescription": "Transforme e-mails de bug em issues do Linear vinculadas à conversa original, com duplicadas unificadas. O GAIA redige atualizações ao cliente. Veja como configurar.",
+    "metaDescription": "Transforme e-mails de bug em issues do Linear ligadas à conversa original e unifique duplicadas. O GAIA ainda redige as atualizações ao cliente.",
     "metaTitle": "Integração Linear + Gmail: e-mails viram issues",
     "tagline": "Conecte e-mails de clientes e issues de engenharia automaticamente",
     "toolA": "Gmail",
@@ -374,7 +374,7 @@
       "conversa do Slack para página do Notion",
       "base de conhecimento da equipe pelo Slack"
     ],
-    "metaDescription": "Salve decisões de conversas do Slack e notas de huddles direto no Notion. O GAIA captura o conhecimento compartilhado antes que ele se perca. Veja como configurar.",
+    "metaDescription": "Salve decisões de conversas do Slack e notas de huddles direto no Notion. O GAIA guarda o conhecimento da equipe antes que ele se perca no feed.",
     "metaTitle": "Integração Slack + Notion: conversas viram registro",
     "tagline": "Salve conversas e decisões do Slack no Notion automaticamente",
     "toolA": "Slack",
@@ -504,7 +504,7 @@
       "notificações de revisão de PR no Slack",
       "bot do GitHub para Slack"
     ],
-    "metaDescription": "Receba pedidos de revisão de PR, alertas de falha de CI/CD e avisos de merge no Slack. O GAIA direciona cada evento do GitHub ao canal certo. Veja como configurar.",
+    "metaDescription": "Receba pedidos de revisão de PR, falhas de CI/CD e avisos de merge no Slack. O GAIA leva cada evento do GitHub ao canal certo. Veja como configurar.",
     "metaTitle": "Integração Slack + GitHub: PRs e alertas de CI",
     "tagline": "Receba notificações do GitHub no Slack e gerencie PRs pelo chat",
     "toolA": "Slack",
@@ -971,7 +971,7 @@
       "automação Notion Linear",
       "alinhamento produto e engenharia"
     ],
-    "metaDescription": "Transforme specs do Notion em issues do Linear com critérios de aceite e avise engenheiros quando uma spec mudar. O GAIA alinha docs e tickets. Veja como configurar.",
+    "metaDescription": "Transforme specs do Notion em issues do Linear com critérios de aceite e avise engenheiros quando a spec mudar. O GAIA mantém docs e tickets alinhados.",
     "metaTitle": "Integração Notion + Linear: specs viram issues",
     "tagline": "Conecte specs de produto no Notion a issues de engenharia no Linear",
     "toolA": "Notion",
@@ -1166,7 +1166,7 @@
       "sincronizar agenda e lista de tarefas",
       "da agenda para o Todoist"
     ],
-    "metaDescription": "Transforme eventos da agenda em tarefas de preparação, prazos e acompanhamentos pós-reunião no Todoist. O GAIA monta sua lista pela agenda. Veja como configurar.",
+    "metaDescription": "Transforme eventos da agenda em tarefas de preparação, prazos e follow-ups no Todoist. O GAIA monta sua lista a partir da agenda. Veja como configurar.",
     "metaTitle": "Integração Google Agenda + Todoist: tarefas",
     "tagline": "Transforme eventos da agenda em tarefas e preparações automaticamente",
     "toolA": "Google Calendar",
@@ -1818,7 +1818,7 @@
       "da caixa de entrada à gestão de projetos",
       "fluxo de e-mail no ClickUp"
     ],
-    "metaDescription": "Transforme e-mails de pedidos de clientes em tarefas e subtarefas do ClickUp, etiquetadas pelos seus marcadores do Gmail. O GAIA arquiva cada pedido na lista certa.",
+    "metaDescription": "Transforme e-mails de clientes em tarefas e subtarefas do ClickUp, etiquetadas pelos marcadores do Gmail. O GAIA arquiva cada pedido na lista certa.",
     "metaTitle": "Integração Gmail + ClickUp: e-mails viram tarefas",
     "tagline": "Converta e-mails em tarefas do ClickUp sem sair da caixa de entrada",
     "toolA": "Gmail",
@@ -2016,7 +2016,7 @@
       "bot de gestão de projetos no Slack",
       "fluxo Slack ClickUp"
     ],
-    "metaDescription": "Reaja a uma mensagem do Slack para criar uma tarefa no ClickUp, receba updates no Slack e o resumo diário. O GAIA mantém suas listas em dia. Veja como configurar.",
+    "metaDescription": "Reaja a uma mensagem no Slack para criar uma tarefa no ClickUp e receba updates e um resumo diário. O GAIA mantém suas listas sempre em dia.",
     "metaTitle": "Integração Slack + ClickUp: tarefas por emoji",
     "tagline": "Gerencie tarefas do ClickUp e receba updates direto no Slack",
     "toolA": "Slack",
@@ -2412,7 +2412,7 @@
       "agendamento de reunião Zoom agenda",
       "automação de videorreunião"
     ],
-    "metaDescription": "Nunca mais cole link de reunião. O GAIA adiciona link do Zoom a cada evento, lembra você de preparar e pede acompanhamentos após a chamada. Veja como configurar.",
+    "metaDescription": "Nunca mais cole link de reunião. O GAIA põe um link do Zoom em cada evento, lembra você de se preparar e pede os follow-ups depois da chamada.",
     "metaTitle": "Integração Google Agenda + Zoom: links nos eventos",
     "tagline": "Vincule suas reuniões do Google Agenda a chamadas do Zoom no automático",
     "toolA": "Google Calendar",
@@ -3018,7 +3018,7 @@
       "conectar Gmail e Discord",
       "alertas de e-mail no Discord"
     ],
-    "metaDescription": "Direcione alertas de sistema, avisos de cobrança e novidades de clientes do Gmail aos canais certos do Discord. O GAIA formata cada mensagem. Veja como configurar.",
+    "metaDescription": "Leve alertas de sistema, avisos de cobrança e novidades de clientes do Gmail aos canais certos do Discord. O GAIA formata cada mensagem por você.",
     "metaTitle": "Conecte Discord ao Gmail: alertas no Discord",
     "tagline": "Receba e-mails importantes do Gmail resumidos no Discord e pergunte ao GAIA sobre sua caixa",
     "toolA": "Gmail",
@@ -3480,7 +3480,7 @@
       "conectar Gmail e Microsoft Teams",
       "fluxo de alertas no Teams"
     ],
-    "metaDescription": "Envie e-mails de clientes, alertas de sistema e um resumo diário do Gmail aos canais do Teams, filtrados por urgência. O GAIA redige respostas. Veja como configurar.",
+    "metaDescription": "Envie e-mails de clientes, alertas de sistema e um resumo diário do Gmail aos canais do Teams, filtrados por urgência. O GAIA também redige respostas.",
     "metaTitle": "Gmail para Teams: e-mails importantes no Teams",
     "tagline": "Direcione mensagens importantes do Gmail a canais do Teams no automático",
     "toolA": "Gmail",
@@ -3810,7 +3810,7 @@
       "conectar Slack e Stripe",
       "webhook Stripe Slack"
     ],
-    "metaDescription": "Publique pagamentos novos, cobranças falhadas e marcos de receita nos canais do Slack que você escolher. O GAIA filtra transações de teste. Veja como configurar.",
+    "metaDescription": "Publique pagamentos novos, cobranças falhadas e marcos de receita nos canais do Slack que você escolher. O GAIA filtra as transações de teste.",
     "metaTitle": "Integração Stripe + Slack: pagamentos no canal",
     "tagline": "Receba alertas de pagamento e resumos de receita da Stripe no Slack",
     "toolA": "Slack",
@@ -4383,7 +4383,7 @@
       "conectar Slack e Zoom",
       "resumo de Zoom no Slack"
     ],
-    "metaDescription": "Agende reuniões no Zoom de uma conversa do Slack, solte um link instantâneo na discussão e publique resumos no canal. O GAIA cuida de tudo. Veja como configurar.",
+    "metaDescription": "Agende reuniões no Zoom a partir de uma conversa no Slack, solte um link instantâneo e publique resumos no canal. O GAIA cuida de tudo por você.",
     "metaTitle": "Integração Slack + Zoom: agende chamadas",
     "tagline": "Inicie, agende e acompanhe reuniões do Zoom sem sair do Slack",
     "toolA": "Slack",
@@ -5397,7 +5397,7 @@
       "conectar Notion e Stripe",
       "banco de métricas de negócio no Notion"
     ],
-    "metaDescription": "Acompanhe a receita diária da Stripe num banco do Notion e registre assinaturas novas e falhas lá. O GAIA mantém sua página de métricas atual. Veja como configurar.",
+    "metaDescription": "Acompanhe a receita diária da Stripe num banco do Notion e registre lá assinaturas novas e falhas. O GAIA mantém sua página de métricas atualizada.",
     "metaTitle": "Integração Notion + Stripe: receita no Notion",
     "tagline": "Acompanhe a receita da Stripe em bancos do Notion e direcione alertas",
     "toolA": "Notion",
@@ -5871,7 +5871,7 @@
       "aviso de release no Salesforce",
       "fluxo GitHub Salesforce"
     ],
-    "metaDescription": "Avise executivos de contas na hora que um recurso prometido entra em produção. O GAIA registra cada release na oportunidade correspondente. Veja como configurar.",
+    "metaDescription": "Avise executivos de contas assim que um recurso prometido entra em produção. O GAIA registra cada release do GitHub na oportunidade do Salesforce.",
     "metaTitle": "Integração GitHub + Salesforce: releases no CRM",
     "tagline": "Conecte releases do GitHub a oportunidades do Salesforce para vendas saberem",
     "toolA": "GitHub",
@@ -6081,7 +6081,7 @@
       "automação de banco de dados de engenharia",
       "fluxo GitHub Airtable"
     ],
-    "metaDescription": "Sincronize issues do GitHub com uma base de roadmap no Airtable, acompanhe cycle time de PRs e atualize releases. O GAIA monta os relatórios. Veja como configurar.",
+    "metaDescription": "Sincronize issues do GitHub com um roadmap no Airtable, acompanhe o cycle time de PRs e atualize cada release. O GAIA monta os relatórios por você.",
     "metaTitle": "Integração GitHub + Airtable: issues no roadmap",
     "tagline": "Sincronize issues e PRs do GitHub com o Airtable para a base refletir o código",
     "toolA": "GitHub",
@@ -6559,7 +6559,7 @@
       "automação Todoist Trello",
       "tarefa pessoal no quadro do Trello"
     ],
-    "metaDescription": "Publique tarefas do Todoist como cards do Trello e puxe cards atribuídos para o Todoist, com conclusão sincronizada. O GAIA atualiza quadros. Veja como configurar.",
+    "metaDescription": "Publique tarefas do Todoist como cards do Trello e puxe cards atribuídos ao Todoist, com conclusão sincronizada. O GAIA atualiza quadros de clientes.",
     "metaTitle": "Integração Trello + Todoist: cards e tarefas",
     "tagline": "Sincronize pendências pessoais do Todoist com quadros de equipe no Trello",
     "toolA": "Todoist",
@@ -6955,7 +6955,7 @@
       "sincronia Todoist HubSpot",
       "gestão de tarefas de vendas no Todoist"
     ],
-    "metaDescription": "Crie follow-ups no Todoist quando estágios de negócio do HubSpot mudarem e registre tarefas concluídas no HubSpot. O GAIA prepara reuniões. Veja como configurar.",
+    "metaDescription": "Crie follow-ups no Todoist quando o estágio de um negócio no HubSpot mudar e registre lá as tarefas concluídas. O GAIA também prepara suas reuniões.",
     "metaTitle": "Integração HubSpot + Todoist: follow-ups",
     "tagline": "Crie follow-ups no Todoist de atividades do CRM e sincronize",
     "toolA": "Todoist",
@@ -7293,7 +7293,7 @@
       "lembrete de pagamento como evento",
       "vencimento de fatura Stripe na agenda"
     ],
-    "metaDescription": "Coloque renovações de assinatura e vencimentos de fatura na agenda da equipe e receba lembretes de falhas de pagamento. O GAIA acompanha tudo. Veja como configurar.",
+    "metaDescription": "Coloque renovações de assinatura e vencimentos de fatura na agenda da equipe e receba lembretes de falhas de pagamento. O GAIA acompanha tudo.",
     "metaTitle": "Integração Google Agenda + Stripe: cobranças",
     "tagline": "Agende eventos de ciclo de cobrança e prazos de lembrete direto da Stripe",
     "toolA": "Google Calendar",
@@ -8816,7 +8816,7 @@
       "conectar Linear e Discord",
       "publicar updates do Linear no Discord"
     ],
-    "metaDescription": "Publique atribuições de issues do Linear em DMs, alertas urgentes e bloqueios nos canais e vitórias de sprint à equipe. O GAIA reduz o ruído. Veja como configurar.",
+    "metaDescription": "Envie atribuições do Linear por DM, alertas urgentes e bloqueios aos canais e vitórias de sprint à equipe. O GAIA reduz o ruído no seu servidor.",
     "metaTitle": "Integração Linear + Discord: alertas no servidor",
     "tagline": "Publique updates de issues do Linear em canais de dev no automático",
     "toolA": "Linear",
@@ -9766,7 +9766,7 @@
       "fluxo CRM engenharia de bugs",
       "bugs relatados por clientes no Jira"
     ],
-    "metaDescription": "Leve bugs de clientes à engenharia rápido. O GAIA abre um ticket no Jira de cada relato no HubSpot e avisa o dono quando entra em produção. Veja como configurar.",
+    "metaDescription": "Leve bugs de clientes à engenharia rápido. O GAIA abre um ticket no Jira para cada relato no HubSpot e avisa o responsável quando a correção sai.",
     "metaTitle": "Integração Jira + HubSpot: bugs viram tickets",
     "tagline": "Sincronize relatos de bug de clientes do HubSpot com tickets do Jira",
     "toolA": "Jira",
@@ -10046,7 +10046,7 @@
       "Loom para issues no Linear",
       "fluxo de engenharia em vídeo"
     ],
-    "metaDescription": "Transforme gravações de bug do Loom em issues do Linear e adicione demos de sprint às issues concluídas. O GAIA mantém o vídeo no trabalho. Veja como configurar.",
+    "metaDescription": "Transforme gravações de bug do Loom em issues do Linear e anexe demos de sprint às issues concluídas. O GAIA mantém o contexto em vídeo no trabalho.",
     "metaTitle": "Integração Linear + Loom: bugs viram issues",
     "tagline": "Anexe walkthroughs em vídeo do Loom a issues para contexto assíncrono",
     "toolA": "Linear",
@@ -10186,7 +10186,7 @@
       "fluxo Salesforce Jira",
       "bug de cliente Jira Salesforce"
     ],
-    "metaDescription": "Transforme casos do Salesforce em tickets de bug no Jira e feche casos quando a correção entra em produção. O GAIA ordena bugs por receita. Veja como configurar.",
+    "metaDescription": "Transforme casos do Salesforce em tickets de bug no Jira e feche-os quando a correção entra em produção. O GAIA prioriza bugs pela receita da conta.",
     "metaTitle": "Integração Jira + Salesforce: casos viram bugs",
     "tagline": "Conecte tickets de engenharia do Jira a casos e oportunidades do Salesforce",
     "toolA": "Jira",
@@ -10536,7 +10536,7 @@
       "impacto de receita no Jira",
       "fluxo enterprise de cobrança no Jira"
     ],
-    "metaDescription": "Pegue bugs de cobrança antes que custem receita. O GAIA abre um incidente no Jira quando falhas da Stripe disparam e anota a receita em risco. Veja como configurar.",
+    "metaDescription": "Pegue bugs de cobrança antes que custem receita. O GAIA abre um incidente no Jira quando falhas de pagamento da Stripe disparam e anota a receita em risco.",
     "metaTitle": "Integração Jira + Stripe: incidentes de falha",
     "tagline": "Escale falhas de cobrança da Stripe para tickets no Jira com contexto",
     "toolA": "Jira",
@@ -12961,7 +12961,7 @@
       "fluxo zoom teams",
       "gaia zoom microsoft teams"
     ],
-    "metaDescription": "Publique resumos de reunião do Zoom e links de gravação em canais do Teams, e envie lembretes antes das calls. O GAIA conecta as plataformas. Veja como configurar.",
+    "metaDescription": "Publique resumos de reuniões do Zoom e links de gravação em canais do Teams e envie lembretes antes das calls. O GAIA conecta as duas plataformas.",
     "metaTitle": "Integração Zoom + Teams: resumos no Teams",
     "tagline": "Conecte Zoom e Microsoft Teams para organizações com duas plataformas",
     "toolA": "Zoom",
@@ -13022,7 +13022,7 @@
       "fluxo zoom google drive",
       "gaia zoom google drive"
     ],
-    "metaDescription": "Envie gravações do Zoom ao Google Drive, arquive-as por projeto ou equipe e salve transcrições como docs. O GAIA mantém seu arquivo organizado. Veja como configurar.",
+    "metaDescription": "Envie gravações do Zoom ao Google Drive, organize-as por projeto ou equipe e salve transcrições como docs. O GAIA mantém seu arquivo sempre em ordem.",
     "metaTitle": "Integração Zoom + Drive: gravações no Drive",
     "tagline": "Salve gravações e notas do Zoom em pastas organizadas do Google Drive",
     "toolA": "Zoom",
@@ -13571,7 +13571,7 @@
       "gaia google drive slack",
       "fluxo google drive slack"
     ],
-    "metaDescription": "Salve uploads do Slack no Drive, compartilhe docs com as permissões certas e receba alertas de mudança. O GAIA pesquisa o Drive pelo Slack. Veja como configurar.",
+    "metaDescription": "Salve arquivos enviados no Slack no Drive, compartilhe docs com as permissões certas e receba alertas de mudança. O GAIA também busca no Drive pelo Slack.",
     "metaTitle": "Integração Slack + Drive: arquivos e alertas",
     "tagline": "Compartilhe arquivos do Drive no Slack e salve uploads em pastas no automático",
     "toolA": "Google Drive",

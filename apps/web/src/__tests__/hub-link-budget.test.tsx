@@ -273,6 +273,21 @@ function localesOf(hub: Hub): readonly string[] {
   return isTranslatedPath(hub.path) ? locales : ["en"];
 }
 
+/** Each href a hub's pages link to, with the group pages among them that link it. */
+function linkingGroupPages(
+  pages: Awaited<ReturnType<typeof renderHubPages>>,
+): Map<string, Set<string>> {
+  const linking = new Map<string, Set<string>>();
+  for (const page of pages) {
+    for (const href of page.hrefs.map(stripLocalePrefix)) {
+      const from = linking.get(href) ?? new Set<string>();
+      if (page.isGroupPage) from.add(page.label);
+      linking.set(href, from);
+    }
+  }
+  return linking;
+}
+
 describe("hub link budget", () => {
   it(`renders at most ${MAX_INTERNAL_LINKS} internal links on every hub and group page, navbar and footer included`, async () => {
     const overBudget: string[] = [];
@@ -296,14 +311,9 @@ describe("hub link budget", () => {
       if (!hub.children) continue;
       const children = await hub.children();
       for (const locale of localesOf(hub)) {
-        const groupPagesLinking = new Map<string, Set<string>>();
-        for (const page of await renderHubPages(hub, locale)) {
-          for (const href of page.hrefs.map(stripLocalePrefix)) {
-            const from = groupPagesLinking.get(href) ?? new Set<string>();
-            if (page.isGroupPage) from.add(page.label);
-            groupPagesLinking.set(href, from);
-          }
-        }
+        const groupPagesLinking = linkingGroupPages(
+          await renderHubPages(hub, locale),
+        );
         const missing = children.filter((child) => {
           const from = groupPagesLinking.get(child);
           return !from || from.size < requiredGroupLinks(hub, child);

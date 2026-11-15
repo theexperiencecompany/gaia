@@ -79,7 +79,15 @@
     "category_page_title": "{category} Comparisons",
     "category_page_subtitle": "How GAIA compares with {count} {category} tools, head to head, so you can see where each one fits.",
     "category_meta_title": "{category} Comparisons: GAIA vs {count} Tools",
-    "category_meta_description": "GAIA compared head to head with {count} {category} tools: features, pricing and where each one fits, so you can pick the right one."
+    "category_meta_description": "GAIA compared head to head with {count} {category} tools: features, pricing and where each one fits, so you can pick the right one.",
+    "category_ai_assistants": "AI Assistants",
+    "category_automation": "Automation",
+    "category_task_management": "Task Management",
+    "category_project_management": "Project Management",
+    "category_calendar_scheduling": "Calendar & Scheduling",
+    "category_email": "Email",
+    "category_notes_knowledge": "Notes & Knowledge",
+    "category_other": "Other"
   },
   "automate": {
     "breadcrumb": "Automate",
@@ -138,7 +146,7 @@
     "all_category_terms": "All {count} {category} terms",
     "category_page_subtitle": "{count} {category} terms explained in plain English, and how GAIA puts each one to work.",
     "category_meta_title": "{category} Glossary: {count} Terms Explained",
-    "category_meta_description": "{count} {category} terms explained in plain English, with how each one powers a proactive AI assistant like GAIA."
+    "category_meta_description": "{count} {category} terms explained in plain English, with examples of how each one powers a proactive AI assistant like GAIA."
   },
   "marketplace": {
     "breadcrumb": "Marketplace"

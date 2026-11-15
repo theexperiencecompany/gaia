@@ -53,7 +53,7 @@ export async function ComparisonsHub({ locale, page }: ComparisonsHubProps) {
 
   // Page through the hub's category order: each page is a contiguous chunk of
   // the list the hub has always shown instead of a slice scattered across categories.
-  const categories = comparisonCategoryGroups(comparisons);
+  const categories = comparisonCategoryGroups(comparisons, t);
   const orderedComparisons = categories.flatMap((category) => category.items);
 
   // Only the current page's comparisons are serialized: the full list is paged

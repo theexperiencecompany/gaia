@@ -59,6 +59,7 @@ REACT_ID = re.compile(r"react-aria-[\w-]+")
 # the same build on 69 pages, and no-contextual-inbound on 18, so only a full crawl judges them.
 CRAWL_RELATIVE_RULES = frozenset(
     {
+        "content/title-pattern-outlier",
         "links/orphan-pages",
         "links/weak-internal-links",
         "links/no-contextual-inbound",
@@ -173,7 +174,10 @@ IGNORED = (
         "characters, so CJK prose reads thin, a Latin product name in it as stuffing, and a "
         "title or description too short",
         "/ja/compare/asana has 2,726 CJK characters, reported as 107 words and 'asana' at "
-        "16.9%; '2026年版 Any.do 最良の代替 | GAIA' reported as a 26-character title, too short",
+        "16.9%; '2026年版 Any.do 最良の代替 | GAIA' reported as a 26-character title, too short; "
+        "its 120-character description minimum overflows a CJK snippet, which shows ~70-80 "
+        "characters on mobile and ~90-120 on desktop (sungrove.co.jp, xserver.ne.jp, 2025), "
+        "where ours run 70-129 (ja median 82, ko median 87)",
         _cjk_length,
     ),
     Ignore(
@@ -190,8 +194,8 @@ IGNORED = (
     ),
     Ignore(
         "an integration page shows its tools' documentation as the API syncs it from the "
-        "provider (Composio), sample addresses included, one row per tool; its text and size "
-        "change with no deploy of ours, so no baseline can pin them",
+        "provider (Composio), sample addresses and the tool names they repeat included, one row "
+        "per tool; its text and size change with no deploy of ours, so no baseline can pin them",
         "/marketplace/googlesheets gained jane@example.com and john@example.com from its "
         "Composio tool docs between two crawls on 2026-11-12, with no commit in between; "
         "/marketplace/linear's keyword-stuffing item flipped from 'issue' to 'linear' between "

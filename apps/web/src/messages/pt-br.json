@@ -79,7 +79,15 @@
     "category_page_title": "Comparativos de {category}",
     "category_page_subtitle": "Como o GAIA se compara a {count} ferramentas de {category}, lado a lado, para você ver onde cada uma se encaixa.",
     "category_meta_title": "{category}: GAIA contra {count} ferramentas",
-    "category_meta_description": "O GAIA lado a lado com {count} ferramentas de {category}: recursos, preços e onde cada uma se encaixa, para você escolher a certa."
+    "category_meta_description": "O GAIA lado a lado com {count} ferramentas de {category}: recursos, preços e onde cada uma se encaixa, para você escolher a ferramenta certa.",
+    "category_ai_assistants": "Assistentes de IA",
+    "category_automation": "Automação",
+    "category_task_management": "Gestão de tarefas",
+    "category_project_management": "Gestão de projetos",
+    "category_calendar_scheduling": "Calendário e agendamento",
+    "category_email": "E-mail",
+    "category_notes_knowledge": "Notas e conhecimento",
+    "category_other": "Outras categorias"
   },
   "automate": {
     "breadcrumb": "Automatizar",
@@ -108,7 +116,7 @@
     "app_page_title": "Automações de {app}",
     "app_page_subtitle": "Todas as formas como o GAIA conecta o {app} às suas outras ferramentas, e o trabalho que ele faz por você entre elas.",
     "app_meta_title": "Automações de {app}: {count, plural, one {# fluxo} other {# fluxos}} com o GAIA",
-    "app_meta_description": "Todas as formas como o GAIA conecta o {app} às suas outras ferramentas: {count, plural, one {# automação} other {# automações}}, sem escrever código."
+    "app_meta_description": "Todas as formas como o GAIA conecta o {app} às suas outras ferramentas: {count, plural, one {# automação} other {# automações}}, cada uma trabalhando por você, sem código."
   },
   "glossary": {
     "breadcrumb": "Glossário",
@@ -138,7 +146,7 @@
     "all_category_terms": "Os {count} termos de {category}",
     "category_page_subtitle": "{count} termos de {category} explicados com clareza, e como o GAIA coloca cada um para trabalhar.",
     "category_meta_title": "{category}: {count} termos explicados",
-    "category_meta_description": "{count} termos de {category} explicados com clareza, e como cada um move um assistente de IA proativo como o GAIA."
+    "category_meta_description": "{count} termos de {category} explicados com clareza, com exemplos de como cada um move um assistente de IA proativo como o GAIA."
   },
   "marketplace": {
     "breadcrumb": "Marketplace"
