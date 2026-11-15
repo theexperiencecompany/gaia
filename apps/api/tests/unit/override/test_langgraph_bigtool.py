@@ -2443,6 +2443,56 @@ class TestWireEdgesPinning:
         assert (FINISH_TASK_NAME, END) in edges
 
 
+def _ends_on_react(message: AIMessage) -> str | None:
+    return "ended" if message.tool_calls[-1]["name"] == "react" else None
+
+
+def _after_calls(*names: str) -> State:
+    calls: list[ToolCall] = [
+        {"name": name, "args": {}, "id": f"c{n}", "type": "tool_call"}
+        for n, name in enumerate(names)
+    ]
+    return _make_state(
+        messages=[
+            AIMessage(content="", tool_calls=calls),
+            *(ToolMessage(content="ok", tool_call_id=call["id"]) for call in calls),
+        ]
+    )
+
+
+class TestTheToolsNodeEndsATurnOnlyAfterACallThatEndsIt:
+    def _tools_branch(self, deps: _AgentDeps) -> tuple[Any, list[str]]:
+        builder = MagicMock()
+        _wire_edges(builder, deps)
+        (branch,) = [
+            call for call in builder.add_conditional_edges.call_args_list if call.args[0] == "tools"
+        ]
+        return branch.args[1], branch.kwargs["path_map"]
+
+    @pytest.mark.parametrize(
+        ("hooks", "exit_node"), [(None, END), ([MagicMock(name="end_hook")], "end_graph_hooks")]
+    )
+    def test_a_turn_ending_call_exits_and_any_other_goes_back_to_the_model(
+        self, hooks: list[Any] | None, exit_node: str
+    ) -> None:
+        deps = replace(_make_deps(), turn_ending=_ends_on_react, end_graph_hooks=hooks)
+
+        route, path_map = self._tools_branch(deps)
+
+        assert path_map == ["agent", exit_node]
+        assert route(_after_calls("react")) == exit_node
+        assert route(_after_calls("web_search")) == "agent"
+        assert route(_make_state(messages=[HumanMessage(content="hi")])) == "agent"
+
+    def test_without_turn_endings_the_tools_node_always_returns_to_the_model(self) -> None:
+        builder = MagicMock()
+
+        _wire_edges(builder, _make_deps())
+
+        assert ("tools", "agent") in [c.args for c in builder.add_edge.call_args_list]
+        assert all(c.args[0] != "tools" for c in builder.add_conditional_edges.call_args_list)
+
+
 class TestCreateAgentWiring:
     """Pin that every resolved value lands in deps and every factory-built node lands under its graph name."""
 

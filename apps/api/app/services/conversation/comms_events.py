@@ -81,7 +81,9 @@ class CommsEventMapper:
         self._cards: list[ToolDataEntry] = []
         self._follow_ups: tuple[str, ...] = ()
         self._answer = ""
+        # pragma: no mutate start — before a model update only isinstance reads it
         self._ending: ReactArgs | StaySilentArgs | None = None
+        # pragma: no mutate end
         self._final_reported = False  # pragma: no mutate — only read as truthiness
 
     async def map(self, event: GraphEvent) -> list[RunEvent]:
