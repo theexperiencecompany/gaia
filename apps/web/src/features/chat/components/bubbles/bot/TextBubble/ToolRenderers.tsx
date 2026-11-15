@@ -45,6 +45,7 @@ import ApprovalRequestGroup from "../ApprovalRequestGroup";
 import BrowserTaskSection from "../BrowserTaskSection";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
+import { CalendarEventReadonlySection } from "../CalendarEventReadonlySection";
 import { CalendarListFetchSection } from "../CalendarListFetchSection";
 import CodeExecutionSection from "../CodeExecutionSection";
 import ContactListSection from "../ContactListSection";
@@ -169,6 +170,9 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   ),
 
   // Calendar
+  calendar_options: (data) => (
+    <CalendarEventReadonlySection calendar_options={data} />
+  ),
   calendar_delete_options: (data) => (
     <CalendarDeleteSection calendar_delete_options={data} />
   ),
