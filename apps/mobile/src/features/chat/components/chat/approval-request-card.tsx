@@ -181,7 +181,7 @@ export function ApprovalRequestCard({
         />
         <View style={{ flex: 1 }}>
           <Text style={{ color: "#f4f4f5", fontSize: 14 }} numberOfLines={2}>
-            {data.summary}
+            {data.description.headline}
           </Text>
           <Text style={{ color: "#71717a", fontSize: 12 }}>
             {isAuto ? "Ran without asking" : "Approval required"}

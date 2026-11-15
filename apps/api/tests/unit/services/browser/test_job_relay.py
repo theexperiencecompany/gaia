@@ -182,7 +182,7 @@ class Relay:
         async def _stop(job_id: str) -> None:
             relay.calls.append(("stop", job_id))
 
-        async def _publish(stream_id: str, data: dict[str, object]) -> None:
+        def _collect(stream_id: str, data: dict[str, object]) -> None:
             relay.published.append((stream_id, data))
 
         class _Deltas:
@@ -198,7 +198,7 @@ class Relay:
         monkeypatch.setattr(job_relay, "open_folded_stream", _open)
         monkeypatch.setattr(job_relay, "close_folded_stream", _close)
         monkeypatch.setattr(job_relay, "stop_job", _stop)
-        monkeypatch.setattr(job_relay, "publish_to_stream", _publish)
+        monkeypatch.setattr(job_relay, "collect_frame", _collect)
         monkeypatch.setattr(job_relay, "WorkDeltas", _Deltas)
 
 
