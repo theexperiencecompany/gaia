@@ -334,6 +334,7 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         _row("/b", "content/word-count", "word-count"),
         _row("/blog/launch", "content/placeholder-contact", "placeholder-contact", [{"id": "email"}]),
         _row("/marketplace/page/2", "content/placeholder-contact", "placeholder-contact", [{"id": "email"}]),
+        _row("/marketplace/gmail", "perf/dom-size", "dom-total-nodes"),
     ],
 )  # fmt: skip
 def test_the_same_rules_still_count_a_real_finding(tmp_path: Path, row: Row) -> None:
@@ -354,6 +355,7 @@ def test_the_same_rules_still_count_a_real_finding(tmp_path: Path, row: Row) -> 
         "/blog",
         "/brand",
         "/pricing/team",
+        "/marketplace/gmail",
     ]
     assert _ratchet(tmp_path, [row], "", pages=pages).returncode == 1
 
