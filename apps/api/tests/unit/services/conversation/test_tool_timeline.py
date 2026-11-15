@@ -101,14 +101,12 @@ def test_no_cards_show_nothing() -> None:
 
 
 def test_calls_are_rows_keyed_by_call_id_or_a_slot_after_the_last_id() -> None:
-    first, second, extra, named, third, fourth = (
-        {"tool_name": "a"},
-        _call("", "b"),
-        {"tool_name": "a2"},
-        _call("c1"),
-        {"tool_name": "c"},
-        {"tool_name": "d"},
-    )
+    first: _Json = {"tool_name": "a"}
+    second = _call("", "b")
+    extra: _Json = {"tool_name": "a2"}
+    named = _call("c1")
+    third: _Json = {"tool_name": "c"}
+    fourth: _Json = {"tool_name": "d"}
     cards = [_calls(first, second, 7, extra, named, third), _calls(fourth)]
 
     assert _rows(cards) == [
@@ -275,7 +273,8 @@ def test_a_handoff_gathers_the_calls_after_it_into_a_synthetic_group() -> None:
     opener = _handoff(
         "h1", "Gmail", inputs={"subagent_id": "subagent:gmail_agent", "task": "read mail"}
     )
-    inner, tail = _call("c2"), {"tool_name": "x"}
+    inner = _call("c2")
+    tail: _Json = {"tool_name": "x"}
     cards = [_calls(_call("c0"), opener, inner, _thought("a"), _thought("b"), tail)]
 
     assert _rows(cards) == [
@@ -297,7 +296,7 @@ def test_a_handoff_gathers_the_calls_after_it_into_a_synthetic_group() -> None:
 
 
 def test_a_handoff_that_failed_at_once_holds_none_of_the_later_calls() -> None:
-    opener = {
+    opener: _Json = {
         "tool_name": "call_subagent",
         "message": "handing off to Calendar",
         "inputs": "not an object",
@@ -322,8 +321,12 @@ def test_a_handoff_that_failed_at_once_holds_none_of_the_later_calls() -> None:
 
 
 def test_a_spawn_outside_a_handoff_is_its_own_row_and_inside_one_nests() -> None:
-    lone_spawn = {"tool_name": "think", "message": "Spawning subagent", "inputs": {"task": "dig"}}
-    unnamed = {
+    lone_spawn: _Json = {
+        "tool_name": "think",
+        "message": "Spawning subagent",
+        "inputs": {"task": "dig"},
+    }
+    unnamed: _Json = {
         "tool_name": "handoff",
         "message": "Delegating",
         "inputs": {"subagent_id": "subagent:notion_agent"},
@@ -369,8 +372,8 @@ def test_a_spawn_outside_a_handoff_is_its_own_row_and_inside_one_nests() -> None
 
 
 def test_unnamed_synthetic_groups_count_every_group_made_before_them() -> None:
-    spawn = {"tool_name": "spawn_subagent"}
-    handoff = {"tool_name": "handoff"}
+    spawn: _Json = {"tool_name": "spawn_subagent"}
+    handoff: _Json = {"tool_name": "handoff"}
     cards = [_calls(spawn, spawn, handoff, handoff, spawn, spawn)]
 
     rows = _rows(cards)
