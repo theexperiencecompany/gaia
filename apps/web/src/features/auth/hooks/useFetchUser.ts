@@ -29,8 +29,7 @@ const useFetchUser = () => {
   const searchParams = useSearchParams();
   const currentPath = usePathname();
   const hasIdentified = useRef(false);
-  const hasClearedOnError = useRef(false);
-  const hasResetOnUnauthorized = useRef(false);
+  const hasClearedOnUnauthorized = useRef(false);
   const pendingCheckout = usePendingCheckout();
   const accessToken = searchParams.get("access_token");
   const refreshToken = searchParams.get("refresh_token");
@@ -98,29 +97,24 @@ const useFetchUser = () => {
     }
   }
 
-  // Clear user state on a failed /me, dropping it from the persisted cache too.
-  // Guarded by a ref: removing the query makes this observer refetch, so an
-  // unguarded effect would remove it again on the next failure, in a loop.
+  // A transient /me failure keeps the cached user (and with it the marketing gate's
+  // evidence of a session): only the API's 401 ends the session.
   useEffect(() => {
-    if (!error || hasClearedOnError.current) return;
-    hasClearedOnError.current = true;
-    // A 401 is the API's answer for a signed-out browser (its response drops the hint), not a failure.
-    if (!isUnauthorized(error)) {
+    if (error && !isUnauthorized(error)) {
       console.error("Error fetching user info:", error);
     }
+  }, [error]);
+
+  // A 401 drops the user from the persisted cache too. Guarded by a ref: removing the
+  // query makes an app-page observer refetch and 401 again, in a loop.
+  useEffect(() => {
+    if (!isUnauthorized(error) || hasClearedOnUnauthorized.current) return;
+    hasClearedOnUnauthorized.current = true;
     clearCurrentUser(queryClient);
     hasIdentified.current = false;
-  }, [error, queryClient]);
-
-  // Only a 401 ends the identified session, so it is guarded on its own: a 5xx
-  // that cleared the cache first must not swallow the 401 a refetch then returns.
-  useEffect(() => {
-    if (hasResetOnUnauthorized.current) return;
-    if (!isUnauthorized(error)) return;
-    hasResetOnUnauthorized.current = true;
     // resetUser leaves an anonymous visitor's 401 alone.
     resetUser();
-  }, [error]);
+  }, [error, queryClient]);
 };
 
 export default useFetchUser;

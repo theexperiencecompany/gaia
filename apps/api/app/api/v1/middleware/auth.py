@@ -448,11 +448,12 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
         if token:
             session = await authenticate_local_session(token)
-            if isinstance(session, LocalSessionFailure):
-                request.state.auth_failure = session
-            else:
+            if isinstance(session, AuthenticatedUser):
                 request.state.user = session
                 request.state.authenticated = True
+            # An unavailable check is transient, like the WorkOS path's error: no rejection.
+            elif session is not LocalSessionFailure.UNAVAILABLE:
+                request.state.auth_failure = session
 
         await self._authenticate_agent_token(request, auth_provider="email")
 

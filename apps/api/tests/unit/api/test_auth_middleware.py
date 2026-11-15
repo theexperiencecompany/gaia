@@ -42,6 +42,8 @@ from app.constants.log_tags import LogTag
 from app.core.request_context import get_authenticated_user
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.analytics_service import capture
+from app.utils.auth_utils import clear_session_cookie
+from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, SESSION_TTL_SECONDS
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from tests.helpers import captured_wide_event, session_hint_set_cookie, session_set_cookie
@@ -102,6 +104,12 @@ def _build_test_app(middleware_kwargs: dict | None = None):
         user = getattr(request.state, "user", None)
         authed = getattr(request.state, "authenticated", False)
         return {"user": user, "authenticated": authed}
+
+    @app.post("/api/v1/logout")
+    async def logout(request: Request) -> Response:
+        response = Response()
+        clear_session_cookie(response, request, name=WOS_SESSION_COOKIE)
+        return response
 
     @app.post("/api/v1/chat-stream")
     async def chat_stream(request: Request):
@@ -286,6 +294,20 @@ class TestSessionHint:
         (cleared,) = resp.headers.get_list("set-cookie")
         assert cleared.startswith(f'{SESSION_HINT_COOKIE}=""; Domain=.heygaia.io;')
         assert "Max-Age=0" in cleared
+
+    def test_a_route_that_clears_the_session_is_not_handed_a_fresh_hint(self) -> None:
+        with patch.object(
+            WorkOSAuthMiddleware,
+            "_authenticate_session",
+            AsyncMock(return_value=(self.USER, None)),
+        ):
+            client = TestClient(_build_test_app())
+            client.cookies.set(WOS_SESSION_COOKIE, "tok")
+            resp = client.post("/api/v1/logout")
+
+        cookies = resp.headers.get_list("set-cookie")
+        assert [c.split("=", 1)[0] for c in cookies] == [WOS_SESSION_COOKIE, SESSION_HINT_COOKIE]
+        assert "Max-Age=0" in cookies[1]
 
     def test_a_transient_auth_error_keeps_the_hint(self) -> None:
         resp = _get_protected(
@@ -1238,28 +1260,67 @@ class TestLocalSessionDispatch:
 
         assert resp.json()["auth_failure"] == "unknown_local_session_user"
 
-    async def test_a_broken_secret_store_is_an_error_not_a_silent_401(self) -> None:
-        with patch(
-            "app.utils.local_auth_utils.resolve_session_token",
-            AsyncMock(side_effect=RuntimeError("secret store down")),
+    @pytest.mark.parametrize(
+        ("resolve", "lookup", "error"),
+        [
+            (
+                AsyncMock(side_effect=RuntimeError("secret store down")),
+                AsyncMock(return_value=LOCAL_USER),
+                {
+                    "msg": f"{LogTag.API} local session verification error",
+                    "auth_failure": "RuntimeError",
+                    "error": "secret store down",
+                },
+            ),
+            (
+                AsyncMock(return_value=LOCAL_USER.id),
+                AsyncMock(side_effect=ConnectionError("mongo down")),
+                {
+                    "msg": f"{LogTag.API} local session account lookup error",
+                    "error_type": "ConnectionError",
+                    "error": "mongo down",
+                },
+            ),
+        ],
+        ids=["secret-store-down", "account-lookup-down"],
+    )
+    async def test_an_outage_is_an_error_that_neither_authenticates_nor_rejects(
+        self, resolve: AsyncMock, lookup: AsyncMock, error: dict[str, str]
+    ) -> None:
+        with (
+            patch("app.utils.local_auth_utils.resolve_session_token", resolve),
+            patch("app.api.v1.middleware.auth.user_repository.get", lookup),
         ):
             async with captured_wide_event() as event:
                 async with AsyncClient(
                     transport=ASGITransport(app=_build_local_probe_app()), base_url="http://t"
                 ) as client:
-                    client.cookies.set("gaia_session", "session.jwt")
+                    client.cookies.set(LOCAL_SESSION_COOKIE, "session.jwt")
+                    client.cookies.set(SESSION_HINT_COOKIE, "1")
                     resp = await client.get("/api/v1/protected")
 
-        assert resp.json()["auth_failure"] == "invalid_or_expired_session"
-        assert event["errors"] == [
-            {
-                "msg": f"{LogTag.API} local session verification error",
-                "auth_failure": "RuntimeError",
-                "error": "secret store down",
-            }
-        ]
+        assert (resp.json()["authenticated"], resp.json()["auth_failure"]) == (False, None)
+        assert resp.headers.get_list("set-cookie") == []
+        assert event["errors"] == [error]
 
-    async def test_a_failed_account_lookup_is_an_error_on_the_wide_event(self) -> None:
+    def test_a_token_naming_a_malformed_id_is_an_unknown_user_without_a_lookup(self) -> None:
+        lookup = AsyncMock(return_value=LOCAL_USER)
+        with (
+            patch(
+                "app.utils.local_auth_utils.resolve_session_token",
+                AsyncMock(return_value="not-an-object-id"),
+            ),
+            patch("app.api.v1.middleware.auth.user_repository.get", lookup),
+        ):
+            client = TestClient(_build_local_probe_app())
+            client.cookies.set(LOCAL_SESSION_COOKIE, "session.jwt")
+            resp = client.get("/api/v1/protected")
+
+        lookup.assert_not_awaited()
+        assert resp.json()["auth_failure"] == "unknown_local_session_user"
+
+    @pytest.mark.usefixtures("_hosted_urls")
+    def test_a_local_session_from_before_the_hint_gets_one_for_its_lifetime(self) -> None:
         with (
             patch(
                 "app.utils.local_auth_utils.resolve_session_token",
@@ -1267,23 +1328,15 @@ class TestLocalSessionDispatch:
             ),
             patch(
                 "app.api.v1.middleware.auth.user_repository.get",
-                AsyncMock(side_effect=ValueError("bad id")),
+                AsyncMock(return_value=LOCAL_USER),
             ),
         ):
-            async with captured_wide_event() as event:
-                async with AsyncClient(
-                    transport=ASGITransport(app=_build_local_probe_app()), base_url="http://t"
-                ) as client:
-                    client.cookies.set("gaia_session", "session.jwt")
-                    resp = await client.get("/api/v1/protected")
+            client = TestClient(_build_local_probe_app())
+            client.cookies.set(LOCAL_SESSION_COOKIE, "session.jwt")
+            resp = client.get("/api/v1/protected")
 
-        assert resp.json()["auth_failure"] == "unknown_local_session_user"
-        assert event["errors"] == [
-            {
-                "msg": f"{LogTag.API} Invalid user_id in local session token",
-                "error_type": "ValueError",
-                "error": "bad id",
-            }
+        assert resp.headers.get_list("set-cookie") == [
+            session_hint_set_cookie(SESSION_TTL_SECONDS, secure=False, domain=".heygaia.io")
         ]
 
     def test_an_agent_token_authenticates_as_an_email_account(self) -> None:

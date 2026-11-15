@@ -31,8 +31,8 @@ class _SessionCookieFlags(TypedDict):
 # Lax: web and API are same-site and the OAuth callback is a top-level navigation;
 # the cross-site desktop renderer rewrites wos_session to None itself (session.ts).
 _SESSION_COOKIE_FLAGS = _SessionCookieFlags(path="/", httponly=True, samesite="lax")
-# The hint carries no secret and must be readable by the web app's JavaScript.
-_SESSION_HINT_FLAGS = _SessionCookieFlags(path="/", httponly=False, samesite="lax")
+# The hint carries no secret, so Starlette's default flags (Path=/, SameSite=Lax, not
+# HttpOnly: the web app's JavaScript reads it) are its flags.
 _SESSION_HINT_VALUE = "1"
 
 # Bundled Public Suffix List snapshot, private section included (github.io is a suffix
@@ -72,7 +72,6 @@ def set_session_hint_cookie(
         max_age=max_age,
         secure=session_cookie_secure(connection),
         domain=session_hint_cookie_domain(settings.HOST, settings.FRONTEND_URL),
-        **_SESSION_HINT_FLAGS,
     )
 
 
@@ -82,7 +81,6 @@ def clear_session_hint_cookie(response: Response, connection: HTTPConnection) ->
         SESSION_HINT_COOKIE,
         secure=session_cookie_secure(connection),
         domain=session_hint_cookie_domain(settings.HOST, settings.FRONTEND_URL),
-        **_SESSION_HINT_FLAGS,
     )
 
 

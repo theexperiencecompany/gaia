@@ -65,7 +65,7 @@ function renderFetchUser(cachedUser: typeof SIGNED_IN_USER | null) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
-  return renderHook(() => useFetchUser(), { wrapper });
+  return { queryClient, ...renderHook(() => useFetchUser(), { wrapper }) };
 }
 
 /** Let the rejected /me reach the hook's effects. */
@@ -120,11 +120,10 @@ describe("useFetchUser identity reset", () => {
     posthogMock._isIdentified.mockReturnValue(true);
     posthogMock.__loaded = true;
 
-    const { rerender } = renderFetchUser(SIGNED_IN_USER);
+    const { queryClient, rerender } = renderFetchUser(SIGNED_IN_USER);
     await waitFor(() => expect(console.error).toHaveBeenCalled());
     expect(posthogMock.reset).not.toHaveBeenCalled();
-    // The next render re-reads the cleared query, so /me is asked again.
-    rerender();
+    await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY });
 
     await waitFor(() => expect(posthogMock.reset).toHaveBeenCalledTimes(1));
     rerender();

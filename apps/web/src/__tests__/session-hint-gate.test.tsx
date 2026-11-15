@@ -75,7 +75,7 @@ function renderPage({
       </SessionHintGateProvider>
     </QueryClientProvider>
   );
-  return renderHook(useMarketingPage, { wrapper });
+  return { queryClient, ...renderHook(useMarketingPage, { wrapper }) };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -162,6 +162,18 @@ describe("marketing pages", () => {
       "Error fetching user info:",
       expect.anything(),
     );
+  });
+
+  it("keep a cached user through a transient /me failure, and ask again later", async () => {
+    fetchUserInfo.mockRejectedValueOnce(new ApiError("down", 503));
+
+    const { result, queryClient } = renderPage({ cachedUser: SIGNED_IN_USER });
+    await waitFor(() => expect(console.error).toHaveBeenCalled());
+    await settle();
+
+    expect(result.current.userId).toBe(SIGNED_IN_USER.user_id);
+    await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+    expect(fetchUserInfo).toHaveBeenCalledTimes(2);
   });
 
   it("still log a real /me failure for a signed-in user", async () => {

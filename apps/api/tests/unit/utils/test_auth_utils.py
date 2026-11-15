@@ -1101,6 +1101,8 @@ class TestSessionHintCookieDomain:
             ("http://192.168.1.4:8000", "http://192.168.1.4:3000", None),
             ("https://api.example.com", "https://example.org", None),
             ("https://api.github.io", "https://web.github.io", None),
+            ("", HOSTED_WEB, None),
+            (HOSTED_API, "", None),
         ],
         ids=[
             "hosted",
@@ -1111,6 +1113,8 @@ class TestSessionHintCookieDomain:
             "lan-ip",
             "unrelated-sites",
             "private-public-suffix",
+            "no-api-url",
+            "no-web-url",
         ],
     )
     def test_it_is_the_site_web_and_api_share_else_host_only(
@@ -1166,3 +1170,16 @@ class TestClearSessionCookie:
         assert expired_hint["domain"] == ".heygaia.io"
         assert (expired_hint["path"], expired_hint["samesite"]) == ("/", "lax")
         assert (expired_hint["httponly"], expired_hint["secure"]) == ("", True)
+
+    @pytest.mark.parametrize(("scheme", "secure"), [("http", False), ("https", True)])
+    def test_the_hint_is_expired_secure_exactly_when_the_request_is(
+        self, monkeypatch: pytest.MonkeyPatch, scheme: str, secure: bool
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        response = Response()
+
+        auth_utils.clear_session_cookie(response, _connection(scheme), name=LOCAL_SESSION_COOKIE)
+
+        _, hint = (SimpleCookie(h) for h in response.headers.getlist("set-cookie"))
+        assert hint[SESSION_HINT_COOKIE]["secure"] == (True if secure else "")
