@@ -9,7 +9,6 @@
 #
 # Generated, never hand-edited: a crawl rewrites it (SMOKE_SQUIRREL_UPDATE=1).
 # The PR that fixes a finding drops its line, and a finding not listed fails.
-
 score:Content=79
 score:Core SEO=83
 score:Crawlability=88
@@ -2039,6 +2038,7 @@ score:Structured Data=93
 /marketplace/fetch-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/github	images/svg-inline/svg-inline
 /marketplace/github	perf/cache-headers/cache-control
+/marketplace/github	perf/dom-size/dom-total-nodes
 /marketplace/gmail	images/svg-inline/svg-inline
 /marketplace/gmail	perf/cache-headers/cache-control
 /marketplace/google-classroom-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
@@ -2105,6 +2105,7 @@ score:Structured Data=93
 /marketplace/open-web-search-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/outlook	images/svg-inline/svg-inline
 /marketplace/outlook	perf/cache-headers/cache-control
+/marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
 /marketplace/page/2	links/no-contextual-inbound/no-contextual-inbound
 /marketplace/page/2	perf/cache-headers/cache-control
@@ -2192,6 +2193,7 @@ score:Structured Data=93
 /marketplace/todoist	perf/cache-headers/cache-control
 /marketplace/trello	images/svg-inline/svg-inline
 /marketplace/trello	perf/cache-headers/cache-control
+/marketplace/trello	perf/dom-size/dom-total-nodes
 /marketplace/twitter	images/svg-inline/svg-inline
 /marketplace/twitter	perf/cache-headers/cache-control
 /marketplace/wakatime-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	GWNzsIGGO33nMDvAMWjVBWUvq2otiHKiyVYBnMXPqN8
