@@ -30,6 +30,7 @@ PR_NODE = {
     "url": "https://github.com/o/r/pull/42",
     "headRefOid": "abc123def456",
     "state": "OPEN",
+    "isCrossRepository": False,
 }
 
 

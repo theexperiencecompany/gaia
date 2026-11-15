@@ -24,14 +24,14 @@ BRANCH_PR_WINDOW = 30
 
 PR_BY_NUMBER_QUERY = """
 query($owner:String!,$name:String!,$number:Int!){
-  repository(owner:$owner,name:$name){ pullRequest(number:$number){ number url headRefOid } } }
+  repository(owner:$owner,name:$name){ pullRequest(number:$number){ number url headRefOid state isCrossRepository } } }
 """
 PRS_BY_BRANCH_QUERY = f"""
 query($owner:String!,$name:String!,$branch:String!){{
   repository(owner:$owner,name:$name){{
     pullRequests(headRefName:$branch,states:[OPEN,CLOSED,MERGED],first:{BRANCH_PR_WINDOW},
                  orderBy:{{field:CREATED_AT,direction:DESC}}){{
-      nodes{{ number url headRefOid state }} }} }} }}
+      nodes{{ number url headRefOid state isCrossRepository }} }} }} }}
 """
 
 
@@ -40,6 +40,8 @@ class PullRequest:
     number: int
     url: str
     head_sha: str
+    is_open: bool
+    from_fork: bool
 
 
 def eprint(*args: str) -> None:
@@ -82,7 +84,11 @@ def parse_repo() -> tuple[str, str]:
 
 def _pull_request(node: Json) -> PullRequest:
     return PullRequest(
-        field_of(node, "number", int), field_of(node, "url", str), field_of(node, "headRefOid", str)
+        field_of(node, "number", int),
+        field_of(node, "url", str),
+        field_of(node, "headRefOid", str),
+        is_open=field_of(node, "state", str) == "OPEN",
+        from_fork=field_of(node, "isCrossRepository", bool),
     )
 
 
