@@ -46,7 +46,8 @@ async def held_candidates(
                 state="note",
                 title=held_text(doc),
                 held_id=doc.id,
-                outcome=BriefOutcome.FINISHED,
+                # Only a workflow result is held from a run that succeeded; a todo run's report says itself how it went.
+                outcome=BriefOutcome.FINISHED if doc.source is BriefItemSource.WORKFLOW else None,
             )
         )
     return candidates

@@ -32,7 +32,8 @@ def quote_spans(items: Mapping[int, BriefCandidate]) -> list[QuoteSpan]:
     quotes: list[QuoteSpan] = []
     for item_id, item in items.items():
         signal = item.signal
-        if signal is None or signal.text is None or not signal.people:
+        # Only the text's own author is quoted: the people on an item may be anyone it names.
+        if signal is None or signal.text is None or signal.author is None:
             continue
         span = verbatim_span(signal.text)
         if span is None:
@@ -41,7 +42,7 @@ def quote_spans(items: Mapping[int, BriefCandidate]) -> list[QuoteSpan]:
             QuoteSpan(
                 id=f"q{len(quotes) + 1}",
                 text=span,
-                author=signal.people[0],
+                author=signal.author,
                 source=signal.integration_id,
                 app=signal.app,
                 url=signal.url,

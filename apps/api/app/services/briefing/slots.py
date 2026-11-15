@@ -12,6 +12,7 @@ stands in a fact's title, its own words (a detail, a quote) or a count a slot re
 cannot invent a count, a time or a link; a typed time is sent back naming its slot.
 """
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
@@ -19,6 +20,7 @@ from enum import StrEnum
 import re
 
 from app.models.brief_pool_models import DataSeries, SeriesShape
+from app.models.briefing_models import BriefingItemKind
 
 
 class CountSlot(StrEnum):
@@ -29,6 +31,9 @@ class CountSlot(StrEnum):
     IN_PROGRESS = "in_progress"
     WHILE_AWAY = "while_away"
     OPEN_TODOS = "open_todos"
+    OVERDUE_TODOS = "overdue_todos"
+    #: GAIA's open tracked work, each subject once, however much the brief places.
+    OPEN_TRACKED = "open_tracked"
     EVENTS = "events"
 
 
@@ -41,11 +46,17 @@ class FactField(StrEnum):
 
 @dataclass(frozen=True)
 class BriefFact:
-    """What one fact's slots render; time is None when it has none."""
+    """What one fact's slots render; time is None when it has none.
+
+    kind is the item's state and words its line's own words beyond the title, which hold
+    what prose may claim of it; None for a fact that is no item (an event).
+    """
 
     title: str
     time: str | None = None
     count: int = 1
+    kind: BriefingItemKind | None = None
+    words: str | None = None
 
 
 class SeriesField(StrEnum):
@@ -101,6 +112,9 @@ _SLOT_RESIDUE_RE = re.compile(
     r"\[[^\[\]\n]*\]\([^)\n]*\)|\S*(?:[\[\]]|\(fact:|\bfact:|\bcount:|\bseries:)\S*"
 )
 _WEB_ADDRESS_RE = re.compile(r"\S*(?:://|www\.)\S*")
+_TITLE_SLOT_RE = re.compile(r"\[\[fact:(\d+)\]\]")
+_ANY_SLOT_RE = re.compile(r"\[\[(?:count|fact|series):\w+(?:\.\w+)?\]\]")
+_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s+|\n+")
 # A meridiem the prose writes itself, as "[[fact:N.time]] PM" does after a time that holds one.
 _MERIDIEM_RE = re.compile(r"\s*([AaPp](?:\.[Mm]\.|[Mm]\b))")
 # What a sentence wraps around a word it quotes from a title ("the Q3 interviews,").
@@ -258,6 +272,41 @@ def _echo_problems(field: str, text: str, values: SlotValues) -> tuple[list[str]
     return problems, text
 
 
+def sentences(text: str) -> list[str]:
+    """Split prose into its sentences and lines."""
+    return [s for s in _SENTENCE_END_RE.split(text) if s.strip()]
+
+
+def unslotted(text: str) -> str:
+    """Return the text as the model typed it outside its slots: each link's phrase, no value slot."""
+    return LINK_SLOT_RE.sub(r"\1", _VALUE_SLOT_RE.sub("", text))
+
+
+def _names_in_words(title: str, sentence: str) -> bool:
+    """Whether the sentence says the title in its own words, outside every slot."""
+    return any(title.casefold() in words.casefold() for words in _ANY_SLOT_RE.split(sentence))
+
+
+def _title_echo_problems(field: str, text: str, values: SlotValues) -> list[str]:
+    """Name each title slot whose sentence already names its fact in words.
+
+    A title several facts share (two 1:1s) is said once per fact, so it is never an echo.
+    """
+    shared = Counter(fact.title.casefold() for fact in values.facts.values())
+    problems: list[str] = []
+    for sentence in _SENTENCE_END_RE.split(text):
+        for match in _TITLE_SLOT_RE.finditer(sentence):
+            fact = values.facts.get(int(match.group(1)))
+            if fact is None or shared[fact.title.casefold()] > 1:
+                continue
+            if _names_in_words(fact.title, sentence):
+                problems.append(
+                    f"the {field} names {fact.title!r} in words and again with "
+                    f"{match.group(0)}; keep one"
+                )
+    return list(dict.fromkeys(problems))
+
+
 def slot_problems(
     field: str, text: str, values: SlotValues, *, may_quote_figures: bool = False
 ) -> list[str]:
@@ -274,6 +323,7 @@ def slot_problems(
                 _value(match, values)
         except SlotError as exc:
             problems.append(f"the {field}: {exc}")
+    problems += _title_echo_problems(field, text, values)
     echoes, text = _echo_problems(field, text, values)
     problems += echoes
     bare = LINK_SLOT_RE.sub(r"\1", _VALUE_SLOT_RE.sub("", text))

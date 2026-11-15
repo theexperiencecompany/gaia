@@ -26,11 +26,11 @@ from app.models.briefing_models import BriefingKind
 from app.services.briefing.composition.checks import WRITTEN_FIELDS, composition_problems
 from app.services.briefing.composition.headings import heading_problems
 from app.services.briefing.composition.prompt import composition_prompt
+from app.services.briefing.composition.repair import FALLBACK_HEADINGS, repaired, salvaged
 from app.services.briefing.context import due_on
 from app.services.briefing.fact_pool.pool import FactPool
 from app.services.briefing.fact_pool.render import pool_block
 from app.services.briefing.slots import BriefFact, SlotValues, render_slots, series_figures
-from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 #: The provider holds the composition to its schema, so no weaker model can drop a field.
@@ -104,9 +104,24 @@ async def _problems(
     """Return the contract's problems, else every heading untrue of its items."""
     if kind == BRIEFING_KIND_WEEKLY and not answer.blocks:
         return [_EMPTY_WEEKLY]
-    return composition_problems(answer, pool, values) or await heading_problems(
-        user_id, rendered(answer, values), pool
+    return composition_problems(answer, pool, values) or list(
+        (await heading_problems(user_id, rendered(answer, values), pool)).values()
     )
+
+
+async def _salvaged(
+    user_id: str, answer: BriefComposition | None, pool: FactPool, values: SlotValues
+) -> BriefComposition:
+    """Keep what holds of the last answer, a misfit heading given way to its state's, else build from the pool."""
+    kept = salvaged(answer or BriefComposition(blocks=[]), pool, values)
+    misfits = await heading_problems(user_id, rendered(kept, values), pool)
+    blocks = [
+        b.model_copy(update={"heading": FALLBACK_HEADINGS[b.state]})
+        if isinstance(b, ComposedItems) and index + 1 in misfits
+        else b
+        for index, b in enumerate(kept.blocks)
+    ]
+    return BriefComposition(blocks=blocks)
 
 
 async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Composed:
@@ -130,7 +145,8 @@ async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Com
         except MalformedStructuredOutputError as exc:
             # A reply that is no whole composition is a broken answer like any other: named, asked again.
             return None, [f"the answer was not a whole BriefComposition tool call ({exc.reason})"]
-        return answer, await _problems(user_id, answer, pool, values, kind)
+        held = repaired(answer, pool)
+        return held, await _problems(user_id, held, pool, values, kind)
 
     answer, problems = await attempt()
     for _ in range(MAX_COMPOSITION_ATTEMPTS - 1):
@@ -142,13 +158,11 @@ async def compose_brief(user_id: str, pool: FactPool, kind: BriefingKind) -> Com
             COMPOSITION_RETRY_NOTE.format(problems="; ".join(problems), last=last)
         )
     if problems or answer is None:
-        raise AppError(
-            message="the brief's composition broke its contract",
-            why="; ".join(problems),
-            fix=(
-                "the composition was asked again once with the problems named; "
-                "the next scheduled brief retries"
-            ),
-            meta={"answer": answer.model_dump() if answer is not None else None},
+        # Loud, but never the user's loss: the brief goes out with what holds of it.
+        log.error(
+            "briefing.composition_salvaged",
+            problems=problems,
+            answer=answer.model_dump() if answer is not None else None,
         )
+        answer = await _salvaged(user_id, answer, pool, values)
     return Composed(written=answer, rendered=rendered(answer, values), values=values)

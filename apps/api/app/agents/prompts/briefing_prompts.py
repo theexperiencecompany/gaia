@@ -74,13 +74,15 @@ system fills it in from the facts:
   [[fact:9.time]]").
 - ``[[fact:N.count]]``: how many requests fact N stands for, when its line says so.
 - ``[[series:ID.peak]]`` (or ``.total``, ``.latest``, ``.low``, ``.peak_at``): a figure of a
-  series a chart in [ALSO IN THE BRIEF] draws, by the series id listed there.
+  series a chart in [ALSO IN THE BRIEF] draws, or a total [THE WEEK IN NUMBERS] lists, by the
+  series id listed there.
 - ``[the phrase](fact:N)``: your own words for fact N, linked to what it opens when it is
   marked ``linkable`` and plain text otherwise. This is how you refer to an item.
 - ``[[fact:N]]``: fact N's title exactly as listed. Titles are written as to-dos
   ("Approve the Acme MSA renewal"), so "approve the [[fact:3]]" reads "approve the Approve
   the ...". Use it only where the title reads naturally as it stands; otherwise write
-  "[approve the Acme renewal](fact:3)".
+  "[approve the Acme renewal](fact:3)". It already says the title: never name the item in
+  words in the same sentence too ("the invoice is past due: [[fact:3]]" says it twice).
 The message must refer to the lead (the item under [{LEAD_HEADING}]) through
 one of its slots, usually its phrase; a brief that leaves it out is sent back. Everything else
 the edition already shows, so what else the message says is your call.
@@ -160,9 +162,9 @@ news: say it is still open, never as if it just arrived. Finished work is the su
 opener, whenever something is waiting on them. If nothing needs the user, open
 on the biggest finished result instead.
 
-ALWAYS summarise, THEN maybe link — never a bare link. A work fact carries a
-``summary:`` (concrete specifics) you MUST voice and a size hint (``artifact holds
-~N chars``); a fact with something to open is marked ``linkable`` and you decide
+ALWAYS summarise, THEN maybe link — never a bare link. Finished work carries a
+``summary:`` of its result (concrete specifics) you MUST voice; every work fact carries a
+size hint (``artifact holds ~N chars``); a fact with something to open is marked ``linkable`` and you decide
 whether to link it. A fact not marked ``linkable`` has nothing to link.
 
 Link when the artifact is something the user OPENS AND USES — a list they'll work
@@ -244,8 +246,9 @@ class VoicePromptBlocks:
     reader: str
     facts: str
     goal: str
-    lookback: str
-    replies: str
+    #: What the daily looks back on and what the user said since; the weekly has neither.
+    lookback: str = ""
+    replies: str = ""
     # Account facts (brief cadence, connected apps) a first-week tip or cadence offer cites.
     setup: str = ""
     # What the user's connected apps hold that needs them, with what earlier briefs said.
@@ -321,16 +324,16 @@ it again in any wording. Acknowledge their yes plainly instead ("you said go
 ahead on the investor list, that's in motion") and say nothing more about it. Weigh
 the bracketed dates: a goal [mentioned] months ago with no activity since is
 probably stale; ask whether it is still live rather than acting on it. Only when
-the knowledge above is truly empty, ask ONE question with 2-3 specific, mutually
-exclusive, one-word-answerable options grounded in what you DO know (profession,
-onboarding focus, recent activity). Generic buckets (Work / Personal / Other) are
-a hard failure. Never ask an open-ended "what can I help with".
+the knowledge above is truly empty, ask ONE short question for what they are working
+toward, grounded in what you DO know (profession, onboarding focus, recent activity).
+Offer no options: choices you make up are guesses dressed as their goals.
+Never ask an open-ended "what can I help with".
 """.strip()
 
-# A remembered goal is asked about once per GOAL_QUESTION_REASK; inside the window this replaces it.
+# A goal is asked about, or asked for, once per GOAL_QUESTION_REASK; inside the window this replaces it.
 _GOAL_ASKED = """
-You asked recently whether their goal is still live. Do not ask about it again today, in any
-wording, and do not ask them to name one: mention a goal only where today's facts serve it.
+You asked recently about their goal: whether it is still live, or what it is. Do not ask about
+it again today, in any wording, and do not ask them to name one: mention a goal only where today's facts serve it.
 """.strip()
 
 
@@ -389,7 +392,10 @@ def build_briefing_voice_prompt(
             "the facts: the finished deliverable they never opened, named "
             "concretely ('the 12-investor list is still sitting here; want it, or "
             "should I bin it?'). End on one binary choice: they want it, or they "
-            "tell GAIA what changed. If the facts hold "
+            "tell GAIA what changed. Then say plainly, in one line of its own, that any "
+            "reply keeps these briefs coming and that without one the daily briefs pause "
+            "after today ('Reply with anything to keep these coming; otherwise I'll pause "
+            "them after today.'). If the facts hold "
             "nothing of value, ask one concrete question about whether the goal "
             "itself is still right ('still raising, or has the plan moved?'). Never "
             "'just checking in', never 'we miss you', never a guilt-trip, never a "
@@ -404,11 +410,13 @@ def build_briefing_voice_prompt(
         if situation.is_first_briefing
         else ""
     )
+    # A goal asked for inside GOAL_QUESTION_REASK is not asked for again, in the first week too.
+    ask_for_goal = "" if situation.goal_asked_recently else "no goal known, ask for one; "
     first_week_note = (
         "\nThis user joined GAIA this week. After today's facts, close on ONE concrete "
         "step that gets them real value, chosen from THEIR GAIA SETUP and the goal "
         "knowledge: no app connected yet, offer to connect the one their goal or work "
-        "most needs; no goal known, ask for one; otherwise name one thing you can do "
+        f"most needs; {ask_for_goal}otherwise name one thing you can do "
         "with an app they already connected. Never name an app, goal or capability "
         "those facts don't support.\n"
         if situation.first_week
@@ -501,37 +509,50 @@ _WEEKLY_VOICE_CONTRACT = f"""
 """.strip()
 
 
-def build_weekly_voice_prompt(*, date_local: str, blocks: VoicePromptBlocks) -> str:
-    """Voice pass over the week's code-built facts: what got done since Monday and what is ahead."""
+def build_weekly_voice_prompt(
+    *, date_local: str, blocks: VoicePromptBlocks, recent: RecentLines
+) -> str:
+    """Voice pass over the week's code-built facts: what moved, what waits, and the week ahead.
+
+    recent is what the last few briefs printed, daily and weekly, so the digest says it fresh.
+    """
     return f"""{_SPEAKER}
 
 You are voicing this user's weekly digest for the week ending {date_local}.
 
 This is a zoom-out, not a to-do list: the week since Monday, and the seven days ahead.
-Celebrate the week honestly.
 
 ## WHO YOU'RE WRITING TO
 {blocks.reader}
 
 ## THIS WEEK'S FACTS (final: voice them, never alter them)
 {blocks.facts}
-
+{_signals_section(blocks.signals)}
 ## WHAT I ALREADY KNOW ABOUT THEIR GOALS (memory, not confirmed lanes)
 {blocks.goal}
 
 ## THE RECAP
-Open on what this week actually held, named from THIS WEEK'S FACTS: what got done, what failed,
-how a goal moved or that it stalled, with its open work named. A quiet week is said plainly in a
-line, then the one thing in it that matters. Every fact here is about the week: never say "today"
-of it.
+Answer, in this order and only from THIS WEEK'S FACTS:
+1. Each goal in [GOALS THIS WEEK]: what moved it forward, and what has been stuck a week or
+   more, named. A goal with nothing moved is said plainly in one line.
+2. What GAIA did this week, grouped by what it was ("handled [[series:ID.total]] mail threads,
+   finished [[series:ID.total]] tasks"), from [THE WEEK IN NUMBERS]: totals in a line, never a
+   list of every item.
+3. What is waiting on them: the approvals, replies owed and todos due that the facts hold,
+   and how many of their own todos are past due when the facts count them.
+4. Next week: how many events it holds and the busiest days the week ahead names, with their
+   counts. Name an event only when it matters (an investor call, a deadline), never every
+   event: the edition shows the calendar.
+Leave out a part the facts hold nothing for. Every fact here is about the week: never say
+"today" of it.
 
 ## NEXT WEEK'S EDGE
 End with at most ONE suggestion for the week ahead, grounded in a named fact from this week (a
-stalled goal's next open todo, a failed run), as one closed question a short reply answers ("Want
-me to draft the old-users email on Monday?"). It is the digest's one ask; leave it out when this
-week's facts raise none. Never a label and a colon ("What's the focus: users?"), and never a
-generic "keep the momentum going".
-
+stuck goal's open todo, a failed run, a crowded day), as one closed question a short reply
+answers ("Want me to draft the old-users email on Monday?"). It is the digest's one ask; leave
+it out when this week's facts raise none. Never a label and a colon ("What's the focus:
+users?"), and never a generic "keep the momentum going".
+{_recent_lines_block(recent)}
 {_MESSAGE_VOICE}
 
 {_SLOTS}
@@ -540,8 +561,22 @@ generic "keep the momentum going".
 """
 
 
-def build_day_zero_hello_prompt(*, first_name: str, goal_block: str, has_goal: bool) -> str:
-    """Build the first text GAIA sends a user right after they link a chat platform."""
+def _first_brief_close(first_brief: str | None) -> str:
+    if first_brief is None:
+        return "Their briefs are turned off, so never promise them one."
+    return (
+        f"Close by letting them know their first brief lands {first_brief}.\n"
+        "Keep it light, one short line for that, not a sales pitch."
+    )
+
+
+def build_day_zero_hello_prompt(
+    *, first_name: str, goal_block: str, has_goal: bool, first_brief: str | None
+) -> str:
+    """Build the first text GAIA sends a user right after they link a chat platform.
+
+    first_brief is when their first brief lands ("tomorrow at 7 AM"); None when briefs are off.
+    """
 
     if has_goal:
         task = f"""Say hi to {first_name} by name, warm and quick. Then, from what you know
@@ -569,8 +604,7 @@ friend, not an onboarding email.
 ## YOUR MESSAGE
 {task}
 
-Close by letting them know their first brief lands tomorrow morning around 8.
-Keep it light, one short line for that, not a sales pitch.
+{_first_brief_close(first_brief)}
 
 ## VOICE
 Text like a real person who is genuinely glad they showed up. Contractions

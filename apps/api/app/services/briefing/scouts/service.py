@@ -206,6 +206,14 @@ async def _run_scout(user: UserDocument, integration: ScoutIntegration) -> Scout
         return _skipped(integration, ScoutSkipReason.UNKNOWN_INTEGRATION)
     if not tools.read_only:
         return _skipped(integration, ScoutSkipReason.NO_READ_ONLY_TOOLS)
+    result = await _scouted(user, integration, tools)
+    return result.model_copy(update={"can_write": tools.total > len(tools.read_only)})
+
+
+async def _scouted(
+    user: UserDocument, integration: ScoutIntegration, tools: ScoutTools
+) -> ScoutResult:
+    """Learn, relearn or replay the integration's scout, by what it last froze."""
     scout = await scouts_repository.find_for(user.id, integration.integration_id)
     if scout is None or scout.tool_fingerprint != tools.fingerprint:
         return await _learn(user, integration, tools)

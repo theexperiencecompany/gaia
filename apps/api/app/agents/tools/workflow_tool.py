@@ -136,7 +136,7 @@ async def create_workflow(
         ):
             return error_response(
                 BRIEFS_OFF,
-                "The user has briefs turned off, so this workflow's results cannot go to their "
+                "The user gets no daily brief, so this workflow's results cannot go to a "
                 f"brief. Ask them to pick instead: {BRIEFS_OFF_FIX}.",
             )
         thread_id = get_thread_id(config) or ""

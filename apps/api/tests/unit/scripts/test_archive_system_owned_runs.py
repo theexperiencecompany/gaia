@@ -18,6 +18,7 @@ from scripts.archive_system_owned_runs import (
     run,
 )
 
+from app.constants.todos import TodoCompleter
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.workflows import WorkflowDelivery
 from app.models.scheduler_models import DeactivationReason
@@ -142,6 +143,7 @@ class TestApply:
         assert [c.args for c in seams.complete.await_args_list] == [
             (todo_id, SYSTEM_USER_ID, ARCHIVE_SUMMARY) for todo_id in SYSTEM_OWNED_TODO_IDS
         ]
+        assert all(c.kwargs == {"by": TodoCompleter.SYSTEM} for c in seams.complete.await_args_list)
         assert [c.args for c in seams.deactivate.await_args_list] == [
             (wf_id, SYSTEM_USER_ID) for wf_id in SYSTEM_OWNED_WORKFLOW_IDS
         ]
@@ -180,7 +182,7 @@ class TestApply:
         completed: set[str] = set()
         deactivated: set[str] = set()
 
-        async def complete(todo_id: str, user_id: str, summary: str) -> bool:
+        async def complete(todo_id: str, user_id: str, summary: str, *, by: TodoCompleter) -> bool:
             if todo_id != stuck_todo:
                 completed.add(todo_id)
             return todo_id != stuck_todo
@@ -210,7 +212,7 @@ class TestApply:
         broken = SYSTEM_OWNED_TODO_IDS[0]
         completed: set[str] = set()
 
-        async def complete(todo_id: str, user_id: str, summary: str) -> bool:
+        async def complete(todo_id: str, user_id: str, summary: str, *, by: TodoCompleter) -> bool:
             if todo_id == broken:
                 raise ConnectionError("mongo blip")
             completed.add(todo_id)

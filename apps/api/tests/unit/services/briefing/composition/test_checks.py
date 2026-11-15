@@ -1,7 +1,7 @@
 """The composition contract: ids only and each once, charts that fit their series, the page budget, slots."""
 
 from collections.abc import Mapping
-from datetime import date
+from datetime import UTC, date, datetime
 
 from pydantic import ValidationError
 import pytest
@@ -68,8 +68,16 @@ def _categories(series_id: str, count: int) -> DataSeries:
 
 
 def _item(title: str, **fields: object) -> BriefCandidate:
+    """Return one of GAIA's own items, which GAIA can act on, unless fields say otherwise."""
     return BriefCandidate.model_validate(
-        {"source": "gaia", "app": "GAIA", "state": "you", "title": title, **fields}
+        {
+            "source": "gaia",
+            "app": "GAIA",
+            "state": "you",
+            "title": title,
+            "gaia_acts": True,
+            **fields,
+        }
     )
 
 
@@ -97,6 +105,7 @@ POOL = FactPool(
         15: _item("Board deck numbers", state="gaia", outcome=BriefOutcome.STARTED),
         16: _item("CRM sync", state="failed", action=BriefAction.RETRY),
         17: _item("Growth experiments", action=BriefAction.ATTEND, backlog=True),
+        18: _item("Fix the flaky deploy", source="github", app="GitHub", gaia_acts=False),
     },
     series=[
         _series("meetings", [2, 1.5, 2, 0, 0, 2.5, 7]),
@@ -128,6 +137,7 @@ POOL = FactPool(
         clock=user_clock("UTC", date(2026, 11, 11)),
         calendar=1,
         calendar_span="today",
+        done_since=datetime(2026, 11, 10, tzinfo=UTC),
         recent_openings=[],
     ),
     criteria={},
@@ -481,6 +491,15 @@ class TestEachBlockHasItsShape:
             )
             == []
         )
+
+    def test_a_lead_on_an_app_gaia_can_only_read_is_refused(self) -> None:
+        """Audit: offers promised work in apps GAIA has no tool to change."""
+        readonly = _placed(18, action="review", title="Flaky deploy")
+
+        assert _problems({"kind": "lead", "item": readonly, "offer": "Fix the deploy"}) == [
+            "block 1 (lead): GAIA can only read GitHub, so it cannot do what the offer says on "
+            "item 18; lead with something GAIA can act on, or with nothing"
+        ]
 
     def test_two_leads_are_refused(self) -> None:
         lead: dict[str, object] = {"kind": "lead", "item": _ask(1), "offer": "Draft it"}

@@ -3,7 +3,7 @@
 Faked seam: the structured model call the heading check makes.
 """
 
-from datetime import date
+from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -35,6 +35,7 @@ POOL = FactPool(
         clock=user_clock("UTC", date(2026, 11, 11)),
         calendar=0,
         calendar_span="today",
+        done_since=datetime(2026, 11, 10, tzinfo=UTC),
         recent_openings=[],
     ),
     criteria={},
@@ -137,11 +138,11 @@ async def test_every_misfit_is_named_with_its_side_or_without_one(model: AsyncMo
         }
     )
 
-    assert await heading_problems(USER, bare, POOL) == [
-        'block 2 heading "Landed overnight" is not true of item 1 (waiting on you), '
+    assert await heading_problems(USER, bare, POOL) == {
+        2: 'block 2 heading "Landed overnight" is not true of item 1 (waiting on you), '
         "item 2 (done, sent): mixed; move them under a heading true of what they are, or "
         "rename this group"
-    ]
+    }
 
 
 async def test_a_verdict_naming_no_item_blames_its_items(model: AsyncMock) -> None:
@@ -149,18 +150,18 @@ async def test_a_verdict_naming_no_item_blames_its_items(model: AsyncMock) -> No
         verdicts=[HeadingVerdict(block=2, fits=False, misfits=[], why="too vague")]
     )
 
-    assert await heading_problems(USER, COMPOSITION, POOL) == [
-        'block 2 heading "Landed overnight" is not true of its items: too vague; move them '
+    assert await heading_problems(USER, COMPOSITION, POOL) == {
+        2: 'block 2 heading "Landed overnight" is not true of its items: too vague; move them '
         "under a heading true of what they are, or rename this group"
-    ]
+    }
 
 
 async def test_a_heading_untrue_of_an_item_is_named_with_the_item(model: AsyncMock) -> None:
-    assert await heading_problems(USER, COMPOSITION, POOL) == [
-        'block 2 heading "Landed overnight" is not true of item 1 (waiting on you, review): '
+    assert await heading_problems(USER, COMPOSITION, POOL) == {
+        2: 'block 2 heading "Landed overnight" is not true of item 1 (waiting on you, review): '
         "still waits on approval; move them under a heading true of what they are, or rename "
         "this group"
-    ]
+    }
 
 
 async def test_a_fitting_heading_is_no_problem(model: AsyncMock) -> None:
@@ -168,7 +169,7 @@ async def test_a_fitting_heading_is_no_problem(model: AsyncMock) -> None:
         verdicts=[HeadingVerdict(block=2, fits=True, misfits=[], why="both can be read now")]
     )
 
-    assert await heading_problems(USER, COMPOSITION, POOL) == []
+    assert await heading_problems(USER, COMPOSITION, POOL) == {}
 
 
 async def test_a_group_left_unjudged_fails_loud(model: AsyncMock) -> None:
@@ -188,7 +189,7 @@ async def test_a_group_left_unjudged_fails_loud(model: AsyncMock) -> None:
 async def test_a_composition_without_groups_makes_no_call(model: AsyncMock) -> None:
     only_note = BriefComposition.model_validate({"blocks": [{"kind": "note", "text": "Quiet."}]})
 
-    assert await heading_problems(USER, only_note, POOL) == []
+    assert await heading_problems(USER, only_note, POOL) == {}
     model.assert_not_awaited()
 
 

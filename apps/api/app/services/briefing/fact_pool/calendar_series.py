@@ -1,7 +1,7 @@
 """Meeting hours per day, from the user's calendar: the time timed events hold, overlaps counted once.
 
-All-day events and Google's focus time, out-of-office and working-location entries are
-not meetings. An event that crosses midnight counts on each day for the hours it holds.
+All-day events, Google's focus time, out-of-office and working-location entries, and
+invites the user left unanswered or answered tentative, are not meetings they hold. An event that crosses midnight counts on each day for the hours it holds.
 """
 
 from collections.abc import Sequence
@@ -9,7 +9,7 @@ from datetime import datetime
 
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
 from app.models.brief_pool_models import DataSeries
-from app.models.calendar_models import GoogleCalendarEventResource
+from app.models.calendar_models import ATTENDED_RESPONSES, GoogleCalendarEventResource
 from app.services.briefing.candidates.app_names import integration_name
 from app.services.briefing.fact_pool.window import SeriesName, SeriesWindow, day_series
 
@@ -22,6 +22,8 @@ _HOURS_DECIMALS = 1
 
 def _interval(event: GoogleCalendarEventResource) -> tuple[datetime, datetime] | None:
     if event.eventType not in (None, _MEETING_EVENT_TYPE):
+        return None
+    if event.response not in ATTENDED_RESPONSES:
         return None
     if event.start is None or event.end is None:
         return None

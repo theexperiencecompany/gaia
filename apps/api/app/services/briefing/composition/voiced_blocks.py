@@ -9,6 +9,7 @@ from app.models.brief_composition_models import (
     ProgressBlock,
     QuoteBlock,
 )
+from app.services.briefing.fact_pool.render import SHOWN_NOT_TOTAL_SERIES, goal_progress
 from app.services.briefing.slots import SeriesField, series_figures
 
 BLOCKS_HEADER = "[ALSO IN THE BRIEF]"
@@ -17,13 +18,15 @@ BLOCKS_HEADER = "[ALSO IN THE BRIEF]"
 def _line(block: BriefBlock) -> str | None:
     if isinstance(block, ChartBlock):
         ids = ", ".join(s.id for s in block.series)
-        return f"- a chart, {block.title} (series {ids}): {block.takeaway}"
+        line = f"- a chart, {block.title} (series {ids}): {block.takeaway}"
+        shown = any(s.shown_not_total for s in block.series)
+        return f"{line} | {SHOWN_NOT_TOTAL_SERIES}" if shown else line
     if isinstance(block, QuoteBlock):
         quote = block.quote
         return f'- {quote.author}\'s words, from {quote.app}: "{quote.text}"'
     if isinstance(block, ProgressBlock):
         goal = block.goal
-        return f'- progress on "{goal.statement}": {goal.done} linked todo(s) finished, {goal.open} open'
+        return f'- progress on "{goal.statement}": linked todos {goal_progress(goal)}'
     if isinstance(block, NoteBlock):
         return f"- a note: {block.text}"
     return None

@@ -21,7 +21,7 @@ from app.constants.briefing import (
     BriefOutcome,
 )
 from app.constants.desk_buckets import DeskBucket
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter
 from app.db.repositories.email_verdicts import email_verdict_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
@@ -59,6 +59,7 @@ CONTEXT = PoolContext(
     clock=user_clock("Asia/Kolkata", date(2026, 11, 11)),
     calendar=2,
     calendar_span="today",
+    done_since=datetime(2026, 11, 10, tzinfo=UTC),
     recent_openings=[],
 )
 
@@ -81,6 +82,7 @@ _MAYA = Signal(
     title="Re: Series A term sheet",
     people=["Maya Chen"],
     text="Can you confirm the preference by Friday? Our partners meet Monday.",
+    author="Maya Chen",
 )
 _INVOICE = Signal(
     integration_id="stripe",
@@ -104,6 +106,7 @@ class Stores:
                     GAIA_TRACKED_LABEL,
                     completed=True,
                     completed_at=_at(10, 9),
+                    completed_by=TodoCompleter.GAIA,
                 ),
                 _todo("Call the bank", completed=True, completed_at=_at(11, 7)),
             ]
@@ -222,8 +225,8 @@ class TestTheFactPool:
             USER_ID, WINDOW.start, exclude_workflow_ids=["wf-daily-brief"]
         )
         stores.rhythm.assert_awaited_once_with(USER_ID, BRIEFING_RHYTHM_WORKFLOW_KEYS)
-        stores.open_todos.assert_awaited_once_with(USER_ID, limit=50)
-        stores.tracked.assert_awaited_once_with(USER_ID, limit=20)
+        stores.open_todos.assert_awaited_once_with(USER_ID, limit=0)
+        stores.tracked.assert_awaited_once_with(USER_ID, limit=0)
 
     async def test_each_apps_criteria_ride_with_the_pool(self, stores: Stores) -> None:
         pool = await _pool()
@@ -250,9 +253,16 @@ class TestThePoolAsTheComposerReadsIt:
         block = pool_block(await _pool())
 
         # Every reader of the pool, the composer and its checkers, reads the states alike.
-        assert block.startswith("ITEMS (done: finished since the last brief, overnight;")
+        # Done means done in this brief's own window, never "overnight" whatever the window.
+        assert block.startswith(
+            "ITEMS (done by GAIA / done by the user / closed: finished since Tue 10 Nov, 5:30 AM,"
+        )
+        assert "overnight" not in block
 
-        assert "1. [Gmail] waiting on you: Re: Series A term sheet | with Maya Chen" in block
+        assert (
+            "1. [Gmail] waiting on you: Re: Series A term sheet | names Maya Chen"
+            " (the app does not say their part in it) | GAIA can only read Gmail: no offer on it"
+        ) in block
         assert "3. [Google Calendar] calendar event: Board call" in block
         assert (
             "calendar_meeting_hours | Meeting hours, in hours (Google Calendar), time_series of 7 "
@@ -266,8 +276,8 @@ class TestThePoolAsTheComposerReadsIt:
         ) in block
         assert 'q1 | Maya Chen, in Gmail, on item 1: "Can you confirm the preference' in block
         assert (
-            'g1 | "Launch the GAIA mobile app" (from memory) | linked todos: 1 finished in the '
-            "window, 1 open: GAIA privacy labels; GAIA beta invite email"
+            'g1 | "Launch the GAIA mobile app" (from memory) | linked todos: 1 finished since '
+            "Thu 5 Nov (1 by GAIA), 1 open: GAIA privacy labels; GAIA beta invite email"
         ) in block
 
 
@@ -339,16 +349,22 @@ class TestAnItemLine:
             state="you",
             title="Rent",
             due_at=datetime(2026, 11, 11, 19, 30, tzinfo=UTC),
+            gaia_acts=True,
         )
 
         assert (
-            item_line(1, item, CONTEXT.clock) == "1. [GAIA] waiting on you: Rent | due 2026-11-12"
+            item_line(1, item, CONTEXT.clock)
+            == "1. [GAIA] waiting on you: Rent | due 2026-11-12 | GAIA can act on it"
         )
 
     def test_an_undated_own_todo_reads_as_on_their_list_not_waiting(self) -> None:
-        item = BriefCandidate(source="gaia", app="GAIA", state="you", title="Plan Q1", backlog=True)
+        item = BriefCandidate(
+            source="gaia", app="GAIA", state="you", title="Plan Q1", backlog=True, gaia_acts=True
+        )
 
-        assert item_line(4, item, CONTEXT.clock) == "4. [GAIA] on their list, undated: Plan Q1"
+        assert item_line(4, item, CONTEXT.clock) == (
+            "4. [GAIA] on their list, undated: Plan Q1 | GAIA can act on it"
+        )
 
     def test_an_item_an_earlier_brief_showed_as_it_stands_is_marked_still_open(self) -> None:
         shown = SignalMemoryDocument(
@@ -361,15 +377,20 @@ class TestAnItemLine:
             last_state="you",
         )
         item = BriefCandidate(
-            source="gaia", app="GAIA", state="you", title="Approve the MSA", memory=shown
+            source="gaia",
+            app="GAIA",
+            state="you",
+            title="Approve the MSA",
+            memory=shown,
+            gaia_acts=True,
         )
 
         assert item_line(2, item, CONTEXT.clock) == (
-            "2. [GAIA] waiting on you: Approve the MSA | already shown, still open"
-            " (first seen 3 days ago, mentioned 2 time(s), last yesterday)"
+            "2. [GAIA] waiting on you: Approve the MSA | GAIA can act on it | already shown,"
+            " still open (first seen 3 days ago, mentioned 2 time(s), last yesterday)"
         )
         assert item_line(2, item.model_copy(update={"moved": True}), CONTEXT.clock) == (
-            "2. [GAIA] waiting on you: Approve the MSA"
+            "2. [GAIA] waiting on you: Approve the MSA | GAIA can act on it"
         )
 
     def test_an_item_says_every_fact_its_producer_knows_in_order(self) -> None:
@@ -392,21 +413,27 @@ class TestAnItemLine:
 
         assert item_line(7, item, CONTEXT.clock) == (
             "7. [GitHub] failed, important: Deploy broke | CI red on main | at 4:00 PM"
-            " | due 2026-11-12 | with Maya Chen, Ravi Rao | 3 requests, one item"
-            " | action retry | outcome drafted | linkable | also found by Slack, Linear"
+            " | due 2026-11-12 | names Maya Chen, Ravi Rao (the app does not say their part in it)"
+            " | 3 todos on this one subject | action retry | outcome drafted | linkable"
+            " | GAIA can only read GitHub: no offer on it | also found by Slack, Linear"
         )
 
     def test_a_plain_item_is_only_its_head(self) -> None:
         item = BriefCandidate(source="stripe", app="Stripe", state="note", title="Payout sent")
 
-        assert item_line(2, item, CONTEXT.clock) == "2. [Stripe] note: Payout sent"
+        assert (
+            item_line(2, item, CONTEXT.clock)
+            == "2. [Stripe] note: Payout sent | GAIA can only read Stripe: no offer on it"
+        )
 
     def test_one_request_is_not_called_a_group(self) -> None:
         item = BriefCandidate(source="stripe", app="Stripe", state="note", title="Payout", count=1)
         grouped = item.model_copy(update={"count": 2})
 
-        assert item_line(1, item, CONTEXT.clock) == "1. [Stripe] note: Payout"
-        assert item_line(1, grouped, CONTEXT.clock).endswith("| 2 requests, one item")
+        assert item_line(1, item, CONTEXT.clock) == (
+            "1. [Stripe] note: Payout | GAIA can only read Stripe: no offer on it"
+        )
+        assert "| 2 todos on this one subject |" in item_line(1, grouped, CONTEXT.clock)
 
     @pytest.mark.parametrize(("url", "todo_id"), [("https://x.test", None), (None, "t1")])
     def test_an_item_with_either_a_url_or_a_todo_is_linkable(
@@ -416,7 +443,9 @@ class TestAnItemLine:
             source="gmail", app="Gmail", state="you", title="Reply", url=url, todo_id=todo_id
         )
 
-        assert item_line(1, item, CONTEXT.clock) == "1. [Gmail] waiting on you: Reply | linkable"
+        assert item_line(1, item, CONTEXT.clock) == (
+            "1. [Gmail] waiting on you: Reply | linkable | GAIA can only read Gmail: no offer on it"
+        )
 
     def test_a_calendar_event_is_not_named_by_its_state(self) -> None:
         item = BriefCandidate(
@@ -428,7 +457,8 @@ class TestAnItemLine:
         )
 
         assert (
-            item_line(3, item, CONTEXT.clock) == "3. [Google Calendar] calendar event: Board call"
+            item_line(3, item, CONTEXT.clock)
+            == "3. [Google Calendar] calendar event: Board call | GAIA can only read Google Calendar: no offer on it"
         )
 
 
@@ -440,12 +470,16 @@ class TestAnEmptyPool:
             state="you",
             title="Rent",
             due_at=datetime(2026, 11, 11, 19, 30, tzinfo=UTC),
+            gaia_acts=True,
         )
         pool = FactPool(
             items={1: rent}, series=[], quotes=[], goals=[], context=CONTEXT, criteria={}
         )
 
-        assert pool_block(pool).split("\n")[1] == "1. [GAIA] waiting on you: Rent | due 2026-11-12"
+        assert (
+            pool_block(pool).split("\n")[1]
+            == "1. [GAIA] waiting on you: Rent | due 2026-11-12 | GAIA can act on it"
+        )
 
     def test_each_part_with_nothing_in_it_says_none(self) -> None:
         pool = FactPool(items={}, series=[], quotes=[], goals=[], context=CONTEXT, criteria={})
@@ -469,9 +503,13 @@ class TestAnEmptyPool:
         lines = pool_block(pool).split("\n")
 
         assert lines[1:4] == [
-            "1. [Gmail] waiting on you: Re: Series A term sheet | with Maya Chen",
-            "2. [Stripe] waiting on you: " + reads.items[2].title,
-            "3. [Google Calendar] calendar event: Board call",
+            "1. [Gmail] waiting on you: Re: Series A term sheet | names Maya Chen"
+            " (the app does not say their part in it) | GAIA can only read Gmail: no offer on it",
+            "2. [Stripe] waiting on you: "
+            + reads.items[2].title
+            + " | GAIA can only read Stripe: no offer on it",
+            "3. [Google Calendar] calendar event: Board call"
+            " | GAIA can only read Google Calendar: no offer on it",
         ]
 
 

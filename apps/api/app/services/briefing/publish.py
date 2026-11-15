@@ -3,17 +3,26 @@
 Persistence precedes delivery so the dashboard never misses a brief that reached a channel.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
     DAILY_KICKER,
+    QUIET_NOTE_CALENDAR_CLEAR,
     QUIET_NOTE_CALENDAR_UNREAD,
-    QUIET_NOTE_DAY,
-    QUIET_NOTE_HEADLINE,
+    QUIET_NOTE_HEADLINES,
     QUIET_NOTE_NO_CALENDAR,
+    QUIET_NOTE_NOTHING_NEW,
+    QUIET_NOTE_OVERDUE,
+    QUIET_NOTE_STILL,
+    QUIET_NOTE_STILL_FOR,
+    QUIET_NOTE_STILL_SINCE,
+    QUIET_NOTE_UNREAD,
+    QUIET_NOTE_UNREAD_HEADLINE,
     QUIET_NOTE_WATCH,
+    WEEKLY_KICKER,
     BriefForm,
 )
 from app.constants.notifications import (
@@ -26,10 +35,11 @@ from app.models.briefing_models import (
     BriefingKind,
     BriefingModel,
     BriefingPayload,
+    UnreadSource,
 )
 from app.models.user_models import UserDocument
 from app.services.analytics_service import capture
-from app.services.briefing.context import CalendarGap, UserClock
+from app.services.briefing.context import CalendarGap, UserClock, when_sent
 from app.services.briefing.delivery import deliver_brief
 from app.services.briefing.edition_draws import BagDraw, draw_stamp_or_artwork, persist_draws
 from app.services.briefing.fact_pool.pool import FactPool
@@ -64,6 +74,11 @@ class Push:
 
 #: The family a quiet note reports: it is drawn in none.
 QUIET_NOTE_FAMILY = "none"
+
+_KICKERS: dict[BriefingKind, str] = {
+    BRIEFING_KIND_DAILY: DAILY_KICKER,
+    BRIEFING_KIND_WEEKLY: WEEKLY_KICKER,
+}
 
 _NOTIFICATION_KINDS: dict[BriefingKind, str] = {
     BRIEFING_KIND_DAILY: NOTIFICATION_KIND_BRIEFING_DAILY,
@@ -118,41 +133,102 @@ async def publish_brief(
     return stored.briefing
 
 
-def quiet_note(clock: UserClock, calendar: CalendarGap | None) -> BriefingPayload:
-    """Write a quiet day's note: nothing needs the user, said once, and what GAIA keeps watching."""
-    situation = {
-        None: QUIET_NOTE_DAY,
+@dataclass(frozen=True)
+class QuietFacts:
+    """What a quiet note says beside its quiet: the calendar, the quiet it continues, overdue.
+
+    still_quiet says the brief of its kind before it was a quiet note too; last_edition is the
+    last drawn brief of any kind, None when none ever went out.
+    """
+
+    calendar: CalendarGap | None
+    still_quiet: bool = False
+    last_edition: BriefingModel | None = None
+    overdue: int = 0
+    #: The connected apps that went unread: the quiet is only of what was read.
+    unread: list[str] = field(default_factory=list)
+
+
+async def quiet_facts(
+    user_id: str,
+    kind: BriefingKind,
+    recent: list[BriefingModel],
+    reads: tuple[CalendarGap | None, int, list[UnreadSource]],
+) -> QuietFacts:
+    """Say how the quiet stands: whether the last brief of its kind was quiet, and the last edition.
+
+    recent is newest first; reads are the calendar's gap, the user's overdue todo count and
+    the apps that went unread.
+    """
+    calendar, overdue, unread = reads
+    previous = next((b for b in recent if b.kind == kind), None)
+    editions = await briefing_repository.list_recent(user_id, limit=1, editions_only=True)
+    return QuietFacts(
+        calendar=calendar,
+        still_quiet=previous is not None and previous.payload.form is BriefForm.QUIET_NOTE,
+        last_edition=editions[0] if editions else None,
+        overdue=overdue,
+        unread=list(dict.fromkeys(source.app for source in unread)),
+    )
+
+
+def _quiet_news(kind: BriefingKind, facts: QuietFacts, clock: UserClock) -> str:
+    """Say there is nothing new; after a quiet brief, since which brief and how many days ago."""
+    if not facts.still_quiet:
+        return QUIET_NOTE_UNREAD_HEADLINE if facts.unread else QUIET_NOTE_NOTHING_NEW[kind]
+    edition = facts.last_edition
+    if edition is None:
+        return QUIET_NOTE_STILL
+    when = when_sent(edition, clock)
+    days = (clock.now_local.date() - date.fromisoformat(edition.date)).days
+    if days == 1:
+        return QUIET_NOTE_STILL_SINCE.format(when=when)
+    return QUIET_NOTE_STILL_FOR.format(days=days, when=when)
+
+
+def quiet_note(clock: UserClock, kind: BriefingKind, facts: QuietFacts) -> BriefingPayload:
+    """Write a quiet brief's note from its facts: nothing new, the calendar, what is past due."""
+    calendar = {
+        None: QUIET_NOTE_CALENDAR_CLEAR[kind],
         CalendarGap.NOT_CONNECTED: QUIET_NOTE_NO_CALENDAR,
         CalendarGap.UNAVAILABLE: QUIET_NOTE_CALENDAR_UNREAD,
-    }[calendar]
+    }[facts.calendar]
+    lines = [f"{_quiet_news(kind, facts, clock)}{calendar}"]
+    if facts.unread:
+        lines.append(QUIET_NOTE_UNREAD.format(apps=" or ".join(facts.unread)))
+    if facts.overdue:
+        lines.append(QUIET_NOTE_OVERDUE.format(count=facts.overdue))
+    lines.append(QUIET_NOTE_WATCH)
     return BriefingPayload(
         form=BriefForm.QUIET_NOTE,
-        kicker=DAILY_KICKER,
+        kicker=_KICKERS[kind],
         date=clock.date_str,
-        headline=QUIET_NOTE_HEADLINE,
+        headline=QUIET_NOTE_UNREAD_HEADLINE if facts.unread else QUIET_NOTE_HEADLINES[kind],
         lede="",
         caption="",
         mood="idle",
         template_family="",
-        message=f"{situation}\n{QUIET_NOTE_WATCH}",
+        message="\n".join(lines),
     )
 
 
 async def publish_quiet_note(
-    user: UserDocument, clock: UserClock, payload: BriefingPayload, pool: PoolCounts
+    user: UserDocument,
+    clock: UserClock,
+    kind: BriefingKind,
+    payload: BriefingPayload,
+    pool: PoolCounts,
 ) -> BriefingModel:
-    """Store and deliver a quiet day's note: no edition is drawn, rendered or spent."""
-    stored = await store_note(user.id, clock.date_str, BRIEFING_KIND_DAILY, payload)
+    """Store and deliver a quiet brief's note: no edition is drawn, rendered or spent."""
+    stored = await store_note(user.id, clock.date_str, kind, payload)
     channels = await deliver_brief(
         user, stored, payload, NOTIFICATION_KIND_BRIEFING_NOTE, push=True
     )
-    await briefing_repository.set_delivered_channels(
-        user.id, clock.date_str, BRIEFING_KIND_DAILY, channels
-    )
+    await briefing_repository.set_delivered_channels(user.id, clock.date_str, kind, channels)
     capture(
         UserId(user.id),
         BriefingSent(
-            kind=BRIEFING_KIND_DAILY,
+            kind=kind,
             form=BriefForm.QUIET_NOTE.value,
             family=QUIET_NOTE_FAMILY,
             mood=payload.mood,
@@ -170,7 +246,7 @@ async def publish_quiet_note(
     log.info(
         "briefing.sent",
         user_id=user.id,
-        kind=BRIEFING_KIND_DAILY,
+        kind=kind,
         channels=channels,
         form="quiet_note",
     )
