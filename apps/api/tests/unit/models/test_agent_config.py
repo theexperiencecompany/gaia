@@ -17,7 +17,9 @@ from app.models.agent_config import (
     read_agent_configurable,
     read_run_metadata,
     run_analytics_context,
+    runs_on_bot,
 )
+from app.models.chat_models import ConversationSource
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
 
@@ -39,7 +41,7 @@ class TestAgentConfigurable:
 
     def test_langgraphs_own_runtime_keys_ride_along_untouched(self) -> None:
         bag = {"user_id": "u1", "checkpoint_ns": "ns"}
-        assert agent_configurable({CONFIGURABLE_KEY: bag})["checkpoint_ns"] == "ns"
+        assert agent_configurable({CONFIGURABLE_KEY: bag}) == bag
 
 
 class TestReadAgentConfigurable:
@@ -129,6 +131,22 @@ class TestGetUserId:
 
     def test_the_refusal_is_a_value_error_the_coding_tools_already_catch(self) -> None:
         assert issubclass(RunUserMissingError, ValueError)
+
+
+class TestRunsOnBot:
+    @pytest.mark.parametrize(
+        ("source", "on_bot"),
+        [
+            (ConversationSource.TELEGRAM, True),
+            (ConversationSource.WHATSAPP, True),
+            (ConversationSource.WEB, False),
+            (None, False),
+        ],
+    )
+    def test_only_a_messaging_platform_chat_is_a_bot_run(
+        self, source: ConversationSource | None, on_bot: bool
+    ) -> None:
+        assert runs_on_bot({"conversation_source": source}) is on_bot
 
 
 class TestGetSessionId:

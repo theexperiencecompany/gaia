@@ -412,6 +412,7 @@ _EXPECTED_CATEGORY_METADATA: dict[str, tuple[str, bool, str | None, bool, bool]]
     "control": ("general", False, None, False, True),
     "support": ("general", False, None, False, False),
     "billing": ("general", False, None, False, False),
+    "referrals": ("general", False, None, False, False),
     "manual": ("general", False, None, False, False),
     "memory": ("general", False, None, False, False),
     "integrations": ("general", False, None, False, False),
@@ -447,6 +448,7 @@ _EXPECTED_ALWAYS_GATE_TOOL_NAMES = {
     "update_preferences",
     "update_user_instructions",
     "update_integration_instructions",
+    "send_referral_invite",
 }
 
 
@@ -479,6 +481,7 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         memory_tools,
         notification_tool,
         playbook_tools,
+        referral_tools,
         reminder_tool,
         research_tool,
         skill_tools,
@@ -511,6 +514,7 @@ def expected_category_tool_names() -> dict[str, set[str]]:
         "control": {finish_task_tool.finish_task.name},
         "support": {support_tool.create_support_ticket.name},
         "billing": {t.name for t in subscription_tool.tools},
+        "referrals": {t.name for t in referral_tools.tools},
         "manual": {t.name for t in manual_tool.tools},
         "memory": {t.name for t in memory_tools.tools},
         "integrations": {
@@ -744,6 +748,24 @@ class TestCoreInitializationContract:
             "update_notification_settings",
             "update_preferences",
             "set_selected_voice",
+        }
+        assert all(tool.destructive is False for tool in category.tools)
+
+    def test_referral_invites_always_ask_and_nothing_else_there_is_gated(self):
+        """An invite emails people in the user's name, so it asks in every mode; the link, status and suggestions only read."""
+        registry = ToolRegistry()
+        registry._initialize_categories()
+
+        category = registry.get_category("referrals")
+        assert category is not None
+        assert {tool.name for tool in category.tools} == {
+            "get_referral_link",
+            "get_referral_status",
+            "suggest_invitees",
+            "send_referral_invite",
+        }
+        assert {tool.name for tool in category.tools if tool.always_gate} == {
+            "send_referral_invite"
         }
         assert all(tool.destructive is False for tool in category.tools)
 
@@ -995,6 +1017,7 @@ class TestInitializedCategoryContract:
         "control": {"internal": True},
         "support": {},
         "billing": {},
+        "referrals": {},
         "manual": {},
         "memory": {},
         "integrations": {},

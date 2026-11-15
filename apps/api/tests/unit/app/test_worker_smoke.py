@@ -59,3 +59,11 @@ def test_worker_settings_schedules_the_browser_reaper() -> None:
     from app.worker import WorkerSettings
 
     assert "cron:reap_browser_jobs" in {job.name for job in WorkerSettings.cron_jobs}
+
+
+def test_worker_settings_schedules_the_week_one_referral_dm() -> None:
+    """Registered but unscheduled, nobody would ever get the week-one DM."""
+    from app.worker import WorkerSettings
+
+    assert "send_referral_week_one_dms_task" in _registered_names()
+    assert "cron:send_referral_week_one_dms_task" in {job.name for job in WorkerSettings.cron_jobs}

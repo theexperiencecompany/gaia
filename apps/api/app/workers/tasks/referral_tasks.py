@@ -1,4 +1,4 @@
-"""Referral jobs: settling a referrer's rewards, and the sweep that finds months left pending."""
+"""Referral jobs: settling a referrer's rewards, the sweep for months left pending, and the week-one DMs."""
 
 from datetime import UTC, datetime
 
@@ -13,6 +13,7 @@ from app.constants.referrals import (
 from app.db.repositories.referrals import referral_repository
 from app.services.referrals.rewards import settle_rewards
 from app.services.referrals.settlement_queue import queue_settlement
+from app.services.referrals.week_one import send_week_one_dms
 from app.workers.task_envelope import ArqJobContext
 from shared.py.wide_events import log
 
@@ -51,3 +52,8 @@ async def sweep_unsettled_referral_rewards(ctx: ArqJobContext) -> str:  # noqa: 
         await queue_settlement(referrer_user_id)
     log.set(referral={"operation": "settle_sweep", "referrers_queued": len(referrers)})
     return f"sweep_unsettled_referral_rewards queued {len(referrers)}"
+
+
+async def send_referral_week_one_dms_task(ctx: ArqJobContext) -> str:  # noqa: ARG001 -- ARQ injects ctx positionally into every registered task
+    """Hourly sweep: DM each user who just had a good first week, at 10am their time."""
+    return await send_week_one_dms()

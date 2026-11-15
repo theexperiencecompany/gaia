@@ -957,3 +957,10 @@ def _isolate_wide_event_state() -> Iterator[None]:
     yield
     wide_events._event_state.set(None)
     wide_events._trace_id.set("")
+
+
+@pytest.fixture
+def referrals_off() -> Iterator[None]:
+    """Switch the referral program off through its flag's env default, which PostHog falls back to."""
+    with patch.object(app_settings, "ENABLE_REFERRALS", False):
+        yield
