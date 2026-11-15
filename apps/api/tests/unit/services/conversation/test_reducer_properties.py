@@ -8,11 +8,14 @@ from app.models.conversation_log_models import (
     CommsPhase,
     ConversationState,
     Entry,
+    LoggedEntry,
     Rejected,
     Transition,
     WorkOutcome,
 )
 from app.services.conversation.reducer import reduce
+from app.services.conversation.screen import project_screen
+from shared.py.conversation_wire import ScreenItemKind
 from tests.unit.services.conversation.log_helpers import (
     EMPTY,
     asked,
@@ -43,9 +46,9 @@ def _next_entry(data: st.DataObject, state: ConversationState, seq: int) -> Entr
         st.just(todo_woke(entry_id)),
         st.just(notice(entry_id)),
         st.sampled_from([*pending, "ap_gone"]).map(lambda approval: decided(entry_id, approval)),
-        st.tuples(st.sampled_from([*live, "t_gone"]), st.sampled_from(list(WorkOutcome))).map(
-            lambda pair: finished(entry_id, *pair)
-        ),
+        st.tuples(
+            st.sampled_from([*live, "t_gone"]), st.sampled_from(list(WorkOutcome)), st.booleans()
+        ).map(lambda drawn: finished(entry_id, drawn[0], drawn[1], continued_by_decision=drawn[2])),
     ]
     if not state.unsettled_fires and not state.work:
         options.append(st.just(fired(entry_id)))
@@ -144,3 +147,23 @@ def test_a_rejected_entry_leaves_the_state_unchanged(data: st.DataObject) -> Non
     result = reduce(state, logged(seq, entry))
     if isinstance(result, Rejected):
         assert state == snapshot
+
+
+@given(st.data())
+def test_the_screen_asks_exactly_the_approvals_the_state_awaits_on_every_prefix(
+    data: st.DataObject,
+) -> None:
+    state = EMPTY
+    log: list[LoggedEntry] = []
+    for seq, entry in enumerate(_valid_log(data), start=1):
+        log.append(logged(seq, entry))
+        result = reduce(state, log[-1])
+        assert isinstance(result, Transition)
+        state = result.state
+        shown = [
+            request.approval_id
+            for item in project_screen(log)
+            if item.kind is ScreenItemKind.WORK
+            for request in item.asking
+        ]
+        assert shown == list(state.asking), log

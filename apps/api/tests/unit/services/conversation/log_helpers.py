@@ -147,8 +147,20 @@ def decided(entry_id: str, approval_id: str) -> ApprovalDecided:
     )
 
 
-def finished(entry_id: str, task_id: str, outcome: WorkOutcome = WorkOutcome.DONE) -> WorkFinished:
-    return WorkFinished(id=entry_id, task_id=task_id, outcome=outcome, report="report")
+def finished(
+    entry_id: str,
+    task_id: str,
+    outcome: WorkOutcome = WorkOutcome.DONE,
+    *,
+    continued_by_decision: bool = False,
+) -> WorkFinished:
+    return WorkFinished(
+        id=entry_id,
+        task_id=task_id,
+        outcome=outcome,
+        report="report",
+        continued_by_decision=continued_by_decision,
+    )
 
 
 def opened(entry_id: str, reply_id: str = "r1") -> Reply:
