@@ -8,7 +8,7 @@ quiet hours or timezone moves the workflows with it.
 """
 
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
@@ -18,6 +18,7 @@ from app.constants.briefing import (
     EVERY_DAY_CRON_DAYS,
     WEEKDAYS_CRON_DAYS,
     WEEKLY_DIGEST_CRON,
+    WEEKLY_DIGEST_HOUR,
     WEEKLY_DIGEST_WORKFLOW_KEY,
     BriefingFrequency,
 )
@@ -140,6 +141,34 @@ async def _next_daily_brief_at(user: UserDocument) -> datetime | None:
         (w for w in workflows if w.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY), None
     )
     return daily.trigger_config.next_run if daily and daily.activated else None
+
+
+#: The weekdays (Monday 0) each frequency's briefs land on.
+_BRIEF_DAYS: dict[BriefingFrequency, frozenset[int]] = {
+    BriefingFrequency.DAILY: frozenset(range(7)),
+    BriefingFrequency.WEEKDAYS: frozenset(range(5)),
+    BriefingFrequency.WEEKLY_ONLY: frozenset({6}),
+}
+
+
+def next_brief_lands(user: UserDocument, now_local: datetime) -> str | None:
+    """Say when the user's next brief lands on their clock ("tomorrow at 7 AM"); None when briefs are off."""
+    frequency = user.briefing_schedule.frequency
+    if frequency is BriefingFrequency.OFF:
+        return None
+    hour = (
+        WEEKLY_DIGEST_HOUR
+        if frequency is BriefingFrequency.WEEKLY_ONLY
+        else daily_briefing_hour(user.briefing_schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
+    )
+    ahead = next(
+        days
+        for days in range(8)
+        if (now_local + timedelta(days=days)).weekday() in _BRIEF_DAYS[frequency]
+        and (days or now_local.hour < hour)
+    )
+    day = {0: "today", 1: "tomorrow"}.get(ahead, (now_local + timedelta(days=ahead)).strftime("%A"))
+    return f"{day} at {now_local.replace(hour=hour).strftime('%-I %p')}"
 
 
 def briefing_cron(key: str, user: UserDocument) -> str:

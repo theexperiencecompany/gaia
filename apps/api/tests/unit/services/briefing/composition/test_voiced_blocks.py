@@ -53,7 +53,16 @@ QUOTE = QuoteBlock(
     )
 )
 PROGRESS = ProgressBlock(
-    goal=GoalState(id="g1", statement="Ship v3", origin=GoalOrigin.MEMORY, done=2, open=7)
+    goal=GoalState(
+        id="g1",
+        statement="Ship v3",
+        origin=GoalOrigin.MEMORY,
+        done=2,
+        done_by_gaia=1,
+        done_by_you=1,
+        since="2026-11-09",
+        open=7,
+    )
 )
 NOTE = NoteBlock(text="A light day.")
 
@@ -63,7 +72,9 @@ def test_each_kind_of_block_is_told_to_the_voice_under_one_header() -> None:
         BLOCKS_HEADER,
         "- a chart, This week (series meetings, focus): Thursday was heaviest.",
         '- Maya\'s words, from Gmail: "Can you confirm by Friday?"',
-        '- progress on "Ship v3": 2 linked todo(s) finished, 7 open',
+        # Who finished what, over which days: GAIA's and the user's work never blur together.
+        '- progress on "Ship v3": linked todos 2 finished since Mon 9 Nov'
+        " (1 by GAIA, 1 by the user), 7 open",
         "- a note: A light day.",
     ]
 

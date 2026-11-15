@@ -139,11 +139,13 @@ def _signal(integration: ScoutIntegration, source: SignalSource, item: _Item) ->
         title=item.required(token, fields.title, "title"),
         due_at=item.moment(fields.due_at, "due_at"),
         people=item.people(fields.people),
+        people_role=fields.people_role,
         url=item.text(fields.url, "url"),
         state=item.state(fields.state),
         amount=amount,
         amount_unit=source.amount_unit if amount is not None else None,
         text=item.text(fields.text, "text"),
+        author=_person(item.optional(fields.author)),
         created_at=item.moment(fields.created_at, "created_at"),
         updated_at=item.moment(fields.updated_at, "updated_at"),
     )

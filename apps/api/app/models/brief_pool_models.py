@@ -46,6 +46,8 @@ class DataSeries(BaseModel):
     app: str = Field(description="The source's display name")
     shape: SeriesShape
     points: list[SeriesPoint] = Field(min_length=1)
+    #: Summed over the items a scout read from one page of an app, never the app's whole total.
+    shown_not_total: bool = False
 
 
 class QuoteSpan(BaseModel):
@@ -79,9 +81,16 @@ class GoalState(BaseModel):
     id: str
     statement: str = Field(min_length=1)
     origin: GoalOrigin
-    #: Linked todos completed in the brief's window.
+    #: Linked todos completed in the brief's window, by anyone.
     done: int = Field(ge=0)
+    #: Of those, the ones GAIA finished and the ones the user did.
+    done_by_gaia: int = Field(default=0, ge=0)
+    done_by_you: int = Field(default=0, ge=0)
+    #: The user-local day (YYYY-MM-DD) the window those count over opens; text, as Mongo holds no bare date.
+    since: str | None = None
     #: Linked todos still open.
     open: int = Field(ge=0)
     #: The linked todos' titles, finished ones first.
     linked: list[str] = Field(default_factory=list)
+    #: The open linked todos untouched for GOAL_WORK_STALLED_AFTER or longer: work that is stuck.
+    stalled: list[str] = Field(default_factory=list)

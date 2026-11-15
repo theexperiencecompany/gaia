@@ -37,11 +37,11 @@ WIND_DOWN_FINAL = "final"
 class GoalQuestion(StrEnum):
     """What today's brief does about the goal it remembers."""
 
-    #: No goal is remembered; the voice asks for one, as the ladder allows.
+    #: No goal is remembered; the voice asks for one: never asked, or asked GOAL_QUESTION_REASK ago.
     NONE = "none"
     #: Ask whether the goal is still live: never asked, or asked GOAL_QUESTION_REASK ago.
     ASK = "ask"
-    #: Asked inside the window: not again today, in any wording.
+    #: Asked about the goal, or for one, inside the window: not again today, in any wording.
     ASKED = "asked"
 
 
@@ -118,13 +118,11 @@ async def record_idle_day(user_id: str, prior: DormancyState, idle: bool, date_s
 
 
 def goal_question(prior: DormancyState, now: datetime, *, has_goal: bool) -> GoalQuestion:
-    """Say whether today's brief asks about the remembered goal, or asked too recently to."""
-    if not has_goal:
-        return GoalQuestion.NONE
+    """Say whether today's brief asks about the goal, or for one, or asked too recently to."""
     asked = prior.goal_asked_at
-    if asked is None or now - asked >= GOAL_QUESTION_REASK:
-        return GoalQuestion.ASK
-    return GoalQuestion.ASKED
+    if asked is not None and now - asked < GOAL_QUESTION_REASK:
+        return GoalQuestion.ASKED
+    return GoalQuestion.ASK if has_goal else GoalQuestion.NONE
 
 
 async def climb_idle_ladder(
@@ -154,8 +152,8 @@ async def climb_idle_ladder(
 
 
 async def leave_idle_ladder(user_id: str, ladder: IdleLadder) -> None:
-    """Record a goal question that went out; pause the loop once the goodbye did."""
-    if ladder.goal_question is GoalQuestion.ASK:
+    """Record a goal question that went out, for the goal or for one; pause the loop once the goodbye did."""
+    if ladder.goal_question is not GoalQuestion.ASKED:
         await user_repository.record_goal_question(user_id)
     if ladder.wind_down == WIND_DOWN_FINAL:
         await enter_dormancy(user_id)

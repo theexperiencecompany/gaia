@@ -26,6 +26,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.openui_artifacts import openui_artifact_repository
 from app.db.repositories.short_links import short_link_repository
 from app.db.repositories.todos import todo_repository
+from app.models.briefing_models import BriefingPayload
 from app.models.conversation_models import ConversationDocument
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
@@ -38,6 +39,8 @@ from app.models.short_link_models import (
 from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.blob_store import LocalVolumeBlobStore
+from app.services.briefing import store as brief_store
+from app.services.briefing.edition_email import HostedEditionImage
 from app.services.links import abuse, content as link_content
 from app.services.links.backfill import backfill_snapshots
 from app.services.links.service import optional_short_link
@@ -86,7 +89,7 @@ def viewer(test_app: FastAPI) -> Iterator[Viewer]:
     test_app.dependency_overrides.pop(get_optional_user, None)
 
 
-_COLLECTIONS = ("short_links", "link_reports", "todos", "artifacts", "conversations")
+_COLLECTIONS = ("short_links", "link_reports", "todos", "artifacts", "conversations", "briefings")
 
 
 @pytest.fixture(autouse=True)
@@ -921,6 +924,38 @@ class TestDeletingTheSource:
             await link_content.read_snapshot(OWNER.user_id, cid)
         assert await mongo_db["artifacts"].count_documents({"conversation_id": "conv-1"}) == 0
         assert (await _open(client, elsewhere_slug)).status_code == 200
+
+
+class TestTheBriefsLink:
+    async def test_a_stored_brief_mints_its_link_and_the_link_opens_it(
+        self, client: AsyncClient, viewer: Viewer, content_origin: None
+    ) -> None:
+        """Replay runs logged short_link.mint_failed ("Target not found") for every brief."""
+        payload = BriefingPayload(
+            kicker="THE MORNING BRIEF",
+            date="2026-11-09",
+            headline="Google Cloud waits",
+            lede="One upload.",
+            mood="clear",
+            caption="c",
+            template_family="memo",
+        )
+        hosted = HostedEditionImage("https://cdn.example/b", "https://cdn.example/b", 0.4, None)
+
+        with patch.object(brief_store, "host_edition_image", AsyncMock(return_value=hosted)):
+            stored = await brief_store.store_brief(OWNER.user_id, "2026-11-09", "daily", payload)
+
+        slug = stored.link.removeprefix("https://heygaia.link/") if stored.link else ""
+        link = await _stored(slug)
+        assert (link.target_type, link.target_id) == (
+            ShortLinkTargetType.BRIEFING,
+            stored.briefing.id,
+        )
+        assert stored.briefing.payload.link == stored.link
+        viewer.user = OWNER
+        opened = await _open(client, slug)
+        assert opened.status_code == 200, opened.text
+        assert opened.json()["view"]["payload"]["headline"] == "Google Cloud waits"
 
 
 class TestBackfill:

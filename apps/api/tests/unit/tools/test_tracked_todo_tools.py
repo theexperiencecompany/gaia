@@ -52,7 +52,7 @@ from app.agents.tools.tracked_todo_tools import (
     update_tracked_todo,
 )
 from app.constants import todos as todo_constants
-from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, WaitingOn
+from app.constants.todos import GAIA_TRACKED_LABEL, NoReplyPlan, TodoCompleter, WaitingOn
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models import agent_models
 from app.models.short_link_models import ShortLinkTargetType
@@ -988,7 +988,7 @@ class TestCompleteTrackedTodo:
                 "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
                 new_callable=AsyncMock,
                 return_value=True,
-            ),
+            ) as complete,
             patch(
                 "app.agents.tools.tracked_todo_tools.optional_short_link",
                 new_callable=AsyncMock,
@@ -999,6 +999,7 @@ class TestCompleteTrackedTodo:
                 config=_config(), todo_id="t1", summary="done"
             )
         assert "completed and archived" in result
+        assert complete.await_args.kwargs["by"] is TodoCompleter.GAIA
         # The agent reads its own tool result, so the link must be in it.
         assert "https://heygaia.link/abcdefghijk" in result
         mint.assert_awaited_once_with("user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1")
@@ -1061,7 +1062,9 @@ class TestCompleteTrackedTodo:
             )
 
         assert result == "Tracked todo t1 completed and archived."
-        complete.assert_awaited_once_with(todo_id="t1", user_id="user-1", summary="user stopped it")
+        complete.assert_awaited_once_with(
+            todo_id="t1", user_id="user-1", summary="user stopped it", by=TodoCompleter.GAIA
+        )
 
     async def test_active_recurrence_refuses_and_names_the_stop_procedure(self):
         with patch(

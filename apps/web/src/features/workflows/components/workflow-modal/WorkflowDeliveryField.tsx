@@ -2,7 +2,7 @@
 
 import {
   BRIEF_DELIVERY_DESCRIPTION,
-  BRIEFS_OFF_DELIVERY_REASON,
+  NO_DAILY_BRIEF_DELIVERY_REASON,
   WORKFLOW_DELIVERIES,
   WORKFLOW_DELIVERY_COPY,
 } from "@gaia/shared";
@@ -27,7 +27,7 @@ interface WorkflowDeliveryFieldProps {
  * How each run's result reaches the user. A segmented control with no default:
  * the choice is the user's to make, so nothing is preselected. Submitting
  * without one focuses the first segment and names the missing choice. "Add to
- * my brief" follows the briefing schedule and is unavailable while briefs are off.
+ * my brief" follows the briefing schedule and is unavailable without a daily brief.
  */
 export default function WorkflowDeliveryField({
   control,
@@ -37,8 +37,8 @@ export default function WorkflowDeliveryField({
   const briefDescription = schedule?.frequency
     ? BRIEF_DELIVERY_DESCRIPTION[schedule.frequency]
     : WORKFLOW_DELIVERY_COPY.brief.description;
-  const briefsOff = briefDescription === null;
-  // While briefs are off, the reason line below the control speaks for "brief".
+  const noDailyBrief = briefDescription === null;
+  // Without a daily brief, the reason line below the control speaks for "brief".
   const helperFor = (value: WorkflowDelivery | null) => {
     if (!value) return UNCHOSEN_HINT;
     if (value === "brief") return briefDescription;
@@ -60,7 +60,7 @@ export default function WorkflowDeliveryField({
               value={field.value}
               onChange={field.onChange}
               isDisabled={(delivery) =>
-                isDisabled || (delivery === "brief" && briefsOff)
+                isDisabled || (delivery === "brief" && noDailyBrief)
               }
               firstRef={field.ref}
               isInvalid={!!errorMessage}
@@ -72,11 +72,11 @@ export default function WorkflowDeliveryField({
                 <p className="px-1 pt-1 text-sm text-zinc-400">{helper}</p>
               )
             )}
-            {briefsOff && (
+            {noDailyBrief && (
               <p className="px-1 text-sm text-zinc-400">
-                {BRIEFS_OFF_DELIVERY_REASON}{" "}
+                {NO_DAILY_BRIEF_DELIVERY_REASON}{" "}
                 <Link href={BRIEFINGS_SETTINGS_PATH} className="text-primary">
-                  Turn on briefs
+                  Turn on daily briefs
                 </Link>
               </p>
             )}

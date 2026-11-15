@@ -42,7 +42,8 @@ export const WORKFLOW_DELIVERY_COPY: Record<
 
 /**
  * What "Add to my brief" promises under each briefing frequency: the next
- * brief that will carry the results, or null when briefs are off.
+ * daily brief, which carries the results, or null when there is none. The
+ * weekly digest carries no workflow results.
  */
 export const BRIEF_DELIVERY_DESCRIPTION: Record<
   BriefingFrequency,
@@ -50,9 +51,9 @@ export const BRIEF_DELIVERY_DESCRIPTION: Record<
 > = {
   daily: WORKFLOW_DELIVERY_COPY.brief.description,
   weekdays: WORKFLOW_DELIVERY_COPY.brief.description,
-  weekly_only: "Results wait for your next weekly digest.",
+  weekly_only: null,
   off: null,
 };
 
-export const BRIEFS_OFF_DELIVERY_REASON =
-  "Briefs are off, so there's no brief to add results to.";
+export const NO_DAILY_BRIEF_DELIVERY_REASON =
+  "You get no daily brief, so there's no brief to add results to.";

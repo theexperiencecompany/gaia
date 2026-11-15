@@ -1,7 +1,7 @@
 """A checked composition laid out as the brief: numbered sections, data blocks, and everything left out."""
 
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from tests.helpers import user_clock
@@ -109,6 +109,7 @@ POOL = FactPool(
         clock=user_clock("UTC", date(2026, 11, 11)),
         calendar=1,
         calendar_span="today",
+        done_since=datetime(2026, 11, 10, tzinfo=UTC),
         recent_openings=[],
     ),
     criteria={},

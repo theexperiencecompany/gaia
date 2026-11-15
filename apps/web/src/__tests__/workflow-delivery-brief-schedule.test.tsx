@@ -56,37 +56,31 @@ describe("adding a workflow's results to the brief", () => {
     expect(briefButton().hasAttribute("disabled")).toBe(false);
   });
 
-  it("promises the weekly digest when that is the only brief", async () => {
-    renderField({ frequency: "weekly_only", hour: 8 }, "brief");
+  it.each(["off", "weekly_only"] as const)(
+    "is unavailable, with the reason and the way back, when the schedule (%s) has no daily brief",
+    async (frequency) => {
+      renderField({ frequency, hour: 8 }, "now");
 
-    expect(
-      await screen.findByText("Results wait for your next weekly digest."),
-    ).toBeTruthy();
-    expect(
-      screen.queryByText("Results wait for your next daily brief."),
-    ).toBeNull();
-  });
-
-  it("is unavailable, with the reason and the way back, when briefs are off", async () => {
-    renderField({ frequency: "off", hour: 8 }, "now");
-
-    expect(
-      await screen.findByText(
-        "Briefs are off, so there's no brief to add results to.",
-      ),
-    ).toBeTruthy();
-    expect(briefButton().hasAttribute("disabled")).toBe(true);
-    expect(
-      screen.getByRole("link", { name: "Turn on briefs" }).getAttribute("href"),
-    ).toBe("/settings/briefings");
-  });
+      expect(
+        await screen.findByText(
+          "You get no daily brief, so there's no brief to add results to.",
+        ),
+      ).toBeTruthy();
+      expect(briefButton().hasAttribute("disabled")).toBe(true);
+      expect(
+        screen
+          .getByRole("link", { name: "Turn on daily briefs" })
+          .getAttribute("href"),
+      ).toBe("/settings/briefings");
+    },
+  );
 
   it("says once why a workflow already set to the brief has nowhere to go", async () => {
     renderField({ frequency: "off", hour: 8 }, "brief");
 
     expect(
       await screen.findAllByText(
-        "Briefs are off, so there's no brief to add results to.",
+        "You get no daily brief, so there's no brief to add results to.",
       ),
     ).toHaveLength(1);
     expect(
