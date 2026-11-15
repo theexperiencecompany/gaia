@@ -10,7 +10,7 @@ from app.agents.core.background.todo_run_delivery import write_up_note
 from app.agents.core.messages import MessageScope, build_turn_context
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
-from app.constants.chat import ConversationSource
+from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.constants.conversation import WORKFLOW_RUN_REQUEST
 from app.db.repositories.conversations import conversation_repository
 from app.helpers.agent_helpers import (
@@ -30,6 +30,7 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkflowRun,
 )
+from app.services.conversation.comms_input import work_cards_note
 from app.services.conversation.comms_runner import CommsTurn, step_turn_ref
 from app.services.conversation.mongo_log_base import not_found
 from app.services.conversation.reply_analytics import UNPROMPTED, spoken_context
@@ -113,7 +114,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     return CommsTurn(
         config=config,
         opening=[*context.chain, *(m for m in (context.presence,) if m is not None)],
-        closing=[*await _delivery_note(claim, batch), context.clock],
+        closing=[*await _delivery_note(claim, batch, source), context.clock],
         analytics=_analytics(said, fired),
         run_started=AgentRunStarted(
             agent="comms",
@@ -133,18 +134,27 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     )
 
 
-async def _delivery_note(claim: StepClaim, batch: Batch) -> list[AnyMessage]:
-    """Tell a reply that reports a todo's run how to write it up, and one that reports a workflow's work that it is read as plain text."""
-    if not any(isinstance(logged.entry, WorkFinished) for logged in batch.waking):
+async def _delivery_note(
+    claim: StepClaim, batch: Batch, source: ConversationSource
+) -> list[AnyMessage]:
+    """Tell a reply that reports finished work how to deliver it.
+
+    A todo's run is written up by its note, a workflow's work is read as plain text, and work
+    read in the app is told which of its cards are already on the screen.
+    """
+    finished = [logged.entry for logged in batch.waking if isinstance(logged.entry, WorkFinished)]
+    if not finished:
         return []
     reported = await todo_runs_reported(
         runtime_ports().log, claim.conversation_id, claim.user_id, batch
     )
     if reported:
         return [HumanMessage(content=await write_up_note(run)) for _work, run in reported]
-    if not await conversation_repository.is_workflow_execution(claim.conversation_id):
+    if await conversation_repository.is_workflow_execution(claim.conversation_id):
+        return [HumanMessage(content=PLATFORM_DELIVERY_NOTE)]
+    if source in BOT_CONVERSATION_SOURCES or source is ConversationSource.VOICE:
         return []
-    return [HumanMessage(content=PLATFORM_DELIVERY_NOTE)]
+    return [HumanMessage(content=note) for work in finished if (note := work_cards_note(work))]
 
 
 def _workflow_run(batch: Batch) -> WorkflowRun | None:

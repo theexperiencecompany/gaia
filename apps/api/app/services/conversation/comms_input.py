@@ -5,12 +5,15 @@ the entry's seq under additional_kwargs[LOG_SEQ], so re-sending a batch after a
 restart upserts in place and the model sees each input once.
 """
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
 from langchain_core.messages import AnyMessage, HumanMessage
+from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.interruption import INTERRUPTION_MARKER, INTERRUPTION_SOURCE
+from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.conversation import (
     ABSORBED_NOTE,
     ABSORBED_NOTE_SUFFIX,
@@ -23,11 +26,14 @@ from app.constants.conversation import (
     REACTION_NOTE,
     REACTION_NOTE_SUFFIX,
     SERVER_RESTART_NOTE,
+    WORK_CARD_LINE,
+    WORK_CARD_MAKER,
+    WORK_CARDS_NOTE,
     WORK_DONE_NOTE,
     WORK_UNFINISHED_NOTE,
     WORKFLOW_RUN_REQUEST,
 )
-from app.models.chat_models import ReactionBy
+from app.models.chat_models import ReactionBy, tool_fields
 from app.models.conversation_log_models import (
     Batch,
     IntegrationConnected,
@@ -41,7 +47,7 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkOutcome,
 )
-from shared.py.conversation_wire import ReplyOutcome
+from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
 
 #: Every user message reads as its text.
 AS_TYPED: Mapping[str, str] = MappingProxyType({})
@@ -148,6 +154,52 @@ def _note_text(logged: LoggedEntry) -> str | None:
         case ReplySettled(outcome=ReplyOutcome.FAILED, answers=()):
             note = SERVER_RESTART_NOTE
     return note
+
+
+def work_cards_note(finished: WorkFinished) -> str | None:
+    """Return the note naming the cards a work's result shows, with the subagent that made each; None when it shows none."""
+    makers = _subagent_names(finished.tool_data)
+    counts: Counter[tuple[str, str]] = Counter()
+    for card in finished.tool_data:
+        if card["tool_name"] not in tool_fields:
+            continue
+        data = card["data"]
+        maker = makers.get(card.get("subagent_id") or "", "")
+        counts[card["tool_name"], maker] += len(data) if isinstance(data, list) else 1
+    if not counts:
+        return None
+    lines = [
+        WORK_CARD_LINE.format(
+            name=name, count=count, maker=WORK_CARD_MAKER.format(subagent=maker) if maker else ""
+        )
+        for (name, maker), count in counts.items()
+    ]
+    return WORK_CARDS_NOTE.format(cards="\n".join(lines))
+
+
+def _subagent_names(cards: Sequence[ToolDataEntry]) -> dict[str, str]:
+    """Map each subagent the cards' groups hold, nested ones too, to its name."""
+    names: dict[str, str] = {}
+    groups = [card["data"] for card in cards if card["tool_name"] == SUBAGENT_GROUP_TOOL_NAME]
+    while groups:
+        group = groups.pop()
+        if not isinstance(group, dict):
+            continue
+        credited = _CreditedSubagent.model_validate(group)
+        if credited.subagent_name:
+            names[credited.subagent_id] = credited.subagent_name
+        groups.extend(credited.nested_subagents)
+    return names
+
+
+class _CreditedSubagent(BaseModel):
+    """The part of a subagent group card that says who made the cards under it."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    subagent_id: str
+    subagent_name: str | None = None
+    nested_subagents: list[object] = []
 
 
 def _reported(finished: WorkFinished) -> str:

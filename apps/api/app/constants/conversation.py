@@ -79,6 +79,14 @@ WORK_DONE_NOTE = (
     "[Background work finished. The user has not seen this result yet, so report it in your "
     "reply: {report}]"
 )
+#: Names the cards finished work put on the app screen; one WORK_CARD_LINE per card kind follows.
+WORK_CARDS_NOTE = (
+    "[The work above already shows the user these cards:\n{cards}\n"
+    "They show its raw items, so do not re-type them row by row or rebuild them as a component. "
+    "They are not your reply: still tell the user what the work found and what matters in it.]"
+)
+WORK_CARD_LINE = "- {name}: {count}{maker}"
+WORK_CARD_MAKER = ", made by {subagent}"
 WORK_UNFINISHED_NOTE = (
     "[Background work ended {outcome}. The user has not seen this yet, so tell them in your "
     "reply: {report}]"

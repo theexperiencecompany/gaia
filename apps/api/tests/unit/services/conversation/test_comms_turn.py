@@ -15,6 +15,7 @@ from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
 from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.constants.chat import ConversationSource
+from app.constants.conversation import WORK_CARDS_NOTE
 from app.models.conversation_log_models import Batch, Entry, StepClaim, UserMessage
 from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
@@ -254,6 +255,42 @@ async def test_finished_work_with_no_one_asking_is_unprompted_and_quiet_by_defau
     assert seams.turn_context.await_args.args[1].source == "background"
     seams.reported.assert_awaited_once_with(seams.log, CONVERSATION, USER, batch)
     seams.conversations.is_workflow_execution.assert_awaited_once_with(CONVERSATION)
+    assert turn.closing == [seams.context.clock]
+
+
+def _with_cards() -> Entry:
+    group = {"subagent_id": "sa1", "subagent_name": "Todoist"}
+    cards = (
+        {"tool_name": "subagent_group", "data": group},
+        {"tool_name": "todo_data", "data": [{"id": "1"}, {"id": "2"}], "subagent_id": "sa1"},
+        {"tool_name": "weather_data", "data": {"city": "Pune"}},
+        {"tool_name": "tool_calls_data", "data": [{"name": "x"}]},
+    )
+    return finished("w6", "t1").model_copy(update={"tool_data": cards})
+
+
+async def test_finished_works_cards_on_the_app_screen_are_named_so_the_reply_does_not_retype_them(
+    seams: Seams,
+) -> None:
+    seams.conversations.get_source.return_value = ConversationSource.WEB
+
+    turn = await build_comms_turn(CLAIM, _batch(6, [_with_cards()]))
+
+    [note, clock] = turn.closing
+    assert clock == seams.context.clock
+    assert note == HumanMessage(
+        content=WORK_CARDS_NOTE.format(cards="- todo_data: 2, made by Todoist\n- weather_data: 1")
+    )
+
+
+@pytest.mark.parametrize("surface", [ConversationSource.TELEGRAM, ConversationSource.VOICE])
+async def test_finished_works_cards_are_not_named_where_the_reply_is_not_read_beside_them(
+    seams: Seams, surface: ConversationSource
+) -> None:
+    seams.conversations.get_source.return_value = surface
+
+    turn = await build_comms_turn(CLAIM, _batch(6, [_with_cards()]))
+
     assert turn.closing == [seams.context.clock]
 
 
