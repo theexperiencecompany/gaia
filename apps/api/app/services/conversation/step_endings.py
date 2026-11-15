@@ -2,7 +2,7 @@
 
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 
-from app.agents.core.comms_ledger import still_open
+from app.agents.core.comms_ledger import answer_sole, still_open
 from app.models.conversation_log_models import (
     BargeIn,
     CommsPhase,
@@ -180,8 +180,9 @@ async def finish_run(
 ) -> LoggedEntry | None:
     """Settle a run that ended on its own, or mark the attempt continuing while it owes messages.
 
-    The first end that owes messages goes on in a run told which; the next hands them to the
-    executor, as a hand-off the user sees. Inputs no message answers settle with the last reply.
+    Words ending a run answer the one message open, unnamed. The first end that owes messages
+    goes on in a run told which; the next hands them to the executor, as a hand-off the user
+    sees. Inputs no message answers settle with the last reply.
     """
     if attempt.split:
         await end_interim(ports, attempt)
@@ -190,6 +191,9 @@ async def finish_run(
         # Words the run said but never streamed are what this segment shows before it settles.
         attempt.progress = Drafting(reply=reply)
     named = await settle_passed(ports, attempt)
+    if base_reply(attempt).text.strip() and answer_sole(attempt.ledger):
+        # With one message open there is nothing to name: the words the run ended on answer it.
+        named = await settle_passed(ports, attempt) or named
     owing = still_open(attempt.ledger)
     if owing and not attempt.reminded:
         attempt.reminded = True

@@ -345,21 +345,54 @@ class StepScenarios:
         ]
         await assert_quiet(rt)
 
-    async def test_a_run_ending_owing_a_message_is_told_and_naming_it_answers_with_what_showed(
+    async def test_words_ending_a_run_with_one_message_open_answer_it_with_no_second_run(
         self, rt: Runtime
     ) -> None:
+        rt.runner.script([Forgetful(), text("36"), Finished(Replied("36"))])
+        await send(rt, user("u1"))
+        await run(rt)
+        assert rt.runner.calls == [Started(batch=(1,), context=())]
+        assert [reply.text for reply in await replies(rt)] == ["36"]
+        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
+        await assert_quiet(rt)
+
+    async def test_cards_alone_never_answer_the_one_open_message(self, rt: Runtime) -> None:
         rt.runner.script(
-            [Forgetful(), text("36"), Finished(Replied("36"))],
-            [Close(seqs=(1,)), Finished(Silent())],
+            [Forgetful(), card(), Finished(Replied(""))],
+            [Close(seqs=(1,)), text("here it is"), Finished(Replied("here it is"))],
         )
         await send(rt, user("u1"))
         await run(rt)
         first, again = rt.runner.calls
         assert (first, again.batch) == (Started(batch=(1,), context=()), (1,))
         assert again.note is not None and '#1 "text of u1"' in again.note
+
+    async def test_a_run_ending_with_two_messages_open_is_told_and_naming_both_answers_them(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script(
+            [
+                Forgetful(),
+                text("on it"),
+                Do(arrive(rt, user("u2"))),
+                ModelOutput(True),
+                text("36 and the summary"),
+                Finished(Replied("36 and the summary")),
+            ],
+            [Close(seqs=(1, 3)), Finished(Silent())],
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        first, absorbed, again = rt.runner.calls
+        assert (first, absorbed) == (Started(batch=(1,), context=()), Absorbed((3,)))
+        assert again.note is not None and '#1 "text of u1"' in again.note
+        assert '#3 "text of u2"' in again.note
         assert "just name it" in again.note
-        assert [reply.text for reply in await replies(rt)] == ["36"]
-        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
+        assert [reply.text for reply in await replies(rt)] == ["on it", "36 and the summary"]
+        assert await answered(rt) == [
+            (ReplyOutcome.INTERIM, ()),
+            (ReplyOutcome.ANSWERED, ("u1", "u2")),
+        ]
         await assert_quiet(rt)
 
     async def test_a_message_still_open_after_the_note_is_handed_to_the_executor(

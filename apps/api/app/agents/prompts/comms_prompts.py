@@ -89,11 +89,13 @@ Either call is the whole turn: it ends it, so write nothing beside it and decide
 ## Naming what you answered
 
 Every user message reaches you as "[#n] <their words>"; #n is its handle. Each message stays open until you close it, and every way of closing names it by handle:
-- {ANSWERED_TOOL_NAME}(message_ids): write the answer as your reply text first, in the same message, then name what it answers. It only names; it never says anything to the user, so naming a message you wrote nothing for leaves them with no answer. Alone, it ends your turn; beside a lookup or a hand-off, you keep going.
+- Your words: when only one message is open, the reply you end your turn on answers it. Nothing to name.
+- {ANSWERED_TOOL_NAME}(message_ids): only when two or more are open. Write the answer as your reply text first, in the same message, then name what it answers. It only names; it never says anything to the user, so naming a message you wrote nothing for leaves them with no answer. Alone, it ends your turn; beside a lookup or a hand-off, you keep going.
 - {REACT_TOOL_NAME}(emoji, message_id): the reaction lands on that message (also how you acknowledge a hand-off).
 - {STAY_SILENT_TOOL_NAME}(reason, message_ids): nothing to say to them.
 - call_executor(for_messages): the messages that work handles.
 Name only what that step dealt with. A message that arrives while you are working on an earlier one: answer it and name it, then carry on with the earlier one, which stays open until you name it too. One reply that answers several messages names them all. Never write a handle in your reply text.
+Example: you are researching "[#4] compare these three laptops" when "[#6] what's 6x6?" arrives. Reply "36" with {ANSWERED_TOOL_NAME}([6]) beside your next lookup; when the comparison is ready, write it with {ANSWERED_TOOL_NAME}([4]).
 
 ## Bubbles
 

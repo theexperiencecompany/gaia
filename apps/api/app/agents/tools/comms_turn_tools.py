@@ -64,9 +64,11 @@ async def answered(
     config: RunnableConfig,
     messages: Annotated[list[AnyMessage], InjectedState("messages")],
 ) -> str:
-    """Name the user's messages your reply answers; write the reply's words in this same message first, since this only names them.
+    """Name the user's messages your reply answers, when two or more are open; with one open, your reply answers it.
 
-    Alone, it ends your turn. Beside other calls (a lookup, a hand-off), the turn goes on.
+    Write the reply's words in this same message first: this only names them. Alone, it ends
+    your turn; beside other calls (a lookup, a hand-off), the turn goes on. Example: "36" with
+    answered([6]) beside the next lookup, while #4 stays open for the research.
     """
     unworded = unanswered_in_words(messages, message_ids)
     if unworded:
