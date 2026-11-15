@@ -13,7 +13,12 @@ from app.agents.llm.client import StructuredCallOptions
 from app.agents.llm.exceptions import MalformedStructuredOutputError
 from app.constants.briefing import BRIEF_COMPOSITION_LABEL, BriefAction, BriefOutcome
 from app.models.brief_candidate_models import BriefCandidate
-from app.models.brief_composition_models import BriefComposition, ComposedChart, ComposedItems
+from app.models.brief_composition_models import (
+    BriefComposition,
+    ChartKind,
+    ComposedChart,
+    ComposedItems,
+)
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
 from app.services.briefing.composition import compose
 from app.services.briefing.composition.compose import compose_brief, pool_values
@@ -388,6 +393,29 @@ class TestRetryThenFailLoud:
             ["Series A term sheet"],
         )
         assert model.await_count == 2
+
+    async def test_a_salvaged_brief_keeps_a_true_heading_judged_for_the_user_as_shown(
+        self, model: AsyncMock, headings: AsyncMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        log = MagicMock()
+        monkeypatch.setattr(compose, "log", log)
+        group = _items_block(_item(1, title="[[fact:1]]")).blocks[0]
+        stray_chart = ComposedChart(
+            kind="chart",
+            chart=ChartKind.LINE,
+            series_ids=["no_such_series"],
+            title="Meeting hours",
+            takeaway="A busy week.",
+        )
+        broken = BriefComposition(blocks=[group, stray_chart])
+        model.return_value = broken
+
+        composed = await compose_brief(USER, POOL, "daily")
+
+        shown = _items_block(_item(1, title="Re: Series A term sheet"))
+        assert headings.await_args.args == (USER, shown, POOL)
+        assert composed.rendered == shown
+        assert log.error.call_args.kwargs["answer"] == broken.model_dump()
 
     async def test_a_heading_still_untrue_after_the_retry_gives_way_to_its_states(
         self, model: AsyncMock, headings: AsyncMock
