@@ -110,9 +110,15 @@ each module with `mutants`, its count of mutable AST nodes inside functions on
 the changed lines (rank correlation 0.92 with mutmut's real count on PR #1799).
 A module's `cost` is `20 s + mutants x test files x rate`, at 0.03 s for the
 unit pool (eight mutant workers) and 0.18 s for services (one worker, because
-contract tests share a Redis DB). `plan` gives the spare shards to the pool with
-the most cost per shard and places the costliest module first onto the cheapest
-shard. It warns when a shard's estimate passes `SHARD_BUDGET_SECONDS` (1200).
+contract tests share a Redis DB). `plan` picks the shard COUNT from the cost:
+each pool gets the fewest shards whose packing keeps every shard within
+`SHARD_BUDGET_SECONDS` (1200, which leaves 40% headroom under the deadline). A
+plan below one wave is topped up to `MUTATION_WAVE` (6), because shards that
+run at once cost no wall clock. A plan above `MAX_SHARDS` (24, four waves, far
+under GitHub's 256-job matrix limit) is cut back to it, and the plan warns for
+each shard over budget. Concurrency stays at `max-parallel: 6`, so the shards
+past the first wave queue. Spare shards go to the pool with the most cost per
+shard, and inside a pool the costliest module goes first onto the cheapest shard.
 Each module's mutmut cap is 3x its cost, never under 720 s and never over the
 budget. `shard` also keeps a deadline, `SHARD_DEADLINE_SECONDS` (1680, under the
 30-minute step timeout). Caps shrink to fit the time left, and a module the
