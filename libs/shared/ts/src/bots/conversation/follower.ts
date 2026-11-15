@@ -104,6 +104,7 @@ export class ConversationFollower {
   /** Every platform call, one at a time and in frame order. */
   private chain: Promise<void> = Promise.resolve();
   private closed = false;
+  private failed: { error: unknown } | null = null;
   readonly summary: FollowSummary = {
     repliesDelivered: 0,
     reactionsPlaced: 0,
@@ -169,8 +170,13 @@ export class ConversationFollower {
       // The reply's saved text replaces what streamed when it settles.
       logger.info("reply_delta_gap", { expected: outcome.expected });
     }
-    if (outcome.view === before) return this.chain;
-    return this.enqueue(() => this.render(frame));
+    if (outcome.view !== before) this.enqueue(() => this.render(frame));
+    return this.rendered();
+  }
+
+  /** A platform call failed (a chat that is gone, a blocked bot): this follow renders nothing more. */
+  get deliveryFailed(): boolean {
+    return this.failed !== null;
   }
 
   /** Stop typing and previews; nothing renders after this. */
@@ -181,9 +187,27 @@ export class ConversationFollower {
     this.stopTyping = null;
   }
 
+  /**
+   * Run fn after every platform call queued before it. The chain itself never rejects,
+   * so a voided preview cannot become an unhandled rejection: the first failure closes
+   * the follow and is rethrown to whoever awaits a frame.
+   */
   private enqueue(fn: () => Promise<void>): Promise<void> {
-    this.chain = this.chain.then(() => (this.closed ? undefined : fn()));
+    this.chain = this.chain.then(async () => {
+      if (this.closed) return;
+      try {
+        await fn();
+      } catch (error) {
+        this.failed = { error };
+        this.close();
+      }
+    });
     return this.chain;
+  }
+
+  private async rendered(): Promise<void> {
+    await this.chain;
+    if (this.failed) throw this.failed.error;
   }
 
   private async render(frame: ConversationFrame): Promise<void> {

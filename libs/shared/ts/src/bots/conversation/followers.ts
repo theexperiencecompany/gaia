@@ -13,7 +13,11 @@
 import type { ConversationFrame } from "../../conversation/types";
 import type { BotUserContext } from "../types";
 import { recordBotFailure } from "../utils/failure-reasons";
-import { getHttpStatus, sanitizeErrorForLog } from "../utils/logger";
+import {
+  getHttpStatus,
+  hashLogIdentifier,
+  sanitizeErrorForLog,
+} from "../utils/logger";
 import { sleep } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ConversationFollower } from "./follower";
@@ -234,6 +238,14 @@ export class ConversationFollowers {
         }
       } catch (error) {
         if (abort.signal.aborted) return;
+        if (follower.deliveryFailed) {
+          // The platform refused a send, not the stream: reconnecting replays into the same refusal.
+          recordBotFailure("conversation_delivery_failed", error, {
+            conversation_id: conversationId,
+            user_hash: hashLogIdentifier(ctx.platformUserId),
+          });
+          return;
+        }
         const status = getHttpStatus(error);
         failures += 1;
         const refused = status !== undefined && status >= 400 && status < 500;

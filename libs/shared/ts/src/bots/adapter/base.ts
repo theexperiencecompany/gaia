@@ -99,6 +99,7 @@ import {
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ArrivalOrder } from "./arrival-order";
 import { BotServer } from "./base-server";
+import { listActiveUntilAnswered } from "./resume-list";
 
 /** An outbound artifact, fetched and within the platform's cap, ready to upload. */
 export interface OutboundFile {
@@ -176,6 +177,8 @@ export abstract class BaseBotAdapter {
    */
   protected readonly arrivals = new ArrivalOrder();
   private _followers: ConversationFollowers | null = null;
+  /** Ends the startup resume's wait for the API on shutdown. */
+  private readonly resumeAbort = new AbortController();
 
   /**
    * Shared HTTP server for this bot process, available during all lifecycle methods. Created in
@@ -284,6 +287,7 @@ export abstract class BaseBotAdapter {
       "bot_shutdown",
       { platform: this.platform, component: "base-adapter", trigger },
       async () => {
+        this.resumeAbort.abort();
         if (this._outboundConsumer) {
           await this._outboundConsumer.stop();
           this._outboundConsumer = null;
@@ -761,21 +765,19 @@ export abstract class BaseBotAdapter {
 
   /**
    * Follows again every conversation the server lists as still answering, so a
-   * result that lands after a restart still reaches the platform. Never throws:
-   * a conversation it cannot reach stays in the log and on web.
+   * result that lands after a restart still reaches the platform, asking until the
+   * API answers. Never throws: a conversation it cannot reach stays in the log and on web.
    */
   protected resumeFollows(): Promise<void> {
     return withWideEvent(
       "conversation_resume",
       { platform: this.platform, component: "base-adapter" },
       async () => {
-        let active: ActiveBotConversation[];
-        try {
-          active = await this.gaia.listActiveConversations(this.platform);
-        } catch (error) {
-          recordBotFailure("conversation_resume_list_failed", error);
-          return;
-        }
+        const active = await listActiveUntilAnswered(
+          () => this.gaia.listActiveConversations(this.platform),
+          this.resumeAbort.signal,
+        );
+        if (!active) return;
         const outcomes = await Promise.allSettled(
           active.map((target) => this.followTarget(target)),
         );

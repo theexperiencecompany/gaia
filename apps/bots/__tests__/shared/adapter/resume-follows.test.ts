@@ -132,3 +132,64 @@ describe("a bot restarted while work ran", () => {
     expect(adapter.sent).toEqual([]);
   });
 });
+
+/** What axios throws when nothing listens on the API's port yet. */
+const refused = () =>
+  Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:8000"), {
+    code: "ECONNREFUSED",
+  });
+
+describe("a bot that boots before the API listens", () => {
+  it("asks again with backoff until the API answers, then delivers", async () => {
+    const { adapter, listActiveConversations } = restarted([target(3)]);
+    listActiveConversations
+      .mockRejectedValueOnce(refused())
+      .mockRejectedValueOnce(refused());
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const resumed = adapter.resume();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await resumed;
+    } finally {
+      vi.useRealTimers();
+    }
+    await adapter.conversationsIdle();
+
+    expect(listActiveConversations).toHaveBeenCalledTimes(3);
+    expect(adapter.sent).toEqual(["Your flight is booked."]);
+  });
+
+  it("does not ask again when the API refuses the bot for good", async () => {
+    const { adapter, listActiveConversations } = restarted([target(3)]);
+    listActiveConversations.mockRejectedValueOnce(
+      Object.assign(new Error("Request failed with status code 401"), {
+        response: { status: 401, data: { code: "BOT_API_KEY_INVALID" } },
+      }),
+    );
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const resumed = adapter.resume();
+      await vi.advanceTimersByTimeAsync(10_000);
+      await resumed;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(listActiveConversations).toHaveBeenCalledTimes(1);
+    expect(adapter.sent).toEqual([]);
+  });
+
+  it("stops waiting for the API on shutdown", async () => {
+    const { adapter, listActiveConversations } = restarted([target(3)]);
+    listActiveConversations.mockRejectedValue(refused());
+    const resumed = adapter.resume();
+    await vi.waitFor(() =>
+      expect(listActiveConversations).toHaveBeenCalledTimes(1),
+    );
+
+    await adapter.shutdown("SIGTERM");
+    await resumed;
+
+    expect(listActiveConversations).toHaveBeenCalledTimes(1);
+  });
+});
