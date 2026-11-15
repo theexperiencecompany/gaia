@@ -765,6 +765,10 @@ class TestLedgerAutoMode:
 
         _assert_pending(result)
         assert gate_seams.requested.await_args.args[2].auto_reason == AUTO_ASK_NOTE
+        # With no reason to quote, nothing trails the guidance the model reads.
+        assert str(result.content).endswith(
+            "after approval you run it once via the approve ticket."
+        )
 
     async def test_an_ask_policy_card_carries_no_auto_note(self, gate_seams: GateSeams) -> None:
         result = await gate.decide_tool_call(gated_request())

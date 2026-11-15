@@ -43,7 +43,7 @@ class WorkflowFireOverlapped(Exception):
     """
 
     def __init__(
-        self, *, user_id: str, conversation_id: str, holder: str, awaiting_approval: bool = False
+        self, *, user_id: str, conversation_id: str, holder: str, awaiting_approval: bool
     ) -> None:
         super().__init__(
             f"Workflow fire overlapped an in-flight run of the same workflow (holder: {holder})"

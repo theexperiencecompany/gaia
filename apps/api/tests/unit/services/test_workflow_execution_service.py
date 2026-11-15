@@ -1,11 +1,16 @@
 """Unit tests for app.services.workflow.execution_service — wide-event contract."""
 
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.workflow.execution_service import complete_execution, create_execution
+from app.services.workflow.execution_service import (
+    complete_execution,
+    create_execution,
+    new_execution_id,
+)
 from shared.py.wide_events import log
 
 _MOD = "app.services.workflow.execution_service"
@@ -50,3 +55,13 @@ class TestExecutionWideEventFields:
         assert workflow["steps_count"] == 3
         assert workflow["trigger_type"] == "integration"
         assert workflow["execution_id"] == "exec_1"
+
+
+@pytest.mark.unit
+class TestNewExecutionId:
+    def test_each_fire_gets_its_own_twelve_hex_id(self) -> None:
+        first, second = new_execution_id(), new_execution_id()
+
+        assert re.fullmatch(r"exec_[0-9a-f]{12}", first)
+        assert re.fullmatch(r"exec_[0-9a-f]{12}", second)
+        assert first != second

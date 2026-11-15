@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import time_machine
+
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.models.notification.notification_models import (
     ActionStyle,
@@ -26,6 +28,7 @@ from app.models.workflow_models import IntegrationRef
 from app.workers.tasks.workflow_tasks import (
     _notify_workflow_failed,
     _notify_workflow_paused_for_integrations,
+    _record_execution_failure,
     execute_workflow_by_id,
 )
 
@@ -255,3 +258,36 @@ class TestTheLimitNoticeIsClaimedPerWorkflow:
             )
 
         claim.assert_awaited_once_with("6812f0b3c9a14e2b7d5a91c9", "wf-1")
+
+
+class TestEachNoticeHasTheOneIdItsFactHas:
+    """The id is the dedupe key: a retried fire must reproduce it exactly, or the user is told twice."""
+
+    async def test_a_pause_notice_is_keyed_by_the_workflow_and_the_fire(self) -> None:
+        with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
+            await _notify_workflow_paused_for_integrations(_workflow(), GMAIL, FIRED_AT)
+
+        assert notify.await_args.args[0].id == "0c283fdd-c262-5a7c-a6b2-ba1839d4f004"
+
+    async def test_a_failure_notice_is_keyed_by_its_execution(self) -> None:
+        with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
+            await _notify_workflow_failed(RuntimeError("boom"), _workflow(), "exec_1")
+
+        assert notify.await_args.args[0].id == "bbca019f-e409-551c-b121-e67c1ebd72f0"
+
+    @time_machine.travel(datetime(2026, 11, 14, 23, 30, tzinfo=UTC), tick=False)
+    async def test_a_failure_before_any_execution_record_is_one_notice_per_utc_day(self) -> None:
+        with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
+            await _notify_workflow_failed(RuntimeError("boom"), _workflow(), None)
+
+        assert notify.await_args.args[0].id == "d8b0529b-1aee-5758-9a1e-6d540d28c8c0"
+
+    async def test_closing_out_a_failed_run_notifies_under_that_run(self) -> None:
+        with (
+            patch(f"{MODULE}.complete_execution", new_callable=AsyncMock),
+            patch(f"{MODULE}.WorkflowService.increment_execution_count", new_callable=AsyncMock),
+            patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify,
+        ):
+            await _record_execution_failure(RuntimeError("boom"), _workflow(), "wf-1", "exec_9")
+
+        assert notify.await_args.args[0].id == "05240ce1-6da4-5618-9eb9-3abf4289f6f2"
