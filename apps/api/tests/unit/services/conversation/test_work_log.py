@@ -249,6 +249,7 @@ async def test_gaias_stop_covers_what_came_before_its_batch_and_cancels_that_wor
         "batch_start": asked.seq,
         "cause_through": asked.seq,
         "answers": ["u2"],
+        "asked": True,
     }
     rt.frames.conversations.clear()
     rt.effects.addressed.clear()

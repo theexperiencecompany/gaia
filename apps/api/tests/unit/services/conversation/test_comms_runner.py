@@ -581,6 +581,31 @@ async def test_input_absorbed_past_a_stop_never_reaches_the_model(conversation_i
     }
 
 
+async def test_a_request_joining_an_attempt_that_only_reported_work_lets_it_start_work(
+    conversation_id: str,
+) -> None:
+    model = gated(recall_call(), "answered both")
+    first = batch(logged(1, notice("n1")))
+    step = step_turn_ref(claim(conversation_id), first)
+    assert step["asked"] is False
+    async with comms_graph([], model=model) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id, step=step).start(claim(conversation_id), first, ())
+
+            async def absorb_on_tool_call(event: RunEvent) -> None:
+                if event == ModelOutput(has_tool_calls=True):
+                    await run.absorb([logged(2, user("u2"))])
+
+            await collect(run, absorb_on_tool_call)
+    assert step == {
+        "epoch": 1,
+        "batch_start": 1,
+        "cause_through": 2,
+        "answers": ["u2"],
+        "asked": True,
+    }
+
+
 async def test_a_stop_absorbed_alone_joins_nothing_to_the_step(conversation_id: str) -> None:
     model = gated(recall_call(), "answered one")
     first = batch(logged(1, user("u1")))
