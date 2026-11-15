@@ -145,6 +145,14 @@ async def _compose(
         )
 
 
+async def test_the_compose_call_is_metered_to_the_user_it_speaks_to() -> None:
+    model = _model(_result(("must", "include"), parts=["Hi"]))
+
+    await _compose(model, [MUST])
+
+    assert model.await_args.kwargs["config"] == {"configurable": {"user_id": "u"}}
+
+
 async def test_a_valid_answer_is_used_as_is() -> None:
     model = _model(_result(("must", "include"), ("optional", "skip"), parts=[" Hi "]))
 

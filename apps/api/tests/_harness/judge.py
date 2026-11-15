@@ -43,6 +43,7 @@ def verdict(**overrides: Any) -> JudgeVerdict:
         "audience_ok_for_group": True,
         "moment": Moment.OK,
         "suspicious": False,
+        "security_notice": False,
         "reason": "scripted",
         "confidence": 0.9,
         "not_worth_probability": 0.0,
@@ -84,6 +85,7 @@ def answers(**overrides: ChoiceAnswer) -> PassAnswers:
         JudgeQuestion.WORTH_TELLING: choice("yes", {"yes": 0.9, "no": 0.1}),
         JudgeQuestion.WITHIN_MINUTES: choice("no", {"yes": 0.1, "no": 0.9}),
         JudgeQuestion.BEFORE_CHECKIN: choice("no", {"yes": 0.1, "no": 0.9}),
+        JudgeQuestion.SECURITY_NOTICE: choice("no", {"yes": 0.1, "no": 0.9}),
     }
     base.update({JudgeQuestion(name): answer for name, answer in overrides.items()})
     return PassAnswers(answers=base)

@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from app.constants.outbox_judge import JUDGE_INTERRUPT_DAILY_CAP, JUDGE_SECURITY_TOPIC
+from app.constants.outbox_judge import JUDGE_INTERRUPT_DAILY_CAP
 from app.models.ownership_models import DeliveryPolicy, DeliveryTiming
 from app.services.outbox.judge_models import Deadline, Relevance, Sensitivity
 from app.services.outbox.models import (
@@ -38,6 +38,25 @@ def test_a_new_item_is_sent() -> None:
     assert decide(notice(), verdict()).kind is DecisionKind.SEND_NOW
 
 
+@pytest.mark.parametrize("relevance", [Relevance.ALREADY_KNOWN, Relevance.DUPLICATE])
+def test_an_answer_is_never_called_known_unless_gaia_told_it(relevance: Relevance) -> None:
+    """Regression: an asked answer was dropped as already known while the ledger held no message."""
+    asked = notice(initiative=Initiative.ASKED)
+    sure = verdict(relevance=relevance, not_worth_probability=1.0)
+
+    untold = decide(asked, sure, told_before=False)
+    told = decide(asked, sure, told_before=True)
+
+    assert untold.kind is DecisionKind.SEND_NOW
+    assert (told.kind, told.drop_reason) == (DecisionKind.RECORD_ONLY, DropReason(relevance.value))
+
+
+def test_an_answer_the_user_handled_themselves_is_still_recorded_as_moot() -> None:
+    sure = verdict(relevance=Relevance.MOOT, not_worth_probability=1.0)
+
+    assert decide(notice(initiative=Initiative.ASKED), sure).kind is DecisionKind.RECORD_ONLY
+
+
 def test_a_reminder_the_user_set_is_suppressed_only_when_the_judge_is_sure() -> None:
     unsure = verdict(relevance=Relevance.MOOT, not_worth_probability=0.7)
     sure = verdict(relevance=Relevance.MOOT, not_worth_probability=0.95)
@@ -65,7 +84,7 @@ def test_a_repeat_of_what_gaia_said_never_hides_an_item_with_a_deadline() -> Non
 
 def test_a_security_notice_is_never_recorded_as_not_worth_telling() -> None:
     by_topic = verdict(
-        relevance=Relevance.DUPLICATE, not_worth_probability=1.0, topics=[JUDGE_SECURITY_TOPIC]
+        relevance=Relevance.DUPLICATE, not_worth_probability=1.0, security_notice=True
     )
     by_sensitivity = verdict(
         relevance=Relevance.DUPLICATE,
@@ -75,6 +94,18 @@ def test_a_security_notice_is_never_recorded_as_not_worth_telling() -> None:
 
     assert decide(notice(), by_topic).kind is DecisionKind.SEND_NOW
     assert decide(notice(), by_sensitivity).kind is DecisionKind.SEND_NOW
+
+
+def test_a_suspicious_security_alert_is_not_exempt_from_being_recorded() -> None:
+    """Regression: a phishing "account locked" alert passed as a security notice."""
+    phishing = verdict(
+        relevance=Relevance.DUPLICATE,
+        not_worth_probability=1.0,
+        security_notice=True,
+        suspicious=True,
+    )
+
+    assert decide(notice(), phishing).kind is DecisionKind.RECORD_ONLY
 
 
 def test_the_judge_may_raise_urgency_and_the_interrupt_is_counted() -> None:
@@ -146,7 +177,7 @@ def test_the_judge_cannot_lower_what_the_user_asked_for() -> None:
 
 
 def test_the_judge_cannot_lower_a_security_notice() -> None:
-    security = verdict(urgency=UrgencyClass.BACKGROUND, topics=[JUDGE_SECURITY_TOPIC])
+    security = verdict(urgency=UrgencyClass.BACKGROUND, security_notice=True)
 
     assert decide(notice(outcome="failed"), security).urgency is UrgencyClass.TIMELY
 

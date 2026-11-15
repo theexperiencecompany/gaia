@@ -27,6 +27,7 @@ from app.services.outbox.holds import (
     next_digest,
     place,
 )
+from app.services.outbox.judge_models import Moment
 from app.services.outbox.judge_verdict import UserClock
 from app.services.outbox.models import DropReason, Initiative, ItemHold, UrgencyClass
 from app.utils.timezone import Timezone
@@ -117,8 +118,61 @@ def test_a_timely_item_whose_deadline_is_here_is_told_in_quiet_hours() -> None:
     assert place(notice(), UrgencyClass.TIMELY, item, _state(NIGHT)) == Tell()
 
 
+def test_a_user_who_just_wrote_does_not_end_their_do_not_disturb() -> None:
+    until = DAY + timedelta(hours=2)
+    state = _state(
+        DAY, settings=AttentionSettings(dnd_until=until), last_active_at=DAY - timedelta(minutes=1)
+    )
+
+    placed = place(notice(), ROUTINE, verdict(), state)
+
+    assert isinstance(placed, Hold)
+    assert placed.reason is HoldReason.DND
+
+
+def test_a_suspicious_security_alert_is_held_through_do_not_disturb() -> None:
+    dnd = _state(DAY, settings=AttentionSettings(dnd_until=DAY + timedelta(hours=2)))
+    phishing = verdict(security_notice=True, suspicious=True)
+
+    placed = place(notice(), UrgencyClass.INTERRUPT, phishing, dnd)
+
+    assert isinstance(placed, Hold) and placed.reason is HoldReason.DND
+
+
+def test_a_bad_moment_holds_an_unsolicited_item_until_the_next_checkin() -> None:
+    bad = verdict(moment=Moment.HOLD)
+
+    placed = place(notice(), ROUTINE, bad, _state(DAY))
+
+    assert placed == Hold(
+        DAY.replace(hour=13) + timedelta(seconds=crc32(USER.encode()) % FLUSH_JITTER_MAX_SECONDS),
+        HoldReason.BAD_MOMENT,
+    )
+    timely = place(notice(), UrgencyClass.TIMELY, bad, _state(DAY))
+    assert isinstance(timely, Hold) and timely.reason is HoldReason.BAD_MOMENT
+
+
+def test_a_bad_moment_never_holds_an_answer_an_interrupt_or_a_security_notice() -> None:
+    bad = verdict(moment=Moment.HOLD)
+    security = verdict(moment=Moment.HOLD, security_notice=True)
+
+    assert place(notice(initiative=Initiative.ASKED), ROUTINE, bad, _state(DAY)) == Tell()
+    assert place(notice(), UrgencyClass.INTERRUPT, bad, _state(DAY)) == Tell()
+    assert place(notice(), UrgencyClass.TIMELY, security, _state(DAY)) == Tell()
+
+
+def test_a_bad_moment_ends_at_the_items_deadline_and_is_not_held_again_once_released() -> None:
+    soon = DAY + timedelta(hours=1)
+    bad = verdict(moment=Moment.HOLD, deliver_by=soon + timedelta(minutes=15))
+
+    bounded = place(notice(), ROUTINE, bad, _state(DAY))
+
+    assert bounded == Hold(soon, HoldReason.BAD_MOMENT)
+    assert place(notice(), ROUTINE, bad, _state(DAY), released=True) == Tell()
+
+
 def test_a_security_notice_is_told_in_quiet_hours() -> None:
-    security = verdict(topics=["security"])
+    security = verdict(security_notice=True)
 
     assert place(notice(), ROUTINE, security, _state(NIGHT)) == Tell()
 
@@ -314,7 +368,7 @@ def test_a_notices_valid_until_bounds_a_hold_for_quiet_hours() -> None:
 
 def test_a_security_notice_raised_to_an_interrupt_crosses_do_not_disturb() -> None:
     dnd = _state(DAY, settings=AttentionSettings(dnd_until=DAY + timedelta(hours=2)))
-    security = verdict(topics=["security"])
+    security = verdict(security_notice=True)
 
     assert place(notice(), UrgencyClass.INTERRUPT, security, dnd) == Tell()
 
@@ -362,7 +416,7 @@ def test_an_answer_and_an_interrupt_are_told_in_a_call() -> None:
 
 
 def test_a_security_notice_is_not_held_for_a_call() -> None:
-    assert place(notice(), UrgencyClass.TIMELY, verdict(topics=["security"]), _in_call()) == Tell()
+    assert place(notice(), UrgencyClass.TIMELY, verdict(security_notice=True), _in_call()) == Tell()
 
 
 def test_a_call_never_holds_an_item_past_its_deadline() -> None:

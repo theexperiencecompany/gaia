@@ -1534,6 +1534,33 @@ class TestRecentMessages:
             ]
         )
 
+    async def test_it_leaves_out_chats_the_user_never_read_a_run_log_or_an_automation(
+        self, repo, raw_collection
+    ):
+        user = _uid()
+        chat = await self._chat(
+            repo, raw_collection, user, source=None, texts=["hi", "hello"], minutes_ago=5
+        )
+        for hidden in ({"todo_id": "t1"}, {"is_system_generated": True}):
+            doc = _doc(
+                user_id=user,
+                messages=[
+                    {"type": "bot", "response": "run log", "date": "2026-11-10T09:00:00+00:00"}
+                ],
+                **hidden,
+            )
+            await repo.create(doc)
+            await raw_collection.update_one(
+                {"conversation_id": doc.conversation_id},
+                {"$set": {"updatedAt": datetime.now(UTC)}},
+            )
+
+        rows = await repo.recent_messages(
+            user, since=datetime.now(UTC) - timedelta(days=1), conversations=5, per_conversation=5
+        )
+
+        assert {r.conversation_id for r in rows} == {chat}
+
     async def test_it_scans_only_the_newest_conversations(self, repo, raw_collection):
         user = _uid()
         for n in range(4):

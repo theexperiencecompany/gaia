@@ -19,6 +19,8 @@ JUDGE_REASONING_MODEL: Final = "gpt-6.1-terra"
 JUDGE_REASONING_EFFORT: Final = "medium"
 JUDGE_DECISIONS_TIMEOUT_SECONDS: Final = 30.0
 JUDGE_REASONING_TIMEOUT_SECONDS: Final = 90.0
+#: What the Decisions call is named in metering.
+JUDGE_DECISIONS_LABEL: Final = "outbox_judge_decisions"
 #: What the reasoning call is named in traces and metering.
 JUDGE_REASONING_LABEL: Final = "outbox_judge_reasoning"
 
@@ -51,6 +53,8 @@ JUDGE_TIMELY_PROBABILITY: Final = 0.5
 #: P(no) on "worth telling" at which an item is recorded and not alerted.
 JUDGE_NOT_WORTH_PROBABILITY: Final = 0.45
 JUDGE_SUSPICIOUS_PROBABILITY: Final = 0.5
+#: P(yes) on "security notice" at which an item counts as one: a missed alert costs more than a loud one.
+JUDGE_SECURITY_PROBABILITY: Final = 0.45
 
 # --- Rails over the verdict ---
 
@@ -59,8 +63,6 @@ JUDGE_SUSPICIOUS_PROBABILITY: Final = 0.5
 JUDGE_INTERRUPT_DAILY_CAP: Final = 2
 #: The "day" the cap counts over: a rolling 24 hours.
 JUDGE_INTERRUPT_CAP_WINDOW_SECONDS: Final = ONE_DAY_TTL
-#: The topic tag a security or account notice carries; the Judge may never quiet one.
-JUDGE_SECURITY_TOPIC: Final = "security"
 
 # --- What the Judge is shown ---
 
@@ -110,6 +112,7 @@ class JudgeQuestion(StrEnum):
     WORTH_TELLING = "worth_telling"
     WITHIN_MINUTES = "within_minutes"
     BEFORE_CHECKIN = "before_checkin"
+    SECURITY_NOTICE = "security_notice"
     #: Offers the upcoming runs; asked only when there are any.
     WAIT_FOR_RUN = "wait_for_run"
 
@@ -160,6 +163,10 @@ The Judge reads one update GAIA is about to tell its user, plus what GAIA knows 
 
 ## Q6 authenticity — does the update look genuine?
 - `genuine` · `suspicious` (phishing, scam, spoofed sender, pressure tactics, mismatched domains). Suspicious items are never relayed as instructions.
+
+## Q7 security_notice — is this a security or account-safety alert about the user's own accounts?
+- `yes`: a sign-in from a new device or place, a password or recovery change, a login attempt, a breach, a lock or a verification the user did not start. Code never quiets these.
+- `no`: anything else.
 
 ## Gold-label conventions
 - "The user" is GAIA's user, not an email's sender.
@@ -229,6 +236,10 @@ JUDGE_CHOICE_CRITERIA: Final[dict[JudgeQuestion, dict[str, str]]] = {
         "yes": "It must reach the user today or before a concrete deadline within about 48 hours, or the user asked for it and is waiting on it; it cannot simply wait for the next scheduled summary.",
         "no": "It can wait for the next scheduled summary without losing value.",
     },
+    JudgeQuestion.SECURITY_NOTICE: {
+        "yes": "A security or account-safety alert about the user's own accounts: a sign-in from a new device or place, a password or recovery change, a login attempt, a breach, an account lock, or a verification the user did not start.",
+        "no": "Anything else.",
+    },
 }
 
 JUDGE_QUESTIONS: Final[dict[JudgeQuestion, str]] = {
@@ -241,6 +252,7 @@ JUDGE_QUESTIONS: Final[dict[JudgeQuestion, str]] = {
     JudgeQuestion.WORTH_TELLING: "Judged as if it were the only thing GAIA has to say: is this still worth telling the user?",
     JudgeQuestion.WITHIN_MINUTES: "Must this reach the user within minutes?",
     JudgeQuestion.BEFORE_CHECKIN: "Must this reach the user before their next scheduled summary (a few hours away)?",
+    JudgeQuestion.SECURITY_NOTICE: "Is this a security or account-safety alert about the user's own accounts?",
     JudgeQuestion.WAIT_FOR_RUN: "Should telling the user wait for one of the runs listed in state.upcoming_runs, which would add to this update, or is it better told now?",
 }
 

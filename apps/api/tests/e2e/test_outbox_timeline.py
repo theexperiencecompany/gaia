@@ -73,7 +73,7 @@ from app.services.email.models import EmailRejectedError
 from app.services.outbox.approvals import ApprovalAsk, ApprovalNoticeState, approval_notice
 from app.services.outbox.deliver import flush_subject
 from app.services.outbox.flush import release_on_return, sweep_lost_flushes
-from app.services.outbox.judge_models import Relevance, Sensitivity
+from app.services.outbox.judge_models import Moment, Relevance, Sensitivity
 from app.services.outbox.models import (
     ComposeResult,
     DropReason,
@@ -1108,7 +1108,7 @@ async def test_the_judge_finding_an_update_moot_records_it_and_keeps_the_why(
 ) -> None:
     report = _run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED)
     tl.judge.verdicts["run-1"] = verdict(
-        relevance=Relevance.ALREADY_KNOWN,
+        relevance=Relevance.MOOT,
         not_worth_probability=0.97,
         reason="the user said they paid it themselves",
     )
@@ -1117,11 +1117,47 @@ async def test_the_judge_finding_an_update_moot_records_it_and_keeps_the_why(
     await tl.drain()
 
     [item] = await tl.items()
-    assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.ALREADY_KNOWN)
+    assert (item.state, item.drop_reason) == (ItemState.DROPPED, DropReason.MOOT)
     assert item.judgement is not None and item.judgement.verdict is not None
     assert item.judgement.verdict.reason == "the user said they paid it themselves"
     assert await tl.ledger() == []
     assert tl.sinks.bot == [] and tl.sinks.ws == []
+
+
+async def test_an_answer_the_judge_calls_known_is_told_when_the_ledger_holds_no_telling(
+    tl: OutboxTimeline,
+) -> None:
+    """Regression: an asked todo's result was dropped as already known with nothing sent."""
+    tl.world.app_chat("web-1")
+    tl.judge.verdicts["run-1"] = verdict(
+        relevance=Relevance.ALREADY_KNOWN,
+        not_worth_probability=0.97,
+        reason="GAIA already confirmed it",
+    )
+
+    await tl.submit(_run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED))
+    await tl.drain()
+
+    [item] = await tl.items()
+    assert item.state is ItemState.SENT
+    assert len(await tl.ledger()) == 1
+
+
+async def test_an_answer_the_judge_calls_known_is_recorded_once_the_ledger_shows_it_told(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.app_chat("web-1")
+    await tl.submit(_run("run-1", OutcomeState.DONE, initiative=Initiative.ASKED))
+    await tl.drain()
+    tl.judge.verdicts["run-2"] = verdict(
+        relevance=Relevance.ALREADY_KNOWN, not_worth_probability=0.97
+    )
+
+    await tl.at(5)
+    await tl.submit(_run("run-2", OutcomeState.DONE, minutes=5, initiative=Initiative.ASKED))
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT, "run-2": ItemState.DROPPED}
 
 
 async def test_b17_a_muted_workflow_that_needs_the_user_is_told(tl: OutboxTimeline) -> None:
@@ -1490,6 +1526,21 @@ async def test_do_not_disturb_holds_an_update_until_it_ends(tl: OutboxTimeline) 
     assert await _states(tl) == {"run-1": ItemState.SENT}
 
 
+async def test_a_bad_moment_holds_an_update_until_the_checkin_and_then_tells_it(
+    tl: OutboxTimeline,
+) -> None:
+    tl.judge.verdicts["run-1"] = verdict(urgency=UrgencyClass.ROUTINE, moment=Moment.HOLD)
+    await _told_at(tl, _routine("run-1", "todo-1", 0), 0)
+
+    assert [event.reason for event in tl.sinks.held] == ["bad_moment"]
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+
+    await tl.at(60 * 5)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.SENT}
+
+
 async def test_a_lost_flush_job_is_found_by_the_sweep(tl: OutboxTimeline) -> None:
     _judged_routine(tl, "run-1")
     await _told_at(tl, _routine("run-1", "todo-1", 840), 840)
@@ -1786,10 +1837,11 @@ async def test_ending_do_not_disturb_tells_what_it_held_at_once(tl: OutboxTimeli
     assert await _states(tl) == {"run-1": ItemState.SENT}
 
 
-async def test_a_users_return_releases_what_do_not_disturb_held(tl: OutboxTimeline) -> None:
-    await attention_settings_repository.save(
-        USER, AttentionSettings(dnd_until=T0 + timedelta(hours=2))
-    )
+async def test_a_users_return_never_ends_do_not_disturb(tl: OutboxTimeline) -> None:
+    """Regression: a routine update filed while the user was chatting went out through do-not-disturb."""
+    until = T0 + timedelta(hours=2)
+    await attention_settings_repository.save(USER, AttentionSettings(dnd_until=until))
+    await tl.active_on(ConversationSource.WEB)
     _judged_routine(tl, "run-1")
     await _told_at(tl, _routine("run-1", "todo-1", 0), 0)
 
@@ -1797,6 +1849,12 @@ async def test_a_users_return_releases_what_do_not_disturb_held(tl: OutboxTimeli
     await tl.active_on(ConversationSource.WEB)
     await release_on_return(USER)
     await tl.at(31)
+    await tl.drain()
+
+    assert await _states(tl) == {"run-1": ItemState.HELD}
+    assert [event.reason for event in tl.sinks.held] == ["dnd"]
+
+    await tl.at(125)
     await tl.drain()
 
     assert await _states(tl) == {"run-1": ItemState.SENT}

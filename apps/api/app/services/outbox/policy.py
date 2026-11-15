@@ -14,7 +14,6 @@ from app.constants.agents import OutcomeState
 from app.constants.outbox_judge import (
     JUDGE_ANSWER_SUPPRESS_PROBABILITY,
     JUDGE_INTERRUPT_DAILY_CAP,
-    JUDGE_SECURITY_TOPIC,
 )
 from app.models.ownership_models import DeliveryTiming
 from app.services.outbox.judge_models import (
@@ -67,6 +66,10 @@ class DecisionKind(StrEnum):
 
     SEND_NOW = "send_now"
     RECORD_ONLY = "record_only"
+
+
+#: What only a telling can make true: the user cannot already know it if GAIA never said it.
+_KNOWN_FROM_TELLING = frozenset({Relevance.ALREADY_KNOWN, Relevance.DUPLICATE})
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +179,10 @@ def is_judge_free(report: OutboxReport, *, watched_live: bool) -> bool:
 
 
 def is_security_notice(verdict: JudgeVerdict) -> bool:
-    return verdict.sensitivity is Sensitivity.CREDENTIALS or JUDGE_SECURITY_TOPIC in verdict.topics
+    """Whether the Judge called the item a genuine security alert, or it carries credentials: never quieted."""
+    return (
+        verdict.security_notice and not verdict.suspicious
+    ) or verdict.sensitivity is Sensitivity.CREDENTIALS
 
 
 def is_users_own(report: OutboxReport, producer: UrgencyClass) -> bool:
@@ -189,11 +195,13 @@ def is_users_own(report: OutboxReport, producer: UrgencyClass) -> bool:
 
 
 def _not_worth_telling(
-    report: OutboxReport, producer: UrgencyClass, verdict: JudgeVerdict
+    report: OutboxReport, producer: UrgencyClass, verdict: JudgeVerdict, *, told_before: bool
 ) -> DropReason | None:
     """Return why the item is recorded only, when the Judge is sure enough that it is not worth telling."""
     reason = _NOT_WORTH_TELLING_REASONS.get(verdict.relevance)
     if reason is None or is_security_notice(verdict):
+        return None
+    if is_answer(report) and verdict.relevance in _KNOWN_FROM_TELLING and not told_before:
         return None
     if is_users_own(report, producer) and (
         verdict.not_worth_probability < JUDGE_ANSWER_SUPPRESS_PROBABILITY
@@ -237,11 +245,14 @@ def decide(
     *,
     watched_live: bool = False,
     interrupts_raised_today: int = 0,
+    told_before: bool = False,
 ) -> Decision:
     """Decide what the outbox does with a report that is new and still to be told.
 
     verdict is None when the Judge was not asked or could not answer: the Rails then decide
-    from what the producer set. watched_live only matters for progress.
+    from what the producer set. watched_live only matters for progress. told_before says the ledger
+    holds a sent message covering the report's subject, series or fact: an answer is recorded as
+    already known or a duplicate only then, since the user cannot know what GAIA never said.
     """
     producer = urgency_of(report)
     reason = record_only_reason(report, watched_live=watched_live)
@@ -251,7 +262,7 @@ def decide(
         return Decision(DecisionKind.SEND_NOW, producer, _mode_of(producer, report))
     authorized = _authorized_urgency(report, producer, verdict, interrupts_raised_today)
     mode = _mode_of(authorized.urgency, report)
-    reason = _not_worth_telling(report, producer, verdict)
+    reason = _not_worth_telling(report, producer, verdict, told_before=told_before)
     if reason is not None:
         return Decision(
             DecisionKind.RECORD_ONLY,

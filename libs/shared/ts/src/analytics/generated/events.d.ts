@@ -619,7 +619,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "reason": "quiet_hours" | "dnd" | "not_before" | "checkin" | "gap" | "wait_for_run" | "in_call" | "dormant";
+    "reason": "quiet_hours" | "dnd" | "not_before" | "checkin" | "gap" | "wait_for_run" | "in_call" | "dormant" | "bad_moment";
     "max_class": "background" | "routine" | "timely" | "interrupt";
   };
   "delivery:message_sent": {

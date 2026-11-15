@@ -69,7 +69,15 @@ class DeliveryItemHeld(ServerEvent):
     budget_per_user_day: ClassVar[int] = 500
 
     reason: Literal[
-        "quiet_hours", "dnd", "not_before", "checkin", "gap", "wait_for_run", "in_call", "dormant"
+        "quiet_hours",
+        "dnd",
+        "not_before",
+        "checkin",
+        "gap",
+        "wait_for_run",
+        "in_call",
+        "dormant",
+        "bad_moment",
     ]
     max_class: Literal["background", "routine", "timely", "interrupt"]
 

@@ -13,6 +13,7 @@ from app.constants.outbox_judge import (
     JUDGE_INTERRUPT_PROBABILITY,
     JUDGE_NO_WAIT,
     JUDGE_NOT_WORTH_PROBABILITY,
+    JUDGE_SECURITY_PROBABILITY,
     JUDGE_SUSPICIOUS_PROBABILITY,
     JUDGE_TIMELY_PROBABILITY,
     JudgeQuestion,
@@ -89,6 +90,7 @@ def answers_from_reasoning(answer: ReasoningAnswer) -> PassAnswers:
         JudgeQuestion.WORTH_TELLING: answer.worth_telling.value,
         JudgeQuestion.WITHIN_MINUTES: answer.within_minutes.value,
         JudgeQuestion.BEFORE_CHECKIN: answer.before_checkin.value,
+        JudgeQuestion.SECURITY_NOTICE: answer.security_notice.value,
         JudgeQuestion.WAIT_FOR_RUN: answer.wait_for_run or JUDGE_NO_WAIT,
     }
     return PassAnswers(
@@ -206,6 +208,8 @@ def build_verdict(
         moment=Moment(answers.get(JudgeQuestion.MOMENT).choice),
         suspicious=answers.get(JudgeQuestion.AUTHENTICITY).probability(Authenticity.SUSPICIOUS)
         >= JUDGE_SUSPICIOUS_PROBABILITY,
+        security_notice=answers.get(JudgeQuestion.SECURITY_NOTICE).probability(YesNo.YES)
+        >= JUDGE_SECURITY_PROBABILITY,
         wait_for_run=_wait_for_run(answers, offered_runs),
         reason=_reason(answers),
         confidence=decisions_confidence,

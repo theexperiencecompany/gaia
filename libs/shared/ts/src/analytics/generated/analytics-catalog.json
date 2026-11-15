@@ -2585,7 +2585,8 @@
               "gap",
               "wait_for_run",
               "in_call",
-              "dormant"
+              "dormant",
+              "bad_moment"
             ],
             "title": "Reason",
             "type": "string"

@@ -203,6 +203,7 @@ def _reasoning(**overrides: object) -> ReasoningAnswer:
         "worth_telling": "yes",
         "within_minutes": "no",
         "before_checkin": "yes",
+        "security_notice": "no",
         "wait_for_run": None,
         "reason": "A card decline needs a fix today.",
         "relevance_ref": None,
@@ -251,6 +252,24 @@ def test_the_reasoning_model_saying_no_is_read_as_certainly_not_worth_telling() 
 
     assert (verdict.relevance, verdict.not_worth_probability) == (Relevance.SUPERSEDED, 1.0)
     assert passed.get(JudgeQuestion.WAIT_FOR_RUN).choice == "none"
+
+
+def test_a_security_alert_is_read_from_the_judges_answer_whatever_topics_it_tags() -> None:
+    """Regression: a Google sign-in alert tagged "account security" was not exempt from do-not-disturb."""
+    reasoning = _reasoning(security_notice="yes", topics=["account security", "sign-in"])
+
+    verdict = build_verdict(
+        answers_from_reasoning(reasoning),
+        decided_by=JudgePass.REASONING,
+        decisions_confidence=None,
+        now=NOW,
+        clock=IST,
+        offered_runs=frozenset(),
+    )
+    quiet = _read(answers())
+
+    assert (verdict.security_notice, quiet.security_notice) == (True, False)
+    assert verdict.topics == ["account security", "sign-in"]
 
 
 def test_a_decisions_verdict_has_a_machine_reason_and_no_free_form_facts() -> None:

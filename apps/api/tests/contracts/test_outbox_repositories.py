@@ -179,6 +179,25 @@ async def test_the_send_steps_only_move_items_that_are_in_the_step_before(repos)
     assert claimed.report_id == "a"
 
 
+async def test_an_item_is_covered_by_a_sent_one_of_its_subject_series_or_fact(repos) -> None:
+    items, _ = repos
+    sent = _report("sent", subject="s1")
+    await _queued(items, sent)
+    await items.claim_queued_for_subject(USER, "s1", "att")
+    await items.begin_send(USER, "att")
+    await items.finish_send(USER, "att", ItemState.SENT)
+    await _queued(items, _report("queued-only", subject="s2"))
+
+    assert await items.has_sent_covering(USER, _report("new", subject="s1"), same_fact_key=None)
+    assert not await items.has_sent_covering(USER, _report("new", subject="s2"), same_fact_key=None)
+    assert not await items.has_sent_covering(
+        USER, _report("sent", subject="s1"), same_fact_key=None
+    )
+    assert not await items.has_sent_covering(
+        "6812f0b3c9a14e2b7d5a91dd", _report("new", subject="s1"), same_fact_key=None
+    )
+
+
 async def test_a_released_attempt_returns_its_items_to_the_queue(repos) -> None:
     items, _ = repos
     await _queued(items, _report("a"))

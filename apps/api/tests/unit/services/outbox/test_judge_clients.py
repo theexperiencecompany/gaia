@@ -1,6 +1,6 @@
 """The two ways the Judge is asked: the Decisions request and answer, and the reasoning model's prompt."""
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 import json
 from typing import Any
@@ -12,6 +12,7 @@ import pytest
 from app.constants.outbox_judge import (
     JUDGE_ANONYMISED_STATE_NOTE,
     JUDGE_CHOICE_CRITERIA,
+    JUDGE_DECISIONS_LABEL,
     JUDGE_DECISIONS_URL,
     JUDGE_FAST_MODEL,
     JUDGE_QUESTIONS,
@@ -45,11 +46,21 @@ STATE = {"now": "2026-11-10T09:00:00Z", "item": {"facts": ["x"]}}
 RUNS = {"workflow:wf_1": "Morning briefing"}
 
 
+@pytest.fixture(autouse=True)
+def _ledger() -> Iterator[AsyncMock]:
+    with patch.object(judge_clients, "record_llm_call", AsyncMock(return_value=0.0)) as record:
+        yield record
+
+
 def _answer(question: JudgeQuestion, runs: Mapping[str, str]) -> dict[str, Any]:
     first = next(
         iter(runs if question is JudgeQuestion.WAIT_FOR_RUN else JUDGE_CHOICE_CRITERIA[question])
     )
-    return {"choice": first, "probabilities": {first: 0.8}, "confidence": 0.6}
+    return {
+        "choice": first,
+        "probabilities": [{"value": first, "probability": 0.8}],
+        "confidence": 0.6,
+    }
 
 
 def _body(runs: Mapping[str, str] | None = None) -> dict[str, Any]:
@@ -71,6 +82,7 @@ def test_every_question_offers_exactly_the_choices_its_enum_names() -> None:
         JudgeQuestion.WORTH_TELLING: YesNo,
         JudgeQuestion.WITHIN_MINUTES: YesNo,
         JudgeQuestion.BEFORE_CHECKIN: YesNo,
+        JudgeQuestion.SECURITY_NOTICE: YesNo,
     }
 
     for question, enum in enums.items():
@@ -129,6 +141,33 @@ def test_a_decisions_answer_is_read_by_question() -> None:
     urgency = answers.get(JudgeQuestion.URGENCY)
     assert (urgency.choice, urgency.confidence) == ("interrupt", 0.6)
     assert urgency.probability("interrupt") == 0.8
+
+
+def test_the_live_wire_shape_lists_a_probability_per_choice() -> None:
+    """Regression: the live Decisions API returns probabilities as a list of {value, probability}."""
+    body = {
+        "answers": [
+            {
+                "name": "urgency",
+                "choice": "routine",
+                "probabilities": [
+                    {"value": "interrupt", "probability": 0.27},
+                    {"value": "routine", "probability": 0.7},
+                ],
+                "confidence": 0.7,
+            }
+        ]
+    }
+    body["answers"].extend(
+        {"name": q.value, **_answer(q, {})}
+        for q in asked_questions({})
+        if q is not JudgeQuestion.URGENCY
+    )
+
+    urgency = read_decisions(body, {}).get(JudgeQuestion.URGENCY)
+
+    assert (urgency.choice, urgency.confidence) == ("routine", 0.7)
+    assert (urgency.probability("interrupt"), urgency.probability("routine")) == (0.27, 0.7)
 
 
 def test_answers_listed_by_name_are_read_like_answers_keyed_by_name() -> None:
@@ -193,7 +232,7 @@ async def test_the_decisions_api_is_asked_with_the_saved_key() -> None:
         patch.object(judge_clients, "_openai_key", AsyncMock(return_value="sk-test")),
         patch("app.services.outbox.judge_clients.httpx.AsyncClient", return_value=client),
     ):
-        answers = await ask_decisions(STATE, {})
+        answers = await ask_decisions(STATE, {}, user_id="u1")
 
     url, sent, headers = client.posted[0]
     assert (url, headers) == (JUDGE_DECISIONS_URL, {"Authorization": "Bearer sk-test"})
@@ -208,7 +247,52 @@ async def test_a_failed_decisions_call_raises() -> None:
         patch("app.services.outbox.judge_clients.httpx.AsyncClient", return_value=client),
         pytest.raises(httpx.HTTPStatusError),
     ):
-        await ask_decisions(STATE, {})
+        await ask_decisions(STATE, {}, user_id="u1")
+
+
+async def test_the_decisions_usage_is_metered_to_the_user_as_background_spend(
+    _ledger: AsyncMock,
+) -> None:
+    body = {**_body(), "usage": {"input_tokens": 1200, "output_tokens": 30}}
+    record = _ledger
+    with (
+        patch.object(judge_clients, "_openai_key", AsyncMock(return_value="sk-test")),
+        patch(
+            "app.services.outbox.judge_clients.httpx.AsyncClient",
+            return_value=_Client(_response(200, body)),
+        ),
+    ):
+        await ask_decisions(STATE, {}, user_id="u1")
+
+    kwargs = record.await_args.kwargs
+    assert (kwargs["user_id"], kwargs["model_name"]) == ("u1", JUDGE_FAST_MODEL)
+    assert kwargs["usage"] == {
+        "input_tokens": 1200,
+        "output_tokens": 30,
+        "cached_tokens": 0,
+        "reasoning_tokens": 0,
+    }
+    context = kwargs["context"]
+    assert (context.agent_name, context.background, context.charge_to_budget) == (
+        JUDGE_DECISIONS_LABEL,
+        True,
+        False,
+    )
+
+
+async def test_an_unreadable_decisions_answer_is_not_metered(_ledger: AsyncMock) -> None:
+    record = _ledger
+    with (
+        patch.object(judge_clients, "_openai_key", AsyncMock(return_value="sk-test")),
+        patch(
+            "app.services.outbox.judge_clients.httpx.AsyncClient",
+            return_value=_Client(_response(200, {"nothing": 1})),
+        ),
+        pytest.raises(JudgeAnswerError),
+    ):
+        await ask_decisions(STATE, {}, user_id="u1")
+
+    record.assert_not_awaited()
 
 
 async def test_without_an_openai_key_the_judge_cannot_be_asked() -> None:
@@ -216,7 +300,7 @@ async def test_without_an_openai_key_the_judge_cannot_be_asked() -> None:
         patch.object(judge_clients, "resolve", AsyncMock(return_value=None)),
         pytest.raises(JudgeUnconfiguredError),
     ):
-        await ask_decisions(STATE, {})
+        await ask_decisions(STATE, {}, user_id="u1")
 
 
 def test_the_reasoning_prompt_carries_the_rubric_every_question_and_the_runs() -> None:
@@ -239,6 +323,7 @@ def _reasoned() -> ReasoningAnswer:
         worth_telling=YesNo.YES,
         within_minutes=YesNo.NO,
         before_checkin=YesNo.YES,
+        security_notice=YesNo.NO,
         wait_for_run=None,
         reason="r",
         relevance_ref=None,

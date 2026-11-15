@@ -151,14 +151,22 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     async def recent_messages(
         self, user_id: str, *, since: datetime, conversations: int, per_conversation: int
     ) -> list[ConversationMessageRow]:
-        """Return the latest messages of the user's most recently active conversations, across every surface.
+        """Return the latest messages of the user's most recently active chats, across every surface.
 
+        A todo's run log and an automation's thread are not chats the user read, so they are left out.
         Reads the last per_conversation messages of each of the newest conversations touched
         since the cutoff; the caller orders and cuts them by message date.
         """
         return await self._aggregate(
             [
-                {"$match": {"user_id": user_id, "updatedAt": {"$gte": since}}},
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "updatedAt": {"$gte": since},
+                        "todo_id": None,
+                        "is_system_generated": {"$ne": True},
+                    }
+                },
                 {"$sort": {"updatedAt": -1}},
                 {"$limit": conversations},
                 {

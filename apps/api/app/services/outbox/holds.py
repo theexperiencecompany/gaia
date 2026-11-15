@@ -33,7 +33,7 @@ from app.constants.outbox_attention import (
     HoldReason,
 )
 from app.models.attention_settings_models import AttentionSettings
-from app.services.outbox.judge_models import JudgeVerdict
+from app.services.outbox.judge_models import JudgeVerdict, Moment
 from app.services.outbox.judge_verdict import UserClock
 from app.services.outbox.models import (
     DropReason,
@@ -180,11 +180,26 @@ def _hold_or_tell(state: AttentionState, until: datetime, reason: HoldReason) ->
     return Hold(until, reason) if until > state.now else Tell()
 
 
-def _checkin_hold(state: AttentionState, latest: datetime | None) -> Hold | Tell:
+def _checkin_hold(
+    state: AttentionState, latest: datetime | None, reason: HoldReason = HoldReason.CHECKIN
+) -> Hold | Tell:
     """Hold for the next check-in; a user with none is told on their return or at the hold-age cap."""
     slot = next_checkin(state)
     until = _hold_cap(state) if slot is None else slot + _jitter(state.user_id)
-    return _hold_or_tell(state, _bounded(until, latest), HoldReason.CHECKIN)
+    return _hold_or_tell(state, _bounded(until, latest), reason)
+
+
+def _at_bad_moment(
+    report: OutboxReport, urgency: UrgencyClass, verdict: JudgeVerdict | None
+) -> bool:
+    """Whether the Judge says now is a bad moment for an item that is no answer, interrupt or security notice."""
+    return (
+        verdict is not None
+        and verdict.moment is Moment.HOLD
+        and urgency is not UrgencyClass.INTERRUPT
+        and not is_answer(report)
+        and not is_security_notice(verdict)
+    )
 
 
 def _deadline(report: OutboxReport, verdict: JudgeVerdict | None) -> datetime | None:
@@ -278,7 +293,7 @@ def _in_silence(
             return _hold_or_tell(state, ends, reason)
         return Tell()
     grace = ANSWER_QUIET_GRACE_SECONDS if is_answer(report) else ACTIVITY_OVERRIDE_SECONDS
-    if _active_within(state, grace):
+    if reason is HoldReason.QUIET_HOURS and _active_within(state, grace):
         return Tell()
     return _hold_or_tell(state, _bounded(ends + _jitter(state.user_id), latest), reason)
 
@@ -354,6 +369,8 @@ def place(
     silent = _in_silence(report, urgency, verdict, state, latest)
     if silent is not None:
         return silent
+    if not released and _at_bad_moment(report, urgency, verdict):
+        return _checkin_hold(state, latest, HoldReason.BAD_MOMENT)
     if urgency is UrgencyClass.INTERRUPT or urgency is UrgencyClass.TIMELY or is_answer(report):
         return Tell()
     return _unsolicited(urgency, verdict, state, latest, released=released)

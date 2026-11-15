@@ -17,7 +17,7 @@ from langchain_core.runnables import RunnableConfig
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.thread_lock import comms_thread_lock
 from app.agents.core.thread_writes import with_message_ids
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.compose_prompts import (
     AWAY_COMPOSE_RULES,
     COMPOSE_RULES,
@@ -376,7 +376,12 @@ async def _word(
             messages.append(
                 HumanMessage(content=f"That answer broke a rule: {violation}. Answer again.")
             )
-        result = await ainvoke_structured(ComposeResult, messages, label=OUTBOX_COMPOSE_LABEL)
+        result = await ainvoke_structured(
+            ComposeResult,
+            messages,
+            label=OUTBOX_COMPOSE_LABEL,
+            config=metered_config(user_id),
+        )
         violation = _validate(result, items)
         if violation is None and (leaked := await leaked_internals(user_id, result.parts)):
             violation = (

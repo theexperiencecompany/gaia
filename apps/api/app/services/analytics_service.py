@@ -17,6 +17,8 @@ from app.constants.analytics import (
     AT_MOST_ONCE_TASK_NAME,
     POSTHOG_PROVIDER_KEY,
 )
+from app.constants.outbox import OUTBOX_COMPOSE_LABEL
+from app.constants.outbox_judge import JUDGE_DECISIONS_LABEL, JUDGE_REASONING_LABEL
 from app.core.lazy_loader import providers
 from app.db.redis import redis_cache
 from app.utils.background_tasks import spawn_background_task
@@ -107,6 +109,7 @@ class AIFeature(StrEnum):
     MODERATION = "moderation", ("profanity",)
     BROWSER = "browser", ("browser_task",)
     TITLE_GENERATION = "title_generation", ("chatbot",)
+    OUTBOX = "outbox", (OUTBOX_COMPOSE_LABEL, JUDGE_DECISIONS_LABEL, JUDGE_REASONING_LABEL)
     # A caller whose label no member claims.
     UNATTRIBUTED = "unattributed"
 

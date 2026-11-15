@@ -86,6 +86,7 @@ def _reasoned(**overrides: Any) -> PassAnswers:
         "worth_telling": "yes",
         "within_minutes": "yes",
         "before_checkin": "yes",
+        "security_notice": "no",
         "wait_for_run": None,
         "reason": "A person is waiting.",
         "relevance_ref": None,

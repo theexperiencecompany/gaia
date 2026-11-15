@@ -90,7 +90,7 @@ async def _decide(context: JudgeContext, user_id: str, clock_: UserClock) -> Jud
         return context.with_wait_run(verdict)
 
     async def first_pass() -> tuple[JudgeVerdict, float]:
-        answers = await ask_decisions(state, runs)
+        answers = await ask_decisions(state, runs, user_id=user_id)
         confidence = answers.gate_confidence()
         return read(answers, JudgePass.DECISIONS, confidence), confidence
 

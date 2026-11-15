@@ -85,6 +85,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -167,6 +168,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -254,6 +256,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: true
@@ -344,6 +347,7 @@
       sensitivity: none
       moment: hold
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: true
@@ -415,6 +419,7 @@
       sensitivity: finance
       moment: hold
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: dev
     judge_applicable: true
@@ -502,6 +507,7 @@
       sensitivity: health
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: holdout
     judge_applicable: true
@@ -585,6 +591,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -662,6 +669,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: holdout
     judge_applicable: false
@@ -731,6 +739,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: dev
     judge_applicable: true
@@ -815,6 +824,7 @@
       sensitivity: none
       moment: hold
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: true
@@ -897,6 +907,7 @@
       sensitivity: finance
       moment: hold
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: true
@@ -984,6 +995,7 @@
       sensitivity: none
       moment: hold
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: true
@@ -1066,6 +1078,7 @@
       sensitivity: none
       moment: hold
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: true
@@ -1140,6 +1153,7 @@
       sensitivity: health
       moment: hold
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: dev
     judge_applicable: true
@@ -1213,6 +1227,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: true
@@ -1288,6 +1303,7 @@
       sensitivity: health
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: dev
     judge_applicable: true
@@ -1358,6 +1374,7 @@
       sensitivity: health
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: dev
     judge_applicable: false
@@ -1435,6 +1452,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: holdout
     judge_applicable: false
@@ -1511,6 +1529,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: holdout
     judge_applicable: true
@@ -1600,6 +1619,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -1672,6 +1692,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: holdout
     judge_applicable: false
@@ -1740,6 +1761,7 @@
       sensitivity: personal
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -1842,6 +1864,7 @@
       sensitivity: personal
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: true
@@ -1906,6 +1929,7 @@
       sensitivity: personal
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -1982,6 +2006,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: holdout
     judge_applicable: true
@@ -2075,6 +2100,7 @@
       sensitivity: finance
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: holdout
     judge_applicable: true
@@ -2142,6 +2168,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -2207,6 +2234,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -2277,6 +2305,7 @@
       sensitivity: finance
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -2344,6 +2373,7 @@
       sensitivity: health
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: holdout
     judge_applicable: false
@@ -2413,6 +2443,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -2478,6 +2509,7 @@
       sensitivity: health
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: holdout
     judge_applicable: false
@@ -2549,6 +2581,7 @@
       sensitivity: personal
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: dev
     judge_applicable: false
@@ -2609,6 +2642,7 @@
       sensitivity: personal
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: false
@@ -2679,6 +2713,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: true
@@ -2765,6 +2800,7 @@
       sensitivity: personal
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: dev
     judge_applicable: true
@@ -2836,6 +2872,7 @@
       sensitivity: personal
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: true
     split: holdout
     judge_applicable: true
@@ -2911,6 +2948,7 @@
       sensitivity: personal
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: holdout
     judge_applicable: true
@@ -2980,6 +3018,7 @@
       sensitivity: none
       moment: ok
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: dev
     judge_applicable: true
@@ -3051,6 +3090,7 @@
       sensitivity: none
       moment: hold
       authenticity: genuine
+      security_notice: 'no'
     critical: false
     split: holdout
     judge_applicable: true

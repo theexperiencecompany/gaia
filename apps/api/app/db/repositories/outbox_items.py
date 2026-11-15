@@ -410,6 +410,30 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
             limit=limit,
         )
 
+    async def has_sent_covering(
+        self, user_id: str, report: OutboxReport, *, same_fact_key: str | None
+    ) -> bool:
+        """Whether another item that was sent told this report's subject, series or real-world fact."""
+        subject = report.subject
+        covering: list[dict[str, object]] = [
+            {"report.subject.kind": subject.kind.value, "report.subject.id": subject.id}
+        ]
+        if subject.series is not None:
+            covering.append({"report.subject.series": subject.series})
+        if same_fact_key is not None:
+            covering.append({"judgement.verdict.same_fact_key": same_fact_key})
+        return (
+            await self._count(
+                {
+                    "user_id": user_id,
+                    "state": ItemState.SENT.value,
+                    "report_id": {"$ne": report.report_id},
+                    "$or": covering,
+                }
+            )
+            > 0
+        )
+
     async def count_raised_interrupts_since(self, user_id: str, since: datetime) -> int:
         """Return how many items the Judge raised to interrupt since the cutoff."""
         return await self._count(

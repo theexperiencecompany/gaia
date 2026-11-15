@@ -113,6 +113,7 @@ class ReasoningAnswer(BaseModel):
     worth_telling: YesNo
     within_minutes: YesNo
     before_checkin: YesNo
+    security_notice: YesNo
     wait_for_run: str | None = Field(
         description="The id of the one run in state.upcoming_runs to wait for, or null to tell it now."
     )
@@ -164,6 +165,9 @@ class JudgeVerdict(BaseModel):
     rules_applied: list[str] = Field(default_factory=list)
     moment: Moment
     suspicious: bool = Field(description="Looks like phishing or a scam: warn, never relay.")
+    security_notice: bool = Field(
+        description="A security or account-safety alert: the Rails never quiet it."
+    )
     wait_for_run: str | None = Field(
         default=None, description="The upcoming run this item should be merged with."
     )

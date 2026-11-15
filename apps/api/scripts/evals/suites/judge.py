@@ -1,7 +1,7 @@
 """The Judge's golden suite: 200 real-world attention scenarios, graded through the production Judge and Rails.
 
 Each case is one update plus what GAIA knows of its user, with gold labels for urgency, deadline,
-relevance, sensitivity, moment and authenticity. The Judge answers through its two passes (the
+relevance, sensitivity, moment, authenticity and whether it is a security notice. The Judge answers through its two passes (the
 Decisions API, then the reasoning model when the first is unsure); the production verdict reader
 and policy turn those answers into a disposition, which is graded for the failures that hurt:
 a late or missed alert, a scam relayed, a moot item pushed, a sensitive item exposed.
@@ -362,7 +362,7 @@ class JudgeTransport:
         state = state_of(case)
         sha = decisions_request_sha(state)
         try:
-            first = await ask_decisions(state, {}, anonymised_state=True)
+            first = await ask_decisions(state, {}, user_id=None, anonymised_state=True)
             decisions = recorded_pass(first, sha)
             reasoning: RecordedPass | None = None
             if first.gate_confidence() < JUDGE_CONFIDENCE_GATE:

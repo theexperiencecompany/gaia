@@ -6,18 +6,17 @@ Judge decides what a failed pass means, never this module.
 
 from collections.abc import Mapping
 import json
-from typing import cast
 
 import httpx
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
-from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, field_validator
 
-from app.agents.llm.client import LLMInvokeOptions, ainvoke_llm
+from app.agents.llm.client import LLMInvokeOptions, ainvoke_llm, metered_config
 from app.constants.outbox_judge import (
     JUDGE_ANONYMISED_STATE_NOTE,
     JUDGE_CHOICE_CRITERIA,
+    JUDGE_DECISIONS_LABEL,
     JUDGE_DECISIONS_TIMEOUT_SECONDS,
     JUDGE_DECISIONS_URL,
     JUDGE_FAST_MODEL,
@@ -32,6 +31,7 @@ from app.constants.outbox_judge import (
     JudgeQuestion,
 )
 from app.constants.providers import CredentialProviderName
+from app.services.llm_metering import LLMCallContext, TokenUsage, record_llm_call
 from app.services.outbox.judge_models import ReasoningAnswer
 from app.services.outbox.judge_verdict import (
     ChoiceAnswer,
@@ -102,18 +102,33 @@ def decisions_body(
     }
 
 
+class _ChoiceProbability(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    value: str
+    probability: float
+
+
 class _DecisionsAnswer(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     choice: str
-    probabilities: dict[str, float] = Field(default_factory=dict)
+    probabilities: list[_ChoiceProbability] = Field(default_factory=list)
     confidence: float | None = None
+
+
+class _DecisionsUsage(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 class _DecisionsResponse(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     answers: dict[str, _DecisionsAnswer]
+    usage: _DecisionsUsage = Field(default_factory=_DecisionsUsage)
 
     @field_validator("answers", mode="before")
     @classmethod
@@ -126,12 +141,14 @@ class _DecisionsResponse(BaseModel):
         return answers
 
 
-def read_decisions(body: object, runs: OfferedRuns) -> PassAnswers:
-    """Read a Decisions response body; raise JudgeAnswerError when it is malformed, misses a question or answers outside the choices."""
+def _parse_decisions(body: object) -> _DecisionsResponse:
     try:
-        response = _DecisionsResponse.model_validate(body)
+        return _DecisionsResponse.model_validate(body)
     except ValidationError as e:
         raise JudgeAnswerError(f"the Decisions answer is not in the shape asked for: {e}") from e
+
+
+def _read_answers(response: _DecisionsResponse, runs: OfferedRuns) -> PassAnswers:
     answers: dict[JudgeQuestion, ChoiceAnswer] = {}
     for question in asked_questions(runs):
         answer = response.answers.get(question.value)
@@ -139,16 +156,43 @@ def read_decisions(body: object, runs: OfferedRuns) -> PassAnswers:
             raise JudgeAnswerError(f"the Decisions answer has no {question.value}")
         if answer.choice not in _choices(question, runs):
             raise JudgeAnswerError(f"{question.value}={answer.choice!r} is not one of its choices")
-        answers[question] = ChoiceAnswer(answer.choice, answer.probabilities, answer.confidence)
+        probabilities = {entry.value: entry.probability for entry in answer.probabilities}
+        answers[question] = ChoiceAnswer(answer.choice, probabilities, answer.confidence)
     return PassAnswers(answers=answers)
 
 
+def read_decisions(body: object, runs: OfferedRuns) -> PassAnswers:
+    """Read a Decisions response body; raise JudgeAnswerError when it is malformed, misses a question or answers outside the choices."""
+    return _read_answers(_parse_decisions(body), runs)
+
+
+async def _meter_decisions(usage: _DecisionsUsage, user_id: str) -> None:
+    await record_llm_call(
+        user_id=user_id,
+        model_name=JUDGE_FAST_MODEL,
+        usage=TokenUsage(
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_tokens=0,
+            reasoning_tokens=0,
+        ),
+        context=LLMCallContext(
+            agent_name=JUDGE_DECISIONS_LABEL, background=True, charge_to_budget=False
+        ),
+    )
+
+
 async def ask_decisions(
-    state: Mapping[str, object], runs: OfferedRuns, *, anonymised_state: bool = False
+    state: Mapping[str, object],
+    runs: OfferedRuns,
+    *,
+    user_id: str | None,
+    anonymised_state: bool = False,
 ) -> PassAnswers:
     """Ask the Decisions API every question about one state; raises on a missing key, transport failure or unreadable answer.
 
-    anonymised_state is for the eval corpus alone.
+    The call is metered to user_id once its answer reads. user_id and anonymised_state are None and
+    True for the eval corpus alone, which has no user to bill.
     """
     key = await _openai_key()
     async with httpx.AsyncClient(timeout=JUDGE_DECISIONS_TIMEOUT_SECONDS) as client:
@@ -158,7 +202,11 @@ async def ask_decisions(
             headers={"Authorization": f"Bearer {key}"},
         )
         response.raise_for_status()
-        return read_decisions(response.json(), runs)
+        parsed = _parse_decisions(response.json())
+        answers = _read_answers(parsed, runs)
+    if user_id is not None:
+        await _meter_decisions(parsed.usage, user_id)
+    return answers
 
 
 def reasoning_system_prompt(runs: OfferedRuns, *, anonymised_state: bool = False) -> str:
@@ -198,7 +246,7 @@ async def ask_reasoning(
     answer = await ainvoke_llm(
         model.with_structured_output(ReasoningAnswer, method="json_schema"),
         messages,
-        config=cast(RunnableConfig, {"configurable": {"user_id": user_id}}),
+        config=metered_config(user_id),
         label=JUDGE_REASONING_LABEL,
         options=LLMInvokeOptions(timeout=JUDGE_REASONING_TIMEOUT_SECONDS, max_attempts=1),
     )

@@ -49,11 +49,10 @@ from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
-#: What a user's return answers: items waiting for a check-in, the gap since the last message, or silence.
+#: What a user's return answers: items waiting for a check-in, the gap since the last message, or quiet hours; never DND, which only the user or its end time lifts.
 _RELEASED_BY_RETURN = (
     HoldReason.CHECKIN,
     HoldReason.GAP,
-    HoldReason.DND,
     HoldReason.QUIET_HOURS,
     HoldReason.DORMANT,
 )

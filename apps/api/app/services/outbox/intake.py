@@ -90,7 +90,16 @@ async def _judge_and_decide(
     raised = await outbox_items_repository.count_raised_interrupts_since(
         report.recipient, clock.now() - timedelta(seconds=JUDGE_INTERRUPT_CAP_WINDOW_SECONDS)
     )
-    decision = decide(report, verdict, watched_live=watched_live, interrupts_raised_today=raised)
+    told_before = verdict is not None and await outbox_items_repository.has_sent_covering(
+        report.recipient, report, same_fact_key=verdict.same_fact_key
+    )
+    decision = decide(
+        report,
+        verdict,
+        watched_live=watched_live,
+        interrupts_raised_today=raised,
+        told_before=told_before,
+    )
     if decision.interrupt_capped:
         OUTBOX_JUDGE_INTERRUPT_CAPPED.inc()
         log.error(

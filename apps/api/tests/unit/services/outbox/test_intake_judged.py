@@ -50,6 +50,7 @@ class _Intake:
         )
         self.repo.apply_replace = AsyncMock(return_value=True)
         self.repo.count_raised_interrupts_since = AsyncMock(return_value=raised_today)
+        self.repo.has_sent_covering = AsyncMock(return_value=False)
         self.repo.drop = AsyncMock(return_value=SimpleNamespace())
         self.repo.queue = AsyncMock(return_value=SimpleNamespace())
         self.flush = AsyncMock()
