@@ -75,9 +75,10 @@ SYNCED_DOC_RULES = frozenset(
         "content/placeholder-contact",
         "content/placeholder-text",
         "content/keyword-stuffing",
-        "perf/dom-size",
     }
 )
+# Of the size checks, only the one that counts the synced tool rows; the page shell's stay checked.
+SYNCED_DOC_CHECKS = frozenset({"perf/dom-size/dom-max-children"})
 BASELINE_HEADER = """\
 # squirrelscan's findings, which `scripts/ci/smoke-web.sh` holds to this file:
 # `<page path>\\t<rule id>/<check>[\\t<item>]`, one per line, `*` as the page of a
@@ -154,7 +155,8 @@ def _cron_as_markdown(seen: Observed, _pages: frozenset[str]) -> bool:
 
 def _synced_tool_docs(seen: Observed, _pages: frozenset[str]) -> bool:
     page = SITE_LOCALE.sub("", seen.finding.page)
-    return seen.finding.rule in SYNCED_DOC_RULES and bool(MARKETPLACE_PAGE.match(page))
+    synced = seen.finding.rule in SYNCED_DOC_RULES or seen.finding.check in SYNCED_DOC_CHECKS
+    return synced and bool(MARKETPLACE_PAGE.match(page))
 
 
 def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
