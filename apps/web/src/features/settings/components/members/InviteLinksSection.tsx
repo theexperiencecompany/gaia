@@ -1,10 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { InputGroup } from "@heroui/react";
 import { Copy01Icon, UserAdd01Icon } from "@icons";
 import type { InviteResponse } from "@shared/api/generated";
 import { useRef, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { inviteLink } from "@/features/settings/hooks/useMembers";
@@ -53,36 +54,37 @@ export function InviteLinksSection({
         label="New invite link"
         description="You can only copy a link right after you create it."
       >
-        <Button
+        <GaiaButton
           size="sm"
-          color="primary"
-          startContent={<UserAdd01Icon width={16} height={16} />}
-          isLoading={isCreating}
+          variant="primary"
+          isPending={isCreating}
           onPress={create}
         >
+          <UserAdd01Icon width={16} height={16} />
           Create link
-        </Button>
+        </GaiaButton>
       </SettingsRow>
       {newLink && (
         <div className="px-4 py-3.5">
-          <Input
-            ref={linkField}
-            aria-label="New invite link"
-            value={newLink}
-            isReadOnly
-            size="sm"
-            endContent={
-              <Button
+          <InputGroup className={inputVariants({ size: "sm" })}>
+            <InputGroup.Input
+              ref={linkField}
+              aria-label="New invite link"
+              value={newLink}
+              readOnly
+            />
+            <InputGroup.Suffix>
+              <GaiaButton
                 isIconOnly
                 size="sm"
-                variant="light"
+                variant="ghost"
                 aria-label="Copy invite link"
                 onPress={() => void copyLink(linkField.current)}
               >
                 <Copy01Icon width={16} height={16} />
-              </Button>
-            }
-          />
+              </GaiaButton>
+            </InputGroup.Suffix>
+          </InputGroup>
         </div>
       )}
       {invites.map((invite) => (
@@ -91,15 +93,14 @@ export function InviteLinksSection({
           label="Unused invite link"
           description={`Expires ${formatRelativeDate(invite.expires_at)}`}
         >
-          <Button
+          <GaiaButton
+            variant="danger-soft"
             size="sm"
-            variant="flat"
-            color="danger"
-            isLoading={revokingInviteId === invite.id}
+            isPending={revokingInviteId === invite.id}
             onPress={() => onRevoke(invite.id)}
           >
             Revoke
-          </Button>
+          </GaiaButton>
         </SettingsRow>
       ))}
     </SettingsSection>

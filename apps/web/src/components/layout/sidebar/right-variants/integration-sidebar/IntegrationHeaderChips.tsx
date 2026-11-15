@@ -1,8 +1,9 @@
 "use client";
 
-import { Avatar } from "@heroui/avatar";
-import { Chip } from "@heroui/chip";
+import { Avatar, Chip } from "@heroui/react";
 import { UserCircle02Icon } from "@icons";
+import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import type { Integration } from "@/features/integrations/types";
 
@@ -11,6 +12,17 @@ interface IntegrationHeaderChipsProps {
   isConnected: boolean;
   isOwnIntegration: boolean;
   isForkedIntegration: boolean;
+}
+
+/** First letters of the first two words, matching v2's `name`-derived fallback. */
+function initialsOf(name?: string | null) {
+  if (!name) return undefined;
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 /** Connection status + creator attribution chips shown under the icon. */
@@ -26,7 +38,12 @@ export function IntegrationHeaderChips({
   return (
     <div className="flex items-center gap-2 flex-row mb-2">
       {isConnected && (
-        <Chip size="sm" variant="flat" color="success" radius="sm">
+        <Chip
+          className={shapeVariants({ shape: "sm" })}
+          size="sm"
+          variant="soft"
+          color="success"
+        >
           Connected
         </Chip>
       )}
@@ -35,44 +52,52 @@ export function IntegrationHeaderChips({
           {isForkedIntegration && integration.creator && (
             <Chip
               size="sm"
-              variant="flat"
-              radius="sm"
-              className="text-xs font-light relative text-foreground-500"
-              startContent={
-                integration.creator.picture ? (
-                  <Avatar
-                    src={integration.creator.picture || undefined}
-                    name={integration.creator.name || undefined}
-                    size="sm"
-                    className="h-4 w-4"
-                  />
-                ) : (
-                  <UserCircle02Icon width={16} height={16} />
-                )
-              }
+              variant="soft"
+              className={shapeVariants({
+                shape: "sm",
+                className: toneVariants({
+                  tone: "muted",
+                  className: "text-xs font-light relative",
+                }),
+              })}
             >
-              <div className="flex items-center gap-1.5 text-xs pl-0.5">
-                <span>Created by {integration.creator.name || "Unknown"}</span>
-              </div>
+              {integration.creator.picture ? (
+                <Avatar size="sm" className="h-4 w-4">
+                  <Avatar.Image src={integration.creator.picture} />
+                  <Avatar.Fallback>
+                    {initialsOf(integration.creator.name)}
+                  </Avatar.Fallback>
+                </Avatar>
+              ) : (
+                <UserCircle02Icon width={16} height={16} />
+              )}
+              <Chip.Label>
+                <div className="flex items-center gap-1.5 text-xs pl-0.5">
+                  <span>
+                    Created by {integration.creator.name || "Unknown"}
+                  </span>
+                </div>
+              </Chip.Label>
             </Chip>
           )}
           {isOwnIntegration && (
             <Chip
               size="sm"
-              variant="flat"
+              variant="soft"
               color="default"
-              radius="sm"
-              className="text-xs text-zinc-400 font-light relative right-1"
-              startContent={
-                <Avatar
-                  src={currentUserPicture || undefined}
-                  name={currentUserName || undefined}
-                  size="sm"
-                  className="h-4 w-4"
-                />
-              }
+              className={shapeVariants({
+                shape: "sm",
+                className: toneVariants({
+                  tone: "muted",
+                  className: "text-xs font-light relative right-1",
+                }),
+              })}
             >
-              Created by You
+              <Avatar size="sm" className="h-4 w-4">
+                <Avatar.Image src={currentUserPicture || undefined} />
+                <Avatar.Fallback>{initialsOf(currentUserName)}</Avatar.Fallback>
+              </Avatar>
+              <Chip.Label>Created by You</Chip.Label>
             </Chip>
           )}
         </div>
