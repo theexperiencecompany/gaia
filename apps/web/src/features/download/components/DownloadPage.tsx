@@ -144,6 +144,8 @@ function DesktopDownloadButton({
         width={iconSize.width}
         height={iconSize.height}
         sizes="16px"
+        // The desktop buttons sit in the page's first section.
+        loading="eager"
         className={
           invertIcon
             ? "absolute inset-0 h-full w-full object-contain filter invert"
@@ -276,7 +278,6 @@ function DesktopSection() {
       imageAlt="GAIA Desktop App"
       imagePosition="left"
       contentAlignment="right"
-      imagePriority={false}
       title="Download for Desktop"
       chip={
         <Chip variant="soft" color="success">
@@ -415,6 +416,13 @@ function WebSection() {
       actions={<GetStartedButton />}
       extraContent={
         <div className="flex items-center gap-4 text-sm text-zinc-500">
+          <Link
+            href="/signup"
+            className="flex items-center gap-1 transition hover:text-zinc-300"
+          >
+            Create your account
+            <ArrowRight02Icon className="h-4 w-4" />
+          </Link>
           <Link
             href="https://docs.heygaia.io/release-notes"
             target="_blank"

@@ -542,7 +542,7 @@ Neutrals are Tailwind's zinc scale; the brand and status colours are `accent`, `
 
 ### 4. A new page or section
 
-1. Put the route in its group and import exactly one area stylesheet at the top of the page, or inherit one from its layout: `styles/marketing.css` (landing pages), `styles/content.css` (SEO and content pages) or `styles/app.css` (the signed-in app). `pnpm area-css` fails when a page has none or two.
+1. Put the route in its group and import exactly one area stylesheet at the top of the page, or inherit one from its layout: `styles/marketing.css` (landing pages), `styles/content.css` (SEO and content pages: the programmatic families and guides), `styles/directory.css` (the marketplace and blog, whose search, filter and share menus the content pages never render) or `styles/app.css` (the signed-in app). `pnpm area-css` fails when a page has none or two.
 2. Build it from sections 1 and 2. A settings page is `Card`s holding `TextField` or `Select` (`fieldVariants`, `inputVariants({ variant: "translucent" })`), `Switch`, `GaiaButton` and `Separator`. A marketing section is layout `div`s plus `LinkButton`, `Chip` and plain text.
 3. Run `pnpm area-css` (`pnpm dev` and `pnpm build` run it too) and commit `styles/generated/*.css`. It derives each area's Tailwind sources and HeroUI component sheets from the routes' imports; a stale file fails the web tests.
 

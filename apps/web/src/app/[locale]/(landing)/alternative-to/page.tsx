@@ -1,13 +1,15 @@
 import "../../../styles/content.css";
 import type { Metadata } from "next";
-import Image from "next/image";
+import type { ImageProps } from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import JsonLd from "@/components/seo/JsonLd";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { VersusLogos } from "@/components/seo/VersusLogos";
 import type { AlternativeData } from "@/features/alternatives/data/alternativesData";
 import { getTranslatedAlternatives } from "@/features/alternatives/data/getTranslatedAlternative";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { generateLocalizedPageMetadata } from "@/i18n/getAlternates";
+import { hubCardLoading } from "@/lib/hubPagination";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -66,40 +68,18 @@ const CATEGORY_ORDER: AlternativeData["category"][] = [
 function AlternativeCard({
   alt,
   fitLabel,
+  loading,
 }: {
   readonly alt: AlternativeData;
   readonly fitLabel: string;
+  readonly loading: ImageProps["loading"];
 }) {
   return (
     <SiteLink
       href={`/alternative-to/${alt.slug}`}
       className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
     >
-      <div className="flex items-center -space-x-2">
-        <div
-          className="relative flex h-9 w-9 items-center justify-center p-0"
-          style={{ rotate: "-9deg", zIndex: 1 }}
-        >
-          <Image
-            src="/images/logos/macos.webp"
-            alt="GAIA"
-            width={50}
-            height={50}
-          />
-        </div>
-        <div
-          className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-md p-0"
-          style={{ rotate: "9deg", zIndex: 0 }}
-        >
-          <Image
-            src={`https://www.google.com/s2/favicons?domain=${alt.domain}&sz=128`}
-            alt={alt.name}
-            width={40}
-            height={40}
-            unoptimized
-          />
-        </div>
-      </div>
+      <VersusLogos name={alt.name} domain={alt.domain} loading={loading} />
       <h3 className="text-lg font-medium text-white transition-colors group-hover:text-accent">
         {alt.name}
       </h3>
@@ -137,6 +117,10 @@ export default async function AlternativesHubPage({ params }: PageProps) {
     list.push(alt);
     byCategory.set(alt.category, list);
   }
+  const pageCategories = CATEGORY_ORDER.flatMap((category) => {
+    const items = byCategory.get(category) ?? [];
+    return items.length > 0 ? [[category, items] as const] : [];
+  });
 
   const webPageSchema = generateWebPageSchema(
     t("hub_meta_title"),
@@ -175,27 +159,23 @@ export default async function AlternativesHubPage({ params }: PageProps) {
         </header>
 
         <div className="space-y-16">
-          {CATEGORY_ORDER.map((category) => {
-            const items = byCategory.get(category) ?? [];
-            if (items.length === 0) return null;
-
-            return (
-              <section key={category}>
-                <h2 className="mb-6 text-2xl font-semibold text-white">
-                  {t(CATEGORY_LABEL_KEYS[category])}
-                </h2>
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {items.map((alt) => (
-                    <AlternativeCard
-                      key={alt.slug}
-                      alt={alt}
-                      fitLabel={t("fit_score")}
-                    />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+          {pageCategories.map(([category, items], sectionIndex) => (
+            <section key={category}>
+              <h2 className="mb-6 text-2xl font-semibold text-white">
+                {t(CATEGORY_LABEL_KEYS[category])}
+              </h2>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {items.map((alt, index) => (
+                  <AlternativeCard
+                    key={alt.slug}
+                    alt={alt}
+                    fitLabel={t("fit_score")}
+                    loading={hubCardLoading(sectionIndex, index)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
 
         <section className="mt-20 rounded-3xl bg-zinc-800 p-8 text-center">

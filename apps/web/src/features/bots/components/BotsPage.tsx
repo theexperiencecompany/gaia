@@ -120,6 +120,7 @@ export default function BotsPage() {
                 alt=""
                 width={256}
                 height={256}
+                loading="eager"
                 className="h-full w-full object-contain hover:scale-110 hover:-translate-y-4 transition"
               />
             </div>

@@ -1,6 +1,7 @@
-import Image from "next/image";
 import { SiteLink } from "@/components/seo/SiteLink";
+import { VersusLogos } from "@/components/seo/VersusLogos";
 import type { ComparisonData } from "@/features/comparisons/data/comparisonsData";
+import { hubCardLoading } from "@/lib/hubPagination";
 
 type ComparisonCardData = Pick<
   ComparisonData,
@@ -11,46 +12,33 @@ type ComparisonCardData = Pick<
 export function ComparisonCardGrid({
   comparisons,
   vsLabel,
+  headingLevel,
+  section,
 }: {
   readonly comparisons: readonly ComparisonCardData[];
   readonly vsLabel: (name: string) => string;
+  /** h2 where the cards sit directly under the page h1, h3 under a section heading. */
+  readonly headingLevel: "h2" | "h3";
+  /** The grid's place among the page's sections: the first one's first row opens in view. */
+  readonly section: number;
 }) {
+  const Heading = headingLevel;
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-      {comparisons.map((comparison) => (
+      {comparisons.map((comparison, index) => (
         <SiteLink
           key={comparison.slug}
           href={`/compare/${comparison.slug}`}
           className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
         >
-          <div className="flex items-center -space-x-2">
-            <div
-              className="relative flex h-9 w-9 items-center justify-center p-0"
-              style={{ rotate: "-9deg", zIndex: 1 }}
-            >
-              <Image
-                src="/images/logos/macos.webp"
-                alt="GAIA"
-                width={50}
-                height={50}
-              />
-            </div>
-            <div
-              className="relative flex h-8 w-8 items-center justify-center rounded-md overflow-hidden p-0"
-              style={{ rotate: "9deg", zIndex: 0 }}
-            >
-              <Image
-                src={`https://www.google.com/s2/favicons?domain=${comparison.domain}&sz=128`}
-                alt={comparison.name}
-                width={40}
-                height={40}
-                unoptimized
-              />
-            </div>
-          </div>
-          <h3 className="text-lg font-medium text-white transition-colors group-hover:text-accent">
+          <VersusLogos
+            name={comparison.name}
+            domain={comparison.domain}
+            loading={hubCardLoading(section, index)}
+          />
+          <Heading className="text-lg font-medium text-white transition-colors group-hover:text-accent">
             {vsLabel(comparison.name)}
-          </h3>
+          </Heading>
           <p className="text-sm text-zinc-500">{comparison.tagline}</p>
           <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
             {comparison.description}

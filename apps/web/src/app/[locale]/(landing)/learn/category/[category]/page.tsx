@@ -95,7 +95,7 @@ export default async function GlossaryCategoryPage({ params }: PageProps) {
         url: `${siteConfig.url}/learn/${term.slug}`,
       }))}
     >
-      <GlossaryTermGrid terms={category.items} />
+      <GlossaryTermGrid terms={category.items} headingLevel="h2" />
     </CategoryHubPage>
   );
 }

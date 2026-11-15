@@ -84,7 +84,11 @@ function ContactRequestForm({
             isRequired
           >
             <Label>Email</Label>
-            <Input placeholder="Where we should reply" autoComplete="email" />
+            <Input
+              placeholder="Where we should reply"
+              autoComplete="email"
+              enterKeyHint="next"
+            />
             <FieldError />
           </TextField>
           <TextField
@@ -93,7 +97,12 @@ function ContactRequestForm({
             onChange={visitor.setName}
           >
             <Label>Name</Label>
-            <Input placeholder="Optional" maxLength={100} autoComplete="name" />
+            <Input
+              placeholder="Optional"
+              maxLength={100}
+              autoComplete="name"
+              enterKeyHint="next"
+            />
           </TextField>
         </div>
       )}
@@ -140,6 +149,7 @@ function ContactRequestForm({
         <Input
           placeholder="Brief description of your request"
           maxLength={200}
+          enterKeyHint="next"
         />
       </TextField>
 

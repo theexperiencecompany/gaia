@@ -3,6 +3,7 @@
  * the rest; a namespace import() kept replay, feedback and their peers in the chunk.
  */
 export {
+  captureException,
   captureRouterTransitionStart,
   getClient,
   init,

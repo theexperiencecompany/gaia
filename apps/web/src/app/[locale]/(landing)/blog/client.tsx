@@ -18,6 +18,9 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { track } from "@/lib/analytics";
 import type { BlogContentPost, BlogPostMeta } from "@/lib/blog";
 
+// The hero spans the max-w-3xl header column (768px) minus its px-5 padding.
+const BLOG_HERO_IMAGE_SIZES = "(max-width: 768px) 100vw, 728px";
+
 interface BlogPostClientProps {
   blog: BlogContentPost;
   suggestedPosts: BlogPostMeta[];
@@ -67,6 +70,9 @@ export default function BlogPostClient({
                 alt={blog.title}
                 width={1920}
                 height={1080}
+                priority
+                fetchPriority="high"
+                sizes={BLOG_HERO_IMAGE_SIZES}
                 className="w-full rounded-2xl bg-zinc-900 object-cover"
               />
               <GrainOverlay className="rounded-2xl" />

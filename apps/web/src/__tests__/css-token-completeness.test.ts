@@ -3,6 +3,7 @@ import path from "node:path";
 import tailwind from "@tailwindcss/postcss";
 import postcss, { type Container, type Root, Rule } from "postcss";
 import { describe, expect, it } from "vitest";
+import { AREAS } from "../../scripts/generate-area-css.mjs";
 
 /**
  * A `var(--x)` with no fallback and no definition is invalid at computed-value
@@ -13,7 +14,6 @@ const WEB_DIR = path.resolve(__dirname, "../..");
 const STYLES = path.join(WEB_DIR, "src/app/styles");
 
 // base.css ships on every route; each area sheet ships on top of it.
-const AREAS = ["app", "marketing", "content"] as const;
 
 // Tokens HeroUI's react-aria layer writes as inline style on the element it
 // renders, so no stylesheet can define them.

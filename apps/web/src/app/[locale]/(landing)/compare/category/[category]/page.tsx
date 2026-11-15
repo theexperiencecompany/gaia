@@ -1,4 +1,4 @@
-import "../../../../../styles/marketing.css";
+import "../../../../../styles/content.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -99,6 +99,8 @@ export default async function ComparisonCategoryPage({ params }: PageProps) {
       <ComparisonCardGrid
         comparisons={category.items}
         vsLabel={(name) => t("gaia_vs", { name })}
+        headingLevel="h2"
+        section={0}
       />
     </CategoryHubPage>
   );

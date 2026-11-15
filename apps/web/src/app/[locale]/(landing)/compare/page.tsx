@@ -1,4 +1,4 @@
-import "../../../styles/marketing.css";
+import "../../../styles/content.css";
 import type { Metadata } from "next";
 
 import { ComparisonsHub } from "./Hub";

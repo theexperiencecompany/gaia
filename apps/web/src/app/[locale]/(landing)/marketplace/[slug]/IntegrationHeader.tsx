@@ -69,7 +69,13 @@ export function IntegrationHeader({
           <div className="flex max-w-12 min-w-12 min-h-12 max-h-12 items-center justify-center rounded-lg overflow-hidden">
             {getToolCategoryIcon(
               integration.integrationId,
-              { size: 48, width: 48, height: 48, showBackground: false },
+              {
+                size: 48,
+                width: 48,
+                height: 48,
+                showBackground: false,
+                loading: "eager",
+              },
               integration.iconUrl || undefined,
             ) || (
               <div className="flex h-16 w-16 aspect-square items-center justify-center rounded-xl bg-zinc-700 font-medium text-zinc-300">

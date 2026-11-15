@@ -171,6 +171,8 @@ interface UseCaseSectionOptions {
   noMaxWidth?: boolean;
   /** Hide the "All" category chip. */
   hideAllCategory?: boolean;
+  /** The section opens in the first viewport, so its grid's first row loads eagerly. */
+  opensInView?: boolean;
 }
 
 export default function UseCaseSection({
@@ -202,6 +204,7 @@ export default function UseCaseSection({
     disableCentering = false,
     noMaxWidth = false,
     hideAllCategory = false,
+    opensInView = false,
   } = options;
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -308,6 +311,7 @@ export default function UseCaseSection({
               setShowUseCases={setShowUseCases}
               showDescriptionAsTooltip={showDescriptionAsTooltip}
               useBlurEffect={useBlurEffect}
+              opensInView={opensInView}
             />
           )}
 
@@ -355,6 +359,7 @@ interface UseCasesGridProps {
   setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
   showDescriptionAsTooltip?: boolean;
   useBlurEffect?: boolean;
+  opensInView: boolean;
 }
 
 function UseCasesGrid({
@@ -367,6 +372,7 @@ function UseCasesGrid({
   setShowUseCases,
   showDescriptionAsTooltip,
   useBlurEffect,
+  opensInView,
 }: UseCasesGridProps) {
   const sliced = sliceUseCases(useCases, slicePerTab, rows, columns);
   return (
@@ -405,6 +411,7 @@ function UseCasesGrid({
             totalExecutions={useCase.total_executions || 0}
             showExecutions={true}
             useBlurEffect={useBlurEffect}
+            imageLoading={opensInView && index < columns ? "eager" : "lazy"}
             variant="explore"
             primaryAction={
               useCase.action_type === "prompt" ? "insert-prompt" : "create"

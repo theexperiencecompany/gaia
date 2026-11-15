@@ -101,7 +101,7 @@ export async function LearnHub({ locale, page }: LearnHubProps) {
                   })}
                 </SiteLink>
               </div>
-              <GlossaryTermGrid terms={terms} />
+              <GlossaryTermGrid terms={terms} headingLevel="h3" />
             </section>
           );
         })}

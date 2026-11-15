@@ -47,6 +47,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
           height={BACKGROUND_LOGO.height}
           className="absolute inset-0 h-full w-full scale-110 object-contain grayscale"
           sizes="100vw"
+          priority
         />
       </div>
 
@@ -58,6 +59,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
               alt="GAIA Logo"
               width={80}
               height={80}
+              loading="eager"
             />
           </div>
 

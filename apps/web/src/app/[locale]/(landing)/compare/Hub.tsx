@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { HubPagination } from "@/components/seo/HubPagination";
 import JsonLd from "@/components/seo/JsonLd";
@@ -16,6 +15,7 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+import { ComparisonCardGrid } from "./ComparisonCardGrid";
 
 interface ComparisonsHubProps {
   readonly locale: string;
@@ -63,6 +63,12 @@ export async function ComparisonsHub({ locale, page }: ComparisonsHubProps) {
   const pageSlugs = new Set(
     hubPageSlice(orderedComparisons, currentPage).map((c) => c.slug),
   );
+  const pageSections = categories.flatMap((category) => {
+    const items = category.items.filter((comparison) =>
+      pageSlugs.has(comparison.slug),
+    );
+    return items.length > 0 ? [{ category, items }] : [];
+  });
 
   return (
     <>
@@ -78,74 +84,30 @@ export async function ComparisonsHub({ locale, page }: ComparisonsHubProps) {
           </p>
         </header>
 
-        {categories.map((category) => {
-          const pageComparisons = category.items.filter((comparison) =>
-            pageSlugs.has(comparison.slug),
-          );
-          if (pageComparisons.length === 0) return null;
-          return (
-            <div key={category.slug} id={category.slug} className="mb-14">
-              <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-zinc-700 pb-3">
-                <h2 className="text-xl font-semibold text-zinc-300">
-                  {category.label}
-                </h2>
-                <SiteLink
-                  href={comparisonCategoryPath(category.slug)}
-                  className="text-sm text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
-                >
-                  {t("all_category_comparisons", {
-                    count: category.items.length,
-                    category: category.label,
-                  })}
-                </SiteLink>
-              </div>
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {pageComparisons.map((comparison) => (
-                  <SiteLink
-                    key={comparison.slug}
-                    href={`/compare/${comparison.slug}`}
-                    className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-                  >
-                    <div className="flex items-center -space-x-2">
-                      <div
-                        className="relative flex h-9 w-9 items-center justify-center p-0"
-                        style={{ rotate: "-9deg", zIndex: 1 }}
-                      >
-                        <Image
-                          src="/images/logos/macos.webp"
-                          alt="GAIA"
-                          width={50}
-                          height={50}
-                        />
-                      </div>
-                      <div
-                        className="relative flex h-8 w-8 items-center justify-center rounded-md overflow-hidden p-0"
-                        style={{ rotate: "9deg", zIndex: 0 }}
-                      >
-                        <Image
-                          src={`https://www.google.com/s2/favicons?domain=${comparison.domain}&sz=128`}
-                          alt={comparison.name}
-                          width={40}
-                          height={40}
-                          unoptimized
-                        />
-                      </div>
-                    </div>
-                    <h3 className="text-lg font-medium text-white transition-colors group-hover:text-accent">
-                      {t("gaia_vs", { name: comparison.name })}
-                    </h3>
-                    <p className="text-sm text-zinc-500">
-                      {comparison.tagline}
-                    </p>
-                    <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
-                      {comparison.description}
-                    </p>
-                  </SiteLink>
-                ))}
-              </div>
+        {pageSections.map(({ category, items }, sectionIndex) => (
+          <div key={category.slug} id={category.slug} className="mb-14">
+            <div className="mb-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-zinc-700 pb-3">
+              <h2 className="text-xl font-semibold text-zinc-300">
+                {category.label}
+              </h2>
+              <SiteLink
+                href={comparisonCategoryPath(category.slug)}
+                className="text-sm text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+              >
+                {t("all_category_comparisons", {
+                  count: category.items.length,
+                  category: category.label,
+                })}
+              </SiteLink>
             </div>
-          );
-        })}
+            <ComparisonCardGrid
+              comparisons={items}
+              vsLabel={(name) => t("gaia_vs", { name })}
+              headingLevel="h3"
+              section={sectionIndex}
+            />
+          </div>
+        ))}
 
         <HubPagination
           pathname="/compare"

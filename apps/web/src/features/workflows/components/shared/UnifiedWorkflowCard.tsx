@@ -2,6 +2,7 @@
 
 import { Tooltip } from "@heroui/react";
 import { PlayIcon } from "@icons";
+import type { ImageProps } from "next/image";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -68,6 +69,8 @@ interface UnifiedWorkflowCardProps {
   showCreator?: boolean;
   useBlurEffect?: boolean;
   showDescriptionAsTooltip?: boolean;
+  /** Eager for a card in the first viewport: its icons and avatar load with the page. */
+  imageLoading?: ImageProps["loading"];
 
   // Action configuration
   primaryAction?: WorkflowCardAction;
@@ -98,6 +101,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
     showExecutions = true,
     useBlurEffect = false,
     showDescriptionAsTooltip = false,
+    imageLoading,
     onCardClick,
     onActionComplete,
     actionButtonLabel,
@@ -166,6 +170,7 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
       iconColor={customIconColor}
       iconSize={WORKFLOW_CARD_ICON_SIZE}
       maxIcons={3}
+      loading={imageLoading}
     />
   );
 
@@ -222,7 +227,11 @@ export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
         <div className="mt-1 flex items-center justify-between gap-2">
           <div className="min-w-0 space-y-1">
             {shouldShowCreator && creator && (
-              <CreatorAvatar creator={creator} showName />
+              <CreatorAvatar
+                creator={creator}
+                showName
+                loading={imageLoading}
+              />
             )}
 
             {shouldShowTrigger && triggerDisplay && (
