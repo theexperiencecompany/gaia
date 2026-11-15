@@ -33,6 +33,7 @@ import {
   type RichMessageTarget,
   richMessageToMarkdown,
   type SentMessage,
+  withTimeout,
 } from "@gaia/shared/bots";
 import type { PlatformEmulation } from "./emulation";
 import type { TranscriptRecorder } from "./transcript";
@@ -44,6 +45,9 @@ import type { TranscriptRecorder } from "./transcript";
  * replies. The runner clears `BOT_SERVER_PORT`, which would override it.
  */
 const HARNESS_SERVER_PORT = 0;
+
+/** How long a turn may keep answering before the harness fails it: a long research turn fits. */
+const TURN_SETTLE_TIMEOUT_MS = 10 * 60_000;
 
 /** Options accepted by {@link HarnessAdapter.simulateMessage}. */
 export interface SimulateOptions {
@@ -199,6 +203,29 @@ export class HarnessAdapter extends BaseBotAdapter {
     return this.arrivals.run(userId, () =>
       this.handleInbound(userId, channelId, messageId, text, options),
     );
+  }
+
+  /**
+   * Waits until every followed conversation is idle, or parked on approvals GAIA asked
+   * the user about, which it records as an awaiting-approval event each. A conversation
+   * still answering after timeoutMs fails the turn instead of hanging the run.
+   */
+  async settleTurn(timeoutMs = TURN_SETTLE_TIMEOUT_MS): Promise<void> {
+    const awaited = await withTimeout(
+      this.conversationsSettled(),
+      timeoutMs,
+      `the conversation was still answering after ${timeoutMs} ms`,
+    );
+    for (const { conversationId, approvals } of awaited) {
+      this.transcript.record({
+        type: "awaiting-approval",
+        conversationId,
+        approvals: approvals.map(({ approval_id, description }) => ({
+          approvalId: approval_id,
+          headline: description.headline,
+        })),
+      });
+    }
   }
 
   /**

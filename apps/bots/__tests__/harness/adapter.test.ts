@@ -29,13 +29,16 @@ import {
 } from "@gaia/shared/bots";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  approvalAsked,
   insertFrame,
+  liveTask,
   replyDelta,
   replyItem,
   screenFrame,
   stateFrame,
   updateFrame,
   userItemWith,
+  workItem,
 } from "../../../../libs/shared/ts/src/conversation/testing";
 import type { ConversationFrame } from "../../../../libs/shared/ts/src/conversation/types";
 import { HarnessAdapter } from "../../harness/src/adapter";
@@ -486,4 +489,66 @@ describe("HarnessAdapter — reactions", () => {
       );
     },
   );
+});
+
+describe("HarnessAdapter — settling a turn", () => {
+  /** An adapter whose events stream replays frames, then stays open as the live server's does. */
+  function heldOpen(frames: ConversationFrame[]) {
+    const { adapter, recorder, gaia } = makeAdapter("telegram", {});
+    gaia.conversationEvents.mockImplementation(async function* (
+      _ctx: unknown,
+      _conversationId: string,
+      signal: AbortSignal,
+    ) {
+      yield* frames;
+      if (signal.aborted) return;
+      await new Promise((resolve) =>
+        signal.addEventListener("abort", resolve, { once: true }),
+      );
+    });
+    return { adapter, recorder };
+  }
+  const user = userItemWith("u1", 1, {
+    text: "add a todo",
+    surface: "telegram",
+  });
+
+  // Regression (live run): send and run hung forever while an approval was pending.
+  it("ends a turn parked on an asked approval and records what it waits on", async () => {
+    const asked = approvalAsked("t1", "ap1", 'Create a todo: "tg-1"');
+    const { adapter, recorder } = heldOpen([
+      screenFrame([user]),
+      insertFrame(workItem("t1", 2, "awaiting_approval", [asked])),
+      stateFrame(3, "awaiting_approval", [liveTask("t1", true)]),
+    ]);
+
+    await adapter.simulateMessage("dev-user-1", "add a todo");
+    await adapter.settleTurn(1_000);
+    await adapter.shutdown("test");
+
+    const events = recorder.getEvents();
+    expect(texts(events).some((t) => t.includes("tg-1"))).toBe(true);
+    expect(events.filter((e) => e.type === "awaiting-approval")).toEqual([
+      expect.objectContaining({
+        conversationId: "c1",
+        approvals: [{ approvalId: "ap1", headline: 'Create a todo: "tg-1"' }],
+      }),
+    ]);
+  });
+
+  it("fails a turn still answering past its bound instead of hanging", async () => {
+    const { adapter, recorder } = heldOpen([
+      screenFrame([user]),
+      stateFrame(1, "thinking"),
+    ]);
+
+    await adapter.simulateMessage("dev-user-1", "add a todo");
+    await expect(adapter.settleTurn(50)).rejects.toThrow(
+      "still answering after 50 ms",
+    );
+    await adapter.shutdown("test");
+    expect(
+      recorder.getEvents().some((e) => e.type === "awaiting-approval"),
+    ).toBe(false);
+  });
 });

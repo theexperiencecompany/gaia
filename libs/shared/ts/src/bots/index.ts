@@ -45,6 +45,7 @@ export {
   outboundMessageEnvelopeSchemaFor,
 } from "./consumer/envelope";
 export type {
+  AwaitedDecision,
   ConversationEventSource,
   ConversationSurface,
   DeliveryCursor,

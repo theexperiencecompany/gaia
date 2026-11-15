@@ -18,6 +18,7 @@ import { sleep } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ConversationFollower } from "./follower";
 import type {
+  AwaitedDecision,
   DeliveryCursor,
   FollowSurface,
   StreamingOptions,
@@ -53,6 +54,8 @@ export class ConversationFollowers {
   /** The cursor a follow of each conversation started from or delivered to, so a late wake repeats nothing. */
   private readonly reached = new Map<string, DeliveryCursor>();
   private readonly runs = new Set<Promise<void>>();
+  /** Waiters woken after a follow renders a frame, so settled re-checks what the follows wait on. */
+  private readonly changes = new Set<() => void>();
 
   constructor(
     private readonly events: ConversationEventSource,
@@ -142,6 +145,34 @@ export class ConversationFollowers {
     while (this.runs.size > 0) await Promise.allSettled([...this.runs]);
   }
 
+  /**
+   * Settles once every follow has ended or waits on approvals it asked the user about,
+   * returning those: such a follow ends only after a decision nobody else will make.
+   */
+  async settled(): Promise<AwaitedDecision[]> {
+    while (this.runs.size > 0) {
+      const followed = [...this.active.entries()];
+      const awaited = followed.map(([conversationId, { follower }]) => ({
+        conversationId,
+        approvals: follower.awaitingDecision,
+      }));
+      // A run that already left the registry is still finishing: wait for it.
+      if (
+        followed.length === this.runs.size &&
+        awaited.every(({ approvals }) => approvals.length > 0)
+      )
+        return awaited;
+      const changed = new Promise<void>((resolve) => this.changes.add(resolve));
+      await Promise.race([Promise.allSettled([...this.runs]), changed]);
+    }
+    return [];
+  }
+
+  private changed(): void {
+    for (const resolve of this.changes) resolve();
+    this.changes.clear();
+  }
+
   /** End every follow, for shutdown. */
   async stopAll(): Promise<void> {
     for (const { abort } of this.active.values()) abort.abort();
@@ -192,6 +223,7 @@ export class ConversationFollowers {
           abort.signal,
         )) {
           await follower.apply(frame);
+          this.changed();
           failures = 0;
           if (follower.finished) {
             // Leave the registry before any await, so a message posted now starts a new follow.

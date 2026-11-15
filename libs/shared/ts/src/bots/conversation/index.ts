@@ -1,6 +1,7 @@
 export { STREAMING_DEFAULTS } from "./delivery-options";
 export { ConversationFollower } from "./follower";
 export type {
+  AwaitedDecision,
   ConversationSurface,
   DeliveryCursor,
   FollowStart,

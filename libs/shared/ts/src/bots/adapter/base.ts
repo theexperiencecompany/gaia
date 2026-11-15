@@ -47,6 +47,7 @@ import type { OutboundAttachment } from "../consumer/envelope";
 import { OutboundConsumer } from "../consumer/outbound-consumer";
 import { STREAMING_DEFAULTS } from "../conversation/delivery-options";
 import type {
+  AwaitedDecision,
   ConversationSurface,
   DeliveryCursor,
   FollowSurface,
@@ -913,6 +914,11 @@ export abstract class BaseBotAdapter {
   /** Settles once every conversation followed so far is idle with its replies shown. */
   conversationsIdle(): Promise<void> {
     return this.followers.idle();
+  }
+
+  /** Settles once every conversation followed is idle or parked on approvals it asked; returns those. */
+  conversationsSettled(): Promise<AwaitedDecision[]> {
+    return this.followers.settled();
   }
 
   /** Tells the user why their message was not accepted: the link prompt, the plan prompt, or the error. */

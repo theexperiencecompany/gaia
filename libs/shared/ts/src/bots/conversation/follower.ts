@@ -21,6 +21,7 @@
  */
 
 import type {
+  ApprovalRequested,
   NoticeItem,
   PartialReply,
   ReplyItem,
@@ -138,6 +139,15 @@ export class ConversationFollower {
   /** A message posted into this conversation: the follow stays until it is answered. */
   expect(seq: number): void {
     this.expected.add(seq);
+  }
+
+  /** The approvals the work waits on that this follow asked the user about: it cannot finish before they are decided. */
+  get awaitingDecision(): ApprovalRequested[] {
+    return this.view.items.flatMap((item) =>
+      item.kind === SCREEN_ITEM_KIND.WORK
+        ? item.asking.filter(({ approval_id }) => this.asked.has(approval_id))
+        : [],
+    );
   }
 
   /** Idle, and every posted message answered or stopped. */

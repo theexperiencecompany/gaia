@@ -134,6 +134,14 @@ function emitTranscript(
 ): void {
   out(transcript.toJsonl());
   if (outPath) log(`Transcript written to ${outPath}`);
+  for (const event of transcript.getEvents()) {
+    if (event.type !== "awaiting-approval") continue;
+    for (const { approvalId, headline } of event.approvals) {
+      log(
+        `Waiting on approval ${approvalId} in ${event.conversationId}: ${headline}`,
+      );
+    }
+  }
 }
 
 async function runSend(args: ParsedArgs): Promise<number> {

@@ -126,8 +126,16 @@ export interface ReactionEvent extends TranscriptEventBase {
   replaces: string | null;
 }
 
+/** A turn ended with the conversation parked on approvals GAIA asked the user about. */
+export interface AwaitingApprovalEvent extends TranscriptEventBase {
+  type: "awaiting-approval";
+  conversationId: string;
+  approvals: { approvalId: string; headline: string }[];
+}
+
 /** Discriminated union of every transcript event. */
 export type TranscriptEvent =
+  | AwaitingApprovalEvent
   | InboundEvent
   | SendEvent
   | EditEvent
@@ -140,6 +148,7 @@ export type TranscriptEvent =
 
 /** Event payload before the recorder stamps `platform`, `seq`, and `t`. */
 export type TranscriptEventInput =
+  | Omit<AwaitingApprovalEvent, keyof TranscriptEventBase>
   | Omit<InboundEvent, keyof TranscriptEventBase>
   | Omit<SendEvent, keyof TranscriptEventBase>
   | Omit<EditEvent, keyof TranscriptEventBase>

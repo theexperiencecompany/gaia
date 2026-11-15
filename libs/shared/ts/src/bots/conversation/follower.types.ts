@@ -1,6 +1,7 @@
 /** Types of the bot conversation follower: what an adapter gives it, and what it hands back. */
 
 import type {
+  ApprovalRequested,
   BotDeliveryReport,
   PartialReply,
   ReplyFile,
@@ -70,4 +71,10 @@ export interface FollowStart {
   /** The reply just past the floor that an earlier follow sent only its first bubbles of. */
   partialReply: PartialReply | null;
   record: (cursor: DeliveryCursor) => Promise<void>;
+}
+
+/** A followed conversation parked on approvals its follow asked the user about. */
+export interface AwaitedDecision {
+  conversationId: string;
+  approvals: ApprovalRequested[];
 }

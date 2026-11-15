@@ -135,7 +135,7 @@ describe("deliverTurn", () => {
         arrivals.push({ text, at: Date.now() - started });
         return new Promise<void>((resolve) => setTimeout(resolve, 50));
       },
-      conversationsIdle: () => idle,
+      settleTurn: () => idle,
     } as unknown as HarnessAdapter;
     return { adapter, arrivals, releaseIdle };
   }
