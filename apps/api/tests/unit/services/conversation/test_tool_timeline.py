@@ -101,18 +101,20 @@ def test_no_cards_show_nothing() -> None:
 
 
 def test_calls_are_rows_keyed_by_call_id_or_a_slot_after_the_last_id() -> None:
-    first, second, named, third, fourth = (
+    first, second, extra, named, third, fourth = (
         {"tool_name": "a"},
         _call("", "b"),
+        {"tool_name": "a2"},
         _call("c1"),
         {"tool_name": "c"},
         {"tool_name": "d"},
     )
-    cards = [_calls(first, second, 7, named, third), _calls(fourth)]
+    cards = [_calls(first, second, 7, extra, named, third), _calls(fourth)]
 
     assert _rows(cards) == [
         (TOOL, "head#0", first),
         (TOOL, "head#1", second),
+        (TOOL, "head#2", extra),
         (TOOL, "tc-c1", named),
         (TOOL, "tc-c1#0", third),
         (TOOL, "tc-c1#1", fourth),
@@ -366,6 +368,27 @@ def test_a_spawn_outside_a_handoff_is_its_own_row_and_inside_one_nests() -> None
     ]
 
 
+def test_unnamed_synthetic_groups_count_every_group_made_before_them() -> None:
+    spawn = {"tool_name": "spawn_subagent"}
+    handoff = {"tool_name": "handoff"}
+    cards = [_calls(spawn, spawn, handoff, handoff, spawn, spawn)]
+
+    rows = _rows(cards)
+
+    assert [key for _, key, _ in rows] == [
+        "sa-synth-spawn-0",
+        "sa-synth-spawn-1",
+        "sa-synth-2",
+        "sa-synth-3",
+    ]
+    last = rows[-1][2]
+    assert isinstance(last, dict)
+    assert last["nested_subagents"] == [
+        _synthetic(f"synth-spawn-{i}", "Task Agent", handoff=False, category="spawn_subagent")
+        for i in (4, 5)
+    ]
+
+
 # --- streamed subagent groups --------------------------------------------------------------------
 
 
@@ -442,13 +465,14 @@ def test_spawn_calls_open_the_spawned_groups_in_order() -> None:
 
 
 def test_a_root_spawned_group_nests_in_the_next_handoff_that_spawned_one() -> None:
-    spawn = _call("sp", "spawn_subagent")
-    gmail = _group("h1", "Gmail", "handoff", [spawn])
-    notion = _group("h2", "Notion", "handoff", [_call("n1")])
-    slack = _group("h3", "Slack", "handoff", [_call("sp9", "spawn_subagent")])
     first = _group("s1", "Task Agent", "spawned", [_call("deep")])
-    second, extra = _group("s2", "Task Agent", "spawned"), _group("s3", "Task Agent", "spawned")
-    groups = [gmail, notion, slack, first, second, extra]
+    gmail = _group("h1", "Gmail", "handoff", [_call("sp", "spawn_subagent")])
+    notion = _group("h2", "Notion", "handoff", [_call("n1")])
+    browser = _group("browser:b1", "Browser", "browser")
+    slack = _group("h3", "Slack", "handoff", [_call("sp9", "spawn_subagent")], [browser])
+    drive = _group("h4", "Drive", "handoff", [_call("sp4", "spawn_subagent")])
+    second = _group("s2", "Task Agent", "spawned")
+    groups = [first, gmail, notion, slack, drive, second]
     cards = [_calls(_call("deep"), _call("n1")), *map(_group_card, groups)]
 
     assert _rows(cards) == [
@@ -468,19 +492,29 @@ def test_a_root_spawned_group_nests_in_the_next_handoff_that_spawned_one() -> No
             {
                 **slack,
                 "step_keys": ["h3-tc-sp9"],
-                "nested_subagents": [{**second, "step_keys": []}],
+                "nested_subagents": [
+                    {**browser, "step_keys": []},
+                    {**second, "step_keys": []},
+                ],
             },
         ),
-        (SUBAGENT, "sa-s3", {**extra, "step_keys": []}),
+        (SUBAGENT, "sa-h4", {**drive, "step_keys": ["h4-tc-sp4"]}),
     ]
 
 
 def test_a_group_already_nested_by_its_parent_does_not_repeat_as_a_root() -> None:
-    child = _group("s9", "Task Agent", "spawned", [{"reasoning": "x"}, {"reasoning": "y"}])
+    calls: list[JsonValue] = [_call("deep"), _call("mid"), _thought("x"), _thought("y")]
+    child = _group("s9", "Task Agent", "spawned", calls)
     parent = _group("h1", "Gmail", "handoff", nested=[child])
-    cards = [_group_card(parent), _group_card(child)]
+    # The child's own card is an earlier snapshot, streamed before its calls arrived.
+    early = _group("s9", "Task Agent", "spawned")
+    cards = [_calls(_call("deep")), _group_card(parent), _group_card(early)]
+    before = copy.deepcopy(cards)
 
-    assert _rows(cards) == [
+    rows = _rows(cards)
+
+    assert cards == before
+    assert rows == [
         (
             SUBAGENT,
             "sa-h1",
@@ -488,7 +522,11 @@ def test_a_group_already_nested_by_its_parent_does_not_repeat_as_a_root() -> Non
                 **parent,
                 "step_keys": [],
                 "nested_subagents": [
-                    {**child, "tool_calls": [{"reasoning": "xy"}], "step_keys": ["head#0"]}
+                    {
+                        **child,
+                        "tool_calls": [_call("deep"), _call("mid"), _thought("xy")],
+                        "step_keys": ["s9-tc-deep", "s9-tc-mid", "s9-tc-mid#0"],
+                    }
                 ],
             },
         )
