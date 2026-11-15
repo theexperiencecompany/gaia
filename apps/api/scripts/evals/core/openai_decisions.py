@@ -1,9 +1,9 @@
-"""Transport for OpenAI's Decisions API, which classifies auto mode's gated calls.
+"""OpenAI's Decisions API as a judge transport, for calibration runs only.
 
-Questions are written once in the repo's decision-question shape (prompts.py: a
-choice with per-option criteria, or a noul with true/false criteria). This module
-translates them to OpenAI's wire and its answers back into JevDecisionsResponse,
-the answer shape the judge reads. Failure raises; the caller decides how to degrade.
+Prod's judge asks JEV (app/services/hil/jev_judge.py). This lets the hil-judge
+suite put the same questions to OpenAI's model for comparison: it translates the
+repo's question shape to OpenAI's wire (choice -> choices, noul -> predicate) and
+the answers back into JevDecisionsResponse. Failure raises.
 """
 
 from collections.abc import Mapping
@@ -12,14 +12,14 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel
 
-from app.constants.hil import (
-    HIL_DECISIONS_MODEL_NAME,
-    HIL_DECISIONS_TIMEOUT_SECONDS,
-    HIL_DECISIONS_URL,
-)
+from app.constants.llm import OPENAI_API_URL
 from app.constants.providers import CredentialProviderName
 from app.models.jev_models import JevDecisionsResponse
 from app.services.providers.provider_credentials_service import ProviderConfig, resolve
+
+OPENAI_DECISIONS_MODEL_NAME = "gpt-6-luna"
+OPENAI_DECISIONS_URL = f"{OPENAI_API_URL}/decisions"
+OPENAI_DECISIONS_TIMEOUT_SECONDS = 15
 
 
 class OpenAIDecisionsUnconfiguredError(RuntimeError):
@@ -74,16 +74,16 @@ async def post_openai_decisions(
             "No OpenAI key saved or set; cannot reach the Decisions API"
         )
     body = {
-        "model": HIL_DECISIONS_MODEL_NAME,
+        "model": OPENAI_DECISIONS_MODEL_NAME,
         "input": [{"role": "user", "content": [{"type": "input_json", "data": dict(state)}]}],
         "questions": [
             _wire_question(name, _Question.model_validate(question))
             for name, question in questions.items()
         ],
     }
-    async with httpx.AsyncClient(timeout=HIL_DECISIONS_TIMEOUT_SECONDS) as client:
+    async with httpx.AsyncClient(timeout=OPENAI_DECISIONS_TIMEOUT_SECONDS) as client:
         resp = await client.post(
-            HIL_DECISIONS_URL, json=body, headers={"Authorization": f"Bearer {key}"}
+            OPENAI_DECISIONS_URL, json=body, headers={"Authorization": f"Bearer {key}"}
         )
         resp.raise_for_status()
         return _answers(_WireResponse.model_validate(resp.json()))

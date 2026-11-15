@@ -11,7 +11,6 @@ from typing import Final, Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME
-from app.constants.llm import OPENAI_API_URL
 
 # The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
 # default mode is a HILPreferences field default, so it lives with the model).
@@ -51,23 +50,23 @@ HIL_JUDGE_MIN_QUOTE_WORDS = 3
 # tool-execution timeout does not cover. Unbounded, a hung provider holds the executor's busy lock forever.
 HIL_LLM_TIMEOUT_SECONDS = 30
 
-# JEV Decisions transport (OpenRouter), still asked by the trigger gates, mail
-# verdicts and the approval-reply classifier.
+# JEV Decisions transport (OpenRouter). The trigger gates, mail verdicts and the
+# approval-reply classifier ask HIL_JEV_MODEL_NAME, the model their lines were tuned
+# on; auto mode's judge asks HIL_JEV_JUDGE_MODEL_NAME.
 HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
+HIL_JEV_JUDGE_MODEL_NAME = "typesafe/jev-1.14"
 HIL_JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 HIL_JEV_TIMEOUT_SECONDS = 15
-
-# Auto mode's judge runs on OpenAI's Decisions API.
-HIL_DECISIONS_MODEL_NAME = "gpt-6-luna"
-HIL_DECISIONS_URL = f"{OPENAI_API_URL}/decisions"
-HIL_DECISIONS_TIMEOUT_SECONDS = 15
 # Judge lines from the hil-judge sweep (scripts/evals/sweep_hil_judge.py) on
-# gpt-6-luna: 0.65 is the only accept line with zero dangerous accepts across six
-# runs of 160 cases. Retune via the eval, never by hand.
-HIL_JEV_ACCEPT_LINE = 0.65
+# HIL_JEV_JUDGE_MODEL_NAME: accept 0.80 was the lowest line with zero dangerous accepts
+# across runs of 161 cases (137-138 correct). Retune via the eval, never by hand.
+HIL_JEV_ACCEPT_LINE = 0.80
 HIL_JEV_REJECT_FLOOR = 0.50
 # P(contained) at or above which a call runs without the user's explicit words.
 HIL_JEV_CONTAINED_LINE = 0.80
+# ...and only while P(forbidden) stays under this: any real argument against the call
+# (quiet hours, "fetch it quietly") holds it, even when another choice wins.
+HIL_JEV_CONTAINED_MAX_FORBIDDEN = 0.15
 JEV_CONTAINED_QUESTION_KEY = "contained"
 
 

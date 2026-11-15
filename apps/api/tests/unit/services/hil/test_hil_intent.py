@@ -544,3 +544,58 @@ class TestContainedActionsRunWithoutExplicitWords:
             )
 
         assert decision.outcome == "ask"
+
+
+# The real shape: Composio's GMAIL_LIST_DRAFTS compacted into one line per draft.
+_DRAFT_LIST = (
+    "[GMAIL_LIST_DRAFTS compacted: large_output] Visible drafts (id | to | subject | gist):\n\n"
+    '1. r-486793596744144676 | t.h@bookhopscotchlabs.info | "Re: Aryan?" | offer\n'
+    "2. r8807310570127663349 | simonne@intrinsicurlyme.co.za, lisa@intrinsicurlyme.co.za "
+    '| "Re: October Invoice" | invoice attached\n'
+    '3. r2569937965309608501 | boardy@x.com | "Intro: Dhruv + Vee" | intro'
+)
+_LISTED = [PriorCall(name="GMAIL_LIST_DRAFTS", args={"max_results": 25}, output=_DRAFT_LIST)]
+
+
+class TestAPickFromAList:
+    """A listed result traces to the user only when its entry is the one they were pointed at."""
+
+    @pytest.mark.regression
+    def test_the_entry_the_user_was_shown_grounds_the_pick(self) -> None:
+        """Prod 2026-11-15: "Send" after "drafted the reply to Simonne and Lisa" asked again."""
+        shown = ["I drafted the reply to Simonne and Lisa with the October invoice attached."]
+
+        missing = ungrounded_targets(
+            {"draft_id": "r8807310570127663349"}, ["Send"], _LISTED, shown_turns=shown
+        )
+
+        assert missing == []
+
+    def test_a_blind_pick_still_needs_the_user(self) -> None:
+        missing = ungrounded_targets({"draft_id": "r8807310570127663349"}, ["Send"], _LISTED)
+
+        assert missing == ["r8807310570127663349"]
+
+    def test_an_entry_the_user_was_not_pointed_at_stays_ungrounded(self) -> None:
+        shown = ["I drafted the reply to Simonne and Lisa with the October invoice attached."]
+
+        missing = ungrounded_targets(
+            {"draft_id": "r2569937965309608501"}, ["Send"], _LISTED, shown_turns=shown
+        )
+
+        assert missing == ["r2569937965309608501"]
+
+    def test_a_json_list_grounds_by_the_record_holding_the_id(self) -> None:
+        listed = [
+            PriorCall(
+                name="LIST",
+                args={},
+                output=(
+                    '[{"id": "d-1", "to": "bob@x.com"}, '
+                    '{"id": "d-2", "to": "simonne@intrinsicurlyme.co.za"}]'
+                ),
+            )
+        ]
+
+        assert ungrounded_targets({"id": "d-2"}, ["send simonne's"], listed) == []
+        assert ungrounded_targets({"id": "d-1"}, ["send simonne's"], listed) == ["d-1"]

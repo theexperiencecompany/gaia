@@ -12,6 +12,7 @@ import pytest
 
 from app.agents.llm.lane import AgentRole, ModelLane
 from app.agents.llm.ttft import LLMTtftCallback
+from app.constants.hil import HIL_JUDGE_MAX_ASSISTANT_CHARS, HIL_JUDGE_MAX_ASSISTANT_TURNS
 from app.constants.llm import LLM_LABEL_METADATA_KEY, LLMProviderName
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import (
@@ -33,11 +34,13 @@ from app.helpers.agent_helpers import (
     execute_graph_silent,
     execute_graph_streaming,
     opens_thread,
+    recent_assistant_replies,
     recent_user_messages,
 )
 from app.models.agent_models import AgentUserContext, run_analytics_context
 from app.models.payment_models import PlanType
 from app.models.presence_models import PresenceSnapshot
+from app.utils.general_utils import clip_text
 from app.utils.stream_publishers import ExtractedToolData
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext, analytics_context, worker_context
@@ -425,6 +428,28 @@ class TestBuildAgentConfig:
         assert configurable["user_messages"] == ["delete the repo"]
         # thread_id still tracks the wrapped graph thread, unlike conversation_id.
         assert configurable["thread_id"] == "github_executor_conv-1"
+
+    async def test_parent_overrides_child_for_the_conversations_assistant_replies(self):
+        """What the user was shown before their turn is set once by comms; a child's own run never replaces it."""
+
+        configurable = (
+            await build_agent_config(
+                identity=AgentIdentity(
+                    conversation_id="executor_conv-1",
+                    user=FAKE_USER,
+                    agent_name="executor",
+                ),
+                thread=AgentThread(
+                    base_configurable={
+                        "conversation_id": "conv-1",
+                        "assistant_turns": ["Your draft to Simonne is ready."],
+                    },
+                ),
+                turn=AgentTurn(assistant_turns=["the executor's own words"]),
+            )
+        )["configurable"]
+
+        assert configurable["assistant_turns"] == ["Your draft to Simonne is ready."]
 
     async def test_parent_overrides_child_for_the_verbatim_user_request(self):
         """Same rule as user_messages: comms establishes the verbatim request once, and a child's paraphrase must not overwrite it."""
@@ -818,6 +843,26 @@ class TestRecentUserMessages:
         ]
 
         assert recent_user_messages(history, "send it") == ["draft an email to Bob", "send it"]
+
+
+class TestRecentAssistantReplies:
+    def test_only_non_blank_assistant_replies_are_kept_oldest_first(self):
+        history = [
+            {"role": "user", "content": "find Simonne's invoice"},
+            {"role": "assistant", "content": " Drafted the reply to Simonne with the PDF. "},
+            {"role": "assistant", "content": "   "},
+            {"role": "user", "content": "send"},
+        ]
+
+        assert recent_assistant_replies(history) == ["Drafted the reply to Simonne with the PDF."]
+
+    def test_only_the_latest_replies_are_kept_each_clipped(self):
+        history = [{"role": "assistant", "content": f"reply {i} " + "x" * 2000} for i in range(9)]
+
+        replies = recent_assistant_replies(history)
+
+        assert len(replies) == HIL_JUDGE_MAX_ASSISTANT_TURNS
+        assert replies[-1] == clip_text("reply 8 " + "x" * 2000, HIL_JUDGE_MAX_ASSISTANT_CHARS)
 
 
 class TestBackgroundAuthorization:

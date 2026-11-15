@@ -288,7 +288,7 @@ async def is_hil_ledger_enabled(user_id: str | None) -> bool:
 
 
 async def is_jev_judge_enabled(user_id: str | None) -> bool:
-    """Whether the user's auto mode classifies with the Decisions judge (OpenAI) first, LLM fallback on failure; off keeps the LLM judge."""
+    """Whether the user's auto mode classifies with JEV first (LLM fallback on transport failure); off keeps the LLM judge."""
     return await is_enabled(FeatureFlag.HIL_JEV_JUDGE, user_id)
 
 

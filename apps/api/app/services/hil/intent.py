@@ -507,13 +507,14 @@ def ungrounded_targets(
     user_turns: list[str],
     prior_calls: list[PriorCall],
     known: frozenset[str] | None = None,
+    *,
+    shown_turns: list[str] | None = None,
 ) -> list[str]:
     """Return target-like arg values with no provenance in user words or priors.
 
-    Grounding backstop for judges with no authorizing quote (JEV): an email, id
-    or amount from nowhere blocks auto-accept. Prose bodies and targets from the
-    user's own approved runs (known) are provenance. A prior output grounds only
-    when it identifies: a single result returned the thing; a list needs the user.
+    Backstop for JEV: an email, id or amount from nowhere blocks auto-accept. A prior
+    output grounds when it identifies (one result), or when the listed entry holding
+    the target names an address the user wrote or was shown: not a blind pick.
     """
     provenance = [f"{call.name} {args_preview(call.args)}" for call in prior_calls]
     provenance += [
@@ -525,13 +526,48 @@ def ungrounded_targets(
     sources = [_normalize(text) for text in [*user_turns, *provenance]]
     normalized_known = {_normalize(target) for target in known or frozenset()}
     user_tokens = {token for turn in user_turns for token in _normalize(turn).split()}
+    pointed_at = [*user_turns, *(shown_turns or [])]
     return [
         target
         for target in _target_values(args)
         if not any(_normalize(target) in source for source in sources)
         and _normalize(target) not in normalized_known
         and _local_part(target) not in user_tokens
+        and not _listed_entry_pointed_at(target, prior_calls, pointed_at)
     ]
+
+
+_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+
+def _listed_entry_pointed_at(target: str, prior_calls: list[PriorCall], context: list[str]) -> bool:
+    """Whether a listed result carries target on an entry naming an address in context."""
+    text = _normalize(" ".join(context))
+    tokens = set(text.split())
+    return any(
+        _normalize(address) in text or _local_part(address) in tokens
+        for call in prior_calls
+        for entry in _entries_holding(call.output, target)
+        for address in _ADDRESS.findall(entry)
+    )
+
+
+def _entries_holding(output: str, target: str) -> list[str]:
+    """Return the entries of a listed result that carry target: JSON objects, else lines."""
+    try:
+        parsed: object = json.loads(output)
+    except (json.JSONDecodeError, ValueError):
+        return [line for line in output.splitlines() if target in line]
+    return [json.dumps(node) for node in _objects(parsed) if target in node.values()]
+
+
+def _objects(value: object) -> list[dict[str, object]]:
+    """Every JSON object nested anywhere in value."""
+    if isinstance(value, dict):
+        return [value, *(found for child in value.values() for found in _objects(child))]
+    if isinstance(value, list):
+        return [found for child in value for found in _objects(child)]
+    return []
 
 
 def _local_part(target: str) -> str:

@@ -710,6 +710,26 @@ class TestLedgerAutoMode:
         assert kwargs["judge"] is None
         assert kwargs["user_messages"] == ["send it to b@x"]
 
+    @pytest.mark.regression
+    async def test_the_conversations_replies_reach_the_judge_before_the_runs_own(
+        self, gate_seams: GateSeams
+    ) -> None:
+        """A bare "Send" refers to what the user was last shown, which a fresh run never said."""
+        gate_seams.policy.return_value = "auto"
+        messages = [AIMessage(content="Fetched both drafts.")]
+
+        await gate.decide_tool_call(
+            gated_request(
+                messages=messages,
+                assistant_turns=["Drafted the reply to Simonne with the invoice attached."],
+            )
+        )
+
+        assert gate_seams.judge.await_args.kwargs["assistant_turns"] == [
+            "Drafted the reply to Simonne with the invoice attached.",
+            "Fetched both drafts.",
+        ]
+
     async def test_the_judge_is_told_which_account_the_call_acts_as(
         self, gate_seams: GateSeams
     ) -> None:

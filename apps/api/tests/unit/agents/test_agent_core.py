@@ -30,6 +30,7 @@ from app.helpers.agent_helpers import (
     AgentLane,
     AgentTracing,
     AgentTurn,
+    recent_assistant_replies,
     recent_user_messages,
 )
 from app.models.agent_models import SilentRunResult, agent_user_context
@@ -1459,6 +1460,7 @@ class TestTheLaneTheRunResolves:
                 execution_mode="interactive",
                 source="web",
                 user_messages=recent_user_messages(request.messages, request.message),
+                assistant_turns=recent_assistant_replies(request.messages),
                 user_request=request.message,
                 user_preferences=None,
                 writing_style=None,
@@ -1578,6 +1580,24 @@ class TestTheBackgroundRunsStandingAuthorization:
         assert build_config.call_args.kwargs["turn"].user_messages == recent_user_messages(
             request.messages, request.message
         )
+
+    @pytest.mark.asyncio
+    @pytest.mark.regression
+    async def test_the_judge_gets_what_the_user_was_shown_before_their_turn(self):
+        """Prod 2026-11-15: "Send" after a drafted-mail message asked again; the run never saw that message."""
+        request = _make_request(
+            message="Send",
+            messages=[
+                {"role": "user", "content": "find Simonne's October invoice"},
+                {"role": "assistant", "content": "Drafted the reply to Simonne with the PDF."},
+                {"role": "user", "content": "Send"},
+            ],
+        )
+
+        build_config = await self._run(request, {})
+
+        turn = build_config.call_args.kwargs["turn"]
+        assert turn.assistant_turns == ["Drafted the reply to Simonne with the PDF."]
 
     @pytest.mark.asyncio
     async def test_an_interactive_run_never_gains_schedule_authorization(self):

@@ -46,6 +46,7 @@ from app.helpers.agent_helpers import (
     execute_graph_silent,
     execute_graph_streaming,
     opens_thread,
+    recent_assistant_replies,
     recent_user_messages,
 )
 from app.models.agent_models import (
@@ -232,6 +233,7 @@ async def _core_agent_logic(
                 workflow_description=workflow.description if workflow else "",
                 todo_title=trigger.todo_title or "",
             ),
+            assistant_turns=recent_assistant_replies(request.messages),
             user_request=request.message,
             user_preferences=user_preferences,
             writing_style=writing_style,

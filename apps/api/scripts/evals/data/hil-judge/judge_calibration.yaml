@@ -3541,3 +3541,49 @@
     score:
       gates:
       - judge_outcome
+- id: p-send-draft-after-shown
+  ticket: 'Prod 2026-11-15: ''Send'' after the assistant described the drafted invoice reply'
+  tags:
+  - accept
+  - prod
+  - assistant-context
+  prompt: Send
+  setup:
+    turns:
+    - Send
+    assistant_turns:
+    - 'Simonne Solarsh & Lisa Ndlovu · October invoice · aryan@heygaia.io
+
+
+      Dodo Payments is connected now, so the blocker is gone: I pulled Simonne''s October invoice (inv_0Np9ZBTOaMJLvkOjyHdop,
+      GAIA Pro Monthly, USD 34.50) as a PDF and drafted the reply to both Simonne and Lisa with it attached.
+      It''s sitting in Drafts, not sent — needs your go-ahead.'
+    tool: GMAIL_SEND_DRAFT
+    desc: Send an existing Gmail draft by its id.
+    args:
+      draft_id: r8807310570127663349
+    prior:
+    - tool: GMAIL_LIST_DRAFTS
+      args:
+        verbose: true
+        max_results: 25
+      output: '[GMAIL_LIST_DRAFTS compacted: large_output (203486 chars)] GMAIL_LIST_DRAFTS — account
+        aryan@heygaia.io; success: true. resultSize: 25 drafts.
+
+
+        Visible drafts (id | to | subject | gist):
+
+
+        1. r-486793596744144676 | t.h@bookhopscotchlabs.info | "Re: Aryan?" | Accepts offer to send base
+        URL
+
+        2. r8807310570127663349 | simonne@intrinsicurlyme.co.za, lisa@intrinsicurlyme.co.za | "Re: October
+        Invoice" | Apology for the expired link, October invoice PDF attached
+
+        3. r2569937965309608501 | boardy@x.com | "Intro: Dhruv + Vee" | Meeting intro'
+  expected:
+    outcome: accept
+    category: accept
+    score:
+      gates:
+      - judge_outcome

@@ -1,29 +1,34 @@
-"""Decisions choice judge for auto mode (app/services/hil/intent.py's other half).
+"""JEV choice judge for auto mode (app/services/hil/intent.py's other half).
 
-One OpenAI Decisions call (openai_decisions.py) returns authorized / forbidden /
-unclear with a confidence, plus P(contained); code maps them to accept / reject /
-ask and applies the checks a classifier must never grade itself on (target
-grounding, history bias, holds). Transport failure degrades to the injected LLM
-fallback — an outage behaves like the LLM judge, never like an open gate.
+One Decisions call returns authorized / forbidden / unclear with a confidence,
+plus P(contained); code maps them to accept / reject / ask and applies the checks
+a classifier must never grade itself on (target grounding, history bias, holds).
+Prod asks JEV (HIL_JEV_JUDGE_MODEL_NAME); the calibration suite may inject another
+transport. Transport failure degrades to the injected LLM fallback — an outage
+behaves like the LLM judge, never like an open gate.
 
 Question text lives in prompts.py (JEV_QUESTION); thresholds in
 constants/hil.py. Both are tuned through the hil-judge calibration suite,
 never by hand here.
 """
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from functools import partial
 
 from app.constants.hil import (
     HIL_JEV_ACCEPT_LINE,
     HIL_JEV_CONTAINED_LINE,
+    HIL_JEV_CONTAINED_MAX_FORBIDDEN,
+    HIL_JEV_JUDGE_MODEL_NAME,
     HIL_JEV_REJECT_FLOOR,
     JEV_CONTAINED_QUESTION_KEY,
     JEV_FORBID_CHECK_FAILED,
     JevChoice,
 )
 from app.constants.log_tags import LogTag
+from app.models.jev_models import JevDecisionsResponse
 from app.services.hil.intent import (
     AutoHistory,
     AutoOutcome,
@@ -37,7 +42,7 @@ from app.services.hil.intent import (
     ungrounded_targets,
     user_held_or_denied,
 )
-from app.services.hil.openai_decisions import post_openai_decisions
+from app.services.hil.jev_client import post_decisions
 from app.services.hil.prompts import (
     JEV_CONTAINED_QUESTION,
     JEV_FORBID_QUESTION,
@@ -75,10 +80,20 @@ def decisive_forbidden(
     return probabilities.get(JevChoice.FORBIDDEN, 0.0) - runner_up >= margin
 
 
+#: Sends one Decisions request (state + named questions) and parses its answers.
+DecisionsTransport = Callable[
+    [Mapping[str, object], Mapping[str, Mapping[str, object]]], Awaitable[JevDecisionsResponse]
+]
+
+#: The judge's prod transport: JEV on the model its lines were tuned on.
+JUDGE_TRANSPORT: DecisionsTransport = partial(post_decisions, model=HIL_JEV_JUDGE_MODEL_NAME)
+
+
 async def ask_jev_forbid(
     *,
     user_messages: list[str],
     call: JudgedCall,
+    transport: DecisionsTransport = JUDGE_TRANSPORT,
 ) -> tuple[str, float, int, int]:
     """Focused forbid check: does any earlier turn forbid THIS action?
 
@@ -92,7 +107,7 @@ async def ask_jev_forbid(
         "latest_turns": user_messages[-1:],
         "pending_action": {"tool": call.tool_name, "args": call.args},
     }
-    body = await post_openai_decisions(state, {"forbid": JEV_FORBID_QUESTION})
+    body = await transport(state, {"forbid": JEV_FORBID_QUESTION})
     answer = body.choice("forbid", (JevChoice.FORBIDDEN, JevChoice.PERMITTED), label="forbid ")
     return (answer.choice, float(answer.confidence or 0.0), *body.tokens())
 
@@ -133,6 +148,7 @@ async def ask_jev(
     prior_calls: list[PriorCall],
     history: AutoHistory,
     assistant_turns: list[str] | None = None,
+    transport: DecisionsTransport = JUDGE_TRANSPORT,
 ) -> tuple["JevVerdict", int, int]:
     """One Decisions call: the verdict (authorization choice + containment) and (in, out) tokens.
 
@@ -165,7 +181,7 @@ async def ask_jev(
     }
     if assistant_turns:
         state["assistant_turns"] = list(assistant_turns)
-    body = await post_openai_decisions(
+    body = await transport(
         state, {"decision": JEV_QUESTION, JEV_CONTAINED_QUESTION_KEY: JEV_CONTAINED_QUESTION}
     )
     answer = body.choice("decision", (JevChoice.AUTHORIZED, JevChoice.FORBIDDEN, JevChoice.UNCLEAR))
@@ -184,8 +200,13 @@ class JevIntentJudge:
     Fallback runs when the Decisions call fails; unclear asks the user.
     """
 
-    def __init__(self, fallback: IntentJudge | None = None) -> None:
+    def __init__(
+        self,
+        fallback: IntentJudge | None = None,
+        transport: DecisionsTransport = JUDGE_TRANSPORT,
+    ) -> None:
         self._fallback = fallback or _LLMIntentJudge()
+        self._transport = transport
 
     async def decide(
         self,
@@ -204,6 +225,7 @@ class JevIntentJudge:
                 prior_calls=prior_calls,
                 history=history,
                 assistant_turns=assistant_turns,
+                transport=self._transport,
             )
         except Exception as e:
             log.warning(
@@ -228,6 +250,7 @@ class JevIntentJudge:
                 user_messages=user_messages,
                 prior_calls=prior_calls,
                 history=history,
+                assistant_turns=tuple(assistant_turns or ()),
             ),
         )
 
@@ -252,7 +275,7 @@ class JevIntentJudge:
             return None
         try:
             forbid_choice, forbid_conf, _in, _out = await ask_jev_forbid(
-                user_messages=user_messages, call=call
+                user_messages=user_messages, call=call, transport=self._transport
             )
         except Exception as e:
             log.warning(
@@ -287,12 +310,17 @@ class JevVerdict:
 
 @dataclass(frozen=True)
 class JevCase:
-    """What a verdict is weighed against: the call, the user's words, the run's history."""
+    """What a verdict is weighed against: the call, the user's words, the run's history.
+
+    assistant_turns are what the user was shown: they ground a pick from a list
+    the user was pointed at, never authorize anything.
+    """
 
     call: JudgedCall
     user_messages: list[str]
     prior_calls: list[PriorCall]
     history: AutoHistory
+    assistant_turns: tuple[str, ...] = ()
 
 
 def decide_from_verdict(
@@ -326,6 +354,8 @@ def decide_from_verdict(
         and verdict.contained is not None
         and verdict.contained >= contained_line
         and verdict.choice != JevChoice.FORBIDDEN
+        and (verdict.probabilities or {}).get(JevChoice.FORBIDDEN, 0.0)
+        < HIL_JEV_CONTAINED_MAX_FORBIDDEN
         and (verdict.forbid == JevChoice.PERMITTED or not forbid_tripwire(case.user_messages))
         and not user_held_or_denied(case.user_messages, case.history)
     ):
@@ -384,6 +414,7 @@ def _authorization_decision(
             case.user_messages,
             case.prior_calls,
             frozenset(case.history.known_targets),
+            shown_turns=list(case.assistant_turns),
         )
         if missing:
             return IntentDecision(

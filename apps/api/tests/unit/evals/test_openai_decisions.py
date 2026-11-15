@@ -1,4 +1,4 @@
-"""OpenAI Decisions transport (app/services/hil/openai_decisions.py).
+"""OpenAI Decisions transport for calibration runs (scripts/evals/core/openai_decisions.py).
 
 httpx is mocked — the network boundary. The question translation and the answer
 parsing are the production code under test and run for real.
@@ -10,12 +10,12 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from scripts.evals.core.openai_decisions import post_openai_decisions
 
 from app.constants.providers import CredentialProviderName
-from app.services.hil.openai_decisions import post_openai_decisions
 from app.services.providers.provider_credentials_service import ProviderConfig
 
-MODULE = "app.services.hil.openai_decisions"
+MODULE = "scripts.evals.core.openai_decisions"
 
 CHOICE_QUESTION: dict[str, object] = {
     "type": "choice",

@@ -15,11 +15,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.hil import (
-    HIL_DECISIONS_MODEL_NAME,
-    HIL_DECISIONS_TIMEOUT_SECONDS,
-    HIL_DECISIONS_URL,
     HIL_JEV_CONTAINED_LINE,
+    HIL_JEV_CONTAINED_MAX_FORBIDDEN,
+    HIL_JEV_JUDGE_MODEL_NAME,
     HIL_JEV_REJECT_FLOOR,
+    HIL_JEV_TIMEOUT_SECONDS,
+    HIL_JEV_URL,
     JevChoice,
 )
 from app.constants.providers import CredentialProviderName
@@ -52,7 +53,7 @@ from app.services.providers.provider_credentials_service import ProviderConfig
 
 MODULE = "app.services.hil.jev_judge"
 # The Decisions transport: the network boundary every JEV question crosses.
-CLIENT_MODULE = "app.services.hil.openai_decisions"
+CLIENT_MODULE = "app.services.hil.jev_client"
 
 
 def _call(**overrides: Any) -> JudgedCall:
@@ -73,21 +74,16 @@ def _answer(
     probs: dict[str, float] | None = None,
     contained: float = 0.05,
 ) -> dict[str, Any]:
-    """Build an OpenAI Decisions body answering the decision and containment questions."""
-    distribution = probs if probs is not None else {choice: confidence}
     return {
-        "answers": [
-            {
+        "answers": {
+            "decision": {
                 "type": "choice",
-                "name": "decision",
                 "choice": choice,
                 "confidence": confidence,
-                "probabilities": [
-                    {"value": value, "probability": p} for value, p in distribution.items()
-                ],
+                "probabilities": probs if probs is not None else {choice: confidence},
             },
-            {"type": "predicate", "name": "contained", "probability": contained},
-        ],
+            "contained": {"type": "noul", "noul": contained},
+        },
         "usage": {"input_tokens": 300, "output_tokens": 20},
     }
 
@@ -119,7 +115,7 @@ async def _decide(
         ),
     )
     with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=_client(answer)):
-        with _openai_key("oa-key"):
+        with _openrouter_key("or-key"):
             return await judge.decide(
                 user_id="u",
                 user_messages=["draft an email to bob@example.com about the deck"],
@@ -432,7 +428,7 @@ class TestFallback:
 
     async def test_malformed_answer_runs_the_fallback(self) -> None:
         fallback = AsyncMock()
-        await _decide({"answers": []}, fallback=fallback)
+        await _decide({"answers": {}}, fallback=fallback)
         fallback.decide.assert_awaited_once()
 
     async def test_unknown_choice_runs_the_fallback(self) -> None:
@@ -443,7 +439,7 @@ class TestFallback:
     async def test_missing_api_key_runs_the_fallback(self) -> None:
         fallback = AsyncMock()
         judge = JevIntentJudge(fallback=fallback)
-        with _openai_key(None):
+        with _openrouter_key(None):
             await judge.decide(
                 user_id="u",
                 user_messages=["send it"],
@@ -459,53 +455,53 @@ class TestWire:
         """The criteria reference these names; a renamed field blinds the judge."""
         client = _client(_answer("unclear", 0.5))
         with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client):
-            with _openai_key("oa-key"):
+            with _openrouter_key("or-key"):
                 await ask_jev(
                     user_messages=["send it"],
                     call=_call(),
                     prior_calls=[],
                     history=AutoHistory(),
                 )
-        state, questions = _posted(client.__aenter__.return_value.post.await_args)
-        assert set(state) == {
+        posted = client.__aenter__.return_value.post.await_args.kwargs["json"]
+        assert set(posted["state"]) == {
             "user_messages",
             "pending_action",
             "prior_actions",
             "recent_history",
             "now",
         }
-        assert set(state["pending_action"]) == {
+        assert set(posted["state"]["pending_action"]) == {
             "tool",
             "description",
             "summary",
             "args",
         }
-        assert questions["decision"]["type"] == "choice"
+        assert posted["questions"]["decision"]["type"] == "choice"
 
     async def test_enrichment_rides_only_when_it_exists(self) -> None:
         """Empty evidence reads as missing evidence and costs confidence, so an old-shape call posts the old-shape state — and a rich call carries it all."""
         client = _client(_answer("unclear", 0.5))
         with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client):
-            with _openai_key("oa-key"):
+            with _openrouter_key("or-key"):
                 await ask_jev(
                     user_messages=["send it"],
                     call=_call(),
                     prior_calls=[PriorCall(name="FIND", args={})],
                     history=AutoHistory(),
                 )
-        state, _ = _posted(client.__aenter__.return_value.post.await_args)
-        assert set(state["pending_action"]) == {
+        posted = client.__aenter__.return_value.post.await_args.kwargs["json"]
+        assert set(posted["state"]["pending_action"]) == {
             "tool",
             "description",
             "summary",
             "args",
         }
-        assert state["prior_actions"] == [{"tool": "FIND", "args": {}}]
-        assert "assistant_turns" not in state
+        assert posted["state"]["prior_actions"] == [{"tool": "FIND", "args": {}}]
+        assert "assistant_turns" not in posted["state"]
 
         client = _client(_answer("unclear", 0.5))
         with patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client):
-            with _openai_key("oa-key"):
+            with _openrouter_key("or-key"):
                 await ask_jev(
                     user_messages=["send it"],
                     call=_call(
@@ -516,20 +512,20 @@ class TestWire:
                     history=AutoHistory(),
                     assistant_turns=["your draft is ready"],
                 )
-        state, _ = _posted(client.__aenter__.return_value.post.await_args)
-        assert state["pending_action"]["tool_schema"] == {
+        posted = client.__aenter__.return_value.post.await_args.kwargs["json"]
+        assert posted["state"]["pending_action"]["tool_schema"] == {
             "properties": {"draft_id": {"type": "string"}}
         }
-        assert state["prior_actions"] == [
+        assert posted["state"]["prior_actions"] == [
             {"tool": "CREATE", "args": {}, "output": '{"draft_id": "r1"}'}
         ]
-        assert state["assistant_turns"] == ["your draft is ready"]
+        assert posted["state"]["assistant_turns"] == ["your draft is ready"]
 
     async def test_usage_is_reported(self) -> None:
         with patch(
             f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=_client(_answer("unclear", 0.5))
         ):
-            with _openai_key("oa-key"):
+            with _openrouter_key("or-key"):
                 verdict, tokens_in, tokens_out = await ask_jev(
                     user_messages=["send it"],
                     call=_call(),
@@ -562,9 +558,7 @@ def _forbid_answer(
     choice: str, confidence: float | None, usage: dict[str, int] | None = None
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
-        "answers": [
-            {"type": "choice", "name": "forbid", "choice": choice, "confidence": confidence}
-        ]
+        "answers": {"forbid": {"type": "choice", "choice": choice, "confidence": confidence}}
     }
     if usage is not None:
         body["usage"] = usage
@@ -588,20 +582,20 @@ def _sequence_client(*answers: dict[str, Any] | Exception) -> AsyncMock:
 
 
 @contextmanager
-def _jev(client: AsyncMock, key: str | None = "oa-key") -> Iterator[MagicMock]:
+def _jev(client: AsyncMock, key: str | None = "or-key") -> Iterator[MagicMock]:
     """Serve client as the Decisions API with key configured; yields the AsyncClient factory."""
     with (
         patch(f"{CLIENT_MODULE}.httpx.AsyncClient", return_value=client) as factory,
-        _openai_key(key),
+        _openrouter_key(key),
     ):
         yield factory
 
 
-def _openai_key(key: str | None) -> AbstractContextManager[AsyncMock]:
-    """Serve key as the resolved OpenAI credential; every other provider resolves to nothing."""
+def _openrouter_key(key: str | None) -> AbstractContextManager[AsyncMock]:
+    """Serve key as the resolved OpenRouter credential; every other provider resolves to nothing."""
 
     async def resolve(provider: str) -> ProviderConfig | None:
-        if key is None or provider != CredentialProviderName.OPENAI:
+        if key is None or provider != CredentialProviderName.OPENROUTER:
             return None
         return ProviderConfig(api_key=key)
 
@@ -609,14 +603,6 @@ def _openai_key(key: str | None) -> AbstractContextManager[AsyncMock]:
 
 
 FORBID_TURNS = ["never email bob@example.com", "email bob@example.com the deck"]
-
-
-def _posted(post: Any) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
-    """Return the state and the questions (by name) one OpenAI Decisions request carried."""
-    body = post.kwargs["json"]
-    [message] = body["input"]
-    [part] = message["content"]
-    return part["data"], {question["name"]: question for question in body["questions"]}
 
 
 class TestTheLinesAreInclusive:
@@ -649,21 +635,21 @@ class TestTheDecisionsWire:
                 user_messages=["send it"], call=_call(), prior_calls=[], history=AutoHistory()
             )
 
-        factory.assert_called_once_with(timeout=HIL_DECISIONS_TIMEOUT_SECONDS)
+        factory.assert_called_once_with(timeout=HIL_JEV_TIMEOUT_SECONDS)
         post = client.post.await_args
-        assert post.args == (HIL_DECISIONS_URL,)
-        assert post.kwargs["headers"] == {"Authorization": "Bearer oa-key"}
-        assert post.kwargs["json"]["model"] == HIL_DECISIONS_MODEL_NAME
-        state, _ = _posted(post)
-        assert state["recent_history"] == "No recent decisions on send_email."
-        assert datetime.fromisoformat(state["now"]).tzinfo == UTC
+        assert post.args == (HIL_JEV_URL,)
+        assert post.kwargs["headers"] == {"Authorization": "Bearer or-key"}
+        posted = post.kwargs["json"]
+        assert posted["model"] == HIL_JEV_JUDGE_MODEL_NAME
+        assert posted["state"]["recent_history"] == "No recent decisions on send_email."
+        assert datetime.fromisoformat(posted["state"]["now"]).tzinfo == UTC
 
     async def test_no_key_means_no_request(self) -> None:
         client = _sequence_client(_answer("unclear", 0.5))
         with (
             _jev(client, key=None),
             pytest.raises(
-                RuntimeError, match="^No OpenAI key saved or set; cannot reach the Decisions API$"
+                RuntimeError, match="^No OpenRouter key saved or set; cannot reach the JEV judge$"
             ),
         ):
             await ask_jev(
@@ -671,14 +657,15 @@ class TestTheDecisionsWire:
             )
         client.post.assert_not_awaited()
 
-    async def test_a_non_choice_answer_is_refused(self) -> None:
-        answer = {"answers": [{"type": "predicate", "name": "decision", "probability": 0.4}]}
+    async def test_a_non_choice_answer_is_refused_with_a_bounded_message(self) -> None:
+        answer = {"answers": {"decision": {"type": "text", "choice": "x" * 400}}}
         with _jev(_sequence_client(answer)), pytest.raises(ValueError) as caught:
             await ask_jev(
                 user_messages=["send it"], call=_call(), prior_calls=[], history=AutoHistory()
             )
 
         assert str(caught.value).startswith("non-choice JEV answer: ")
+        assert len(str(caught.value)) == 300
 
     async def test_an_unknown_choice_is_refused_by_name(self) -> None:
         with _jev(_sequence_client(_answer("maybe", 0.9))), pytest.raises(ValueError) as caught:
@@ -690,10 +677,10 @@ class TestTheDecisionsWire:
 
     async def test_missing_confidence_and_usage_read_as_zero(self) -> None:
         answer = {
-            "answers": [
-                {"type": "choice", "name": "decision", "choice": "authorized"},
-                {"type": "predicate", "name": "contained", "probability": 0.3},
-            ]
+            "answers": {
+                "decision": {"type": "choice", "choice": "authorized"},
+                "contained": {"type": "noul", "noul": 0.3},
+            }
         }
         with _jev(_sequence_client(answer)):
             result = await ask_jev(
@@ -714,14 +701,11 @@ class TestTheDecisionsWire:
             )
 
         client.post.assert_awaited_once()
-        _, questions = _posted(client.post.await_args)
-        assert set(questions) == {"decision", "contained"}
-        assert questions["decision"]["instructions"] == JEV_QUESTION["instructions"]
-        assert questions["contained"]["type"] == "predicate"
-        assert str(JEV_CONTAINED_QUESTION["instructions"]) in questions["contained"]["instructions"]
+        questions = client.post.await_args.kwargs["json"]["questions"]
+        assert questions == {"decision": JEV_QUESTION, "contained": JEV_CONTAINED_QUESTION}
 
     async def test_a_missing_containment_answer_is_refused(self) -> None:
-        answer = {"answers": [{"type": "choice", "name": "decision", "choice": "authorized"}]}
+        answer = {"answers": {"decision": {"type": "choice", "choice": "authorized"}}}
         with _jev(_sequence_client(answer)), pytest.raises(ValueError, match="contained"):
             await ask_jev(
                 user_messages=["send it"], call=_call(), prior_calls=[], history=AutoHistory()
@@ -736,18 +720,19 @@ class TestTheForbidWire:
             result = await ask_jev_forbid(user_messages=turns, call=_call())
 
         assert result == ("forbidden", 0.8, 9, 0)
-        factory.assert_called_once_with(timeout=HIL_DECISIONS_TIMEOUT_SECONDS)
+        factory.assert_called_once_with(timeout=HIL_JEV_TIMEOUT_SECONDS)
         post = client.post.await_args
-        assert post.args == (HIL_DECISIONS_URL,)
-        assert post.kwargs["headers"] == {"Authorization": "Bearer oa-key"}
-        state, questions = _posted(post)
-        assert state == {
-            "earlier_turns": ["never email bob", "hold on"],
-            "latest_turns": ["email bob the deck"],
-            "pending_action": {"tool": "send_email", "args": _call().args},
+        assert post.args == (HIL_JEV_URL,)
+        assert post.kwargs["headers"] == {"Authorization": "Bearer or-key"}
+        assert post.kwargs["json"] == {
+            "model": HIL_JEV_JUDGE_MODEL_NAME,
+            "state": {
+                "earlier_turns": ["never email bob", "hold on"],
+                "latest_turns": ["email bob the deck"],
+                "pending_action": {"tool": "send_email", "args": _call().args},
+            },
+            "questions": {"forbid": JEV_FORBID_QUESTION},
         }
-        assert list(questions) == ["forbid"]
-        assert questions["forbid"]["instructions"] == JEV_FORBID_QUESTION["instructions"]
 
     async def test_missing_confidence_and_usage_read_as_zero(self) -> None:
         with _jev(_sequence_client(_forbid_answer("permitted", None))):
@@ -760,18 +745,19 @@ class TestTheForbidWire:
         with (
             _jev(client, key=None),
             pytest.raises(
-                RuntimeError, match="^No OpenAI key saved or set; cannot reach the Decisions API$"
+                RuntimeError, match="^No OpenRouter key saved or set; cannot reach the JEV judge$"
             ),
         ):
             await ask_jev_forbid(user_messages=FORBID_TURNS, call=_call())
         client.post.assert_not_awaited()
 
-    async def test_a_non_choice_answer_is_refused(self) -> None:
-        answer = {"answers": [{"type": "predicate", "name": "forbid", "probability": 0.4}]}
+    async def test_a_non_choice_answer_is_refused_with_a_bounded_message(self) -> None:
+        answer = {"answers": {"forbid": {"type": "text", "choice": "x" * 400}}}
         with _jev(_sequence_client(answer)), pytest.raises(ValueError) as caught:
             await ask_jev_forbid(user_messages=FORBID_TURNS, call=_call())
 
         assert str(caught.value).startswith("non-choice JEV forbid answer: ")
+        assert len(str(caught.value)) == 300
 
     async def test_an_unknown_choice_is_refused_by_name(self) -> None:
         with (
@@ -796,7 +782,7 @@ class TestTheJudgeAroundTheWire:
                 assistant_turns=["Your draft is ready."],
             )
 
-        state, _ = _posted(client.post.await_args)
+        state = client.post.await_args.kwargs["json"]["state"]
         assert state["user_messages"] == ["draft it", "send it"]
         assert state["assistant_turns"] == ["Your draft is ready."]
 
@@ -856,8 +842,8 @@ class TestTheJudgeAroundTheWire:
             "Auto mode held this off: an earlier message forbids this send_email call "
             "and nothing since lifted it.",
         )
-        forbid_state, _ = _posted(client.post.await_args_list[1])
-        assert forbid_state["earlier_turns"] == [FORBID_TURNS[0]]
+        forbid_post = client.post.await_args_list[1].kwargs["json"]
+        assert forbid_post["state"]["earlier_turns"] == [FORBID_TURNS[0]]
 
     async def test_a_weak_forbid_floors_the_accept_to_a_card(self) -> None:
         decision, _ = await self._decide_with_forbid(_forbid_answer("forbidden", 0.3))
@@ -1003,6 +989,30 @@ class TestContainedActionsRunWithoutExplicitWords:
     async def test_no_containment_answer_changes_nothing(self) -> None:
         assert _contained_case(contained=None).outcome == "ask"
 
+    @pytest.mark.regression
+    async def test_a_contained_call_the_judge_sees_any_argument_against_asks(self) -> None:
+        """A notification after "no notifications after 6pm" scored contained 0.96, P(forbidden) 0.25."""
+        decision = decide_from_verdict(
+            JevVerdict(
+                choice="authorized",
+                confidence=0.31,
+                probabilities={
+                    "authorized": 0.54,
+                    "forbidden": HIL_JEV_CONTAINED_MAX_FORBIDDEN,
+                    "unclear": 0.21,
+                },
+                contained=0.96,
+            ),
+            JevCase(
+                call=_call(),
+                user_messages=["notify me the deploy finished"],
+                prior_calls=[],
+                history=AutoHistory(),
+            ),
+        )
+
+        assert decision.outcome == "ask"
+
     async def test_a_forbidden_leaning_call_never_runs_on_containment(self) -> None:
         decision = decide_from_verdict(
             JevVerdict(
@@ -1085,3 +1095,28 @@ class TestContainedActionsRunWithoutExplicitWords:
 
     async def test_a_confident_forbid_still_rejects(self) -> None:
         assert _contained_case(choice="forbidden", confidence=0.9).outcome == "reject"
+
+
+class TestAConfirmationOfWhatTheUserWasShown:
+    @pytest.mark.regression
+    async def test_send_after_the_drafted_reply_was_described_runs(self) -> None:
+        """Prod 2026-11-15: JEV said authorized 0.92, the list-pick backstop still asked."""
+        listing = (
+            "Visible drafts (id | to | subject | gist):\n"
+            '1. r2569937965309608501 | boardy@x.com | "Intro" | intro\n'
+            '2. r8807310570127663349 | simonne@intrinsicurlyme.co.za | "Re: October Invoice" | pdf'
+        )
+        decision = decide_from_verdict(
+            JevVerdict(choice="authorized", confidence=0.92, probabilities={"authorized": 0.95}),
+            JevCase(
+                call=_call(tool_name="GMAIL_SEND_DRAFT", args={"draft_id": "r8807310570127663349"}),
+                user_messages=["Send"],
+                prior_calls=[PriorCall(name="GMAIL_LIST_DRAFTS", args={}, output=listing)],
+                history=AutoHistory(),
+                assistant_turns=(
+                    "I drafted the reply to Simonne with the October invoice attached.",
+                ),
+            ),
+        )
+
+        assert decision.outcome == "accept"

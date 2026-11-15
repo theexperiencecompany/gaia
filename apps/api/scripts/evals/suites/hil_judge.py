@@ -7,7 +7,8 @@ threshold tuning is a free offline sweep over the journal — not another
 model-spending run.
 
 Run:  uv run --group backend python -m scripts.evals run --suite hil-judge
-  HIL_JUDGE_EVAL_BACKEND=jev|llm (default jev: the Decisions judge, on OpenAI's API)
+  HIL_JUDGE_EVAL_BACKEND=jev|llm (default jev: the Decisions choice judge)
+  HIL_JUDGE_EVAL_TRANSPORT=jev|openai (default jev, prod's; openai = OpenAI's Decisions API)
   HIL_JUDGE_ACCEPT_LINE (default 0.8)  HIL_JUDGE_REJECT_FLOOR (default 0.5)
 Sweep:  uv run --group backend python -m scripts.evals.sweep_hil_judge [run-id]
 
@@ -28,8 +29,8 @@ from typing import Any, TypedDict
 import httpx
 
 from app.constants.hil import (
-    HIL_DECISIONS_MODEL_NAME,
     HIL_JEV_ACCEPT_LINE,
+    HIL_JEV_JUDGE_MODEL_NAME,
     HIL_JEV_REJECT_FLOOR,
     JEV_FORBID_CHECK_FAILED,
 )
@@ -44,7 +45,10 @@ from app.services.hil.intent import (
     history_line,
     judge_intent,
 )
+from app.services.hil.jev_client import JevUnconfiguredError
 from app.services.hil.jev_judge import (
+    JUDGE_TRANSPORT,
+    DecisionsTransport,
     JevCase,
     JevVerdict,
     ask_jev,
@@ -54,11 +58,15 @@ from app.services.hil.jev_judge import (
     needs_forbid_check,
     settle_forbid,
 )
-from app.services.hil.openai_decisions import OpenAIDecisionsUnconfiguredError
 from app.services.hil.prompts import JEV_QUESTIONS_VERSION
 from app.services.hil.utils import PriorCall
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
 from scripts.evals.core.journal import RunJournal
+from scripts.evals.core.openai_decisions import (
+    OPENAI_DECISIONS_MODEL_NAME,
+    OpenAIDecisionsUnconfiguredError,
+    post_openai_decisions,
+)
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import register_suite
 from scripts.evals.core.transport_suite import TransportSuite
@@ -146,6 +154,7 @@ def _eval_case(setup: Mapping[str, Any]) -> JevCase:
         user_messages=[str(t) for t in setup.get("turns", [])],
         prior_calls=_eval_priors(setup),
         history=_eval_history(setup),
+        assistant_turns=tuple(_eval_assistant_turns(setup)),
     )
 
 
@@ -156,11 +165,28 @@ def _settled_forbid(forbid: str | None, forbid_conf: float, reject_floor: float)
     return settle_forbid(forbid, forbid_conf, reject_floor=reject_floor)
 
 
+class DecisionsProvider(StrEnum):
+    """Who answers the Decisions judge's questions — HIL_JUDGE_EVAL_TRANSPORT."""
+
+    JEV = "jev"
+    OPENAI = "openai"
+
+
+_DECISIONS_PROVIDERS: dict[DecisionsProvider, tuple[DecisionsTransport, str]] = {
+    DecisionsProvider.JEV: (JUDGE_TRANSPORT, HIL_JEV_JUDGE_MODEL_NAME),
+    DecisionsProvider.OPENAI: (post_openai_decisions, OPENAI_DECISIONS_MODEL_NAME),
+}
+
+
 class JudgeTransport:
     """One case: build judge state from the YAML, run one backend, journal all."""
 
     def __init__(self) -> None:
         self._backend = os.environ.get("HIL_JUDGE_EVAL_BACKEND", JudgeBackend.JEV)
+        provider = DecisionsProvider(
+            os.environ.get("HIL_JUDGE_EVAL_TRANSPORT", DecisionsProvider.JEV)
+        )
+        self._decisions, self._decisions_model = _DECISIONS_PROVIDERS[provider]
 
     async def run(
         self,
@@ -178,7 +204,7 @@ class JudgeTransport:
             model = "llm-judge"
         elif self._backend == JudgeBackend.JEV:
             outcome, detail, usage, verdict = await self._run_jev(setup, provider)
-            model = HIL_DECISIONS_MODEL_NAME
+            model = self._decisions_model
         else:
             raise ProviderError(provider.name, f"unknown judge backend {self._backend!r}")
         duration_s = time.monotonic() - start
@@ -242,8 +268,9 @@ class JudgeTransport:
                 prior_calls=case.prior_calls,
                 history=history,
                 assistant_turns=_eval_assistant_turns(setup),
+                transport=self._decisions,
             )
-        except (httpx.HTTPError, OpenAIDecisionsUnconfiguredError) as e:
+        except (httpx.HTTPError, JevUnconfiguredError, OpenAIDecisionsUnconfiguredError) as e:
             raise ProviderError(provider.name, f"decisions API failed: {e}") from e
         choice, confidence, probs = asked.choice, asked.confidence, dict(asked.probabilities or {})
         # Mirror prod: mapped accept + tripped forbid language earns the
@@ -263,7 +290,7 @@ class JudgeTransport:
         ):
             try:
                 forbid, forbid_conf, forbid_in, forbid_out = await ask_jev_forbid(
-                    user_messages=turns, call=call
+                    user_messages=turns, call=call, transport=self._decisions
                 )
             except httpx.HTTPError as e:
                 raise ProviderError(provider.name, f"forbid double-check failed: {e}") from e
