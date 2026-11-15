@@ -286,7 +286,9 @@ _ASKS_FOR_THE_GOAL = "You don't know their goal\nyet, so ask ONE specific questi
 
 
 def test_the_day_zero_hello_offers_a_first_deliverable_when_the_goal_is_known() -> None:
-    prompt = build_day_zero_hello_prompt(first_name="Priya", goal_block=_GOAL, has_goal=True)
+    prompt = build_day_zero_hello_prompt(
+        first_name="Priya", goal_block=_GOAL, has_goal=True, first_brief="tomorrow at 8 AM"
+    )
 
     assert "Say hi to Priya by name" in prompt
     assert _OFFERS_A_DELIVERABLE in prompt
@@ -296,7 +298,7 @@ def test_the_day_zero_hello_offers_a_first_deliverable_when_the_goal_is_known() 
 
 def test_the_day_zero_hello_asks_for_the_goal_when_none_is_known() -> None:
     prompt = build_day_zero_hello_prompt(
-        first_name="Priya", goal_block="(nothing yet)", has_goal=False
+        first_name="Priya", goal_block="(nothing yet)", has_goal=False, first_brief=None
     )
 
     assert "Say hi to Priya by name" in prompt
