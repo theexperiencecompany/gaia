@@ -33,9 +33,10 @@ from app.models.stream_events import ErrorFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.browser.job_stop import stop_chat_jobs
-from app.services.chat.stream import run_chat_stream_background
+from app.services.chat.stream import note_reply_delivered, run_chat_stream_background
 from app.services.conversation_service import require_owned_conversation
 from app.services.latency_metrics import observe_sse_delivery
+from app.services.turn_clock import TurnClock
 from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
@@ -109,6 +110,7 @@ async def _stream_from_redis(
                     )
                     break
                 yield chunk
+                note_reply_delivered(stream_id, chunk)
         except GeneratorExit:
             delivery_status = "abandoned"
             raise
@@ -192,7 +194,7 @@ async def chat_stream_endpoint(
     )
     # Request-accepted clock for TTFT/E2E; past the rate limit and cost
     # budget so it counts turns actually accepted.
-    t0_perf = time.perf_counter()
+    clock = TurnClock.accepted(request)
     # The ONE event for a chat message: fires for every surface, no ad blocker
     # can drop it, and lands only once rate limit + cost budget pass. A
     # duplicate client-side `chat:message_sent` emitter has been removed.
@@ -223,7 +225,7 @@ async def chat_stream_endpoint(
             user=user,
             conversation_id=conversation_id,
             source=request_client_source(request).value,
-            t0_perf=t0_perf,
+            clock=clock,
         )
     )
 

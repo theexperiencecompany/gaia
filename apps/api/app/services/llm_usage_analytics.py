@@ -6,6 +6,7 @@ the row and nothing else. No second emitter exists for any lane: graph,
 auxiliary one-shot, browser, success or error all reach PostHog only here.
 """
 
+from app.constants.general import COMMS_AGENT_NAME
 from app.db.repositories.llm_calls import LLMCallDocument
 from app.db.repositories.users import user_repository
 from app.services.analytics_service import AIFeature, capture
@@ -14,7 +15,7 @@ from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.wide_events import log
 
 #: The two graph tiers; any other ``agent_name`` is a per-integration subagent.
-TIER_AGENT_NAMES = frozenset({"comms_agent", "executor_agent"})
+TIER_AGENT_NAMES = frozenset({COMMS_AGENT_NAME, "executor_agent"})
 
 #: Built at runtime as ``f"memory:{operation}"``, so it cannot be an exact key.
 _MEMORY_LABEL_PREFIX = "memory:"

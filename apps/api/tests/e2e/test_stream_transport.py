@@ -37,6 +37,7 @@ from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType, UserSubscriptionStatus
 from app.models.user_models import AuthenticatedUser
+from app.services.turn_clock import TurnClock
 from app.utils.agent_utils import format_sse_data
 from tests.conftest import FAKE_USER, FAKE_USER_2
 from tests.e2e._harness.transcript import DONE, Transcript
@@ -137,7 +138,7 @@ def stub_turn(monkeypatch: pytest.MonkeyPatch, runs: list[dict[str, Any]]) -> No
         user: dict[str, Any],
         conversation_id: str,
         source: str | None = None,
-        t0_perf: float | None = None,
+        clock: TurnClock | None = None,
     ) -> None:
         runs.append({"stream_id": stream_id, "conversation_id": conversation_id})
         await stream_manager.publish_chunk(stream_id, TURN_FRAMES[0])
@@ -516,7 +517,7 @@ class TestClientDisconnect:
             user: dict[str, Any],
             conversation_id: str,
             source: str | None = None,
-            t0_perf: float | None = None,
+            clock: TurnClock | None = None,
         ) -> None:
             await stream_manager.publish_chunk(stream_id, TURN_FRAMES[0])
             await client_gone.wait()

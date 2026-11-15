@@ -28,6 +28,7 @@ from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ToolDataEntry, tool_fields
 from app.services.chat.chunks import normalize_custom_event
+from app.services.turn_clock import TurnClock
 from app.utils.stream_utils import (
     ToolDataEnvelope,
     absorb_collector_event,
@@ -37,16 +38,18 @@ from app.utils.stream_utils import (
 from shared.py.wide_events import log
 
 
-def register_executor_capture(stream_id: str, voice_mode: bool = False) -> asyncio.Event:
-    """Register the stream session that captures executor tool events.
+def register_executor_capture(
+    stream_id: str, voice_mode: bool = False, clock: TurnClock | None = None
+) -> asyncio.Event:
+    """Register the stream session that captures executor tool events; return its done-event.
 
-    Must run before the comms agent executes so call_executor's background
-    task can append events to the session. voice_mode marks the stream so the
-    executor's finalize step publishes a TTS-only voice_tts frame with its
-    narrated answer for the voice agent to speak. Returns the done-event.
+    Must run before comms executes so call_executor's background task can append
+    to it. voice_mode makes the executor's finalize publish a TTS-only voice_tts
+    frame; clock is the chat turn's stage stamps, read by the LLM callback and SSE reader.
     """
     session = create_session(stream_id, RunKind.LIVE)
     session.voice_mode = voice_mode
+    session.clock = clock
     return session.done_event
 
 

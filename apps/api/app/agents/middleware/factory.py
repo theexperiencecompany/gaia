@@ -26,6 +26,7 @@ from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
+from app.constants.general import COMMS_AGENT_NAME
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     DEFAULT_MAX_TOKENS,
@@ -252,7 +253,7 @@ def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentM
     compaction; its archive pointer asks the executor to read missed details.
     """
     stack = create_middleware_stack(
-        agent_name="comms_agent",
+        agent_name=COMMS_AGENT_NAME,
         chat_llm=chat_llm,
         subagent=SubagentStackOptions(enabled=False),
         context=ContextOptions(
@@ -265,7 +266,7 @@ def create_comms_middleware(chat_llm: LanguageModelLike | None = None) -> AgentM
     # completion, so what the turn delivers is the model's real reply rather
     # than the silence that preceded it.
     stack.append(EmptyCompletionRetryMiddleware())
-    log.debug(f"{LogTag.AGENT} EmptyCompletionRetryMiddleware enabled", agent_name="comms_agent")
+    log.debug(f"{LogTag.AGENT} EmptyCompletionRetryMiddleware enabled", agent_name=COMMS_AGENT_NAME)
     return stack
 
 

@@ -39,6 +39,7 @@ from app.models.payment_models import (
 )
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.audio_transcription_service import AudioTooLargeError
+from app.services.turn_clock import TurnMark
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
 from shared.py.analytics.catalog.chat import ChatMessageRefused, ChatMessageSubmitted
@@ -2448,7 +2449,7 @@ class TestForwarderWiring:
             # The background turn is handed the same request-accepted clock the
             # web endpoint passes, so bot TTFT/E2E share the web definition.
             # Dropped or nulled, every bot latency reports an unbounded duration.
-            patch("app.api.v1.endpoints.bot.time.perf_counter", return_value=123.5),
+            patch("app.services.turn_clock.time.perf_counter", return_value=123.5),
         ):
             bot_svc.enforce_rate_limit = AsyncMock()
             bot_svc.get_or_create_session = AsyncMock(return_value="conv-1")
@@ -2469,7 +2470,7 @@ class TestForwarderWiring:
             "session_token": "tok",
             "platform": "discord",
         }
-        assert bg.call_args.kwargs["t0_perf"] == 123.5
+        assert bg.call_args.kwargs["clock"].marks[TurnMark.T0] == 123.5
         assert bg.call_args.kwargs["stream_id"] == started_stream_id
 
 

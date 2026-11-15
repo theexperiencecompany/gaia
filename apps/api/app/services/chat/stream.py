@@ -43,7 +43,7 @@ from app.constants.chat import (
 from app.constants.comms import CommsDirectiveKind
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
 from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
+from app.core.stream_manager import sse_payload, stream_manager
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
     ConversationSource,
@@ -87,9 +87,11 @@ from app.services.latency_metrics import (
     observe_chat_e2e_full,
     observe_chat_ttft,
     observe_chat_turn_total,
+    observe_turn_overhead,
 )
 from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
+from app.services.turn_clock import TurnClock, TurnMark
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.message_breaks import strip_partial_message_break
@@ -117,14 +119,14 @@ async def run_chat_stream_background(
     user: AuthenticatedUser,
     conversation_id: str,
     source: str | None = None,
-    t0_perf: float | None = None,
+    clock: TurnClock | None = None,
 ) -> None:
     """Run chat streaming in the background, publishing chunks to Redis.
 
     Independent of the HTTP request lifecycle — progress is saved to MongoDB even
     if the client disconnects, and frames land in a replayable event log, so
-    publish/subscribe timing needs no coordination. t0_perf is the endpoint's
-    request-accepted stamp; None falls back to this task's entry.
+    publish/subscribe timing needs no coordination. clock carries the endpoint's
+    request-accepted stamp (t0); None falls back to this task's entry.
     """
     # get_trace_id() reads the spawning request's trace_id from this task's
     # copied context, so the agent-run event joins with its http_request event.
@@ -140,7 +142,7 @@ async def run_chat_stream_background(
             user=user,
             conversation_id=conversation_id,
             source=source,
-            t0_perf=t0_perf,
+            clock=clock,
         )
 
 
@@ -306,10 +308,10 @@ async def _run_chat_stream(
     user: AuthenticatedUser,
     conversation_id: str,
     source: str | None = None,
-    t0_perf: float | None = None,
+    clock: TurnClock | None = None,
 ) -> None:
     state = _StreamState(turn_id=body.turn_id)
-    state.t0_perf = t0_perf if t0_perf is not None else time.perf_counter()
+    state.t0_perf = clock.marks[TurnMark.T0] if clock is not None else time.perf_counter()
     is_new_conversation = body.conversation_id is None
     user_id = user.user_id
     artifact_task: asyncio.Task[None] | None = None
@@ -318,7 +320,7 @@ async def _run_chat_stream(
     # Registered before comms runs so call_executor's background task can
     # append events while open; drained on executor finish, torn down in
     # _finalize_stream. Voice mode marks the stream for a voice_tts frame.
-    register_executor_capture(stream_id, voice_mode=body.voice_mode)
+    register_executor_capture(stream_id, voice_mode=body.voice_mode, clock=clock)
 
     try:
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
@@ -838,6 +840,47 @@ def _executor_delegation(stream_id: str) -> tuple[bool, bool]:
     return session.executor_spawned, False
 
 
+def note_reply_delivered(stream_id: str, chunk: str) -> None:
+    """Stamp frame_written once the turn's first reply text has left for the client.
+
+    Both reply readers (web SSE and bot) call it right after handing a frame on;
+    a no-op once stamped, and for streams with no live chat clock.
+    """
+    session = get_session(stream_id)
+    clock = session.clock if session is not None else None
+    if clock is None or TurnMark.FRAME_WRITTEN in clock.marks:
+        return
+    if extract_response_text(sse_payload(chunk)):
+        clock.mark(TurnMark.FRAME_WRITTEN)
+
+
+def _record_turn_overhead(stream_id: str, state: _StreamState, *, source: str | None) -> None:
+    """Emit the turn's own-latency stretches when its clock collected every mark."""
+    session = get_session(stream_id)
+    clock = session.clock if session is not None else None
+    if clock is None:
+        return
+    clock.delegated = state.delegated
+    overhead = clock.overhead()
+    if overhead is None:
+        # A turn that never got its stamps is a measurement gap, not a fast turn:
+        # name it on the event so a broken stamp site shows up instead of hiding.
+        log.set(latency={"missing_marks": clock.missing()})
+        return
+    observe_turn_overhead(overhead, source=source or "unknown")
+    log.set(
+        latency={
+            "ingress_ms": round(overhead.ingress * 1000.0, 2),
+            "prep_ms": round(overhead.prep * 1000.0, 2),
+            "egress_ms": round(overhead.egress * 1000.0, 2),
+            "total_ms": round(overhead.total * 1000.0, 2),
+            "provider_ttft_ms": round(overhead.provider_ttft * 1000.0, 2),
+            "path": overhead.path.value,
+            "comms_calls_before_text": clock.comms_calls_before_text,
+        }
+    )
+
+
 def _close_turn_timings(
     stream_id: str, state: _StreamState, *, source: str | None, voice_mode: bool, status: str
 ) -> None:
@@ -847,6 +890,7 @@ def _close_turn_timings(
     if state.t0_perf is not None:
         state.e2e_full_ms = round((time.perf_counter() - state.t0_perf) * 1000.0, 2)
     _observe_turn_latencies(source=source, voice_mode=voice_mode, state=state, status=status)
+    _record_turn_overhead(stream_id, state, source=source)
 
 
 def _observe_turn_latencies(

@@ -102,6 +102,28 @@ class TestBuildAgentConfig:
         )
         assert config["metadata"][LLM_LABEL_METADATA_KEY] == "executor_agent"
 
+    async def test_a_root_run_stamps_its_stream_on_configurable_and_metadata(self):
+        """The TTFT callback finds the live turn's clock through metadata stream_id; a root run set it only after the config was built, so the callback never saw it."""
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+            ),
+            turn=AgentTurn(stream_id="stream-1"),
+        )
+
+        assert config["configurable"]["stream_id"] == "stream-1"
+        assert config["metadata"]["stream_id"] == "stream-1"
+
+    async def test_a_run_without_a_stream_stamps_none_in_metadata(self):
+        config = await build_agent_config(
+            identity=AgentIdentity(
+                conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+            ),
+        )
+
+        assert config["configurable"]["stream_id"] is None
+        assert "stream_id" not in config["metadata"]
+
     @pytest.mark.regression
     @pytest.mark.parametrize(("thread_id", "stamped"), [(None, CONV_ID), ("spawn_x", "spawn_x")])
     async def test_metadata_stamps_the_runs_own_thread_on_every_chunk(

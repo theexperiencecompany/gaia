@@ -173,13 +173,15 @@ def runtime_configurable(request: ToolCallRequest) -> AgentConfigurable:
 class LlmCallMetadata(TypedDict, total=False):
     """The run-metadata keys the TTFT callback reads off one LLM call.
 
-    lane_* is stamped by build_agent_config for the whole run; llm_label by
-    ainvoke_llm per call (under LLM_LABEL_METADATA_KEY).
+    lane_* and stream_id are stamped by build_agent_config for the whole run;
+    llm_label by ainvoke_llm per call (under LLM_LABEL_METADATA_KEY). stream_id
+    finds the live chat turn's clock for comms calls.
     """
 
     lane_provider: str
     lane_model: str
     llm_label: str
+    stream_id: str
 
 
 class StreamChunkMetadata(TypedDict, total=False):
