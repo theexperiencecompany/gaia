@@ -907,7 +907,7 @@
     "tool-pins": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "python3 tools/lints/check_tool_pins.py"
+        "command": "uv run --frozen --no-build --isolated --only-group harness python3 tools/lints/check_tool_pins.py"
       },
       "cache": false,
       "inputs": [
@@ -1046,6 +1046,7 @@
         "{workspaceRoot}/scripts/ci/lib/seo_audit.py",
         "{workspaceRoot}/scripts/ci/lib/squirrel.py",
         "{workspaceRoot}/scripts/ci/lib/origin_proxy.py",
+        "{workspaceRoot}/scripts/ci/lib/indexnow.py",
         "{workspaceRoot}/scripts/ci/baselines/squirrel-build.txt",
         "{workspaceRoot}/config/squirrel.toml",
         "ciHarness",

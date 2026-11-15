@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import JsonLd from "@/components/seo/JsonLd";
 import { MarketplaceDirectory } from "@/features/integrations/components/MarketplaceDirectory";
 import { marketplaceDirectoryPages } from "@/features/integrations/lib/marketplaceDirectoryPages";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import {
   getAllCommunityIntegrations,
   getNativeIntegrations,
@@ -16,7 +17,6 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
-
 import { IntegrationsPageClient } from "./client";
 
 const PAGE_TITLE = "AI Integration Marketplace: Connect Your Tools to GAIA";
@@ -74,7 +74,7 @@ export default async function MarketplacePage() {
       ? generateItemListSchema(
           topIntegrations.map((integration) => ({
             name: `${integration.name} AI Integration`,
-            url: `${siteConfig.url}/marketplace/${integration.slug}`,
+            url: `${siteConfig.url}${marketplacePath(integration.slug)}`,
           })),
         )
       : null;
@@ -97,18 +97,9 @@ export default async function MarketplacePage() {
               Integration Marketplace
             </h1>
             <p className="max-w-2xl text-lg font-light text-foreground-500">
-              GAIA&apos;s integration marketplace is the catalogue of tools GAIA
-              can connect to. It combines native integrations such as Gmail,
-              Slack, Notion, GitHub, and Google Calendar with community-built
-              MCP servers that extend the assistant to other services. Each
-              listing explains what the integration exposes and how to connect
-              it to your account. Use the search field to find a tool by name,
-              filter by category, and sort by popularity, recency, or name. The
-              directory below lists the integrations alphabetically, with
-              further pages linked at the bottom, so you can jump straight to a
-              detail page. If a tool is missing, MCP is the extension path:
-              build the server, publish it, and it can appear here for other
-              users.
+              Discover and automate your favorite tools with AI. Browse
+              community-built MCP integrations to connect Gmail, Slack, Notion,
+              GitHub, and many more services to your AI assistant.
             </p>
           </div>
           {/* useSearchParams opts the grid into client rendering; the header
