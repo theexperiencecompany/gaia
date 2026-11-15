@@ -13,6 +13,7 @@ from mcp_use.client.session import MCPSession
 from app.config.settings import settings
 from app.constants.cache import OAUTH_DISCOVERY_PREFIX
 from app.constants.device_bridge import DEVICE_TRANSPORT
+from app.constants.integrations import INTEGRATION_STATUS_EXPIRED
 from app.constants.log_tags import LogTag
 from app.constants.mcp import COMPOSIO_MCP_HOST, MCP_UNLISTED_CONNECT_MAX
 from app.constants.providers import CredentialProviderName
@@ -22,7 +23,7 @@ from app.db.redis import delete_cache
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.namespace_utils import derive_integration_namespace
-from app.models.integration_models import Integration
+from app.models.integration_models import Integration, UserIntegrationStatus
 from app.models.mcp_config import (
     MCPConfig,
     McpProbeResult,
@@ -439,7 +440,15 @@ class MCPClient:
         )
         return result
 
-    async def _reset_to_disconnected(self, integration_id: str) -> None:
+    async def _signed_out_status(self, integration_id: str) -> UserIntegrationStatus:
+        """Say how a credential that no longer works reads: expired once it ever connected, else never set up."""
+        if await user_integration_repository.has_connected_before(self.user_id, integration_id):
+            return INTEGRATION_STATUS_EXPIRED
+        return "created"
+
+    async def _reset_to_disconnected(
+        self, integration_id: str, *, status: UserIntegrationStatus = "created"
+    ) -> None:
         """Tear down a dead integration: Mongo status, PG creds, DCR client, Redis cache.
 
         Each step is swallowed so one failure doesn't block the rest.
@@ -458,7 +467,7 @@ class MCPClient:
                 )
 
         await _swallow(
-            update_user_integration_status(self.user_id, integration_id, "created"),
+            update_user_integration_status(self.user_id, integration_id, status),
             "mongo status reset",
         )
         await _swallow(
@@ -772,7 +781,9 @@ class MCPClient:
                     user_id=self.user_id,
                 )
                 return None
-            await update_user_integration_status(self.user_id, integration_id, "created")
+            await update_user_integration_status(
+                self.user_id, integration_id, await self._signed_out_status(integration_id)
+            )
             log.warning(
                 f"{LogTag.MCP} OAuth authorization required for",
                 integration_id=integration_id,
@@ -860,15 +871,17 @@ class MCPClient:
                     error=str(e),
                     error_type=type(e).__name__,
                 )
-            await self._reset_to_disconnected(integration_id)
-        else:
-            log.warning(
-                f"{LogTag.MCP} Transient connection failure — keeping "
-                f"connected status so next attempt retries with current tokens",
-                integration_id=integration_id,
-                error=str(e),
-                error_type=type(e).__name__,
+            await self._reset_to_disconnected(
+                integration_id, status=await self._signed_out_status(integration_id)
             )
+            raise MCPAuthorizationRequiredError(integration_id) from e
+        log.warning(
+            f"{LogTag.MCP} Transient connection failure — keeping "
+            f"connected status so next attempt retries with current tokens",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
 
     async def _do_connect(self, integration_id: str) -> list[BaseTool]:

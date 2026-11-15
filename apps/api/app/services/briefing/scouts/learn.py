@@ -30,6 +30,7 @@ from app.constants.scouts import (
 from app.models.agent_config import AgentConfigurable
 from app.models.playbook_models import PlaybookBody, ask_slots
 from app.models.scout_models import ScoutDocument, ScoutReport, ScoutStatus, Signal
+from app.services.briefing.scouts.extract import is_the_user
 from app.services.briefing.scouts.freeze import LearnCall, freeze_sources, learn_calls
 from app.services.briefing.scouts.spend import ScoutSpend
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools, bound_tools
@@ -172,7 +173,12 @@ async def learn_scout(
     text, calls = await _run_agent(user_id, integration, bound, prompt, spend)
     report = _parse_report(text, integration)
     signals = [
-        Signal(integration_id=integration.integration_id, app=integration.name, **s.model_dump())
+        Signal(
+            integration_id=integration.integration_id,
+            app=integration.name,
+            people_you=[p for p in s.people if is_the_user(p, integration.handles)],
+            **s.model_dump(),
+        )
         for s in report.signals[:SCOUT_SIGNAL_CEILING]
     ]
     if report.nothing_to_watch:

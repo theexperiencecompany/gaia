@@ -40,7 +40,7 @@ from app.services.briefing.scouts.tools import (
     scout_tools,
 )
 from app.services.briefing.scouts.watch import FrozenWatch, ScoutSourceFailed, watch
-from app.services.mcp.mcp_errors import MCPIntegrationNotFoundError
+from app.services.mcp.mcp_errors import MCP_SIGN_IN_ERRORS, MCPIntegrationNotFoundError
 from app.services.payments.payment_service import payment_service
 from app.services.user_activity.status import activity_status_of
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
@@ -229,10 +229,17 @@ async def _scouted(
 
 
 async def _scout_turn(user: UserDocument, integration: ScoutIntegration) -> ScoutResult:
-    """Run one scout; any failure is that scout's skipped result, never the brief's."""
+    """Run one scout; any failure is that scout's skipped result, never the brief's.
+
+    A dead sign-in is its own reason, so the brief can ask for the reconnect that fixes it.
+    """
+    if integration.signed_out:
+        return _skipped(integration, ScoutSkipReason.SIGNED_OUT)
     try:
         async with asyncio.timeout(SCOUT_TURN_TIMEOUT.total_seconds()):
             return await _run_scout(user, integration)
+    except MCP_SIGN_IN_ERRORS:
+        return _skipped(integration, ScoutSkipReason.SIGNED_OUT)
     except Exception as exc:
         # Broad on purpose: an app being down, a bad report or a timeout must cost the
         # brief this one app's signals only. The error still lands on the wide event.

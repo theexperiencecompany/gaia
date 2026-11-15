@@ -212,6 +212,13 @@ QUIET_NOTE_OVERDUE: Final[str] = "{count} of your own todos are past due."
 #: A quiet brief that could not read every app: its quiet is only of what it read.
 QUIET_NOTE_UNREAD_HEADLINE: Final[str] = "Nothing new in what I could read"
 QUIET_NOTE_UNREAD: Final[str] = "I couldn't read {apps} this time, so I can't say what they hold."
+QUIET_NOTE_SIGNED_OUT: Final[str] = (
+    "Your {apps} sign-in expired: reconnect it in Settings, Integrations and I'll read it again."
+)
+QUIET_NOTE_SIGNED_OUT_MANY: Final[str] = (
+    "Your {apps} sign-ins expired: reconnect them in Settings, Integrations and I'll read them "
+    "again."
+)
 QUIET_NOTE_WATCH: Final[str] = "I'll flag anything that comes in."
 
 

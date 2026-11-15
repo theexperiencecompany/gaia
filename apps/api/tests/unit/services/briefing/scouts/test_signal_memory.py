@@ -149,6 +149,20 @@ class TestTheFactsBlock:
             " | first seen today, created date unknown"
         )
 
+    def test_the_person_who_is_the_user_is_marked_so_the_voice_says_you(self) -> None:
+        signal = _signal("7").model_copy(
+            update={
+                "people": ["Aryan", "Sam"],
+                "people_role": PeopleRole.REVIEWER,
+                "people_you": ["Aryan"],
+            }
+        )
+
+        assert signals_block([(1, RememberedSignal(signal=signal))], CLOCK).splitlines()[-1] == (
+            "- fact 1 | other | issue: Issue 7 | state: Todo | reviewer: Aryan (this is the"
+            " user: say you, never their name), Sam | first seen today, created date unknown"
+        )
+
     def test_a_sighting_stamped_after_now_still_reads_as_today(self) -> None:
         later = NOW + timedelta(hours=2)
         remembered = [
