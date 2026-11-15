@@ -5,9 +5,10 @@ Subcommands:
   matrix                   Emit the changed app modules + their test files as
                            JSON — the input `plan` and `local` fan out from.
                            Fails loudly when changed app code has no test.
-  plan                     Emit the lane's GitHub Actions matrix — one shard
-                           per changed module, capped at MAX_SHARDS and
-                           balanced by estimated cost. Writes shards (the
+  plan                     Emit the lane's GitHub Actions matrix — as many
+                           shards as the estimated cost needs to fit
+                           SHARD_BUDGET_SECONDS each (at least a wave, at
+                           most MAX_SHARDS), balanced by cost. Writes shards (the
                            labels), shard_defs and count to $GITHUB_OUTPUT.
   shard                    Run every module in $GROUP, in order, each under a
                            cap derived from its cost and the shard's deadline;
@@ -57,6 +58,7 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from enum import StrEnum
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -78,11 +80,12 @@ REPO_ROOT = SCRIPT_DIR.parents[1]
 API_ROOT = REPO_ROOT / "apps" / "api"
 LIB = SCRIPT_DIR / "lib"
 
-# Bounded so the matrix stays clear of GitHub's 256-job limit (a skipped lane
-# counts as a pass), and equal to the workflow's max-parallel so every shard
-# starts at once. Six, not four: a 110-module diff at 4 shards ran out of clock
-# with every finished module clean (run 34476365942) — the shard has to fit.
-MAX_SHARDS = 6
+# Shards that run at once: the workflow's max-parallel and runner.py's
+# MUTATION_WAVE. A cheap diff still fans out to a full wave; more shards queue.
+MUTATION_WAVE = 6
+# The most shards a plan makes: four waves, far under GitHub's 256-job matrix
+# limit (a matrix over it is refused, and a skipped lane counts as a pass).
+MAX_SHARDS = 24
 POOLS = ("unit", "services")
 # The one test tier that needs live Mongo and Redis: `plan` groups by it and
 # `shard` re-derives its own pool from it, through `needs_services`.
@@ -398,13 +401,34 @@ def cmd_matrix(_args: list[str]) -> int:
     return 0
 
 
-def pack(modules: Sequence[ModuleWork]) -> list[Shard]:
-    """Split modules into at most MAX_SHARDS homogeneous shards, balanced by estimated cost.
+def _spread(work: Sequence[ModuleWork], count: int) -> list[tuple[ModuleWork, ...]]:
+    """Place the costliest module next onto the cheapest of `count` shards (LPT)."""
+    packed: list[list[ModuleWork]] = [[] for _ in range(count)]
+    loads = [0.0] * count
+    for item in sorted(work, key=lambda w: w.cost, reverse=True):
+        lightest = loads.index(min(loads))
+        packed[lightest].append(item)
+        loads[lightest] += item.cost
+    return [tuple(group) for group in packed]
 
-    The budget is the whole plan's: every live pool gets one shard and the
-    rest go to whichever pool carries the most cost per shard it has. Inside a
-    pool the costliest module goes next onto the cheapest shard (LPT), so one
-    heavy module never shares its shard with a pile of others.
+
+def _shards_to_fit(work: Sequence[ModuleWork]) -> int:
+    """Return the fewest shards whose packing keeps each within SHARD_BUDGET_SECONDS."""
+    count = max(math.ceil(sum(w.cost for w in work) / SHARD_BUDGET_SECONDS), 1)
+    while count < len(work) and any(
+        sum(w.cost for w in group) > SHARD_BUDGET_SECONDS for group in _spread(work, count)
+    ):
+        count += 1
+    return min(count, len(work))
+
+
+def pack(modules: Sequence[ModuleWork]) -> list[Shard]:
+    """Split modules into homogeneous shards that each fit the budget, balanced by cost.
+
+    Each pool gets the fewest shards that fit SHARD_BUDGET_SECONDS. A plan
+    under one wave is topped up to MUTATION_WAVE, since shards that run at once
+    cost no wall clock; one over MAX_SHARDS is cut back to it. Either way the
+    shard goes to the pool with the most cost per shard.
     """
     members = {
         "services": [m for m in modules if m.needs_services],
@@ -412,24 +436,23 @@ def pack(modules: Sequence[ModuleWork]) -> list[Shard]:
     }
     live = {pool: members[pool] for pool in POOLS if members[pool]}
     totals = {pool: sum(w.cost for w in live[pool]) for pool in live}
-    counts = dict.fromkeys(live, 1)
-    while sum(counts.values()) < MAX_SHARDS:
+    counts = {pool: _shards_to_fit(live[pool]) for pool in live}
+    if sum(counts.values()) > MAX_SHARDS:
+        counts = dict.fromkeys(live, 1)
+        target = MAX_SHARDS
+    else:
+        target = MUTATION_WAVE
+    while sum(counts.values()) < target:
         hungry = [pool for pool in live if counts[pool] < len(live[pool])]
         if not hungry:
             break
         counts[max(hungry, key=lambda pool: totals[pool] / counts[pool])] += 1
-    shards: list[Shard] = []
-    for pool in POOLS:
-        if pool not in live:
-            continue
-        packed: list[list[ModuleWork]] = [[] for _ in range(counts[pool])]
-        loads = [0.0] * counts[pool]
-        for work in sorted(live[pool], key=lambda w: w.cost, reverse=True):
-            lightest = loads.index(min(loads))
-            packed[lightest].append(work)
-            loads[lightest] += work.cost
-        shards.extend(Shard(pool, tuple(group)) for group in packed)
-    return shards
+    return [
+        Shard(pool, group)
+        for pool in POOLS
+        if pool in live
+        for group in _spread(live[pool], counts[pool])
+    ]
 
 
 def cmd_plan(_args: list[str]) -> int:
@@ -448,7 +471,11 @@ def cmd_plan(_args: list[str]) -> int:
             handle.write(f"shard_defs={_compact(shard_defs)}\n")
             handle.write(f"count={len(include)}\n")
     if len(shards) < len(modules):
-        print(f"{len(modules)} module(s) packed into {len(shards)} shards (matrix job limit)")
+        waves = math.ceil(len(shards) / MUTATION_WAVE)
+        print(
+            f"{len(modules)} module(s) packed into {len(shards)} shards by estimated cost "
+            f"({waves} wave(s) of {MUTATION_WAVE})"
+        )
     else:
         print(f"{len(modules)} module(s) to mutate, one shard each")
     for entry, shard in zip(include, shards, strict=True):
