@@ -9,14 +9,16 @@ one repeating an earlier element's, first gets a fresh id written back into the 
 to re-run: a pass visits only conversations whose array changed since (any append, trim or
 in-place edit) and sets only the fields whose source changed. A head written meanwhile is
 reported RACED and changes nothing; re-run until 0 raced. A conversation the log cannot hold
-is reported REFUSED with why. Both make the run exit 1.
+is reported REFUSED with why. Both make the run exit 1. Every head with no source is given
+one (a todo's chat background, a workflow's workflow_system, any other web), and --verify
+fails while any head still has none.
 
 Cutover, in this order:
   1. --apply while the old build serves; repeat until it reports 0 raced and 0 refused.
   2. Stop the old build, so nothing writes an embedded array.
   3. --apply again, then --verify; both must exit 0.
   4. Deploy the new build. It refuses to boot while any conversation has an embedded array
-     no pass marked, or message-shaped entries.
+     no pass marked, message-shaped entries, or a head with no source.
 
 The migration copies and never deletes: the arrays stay as they were, so rollback is
 redeploying the old build.
@@ -43,6 +45,7 @@ from scripts.migrate_conversation_entries.migration import (
     MigrationAction,
     conversation_entries_migration,
 )
+from scripts.migrate_conversation_entries.sources import conversation_source_backfill
 
 _BATCH = 200
 _Scan = Callable[[str | None], Awaitable[list[HeadRef]]]
@@ -112,6 +115,12 @@ async def _migrate(args: argparse.Namespace) -> int:
             f"  {totals.not_kept} messages carry fields the log does not keep "
             f"({', '.join(NOT_KEPT_FIELDS)})."
         )
+    given = await conversation_source_backfill.backfill(apply=args.apply)
+    print(
+        "Sources: "
+        + ", ".join(f"{count} given {source.value}" for source, count in given.items())
+        + "."
+    )
     if not args.apply:
         print("Dry run only. Re-run with --apply to write.")
     return 1 if any(actions[action] for action in _FAILED) else 0
@@ -129,7 +138,9 @@ async def _verify() -> int:
                 for mismatch in report.mismatches:
                     print(f"  MISMATCH {ref.conversation_id}: {mismatch}")
     print(f"Verified {verified} conversations: {failed} with mismatches.")
-    return 1 if failed else 0
+    sourceless = await conversation_source_backfill.count_sourceless()
+    print(f"{sourceless} conversations have no source.")
+    return 1 if failed or sourceless else 0
 
 
 async def _run(args: argparse.Namespace) -> int:

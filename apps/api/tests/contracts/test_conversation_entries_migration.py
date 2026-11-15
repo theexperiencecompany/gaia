@@ -19,10 +19,16 @@ from scripts.migrate_conversation_entries.migration import (
 )
 from scripts.migrate_conversation_entries.oracle import legacy_messages
 
-from app.db.mongodb.indexes import UNMIGRATED_HEAD_KEYS, UNMIGRATED_HEAD_OPTIONS
+from app.db.mongodb.indexes import (
+    CONVERSATION_SOURCE_KEYS,
+    CONVERSATION_SOURCE_OPTIONS,
+    UNMIGRATED_HEAD_KEYS,
+    UNMIGRATED_HEAD_OPTIONS,
+)
 from app.db.repositories.conversation_migration_guard import (
     MESSAGE_SHAPED,
     NEVER_MIGRATED_HEADS,
+    SOURCELESS_HEADS,
     refuse_unmigrated_conversations,
 )
 from app.db.repositories.conversations import ConversationRepository
@@ -88,7 +94,9 @@ def _every_shape() -> list[dict[str, object]]:
     ]
 
 
-async def _legacy(raw_collection: Any, messages: list[dict[str, object]]) -> HeadRef:
+async def _legacy(
+    raw_collection: Any, messages: list[dict[str, object]], **head: object
+) -> HeadRef:
     """Insert a conversation the way production stores it: its messages embedded in the head."""
     conversation_id = f"c-{uuid.uuid4().hex}"
     result = await raw_collection.insert_one(
@@ -99,6 +107,8 @@ async def _legacy(raw_collection: Any, messages: list[dict[str, object]]) -> Hea
             "createdAt": datetime.now(UTC).isoformat(),
             "updatedAt": datetime(2026, 1, 1, tzinfo=UTC),
             "messages": messages,
+            "source": "web",
+            **head,
         }
     )
     return HeadRef(str(result.inserted_id), conversation_id, USER)
@@ -401,7 +411,7 @@ async def test_message_shaped_entries_are_rewritten_in_place_with_settles_at_the
 ) -> None:
     conversation_id = f"c-{uuid.uuid4().hex}"
     result = await raw_collection.insert_one(
-        {"conversation_id": conversation_id, "user_id": USER, "log_head": 4}
+        {"conversation_id": conversation_id, "user_id": USER, "source": "web", "log_head": 4}
     )
     ref = HeadRef(str(result.inserted_id), conversation_id, USER)
     at = datetime(2026, 2, 1, tzinfo=UTC)
@@ -467,7 +477,9 @@ async def test_the_boot_check_refuses_an_unmarked_array_cheaply_and_passes_once_
     migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
 ) -> None:
     await refuse_unmigrated_conversations()
-    await raw_collection.insert_one({"conversation_id": "empty", "user_id": USER, "messages": []})
+    await raw_collection.insert_one(
+        {"conversation_id": "empty", "user_id": USER, "source": "web", "messages": []}
+    )
     await refuse_unmigrated_conversations()
     ref = await _legacy(raw_collection, [_message(1)])
 
@@ -551,3 +563,48 @@ async def test_the_boot_check_names_an_entry_holding_a_renamed_field_and_its_mig
         "conversation c-renamed still holds log entries with renamed fields: run "
         "python -m scripts.migrate_approval_vocabulary --apply, then --verify"
     )
+
+
+async def test_every_head_without_a_source_is_given_its_own_kind_and_verify_fails_until_then(
+    raw_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    web = await _legacy(raw_collection, [], source=None)
+    unknown = await _legacy(raw_collection, [], source="sms")
+    todo = await _legacy(raw_collection, [], source=None, todo_id="t1")
+    bound = await _legacy(raw_collection, [], source=None, metadata={"workflow_id": "wf1"})
+    workflow = await _legacy(raw_collection, [], source=None, system_purpose="workflow_execution")
+    telegram = await _legacy(raw_collection, [], source="telegram")
+
+    code, out = await _cli(capsys)
+    assert code == 0
+    assert "Sources: 1 given background, 2 given workflow_system, 2 given web." in out
+    assert (await _head(raw_collection, web))["source"] is None
+    code, out = await _cli(capsys, "--verify")
+    assert code == 1 and out[-1] == "5 conversations have no source."
+    with pytest.raises(UnmigratedConversationError, match="no source"):
+        await refuse_unmigrated_conversations()
+
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    sources = {
+        ref.conversation_id: (await _head(raw_collection, ref)).get("source")
+        for ref in (web, unknown, todo, bound, workflow, telegram)
+    }
+    assert sources == {
+        web.conversation_id: "web",
+        unknown.conversation_id: "web",
+        todo.conversation_id: "background",
+        bound.conversation_id: "workflow_system",
+        workflow.conversation_id: "workflow_system",
+        telegram.conversation_id: "telegram",
+    }
+    code, out = await _cli(capsys, "--verify")
+    assert code == 0 and out[-1] == "0 conversations have no source."
+    await refuse_unmigrated_conversations()
+
+
+async def test_the_boot_check_finds_a_sourceless_head_through_an_index(raw_collection: Any) -> None:
+    await raw_collection.create_index(CONVERSATION_SOURCE_KEYS, **CONVERSATION_SOURCE_OPTIONS)
+
+    plan = await raw_collection.find(SOURCELESS_HEADS).explain()
+
+    assert "IXSCAN" in str(plan["queryPlanner"]["winningPlan"])

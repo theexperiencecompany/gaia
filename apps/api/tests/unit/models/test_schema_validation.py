@@ -32,7 +32,7 @@ from shared.py.conversation_wire import ReplyToMessageData
 
 class TestConversationModel:
     def test_valid_minimal(self):
-        m = ConversationModel(conversation_id="conv_1")
+        m = ConversationModel(conversation_id="conv_1", source=ConversationSource.WEB)
         assert m.conversation_id == "conv_1"
         assert m.description == "New Chat"
         assert m.is_system_generated is False
@@ -54,6 +54,10 @@ class TestConversationModel:
     def test_missing_required_field(self):
         with pytest.raises(ValidationError):
             ConversationModel()
+
+    def test_a_conversation_without_a_source_is_refused(self):
+        with pytest.raises(ValidationError, match="source"):
+            ConversationModel(conversation_id="conv_1")
 
     def test_system_purpose_enum_values(self):
         assert SystemPurpose.EMAIL_PROCESSING.value == "email_processing"

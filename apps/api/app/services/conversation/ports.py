@@ -25,6 +25,7 @@ from app.models.message_models import MessageDict
 from app.models.work_cancel_models import WorkCancelled
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import (
+    ChatBackgroundUpdateResolved,
     ChatMessageCancelled,
     ChatMessageCompleted,
     ChatTurnReacted,
@@ -276,7 +277,7 @@ class ApprovalReplies(Protocol):
 
 #: What the step counts about a turn: how its reply ended, or the reaction it resolved to.
 ConversationAnalyticsEvent: TypeAlias = (
-    ChatMessageCompleted | ChatMessageCancelled | ChatTurnReacted
+    ChatMessageCompleted | ChatMessageCancelled | ChatTurnReacted | ChatBackgroundUpdateResolved
 )
 
 

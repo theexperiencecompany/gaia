@@ -6,12 +6,17 @@ import pytest
 
 from app.constants.chat import ConversationSource
 from app.models.conversation_log_models import LoggedEntry, StepClaim, UserMessage
-from app.services.conversation.reply_analytics import capture_reply_ended, spoken_context
+from app.services.conversation.reply_analytics import (
+    UNPROMPTED,
+    capture_reply_ended,
+    spoken_context,
+)
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
-from shared.py.analytics.catalog.chat import ChatMessageCompleted
+from shared.py.analytics.catalog.chat import ChatBackgroundUpdateResolved, ChatMessageCompleted
 from shared.py.analytics.context import AnalyticsContext
-from tests.unit.services.conversation.log_helpers import T0, opened, settled, started
+from shared.py.conversation_wire import ReplyOutcome
+from tests.unit.services.conversation.log_helpers import T0, finished, opened, settled, started
 from tests.unit.services.conversation.runtime_doubles import CONVERSATION, USER, RecordingAnalytics
 
 CLAIM = StepClaim(conversation_id=CONVERSATION, user_id=USER, epoch=1)
@@ -112,3 +117,51 @@ def test_a_later_turn_with_nothing_before_it_neither_waited_nor_delegated() -> N
     [(_user, event, _context, _dedupe)] = analytics.ended
     assert isinstance(event, ChatMessageCompleted)
     assert (event.is_new_conversation, event.delegated, event.queued) == (False, False, False)
+
+
+@pytest.mark.parametrize(
+    ("outcome", "resolved"),
+    [(ReplyOutcome.ANSWERED, "message"), (ReplyOutcome.SILENT, "silence")],
+)
+def test_finished_work_no_one_asked_about_is_counted_as_resolved_by_the_settle(
+    outcome: ReplyOutcome, resolved: str
+) -> None:
+    analytics = RecordingAnalytics()
+    work = _at(1, finished("w1", "t1"), 0)
+    end = settled("s2", ["w1"], 1, outcome=outcome)
+    ended_at = T0 + timedelta(seconds=1)
+
+    capture_reply_ended(analytics, CLAIM, [work], end, ended_at, [])
+
+    assert analytics.ended == [
+        (
+            USER,
+            ChatBackgroundUpdateResolved(outcome=resolved),
+            UNPROMPTED,
+            Dedupe(key="s2", occurred_at=ended_at),
+        )
+    ]
+
+
+def test_finished_work_answered_with_a_message_counts_both_under_the_users_context() -> None:
+    analytics = RecordingAnalytics()
+    covers = [_at(1, finished("w1", "t1"), 0), _at(2, _said(ConversationSource.WEB), 10)]
+    end = settled("s3", ["w1", "u1"], 2)
+
+    capture_reply_ended(analytics, CLAIM, covers, end, T0 + timedelta(seconds=1), [])
+
+    events = [(type(event), context) for _user, event, context, _dedupe in analytics.ended]
+    said = spoken_context(_said(ConversationSource.WEB))
+    assert events == [(ChatMessageCompleted, said), (ChatBackgroundUpdateResolved, said)]
+
+
+@pytest.mark.parametrize("outcome", [ReplyOutcome.FAILED, ReplyOutcome.INTERIM])
+def test_a_settle_that_did_not_resolve_the_work_counts_nothing(outcome: ReplyOutcome) -> None:
+    analytics = RecordingAnalytics()
+    end = settled("s2", [], 1, outcome=outcome)
+
+    capture_reply_ended(
+        analytics, CLAIM, [_at(1, finished("w1", "t1"), 0)], end, T0 + timedelta(seconds=1), []
+    )
+
+    assert analytics.ended == []

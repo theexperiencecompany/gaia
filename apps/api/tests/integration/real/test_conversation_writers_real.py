@@ -87,7 +87,7 @@ async def _chat(user_id: str, entries: list[Entry]) -> str:
     conversation_id = f"c-{uuid4().hex}"
     await conversation_repository.create(
         ConversationDocument.model_validate(
-            {"user_id": user_id, "conversation_id": conversation_id}
+            {"user_id": user_id, "conversation_id": conversation_id, "source": "web"}
         )
     )
     for entry in entries:

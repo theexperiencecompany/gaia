@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import uuid
 
+from pydantic import ValidationError
 import pytest
 
 from app.db.mongodb import indexes
@@ -43,6 +44,7 @@ def _doc(**overrides: object) -> ConversationDocument:
         "user_id": overrides.pop("user_id", _uid()),
         "conversation_id": overrides.pop("conversation_id", _cid()),
         "description": "New Chat",
+        "source": "web",
         "createdAt": datetime.now(UTC).isoformat(),
     }
     data.update(overrides)
@@ -218,44 +220,6 @@ class TestListSummaries:
         ]
 
 
-class TestBackgroundSource:
-    async def test_marking_a_sourceless_run_stamps_background_and_hides_it(self, repo):
-        doc = _doc()
-        await repo.create(doc)
-
-        assert await repo.mark_background(doc.conversation_id, user_id=doc.user_id)
-
-        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert fetched.source == ConversationSource.BACKGROUND
-        assert await repo.list_active_summaries(doc.user_id, skip=0, limit=10) == []
-
-    async def test_marking_never_overwrites_a_real_channel(self, repo):
-        doc = _doc(source=ConversationSource.WEB)
-        await repo.create(doc)
-
-        assert not await repo.mark_background(doc.conversation_id, user_id=doc.user_id)
-
-        fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert fetched.source == ConversationSource.WEB
-
-    async def test_marking_stamps_only_the_callers_row_of_a_shared_id(self, repo):
-        shared = _cid()
-        mine, theirs = _doc(conversation_id=shared), _doc(conversation_id=shared)
-        await repo.create(theirs)
-        await repo.create(mine)
-
-        await repo.mark_background(shared, user_id=mine.user_id)
-
-        other = await repo.get(shared, user_id=theirs.user_id)
-        assert other is not None
-        assert other.source is None
-
-    async def test_marking_a_missing_conversation_reports_false(self, repo):
-        assert await repo.mark_background(_cid(), user_id=_uid()) is False
-
-
 class _CachedConversationRepository(ConversationRepository):
     cache_policy = CachePolicy(prefix="contract:conversations")
 
@@ -266,17 +230,6 @@ class TestInPlaceWritesUnderACachePolicy:
     @pytest.fixture
     def cached_repo(self, raw_collection) -> _CachedConversationRepository:
         return _CachedConversationRepository()
-
-    async def test_marking_evicts_the_cached_conversation(self, cached_repo):
-        doc = _doc()
-        await cached_repo.create(doc)
-        assert await cached_repo.get(doc.conversation_id, user_id=doc.user_id) is not None
-
-        await cached_repo.mark_background(doc.conversation_id, user_id=doc.user_id)
-
-        fetched = await cached_repo.get(doc.conversation_id, user_id=doc.user_id)
-        assert fetched is not None
-        assert fetched.source == ConversationSource.BACKGROUND
 
     async def test_deleting_a_todos_chats_evicts_the_cached_chat(self, cached_repo):
         doc = _doc(todo_id="todo-1")
@@ -500,12 +453,15 @@ class TestWorkflowAndOnboarding:
         )
         assert await repo.get_source(_cid(), user_id=doc.user_id) is None
 
-    async def test_get_source_coerces_unknown_stored_value_to_none(self, repo, raw_collection):
+    async def test_get_source_refuses_a_stored_value_this_build_does_not_know(
+        self, repo, raw_collection
+    ):
         cid, uid = _cid(), _uid()
         await raw_collection.insert_one(
             {"user_id": uid, "conversation_id": cid, "source": "legacy_garbage"}
         )
-        assert await repo.get_source(cid, user_id=uid) is None
+        with pytest.raises(ValidationError, match="source"):
+            await repo.get_source(cid, user_id=uid)
 
 
 class TestSearchAndSweeps:

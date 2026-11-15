@@ -1,6 +1,7 @@
 from typing import cast
 from uuid import uuid4
 
+from app.constants.chat import ConversationSource
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationModel, SystemPurpose
 from app.models.conversation_log_models import Notice
@@ -40,6 +41,7 @@ async def seed_holo_card_conversation(user_id: str, message: str) -> str | None:
             description=_HOLO_CARD_CONVERSATION_DESCRIPTION,
             is_system_generated=True,
             is_unread=True,
+            source=ConversationSource.WEB,
         )
 
         await create_conversation_service(conversation, AuthenticatedUser(user_id=user_id))
@@ -78,6 +80,7 @@ async def seed_first_conversation(user_id: str, composed: FirstConversation) -> 
             is_system_generated=True,
             system_purpose=SystemPurpose.GETTING_STARTED,
             is_unread=True,
+            source=ConversationSource.WEB,
         )
 
         await create_conversation_service(conversation, AuthenticatedUser(user_id=user_id))
