@@ -332,6 +332,20 @@ class TestHeldResults:
         assert found[1].detail is None
         assert find_desk.await_args.args == (USER_ID, INBOX_DESK_REF)
 
+    async def test_a_todo_runs_held_report_is_not_called_finished(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            todo_repository, "find_latest_by_external_ref", AsyncMock(return_value=None)
+        )
+        held = [
+            _held("h1", BriefItemSource.TODO, "t-1", "Book the venue", "Could not reach the venue")
+        ]
+
+        (found,) = await held_candidates(USER_ID, held)
+
+        assert (found.title, found.outcome) == ("Book the venue: Could not reach the venue", None)
+
     async def test_only_a_todo_result_of_the_desk_itself_is_a_gmail_finding(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -590,13 +604,14 @@ class TestReminders:
 
 
 def _run(
-    execution_id: str, workflow_id: str, hours_ago: int, error: str
+    execution_id: str, workflow_id: str, hours_ago: int, error: str | None = None
 ) -> WorkflowExecutionDocument:
+    """Return a run that failed with error, or succeeded without one."""
     return WorkflowExecutionDocument(
         execution_id=execution_id,
         workflow_id=workflow_id,
         user_id=USER_ID,
-        status="failed",
+        status="success" if error is None else "failed",
         started_at=NOW - timedelta(hours=hours_ago),
         error_message=error,
     )
@@ -615,6 +630,36 @@ def _workflow(workflow_id: str, title: str) -> WorkflowDocument:
 
 
 class TestFailedRuns:
+    async def test_a_workflow_that_ran_fine_after_failing_reads_as_recovered(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        runs = [
+            _run("e4", "wf-sync", 1),
+            _run("e3", "wf-sync", 2, "Rate limited"),
+            _run("e2", "wf-sync", 3, "Rate limited"),
+            _run("e1", "wf-sync", 4, "Rate limited"),
+        ]
+        monkeypatch.setattr(
+            workflow_executions_repository, "list_since", AsyncMock(return_value=runs)
+        )
+        monkeypatch.setattr(
+            workflow_repository, "find_system_workflows", AsyncMock(return_value=[])
+        )
+        monkeypatch.setattr(
+            workflow_repository,
+            "find_by_ids_for_user",
+            AsyncMock(return_value=[_workflow("wf-sync", "CRM sync")]),
+        )
+
+        (found,) = await failed_run_candidates(USER_ID, NOW - timedelta(days=1))
+
+        assert (found.title, found.detail, found.state, found.action) == (
+            "CRM sync recovered",
+            "failed 3 time(s) since the last brief, then its latest run succeeded",
+            "note",
+            None,
+        )
+
     async def test_one_item_per_failed_workflow_naming_its_latest_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -636,14 +681,20 @@ class TestFailedRuns:
         found = await failed_run_candidates(USER_ID, since)
 
         assert [(c.title, c.detail, c.state, c.action) for c in found] == [
-            ("CRM sync failed", "HubSpot token expired", "failed", BriefAction.RETRY),
-            ("Digest failed", "Timed out", "failed", BriefAction.RETRY),
+            (
+                "CRM sync failed",
+                "HubSpot token expired | failed 2 time(s) since the last brief",
+                "failed",
+                BriefAction.RETRY,
+            ),
+            (
+                "Digest failed",
+                "Timed out | failed 1 time(s) since the last brief",
+                "failed",
+                BriefAction.RETRY,
+            ),
         ]
-        assert list_since.await_args.kwargs == {
-            "status": "failed",
-            "exclude_workflow_ids": ["wf-brief"],
-            "limit": 20,
-        }
+        assert list_since.await_args.kwargs == {"exclude_workflow_ids": ["wf-brief"], "limit": 200}
         assert list_since.await_args.args == (USER_ID, since)
         assert find_system.await_args.args == (USER_ID, BRIEFING_RHYTHM_WORKFLOW_KEYS)
         assert find_titles.await_args.args == (["wf-sync", "wf-digest"], USER_ID)
