@@ -103,4 +103,41 @@ describe("marketplace page dates", () => {
     );
     expect(app?.author).toBeUndefined();
   });
+
+  it("renders a native integration's page without asking for the community catalog", async () => {
+    const GMAIL: PublicIntegrationResponse = {
+      ...ARXIV,
+      integrationId: "gmail",
+      slug: "gmail",
+      name: "Gmail",
+      source: "platform",
+    };
+    const requested: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Request) => {
+        const { pathname } = new URL(input.url);
+        requested.push(pathname);
+        if (pathname.endsWith("/integrations/public/gmail")) {
+          return Response.json(GMAIL);
+        }
+        if (pathname.endsWith("/workflows")) {
+          return Response.json({ workflows: [], total: 0 });
+        }
+        if (pathname.endsWith("/integrations/config")) {
+          return Response.json({ integrations: [] });
+        }
+        return new Response("not stubbed", { status: 500 });
+      }),
+    );
+
+    const page = await IntegrationPage({
+      params: Promise.resolve({ slug: "gmail" }),
+    });
+
+    expect(page).toBeTruthy();
+    expect(
+      requested.some((path) => path.endsWith("/integrations/community")),
+    ).toBe(false);
+  });
 });

@@ -7,9 +7,9 @@ import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedCombos } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
-  HUB_PAGE_SIZE,
   hubPageCount,
   hubPageHref,
+  hubPageOf,
   hubPageSlice,
 } from "@/lib/hubPagination";
 import {
@@ -132,7 +132,7 @@ export async function AutomateHub({ locale, page }: AutomateHubProps) {
   for (const [index, combo] of orderedCombos.entries()) {
     const letter = combo.toolA[0].toUpperCase();
     if (!letterPages.has(letter)) {
-      letterPages.set(letter, Math.floor(index / HUB_PAGE_SIZE) + 1);
+      letterPages.set(letter, hubPageOf(index));
     }
   }
 

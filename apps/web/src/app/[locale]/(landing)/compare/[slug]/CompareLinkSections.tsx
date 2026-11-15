@@ -1,5 +1,10 @@
 import type { getTranslations } from "next-intl/server";
+import { LinkCard } from "@/components/seo/LinkCard";
 import { SiteLink } from "@/components/seo/SiteLink";
+import {
+  type ComparisonCategoryGroup,
+  comparisonCategoryPath,
+} from "@/features/comparisons/data/comparisonCategories";
 import type { ComparisonData } from "@/features/comparisons/data/comparisonsData";
 import type { PersonaData } from "@/features/personas/data/personasData";
 
@@ -8,7 +13,9 @@ type Translator = Awaited<ReturnType<typeof getTranslations>>;
 interface CompareLinkSectionsProps {
   readonly name: string;
   readonly alternativeHref: string | null;
-  readonly category: string;
+  readonly category: ComparisonCategoryGroup<ComparisonData>;
+  /** The comparisons hub page that lists this comparison. */
+  readonly hubHref: string;
   readonly relatedComparisons: readonly ComparisonData[];
   readonly relatedPersonas: readonly PersonaData[];
   readonly t: Translator;
@@ -42,7 +49,7 @@ export function CompareRelatedSections({
       {relatedComparisons.length > 0 && (
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            {t("comparisons.compare_more_tools", { category })}
+            {t("comparisons.compare_more_tools", { category: category.label })}
           </h2>
           <div className="grid gap-4 sm:grid-cols-3">
             {relatedComparisons.map((comp) => (
@@ -58,6 +65,15 @@ export function CompareRelatedSections({
               </SiteLink>
             ))}
           </div>
+          <SiteLink
+            href={comparisonCategoryPath(category.slug)}
+            className="mt-4 inline-block text-sm text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+          >
+            {t("comparisons.all_category_comparisons", {
+              count: category.items.length,
+              category: category.label,
+            })}
+          </SiteLink>
         </section>
       )}
 
@@ -90,36 +106,31 @@ export function CompareRelatedSections({
 
 export function CompareExploreMore({
   name,
+  hubHref,
   t,
-}: Pick<CompareLinkSectionsProps, "name" | "t">) {
+}: Pick<CompareLinkSectionsProps, "name" | "hubHref" | "t">) {
   return (
     <section className="mb-16">
       <h2 className="mb-6 text-3xl font-semibold text-white">
         {t("common.explore_more")}
       </h2>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <SiteLink
+      <div className="grid gap-4 sm:grid-cols-3">
+        <LinkCard
+          href={hubHref}
+          title={t("comparisons.hub_title")}
+          description={t("comparisons.hub_subtitle")}
+          clamp
+        />
+        <LinkCard
           href="/learn"
-          className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-        >
-          <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-            {t("comparisons.ai_glossary")}
-          </h3>
-          <p className="text-sm leading-relaxed text-zinc-400">
-            {t("comparisons.ai_glossary_desc", { name })}
-          </p>
-        </SiteLink>
-        <SiteLink
+          title={t("comparisons.ai_glossary")}
+          description={t("comparisons.ai_glossary_desc", { name })}
+        />
+        <LinkCard
           href="/for"
-          className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
-        >
-          <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-            {t("comparisons.gaia_for_role")}
-          </h3>
-          <p className="text-sm leading-relaxed text-zinc-400">
-            {t("comparisons.gaia_for_role_desc")}
-          </p>
-        </SiteLink>
+          title={t("comparisons.gaia_for_role")}
+          description={t("comparisons.gaia_for_role_desc")}
+        />
       </div>
     </section>
   );

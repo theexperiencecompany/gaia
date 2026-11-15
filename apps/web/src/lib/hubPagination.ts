@@ -4,7 +4,7 @@
  * into the RSC flight payload, so an unbounded list costs roughly twice its
  * markup.
  */
-export const HUB_PAGE_SIZE = 40;
+const HUB_PAGE_SIZE = 40;
 
 /** The path segment that holds a hub's later pages: /automate/page/2. */
 const PAGE_SEGMENT = "page";
@@ -61,6 +61,11 @@ export function hubPagePath(hubPath: string, page: number): string {
 /** `/automate` for the first page, `/automate/page/2` after it — plain links, no client state. */
 export function hubPageHref(pathname: string, page: number): string {
   return page <= 1 ? pathname : `${pathname}/page/${page}`;
+}
+
+/** The hub page listing the item at `index` of the hub's full order, so a detail page links back to where it sits. */
+export function hubPageOf(index: number): number {
+  return Math.floor(index / HUB_PAGE_SIZE) + 1;
 }
 
 export function hubPageCount(totalItems: number): number {

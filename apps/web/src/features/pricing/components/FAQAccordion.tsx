@@ -1,6 +1,7 @@
 "use client";
 
 import { Accordion, AccordionItem } from "@heroui/accordion";
+import Link from "next/link";
 
 import { type FAQItem, getAllFAQs } from "@/lib/faq";
 
@@ -29,6 +30,12 @@ export function FAQAccordion({ faqs }: { faqs?: FAQItem[] }) {
           <span className="font-serif text-4xl sm:text-5xl lg:text-7xl font-medium">
             FAQ
           </span>
+          <Link
+            href="/faq"
+            className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+          >
+            See every question about GAIA
+          </Link>
         </div>
 
         <Accordion
