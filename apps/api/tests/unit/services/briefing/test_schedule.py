@@ -158,6 +158,9 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[Seams]:
     monkeypatch.setattr(schedule, "is_paid", s.is_paid)
     monkeypatch.setattr(schedule, "capture", s.capture)
     monkeypatch.setattr(workflow_repository, "find_system_workflows", s.find)
+    monkeypatch.setattr(
+        workflow_repository, "find_brief_delivery_for_user", AsyncMock(return_value=[])
+    )
     monkeypatch.setattr(WorkflowService, "update_workflow", s.update)
     monkeypatch.setattr(briefing_repository, "was_delivered", s.was_delivered)
     monkeypatch.setattr(workflow_repository, "find_system_workflow", s.daily)
@@ -500,6 +503,32 @@ class TestTurningBriefsOff:
             UserId(_USER),
             SettingsBriefsOffResolved(moved_to_now=0, moved_to_silent=1, via="agent"),
         )
+
+    async def test_weekly_only_moves_each_brief_workflow_to_tell_me_now(
+        self, seams: Seams, delivering: MagicMock
+    ) -> None:
+        """With no daily brief to hold them, their results already went out at once."""
+        await schedule.set_briefing_schedule(
+            _USER, BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY), via="settings"
+        )
+
+        delivering.assert_awaited_once_with(_USER)
+        moved = [call for call in seams.update.await_args_list if call.args[0] == "wf-digest"]
+        assert [(call.args[1].delivery, call.args[2]) for call in moved] == [
+            (WorkflowDelivery.NOW, _USER)
+        ]
+        captured = [call.args[1] for call in seams.capture.call_args_list]
+        assert not [e for e in captured if isinstance(e, SettingsBriefsOffBlocked)]
+        assert not [e for e in captured if isinstance(e, SettingsBriefsOffResolved)]
+
+    async def test_a_schedule_that_keeps_the_daily_brief_leaves_brief_workflows_alone(
+        self, seams: Seams, delivering: MagicMock
+    ) -> None:
+        await schedule.set_briefing_schedule(
+            _USER, BriefingSchedule(frequency=BriefingFrequency.WEEKDAYS), via="settings"
+        )
+
+        delivering.assert_not_awaited()
 
     async def test_a_brief_workflow_with_no_chosen_delivery_blocks_turning_briefs_off(
         self, seams: Seams, delivering: MagicMock
