@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // Regression coverage for the "paying user sees free-tier UI / gets blocked"
-// bug in the chat-app rows (then on Linked Accounts, now Notifications): the premium-platform gate (iMessage) read
+// bug in LinkedAccountsSettings: the premium-platform gate (iMessage) read
 // `subscriptionStatus?.is_subscribed` directly off the raw (possibly
 // disabled/never-fetched) subscription-status query. A cold cache read that
 // as `undefined` — falsy — so a paying user reloading mid-fetch saw the
@@ -53,32 +53,7 @@ vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
-vi.mock("@/services/api/notifications", () => ({
-  NotificationsAPI: {
-    getChannelPreferences: vi.fn().mockResolvedValue({
-      telegram: true,
-      discord: true,
-      whatsapp: true,
-      slack: true,
-      imessage: true,
-      email: true,
-    }),
-    updateChannelPreference: vi.fn(),
-  },
-}));
-
-vi.mock("@/features/settings/api/chatChannelApi", () => ({
-  chatChannelApi: {
-    fetchPriority: vi.fn().mockResolvedValue({ priority: [] }),
-    updatePriority: vi.fn(),
-  },
-}));
-
-vi.mock("@/features/settings/components/QuietHoursSettings", () => ({
-  QuietHoursSettings: () => null,
-}));
-
-import NotificationSettings from "@/features/settings/components/NotificationSettings";
+import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
 
 /** Locates the settings row for a given platform label once its Connect
  * button is clickable, scoped so assertions never match another platform. */
@@ -97,7 +72,7 @@ async function findPlatformRow(label: string) {
   return scope;
 }
 
-describe("NotificationSettings — iMessage (premium) gate vs. plan status unknown", () => {
+describe("LinkedAccountsSettings — iMessage (premium) gate vs. plan status unknown", () => {
   beforeEach(() => {
     isPaid = false;
     isUnknown = false;
@@ -107,7 +82,7 @@ describe("NotificationSettings — iMessage (premium) gate vs. plan status unkno
 
   it("never paywalls a free user on an instance that does not bill", async () => {
     billingEnabled = false;
-    render(<NotificationSettings />);
+    render(<LinkedAccountsSettings />);
     const row = await findPlatformRow("iMessage");
 
     expect(row.queryByText("Pro")).toBeNull();
@@ -116,7 +91,7 @@ describe("NotificationSettings — iMessage (premium) gate vs. plan status unkno
   });
 
   it("shows the Pro badge and paywalls the connect attempt for a known-free user", async () => {
-    render(<NotificationSettings />);
+    render(<LinkedAccountsSettings />);
     const row = await findPlatformRow("iMessage");
 
     expect(row.getByText("Pro")).not.toBeNull();
@@ -126,7 +101,7 @@ describe("NotificationSettings — iMessage (premium) gate vs. plan status unkno
 
   it("does not show the Pro badge and does not paywall the connect attempt for a paid user", async () => {
     isPaid = true;
-    render(<NotificationSettings />);
+    render(<LinkedAccountsSettings />);
     const row = await findPlatformRow("iMessage");
 
     expect(row.queryByText("Pro")).toBeNull();
@@ -137,7 +112,7 @@ describe("NotificationSettings — iMessage (premium) gate vs. plan status unkno
   it("does not show the Pro badge and lets the connect attempt proceed while the subscription status is still unknown", async () => {
     isPaid = false;
     isUnknown = true;
-    render(<NotificationSettings />);
+    render(<LinkedAccountsSettings />);
     const row = await findPlatformRow("iMessage");
 
     // Before the fix `subscriptionStatus?.is_subscribed` read `undefined`

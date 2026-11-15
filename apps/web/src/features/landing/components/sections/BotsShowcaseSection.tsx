@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { BOT_LINKS } from "@/features/bots/constants";
-import { NOTIFICATIONS_SETTINGS_PATH } from "@/features/settings/constants";
+import { LINKED_ACCOUNTS_SETTINGS_PATH } from "@/features/settings/constants";
 import {
   ChatDemo,
   type ChatMessageItem,
@@ -210,7 +210,7 @@ const PLATFORMS: Platform[] = [
     icon: "/images/icons/macos/imessage.webp",
     primaryAction: {
       label: "Connect Your Number",
-      href: NOTIFICATIONS_SETTINGS_PATH,
+      href: LINKED_ACCOUNTS_SETTINGS_PATH,
     },
     phone: { screenBackground: "#FFFFFF" },
     demo: {

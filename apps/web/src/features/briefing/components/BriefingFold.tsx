@@ -3,19 +3,19 @@
 import { Button } from "@heroui/button";
 import { ArrowExpand01Icon } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
-import { useReducedMotion, type Variants } from "motion/react";
+import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 
 import {
-  LETTER_CLOSE_TRANSITION,
   LETTER_CONTROL_CLASSES,
-  LETTER_OPEN_TRANSITION,
+  LETTER_SHEET_VARIANTS,
   LetterModal,
 } from "@/components/shared/LetterModal";
 import { cn } from "@/lib/utils";
 
+import { BRIEF_LETTER_WIDTH } from "../constants";
 import { briefingQuery } from "../hooks/useBriefingQuery";
 import {
   type EditionLayout,
@@ -33,11 +33,6 @@ import {
 } from "./BriefingEdition";
 import { BriefLetter } from "./BriefLetter";
 import { EditionUnfold } from "./EditionUnfold";
-
-const SHEET_VARIANTS: Variants = {
-  enter: { opacity: 1, y: 0, transition: LETTER_OPEN_TRANSITION },
-  exit: { opacity: 0, y: 12, transition: LETTER_CLOSE_TRANSITION },
-};
 
 /**
  * What the open view shows: the brief itself, or the id to load it by. With an id
@@ -208,8 +203,12 @@ export function BriefingFold({
           />
         ) : (
           <m.div
-            variants={reduceMotion ? undefined : SHEET_VARIANTS}
-            className="w-[min(620px,calc(100vw-24px))] rounded-2xl shadow-[0_32px_80px_-24px_rgba(0,0,0,0.75)]"
+            initial="arrive"
+            animate="enter"
+            exit="exit"
+            variants={LETTER_SHEET_VARIANTS[reduceMotion ? "reduced" : "full"]}
+            style={{ width: BRIEF_LETTER_WIDTH }}
+            className="rounded-2xl shadow-[0_32px_80px_-24px_rgba(0,0,0,0.75)]"
           >
             {opened?.kind === "text" ? (
               <BriefingEdition payload={opened.payload} />

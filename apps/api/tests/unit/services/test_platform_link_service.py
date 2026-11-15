@@ -999,7 +999,7 @@ class TestStartPlatformConnect:
         # callback that can never be redeemed.
         mock_state.assert_awaited_once_with(
             user_id="user-1",
-            redirect_path="/settings/notifications",
+            redirect_path="/settings?section=linked-accounts",
             integration_id="discord",
         )
         assert result == InitiatePlatformConnectResponse(
@@ -1032,7 +1032,7 @@ class TestStartPlatformConnect:
 
         mock_state.assert_awaited_once_with(
             user_id="user-1",
-            redirect_path="/settings/notifications",
+            redirect_path="/settings?section=linked-accounts",
             integration_id="slack",
         )
         assert result == InitiatePlatformConnectResponse(

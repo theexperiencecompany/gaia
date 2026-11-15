@@ -43,32 +43,7 @@ vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
-vi.mock("@/services/api/notifications", () => ({
-  NotificationsAPI: {
-    getChannelPreferences: vi.fn().mockResolvedValue({
-      telegram: true,
-      discord: true,
-      whatsapp: true,
-      slack: true,
-      imessage: true,
-      email: true,
-    }),
-    updateChannelPreference: vi.fn(),
-  },
-}));
-
-vi.mock("@/features/settings/api/chatChannelApi", () => ({
-  chatChannelApi: {
-    fetchPriority: vi.fn().mockResolvedValue({ priority: [] }),
-    updatePriority: vi.fn(),
-  },
-}));
-
-vi.mock("@/features/settings/components/QuietHoursSettings", () => ({
-  QuietHoursSettings: () => null,
-}));
-
-import NotificationSettings from "@/features/settings/components/NotificationSettings";
+import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
 
 const LINKED = {
   platform: "telegram",
@@ -81,16 +56,18 @@ const LINKED = {
 /** The platform's row, found through its own Connect or menu button once the links load. */
 async function findPlatformRow(label: string) {
   const name = new RegExp(`^(Connect|More for) ${label}$`);
-  const action = await screen.findByRole("button", { name });
-  await waitFor(() =>
-    expect((action as HTMLButtonElement).disabled).toBe(false),
-  );
+  // Re-queried each try: the loading row's Connect is replaced once the links arrive.
+  const action = await waitFor(() => {
+    const button = screen.getByRole("button", { name }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    return button;
+  });
   const row = action.closest("div.flex.px-4") as HTMLElement;
   expect(row).not.toBeNull();
   return within(row);
 }
 
-describe("NotificationSettings — open chat", () => {
+describe("LinkedAccountsSettings — open chat", () => {
   beforeEach(() => {
     push.mockReset();
     get.mockReset();
@@ -102,7 +79,7 @@ describe("NotificationSettings — open chat", () => {
     get.mockResolvedValue({ platform_links: { telegram: LINKED } });
     post.mockResolvedValue({ conversation_id: "conv-telegram" });
 
-    render(<NotificationSettings />);
+    render(<LinkedAccountsSettings />);
     const row = await findPlatformRow("Telegram");
 
     fireEvent.click(row.getByRole("button", { name: "Open chat" }));
@@ -127,7 +104,7 @@ describe("NotificationSettings — open chat", () => {
       });
       post.mockResolvedValue({ conversation_id: `conv-${platform}` });
 
-      render(<NotificationSettings />);
+      render(<LinkedAccountsSettings />);
       const row = await findPlatformRow(label);
 
       fireEvent.click(row.getByRole("button", { name: "Open chat" }));
@@ -146,7 +123,7 @@ describe("NotificationSettings — open chat", () => {
       },
     });
 
-    render(<NotificationSettings />);
+    render(<LinkedAccountsSettings />);
 
     for (const label of [
       "Telegram",

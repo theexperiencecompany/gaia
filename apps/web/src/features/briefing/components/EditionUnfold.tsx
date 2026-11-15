@@ -13,6 +13,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import {
   LETTER_CLOSE_TRANSITION,
+  LETTER_EXIT_SCALE,
   LETTER_OPEN_TRANSITION,
   LETTER_REDUCED_TRANSITION,
 } from "@/components/shared/LetterModal";
@@ -176,9 +177,9 @@ export interface EditionUnfoldProps {
 
 /**
  * The edition as a letter folded in panels. One progress value takes it from
- * folded to open on mount and back when the modal closes; creases overlap so the
- * letter opens as one motion, and once open it rests as the one whole sheet.
- * Reduced motion gets a fade.
+ * folded to open on mount; creases overlap so the letter opens as one motion,
+ * and once open it rests as the one whole sheet. Closing fades and shrinks it
+ * where it lies rather than refolding. Reduced motion gets a fade.
  */
 export function EditionUnfold({
   edition,
@@ -190,8 +191,10 @@ export function EditionUnfold({
   const reduceMotion = useReducedMotion() ?? false;
   const travels = Boolean(origin) && !reduceMotion;
   const [isPresent, safeToRemove] = usePresence();
-  const [isMoving, setIsMoving] = useState(true);
+  const [isOpening, setIsOpening] = useState(true);
   const progress = useMotionValue(0);
+  /** 0 while the letter is open, 1 once it has left. */
+  const leave = useMotionValue(0);
   const letterRef = useRef<HTMLDivElement>(null);
   const fromX = useMotionValue(0);
   const fromY = useMotionValue(0);
@@ -214,28 +217,46 @@ export function EditionUnfold({
   }, [travels, origin, fromX, fromY, fromScale]);
 
   useEffect(() => {
-    setIsMoving(true);
-    const controls = animate(
-      progress,
-      isPresent ? 1 : 0,
-      reduceMotion
-        ? LETTER_REDUCED_TRANSITION
-        : isPresent
-          ? LETTER_OPEN_TRANSITION
-          : LETTER_CLOSE_TRANSITION,
+    let isCurrent = true;
+    if (isPresent) {
+      setIsOpening(true);
+      const opening = animate(
+        progress,
+        1,
+        reduceMotion ? LETTER_REDUCED_TRANSITION : LETTER_OPEN_TRANSITION,
+      );
+      opening.then(() => {
+        if (isCurrent) setIsOpening(false);
+      });
+      return () => {
+        isCurrent = false;
+        opening.stop();
+      };
+    }
+    // A close mid-opening leaves the creases where they are; the letter leaves as it stands.
+    const leaving = animate(
+      leave,
+      1,
+      reduceMotion ? LETTER_REDUCED_TRANSITION : LETTER_CLOSE_TRANSITION,
     );
-    controls.then(() => {
-      setIsMoving(false);
-      if (isPresent) return;
+    leaving.then(() => {
+      if (!isCurrent) return;
       onFolded?.();
       safeToRemove();
     });
-    return () => controls.stop();
-  }, [isPresent, progress, reduceMotion, safeToRemove, onFolded]);
+    return () => {
+      isCurrent = false;
+      leaving.stop();
+    };
+  }, [isPresent, progress, leave, reduceMotion, safeToRemove, onFolded]);
 
   const lift = reduceMotion ? 1 : LIFT_END;
   const fadeIn = useTransform(progress, [0, lift / 2], [0, 1]);
-  const opacity = travels ? Number(isPlaced) : fadeIn;
+  const opacity = useTransform(
+    [fadeIn, leave],
+    ([shown, gone]: number[]) =>
+      (travels ? Number(isPlaced) : shown) * (1 - gone),
+  );
   const x = useTransform(progress, (p) =>
     travels ? fromX.get() * remaining(p, TRAVEL_END) : 0,
   );
@@ -243,15 +264,20 @@ export function EditionUnfold({
     if (travels) return fromY.get() * remaining(p, TRAVEL_END);
     return reduceMotion ? 0 : 14 * remaining(p, lift);
   });
-  const scale = useTransform(progress, (p) => {
-    if (travels) return 1 + (fromScale.get() - 1) * remaining(p, TRAVEL_END);
-    return reduceMotion ? 1 : 1 - 0.03 * remaining(p, lift);
+  const scale = useTransform([progress, leave], ([p, gone]: number[]) => {
+    const exit = reduceMotion ? 1 : 1 - (1 - LETTER_EXIT_SCALE) * gone;
+    if (travels)
+      return (1 + (fromScale.get() - 1) * remaining(p, TRAVEL_END)) * exit;
+    return (reduceMotion ? 1 : 1 - 0.03 * remaining(p, lift)) * exit;
   });
   const rotateX = useTransform(progress, (p) =>
     travels ? LETTER_TILT_DEG * remaining(p, TRAVEL_END) : 0,
   );
   const shadowScale = useTransform(progress, [0, 1], [1 / panels.length, 1]);
-  const frost = useTransform(progress, [0, FROST_FULL], [0, 1]);
+  const frost = useTransform(
+    [progress, leave],
+    ([p, gone]: number[]) => Math.min(1, p / FROST_FULL) * (1 - gone),
+  );
 
   return (
     <>
@@ -272,10 +298,12 @@ export function EditionUnfold({
           scale,
           rotateX,
           transformPerspective: travels ? LETTER_PERSPECTIVE_PX : undefined,
-          transformOrigin: travels ? "0 0" : "50% 50%",
+          // A settled letter shrinks about its centre; one still travelling keeps the corner it travels by.
+          transformOrigin:
+            travels && (isPresent || isOpening) ? "0 0" : "50% 50%",
           width,
           aspectRatio: `1 / ${aspect}`,
-          willChange: isMoving ? "transform, opacity" : "auto",
+          willChange: isOpening || !isPresent ? "transform, opacity" : "auto",
         }}
       >
         <m.div
@@ -283,7 +311,7 @@ export function EditionUnfold({
           className="absolute inset-0 origin-top rounded-xl shadow-[0_40px_90px_-28px_rgba(0,0,0,0.8),0_14px_30px_-14px_rgba(0,0,0,0.55)]"
           style={{ scaleY: reduceMotion ? 1 : shadowScale }}
         />
-        {isPresent && !isMoving ? (
+        {!isOpening ? (
           <div
             className="absolute inset-0 overflow-hidden"
             style={{ borderRadius: CORNER_RADIUS_PX }}
@@ -300,7 +328,7 @@ export function EditionUnfold({
               edition={edition}
               progress={progress}
               isFlat={reduceMotion}
-              isMoving={isMoving}
+              isMoving={isOpening}
             />
           </div>
         )}

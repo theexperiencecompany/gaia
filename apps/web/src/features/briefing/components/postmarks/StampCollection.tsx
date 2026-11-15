@@ -64,8 +64,13 @@ function BlankStamp({ counts }: { counts: number | null }) {
     <li aria-hidden className="relative block aspect-[600/850] w-full">
       <StampBlank />
       {counts !== null && (
-        <span className="absolute inset-0 flex items-center justify-center text-sm font-medium text-zinc-400 tabular-nums">
-          +{counts}
+        <span className="absolute inset-0 flex flex-col items-center justify-center px-2 text-center leading-tight">
+          <span className="text-sm font-medium text-zinc-300 tabular-nums">
+            +{counts}
+          </span>{" "}
+          <span className="text-xs text-balance text-zinc-500">
+            more to unlock
+          </span>
         </span>
       )}
     </li>

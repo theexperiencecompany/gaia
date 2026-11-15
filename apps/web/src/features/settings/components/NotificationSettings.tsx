@@ -3,33 +3,25 @@
 import { EMAIL_CHANNEL_DESCRIPTION } from "@gaia/shared";
 import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
 import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
 import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
-import { MoreHorizontalIcon, Unlink04Icon } from "@icons";
 import Image from "next/image";
+import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { PhoneLinkModal } from "@/components/shared/PhoneLinkModal";
-import { type BotPlatform, isBotPlatform } from "@/config/botPlatforms";
+import { isBotPlatform } from "@/config/botPlatforms";
 import {
   NOTIFICATION_CHANNEL_ICONS,
   NOTIFICATION_CHANNEL_LABELS,
   NOTIFICATION_PLATFORMS,
 } from "@/features/notification/constants";
-import { OpenPlatformChatButton } from "@/features/settings/components/OpenPlatformChatButton";
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { LINKED_PLATFORM_DETAILS } from "@/features/settings/constants";
+import { LINKED_ACCOUNTS_SETTINGS_PATH } from "@/features/settings/constants";
 import { useChatChannelSettings } from "@/features/settings/hooks/useChatChannelSettings";
 import { usePlatformLinks } from "@/features/settings/hooks/usePlatformLinks";
+import { connectedAsLabel } from "@/features/settings/utils/platformLinkLabels";
 import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 
@@ -47,14 +39,8 @@ export default function NotificationSettings() {
     links,
     loadFailed: linksFailed,
     refetch: refetchLinks,
-    isLoading: linksLoading,
     isLinked,
     linkedAs,
-    isLockedBehindPro,
-    connectingPlatform,
-    connect,
-    disconnect,
-    phoneLinkModal,
   } = usePlatformLinks();
   const linkedPlatforms = NOTIFICATION_PLATFORMS.filter(isLinked);
   const unlinkedPlatforms = NOTIFICATION_PLATFORMS.filter(
@@ -119,7 +105,7 @@ export default function NotificationSettings() {
       {channelPrefs && links && (
         <SettingsSection
           title="Channels"
-          description="The apps you chat with GAIA in, and where it reaches you."
+          description="Where GAIA reaches you. Chat apps are linked in Linked Accounts."
         >
           <ChannelRow channel="email" description={EMAIL_CHANNEL_DESCRIPTION}>
             {channelSwitch("email")}
@@ -128,66 +114,27 @@ export default function NotificationSettings() {
             <ChannelRow
               key={platform}
               channel={platform}
-              description={linkedDescription(platform, linkedAs(platform))}
+              description={connectedAsLabel(linkedAs(platform))}
             >
-              <div className="flex items-center gap-2">
-                {LINKED_PLATFORM_DETAILS[platform].chat && (
-                  <OpenPlatformChatButton platform={platform} />
-                )}
-                <Dropdown placement="bottom-end">
-                  <DropdownTrigger>
-                    <Button
-                      isIconOnly
-                      size="sm"
-                      variant="light"
-                      aria-label={`More for ${NOTIFICATION_CHANNEL_LABELS[platform]}`}
-                      isDisabled={connectingPlatform != null}
-                    >
-                      <MoreHorizontalIcon className="size-4 text-zinc-400" />
-                    </Button>
-                  </DropdownTrigger>
-                  <DropdownMenu
-                    aria-label={`${NOTIFICATION_CHANNEL_LABELS[platform]} actions`}
-                    onAction={() => void disconnect(platform)}
-                  >
-                    <DropdownItem
-                      key="disconnect"
-                      color="danger"
-                      className="text-danger"
-                      startContent={<Unlink04Icon className="size-4" />}
-                    >
-                      Disconnect
-                    </DropdownItem>
-                  </DropdownMenu>
-                </Dropdown>
-                {channelSwitch(platform)}
-              </div>
+              {channelSwitch(platform)}
             </ChannelRow>
           ))}
           {unlinkedPlatforms.map((platform) => (
             <ChannelRow
               key={platform}
               channel={platform}
-              description={LINKED_PLATFORM_DETAILS[platform].description}
+              description="Not linked"
             >
-              <div className="flex items-center gap-3">
-                {isLockedBehindPro(platform) && (
-                  <Chip size="sm" variant="flat" color="warning">
-                    Pro
-                  </Chip>
-                )}
-                <Button
-                  size="sm"
-                  variant="flat"
-                  color="primary"
-                  aria-label={`Connect ${NOTIFICATION_CHANNEL_LABELS[platform]}`}
-                  isLoading={connectingPlatform === platform}
-                  isDisabled={linksLoading || connectingPlatform != null}
-                  onPress={() => connect(platform)}
-                >
-                  Connect
-                </Button>
-              </div>
+              <Button
+                as={Link}
+                href={LINKED_ACCOUNTS_SETTINGS_PATH}
+                size="sm"
+                variant="flat"
+                aria-label={`Link ${NOTIFICATION_CHANNEL_LABELS[platform]} in Linked Accounts`}
+                className="text-xs"
+              >
+                Link
+              </Button>
             </ChannelRow>
           ))}
           {linkedOrder.length > 1 && (
@@ -215,25 +162,24 @@ export default function NotificationSettings() {
               </Select>
             </SettingsRow>
           )}
+          <SettingsRow
+            label="Linked accounts"
+            description="Connect, disconnect or open a chat app."
+          >
+            <Button
+              as={Link}
+              href={LINKED_ACCOUNTS_SETTINGS_PATH}
+              size="sm"
+              variant="flat"
+              className="text-xs"
+            >
+              Manage
+            </Button>
+          </SettingsRow>
         </SettingsSection>
       )}
-      <PhoneLinkModal {...phoneLinkModal} />
     </SettingsPage>
   );
-}
-
-/** Who the link is, and for the apps with no chat to open, how to reach GAIA there. */
-function linkedDescription(
-  platform: BotPlatform,
-  user: string | undefined,
-): string {
-  const details = LINKED_PLATFORM_DETAILS[platform];
-  return [
-    user ? `Connected as ${user}` : "Connected",
-    details.chat ? null : details.connectedDescription,
-  ]
-    .filter(Boolean)
-    .join(" · ");
 }
 
 interface ChannelRowProps {

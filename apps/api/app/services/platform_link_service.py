@@ -313,7 +313,7 @@ async def start_platform_connect(
     if platform == Platform.DISCORD.value and settings.DISCORD_OAUTH_CLIENT_ID:
         state = await create_oauth_state(
             user_id=user_id,
-            redirect_path="/settings/notifications",
+            redirect_path="/settings?section=linked-accounts",
             integration_id="discord",
         )
         auth_url = (
@@ -332,7 +332,7 @@ async def start_platform_connect(
     if platform == Platform.SLACK.value and settings.SLACK_OAUTH_CLIENT_ID:
         state = await create_oauth_state(
             user_id=user_id,
-            redirect_path="/settings/notifications",
+            redirect_path="/settings?section=linked-accounts",
             integration_id="slack",
         )
         auth_url = (

@@ -23,7 +23,9 @@ import type { FoldedBriefSummary } from "./BriefCard";
 import { BriefingFold } from "./BriefingFold";
 
 const WEEK_OPTIONS = { weekStartsOn: 1 } as const;
-const GRID_CLASSES = "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4";
+/** The page is an @container; columns follow its width, as on the workflows page. */
+const GRID_CLASSES =
+  "grid grid-cols-2 gap-3 @3xl:grid-cols-3 @5xl:grid-cols-4 @7xl:grid-cols-5";
 const SKELETON_KEYS = ["first", "second", "third", "fourth"];
 
 export interface BriefingArchiveProps {
@@ -40,13 +42,11 @@ function foldedBriefOf(briefing: BriefingView): FoldedBriefSummary {
     headline: briefing.payload.headline,
     date: briefing.date,
     kind: briefing.kind,
-    lede: briefing.payload.lede,
     imageUrl: briefing.edition_image_url,
     editionFold: briefing.edition_fold,
     editionPaper: briefing.edition_paper,
     editionName: briefing.edition_name,
     stampCityName: briefing.stamp_city_name,
-    needsYouCount: briefing.needs_you_count,
   };
 }
 
@@ -80,7 +80,7 @@ function weekRange(start: Date, now: Date): string {
 }
 
 /** Pinned while its week scrolls by, so the reader always knows which week they are in. */
-function WeekHeader({ start, count }: { start: Date; count: number }) {
+function WeekHeader({ start }: { start: Date }) {
   const now = new Date();
   const range = weekRange(start, now);
   const title = weekTitle(start, now);
@@ -88,9 +88,6 @@ function WeekHeader({ start, count }: { start: Date; count: number }) {
     <header className="sticky top-0 z-10 flex items-baseline gap-3 bg-primary-bg py-3">
       <h2 className="text-base font-medium text-zinc-100">{title ?? range}</h2>
       {title && <span className="text-xs text-zinc-500">{range}</span>}
-      <span className="ml-auto text-xs text-zinc-500 tabular-nums">
-        {count} {count === 1 ? "brief" : "briefs"}
-      </span>
     </header>
   );
 }
@@ -120,7 +117,7 @@ function ArchiveEmpty() {
 }
 
 /**
- * Every brief as the same folded card, grouped by week, newest first, the
+ * Every brief as the same folded card, titled only, grouped by week, newest first, the
  * weekly recap leading its week; each unfolds above the page.
  */
 export function BriefingArchive({ className }: BriefingArchiveProps) {
@@ -164,7 +161,7 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
     <div className={cn("flex flex-col gap-10", className)}>
       {groupByWeek(briefings).map((group) => (
         <section key={group.start.getTime()}>
-          <WeekHeader start={group.start} count={group.briefings.length} />
+          <WeekHeader start={group.start} />
           <ul className={GRID_CLASSES}>
             {group.briefings.map((briefing) => (
               <li key={briefing.id}>

@@ -130,7 +130,7 @@ describe("NotificationSettings", () => {
       await screen.findByRole("button", { name: "Try again" }),
     ).toBeTruthy();
     expect(screen.queryByRole("switch")).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Connect/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Link / })).toBeNull();
   });
 
   it("renders the stored preferences after a successful retry", async () => {
@@ -158,7 +158,7 @@ describe("NotificationSettings", () => {
     expect(await screen.findByText(EMAIL_CHANNEL_DESCRIPTION)).toBeTruthy();
   });
 
-  it("lists every chat app in one section: switches for linked, an inline Connect for the rest", async () => {
+  it("shows each chat app's link status and sends the rest to Linked Accounts", async () => {
     render(<NotificationSettings />);
 
     const channels = await findChannels();
@@ -167,60 +167,20 @@ describe("NotificationSettings", () => {
     });
     expect(channels.getByText("Connected")).toBeTruthy();
     expect(channels.getAllByRole("switch")).toHaveLength(2);
+    expect(channels.getAllByText("Not linked")).toHaveLength(4);
     for (const label of ["WhatsApp", "iMessage", "Slack", "Discord"]) {
       expect(
-        channels.getByRole("button", { name: `Connect ${label}` }),
-      ).toBeTruthy();
+        channels
+          .getByRole("button", { name: `Link ${label} in Linked Accounts` })
+          .getAttribute("href"),
+      ).toBe("/settings/linked-accounts");
     }
     expect(
-      channels.getByText("Bring GAIA into your Slack workspace"),
-    ).toBeTruthy();
-    expect(screen.getAllByRole("region")).toHaveLength(1);
-    expect(screen.queryByRole("link")).toBeNull();
-    expect(screen.queryByText(/Linked Accounts/)).toBeNull();
-  });
-
-  it("says how to reach GAIA on a linked app that has no chat to open", async () => {
-    mockLinked("slack");
-
-    render(<NotificationSettings />);
-
-    expect(
-      await (await findChannels()).findByText(
-        "Connected · Use /gaia in Slack to chat with GAIA",
-      ),
-    ).toBeTruthy();
-  });
-
-  it("disconnects a linked platform from its row and offers Connect again", async () => {
-    vi.mocked(api.delete).mockResolvedValue({});
-
-    render(<NotificationSettings />);
-    const channels = await findChannels();
-    await channels.findByRole("switch", {
-      name: "Enable Telegram notifications",
-    });
-
-    mockLinked();
-    fireEvent.click(
-      channels.getByRole("button", { name: "More for Telegram" }),
-    );
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Disconnect" }),
-    );
-
-    await waitFor(() =>
-      expect(api.delete).toHaveBeenCalledWith(
-        "/api/v1/platform-links/{platform}",
-        expect.objectContaining({ path: { platform: "telegram" } }),
-      ),
-    );
-    expect(
-      await channels.findByRole("button", { name: "Connect Telegram" }),
-    ).toBeTruthy();
-    expect(
-      channels.queryByRole("switch", { name: "Enable Telegram notifications" }),
-    ).toBeNull();
+      channels.getByRole("button", { name: "Manage" }).getAttribute("href"),
+    ).toBe("/settings/linked-accounts");
+    expect(channels.queryByRole("button", { name: /^Connect/ })).toBeNull();
+    expect(channels.queryByRole("button", { name: /^More for/ })).toBeNull();
+    expect(channels.queryByRole("button", { name: "Open chat" })).toBeNull();
   });
 
   it("names the linked account on its row", async () => {
@@ -235,51 +195,6 @@ describe("NotificationSettings", () => {
     expect(
       await (await findChannels()).findByText("Connected as @aryan"),
     ).toBeTruthy();
-  });
-
-  it("connects an unlinked platform in place and turns its row into a switch", async () => {
-    vi.mocked(api.post).mockResolvedValue({
-      auth_url: "https://slack.example/oauth",
-    });
-    const popup = { closed: false };
-    vi.spyOn(window, "open").mockReturnValue(popup as Window);
-
-    render(<NotificationSettings />);
-    const channels = await findChannels();
-    const connect = await channels.findByRole("button", {
-      name: "Connect Slack",
-    });
-    await waitFor(() =>
-      expect((connect as HTMLButtonElement).disabled).toBe(false),
-    );
-
-    fireEvent.click(connect);
-
-    await waitFor(() =>
-      expect(api.post).toHaveBeenCalledWith(
-        "/api/v1/platform-links/{platform}/connect",
-        { path: { platform: "slack" }, body: {}, silent: true },
-      ),
-    );
-    expect(window.open).toHaveBeenCalledWith(
-      "https://slack.example/oauth",
-      "Connect slack",
-      expect.any(String),
-    );
-
-    mockLinked("telegram", "slack");
-    popup.closed = true;
-
-    expect(
-      await channels.findByRole(
-        "switch",
-        { name: "Enable Slack notifications" },
-        { timeout: 2000 },
-      ),
-    ).toBeTruthy();
-    expect(
-      channels.queryByRole("button", { name: "Connect Slack" }),
-    ).toBeNull();
   });
 
   it("offers no first-channel choice with fewer than two linked platforms", async () => {

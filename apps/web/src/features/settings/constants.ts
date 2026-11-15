@@ -1,6 +1,9 @@
 import type { BotPlatform } from "@/config/botPlatforms";
 
-/** Where chat apps are connected and every channel GAIA reaches you on is set. */
+/** Where chat apps are connected, managed and disconnected. */
+export const LINKED_ACCOUNTS_SETTINGS_PATH = "/settings/linked-accounts";
+
+/** Where every channel GAIA reaches you on is switched on or off. */
 export const NOTIFICATIONS_SETTINGS_PATH = "/settings/notifications";
 
 interface LinkedPlatformDetails {

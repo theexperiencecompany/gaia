@@ -6,15 +6,18 @@ import Image from "next/image";
 import { useState } from "react";
 
 import { LetterModal } from "@/components/shared/LetterModal";
+import {
+  BRIEF_LETTER_MAX_WIDTH_PX,
+  BRIEF_LETTER_WIDTH,
+} from "@/features/briefing";
 import { cn } from "@/lib/utils";
 
 /** Built by apps/api/scripts/build_edition_thumbnails.py: each family drawing one busy sample brief. */
 const demoSrc = (family: string) =>
   `/images/briefing/editions/demo/${family}.webp`;
 
-/** The demo's drawn width, and a typical height for its placeholder box until it loads. */
-const DEMO_WIDTH = 572;
-const DEMO_TYPICAL_HEIGHT = 2400;
+/** A typical demo's height over width, for its intrinsic size until it loads. */
+const DEMO_TYPICAL_ASPECT = 4.2;
 
 interface EditionDemoModalProps {
   /** The edition last opened; kept while the modal closes so its exit still has a picture. */
@@ -38,19 +41,19 @@ export function EditionDemoModal({
       ariaLabel={edition ? `${edition.name} edition sample` : "Edition sample"}
     >
       {edition && (
-        <div className="relative">
+        <div className="relative" style={{ width: BRIEF_LETTER_WIDTH }}>
           {!isLoaded && (
             <Skeleton className="absolute inset-x-0 top-0 h-[80vh] rounded-2xl" />
           )}
           <Image
             src={demoSrc(edition.family)}
             alt={`${edition.name} edition drawing a sample brief`}
-            width={DEMO_WIDTH}
-            height={DEMO_TYPICAL_HEIGHT}
-            sizes="(max-width: 640px) 100vw, 572px"
+            width={BRIEF_LETTER_MAX_WIDTH_PX}
+            height={Math.round(BRIEF_LETTER_MAX_WIDTH_PX * DEMO_TYPICAL_ASPECT)}
+            sizes={BRIEF_LETTER_WIDTH}
             onLoad={() => setLoadedFamily(edition.family)}
             className={cn(
-              "mx-auto h-auto w-full max-w-[572px] transition-opacity duration-200 ease-out",
+              "h-auto w-full transition-opacity duration-200 ease-out",
               !isLoaded && "opacity-0",
             )}
           />

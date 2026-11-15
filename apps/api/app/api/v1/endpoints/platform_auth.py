@@ -91,7 +91,7 @@ def _redirect_url(base: str, path: str, **params: str) -> str:
     return f"{base}{path}{separator}{query}"
 
 
-FALLBACK_PATH = "/settings/notifications"
+FALLBACK_PATH = "/settings?section=linked-accounts"
 
 
 def _bounce(path: str, **params: str) -> RedirectResponse:

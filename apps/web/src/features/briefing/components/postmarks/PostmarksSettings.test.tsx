@@ -124,7 +124,7 @@ describe("PostmarksSettings", () => {
     const album = screen.getByRole("list", { name: "Stamp collection" });
     expect(within(album).queryAllByRole("button")).toHaveLength(0);
     expect(blanks()).toHaveLength(5);
-    expect(blanks().at(-1)?.textContent).toBe("+81");
+    expect(blanks().at(-1)?.textContent).toBe("+81 more to unlock");
     expect(screen.getByText(/of 85/).textContent).toBe("0 of 85 cities");
   });
 
@@ -139,7 +139,11 @@ describe("PostmarksSettings", () => {
         .map((stamp) => stamp.getAttribute("aria-label")),
     ).toEqual(["Tokyo, Japan", "Lisbon, Portugal"]);
     expect(blanks()).toHaveLength(3);
-    expect(blanks().map((blank) => blank.textContent)).toEqual(["", "", "+81"]);
+    expect(blanks().map((blank) => blank.textContent)).toEqual([
+      "",
+      "",
+      "+81 more to unlock",
+    ]);
     expect(screen.queryByText("No stamps yet")).toBeNull();
     expect(screen.getByText(/of 85/).textContent).toBe("2 of 85 cities");
   });

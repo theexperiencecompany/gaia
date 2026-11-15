@@ -557,13 +557,13 @@ def _frontend(path_and_query: str) -> str:
     return f"{settings.FRONTEND_URL}{path_and_query}"
 
 
-_FALLBACK = "/settings/notifications"
+_FALLBACK = "/settings?section=linked-accounts"
 
 
 class TestCallbackRedirectTargets:
     """Every bounce lands on an exact URL — the query string is the contract with the UI."""
 
-    async def test_a_cancelled_authorization_bounces_to_the_channels_page(
+    async def test_a_cancelled_authorization_bounces_to_the_linked_accounts_page(
         self, client: AsyncClient
     ) -> None:
         resp = await client.get(
@@ -571,7 +571,7 @@ class TestCallbackRedirectTargets:
             params={"error": "access_denied"},
             follow_redirects=False,
         )
-        assert resp.headers["location"] == _frontend(f"{_FALLBACK}?oauth_error=cancelled")
+        assert resp.headers["location"] == _frontend(f"{_FALLBACK}&oauth_error=cancelled")
 
     async def test_any_other_provider_error_bounces_as_a_plain_failure(
         self, client: AsyncClient
@@ -579,15 +579,17 @@ class TestCallbackRedirectTargets:
         resp = await client.get(
             f"{BASE}/discord/callback", params={"error": "server_error"}, follow_redirects=False
         )
-        assert resp.headers["location"] == _frontend(f"{_FALLBACK}?oauth_error=failed")
+        assert resp.headers["location"] == _frontend(f"{_FALLBACK}&oauth_error=failed")
 
     async def test_a_code_without_a_state_is_missing_params(self, client: AsyncClient) -> None:
         resp = await client.get(
             f"{BASE}/discord/callback", params={"code": "c1"}, follow_redirects=False
         )
-        assert resp.headers["location"] == _frontend(f"{_FALLBACK}?oauth_error=missing_params")
+        assert resp.headers["location"] == _frontend(f"{_FALLBACK}&oauth_error=missing_params")
 
-    async def test_an_invalid_state_bounces_to_the_channels_page(self, client: AsyncClient) -> None:
+    async def test_an_invalid_state_bounces_to_the_linked_accounts_page(
+        self, client: AsyncClient
+    ) -> None:
         with patch(
             "app.services.oauth.oauth_state_service.validate_and_consume_oauth_state",
             new_callable=AsyncMock,
@@ -598,7 +600,7 @@ class TestCallbackRedirectTargets:
                 params={"code": "c1", "state": "bad"},
                 follow_redirects=False,
             )
-        assert resp.headers["location"] == _frontend(f"{_FALLBACK}?oauth_error=invalid_state")
+        assert resp.headers["location"] == _frontend(f"{_FALLBACK}&oauth_error=invalid_state")
 
     async def test_success_returns_to_the_stored_redirect_path_naming_the_integration(
         self, client: AsyncClient
