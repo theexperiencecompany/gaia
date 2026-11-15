@@ -12,6 +12,7 @@ from app.services.briefing.editions.stamps import (
     stamp_asset_url,
     stamp_catalogue,
 )
+from shared.py.wide_events import log
 
 
 async def collected_postmarks(user_id: str) -> PostmarksResponse:
@@ -22,7 +23,11 @@ async def collected_postmarks(user_id: str) -> PostmarksResponse:
         slug = brief.payload.stamp_city
         if slug is None or slug in postmarks:
             continue
-        city = catalogue[slug]
+        city = catalogue.get(slug)
+        if city is None:
+            # a city since dropped from cities.json has no name or place left to show
+            log.warning("briefing.postmark_city_unknown", city_slug=slug, briefing_id=brief.id)
+            continue
         postmarks[slug] = Postmark(
             city_slug=slug,
             city=city.name,

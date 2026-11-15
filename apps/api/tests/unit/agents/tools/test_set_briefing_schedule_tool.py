@@ -19,6 +19,12 @@ def _user(schedule: BriefingSchedule) -> UserDocument:
 
 
 @pytest.fixture(autouse=True)
+def paid():
+    with patch("app.services.briefing.schedule.is_paid", new=AsyncMock(return_value=True)) as mock:
+        yield mock
+
+
+@pytest.fixture(autouse=True)
 def mutation_log():
     with patch("app.agents.tools.core.mutations.log") as log:
         yield log
@@ -47,6 +53,31 @@ class TestSetBriefingSchedule:
         assert result == (
             "Briefing schedule updated: a daily brief Monday to Friday at 09:00, "
             "plus the Sunday evening weekly digest."
+        )
+
+    async def test_a_free_user_is_told_the_briefs_stay_paused_until_pro(
+        self, paid: AsyncMock
+    ) -> None:
+        paid.return_value = False
+        wanted = BriefingSchedule(frequency=BriefingFrequency.DAILY, hour=9)
+        with (
+            patch(
+                f"{MODULE}.user_repository.get",
+                new=AsyncMock(return_value=_user(BriefingSchedule(frequency="off"))),
+            ),
+            patch(
+                f"{MODULE}.briefing_schedule.set_briefing_schedule",
+                new=AsyncMock(return_value=_user(wanted)),
+            ),
+        ):
+            result = await account_tools.set_briefing_schedule.ainvoke(
+                {"frequency": "daily", "hour": 9}, config=CONFIG
+            )
+
+        assert result == (
+            "Briefing schedule updated: a daily brief every day at 09:00, plus the Sunday "
+            "evening weekly digest. None of these run yet: briefs on a schedule need Pro, "
+            "and the user is on the free plan."
         )
 
     async def test_omitting_the_hour_keeps_the_one_already_set(self) -> None:

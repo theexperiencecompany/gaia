@@ -1,18 +1,19 @@
 """Write an artifact program with the artifact model over the OpenAI Responses API.
 
 The per-kind prompt is static, so it is the request's instructions and caches by prefix
-under one prompt_cache_key per kind; the brief (and, for a repair, the program and its
-problems) is the input.
+under one prompt_cache_key per kind; the brief under the user's date (and, for a repair, the
+program and its problems) is the input.
 """
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import date
 import time
 
 from openai import APIError, AsyncOpenAI
 from openai.types.responses import (
     ResponseCompletedEvent,
+    ResponseIncompleteEvent,
     ResponseRefusalDeltaEvent,
     ResponseTextDeltaEvent,
     ResponseUsage,
@@ -38,6 +39,8 @@ ARTIFACT_PROMPTS: dict[ArtifactKind, str] = {
 
 # OpenAI's code for a request its safety system refused to serve.
 _REFUSED_PROMPT_CODE = "invalid_prompt"
+# The incomplete_details reason a reply its content filter stopped carries.
+_CONTENT_FILTER_REASON = "content_filter"
 
 
 class ArtifactModelNotConfiguredError(AppError):
@@ -46,6 +49,10 @@ class ArtifactModelNotConfiguredError(AppError):
 
 class ArtifactRefusedError(AppError):
     """The provider refused the request; the caller logs it in full and fails the tool."""
+
+
+class ArtifactTruncatedError(AppError):
+    """The reply stopped before its program was finished, at ARTIFACT_MAX_OUTPUT_TOKENS."""
 
 
 @dataclass(frozen=True)
@@ -67,6 +74,8 @@ class ArtifactRequest:
     brief: str
     user_id: str
     conversation_id: str | None
+    #: The user's local date, which the artifact is written and grounded against.
+    today: date
     #: The request asks for inputs to interact with, which allows HtmlArtifact.
     interactive: bool = False
 
@@ -74,8 +83,9 @@ class ArtifactRequest:
 DeltaSink = Callable[[str], Awaitable[None]]
 
 
-def _input_for(brief: str) -> str:
-    return f"Today is {datetime.now(UTC).strftime('%d %B %Y')}.\n\n{brief}"
+def dated_brief(request: ArtifactRequest) -> str:
+    """Return the brief under the user's date: what the model is given and the program is grounded in."""
+    return f"Today is {request.today.strftime('%d %B %Y')}.\n\n{request.brief}"
 
 
 def repair_input(brief: str, program: str, problems: list[str]) -> str:
@@ -123,6 +133,18 @@ def _meter(request: ArtifactRequest, usage: ResponseUsage | None, duration_ms: f
     )
 
 
+def _raise_incomplete(event: ResponseIncompleteEvent) -> None:
+    """Fail a reply the provider stopped early: its filter is a refusal, anything else a cut-off."""
+    details = event.response.incomplete_details
+    reason = details.reason if details else None
+    if reason == _CONTENT_FILTER_REASON:
+        raise ArtifactRefusedError(message="the artifact model's content filter stopped the reply")
+    raise ArtifactTruncatedError(
+        message="the artifact reply stopped before the program was finished",
+        meta={"reason": reason},
+    )
+
+
 def _refused(exc: APIError) -> bool:
     """Tell a flagged prompt apart, rejected up front (400) or mid-stream (an error event)."""
     return exc.code == _REFUSED_PROMPT_CODE
@@ -161,6 +183,9 @@ async def generate_reply(
                 raise ArtifactRefusedError(message="the artifact model refused the request")
             elif isinstance(event, ResponseCompletedEvent):
                 usage = event.response.usage
+            elif isinstance(event, ResponseIncompleteEvent):
+                usage = event.response.usage
+                _raise_incomplete(event)
     except APIError as exc:
         if _refused(exc):
             raise ArtifactRefusedError(message="the provider refused the artifact request") from exc
@@ -179,10 +204,10 @@ async def generate_reply(
 
 
 async def write_program(request: ArtifactRequest, on_delta: DeltaSink) -> GeneratedReply:
-    return await generate_reply(request, _input_for(request.brief), on_delta)
+    return await generate_reply(request, dated_brief(request), on_delta)
 
 
 async def repair_program(
     request: ArtifactRequest, program: str, problems: list[str]
 ) -> GeneratedReply:
-    return await generate_reply(request, repair_input(_input_for(request.brief), program, problems))
+    return await generate_reply(request, repair_input(dated_brief(request), program, problems))

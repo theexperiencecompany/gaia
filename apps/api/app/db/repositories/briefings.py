@@ -57,18 +57,26 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
         limit: int,
         kind: BriefingKind | None = None,
         editions_only: bool = False,
+        before: BriefingModel | None = None,
     ) -> list[BriefingModel]:
         """Return briefings newest brief date first, a weekly ahead of the daily on its day.
 
         Ordered by date, not write time: a backfilled brief is written after newer days.
         kind=None reads every kind; the winback lookback passes kind=daily so a weekly
-        digest never breaks a daily unacknowledged-streak count.
+        digest never breaks a daily unacknowledged-streak count. before starts the list
+        right after that brief, the archive's next page.
         """
         query: dict[str, object] = {"user_id": user_id}
         if kind is not None:
             query["kind"] = kind
         if editions_only:
             query["payload.form"] = {"$ne": BriefForm.QUIET_NOTE.value}
+        if before is not None:
+            # (date, kind) is unique per user, so this resumes the sort exactly after it
+            query["$or"] = [
+                {"date": {"$lt": before.date}},
+                {"date": before.date, "kind": {"$lt": before.kind}},
+            ]
         return await self._find(query, sort=[("date", -1), ("kind", -1)], limit=limit)
 
     async def list_stamped(self, user_id: str) -> list[BriefingModel]:

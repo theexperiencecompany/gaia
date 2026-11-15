@@ -1,12 +1,14 @@
 """create_artifact: the real tool streams batched deltas, then one done frame, and reports in prose."""
 
 from collections.abc import Iterator
+from datetime import UTC, date, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 import pytest
+import time_machine
 
 from app.agents.tools import artifact_tool
 from app.agents.tools.artifact_tool import _DeltaBatcher
@@ -23,7 +25,8 @@ from app.services.openui_artifacts.generate import ArtifactRequest
 
 _TOOL = "app.agents.tools.artifact_tool"
 CONFIG = RunnableConfig(
-    metadata={"user_id": "user-1"}, configurable={"user_id": "user-1", "vfs_session_id": "conv-1"}
+    metadata={"user_id": "user-1"},
+    configurable={"user_id": "user-1", "vfs_session_id": "conv-1", "user_timezone": "+05:30"},
 )
 ARGS: dict[str, Any] = {"kind": "report", "title": "Q3 plan", "brief": "revenue is up 12%"}
 
@@ -135,6 +138,8 @@ def writer() -> Iterator[MagicMock]:
 
 @pytest.mark.usefixtures("fake_redis")
 class TestCreateArtifact:
+    # 20:00 UTC on 3 November is already 4 November on the user's +05:30 clock.
+    @time_machine.travel(datetime(2026, 11, 3, 20, 0, tzinfo=UTC), tick=False)
     async def test_a_made_artifact_is_announced_ready_and_the_agent_told_where_to_find_it(
         self, writer: MagicMock
     ) -> None:
@@ -153,6 +158,7 @@ class TestCreateArtifact:
             brief="revenue is up 12%",
             user_id="user-1",
             conversation_id="conv-1",
+            today=date(2026, 11, 4),
             interactive=False,
         )
         assert create.await_args.args[1] == "Q3 plan"
@@ -225,6 +231,7 @@ class TestCreateArtifact:
 
         [done] = [c.args[0] for c in writer.call_args_list if ARTIFACT_DONE_EVENT in c.args[0]]
         assert done[ARTIFACT_DONE_EVENT]["status"] == "failed"
+        assert done[ARTIFACT_DONE_EVENT]["reason"] == "validation"
         assert "artifact_id" not in done[ARTIFACT_DONE_EVENT]
         link.assert_not_awaited()
         lines = result.splitlines()

@@ -22,6 +22,7 @@ from app.services.links.service import optional_short_link
 from app.services.openui_artifacts.create import ArtifactCreationError, create_openui_artifact
 from app.services.openui_artifacts.generate import ArtifactRequest
 from app.templates.docstrings.artifact_tool_docs import CREATE_ARTIFACT
+from app.utils.timezone import home_timezone_from_config
 
 
 class _DeltaBatcher:
@@ -72,6 +73,7 @@ async def create_artifact(
         brief=brief,
         user_id=get_user_id(config),
         conversation_id=get_session_id(config),
+        today=home_timezone_from_config(config).now().date(),
         interactive=interactive,
     )
     card = {"stream_id": stream_id, "kind": kind.value, "title": title}
@@ -79,7 +81,15 @@ async def create_artifact(
         artifact = await create_openui_artifact(request, title, batcher.push)
     except ArtifactCreationError as exc:
         batcher.flush()
-        writer({ARTIFACT_DONE_EVENT: {**card, "status": ArtifactStatus.FAILED.value}})
+        writer(
+            {
+                ARTIFACT_DONE_EVENT: {
+                    **card,
+                    "status": ArtifactStatus.FAILED.value,
+                    "reason": exc.reason.value,
+                }
+            }
+        )
         problems = "".join(f"\n- {p}" for p in exc.problems[:10])
         return f"The {kind.value} could not be made ({exc.reason.value}).{problems}"
     except Exception:

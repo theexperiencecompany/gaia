@@ -15,3 +15,6 @@ export const BAR_LABEL_CHAR_PX = 7;
 /** Room each bar label keeps clear of its neighbours, and the value axis's share of the width. */
 export const BAR_LABEL_GAP_PX = 8;
 export const BAR_VALUE_AXIS_PX = 40;
+
+/** The message gaia-runtime.js (public/artifact/) posts with its document height, so an HtmlArtifact frame fits it. */
+export const ARTIFACT_HEIGHT_MESSAGE = "gaia:height";

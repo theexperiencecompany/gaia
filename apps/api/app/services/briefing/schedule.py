@@ -32,6 +32,7 @@ from app.models.briefing_models import (
     BriefFreeDelivery,
     BriefingKind,
     BriefingSchedule,
+    BriefingScheduleState,
 )
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.models.user_models import UserDocument
@@ -109,6 +110,36 @@ def describe_briefing_schedule(user: UserDocument) -> str:
     """Say in plain words which briefs the user gets and when the daily one lands."""
     hour = daily_briefing_hour(user.briefing_schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
     return _FREQUENCY_DESCRIPTIONS[user.briefing_schedule.frequency].format(time=f"{hour:02d}:00")
+
+
+async def briefs_paused_for_plan(user: UserDocument) -> bool:
+    """Whether the user's schedule has briefs that do not run because they are not on Pro."""
+    return user.briefing_schedule.frequency is not BriefingFrequency.OFF and not await is_paid(
+        user.id
+    )
+
+
+async def briefing_schedule_state(user: UserDocument) -> BriefingScheduleState:
+    """Return the user's schedule as it runs: paused while they are not on Pro, and the next daily."""
+    paused = await briefs_paused_for_plan(user)
+    return BriefingScheduleState(
+        **user.briefing_schedule.model_dump(),
+        paused_for_plan=paused,
+        next_daily_brief_at=None if paused else await _next_daily_brief_at(user),
+    )
+
+
+async def _next_daily_brief_at(user: UserDocument) -> datetime | None:
+    """Return when the daily brief's workflow next runs, or None when this schedule runs none."""
+    if DAILY_BRIEFING_WORKFLOW_KEY not in ENABLED_BRIEFING_KEYS[user.briefing_schedule.frequency]:
+        return None
+    workflows = await workflow_repository.find_system_workflows(
+        user.id, tuple(_KIND_BY_WORKFLOW_KEY)
+    )
+    daily = next(
+        (w for w in workflows if w.system_workflow_key == DAILY_BRIEFING_WORKFLOW_KEY), None
+    )
+    return daily.trigger_config.next_run if daily and daily.activated else None
 
 
 def briefing_cron(key: str, user: UserDocument) -> str:

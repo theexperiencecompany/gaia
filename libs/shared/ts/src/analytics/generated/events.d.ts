@@ -376,7 +376,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "kind": "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
-    "reason": "validation" | "refused" | "timeout";
+    "reason": "validation" | "refused" | "timeout" | "truncated";
     "problem_count": number;
   };
   "artifact:pdf_exported": {
@@ -1209,7 +1209,7 @@ export interface EventProperties {
   "paywall:modal_viewed": {
     "dismissible": boolean;
     "has_discount_code": boolean;
-    "source"?: "composer_submit" | "voice_mode" | "workflow_autosend" | "workflow_activation" | "api_402" | "chat_stream_402" | "composer_notice" | "rate_limit_card" | "rate_limit_toast" | "founder_letter" | "sidebar" | "settings_menu" | "settings_subscription" | "settings_upsell" | "settings_linked_accounts" | "settings_usage" | "desktop_popup_mirror";
+    "source"?: "composer_submit" | "voice_mode" | "workflow_autosend" | "workflow_activation" | "api_402" | "chat_stream_402" | "composer_notice" | "rate_limit_card" | "rate_limit_toast" | "founder_letter" | "sidebar" | "settings_menu" | "settings_subscription" | "settings_upsell" | "settings_linked_accounts" | "settings_usage" | "settings_briefings" | "desktop_popup_mirror";
   };
   "pin:viewed": {
     "conversation_id": string;

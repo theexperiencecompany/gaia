@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Iterator
+from datetime import date
 import hashlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -18,6 +19,7 @@ from app.services.openui_artifacts.create import ArtifactCreationError, create_o
 from app.services.openui_artifacts.generate import (
     ArtifactRefusedError,
     ArtifactRequest,
+    ArtifactTruncatedError,
     GeneratedReply,
 )
 from app.services.openui_artifacts.validate import ArtifactValidation
@@ -27,9 +29,16 @@ from tests.helpers import captured_wide_event
 
 _SVC = "app.services.openui_artifacts.create"
 USER_ID = "6ad86cdfb9e7ae0b43a0efea"
+TODAY = date(2026, 11, 4)
 REQUEST = ArtifactRequest(
-    kind=ArtifactKind.DASHBOARD, brief="Sign-ups 1,840", user_id=USER_ID, conversation_id="c1"
+    kind=ArtifactKind.DASHBOARD,
+    brief="Sign-ups 1,840",
+    user_id=USER_ID,
+    conversation_id="c1",
+    today=TODAY,
 )
+# What the program is grounded in: the brief under the user's date, as the model was given it.
+GIVEN = "Today is 04 November 2026.\n\nSign-ups 1,840"
 
 
 def _reply(text: str, first_ms: float | None = 900.0) -> GeneratedReply:
@@ -133,6 +142,31 @@ async def test_a_refusal_fails_loud_without_a_retry(capture: MagicMock, repo: Ma
     )
 
 
+@pytest.mark.parametrize("stage", ["write_program", "repair_program"])
+async def test_a_reply_cut_off_at_the_output_limit_fails_as_truncated_and_says_how_to_fix_it(
+    capture: MagicMock, repo: MagicMock, stage: str
+) -> None:
+    cut_off = AsyncMock(side_effect=ArtifactTruncatedError(message="cut off"))
+    draft = AsyncMock(return_value=_reply("root = A"))
+    with (
+        patch(f"{_SVC}.write_program", cut_off if stage == "write_program" else draft),
+        patch(f"{_SVC}.repair_program", cut_off if stage == "repair_program" else AsyncMock()),
+        patch(f"{_SVC}.validate_program", AsyncMock(return_value=_verdict("root = A", ["p1"]))),
+        pytest.raises(ArtifactCreationError) as raised,
+    ):
+        await create_openui_artifact(REQUEST, "Atlas", AsyncMock())
+
+    repo.create.assert_not_awaited()
+    assert raised.value.reason is ArtifactFailureReason.TRUNCATED
+    assert raised.value.problems == [
+        "the program ran past the output limit before it was finished; "
+        "make a shorter artifact with fewer sections, or split it into several"
+    ]
+    capture.assert_called_once_with(
+        UserId(USER_ID), ArtifactFailed(kind="dashboard", reason="truncated", problem_count=1)
+    )
+
+
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -142,11 +176,12 @@ _INTERACTIVE = ArtifactRequest(
     brief="Sign-ups 1,840",
     user_id=USER_ID,
     conversation_id="c1",
+    today=TODAY,
     interactive=True,
 )
 
 
-async def test_the_draft_is_written_for_the_request_and_checked_against_its_brief(
+async def test_the_draft_is_written_for_the_request_and_checked_against_its_dated_brief(
     capture: MagicMock, repo: MagicMock
 ) -> None:
     sink = AsyncMock()
@@ -157,7 +192,7 @@ async def test_the_draft_is_written_for_the_request_and_checked_against_its_brie
         await create_openui_artifact(_INTERACTIVE, "Atlas", sink)
 
     write.assert_awaited_once_with(_INTERACTIVE, sink)
-    check.assert_awaited_once_with("draft", "Sign-ups 1,840", interactive=True)
+    check.assert_awaited_once_with("draft", GIVEN, interactive=True)
 
 
 async def test_the_repair_is_given_the_problems_and_its_answer_is_checked_the_same_way(
@@ -173,7 +208,7 @@ async def test_the_repair_is_given_the_problems_and_its_answer_is_checked_the_sa
             await create_openui_artifact(_INTERACTIVE, "Atlas", AsyncMock())
 
     repair.assert_awaited_once_with(_INTERACTIVE, "draft", ["p1"])
-    assert check.await_args_list[1].args == ("fixed", "Sign-ups 1,840")
+    assert check.await_args_list[1].args == ("fixed", GIVEN)
     assert check.await_args_list[1].kwargs == {"interactive": True}
     assert event["artifact"]["first_problems"] == ["p1"]
 

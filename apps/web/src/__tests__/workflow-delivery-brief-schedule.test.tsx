@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { WORKFLOW_DELIVERY_COPY } from "@gaia/shared";
-import type { BriefingSchedule } from "@gaia/shared/types";
+import type { BriefingScheduleState } from "@gaia/shared/types";
 import type { WorkflowDelivery } from "@shared/api/generated";
 import { render, screen } from "@testing-library/react";
 import { useForm } from "react-hook-form";
@@ -27,8 +27,15 @@ function DeliveryOnly({ delivery }: { delivery: WorkflowDelivery }) {
   return <WorkflowDeliveryField control={control} />;
 }
 
-function renderField(schedule: BriefingSchedule, delivery: WorkflowDelivery) {
-  vi.mocked(NotificationsAPI.getBriefingSchedule).mockResolvedValue(schedule);
+function renderField(
+  schedule: Pick<BriefingScheduleState, "frequency" | "hour">,
+  delivery: WorkflowDelivery,
+) {
+  vi.mocked(NotificationsAPI.getBriefingSchedule).mockResolvedValue({
+    ...schedule,
+    paused_for_plan: false,
+    next_daily_brief_at: null,
+  });
   return render(<DeliveryOnly delivery={delivery} />);
 }
 

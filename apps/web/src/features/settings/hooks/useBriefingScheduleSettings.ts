@@ -1,7 +1,7 @@
 "use client";
 
 import type { BriefFreeDelivery } from "@gaia/shared";
-import type { BriefingSchedule } from "@gaia/shared/types";
+import type { BriefingScheduleState } from "@gaia/shared/types";
 import { useEffect, useState } from "react";
 import { toast } from "@/lib/toast";
 import {
@@ -12,11 +12,13 @@ import {
 
 interface UseBriefingScheduleSettings {
   /** null until the stored schedule loads; nothing is shown as stored before then. */
-  schedule: BriefingSchedule | null;
+  schedule: BriefingScheduleState | null;
   /** The stored schedule could not be read; the API client has already reported why. */
   loadFailed: boolean;
   saving: boolean;
-  update: (change: Partial<BriefingSchedule>) => Promise<void>;
+  update: (
+    change: Partial<Pick<BriefingScheduleState, "frequency" | "hour">>,
+  ) => Promise<void>;
   /** Set while turning briefs off waits on a new delivery for each brief workflow. */
   briefsOffBlock: BriefsOffBlock | null;
   /** Turn briefs off, moving each brief workflow to its chosen delivery. */
@@ -34,7 +36,7 @@ const SAVE_FAILED = "Couldn't save your briefing schedule.";
  * refusal is kept as briefsOffBlock until those workflows get a new delivery.
  */
 export function useBriefingScheduleSettings(): UseBriefingScheduleSettings {
-  const [schedule, setSchedule] = useState<BriefingSchedule | null>(null);
+  const [schedule, setSchedule] = useState<BriefingScheduleState | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [briefsOffBlock, setBriefsOffBlock] = useState<BriefsOffBlock | null>(
@@ -48,8 +50,8 @@ export function useBriefingScheduleSettings(): UseBriefingScheduleSettings {
   }, []);
 
   const save = async (
-    previous: BriefingSchedule,
-    next: BriefingSchedule,
+    previous: BriefingScheduleState,
+    next: BriefingScheduleState,
     deliveries?: Record<string, BriefFreeDelivery>,
   ) => {
     setSchedule(next);
@@ -57,7 +59,8 @@ export function useBriefingScheduleSettings(): UseBriefingScheduleSettings {
     try {
       setSchedule(
         await NotificationsAPI.updateBriefingSchedule({
-          ...next,
+          frequency: next.frequency,
+          hour: next.hour,
           workflow_deliveries: deliveries,
         }),
       );
@@ -72,7 +75,9 @@ export function useBriefingScheduleSettings(): UseBriefingScheduleSettings {
     }
   };
 
-  const update = async (change: Partial<BriefingSchedule>) => {
+  const update = async (
+    change: Partial<Pick<BriefingScheduleState, "frequency" | "hour">>,
+  ) => {
     if (!schedule) return;
     const next = { ...schedule, ...change };
     if (next.frequency === schedule.frequency && next.hour === schedule.hour)
