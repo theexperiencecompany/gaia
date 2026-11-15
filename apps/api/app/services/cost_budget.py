@@ -309,6 +309,11 @@ async def get_request_tokens(root_request_id: str) -> int:
     return int(raw) if raw is not None else 0
 
 
+async def restart_request_tokens(root_request_id: str) -> None:
+    """Zero a request tree's token count, so its ceiling starts over for a new user turn."""
+    await redis_cache.client.delete(_REQUEST_TOKENS_KEY.format(root_request_id=root_request_id))
+
+
 async def get_budget_stop_reason(
     user_id: str | None,
     plan_type: PlanType | None,

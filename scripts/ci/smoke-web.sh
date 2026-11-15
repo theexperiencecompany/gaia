@@ -209,13 +209,16 @@ cmd_squirrel() {
   fi
 
   local -a run_env=(HOME="$SQUIRREL_WORK/home" SQUIRREL_NO_UPDATE=1 NO_TELEMETRY=1)
-  audit_args+=(--no-publish --format json -o "$SQUIRREL_WORK/report.json")
+  # A response time is the machine's, not the page's: three crawls of one 40-page sample
+  # scored Performance 75, 77, 77 on 8, 3 and 2 slow-TTFB pages, and the full crawl flagged
+  # 1,008 and then 1,336 pages an hour apart. Every other perf rule reads the page's bytes.
+  audit_args+=(--rule-exclude perf/ttfb --no-publish --format json -o "$SQUIRREL_WORK/report.json")
   if [ "$base" != "$site" ]; then
     start_origin_proxy "$site" "$base" ${proxy_args[@]+"${proxy_args[@]}"}
     run_env+=(HTTPS_PROXY="$PROXY_URL" HTTP_PROXY="$PROXY_URL" NODE_EXTRA_CA_CERTS="$SQUIRREL_WORK/certs/ca.pem")
     # The proxy refuses every other host, so links to other sites cannot be checked
-    # through it, and a local server's response time measures the machine, not the site.
-    audit_args+=(--offline --rule-exclude perf/ttfb)
+    # through it.
+    audit_args+=(--offline)
   else
     audit_args+=(--external-links)
   fi

@@ -54,9 +54,6 @@ BUILD_ID = re.compile(r"/_next/static/(?!chunks/|media/|css/)[^/\s\"]+/")
 BUILD_PATH = re.compile(r"/_next/")
 # React's useId values move whenever the component tree above them does.
 REACT_ID = re.compile(r"react-aria-[\w-]+")
-# A timing is a moment, not a page: two live crawls an hour apart flagged 1,008 and
-# 1,336 pages slow, so it counts only through the Performance score.
-TIMED_RULES = frozenset({"perf/ttfb"})
 # Rules that judge a page against the rest of the crawl (its inbound links, its schema
 # next to its peers'): on the PR gate's 126 pages they disagreed with the full crawl of
 # the same build on 69 pages, and no-contextual-inbound on 18, so only a full crawl judges them.
@@ -70,10 +67,12 @@ CRAWL_RELATIVE_RULES = frozenset(
 )
 # Listing pages with no sitemap page under them, kept short on purpose (#1701 shortened their intros).
 SHORT_PAGES = frozenset({"/download", "/contact"})
+MARKETPLACE_PAGE = re.compile(r"^/marketplace/[^/]+$")
 WIKI_LINK = re.compile(r"^\[\[[^\[\]'\"]+\]\]$")
 # One integration's page; the paginated hub (/marketplace/page/N) is ours and stays checked.
-MARKETPLACE_DETAIL = re.compile(r"^/marketplace/[^/]+$")
-PLACEHOLDER_RULES = frozenset({"content/placeholder-contact", "content/placeholder-text"})
+SYNCED_DOC_RULES = frozenset(
+    {"content/placeholder-contact", "content/placeholder-text", "content/keyword-stuffing"}
+)
 BASELINE_HEADER = """\
 # squirrelscan's findings, which `scripts/ci/smoke-web.sh` holds to this file:
 # `<page path>\\t<rule id>/<check>[\\t<item>]`, one per line, `*` as the page of a
@@ -149,8 +148,8 @@ def _cron_as_markdown(seen: Observed, _pages: frozenset[str]) -> bool:
 
 
 def _synced_tool_docs(seen: Observed, _pages: frozenset[str]) -> bool:
-    page = seen.finding.page
-    return seen.finding.rule in PLACEHOLDER_RULES and bool(MARKETPLACE_DETAIL.match(page))
+    page = SITE_LOCALE.sub("", seen.finding.page)
+    return seen.finding.rule in SYNCED_DOC_RULES and bool(MARKETPLACE_PAGE.match(page))
 
 
 def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
@@ -187,7 +186,9 @@ IGNORED = (
         "provider (Composio), sample addresses included; it changes with no deploy of ours, "
         "so no baseline can pin it",
         "/marketplace/googlesheets gained jane@example.com and john@example.com from its "
-        "Composio tool docs between two crawls on 2026-11-12, with no commit in between",
+        "Composio tool docs between two crawls on 2026-11-12, with no commit in between; "
+        "/marketplace/linear's keyword-stuffing item flipped from 'issue' to 'linear' between "
+        "two CI runs on 2026-11-15, and /marketplace/twitter's [social] appeared on a CI-only change",
         _synced_tool_docs,
     ),
     Ignore(
@@ -276,7 +277,7 @@ def read_crawl(db: Path, site: str) -> Crawl:
         ).fetchall()
     paths = frozenset(_path(u, site) for u in crawled)
     seen = (o for row in rows for o in _observe(row, site, crawled))
-    kept = (o.finding for o in seen if o.finding.rule not in TIMED_RULES and not _ignored(o, paths))
+    kept = (o.finding for o in seen if not _ignored(o, paths))
     return Crawl(paths, frozenset(kept))
 
 

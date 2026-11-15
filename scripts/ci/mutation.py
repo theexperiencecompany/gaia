@@ -17,11 +17,8 @@ Subcommands:
                            This is the engine both `shard` and `local` drive.
   local [modules...]       Run the whole gate on this machine exactly as the
                            lane runs it, sized to the local CPU budget. Logs
-                           under verify-logs/mutation/.
-  one <mod> [tests]        Run ONE module on this machine and print its
-                           survivors with their full diffs and mapped tests.
-                           The local answer to `mise mutation:one`; no lane,
-                           no log to poll.
+                           under verify-logs/mutation/; a module with survivors
+                           has its survivors view printed (`mise mutation:one`).
   survivors <verdict|dir|shard.log> [--json]
                            Print every surviving mutant from a shard artifact:
                            `file:line`, the one-line change, its full diff and
@@ -41,8 +38,6 @@ Env contract:
   module  MUTMUT_WORKDIR_BASE, MUTMUT_MAX_CHILDREN, MUTMUT_KEEP_WORKDIR,
           MUTATION_VERDICT_DIR (where the module RECORD lands).
   local   MUTATION_JOBS, MUTATION_CPU_BUDGET, MUTMUT_MAX_CHILDREN.
-  one     MUTATION_VERDICT_DIR is set for the run; the record (the replay
-          artifact) lands in verify-logs/mutation/one/.
   survivors none.
   replay  none.
 
@@ -693,7 +688,8 @@ def cmd_local(args: list[str]) -> int:
 
     def run_one(work: ModuleWork) -> tuple[ModuleWork, str]:
         slug = work.module.replace("/", "_")
-        with (LOCAL_LOG_DIR / f"{slug}.out").open("w") as out:
+        output = LOCAL_LOG_DIR / f"{slug}.out"
+        with output.open("w") as out:
             rc = subprocess.run(
                 [sys.executable, str(Path(__file__).resolve()), "shard"],
                 env={
@@ -711,8 +707,12 @@ def cmd_local(args: list[str]) -> int:
         line = {
             "pass": f"  pass      {work.module}",
             "survivors": f"  SURVIVORS {work.module}  ({log})",
-            "error": f"  ERROR     {work.module}  (run produced no result; {log})",
+            # A refused shard never writes its log; the reason is in its output.
+            "error": f"  ERROR     {work.module}  (run produced no result; {output})",
         }[status]
+        if status == "error":
+            reasons = [r for r in output.read_text().splitlines() if r.startswith("::error::")]
+            line = "\n".join([line, *(f"            {reason}" for reason in reasons)])
         print(line, flush=True)
         return work, status
 
@@ -727,83 +727,17 @@ def cmd_local(args: list[str]) -> int:
             print(f"  {module}")
         print("  Retry these with MUTATION_JOBS=1 before believing anything about them.")
     if failed:
-        print("\nmutation: module(s) with survivors on changed lines:")
+        print("\nmutation: module(s) with survivors on changed lines:", flush=True)
         for module in failed:
-            print(f"  {module}")
+            record = LOCAL_LOG_DIR / f"{module.replace('/', '_')}.verdict.json"
+            subprocess.run(
+                [sys.executable, str(LIB / "mutation_report.py"), "survivors", str(record)],
+                check=False,
+            )
     if errored or failed:
         return 1
     print(f"mutation: all {len(modules)} module(s) clean")
     return 0
-
-
-# ── module ───────────────────────────────────────────────────────────────────
-
-
-# ── one ──────────────────────────────────────────────────────────────────────
-
-
-def _testfiles_for(module: str) -> str:
-    """Return the lane's mapped test files for one module, as `module` takes them.
-
-    Derived by the same detector the lane uses, so a local run cannot drift
-    into a different set of tests. A module with no diff against the base is
-    dropped by the detector (there is nothing changed to mutate); its unit
-    mirror is still the file the lane would run, so fall back to that and say
-    so rather than pretending the module has no tests.
-    """
-    result = subprocess.run(
-        [sys.executable, str(LIB / "mutation_matrix.py")],
-        input=f"apps/api/{module}\n",
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=REPO_ROOT,
-    )
-    if result.returncode != 0:
-        sys.stderr.write(result.stderr)
-        raise SystemExit(result.returncode)
-    for work in _parse_matrix(result.stdout):
-        if work.module == module and work.testfiles:
-            return _compact(list(work.testfiles))
-    rel = Path(module.removeprefix("app/"))
-    mirror = f"tests/unit/{rel.parent}/test_{rel.stem}.py"
-    if (API_ROOT / mirror).is_file():
-        _say(f"mutation: {module} has no diff against the base — using its unit mirror")
-        return mirror
-    raise SystemExit(
-        f"mutation: no test file maps to {module} (looked for {mirror} and the lane's "
-        "AST importers). Pass one explicitly: mutation.py one <module> <test-file>."
-    )
-
-
-def cmd_one(args: list[str]) -> int:
-    """Run ONE module locally, then print its survivors with full diffs."""
-    if not args:
-        print("usage: mutation.py one <module> [test-file]", file=sys.stderr)
-        return 2
-    module = args[0].removeprefix("apps/api/")
-    testfiles = args[1] if len(args) > 1 else _testfiles_for(module)
-    record_dir = LOCAL_LOG_DIR / "one"
-    shutil.rmtree(record_dir, ignore_errors=True)
-    record_dir.mkdir(parents=True)
-    previous = os.environ.get("MUTATION_VERDICT_DIR")
-    os.environ["MUTATION_VERDICT_DIR"] = str(record_dir)
-    try:
-        rc = cmd_module([module, testfiles], announce_survivors=False)
-    finally:
-        if previous is None:
-            os.environ.pop("MUTATION_VERDICT_DIR", None)
-        else:
-            os.environ["MUTATION_VERDICT_DIR"] = previous
-    if rc != 0 and any(record_dir.glob("*.json")):
-        # The record is the replay artifact; print it in the form a reader acts on.
-        # `_record` stayed quiet above so this full view (diffs, replay selectors)
-        # is the only survivor output a one-module run prints.
-        subprocess.run(
-            [sys.executable, str(LIB / "mutation_report.py"), "survivors", str(record_dir)],
-            check=False,
-        )
-    return rc
 
 
 # ── module ───────────────────────────────────────────────────────────────────
@@ -1352,9 +1286,7 @@ def mutate(request: ModuleRequest, venv: Path, workdir: Path) -> Outcome:
     return graded_outcome(request, venv, workdir, phase)
 
 
-def _record(
-    request: ModuleRequest, outcome: Outcome, directory: Path, announce: bool = True
-) -> None:
+def _record(request: ModuleRequest, outcome: Outcome, directory: Path) -> None:
     verdict = report.add_classified(
         report.ModuleVerdict(
             module=request.module,
@@ -1369,7 +1301,7 @@ def _record(
         outcome.diffs,
     )
     report.write_record(directory / f"{report.module_slug(request.module)}.json", verdict)
-    if announce and verdict.survivors:
+    if verdict.survivors:
         print(report.render_report(verdict), flush=True)
 
 
@@ -1377,7 +1309,7 @@ def _terminate(signum: int, _frame: FrameType | None) -> None:
     raise SystemExit(128 + signum)
 
 
-def cmd_module(args: list[str], *, announce_survivors: bool = True) -> int:
+def cmd_module(args: list[str]) -> int:
     record_dir = os.environ.get("MUTATION_VERDICT_DIR")
     try:
         request = ModuleRequest.from_args(args)
@@ -1386,12 +1318,7 @@ def cmd_module(args: list[str], *, announce_survivors: bool = True) -> int:
         module = args[0].removeprefix("apps/api/") if args else ""
         if record_dir and module.startswith("app/"):
             unrunnable = ModuleRequest(module=module, testfiles=(), ranges="")
-            _record(
-                unrunnable,
-                Outcome(Status.ERROR, str(exc).splitlines()[0]),
-                Path(record_dir),
-                announce_survivors,
-            )
+            _record(unrunnable, Outcome(Status.ERROR, str(exc).splitlines()[0]), Path(record_dir))
         return 2
     venv = venv_python()
     os.environ.setdefault("MUTMUT_MAX_CHILDREN", str(mutant_workers()))
@@ -1400,12 +1327,7 @@ def cmd_module(args: list[str], *, announce_survivors: bool = True) -> int:
     signal.signal(signal.SIGINT, _terminate)
     try:
         outcome = mutate(request, venv, workdir)
-        _record(
-            request,
-            outcome,
-            Path(record_dir) if record_dir else workdir,
-            announce_survivors,
-        )
+        _record(request, outcome, Path(record_dir) if record_dir else workdir)
     finally:
         if not os.environ.get("MUTMUT_KEEP_WORKDIR"):
             shutil.rmtree(workdir, ignore_errors=True)
@@ -1471,7 +1393,6 @@ COMMANDS: dict[str, Callable[[list[str]], int]] = {
     "shard": cmd_shard,
     "module": cmd_module,
     "local": cmd_local,
-    "one": cmd_one,
     "survivors": cmd_survivors,
     "replay": cmd_replay,
 }
