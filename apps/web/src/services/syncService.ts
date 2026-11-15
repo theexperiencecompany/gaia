@@ -6,7 +6,7 @@ import {
   type SyncedConversation,
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
-import { applyConversationPage } from "@/features/chat/live/connection";
+import { applyConversationPages } from "@/features/chat/live/connection";
 import type { RequestOrigin } from "@/lib/api/typed";
 import { db, type IConversation } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
@@ -214,11 +214,7 @@ async function syncItems(
   if (missing.length > 0) {
     await db.deleteConversationsAndLogsBulk(missing);
   }
-  await Promise.allSettled(
-    freshConversations.map((conversation) =>
-      applySyncedConversation(conversation.conversation_id, conversation),
-    ),
-  );
+  await applySyncedConversations(freshConversations);
 }
 
 /** Sync the rows a list push named: only they changed, so the list itself is not read again. */
@@ -239,20 +235,42 @@ export const syncPushedConversations = async (
   await syncItems(items, origin);
 };
 
-/** Store a synced row's conversation fields and fold its newest page of entries into the live view. */
-export const applySyncedConversation = async (
-  conversationId: string,
-  conversation: SyncedConversation,
+/** Store synced rows' conversation fields and fold their newest pages into the live view, one write per store for all of them. */
+export const applySyncedConversations = async (
+  conversations: readonly SyncedConversation[],
 ): Promise<void> => {
-  const artifacts = fromRegistryEntries(conversation.artifacts, conversationId);
+  if (conversations.length === 0) return;
+  const synced = conversations.map((conversation) => ({
+    conversation,
+    page: ConversationPageSchema.parse(conversation),
+    artifacts: fromRegistryEntries(
+      conversation.artifacts,
+      conversation.conversation_id,
+    ),
+  }));
   // Refresh the runtime lookup map from the server-authoritative registry. The
   // store stamps session_id onto each entry so artifact fetch URLs resolve.
-  useChatStore.getState().setConversationArtifacts(conversationId, artifacts);
+  useChatStore
+    .getState()
+    .setConversationArtifacts(
+      Object.fromEntries(
+        synced.map(({ conversation, artifacts }) => [
+          conversation.conversation_id,
+          artifacts,
+        ]),
+      ),
+    );
   await Promise.all([
-    db.putConversation(toStoredConversation(conversation, artifacts)),
-    applyConversationPage(
-      conversationId,
-      ConversationPageSchema.parse(conversation),
+    db.putConversationsBulk(
+      synced.map(({ conversation, artifacts }) =>
+        toStoredConversation(conversation, artifacts),
+      ),
+    ),
+    applyConversationPages(
+      synced.map(({ conversation, page }) => ({
+        conversationId: conversation.conversation_id,
+        page,
+      })),
     ),
   ]);
 };
@@ -272,11 +290,7 @@ export const syncSingleConversation = async (
         { conversation_id: conversationId, last_updated: undefined },
       ]);
 
-    if (freshConversations.length === 0) {
-      return;
-    }
-
-    await applySyncedConversation(conversationId, freshConversations[0]);
+    await applySyncedConversations(freshConversations);
   } catch (error) {
     console.error(
       `[SyncService] Failed to sync conversation ${conversationId}:`,

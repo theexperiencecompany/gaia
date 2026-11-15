@@ -116,31 +116,23 @@ export default function ChatsList() {
   // Show loading only when there are no cached conversations and hydration hasn't completed
   const isLoading = conversations.length === 0 && !initialSyncCompleted;
 
-  // Use controlled state for accordion values that updates with conversations
-  const [openAccordions, setOpenAccordions] = useState<string[]>([]);
-
-  // Update open accordions whenever conversations change
-  useEffect(() => {
-    const values: string[] = [];
-
-    // Add system conversations if they exist
-    if (systemConversations.length > 0) {
-      values.push("system-conversations");
-    }
-
-    // Add starred chats if they exist
-    if (starredConversations.length > 0) {
-      values.push("starred-chats");
-    }
-
-    // Add ALL time frame sections - show everything expanded
-    const timeFrameValues = sortedTimeFrames.map(([timeFrame]) =>
-      timeFrame.toLowerCase().replace(/\s+/g, "-"),
-    );
-    values.push(...timeFrameValues);
-
-    setOpenAccordions(values);
-  }, [systemConversations, starredConversations, sortedTimeFrames]);
+  // Every section starts expanded; only the ones the user closed stay closed.
+  const [collapsedSections, setCollapsedSections] = useState<string[]>([]);
+  const sections = useMemo(
+    () => [
+      ...(systemConversations.length > 0 ? ["system-conversations"] : []),
+      ...(starredConversations.length > 0 ? ["starred-chats"] : []),
+      ...sortedTimeFrames.map(([timeFrame]) =>
+        timeFrame.toLowerCase().replace(/\s+/g, "-"),
+      ),
+    ],
+    [systemConversations, starredConversations, sortedTimeFrames],
+  );
+  const openAccordions = sections.filter(
+    (section) => !collapsedSections.includes(section),
+  );
+  const setOpenAccordions = (open: string[]) =>
+    setCollapsedSections(sections.filter((section) => !open.includes(section)));
 
   // Direct scroll listener for infinite scroll - throttled with requestAnimationFrame
   useEffect(() => {
