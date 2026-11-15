@@ -105,6 +105,39 @@ PASSED_CHECK: dict[str, Any] = {
 }
 
 
+# The master ruleset's required checks, as `rules/branches/master` returns them.
+MASTER_RULES: list[dict[str, Any]] = [
+    {"type": "merge_queue", "parameters": {}},
+    {
+        "type": "required_status_checks",
+        "parameters": {
+            "required_status_checks": [
+                {"context": "Validate PR Title", "integration_id": 15368},
+                {"context": "quality-gate", "integration_id": 15368},
+            ]
+        },
+    },
+]
+# Run 99 is ci.yml, the workflow whose quality-gate job is required.
+CI_RUN: dict[str, Any] = {"id": 99, "path": ".github/workflows/ci.yml"}
+REACT_DOCTOR_RUN: dict[str, Any] = {"id": 77, "path": ".github/workflows/react-doctor.yml"}
+PR_TITLE_RUN: dict[str, Any] = {"id": 55, "path": ".github/workflows/pr-title.yml"}
+REACT_DOCTOR_RED: dict[str, Any] = {
+    "name": "react-doctor",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/o/r/actions/runs/77/job/7701",
+    "app": {"slug": "github-actions"},
+}
+SONAR_RED: dict[str, Any] = {
+    "name": "SonarCloud Code Analysis",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://sonarcloud.io/dashboard?id=x",
+    "app": {"slug": "sonarqubecloud"},
+}
+
+
 def verdict_zip(*verdicts: dict[str, Any]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
@@ -134,6 +167,8 @@ class FakeGh:
         self.zip_blobs = zip_blobs or {}
         self.job_log = job_log
         self.calls: list[str] = []
+        self.rules: dict[str, list[dict[str, Any]]] = {"master": MASTER_RULES}
+        self.workflow_runs: list[dict[str, Any]] = [CI_RUN, REACT_DOCTOR_RUN, PR_TITLE_RUN]
 
     def text(
         self, args: list[str], timeout_s: int, stdin_text: str | None = None
@@ -148,6 +183,13 @@ class FakeGh:
             return 0, json.dumps({"statuses": self.statuses}), ""
         if "/artifacts" in endpoint:
             return 0, json.dumps({"artifacts": self.artifacts}), ""
+        if "/rules/branches/" in endpoint:
+            branch = endpoint.split("/rules/branches/", 1)[1]
+            return 0, json.dumps(self.rules.get(branch, [])), ""
+        if "/actions/runs?head_sha=" in endpoint:
+            return 0, json.dumps({"workflow_runs": self.workflow_runs}), ""
+        if endpoint == "repos/o/r":
+            return 0, json.dumps({"default_branch": "master"}), ""
         raise AssertionError(f"unexpected gh call: {args}")
 
     def binary(self, args: list[str], timeout_s: int) -> tuple[int, bytes, str]:
@@ -1547,6 +1589,65 @@ def test_a_watch_that_runs_out_of_time_is_not_green(
 ) -> None:
     wire(SequencedGh([[PENDING_CHECK]]))
     assert run_cli(monkeypatch, ["--watch", "--no-stack", "--max-wait", "1"]) == 1
+
+
+def test_fail_fast_does_not_stop_at_a_red_check_that_does_not_block_merge(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: a red react-doctor or SonarCloud ended ci:watch ~40s in, long before quality-gate."""
+    fake = wire(
+        SequencedGh(
+            [
+                [REACT_DOCTOR_RED, SONAR_RED, PENDING_CHECK],
+                [REACT_DOCTOR_RED, SONAR_RED, PENDING_CHECK],
+                [REACT_DOCTOR_RED, SONAR_RED, PASSED_CHECK],
+            ]
+        )
+    )
+    run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"])
+    out = capsys.readouterr().out
+    assert fake.check_polls == 3, "stopped on a check merge does not wait for"
+    assert "stopping at the first failure" not in out
+    assert "FAIL  react-doctor  [not required for merge]" in out
+
+
+def test_a_red_lane_of_the_gates_workflow_trips_fail_fast_before_the_gate_job_exists(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = wire(SequencedGh([[REACT_DOCTOR_RED, PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    assert fake.check_polls == 2
+
+
+def test_a_stacked_pr_is_gated_by_the_checks_its_trunk_requires(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    red_title = dict(
+        REACT_DOCTOR_RED,
+        name="Validate PR Title",
+        html_url="https://github.com/o/r/actions/runs/55/job/5501",
+    )
+    fake = wire(
+        SequencedGh(
+            [[REACT_DOCTOR_RED, PENDING_CHECK], [red_title, PENDING_CHECK]],
+            pr_meta=dict(PR_META, baseRefName="feat/parent"),
+        )
+    )
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    assert fake.check_polls == 2
+
+
+def test_compact_json_says_which_red_checks_do_not_block_merge(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[FAILED_CHECK, REACT_DOCTOR_RED, SONAR_RED]))
+    run_cli(monkeypatch, ["--json", "--compact", "--no-stack"])
+    failed = {c["name"]: c["blocks_merge"] for c in json.loads(capsys.readouterr().out)["failed"]}
+    assert failed == {
+        "mutation (shard 3/6 (19 modules))": True,
+        "react-doctor": False,
+        "SonarCloud Code Analysis": False,
+    }
 
 
 def test_fail_fast_without_watch_is_a_usage_error(
