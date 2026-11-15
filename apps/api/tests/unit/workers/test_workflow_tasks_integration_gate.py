@@ -12,6 +12,7 @@ one message.
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
 import time_machine
 
@@ -275,12 +276,26 @@ class TestEachNoticeHasTheOneIdItsFactHas:
 
         assert notify.await_args.args[0].id == "bbca019f-e409-551c-b121-e67c1ebd72f0"
 
-    @time_machine.travel(datetime(2026, 11, 14, 23, 30, tzinfo=UTC), tick=False)
+    # 02:00 in Kolkata is still 14 Nov in UTC: the day is UTC's, never the host's.
+    @time_machine.travel(datetime(2026, 11, 15, 2, 0, tzinfo=ZoneInfo("Asia/Kolkata")), tick=False)
     async def test_a_failure_before_any_execution_record_is_one_notice_per_utc_day(self) -> None:
         with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
             await _notify_workflow_failed(RuntimeError("boom"), _workflow(), None)
 
         assert notify.await_args.args[0].id == "d8b0529b-1aee-5758-9a1e-6d540d28c8c0"
+
+    async def test_a_workflow_with_no_id_still_has_one_key_per_fact(self) -> None:
+        workflow = _workflow()
+        workflow.id = None
+        with patch(f"{MODULE}.notification_service.notify", new_callable=AsyncMock) as notify:
+            await _notify_workflow_paused_for_integrations(workflow, GMAIL, FIRED_AT)
+            await _notify_workflow_failed(RuntimeError("boom"), workflow, "exec_1")
+
+        paused, failed = (c.args[0].id for c in notify.await_args_list)
+        assert (paused, failed) == (
+            "fca854a0-d27e-5406-9eb2-f6f7d73ba275",
+            "ae6b9d17-ee8e-56de-b681-7ec7d64b237e",
+        )
 
     async def test_closing_out_a_failed_run_notifies_under_that_run(self) -> None:
         with (

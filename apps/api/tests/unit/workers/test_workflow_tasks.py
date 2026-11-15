@@ -14,6 +14,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
 )
 from app.config.rate_limits import RateLimitPeriod
+from app.constants.cache import BACKGROUND_EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
 from app.constants.vfs import SYSTEM_USER_ID
 from app.db.repositories.workflow_executions import workflow_executions_repository
@@ -22,6 +23,8 @@ from app.models.chat_models import ConversationSource
 from app.models.conversation_log_models import (
     Reply,
     ReplySettled,
+    StopBy,
+    StopRequested,
     WorkFinished,
     WorkflowFired,
     WorkOutcome,
@@ -1045,7 +1048,10 @@ class TestExecuteWorkflowAsChat:
                     "_notify_run_finished",
                 )
             }
-            stack.enter_context(patch("app.workers.tasks.workflow_tasks.runtime_ports"))
+            mocks["runtime_ports"] = stack.enter_context(
+                patch("app.workers.tasks.workflow_tasks.runtime_ports")
+            )
+            mocks["accept"].return_value.appended.logged.seq = 7
             mocks["get_or_create_workflow_conversation"].return_value = "conv_wf"
             mocks["read_run_record"].return_value = [RecordedCall(tool_name="GMAIL_FETCH")]
             mocks["await_outcome"].return_value = EntryOutcome(
@@ -1087,6 +1093,42 @@ class TestExecuteWorkflowAsChat:
         # A caller that fires quietly lowers the workflow's own default.
         assert fired.run.trigger.workflow_notify_on_completion is False
 
+    async def test_a_silent_caller_keeps_the_workflows_own_notify_default(self, boundaries) -> None:
+        workflow = self._make_workflow()
+        workflow.notify_on_completion = False
+        await execute_workflow_as_chat(
+            workflow, AuthenticatedUser(user_id=USER_ID), {}, execution_id="exec_1"
+        )
+        fired: WorkflowFired = boundaries["accept"].await_args.args[3]
+        assert fired.run.trigger.workflow_notify_on_completion is False
+
+    async def test_the_wait_reads_the_same_log_the_fire_was_appended_to(self, boundaries) -> None:
+        await self._run()
+        ports = boundaries["runtime_ports"].return_value
+        assert boundaries["accept"].await_args.args[0] is ports
+        assert boundaries["await_outcome"].await_args.args == (
+            ports.log,
+            "conv_wf",
+            USER_ID,
+            boundaries["accept"].return_value.appended.logged,
+            BACKGROUND_EXECUTOR_WAIT_TIMEOUT,
+        )
+
+    async def test_a_run_that_outlasts_the_wait_is_settled_stopped_before_it_raises(
+        self, boundaries
+    ) -> None:
+        """The step must never run a fire the job already recorded as failed."""
+        boundaries["await_outcome"].side_effect = TimeoutError
+        with pytest.raises(TimeoutError):
+            await self._run()
+        ports = boundaries["runtime_ports"].return_value
+        assert boundaries["accept"].await_args.args == (
+            ports,
+            "conv_wf",
+            USER_ID,
+            StopRequested(id="workflow:exec_1:timed_out", by=StopBy.GAIA, covers_through=7),
+        )
+
     async def test_the_record_is_seeded_before_the_fire(self, boundaries) -> None:
         order = MagicMock()
         for name in ("seed_run_record", "accept"):
@@ -1110,6 +1152,7 @@ class TestExecuteWorkflowAsChat:
         assert (conversation_id, trace) == ("conv_wf", [RecordedCall(tool_name="GMAIL_FETCH")])
         boundaries["read_run_record"].assert_awaited_once_with("exec_1")
         delivered = boundaries["_notify_run_finished"].await_args
+        assert delivered.args[0].id == "wf_morning"
         assert delivered.args[1:] == ("exec_1", "conv_wf", "Your brief")
         assert delivered.kwargs == {"notify_on_completion": True}
 
@@ -1143,6 +1186,7 @@ class TestExecuteWorkflowAsChat:
             conversation_id, trace = await self._run()
         assert (conversation_id, trace) == ("conv_wf", [])
         assert log.error.call_args.args == ("[WORKER] workflow run record could not be read",)
+        assert log.error.call_args.kwargs["workflow_id"] == "wf_morning"
 
 
 def _answered(entry_id: str, outcome: ReplyOutcome = ReplyOutcome.ANSWERED) -> ReplySettled:

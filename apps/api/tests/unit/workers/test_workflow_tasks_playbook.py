@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable, Iterator, Sequence
 from contextlib import ExitStack, contextmanager
 from datetime import UTC, datetime
 import json
-from typing import Literal
+from typing import ClassVar, Literal
 from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import UUID
 
@@ -29,17 +29,19 @@ from app.agents.tools.run_record import append_call
 from app.constants.agents import (
     PLAYBOOK_FALLBACK_CONTEXT_KEY,
     PLAYBOOK_HEAL_ATTEMPT_LIMIT,
+    PLAYBOOK_REPLAY_STREAM_ID_PREFIX,
     PLAYBOOK_SUSPECT_STREAK_LIMIT,
     AgentTag,
     wrap_agent_payload,
 )
-from app.constants.cache import WORKFLOW_FIRE_ADMISSION_PREFIX
+from app.constants.cache import WORKFLOW_FIRE_ADMISSION_PREFIX, WORKFLOW_FIRE_ADMISSION_TTL
 from app.constants.log_tags import LogTag
 from app.models.conversation_log_models import (
     ConversationState,
     LiveWork,
     ReplySettled,
     WorkflowFired,
+    WorkOutcome,
 )
 from app.models.playbook_models import (
     PlaybookDocument,
@@ -57,6 +59,7 @@ from app.models.workflow_models import (
     WorkflowStep,
 )
 from app.services.conversation.outcome import EntryOutcome
+from app.services.conversation.work_log import WorkReport
 from app.services.workflow.playbook.evaluator import PlaybookUser
 from app.services.workflow.playbook.lifecycle import HEAL_STATUSES
 from app.services.workflow.playbook.metrics import REPLAY_STATUSES
@@ -509,11 +512,18 @@ async def test_a_replay_the_user_stopped_hands_nothing_over_and_records_nothing_
         stopped=True,
         failure="Playbook stopped at step 2 (send_email): the replay was stopped.",
         trace=[RecordedCall(tool_name="list_events")],
+        llm_calls=2,
     )
     harness.playbook_run = AsyncMock(return_value=("conv_1", stopped))
 
     await _fire(harness)
 
+    assert harness.playbook_event() == {
+        "mode": "replay",
+        "reason": "stopped_by_user",
+        "playbook_id": "pb_1",
+        "llm_calls": 2,
+    }
     harness.chat.assert_not_awaited()
     harness.record_run_outcome.assert_not_awaited()
     harness.add_messages.assert_not_awaited()
@@ -1383,6 +1393,7 @@ class _LockedReplayHarness(_Harness):
         self.run_playbook = AsyncMock(side_effect=self._run)
         self.work_started = AsyncMock(return_value=True)
         self.work_finished = AsyncMock()
+        self.cards = AsyncMock(return_value=[])
         self.notify = AsyncMock()
         self.increment = AsyncMock()
         self.get_user = AsyncMock(
@@ -1418,7 +1429,7 @@ class _LockedReplayHarness(_Harness):
             patch(f"{MODULE}.run_playbook", self.run_playbook),
             patch(f"{MODULE}.record_work_carried", self.work_started),
             patch(f"{MODULE}.record_work_finished", self.work_finished),
-            patch(f"{MODULE}.build_playbook_tool_data", AsyncMock(return_value=[])),
+            patch(f"{MODULE}.build_playbook_tool_data", self.cards),
             patch(f"{MODULE}.notification_service.notify", self.notify),
             patch(f"{MODULE}.require_owner", self.get_user),
         ]
@@ -2885,3 +2896,146 @@ class TestQuietHoursOnTheRecord:
         await _fire_with_context(harness, {"quiet_hours": {"kind": "hold"}})
 
         assert harness.platform_delivery.await_args.kwargs["result_text"] == "Agenda sent."
+
+
+@pytest.mark.asyncio
+class TestTheReplayIsLoggedAsOneUnitOfWork:
+    """A replay is carried and finished in its workflow's log under one task id, so the screen shows it start and end."""
+
+    CARDS: ClassVar[list[dict[str, str]]] = [{"tool_name": "list_events"}]
+
+    async def _replay(self, result: PlaybookRunResult | Exception) -> _LockedReplayHarness:
+        workflow = _workflow()
+        harness = _LockedReplayHarness(workflow, lock_free=True)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.replay_result = result
+        harness.cards.return_value = self.CARDS
+        await _fire(harness)
+        return harness
+
+    def _finished(self, harness: _LockedReplayHarness, outcome: WorkOutcome) -> None:
+        task_id = harness.work_started.await_args.args[2]
+        assert harness.work_finished.await_args_list == [
+            call(
+                "conv_1",
+                USER_ID,
+                task_id,
+                outcome,
+                WorkReport(text="", tool_data=self.CARDS, nothing_for_user=True),
+            )
+        ]
+
+    async def test_the_replay_takes_its_own_detached_exclusive_task(self) -> None:
+        harness = await self._replay(PlaybookRunResult(ok=True, text="Agenda sent."))
+
+        assert harness.work_started.await_args.args[:2] == ("conv_1", USER_ID)
+        assert harness.work_started.await_args.kwargs == {"detached": True, "exclusive": True}
+        task_id = harness.work_started.await_args.args[2]
+        assert task_id.startswith(PLAYBOOK_REPLAY_STREAM_ID_PREFIX)
+        assert UUID(task_id.removeprefix(PLAYBOOK_REPLAY_STREAM_ID_PREFIX)).version == 4
+
+    async def test_the_replay_keeps_its_own_task_alive_in_its_conversation(self) -> None:
+        harness = await self._replay(PlaybookRunResult(ok=True, text="Agenda sent."))
+
+        task_id = harness.work_started.await_args.args[2]
+        assert harness.alive.await_args.args == ("conv_1", f":{task_id}")
+        harness.alive_task.cancel.assert_called_once_with()
+
+    async def test_a_replay_the_log_refuses_fails_the_fire_naming_its_conversation(self) -> None:
+        workflow = _workflow()
+        harness = _LockedReplayHarness(workflow, lock_free=True)
+        harness.get_for_workflow = AsyncMock(return_value=_playbook(workflow))
+        harness.work_started = AsyncMock(return_value=False)
+
+        await _fire(harness)
+
+        harness.run_playbook.assert_not_awaited()
+        assert harness.complete_execution.await_args.kwargs["error_message"] == (
+            "conversation conv_1 refused the replay: other work runs there"
+        )
+
+    async def test_a_replay_that_held_finishes_done_with_its_calls_as_cards(self) -> None:
+        trace = [RecordedCall(tool_name="list_events")]
+        harness = await self._replay(PlaybookRunResult(ok=True, text="Agenda sent.", trace=trace))
+
+        self._finished(harness, WorkOutcome.DONE)
+        assert harness.cards.await_args.args[:2] == (trace, USER_ID)
+        assert harness.cards.await_args.args[2].workflow_id == "wf_1"
+
+    async def test_a_stopped_replay_finishes_cancelled(self) -> None:
+        harness = await self._replay(PlaybookRunResult(ok=False, text="", stopped=True))
+
+        self._finished(harness, WorkOutcome.CANCELLED)
+
+    async def test_a_replay_that_did_not_hold_finishes_failed(self) -> None:
+        harness = await self._replay(PlaybookRunResult(ok=False, text=""))
+
+        self._finished(harness, WorkOutcome.FAILED)
+
+    async def test_a_replay_that_raised_finishes_failed_with_no_calls(self) -> None:
+        harness = await self._replay(RuntimeError("tool exploded"))
+
+        self._finished(harness, WorkOutcome.FAILED)
+        assert harness.cards.await_args.args[0] == []
+
+
+@pytest.mark.asyncio
+class TestTheAdmissionNamesWhatHoldsTheConversation:
+    """The overlap's holder and approval state are the only record of why a fire never ran."""
+
+    @staticmethod
+    def _workflow_event(harness: _Harness) -> dict[str, object]:
+        event: dict[str, object] = {}
+        for entry in harness.log.set_ns.call_args_list:
+            if entry.args and entry.args[0] == "workflow":
+                event.update(entry.kwargs)
+        return event
+
+    async def test_the_admission_is_a_bounded_set_nx_over_this_conversations_log(self) -> None:
+        harness = _Harness(_workflow())
+
+        await _fire(harness)
+
+        assert harness.acquire.await_args.kwargs == {"ex": WORKFLOW_FIRE_ADMISSION_TTL, "nx": True}
+        assert harness.log_state.await_args.args == ("conv_1", USER_ID)
+
+    async def test_a_fire_beaten_to_the_admission_names_that_fire(self) -> None:
+        harness = _Harness(_workflow())
+        harness.acquire = AsyncMock(return_value=False)
+
+        await _fire(harness)
+
+        event = self._workflow_event(harness)
+        assert event["lock_holder"] == "another fire being admitted"
+        assert event["holder_awaiting_approval"] is False
+
+    async def test_every_task_holding_the_conversation_is_named(self) -> None:
+        harness = _Harness(_workflow())
+        harness.live_work = (
+            LiveWork(task_id="task_a", cause_through=1, answers=(), pending_approvals=()),
+            LiveWork(task_id="task_b", cause_through=1, answers=(), pending_approvals=()),
+        )
+
+        await _fire(harness)
+
+        assert self._workflow_event(harness)["lock_holder"] == "task_a,task_b"
+
+    async def test_a_fire_still_waiting_for_its_answer_holds_the_conversation(self) -> None:
+        harness = _Harness(_workflow())
+        harness.log_state = AsyncMock(
+            return_value=EMPTY.model_copy(update={"unsettled_fires": (4,)})
+        )
+
+        await _fire(harness)
+
+        assert self._workflow_event(harness)["lock_holder"] == "an unanswered fire"
+
+    async def test_a_manual_fire_that_overlaps_keeps_the_id_it_answered_with(self) -> None:
+        harness = _Harness(_workflow())
+        harness.hold("task_9")
+        create = AsyncMock(return_value=harness.execution)
+        harness.extra.append(patch(f"{EXECUTION_SERVICE}.create_execution", create))
+
+        await _fire_with_context(harness, {"execution_id": "exec_manual"})
+
+        assert create.await_args.kwargs["execution_id"] == "exec_manual"
