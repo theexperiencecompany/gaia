@@ -70,8 +70,9 @@ SHORT_PAGES = frozenset({"/download", "/contact"})
 MARKETPLACE_PAGE = re.compile(r"^/marketplace/[^/]+$")
 WIKI_LINK = re.compile(r"^\[\[[^\[\]'\"]+\]\]$")
 # One integration's page; the paginated hub (/marketplace/page/N) is ours and stays checked.
-MARKETPLACE_DETAIL = re.compile(r"^/marketplace/[^/]+$")
-PLACEHOLDER_RULES = frozenset({"content/placeholder-contact", "content/placeholder-text"})
+SYNCED_DOC_RULES = frozenset(
+    {"content/placeholder-contact", "content/placeholder-text", "content/keyword-stuffing"}
+)
 BASELINE_HEADER = """\
 # squirrelscan's findings, which `scripts/ci/smoke-web.sh` holds to this file:
 # `<page path>\\t<rule id>/<check>[\\t<item>]`, one per line, `*` as the page of a
@@ -147,8 +148,8 @@ def _cron_as_markdown(seen: Observed, _pages: frozenset[str]) -> bool:
 
 
 def _synced_tool_docs(seen: Observed, _pages: frozenset[str]) -> bool:
-    page = seen.finding.page
-    return seen.finding.rule in PLACEHOLDER_RULES and bool(MARKETPLACE_DETAIL.match(page))
+    page = SITE_LOCALE.sub("", seen.finding.page)
+    return seen.finding.rule in SYNCED_DOC_RULES and bool(MARKETPLACE_PAGE.match(page))
 
 
 def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
@@ -156,11 +157,6 @@ def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
     index = page != "/" and any(other.startswith(f"{page}/") for other in pages)
     listing = SITE_LOCALE.sub("", page) in SHORT_PAGES
     return seen.finding.rule == "content/word-count" and (index or listing)
-
-
-def _marketplace_example_contact(seen: Observed, _pages: frozenset[str]) -> bool:
-    page = SITE_LOCALE.sub("", seen.finding.page)
-    return seen.finding.rule == "content/placeholder-contact" and bool(MARKETPLACE_PAGE.match(page))
 
 
 # Only squirrel's own bugs, and one design decision: everything else is a finding.
@@ -190,7 +186,9 @@ IGNORED = (
         "provider (Composio), sample addresses included; it changes with no deploy of ours, "
         "so no baseline can pin it",
         "/marketplace/googlesheets gained jane@example.com and john@example.com from its "
-        "Composio tool docs between two crawls on 2026-11-12, with no commit in between",
+        "Composio tool docs between two crawls on 2026-11-12, with no commit in between; "
+        "/marketplace/linear's keyword-stuffing item flipped from 'issue' to 'linear' between "
+        "two CI runs on 2026-11-15, and /marketplace/twitter's [social] appeared on a CI-only change",
         _synced_tool_docs,
     ),
     Ignore(
@@ -200,13 +198,6 @@ IGNORED = (
         "/ja/for 49 words, /contact 59, /marketplace 178, /blog 188, /download 193; #1701 "
         "shortened their intros on purpose",
         _hub_word_count,
-    ),
-    Ignore(
-        "a marketplace page's text is the integration's tool documentation, served by the API "
-        "and changed without a deploy; its example addresses and handles are not ours to contact",
-        "/marketplace/googlesheets: 'Share my budget spreadsheet with john@example.com'; "
-        "/marketplace/twitter flagged [social] on master run 43716255058, a CI-only change",
-        _marketplace_example_contact,
     ),
 )
 

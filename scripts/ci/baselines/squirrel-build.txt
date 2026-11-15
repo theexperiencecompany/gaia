@@ -3443,58 +3443,33 @@ score:URL Structure=93
 /learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	zero
 /manifesto	links/no-contextual-inbound/no-contextual-inbound
 /manifesto	perf/cache-headers/cache-control
-/marketplace/adspo-mcp-other	content/keyword-stuffing/keyword-stuffing	adspo
 /marketplace/adspo-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/agentmail	content/keyword-stuffing/keyword-stuffing	email
 /marketplace/arxiv-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
 /marketplace/asana	perf/dom-size/dom-max-children
 /marketplace/astro-docs-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
 /marketplace/bible-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/brave-search-mcp-other	content/keyword-stuffing/keyword-stuffing	search
 /marketplace/brave-search-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
 /marketplace/browser-tool-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/calendly	content/keyword-stuffing/keyword-stuffing	event
 /marketplace/clickup	perf/dom-size/dom-max-children
 /marketplace/code-interpreter-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/deepwiki	content/keyword-stuffing/keyword-stuffing	deepwiki
 /marketplace/dodo-payments-mcp-finance	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/dropbox	content/keyword-stuffing/keyword-stuffing	team
 /marketplace/dropbox	perf/dom-size/dom-max-children
 /marketplace/duckduckgo-search-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
 /marketplace/fetch-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/github	content/keyword-stuffing/keyword-stuffing	repository
 /marketplace/github	perf/dom-size/dom-max-children
 /marketplace/github	perf/dom-size/dom-total-nodes
 /marketplace/gmail	perf/dom-size/dom-max-children
 /marketplace/google-classroom-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
 /marketplace/google-scholar-mcp-education	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
-/marketplace/googlecalendar	content/keyword-stuffing/keyword-stuffing	calendar
-/marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	document
-/marketplace/googledrive	content/keyword-stuffing/keyword-stuffing	file
 /marketplace/googledrive	perf/dom-size/dom-max-children
-/marketplace/googlemeet	content/keyword-stuffing/keyword-stuffing	conference
-/marketplace/googlesheets	content/keyword-stuffing/keyword-stuffing	spreadsheet
-/marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	list
-/marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	task
-/marketplace/googletasks	content/keyword-stuffing/keyword-stuffing	tasks
-/marketplace/granola-mcp-productivity	content/keyword-stuffing/keyword-stuffing	meeting
 /marketplace/granola-mcp-productivity	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/gumroad-mcp-finance	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
 /marketplace/hubspot	perf/dom-size/dom-max-children
-/marketplace/instagram	content/keyword-stuffing/keyword-stuffing	media
 /marketplace/jira	perf/dom-size/dom-max-children
-/marketplace/keyloom-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	component
 /marketplace/keyloom-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/manufact-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	server
 /marketplace/manufact-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams
 /marketplace/neon-database-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/open-web-search-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	search
 /marketplace/open-web-search-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/outlook	content/keyword-stuffing/keyword-stuffing	calendar
-/marketplace/outlook	content/keyword-stuffing/keyword-stuffing	folder
-/marketplace/outlook	content/keyword-stuffing/keyword-stuffing	use
-/marketplace/outlook	content/keyword-stuffing/keyword-stuffing	user
 /marketplace/outlook	perf/dom-size/dom-max-children
 /marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
@@ -3505,20 +3480,12 @@ score:URL Structure=93
 /marketplace/paypal-mcp-finance	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
 /marketplace/pixellab-mcp-ai-ml	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
 /marketplace/polymarket-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/postman-code-eu-mcp-developer	content/keyword-stuffing/keyword-stuffing	code
 /marketplace/postman-code-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/postman-code-mcp-developer	content/keyword-stuffing/keyword-stuffing	api
 /marketplace/postman-code-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
 /marketplace/postman-full-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/postman-full-mcp-developer	content/keyword-stuffing/keyword-stuffing	api
-/marketplace/postman-full-mcp-developer	content/keyword-stuffing/keyword-stuffing	postman
 /marketplace/postman-full-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/postman-minimal-eu-mcp-developer	content/keyword-stuffing/keyword-stuffing	postman
 /marketplace/postman-minimal-eu-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
 /marketplace/postman-minimal-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
-/marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	database
-/marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	postgres
-/marketplace/prisma-mcp-developer	content/keyword-stuffing/keyword-stuffing	prisma
 /marketplace/prisma-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
 /marketplace/pumpgtm-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/render-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
@@ -3530,22 +3497,16 @@ score:URL Structure=93
 /marketplace/slack	perf/dom-size/dom-max-children
 /marketplace/strava-mcp-personal	images/offscreen-lazy/offscreen-images-not-lazy	dVqWftnGhKmP-ZszBDUNKTfWW1mdy_GAnEdIVD5lueI
 /marketplace/supabase-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	l8nwDVzfVQS1OxvB-z4c4C6v8H3o30SH4zlVhVnG6gQ
-/marketplace/todoist	content/keyword-stuffing/keyword-stuffing	need
-/marketplace/todoist	content/keyword-stuffing/keyword-stuffing	use
 /marketplace/todoist	perf/dom-size/dom-max-children
-/marketplace/trello	content/keyword-stuffing/keyword-stuffing	board
 /marketplace/trello	perf/dom-size/dom-max-children
 /marketplace/trello	perf/dom-size/dom-total-nodes
-/marketplace/twitter	content/keyword-stuffing/keyword-stuffing	user
 /marketplace/twitter	perf/dom-size/dom-max-children
 /marketplace/wakatime-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	GWNzsIGGO33nMDvAMWjVBWUvq2otiHKiyVYBnMXPqN8
 /marketplace/whoop-mcp-personal	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/wix-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
 /marketplace/world-cup-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/yelp	content/keyword-stuffing/keyword-stuffing	business
 /marketplace/youtube-mcp-analytics	images/offscreen-lazy/offscreen-images-not-lazy	71xjMW8R_mMbIymmucrB2-ZgJY6zxBL76MNK-v8y_3A
 /marketplace/zoho-mail-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
-/marketplace/zoom	content/keyword-stuffing/keyword-stuffing	meeting
 /marketplace?search=Discord	content/word-count/word-count
 /marketplace?search=Figma	content/word-count/word-count
 /marketplace?search=Loom	content/word-count/word-count

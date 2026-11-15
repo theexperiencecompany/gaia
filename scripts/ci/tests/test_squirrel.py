@@ -270,6 +270,8 @@ def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
         _row("/contact", "content/word-count", "word-count"),
         _row("/marketplace/googlesheets", "content/placeholder-contact", "placeholder-contact", [{"id": "email", "snippet": "john@example.com"}]),
         _row("/ja/marketplace/twitter", "content/placeholder-contact", "placeholder-contact", [{"id": "social"}]),
+        _row("/marketplace/linear", "content/keyword-stuffing", "keyword-stuffing", [{"id": "linear"}]),
+        _row("/ja/marketplace/linear", "content/keyword-stuffing", "keyword-stuffing", [{"id": "issue"}]),
     ],
 )  # fmt: skip
 def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -> None:
