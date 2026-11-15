@@ -40,7 +40,7 @@ repos:
       # Before every hook that runs node or pnpm: a fresh worktree has no node_modules.
       - id: ensure-node-modules
         name: node_modules installed (one-time pnpm install in a fresh checkout)
-        entry: bash scripts/dev/ensure-node-modules.sh
+        entry: mise exec -- bash scripts/dev/ensure-node-modules.sh
         language: system
         pass_filenames: false
         always_run: true

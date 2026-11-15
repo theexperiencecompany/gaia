@@ -7,7 +7,7 @@ repos:
       # Before lint-all: a fresh worktree has no node_modules.
       - id: ensure-node-modules
         name: node_modules installed (one-time pnpm install in a fresh checkout)
-        entry: bash ../../scripts/dev/ensure-node-modules.sh
+        entry: mise exec -- bash ../../scripts/dev/ensure-node-modules.sh
         language: system
         types_or: [javascript, jsx, ts, tsx, json, markdown, css]
         pass_filenames: false
