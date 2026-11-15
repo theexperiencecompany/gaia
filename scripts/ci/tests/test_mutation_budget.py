@@ -39,8 +39,12 @@ def test_a_light_module_keeps_the_floor() -> None:
     assert _work(10).mutmut_cap == mutation.MUTMUT_CAP_FLOOR_SECONDS
 
 
-def test_no_cap_exceeds_the_shard_budget() -> None:
-    assert _work(100_000, CONTRACTS).mutmut_cap == mutation.SHARD_BUDGET_SECONDS
+def test_no_cap_outlasts_what_the_deadline_leaves_after_wrap_up() -> None:
+    # Bounded by the deadline, not the budget: a module costed under the budget
+    # may still run longer (comms_runner.py: 26 s estimated, 561 s measured).
+    assert _work(100_000, CONTRACTS).mutmut_cap == (
+        mutation.SHARD_DEADLINE_SECONDS - mutation.MODULE_WRAPUP_SECONDS
+    )
 
 
 def test_the_cap_shrinks_to_what_the_deadline_leaves() -> None:
