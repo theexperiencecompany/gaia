@@ -25,7 +25,7 @@ from app.models.conversation_models import (
     ConversationHead,
     LogPage,
 )
-from app.services.conversation import mongo_log as mongo_log_module
+from app.services.conversation import mongo_log_append
 from app.services.conversation.mongo_log import MongoConversationLog
 from app.utils.errors import (
     ConversationAlreadyExistsError,
@@ -549,7 +549,7 @@ async def test_an_append_that_loses_every_conditional_write_raises_and_commits_n
         attempts.append(1)
         return False
 
-    monkeypatch.setattr(mongo_log_module, "CONVERSATION_APPEND_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(mongo_log_append, "CONVERSATION_APPEND_MAX_ATTEMPTS", 3)
     monkeypatch.setattr(conversation_log_repository, "commit_log_entry", lost)
 
     with pytest.raises(ConversationStoreError) as raised:

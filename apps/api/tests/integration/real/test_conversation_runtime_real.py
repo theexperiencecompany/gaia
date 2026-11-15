@@ -144,7 +144,8 @@ from app.services.checkpoint_thread_reset import ThreadReset
 from app.services.conversation import (
     composition,
     event_stream,
-    mongo_log,
+    mongo_log_claim,
+    mongo_log_hint,
     step as step_module,
     sweeper,
 )
@@ -2648,7 +2649,7 @@ async def test_a_reply_streaming_longer_than_the_claims_ttl_is_answered_once(
     model._replies = [AIMessage(content=text)]
     rig = await rig_for(model, tick=_production_tick)
     with (
-        patch.object(mongo_log, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
+        patch.object(mongo_log_claim, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
         patch.object(step_module, "RUNNER_ALIVE_TTL_SECONDS", _SHORT_TTL_SECONDS),
     ):
         await rig.send("m1", "tell me a long story")
@@ -2830,7 +2831,7 @@ async def test_a_stop_whose_hint_write_failed_is_still_what_the_step_reads(
     async def redis_down(*_: object) -> None:
         raise RedisConnectionError("redis down")
 
-    with patch.object(mongo_log, "_raise_hint", redis_down):
+    with patch.object(mongo_log_hint, "raise_hint", redis_down):
         await record_user_stop(rig.conversation_id, rig.user_id, "s1")
     # A running attempt decides on this read: a stale hint would let its reply settle answered.
     hint = await rig.ports.log.hint(rig.conversation_id, rig.user_id)
