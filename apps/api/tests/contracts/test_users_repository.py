@@ -18,7 +18,7 @@ import pytest
 
 from app.config.feature_flags import FeatureFlag
 from app.constants.auth import InstanceRole
-from app.constants.briefing import BriefingBag
+from app.constants.briefing import BriefingBag, EditionChoice
 from app.constants.email import SignupDelivery
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.users import UserRepository
@@ -862,6 +862,15 @@ class TestBriefingEngineState:
             BriefingBag.EDITION_FAMILY: family,
             BriefingBag.STAMP_CITY: city,
         }
+
+    async def test_edition_choices_replace_the_stored_ones_whole(self, repo, make_user):
+        created = await repo.create(make_user())
+        assert (await repo.get(created.id)).briefing_editions == {}
+
+        await repo.set_briefing_editions(created.id, {"menu": EditionChoice.OFF})
+        await repo.set_briefing_editions(created.id, {"swiss": EditionChoice.FAVOURITE})
+
+        assert (await repo.get(created.id)).briefing_editions == {"swiss": EditionChoice.FAVOURITE}
 
     async def test_the_dormancy_ladder_counts_goes_dormant_in_utc_and_clears(
         self, repo, make_user, local_time_offset_from_utc
