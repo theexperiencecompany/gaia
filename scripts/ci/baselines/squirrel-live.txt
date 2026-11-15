@@ -3531,10 +3531,8 @@ score:URL Structure=93
 /marketplace/google_maps	images/svg-inline/svg-inline
 /marketplace/google_maps	perf/cache-headers/cache-control
 /marketplace/google_maps	url/hyphens/url-hyphens
-/marketplace/googlecalendar	content/placeholder-contact/placeholder-contact	email
 /marketplace/googlecalendar	images/svg-inline/svg-inline
 /marketplace/googlecalendar	perf/cache-headers/cache-control
-/marketplace/googledocs	content/placeholder-contact/placeholder-contact	email
 /marketplace/googledocs	images/svg-inline/svg-inline
 /marketplace/googledocs	perf/cache-headers/cache-control
 /marketplace/googledrive	images/svg-inline/svg-inline
@@ -3542,8 +3540,6 @@ score:URL Structure=93
 /marketplace/googledrive	perf/dom-size/dom-max-children
 /marketplace/googlemeet	images/svg-inline/svg-inline
 /marketplace/googlemeet	perf/cache-headers/cache-control
-/marketplace/googlesheets	content/placeholder-contact/placeholder-contact	phone
-/marketplace/googlesheets	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/googlesheets	images/svg-inline/svg-inline
 /marketplace/googlesheets	perf/cache-headers/cache-control
 /marketplace/googletasks	images/svg-inline/svg-inline
@@ -3578,7 +3574,6 @@ score:URL Structure=93
 /marketplace/manufact-mcp-capabilities	links/orphan-pages/orphan-pages
 /marketplace/manufact-mcp-capabilities	links/weak-internal-links/weak-internal-links
 /marketplace/manufact-mcp-capabilities	perf/cache-headers/cache-control
-/marketplace/microsoft_teams	content/placeholder-contact/placeholder-contact	email
 /marketplace/microsoft_teams	images/svg-inline/svg-inline
 /marketplace/microsoft_teams	perf/cache-headers/cache-control
 /marketplace/microsoft_teams	url/hyphens/url-hyphens
@@ -3592,7 +3587,6 @@ score:URL Structure=93
 /marketplace/open-web-search-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	TMjyvYgfYOVGj9bi8MJhE6uxbFYdlkPdgVgPYmZVv-s
 /marketplace/open-web-search-mcp-capabilities	images/svg-inline/svg-inline
 /marketplace/open-web-search-mcp-capabilities	perf/cache-headers/cache-control
-/marketplace/outlook	content/placeholder-contact/placeholder-contact	email
 /marketplace/outlook	images/svg-inline/svg-inline
 /marketplace/outlook	perf/cache-headers/cache-control
 /marketplace/outlook	perf/dom-size/dom-max-children
@@ -3644,7 +3638,6 @@ score:URL Structure=93
 /marketplace/prisma-mcp-developer	images/offscreen-lazy/offscreen-images-not-lazy	RafMjs2aywC8-FWqnBD1gY12iSfqiW6r8C-PnxQfBrI
 /marketplace/prisma-mcp-developer	images/svg-inline/svg-inline
 /marketplace/prisma-mcp-developer	perf/cache-headers/cache-control
-/marketplace/pumpgtm-mcp-other	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/pumpgtm-mcp-other	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/pumpgtm-mcp-other	images/svg-inline/svg-inline
 /marketplace/pumpgtm-mcp-other	perf/cache-headers/cache-control
@@ -3655,9 +3648,6 @@ score:URL Structure=93
 /marketplace/render-mcp-developer	links/orphan-pages/orphan-pages
 /marketplace/render-mcp-developer	links/weak-internal-links/weak-internal-links
 /marketplace/render-mcp-developer	perf/cache-headers/cache-control
-/marketplace/resend-mcp-communication	content/placeholder-contact/placeholder-contact	email
-/marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	js-artifact
-/marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/resend-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/resend-mcp-communication	images/svg-inline/svg-inline
 /marketplace/resend-mcp-communication	perf/cache-headers/cache-control
@@ -3716,7 +3706,6 @@ score:URL Structure=93
 /marketplace/zoho-mail-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	D8A640beES6GqIaFICxwurh2VnSY8tn2AEaeH4SXohI
 /marketplace/zoho-mail-mcp-communication	images/svg-inline/svg-inline
 /marketplace/zoho-mail-mcp-communication	perf/cache-headers/cache-control
-/marketplace/zoom	content/placeholder-contact/placeholder-contact	address
 /marketplace/zoom	images/svg-inline/svg-inline
 /marketplace/zoom	perf/cache-headers/cache-control
 /marketplace?search=Discord	content/word-count/word-count
