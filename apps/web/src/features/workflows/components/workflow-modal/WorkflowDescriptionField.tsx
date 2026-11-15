@@ -12,7 +12,7 @@ import {
 import { TextMorph } from "torph/react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { MentionEditor } from "@/features/integrations/components/MentionEditor";
+import { LazyMentionEditor } from "@/features/integrations/components/LazyMentionEditor";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import { toast } from "@/lib/toast";
@@ -177,7 +177,7 @@ export default function WorkflowDescriptionField({
         control={control}
         render={({ field }) => (
           <>
-            <MentionEditor
+            <LazyMentionEditor
               value={field.value ?? ""}
               onChange={field.onChange}
               toolNames={toolNames}

@@ -1,12 +1,7 @@
 "use client";
 
 import { ButtonGroup, Dropdown, Menu } from "@heroui/react";
-import {
-  ArrowDown01Icon,
-  CallEnd04Icon,
-  Mic02Icon,
-  MicOff02Icon,
-} from "@icons";
+import { ArrowDown01Icon, Mic02Icon, MicOff02Icon } from "@icons";
 import { useRoomContext } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import * as React from "react";
@@ -16,6 +11,10 @@ import {
   type UseAgentControlBarProps,
   useAgentControlBar,
 } from "@/features/chat/components/voice-agent/hooks/use-agent-control-bar";
+import {
+  EndCallButton,
+  VoiceControlPill,
+} from "@/features/chat/components/voice-agent/VoiceCallControls";
 import { useVoiceSession } from "@/features/chat/components/voice-agent/VoiceSessionContext";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -130,8 +129,7 @@ export function AgentControlBar({
       className={cn("flex flex-col items-center justify-center p-3", className)}
       {...props}
     >
-      {/* One floating pill holds every control — iOS-call style. */}
-      <div className="flex items-center gap-1.5 rounded-full bg-zinc-900/80 p-1.5 shadow-lg backdrop-blur-md">
+      <VoiceControlPill>
         <ButtonGroup className={shapeVariants({ shape: "pill" })}>
           <GaiaButton
             isIconOnly
@@ -181,19 +179,9 @@ export function AgentControlBar({
         </ButtonGroup>
 
         {visibleControls.leave && (
-          <GaiaButton
-            shape="pill"
-            isIconOnly
-            aria-label="End voice session"
-            onPress={onLeave}
-            isDisabled={isDisconnecting}
-            variant="danger-soft"
-            className="h-12 w-14 bg-red-500/15 transition-colors hover:bg-red-500/20 active:bg-red-500/25"
-          >
-            <CallEnd04Icon className="h-6 w-6 text-red-400" />
-          </GaiaButton>
+          <EndCallButton onPress={onLeave} isDisabled={isDisconnecting} />
         )}
-      </div>
+      </VoiceControlPill>
     </div>
   );
 }

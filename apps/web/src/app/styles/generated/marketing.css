@@ -68,6 +68,7 @@
 @source "../../../lib/clipboard.ts";
 @source "../../../lib/faq.ts";
 @source "../../../lib/feature-data.ts";
+@source "../../../lib/firstInteraction.ts";
 @source "../../../lib/hubMetadata.ts";
 @source "../../../lib/hubPagination.ts";
 @source "../../../lib/imageDimensions.ts";
@@ -131,6 +132,7 @@
 @source "../../../components/shared/GaiaButton.tsx";
 @source "../../../components/shared/GaiaListBoxItem.tsx";
 @source "../../../components/shared/GaiaSelectValue.tsx";
+@source "../../../components/shared/HydrateOnVisible.tsx";
 @source "../../../components/shared/icons.tsx";
 @source "../../../components/shared/LinkButton.tsx";
 @source "../../../components/shared/LogoWithContextMenu.tsx";
@@ -270,6 +272,7 @@
 @source "../../../features/integrations/lib/serverMarketplaceApi.ts";
 @source "../../../features/integrations/utils/catalog.ts";
 @source "../../../features/landing/components/LazyMotionProvider.tsx";
+@source "../../../features/landing/components/motionFeatures.ts";
 @source "../../../features/landing/constants/data.ts";
 @source "../../../features/landing/data/featuresAtAGlance.ts";
 @source "../../../features/landing/data/featuresData.ts";
@@ -346,13 +349,16 @@
 @source "../../../features/use-cases/utils/toUseCase.ts";
 @source "../../../features/workflows/api/queryKeys.ts";
 @source "../../../features/workflows/api/workflowApi.ts";
+@source "../../../features/workflows/constants/explore.ts";
 @source "../../../features/workflows/constants/workflowIconCatalog.data.ts";
 @source "../../../features/workflows/constants/workflowIconCatalog.ts";
+@source "../../../features/workflows/constants/workflowIconStyle.ts";
 @source "../../../features/workflows/hooks/useExploreWorkflows.ts";
 @source "../../../features/workflows/hooks/useWorkflowCreation.ts";
 @source "../../../features/workflows/hooks/useWorkflows.ts";
 @source "../../../features/workflows/lib/serverWorkflowsApi.ts";
 @source "../../../features/workflows/lib/templateCopies.ts";
+@source "../../../features/workflows/lib/workflowIconElements.tsx";
 @source "../../../features/workflows/triggers/utils.ts";
 @source "../../../features/workflows/utils/creator.ts";
 @source "../../../features/workflows/utils/cronUtils.ts";
@@ -452,10 +458,13 @@
 @source "../../../features/pricing/components/receipt-printer/ReceiptPrinterScreen.tsx";
 @source "../../../features/pricing/components/receipt-printer/ReceiptPrinterStatus.tsx";
 @source "../../../features/pricing/components/receipt-printer/StatusIndicator.tsx";
+@source "../../../features/workflows/components/shared/CatalogWorkflowIcons.tsx";
 @source "../../../features/workflows/components/shared/UnifiedWorkflowCard.tsx";
 @source "../../../features/workflows/components/shared/useWorkflowCardActions.ts";
 @source "../../../features/workflows/components/shared/WorkflowCardComponents.tsx";
 @source "../../../features/workflows/components/shared/workflowCardHelpers.ts";
+@source "../../../features/workflows/components/shared/WorkflowIconElements.tsx";
+@source "../../../features/workflows/components/shared/WorkflowIconParts.tsx";
 @source "../../../features/workflows/components/shared/WorkflowIcons.tsx";
 @source "../../../features/workflows/components/shared/WorkflowStep.tsx";
 @source "../../../features/workflows/components/shared/WorkflowSteps.tsx";

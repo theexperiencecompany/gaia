@@ -11,6 +11,7 @@ import {
   listMCPResourceTemplates,
   readMCPResource,
 } from "@/features/chat/api/mcpProxyApi";
+import { MCP_APP_INITIAL_HEIGHT_PX } from "@/features/chat/constants/mcpApp";
 import { sendMessage } from "@/features/chat/stream/sendMessage";
 import { getBrowserTimezone } from "@/lib/timezone";
 
@@ -37,7 +38,7 @@ interface Props {
 }
 
 export function MCPAppRenderer({ data }: Props) {
-  const [appHeight, setAppHeight] = useState(500);
+  const [appHeight, setAppHeight] = useState(MCP_APP_INITIAL_HEIGHT_PX);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("inline");
   const [bridge, setBridge] = useState<AppBridge | null>(null);
   const bridgeRef = useRef<AppBridge | null>(null);

@@ -30,6 +30,20 @@ const turbopackRoot = isWorktreeWithSharedDeps
   ? path.join(__dirname, "../../..")
   : path.join(__dirname, "../..");
 
+/** The first path segment of every (landing) route: each directory there that holds a route. */
+function landingSections() {
+  const landingDir = path.join(__dirname, "src/app/[locale]/(landing)");
+  return fs
+    .readdirSync(landingDir, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        fs.readdirSync(path.join(landingDir, entry.name), { recursive: true })
+          .some((file) => /(^|\/)page\.(tsx|mdx)$/.test(String(file))),
+    )
+    .map((entry) => entry.name);
+}
+
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
 });
@@ -219,24 +233,34 @@ const nextConfig = {
     ...(process.env.NODE_ENV === "development" ? ["dev.ts", "dev.tsx"] : []),
   ],
   async headers() {
-    // ISR hub pages send s-maxage only; browsers need max-age and a validator.
-    // Scope it to those routes: static pages already pass, app routes need
-    // their private/no-store headers.
-    const marketingHubs = ["alternative-to", "automate", "compare", "learn", "for", "blog", "use-cases", "marketplace", "features"];
-    const buildLastModified = new Date().toUTCString();
+    // Next sends public pages s-maxage only; browsers need max-age and a validator.
+    // Hosted (landing) routes and home only: app routes stay private/no-store, and
+    // self-host /signup renders live setup status (see src/lib/selfhost.ts).
+    const isSelfhostWeb = process.env.NEXT_PUBLIC_GAIA_SELFHOST === "true";
+    const publicHeaders = [
+      {
+        key: "Cache-Control",
+        value: "public, max-age=0, s-maxage=60, stale-while-revalidate=86400",
+      },
+      { key: "Last-Modified", value: new Date().toUTCString() },
+    ];
+    const publicCacheRules = isSelfhostWeb
+      ? []
+      : [
+          {
+            source: `/:locale(de|es|fr|ja|ko|pt-br)?/(${landingSections().join("|")})/:path*`,
+            headers: publicHeaders,
+          },
+          // An optional segment alone does not match "/", so the home page needs its own rule.
+          { source: "/", headers: publicHeaders },
+          {
+            source: "/:locale(de|es|fr|ja|ko|pt-br)",
+            headers: publicHeaders,
+          },
+        ];
     return [
       ...NEXT_SECURITY_HEADER_RULES,
-      {
-        source: `/:locale(de|es|fr|ja|ko|pt-br)?/(${marketingHubs.join("|")})/:path*`,
-        headers: [
-          {
-            key: "Cache-Control",
-            value:
-              "public, max-age=0, s-maxage=60, stale-while-revalidate=86400",
-          },
-          { key: "Last-Modified", value: buildLastModified },
-        ],
-      },
+      ...publicCacheRules,
       // /_next/static/*: intentionally NOT setting a custom Cache-Control here.
       // Next content-hashes chunk filenames in prod, so its default immutable
       // headers are correct; in dev, Turbopack reuses filenames across rebuilds, so a custom long-cache header would pin a stale bundle and break hot reloads.
