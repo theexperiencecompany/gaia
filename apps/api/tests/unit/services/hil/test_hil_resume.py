@@ -137,6 +137,13 @@ class TestResumeWorkflow:
             "with its result. If it is no longer needed, say so instead of running it."
         )
 
+    def test_a_yes_with_a_change_hands_the_redo_its_amendment_id(self) -> None:
+        ticket = approval_ticket(_row(feedback="send it to Sam too"))
+
+        assert "Do not run the stored call" in ticket
+        assert 'execute(tool_name="GMAIL_SEND_EMAIL", ' in ticket
+        assert 'amends="ap_bg1")' in ticket
+
     async def test_a_workflow_the_queue_refused_raises(self) -> None:
         with (
             patch(

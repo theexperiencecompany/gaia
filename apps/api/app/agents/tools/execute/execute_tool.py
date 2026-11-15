@@ -67,6 +67,11 @@ def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> Ba
             "the name of the one to act as (e.g. 'work@acme.com'); omit to use the primary. "
             "Never set it for an integration that lists no accounts.",
         ] = None,
+        amends: Annotated[
+            str | None,
+            "Only when redoing a call the user approved with a change: that approval's id "
+            "(e.g. 'ap_1a2b3c4d5e'), so the new approval shows what changed. Omit otherwise.",
+        ] = None,
     ) -> str:
         """Run an integration tool (Gmail, GitHub, Notion, MCP, ...) by name.
 
@@ -75,8 +80,8 @@ def build_execute_tool(scoped_tools: Mapping[str, BaseTool] | None = None) -> Ba
         unknown_tool or invalid_args error, correct tool_name/data per the error
         detail and retry once. Never retry the identical call.
         """
-        # UI-facing arg: consumed by the stream formatter (card label), not here.
-        del task_description
+        # task_description labels the card and amends links the approval; the gate reads both.
+        del task_description, amends
         configurable: AgentConfigurable = agent_configurable(config)
         result = await dispatch_tool(
             user_id=configurable.get("user_id"),

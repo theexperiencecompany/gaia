@@ -58,7 +58,7 @@ from app.services.hil.errors import (
 from app.services.hil.policy import asks_every_time, resolved_tool_key
 from app.services.hil.preferences import set_tool_override
 from app.services.hil.resume import record_owner_deny, resume_owner_after_approval
-from app.services.hil.ticket import approval_ticket
+from app.services.hil.ticket import amend_instruction, approval_ticket
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.hil import (
     ApprovalDecided as ApprovalDecidedEvent,
@@ -357,8 +357,8 @@ def _redeem_refusal(
             approval_id=row.approval_id,
             action=None,
             detail=(
-                f"Approved with a change ({decided.feedback!r}); this stored call lacks it. "
-                "Make the call again with the change applied."
+                f"Approved with a change ({decided.feedback!r}); this stored call lacks it: "
+                f"{amend_instruction(row)}."
             ),
         )
     if caller != row.owner_agent and not caller.startswith(EXECUTOR_THREAD_PREFIX):

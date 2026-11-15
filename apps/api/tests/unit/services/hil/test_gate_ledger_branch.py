@@ -11,6 +11,7 @@ from pydantic import BaseModel
 import pytest
 import time_machine
 
+from app.constants.execute import EXECUTE_TOOL_NAME
 from app.constants.hil import AUTO_ASK_NOTE, HIL_APPROVAL_TIMEOUT_SECONDS, HIL_STATUS_KWARG
 from app.constants.log_tags import LogTag
 from app.models.conversation_log_models import ApprovalRequested
@@ -477,26 +478,44 @@ class TestLedgerRegistration:
         assert result is not None
         assert 'execute(tool_name="revoke", data={"id": "ap_abc1234567"})' in str(result.content)
 
-    async def test_a_re_ask_after_a_yes_with_a_change_shows_the_change(
+    async def test_only_the_call_carrying_the_amendment_id_is_the_re_ask(
         self, gate_seams: GateSeams
     ) -> None:
+        """Two calls of the amended tool follow a yes with a change; only the one naming it is its redo."""
         todo = "create_todo"
-        before = {"title": "Pay rent", "priority": None}
-        after = {"title": "Pay rent", "priority": "high"}
-        gate_seams.ledger.find_amended.return_value = _row(
+        amended = _row(
             outcome=ApprovalOutcome.APPROVED,
             tool_name=todo,
             approval_id="ap_before",
-            args=before,
+            args={"title": "Pay rent", "priority": None},
             feedback="yes but make it high priority",
         )
-        with patch(f"{MODULE}.work_of_run", new=AsyncMock(return_value="t1")):
-            await gate.decide_tool_call(gated_request(name=todo, args=after))
 
-        gate_seams.ledger.find_amended.assert_awaited_once_with(todo, CONVERSATION_ID)
-        [call] = gate_seams.requested.await_args_list
-        changes = call.args[2].description.changes
-        assert changes == [ApprovalDetail(label="Priority", value="high")]
+        async def find_amended(
+            approval_id: str, conversation_id: str
+        ) -> ApprovalLedgerDocument | None:
+            linked = (approval_id, conversation_id) == ("ap_before", CONVERSATION_ID)
+            return amended if linked else None
+
+        gate_seams.ledger.find_amended.side_effect = find_amended
+        redo = {
+            "task_description": "Create the todo",
+            "tool_name": todo,
+            "data": {"title": "Pay rent", "priority": "high"},
+            "amends": "ap_before",
+        }
+        await gate.decide_tool_call(
+            gated_request(name=todo, args={"title": "Pay rent", "priority": "low"})
+        )
+        await gate.decide_tool_call(gated_request(name=EXECUTE_TOOL_NAME, args=redo))
+
+        unrelated, redone = (
+            call.args[2].description for call in gate_seams.requested.await_args_list
+        )
+        assert unrelated.changes == []
+        assert redone.changes == [ApprovalDetail(label="Priority", value="high")]
+        assert redone.details[0] == ApprovalDetail(label="Priority", value="high")
+        gate_seams.ledger.find_amended.assert_awaited_once_with("ap_before", CONVERSATION_ID)
 
     async def test_a_call_on_a_named_account_is_its_own_approval(
         self, gate_seams: GateSeams

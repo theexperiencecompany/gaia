@@ -4,6 +4,14 @@ from app.models.hil_models import ApprovalLedgerDocument
 from app.utils.timezone import age_since
 
 
+def amend_instruction(row: ApprovalLedgerDocument) -> str:
+    """Tell the work to redo a call approved with a change, naming the approval it amends."""
+    return (
+        f'make the call again with the change applied, as execute(tool_name="{row.tool_name}", '
+        f'data=<the changed arguments>, amends="{row.approval_id}")'
+    )
+
+
 def approval_ticket(row: ApprovalLedgerDocument) -> str:
     """Return the ticket for an approved row: its id, its age, and the execute call that honors it.
 
@@ -14,7 +22,7 @@ def approval_ticket(row: ApprovalLedgerDocument) -> str:
         return (
             f"APPROVAL_READY {row.approval_id}: the user approved {row.summary} ({age}) "
             f"with a change: {row.feedback!r}. Do not run the stored call, it lacks the change: "
-            "make the call again with the change applied, and continue with its result."
+            f"{amend_instruction(row)}, and continue with its result."
         )
     return (
         f"APPROVAL_READY {row.approval_id}: the user approved {row.summary} "

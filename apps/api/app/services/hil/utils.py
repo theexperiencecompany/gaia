@@ -19,7 +19,7 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolCall
 from langchain_core.tools import BaseTool
 
-from app.agents.tools.execute.unwrap import execute_call_account, unwrap_execute_call
+from app.agents.tools.execute.unwrap import execute_call_note, unwrap_execute_call
 from app.constants.hil import (
     HIL_JUDGE_MAX_ARGS_CHARS,
     HIL_JUDGE_MAX_ASSISTANT_CHARS,
@@ -41,6 +41,8 @@ class GatedCall:
     args: dict[str, object]
     # The connected account an execute call acts as; None is the primary.
     account: str | None = None
+    # The approval this call redoes after the user approved it with a change.
+    amends: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,7 +117,11 @@ def unpack_tool_call(request: ToolCallRequest) -> GatedCall:
     raw = raw_tool_call(request)
     name, args = unwrap_execute_call(raw.name, raw.args)
     return GatedCall(
-        name=name, id=raw.id, args=args, account=execute_call_account(raw.name, raw.args)
+        name=name,
+        id=raw.id,
+        args=args,
+        account=execute_call_note(raw.name, raw.args, "account"),
+        amends=execute_call_note(raw.name, raw.args, "amends"),
     )
 
 

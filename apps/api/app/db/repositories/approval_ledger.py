@@ -202,16 +202,14 @@ class ApprovalLedgerRepository(MongoRepository[ApprovalLedgerDocument, ApprovalL
         return ApprovalLedgerDocument.model_validate(raw) if raw else None
 
     async def find_amended(
-        self, tool_name: str, conversation_id: str
+        self, approval_id: str, conversation_id: str
     ) -> ApprovalLedgerDocument | None:
-        """Return the tool's newest row in the conversation when the user approved it with a change.
+        """Return the conversation's row a redo names, when the user approved it with a change.
 
-        That stored call never runs, so the tool's next call in the conversation is its re-ask;
-        once the re-ask registers, it is the newest row and this returns None.
+        That stored call never runs; the redo call carries its id, which is the only link.
         """
         raw = await self._raw_collection().find_one(
-            {"tool_name": tool_name, "conversation_id": conversation_id},
-            sort=[("created_at", -1)],
+            {"approval_id": approval_id, "conversation_id": conversation_id}
         )
         if raw is None:
             return None

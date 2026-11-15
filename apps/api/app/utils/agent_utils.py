@@ -10,7 +10,7 @@ from app.agents.core.subagents.integration_target import get_integration_target
 from app.agents.tools.core.registry import UNKNOWN_TOOL_CATEGORY, ToolRegistry, get_tool_registry
 from app.agents.tools.execute.unwrap import (
     ExecuteCallArgs,
-    execute_call_account,
+    execute_call_note,
     unwrap_execute_call,
 )
 from app.config.oauth_config import get_integration_by_id, get_integration_by_tool_slug
@@ -182,7 +182,7 @@ async def format_tool_call_entry(
         execute_args: ExecuteCallArgs = cast(ExecuteCallArgs, call_args)
         raw_description = execute_args.get("task_description")
         task_description = raw_description if isinstance(raw_description, str) else None
-        account = execute_call_account(tool_name_raw, call_args)
+        account = execute_call_note(tool_name_raw, call_args, "account")
         tool_name_raw = unwrapped_name
         # The account the call acted as is part of what it did, so a wrong one is visible.
         call_args = {**unwrapped_args, "account": account} if account else unwrapped_args
