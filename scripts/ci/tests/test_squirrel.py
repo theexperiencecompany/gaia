@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import select
 import sqlite3
 import subprocess
 import sys
+import time
 
 from http_stub import Routes, serve
 import pytest
@@ -358,6 +360,33 @@ def test_the_same_rules_still_count_a_real_finding(tmp_path: Path, row: Row) -> 
         "/marketplace/gmail",
     ]
     assert _ratchet(tmp_path, [row], "", pages=pages).returncode == 1
+
+
+def test_the_verdict_survives_a_stdout_the_crawler_left_non_blocking(tmp_path: Path) -> None:
+    pages = ["/", *(f"/p{n}" for n in range(2000))]
+    home = _crawl(tmp_path, pages, [_row(f"/p{n}", "a11y/link-text", "link-text-generic", [{"id": "download"}]) for n in range(2000)], {})  # fmt: skip
+    (tmp_path / "baseline.txt").write_text("")
+    read_end, write_end = os.pipe()
+    os.set_blocking(write_end, False)
+    proc = subprocess.Popen(
+        [
+            sys.executable, "-I", str(SCRIPT), "ratchet", "--site", SITE, "--home", str(home),
+            "--report", str(tmp_path / "report.json"), "--pages", str(tmp_path / "pages.txt"),
+            "--baseline", str(tmp_path / "baseline.txt"),
+        ],
+        stdout=write_end,
+        stderr=subprocess.STDOUT,
+    )  # fmt: skip
+    # read nothing until the pipe is full or the child is gone, so the child has hit the failing write
+    deadline = time.monotonic() + 60
+    while proc.poll() is None and select.select([], [write_end], [], 0.05)[1]:
+        assert time.monotonic() < deadline, "the report never filled the pipe"
+    os.close(write_end)
+    with os.fdopen(read_end, encoding="utf-8") as reader:
+        out = reader.read()
+    assert proc.wait() == 1
+    assert out.count("squirrel: new finding") == 2000
+    assert "squirrel: FAIL (2000 findings on 2001 pages: 2000 new" in out
 
 
 def test_a_red_full_crawl_writes_a_short_alert(tmp_path: Path) -> None:

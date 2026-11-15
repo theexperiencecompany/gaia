@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterable
 from contextlib import closing
 from dataclasses import dataclass, replace
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
@@ -595,6 +596,9 @@ def cmd_drop(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # squirrel's binary leaves the stdout it shares with us O_NONBLOCK, so a long verdict
+    # died mid-print with BlockingIOError (master run 43763653900).
+    os.set_blocking(sys.stdout.fileno(), True)
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     drop = sub.add_parser("drop", help="apply the fixes a ratchet run printed to the baseline")
