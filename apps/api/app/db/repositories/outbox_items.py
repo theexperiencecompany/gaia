@@ -17,6 +17,7 @@ from app.db.repositories.base import UserScopedRepository
 from app.models.outbox_models import OutboxItemDocument, OutboxItemUpdate
 from app.services.outbox.judge_models import ItemJudgement
 from app.services.outbox.models import (
+    NEEDS_YOU_OUTCOMES,
     UNSENT_STATES,
     ComposeMode,
     DropReason,
@@ -24,6 +25,7 @@ from app.services.outbox.models import (
     ItemHold,
     ItemState,
     OutboxReport,
+    SubjectKind,
     UrgencyClass,
 )
 from app.utils import clock
@@ -474,17 +476,40 @@ class OutboxItemsRepository(UserScopedRepository[OutboxItemDocument, OutboxItemU
     async def settle_with_prefix(
         self, user_id: str, report_id_prefix: str, *, outcomes: Collection[str]
     ) -> int:
-        """Resolve the unresolved items with these outcomes whose report id starts with the prefix; return how many.
+        """Resolve the unresolved items with these outcomes whose report id starts with the prefix; return how many."""
+        return await self._settle(
+            {
+                "user_id": user_id,
+                "report_id": {"$regex": f"^{re.escape(report_id_prefix)}"},
+                **_outcome_in(outcomes),
+            }
+        )
 
-        An item not yet told is dropped as moot: what it would ask of the user is already done.
+    async def settle_answered_asks(self, report: OutboxReport) -> int:
+        """Resolve the needs-you asks of the report's conversation that came before it; return how many.
+
+        A later report of the conversation means the user answered what an earlier one asked of them.
+        """
+        conversation_id = report.subject.owner_conversation_id
+        if conversation_id is None:
+            return 0
+        return await self._settle(
+            {
+                "user_id": report.recipient,
+                "report.subject.kind": SubjectKind.ASK.value,
+                "report.subject.owner_conversation_id": conversation_id,
+                "report.occurred_at": {"$lt": report.occurred_at},
+                **_outcome_in(NEEDS_YOU_OUTCOMES),
+            }
+        )
+
+    async def _settle(self, selector: dict[str, object]) -> int:
+        """Resolve the unresolved items the selector picks; an item not yet told is dropped as moot.
+
+        What an unsent item would ask of the user is already done.
         """
         now = clock.now()
-        match = {
-            "user_id": user_id,
-            "report_id": {"$regex": f"^{re.escape(report_id_prefix)}"},
-            **_UNRESOLVED,
-            **_outcome_in(outcomes),
-        }
+        match = {**selector, **_UNRESOLVED}
         untold = await self._raw_collection().update_many(
             {**match, "state": {"$in": [ItemState.RECEIVED.value, ItemState.HELD.value]}},
             {

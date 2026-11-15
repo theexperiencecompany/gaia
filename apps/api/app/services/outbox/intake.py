@@ -37,7 +37,13 @@ from app.services.outbox.metrics import (
     OUTBOX_ITEMS_HELD,
     OUTBOX_JUDGE_INTERRUPT_CAPPED,
 )
-from app.services.outbox.models import ItemHold, ItemState, OutboxReport, SubjectMerge
+from app.services.outbox.models import (
+    ItemHold,
+    ItemState,
+    OutboxReport,
+    SubjectKind,
+    SubjectMerge,
+)
 from app.services.outbox.policy import (
     Decision,
     DecisionKind,
@@ -227,6 +233,8 @@ async def process_report(report: OutboxReport, *, batched: bool = False) -> None
     )
     state = stored.item.state
     if state is ItemState.RECEIVED:
+        if report.subject.kind is SubjectKind.ASK:
+            await outbox_items_repository.settle_answered_asks(report)
         if not await _queue_if_to_be_told(report, batched=batched):
             return
     elif state is not ItemState.QUEUED:

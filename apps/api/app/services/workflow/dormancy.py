@@ -25,7 +25,7 @@ from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.workflow_models import WorkflowDocument
-from app.services.delivery.presence import read_last_active
+from app.services.delivery.presence import account_created_since, read_last_active
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -58,12 +58,14 @@ class DormancySweepResult(BaseModel):
     candidates: list[DormantUserWorkflows] = Field(default_factory=list)
 
 
-async def _is_really_dormant(user_id: str, cutoff: datetime) -> bool:
+async def _is_really_dormant(user_id: str, created_at: datetime | None, cutoff: datetime) -> bool:
     """Return whether user_id shows no activity on ANY signal since cutoff.
 
     Messages the user wrote, metered feature use and presence count alongside last_active_at;
-    GAIA's own messages never do.
+    GAIA's own messages never do. An account created since cutoff is never dormant.
     """
+    if account_created_since(created_at, cutoff):
+        return False
     last_seen = await read_last_active(user_id)
     if last_seen is not None and last_seen >= cutoff.timestamp():
         return False
@@ -97,7 +99,7 @@ async def find_dormancy_candidates(
         workflows: list[WorkflowDocument] = await workflow_repository.find_activated_for_user(
             user.id
         )
-        if not workflows or not await _is_really_dormant(user.id, cutoff):
+        if not workflows or not await _is_really_dormant(user.id, user.created_at, cutoff):
             continue
         candidates.append(
             DormantUserWorkflows(

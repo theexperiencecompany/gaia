@@ -13,6 +13,7 @@ from tests._harness.judge import notice
 from app.agents.context.section_context import ExecutionMode, SectionContext
 from app.agents.context.tiers import AgentTier
 from app.agents.context.work_state import build_work_state_block
+from app.constants.outbox_attention import HoldReason
 from app.constants.todos import WaitingOn
 from app.constants.work_state import (
     WORK_STATE_LIST_MAX,
@@ -22,7 +23,13 @@ from app.constants.work_state import (
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
 from app.models.outbox_models import OutboxItemDocument, OutboxMessageDocument
 from app.models.todo_models import TodoDocument
-from app.services.outbox.models import ComposeMode, ItemState, MessageState, UrgencyClass
+from app.services.outbox.models import (
+    ComposeMode,
+    ItemHold,
+    ItemState,
+    MessageState,
+    UrgencyClass,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -57,8 +64,9 @@ def _approval(summary: str, state: LedgerState = LedgerState.PENDING) -> Approva
     )
 
 
-def _untold(label: str, state: ItemState) -> OutboxItemDocument:
+def _untold(label: str, state: ItemState, hold: ItemHold | None = None) -> OutboxItemDocument:
     return OutboxItemDocument(
+        hold=hold,
         user_id=USER,
         report_id=f"r-{label}",
         report=notice(
@@ -144,6 +152,30 @@ async def test_the_wider_picture_is_labels_in_the_users_words_never_ids_or_tools
     )
     for internal in ("appr-secret-id", "run-secret-id", "gmail_send_email", "todo"):
         assert internal not in block.lower()
+
+
+async def test_a_held_result_the_return_released_is_about_to_be_told_not_kept_for_later() -> None:
+    released = ItemHold(
+        reason=HoldReason.DORMANT,
+        until=datetime(2020, 1, 1, tzinfo=UTC),
+        since=datetime(2019, 12, 1, tzinfo=UTC),
+    )
+    still_held = released.model_copy(update={"until": datetime(2099, 1, 1, tzinfo=UTC)})
+    with _world(
+        untold=[
+            _untold("Gym membership", ItemState.HELD, released),
+            _untold("Delhi flight", ItemState.HELD, still_held),
+        ]
+    ):
+        block = await build_work_state_block(_ctx())
+
+    assert (
+        "- Gym membership (info): finished, goes to them as its own message right after this reply"
+        in block
+    )
+    assert (
+        "- Delhi flight (info): finished, kept until quiet hours end or the next check-in" in block
+    )
 
 
 async def test_an_approval_already_decided_is_not_waiting_on_the_user() -> None:

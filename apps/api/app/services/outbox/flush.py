@@ -34,7 +34,7 @@ from app.constants.websocket import ReportSettledOutcome
 from app.db.repositories.outbox_items import outbox_items_repository
 from app.models.outbox_models import OutboxItemDocument
 from app.services.delivery.presence import read_last_active
-from app.services.outbox.deliver import flush_items
+from app.services.outbox.deliver import OutboxUserNotFoundError, flush_items
 from app.services.outbox.digest import settle_dormant
 from app.services.outbox.dormancy import is_dormant
 from app.services.outbox.flush_queue import release_and_flush, schedule_flush
@@ -43,6 +43,7 @@ from app.services.outbox.metrics import OUTBOX_ITEMS_FAILED, OUTBOX_ITEMS_RECOVE
 from app.services.outbox.models import ItemFailure, ItemState
 from app.services.outbox.settled import announce_settled
 from app.utils import clock
+from app.utils.auth_utils import load_user_context
 from app.utils.concurrency import loop_bound_semaphore
 from app.utils.redis_utils import RedisPoolManager
 from app.workers.queue import enqueue_worker_job
@@ -78,7 +79,10 @@ async def _settle_dormant_holds(
     waiting = [item for item in due if _held_for_dormancy(item)]
     if not waiting:
         return due
-    if not await is_dormant(user_id, await read_last_active(user_id), clock.now()):
+    user = await load_user_context(user_id)
+    if user is None:
+        raise OutboxUserNotFoundError(user_id)
+    if not await is_dormant(user_id, await read_last_active(user_id), user.created_at, clock.now()):
         return due
     await settle_dormant(user_id, waiting)
     return [item for item in due if item not in waiting]

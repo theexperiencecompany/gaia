@@ -18,9 +18,10 @@ from app.services.workflow.dormancy import (
 _MOD = "app.services.workflow.dormancy"
 
 
-def _user(user_id: str, days_idle: int | None = 90) -> SimpleNamespace:
+def _user(user_id: str, days_idle: int | None = 90, account_age_days: int = 365) -> SimpleNamespace:
     last_active = None if days_idle is None else datetime.now(UTC) - timedelta(days=days_idle)
-    return SimpleNamespace(id=user_id, last_active_at=last_active)
+    created_at = datetime.now(UTC) - timedelta(days=account_age_days)
+    return SimpleNamespace(id=user_id, last_active_at=last_active, created_at=created_at)
 
 
 def _workflow(workflow_id: str) -> SimpleNamespace:
@@ -117,6 +118,19 @@ class TestSweepDormantWorkflows:
 
         assert result.failures == 1
         assert result.workflows_paused == 1
+
+    async def test_an_account_newer_than_the_threshold_is_never_dormant(self):
+        deactivate = AsyncMock()
+        p = _patches(
+            users=[_user("u1", days_idle=None, account_age_days=2)],
+            workflows_by_user={"u1": [_workflow("wf_a")]},
+            deactivate=deactivate,
+        )
+        with p[0], p[1], p[2], p[3], p[4]:
+            result = await sweep_dormant_workflows()
+
+        assert result.candidates == []
+        deactivate.assert_not_awaited()
 
     async def test_a_user_never_seen_active_counts_as_dormant(self):
         deactivate = AsyncMock()

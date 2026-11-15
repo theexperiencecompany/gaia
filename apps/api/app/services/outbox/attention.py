@@ -76,7 +76,7 @@ async def attention_state(
         if last_active is not None
         else None,
         in_call=call_room is not None,
-        dormant=await is_dormant(user_id, last_active, now),
+        dormant=await is_dormant(user_id, last_active, user.created_at, now),
         unsolicited_today=told_today,
         last_unsolicited_at=as_utc(last_unsolicited_at),
         fact_history=history,

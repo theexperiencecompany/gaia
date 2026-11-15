@@ -10,6 +10,7 @@ The user's last sign of presence anywhere is one long-lived stamp, written by ev
 
 import asyncio
 from collections.abc import Mapping
+from datetime import datetime
 
 from app.constants.cache import (
     USER_CALL_PRESENCE_PREFIX,
@@ -28,6 +29,7 @@ from app.db.redis import redis_cache
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.presence_models import PresenceSnapshot
 from app.utils import clock
+from app.utils.timezone import as_utc
 
 
 def _presence_key(user_id: str) -> str:
@@ -152,6 +154,12 @@ async def read_last_active(user_id: str) -> int | None:
     if call_room is not None:
         return _now_epoch()
     return int(last_seen) if last_seen is not None and last_seen.isdecimal() else None
+
+
+def account_created_since(created_at: datetime | None, cutoff: datetime) -> bool:
+    """Whether the account was created at or after cutoff: a user cannot have gone away before they existed."""
+    created = as_utc(created_at)
+    return created is not None and created >= cutoff
 
 
 def surfaces_by_recency(snapshot: PresenceSnapshot) -> list[tuple[ConversationSource, int]]:

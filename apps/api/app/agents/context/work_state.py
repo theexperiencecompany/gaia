@@ -23,6 +23,7 @@ from app.db.repositories.outbox_items import outbox_items_repository
 from app.db.repositories.outbox_messages import outbox_messages_repository
 from app.db.repositories.todos import todo_repository
 from app.models.hil_models import ApprovalLedgerDocument, LedgerState
+from app.models.outbox_models import OutboxItemDocument
 from app.models.todo_models import TodoDocument
 from app.services.outbox.models import ItemState, NoticeReport, OutboxReport, RunReport
 from shared.py.wide_events import log
@@ -32,6 +33,7 @@ _UNTOLD_STATE_TEXT = {
     ItemState.QUEUED: "finished, waiting for a good moment to tell",
     ItemState.HELD: "finished, kept until quiet hours end or the next check-in",
 }
+_DUE_TEXT = "finished, goes to them as its own message right after this reply"
 
 
 def _outcome_of(report: OutboxReport) -> str:
@@ -60,10 +62,17 @@ def _waiting_on_user(
     return [*undecided, *asks][:WORK_STATE_LIST_MAX]
 
 
-async def _untold_results(user_id: str) -> list[str]:
+def _untold_state_text(item: OutboxItemDocument, now: datetime) -> str:
+    """Say where an unsent item is; a held one whose hold has ended is about to be told."""
+    if item.state is ItemState.HELD and item.hold is not None and item.hold.until <= now:
+        return _DUE_TEXT
+    return _UNTOLD_STATE_TEXT[item.state]
+
+
+async def _untold_results(user_id: str, now: datetime) -> list[str]:
     items = await outbox_items_repository.list_unsettled(user_id, limit=WORK_STATE_LIST_MAX)
     return [
-        f"{item.report.subject.label} ({_outcome_of(item.report)}): {_UNTOLD_STATE_TEXT[item.state]}"
+        f"{item.report.subject.label} ({_outcome_of(item.report)}): {_untold_state_text(item, now)}"
         for item in items
     ]
 
@@ -91,12 +100,13 @@ async def build_work_state_block(ctx: SectionContext) -> str:
     if ctx.execution_mode == "background" or not ctx.user_id or not ctx.conversation_id:
         return running
     user_id, conversation_id = ctx.user_id, ctx.conversation_id
+    now = datetime.now(UTC)
     try:
         todos, approvals, untold, told = await asyncio.gather(
             todo_repository.find_running_tracked_for_user(user_id),
             approval_ledger_repository.list_open(conversation_id),
-            _untold_results(user_id),
-            _told_elsewhere(user_id, conversation_id, datetime.now(UTC)),
+            _untold_results(user_id, now),
+            _told_elsewhere(user_id, conversation_id, now),
         )
     except Exception as e:
         log.error(

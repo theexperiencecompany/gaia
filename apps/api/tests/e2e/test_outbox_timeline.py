@@ -18,6 +18,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agents.context.section_context import SectionContext
+from app.agents.context.tiers import AgentTier
+from app.agents.context.work_state import build_work_state_block
 from app.agents.core.background import todo_run_delivery as trd
 from app.agents.core.background.run_report import (
     RunOutcome,
@@ -109,6 +112,7 @@ from tests.e2e._harness.outbox_timeline import (
 pytestmark = pytest.mark.e2e
 
 USER = "6812f0b3c9a14e2b7d5a91cc"
+WORK_STATE = "app.agents.context.work_state"
 
 
 def _reminder(
@@ -1975,6 +1979,71 @@ async def test_a_system_notice_filed_twice_is_one_item_and_one_message(tl: Outbo
     assert len(await tl.ledger()) == 1
 
 
+def _ask_run(
+    report_id: str,
+    outcome: OutcomeState,
+    *,
+    subject_id: str,
+    minutes: float,
+    conversation: str = "web-1",
+) -> RunReport:
+    """Return an executor's answer to something the user asked; every ask is its own subject."""
+    return RunReport(
+        report_id=report_id,
+        recipient=USER,
+        producer=ProducerKind.EXECUTOR,
+        subject=Subject(
+            kind=SubjectKind.ASK,
+            id=subject_id,
+            owner_conversation_id=conversation,
+            label="Delete 'Call mom'",
+        ),
+        occurred_at=T0 + timedelta(minutes=minutes),
+        initiative=Initiative.ASKED,
+        report=TaskReport(outcome=outcome),
+    )
+
+
+async def _needs_you(tl: OutboxTimeline) -> list[str]:
+    page = await read_updates(USER, UpdateFilter.NEEDS_YOU, before=None, limit=10)
+    return [row.report_id for row in page.updates]
+
+
+async def test_a_question_the_user_answered_leaves_needs_you_once_the_follow_up_run_reports(
+    tl: OutboxTimeline,
+) -> None:
+    await _told_at(tl, _ask_run("ask-1", OutcomeState.NEEDS_YOU, subject_id="t1", minutes=0), 0)
+    assert await _needs_you(tl) == ["ask-1"]
+
+    await _told_at(tl, _ask_run("ask-2", OutcomeState.DONE, subject_id="t2", minutes=5), 5)
+
+    assert await _needs_you(tl) == []
+    page = await read_updates(USER, UpdateFilter.ALL, before=None, limit=10)
+    asked = next(row for row in page.updates if row.report_id == "ask-1")
+    assert (asked.outcome, asked.resolved_at is not None) == (UpdateOutcome.DONE, True)
+
+
+async def test_a_question_in_one_conversation_stays_open_when_another_conversation_reports(
+    tl: OutboxTimeline,
+) -> None:
+    await _told_at(tl, _ask_run("ask-1", OutcomeState.NEEDS_YOU, subject_id="t1", minutes=0), 0)
+    other = _ask_run("ask-2", OutcomeState.DONE, subject_id="t2", minutes=5, conversation="web-2")
+
+    await _told_at(tl, other, 5)
+
+    assert await _needs_you(tl) == ["ask-1"]
+
+
+async def test_an_older_report_arriving_late_does_not_settle_a_newer_question(
+    tl: OutboxTimeline,
+) -> None:
+    await _told_at(tl, _ask_run("ask-1", OutcomeState.NEEDS_YOU, subject_id="t1", minutes=10), 10)
+
+    await _told_at(tl, _ask_run("ask-2", OutcomeState.DONE, subject_id="t2", minutes=5), 11)
+
+    assert await _needs_you(tl) == ["ask-1"]
+
+
 ROOM = f"voice_session_{USER}_0f3a9c"
 
 
@@ -2227,6 +2296,50 @@ async def test_a_dormant_users_return_tells_what_waited_as_one_catch_up(
     assert tl.sinks.emails == []
 
 
+async def test_a_catch_up_question_sees_the_held_results_as_arriving_once_and_they_arrive_once(
+    tl: OutboxTimeline,
+) -> None:
+    await _dormant_routine(tl, "run-1")
+    _judged_routine(tl, "run-2")
+    await _told_at(tl, _routine("run-2", "todo-2", 5), 5)
+
+    await tl.at(2 * 24 * 60)
+    await tl.active_on(ConversationSource.WEB)
+    await release_on_return(USER)
+    with (
+        patch(f"{WORK_STATE}.build_executor_status_block", AsyncMock(return_value="")),
+        patch(
+            f"{WORK_STATE}.todo_repository.find_running_tracked_for_user",
+            AsyncMock(return_value=[]),
+        ),
+        patch(f"{WORK_STATE}.approval_ledger_repository.list_open", AsyncMock(return_value=[])),
+    ):
+        during_the_turn = await build_work_state_block(
+            SectionContext(
+                tier=AgentTier.COMMS,
+                user_id=USER,
+                conversation_id="web-1",
+                execution_mode="interactive",
+            )
+        )
+        assert during_the_turn.count("goes to them as its own message right after this reply") == 2
+
+        await tl.at(2 * 24 * 60 + 1)
+        await tl.drain()
+        after_the_flush = await build_work_state_block(
+            SectionContext(
+                tier=AgentTier.COMMS,
+                user_id=USER,
+                conversation_id="web-1",
+                execution_mode="interactive",
+            )
+        )
+
+    [message] = await tl.ledger()
+    assert sorted(message.report_ids) == ["run-1", "run-2"]
+    assert "not been told yet" not in after_the_flush
+
+
 async def test_a_user_who_opened_the_app_today_is_not_dormant_though_they_have_not_typed_in_weeks(
     tl: OutboxTimeline,
 ) -> None:
@@ -2357,6 +2470,19 @@ async def test_a_user_silent_for_15_days_is_dormant_though_gaia_kept_messaging_t
 
     assert [event.reason for event in tl.sinks.held] == ["dormant"]
     assert (await _states(tl))["run-1"] is ItemState.HELD
+
+
+async def test_a_new_user_with_no_presence_yet_is_not_dormant_so_a_routine_notice_is_not_held(
+    tl: OutboxTimeline,
+) -> None:
+    tl.world.created_at = T0 - timedelta(hours=1)
+    tl.world.last_user_message_at = tl.world.conversation_touched_at = T0 - timedelta(days=20)
+
+    _judged_routine(tl, "run-1")
+    await _told_at(tl, _routine("run-1", "todo-1", 0), 0)
+
+    assert tl.sinks.held == []
+    assert (await _states(tl))["run-1"] is not ItemState.HELD
 
 
 async def test_reminders_that_fire_two_days_late_are_told_together_and_never_interrupt(

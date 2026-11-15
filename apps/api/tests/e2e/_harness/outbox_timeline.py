@@ -201,6 +201,7 @@ class World:
     last_user_message_at: datetime = T0
     conversation_touched_at: datetime = T0
     email: str | None = "user@example.com"
+    created_at: datetime = T0 - timedelta(days=365)
 
     def go_away(self) -> None:
         """Make the user's last message 20 days older than the timeline's start."""
@@ -220,6 +221,7 @@ class World:
         return UserDocument.model_validate(
             {
                 "id": self.user_id,
+                "created_at": self.created_at,
                 "chat_channel_priority": self.priority,
                 "platform_links": {
                     platform: {"id": account, "username": "u", "display_name": "U"}
@@ -337,7 +339,9 @@ def _patched_holds(world: World, sinks: Sinks, arq: FakeArq) -> Iterator[None]:
         sinks.held.append(event)
 
     async def load_user(user_id: str) -> AuthenticatedUser | None:
-        return AuthenticatedUser(user_id=user_id) if user_id == world.user_id else None
+        if user_id != world.user_id:
+            return None
+        return AuthenticatedUser(user_id=user_id, created_at=world.created_at)
 
     with (
         patch(
@@ -345,6 +349,7 @@ def _patched_holds(world: World, sinks: Sinks, arq: FakeArq) -> Iterator[None]:
             AsyncMock(return_value=arq),
         ),
         patch("app.services.outbox.attention.load_user_context", load_user),
+        patch("app.services.outbox.flush.load_user_context", load_user),
         patch("app.services.outbox.intake.capture", capture_held),
     ):
         yield
