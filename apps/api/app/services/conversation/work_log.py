@@ -79,6 +79,7 @@ class WorkReport:
     note: str = ""
     nothing_for_user: bool = False
     image: ImageData | None = None
+    awaits_decision: bool = False
 
 
 async def record_work_finished(
@@ -103,6 +104,7 @@ async def record_work_finished(
         nothing_for_user=report.nothing_for_user,
         image=report.image,
         continued_by_decision=continued_by_decision,
+        awaits_decision=report.awaits_decision,
     )
     await accept(runtime_ports(), conversation_id, user_id, entry)
 

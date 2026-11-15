@@ -205,17 +205,22 @@ def _request_approval(state: ConversationState, entry: ApprovalRequested) -> Tra
 
 def _decide_approval(state: ConversationState, entry: ApprovalDecided) -> Transition:
     """Release the approval; parked work the user decided ends, as the work the decision starts continues it."""
+    continued = entry.outcome in CONTINUED_DECISIONS
     released = (
         item.model_copy(
             update={
                 "pending_approvals": tuple(
                     approval for approval in item.pending_approvals if approval != entry.approval_id
-                )
+                ),
+                "decided_approvals": (
+                    (*item.decided_approvals, entry.approval_id)
+                    if continued and entry.approval_id in item.pending_approvals
+                    else item.decided_approvals
+                ),
             }
         )
         for item in state.work
     )
-    continued = entry.outcome in CONTINUED_DECISIONS
     work = tuple(
         item for item in released if not (item.ended and continued and not item.pending_approvals)
     )
@@ -226,11 +231,15 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
     live = _live(state, entry.task_id)
     if live is None:
         return Transition(state=state, effects=())
-    if entry.continued_by_decision and live.pending_approvals and entry.outcome is WorkOutcome.DONE:
+    left_to_the_user = entry.continued_by_decision and entry.outcome is WorkOutcome.DONE
+    if left_to_the_user and live.pending_approvals:
         return Transition(state=_park(state, live), effects=())
     remaining = state.model_copy(
         update={"work": tuple(item for item in state.work if item.task_id != entry.task_id)}
     )
+    if left_to_the_user and entry.awaits_decision and live.decided_approvals:
+        # Decided before its run ended: the work that decision started reports, not this ask.
+        return Transition(state=remaining, effects=())
     if entry.outcome is WorkOutcome.CANCELLED or live.detached:
         return Transition(state=remaining, effects=())
     result = FinishedWork(

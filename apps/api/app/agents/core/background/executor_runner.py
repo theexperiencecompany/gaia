@@ -567,6 +567,7 @@ async def _log_work_finished(
                 note=outcome_delivery_note(review.declared, review.problem),
                 nothing_for_user=review.nothing_for_user,
                 image=published.image,
+                awaits_decision=review.declared is OutcomeState.ASK,
             ),
             continued_by_decision=run.active_todo_id is None and run.workflow_execution_id is None,
         )

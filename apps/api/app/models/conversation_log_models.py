@@ -280,6 +280,8 @@ class WorkFinished(_Entry):
     # A chat run that left its proposals to the user: the decision starts the work that carries
     # them out, so while one waits this work is not finished. Todo and workflow runs report instead.
     continued_by_decision: bool = False
+    # The run ended asking the user to decide; an approval it asked that is already decided answers it.
+    awaits_decision: bool = False
 
 
 class IntegrationNeeded(_Entry):
@@ -418,6 +420,8 @@ class LiveWork(BaseModel):
     exclusive: bool = False
     # Its run ended while it waited on an approval: the decision continues it, never a narration.
     ended: bool = False
+    # Approvals it asked that a decision the decision path carries on has already answered.
+    decided_approvals: tuple[str, ...] = ()
 
 
 class FinishedWork(BaseModel):

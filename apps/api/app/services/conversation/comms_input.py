@@ -12,6 +12,8 @@ from langchain_core.messages import AnyMessage, HumanMessage
 
 from app.agents.core.interruption import INTERRUPTION_MARKER, INTERRUPTION_SOURCE
 from app.constants.conversation import (
+    ABSORBED_NOTE,
+    ABSORBED_NOTE_SUFFIX,
     BARGE_IN_NOTE,
     INTEGRATION_CONNECTED_NOTE,
     LOG_MESSAGE_ID_PREFIX,
@@ -66,14 +68,29 @@ def attempt_messages(
         message
         for logged in ordered
         if not (isinstance(logged.entry, StopRequested) and _stop_recorded(thread, logged.seq))
+        and not (logged not in batch.waking and _left_to_its_decision(logged))
         for message in entry_messages(logged, said)
     ]
+
+
+def _left_to_its_decision(logged: LoggedEntry) -> bool:
+    """Return True for a chat run's finish that its approval's decision carries on, so the next work reports."""
+    entry = logged.entry
+    return (
+        isinstance(entry, WorkFinished)
+        and entry.continued_by_decision
+        and entry.outcome is WorkOutcome.DONE
+    )
 
 
 def absorbed_messages(
     entries: Sequence[LoggedEntry], said: Mapping[str, str]
 ) -> tuple[list[AnyMessage], tuple[LoggedEntry, ...]]:
-    """Render entries absorbed into a running attempt up to the first Stop, with the entries that joined it."""
+    """Render entries absorbed into a running attempt up to the first Stop, with the entries that joined it.
+
+    Absorbed user messages end with a note that the run's earlier request is still owed: read
+    as a fresh turn, the newest message alone gets answered and the work in progress is dropped.
+    """
     messages: list[AnyMessage] = []
     joined: list[LoggedEntry] = []
     for logged in entries:
@@ -81,6 +98,9 @@ def absorbed_messages(
             break
         messages.extend(entry_messages(logged, said))
         joined.append(logged)
+    said_by_user = [logged for logged in joined if isinstance(logged.entry, UserMessage)]
+    if said_by_user:
+        messages.append(_message(said_by_user[-1], ABSORBED_NOTE, ABSORBED_NOTE_SUFFIX))
     return messages, tuple(joined)
 
 

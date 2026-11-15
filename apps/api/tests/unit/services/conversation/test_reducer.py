@@ -380,7 +380,8 @@ def test_approval_decided_removes_the_approval_from_whichever_task_holds_it() ->
         ]
     )
     result = _accept(state, 7, decided("d", "ap2"))
-    assert result.state.work == (_work("t1", 1, "ap1"), _work("t2", 1, "ap3"))
+    decided_t2 = _work("t2", 1, "ap3").model_copy(update={"decided_approvals": ("ap2",)})
+    assert result.state.work == (_work("t1", 1, "ap1"), decided_t2)
     assert result.effects == ()
 
 
@@ -563,7 +564,7 @@ def test_approval_requested_then_decided() -> None:
     waiting, _ = fold(log)
     assert waiting.display is DisplayState.AWAITING_APPROVAL
     state, effects = fold([*log, decided("d", "ap1")])
-    assert state.work == (_work("t1", 1),)
+    assert state.work == (_work("t1", 1).model_copy(update={"decided_approvals": ("ap1",)}),)
     assert state.display is DisplayState.WORKING
     assert effects == [KickStep(), StartAck(message_id="u1")]
 
@@ -842,6 +843,52 @@ def test_a_decision_ends_work_parked_on_it_for_the_work_it_starts(
     assert result.state.work == ()
     assert result.state.unsettled_waking == ()
     assert result.effects == ()
+
+
+def _asking(entry_id: str, task_id: str) -> WorkFinished:
+    return _left_to_the_user(entry_id, task_id).model_copy(update={"awaits_decision": True})
+
+
+@pytest.mark.parametrize("outcome", [ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED])
+def test_work_ending_on_an_approval_decided_before_its_finish_narrates_nothing(
+    outcome: ApprovalOutcome,
+) -> None:
+    """Regression for conversation 741603c7: Approve clicked before the run ended read "please approve"."""
+    entry = ApprovalDecided(
+        id="d", approval_id="ap1", outcome=outcome, decider=ApprovalDecider.USER
+    )
+    decided = _accept(_before_park(), 6, entry).state
+    result = _accept(decided, 7, _asking("f", "t1"))
+    assert result.state.work == ()
+    assert result.state.finished_work == ()
+    assert result.state.unsettled_waking == ()
+    assert result.effects == ()
+
+
+def test_work_that_carried_out_an_early_decision_still_reports_its_finish() -> None:
+    entry = ApprovalDecided(
+        id="d", approval_id="ap1", outcome=ApprovalOutcome.APPROVED, decider=ApprovalDecider.USER
+    )
+    decided = _accept(_before_park(), 6, entry).state
+    result = _accept(decided, 7, _left_to_the_user("f", "t1"))
+    assert [item.task_id for item in result.state.finished_work] == ["t1"]
+    assert result.effects == (KickStep(),)
+
+
+def test_work_asking_a_question_of_its_own_reports_its_finish() -> None:
+    state, _ = fold([user("u1"), started("w", "t1", 1), *replied("r", ["u1"], 1)])
+    result = _accept(state, 5, _asking("f", "t1"))
+    assert [item.task_id for item in result.state.finished_work] == ["t1"]
+    assert result.effects == (KickStep(),)
+
+
+def test_a_cancelled_approval_does_not_silence_the_work_that_asked_it() -> None:
+    entry = ApprovalDecided(
+        id="d", approval_id="ap1", outcome=ApprovalOutcome.CANCELLED, decider=None
+    )
+    cancelled = _accept(_before_park(), 6, entry).state
+    result = _accept(cancelled, 7, _asking("f", "t1"))
+    assert result.effects == (KickStep(),)
 
 
 def test_a_withdrawn_approval_releases_parked_work_to_the_run_it_resumes() -> None:

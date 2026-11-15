@@ -2998,7 +2998,31 @@ async def _parked_on_a_ledger_approval(
     owner_run_type: str = "",
     owner_id: str = "",
 ) -> str:
-    """Start t1 in a chat turn, register its gated call and log it as the gate does, then end t1 waiting on it."""
+    """Start t1 asking for a ledger approval, then end t1 waiting on it."""
+    approval_id = await _asking_on_a_ledger_approval(
+        rig, model, expires_at=expires_at, owner_run_type=owner_run_type, owner_id=owner_id
+    )
+    await record_work_finished(
+        rig.conversation_id,
+        rig.user_id,
+        "t1",
+        WorkOutcome.DONE,
+        WorkReport("Approve the send?"),
+        continued_by_decision=not owner_run_type,
+    )
+    await rig.settle()
+    return approval_id
+
+
+async def _asking_on_a_ledger_approval(
+    rig: Rig,
+    model: GatedModel,
+    *,
+    expires_at: datetime | None = None,
+    owner_run_type: str = "",
+    owner_id: str = "",
+) -> str:
+    """Start t1 in a chat turn, register its gated call and log it as the gate does; t1 is still running."""
     _during(model, 0, lambda: rig.start_work("t1"))
     await rig.send("m1", "send the invoice")
     await rig.settle()
@@ -3029,15 +3053,6 @@ async def _parked_on_a_ledger_approval(
             args_preview={"to": "acme@example.com"},
         ),
     )
-    await record_work_finished(
-        rig.conversation_id,
-        rig.user_id,
-        "t1",
-        WorkOutcome.DONE,
-        WorkReport("Approve the send?"),
-        continued_by_decision=not owner_run_type,
-    )
-    await rig.settle()
     return approval_id
 
 
@@ -3077,6 +3092,40 @@ async def test_an_approval_tapped_twice_resumes_its_work_once(
     row = await approval_ledger_repository.get_by_approval_id(approval_id)
     assert row is not None and row.outcome is ApprovalOutcome.APPROVED
     assert _approval_card(await rig.entries()).data.outcome is ApprovalOutcome.APPROVED
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
+async def test_an_approval_decided_before_its_run_ends_is_never_asked_again(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression for conversation 741603c7: a fast Approve was followed by "please approve it in the card"."""
+    model = gated("I need your approval to send it", "Sent the invoice to Acme")
+    rig = await rig_for(model)
+    approval_id = await _asking_on_a_ledger_approval(rig, model)
+    spawned = _Spawned(rig, finish_with="invoice sent")
+
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        await ledger_decide.decide_ledger(
+            approval_id, user_id=rig.user_id, kind="approve", via="card"
+        )
+    await record_work_finished(
+        rig.conversation_id,
+        rig.user_id,
+        "t1",
+        WorkOutcome.DONE,
+        WorkReport("Approve the send?", awaits_decision=True),
+        continued_by_decision=True,
+    )
+    await asyncio.gather(*spawned.finishing)
+    await rig.settle()
+
+    narrated = [task for settled in await rig.of(ReplySettled) for task in settled.narrates]
+    assert narrated == spawned.task_ids
+    assert not any(
+        "Approve the send?" in text for prompt in model.prompts for text in humans(prompt)
+    )
+    assert [r.text for r in await rig.of(Reply)][-1] == "Sent the invoice to Acme"
     await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
 
 
