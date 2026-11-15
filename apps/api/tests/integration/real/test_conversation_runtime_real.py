@@ -640,9 +640,8 @@ async def test_work_started_after_a_message_joined_the_attempt_answers_that_mess
         ("on it", False),
         ("both done", False),
     ]
-    # The attempt's card-only reply sits between, so the late write-up quotes the newest
-    # message it answers: m2, not m1, because m2 is answered too.
-    assert write_up.quote_target == "m2"
+    # The write-up answers both messages, so it quotes neither.
+    assert write_up.quote_target is None
 
 
 @pytest.mark.service

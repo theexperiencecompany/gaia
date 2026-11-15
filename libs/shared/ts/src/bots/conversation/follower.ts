@@ -358,9 +358,7 @@ export class ConversationFollower {
     for (const request of fresh) this.asked.add(request.approval_id);
     const { platform } = this.options;
     await this.surface.send(
-      PLATFORM_MARKDOWN[platform](
-        formatApprovalPrompt(open, fresh, Date.now()),
-      ),
+      PLATFORM_MARKDOWN[platform](formatApprovalPrompt(open, fresh)),
       null,
     );
   }

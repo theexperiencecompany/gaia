@@ -510,6 +510,17 @@
             "title": "Action",
             "type": "string"
           },
+          "change_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Note"
+          },
           "changes": {
             "items": {
               "$ref": "#/components/schemas/ApprovalDetail"
@@ -531,6 +542,17 @@
           "headline": {
             "title": "Headline",
             "type": "string"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
           }
         },
         "required": [
@@ -545,6 +567,11 @@
       "ApprovalDetail": {
         "description": "One labelled fact about a gated call, e.g. To: bob@x.com.",
         "properties": {
+          "expandable": {
+            "default": false,
+            "title": "Expandable",
+            "type": "boolean"
+          },
           "label": {
             "title": "Label",
             "type": "string"

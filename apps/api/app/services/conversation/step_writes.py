@@ -193,7 +193,7 @@ async def _answers_and_quote(
     work = [item for item in state.finished_work if item.seq in covered]
     ids = [logged.entry.id for logged in covers]
     answers = tuple(dict.fromkeys([*ids, *(cause for item in work for cause in item.answers)]))
-    since = min([covers[0].seq, *(item.cause_through for item in work)]) - 1
+    since = min([covers[0].seq, *(item.cause_from for item in work)]) - 1
     known = attempt.view.entries_after(since, max(attempt.hint_head, reply_seq - 1))
     if known is None:
         known = await ports.log.read_after(

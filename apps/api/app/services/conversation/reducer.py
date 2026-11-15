@@ -159,6 +159,7 @@ def _start_work(state: ConversationState, seq: int, entry: WorkStarted) -> Trans
     work = LiveWork(
         task_id=entry.task_id,
         cause_through=entry.cause_through,
+        cause_from=entry.cause_from,
         answers=entry.answers,
         pending_approvals=(),
         detached=entry.detached,
@@ -255,7 +256,11 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
     if entry.outcome is WorkOutcome.CANCELLED or live.detached:
         return Transition(state=remaining, effects=())
     result = FinishedWork(
-        seq=seq, task_id=entry.task_id, cause_through=live.cause_through, answers=live.answers
+        seq=seq,
+        task_id=entry.task_id,
+        cause_through=live.cause_through,
+        cause_from=live.cause_from,
+        answers=live.answers,
     )
     awaiting = remaining.model_copy(update={"finished_work": (*state.finished_work, result)})
     return Transition(state=_wake(awaiting, seq), effects=(KickStep(),))

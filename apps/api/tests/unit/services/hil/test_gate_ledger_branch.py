@@ -27,7 +27,9 @@ from app.services.hil.intent import AutoContext, IntentDecision, JudgedCall, sum
 from app.services.hil.jev_judge import JevIntentJudge
 from app.services.hil.prompts import GATE_ERROR_TEMPLATE
 from app.services.hil.utils import GatedApproval, GatedCall
+from app.services.hil.when import UserClock
 from app.utils.general_utils import ELLIPSIS
+from app.utils.timezone import Timezone
 from shared.py.approvals import ApprovalOutcome
 
 from .conftest import (
@@ -465,7 +467,9 @@ class TestLedgerRegistration:
                 id="approval:ap_abc1234567",
                 task_id="t1",
                 approval_id="ap_abc1234567",
-                description=describe_call(GATED_TOOL, GATED_ARGS, "Gmail"),
+                description=describe_call(
+                    GATED_TOOL, GATED_ARGS, "Gmail", clock=UserClock.current(Timezone.utc())
+                ),
                 expires_at=datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
                 + timedelta(seconds=HIL_APPROVAL_TIMEOUT_SECONDS),
                 tool_call_id="call-1",

@@ -692,6 +692,54 @@ class StepScenarios:
         assert [(r.narrates, r.quote_target) for r in await replies(rt)][-1] == (("t1",), "u0")
         await assert_quiet(rt)
 
+    async def test_a_result_after_its_hand_off_acknowledgement_does_not_quote_its_request(
+        self, rt: Runtime
+    ) -> None:
+        await start_work(rt)
+        rt.runner.script([Finished(Replied("here is the report"))])
+        await send(rt, finished("f", "t1"))
+        await run(rt)
+        assert (await settles(rt))[-1].quote_target is None
+
+    async def test_a_result_quotes_its_request_when_a_side_question_rode_in_its_hand_off(
+        self, rt: Runtime
+    ) -> None:
+        """Run 5: the work was caused through the side question, so the window began past the ask."""
+        work = WorkStarted(id="w", task_id="t1", cause_through=2, cause_from=1, answers=("u0",))
+        rt.runner.script(
+            [Do(arrive(rt, work)), text("36"), Close(seqs=(2,)), Finished(Replied("36"))]
+        )
+        await send(rt, user("u0"))
+        await send(rt, user("u1"))
+        await run(rt)
+        rt.runner.script([Finished(Replied("here is the comparison"))])
+        await send(rt, finished("f", "t1"))
+        await run(rt)
+        last = (await settles(rt))[-1]
+        assert (last.answers, last.quote_target) == (("f", "u0"), "u0")
+
+    async def test_two_unrelated_messages_answered_apart_each_quote_their_own(
+        self, rt: Runtime
+    ) -> None:
+        rt.runner.script(
+            [
+                text("Canberra."),
+                Close(seqs=(1,)),
+                ModelOutput(True),
+                text("Eight."),
+                Close(seqs=(2,)),
+                Finished(Replied("Eight.")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await send(rt, user("u2"))
+        await run(rt)
+        assert await answered(rt) == [
+            (ReplyOutcome.ANSWERED, ("u1",)),
+            (ReplyOutcome.ANSWERED, ("u2",)),
+        ]
+        assert [settled.quote_target for settled in await settles(rt)] == ["u1", "u2"]
+
     async def test_a_result_after_a_silent_hand_off_does_not_quote_its_request(
         self, rt: Runtime
     ) -> None:

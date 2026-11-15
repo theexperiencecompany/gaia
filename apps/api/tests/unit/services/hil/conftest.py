@@ -132,9 +132,9 @@ async def run_through_gate(request: ToolCallRequest, handler: Any) -> Any:
 GATED_TOOL = "GMAIL_SEND_EMAIL"
 GATED_ARGS: dict[str, Any] = {"to": "b@x"}
 # The plain-words headline of GATED_TOOL / GATED_ARGS (services/hil/describe.py).
-GATED_SUMMARY = "Send an email"
+GATED_SUMMARY = "Email"
 GATED_ACCOUNT = "work@acme.com"
-GATED_ACCOUNT_SUMMARY = "Send an email (as work@acme.com)"
+GATED_ACCOUNT_SUMMARY = "Email as work@acme.com"
 GATE_MODULE = "app.services.hil.gate"
 
 

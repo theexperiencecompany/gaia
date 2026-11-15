@@ -25,6 +25,22 @@ import { APPROVAL_COPY } from "@/features/chat/constants/approvalCopy";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { toast } from "@/lib/toast";
 
+/** Labelled facts in the card's inner panel. */
+function detailRows(
+  rows: readonly ApprovalRequestData["description"]["details"][number][],
+) {
+  return (
+    <div className="mt-3 space-y-2 rounded-2xl bg-zinc-900 p-3">
+      {rows.map((detail) => (
+        <div key={detail.label} className="text-xs">
+          <div className="mb-0.5 text-[11px] text-zinc-500">{detail.label}</div>
+          <div className="break-words text-zinc-200">{detail.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface ApprovalRequestSectionProps {
   data: ApprovalRequestData;
   /** A batch decision ("Approve all"/"Decline all") is in flight — lock this card
@@ -81,6 +97,8 @@ export default function ApprovalRequestSection({
   const ageSeconds = approvalAgeSeconds(data.asked_at, openedAt);
   const needsReconfirm = (ageSeconds ?? 0) >= RECONFIRM_AGE_SECONDS;
   const { description } = data;
+  const facts = description.details.filter((detail) => !detail.expandable);
+  const longText = description.details.filter((detail) => detail.expandable);
   const integrationIcon = data.integration_name
     ? getToolCategoryIcon(data.integration_name, {
         width: 20,
@@ -197,21 +215,13 @@ export default function ApprovalRequestSection({
         </div>
       )}
 
-      {description.details.length > 0 && (
-        <div className="mt-3 space-y-2 rounded-2xl bg-zinc-900 p-3">
-          {description.details.map((detail) => (
-            <div key={detail.label} className="text-xs">
-              <div className="mb-0.5 text-[11px] text-zinc-500">
-                {detail.label}
-              </div>
-              <div className="break-words text-zinc-200">{detail.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      {facts.length > 0 && detailRows(facts)}
 
-      {description.details.length === 0 || showAllArgs ? (
-        <ArgsPreview args={data.args_preview} />
+      {showAllArgs ? (
+        <>
+          {longText.length > 0 && detailRows(longText)}
+          <ArgsPreview args={data.args_preview} />
+        </>
       ) : (
         <Button
           className="mt-1 px-0 text-zinc-500"

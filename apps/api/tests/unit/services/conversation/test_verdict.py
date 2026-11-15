@@ -112,8 +112,8 @@ def _msg(seq: int, entry_id: str) -> VisibleEntry:
     return VisibleEntry(seq=seq, id=entry_id, is_user_message=True)
 
 
-def _reply(seq: int, entry_id: str) -> VisibleEntry:
-    return VisibleEntry(seq=seq, id=entry_id, is_user_message=False)
+def _reply(seq: int, entry_id: str, answers: tuple[str, ...] = ()) -> VisibleEntry:
+    return VisibleEntry(seq=seq, id=entry_id, is_user_message=False, answers=answers)
 
 
 def test_quote_target_is_none_for_a_reply_directly_after_its_only_message() -> None:
@@ -145,6 +145,16 @@ def test_quote_target_ignores_unanswered_entries_before_the_newest_answered_mess
     assert quote_target(["u2"], 3, [_msg(1, "u1"), _msg(2, "u2")]) is None
 
 
-def test_quote_target_picks_the_newest_answered_message() -> None:
-    visible = [_msg(1, "u1"), _msg(2, "u2"), _reply(3, "r2"), _msg(4, "u4"), _reply(5, "r4")]
-    assert quote_target(["u1", "u4"], 6, visible) == "u4"
+def test_quote_target_is_none_for_a_reply_answering_several_messages() -> None:
+    visible = [_msg(1, "u1"), _msg(2, "u2"), _msg(3, "u3")]
+    assert quote_target(["u1", "u2"], 4, visible) is None
+
+
+def test_quote_target_is_none_past_an_earlier_reply_to_the_same_message() -> None:
+    visible = [_msg(1, "u1"), _reply(2, "r0", answers=("u1",))]
+    assert quote_target(["u1", "wf3"], 4, visible) is None
+
+
+def test_quote_target_quotes_past_an_earlier_reply_to_another_message() -> None:
+    visible = [_msg(1, "u1"), _msg(2, "u2"), _reply(3, "r1", answers=("u1",))]
+    assert quote_target(["u2"], 4, visible) == "u2"

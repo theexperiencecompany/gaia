@@ -51,6 +51,7 @@ async def record_work_started(
         id=f"work:{task_id}",
         task_id=task_id,
         cause_through=step["cause_through"],
+        cause_from=step["batch_start"],
         answers=tuple(step["answers"]),
         joins=joins,
         handoff=handoff,
@@ -235,6 +236,7 @@ async def record_work_carried(
             id=f"work:{task_id}",
             task_id=task_id,
             cause_through=state.head,
+            cause_from=state.head,
             detached=detached,
             exclusive=exclusive,
         )
@@ -243,6 +245,7 @@ async def record_work_carried(
             id=f"work:{task_id}",
             task_id=task_id,
             cause_through=cause.seq,
+            cause_from=cause.seq,
             answers=(cause.entry.id,),
             detached=detached,
             exclusive=exclusive,
