@@ -3140,26 +3140,10 @@ score:URL Structure=93
 /learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	zero
 /manifesto	links/no-contextual-inbound/no-contextual-inbound
 /manifesto	perf/cache-headers/cache-control
-/marketplace/asana	perf/dom-size/dom-max-children
-/marketplace/clickup	perf/dom-size/dom-max-children
-/marketplace/dropbox	perf/dom-size/dom-max-children
-/marketplace/github	perf/dom-size/dom-max-children
-/marketplace/github	perf/dom-size/dom-total-nodes
-/marketplace/googledrive	perf/dom-size/dom-max-children
-/marketplace/hubspot	perf/dom-size/dom-max-children
-/marketplace/jira	perf/dom-size/dom-max-children
-/marketplace/outlook	perf/dom-size/dom-max-children
-/marketplace/outlook	perf/dom-size/dom-total-nodes
 /marketplace/page/2	content/word-count/word-count
 /marketplace/page/2	links/no-contextual-inbound/no-contextual-inbound
 /marketplace/page/3	content/word-count/word-count
 /marketplace/page/3	links/no-contextual-inbound/no-contextual-inbound
-/marketplace/resend-mcp-communication	perf/dom-size/dom-max-children
-/marketplace/slack	perf/dom-size/dom-max-children
-/marketplace/todoist	perf/dom-size/dom-max-children
-/marketplace/trello	perf/dom-size/dom-max-children
-/marketplace/trello	perf/dom-size/dom-total-nodes
-/marketplace/twitter	perf/dom-size/dom-max-children
 /open-source-ai-assistant	perf/cache-headers/cache-control
 /pricing	perf/cache-headers/cache-control
 /privacy	perf/cache-headers/cache-control
