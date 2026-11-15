@@ -47,6 +47,22 @@ export interface ConversationSurface {
   startTyping: () => () => void;
 }
 
+/** A chat only the requester reads: their DM, which is the chat itself when they follow in one. */
+export interface PrivateSurface {
+  /** Sends rendered bubbles; where proactive messages are restricted they go as one. */
+  sendNotice: (bubbles: string[]) => Promise<void>;
+  /** Sends the image at url (a browser step's screenshot) as a photo with its caption. */
+  sendPhoto: (url: string, caption: string) => Promise<void>;
+}
+
+/** The GAIA web pages a follower links to from a chat platform. */
+export interface FollowLinks {
+  /** This conversation in the web app, where a file the platform refused can be opened. */
+  conversation: string;
+  /** The plans page a usage limit points to. */
+  pricing: string;
+}
+
 /**
  * The surface a follower renders to: the adapter's chat, plus what the base adapter
  * adds for every platform, files and notices that may arrive outside a reply.
@@ -56,10 +72,11 @@ export interface FollowSurface extends ConversationSurface {
   sendFile: (conversationId: string, file: ReplyFile) => Promise<void>;
   /** Sends a notice's rendered bubbles; where proactive messages are restricted they go as one. */
   sendNotice: (bubbles: string[]) => Promise<void>;
-  /** Sends the image at url (a browser step's screenshot) as a photo with its caption. */
-  sendPhoto: (url: string, caption: string) => Promise<void>;
-  /** Whether this chat is the user's own: a group is shown no browser progress. */
-  privateChat: boolean;
+  /** Whether the platform would refuse a free-form message now (WhatsApp's 24 h window). */
+  windowClosed: () => Promise<boolean>;
+  /** The requester's own chat: a browser run's live link and step photos go there, even from a group. */
+  requester: PrivateSurface;
+  links: FollowLinks;
 }
 
 /** What a follower reports when it closes, for the follow's wide event. */

@@ -95,6 +95,7 @@ def reply(
         quote=None,
         outcome=outcome,
         failure=None,
+        failure_line=None,
         narrates=(),
         retry_target=None,
         files=(),

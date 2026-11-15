@@ -13441,6 +13441,8 @@ export interface components {
             /** Bubbles */
             bubbles: string[];
             failure: components["schemas"]["FailureReason"] | null;
+            /** Failure Line */
+            failure_line: string | null;
             /** Files */
             files: components["schemas"]["ReplyFile"][];
             /** Follow Up Actions */

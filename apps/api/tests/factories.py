@@ -224,6 +224,7 @@ def make_reply_item(text: str, *, reply_id: str = "r1", seq: int = 1) -> ReplyIt
         quote=None,
         outcome=ReplyOutcome.ANSWERED,
         failure=None,
+        failure_line=None,
         narrates=(),
         retry_target=None,
         files=(),

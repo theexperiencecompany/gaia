@@ -119,6 +119,15 @@ function reasonFromStatus(
   return undefined;
 }
 
+/** Whether a platform send failed because the chat itself is gone or refuses the bot: every later send fails too. */
+export function isChatGone(error: unknown): boolean {
+  const reason = classifyBotFailure(error);
+  return (
+    reason === BOT_FAILURE_REASON.DESTINATION_BLOCKED ||
+    reason === BOT_FAILURE_REASON.DESTINATION_NOT_FOUND
+  );
+}
+
 /** Classifies a failed GAIA API call, stream or platform send into one reason. */
 export function classifyBotFailure(error: unknown): BotFailureReason {
   const text = errorText(error);

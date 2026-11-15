@@ -13,6 +13,7 @@ from typing import Protocol, assert_never
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
+from app.constants.conversation import REPLY_FAILURE_LINE
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import (
     APPROVAL_REQUEST_TOOL_NAME,
@@ -430,6 +431,7 @@ def _reply_item(seq: int, at: AwareDatetime, reply: Reply, read: _Log) -> ReplyI
     target = reply.quote_target if settle is None else settle.quote_target
     quoted = None if target is None else read.users.get(read.original(target))
     shown = tuple(own)
+    failure = None if settle is None else settle.failure
     return ReplyItem(
         id=reply.reply_id,
         seq=seq,
@@ -444,7 +446,8 @@ def _reply_item(seq: int, at: AwareDatetime, reply: Reply, read: _Log) -> ReplyI
         if quoted is None
         else ReplyToMessageData(id=quoted.id, content=quoted.text, role="user"),
         outcome=None if settle is None else settle.outcome,
-        failure=None if settle is None else settle.failure,
+        failure=failure,
+        failure_line=None if failure is None else REPLY_FAILURE_LINE[failure],
         narrates=narrates,
         retry_target=read.newest_asked(
             (*(() if settle is None else settle.answers), *(() if target is None else (target,)))

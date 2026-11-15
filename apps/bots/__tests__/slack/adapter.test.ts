@@ -97,6 +97,7 @@ function makeSlackClient(tsOverride?: string) {
         .fn()
         .mockResolvedValue({ ts: tsOverride ?? "1234567890.123456" }),
       update: vi.fn().mockResolvedValue({}),
+      delete: vi.fn().mockResolvedValue({}),
       postEphemeral: vi.fn().mockResolvedValue({}),
     },
   };
@@ -418,6 +419,24 @@ describe("SlackAdapter - postSlackMessage", () => {
     await expect(lastSurface().send("the answer", null)).rejects.toThrow(
       "chat.postMessage returned no ts",
     );
+  });
+
+  it("shows Thinking... while a reply is prepared, and takes it down once GAIA stops", async () => {
+    await adapter.postSlackMessage(eventClient, "C789", "U456", "hi", false);
+
+    const stopTyping = lastSurface().startTyping();
+    stopTyping();
+
+    await vi.waitFor(() =>
+      expect(appClient.chat.delete).toHaveBeenCalledExactlyOnceWith({
+        channel: "C789",
+        ts: "ts-sent",
+      }),
+    );
+    expect(appClient.chat.postMessage).toHaveBeenCalledExactlyOnceWith({
+      channel: "C789",
+      text: "Thinking...",
+    });
   });
 
   it("reacts to a message in the conversation's channel", async () => {

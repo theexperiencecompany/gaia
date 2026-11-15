@@ -205,6 +205,8 @@ class ReplyItem(ScreenItemBase):
     quote: ReplyToMessageData | None
     outcome: ReplyOutcome | None
     failure: FailureReason | None
+    # What a chat platform says under a failed reply, worded by the server; None unless it failed.
+    failure_line: str | None
     narrates: tuple[str, ...]
     # The user message a retry of this reply sends again; None when it answers none.
     retry_target: str | None

@@ -3,8 +3,8 @@
  * step as a photo with its caption, a pending hand-off with its take-over link, a
  * note shown on the session card, and the recap link once the run ends.
  *
- * Shown only in a private chat: the link drives the user's own browser and a step
- * photo can show a signed-in page, so a group sees only the replies.
+ * Shown in the requester's own chat, even for a run asked for in a group: the link
+ * drives their browser and a step photo can show a signed-in page.
  */
 
 import type { ToolDataEntry } from "../../api/generated";
@@ -13,7 +13,11 @@ import type {
   BrowserStepSnapshot,
   BrowserTaskSnapshot,
 } from "../../conversation/browser-cards.types";
-import type { FollowSurface } from "./follower.types";
+import { isChatGone } from "../utils/failure-reasons";
+import { createBotLogger, sanitizeErrorForLog } from "../utils/logger";
+import type { PrivateSurface } from "./follower.types";
+
+const logger = createBotLogger("shared", "browser-progress");
 
 const BROWSER_CARD_TOOL = "browser_task_data";
 const CARD_KINDS: ReadonlySet<string> = new Set([
@@ -66,8 +70,8 @@ export class BrowserProgress {
   private lastFrame: string | null = null;
 
   constructor(
-    private readonly surface: FollowSurface,
-    /** Sends lines the way the follower sends a notice: rendered for the platform. */
+    private readonly requester: PrivateSurface,
+    /** Sends lines to the requester the way the follower sends a notice: rendered for the platform. */
     private readonly notify: (bubbles: string[]) => Promise<void>,
   ) {}
 
@@ -80,7 +84,6 @@ export class BrowserProgress {
   async render(cards: readonly BrowserTaskSnapshot[]): Promise<void> {
     const fresh = cards.slice(this.seen);
     this.seen = cards.length;
-    if (!this.surface.privateChat) return;
     for (const card of fresh) await this.renderCard(card);
   }
 
@@ -122,8 +125,19 @@ export class BrowserProgress {
     this.lastFrame = frame;
     this.stepsShown += 1;
     const caption = stepCaption(this.stepsShown, step.goal);
-    if (step.screenshot) await this.surface.sendPhoto(step.screenshot, caption);
+    if (step.screenshot) await this.photo(step.screenshot, caption);
     else await this.notify([caption]);
+  }
+
+  /** A photo the platform would not take goes as its caption and link; only a gone chat stops the run. */
+  private async photo(url: string, caption: string): Promise<void> {
+    try {
+      await this.requester.sendPhoto(url, caption);
+    } catch (error) {
+      if (isChatGone(error)) throw error;
+      logger.warn("browser_step_photo_failed", sanitizeErrorForLog(error));
+      await this.notify([`${caption}\n${url}`]);
+    }
   }
 
   private async handoff(handoff: BrowserHandoffSnapshot): Promise<void> {

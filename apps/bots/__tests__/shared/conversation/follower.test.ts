@@ -47,25 +47,48 @@ type Call =
   | { op: "react"; target: string; emoji: string; replaces: string | null }
   | { op: "typing"; state: "start" | "stop" }
   | { op: "notice"; bubbles: string[] }
+  | { op: "dm"; bubbles: string[] }
   | { op: "photo"; url: string; caption: string }
   | { op: "file"; path: string };
 
+const CONVERSATION_LINK = "https://gaia.test/c/c1";
+const PRICING_LINK = "https://gaia.test/pricing";
+
+/** How the recorded platform behaves: a group chat, a closed message window, refused uploads. */
+interface PlatformBehaviour {
+  group?: boolean;
+  windowClosed?: boolean;
+  refusePhoto?: () => Error;
+  refuseFile?: () => Error;
+}
+
 /** A platform that records every call, editable and deletable like Telegram. */
-function recorder(privateChat = true): {
+function recorder(behaviour: PlatformBehaviour = {}): {
   surface: FollowSurface;
   calls: Call[];
 } {
   const calls: Call[] = [];
   let next = 1;
+  const sendNotice = async (bubbles: string[]) => {
+    calls.push({ op: "notice", bubbles });
+  };
   const surface: FollowSurface = {
-    privateChat,
-    sendNotice: async (bubbles) => {
-      calls.push({ op: "notice", bubbles });
-    },
-    sendPhoto: async (url, caption) => {
-      calls.push({ op: "photo", url, caption });
+    sendNotice,
+    windowClosed: async () => behaviour.windowClosed ?? false,
+    links: { conversation: CONVERSATION_LINK, pricing: PRICING_LINK },
+    requester: {
+      sendNotice: behaviour.group
+        ? async (bubbles) => {
+            calls.push({ op: "dm", bubbles });
+          }
+        : sendNotice,
+      sendPhoto: async (url, caption) => {
+        if (behaviour.refusePhoto) throw behaviour.refusePhoto();
+        calls.push({ op: "photo", url, caption });
+      },
     },
     sendFile: async (_conversationId, file) => {
+      if (behaviour.refuseFile) throw behaviour.refuseFile();
       calls.push({ op: "file", path: file.path });
     },
     send: async (text, replyTo) => {
@@ -109,6 +132,11 @@ const NON_EDITING: StreamingOptions = {
   editIntervalMs: 0,
   streaming: false,
   platform: "whatsapp",
+};
+const SLACK: StreamingOptions = {
+  editIntervalMs: 0,
+  streaming: true,
+  platform: "slack",
 };
 
 /** A follow after floor that keeps no cursor. */
@@ -346,14 +374,106 @@ describe("a failed reply", () => {
       screenFrame([inbound("u1", 1, "11")]),
       updateFrame({
         ...replyItem("r1", 2, "Here is the start", "failed"),
-        failure: "server_restart",
+        failure: "model_error",
+        failure_line:
+          "I couldn't finish that reply. Send your message again to retry.",
       }),
     ]);
 
-    expect(sent(calls).map(({ text }) => text)).toEqual([
-      "Here is the start",
-      "🔌 Connection interrupted. Please try again.",
+    expect(sent(calls).map(({ text }) => text)).toEqual(["Here is the start"]);
+    // The server words the line: the platform shows it as it was sent.
+    expect(calls.filter((call) => call.op === "notice")).toEqual([
+      {
+        op: "notice",
+        bubbles: [
+          "I couldn't finish that reply. Send your message again to retry.",
+        ],
+      },
     ]);
+  });
+});
+
+describe("a usage limit the run hit", () => {
+  const limitCard = (current_plan: string) => ({
+    tool_name: "rate_limit_data",
+    data: {
+      feature: "daily_budget",
+      plan_required: "pro",
+      reset_time: null,
+      current_plan,
+      message: "You've used today's budget.",
+    },
+  });
+
+  it("follows the reply with the limit and the upgrade link on a free plan", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(0),
+      SLACK,
+      surface,
+      "c1",
+    );
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11")]),
+      updateFrame({
+        ...replyItem("r1", 2, "", "answered"),
+        tool_data: [limitCard("free")],
+      }),
+    ]);
+
+    expect(calls.filter((call) => call.op === "notice")).toEqual([
+      {
+        op: "notice",
+        bubbles: [
+          `⏳ You've used today's budget. <${PRICING_LINK}|Upgrade to Pro> for higher limits.`,
+        ],
+      },
+    ]);
+  });
+
+  it("tells a limit a piece of work hit once, without an upgrade link on Pro", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(0),
+      SLACK,
+      surface,
+      "c1",
+    );
+    const limited = {
+      ...workItem("t1", 2, "failed"),
+      tool_data: [limitCard("pro")],
+    };
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11")]),
+      insertFrame(limited),
+      updateFrame(limited),
+    ]);
+
+    expect(calls.filter((call) => call.op === "notice")).toEqual([
+      { op: "notice", bubbles: ["⏳ You've used today's budget."] },
+    ]);
+  });
+});
+
+describe("a reply after the platform's message window closed (WhatsApp's 24 h)", () => {
+  it("goes as one notice, the template path, instead of a refused free-form send", async () => {
+    const { surface, calls } = recorder({ windowClosed: true });
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11")]),
+      updateFrame(replyItem("r1", 2, ["Done.", "Here it is."], "answered")),
+    ]);
+
+    expect(sent(calls)).toEqual([]);
+    expect(calls.filter((call) => call.op === "notice")).toEqual([
+      { op: "notice", bubbles: ["Done.", "Here it is."] },
+    ]);
+    expect(follower.summary.repliesDelivered).toBe(1);
   });
 });
 
@@ -660,6 +780,69 @@ describe("a notice and a reply's files", () => {
     },
   );
 
+  it("renders a notice's markdown for the platform, like a reply", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(3),
+      SLACK,
+      surface,
+      "c1",
+    );
+    await feed(follower, [
+      insertFrame(
+        noticeItem(
+          "n1",
+          4,
+          "**Call the bank**\nDetails in [the doc](https://doc.test/a)",
+        ),
+      ),
+    ]);
+
+    expect(calls.filter((call) => call.op === "notice")).toEqual([
+      {
+        op: "notice",
+        // Slack's bold, fenced in zero-width spaces so it binds mid-word.
+        bubbles: [
+          "\u200b*Call the bank*\u200b\nDetails in <https://doc.test/a|the doc>",
+        ],
+      },
+    ]);
+  });
+
+  it("names a file the platform refused with where to open it, and goes on", async () => {
+    const { surface, calls } = recorder({
+      refuseFile: () => new Error("Request failed with status code 413"),
+    });
+    const follower = new ConversationFollower(
+      startAfter(0),
+      SLACK,
+      surface,
+      "c1",
+    );
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11")]),
+      updateFrame({
+        ...replyItem("r1", 2, "Here is the report", "answered"),
+        files: [{ path: "out/report.pdf", content_type: "application/pdf" }],
+      }),
+      insertFrame(replyItem("r2", 3, "And one more thing", "answered")),
+    ]);
+
+    expect(follower.deliveryFailed).toBe(false);
+    expect(calls.filter((call) => call.op === "notice")).toEqual([
+      {
+        op: "notice",
+        bubbles: [
+          `I couldn't send report.pdf here. Open it in GAIA: <${CONVERSATION_LINK}|${CONVERSATION_LINK}>`,
+        ],
+      },
+    ]);
+    expect(sent(calls).map(({ text }) => text)).toEqual([
+      "Here is the report",
+      "And one more thing",
+    ]);
+  });
+
   it("sends no notice from before the follow", async () => {
     const { surface, calls } = recorder();
     const follower = new ConversationFollower(
@@ -961,8 +1144,8 @@ describe("a browser run on a work item", () => {
     ]);
   });
 
-  it("shows nothing of the run in a group chat", async () => {
-    const { surface, calls } = recorder(false);
+  it("shows a run asked for in a group to the requester's own chat, and nothing in the group", async () => {
+    const { surface, calls } = recorder({ group: true });
     const follower = new ConversationFollower(
       startAfter(0),
       NON_EDITING,
@@ -972,6 +1155,60 @@ describe("a browser run on a work item", () => {
 
     await feed(follower, frames);
 
-    expect(calls.filter((call) => call.op !== "typing")).toEqual([]);
+    expect(calls.filter((call) => call.op !== "typing")).toEqual([
+      { op: "photo", url: SHOT, caption: "Step 1 · open the booking page" },
+      {
+        op: "dm",
+        bubbles: [
+          "Sign in to finish the booking.",
+          `Open the live browser: ${LINK}`,
+          "Reply here when you're done, or tell me to stop.",
+        ],
+      },
+      { op: "dm", bubbles: [`📽 Here's a recap of the run: ${REPLAY}`] },
+    ]);
+  });
+
+  it("sends a step photo the platform refused as its caption and link, and goes on", async () => {
+    const { surface, calls } = recorder({
+      refusePhoto: () => new Error("Bad Request: wrong file identifier"),
+    });
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+
+    await feed(follower, frames);
+
+    expect(follower.deliveryFailed).toBe(false);
+    expect(calls.filter((call) => call.op === "notice")).toEqual([
+      { op: "notice", bubbles: [`Step 1 · open the booking page\n${SHOT}`] },
+      {
+        op: "notice",
+        bubbles: [
+          "Sign in to finish the booking.",
+          `Open the live browser: ${LINK}`,
+          "Reply here when you're done, or tell me to stop.",
+        ],
+      },
+      { op: "notice", bubbles: [`📽 Here's a recap of the run: ${REPLAY}`] },
+    ]);
+  });
+
+  it("ends the follow when the chat itself is gone", async () => {
+    const { surface } = recorder({
+      refusePhoto: () => new Error("Bad Request: chat not found"),
+    });
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+
+    await expect(feed(follower, frames)).rejects.toThrow("chat not found");
+    expect(follower.deliveryFailed).toBe(true);
   });
 });

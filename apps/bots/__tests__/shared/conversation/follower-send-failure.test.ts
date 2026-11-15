@@ -47,9 +47,16 @@ const chatNotFound = () => grammyError(400, "Bad Request: chat not found");
 
 function surface(sent: string[], refuse: (() => Error) | null): FollowSurface {
   return {
-    privateChat: true,
     sendNotice: async () => undefined,
-    sendPhoto: async () => undefined,
+    windowClosed: async () => false,
+    links: {
+      conversation: "https://gaia.test/c/c1",
+      pricing: "https://gaia.test/pricing",
+    },
+    requester: {
+      sendNotice: async () => undefined,
+      sendPhoto: async () => undefined,
+    },
     sendFile: async () => undefined,
     send: async (text) => {
       if (refuse) throw refuse();
