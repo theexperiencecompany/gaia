@@ -2682,6 +2682,8 @@ score:Structured Data=93
 /settings/linked-accounts	links/internal-links/internal-links
 /settings/linked-accounts	links/weak-internal-links/weak-internal-links
 /settings/linked-accounts	perf/lazy-above-fold/lazy-above-fold	/cdn-cgi/image/width=64,quality=75,format=auto/images/logos/logo.webp
+/signup	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
+/signup	content/word-count/word-count
 /signup	core/robots-meta/robots-meta
 /signup	images/offscreen-lazy/offscreen-images-not-lazy	logo.webp
 /signup	perf/cache-headers/cache-control

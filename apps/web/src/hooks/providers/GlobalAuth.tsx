@@ -10,8 +10,13 @@
 import useFetchUser from "@/features/auth/hooks/useFetchUser";
 import { useCheckoutResume } from "@/features/pricing/hooks/useCheckoutResume";
 
-const GlobalAuth = () => {
-  useFetchUser();
+const GlobalAuth = ({
+  knownSessionOnly = false,
+}: {
+  /** Marketing pages: ask /me only for a browser that has signed in. */
+  knownSessionOnly?: boolean;
+}) => {
+  useFetchUser({ knownSessionOnly });
   useCheckoutResume();
   return null;
 };

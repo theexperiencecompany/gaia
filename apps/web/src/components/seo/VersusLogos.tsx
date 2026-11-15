@@ -1,5 +1,11 @@
 import Image, { type ImageProps } from "next/image";
 
+// Domains Google's favicon service answers 404 for: Height shut down, TickTick serves none it can read.
+const LOCAL_LOGOS: Readonly<Record<string, string>> = {
+  "height.app": "/images/icons/height.png",
+  "ticktick.com": "/images/icons/ticktick.png",
+};
+
 /** GAIA's logo tilted against another tool's favicon, leading a comparison or alternative card. */
 export function VersusLogos({
   name,
@@ -29,7 +35,10 @@ export function VersusLogos({
         style={{ rotate: "9deg", zIndex: 0 }}
       >
         <Image
-          src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
+          src={
+            LOCAL_LOGOS[domain] ??
+            `https://www.google.com/s2/favicons?domain=${domain}&sz=128`
+          }
           alt={name}
           width={40}
           height={40}

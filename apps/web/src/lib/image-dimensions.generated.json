@@ -187,6 +187,10 @@
     "width": 225,
     "height": 225
   },
+  "/images/icons/height.png": {
+    "width": 32,
+    "height": 32
+  },
   "/images/icons/hubspot.svg": {
     "width": 128,
     "height": 128
@@ -350,6 +354,10 @@
   "/images/icons/slack.svg": {
     "width": 128,
     "height": 128
+  },
+  "/images/icons/ticktick.png": {
+    "width": 152,
+    "height": 152
   },
   "/images/icons/todoist.svg": {
     "width": 256,

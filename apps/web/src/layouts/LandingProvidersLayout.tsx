@@ -22,7 +22,7 @@ export default function LandingProvidersLayout({
     <>
       {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
       <Suspense fallback={<></>}>
-        <GlobalAuth />
+        <GlobalAuth knownSessionOnly />
       </Suspense>
       {/* GlobalInterceptor reads useSearchParams() (via useOAuthSuccessToast) —
           it MUST be inside a Suspense boundary, otherwise it deopts the whole

@@ -15,6 +15,7 @@ import {
   QuillWrite01Icon,
   UserGroupIcon,
 } from "@icons";
+import { BOT_URLS } from "@shared/constants/bots";
 import Image from "next/image";
 import type { ComponentType, ReactElement } from "react";
 import {
@@ -172,13 +173,13 @@ export const appConfig = {
         "Chat with GAIA on Telegram",
       ),
       botLink(
-        "/slack-bot",
+        BOT_URLS.slackInstall,
         "Slack",
         "/images/icons/macos/slack.webp",
         "Bring GAIA into your workspace",
       ),
       botLink(
-        "/discord-bot",
+        BOT_URLS.discordInstall,
         "Discord",
         "/images/icons/macos/discord.webp",
         "Add GAIA to your server",
