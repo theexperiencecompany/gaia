@@ -34,6 +34,7 @@ from app.constants.memory import (
 from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.memory.engine import memory_engine
+from app.memory.fast_recall import precompute_next_turn
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.utils import State
 from app.utils.background_tasks import spawn_background_task
@@ -260,6 +261,17 @@ async def _store_user_memory_background(
             await _mark_ingested(user_id, session_id, messages)
 
 
+async def _precompute_next_turn_background(
+    user_id: str, conversation_id: str, messages: list[AnyMessage]
+) -> None:
+    """Background task — pins the deep recall of this exchange for the conversation's next turn."""
+    # wide_task records any failure; suppressed only so the fire-and-forget task
+    # raises no un-retrieved-exception warning, as in the retain task above.
+    with contextlib.suppress(Exception):
+        async with wide_task("memory_precompute", user=UserContext(id=user_id)):
+            await precompute_next_turn(user_id, conversation_id, messages)
+
+
 async def memory_node(
     state: State,
     config: RunnableConfig,
@@ -281,6 +293,14 @@ async def memory_node(
     user_name = configurable.get("user_name")
 
     extraction_prompt = get_memory_extraction_prompt(subagent_id) if subagent_id else None
+
+    # Ahead of the learning gate: the next turn needs its memories whether or
+    # not this one taught anything new.
+    if user_id and conversation_id:
+        spawn_background_task(
+            _precompute_next_turn_background(user_id, conversation_id, messages),
+            name="memory_precompute",
+        )
 
     should_learn, reason = _check_worth_learning(messages)
     if not should_learn:

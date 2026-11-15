@@ -167,6 +167,14 @@ MEMORY_SEARCH_CACHE_TTL = 60
 MEMORY_SEARCH_CACHE_PATTERN = "user:{user_id}:memories:*"
 CORE_CONTEXT_CACHE_KEY = "user:{user_id}:memory:core"
 
+# Comms fast lane: pinned ids + one OR-matched FTS query, never embed/ANN/rerank.
+FAST_RECALL_BUDGET_SECONDS = 0.08
+FAST_RECALL_MAX_TOKENS = 32
+PRECOMPUTED_RECALL_LIMIT = 8
+PRECOMPUTED_RECALL_TTL = 86_400
+# Outside MEMORY_SEARCH_CACHE_PATTERN: ingestion wipes that seconds after a turn.
+PRECOMPUTED_RECALL_KEY = "user:{user_id}:recall_next:{conversation_id}"
+
 # Optimistic per-user counter mirroring count_live_memories, so the free-cap
 # check avoids a Postgres COUNT on the hot path. 24h TTL so any drift self-heals
 # on expiry; maintained by INCR/DECR at every mutation site (app/memory/cap_counter.py).

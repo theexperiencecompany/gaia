@@ -110,7 +110,8 @@ class TestTheTableIsWellFormed:
         assert [s.id for s in sections_for(AgentTier.COMMS, PromptSlot.MEMORY_RECALL)] == [
             "core_memory",
             "agenda_activity",
-            "memory_recall",
+            # Comms reads memories from the fast lane; deep recall is worker-tier only.
+            "fast_memory_recall",
             "gaia_knowledge",
             "tracked_todos",
             # Live work beside the chat, comms-only: the executor IS that work.

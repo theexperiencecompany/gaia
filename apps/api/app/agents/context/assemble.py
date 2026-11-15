@@ -117,7 +117,9 @@ async def _gather_sections(ctx: SectionContext) -> AssembledContext:
             "tier": ctx.tier.value,
             "source": ctx.source or "web",
             "has_core_memory": bool(rendered.get(SectionId.CORE_MEMORY)),
-            "has_memories": bool(rendered.get(SectionId.MEMORY_RECALL)),
+            "has_memories": bool(
+                rendered.get(SectionId.MEMORY_RECALL) or rendered.get(SectionId.FAST_MEMORY_RECALL)
+            ),
             "has_gaia_knowledge": bool(rendered.get(SectionId.GAIA_KNOWLEDGE)),
             "has_skills": bool(rendered.get(SectionId.SKILLS)),
             "has_active_todo": bool(ctx.active_todo_id),

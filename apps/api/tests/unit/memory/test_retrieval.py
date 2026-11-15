@@ -37,7 +37,6 @@ from app.constants.memory import (
 from app.memory import retrieval
 from app.memory.retrieval import (
     EpisodeHit,
-    _build_entries,
     _cap_weak_results,
     _drop_below_relevance,
     _elapsed_ms,
@@ -51,11 +50,12 @@ from app.memory.retrieval import (
     _recency_boost,
     _rerank_and_boost,
     _rrf_fuse,
-    _tokenize,
+    build_entries,
     invalidate_recall_cache,
     recall,
     recall_episodes,
     recall_transcripts,
+    tokenize,
 )
 from app.models.memory_db_models import MemoryRecord
 from app.utils.log_identifiers import user_text_shape
@@ -252,7 +252,7 @@ class TestInCategory:
 
 
 # ---------------------------------------------------------------------------
-# _episode_id_to_date / _tokenize / _elapsed_ms
+# _episode_id_to_date / tokenize / _elapsed_ms
 # ---------------------------------------------------------------------------
 
 
@@ -273,19 +273,19 @@ class TestEpisodeIdToDate:
 class TestTokenize:
     def test_drops_tokens_below_the_minimum_length(self) -> None:
         assert EPISODE_SEARCH_MIN_TOKEN_LENGTH == 3
-        assert _tokenize("I am at the gym") == ["the", "gym"]
+        assert tokenize("I am at the gym") == ["the", "gym"]
 
     def test_lowercases_and_strips_punctuation(self) -> None:
-        assert _tokenize("Nadia's BIRTHDAY, March!") == ["nadia's", "birthday", "march"]
+        assert tokenize("Nadia's BIRTHDAY, March!") == ["nadia's", "birthday", "march"]
 
     def test_query_of_only_short_words_yields_no_tokens(self) -> None:
-        assert _tokenize("hi ok up") == []
+        assert tokenize("hi ok up") == []
 
     def test_empty_query_yields_no_tokens(self) -> None:
-        assert _tokenize("") == []
+        assert tokenize("") == []
 
     def test_digits_are_kept_as_tokens(self) -> None:
-        assert _tokenize("ticket 4821") == ["ticket", "4821"]
+        assert tokenize("ticket 4821") == ["ticket", "4821"]
 
 
 def test_elapsed_ms_is_non_negative_integer() -> None:
@@ -868,7 +868,7 @@ class TestGraphSiblings:
 
 
 # ---------------------------------------------------------------------------
-# _build_entries
+# build_entries
 # ---------------------------------------------------------------------------
 
 
@@ -877,7 +877,7 @@ class TestBuildEntries:
         row = make_row("mapped")
         fetch_entities = AsyncMock(return_value={})
         with patch.object(retrieval.pg_store, "get_entities_for_memories", new=fetch_entities):
-            entries = await _build_entries([(row, 0.123456789)])
+            entries = await build_entries([(row, 0.123456789)])
         assert entries[0].content == "mapped"
         assert entries[0].id == str(row.id)
         assert entries[0].relevance_score == 0.1235
@@ -900,7 +900,7 @@ class TestBuildEntries:
                 retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
             ) as fetch_parents,
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
 
         # The liveness fetch must be scoped to the OWNER of the recalled rows:
         # unscoped (None) it returns nothing and every parent silently reads
@@ -921,7 +921,7 @@ class TestBuildEntries:
             ),
             patch.object(retrieval.pg_store, "get_memories_by_ids", new=fetch),
         ):
-            entries = await _build_entries([(row, 0.9)])
+            entries = await build_entries([(row, 0.9)])
         fetch.assert_not_awaited()
         assert entries[0].previous_content is None
 
@@ -937,7 +937,7 @@ class TestBuildEntries:
             ),
             patch.object(retrieval.pg_store, "get_memories_by_ids", new=fetch),
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
         fetch.assert_not_awaited()
         assert entries[0].previous_content is None
 
@@ -958,7 +958,7 @@ class TestBuildEntries:
                 retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
             ) as fetch_parents,
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
 
         # The liveness fetch must be scoped to the OWNER of the recalled rows:
         # unscoped (None) it returns nothing and every parent silently reads
@@ -976,7 +976,7 @@ class TestBuildEntries:
             ),
             patch.object(retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[])),
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
         assert entries[0].previous_content is None
 
     async def test_entities_are_attached_to_their_own_entry(self) -> None:
@@ -990,14 +990,14 @@ class TestBuildEntries:
             "get_entities_for_memories",
             new=AsyncMock(return_value={row.id: [entity]}),
         ):
-            entries = await _build_entries([(row, 0.5)])
+            entries = await build_entries([(row, 0.5)])
         assert [ref.name for ref in entries[0].entities] == ["Nadia"]
 
     async def test_empty_input_returns_no_entries(self) -> None:
         with patch.object(
             retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
         ):
-            assert await _build_entries([]) == []
+            assert await build_entries([]) == []
 
     async def test_entity_and_parent_fetches_overlap(self) -> None:
         """The entity and parent lookups must start concurrently, not in sequence."""
@@ -1021,7 +1021,7 @@ class TestBuildEntries:
             patch.object(retrieval.pg_store, "get_entities_for_memories", new=slow_entities),
             patch.object(retrieval.pg_store, "get_memories_by_ids", new=fast_parents),
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
         assert entries[0].previous_content == "parent content"
 
 
@@ -1446,7 +1446,7 @@ class TestRecallQualityRegressions:
                 retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
             ) as fetch_parents,
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
 
         # The liveness fetch must be scoped to the OWNER of the recalled rows:
         # unscoped (None) it returns nothing and every parent silently reads
@@ -1471,7 +1471,7 @@ class TestRecallQualityRegressions:
                 retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
             ) as fetch_parents,
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
 
         # The liveness fetch must be scoped to the OWNER of the recalled rows:
         # unscoped (None) it returns nothing and every parent silently reads

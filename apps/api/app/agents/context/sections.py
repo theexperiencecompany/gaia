@@ -22,6 +22,7 @@ from app.agents.context.fetchers import (
     build_connected_devices_manifest,
     build_connected_integrations_manifest,
     build_core_memory_block,
+    build_fast_recall_block,
     build_gaia_knowledge_block,
     build_memory_recall_block,
     build_new_user_guidance_block,
@@ -73,6 +74,7 @@ class SectionId(StrEnum):
     CORE_MEMORY = "core_memory"
     AGENDA_ACTIVITY = "agenda_activity"
     MEMORY_RECALL = "memory_recall"
+    FAST_MEMORY_RECALL = "fast_memory_recall"
     GAIA_KNOWLEDGE = "gaia_knowledge"
     TRACKED_TODOS = "tracked_todos"
     EXECUTOR_STATUS = "executor_status"
@@ -316,8 +318,21 @@ SECTIONS: tuple[Section, ...] = (
         10,
         build_agenda_and_activity_block,
     ),
+    # Comms answers the user, so its memories come from the fast lane and never
+    # hold up the reply; the worker tiers run off that path and keep deep recall.
     Section(
-        SectionId.MEMORY_RECALL, PromptSlot.MEMORY_RECALL, ALL_TIERS, 20, build_memory_recall_block
+        SectionId.FAST_MEMORY_RECALL,
+        PromptSlot.MEMORY_RECALL,
+        frozenset({AgentTier.COMMS}),
+        20,
+        build_fast_recall_block,
+    ),
+    Section(
+        SectionId.MEMORY_RECALL,
+        PromptSlot.MEMORY_RECALL,
+        WORKER_TIERS,
+        20,
+        build_memory_recall_block,
     ),
     Section(
         SectionId.GAIA_KNOWLEDGE,

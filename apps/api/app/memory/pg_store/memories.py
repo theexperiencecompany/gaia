@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import uuid
 
-from sqlalchemy import ColumnElement, Select, func, or_, select, update
+from sqlalchemy import ColumnElement, Select, func, literal, or_, select, update
 
 from app.constants.memory import (
     AGENDA_CATEGORY_PATH,
@@ -228,6 +228,39 @@ async def fts_search(user_id: str, query: str, limit: int) -> list[tuple[MemoryR
                 MemoryRecord.search_tsv.op("@@")(tsquery),
             )
             .order_by(rank.desc())
+            .limit(limit)
+        )
+        return [(row[0], float(row[1])) for row in result.all()]
+
+
+async def fast_candidates(
+    user_id: str, tokens: list[str], pinned_ids: list[str], limit: int
+) -> list[tuple[MemoryRecord, float]]:
+    """Live memories that are pinned or share any token with the query, best first.
+
+    Any shared token matches (OR), unlike fts_search's websearch_to_tsquery, which
+    ANDs every term and so matches nothing for a conversational turn. Pinned rows
+    rank first; liveness is re-checked here, so a pin never resurrects a
+    forgotten, superseded or expired memory. tokens must be plain [a-z0-9]+.
+    """
+    pinned = MemoryRecord.id.in_([uuid.UUID(memory_id) for memory_id in pinned_ids])
+    matched = [pinned]
+    rank: ColumnElement[float] = literal(0.0)
+    if tokens:
+        tsquery = func.to_tsquery("english", " | ".join(tokens))
+        matched.append(MemoryRecord.search_tsv.op("@@")(tsquery))
+        rank = func.ts_rank_cd(MemoryRecord.search_tsv, tsquery)
+    async with memory_session() as session:
+        result = await session.execute(
+            select(MemoryRecord, rank)
+            .where(
+                MemoryRecord.user_id == user_id,
+                MemoryRecord.is_latest.is_(True),
+                MemoryRecord.is_forgotten.is_(False),
+                _not_expired_clause(),
+                or_(*matched),
+            )
+            .order_by(pinned.desc(), rank.desc(), MemoryRecord.importance.desc())
             .limit(limit)
         )
         return [(row[0], float(row[1])) for row in result.all()]

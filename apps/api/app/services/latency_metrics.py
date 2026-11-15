@@ -302,6 +302,14 @@ _CHAT_TURN_TOTAL = _register_once(
     ),
 )
 
+_MEMORY_FAST_RECALL_BUDGET_EXCEEDED = _register_once(
+    "memory_fast_recall_budget_exceeded",
+    lambda: Counter(
+        name="memory_fast_recall_budget_exceeded",
+        documentation="Comms turns whose memory fast lane ran past its budget and went without",
+    ),
+)
+
 _EXECUTOR_RUN_TOTAL = _register_once(
     "executor_run_total",
     lambda: Counter(
@@ -461,6 +469,11 @@ def observe_chat_turn_total(*, source: str, delegated: bool, status: str) -> Non
         delegated=_bool_label(delegated),
         status=status,
     )
+
+
+def observe_fast_recall_budget_exceeded() -> None:
+    """Count a comms turn that went without memories because the fast lane was too slow."""
+    _inc(_MEMORY_FAST_RECALL_BUDGET_EXCEEDED)
 
 
 def observe_turn_overhead(overhead: TurnOverhead, *, source: str) -> None:

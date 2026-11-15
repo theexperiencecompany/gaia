@@ -16,6 +16,7 @@ import asyncio
 from datetime import UTC, datetime
 import functools
 import re
+import time
 from typing import TypedDict, cast
 
 from app.agents.context.section_context import SectionContext
@@ -33,11 +34,12 @@ from app.agents.prompts.new_user_prompts import NewUserFacts, build_new_user_gui
 from app.agents.workspace.paths import session_dir
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
-from app.constants.memory import MEMORY_RECALL_BLOCK_LIMIT
+from app.constants.memory import FAST_RECALL_BUDGET_SECONDS, MEMORY_RECALL_BLOCK_LIMIT
 from app.constants.tool_labels import humanize_tool_name
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.todos import todo_repository
+from app.memory import fast_recall
 from app.memory.context import AGENDA_HEADING, RECENT_ACTIVITY_HEADING
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
@@ -55,6 +57,7 @@ from app.services.integrations.integration_accounts import (
     list_account_records,
 )
 from app.services.integrations.user_integrations import get_connected_integrations_named
+from app.services.latency_metrics import observe_fast_recall_budget_exceeded
 from app.services.onboarding.first_question import seeded_chips
 from app.services.storage._vfs_common import folder_name
 from app.services.tools.tools_service import get_integration_tool_list
@@ -221,6 +224,50 @@ async def build_memory_recall_block(ctx: SectionContext) -> str:
         return ""
     log.info("Added memories to context", memories_count=len(results.memories))
     notes = "\n".join(f"- {entry_to_note(mem)}" for mem in results.memories)
+    return f"{MEMORY_RECALL_HEADER}\n{notes}"
+
+
+async def build_fast_recall_block(ctx: SectionContext) -> str:
+    """Comms memories from the fast lane, dated; nothing when it overruns its budget.
+
+    A turn that goes without is the explicit trade: the reply never waits on
+    memory, the overrun is counted and logged, and search_memory still reaches
+    every memory the lane missed.
+    """
+    if not (ctx.user_id and ctx.query):
+        return ""
+    started = time.perf_counter()
+    try:
+        async with asyncio.timeout(FAST_RECALL_BUDGET_SECONDS):
+            entries = await fast_recall.fast_recall(
+                ctx.user_id, ctx.query, conversation_id=ctx.conversation_id
+            )
+    except TimeoutError:
+        observe_fast_recall_budget_exceeded()
+        log.warning(
+            "Memory fast lane exceeded its budget",
+            budget_ms=FAST_RECALL_BUDGET_SECONDS * 1000,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+            user_id=ctx.user_id,
+        )
+        return ""
+    except Exception as e:
+        # The section contract: one failing source costs only its own section.
+        log.error(
+            "Memory fast lane failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=ctx.user_id,
+        )
+        return ""
+    log.set_ns(
+        "memory_fast_recall",
+        elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+        count=len(entries),
+    )
+    if not entries:
+        return ""
+    notes = "\n".join(f"- {entry_to_note(entry)}" for entry in entries)
     return f"{MEMORY_RECALL_HEADER}\n{notes}"
 
 
