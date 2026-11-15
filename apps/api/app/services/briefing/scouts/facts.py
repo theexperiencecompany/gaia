@@ -21,9 +21,13 @@ SIGNALS_HEADER = "[ACROSS THEIR APPS]"
 SHOWN_NOT_TOTAL = "Counts are of the items shown here, not each app's total: an app may hold more."
 
 
-def people_note(people: Sequence[str], role: PeopleRole | None) -> str:
-    """Say who an item names and what they are to it; with no role from the app, only that they are named."""
-    names = ", ".join(people)
+#: Marks the one person on an item who is the user: never a third person to them.
+YOU_MARK = "(this is the user: say you, never their name)"
+
+
+def people_note(people: Sequence[str], role: PeopleRole | None, you: Sequence[str] = ()) -> str:
+    """Say who an item names, which of them is the user, and what they are to it, when the app says."""
+    names = ", ".join(f"{name} {YOU_MARK}" if name in you else name for name in people)
     if role is None:
         return f"names {names} (the app does not say their part in it)"
     return f"{role.value}: {names}"
@@ -82,7 +86,7 @@ def _line(fact_id: int, item: RememberedSignal, clock: UserClock) -> str:
     if signal.due_at is not None:
         parts.append(f"due {clock.day_of(signal.due_at).isoformat()}")
     if signal.people:
-        parts.append(people_note(signal.people, signal.people_role))
+        parts.append(people_note(signal.people, signal.people_role, signal.people_you))
     if signal.url:
         parts.append("linkable")
     if signal.why:

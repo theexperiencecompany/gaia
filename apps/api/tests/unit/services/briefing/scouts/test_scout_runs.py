@@ -46,7 +46,10 @@ from app.services.briefing.scouts.learn import Learned
 from app.services.briefing.scouts.spend import ScoutSpend
 from app.services.briefing.scouts.tools import ScoutIntegration, ScoutTools
 from app.services.briefing.scouts.watch import FrozenWatch, ScoutSourceFailed
-from app.services.mcp.mcp_errors import MCPIntegrationNotFoundError
+from app.services.mcp.mcp_errors import (
+    MCPAuthorizationRequiredError,
+    MCPIntegrationNotFoundError,
+)
 from app.services.payments.payment_service import payment_service
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.utils.errors import AppError
@@ -388,6 +391,36 @@ class TestTypedSkips:
         assert linear.outcome is ScoutOutcome.REPLAYED
         assert "errors" not in event
         scouts.learn.assert_not_awaited()
+
+    async def test_an_app_that_refuses_the_sign_in_is_skipped_as_signed_out(
+        self, scouts: Scouts
+    ) -> None:
+        """An expired MCP sign-in read as a generic failure, so the brief never asked for a reconnect."""
+        scouts.integrations = [GITHUB, LINEAR]
+        scouts.broken_tools = {"github": MCPAuthorizationRequiredError("github")}
+        scouts.stored["linear"] = _scout(LINEAR)
+
+        async with captured_wide_event() as event:
+            github, linear = await service.run_scouts(USER)
+
+        assert (github.outcome, github.skip_reason, github.error) == (
+            ScoutOutcome.SKIPPED,
+            ScoutSkipReason.SIGNED_OUT,
+            None,
+        )
+        assert linear.outcome is ScoutOutcome.REPLAYED
+        assert "errors" not in event
+        assert event["scouts"]["skip_reasons"] == {"github": "signed_out"}
+
+    async def test_a_signed_out_app_is_reported_without_calling_it(self, scouts: Scouts) -> None:
+        scouts.integrations = [ScoutIntegration("github", "GitHub", signed_out=True)]
+        scouts.broken_tools = {"github": AssertionError("a signed-out app was called")}
+
+        [result] = await service.run_scouts(USER)
+
+        assert (result.app, result.skip_reason) == ("GitHub", ScoutSkipReason.SIGNED_OUT)
+        scouts.learn.assert_not_awaited()
+        scouts.watch.assert_not_awaited()
 
     async def test_an_integration_with_no_read_only_tool_is_never_learned(
         self, scouts: Scouts

@@ -18517,7 +18517,8 @@
           "backoff",
           "source_failed",
           "no_read_only_tools",
-          "unknown_integration"
+          "unknown_integration",
+          "signed_out"
         ],
         "title": "ScoutSkipReason",
         "type": "string"
