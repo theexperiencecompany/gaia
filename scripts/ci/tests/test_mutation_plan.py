@@ -35,17 +35,24 @@ REPORT_LIB = REPO_ROOT / "scripts" / "ci" / "lib" / "mutation_report.py"
 # The packing it drives is what keeps a huge diff producing a matrix at all,
 # rather than blowing GitHub's 256-job hard limit and yielding none — and a lane
 # with no matrix is a lane that counts as a pass.
-def _max_shards() -> int:
+def _constant(name: str) -> float:
     source = PLAN_SCRIPT.read_text()
-    match = re.search(r"^MAX_SHARDS = (\d+)$", source, re.MULTILINE)
-    assert match, "MAX_SHARDS not found in mutation.py — did the plan script change shape?"
-    return int(match.group(1))
+    match = re.search(rf"^{name} = ([\d.]+)$", source, re.MULTILINE)
+    assert match, f"{name} not found in mutation.py — did the plan script change shape?"
+    return float(match.group(1))
 
 
-MAX_SHARDS = _max_shards()
+MAX_SHARDS = int(_constant("MAX_SHARDS"))
+MUTATION_WAVE = int(_constant("MUTATION_WAVE"))
+SHARD_BUDGET_SECONDS = _constant("SHARD_BUDGET_SECONDS")
+UNIT_RATE = _constant("UNIT_SECONDS_PER_MUTANT_TEST")
+OVERHEAD = _constant("MODULE_OVERHEAD_SECONDS")
 
-# Round-robin packing gives the first shard the ceiling of the even split.
+# Heavy enough that the whole diff needs more than MAX_SHARDS budgets, so the
+# bound is what decides the count. Equal costs pack evenly, the first shards
+# taking the ceiling of the split.
 HUGE_DIFF_MODULES = 430
+HUGE_DIFF_MUTANTS = 2000
 FIRST_SHARD_SIZE = -(-HUGE_DIFF_MODULES // MAX_SHARDS)
 
 
@@ -203,7 +210,7 @@ def test_no_changed_modules_yields_an_empty_matrix_and_a_zero_count(harness: Pla
 
 
 class TestPackingAHugeDiff:
-    """Over MAX_SHARDS modules, shards carry several modules each.
+    """A diff too costly for MAX_SHARDS budgets still gets MAX_SHARDS shards, no more.
 
     GitHub refuses a matrix larger than 256 jobs outright, and the lane would
     then produce NO matrix — which the gate reads as a skip, and a skipped
@@ -212,7 +219,10 @@ class TestPackingAHugeDiff:
 
     @staticmethod
     def _many(count: int) -> list[dict[str, object]]:
-        return [_entry(f"app/m{i}.py", [f"tests/unit/test_m{i}.py"], [i]) for i in range(count)]
+        return [
+            _entry(f"app/m{i}.py", [f"tests/unit/test_m{i}.py"], [i], mutants=HUGE_DIFF_MUTANTS)
+            for i in range(count)
+        ]
 
     def test_the_matrix_never_exceeds_the_job_limit(self, harness: PlanRun) -> None:
         process, outputs = harness(self._many(HUGE_DIFF_MODULES))
@@ -240,11 +250,38 @@ class TestPackingAHugeDiff:
             re.fullmatch(rf"shard \d+/{MAX_SHARDS} \(\d+ modules\)", label) for label in labels
         )
 
-    def test_exactly_the_limit_still_gets_one_module_each(self, harness: PlanRun) -> None:
-        _, outputs = harness(self._many(MAX_SHARDS))
 
-        assert int(outputs["count"]) == MAX_SHARDS
-        assert all(len(group) == 1 for group in _groups(outputs))
+def test_a_cheap_diff_of_a_wave_of_modules_gets_one_shard_each(harness: PlanRun) -> None:
+    # Shards that run at once cost no wall clock, so a cheap diff still fans out.
+    _, outputs = harness([_entry(f"app/m{i}.py", [UNIT_TEST], [i]) for i in range(MUTATION_WAVE)])
+
+    assert int(outputs["count"]) == MUTATION_WAVE
+    assert all(len(group) == 1 for group in _groups(outputs))
+
+
+def test_a_cheap_diff_never_takes_more_than_one_wave(harness: PlanRun) -> None:
+    _, outputs = harness([_entry(f"app/m{i}.py", [UNIT_TEST], [i]) for i in range(40)])
+
+    assert int(outputs["count"]) == MUTATION_WAVE
+
+
+def test_a_costly_diff_gets_as_many_shards_as_it_needs_to_fit_the_budget(
+    harness: PlanRun,
+) -> None:
+    # PR #1799: 222 modules worth ~10,000 s were forced into six shards, and
+    # every shard ran past its 28-minute deadline. The count follows the cost,
+    # and shards past the wave queue behind max-parallel.
+    mutants = 16_000  # ~500 s per module
+    entries = [_entry(f"app/m{i}.py", [UNIT_TEST], [i], mutants=mutants) for i in range(40)]
+
+    process, outputs = harness(entries)
+
+    assert process.returncode == 0, process.stderr
+    per_module = OVERHEAD + mutants * UNIT_RATE
+    assert MUTATION_WAVE < int(outputs["count"]) <= MAX_SHARDS
+    for group in _groups(outputs):
+        assert len(group) * per_module <= SHARD_BUDGET_SECONDS
+    assert "::warning::" not in process.stdout
 
 
 def test_a_failing_detector_fails_the_plan(tmp_path: Path) -> None:
@@ -391,7 +428,7 @@ def test_the_two_pools_share_one_shard_budget(harness: PlanRun) -> None:
         + [_entry(f"app/unit{i}.py", [UNIT_TEST], [i]) for i in range(30)]
     )
 
-    assert int(outputs["count"]) == MAX_SHARDS
+    assert int(outputs["count"]) == MUTATION_WAVE
     # And both pools are represented — a budget that starved one of them would
     # leave its modules unmutated.
     assert set(_pools(outputs)) == {"unit", "services"}
@@ -409,7 +446,7 @@ def test_the_heavier_pool_gets_the_spare_shards(harness: PlanRun) -> None:
     shards_per_pool: dict[str, int] = {}
     for item in _matrix(outputs):
         shards_per_pool[item["pool"]] = shards_per_pool.get(item["pool"], 0) + 1
-    assert shards_per_pool == {"services": 1, "unit": MAX_SHARDS - 1}
+    assert shards_per_pool == {"services": 1, "unit": MUTATION_WAVE - 1}
 
 
 def test_a_services_shard_says_so_in_its_check_name(harness: PlanRun) -> None:
@@ -423,10 +460,10 @@ def test_a_services_shard_says_so_in_its_check_name(harness: PlanRun) -> None:
 def test_the_matrix_runs_as_many_shards_at_once_as_the_plan_makes() -> None:
     """More shards than max-parallel queue behind each other; fewer leave runners idle."""
     workflow = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text())
-    assert workflow["jobs"]["test-mutation"]["strategy"]["max-parallel"] == MAX_SHARDS
+    assert workflow["jobs"]["test-mutation"]["strategy"]["max-parallel"] == MUTATION_WAVE
     # runner.py sizes the box's services pool for one wave of them.
     runner = (REPO_ROOT / "scripts" / "ci" / "runner.py").read_text()
-    assert re.search(rf"^MUTATION_WAVE = {MAX_SHARDS}$", runner, re.MULTILINE)
+    assert re.search(rf"^MUTATION_WAVE = {MUTATION_WAVE}$", runner, re.MULTILINE)
 
 
 # ---------------------------------------------------------------------------
@@ -474,7 +511,7 @@ def test_a_few_costly_services_modules_get_shards_of_their_own(harness: PlanRun)
 
     services = [item for item in _matrix(outputs) if item["pool"] == "services"]
     assert len(services) == 3
-    assert int(outputs["count"]) == MAX_SHARDS
+    assert int(outputs["count"]) == MUTATION_WAVE
 
 
 def test_a_shard_over_the_budget_is_announced_by_the_plan(harness: PlanRun) -> None:
