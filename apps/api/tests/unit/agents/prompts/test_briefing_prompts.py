@@ -304,3 +304,18 @@ def test_the_day_zero_hello_asks_for_the_goal_when_none_is_known() -> None:
     assert "Say hi to Priya by name" in prompt
     assert _ASKS_FOR_THE_GOAL in prompt
     assert _OFFERS_A_DELIVERABLE not in prompt
+
+
+def test_the_day_zero_hello_promises_the_first_brief_only_when_one_is_coming() -> None:
+    def close_lines(first_brief: str | None) -> list[str]:
+        prompt = build_day_zero_hello_prompt(
+            first_name="Priya", goal_block=_GOAL, has_goal=True, first_brief=first_brief
+        )
+        voice = prompt.index("## VOICE")
+        return prompt[prompt.index("## YOUR MESSAGE") : voice].strip().splitlines()[-2:]
+
+    assert close_lines("tomorrow at 8 AM") == [
+        "Close by letting them know their first brief lands tomorrow at 8 AM.",
+        "Keep it light, one short line for that, not a sales pitch.",
+    ]
+    assert close_lines(None)[-1] == "Their briefs are turned off, so never promise them one."
