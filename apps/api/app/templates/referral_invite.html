@@ -1,0 +1,21 @@
+{% extends "_base_email.html" %}
+{#-
+  A friend's invite, sent from GAIA's domain when they have no Gmail connected.
+  Context: referrer_name, referrer_picture, price_line, regular_price_line.
+-#}
+{% block content %}
+{% if referrer_picture %}
+<img
+  src="{{ referrer_picture }}"
+  width="48"
+  height="48"
+  alt="{{ referrer_name }}"
+  style="border-radius: 9999px; display: block; margin-bottom: 16px"
+/>
+{% endif %}
+<strong>{{ referrer_name }} sent you a gift!</strong><br /><br />
+GAIA for just {{ price_line }}, then {{ regular_price_line }}.<br />
+Your new favorite assistant is waiting.<br /><br />
+GAIA handles your email, calendar and to-dos so your days feel lighter.
+Reply to this email to say thanks to {{ referrer_name }}.
+{% endblock %}

@@ -12,15 +12,23 @@ from httpx import AsyncClient
 import pytest
 
 from app.config.settings import settings
-from app.constants.auth import WOS_SESSION_COOKIE, WOS_SESSION_MAX_AGE_SECONDS
+from app.constants.auth import (
+    OAUTH_FLOW_DESKTOP,
+    OAUTH_FLOW_MOBILE,
+    OAUTH_FLOW_WEB,
+    WOS_SESSION_COOKIE,
+    WOS_SESSION_MAX_AGE_SECONDS,
+)
 from app.constants.integrations import AccountConnectOutcome
 from app.constants.log_tags import LogTag
+from app.constants.referrals import REFERRAL_COOKIE_NAME, ReferralCopyVariant
 from app.models.integration_models import IntegrationAccount
 from app.services.integrations.integration_account_lifecycle import AccountConnected
 from app.services.oauth.composio_callback import ConnectionCompleted, ConnectionRejected
+from app.services.referrals.attribution import ReferralAttribution
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.integrations import IntegrationConnected
-from tests.helpers import session_set_cookie
+from tests.helpers import captured_wide_event, session_set_cookie
 
 OAUTH_BASE = "/api/v1/oauth"
 FRONTEND = settings.FRONTEND_URL
@@ -40,12 +48,14 @@ def _oauth_ns(log_mock: MagicMock) -> dict:
 PICTURE_URL = "https://cdn.example/avatar.png"
 #: What every callback stores for _mock_auth_response(picture_url=PICTURE_URL): name, email, picture.
 STORED_PROFILE = ("Test User", "test@example.com", PICTURE_URL)
+#: A sealed session holding "/", "+" and "=", which a deep link's token query escapes.
+SEALED_SESSION_TO_ESCAPE = "sealed/session+token="
 
 
 def _mock_auth_response(
     email: str = "test@example.com",
-    first_name: str = "Test",
-    last_name: str = "User",
+    first_name: str | None = "Test",
+    last_name: str | None = "User",
     picture_url: str | None = None,
     sealed_session: str = "sealed_token_abc",
     access_token: str = "access_token_abc",
@@ -238,7 +248,9 @@ class TestWorkOSMobileCallback:
         )
         assert response.status_code == 307
         assert "token=" in response.headers["location"]
-        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
+        mock_store.assert_awaited_once_with(
+            *STORED_PROFILE, auth_method="GoogleOAuth", referral=None
+        )
 
     @patch(
         "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
@@ -333,7 +345,36 @@ class TestWorkOSDesktopCallback:
         )
         assert response.status_code == 307
         assert "gaia://auth/callback?token=" in response.headers["location"]
-        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
+        mock_store.assert_awaited_once_with(
+            *STORED_PROFILE, auth_method="GoogleOAuth", referral=None
+        )
+
+    @pytest.mark.parametrize(
+        ("first_name", "last_name", "stored_name"),
+        [(None, "User", "User"), ("Test", None, "Test")],
+        ids=["no-first-name", "no-last-name"],
+    )
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    async def test_a_profile_missing_half_its_name_stores_the_half_it_has(
+        self,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        client: AsyncClient,
+        first_name: str | None,
+        last_name: str | None,
+        stored_name: str,
+    ) -> None:
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(first_name=first_name, last_name=last_name)
+        )
+        mock_store.return_value = (USER_ID, False)
+
+        await client.get(f"{OAUTH_BASE}/workos/desktop/callback?code=abc", follow_redirects=False)
+
+        mock_store.assert_awaited_once_with(
+            stored_name, "test@example.com", None, auth_method="GoogleOAuth", referral=None
+        )
 
     async def test_desktop_callback_no_code(self, client: AsyncClient):
         response = await client.get(
@@ -391,7 +432,153 @@ class TestWorkOSCallback:
         )
         assert response.status_code == 307
         assert "wos_session" in response.headers.get("set-cookie", "")
-        mock_store.assert_awaited_once_with(*STORED_PROFILE, auth_method="GoogleOAuth")
+        mock_store.assert_awaited_once_with(
+            *STORED_PROFILE, auth_method="GoogleOAuth", referral=None
+        )
+
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    @patch("app.api.v1.endpoints.oauth.redis_cache")
+    async def test_the_invite_cookie_is_handed_to_signup_and_then_cleared(
+        self,
+        mock_redis: MagicMock,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        client: AsyncClient,
+    ):
+        mock_redis.client.get = AsyncMock(return_value=None)
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
+        )
+        mock_store.return_value = (MagicMock(), True)
+
+        response = await client.get(
+            f"{OAUTH_BASE}/workos/callback?code=abc",
+            headers={"cookie": f"{REFERRAL_COOKIE_NAME}=aryan-k7f2.time_back"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 307
+        mock_store.assert_awaited_once_with(
+            *STORED_PROFILE,
+            auth_method="GoogleOAuth",
+            referral=ReferralAttribution(
+                code="aryan-k7f2", landing_variant=ReferralCopyVariant.TIME_BACK
+            ),
+        )
+        cleared = [
+            c for c in response.headers.get_list("set-cookie") if c.startswith(REFERRAL_COOKIE_NAME)
+        ]
+        assert cleared and "Max-Age=0" in cleared[0]
+
+    @pytest.mark.parametrize(
+        ("path", "deep_link"),
+        [
+            ("/workos/mobile/callback?code=abc&state=xyz", "gaiamobile://auth/callback"),
+            ("/workos/desktop/callback?code=abc", "gaia://auth/callback"),
+        ],
+        ids=["mobile", "desktop"],
+    )
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    @patch(
+        "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
+        new_callable=AsyncMock,
+        return_value="gaiamobile://auth/callback",
+    )
+    async def test_an_app_signup_in_the_system_browser_is_credited_to_its_invite(
+        self,
+        _mock_redirect: AsyncMock,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        client: AsyncClient,
+        path: str,
+        deep_link: str,
+    ):
+        mock_workos.return_value.user_management.authenticate_with_code.return_value = (
+            _mock_auth_response(picture_url=PICTURE_URL)
+        )
+        mock_store.return_value = (MagicMock(), True)
+
+        response = await client.get(
+            f"{OAUTH_BASE}{path}",
+            headers={"cookie": f"{REFERRAL_COOKIE_NAME}=aryan-k7f2.gift"},
+            follow_redirects=False,
+        )
+
+        assert response.headers["location"].startswith(f"{deep_link}?token=")
+        mock_store.assert_awaited_once_with(
+            *STORED_PROFILE,
+            auth_method="GoogleOAuth",
+            referral=ReferralAttribution(
+                code="aryan-k7f2", landing_variant=ReferralCopyVariant.GIFT
+            ),
+        )
+        cleared = [
+            c for c in response.headers.get_list("set-cookie") if c.startswith(REFERRAL_COOKIE_NAME)
+        ]
+        assert cleared and "Max-Age=0" in cleared[0]
+
+    @pytest.mark.parametrize(
+        ("path", "flow", "location"),
+        [
+            (
+                "/workos/mobile/callback?code=wos-code&state=xyz",
+                OAUTH_FLOW_MOBILE,
+                "gaiamobile://auth/callback?token=sealed%2Fsession%2Btoken%3D",
+            ),
+            (
+                "/workos/desktop/callback?code=wos-code",
+                OAUTH_FLOW_DESKTOP,
+                "gaia://auth/callback?token=sealed%2Fsession%2Btoken%3D",
+            ),
+            ("/workos/callback?code=wos-code", OAUTH_FLOW_WEB, f"{FRONTEND}/redirect"),
+        ],
+        ids=["mobile", "desktop", "web"],
+    )
+    @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
+    @patch("app.api.v1.endpoints.oauth.get_workos_client")
+    @patch(
+        "app.api.v1.endpoints.oauth._get_and_delete_mobile_redirect",
+        new_callable=AsyncMock,
+        return_value="gaiamobile://auth/callback",
+    )
+    async def test_a_workos_callback_seals_its_code_and_audits_who_signed_in(
+        self,
+        _mock_redirect: AsyncMock,
+        mock_workos: MagicMock,
+        mock_store: AsyncMock,
+        client: AsyncClient,
+        path: str,
+        flow: str,
+        location: str,
+    ) -> None:
+        authenticate = mock_workos.return_value.user_management.authenticate_with_code
+        authenticate.return_value = _mock_auth_response(
+            picture_url=PICTURE_URL, sealed_session=SEALED_SESSION_TO_ESCAPE
+        )
+        mock_store.return_value = (USER_ID, True)
+
+        async with captured_wide_event() as live:
+            response = await client.get(f"{OAUTH_BASE}{path}", follow_redirects=False)
+            event = dict(live)
+
+        assert response.headers["location"] == location
+        authenticate.assert_called_once_with(
+            code="wos-code",
+            session={"seal_session": True, "cookie_password": settings.WORKOS_COOKIE_PASSWORD},
+        )
+        assert event["fields_extracted"] == ["email", "name", "picture"]
+        assert (event["user_id"], event["is_new_user"]) == (USER_ID, True)
+        assert event["audit"] == [
+            {
+                "msg": "login succeeded",
+                "actor": USER_ID,
+                "flow": flow,
+                "provider": "authkit",
+                "is_new_user": True,
+            }
+        ]
 
     @patch("app.api.v1.endpoints.oauth.store_user_info", new_callable=AsyncMock)
     @patch("app.api.v1.endpoints.oauth.get_workos_client")

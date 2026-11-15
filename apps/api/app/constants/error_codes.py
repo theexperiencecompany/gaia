@@ -34,6 +34,11 @@ BOT_ACCOUNT_NOT_LINKED = "BOT_ACCOUNT_NOT_LINKED"
 # 409 — a user-facing feature flag is killed for everyone; the choice cannot be changed now.
 FEATURE_KILLED = "FEATURE_KILLED"
 
+# 403 — referral routes need an active subscription; the web shows a "subscribe first" state.
+REFERRAL_SUBSCRIPTION_REQUIRED = "REFERRAL_SUBSCRIPTION_REQUIRED"
+# 403 — the referral program is switched off; the web hides every referral surface.
+REFERRALS_DISABLED = "REFERRALS_DISABLED"
+
 # 404 — a self-hosted instance sends no support request to GAIA's support team.
 GAIA_SUPPORT_UNAVAILABLE = "gaia_support_unavailable"
 # 400 — Cloudflare Turnstile rejected the public contact form's token.

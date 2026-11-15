@@ -47,7 +47,6 @@ apps/api/tests/e2e/test_voice_device_realtime_e2e.py	arg-type
 apps/api/tests/e2e/test_voice_device_realtime_e2e.py	attr-defined
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	arg-type
 apps/api/tests/e2e/test_webhook_fanout_e2e.py	func-returns-value
-apps/api/tests/factories.py	arg-type
 apps/api/tests/integration/agents/conftest.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_delivery.py	attr-defined
 apps/api/tests/integration/agents/test_browser_job_relay.py	attr-defined
@@ -368,7 +367,6 @@ apps/api/tests/unit/services/test_mcp_tool_result.py	index
 apps/api/tests/unit/services/test_nurture_service.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	arg-type
 apps/api/tests/unit/services/test_outbound_delivery.py	attr-defined
-apps/api/tests/unit/services/test_payment_service_dodo_reconciliation.py	attr-defined
 apps/api/tests/unit/services/test_platform_message_service.py	attr-defined
 apps/api/tests/unit/services/test_provider_credentials_service.py	arg-type
 apps/api/tests/unit/services/test_provider_credentials_service.py	assignment

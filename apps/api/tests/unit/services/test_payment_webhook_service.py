@@ -14,6 +14,7 @@ import pytest
 from app.constants.log_tags import LogTag
 from app.constants.payments import WEBHOOK_ROW_WAIT_MAX
 from app.models.payment_models import ProcessedWebhookUpdate, SubscriptionDocument
+from app.models.referral_models import ReferralRevokeReason
 from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
@@ -26,7 +27,7 @@ from app.services.payments.subscription_events import (
     SubscriptionEventOutcome,
     SubscriptionEventResult,
 )
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.billing import (
     PaymentFailed,
     PaymentSucceeded,
@@ -69,6 +70,7 @@ pytestmark = pytest.mark.usefixtures(
     "mock_paywall_resume",
     "mock_subscription_plan_cache_drop",
     "mock_queue_inbox_desk",
+    "mock_no_referral",
 )
 
 
@@ -484,6 +486,53 @@ class TestHandlePaymentSucceeded:
         assert result.subscription_id == "sub_xyz789"
         assert "success" in result.message.lower()
 
+    async def test_a_payment_is_offered_to_the_referral_program(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+        mock_no_referral,
+    ):
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+        await webhook_service.process_webhook(event_data, "wh_pay_ref")
+
+        paid = mock_no_referral.conversion.await_args.args[0]
+        assert paid.payment_id == PAYMENT_DATA_PAYLOAD["payment_id"]
+
+    async def test_a_failed_reward_delivery_fails_the_delivery_so_dodo_retries(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+        mock_no_referral,
+    ):
+        mock_no_referral.conversion.side_effect = ConnectionError("dodo unreachable")
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+
+        result = await webhook_service.process_webhook(event_data, "wh_pay_ref_fail")
+
+        assert result.status == "failed"
+        mock_processed_webhook_repository.release.assert_awaited_once_with("wh_pay_ref_fail")
+
+    async def test_a_redelivery_after_a_failed_reward_records_the_payment_as_one_fact(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_users_collection,
+        mock_payment_capture,
+        mock_no_referral,
+    ):
+        mock_no_referral.conversion.side_effect = [ConnectionError("dodo unreachable"), None]
+        event_data = _make_webhook_event("payment.succeeded", PAYMENT_DATA_PAYLOAD)
+
+        await webhook_service.process_webhook(event_data, "wh_pay_redelivered")
+        await webhook_service.process_webhook(event_data, "wh_pay_redelivered")
+
+        fact = Dedupe(key="pay_001", occurred_at=datetime(2025, 1, 1, tzinfo=UTC))
+        assert [c.kwargs["dedupe"] for c in mock_payment_capture.call_args_list] == [fact, fact]
+
     async def test_tracks_analytics_event(
         self,
         webhook_service,
@@ -506,6 +555,7 @@ class TestHandlePaymentSucceeded:
                 currency_charged="USD",
                 amount_usd_pre_tax=9.99,
             ),
+            dedupe=Dedupe(key="pay_001", occurred_at=datetime(2025, 1, 1, tzinfo=UTC)),
         )
 
     async def test_a_localised_taxed_charge_reports_pre_tax_local_and_usd(
@@ -594,6 +644,7 @@ class TestHandlePaymentSucceeded:
                 currency_charged="USD",
                 amount_usd_pre_tax=10.0,
             ),
+            dedupe=Dedupe(key="pay_001", occurred_at=datetime(2025, 1, 1, tzinfo=UTC)),
         )
 
     async def test_a_non_usd_settlement_sends_no_usd_amount_and_says_so(
@@ -662,6 +713,109 @@ class TestHandlePaymentSucceeded:
 
         assert result.status == "abandoned"
         assert "Invalid payload" in result.message
+
+
+REFUND_PAYLOAD = {
+    "business_id": "biz_1",
+    "refund_id": "ref_1",
+    "payment_id": "pay_001",
+    "is_partial": False,
+    "created_at": "2025-01-02T00:00:00Z",
+    "customer": {"customer_id": "cus_1", "email": FAKE_EMAIL, "name": "Priya"},
+    "metadata": {},
+    "status": "succeeded",
+    "amount": 999,
+    "currency": "USD",
+}
+DISPUTE_PAYLOAD = {
+    "business_id": "biz_1",
+    "dispute_id": "dsp_1",
+    "payment_id": "pay_001",
+    "amount": "9.99",
+    "currency": "USD",
+    "created_at": "2025-01-02T00:00:00Z",
+    "dispute_stage": "chargeback",
+    "dispute_status": "dispute_opened",
+}
+
+
+class TestRefundsAndDisputesTakeTheMonthBack:
+    async def test_a_full_refund_asks_for_the_friends_month_back(
+        self, webhook_service, mock_processed_webhook_repository, mock_no_referral
+    ):
+        async with captured_wide_event() as event:
+            result = await webhook_service.process_webhook(
+                _make_webhook_event("refund.succeeded", REFUND_PAYLOAD), "wh_refund"
+            )
+
+        assert (result.status, result.payment_id) == ("processed", "pay_001")
+        mock_no_referral.revocation.assert_awaited_once_with("pay_001", ReferralRevokeReason.REFUND)
+        mock_processed_webhook_repository.record_outcome.assert_awaited_once_with(
+            "wh_refund",
+            ProcessedWebhookUpdate(
+                status="processed", message="Refund noted", payment_id="pay_001"
+            ),
+        )
+        assert (event["payment"]["refund_id"], event["payment"]["refund_partial"]) == (
+            "ref_1",
+            False,
+        )
+
+    async def test_a_partial_refund_leaves_the_month_alone(
+        self, webhook_service, mock_processed_webhook_repository, mock_no_referral
+    ):
+        partial = {**REFUND_PAYLOAD, "is_partial": True}
+
+        result = await webhook_service.process_webhook(
+            _make_webhook_event("refund.succeeded", partial), "wh_refund_partial"
+        )
+
+        assert result.status == "processed"
+        mock_no_referral.revocation.assert_not_awaited()
+
+    async def test_an_opened_dispute_asks_for_the_friends_month_back(
+        self, webhook_service, mock_processed_webhook_repository, mock_no_referral
+    ):
+        async with captured_wide_event() as event:
+            result = await webhook_service.process_webhook(
+                _make_webhook_event("dispute.opened", DISPUTE_PAYLOAD), "wh_dispute"
+            )
+
+        assert result.status == "processed"
+        mock_no_referral.revocation.assert_awaited_once_with(
+            "pay_001", ReferralRevokeReason.DISPUTE
+        )
+        mock_processed_webhook_repository.record_outcome.assert_awaited_once_with(
+            "wh_dispute",
+            ProcessedWebhookUpdate(
+                status="processed", message="Dispute noted", payment_id="pay_001"
+            ),
+        )
+        assert event["payment"]["dispute_id"] == "dsp_1"
+
+    async def test_a_revocation_that_could_not_be_queued_fails_so_dodo_retries(
+        self, webhook_service, mock_processed_webhook_repository, mock_no_referral
+    ):
+        mock_no_referral.revocation.side_effect = ConnectionError("redis down")
+
+        result = await webhook_service.process_webhook(
+            _make_webhook_event("refund.succeeded", REFUND_PAYLOAD), "wh_refund_fail"
+        )
+
+        assert result.status == "failed"
+        mock_processed_webhook_repository.release.assert_awaited_once_with("wh_refund_fail")
+
+    async def test_a_refund_body_without_its_payment_is_abandoned(
+        self, webhook_service, mock_processed_webhook_repository, mock_no_referral
+    ):
+        malformed = {k: v for k, v in REFUND_PAYLOAD.items() if k != "payment_id"}
+
+        result = await webhook_service.process_webhook(
+            _make_webhook_event("refund.succeeded", malformed), "wh_refund_bad"
+        )
+
+        assert result.status == "abandoned"
+        mock_no_referral.revocation.assert_not_awaited()
 
 
 class TestHandlePaymentFailed:
@@ -1355,6 +1509,8 @@ class TestPaymentWebhookServiceInit:
             DodoWebhookEventType.PAYMENT_FAILED,
             DodoWebhookEventType.PAYMENT_PROCESSING,
             DodoWebhookEventType.PAYMENT_CANCELLED,
+            DodoWebhookEventType.REFUND_SUCCEEDED,
+            DodoWebhookEventType.DISPUTE_OPENED,
             DodoWebhookEventType.SUBSCRIPTION_ACTIVE,
             DodoWebhookEventType.SUBSCRIPTION_RENEWED,
             DodoWebhookEventType.SUBSCRIPTION_CANCELLED,

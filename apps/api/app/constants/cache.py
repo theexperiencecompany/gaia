@@ -33,6 +33,9 @@ SUBSCRIPTION_BILLING_DAY_CACHE_PREFIX = "subscription_billing_day:"
 ACTIVE_PLANS_CACHE_KEY = "plans:active"
 ALL_PLANS_CACHE_KEY = "plans:all"
 PLANS_CACHE_KEYS = (ACTIVE_PLANS_CACHE_KEY, ALL_PLANS_CACHE_KEY)
+# A Dodo discount looked up by code (Dodo only lists them), or the record that none has it.
+DISCOUNT_BY_CODE_CACHE_PREFIX = "dodo_discount_by_code:"
+DISCOUNT_BY_CODE_CACHE_TTL = ONE_HOUR_TTL
 # The result page retries payment verification 8 times over ~50s
 # (verifyPaymentWithRetry.ts); this TTL covers that window so each retry
 # doesn't re-ask Dodo about every session. Minting a new session drops the key.
