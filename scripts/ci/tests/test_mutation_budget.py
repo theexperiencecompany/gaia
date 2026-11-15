@@ -4,19 +4,25 @@ On PR #1799 two contract-mapped modules (repositories/conversations.py,
 conversation/mongo_log.py) needed ~14-16 minutes of serial mutants and hit a
 fixed 720 s cap at 452/519 and 383/521 graded, so a correct suite got no
 verdict. Meanwhile a 54-module shard ran past the step timeout and was killed
-with every module after the cut unreported. Nothing here runs mutmut.
+with every module after the cut unreported. Nothing here runs mutmut; one test
+runs a memory hog under the per-process cap a shard puts on mutmut.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+import resource
+import subprocess
+import sys
 import time
 
 import mutation
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONTRACTS = tuple(f"tests/contracts/test_log{n}.py" for n in range(8))
+GIB = 1 << 30
 
 
 def _work(
@@ -72,3 +78,24 @@ def test_the_shard_deadline_ends_before_the_step_timeout() -> None:
         if s.get("run") == "python3 scripts/ci/mutation.py shard"
     )
     assert step["timeout-minutes"] * 60 > mutation.SHARD_DEADLINE_SECONDS
+
+
+def test_mutmut_and_its_workers_split_the_memory_share(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mutation, "memory_available", lambda: 16 * GIB)
+
+    assert mutation.mutant_memory_cap(2) == int(16 * GIB * mutation.MUTANT_MEMORY_SHARE / 3)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="RLIMIT_DATA is enforced on Linux only")
+def test_a_mutant_that_outgrows_the_cap_gets_memory_error_not_the_oom_killer() -> None:
+    # conversation/step.py on #1799: one looping mutant took a runner from 1.1 GB to 8 GB in
+    # 50 s, and the OOM killer took the whole VM ("the runner received a shutdown signal").
+    hog = subprocess.Popen(
+        [sys.executable, "-c", "chunks = []\nwhile True: chunks.append(bytearray(1 << 26))"],
+        stderr=subprocess.PIPE,
+    )
+    resource.prlimit(hog.pid, resource.RLIMIT_DATA, (GIB, GIB))
+    _, stderr = hog.communicate(timeout=60)
+
+    assert hog.returncode == 1
+    assert b"MemoryError" in stderr
