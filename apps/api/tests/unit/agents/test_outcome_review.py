@@ -21,6 +21,7 @@ from app.agents.core.outcome_review import (
 from app.agents.prompts import todo_prompts
 from app.agents.prompts.todo_prompts import TODO_REARM_BRIEF
 from app.constants.agents import NO_REPORT_PROBLEM, OutcomeState
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
 from app.core.lazy_loader import providers
 
@@ -634,3 +635,11 @@ class TestRegisteredIsWrite:
         self._registry(monkeypatch, None)
 
         assert outcome_review.registered_is_write("plan_tasks") is False
+
+    @pytest.mark.regression
+    def test_activating_an_integration_is_plumbing_not_a_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._registry(monkeypatch, None)
+
+        assert outcome_review.registered_is_write(ACTIVATE_INTEGRATION_TOOL_NAME) is False

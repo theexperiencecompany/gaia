@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Final, Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
+from app.constants.execute import ACTIVATE_INTEGRATION_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
 
 # The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
@@ -175,6 +176,7 @@ HIL_RESUME_ACTIVE_TTL_SECONDS = 1800
 HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
     {
         "retrieve_tools",
+        ACTIVATE_INTEGRATION_TOOL_NAME,
         "call_executor",
         "cancel_executor",
         "browser_step_done",
