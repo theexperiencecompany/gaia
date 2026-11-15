@@ -10,6 +10,7 @@ runs a memory hog under the per-process cap a shard puts on mutmut.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 import resource
 import subprocess
@@ -99,3 +100,11 @@ def test_a_mutant_that_outgrows_the_cap_gets_memory_error_not_the_oom_killer() -
 
     assert hog.returncode == 1
     assert b"MemoryError" in stderr
+
+
+def test_a_measured_module_is_capped_from_its_measured_cost() -> None:
+    measured = dataclasses.replace(_work(10), measured=400.0)
+
+    assert measured.cost == 400.0
+    assert measured.mutmut_cap == 1200
+    assert mutation.ModuleWork.from_group(measured.to_group()) == measured
