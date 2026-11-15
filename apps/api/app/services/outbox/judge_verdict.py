@@ -65,6 +65,9 @@ class PassAnswers:
 
     answers: Mapping[JudgeQuestion, ChoiceAnswer]
     free_form: ReasoningAnswer | None = None
+    #: What the pass cost, as the API reported it; zero where the transport reports none.
+    input_tokens: int = 0
+    output_tokens: int = 0
 
     def get(self, question: JudgeQuestion) -> ChoiceAnswer:
         """Return the answer to a question; raise when the pass skipped one it must answer."""

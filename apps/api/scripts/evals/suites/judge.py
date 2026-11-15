@@ -73,7 +73,7 @@ RECORDED_DIR: Final = DATA_DIR / "recorded"
 #: The attention profile every case is judged with: twelve answers one user gave, as measured.
 PROFILE_PATH: Final = DATA_DIR / "profile.json"
 JUDGE_GATE: Final = "judge_decision"
-#: The user id the reasoning pass is metered under: no user.
+#: The user id both passes are metered under: no real user.
 EVAL_USER_ID: Final = "eval-judge"
 
 #: Sensitivities the Judge must not read as none or personal.
@@ -357,12 +357,13 @@ class JudgeTransport:
         tracker: EvalCostTracker,
         provider: ProviderConfig,
     ) -> CaseRun:
-        del cfg, tracker
+        del cfg
         started = time.monotonic()
         state = state_of(case)
         sha = decisions_request_sha(state)
         try:
-            first = await ask_decisions(state, {}, user_id=None, anonymised_state=True)
+            first = await ask_decisions(state, {}, user_id=EVAL_USER_ID, anonymised_state=True)
+            tracker.add_manual(provider.name, first.input_tokens, first.output_tokens)
             decisions = recorded_pass(first, sha)
             reasoning: RecordedPass | None = None
             if first.gate_confidence() < JUDGE_CONFIDENCE_GATE:

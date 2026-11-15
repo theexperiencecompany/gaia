@@ -352,3 +352,11 @@ async def test_the_reasoning_model_is_asked_the_same_state_on_its_own_model() ->
     assert invoke.await_args.kwargs["config"] == {"configurable": {"user_id": "u1"}}
     assert answers.get(JudgeQuestion.URGENCY).choice == "timely"
     assert answers.free_form is not None
+
+
+def test_a_decisions_answer_carries_the_tokens_the_api_reported() -> None:
+    body = {**_body(), "usage": {"input_tokens": 1200, "output_tokens": 30}}
+
+    answers = read_decisions(body, {})
+
+    assert (answers.input_tokens, answers.output_tokens) == (1200, 30)

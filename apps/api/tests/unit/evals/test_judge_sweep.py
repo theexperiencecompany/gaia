@@ -37,7 +37,6 @@ from tests._harness.judge import verdict
 #: Critical rows the recorded run still gets wrong, each with why; remove an entry the day it is fixed.
 KNOWN_CRITICAL_MISSES = {
     "time-money-TM03": "an OTP the user already got by SMS is told again as an interrupt",
-    "time-money-TM08": "a BTC dip that recovered by morning is recorded though the user asked to be told",
     "time-money-TM15": "a credit card statement is read as personal, not finance",
     "work-W16": "company financials in an answer are read as personal, not finance",
 }

@@ -158,7 +158,11 @@ def _read_answers(response: _DecisionsResponse, runs: OfferedRuns) -> PassAnswer
             raise JudgeAnswerError(f"{question.value}={answer.choice!r} is not one of its choices")
         probabilities = {entry.value: entry.probability for entry in answer.probabilities}
         answers[question] = ChoiceAnswer(answer.choice, probabilities, answer.confidence)
-    return PassAnswers(answers=answers)
+    return PassAnswers(
+        answers=answers,
+        input_tokens=response.usage.input_tokens,
+        output_tokens=response.usage.output_tokens,
+    )
 
 
 def read_decisions(body: object, runs: OfferedRuns) -> PassAnswers:
@@ -166,13 +170,13 @@ def read_decisions(body: object, runs: OfferedRuns) -> PassAnswers:
     return _read_answers(_parse_decisions(body), runs)
 
 
-async def _meter_decisions(usage: _DecisionsUsage, user_id: str) -> None:
+async def _meter_decisions(answers: PassAnswers, user_id: str) -> None:
     await record_llm_call(
         user_id=user_id,
         model_name=JUDGE_FAST_MODEL,
         usage=TokenUsage(
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
+            input_tokens=answers.input_tokens,
+            output_tokens=answers.output_tokens,
             cached_tokens=0,
             reasoning_tokens=0,
         ),
@@ -186,13 +190,12 @@ async def ask_decisions(
     state: Mapping[str, object],
     runs: OfferedRuns,
     *,
-    user_id: str | None,
+    user_id: str,
     anonymised_state: bool = False,
 ) -> PassAnswers:
     """Ask the Decisions API every question about one state; raises on a missing key, transport failure or unreadable answer.
 
-    The call is metered to user_id once its answer reads. user_id and anonymised_state are None and
-    True for the eval corpus alone, which has no user to bill.
+    The call is metered to user_id once its answer reads; anonymised_state is True for the eval corpus alone.
     """
     key = await _openai_key()
     async with httpx.AsyncClient(timeout=JUDGE_DECISIONS_TIMEOUT_SECONDS) as client:
@@ -204,8 +207,7 @@ async def ask_decisions(
         response.raise_for_status()
         parsed = _parse_decisions(response.json())
         answers = _read_answers(parsed, runs)
-    if user_id is not None:
-        await _meter_decisions(parsed.usage, user_id)
+    await _meter_decisions(answers, user_id)
     return answers
 
 
