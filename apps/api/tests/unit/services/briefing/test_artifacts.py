@@ -16,6 +16,31 @@ def _todo(todo_id: str, canvas: str | None = None) -> TodoDocument:
 
 
 class TestGatherArtifacts:
+    def test_open_works_canvas_never_reaches_the_voice(self) -> None:
+        """Replay of Dhruv's set: "their notes say not to resume the OAuth test" voiced a canvas."""
+        canvas = (
+            "## Standing rules\n- Do not resume the OAuth test.\n\n## Current State\n- Paused.\n"
+        )
+        work = TrackedWork(
+            running=[_todo("running", canvas)],
+            blocked=[_todo("blocked", canvas)],
+            failed=[_todo("failed", canvas)],
+        )
+
+        assert {fact.snippet for fact in gather_artifacts(work).values()} == {""}
+
+    def test_finished_works_summary_is_its_deliverable_without_gaias_working_notes(
+        self,
+    ) -> None:
+        canvas = (
+            "# Investors\n## Standing rules\n- Never email them.\n\n## Key Details\n- Thread 1a2b.\n"
+            "\n## Current State\n- Vetted twelve investors.\n"
+        )
+
+        facts = gather_artifacts(TrackedWork(completed=[_todo("t1", canvas)]))
+
+        assert facts["t1"].snippet == "- Vetted twelve investors."
+
     def test_a_summary_keeps_the_prose_and_drops_headings_comments_tables_and_rules(self) -> None:
         canvas = (
             "# Title\n<!-- note -->\n| a | b |\n---\nTen slides.\n\n  Covers the Q3 numbers.  \n"

@@ -897,9 +897,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
 
     async def clear_briefing_dormancy(self, user_id: str) -> None:
+        """Wake the loop: clear the idle streak and dormancy, keeping when a goal was last asked about."""
         await self._apply_raw_update_unfetched(
             {"_id": self._id_value(user_id)},
-            {"$unset": {"briefing_dormancy": _UNSET}},
+            {
+                "$unset": {
+                    "briefing_dormancy.dormant_since": _UNSET,
+                    "briefing_dormancy.idle_days": _UNSET,
+                    "briefing_dormancy.date": _UNSET,
+                }
+            },
             scope=REPO_GLOBAL_SCOPE,
             doc_id=user_id,
         )

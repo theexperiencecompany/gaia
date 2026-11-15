@@ -132,7 +132,8 @@ class TestTheFactsBlock:
         ]
 
         assert signals_block(list(enumerate(remembered, start=1)), CLOCK).splitlines()[-1] == (
-            "- fact 1 | other | issue: Issue 5 | state: Todo | due 2026-10-24 | with Priya, Sam"
+            "- fact 1 | other | issue: Issue 5 | state: Todo | due 2026-10-24 | names Priya, Sam"
+            " (the app does not say their part in it)"
             " | linkable | why: blocks the release"
             " | first seen today, never mentioned"
         )

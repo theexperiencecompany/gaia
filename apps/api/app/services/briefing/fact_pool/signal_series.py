@@ -14,6 +14,18 @@ from app.models.scout_models import Signal
 from app.services.briefing.fact_pool.window import SeriesName, categorical_series
 
 _ID_WORD = re.compile(r"[a-z0-9]+")
+# A unit the app counts in hundredths of another ("USD cents"): said in the whole unit.
+_HUNDREDTHS = re.compile(r"^(?P<unit>.+?)\s+cents$", re.IGNORECASE)
+_CENTS_PER_UNIT = 100
+_MONEY_DECIMALS = 2
+
+
+def _in_whole_units(amount: float, unit: str | None) -> tuple[float, str | None]:
+    """Return an amount in the unit people say: 1250 USD cents is 12.5 USD."""
+    match = _HUNDREDTHS.match(unit or "")
+    if match is None:
+        return amount, unit
+    return round(amount / _CENTS_PER_UNIT, _MONEY_DECIMALS), match.group("unit")
 
 
 def _slug(text: str) -> str:
@@ -21,12 +33,12 @@ def _slug(text: str) -> str:
 
 
 def _group(signal: Signal) -> tuple[str, str, str | None]:
-    return (signal.integration_id, signal.kind, signal.amount_unit)
+    return (signal.integration_id, signal.kind, _in_whole_units(0, signal.amount_unit)[1])
 
 
 def _order(signal: Signal) -> tuple[str, str, str]:
     """Order a unitless amount before the same kind's united ones; the blank is a sort key only."""
-    return (signal.integration_id, signal.kind, signal.amount_unit or "")
+    return (signal.integration_id, signal.kind, _group(signal)[2] or "")
 
 
 def signal_series(signals: Sequence[Signal]) -> list[DataSeries]:
@@ -44,8 +56,13 @@ def signal_series(signals: Sequence[Signal]) -> list[DataSeries]:
             app=group[0].app,
         )
         series = categorical_series(
-            name, [SeriesPoint(x=s.title, y=s.amount) for s in group if s.amount is not None]
+            name,
+            [
+                SeriesPoint(x=s.title, y=_in_whole_units(s.amount, s.amount_unit)[0])
+                for s in group
+                if s.amount is not None
+            ],
         )
         if series is not None:
-            found.append(series)
+            found.append(series.model_copy(update={"shown_not_total": True}))
     return found

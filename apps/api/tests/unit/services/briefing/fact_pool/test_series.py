@@ -8,7 +8,7 @@ import pytest
 from tests.factories import make_user_id
 
 from app.constants.desk_buckets import DeskBucket
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter
 from app.models.brief_pool_models import SeriesPoint, SeriesShape
 from app.models.calendar_models import GoogleCalendarEventDateTime, GoogleCalendarEventResource
 from app.models.email_verdict_models import EmailVerdictDocument
@@ -59,13 +59,22 @@ class TestWindow:
         )
 
 
+def _done(title: str, by: TodoCompleter, at: datetime) -> TodoDocument:
+    """Return one of GAIA's tracked todos, closed at at by by."""
+    return _todo(title, GAIA_TRACKED_LABEL, completed=True, completed_at=at, completed_by=by)
+
+
 class TestWorkSeries:
     def test_completions_are_counted_per_local_day_by_who_finished_them(self) -> None:
         completed = [
-            _todo("Investor update", GAIA_TRACKED_LABEL, completed=True, completed_at=_local(5, 9)),
-            _todo("Lisbon flights", GAIA_TRACKED_LABEL, completed=True, completed_at=_local(9, 23)),
-            _todo("Deck research", GAIA_TRACKED_LABEL, completed=True, completed_at=_local(9, 7)),
+            _done("Investor update", TodoCompleter.GAIA, _local(5, 9)),
+            _done("Lisbon flights", TodoCompleter.GAIA, _local(9, 23)),
+            _done("Deck research", TodoCompleter.GAIA, _local(9, 7)),
             _todo("Call the bank", completed=True, completed_at=_local(11, 8)),
+            # GAIA's tracked todos the user closed are the user's; an event's closure is no one's.
+            _done("Pay the invoice", TodoCompleter.USER, _local(11, 9)),
+            _done("Wait for Sam", TodoCompleter.TRIGGER, _local(10, 9)),
+            _todo("Before records", GAIA_TRACKED_LABEL, completed=True, completed_at=_local(8, 9)),
         ]
 
         gaia, user = work_series(completed, WINDOW)
@@ -75,7 +84,7 @@ class TestWorkSeries:
             SeriesShape.TIME_SERIES,
             _ys([1, 0, 0, 0, 2, 0, 0]),
         )
-        assert (user.id, user.unit, user.points) == ("you_finished", "todos", _ys([0] * 6 + [1]))
+        assert (user.id, user.unit, user.points) == ("you_finished", "todos", _ys([0] * 6 + [2]))
 
     def test_mail_threads_are_the_mail_series_and_an_owner_with_none_is_left_out(self) -> None:
         thread = _todo(
@@ -85,7 +94,7 @@ class TestWorkSeries:
             completed_at=_local(6, 10),
             external_ref=ExternalRef(source=ExternalRefSource.GMAIL_THREAD, id="t-1"),
         )
-        done = _todo("Board memo", GAIA_TRACKED_LABEL, completed=True, completed_at=_local(6, 11))
+        done = _done("Board memo", TodoCompleter.GAIA, _local(6, 11))
 
         assert [s.points for s in work_series([thread, done], WINDOW)] == [
             _ys([0, 1, 0, 0, 0, 0, 0])
@@ -172,6 +181,24 @@ class TestCalendarSeries:
         ]
 
         assert calendar_series(raw, WINDOW) == []
+
+    def test_an_invite_left_unanswered_or_tentative_is_no_meeting_held(self) -> None:
+        """Audit: invites the user never accepted counted as hours of meetings."""
+
+        def invite(status: str) -> GoogleCalendarEventResource:
+            event = _event("2026-11-07T09:00:00+05:30", "2026-11-07T10:00:00+05:30")
+            return GoogleCalendarEventResource.model_validate(
+                {
+                    **event.model_dump(),
+                    "attendees": [{"email": "me@x.test", "self": True, "responseStatus": status}],
+                }
+            )
+
+        hours = {s.points[2].y for s in calendar_series([invite("accepted")], WINDOW)}
+        unanswered = calendar_series([invite("needsAction"), invite("tentative")], WINDOW)
+
+        assert hours == {1.0}
+        assert unanswered == []
 
 
 def _thread(created: datetime, completed: datetime | None) -> TodoDocument:
@@ -316,6 +343,20 @@ class TestSignalSeries:
         [series] = signal_series([signal])
 
         assert series.id == "stripe_open_invoice_usd"
+
+    def test_hundredths_are_said_in_the_whole_unit_and_the_total_is_never_the_apps(self) -> None:
+        """Audit: "USD cents" totals reached the composition raw, and as if they were the app's."""
+        [series] = signal_series([_signal("INV-1", amount=125050, amount_unit="USD cents")])
+
+        assert (series.id, series.unit, series.points) == (
+            "stripe_open_invoice_usd",
+            "USD",
+            [SeriesPoint(x="INV-1", y=1250.5)],
+        )
+        assert series_line(series, date(2026, 10, 14)).endswith(
+            "| summed over the items read from one page of the app: its total is of those items,"
+            " never the app's whole total"
+        )
 
     def test_a_series_with_no_unit_is_told_without_one(self) -> None:
         [series] = signal_series([_signal("INV-9 Initech", amount=7, amount_unit=None)])

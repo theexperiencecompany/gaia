@@ -30,6 +30,7 @@ from app.constants.briefing import (
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.base import UserScopedDocument
 from app.models.brief_composition_models import BriefBlock
+from app.models.calendar_models import CalendarResponse
 from app.models.scout_models import ScoutSkipReason
 from app.schemas.common import ResponseModel
 from app.schemas.errors import ErrorEnvelope
@@ -190,8 +191,17 @@ class BriefingEvent(BaseModel):
 
     date: str  # user-local YYYY-MM-DD
     start: str | None = None  # user-local "HH:MM"; None for an all-day event
+    #: user-local "HH:MM" it ends at, when timed and ending the day it starts.
+    end: str | None = None
     title: str
     location: str | None = None
+    #: The calendar it is on, as its owner titled it.
+    calendar: str | None = None
+    response: CalendarResponse = CalendarResponse.OWN
+    #: Who organized it, when that is someone else.
+    organizer: str | None = None
+    #: How many others are invited.
+    guests: int = 0
 
 
 class UnreadSource(BaseModel):

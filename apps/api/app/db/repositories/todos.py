@@ -456,9 +456,14 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             limit=limit,
         )
 
-    async def count_open_user_todos(self, user_id: str) -> int:
-        """Count every open todo of the user's own, however long the list."""
-        return await self._count(_own_open_query(user_id))
+    async def count_open_user_todos(
+        self, user_id: str, *, due_before: datetime | None = None
+    ) -> int:
+        """Count every open todo of the user's own, however long the list; due_before, only those due before it."""
+        query = _own_open_query(user_id)
+        if due_before is not None:
+            query["due_date"] = {"$lt": due_before}
+        return await self._count(query)
 
     async def find_tracked_by_short_id(self, user_id: str, *, short_id: str) -> list[TodoDocument]:
         """Find a user's tracked todos whose ObjectId ends with short_id.

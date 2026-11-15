@@ -6,6 +6,7 @@ from itertools import groupby
 
 from app.constants.scouts import SIGNAL_NEW_WITHIN
 from app.models.scout_models import (
+    PeopleRole,
     RememberedSignal,
     Signal,
     SignalImportance,
@@ -18,6 +19,14 @@ SIGNALS_HEADER = "[ACROSS THEIR APPS]"
 #: A scout reads one page of an app, capped at SCOUT_SIGNAL_CEILING, and the judge keeps
 #: only what matters: a count here is what the brief shows, never how many the app holds.
 SHOWN_NOT_TOTAL = "Counts are of the items shown here, not each app's total: an app may hold more."
+
+
+def people_note(people: Sequence[str], role: PeopleRole | None) -> str:
+    """Say who an item names and what they are to it; with no role from the app, only that they are named."""
+    names = ", ".join(people)
+    if role is None:
+        return f"names {names} (the app does not say their part in it)"
+    return f"{role.value}: {names}"
 
 
 def _days_ago(then: datetime, clock: UserClock) -> str:
@@ -73,7 +82,7 @@ def _line(fact_id: int, item: RememberedSignal, clock: UserClock) -> str:
     if signal.due_at is not None:
         parts.append(f"due {clock.day_of(signal.due_at).isoformat()}")
     if signal.people:
-        parts.append(f"with {', '.join(signal.people)}")
+        parts.append(people_note(signal.people, signal.people_role))
     if signal.url:
         parts.append("linkable")
     if signal.why:

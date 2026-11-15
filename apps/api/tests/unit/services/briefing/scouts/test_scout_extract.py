@@ -6,7 +6,7 @@ import pytest
 from tests.helpers import captured_wide_event
 
 from app.constants.scouts import SCOUT_SIGNAL_CEILING
-from app.models.scout_models import SignalFields, SignalImportance, SignalSource
+from app.models.scout_models import PeopleRole, SignalFields, SignalImportance, SignalSource
 from app.services.briefing.scouts.extract import extract_signals
 from app.services.briefing.scouts.tools import ScoutIntegration
 from app.services.workflow.playbook.evaluator import PlaceholderError
@@ -48,15 +48,48 @@ class TestReadingItems:
             "why": None,
             "importance": SignalImportance.NORMAL,
             "people": ["ana"],
+            "people_role": None,
             "url": "https://gh/7",
             "state": "open",
             "amount": None,
             "amount_unit": None,
             "text": None,
+            "author": None,
             "created_at": None,
             "updated_at": None,
         }
         assert signal.due_at == datetime(2026, 10, 30, tzinfo=UTC)
+
+    def test_the_peoples_part_and_the_texts_author_are_read_as_the_scout_learned_them(
+        self,
+    ) -> None:
+        """Audit: people carried no role, and a quote's author was whoever came first."""
+        source = SOURCE.model_copy(
+            update={
+                "fields": SOURCE.fields.model_copy(
+                    update={
+                        "people": "reviewers",
+                        "people_role": PeopleRole.REVIEWER,
+                        "text": "last_comment.body",
+                        "author": "last_comment.user",
+                    }
+                )
+            }
+        )
+        item = _pr(
+            7,
+            reviewers=[{"login": "sam"}],
+            last_comment={"body": "Can you rebase?", "user": {"login": "ana"}},
+        )
+
+        [signal] = extract_signals(GITHUB, [source], {"reviews": {"items": [item]}})
+
+        assert (signal.people, signal.people_role, signal.text, signal.author) == (
+            ["sam"],
+            PeopleRole.REVIEWER,
+            "Can you rebase?",
+            "ana",
+        )
 
     @pytest.mark.parametrize(("raw", "read"), [(1250, 1250.0), (99.5, 99.5), ("42.10", 42.1)])
     def test_an_items_figure_reads_as_a_number_in_its_sources_unit(

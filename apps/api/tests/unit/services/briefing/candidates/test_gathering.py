@@ -31,6 +31,7 @@ from app.models.scout_models import (
     SignalMemoryDocument,
 )
 from app.models.todo_models import ExternalRef, ExternalRefSource, TodoDocument
+from app.services.briefing.candidates import pool as candidates_pool
 from app.services.briefing.candidates.pool import (
     CandidateSources,
     GatheredCandidates,
@@ -70,6 +71,9 @@ def quiet_stores(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(todo_repository, "list_open_user_todos", AsyncMock(return_value=[]))
     monkeypatch.setattr(todo_repository, "list_undated_user_todos", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        candidates_pool, "get_connected_integration_ids", AsyncMock(return_value=[])
+    )
 
 
 def _thread_todo(thread_id: str, title: str) -> TodoDocument:
@@ -108,7 +112,7 @@ def _scouts(*remembered: RememberedSignal) -> ScoutSignals:
 
 
 async def _gathered(work: TrackedWork, scouts: ScoutSignals) -> GatheredCandidates:
-    return await gather_candidates(USER_ID, CLOCK, NOW, NOW, CandidateSources(work, [], scouts, []))
+    return await gather_candidates(USER_ID, CLOCK, NOW, NOW, CandidateSources(work, scouts, []))
 
 
 def _found(
@@ -185,7 +189,7 @@ class TestFoldingTwoFindsOfOneThing:
 class TestTheCalendarJoinsThePool:
     async def test_todays_events_are_timed_in_the_users_own_clock(self) -> None:
         events = [BriefingEvent(date="2026-11-11", start="15:00", title="Board call")]
-        sources = CandidateSources(TrackedWork(), [], _scouts(), events)
+        sources = CandidateSources(TrackedWork(), _scouts(), events)
 
         gathered = await gather_candidates(USER_ID, CLOCK, NOW, NOW, sources)
 

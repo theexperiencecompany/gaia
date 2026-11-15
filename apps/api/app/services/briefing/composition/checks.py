@@ -173,6 +173,11 @@ def _lead_problems(
     if block.item.action is None:
         problems.append(f"{where}: a lead is something to act on, so its item has an action")
     candidate = pool.items.get(block.item.id)
+    if candidate is not None and not candidate.gaia_acts:
+        problems.append(
+            f"{where}: GAIA can only read {candidate.app}, so it cannot do what the offer "
+            f"says on item {block.item.id}; lead with something GAIA can act on, or with nothing"
+        )
     if candidate is not None and candidate.backlog:
         problems.append(
             f"{where}: item {block.item.id} is an undated todo on their list, background "
@@ -248,6 +253,14 @@ def _block_problems(
         for item in placed_items(block)
         for p in _item_problems(where, item, pool, values, leads=leads)
     ]
+
+
+def block_problems(
+    index: int, block: ComposedBlock, pool: FactPool, values: SlotValues
+) -> list[str]:
+    """Return what breaks one block's contract on its own: its kind's rules, its items' and its slots'."""
+    alone = BriefComposition(blocks=[block])
+    return _block_problems(index, block, pool, values) + _slot_problems(alone, values)
 
 
 def _placed_ids(composition: BriefComposition) -> Iterator[str]:

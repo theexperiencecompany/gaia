@@ -7062,10 +7062,23 @@ export interface components {
          * @description One calendar event on the user's own clock, read from their calendar.
          */
         BriefingEvent: {
+            /** Calendar */
+            calendar?: string | null;
             /** Date */
             date: string;
+            /** End */
+            end?: string | null;
+            /**
+             * Guests
+             * @default 0
+             */
+            guests?: number;
             /** Location */
             location?: string | null;
+            /** Organizer */
+            organizer?: string | null;
+            /** @default own */
+            response?: components["schemas"]["CalendarResponse"];
             /** Start */
             start?: string | null;
             /** Title */
@@ -7784,6 +7797,12 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * CalendarResponse
+         * @description How the calendar's owner stands on an event: their own, accepted, tentative or unanswered.
+         * @enum {string}
+         */
+        CalendarResponse: "own" | "accepted" | "tentative" | "needs_action" | "declined";
         /**
          * CancelStreamResponse
          * @description Outcome of a stream-cancellation request.
@@ -8913,6 +8932,11 @@ export interface components {
             /** Points */
             points: components["schemas"]["SeriesPoint"][];
             shape: components["schemas"]["SeriesShape"];
+            /**
+             * Shown Not Total
+             * @default false
+             */
+            shown_not_total: boolean;
             /** Source */
             source: string;
             /**
@@ -10092,6 +10116,16 @@ export interface components {
         GoalState: {
             /** Done */
             done: number;
+            /**
+             * Done By Gaia
+             * @default 0
+             */
+            done_by_gaia: number;
+            /**
+             * Done By You
+             * @default 0
+             */
+            done_by_you: number;
             /** Id */
             id: string;
             /** Linked */
@@ -10099,6 +10133,10 @@ export interface components {
             /** Open */
             open: number;
             origin: components["schemas"]["GoalOrigin"];
+            /** Since */
+            since: string | null;
+            /** Stalled */
+            stalled: string[];
             /** Statement */
             statement: string;
         };
@@ -17986,6 +18024,7 @@ export type CalendarListResponse = components['schemas']['CalendarListResponse']
 export type CalendarPreferencesResponse = components['schemas']['CalendarPreferencesResponse'];
 export type CalendarPreferencesUpdateRequest = components['schemas']['CalendarPreferencesUpdateRequest'];
 export type CalendarPreferencesUpdateResponse = components['schemas']['CalendarPreferencesUpdateResponse'];
+export type CalendarResponse = components['schemas']['CalendarResponse'];
 export type CancelStreamResponse = components['schemas']['CancelStreamResponse'];
 export type ChangePasswordRequest = components['schemas']['ChangePasswordRequest'];
 export type ChannelConfig = components['schemas']['ChannelConfig'];

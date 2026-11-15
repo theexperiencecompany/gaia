@@ -1,8 +1,12 @@
 """Quotes cut verbatim from people's own words, and goals with the todos that name what they are about."""
 
+from datetime import UTC, date, datetime, timedelta
+
+import bson
 from tests.factories import make_user_id
 
-from app.constants.briefing import QUOTE_MAX_CHARS, QUOTE_MIN_CHARS
+from app.constants.briefing import GOAL_WORK_STALLED_AFTER, QUOTE_MAX_CHARS, QUOTE_MIN_CHARS
+from app.constants.todos import GAIA_TRACKED_LABEL, TodoCompleter
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_pool_models import GoalOrigin, GoalState, QuoteSpan
 from app.models.scout_models import Signal
@@ -19,7 +23,10 @@ MAYA = (
 )
 
 
-def _message(text: str | None, people: list[str], title: str = "Re: term sheet") -> BriefCandidate:
+def _message(
+    text: str | None, people: list[str], title: str = "Re: term sheet", *, author: str | None = None
+) -> BriefCandidate:
+    """Return a message the scout read; its author is the first person named unless one is given."""
     signal = Signal(
         integration_id="gmail",
         app="Gmail",
@@ -29,10 +36,25 @@ def _message(text: str | None, people: list[str], title: str = "Re: term sheet")
         people=people,
         url="https://mail.google.com/x",
         text=text,
+        author=author if author is not None else (people[0] if people else None),
     )
     return BriefCandidate(
         source="gmail", app="Gmail", state="you", title=title, people=people, signal=signal
     )
+
+
+class TestAQuoteIsItsAuthorsAlone:
+    def test_words_whose_author_the_app_does_not_name_are_never_quoted(self) -> None:
+        """Audit: the first person on an item was taken as the author of words read elsewhere."""
+        unattributed = _message(MAYA, ["Ravi Rao", "Maya Chen"], author="")
+        unattributed.signal = unattributed.signal.model_copy(update={"author": None})
+
+        assert quote_spans({1: unattributed}) == []
+
+    def test_the_author_is_the_texts_own_not_the_first_person_named(self) -> None:
+        item = _message(MAYA, ["Ravi Rao", "Maya Chen"], author="Maya Chen")
+
+        assert [q.author for q in quote_spans({1: item})] == ["Maya Chen"]
 
 
 class TestVerbatimSpan:
@@ -118,8 +140,26 @@ class TestQuoteSpans:
         assert [(q.id, q.item_id) for q in quote_spans(items)] == [("q1", 3)]
 
 
-def _todo(title: str, *, completed: bool = False) -> TodoDocument:
-    return TodoDocument(id=title, user_id=USER_ID, title=title, completed=completed)
+_NOW = datetime(2026, 11, 15, 9, tzinfo=UTC)
+_SINCE = date(2026, 11, 9)
+
+
+def _todo(
+    title: str,
+    *,
+    completed: bool = False,
+    touched: datetime | None = None,
+    by: TodoCompleter | None = None,
+) -> TodoDocument:
+    return TodoDocument(
+        id=title,
+        user_id=USER_ID,
+        title=title,
+        completed=completed,
+        updated_at=touched,
+        completed_by=by,
+        labels=[GAIA_TRACKED_LABEL] if by is TodoCompleter.GAIA else [],
+    )
 
 
 class TestGoalStates:
@@ -129,8 +169,8 @@ class TestGoalStates:
             StatedGoal("Raise a seed round", GoalOrigin.MEMORY, ("Accel", "Sequoia")),
         ]
         todos = [
-            _todo("GAIA App Store screenshots", completed=True),
-            _todo("TestFlight build for gaia", completed=True),
+            _todo("GAIA App Store screenshots", completed=True, by=TodoCompleter.GAIA),
+            _todo("TestFlight build for gaia", completed=True, by=TodoCompleter.USER),
             _todo("GAIA privacy labels"),
             _todo("Send the deck to Accel"),
             # "Sequoia" inside another word is not the name.
@@ -138,13 +178,16 @@ class TestGoalStates:
             _todo("Book the dentist"),
         ]
 
-        mobile, seed = goal_states(goals, todos)
+        mobile, seed = goal_states(goals, todos, _NOW, _SINCE)
 
         assert mobile == GoalState(
             id="g1",
             statement="Launch the GAIA mobile app by December",
             origin=GoalOrigin.MEMORY,
             done=2,
+            done_by_gaia=1,
+            done_by_you=1,
+            since="2026-11-09",
             open=1,
             linked=[
                 "GAIA App Store screenshots",
@@ -152,6 +195,8 @@ class TestGoalStates:
                 "GAIA privacy labels",
             ],
         )
+        # Stored with the brief, so it must be a value Mongo holds.
+        bson.encode(mobile.model_dump())
         assert (seed.id, seed.done, seed.open, seed.linked) == (
             "g2",
             0,
@@ -159,9 +204,25 @@ class TestGoalStates:
             ["Send the deck to Accel"],
         )
 
+    def test_open_work_untouched_a_week_or_more_is_stuck_and_the_rest_is_not(self) -> None:
+        goal = StatedGoal("Launch Atlas", GoalOrigin.MEMORY, terms=("Atlas",))
+        todos = [
+            _todo("Atlas pricing", touched=_NOW - GOAL_WORK_STALLED_AFTER),
+            _todo("Atlas press list", touched=_NOW - GOAL_WORK_STALLED_AFTER + timedelta(hours=1)),
+            _todo("Atlas launch post"),
+            _todo("Atlas landing page", completed=True, touched=_NOW - timedelta(days=30)),
+        ]
+
+        [state] = goal_states([goal], todos, _NOW, _SINCE)
+
+        assert state.stalled == ["Atlas pricing"]
+
     def test_a_goal_that_names_nothing_has_no_linked_work(self) -> None:
         [goal] = goal_states(
-            [StatedGoal("Close 10 customers", GoalOrigin.ONBOARDING)], [_todo("Customer call")]
+            [StatedGoal("Close 10 customers", GoalOrigin.ONBOARDING)],
+            [_todo("Customer call")],
+            _NOW,
+            _SINCE,
         )
 
         assert (goal.origin, goal.done, goal.open, goal.linked) == (

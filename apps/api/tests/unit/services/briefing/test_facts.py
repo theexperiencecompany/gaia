@@ -13,12 +13,26 @@ from app.constants.briefing import (
 )
 from app.models.brief_candidate_models import BriefCandidate
 from app.models.brief_composition_models import BriefBlock, ChartBlock, ChartKind, SectionBlock
-from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
+from app.models.brief_pool_models import (
+    DataSeries,
+    GoalOrigin,
+    GoalState,
+    SeriesPoint,
+    SeriesShape,
+)
 from app.models.briefing_models import BriefingEvent, BriefingItem, BriefingSection
 from app.models.scout_models import Signal, SignalMemoryDocument
 from app.services.briefing.artifacts import ArtifactFact
 from app.services.briefing.context import CalendarGap, CalendarUnread, UserClock
-from app.services.briefing.facts import TODAY, WEEK_AHEAD, BriefSpan, FactSources, build_facts
+from app.services.briefing.facts import (
+    TODAY,
+    WEEK_AHEAD,
+    BriefSpan,
+    FactSources,
+    WeekRecap,
+    build_facts,
+    user_todos_note,
+)
 from app.services.briefing.sections import Chosen
 from app.services.briefing.slots import BriefFact, CountSlot, SeriesField
 
@@ -83,12 +97,18 @@ class TestTheFactLines:
         facts = build_facts(_chosen((item, candidate)), _sources(open_todos=4), _CLOCK)
 
         assert facts.values.counts == {CountSlot.NEEDS_YOU: 1, CountSlot.OPEN_TODOS: 4}
-        assert facts.values.facts[1] == BriefFact(title="Reply to Maya", time="Fri Nov 13", count=3)
+        assert facts.values.facts[1] == BriefFact(
+            title="Reply to Maya",
+            time="Fri Nov 13",
+            count=3,
+            kind="you",
+            words="Re: term sheet needs sign-off",
+        )
         assert facts.block.splitlines()[:3] == [
             "[COUNTS] [[count:needs_you]] (1) · [[count:open_todos]] (4)",
             "[Waiting]",
             "- fact 1 | Waiting on you: Reply to Maya | in Gmail | time: [[fact:1.time]] "
-            "(Fri Nov 13) | detail: needs sign-off | [[fact:1.count]] (3) requests, one item",
+            "(Fri Nov 13) | detail: needs sign-off | [[fact:1.count]] (3) todos on this one subject",
         ]
 
     def test_the_users_own_todo_has_no_deliverable_and_reads_as_a_plain_line(self) -> None:
@@ -105,8 +125,36 @@ class TestTheFactLines:
         assert "- fact 1 | Waiting on you: Sort the garage\n" in f"{facts.block}\n"
         assert facts.deliverables == {}
 
+    def test_tracked_work_waiting_on_the_user_says_the_question_it_asks_them(self) -> None:
+        item = BriefingItem(text="Venue", kind="you", todo_id="t1", action=BriefAction.REPLY)
+        candidate = BriefCandidate(
+            source="gaia", app="GAIA", state="you", title="Venue", detail="Lisbon or Porto?"
+        )
+        art = ArtifactFact(snippet="", chars=0, action=True)
+
+        facts = build_facts(_chosen((item, candidate)), _sources(artifacts={"t1": art}), _CLOCK)
+
+        assert (
+            "- fact 1 | Waiting on you: Venue | detail: Lisbon or Porto? | artifact holds ~0 chars"
+            " | waiting on you"
+        ) in facts.block
+
 
 class TestWhatProseMayQuote:
+    def test_the_date_an_items_standing_says_may_be_quoted(self) -> None:
+        item = BriefingItem(text="Pitch prep", kind="gaia", outcome=BriefOutcome.STARTED)
+        candidate = BriefCandidate(
+            source="gaia",
+            app="GAIA",
+            state="gaia",
+            title="Pitch prep",
+            standing="GAIA looks at it again Tue Nov 17",
+        )
+
+        facts = build_facts(_chosen((item, candidate)), _sources(), _CLOCK)
+
+        assert facts.values.quoted == {"17"}
+
     def test_the_figures_in_every_items_own_words_may_be_quoted(self) -> None:
         first = (
             BriefingItem(text="Q3 plan", kind="you", todo_id="t1", action=BriefAction.REPLY),
@@ -341,3 +389,77 @@ class TestTheEmptyBriefAndTheLead:
         facts = build_facts(Chosen(sections, picked), _sources(blocks=blocks), _CLOCK)
 
         assert facts.lead == 5
+
+
+class TestTheWeekRecap:
+    """The weekly's recap: each GAIA count series as a slotted total, and each goal's week."""
+
+    _FINISHED = DataSeries(
+        id="gaia_finished",
+        label="Tasks GAIA finished",
+        unit="tasks",
+        source="gaia",
+        app="GAIA",
+        shape=SeriesShape.TIME_SERIES,
+        points=[SeriesPoint(x="2026-11-09", y=4), SeriesPoint(x="2026-11-10", y=2)],
+    )
+    _UNITLESS = _FINISHED.model_copy(update={"id": "runs", "label": "Runs", "unit": None})
+
+    def test_totals_and_goals_read_as_slotted_lines_and_quotable_titles(self) -> None:
+        item = BriefingItem(text="Q3 board pack", kind="you", action=BriefAction.REVIEW)
+        candidate = BriefCandidate(source="gaia", app="GAIA", state="you", title="Q3 board pack")
+        goals = [
+            GoalState(
+                id="g1",
+                statement="Ship Atlas",
+                origin=GoalOrigin.MEMORY,
+                done=2,
+                open=2,
+                linked=["Atlas v11 build", "Atlas docs", "Atlas pricing", "Atlas press"],
+                stalled=["Atlas pricing", "Atlas press"],
+            ),
+            GoalState(
+                id="g2", statement="Run a marathon", origin=GoalOrigin.ONBOARDING, done=0, open=0
+            ),
+        ]
+        sources = FactSources(
+            artifacts={},
+            open_todos=0,
+            calendar=[],
+            event_ids=[],
+            span=WEEK_AHEAD,
+            todos_note=None,
+            recap=WeekRecap(series=[self._FINISHED, self._UNITLESS], goals=goals),
+        )
+
+        facts = build_facts(_chosen((item, candidate)), sources, _CLOCK)
+
+        lines = facts.block.splitlines()
+        start = lines.index(
+            "[THE WEEK IN NUMBERS] (voice these as one grouped recap of the week, never as a list)"
+        )
+        assert lines[start + 1 : start + 6] == [
+            "- Tasks GAIA finished: [[series:gaia_finished.total]] (6 tasks)",
+            "- Runs: [[series:runs.total]] (6)",
+            "[GOALS THIS WEEK]",
+            '- "Ship Atlas": moved forward, 2 finished (2 by an event, or no one recorded),'
+            " 2 open: Atlas v11 build; Atlas docs | stuck a week or more: Atlas pricing; Atlas press",
+            '- "Run a marathon": nothing linked to it finished, 0 finished, 0 open',
+        ]
+        assert facts.values.series["gaia_finished"][SeriesField.TOTAL] == "6"
+        assert {"Q3", "v11"} <= facts.values.quoted
+
+
+class TestTheOwnTodosNote:
+    def test_overdue_todos_are_counted_by_their_slot_and_never_listed(self) -> None:
+        assert user_todos_note(80, 70) == (
+            "The user's own open todos are counted in [COUNTS]; never voice that list as clear or"
+            " empty. [[count:overdue_todos]] of them are past due: say that count in one plain"
+            " line, never list them."
+        )
+
+    def test_with_none_past_due_the_note_says_nothing_of_it(self) -> None:
+        assert user_todos_note(80) == (
+            "The user's own open todos are counted in [COUNTS]; never voice that list as clear or"
+            " empty."
+        )

@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 import re
 from typing import Literal, cast
 
@@ -70,6 +71,29 @@ class GoogleCalendarEventDateTime(GooglePassthroughModel):
     timeZone: str | None = None
 
 
+class CalendarResponse(StrEnum):
+    """How the calendar's owner stands on an event: their own, accepted, tentative or unanswered."""
+
+    #: They organized it, or it has no guests: nothing to answer.
+    OWN = "own"
+    ACCEPTED = "accepted"
+    TENTATIVE = "tentative"
+    NEEDS_ACTION = "needs_action"
+    DECLINED = "declined"
+
+
+_GOOGLE_RESPONSES: dict[str, CalendarResponse] = {
+    "accepted": CalendarResponse.ACCEPTED,
+    "tentative": CalendarResponse.TENTATIVE,
+    "needsAction": CalendarResponse.NEEDS_ACTION,
+    "declined": CalendarResponse.DECLINED,
+}
+#: The responses that hold the owner's time: meetings they will be in.
+ATTENDED_RESPONSES: frozenset[CalendarResponse] = frozenset(
+    {CalendarResponse.OWN, CalendarResponse.ACCEPTED}
+)
+
+
 class GoogleCalendarEventResource(GooglePassthroughModel):
     """A single Google Calendar ``events`` resource, forwarded to the client verbatim.
 
@@ -94,14 +118,42 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     calendarId: str | None = None
     calendarTitle: str | None = None
 
+    def _attendees(self) -> list[dict[str, object]]:
+        attendees = (self.model_extra or {}).get("attendees") or []
+        return [a for a in attendees if isinstance(a, dict)]
+
     @property
     def declined_by_user(self) -> bool:
         """Whether the calendar's owner declined it: Google marks their own attendee row self."""
-        attendees = (self.model_extra or {}).get("attendees") or []
-        return any(
-            isinstance(a, dict) and a.get("self") and a.get("responseStatus") == "declined"
-            for a in attendees
+        return self.response is CalendarResponse.DECLINED
+
+    @property
+    def response(self) -> CalendarResponse:
+        """Return how the owner answered: their attendee row's status; their own event when they organize it or none is theirs."""
+        organizer = (self.model_extra or {}).get("organizer")
+        if isinstance(organizer, dict) and organizer.get("self"):
+            return CalendarResponse.OWN
+        mine = next((a for a in self._attendees() if a.get("self")), None)
+        status = mine.get("responseStatus") if mine is not None else None
+        return (
+            _GOOGLE_RESPONSES.get(status, CalendarResponse.OWN)
+            if isinstance(status, str)
+            else CalendarResponse.OWN
         )
+
+    @property
+    def organizer_name(self) -> str | None:
+        """Return who organized it when that is someone else: their name, else their email."""
+        organizer = (self.model_extra or {}).get("organizer")
+        if not isinstance(organizer, dict) or organizer.get("self"):
+            return None
+        name = organizer.get("displayName") or organizer.get("email")
+        return name if isinstance(name, str) and name else None
+
+    @property
+    def guests(self) -> int:
+        """Return how many people besides the owner are invited, rooms and resources left out."""
+        return sum(1 for a in self._attendees() if not a.get("self") and not a.get("resource"))
 
 
 class GoogleCalendarEventsPage(BaseModel):
