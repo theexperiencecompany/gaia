@@ -214,6 +214,8 @@ class WorkStarted(_Entry):
     kind: Literal[EntryKind.WORK_STARTED] = EntryKind.WORK_STARTED
     task_id: str
     cause_through: int = Field(ge=1)
+    # The oldest seq of the inputs it answers, where its reply's quote looks from; 1 on older work.
+    cause_from: int = Field(default=1, ge=1)
     answers: tuple[str, ...] = ()
     # The live task this one was handed to while it ran; the two finish, and stop, as one.
     joins: str | None = None
@@ -411,6 +413,7 @@ class LiveWork(BaseModel):
 
     task_id: str
     cause_through: int
+    cause_from: int = Field(default=1, ge=1)
     answers: tuple[str, ...]
     # In the order they were asked: with work in start order, the order a reply numbers them.
     pending_approvals: tuple[str, ...]
@@ -432,6 +435,7 @@ class FinishedWork(BaseModel):
     seq: int = Field(ge=1)
     task_id: str
     cause_through: int
+    cause_from: int = Field(default=1, ge=1)
     answers: tuple[str, ...]
 
 
@@ -598,6 +602,8 @@ class VisibleEntry(BaseModel):
     seq: int = Field(ge=1)
     id: str
     is_user_message: bool
+    # For a reply: the inputs its settle answered; empty while it is still open.
+    answers: tuple[str, ...] = ()
 
 
 class StepClaim(BaseModel):
