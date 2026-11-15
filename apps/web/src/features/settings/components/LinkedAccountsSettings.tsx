@@ -4,6 +4,8 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import {
   PhoneLinkModal,
   type PhoneLinkTarget,
@@ -16,8 +18,6 @@ import {
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { OpenPlatformChatButton } from "@/features/settings/components/OpenPlatformChatButton";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
 import { api } from "@/lib/api/typed";
 import { toast } from "@/lib/toast";

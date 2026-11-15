@@ -16,6 +16,12 @@ import { ShareLinkPanel } from "../share/ShareLinkPanel";
 import { FriendsSection } from "./FriendsSection";
 import { GiftTicket } from "./GiftTicket";
 import { ReferralHero } from "./ReferralHero";
+import { WorkflowMeterSection } from "./WorkflowMeterSection";
+
+/** Months friends earned: the milestone bar counts friends, and a workflow's months fill their own meter. */
+function friendMonths(me: ReferralMeResponse): number {
+  return me.months_earned - me.workflow_meter.months_earned;
+}
 
 export interface ReferralLayoutProps {
   me: ReferralMeResponse;
@@ -39,7 +45,7 @@ function TicketLayout({
         <GiftTicket
           prices={prices}
           url={me.share_link}
-          footer={<MilestoneBar paidFriends={me.months_earned} />}
+          footer={<MilestoneBar paidFriends={friendMonths(me)} />}
         />
         <ShareLinkPanel
           url={me.share_link}
@@ -52,6 +58,7 @@ function TicketLayout({
         friends={me.friends}
         accessory={<EarnedSummary me={me} />}
       />
+      <WorkflowMeterSection meter={me.workflow_meter} />
       <SuggestionsList suggestions={suggestions} send={send} />
     </>
   );
@@ -68,7 +75,7 @@ function ProgressLayout({
   return (
     <>
       <section className="rounded-3xl bg-zinc-800 p-6">
-        <MilestoneBar paidFriends={me.months_earned} />
+        <MilestoneBar paidFriends={friendMonths(me)} />
       </section>
       <section className="flex flex-col gap-4">
         <ReferralHero title={copy.page.title} body={copy.page.body(prices)} />
@@ -83,6 +90,7 @@ function ProgressLayout({
         friends={me.friends}
         accessory={<EarnedSummary me={me} />}
       />
+      <WorkflowMeterSection meter={me.workflow_meter} />
       <SuggestionsList suggestions={suggestions} send={send} />
     </>
   );
@@ -115,6 +123,7 @@ function MinimalLayout({
         friends={me.friends}
         accessory={<EarnedSummary me={me} withMonths />}
       />
+      <WorkflowMeterSection meter={me.workflow_meter} />
       <SuggestionsList suggestions={suggestions} send={send} />
     </>
   );

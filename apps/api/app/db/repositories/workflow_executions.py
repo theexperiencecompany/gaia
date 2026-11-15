@@ -88,5 +88,15 @@ class WorkflowExecutionsRepository(
         executions = await self._find(filter_, sort=[("started_at", -1)], limit=limit, skip=offset)
         return executions, total
 
+    async def count_succeeded_between(self, user_id: str, start: datetime, end: datetime) -> int:
+        """Count the user's runs that started in [start, end) and succeeded."""
+        return await self._count(
+            {
+                "user_id": user_id,
+                "status": "success",
+                "started_at": {"$gte": start, "$lt": end},
+            }
+        )
+
 
 workflow_executions_repository = WorkflowExecutionsRepository()

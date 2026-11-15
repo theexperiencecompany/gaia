@@ -3,25 +3,20 @@
 import type { ReferralCopyVariant } from "@shared/api/generated";
 import Image from "next/image";
 import { InviteLanding } from "@/features/referrals/components/InviteLanding";
-import { FIXTURE_RESOLVE, type GalleryView } from "./fixtures";
+import { WeeklyStatsCard } from "@/features/referrals/components/WeeklyStatsCard";
+import { weeklyImagePath } from "@/features/referrals/hooks/useWeeklyCard";
+import { Frame } from "./Frame";
+import {
+  FIXTURE_RESOLVE,
+  FIXTURE_WEEKLY,
+  GALLERY_STATES,
+  type GalleryView,
+} from "./fixtures";
+import { OnboardingPreview, SettingsStatesPreview } from "./JourneyPreviews";
+import { NudgesPreview } from "./NudgesPreview";
 
-interface PreviewProps {
+export interface PreviewProps {
   copyVariant: ReferralCopyVariant;
-}
-
-function Frame({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <figure className="flex flex-col gap-3">
-      <figcaption className="text-xs text-zinc-500">{label}</figcaption>
-      {children}
-    </figure>
-  );
 }
 
 function LandingPreview({ copyVariant }: PreviewProps) {
@@ -66,15 +61,48 @@ function OgPreview({ copyVariant }: PreviewProps) {
   );
 }
 
+function WeeklyPreview() {
+  return (
+    <div className="flex flex-col gap-10">
+      {GALLERY_STATES.map((state) => (
+        <Frame key={state} label={`Weekly card and its image: ${state}`}>
+          {/* The gallery keeps every state on screen, so closing a card does nothing. */}
+          <WeeklyStatsCard
+            card={FIXTURE_WEEKLY[state]}
+            onDismiss={() => undefined}
+          />
+          {/* Unoptimized: the OG route renders the PNG under test, and re-encoding would alter it. */}
+          <Image
+            unoptimized
+            src={weeklyImagePath(FIXTURE_WEEKLY[state])}
+            alt={`Weekly time-saved share card, ${state}`}
+            width={1200}
+            height={630}
+            className="h-auto w-full max-w-[1200px] rounded-2xl"
+          />
+        </Frame>
+      ))}
+    </div>
+  );
+}
+
 interface GalleryPreviewProps extends PreviewProps {
   view: Exclude<GalleryView, "page">;
 }
 
 export function GalleryPreview({ view, copyVariant }: GalleryPreviewProps) {
   switch (view) {
+    case "onboarding":
+      return <OnboardingPreview copyVariant={copyVariant} />;
+    case "settings":
+      return <SettingsStatesPreview copyVariant={copyVariant} />;
+    case "nudges":
+      return <NudgesPreview copyVariant={copyVariant} />;
     case "landing":
       return <LandingPreview copyVariant={copyVariant} />;
     case "og":
       return <OgPreview copyVariant={copyVariant} />;
+    case "weekly":
+      return <WeeklyPreview />;
   }
 }

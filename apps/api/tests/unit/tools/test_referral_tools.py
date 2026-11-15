@@ -84,6 +84,7 @@ def _overview(**overrides: object) -> ReferralMeResponse:
         "friends": [],
         "copy_variant": ReferralCopyVariant.GIFT,
         "layout_variant": ReferralLayoutVariant.TICKET,
+        "workflow_meter": {"subscribed": 0, "per_month": 3, "months_earned": 0, "published": 0},
     }
     fields.update(overrides)
     return ReferralMeResponse.model_validate(fields)

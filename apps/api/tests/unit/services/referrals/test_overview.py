@@ -19,8 +19,10 @@ from app.constants.referrals import (
     SUBSCRIPTION_REQUIRED_FIX,
     SUBSCRIPTION_REQUIRED_MESSAGE,
     SUBSCRIPTION_REQUIRED_WHY,
+    WORKFLOW_CREDITS_PER_MONTH,
     ReferralCopyVariant,
     ReferralLayoutVariant,
+    ReferralSource,
 )
 from app.models.payment_models import PlanDuration
 from app.models.referral_models import (
@@ -37,6 +39,7 @@ from app.schemas.referrals import (
     ReferralGiftResponse,
     ReferralMeResponse,
     ReferralResolveResponse,
+    ReferralWorkflowMeter,
     ReferredFriend,
 )
 from app.services.payments.payment_service import payment_service
@@ -85,6 +88,7 @@ class Seams:
     list_for_referrer: AsyncMock
     get_variant: AsyncMock
     find_by_ids: AsyncMock
+    community_workflows: AsyncMock
 
 
 @pytest.fixture
@@ -106,8 +110,20 @@ def seams() -> Iterator[Seams]:
             f"{OVERVIEW}.get_variant", AsyncMock(side_effect=lambda flag, _: variants[flag])
         ) as get_variant,
         patch(f"{OVERVIEW}.user_repository.find_by_ids", AsyncMock()) as find_by_ids,
+        patch(
+            f"{OVERVIEW}.workflow_repository.count_community_by_creator",
+            AsyncMock(return_value=0),
+        ) as community_workflows,
     ):
-        yield Seams(load_user, subscription, ensure_code, listed, get_variant, find_by_ids)
+        yield Seams(
+            load_user,
+            subscription,
+            ensure_code,
+            listed,
+            get_variant,
+            find_by_ids,
+            community_workflows,
+        )
 
 
 class TestOverview:
@@ -155,6 +171,9 @@ class TestOverview:
             ],
             copy_variant=ReferralCopyVariant.TIME_BACK,
             layout_variant=ReferralLayoutVariant.PROGRESS,
+            workflow_meter=ReferralWorkflowMeter(
+                subscribed=0, per_month=WORKFLOW_CREDITS_PER_MONTH, months_earned=0, published=0
+            ),
         )
         seams.load_user.assert_awaited_once_with(REFERRER.id)
         seams.subscription.assert_awaited_once_with(REFERRER.id)
@@ -465,3 +484,80 @@ class TestFriendGift:
             assert await friend_gift("64a0000000000000000000f1") == ReferralGiftResponse(gift=None)
 
         plans.assert_not_awaited()
+
+
+def _visitor(friend_id: str, state: ReferralRewardState | None) -> ReferralDocument:
+    return _referral(friend_id, state).model_copy(
+        update={"source": ReferralSource.WORKFLOW, "workflow_id": "wf_digest"}
+    )
+
+
+class TestWorkflowMeter:
+    async def test_paying_visitors_fill_the_meter_and_are_never_listed_as_friends(
+        self, seams: Seams
+    ) -> None:
+        seams.list_for_referrer.return_value = [
+            _referral("priya", ReferralRewardState.APPLIED),
+            _visitor("v1", ReferralRewardState.METERED),
+            _visitor("v2", ReferralRewardState.METERED),
+            _visitor("v3", ReferralRewardState.APPLIED),
+            _visitor("v4", ReferralRewardState.METERED),
+            _visitor("v5", ReferralRewardState.METERED),
+            _visitor("v6", None),
+            _visitor("v7", ReferralRewardState.REVOKED),
+        ]
+        seams.find_by_ids.return_value = [UserDocument(id="priya", first_name="Priya")]
+
+        overview = await get_referral_overview(REFERRER.id)
+
+        assert overview.workflow_meter == ReferralWorkflowMeter(
+            subscribed=2, per_month=WORKFLOW_CREDITS_PER_MONTH, months_earned=1, published=0
+        )
+        assert [friend.first_name for friend in overview.friends] == ["Priya"]
+        seams.find_by_ids.assert_awaited_once_with(["priya"])
+        assert overview.months_earned == 2
+
+    async def test_a_banked_month_fills_the_meter_like_an_applied_one(self, seams: Seams) -> None:
+        seams.list_for_referrer.return_value = [
+            _visitor("v1", ReferralRewardState.APPLIED),
+            _visitor("v2", ReferralRewardState.BANKED),
+            *(_visitor(f"m{i}", ReferralRewardState.METERED) for i in range(5)),
+        ]
+        seams.find_by_ids.return_value = []
+
+        overview = await get_referral_overview(REFERRER.id)
+
+        assert overview.workflow_meter == ReferralWorkflowMeter(
+            subscribed=1, per_month=WORKFLOW_CREDITS_PER_MONTH, months_earned=2, published=0
+        )
+
+    async def test_a_refunded_visitor_stops_counting_before_the_month_is_taken_back(
+        self, seams: Seams
+    ) -> None:
+        refund = {"revoke_reason": ReferralRevokeReason.REFUND, "revoked_at": PAID}
+        seams.list_for_referrer.return_value = [
+            _visitor("v1", ReferralRewardState.METERED),
+            _visitor("v2", ReferralRewardState.METERED).model_copy(update=refund),
+            _visitor("v3", ReferralRewardState.REVOKED).model_copy(update=refund),
+        ]
+        seams.find_by_ids.return_value = []
+
+        overview = await get_referral_overview(REFERRER.id)
+
+        assert overview.workflow_meter == ReferralWorkflowMeter(
+            subscribed=1, per_month=WORKFLOW_CREDITS_PER_MONTH, months_earned=0, published=0
+        )
+
+    async def test_a_creator_with_a_community_workflow_starts_on_an_empty_meter(
+        self, seams: Seams
+    ) -> None:
+        seams.list_for_referrer.return_value = []
+        seams.find_by_ids.return_value = []
+        seams.community_workflows.return_value = 2
+
+        overview = await get_referral_overview(REFERRER.id)
+
+        assert overview.workflow_meter == ReferralWorkflowMeter(
+            subscribed=0, per_month=WORKFLOW_CREDITS_PER_MONTH, months_earned=0, published=2
+        )
+        seams.community_workflows.assert_awaited_once_with(REFERRER.id)

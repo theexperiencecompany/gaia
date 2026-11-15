@@ -2,12 +2,12 @@
 
 import type { DesktopSettingsSnapshot } from "@shared/desktop-tools";
 import { useCallback, useEffect, useState } from "react";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { AppIconPicker } from "@/features/settings/components/desktop/AppIconPicker";
 import { DesktopPermissions } from "@/features/settings/components/desktop/DesktopPermissions";
 import { ShortcutRecorder } from "@/features/settings/components/desktop/ShortcutRecorder";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useElectron } from "@/hooks/useElectron";
 import { track } from "@/lib/analytics";
 import { getElectronAPI } from "@/lib/electron/api";

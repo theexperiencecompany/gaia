@@ -4,7 +4,10 @@ import { RedirectLoader } from "@/components/shared/RedirectLoader";
 import { resolveInstanceAuthMode } from "@/features/auth/api/serverSetupStatusApi";
 import { AuthShell } from "@/features/auth/components/AuthShell";
 import { LoginForm } from "@/features/auth/components/LoginForm";
-import { apiBaseUrl } from "@/lib/api/client";
+import {
+  oauthLoginUrl,
+  safeReturnPath,
+} from "@/features/auth/hooks/handleAuthLogin";
 import { generatePageMetadata } from "@/lib/seo";
 
 export const metadata: Metadata = generatePageMetadata({
@@ -21,31 +24,26 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ return_url?: string }>;
 }) {
-  const { return_url: returnUrl } = await searchParams;
-  // Only accept relative paths starting with `/` and a non-slash, non-backslash
-  // character. Rejects `//evil.com` and `/\evil.com` (browsers normalize `\`
-  // to `/`, making the latter protocol-relative).
-  const safeReturnUrl =
-    returnUrl && /^\/[^/\\]/.test(returnUrl) ? returnUrl : undefined;
   // Self-host instances run local email/password auth; everything else keeps
   // the classic WorkOS OAuth redirect.
-  const authMode = await resolveInstanceAuthMode();
+  const [{ return_url: returnUrl }, authMode] = await Promise.all([
+    searchParams,
+    resolveInstanceAuthMode(),
+  ]);
   if (authMode === "local") {
     return (
       <AuthShell
         title="Welcome back"
         subtitle="Sign in to your self-hosted GAIA instance."
       >
-        <LoginForm safeReturnUrl={safeReturnUrl} />
+        <LoginForm safeReturnUrl={safeReturnPath(returnUrl)} />
       </AuthShell>
     );
   }
 
-  const oauthUrl = `${apiBaseUrl}/oauth/login/workos${safeReturnUrl ? `?return_url=${encodeURIComponent(safeReturnUrl)}` : ""}`;
-
   return (
     <div className="h-screen">
-      <RedirectLoader url={oauthUrl} replace />
+      <RedirectLoader url={oauthLoginUrl(returnUrl)} replace />
     </div>
   );
 }

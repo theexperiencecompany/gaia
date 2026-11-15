@@ -465,8 +465,9 @@ class TestSendReferralRewardEmail:
                 to="aryan@example.com",
                 user_id=SENDER_USER_ID,
                 first_name="Aryan",
-                friend_name="Priya",
+                headline="Yay, Priya joined! 🎉",
                 reward_line="Your next bill moves to Dec 14. Enjoy the free month.",
+                closing="Thanks for sharing GAIA.",
             )
         )
 
@@ -477,7 +478,8 @@ class TestSendReferralRewardEmail:
         assert message.reply_to == CONTACT_EMAIL
         assert message.headers == {"List-Unsubscribe": "<u>"}
         assert "Hey Aryan," in message.html
-        assert "Yay, Priya joined GAIA!" in message.html
+        assert "Yay, Priya joined! 🎉" in message.html
+        assert "Thanks for sharing GAIA." in message.html
         assert "Your next bill moves to Dec 14. Enjoy the free month." in message.html
         assert f"{settings.FRONTEND_URL}/settings/referrals" in message.html
         assert "https://heygaia.io/unsub" in message.html

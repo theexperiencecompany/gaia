@@ -3,7 +3,7 @@
 import { Chip } from "@heroui/chip";
 import { Switch } from "@heroui/switch";
 import type { UserFeatureFlagResponse } from "@shared/api/generated";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
+import { SettingsRow } from "@/components/settings/SettingsRow";
 import { FEATURE_STAGE_LABELS } from "@/features/settings/config/featureStages";
 import { useFeatureToggle } from "@/features/settings/hooks/useFeatureFlags";
 

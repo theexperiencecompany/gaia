@@ -12,6 +12,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import type React from "react";
 import { useRef, useState } from "react";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsSection } from "@/components/settings/SettingsSection";
 import { authApi } from "@/features/auth/api/authApi";
 import {
   patchCurrentUser,
@@ -19,8 +21,6 @@ import {
 } from "@/features/auth/hooks/useCurrentUser";
 import { PasswordChangeSection } from "@/features/settings/components/PasswordChangeSection";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
-import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
-import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { binaryField } from "@/lib/api/typed";
 import { isPrivateBlobUrl } from "@/lib/privateBlob";
 import { toast } from "@/lib/toast";

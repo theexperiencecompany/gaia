@@ -17,7 +17,13 @@ from dodopayments.types import Subscription
 import pytest
 
 from app.constants.notifications import CHANNEL_TYPE_INAPP
-from app.constants.referrals import REWARD_LOCK_KEY_TEMPLATE, ReferralNudge
+from app.constants.referrals import (
+    REWARD_EMAIL_CLOSING_FRIEND,
+    REWARD_LOCK_KEY_TEMPLATE,
+    WORKFLOW_CREDITS_PER_MONTH,
+    ReferralNudge,
+    ReferralSource,
+)
 from app.db.repositories.referral_nudges import referral_nudge_repository
 from app.db.repositories.referrals import referral_repository
 from app.db.repositories.subscriptions import subscription_repository
@@ -149,13 +155,21 @@ async def _active_subscription(dodo: FakeDodo, user: UserDocument, customer_id: 
     return sub_id
 
 
-async def _refer(referrer: UserDocument, friend: UserDocument) -> None:
+async def _refer(
+    referrer: UserDocument,
+    friend: UserDocument,
+    *,
+    source: ReferralSource = ReferralSource.INVITE_LINK,
+    workflow_id: str | None = None,
+) -> None:
     now = datetime.now(UTC)
     await referral_repository.attribute(
         ReferralDocument(
             friend_user_id=friend.id,
             referrer_user_id=referrer.id,
             code="aryan-k7f2",
+            source=source,
+            workflow_id=workflow_id,
             joined_at=now,
             created_at=now,
             updated_at=now,
@@ -228,8 +242,9 @@ class TestFirstPaymentEarnsAMonth:
                 to=referrer.email,
                 user_id=referrer.id,
                 first_name="Aryan",
-                friend_name="Priya",
+                headline="Yay, Priya joined! 🎉",
                 reward_line="Your next bill moves to Dec 14. Enjoy the free month.",
+                closing=REWARD_EMAIL_CLOSING_FRIEND,
             )
         )
         assert [c.args[1] for c in seams.nudge_capture.call_args_list] == [
@@ -488,3 +503,58 @@ class TestRevokedMonths:
 
         assert seams.dodo.store[sub_id].next_billing_date == ONE_MONTH_LATER
         assert (await referral_repository.get(sam.id)).reward_state is ReferralRewardState.APPLIED
+
+
+class TestWorkflowMeter:
+    async def _visitors(self, creator: UserDocument, count: int) -> list[UserDocument]:
+        visitors = [await _user(f"Visitor{i}") for i in range(count)]
+        for visitor in visitors:
+            await _refer(creator, visitor, source=ReferralSource.WORKFLOW, workflow_id="wf_digest")
+        return visitors
+
+    async def test_every_third_paying_visitor_earns_the_creator_one_month(
+        self, seams: Seams
+    ) -> None:
+        creator = await _user("Aryan")
+        sub_id = await _active_subscription(seams.dodo, creator, "cus_referrer")
+        visitors = await self._visitors(creator, WORKFLOW_CREDITS_PER_MONTH + 1)
+
+        for visitor in visitors:
+            await record_friend_payment(_payment(visitor))
+
+        assert seams.dodo.updates == [(sub_id, ONE_MONTH_LATER)]
+        states = [(await referral_repository.get(v.id)).reward_state for v in visitors]
+        assert states == [
+            ReferralRewardState.METERED,
+            ReferralRewardState.METERED,
+            ReferralRewardState.APPLIED,
+            ReferralRewardState.METERED,
+        ]
+        assert len(_granted(seams.capture)) == 1
+
+    async def test_a_refunded_month_earning_visitor_takes_the_month_back(
+        self, seams: Seams
+    ) -> None:
+        creator = await _user("Aryan")
+        sub_id = await _active_subscription(seams.dodo, creator, "cus_referrer")
+        visitors = await self._visitors(creator, WORKFLOW_CREDITS_PER_MONTH)
+        payments = [_payment(v) for v in visitors]
+        for payment in payments:
+            await record_friend_payment(payment)
+
+        await request_reward_revocation(payments[-1].payment_id, ReferralRevokeReason.REFUND)
+
+        assert seams.dodo.store[sub_id].next_billing_date == NEXT_BILL
+
+    async def test_an_invited_friend_and_workflow_visitors_earn_on_their_own_terms(
+        self, seams: Seams
+    ) -> None:
+        creator, friend = await _user("Aryan"), await _user("Priya")
+        sub_id = await _active_subscription(seams.dodo, creator, "cus_referrer")
+        await _refer(creator, friend)
+        visitors = await self._visitors(creator, WORKFLOW_CREDITS_PER_MONTH - 1)
+
+        for payer in [friend, *visitors]:
+            await record_friend_payment(_payment(payer))
+
+        assert seams.dodo.updates == [(sub_id, ONE_MONTH_LATER)]

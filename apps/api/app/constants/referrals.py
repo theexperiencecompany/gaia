@@ -13,6 +13,13 @@ class ReferralCopyVariant(StrEnum):
     TIME_BACK = "time_back"
 
 
+class ReferralSource(StrEnum):
+    """What brought a friend in: someone's invite link, or a creator's public workflow."""
+
+    INVITE_LINK = "invite_link"
+    WORKFLOW = "workflow"
+
+
 class ReferralLayoutVariant(StrEnum):
     """The referral page layout the PostHog experiment picks."""
 
@@ -43,6 +50,8 @@ YEARLY_CHARGES_PER_YEAR = 1
 
 # What one paying friend earns the referrer.
 REWARD_MONTHS_PER_FRIEND = 1
+# A workflow's creator earns a month for every this many paying visitors, across all their workflows.
+WORKFLOW_CREDITS_PER_MONTH = 3
 
 # ---- Codes and links ---------------------------------------------------------
 
@@ -63,8 +72,25 @@ INVITE_PATH = "/invite/"
 
 REFERRAL_COOKIE_NAME = "gaia_ref"
 ATTRIBUTION_WINDOW = timedelta(days=30)
-# The cookie carries "<code>.<landing variant>"; a code never contains a dot.
+# The cookie carries "<code>.<landing variant>.<source>.<workflow id>"; no part contains a dot.
 REFERRAL_COOKIE_VARIANT_SEPARATOR = "."
+# A workflow id the cookie may carry: what the workflows collection mints, nothing longer.
+WORKFLOW_ID_PATTERN = r"[A-Za-z0-9_-]{1,64}"
+
+# ---- Sent with GAIA ----------------------------------------------------------
+
+# Appended to the HTML body of mail GAIA writes, for a user who turned it on.
+SENT_WITH_GAIA_HTML = (
+    '<p style="margin-top:24px;color:#71717a;font-size:12px;">'
+    'Sent with <a href="{link}" style="color:#00bbff;text-decoration:none;">GAIA</a></p>'
+)
+# The compose hook waits this long for the user's setting and link before sending without it.
+SENT_WITH_GAIA_LOOKUP_TIMEOUT_SECONDS = 5.0
+
+# ---- Weekly stats card -------------------------------------------------------
+
+# Monday is weekday 0: the card recaps the week that just ended.
+WEEKLY_CARD_WEEKDAY = 0
 
 # ---- Invites -----------------------------------------------------------------
 
@@ -205,6 +231,15 @@ SETTLE_SWEEP_MAX_REFERRALS_PER_RUN = 500
 # ---- Notification copy -------------------------------------------------------
 
 REWARD_APPLIED_TITLE = "Yay, {friend} joined! 🎉"
+WORKFLOW_REWARD_TITLE = 'Your "{workflow}" workflow earned you a free month! 🎉'
+WORKFLOW_REWARD_TITLE_UNNAMED = "Your workflows earned you a free month! 🎉"
+REWARD_EMAIL_CLOSING_FRIEND = (
+    "Thanks for sharing GAIA. Every friend who joins gets you another free month."
+)
+REWARD_EMAIL_CLOSING_WORKFLOW = (
+    f"Thanks for sharing your workflows. Every {WORKFLOW_CREDITS_PER_MONTH} people who "
+    "subscribe after starting with one earn you another free month."
+)
 REWARD_APPLIED_BODY = "Your next bill moves to {date}. Enjoy the free month."
 REWARD_BANKED_BODY = "Your free month is saved for whenever you're back."
 REWARD_DATE_FORMAT = "%b %-d"
@@ -218,6 +253,7 @@ class ReferralNudge(StrEnum):
     NURTURE_EMAIL = "nurture_email"
     WEEK_ONE_DM = "week_one_dm"
     CHAT_CARD = "chat_card"
+    WEEKLY_STATS_CARD = "weekly_stats_card"
     REWARD_EMAIL = "reward_email"
     REWARD_DM = "reward_dm"
 
@@ -225,7 +261,12 @@ class ReferralNudge(StrEnum):
 # Pitches: one a week across all channels, subscribers only. A reward message
 # is never held back by the cap, but it starts the week so no pitch trails it.
 PITCH_NUDGES: frozenset[ReferralNudge] = frozenset(
-    {ReferralNudge.NURTURE_EMAIL, ReferralNudge.WEEK_ONE_DM, ReferralNudge.CHAT_CARD}
+    {
+        ReferralNudge.NURTURE_EMAIL,
+        ReferralNudge.WEEK_ONE_DM,
+        ReferralNudge.CHAT_CARD,
+        ReferralNudge.WEEKLY_STATS_CARD,
+    }
 )
 ONCE_ONLY_NUDGES: frozenset[ReferralNudge] = frozenset(
     {ReferralNudge.NURTURE_EMAIL, ReferralNudge.WEEK_ONE_DM}

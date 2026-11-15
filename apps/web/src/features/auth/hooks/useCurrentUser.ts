@@ -13,7 +13,11 @@
 import { type QueryClient, useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 
-import { authApi, type UserInfo } from "@/features/auth/api/authApi";
+import {
+  authApi,
+  type OnboardingData,
+  type UserInfo,
+} from "@/features/auth/api/authApi";
 import {
   type CurrentUser,
   toCurrentUser,
@@ -115,6 +119,31 @@ export const patchCurrentUser = (
 ): void => {
   queryClient.setQueryData<UserInfo>(CURRENT_USER_QUERY_KEY, (previous) =>
     previous ? { ...previous, ...patch } : previous,
+  );
+};
+
+type PreferencesPatch = Partial<OnboardingData["preferences"]>;
+
+/**
+ * Merge server-confirmed onboarding preferences into the cached user. The
+ * backend merges each PATCH field by field, so this merges into whatever
+ * onboarding is cached when the response lands, keeping fields other
+ * settings saved meanwhile.
+ */
+export const patchOnboardingPreferences = (
+  queryClient: QueryClient,
+  patch: PreferencesPatch,
+): void => {
+  queryClient.setQueryData<UserInfo>(CURRENT_USER_QUERY_KEY, (previous) =>
+    previous
+      ? {
+          ...previous,
+          onboarding: {
+            ...previous.onboarding,
+            preferences: { ...previous.onboarding.preferences, ...patch },
+          },
+        }
+      : previous,
   );
 };
 

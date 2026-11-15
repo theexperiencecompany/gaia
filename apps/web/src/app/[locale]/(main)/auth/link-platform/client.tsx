@@ -6,6 +6,7 @@ import Image from "next/image";
 import { RedirectType, redirect } from "next/navigation";
 
 import { RaisedButton } from "@/components/ui/raised-button";
+import { loginPagePath } from "@/features/auth/hooks/handleAuthLogin";
 import { useLinkPlatform } from "@/features/auth/hooks/useLinkPlatform";
 
 import { LinkCard } from "./LinkCard";
@@ -44,10 +45,7 @@ export default function LinkPlatformClient({
   // navigating; `redirect` does the same as router.replace.
   if (!isAuthenticated) {
     const returnUrl = `/auth/link-platform?platform=${encodeURIComponent(platform)}&token=${encodeURIComponent(token)}`;
-    redirect(
-      `/login?return_url=${encodeURIComponent(returnUrl)}`,
-      RedirectType.replace,
-    );
+    redirect(loginPagePath(returnUrl), RedirectType.replace);
   }
 
   if (isLinked) {

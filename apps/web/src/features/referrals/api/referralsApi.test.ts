@@ -40,6 +40,7 @@ type ReferralCall = () => Promise<unknown>;
 
 const getMe: ReferralCall = referralsApi.getMe;
 const getSuggestions: ReferralCall = referralsApi.getSuggestions;
+const claimWeeklyCard: ReferralCall = referralsApi.claimWeeklyCard;
 const sendInvite: ReferralCall = () =>
   referralsApi.sendInvites(["friend@example.com"], "page");
 
@@ -65,6 +66,8 @@ describe("referralsApi failure reporting", () => {
     ["getMe", "REFERRAL_SUBSCRIPTION_REQUIRED", getMe],
     ["getMe", "REFERRALS_DISABLED", getMe],
     ["getSuggestions", "REFERRALS_DISABLED", getSuggestions],
+    ["claimWeeklyCard", "REFERRAL_SUBSCRIPTION_REQUIRED", claimWeeklyCard],
+    ["claimWeeklyCard", "REFERRALS_DISABLED", claimWeeklyCard],
   ])(
     "%s answers %s without logging, tracking or toasting a failure",
     async (_name, code, call) => {

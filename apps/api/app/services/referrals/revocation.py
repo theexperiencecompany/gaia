@@ -70,7 +70,7 @@ async def reclaim_reward(referral: ReferralDocument, dodo_subscription_id: str |
 
 async def _take_month_back(referral: ReferralDocument, dodo_subscription_id: str | None) -> bool:
     """Undo the month; False when the referrer keeps it, being already inside it or on a bill since ended."""
-    if referral.reward_state is ReferralRewardState.BANKED:
+    if referral.reward_state in (ReferralRewardState.BANKED, ReferralRewardState.METERED):
         return True
     if dodo_subscription_id is None or referral.reward_subscription_id != dodo_subscription_id:
         # Never moved a bill, or moved one that has since ended with the month on it.

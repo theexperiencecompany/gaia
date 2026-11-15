@@ -5,11 +5,14 @@ the first link they signed up through wins. The atomic transitions below are
 what make conversion and reward delivery idempotent under webhook retries.
 """
 
+import asyncio
+from dataclasses import dataclass
 from datetime import datetime
 
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
+from app.constants.referrals import ReferralSource
 from app.db.repositories.base import MongoRepository
 from app.models.payment_models import PlanDuration
 from app.models.referral_models import (
@@ -25,7 +28,17 @@ _REVOCABLE_STATES = [
     ReferralRewardState.PENDING.value,
     ReferralRewardState.APPLIED.value,
     ReferralRewardState.BANKED.value,
+    ReferralRewardState.METERED.value,
 ]
+_MONTH_STATES = [ReferralRewardState.APPLIED.value, ReferralRewardState.BANKED.value]
+
+
+@dataclass(frozen=True)
+class WorkflowCredits:
+    """A creator's settled workflow visitors: how many count on the meter, and how many carry a month."""
+
+    counted: int
+    carrying: int
 
 
 class ReferralsRepository(MongoRepository[ReferralDocument, ReferralUpdate]):
@@ -85,6 +98,20 @@ class ReferralsRepository(MongoRepository[ReferralDocument, ReferralUpdate]):
             limit=limit,
         )
         return list(dict.fromkeys(referral.referrer_user_id for referral in stuck))
+
+    async def count_workflow_credits(self, referrer_user_id: str) -> WorkflowCredits:
+        """Count the creator's settled, unrevoked workflow visitors, and those carrying a month."""
+        workflow = {"referrer_user_id": referrer_user_id, "source": ReferralSource.WORKFLOW.value}
+        counted, carrying = await asyncio.gather(
+            self._count(
+                {
+                    **workflow,
+                    "reward_state": {"$in": [*_MONTH_STATES, ReferralRewardState.METERED.value]},
+                }
+            ),
+            self._count({**workflow, "reward_state": {"$in": _MONTH_STATES}}),
+        )
+        return WorkflowCredits(counted=counted, carrying=carrying)
 
     async def get_by_payment_id(self, payment_id: str) -> ReferralDocument | None:
         """Return the referral this payment converted, if it was a friend's first."""

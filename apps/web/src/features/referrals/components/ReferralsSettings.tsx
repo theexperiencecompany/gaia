@@ -11,9 +11,22 @@ import {
 } from "../hooks/useReferrals";
 import { REFERRAL_UI_COPY } from "../referralCopy";
 import { ReferralsView } from "./page/layouts";
+import { SentWithGaiaToggle } from "./SentWithGaiaToggle";
 
-/** Settings → Referrals: the layout and angle the server picked, with live friends and suggestions. */
+/** Settings → Referrals: the overview, then the Sent with GAIA preference, which never waits on it. */
 export function ReferralsSettings() {
+  return (
+    <div className="flex flex-col gap-6">
+      <ReferralsOverview />
+      <div className="mx-auto w-full max-w-2xl pb-8">
+        <SentWithGaiaToggle />
+      </div>
+    </div>
+  );
+}
+
+/** The layout and angle the server picked, with live friends and suggestions. */
+function ReferralsOverview() {
   const state = useReferralMe();
   const { data: suggestions } = useReferralSuggestions(
     state.status === "ready",

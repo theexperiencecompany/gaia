@@ -169,3 +169,19 @@ class TestWorkflowExecutionsRepository:
         assert total == 2 and [e.execution_id for e in first] == [newer.execution_id]
         second, _ = await repo.list_for_workflow(wf, owner, limit=1, offset=1)
         assert [e.execution_id for e in second] == [older.execution_id]
+
+    async def test_count_succeeded_between_counts_the_users_wins_inside_the_window(self, repo):
+        user = _uid("u")
+        start = datetime(2026, 10, 7, tzinfo=UTC)
+        end = start + timedelta(days=7)
+        for status, started_at in (
+            ("success", start),
+            ("success", end - timedelta(seconds=1)),
+            ("success", start - timedelta(seconds=1)),
+            ("success", end),
+            ("failed", start + timedelta(days=1)),
+        ):
+            await repo.create(_execution(user_id=user, status=status, started_at=started_at))
+        await repo.create(_execution(status="success", started_at=start + timedelta(days=1)))
+
+        assert await repo.count_succeeded_between(user, start, end) == 2
