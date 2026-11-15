@@ -137,7 +137,7 @@ async def _resolve_batch(
     """
     plain = read_plain_reply(message, len(pending))
     if plain is not None:
-        decisions = _plain_decisions(plain, len(pending))
+        decisions = _plain_decisions(plain, pending)
     else:
         action_details = [build_action_detail(r.summary, r.args) for r in pending]
         result = await interpret_batch_decision_message(message, action_details, history)
@@ -153,12 +153,12 @@ async def _resolve_batch(
     )
 
 
-def _plain_decisions(plain: PlainReply, pending: int) -> list[BatchItemDecision]:
+def _plain_decisions(
+    plain: PlainReply, pending: list[ApprovalLedgerDocument]
+) -> list[BatchItemDecision]:
     """Apply a plain yes/no to the items it names, or to every one when it names none."""
-    return [
-        BatchItemDecision(index=index, action=plain.decision)
-        for index in plain.items or range(1, pending + 1)
-    ]
+    every = [index for index, _ in enumerate(pending, 1)]
+    return [BatchItemDecision(index=index, action=plain.decision) for index in plain.items or every]
 
 
 async def _apply_decisions(

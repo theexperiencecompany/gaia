@@ -22,7 +22,7 @@ from scripts.migrate_approval_vocabulary import (
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.db.mongodb.indexes import CONVERSATION_ENTRY_INDEXES
-from app.db.repositories.conversation_entries import StoredEntry, log_document, logged_of
+from app.db.repositories.conversation_entries import log_document, logged_of
 from app.db.repositories.conversation_migration_guard import (
     RENAMED_ENTRY_FIELDS,
     RENAMED_ENTRY_SHAPED,
@@ -35,6 +35,7 @@ from app.models.conversation_log_models import (
     Entry,
     LoggedEntry,
 )
+from app.models.conversation_models import StoredEntry
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.describe import describe_call
 from app.utils.errors import UnmigratedConversationError

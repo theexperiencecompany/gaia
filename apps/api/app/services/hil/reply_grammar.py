@@ -26,9 +26,9 @@ class PlainReply:
 def read_plain_reply(message: str, pending: int) -> PlainReply | None:
     """Return the reply's decision when it is the prompt's grammar over pending items, else None."""
     match = _PLAIN_REPLY.fullmatch(message.strip(_DECORATION).lower())
-    if match is None or match["word"] not in HIL_PLAIN_REPLY_WORDS:
+    if match is None or match.group("word") not in HIL_PLAIN_REPLY_WORDS:
         return None
-    items = tuple(sorted({int(item) for item in _ITEM.findall(match["items"])}))
+    items = tuple(sorted({int(item) for item in _ITEM.findall(match.group("items"))}))
     if any(not 1 <= item <= pending for item in items):
         return None
-    return PlainReply(HIL_PLAIN_REPLY_WORDS[match["word"]], items)
+    return PlainReply(HIL_PLAIN_REPLY_WORDS[match.group("word")], items)
