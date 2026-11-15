@@ -1233,6 +1233,9 @@ class TestCompletingAParentCompletesItsSubTodos:
         )
 
         assert [c.args[0] for c in mock_repo.update.await_args_list] == [_PARENT_ID, _CHILD_ID]
+        assert mock_repo.update.await_args_list[1].kwargs["update"].completed_by is (
+            TodoCompleter.GAIA
+        )
         assert mock_deps.record.await_args_list[1] == call(
             _CHILD_ID,
             USER_ID,
