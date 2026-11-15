@@ -207,7 +207,7 @@ class TestConnectAskIsRemembered:
         remember.assert_not_awaited()
 
 
-STEP = {"epoch": 2, "batch_start": 4, "cause_through": 5, "answers": ["u4"]}
+STEP = {"epoch": 2, "batch_start": 4, "cause_through": 5, "answers": ["u4"], "asked": True}
 
 
 class TestTheNeedIsLoggedOnTheStepsConversation:

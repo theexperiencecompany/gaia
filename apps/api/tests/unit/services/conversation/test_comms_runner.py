@@ -35,6 +35,8 @@ from app.models.calendar_models import GoogleCalendarEventDateTime
 from app.models.conversation_frame_models import ResponseEvent, ToolDataEvent
 from app.models.conversation_log_models import (
     Batch,
+    Entry,
+    IntegrationConnected,
     LoggedEntry,
     Reply,
     ReplySettled,
@@ -68,6 +70,7 @@ from shared.py.analytics.context import AnalyticsContext
 from shared.py.conversation_wire import ReplyOutcome, ReplyToMessageData
 from tests.e2e._harness.graph_run import RecordingFakeModel, comms_graph, memory_engine_of
 from tests.unit.services.conversation.log_helpers import (
+    finished,
     fired,
     logged,
     notice,
@@ -455,7 +458,36 @@ async def test_absorbed_input_reaches_the_next_model_call(conversation_id: str) 
     joined = [m for m in left if m.additional_kwargs.get(LOG_SEQ) == 3]
     assert [m.id for m in joined] == ["log:u3", "log:u3:absorbed"]
     # Work the run dispatches from now on answers the joiner too.
-    assert step == {"epoch": 1, "batch_start": 1, "cause_through": 3, "answers": ["u1", "u3"]}
+    assert step == {
+        "epoch": 1,
+        "batch_start": 1,
+        "cause_through": 3,
+        "answers": ["u1", "u3"],
+        "asked": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("waking", "asked"),
+    [
+        ((finished("f1", "t1"),), False),
+        ((finished("f1", "t1"), user("u2")), True),
+        ((fired("w1"),), True),
+        (
+            (
+                IntegrationConnected(
+                    id="c1", needed_id="n1", integration_id="gm", integration_name="Gmail"
+                ),
+            ),
+            True,
+        ),
+    ],
+)
+def test_only_an_attempt_answering_a_request_may_start_work(
+    waking: tuple[Entry, ...], asked: bool
+) -> None:
+    attempt = batch(*(logged(seq, entry) for seq, entry in enumerate(waking, start=1)))
+    assert step_turn_ref(claim("c"), attempt)["asked"] is asked
 
 
 async def test_input_absorbed_past_a_stop_never_reaches_the_model(conversation_id: str) -> None:
@@ -478,7 +510,13 @@ async def test_input_absorbed_past_a_stop_never_reaches_the_model(conversation_i
     assert shown.count("text of u2") == 1
     assert "text of u4" not in shown
     assert "text of u5" not in shown
-    assert step == {"epoch": 1, "batch_start": 1, "cause_through": 2, "answers": ["u1", "u2"]}
+    assert step == {
+        "epoch": 1,
+        "batch_start": 1,
+        "cause_through": 2,
+        "answers": ["u1", "u2"],
+        "asked": True,
+    }
 
 
 async def test_a_stop_absorbed_alone_joins_nothing_to_the_step(conversation_id: str) -> None:
@@ -495,7 +533,13 @@ async def test_a_stop_absorbed_alone_joins_nothing_to_the_step(conversation_id: 
 
             await collect(run, absorb_on_tool_call)
     assert "text of u3" not in humans(model.prompts[1])
-    assert step == {"epoch": 1, "batch_start": 1, "cause_through": 1, "answers": ["u1"]}
+    assert step == {
+        "epoch": 1,
+        "batch_start": 1,
+        "cause_through": 1,
+        "answers": ["u1"],
+        "asked": True,
+    }
 
 
 async def test_frames_owed_at_the_end_of_the_stream_reach_the_step_before_finished(
@@ -519,7 +563,13 @@ async def test_frames_owed_at_the_end_of_the_stream_reach_the_step_before_finish
 def test_a_step_ref_answers_only_what_the_user_or_a_workflow_sent() -> None:
     waking = batch(logged(4, user("u4")), logged(5, notice("n5")), logged(6, fired("f6")))
     ref = step_turn_ref(StepClaim(conversation_id="c1", user_id=USER, epoch=7), waking)
-    assert ref == {"epoch": 7, "batch_start": 4, "cause_through": 6, "answers": ["u4", "f6"]}
+    assert ref == {
+        "epoch": 7,
+        "batch_start": 4,
+        "cause_through": 6,
+        "answers": ["u4", "f6"],
+        "asked": True,
+    }
 
 
 CALENDAR_EVENT = SelectedCalendarEventData(
@@ -829,7 +879,13 @@ async def test_nothing_joins_a_run_once_it_is_being_cancelled(conversation_id: s
             await asyncio.sleep(0)
             await run.absorb([logged(2, user("u2"))])
             await cancelling
-    assert step == {"epoch": 1, "batch_start": 1, "cause_through": 1, "answers": ["u1"]}
+    assert step == {
+        "epoch": 1,
+        "batch_start": 1,
+        "cause_through": 1,
+        "answers": ["u1"],
+        "asked": True,
+    }
 
 
 async def test_a_finished_run_closes_the_feed_it_opened(conversation_id: str) -> None:

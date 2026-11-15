@@ -30,6 +30,7 @@ from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig, agent_configurable
 from app.models.conversation_log_models import (
     Batch,
+    IntegrationConnected,
     LoggedEntry,
     StepClaim,
     UserMessage,
@@ -223,6 +224,7 @@ def step_turn_ref(claim: StepClaim, batch: Batch) -> StepTurnRef:
         "batch_start": batch.start,
         "cause_through": batch.end,
         "answers": _answered(batch.waking),
+        "asked": _asks(batch.waking),
     }
 
 
@@ -231,6 +233,14 @@ def _join(step: StepTurnRef, joined: Sequence[LoggedEntry]) -> None:
     if joined:
         step["cause_through"] = joined[-1].seq
         step["answers"] = [*step["answers"], *_answered(joined)]
+        step["asked"] = step["asked"] or _asks(joined)
+
+
+def _asks(entries: Sequence[LoggedEntry]) -> bool:
+    return any(
+        isinstance(logged.entry, UserMessage | WorkflowFired | IntegrationConnected)
+        for logged in entries
+    )
 
 
 def _answered(entries: Sequence[LoggedEntry]) -> list[str]:
