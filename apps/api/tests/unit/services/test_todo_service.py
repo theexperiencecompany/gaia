@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 import pytest
+import time_machine
 
 from app.constants.todos import GAIA_TRACKED_LABEL, TodoActivityEvent, TodoCompleter
 from app.constants.triggers import GMAIL_EMAIL_SENT_TRIGGER_NAME, GMAIL_NEW_MESSAGE_TRIGGER_NAME
@@ -95,6 +96,7 @@ FAKE_INBOX_ID = str(ObjectId())
 NOW = datetime.now(UTC)
 _PARENT = str(ObjectId())
 _CHILD = str(ObjectId())
+_COMPLETED_AT = datetime(2026, 3, 4, 9, 30, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)
@@ -1036,6 +1038,7 @@ class TestUpdateTodo:
             ),
         )
 
+    @time_machine.travel(_COMPLETED_AT, tick=False)
     async def test_a_todo_the_user_completes_is_stamped_as_theirs(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
     ):
@@ -1045,7 +1048,7 @@ class TestUpdateTodo:
 
         written = mock_todo_repo.update.await_args.kwargs["update"]
         assert written.completed_by is TodoCompleter.USER
-        assert written.completed_at is not None
+        assert written.completed_at == _COMPLETED_AT
 
     async def test_completing_tracked_routes_through_service(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
