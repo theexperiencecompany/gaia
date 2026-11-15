@@ -4,11 +4,16 @@
 Four stores spoke their own words for how an approval ended: the ledger's
 ``state``, the approval record's ``status``, the log entry's ``decision`` and the
 card payload's ``data.status``. Each old value becomes the outcome, who decided
-and what the action did (the module's maps), and the old field is unset.
+and what the action did (the module's maps), and the old field is unset. Every
+other entry field this stack renamed is rewritten too (RENAMED_ENTRY_FIELDS: an
+approval's summary becomes the description the gate writes for the same call,
+a barge-in's heard_text its length, a fire's reservation goes).
 Dry run by default. Safe to re-run: every write matches only an old field.
 
 Run after the conversation-entries cutover's final pass, while the old build is
-fenced, then deploy: --apply, then --verify (exits 1 while any old value is left).
+fenced, then deploy: --apply, then --verify (exits 1 while any old value is left
+or any entry fails to read as the current build reads it). The new build refuses
+to boot while an entry holds a renamed field.
 
 Usage::
 
@@ -24,13 +29,18 @@ import argparse
 import asyncio
 from dataclasses import dataclass, field
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 from app.config.settings import settings
 from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
+from app.db.repositories.conversation_entries import logged_of
+from app.db.repositories.conversation_migration_guard import RENAMED_ENTRY_FIELDS
 from app.models.conversation_log_models import EntryKind
+from app.models.conversation_models import StoredEntry
+from app.services.hil.describe import describe_call
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 
 LEDGER = "approval_ledger"
@@ -87,6 +97,8 @@ OLD_INDEXES: tuple[tuple[str, str], ...] = (
     (RECORDS, "status_1_expires_at_1"),
     (RECORDS, "status_1_resumed_at_1_decided_at_1"),
 )
+#: The renamed entry fields this module rewrites by name; LOG_DECISIONS rewrites decision value by value.
+RENAMED_HERE = tuple(name for name in RENAMED_ENTRY_FIELDS if name != "decision")
 
 
 @dataclass
@@ -101,8 +113,55 @@ class Report:
         return sum(self.counts.values())
 
 
+class _GatedCall(BaseModel):
+    """The call an old approval entry asked about, which its description is built from."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    gated_tool_name: str
+    args_preview: dict[str, JsonValue] = Field(default_factory=dict)
+    integration_name: str | None = None
+
+
+class _EntryRef(BaseModel):
+    """Where an unreadable entry sits, read loosely so a broken entry can still be named."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    conversation_id: str | None = None
+    seq: int | None = None
+    kind: str | None = None
+
+
 def _card_filter(status: str) -> dict[str, object]:
     return {"tool_name": APPROVAL_REQUEST_TOOL_NAME, "data.status": status}
+
+
+async def _rename_entry_fields(
+    entries: AsyncIOMotorCollection, report: Report, *, apply: bool
+) -> None:
+    """Count, and with apply rewrite, every renamed entry field the decision maps do not cover."""
+    for name in RENAMED_HERE:
+        report.counts[f"entry field {name}"] = await entries.count_documents(
+            {name: {"$exists": True}}
+        )
+    if not apply:
+        return
+    async for raw in entries.find({"summary": {"$exists": True}}):
+        call = _GatedCall.model_validate(raw)
+        description = describe_call(call.gated_tool_name, call.args_preview, call.integration_name)
+        await entries.update_one(
+            {"_id": raw["_id"]},
+            {"$set": {"description": description.model_dump()}, "$unset": {"summary": ""}},
+        )
+    # heard_through counts characters (code points), as the reply text is sliced.
+    await entries.update_many(
+        {"heard_text": {"$exists": True}},
+        [{"$set": {"heard_through": {"$strLenCP": "$heard_text"}}}, {"$unset": "heard_text"}],
+    )
+    await entries.update_many(
+        {"run.reservation": {"$exists": True}}, {"$unset": {"run.reservation": ""}}
+    )
 
 
 async def rewrite(db: AsyncIOMotorDatabase, *, apply: bool) -> Report:
@@ -155,6 +214,7 @@ async def rewrite(db: AsyncIOMotorDatabase, *, apply: bool) -> Report:
         report.counts[f"index {collection}.{index}"] = int(present)
         if apply and present:
             await db[collection].drop_index(index)
+    await _rename_entry_fields(entries, report, apply=apply)
     return report
 
 
@@ -170,8 +230,27 @@ async def verify(db: AsyncIOMotorDatabase) -> Report:
                 {"kind": EntryKind.APPROVAL_DECIDED.value, "decision": {"$exists": True}}
             ),
             "card status": await entries.count_documents({"tool_data": {"$elemMatch": card}}),
+            "renamed entry field": await entries.count_documents(
+                {"$or": [{name: {"$exists": True}} for name in RENAMED_HERE]}
+            ),
         }
     )
+
+
+async def unreadable_entries(db: AsyncIOMotorDatabase) -> list[str]:
+    """Name every stored entry the current build fails to read, with the first reason it fails."""
+    unreadable: list[str] = []
+    async for raw in db[CONVERSATION_ENTRIES_COLLECTION].find({}):
+        try:
+            logged_of(StoredEntry.model_validate(raw))
+        except ValidationError as error:
+            ref = _EntryRef.model_validate(raw)
+            first = error.errors()[0]
+            unreadable.append(
+                f"conversation {ref.conversation_id} seq {ref.seq} ({ref.kind}): "
+                f"{first['msg']} at {'.'.join(map(str, first['loc']))}"
+            )
+    return unreadable
 
 
 def _print(report: Report) -> None:
@@ -186,7 +265,11 @@ async def _run(args: argparse.Namespace) -> int:
     if args.verify:
         report = await verify(db)
         _print(report)
-        return 1 if report.left else 0
+        unreadable = await unreadable_entries(db)
+        for line in unreadable:
+            print(f"  UNREADABLE {line}")
+        print(f"unreadable entries: {len(unreadable)}")
+        return 1 if report.left or unreadable else 0
     _print(await rewrite(db, apply=args.apply))
     if not args.apply:
         print("\ndry run: nothing written. Re-run with --apply to rewrite.")

@@ -141,6 +141,8 @@ CONVERSATION_READ_LIMIT = 600
 
 # Named in every refusal of a conversation the entries migration has not reached.
 CONVERSATION_ENTRIES_MIGRATION_SCRIPT = "scripts.migrate_conversation_entries"
+# Named in every refusal of a log entry still holding a field this stack renamed.
+ENTRY_RENAMES_MIGRATION_SCRIPT = "scripts.migrate_approval_vocabulary"
 
 # The tool_data card a session artifact rides on: written by the coding tools, read off the reply.
 ARTIFACT_CARD = "artifact_data"

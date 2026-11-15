@@ -17,6 +17,7 @@ from app.constants.payments import CLAIMED_STATUS
 from app.constants.waits import WAIT_TTL_SECONDS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.approval_ledger import LIVE_ROW_FILTER, LIVE_ROW_INDEX_NAME
+from app.db.repositories.conversation_migration_guard import RENAMED_ENTRY_FIELDS
 from app.db.repositories.conversation_sweep import SWEEP_DUE_FILTER, SWEEP_INDEX_NAME
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.local_credentials import local_credentials_repository
@@ -290,6 +291,14 @@ CONVERSATION_SWEEP_OPTIONS: IndexOptions = {
 
 # A conversation's entries: one seq and one id per entry (the protocol's two uniqueness
 # guarantees), then one index per cross-conversation read the repository makes.
+#: The boot check: an entry still holding a field this stack renamed, one empty index per field.
+RENAMED_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
+    (
+        [(name, 1)],
+        {"name": f"renamed_{name}", "partialFilterExpression": {name: {"$exists": True}}},
+    )
+    for name in RENAMED_ENTRY_FIELDS
+]
 CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
     (
         [("user_id", 1), ("conversation_id", 1), ("seq", 1)],
@@ -321,6 +330,7 @@ CONVERSATION_ENTRY_INDEXES: list[tuple[IndexKeys, IndexOptions]] = [
         [("type", 1)],
         {"name": "message_shaped", "partialFilterExpression": {"type": {"$exists": True}}},
     ),
+    *RENAMED_ENTRY_INDEXES,
 ]
 
 
