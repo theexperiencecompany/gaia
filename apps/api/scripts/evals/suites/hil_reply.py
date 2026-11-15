@@ -34,7 +34,6 @@ from app.services.hil.bridge import build_action_detail
 from app.services.hil.conversational import (
     batch_from_jev_reply,
     decision_from_jev_reply,
-    no_arg_edit,
 )
 from app.services.hil.jev_reply import ask_jev_reply, settle_reply
 from app.services.hil.prompts import JEV_REPLY_QUESTIONS_VERSION
@@ -66,14 +65,20 @@ EXTRA = {
 }
 
 
+def _graded(action: str, feedback: str | None) -> str:
+    """Grade an approve that carries a change as amend: its stored call never runs."""
+    if action == "approve" and feedback:
+        return ReplyChoice.AMEND.value
+    return action
+
+
 def single_outcome(result: DecisionResult | None) -> str:
-    """The graded outcome of a single-approval result, after prod's no-edit rule."""
+    """The graded outcome of a single-approval result."""
     if result is None:
         return ReplyChoice.LEAVE.value
     if result.action == "unrelated":
         return ReplyChoice.UNRELATED.value
-    action, _ = no_arg_edit(result.action, result.feedback)
-    return action
+    return _graded(result.action, result.feedback)
 
 
 def batch_outcome(result: BatchDecisionResult, count: int) -> str:
@@ -88,8 +93,7 @@ def batch_outcome(result: BatchDecisionResult, count: int) -> str:
     for decision in result.decisions:
         if decision.action == "leave" or not 1 <= decision.index <= count:
             continue
-        action, _ = no_arg_edit(decision.action, decision.feedback)
-        outcomes[decision.index - 1] = action
+        outcomes[decision.index - 1] = _graded(decision.action, decision.feedback)
     return ",".join(outcomes)
 
 

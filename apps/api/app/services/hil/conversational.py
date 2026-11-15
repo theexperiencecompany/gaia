@@ -4,8 +4,8 @@ BUTTON-LESS CHANNELS ONLY: the conversation step's approval replies
 (HilApprovalReplies) invoke this for messaging-platform bots alone;
 web/mobile/desktop resolve via POST /approvals/{id}/decision instead.
 
-A reply approves (runs EXACTLY as proposed), denies (any change is a deny with
-the change as feedback), or is a new request (the approvals stay pending and the
+A reply approves (a yes with a change approves with the change as feedback, so
+the work makes the call again with it), denies, or is a new request (the approvals stay pending and the
 message runs). Several pending approvals decide per item: unnamed items deny on
 an exclusive reply and stay pending on a partial one. A reply in the prompt's own
 grammar ("yes", "no", "yes 1 and 3") decides with no model (reply_grammar.py);
@@ -120,9 +120,8 @@ async def _resolve_single(
     if result.action == "unrelated":
         return ApprovalReplyOutcome(action="unrelated")
 
-    action, feedback = no_arg_edit(result.action, result.feedback)
-    await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
-    return ApprovalReplyOutcome(action=action, decided=(record,))
+    await _safe_resolve_ledger(record.approval_id, user_id, result.action, result.feedback)
+    return ApprovalReplyOutcome(action=result.action, decided=(record,))
 
 
 async def _resolve_batch(
@@ -173,9 +172,8 @@ async def _apply_decisions(
         if decision.action == "leave" or not 1 <= decision.index <= len(pending):
             continue
         record = pending[decision.index - 1]
-        action, feedback = no_arg_edit(decision.action, decision.feedback)
-        await _safe_resolve_ledger(record.approval_id, user_id, action, feedback)
-        (approved if action == "approve" else denied).append(record)
+        await _safe_resolve_ledger(record.approval_id, user_id, decision.action, decision.feedback)
+        (approved if decision.action == "approve" else denied).append(record)
     return approved, denied
 
 
@@ -210,12 +208,14 @@ async def interpret_decision_message(
 def decision_from_jev_reply(choice: ReplyChoice, message: str) -> DecisionResult | None:
     """Map one settled JEV choice onto the single-approval result; leave is None.
 
-    A deny carries the reply verbatim: JEV returns no text, and the user's own
-    words are the correction the agent needs.
+    A deny or a yes with a change carries the reply verbatim: JEV returns no text,
+    and the user's own words are the change the agent needs.
     """
     match choice:
         case ReplyChoice.APPROVE:
             return DecisionResult(action="approve")
+        case ReplyChoice.AMEND:
+            return DecisionResult(action="approve", feedback=message)
         case ReplyChoice.DENY:
             return DecisionResult(action="deny", feedback=message)
         case ReplyChoice.UNRELATED:
@@ -235,6 +235,8 @@ def batch_from_jev_reply(choices: list[ReplyChoice], message: str) -> BatchDecis
         match choice:
             case ReplyChoice.APPROVE:
                 decisions.append(BatchItemDecision(index=index, action="approve"))
+            case ReplyChoice.AMEND:
+                decisions.append(BatchItemDecision(index=index, action="approve", feedback=message))
             case ReplyChoice.DENY:
                 decisions.append(BatchItemDecision(index=index, action="deny", feedback=message))
             case ReplyChoice.LEAVE | ReplyChoice.UNRELATED:
@@ -242,20 +244,6 @@ def batch_from_jev_reply(choices: list[ReplyChoice], message: str) -> BatchDecis
             case _:
                 assert_never(choice)
     return BatchDecisionResult(unrelated=False, decisions=decisions)
-
-
-def no_arg_edit(
-    action: ApprovalDecision, feedback: str | None
-) -> tuple[ApprovalDecision, str | None]:
-    """Turn an 'approve' carrying feedback into a deny, since there is no arg-editing.
-
-    The gate runs the tool with its ORIGINAL args, so an 'approve' with feedback
-    (e.g. "cc finance") would silently drop it. Declining with that feedback makes
-    the agent re-propose with the change instead of running the wrong action.
-    """
-    if action == "approve" and (feedback or "").strip():
-        return "deny", feedback
-    return action, feedback
 
 
 # --- internals -----------------------------------------------------------------

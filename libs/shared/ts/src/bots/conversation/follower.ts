@@ -10,7 +10,7 @@
  *   (Telegram, Slack); the others send its text once it settles. Its quote makes
  *   its first message a native reply to that user message's platform message;
  * - a user item's reaction becomes a native reaction on it;
- * - a work item's open approvals are asked in chat, every one still open numbered,
+ * - a work item's open approvals are asked in chat once each, numbered among every open one,
  *   and its browser run's cards are shown as they arrive (browser-progress.ts);
  * - the typing indicator runs while GAIA is thinking or working.
  *
@@ -345,15 +345,20 @@ export class ConversationFollower {
     return run;
   }
 
-  /** Ask about every approval the work waits on, numbered oldest first. */
+  /** Ask about each approval the work waits on that is not asked yet, numbered among every open one. */
   private async askApproval(): Promise<void> {
     const open = this.view.items.flatMap((item) =>
       item.kind === SCREEN_ITEM_KIND.WORK ? item.asking : [],
     );
-    for (const request of open) this.asked.add(request.approval_id);
+    const fresh = open.filter(
+      ({ approval_id }) => !this.asked.has(approval_id),
+    );
+    for (const request of fresh) this.asked.add(request.approval_id);
     const { platform } = this.options;
     await this.surface.send(
-      PLATFORM_MARKDOWN[platform](formatApprovalPrompt(open, Date.now())),
+      PLATFORM_MARKDOWN[platform](
+        formatApprovalPrompt(open, fresh, Date.now()),
+      ),
       null,
     );
   }

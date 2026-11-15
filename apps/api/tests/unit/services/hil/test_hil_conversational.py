@@ -128,6 +128,18 @@ class TestSingleApproval:
         assert outcome.action == "deny"
         assert _decided(decide) == [("ap_1", "deny", reply)]
 
+    async def test_a_yes_with_a_change_approves_it_and_carries_the_change(
+        self, decide: AsyncMock
+    ) -> None:
+        """Regression for conversation a0a0b079: "go ahead but make it high priority" was denied."""
+        reply = "go ahead but make it high priority"
+        with _pending(_row("ap_1", "Create todo")), serve_jev(jev_reply_body(("amend", 0.73))):
+            outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, reply)
+
+        assert outcome is not None
+        assert outcome.action == "approve"
+        assert _decided(decide) == [("ap_1", "approve", reply)]
+
     async def test_an_approve_under_the_line_decides_nothing(self, decide: AsyncMock) -> None:
         below = round(HIL_JEV_REPLY_APPROVE_LINE - 0.01, 2)
         with _pending(_row("ap_1", "Send email")), serve_jev(jev_reply_body(("approve", below))):

@@ -2,7 +2,9 @@
  * The chat prompt for approvals the work waits on. A bot has no approve/deny
  * buttons, so the user answers in words and the server's classifier reads the
  * answer; several open approvals are numbered oldest first, as the classifier
- * numbers them. Every word of what is asked comes from the server's description.
+ * numbers them, and one already asked is never asked again: a later prompt names
+ * only the new ones, under their numbers. Every word of what is asked comes from
+ * the server's description.
  */
 
 import type { ScreenItem } from "../../conversation/types";
@@ -22,6 +24,12 @@ const APPROVAL_PROMPT_COPY = {
   several: (count: number) => `**${count} things need your OK:**`,
   severalReply:
     'Reply **yes** to all, **no** to all, or pick some: "yes 1 and 3".',
+  more: (count: number) =>
+    count === 1
+      ? "**One more needs your OK:**"
+      : `**${count} more need your OK:**`,
+  moreReply: (number: number) =>
+    `Reply by number: "yes ${number}" or "no ${number}".`,
   expires: (within: string) => `This expires in ${within}.`,
 } as const;
 
@@ -58,20 +66,45 @@ function singlePrompt(approval: ApprovalRequestedEntry, now: number): string {
   ].join("\n\n");
 }
 
+/** Each approval's line under its number among every open approval. */
+function numbered(
+  open: readonly ApprovalRequestedEntry[],
+  named: readonly ApprovalRequestedEntry[],
+): { lines: string; first: number } {
+  const numbers = named.map((approval) => open.indexOf(approval) + 1);
+  const lines = named
+    .map((approval, at) => `${numbers[at]}. ${approval.description.headline}`)
+    .join("\n");
+  return { lines, first: numbers[0] };
+}
+
 function severalPrompt(open: readonly ApprovalRequestedEntry[]): string {
-  const numbered = open.map(
-    (approval, index) => `${index + 1}. ${approval.description.headline}`,
-  );
   return [
-    `${APPROVAL_PROMPT_COPY.several(open.length)}\n${numbered.join("\n")}`,
+    `${APPROVAL_PROMPT_COPY.several(open.length)}\n${numbered(open, open).lines}`,
     APPROVAL_PROMPT_COPY.severalReply,
   ].join("\n\n");
 }
 
-/** Markdown asking about every open approval, oldest first; now is the clock the expiry counts from. */
+function morePrompt(
+  open: readonly ApprovalRequestedEntry[],
+  fresh: readonly ApprovalRequestedEntry[],
+): string {
+  const { lines, first } = numbered(open, fresh);
+  return [
+    `${APPROVAL_PROMPT_COPY.more(fresh.length)}\n${lines}`,
+    APPROVAL_PROMPT_COPY.moreReply(first),
+  ].join("\n\n");
+}
+
+/**
+ * Markdown asking about the fresh approvals among every open one, oldest first;
+ * now is the clock the expiry counts from.
+ */
 export function formatApprovalPrompt(
   open: readonly ApprovalRequestedEntry[],
+  fresh: readonly ApprovalRequestedEntry[],
   now: number,
 ): string {
+  if (fresh.length < open.length) return morePrompt(open, fresh);
   return open.length === 1 ? singlePrompt(open[0], now) : severalPrompt(open);
 }
