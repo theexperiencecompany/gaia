@@ -7,7 +7,7 @@ A turn not worth a full message is a single control tag instead of prose:
 
 Only a turn made of directives alone becomes one, so prose never triggers a
 directive. A whole reply that is one bare emoji is the reaction it was meant to
-be: the protocol never sends an emoji as a message. A directive tag is never shown to a user as text: written beside a
+be: the protocol never sends an emoji as a message. An emoji written as a tag of its own, "<❤️>", is that reaction too. A directive tag is never shown to a user as text: written beside a
 reply, as its own bubble or inside one, it is dropped and the reply goes out,
 and visible_comms_text_so_far applies the same rule to a message still streaming.
 """
@@ -53,6 +53,12 @@ _UNCLOSED_SILENCE_RE = re.compile(rf"<[ \t]*{_SPACED_SILENCE}[ \t]*>([^\n]*)(\n?
 # a payload whose closing has not arrived. Only a directive name is held back.
 _OPENING_TAIL_RE = re.compile(r"<[ \t]*([A-Za-z \t]*)\Z")
 _UNCLOSED_TAG_TAIL_RE = re.compile(rf"<[ \t]*({_TAG_NAME})[ \t]*>[^\n]*\Z")
+# An emoji written as a tag of its own, "<❤️>", "</👍>" or "<👍/>": the reaction it means, never text.
+_EMOJI_AS_TAG = r"<[ \t]*/?[ \t]*([^\s<>/]+)[ \t]*/?[ \t]*>"
+_EMOJI_AS_TAG_RE = re.compile(rf"^{_EMOJI_AS_TAG}$")
+_INLINE_EMOJI_AS_TAG_RE = re.compile(rf"{_EMOJI_AS_TAG}[ \t]*(\n?)")
+# The same still being written: its payload so far, which may be nothing yet.
+_EMOJI_AS_TAG_TAIL_RE = re.compile(r"<[ \t]*/?[ \t]*([^\s<>/]*)[ \t]*/?[ \t]*>?\s*\Z")
 _DIRECTIVE_TAGS = frozenset({SILENCE_TAG, EMOJI_TAG, *REACTION_TAG_ALIASES})
 _SPACES_RE = re.compile(r"[ \t]")
 # The opening of a tag still being written, its spaces dropped.
@@ -98,6 +104,19 @@ def _bare_reaction(reply: str) -> CommsDirective | None:
     return CommsDirective(CommsDirectiveKind.REACT, lone)
 
 
+def _emoji_as_tag(text: str) -> CommsDirective | None:
+    """Return the reaction a whole "<❤️>" stands for, or None when text is not one."""
+    tag = _EMOJI_AS_TAG_RE.match(text)
+    if tag is None or not _is_emoji(tag.group(1)):
+        return None
+    return CommsDirective(CommsDirectiveKind.REACT, tag.group(1))
+
+
+def _may_become_emoji_as_tag(text: str) -> bool:
+    tag = _EMOJI_AS_TAG_TAIL_RE.match(text)
+    return tag is not None and (not tag.group(1) or _is_emoji_material(tag.group(1)))
+
+
 def _compact_name(name: str) -> str:
     return _SPACES_RE.sub("", name).upper()
 
@@ -113,7 +132,7 @@ def _bubble_directive(bubble: str) -> CommsDirective | None:
     else:
         legacy = _LEGACY_LINE_RE.match(bubble)
         if legacy is None:
-            return None
+            return _emoji_as_tag(bubble)
         keyword, payload = legacy.group(1).upper(), legacy.group(2).strip()
     if keyword == SILENCE_TAG:
         return CommsDirective(CommsDirectiveKind.SILENCE, payload)
@@ -124,6 +143,8 @@ def _bubble_directive(bubble: str) -> CommsDirective | None:
 def _could_become_directive(bubble: str) -> bool:
     """Whether a bubble still being written can end as a directive."""
     candidate = bubble.lstrip()
+    if _may_become_emoji_as_tag(candidate):
+        return True
     compact = _SPACED_OPENING_RE.sub(lambda m: "<" + _SPACES_RE.sub("", m.group(1)), candidate)
     if not any(
         opening.startswith(compact[: len(opening)].upper()) for opening in _DIRECTIVE_OPENINGS
@@ -156,7 +177,14 @@ def _split_directives(bubble: str) -> tuple[str, list[CommsDirective]]:
         found.append(CommsDirective(CommsDirectiveKind.SILENCE, tag.group(1).strip()))
         return removed(tag, tag.group(2))
 
-    text = _INLINE_TAG_RE.sub(drop_closed, bubble)
+    def drop_emoji(tag: re.Match[str]) -> str:
+        directive = _emoji_as_tag(tag.group(0).strip())
+        if directive is None:
+            return tag.group(0)
+        found.append(directive)
+        return removed(tag, tag.group(2))
+
+    text = _INLINE_EMOJI_AS_TAG_RE.sub(drop_emoji, _INLINE_TAG_RE.sub(drop_closed, bubble))
     return _UNCLOSED_SILENCE_RE.sub(drop_unclosed, text), found
 
 
@@ -164,8 +192,13 @@ def _unfinished_tag_start(text: str) -> int | None:
     """Where a directive tag still being written begins in a streaming bubble, if one is."""
     for index in (i for i, char in enumerate(text) if char == "<"):
         tail = text[index:]
-        if _INLINE_TAG_RE.match(tail):
+        emoji_tag = _INLINE_EMOJI_AS_TAG_RE.match(tail)
+        if _INLINE_TAG_RE.match(tail) or (
+            emoji_tag is not None and _emoji_as_tag(emoji_tag.group(0).strip()) is not None
+        ):
             continue
+        if _may_become_emoji_as_tag(tail):
+            return index
         opening = _OPENING_TAIL_RE.match(tail)
         if opening is not None and any(
             name.startswith(_compact_name(opening.group(1))) for name in _DIRECTIVE_TAGS
