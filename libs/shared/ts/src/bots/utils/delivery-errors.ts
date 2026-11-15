@@ -8,7 +8,9 @@
  * the reply twice with a stale partial copy above it.
  */
 
-import { getHttpStatus } from "./logger";
+import { getHttpStatus, sanitizeErrorForLog } from "./logger";
+import { sleep } from "./timeout";
+import { wideLog } from "./wide-events";
 
 /** How long to wait for a rate limit that did not say (platforms often omit it). */
 const RATE_LIMIT_DEFAULT_WAIT_MS = 1_000;
@@ -65,4 +67,46 @@ export function retryAfterMs(error: unknown): number | null {
     getHttpStatus(error) === 429 ||
     /too many requests|rate limit/i.test(errorText(error));
   return isRateLimited ? RATE_LIMIT_DEFAULT_WAIT_MS : null;
+}
+
+/** Attempts per platform call before a rate limit or server error counts as permanent. */
+const PLATFORM_CALL_ATTEMPTS = 4;
+const SERVER_ERROR_BACKOFF_BASE_MS = 500;
+const SERVER_ERROR_BACKOFF_MAX_MS = 4_000;
+const HTTP_SERVER_ERROR = 500;
+
+/** How long to wait before retrying call attempt n, or null when its failure is permanent. */
+function transientWaitMs(error: unknown, attempt: number): number | null {
+  const rateLimited = retryAfterMs(error);
+  if (rateLimited !== null) return rateLimited;
+  const status = getHttpStatus(error);
+  if (status === undefined || status < HTTP_SERVER_ERROR) return null;
+  return Math.min(
+    SERVER_ERROR_BACKOFF_BASE_MS * 2 ** (attempt - 1),
+    SERVER_ERROR_BACKOFF_MAX_MS,
+  );
+}
+
+/**
+ * Runs one platform call, retrying it in place on a rate limit (after the platform's
+ * retry_after) or a server error (capped backoff), a bounded number of times. A
+ * permanent failure (chat not found, bot blocked) and the last attempt's failure throw.
+ */
+export async function retryTransientPlatformCall<T>(
+  call: () => Promise<T>,
+): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await call();
+    } catch (error) {
+      const waitMs = transientWaitMs(error, attempt);
+      if (waitMs === null || attempt >= PLATFORM_CALL_ATTEMPTS) throw error;
+      wideLog.warning("platform_call_retrying", {
+        ...sanitizeErrorForLog(error),
+        attempt,
+        wait_ms: waitMs,
+      });
+      await sleep(waitMs);
+    }
+  }
 }

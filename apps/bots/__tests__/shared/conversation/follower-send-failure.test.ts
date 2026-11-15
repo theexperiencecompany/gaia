@@ -133,7 +133,7 @@ describe("a send to a chat that no longer exists", () => {
     expect(liveSent.at(-1)).toBe("Your flight is booked.");
   });
 
-  it("ends the follow on a platform server error too, instead of reopening the stream into a closed follow", async () => {
+  it("ends the follow on a send that still fails, instead of reopening the stream into a closed follow", async () => {
     let opened = 0;
     const source: ConversationEventSource = async function* () {
       opened += 1;

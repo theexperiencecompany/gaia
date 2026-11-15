@@ -70,6 +70,7 @@ import type {
   PlatformName,
   RichMessageTarget,
 } from "../types";
+import { retryTransientPlatformCall } from "../utils/delivery-errors";
 import {
   BOT_FAILURE_REASON,
   type BotFailureReason,
@@ -827,30 +828,37 @@ export abstract class BaseBotAdapter {
   ): FollowSurface {
     const destination = channelId ?? platformUserId;
     const isChannel = channelId !== null;
+    const send: ConversationSurface["send"] = (text, replyTo) =>
+      retryTransientPlatformCall(() => surface.send(text, replyTo));
     return {
       ...surface,
+      send,
       privateChat: !isChannel,
       sendPhoto: (url, caption) =>
-        this.deliverOutboundFile(
-          destination,
-          {
-            url,
-            filename: url.split("/").pop() ?? url,
-            content_type: null,
-            caption,
-          },
-          isChannel,
+        retryTransientPlatformCall(() =>
+          this.deliverOutboundFile(
+            destination,
+            {
+              url,
+              filename: url.split("/").pop() ?? url,
+              content_type: null,
+              caption,
+            },
+            isChannel,
+          ),
         ),
       sendFile: (conversationId, file) =>
-        this.deliverOutboundFile(
-          destination,
-          {
-            conversation_id: conversationId,
-            path: file.path,
-            filename: file.path.split("/").pop() ?? file.path,
-            content_type: file.content_type,
-          },
-          isChannel,
+        retryTransientPlatformCall(() =>
+          this.deliverOutboundFile(
+            destination,
+            {
+              conversation_id: conversationId,
+              path: file.path,
+              filename: file.path.split("/").pop() ?? file.path,
+              content_type: file.content_type,
+            },
+            isChannel,
+          ),
         ),
       sendNotice: async (bubbles) => {
         const notifications = this.outboundNotifications;
@@ -862,7 +870,7 @@ export abstract class BaseBotAdapter {
           return;
         }
         // react-doctor-disable-next-line async-await-in-loop -- bubbles must land on the platform in order
-        for (const bubble of bubbles) await surface.send(bubble, null);
+        for (const bubble of bubbles) await send(bubble, null);
       },
       react: async (platformMessageId, emoji, replaces) => {
         const outcome = await surface.react(platformMessageId, emoji, replaces);

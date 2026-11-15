@@ -44,6 +44,9 @@ class RestartedAdapter extends BaseBotAdapter {
   readonly platform = "whatsapp" as const;
   protected readonly defaultServerPort = 3203;
   readonly sent: string[] = [];
+  /** Errors the platform throws for the next sends, in order. */
+  readonly refusals: Error[] = [];
+  sendAttempts = 0;
   readonly targets: ActiveBotConversation[] = [];
 
   protected async initialize(): Promise<void> {
@@ -73,6 +76,9 @@ class RestartedAdapter extends BaseBotAdapter {
     this.targets.push(target);
     return {
       send: async (text) => {
+        this.sendAttempts += 1;
+        const refusal = this.refusals.shift();
+        if (refusal) throw refusal;
         this.sent.push(text);
         return { edit: async () => undefined };
       },
@@ -191,5 +197,43 @@ describe("a bot that boots before the API listens", () => {
     await resumed;
 
     expect(listActiveConversations).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** grammY's GrammyError: Telegram's status in error_code, its reason in description. */
+const grammyError = (
+  status: number,
+  description: string,
+  parameters?: { retry_after: number },
+) =>
+  Object.assign(new Error(`(${status}: ${description})`), {
+    name: "GrammyError",
+    error_code: status,
+    description,
+    parameters,
+  });
+
+describe("a platform send during a follow", () => {
+  it("is sent again after the platform's retry_after on a rate limit, and the replies land in order", async () => {
+    const { adapter } = restarted([target(1)]);
+    adapter.refusals.push(
+      grammyError(429, "Too Many Requests: retry after 0", { retry_after: 0 }),
+    );
+
+    await adapter.resume();
+    await adapter.conversationsIdle();
+
+    expect(adapter.sent).toEqual(["On it.", "Your flight is booked."]);
+  });
+
+  it("is not sent again when the chat is gone, and that follow ends", async () => {
+    const { adapter } = restarted([target(1)]);
+    adapter.refusals.push(grammyError(400, "Bad Request: chat not found"));
+
+    await adapter.resume();
+    await adapter.conversationsIdle();
+
+    expect(adapter.sendAttempts).toBe(1);
+    expect(adapter.sent).toEqual([]);
   });
 });
