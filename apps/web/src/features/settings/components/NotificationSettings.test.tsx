@@ -49,6 +49,10 @@ vi.mock("@/features/settings/components/QuietHoursSettings", () => ({
   QuietHoursSettings: () => null,
 }));
 
+vi.mock("@/features/settings/components/BriefingEditionsSettings", () => ({
+  BriefingEditionsSettings: () => null,
+}));
+
 function renderSettings() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },

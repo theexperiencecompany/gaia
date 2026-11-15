@@ -3,6 +3,7 @@
 from collections import Counter
 from itertools import pairwise
 import random
+from unittest.mock import patch
 
 import pytest
 
@@ -91,6 +92,17 @@ class TestDraw:
         picks, _ = _draws(6, {"postal": 2})
 
         assert picks == ["postal"] * 6
+
+    def test_a_pool_of_one_member_is_never_reshuffled_in_vain(self) -> None:
+        """Regression (#1804 review): Air Mail alone retried 1,000 orders per rule each pass."""
+        rng = random.Random(7)
+        state: ShuffleBag | None = None
+        with patch.object(rng, "shuffle", wraps=rng.shuffle) as shuffle:
+            for _ in range(4):
+                _, state = draw(state, {"postal": 2}, rng)
+
+        # Two passes, and at most one try per rule (four rules) in each.
+        assert shuffle.call_count <= 2 * 4
 
     def test_a_pool_too_lopsided_to_keep_repeats_apart_still_hands_out_every_weight(
         self,

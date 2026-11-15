@@ -90,6 +90,33 @@ describe("useBriefingEditionsSettings", () => {
     expect(result.current.editions?.[0].choice).toBe("on");
   });
 
+  // Regression: two quick taps sent two whole maps at once, and the older one landing last erased the newer choice.
+  it("saves quick choices one after another, so the last write holds them all", async () => {
+    let finishFirst: ((value: typeof STORED) => void) | undefined;
+    updateBriefingEditions.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishFirst = resolve;
+        }),
+    );
+    const { result } = await loaded();
+
+    act(() => result.current.toggleOn("postal"));
+    act(() => result.current.toggleFavourite("menu"));
+
+    await waitFor(() =>
+      expect(updateBriefingEditions).toHaveBeenCalledTimes(1),
+    );
+    await act(async () => finishFirst?.(STORED));
+
+    await waitFor(() =>
+      expect(updateBriefingEditions).toHaveBeenCalledTimes(2),
+    );
+    expect(updateBriefingEditions).toHaveBeenLastCalledWith({
+      choices: { postal: "off", swiss: "favourite", menu: "favourite" },
+    });
+  });
+
   it("rolls back a choice the server refused", async () => {
     updateBriefingEditions.mockRejectedValue(new Error("500"));
     const { result } = await loaded();

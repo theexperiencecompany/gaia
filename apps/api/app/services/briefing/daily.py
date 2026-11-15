@@ -113,8 +113,8 @@ async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: b
 
 
 def _is_empty_day(payload: BriefingPayload) -> bool:
-    """Say whether the composition placed nothing and the user's calendar is empty."""
-    return not payload.blocks and not payload.calendar
+    """Say whether the composition placed nothing, drawn or left to the brief's page, and the calendar is empty."""
+    return not payload.blocks and not payload.undrawn and not payload.calendar
 
 
 def _last_daily_was_quiet(briefs: list[BriefingModel]) -> bool:

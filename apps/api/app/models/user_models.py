@@ -689,6 +689,7 @@ class AuthenticatedUser(BaseModel):
     platform_links_connected_at: dict[str, Any] | None = None
     chat_channel_priority: list[str] | None = None
     briefing_schedule: BriefingSchedule = Field(default_factory=BriefingSchedule)
+    briefing_editions: dict[str, EditionChoice] = Field(default_factory=dict)
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
     first_name: str | None = None

@@ -45,8 +45,10 @@ def _shuffle(
 ) -> list[str]:
     order = _pool(weights)
     rules = _rules(previous=previous, last=last, eligible=eligible)
+    # One member has a single order: reshuffling it can never make a broken rule hold.
+    attempts = 1 if len(set(order)) == 1 else _MAX_SHUFFLE_ATTEMPTS
     for kept in range(len(rules), 0, -1):
-        for _ in range(_MAX_SHUFFLE_ATTEMPTS):
+        for _ in range(attempts):
             rng.shuffle(order)
             if all(rule(order) for rule in rules[:kept]):
                 return list(order)
