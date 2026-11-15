@@ -38,6 +38,7 @@ from app.db.repositories.workflow_executions import workflow_executions_reposito
 from app.db.repositories.workflows import workflow_repository
 from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent
+from app.models.calendar_models import CalendarResponse
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalRecord
 from app.models.reminder_models import AgentType, ReminderDocument
 from app.models.scheduler_models import DeactivationReason
@@ -208,8 +209,28 @@ class TestTrackedTodos:
                 None,
             ),
             (
+                {"waiting_on": WaitingOn.UNPLANNED},
+                "captured, not started: GAIA plans it",
+                None,
+            ),
+            (
+                {"waiting_on": WaitingOn.TIME, "scheduled_at": NOW},
+                "GAIA looks at it again today",
+                BriefOutcome.STARTED,
+            ),
+            (
+                {"waiting_on": WaitingOn.TIME},
+                "GAIA looks at it again",
+                BriefOutcome.STARTED,
+            ),
+            (
                 {"waiting_on": WaitingOn.EVENT},
                 "waiting on an event it watches",
+                BriefOutcome.STARTED,
+            ),
+            (
+                {"waiting_on": WaitingOn.SUB_TODOS},
+                "its sub-todos are doing the work",
                 BriefOutcome.STARTED,
             ),
         ],
@@ -312,10 +333,10 @@ class TestOwnTodos:
 
         found = await own_todo_candidates(USER_ID, NOW, TrackedWork())
 
-        assert [(c.todo_id, c.due_at) for c in found] == [
-            ("o1", NOW),
-            ("n1", None),
-            ("n2", None),
+        assert [(c.todo_id, c.due_at, c.backlog) for c in found] == [
+            ("o1", NOW, False),
+            ("n1", None, True),
+            ("n2", None, True),
         ]
         assert {(c.state, c.action) for c in found} == {("you", BriefAction.ATTEND)}
         listing.assert_awaited_once_with(USER_ID, limit=UNDATED_TODO_CANDIDATES_LIMIT)
@@ -506,10 +527,34 @@ class TestAppSignals:
         assert (found.url, found.people, found.signal) == (signal.url, ["Priya"], signal)
         assert found.due_at == signal.due_at
         assert (found.action, found.outcome) == (None, None)
+        assert (found.moved, found.is_repeat) == (True, False)
         assert found.detail == (
             "issue assigned to you | state: In Progress | why: due tomorrow | first seen "
             "2 days ago, mentioned 1 time(s), last yesterday, moved from Todo to In Progress"
         )
+
+    def test_a_signal_shown_before_in_the_same_state_has_not_moved_and_is_a_repeat(self) -> None:
+        signal = Signal(
+            integration_id="linear",
+            app="Linear",
+            external_id="ENG-42",
+            kind="issue assigned to you",
+            title="Fix the login redirect",
+            state="Todo",
+        )
+        memory = SignalMemoryDocument(
+            user_id=USER_ID,
+            integration_id="linear",
+            external_id="ENG-42",
+            first_seen=NOW - timedelta(days=2),
+            times_shown=1,
+            last_shown=NOW - timedelta(days=1),
+            last_state="Todo",
+        )
+
+        [found] = app_signal_candidates([RememberedSignal(signal=signal, memory=memory)], CLOCK)
+
+        assert (found.moved, found.is_repeat) == (False, True)
 
 
 class TestIntegrationName:
@@ -536,6 +581,35 @@ class TestCalendar:
             (True, "Pitch to Accel", "Fri 3:00 PM", None, BriefAction.ATTEND),
         ]
         assert {c.app for c in found} == {"Google Calendar"}
+
+    @pytest.mark.parametrize(
+        ("response", "answer"),
+        [
+            (CalendarResponse.TENTATIVE, "the user answered tentative"),
+            (CalendarResponse.NEEDS_ACTION, "the user has not answered the invite"),
+        ],
+    )
+    def test_an_events_line_says_its_end_place_calendar_people_and_the_users_answer(
+        self, response: CalendarResponse, answer: str
+    ) -> None:
+        event = BriefingEvent(
+            date="2026-11-10",
+            start="11:00",
+            end="12:30",
+            title="Sequoia",
+            location="Zoom",
+            calendar="Work",
+            organizer="Priya",
+            guests=3,
+            response=response,
+        )
+
+        [found] = calendar_candidates([event], "2026-11-10")
+
+        assert found.detail == (
+            "until 12:30 PM | Zoom | on the Work calendar | organized by Priya"
+            f" | 3 other(s) invited | {answer}"
+        )
 
 
 def _ledger(approval_id: str, **fields: Any) -> ApprovalLedgerDocument:
@@ -588,6 +662,7 @@ class TestApprovals:
             ("Slack", "Message #launch on Slack", "you"),
         ]
         assert [c.source for c in found] == ["gmail", "gaia", "Slack"]
+        assert [c.seen_as for c in found] == ["approval:ap_1", "approval:ap_3", "approval:appr-1"]
         assert {c.action for c in found} == {BriefAction.APPROVE}
         assert {c.detail for c in found} == {"waiting for your approval"}
         assert ledger.await_args.args == (USER_ID,)

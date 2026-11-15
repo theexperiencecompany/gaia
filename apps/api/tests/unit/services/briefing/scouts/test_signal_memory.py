@@ -8,6 +8,7 @@ import pytest
 
 from app.db.repositories.signal_memory import signal_memory_repository
 from app.models.scout_models import (
+    PeopleRole,
     RememberedSignal,
     Signal,
     SignalImportance,
@@ -136,6 +137,16 @@ class TestTheFactsBlock:
             " (the app does not say their part in it)"
             " | linkable | why: blocks the release"
             " | first seen today, never mentioned"
+        )
+
+    def test_the_people_an_app_names_are_said_in_the_part_it_gives_them(self) -> None:
+        signal = _signal("7").model_copy(
+            update={"people": ["Priya", "Sam"], "people_role": PeopleRole.ASSIGNEE}
+        )
+
+        assert signals_block([(1, RememberedSignal(signal=signal))], CLOCK).splitlines()[-1] == (
+            "- fact 1 | other | issue: Issue 7 | state: Todo | assignee: Priya, Sam"
+            " | first seen today, created date unknown"
         )
 
     def test_a_sighting_stamped_after_now_still_reads_as_today(self) -> None:
