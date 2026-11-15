@@ -3,7 +3,7 @@
     "name": "Activepieces",
     "tagline": "ビジュアルフロー構築ができるオープンソースのワークフロー自動化ツール",
     "description": "Activepiecesは、Zapierの代替として開発されたオープンソース・ノーコード自動化プラットフォームです。440以上のアプリをビジュアルフロービルダーとルールベースのトリガーで連携できます。GAIAは、メールやカレンダー、タスク、ワークフローを自律的に管理する積極的AIアシスタントで、細かいルールを自分で設定しなくても、自動で適切な判断・行動を行います。",
-    "metaTitle": "Activepiecesとは？GAIAと自動化・料金を比較",
+    "metaTitle": "Activepiecesとは？GAIAと自動化の仕組み・料金を比較",
     "metaDescription": "Activepiecesはルール型フローにAIステップを加えます。GAIAはビルダー不要でメール・タスク・ワークフローを処理。セルフホストと料金を比較。",
     "keywords": [
       "GAIA vs Activepieces",
@@ -264,7 +264,7 @@
     "name": "Akiflow",
     "tagline": "パワーユーザーのための統合タスク受信箱＆カレンダータイムブロッキングツール",
     "description": "Akiflowはキーボード操作を重視した生産性向上アプリで、Asana、Todoist、Jira、Gmail、Slackなど30以上のツールからタスクを集約し、1つの受信箱にまとめて管理。タスクを同期済みカレンダー上で直接タイムブロックでき、複数のタスク管理ツールを使い分けるパワーユーザー向けに設計された、統合プランニング拠点です。GAIAはメールや会話から自動でタスクを生成し、カレンダーを管理、複数ツール間のワークフローも実行できる先進的AI生産性OSです。Akiflowが効率化する管理レイヤーすら省略し、より自律的でスムーズな仕事管理を実現します。",
-    "metaTitle": "AkiflowのプロアクティブAI代替",
+    "metaTitle": "Akiflowの代替：タスクと予定を先回りで整理するプロアクティブAI",
     "metaDescription": "GAIAとAkiflowを比較。Akiflowは30以上のアプリからタスクを集約しカレンダーで時間管理しますが、GAIAはメールから自律的にタスクを生成し、カレンダー管理やツール横断のワークフローも自動化します。",
     "keywords": [
       "GAIA vs Akiflow",
@@ -368,7 +368,7 @@
     "name": "Any.do",
     "tagline": "あなたとチームのためのシンプルなToDoリスト",
     "description": "Any.doは、カレンダー同期、WhatsAppリマインダー、ChatGPT搭載アシスタントを備えた、洗練されたタスク・リスト管理ツールです。GAIAは単なるリスト管理にとどまらず、より深く文脈を理解するAIエージェントにより、あなたのデジタルワークフロー全体を積極的に最適化します。",
-    "metaTitle": "Any.doのMCP・AI連携: GAIAと比較",
+    "metaTitle": "Any.doのMCP・AI連携：GAIAとタスク管理機能を徹底比較",
     "metaDescription": "GAIAはMCPでAny.doと連携します。リストやWhatsAppリマインダーはそのままに、AIがメールからタスクを作り予定に組み込みます。AI機能と料金の違いを比較します。",
     "keywords": [
       "GAIA vs Any.do",
@@ -467,7 +467,7 @@
     "name": "Appleリマインダー",
     "tagline": "iPhone、iPad、Macで使えるApple純正のタスク・リマインダーアプリ",
     "description": "Appleリマインダーは、iPhone、iPad、Macで使える完全無料の標準タスク管理アプリです。スマートリスト、位置情報リマインダー、自然言語入力、Siri連携などAppleエコシステムを横断して使えます。一方、GAIAはAIによるプロアクティブなクロスプラットフォームアシスタントとして、タスク・メール・カレンダー管理を多数のサービスと連携し、単一エコシステムのリマインダーアプリをはるかに超える体験を提供します。",
-    "metaTitle": "Appleリマインダーの代替：AIタスク管理のGAIA",
+    "metaTitle": "Appleリマインダーの代替：AIでタスクを管理するGAIAと比較",
     "metaDescription": "Appleリマインダーは、Appleユーザー向けの無料で優れたタスクアプリ。GAIAはタスク・メール・予定をAIで自動管理し、Windows・Linux・macOS・ブラウザで動作します。",
     "keywords": [
       "Appleリマインダー 代替",
@@ -568,7 +568,7 @@
     "name": "Asana",
     "tagline": "チーム向けプロジェクト・タスク管理プラットフォーム",
     "description": "Asanaは、チームの協力とプロジェクト管理のために作られたツールで、複数のチームの業務進捗を可視化・管理することができます。GAIAは、あなたのメール、カレンダー、タスク、ワークフローを自動的に管理するプロアクティブなAIアシスタントです。あなたのデジタルライフ全体を横断してサポートします。",
-    "metaTitle": "ユーザー単位の料金がないAsana代替",
+    "metaTitle": "Asanaとの比較：メールからタスクを作る能動的なAIアシスタント",
     "metaDescription": "Asanaはユーザーごとに料金がかかり、タスク管理は手動です。GAIAはソースコード公開のAsana代替AIで、メールからタスクを自動生成し、ワークフローを自動化。非商用ならセルフホストも無料。",
     "keywords": [
       "GAIA vs Asana",
@@ -1095,7 +1095,7 @@
     "name": "Calendly",
     "tagline": "外部予約リンクのためのスケジューリング自動化",
     "description": "Calendlyは、あなたの空き時間をリンクで共有することで、他の人が簡単に予定を予約できるツールです。GAIAはカレンダー全体を内側から管理し、会議のスケジューリング、空き時間の検索、ブリーフィングの準備からフォローアップの自動化まで行いますが、公開予約ページは生成しません。",
-    "metaTitle": "CalendlyとGAIAを比較: 予約リンクかAI調整か",
+    "metaTitle": "CalendlyとGAIAを比較：予約リンクかAIによる日程調整か",
     "metaDescription": "Calendlyは空き時間をリンクで共有し、予約を受け付けます。GAIAはカレンダー全体を内側から管理し、空き時間を探して会議を設定、事前ブリーフィングやフォローアップまで担当します。",
     "keywords": [
       "GAIA vs Calendly",
@@ -1548,7 +1548,7 @@
     "name": "ChatGPT",
     "tagline": "OpenAIの会話型AIチャットボット",
     "description": "ChatGPTは、オンデマンドで質問に答えたり、テキストを作成したり、コードを作成したりできる汎用的な会話型AIです。GAIAは、プロアクティブな生産性OSであり、メール、カレンダー、タスク、ワークフローを、尋ねられることなく管理します。",
-    "metaTitle": "ChatGPTとGAIAを比較: チャットか実行する秘書か",
+    "metaTitle": "ChatGPTとGAIAを比較：チャットか、実際に動くAI秘書か",
     "metaDescription": "ChatGPTはGmailと連携しても、指示されるまで待つ会話型AIです。GAIAは先に動き、メールの仕分け、予定管理、ワークフロー実行まで担います。記憶の仕組みと料金を比較。",
     "keywords": [
       "GAIA vs ChatGPT",
@@ -1737,7 +1737,7 @@
     "name": "ClickUp",
     "tagline": "オールインワンプロジェクト管理プラットフォーム",
     "description": "ClickUpは機能豊富なプロジェクト管理ツールです。GAIAは、手動でのプロジェクト管理を必要とせず、AIインテリジェンスを追加して作業をプロアクティブに自動化します。",
-    "metaTitle": "プロアクティブAIを備えたClickUp代替",
+    "metaTitle": "ClickUpの代替：タスクを先回りで処理するプロアクティブAI",
     "metaDescription": "ClickUpは強力ですが、手動管理が必要です。GAIAは、メール自動作成、カレンダー管理、多数のツールを横断したワークフロー自動化を備えたプロアクティブAI搭載のソースコード公開のClickUp代替です。",
     "keywords": [
       "GAIA vs ClickUp",
@@ -1935,7 +1935,7 @@
     "name": "Clockwise",
     "tagline": "AI駆動のチーム向けカレンダー最適化ツール",
     "description": "Clockwiseは、フォーカス時間を自動スケジュールし、最適な会議時間を検索することで、チームのカレンダーを最適化します。GAIAは、メール、カレンダー、タスク、ワークフローをデジタルライフ全体で自律的に管理するプロアクティブAIアシスタントです。",
-    "metaTitle": "AIメール管理を備えたClockwise代替",
+    "metaTitle": "Clockwiseの代替：予定の最適化にAIメール管理を加える",
     "metaDescription": "Clockwiseはチームカレンダーを最適化しますが、受信トレイは扱いません。GAIAはAIメール管理、カレンダー、ツール横断のワークフロー自動化を備えたソースコード公開の代替です。",
     "keywords": [
       "GAIA vs Clockwise",
@@ -2028,7 +2028,7 @@
     "name": "Coda",
     "tagline": "アプリのように考えるドキュメント",
     "description": "Coda.ioは、ドキュメント、スプレッドシート、アプリビルダー機能を単一のワークスペースに融合させた強力なオールインワンプラットフォームです。GAIAは、メール、カレンダー、タスク、および多数の統合を自律的なアクションで接続するプロアクティブAIアシスタントです。",
-    "metaTitle": "Coda AIとGAIAを比較: 文書アプリかAI秘書か",
+    "metaTitle": "Coda AIとGAIAを比較：文書アプリか、仕事を進めるAI秘書か",
     "metaDescription": "Coda AIは文書・表・数式の中で作業を手伝います。GAIAは数式やボタンを組まずに、メールの仕分け、タスク管理、ワークフロー実行まで対応。機能と料金を比較します。",
     "keywords": [
       "coda代替",
@@ -2145,7 +2145,7 @@
     "name": "Confluence",
     "tagline": "AtlassianのチームWikiとドキュメントプラットフォーム",
     "description": "Confluenceは、AtlassianのエンタープライズチームWikiおよびナレッジマネジメントプラットフォームであり、ソフトウェアチーム向けのJiraと並んで広く使用されています。GAIAは、ドキュメントをメール、タスク、カレンダー、および多数の統合に接続するプロアクティブAIアシスタントであり、自律的なアクションを実行します。",
-    "metaTitle": "Confluenceの代替AI: GAIAと比較",
+    "metaTitle": "Confluenceの代替AI：ナレッジ管理と自動化をGAIAと比較",
     "metaDescription": "Confluenceはチームwikiですが、答えは自分で探す必要があります。GAIAはJira・メール・タスクと連携し必要な情報を提示。比較を確認。",
     "keywords": [
       "confluence代替",
@@ -2466,7 +2466,7 @@
     "name": "Cursor",
     "tagline": "AIでコーディングする最良の方法",
     "description": "CursorはVS Code上に構築されたAIファーストのコードエディタで、インライン補完、複数ファイル編集、バックグラウンドエージェントをコーディング環境に直接提供します。GAIAはエディタ外のすべてを管理することでエディタを補完します。メール、カレンダー、GitHub通知、Linearチケット、スタンドアップ要約、および多数の統合。これにより、開発者はコンテキストスイッチなしでフローを維持できます。",
-    "metaTitle": "生産性OSとしてのCursor AI代替",
+    "metaTitle": "Cursor AIの代替：コードの外まで仕事を進める生産性AI",
     "metaDescription": "Cursorはエディタ内では優秀ですが、受信トレイやカレンダーは管理しません。GAIAはエディタの外を担うソースコード公開のコンパニオンで、メール、GitHub通知、Linearチケットを処理します。",
     "keywords": [
       "GAIA vs Cursor",
@@ -2566,7 +2566,7 @@
     "name": "DeepSeek",
     "tagline": "強力なコーディングと無料APIアクセスを備えたオープンウェイトLLM",
     "description": "DeepSeekは、強力なコーディング機能と無料APIティアを備えた中国のオープンウェイト大規模言語モデルです。GAIAは、プロアクティブなAI生産性アシスタントであり、AIインテリジェンスをメール、カレンダー、タスク、および多数の統合にわたる実際のワークフロー自動化に接続します。",
-    "metaTitle": "生産性自動化のためのDeepSeek代替",
+    "metaTitle": "DeepSeekの代替：会話だけで終わらない生産性自動化AI",
     "metaDescription": "DeepSeekは強力なオープンLLMですが、受信トレイを管理したり、ワークフローを自動化したりしません。GAIAは、タスク、メール、ワークフローを多数の統合にわたってプロアクティブに管理するソースコード公開の代替です。",
     "keywords": [
       "deepseek代替",
@@ -2678,7 +2678,7 @@
     "name": "Discord",
     "tagline": "ボイスチャンネルとClyde AIを備えたコミュニティチャット",
     "description": "Discordは、ボイスチャンネル、ボット、Clyde AIアシスタントを備えたコミュニティおよびチームコミュニケーションプラットフォームです。GAIAは、タスク、メール、カレンダー、ワークフローを管理するプロアクティブAI生産性アシスタントであり、チームのコミュニケーションを実際の実行に接続します。",
-    "metaTitle": "チーム生産性自動化のためのDiscord代替",
+    "metaTitle": "Discordの代替：チームの連絡とタスクをAIで自動化",
     "metaDescription": "Discordはコミュニティチャットには最適ですが、タスク管理やワークフロー自動化には対応していません。GAIAは、チームコミュニケーションをタスク、メール、ワークフローに接続するソースコード公開の代替であり、多数の統合を横断します。",
     "keywords": [
       "discord代替",
@@ -2895,7 +2895,7 @@
     "name": "Fantastical",
     "tagline": "これまでで最高のカレンダーアプリ",
     "description": "Fantasticalは、自然言語イベント作成と洗練されたデザインで知られるプレミアムAppleエコシステムカレンダーおよびタスクアプリです。GAIAは、カレンダー管理を超えて、メール、タスク、統合、およびそれ以上のもの全体をオーケストレーションします。",
-    "metaTitle": "AI自動化を備えたFantastical代替",
+    "metaTitle": "Fantasticalの代替：予定管理にAI自動化を加えるアシスタント",
     "metaDescription": "Fantasticalは自然言語で予定を作れるApple向けカレンダーです。その代替としてGAIAを比較。メール整理、カレンダー管理、ワークフロー自動化を全プラットフォームで使えます。",
     "keywords": [
       "GAIA vs Fantastical",
@@ -2993,7 +2993,7 @@
     "name": "Fathom",
     "tagline": "CRM同期を備えた無料AI会議メモ作成ツール",
     "description": "Fathomは、CRM同期を備えた無料AI会議メモ作成ツールで、通話を記録、文字起こし、要約します。GAIAは、タスク、メール、カレンダー、会議を横断する完全なワークフローを管理するプロアクティブAIアシスタントです。",
-    "metaTitle": "生産性を丸ごと自動化するFathom代替",
+    "metaTitle": "Fathomの代替：会議メモから生産性全体を自動化するAI",
     "metaDescription": "Fathomの無料メモ作成ツールは優れていますが、会議に限定されています。GAIAは、会議結果をタスク、メールフォローアップ、および多数の統合に自動的に接続するソースコード公開の代替です。",
     "keywords": [
       "fathom代替",
@@ -3649,7 +3649,7 @@
     "name": "Gemini",
     "tagline": "GoogleのAIアシスタント",
     "description": "GeminiはGoogle Workspaceと統合されていますが、リアクティブなままです。GAIAは、Google製品だけでなく、多数のツール全体で、メール、カレンダー、タスク、ワークフローをプロアクティブに管理します。",
-    "metaTitle": "GeminiとGAIAを比較: 先回りするAIはどちらか",
+    "metaTitle": "GeminiとGAIAを比較：先回りして動くAIアシスタントはどちらか",
     "metaDescription": "GeminiはGoogleアプリ内で聞かれたときに答えます。GAIAは先に動き、Gmailの仕分けやタスク、ワークフローを実行。料金を比較。",
     "keywords": [
       "GAIA vs Gemini",
@@ -4047,7 +4047,7 @@
     "name": "Granola",
     "tagline": "Mac上でローカルで実行される会議用AIメモ作成ツール",
     "description": "Granolaは、ローカルファーストのMacアプリであり、プライバシーのためにオンデバイスで実行されるAIでメモを強化します。GAIAは、メール、カレンダー、タスク、および多数の統合を横断するプロアクティブAIアシスタントであり、会議を超えた完全なワークフローをオーケストレーションします。",
-    "metaTitle": "Granolaの代替: セルフホストできるGAIAと比較",
+    "metaTitle": "Granolaの代替：会議メモからタスクまで扱うセルフホスト可能なGAIA",
     "metaDescription": "GranolaはMacで動くローカルファーストの会議メモアプリです。GAIAはソース公開でセルフホスト可能。会議をタスク、事前資料、フォローメールに変え、その後の作業まで進めます。",
     "keywords": [
       "granola代替",
@@ -4164,7 +4164,7 @@
     "name": "Grok",
     "tagline": "X/Twitterと統合されたxAIのリアルタイムAIアシスタント",
     "description": "GrokはxAIのAIアシスタントであり、X/Twitterデータと最新の世界イベントにリアルタイムでアクセスできます。GAIAは、メール、カレンダー、タスク、ワークフローを管理するプロアクティブな生産性AIです。AIを、質問に答えるだけでなく、あなたのために働くシステムに変えます。",
-    "metaTitle": "GrokとGAIAを比較: リアルタイム会話か実行か",
+    "metaTitle": "GrokとGAIAを比較：リアルタイムの会話か、タスクの実行か",
     "metaDescription": "GrokはX（旧Twitter）のリアルタイム情報をもとに答えます。GAIAは頼む前にメール・予定・タスクを処理し、あなたの文脈を記憶して次に生かします。連携と料金を比較。",
     "keywords": [
       "grok代替",
@@ -4276,7 +4276,7 @@
     "name": "Harvest",
     "tagline": "Time tracking and invoicing for freelancers and teams",
     "description": "Harvest combines time tracking with invoicing, expense tracking, and project budgeting for freelancers and agencies. GAIA complements billing workflows by proactively managing the email, tasks, calendar, and cross-tool coordination that happens around billable work — reducing the non-billable overhead that Harvest tracks but cannot prevent.",
-    "metaTitle": "Harvestの予算管理と請求: GAIAと比較",
+    "metaTitle": "Harvestの予算管理と請求：時間管理の自動化をGAIAと比較",
     "metaDescription": "Harvestはフリーランスやチームの作業時間、予算、請求書を管理します。GAIAは顧客メール、タスク、日程調整を担当。役割の違いと、両方を併用する方法を確認できます。",
     "keywords": [
       "Harvest alternative",
@@ -4435,7 +4435,7 @@
     "name": "Height",
     "tagline": "The autonomous project management tool",
     "description": "Height was an AI-powered project management tool for product teams that focused on autonomous task automation like bug triage and backlog pruning. GAIA takes a broader approach as a proactive personal AI assistant that manages email, calendar, tasks, and workflows across your entire digital life.",
-    "metaTitle": "Height vs GAIA：自分でタスクを作るAI",
+    "metaTitle": "Height vs GAIA：タスクを自分で作って進めるAIを比較",
     "metaDescription": "Heightの代替としてGAIAを比較。メール、カレンダー、タスク、ワークフロー自動化をAIでまとめて任せられ、非商用ならセルフホストも無料です。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs Height",
@@ -4652,7 +4652,7 @@
     "name": "HubSpot",
     "tagline": "CRM, marketing automation, sales, and customer service platform",
     "description": "HubSpot is a comprehensive CRM platform covering marketing automation, sales pipeline management, and customer service. GAIA focuses on the personal productivity layer — proactively managing your inbox, calendar, and task workflow with AI that acts across your integrations including HubSpot itself.",
-    "metaTitle": "HubSpotの代替: 個人の生産性を高めるAIのGAIA",
+    "metaTitle": "HubSpotの代替：個人の生産性を高めるAIアシスタントのGAIA",
     "metaDescription": "HubSpotはマーケティングや営業パイプラインを扱うチーム向けCRMです。GAIAは受信トレイとタスクを先回りで管理するソース公開のAIで、個人の日々の仕事が楽になります。",
     "keywords": [
       "HubSpot alternative",
@@ -4928,7 +4928,7 @@
     "name": "Jira",
     "tagline": "Enterprise project and issue tracking for software teams",
     "description": "Jira is Atlassian's enterprise-grade issue tracker built for software engineering teams. GAIA is a proactive AI personal assistant that manages your entire digital workflow across email, calendar, tasks, and the rest of your tools.",
-    "metaTitle": "Jira vs GAIA：個人の生産性のためのAI",
+    "metaTitle": "Jira vs GAIA：チーム管理ではなく個人の生産性のためのAI",
     "metaDescription": "Jiraはエンジニア向けです。GAIAはメール、カレンダー、タスクを先回りで管理するAIで、Jira連携で個人の生産性を高めます。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs Jira",
@@ -5026,7 +5026,7 @@
     "name": "Lark",
     "tagline": "All-in-one collaboration suite by ByteDance",
     "description": "Lark (by ByteDance) is a unified team collaboration suite combining instant messaging, docs, spreadsheets, calendar, and video meetings. GAIA is a proactive AI assistant that layers autonomous intelligence on top of similar productivity capabilities — with source-available flexibility and the rest of your tools.",
-    "metaTitle": "Lark（ByteDance）の代替: GAIAと比較",
+    "metaTitle": "Lark（ByteDance）の代替：チャットと業務自動化をGAIAと比較",
     "metaDescription": "ByteDanceのLarkはチャット・文書・ワークフローを統合。GAIAはメールを仕分けタスクを進める個人向けAIで、セルフホストも可能です。結論を確認。",
     "keywords": [
       "lark alternative",
@@ -5325,7 +5325,7 @@
     "name": "Linear",
     "tagline": "The system for product development",
     "description": "Linear is a fast, opinionated issue tracker built for engineering teams. GAIA integrates with Linear while also managing your email, calendar, and entire personal workflow as a proactive AI assistant.",
-    "metaTitle": "Linearの代替？メールからIssueを作るGAIA",
+    "metaTitle": "Linearの代替：メールから自動でIssueを作成するGAIA",
     "metaDescription": "Linearは手入力の開発Issueを管理します。GAIAはGmailからLinearのIssueを作成し、個人のタスクと予定も管理。違いを比較。",
     "keywords": [
       "GAIA vs Linear",
@@ -5423,7 +5423,7 @@
     "name": "Logseq",
     "tagline": "A privacy-first, source-available platform for knowledge management and collaboration",
     "description": "Logseq is a source-available outliner and personal knowledge management tool with local-first storage and a bidirectional graph view. GAIA goes further by proactively managing your email, calendar, tasks, and workflows — turning notes into actions automatically.",
-    "metaTitle": "Logseq vs GAIA：メモを行動に変える",
+    "metaTitle": "Logseq vs GAIA：メモを予定とタスクに変えて実行する",
     "metaDescription": "Logseqの代替としてGAIAを比較。受信トレイ、カレンダー、タスク、自動化をAIが先回りで管理し、ノートを行動につなげます。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs Logseq",
@@ -5522,7 +5522,7 @@
     "name": "Loom",
     "tagline": "Async video messaging that replaces meetings",
     "description": "Loom is an async video messaging tool that lets teams share screen recordings to replace unnecessary meetings. GAIA is a proactive AI productivity assistant that manages the tasks, workflows, and communications that surround your work — with or without video.",
-    "metaTitle": "Loomの代替: 非同期ワークフローを自動化するGAIA",
+    "metaTitle": "Loomの代替：動画連絡の前後の作業を自動化するAIアシスタントGAIA",
     "metaDescription": "Loomは動画で会議を減らしますが、タスクは管理しません。GAIAは受信トレイとカレンダー、ツール横断のワークフローを自動化します。日々の手間を減らせます。",
     "keywords": [
       "loom alternative",
@@ -5634,7 +5634,7 @@
     "name": "Make",
     "tagline": "Visual no-code automation platform connecting 2,000+ apps",
     "description": "Make (formerly Integromat) is a powerful visual automation platform where you build workflows by dragging and connecting modules on a canvas — with routers, iterators, aggregators, and error handlers for complex data pipelines. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and integrations through natural language and autonomous action, requiring no scenario-building or technical configuration to get started.",
-    "metaTitle": "Make vs GAIA：普段の言葉で自動化",
+    "metaTitle": "Make vs GAIA：シナリオを組まず普段の言葉で自動化する",
     "metaDescription": "GAIAとMakeを比較。Makeはノーコード自動化に強く、GAIAは自然言語だけでメール、カレンダー、タスクを管理し、シナリオ作成は不要です。",
     "keywords": [
       "GAIA vs Make",
@@ -5807,7 +5807,7 @@
     "name": "Mem.ai",
     "tagline": "AI-powered note-taking and personal knowledge management",
     "description": "Mem.ai is an AI-powered note-taking app that automatically organizes your notes, surfaces related content, and lets you chat with your knowledge base. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and the rest of your tools into a single intelligent assistant that acts before you ask.",
-    "metaTitle": "Mem AIとは？料金と機能をGAIAと比較",
+    "metaTitle": "Mem AIとは？料金と機能、AIの記憶の違いをGAIAと比較",
     "metaDescription": "Mem.aiはメモを自動で整理し、関連するメモをチャットで探せます。GAIAはメールと予定の文脈を記憶し、その情報をもとに自ら行動します。機能と料金の違いを比較します。",
     "keywords": [
       "GAIA vs Mem",
@@ -6028,7 +6028,7 @@
     "name": "Missive",
     "tagline": "Team inbox and collaborative email client for shared communication",
     "description": "Missive is a collaborative email client that turns your inbox into a shared workspace — with shared inboxes, in-thread team chat, assignment rules, and integrations with CRMs and project tools. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and the rest of your tools autonomously, built for individuals and teams who want an AI to handle the administrative layer, not just a better place to read email together.",
-    "metaTitle": "Missiveの代替: 共有受信箱とGAIAを比較",
+    "metaTitle": "Missiveの代替：共有受信箱とAIメール管理のGAIAを比較",
     "metaDescription": "Missiveはチーム共有の受信箱ですが、仕分けは手作業。GAIAはメールを仕分け、返信の下書きやワークフローを実行します。小規模チームの料金も比較。",
     "keywords": [
       "GAIA vs Missive",
@@ -6327,7 +6327,7 @@
     "name": "n8n",
     "tagline": "Source-available workflow automation platform",
     "description": "n8n provides powerful no-code workflow automation. GAIA adds AI intelligence to understand context and make decisions, not just execute rules.",
-    "metaTitle": "n8n vs GAIA：AIネイティブな自動化",
+    "metaTitle": "n8n vs GAIA：ノード不要のAIネイティブなワークフロー自動化",
     "metaDescription": "n8nはルールを一つずつ設定します。GAIAは文脈を読み、メール下書きから対応まで先回りで進めるAIネイティブな自動化です。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs n8n",
@@ -6623,7 +6623,7 @@
     "name": "Notion",
     "tagline": "The connected workspace for notes, docs, and projects",
     "description": "Notion is an all-in-one workspace for docs, wikis, databases, and project tracking. GAIA is a proactive AI assistant that orchestrates your email, calendar, tasks, and the rest of your tools — and integrates directly with Notion to read and write your pages and databases.",
-    "metaTitle": "Notionの代替: AIメール対応のソース公開GAIA",
+    "metaTitle": "Notionの代替：AIがメールにも対応するソース公開のGAIA",
     "metaDescription": "Notionはドキュメント、Wiki、データベースのワークスペースです。その代替としてGAIAを比較。メール管理、カレンダー自動化、ワークフロー連携をAIが担い、Notion連携にも対応します。",
     "keywords": [
       "GAIA vs Notion",
@@ -6948,7 +6948,7 @@
     "name": "OmniFocus",
     "tagline": "Powerful task management for Apple users who mean business",
     "description": "OmniFocus is a feature-rich GTD task manager built exclusively for Apple devices. GAIA goes further by layering proactive AI intelligence on top of tasks, email, and calendar — and running on every platform your team actually uses.",
-    "metaTitle": "OmniFocus vs GAIA：AIメール付きのGTD",
+    "metaTitle": "OmniFocus vs GAIA：AIメール連携付きのGTDタスク管理",
     "metaDescription": "OmniFocusの代替としてGAIAを比較。Apple限定ではなく全プラットフォーム対応で、AIがメールからタスクを作り、非商用ならセルフホストも無料です。",
     "keywords": [
       "GAIA vs OmniFocus",
@@ -7157,7 +7157,7 @@
     "name": "OpenClaw",
     "tagline": "AI automation framework",
     "description": "OpenClaw provides AI-driven automation capabilities. GAIA offers a complete productivity OS with proactive assistance, deep integrations, and persistent memory.",
-    "metaTitle": "OpenClawの代替: AI生産性OSのGAIA",
+    "metaTitle": "OpenClawの代替：AI生産性OSとしてのGAIAを機能で比較",
     "metaDescription": "OpenClawは聞かれたときだけ答え、自分からは動きません。GAIAはメールを仕分け、タスクを管理し、ツールをまたいでワークフローを実行します。",
     "keywords": [
       "GAIA vs OpenClaw",
@@ -7230,7 +7230,7 @@
     "name": "Otter.ai",
     "tagline": "AI meeting transcription and notes",
     "description": "Otter.ai automatically transcribes meetings, generates summaries, and identifies action items from calls. GAIA is a proactive AI assistant that goes further by connecting meeting outcomes to your tasks, calendar, and entire tool stack.",
-    "metaTitle": "Otter.aiの代替: 会議の結果まで実行するGAIA",
+    "metaTitle": "Otter.aiの代替：既存の議事録から次の行動まで実行するGAIA",
     "metaDescription": "Otter.aiは文字起こし止まりです。GAIAは会議の準備から文字起こし、フォローアップ、タスク自動化まで、仕事の流れ全体を管理します。日々の手間を減らせます。",
     "keywords": [
       "otter.ai alternative",
@@ -7632,7 +7632,7 @@
     "name": "Pipedrive",
     "tagline": "Sales-focused CRM with visual pipeline management",
     "description": "Pipedrive is a sales-centric CRM built around visual deal pipelines, helping sales teams track leads, log activities, and close deals. GAIA complements sales workflows by proactively managing email, follow-up tasks, meeting preparation, and cross-tool orchestration that Pipedrive cannot automate.",
-    "metaTitle": "Pipedriveの代替AI: 営業向けにGAIAと比較",
+    "metaTitle": "Pipedriveの代替AI：営業のメールとタスクをGAIAと比較",
     "metaDescription": "Pipedriveはビジュアルな商談パイプラインを管理する営業CRMです。GAIAは商談準備、メール仕分け、フォローアップを代行。個人営業での置き換えと料金を比較します。",
     "keywords": [
       "Pipedrive alternative",
@@ -7791,7 +7791,7 @@
     "name": "Poke",
     "tagline": "テキストメッセージの中にいるAIアシスタント",
     "description": "Pokeは、メッセージ、WhatsApp、Telegramでメッセージを送るだけで使えるパーソナルアシスタントで、メール、カレンダー、各種アプリと連携します。GAIAは同じチャットアプリで使えるうえ、Webアプリとデスクトップアプリ、ツールをまたぐワークフロー、そしてsource-availableのコードを備えています。",
-    "metaTitle": "Poke AIの代替：GAIAとPokeを徹底比較",
+    "metaTitle": "Poke AIの代替：機能と連携でGAIAとPokeを徹底比較",
     "metaDescription": "Pokeはテキストメッセージの中で動きます。GAIAもiMessage、WhatsApp、Telegramで使え、さらにWeb・デスクトップアプリ、トリガー型ワークフロー、source-availableのコードを備えています。",
     "keywords": [
       "poke ai 代替",
@@ -8090,7 +8090,7 @@
     "name": "Reflect",
     "tagline": "AI-powered networked note-taking with backlinks and daily notes",
     "description": "Reflect is a networked note-taking app that mirrors the way your brain works, with backlinks, daily notes, calendar integration, and AI writing assistance. GAIA is a proactive AI productivity OS that connects your email, calendar, tasks, and the rest of your tools into a single intelligent assistant that acts before you ask.",
-    "metaTitle": "Reflectの代替: AIメールとワークフローのGAIA",
+    "metaTitle": "Reflectの代替：AIメールとワークフロー自動化を備えたGAIA",
     "metaDescription": "Reflectの代替としてGAIAを比較。AIがメールを管理しワークフローを自動化、グラフ型の記憶で仕事の文脈をまとめて把握します。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs Reflect",
@@ -8493,7 +8493,7 @@
     "name": "Roam Research",
     "tagline": "A note-taking tool for networked thought",
     "description": "Roam Research is a networked outliner and personal knowledge management tool built around bidirectional links, block references, and daily notes. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and workflows — acting on your behalf before you ask.",
-    "metaTitle": "Roam vs GAIA：あなたの代わりに動く知識",
+    "metaTitle": "Roam Research vs GAIA：あなたの代わりに動く知識管理",
     "metaDescription": "Roam Researchの代替としてGAIAを比較。受信トレイ、カレンダー、タスクをAIが先回りで管理し、知識を行動につなげます。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs Roam Research",
@@ -8589,7 +8589,7 @@
     "name": "SaneBox",
     "tagline": "Email management for any inbox",
     "description": "SaneBox is an email filtering service that moves non-urgent messages out of your inbox into smart folders so you focus on what matters. GAIA goes further by reading, triaging, drafting replies, creating tasks, and automating cross-tool workflows — replacing a passive filter with an active AI assistant.",
-    "metaTitle": "SaneBox vs GAIA：振り分け、下書き、実行まで",
+    "metaTitle": "SaneBox vs GAIA：メールの振り分けから下書き、実行まで",
     "metaDescription": "SaneBoxは受動的な仕分けまでです。GAIAは返信の下書きやタスク作成まで先回りで進め、ツール横断の自動化にも対応します。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs SaneBox",
@@ -8679,7 +8679,7 @@
     "name": "SavvyCal",
     "tagline": "Scheduling software with recipient calendar overlay",
     "description": "SavvyCal lets people book time with you through shareable scheduling links, with a unique twist: recipients can overlay their own calendar on yours to find a mutual free slot. GAIA manages your calendar from the inside — scheduling meetings, finding free slots, preparing briefings, and automating follow-ups — without requiring a public booking page.",
-    "metaTitle": "SavvyCalの代替: 先回りで管理するAIのGAIA",
+    "metaTitle": "SavvyCalの代替：予定調整を先回りで管理するAIのGAIA",
     "metaDescription": "SavvyCalは予約リンク専用です。GAIAはカレンダー、受信トレイ、タスク、ワークフローを先回りで管理するAIです。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs SavvyCal",
@@ -8882,7 +8882,7 @@
     "name": "Smartsheet",
     "tagline": "Spreadsheet-based project management for enterprise teams",
     "description": "Smartsheet is an enterprise-grade work management platform that blends the familiarity of spreadsheets with project management features like Gantt charts, resource management, and automated workflows. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across your integrations — acting on your behalf rather than waiting for you to update a grid.",
-    "metaTitle": "Smartsheetの代替: AI自動化を備えたGAIA",
+    "metaTitle": "Smartsheetの代替：表計算を超えたAI自動化を備えるGAIA",
     "metaDescription": "Smartsheetは手動更新と席数課金が必要です。GAIAはAIでメールを仕分け、タスクを自動作成し、非商用ならセルフホストも無料です。日々の手間を減らせます。",
     "keywords": [
       "Smartsheet alternative",
@@ -9356,7 +9356,7 @@
     "name": "Tana",
     "tagline": "Connected notes and superpowers for thought with AI and Supertags",
     "description": "Tana is an advanced knowledge management tool that combines a powerful outliner with Supertags, AI automation, daily notes, and a connected knowledge graph — giving power users one place to capture, organize, and act on everything. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and the rest of your tools through autonomous action and natural language, building its knowledge graph automatically from your live digital activity rather than requiring manual Supertag curation.",
-    "metaTitle": "Tana vs GAIA：グラフにメールとタスクを追加",
+    "metaTitle": "Tana vs GAIA：ナレッジグラフにメールとタスクを追加",
     "metaDescription": "GAIAとTanaを比較。Tanaは知識グラフに強く、GAIAはメール、カレンダー、タスク、ワークフローを先回りで自律管理します。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs Tana",
@@ -9569,7 +9569,7 @@
     "name": "Things 3",
     "tagline": "The award-winning personal task manager for Mac, iPad, and iPhone",
     "description": "Things 3 is a beautifully crafted GTD task manager exclusive to the Apple ecosystem. GAIA goes further by adding proactive AI intelligence, cross-platform access, and deep integration across your entire digital workflow.",
-    "metaTitle": "Things 3のAI連携: GAIAとタスク管理を比較",
+    "metaTitle": "Things 3のAI連携：GAIAとタスク管理の機能を詳しく比較",
     "metaDescription": "Things 3はApple製品専用のGTDアプリで、AIはなくタスクは手入力です。GAIAはメールからタスクを作り、予定と連動。対応環境と、買い切りか月額かの違いを比較します。",
     "keywords": [
       "GAIA vs Things 3",
@@ -9760,7 +9760,7 @@
     "name": "Todoist",
     "tagline": "Popular task management app",
     "description": "Todoist is a well-designed task manager for organizing to-dos. GAIA goes beyond task lists by using AI to create, prioritize, and execute tasks across your entire workflow.",
-    "metaTitle": "Todoistの代替: AIメール連携を備えたGAIA",
+    "metaTitle": "Todoistの代替：AIメール連携でタスクを自動作成するGAIA",
     "metaDescription": "Todoistは手入力が必要です。GAIAはメールからタスクを自動作成し、文脈で優先度を決め、ツール横断で実行まで支えます。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs Todoist",
@@ -9958,7 +9958,7 @@
     "name": "Trello",
     "tagline": "Visual project boards, lists, and cards",
     "description": "Trello is a kanban-style project management tool owned by Atlassian. GAIA goes far beyond visual boards to proactively manage your entire digital workflow with AI.",
-    "metaTitle": "Trello vs GAIA：AIによるタスク自動化",
+    "metaTitle": "Trello vs GAIA：ボード管理を超えたAIによるタスク自動化",
     "metaDescription": "Trelloのかんばんは手作業が前提です。GAIAはメールからタスクを作成し、ワークフローとカレンダーを自動管理します。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs Trello",
@@ -10183,7 +10183,7 @@
     "name": "Whimsical",
     "tagline": "Visual workspace for wireframes, flowcharts, and mind maps",
     "description": "Whimsical is a visual collaboration tool for creating wireframes, flowcharts, mind maps, and sticky-note boards. GAIA is a proactive AI assistant that manages email, calendar, tasks, and the rest of your tools — connecting the planning phase to the execution layer of your work.",
-    "metaTitle": "Whimsical AIとGAIAを比較: 図解か実行か",
+    "metaTitle": "Whimsical AIとGAIAを比較：図を描くか、仕事を実行するか",
     "metaDescription": "Whimsicalはワイヤーフレームやフローチャート、マインドマップで発想を整理。GAIAはメール仕分けやタスク・ワークフローを実行します。料金を比較。",
     "keywords": [
       "whimsical alternative",
@@ -10300,7 +10300,7 @@
     "name": "Wrike",
     "tagline": "Enterprise work management and project collaboration platform",
     "description": "Wrike is a powerful enterprise project management platform with advanced workflow customization, resource management, and reporting. GAIA complements structured project management with proactive AI that manages email, automates workflows, and surfaces what matters most.",
-    "metaTitle": "Wrikeの代替: 先回りで支援するAIのGAIA",
+    "metaTitle": "Wrikeの代替：プロジェクト管理を先回りで支援するAIのGAIA",
     "metaDescription": "Wrikeは高度なワークフロー設定やリソース管理を備えた大企業向けです。GAIAは受信トレイとツール横断のタスクをAIが先回りで管理するソース公開の代替で、日々の手間を減らせます。",
     "keywords": [
       "wrike alternative",
@@ -10407,7 +10407,7 @@
     "name": "Zapier",
     "tagline": "No-code automation platform connecting 6,000+ apps",
     "description": "Zapier connects thousands of apps with rule-based automations. GAIA adds AI intelligence to understand context and act proactively, not just follow predefined rules.",
-    "metaTitle": "Zapier vs GAIA：ルールの代わりにAIが判断",
+    "metaTitle": "Zapier vs GAIA：決めたルールの代わりにAIが判断して自動化",
     "metaDescription": "Zapierは文脈を読めません。GAIAはAIの推論でメールを理解し、優先度を決め、手動ルールなしで複数ステップを自動化します。日々の手間を減らせます。",
     "keywords": [
       "GAIA vs Zapier",
@@ -10770,7 +10770,7 @@
     "name": "Instinct",
     "tagline": "用足しを文面で渡す",
     "description": "Instinctは文面と通話で旅行と用足しをこなします。GAIAは同じ習慣に開いたコードと多数の連携とセルフホストを足します。",
-    "metaTitle": "GAIAとInstinctの比較。開いたAI基盤と文面代理",
+    "metaTitle": "InstinctとGAIAを比較：オープンなAI基盤と文面代理サービス",
     "metaDescription": "文面の手伝いでGAIAとInstinctを比較。Instinctは文面と通話で用足しし、GAIAは開いたコードと多数の道具とセルフホストを足します。",
     "keywords": [
       "GAIAとInstinctの比較",
@@ -10905,7 +10905,7 @@
     "name": "Dot",
     "tagline": "続いた間の相棒",
     "description": "Dotは2025年10月に終了したクローズドなiOS向け相棒アプリでした。GAIAは元ユーザーが移る先のオープンなアシスタントです。",
-    "metaTitle": "GAIAとDotの比較。オープンな助手と閉じたアプリ",
+    "metaTitle": "DotとGAIAを比較：オープンなAIアシスタントと閉じたアプリ",
     "metaDescription": "終了後のGAIAとDotを比較。DotはクローズドなiOS向け相棒アプリで、GAIAは記憶が行動するオープンなアシスタントです。元利用者の引っ越し先も比べます。",
     "keywords": [
       "GAIAとDotの比較",
@@ -10973,7 +10973,7 @@
     "name": "Friend",
     "tagline": "その日に寄り添う",
     "description": "Friendは249ドル(v2)の寄り添うペンダントです。GAIAは受信箱を片づけ予定を回すフル機能のアシスタントです。",
-    "metaTitle": "GAIAとFriendの比較。動く助手とペンダント",
+    "metaTitle": "FriendとGAIAを比較：行動するAIアシスタントと記録ペンダント",
     "metaDescription": "GAIAとFriendペンダントを比較。Friendは249ドル(v2)の寄り添い、GAIAは仕事を片づけるソースコード公開のアシスタントです。向く人と始め方も比べます。",
     "keywords": [
       "GAIAとFriendの比較",
@@ -11041,7 +11041,7 @@
     "name": "OMI",
     "tagline": "その日のための開けた記録",
     "description": "OMIは思い出すための開けたペンダントです。GAIAは開けた姿勢を共有し、メールとカレンダーの行動を足します。",
-    "metaTitle": "GAIAとOMIの比較。AI基盤と開けたペンダント",
+    "metaTitle": "OMIとGAIAを比較：AIアシスタント基盤とオープンなペンダント",
     "metaDescription": "GAIAとOMIペンダントを比較。OMIは会話を思い出す開けた記録で、GAIAは全ツールで動く開けた行動を足します。開かれ方の違いも比べます。",
     "keywords": [
       "GAIAとOMIの比較",
@@ -11177,7 +11177,7 @@
     "name": "Siri",
     "tagline": "声による短い命令",
     "description": "SiriはAppleの機械での短い声の命令をこなします。GAIAは一日全体を回す先回りのアシスタントです。",
-    "metaTitle": "GAIAとSiriの比較。本物の助手と声AI",
+    "metaTitle": "SiriとGAIAを比較：仕事を任せられるAIアシスタントと音声AI",
     "metaDescription": "仕事でGAIAとSiriを比較。Siriは短い声の命令をこなし、GAIAは受信箱、カレンダー、タスクを管理します。向く仕事と始め方も分かります。",
     "keywords": [
       "GAIAとSiriの比較",

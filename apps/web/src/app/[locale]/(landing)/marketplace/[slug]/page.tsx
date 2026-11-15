@@ -4,12 +4,19 @@ import JsonLd from "@/components/seo/JsonLd";
 import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
 import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
+import { relatedIntegrations } from "@/features/integrations/lib/relatedIntegrations";
 import {
-  getCommunityIntegrations,
+  getAllCommunityIntegrations,
   getIntegrationWorkflows,
+  getNativeIntegrations,
   getPublicIntegration,
+  marketplaceApiIdentifier,
 } from "@/features/integrations/lib/serverMarketplaceApi";
-import type { CommunityIntegration } from "@/features/integrations/types";
+import type {
+  CommunityIntegration,
+  PublicIntegrationResponse,
+} from "@/features/integrations/types";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import {
   getMarketplaceFallbackGuides,
@@ -42,9 +49,16 @@ export function generateStaticParams() {
   return [];
 }
 
+/** The integration a marketplace URL slug names; the API is keyed by its own slug. */
+async function integrationAtSlug(
+  slug: string,
+): Promise<PublicIntegrationResponse | null> {
+  return getPublicIntegration(await marketplaceApiIdentifier(slug));
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const integration = await getPublicIntegration(slug);
+  const integration = await integrationAtSlug(slug);
 
   if (!integration) {
     return {
@@ -60,8 +74,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return generatePageMetadata({
     title: generateIntegrationTitle(integration),
     description: generateIntegrationDescription(integration),
-    path: `/marketplace/${slug}`,
-    image: `/api/og/integration?slug=${slug}`,
+    path: marketplacePath(integration.slug),
+    image: `/api/og/integration?slug=${integration.slug}`,
     keywords: [
       integrationName,
       `AI assistant for ${integrationName}`,
@@ -83,7 +97,7 @@ export default async function IntegrationPage({ params }: Props) {
   const { slug } = await params;
   // Independent fetches — run in parallel to save a round-trip on the happy path.
   const [integration, comparison] = await Promise.all([
-    getPublicIntegration(slug),
+    integrationAtSlug(slug),
     getComparison(slug),
   ]);
 
@@ -91,7 +105,7 @@ export default async function IntegrationPage({ params }: Props) {
     notFound();
   }
 
-  const pageUrl = `${siteConfig.url}/marketplace/${slug}`;
+  const pageUrl = `${siteConfig.url}${marketplacePath(integration.slug)}`;
   const categoryLabel =
     integration.category.charAt(0).toUpperCase() +
     integration.category.slice(1);
@@ -156,12 +170,12 @@ export default async function IntegrationPage({ params }: Props) {
   const comparisonSlug =
     comparison && !isRedirectedPath(`/compare/${slug}`) ? slug : undefined;
 
-  // Same-category siblings and related workflows, fetched server-side so
-  // crawlers see real links in the SSR HTML instead of client-only orphans.
-  // Combos and the alternative guide come from local JSON (no backend).
-  const [relatedIntegrations, relatedWorkflows, automateCombos, alternative] =
+  // Related integrations and workflows are fetched server-side so crawlers
+  // see real links in the SSR HTML. Combos and the alternative guide come from
+  // local JSON (no backend).
+  const [related, relatedWorkflows, automateCombos, alternative] =
     await Promise.all([
-      getRelatedIntegrations(integration.category, slug),
+      getRelatedIntegrations(integration),
       getIntegrationWorkflows(integration.integrationId, 4),
       getAutomateCombos(slug),
       getTranslatedAlternative(slug),
@@ -185,7 +199,7 @@ export default async function IntegrationPage({ params }: Props) {
             ? slug
             : undefined
         }
-        initialRelatedIntegrations={relatedIntegrations}
+        relatedIntegrations={related}
         initialRelatedWorkflows={relatedWorkflows}
         automateCombos={automateCombos}
         docsGuides={
@@ -215,17 +229,13 @@ async function getAutomateCombos(
     }));
 }
 
-/** Same-category siblings for SSR related-links (excludes the current page). */
+/** A native page relates only to natives, so only a community page fetches the community catalog. */
 async function getRelatedIntegrations(
-  category: string,
-  slug: string,
+  integration: PublicIntegrationResponse,
 ): Promise<CommunityIntegration[]> {
-  const page = await getCommunityIntegrations({
-    category,
-    sort: "popular",
-    limit: 7,
-  });
-  return (page?.integrations ?? [])
-    .filter((integration) => integration.slug !== slug)
-    .slice(0, 6);
+  const [native, community] = await Promise.all([
+    getNativeIntegrations(),
+    integration.source === "platform" ? [] : getAllCommunityIntegrations(),
+  ]);
+  return relatedIntegrations(integration, native, community);
 }
