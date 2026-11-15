@@ -314,6 +314,18 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         document = await self._find_one({"conversation_id": conversation_id, "user_id": user_id})
         return list(document.artifacts) if document else []
 
+    async def set_artifacts(
+        self, conversation_id: str, *, user_id: str, entries: Sequence[ArtifactRegistryEntry]
+    ) -> None:
+        """Replace the conversation's artifact registry; its list row and updatedAt are untouched."""
+        await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id},
+            {"$set": {"artifacts": list(entries)}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+
     # ---- targeted / projected reads ----
 
     async def get(self, doc_id: str, *, user_id: str) -> StoredConversation | None:

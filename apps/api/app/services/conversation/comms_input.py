@@ -161,9 +161,12 @@ def work_cards_note(finished: WorkFinished) -> str | None:
     makers = _subagent_names(finished.tool_data)
     counts: Counter[tuple[str, str]] = Counter()
     for card in finished.tool_data:
-        if card["tool_name"] not in tool_fields:
-            continue
         data = card["data"]
+        # A remove card retracts a deleted file's card; it shows nothing itself.
+        if card["tool_name"] not in tool_fields or (
+            isinstance(data, dict) and data.get("event") == "remove"
+        ):
+            continue
         maker = makers.get(card.get("subagent_id") or "", "")
         counts[card["tool_name"], maker] += len(data) if isinstance(data, list) else 1
     if not counts:

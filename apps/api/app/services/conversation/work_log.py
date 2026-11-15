@@ -23,6 +23,7 @@ from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reply_analytics import capture_unanswered_stop, stopped_waking
 from app.services.conversation.runtime import runtime_ports
+from app.services.conversation.work_artifacts import reconcile_artifacts
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.conversation_wire import ImageData, ToolDataEntry
 from shared.py.wide_events import log
@@ -100,7 +101,10 @@ async def record_work_finished(
         task_id=task_id,
         outcome=outcome,
         report=report.text,
-        tool_data=tuple(report.tool_data),
+        tool_data=(
+            *report.tool_data,
+            *await reconcile_artifacts(user_id, conversation_id, report.tool_data),
+        ),
         note=report.note,
         nothing_for_user=report.nothing_for_user,
         image=report.image,

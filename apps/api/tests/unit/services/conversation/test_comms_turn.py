@@ -265,6 +265,7 @@ def _with_cards() -> Entry:
         {"tool_name": "todo_data", "data": [{"id": "1"}, {"id": "2"}], "subagent_id": "sa1"},
         {"tool_name": "weather_data", "data": {"city": "Pune"}},
         {"tool_name": "tool_calls_data", "data": [{"name": "x"}]},
+        {"tool_name": "artifact_data", "data": {"event": "remove", "path": "old.txt"}},
     )
     return finished("w6", "t1").model_copy(update={"tool_data": cards})
 
