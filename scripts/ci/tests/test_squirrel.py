@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import select
 import sqlite3
 import subprocess
 import sys
@@ -376,8 +377,11 @@ def test_the_verdict_survives_a_stdout_the_crawler_left_non_blocking(tmp_path: P
         stdout=write_end,
         stderr=subprocess.STDOUT,
     )  # fmt: skip
+    # read nothing until the pipe is full or the child is gone, so the child has hit the failing write
+    deadline = time.monotonic() + 60
+    while proc.poll() is None and select.select([], [write_end], [], 0.05)[1]:
+        assert time.monotonic() < deadline, "the report never filled the pipe"
     os.close(write_end)
-    time.sleep(1)
     with os.fdopen(read_end, encoding="utf-8") as reader:
         out = reader.read()
     assert proc.wait() == 1
