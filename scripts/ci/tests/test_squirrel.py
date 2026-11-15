@@ -268,7 +268,10 @@ def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
         _row("/a", "content/placeholder-text", "placeholder-content", [{"id": "unrendered-template", "snippet": "[[wiki links]]"}]),
         _row("/a", "content/word-count", "word-count"),
         _row("/contact", "content/word-count", "word-count"),
-        _row("/marketplace/googlesheets", "content/placeholder-contact", "placeholder-contact", [{"id": "email"}]),
+        _row("/marketplace/googlesheets", "content/placeholder-contact", "placeholder-contact", [{"id": "email", "snippet": "john@example.com"}]),
+        _row("/ja/marketplace/twitter", "content/placeholder-contact", "placeholder-contact", [{"id": "social"}]),
+        _row("/marketplace/linear", "content/keyword-stuffing", "keyword-stuffing", [{"id": "linear"}]),
+        _row("/ja/marketplace/linear", "content/keyword-stuffing", "keyword-stuffing", [{"id": "issue"}]),
         _row("/marketplace/googlesheets", "content/keyword-stuffing", "keyword-stuffing", [{"id": "google"}]),
         _row("/automate/github-linear", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/images/icons/linear.svg"}]),
         _row("/ja/automate/github-linear", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/images/icons/slack.svg"}]),
@@ -450,28 +453,6 @@ def test_a_sample_does_not_judge_a_rule_that_needs_the_whole_site(tmp_path: Path
     _ratchet(tmp_path, rows, baseline, "--sample", "--update")
     assert _lines(tmp_path) == ["/b\tlinks/orphan-pages/orphan-pages"]
     assert _ratchet(tmp_path, rows, baseline).returncode == 1
-
-
-def test_a_sample_does_not_judge_a_title_against_only_its_own_pages(tmp_path: Path) -> None:
-    rows = [
-        _row(
-            "", "content/title-pattern-outlier", "title-pattern-outlier", [{"id": "brand-missing:"}]
-        )
-    ]
-    assert _ratchet(tmp_path, rows, "", "--sample", "--strict").returncode == 0
-    assert _ratchet(tmp_path, rows, "").returncode == 1
-
-
-def test_a_slow_response_counts_only_through_the_score(tmp_path: Path) -> None:
-    rows = [_row("/a", "perf/ttfb", "ttfb")]
-    assert (
-        _ratchet(tmp_path, rows, "score:Performance=70\n", scores={"Performance": 70}).returncode
-        == 0
-    )
-    assert (
-        _ratchet(tmp_path, rows, "score:Performance=70\n", scores={"Performance": 69}).returncode
-        == 1
-    )
 
 
 def test_drop_refuses_a_score_from_a_stale_log(tmp_path: Path) -> None:

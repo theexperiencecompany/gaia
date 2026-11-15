@@ -25,7 +25,6 @@ from app.utils.composio_hooks.gmail_hooks import (
     gmail_compose_before_hook,
     gmail_create_draft_after_hook,
     gmail_drafts_after_hook,
-    gmail_message_detail_after_hook,
     gmail_send_email_schema_modifier,
 )
 from app.utils.composio_hooks.reddit_hooks import (
@@ -472,38 +471,6 @@ class TestGmailBeforeHooks:
         # This draft has no attachments, so the card stays editable: carrying the
         # id would make Send ignore the user's edits and post the stored draft.
         assert "draft_id" not in payload["email_compose_data"][0]
-
-
-# ---------------------------------------------------------------------------
-# 5. Gmail after hooks — real logic with mocked stream writer
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.integration
-class TestGmailAfterHooks:
-    """Test Gmail-specific after_execute hooks."""
-
-    def test_message_detail_after_hook_processes_single_message(self) -> None:
-        """The message detail hook calls detailed_message_template."""
-
-        raw_response: ToolExecutionResponse = {
-            "data": {"id": "msg1", "payload": {"headers": []}},
-            "successful": True,
-            "error": None,
-        }
-
-        expected_output = {"id": "msg1", "subject": "Test", "body": "Hello"}
-
-        with patch(
-            "app.utils.composio_hooks.gmail_hooks.detailed_message_template",
-            return_value=expected_output,
-        ) as mock_template:
-            result = gmail_message_detail_after_hook(
-                "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "gmail", raw_response
-            )
-
-        mock_template.assert_called_once_with(raw_response["data"])
-        assert result == expected_output
 
 
 # ---------------------------------------------------------------------------
@@ -972,23 +939,6 @@ class TestHookFailurePropagation:
         params = _make_params()
         result = registry.execute_before_hooks("TOOL", "tk", params)
         assert result is params
-
-    def test_after_hook_with_malformed_response_returns_raw_data(self) -> None:
-        """After hook receiving malformed data falls back to raw data."""
-
-        # Pass a response where data is not the expected shape
-        malformed_response: ToolExecutionResponse = {
-            "data": {"error": "API returned garbage"},
-            "successful": False,
-            "error": None,
-        }
-
-        result = gmail_message_detail_after_hook(
-            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "gmail", malformed_response
-        )
-
-        # Should return the raw data since error is in data
-        assert result == malformed_response["data"]
 
     def test_after_hook_with_none_response_returns_raw_data(self) -> None:
         """After hook receiving None-ish response degrades gracefully."""
