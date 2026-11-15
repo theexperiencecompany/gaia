@@ -3,7 +3,7 @@
 Persistence precedes delivery so the dashboard never misses a brief that reached a channel.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 from app.constants.briefing import (
@@ -148,6 +148,22 @@ class QuietFacts:
     #: The connected apps that went unread: the quiet is only of what was read.
     unread: list[str] = field(default_factory=list)
 
+    @classmethod
+    def of(cls, reads: tuple[CalendarGap | None, int, list[UnreadSource]]) -> "QuietFacts":
+        """Read what every quiet note states: the calendar's gap, the overdue count, the apps unread."""
+        calendar, overdue, unread = reads
+        return cls(
+            calendar=calendar,
+            overdue=overdue,
+            unread=list(dict.fromkeys(source.app for source in unread)),
+        )
+
+
+def last_was_quiet(recent: list[BriefingModel], kind: BriefingKind) -> bool:
+    """Say whether the latest brief of its kind, of the recent ones newest first, was a quiet note."""
+    previous = next((b for b in recent if b.kind == kind), None)
+    return previous is not None and previous.payload.form is BriefForm.QUIET_NOTE
+
 
 async def quiet_facts(
     user_id: str,
@@ -155,21 +171,12 @@ async def quiet_facts(
     recent: list[BriefingModel],
     reads: tuple[CalendarGap | None, int, list[UnreadSource]],
 ) -> QuietFacts:
-    """Say how the quiet stands: whether the last brief of its kind was quiet, and the last edition.
-
-    recent is newest first; reads are the calendar's gap, the user's overdue todo count and
-    the apps that went unread.
-    """
-    calendar, overdue, unread = reads
-    previous = next((b for b in recent if b.kind == kind), None)
+    """Say how the quiet stands: what was read, and after a quiet brief of its kind the last edition."""
+    facts = QuietFacts.of(reads)
+    if not last_was_quiet(recent, kind):
+        return facts
     editions = await briefing_repository.list_recent(user_id, limit=1, editions_only=True)
-    return QuietFacts(
-        calendar=calendar,
-        still_quiet=previous is not None and previous.payload.form is BriefForm.QUIET_NOTE,
-        last_edition=editions[0] if editions else None,
-        overdue=overdue,
-        unread=list(dict.fromkeys(source.app for source in unread)),
-    )
+    return replace(facts, still_quiet=True, last_edition=editions[0] if editions else None)
 
 
 def _quiet_news(kind: BriefingKind, facts: QuietFacts, clock: UserClock) -> str:

@@ -26,6 +26,7 @@ from app.models.onboarding_models import SocialProfile
 from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import (
     BioStatus,
+    BriefingDormancy,
     OnboardingPhase,
     OnboardingPreferences,
     PersonalizationBundle,
@@ -885,7 +886,8 @@ class TestBriefingEngineState:
         assert self._stamped_now(dormant.dormant_since, before)
 
         await repo.clear_briefing_dormancy(created.id)
-        assert (await repo.get(created.id)).briefing_dormancy is None
+        woken = (await repo.get(created.id)).briefing_dormancy
+        assert woken == BriefingDormancy(goal_asked_at=asked.goal_asked_at)
 
     async def test_the_day_zero_hello_records_when_and_where_in_utc(
         self, repo, make_user, local_time_offset_from_utc

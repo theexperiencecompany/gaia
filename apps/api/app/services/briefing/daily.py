@@ -14,7 +14,6 @@ from app.constants.briefing import (
     RECENT_BRIEFS_RECALLED,
     TODAY_SPAN,
     UNNAMED_READER,
-    BriefForm,
     BriefingRunOutcome,
 )
 from app.constants.integrations import GOOGLE_CALENDAR_INTEGRATION_ID
@@ -73,9 +72,10 @@ from app.services.briefing.prose import (
 from app.services.briefing.publish import (
     PoolCounts,
     Push,
+    QuietFacts,
+    last_was_quiet,
     publish_brief,
     publish_quiet_note,
-    quiet_facts,
     quiet_note,
 )
 from app.services.briefing.schedule import describe_briefing_schedule
@@ -115,12 +115,6 @@ async def _setup_block(user: UserDocument, *, first_week: bool, offer_lighter: b
 def _is_empty_day(payload: BriefingPayload) -> bool:
     """Say whether the composition placed nothing, drawn or left to the brief's page, and the calendar is empty."""
     return not payload.blocks and not payload.undrawn and not payload.calendar
-
-
-def _last_daily_was_quiet(briefs: list[BriefingModel]) -> bool:
-    """Say whether the latest daily brief, of the recent ones newest first, was a quiet note."""
-    last = next((b for b in briefs if b.kind == BRIEFING_KIND_DAILY), None)
-    return last is not None and last.payload.form is BriefForm.QUIET_NOTE
 
 
 def _is_quiet_day(laid: Laid, events: list[BriefingEvent], ladder: dormancy.IdleLadder) -> bool:
@@ -349,14 +343,12 @@ async def _quiet_day(
     """Send the quiet note, or nothing when the last daily already was one: until something real happens."""
     day, overdue = reads
     gathered, pool, ladder = run
-    if _last_daily_was_quiet(briefs):
+    if last_was_quiet(briefs, BRIEFING_KIND_DAILY):
         # Nothing is shown: no question went out, and the held results wait for the next brief.
         log.info("briefing.quiet_day_silent", user_id=user.id)
         return BriefingRunOutcome.SILENT
     gap = day.today.gap if isinstance(day.today, context.CalendarUnread) else None
-    facts = await quiet_facts(
-        user.id, BRIEFING_KIND_DAILY, briefs, (gap, overdue, gathered.sources_unavailable)
-    )
+    facts = QuietFacts.of((gap, overdue, gathered.sources_unavailable))
     await publish_quiet_note(
         user,
         clock,

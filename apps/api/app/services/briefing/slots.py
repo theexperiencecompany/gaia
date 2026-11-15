@@ -327,7 +327,7 @@ def slot_problems(
     problems += _title_echo_problems(field, text, values)
     echoes, text = _echo_problems(field, text, values)
     problems += echoes
-    bare = LINK_SLOT_RE.sub(r"\1", _VALUE_SLOT_RE.sub("", text))
+    bare = unslotted(text)
     problems += [
         f"the {field} has a malformed slot {match.group(0)!r}; write [[count:name]], "
         "[[fact:N]], [[fact:N.time]], [[fact:N.count]], [[series:ID.field]] or "
