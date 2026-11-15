@@ -5,7 +5,6 @@ import { Chip } from "@heroui/chip";
 import { NewsIcon } from "@icons";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import Image from "next/image";
-import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -26,15 +25,13 @@ export interface FoldedBriefSummary {
   needsYouCount?: number | null;
 }
 
-/** The preview's height over its width (aspect-[3/2]); it shows the top of the edition. */
-const PREVIEW_ASPECT = 2 / 3;
-
 /** Below this, a waiting count is the ordinary day and not worth a line. */
 const NOTABLE_NEEDS_YOU = 3;
 
 const TONE_CLASSES = {
   raised: "bg-zinc-800",
   inset: "bg-zinc-900",
+  bare: "bg-transparent",
 } as const;
 
 const KIND_LABELS = { daily: "Daily", weekly: "Weekly" } as const;
@@ -43,7 +40,7 @@ export type BriefCardTone = keyof typeof TONE_CLASSES;
 
 interface BriefCardProps {
   brief: FoldedBriefSummary;
-  /** "raised" on the page background, "inset" inside a zinc-800 card. */
+  /** "raised" on the page background, "inset" inside a zinc-800 card, "bare" where the page itself groups the cards. */
   tone?: BriefCardTone;
   isBusy?: boolean;
   onPress: () => void;
@@ -68,29 +65,8 @@ function editionLabel(brief: FoldedBriefSummary): string | null {
   );
 }
 
-/**
- * Where the letter's fold falls inside the preview, as a share of its height;
- * null when the edition marks no fold or folds below what the preview shows.
- */
-function creaseInPreview(
-  fold: number | null | undefined,
-  editionAspect: number | null,
-): number | null {
-  if (fold == null || editionAspect === null) return null;
-  const crease = fold / (PREVIEW_ASPECT / editionAspect);
-  return crease > 0 && crease < 1 ? crease : null;
-}
-
-/** The edition's masthead, with a hairline crease where the letter folds. */
-function Preview({
-  imageUrl,
-  editionFold,
-}: {
-  imageUrl?: string | null;
-  editionFold?: number | null;
-}) {
-  const [editionAspect, setEditionAspect] = useState<number | null>(null);
-  const crease = creaseInPreview(editionFold, editionAspect);
+/** The edition's masthead. */
+function Preview({ imageUrl }: { imageUrl?: string | null }) {
   return (
     <div className="relative aspect-[3/2] overflow-hidden rounded-[10px] bg-zinc-700/40 transition-[filter] duration-200 ease-out group-data-[hover=true]:brightness-110">
       {imageUrl ? (
@@ -100,28 +76,12 @@ function Preview({
           fill
           sizes="(max-width: 640px) 50vw, 240px"
           className="object-cover object-top"
-          onLoad={(event) => {
-            const image = event.currentTarget;
-            setEditionAspect(image.naturalHeight / image.naturalWidth);
-          }}
         />
       ) : (
         <span className="absolute inset-0 flex items-center justify-center">
           <NewsIcon className="size-6 text-zinc-500" />
         </span>
       )}
-      {crease !== null && (
-        <span
-          aria-hidden
-          data-crease
-          className="absolute inset-x-0 h-0.5 border-t border-b border-t-black/20 border-b-white/25"
-          style={{ top: `${Math.round(crease * 1000) / 10}%` }}
-        />
-      )}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-[10px] ring-1 ring-white/10 ring-inset"
-      />
     </div>
   );
 }
@@ -152,7 +112,7 @@ export function BriefCard({
         TONE_CLASSES[tone],
       )}
     >
-      <Preview imageUrl={brief.imageUrl} editionFold={brief.editionFold} />
+      <Preview imageUrl={brief.imageUrl} />
       <span className="flex min-w-0 flex-1 flex-col gap-1 px-1.5 pt-2 pb-1">
         {(date || needsYou >= NOTABLE_NEEDS_YOU) && (
           <span className="flex items-baseline justify-between gap-2 text-xs text-zinc-500">
