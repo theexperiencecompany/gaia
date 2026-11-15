@@ -89,7 +89,7 @@ def _lands_in_conversation(target: ProactiveTarget, source: ConversationSource |
         return True
     if isinstance(target, ChatChannel):
         return source is target.source
-    # Web chats are stored without a source; anything not a chat app's conversation is an app chat.
+    # Anything not a chat app's conversation is an app chat.
     return source not in BOT_CONVERSATION_SOURCES
 
 

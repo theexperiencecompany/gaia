@@ -74,10 +74,6 @@ def _update_call(
     return args[0], args[1], kwargs
 
 
-def _matched(collection: MagicMock, count: int) -> None:
-    collection.update_one.return_value = MagicMock(matched_count=count, upserted_id=None)
-
-
 class TestBackgroundVisibility:
     def _matches(self, repo: ConversationRepository, doc: dict[str, object]) -> bool:
         """Evaluate the active filter against a stub doc (equality subset)."""
@@ -127,22 +123,6 @@ class TestBackgroundVisibility:
 
     async def test_web_conversation_ignores_the_flag(self, repo: ConversationRepository) -> None:
         assert self._matches(repo, {"user_id": USER_ID, "source": "web", "starred": False}) is True
-
-    async def test_mark_stamps_the_background_source_only_when_missing(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        assert await repo.mark_background(CONVERSATION_ID, user_id=USER_ID) is True
-
-        [call] = collection.update_one.await_args_list
-        assert call.args[0]["source"] == {"$exists": False}
-        assert call.args[1] == {"$set": {"source": "background"}}
-
-    async def test_mark_on_missing_conversation_reports_false(
-        self, repo: ConversationRepository, collection: MagicMock
-    ) -> None:
-        _matched(collection, 0)
-
-        assert await repo.mark_background(CONVERSATION_ID, user_id=USER_ID) is False
 
 
 class TestOwnerIds:

@@ -163,33 +163,6 @@ class TestLedgerBranch:
         assert ledger.register.await_args.args[0].owner_run_type == "workflow"
         assert ledger.register.await_args.args[0].owner_id == "wf-1"
 
-    async def test_background_run_threads_the_owner_to_publish(self) -> None:
-        """Publish is what raises the sidebar flag — it must receive the same owner the row carries, or background cards never surface."""
-        ledger = _ledger()
-        request = _gated_request(execution_mode="background", active_todo_id="todo-9")
-        with (
-            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
-            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
-            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.announce_approval", new=AsyncMock()) as pub,
-        ):
-            await gate.decide_tool_call(request)
-
-        assert pub.await_args.kwargs["has_owner"] is True
-
-    async def test_live_run_publishes_with_no_owner(self) -> None:
-        """Live runs resume through the inbox — an owner here would wrongly surface (and re-enqueue) them."""
-        ledger = _ledger()
-        with (
-            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
-            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
-            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
-            patch(f"{MODULE}.announce_approval", new=AsyncMock()) as pub,
-        ):
-            await gate.decide_tool_call(_gated_request())
-
-        assert pub.await_args.kwargs["has_owner"] is False
-
     async def test_background_todo_run_tags_the_ledger_owner(self) -> None:
         ledger = _ledger()
         request = _gated_request(execution_mode="background", active_todo_id="todo-9")
@@ -443,7 +416,6 @@ class TestLedgerRegistration:
                 integration_name="Gmail",
             ),
             background=False,
-            has_owner=False,
         )
         _assert_pending(result)
         assert (result.name, result.tool_call_id) == (GATED_TOOL, "call-1")

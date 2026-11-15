@@ -282,6 +282,7 @@
         "quote": null,
         "outcome": null,
         "failure": null,
+        "failure_line": null,
         "narrates": ["c4f22a9a"],
         "retry_target": null,
         "files": []
@@ -314,6 +315,7 @@
         },
         "outcome": "answered",
         "failure": null,
+        "failure_line": null,
         "narrates": ["c4f22a9a"],
         "retry_target": "u2",
         "files": []

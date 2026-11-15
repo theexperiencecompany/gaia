@@ -31,7 +31,8 @@ from app.models.conversation_log_models import (
     WorkflowRun,
 )
 from app.services.conversation.comms_runner import CommsTurn, step_turn_ref
-from app.services.conversation.reply_analytics import spoken_context
+from app.services.conversation.mongo_log_base import not_found
+from app.services.conversation.reply_analytics import UNPROMPTED, spoken_context
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.todo_wake import todo_runs_reported
 from app.services.conversation.workspace import schedule_last_active_touch
@@ -39,7 +40,6 @@ from app.services.delivery.presence import presence_before
 from app.utils.auth_utils import require_owner
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
-from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext
 
 _COMMS_AGENT = "comms_agent"
@@ -175,19 +175,13 @@ def _stamp_workflow_run(configurable: AgentConfigurable, run: WorkflowRun) -> No
     configurable["playbook_fallback"] = run.trigger.playbook_fallback
 
 
-#: Work that finished, or an integration the work waited on, wakes comms with no one asking.
-_UNPROMPTED = AnalyticsContext(
-    attribution=Attribution(actor=Actor.AGENT, trigger=Trigger.SYSTEM, surface=EntrySurface.WORKER)
-)
-
-
 def _analytics(said: list[UserMessage], fired: WorkflowRun | None) -> AnalyticsContext:
     """Return who caused the attempt: the user who spoke last, the workflow's fire, else the work itself."""
     if said:
         return spoken_context(said[-1])
     if fired is not None:
         return AnalyticsContext(attribution=fired.attribution)
-    return _UNPROMPTED
+    return UNPROMPTED
 
 
 async def _answering_surface(
@@ -195,11 +189,13 @@ async def _answering_surface(
 ) -> ConversationSource:
     """Return the surface the reply is read on, which picks its prompt: the newest message's, else the conversation's own.
 
-    A workflow fire runs in the background.
+    A workflow fire runs in the background. Every conversation names its source (the boot check refuses one that doesn't).
     """
     if said:
         return said[-1].surface
     if fired is not None:
         return ConversationSource.BACKGROUND
     stored = await conversation_repository.get_source(claim.conversation_id, user_id=claim.user_id)
-    return stored or ConversationSource.BACKGROUND
+    if stored is None:
+        raise not_found(claim.conversation_id)
+    return stored

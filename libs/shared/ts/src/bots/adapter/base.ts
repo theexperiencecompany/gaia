@@ -756,6 +756,7 @@ export abstract class BaseBotAdapter {
           accepted.seq,
           this.followSurface(
             surface,
+            accepted.conversation_id,
             request.platformUserId,
             request.isDm || !request.channelId ? null : request.channelId,
           ),
@@ -809,6 +810,7 @@ export abstract class BaseBotAdapter {
       },
       this.followSurface(
         surface,
+        target.conversation_id,
         target.platform_user_id,
         target.is_dm ? null : target.channel_id,
       ),
@@ -818,11 +820,12 @@ export abstract class BaseBotAdapter {
   /**
    * The adapter's surface as a follower renders to it: files and notices go to the
    * channel, or the user's DM when channelId is null, through the same platform
-   * sends a backend message uses; a reaction the platform accepted is captured as
-   * bot:reaction_delivered.
+   * sends a backend message uses; a browser run's progress always goes to the DM.
+   * A reaction the platform accepted is captured as bot:reaction_delivered.
    */
   private followSurface(
     surface: ConversationSurface,
+    conversationId: string,
     platformUserId: string,
     channelId: string | null,
   ): FollowSurface {
@@ -830,29 +833,69 @@ export abstract class BaseBotAdapter {
     const isChannel = channelId !== null;
     const send: ConversationSurface["send"] = (text, replyTo) =>
       retryTransientPlatformCall(() => surface.send(text, replyTo));
-    return {
-      ...surface,
-      send,
-      privateChat: !isChannel,
-      sendPhoto: (url, caption) =>
+    const notifications = this.outboundNotifications;
+    const windowClosed = async (to: string, toChannel: boolean) =>
+      notifications !== undefined &&
+      (await notifications.windowClosed(to, toChannel));
+    const noticeTo =
+      (to: string, toChannel: boolean, post: (text: string) => Promise<void>) =>
+      async (bubbles: string[]) => {
+        if (
+          notifications &&
+          (await notifications.windowClosed(to, toChannel))
+        ) {
+          await notifications.deliver(to, bubbles.join("\n\n"));
+          return;
+        }
+        // react-doctor-disable-next-line async-await-in-loop -- bubbles must land on the platform in order
+        for (const bubble of bubbles) await post(bubble);
+      };
+    const sendNotice = noticeTo(destination, isChannel, async (bubble) => {
+      await send(bubble, null);
+    });
+    const requester = {
+      sendNotice: isChannel
+        ? noticeTo(platformUserId, false, (bubble) =>
+            retryTransientPlatformCall(() =>
+              this.deliverOutbound(platformUserId, bubble, false),
+            ),
+          )
+        : sendNotice,
+      sendPhoto: (url: string, caption: string) =>
         retryTransientPlatformCall(() =>
           this.deliverOutboundFile(
-            destination,
+            platformUserId,
             {
               url,
               filename: url.split("/").pop() ?? url,
               content_type: null,
               caption,
             },
-            isChannel,
+            false,
           ),
         ),
-      sendFile: (conversationId, file) =>
+    };
+    const { gaia } = this;
+    return {
+      ...surface,
+      send,
+      requester,
+      // Read when a line needs one: most follows link to neither.
+      links: {
+        get conversation() {
+          return `${gaia.getFrontendUrl()}/c/${conversationId}`;
+        },
+        get pricing() {
+          return gaia.getPricingUrl();
+        },
+      },
+      windowClosed: () => windowClosed(destination, isChannel),
+      sendFile: (fileConversationId, file) =>
         retryTransientPlatformCall(() =>
           this.deliverOutboundFile(
             destination,
             {
-              conversation_id: conversationId,
+              conversation_id: fileConversationId,
               path: file.path,
               filename: file.path.split("/").pop() ?? file.path,
               content_type: file.content_type,
@@ -860,18 +903,7 @@ export abstract class BaseBotAdapter {
             isChannel,
           ),
         ),
-      sendNotice: async (bubbles) => {
-        const notifications = this.outboundNotifications;
-        if (
-          notifications &&
-          (await notifications.windowClosed(destination, isChannel))
-        ) {
-          await notifications.deliver(destination, bubbles.join("\n\n"));
-          return;
-        }
-        // react-doctor-disable-next-line async-await-in-loop -- bubbles must land on the platform in order
-        for (const bubble of bubbles) await send(bubble, null);
-      },
+      sendNotice,
       react: async (platformMessageId, emoji, replaces) => {
         const outcome = await surface.react(platformMessageId, emoji, replaces);
         if (outcome === REACTION_OUTCOME.ATTACHED) {

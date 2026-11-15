@@ -109,6 +109,15 @@ class ChatWorkStopped(ServerEvent):
     browser_jobs: int
 
 
+class ChatBackgroundUpdateResolved(ServerEvent):
+    """Comms resolved finished background work: it wrote a message about it, or stayed silent."""
+
+    event: ClassVar[str] = "chat:background_update_resolved"
+    budget_per_user_day: ClassVar[int] = 100
+
+    outcome: Literal["message", "silence"]
+
+
 class ChatTurnReacted(ServerEvent):
     """An interactive turn's reply resolved to a one-emoji react instead of a message."""
 

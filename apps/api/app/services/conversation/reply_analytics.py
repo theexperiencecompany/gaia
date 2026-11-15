@@ -1,12 +1,14 @@
 """How a settled reply is counted: once, as chat:message_completed or chat:message_cancelled.
 
 A reply counts only when it answers a user message, under that message's analytics context
-and on its id, the stream_id its chat:message_submitted carried.
+and on its id, the stream_id its chat:message_submitted carried. A settle that covers finished
+background work also counts chat:background_update_resolved: a message, or silence.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.conversation_log_models import (
@@ -15,12 +17,17 @@ from app.models.conversation_log_models import (
     ReplySettled,
     StepClaim,
     UserMessage,
+    WorkFinished,
     WorkStarted,
 )
 from app.services.conversation.ports import Appended, TurnAnalytics
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
-from shared.py.analytics.catalog.chat import ChatMessageCancelled, ChatMessageCompleted
+from shared.py.analytics.catalog.chat import (
+    ChatBackgroundUpdateResolved,
+    ChatMessageCancelled,
+    ChatMessageCompleted,
+)
 from shared.py.analytics.context import AnalyticsContext
 from shared.py.conversation_wire import ReplyOutcome
 
@@ -30,6 +37,15 @@ _TURN_END: dict[ReplyOutcome, type[ChatMessageCompleted | ChatMessageCancelled]]
     ReplyOutcome.TRUNCATED: ChatMessageCompleted,
     ReplyOutcome.STOPPED: ChatMessageCancelled,
 }
+_WORK_RESOLVED: dict[ReplyOutcome, Literal["message", "silence"]] = {
+    ReplyOutcome.ANSWERED: "message",
+    ReplyOutcome.SILENT: "silence",
+}
+
+#: Work that finished, or an integration the work waited on, wakes comms with no one asking.
+UNPROMPTED = AnalyticsContext(
+    attribution=Attribution(actor=Actor.AGENT, trigger=Trigger.SYSTEM, surface=EntrySurface.WORKER)
+)
 
 
 def spoken_context(message: UserMessage) -> AnalyticsContext:
@@ -60,9 +76,29 @@ def capture_reply_ended(
     settled_at: datetime,
     since: Sequence[LoggedEntry],
 ) -> None:
-    """Count a reply settle that answered or stopped a user message; since is the log after covers[0]."""
-    if settled.outcome not in _TURN_END:
-        return
+    """Count a reply settle that answered or stopped a user message, and the finished work it resolved; since is the log after covers[0]."""
+    if settled.outcome in _TURN_END:
+        _capture_answered(analytics, claim, covers, settled, settled_at, since)
+    if settled.outcome in _WORK_RESOLVED and any(
+        isinstance(logged.entry, WorkFinished) for logged in covers
+    ):
+        said = [logged.entry for logged in covers if isinstance(logged.entry, UserMessage)]
+        analytics.capture(
+            claim.user_id,
+            ChatBackgroundUpdateResolved(outcome=_WORK_RESOLVED[settled.outcome]),
+            spoken_context(said[-1]) if said else UNPROMPTED,
+            Dedupe(key=settled.id, occurred_at=settled_at),
+        )
+
+
+def _capture_answered(
+    analytics: TurnAnalytics,
+    claim: StepClaim,
+    covers: Sequence[LoggedEntry],
+    settled: ReplySettled,
+    settled_at: datetime,
+    since: Sequence[LoggedEntry],
+) -> None:
     shown = next(
         (
             logged.at

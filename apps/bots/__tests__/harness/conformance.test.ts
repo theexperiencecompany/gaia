@@ -184,6 +184,7 @@ function makeGaia(script: ApiScript) {
 type Op =
   | { op: "create"; id: string; text: string }
   | { op: "update"; id: string; text: string }
+  | { op: "remove"; id: string }
   | { op: "react"; emoji: string }
   | { op: "aux"; text: string };
 
@@ -196,6 +197,10 @@ interface Canonical {
 function reduce(ops: Op[]): Canonical {
   const order: string[] = [];
   const byId = new Map<string, string>();
+  // A removed message (Slack's "Thinking..." stand-in for typing) delivered nothing.
+  const removed = new Set(
+    ops.flatMap((op) => (op.op === "remove" ? [op.id] : [])),
+  );
   const allTexts: string[] = [];
   const reactions: string[] = [];
   for (const op of ops) {
@@ -207,6 +212,7 @@ function reduce(ops: Op[]): Canonical {
       reactions.push(op.emoji);
       continue;
     }
+    if (op.op === "remove" || removed.has(op.id)) continue;
     if (!byId.has(op.id)) order.push(op.id);
     byId.set(op.id, op.text);
     allTexts.push(op.text);
@@ -321,6 +327,10 @@ async function driveSlack(script: ApiScript): Promise<Canonical> {
             return {};
           },
         ),
+        delete: vi.fn(async ({ ts: id }: { ts: string }) => {
+          ops.push({ op: "remove", id });
+          return {};
+        }),
       },
       reactions: {
         add: vi.fn(async ({ name }: { name: string }) => {
@@ -437,6 +447,12 @@ async function driveWhatsApp(script: ApiScript): Promise<Canonical> {
         },
       ),
       markRead: vi.fn(async () => ({})),
+    },
+    // The user just wrote: the 24 h window is open, so replies go free-form.
+    conversations: {
+      list: vi.fn(async () => ({
+        data: [{ kapso: { lastInboundAt: new Date().toISOString() } }],
+      })),
     },
   };
 

@@ -20,6 +20,7 @@ export type ServerEventName =
   | "calendar:event_deleted"
   | "calendar:event_updated"
   | "calendar:preferences_updated"
+  | "chat:background_update_resolved"
   | "chat:conversation_created"
   | "chat:conversation_deleted"
   | "chat:conversation_renamed"
@@ -469,6 +470,12 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+  };
+  "chat:background_update_resolved": {
+    "actor": "user" | "agent";
+    "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
+    "surface": "web" | "desktop" | "bot" | "voice" | "worker";
+    "outcome": "message" | "silence";
   };
   "chat:composer_plus_menu_clicked": {
     "item_id": "upload_file";

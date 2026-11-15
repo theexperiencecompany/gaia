@@ -273,22 +273,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
-    async def mark_background(self, conversation_id: str, *, user_id: str) -> bool:
-        """Stamp a background run's conversation with source BACKGROUND, only when it has no source.
-
-        Never overwrites a real channel. False when the conversation does not exist yet.
-        """
-        return (
-            await self._apply_raw_update_unfetched(
-                {"conversation_id": conversation_id, "source": {"$exists": False}},
-                {"$set": {"source": ConversationSource.BACKGROUND.value}},
-                scope=user_id,
-                doc_id=conversation_id,
-                extra_filter={"user_id": user_id},
-            )
-            > 0
-        )
-
     # ---- the entry log: append, flush, read ----
 
     async def flush_outbox(self, conversation_id: str, *, user_id: str) -> None:
@@ -349,13 +333,13 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return await self._page(heads[0], before_seq=before_seq, limit=limit)
 
     async def get_source(self, conversation_id: str, *, user_id: str) -> ConversationSource | None:
-        """Return the conversation's source enum, or None when it doesn't exist."""
+        """Return the conversation's source, or None when it doesn't exist."""
         row = await self._find_one_projected(
             {"conversation_id": conversation_id, "user_id": user_id},
             {"_id": 0, "source": 1},
             _SourceRow,
         )
-        return None if row is None else ConversationSource.coerce(row.source)
+        return None if row is None else row.source
 
     async def owner_ids(self, conversation_id: str) -> set[str]:
         """Every user holding a conversation under this id; more than one means they share its agent thread."""

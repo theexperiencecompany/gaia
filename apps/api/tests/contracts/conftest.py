@@ -169,6 +169,7 @@ async def create_conversation_head(conversation_id: str, user_id: str) -> None:
             {
                 "user_id": user_id,
                 "conversation_id": conversation_id,
+                "source": "web",
                 "createdAt": datetime.now(UTC).isoformat(),
             }
         )

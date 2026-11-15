@@ -7878,7 +7878,7 @@ export interface components {
              * @default false
              */
             is_unread?: boolean | null;
-            source?: components["schemas"]["ConversationSource"] | null;
+            source: components["schemas"]["ConversationSource"];
             system_purpose?: components["schemas"]["SystemPurpose"] | null;
         };
         /**
@@ -10492,7 +10492,7 @@ export interface components {
             is_unread: boolean | null;
             /** Items */
             items: (components["schemas"]["UserItem"] | components["schemas"]["ReplyItem"] | components["schemas"]["WorkItem"] | components["schemas"]["NoticeItem"] | components["schemas"]["WorkflowFiredItem"] | components["schemas"]["TodoWokeItem"])[];
-            source: components["schemas"]["ConversationSource"] | null;
+            source: components["schemas"]["ConversationSource"];
             /** Starred */
             starred: boolean | null;
             state: components["schemas"]["StateFrame"];
@@ -13441,6 +13441,8 @@ export interface components {
             /** Bubbles */
             bubbles: string[];
             failure: components["schemas"]["FailureReason"] | null;
+            /** Failure Line */
+            failure_line: string | null;
             /** Files */
             files: components["schemas"]["ReplyFile"][];
             /** Follow Up Actions */

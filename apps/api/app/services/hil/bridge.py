@@ -14,7 +14,6 @@ from app.constants.hil import (
     HIL_CLASSIFIER_MAX_ARGS,
     HIL_CLASSIFIER_MAX_DETAIL_CHARS,
 )
-from app.db.repositories.conversations import conversation_repository
 from app.services.analytics_service import capture
 from app.services.hil.notify import notify_approval_pending
 from app.services.hil.utils import GatedApproval
@@ -24,8 +23,8 @@ from shared.py.analytics.catalog.hil import HilCardShown
 from shared.py.wide_events import log, spawn_logged_task
 
 
-async def announce_approval(approval: GatedApproval, *, background: bool, has_owner: bool) -> None:
-    """Count the card the log now shows, list a background owner's conversation, and push it."""
+async def announce_approval(approval: GatedApproval, *, background: bool) -> None:
+    """Count the card the log now shows, and push it."""
     log.set(
         hil={
             "approval_id": approval.approval_id,
@@ -42,11 +41,6 @@ async def announce_approval(approval: GatedApproval, *, background: bool, has_ow
             background=background,
         ),
     )
-    if has_owner:
-        # A background owner's conversation is listed only while its work awaits approval.
-        await conversation_repository.mark_background(
-            approval.conversation_id, user_id=approval.user_id
-        )
     # Detached, since a push failure must never block the gate.
     spawn_logged_task(
         "approval_pending_notification",

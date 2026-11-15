@@ -79,6 +79,7 @@ export const replyItem = (
   quote: null,
   outcome: outcome as Extract<ScreenItem, { kind: "reply" }>["outcome"],
   failure: null,
+  failure_line: null,
   narrates: [],
   retry_target: null,
   files: [],

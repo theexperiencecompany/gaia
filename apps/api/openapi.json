@@ -4485,14 +4485,7 @@
             "title": "Is Unread"
           },
           "source": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConversationSource"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/ConversationSource"
           },
           "system_purpose": {
             "anyOf": [
@@ -4506,7 +4499,8 @@
           }
         },
         "required": [
-          "conversation_id"
+          "conversation_id",
+          "source"
         ],
         "title": "ConversationModel",
         "type": "object"
@@ -9903,14 +9897,7 @@
             "type": "array"
           },
           "source": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ConversationSource"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "$ref": "#/components/schemas/ConversationSource"
           },
           "starred": {
             "anyOf": [
@@ -16005,6 +15992,17 @@
               }
             ]
           },
+          "failure_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Line"
+          },
           "files": {
             "items": {
               "$ref": "#/components/schemas/ReplyFile"
@@ -16111,6 +16109,7 @@
           "quote",
           "outcome",
           "failure",
+          "failure_line",
           "narrates",
           "retry_target",
           "files"

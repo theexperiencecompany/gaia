@@ -1100,7 +1100,10 @@ class TestNoChatOutlivesItsTodo:
 
         nothing_listed = await client.delete("/api/v1/conversations")
         await create_conversation_service(
-            ConversationModel(conversation_id=str(uuid4()), description="a chat"), owner
+            ConversationModel(
+                conversation_id=str(uuid4()), description="a chat", source=ConversationSource.WEB
+            ),
+            owner,
         )
         deleted = await client.delete("/api/v1/conversations")
 
