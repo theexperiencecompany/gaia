@@ -1,6 +1,6 @@
 """One comms attempt's state, and the reply, deltas and settle it shapes from what it streamed."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from app.models.conversation_frame_models import (
@@ -226,16 +226,26 @@ def settled_entry(
 def quote_in(
     answers: tuple[str, ...], reply_seq: int, entries: Sequence[LoggedEntry]
 ) -> str | None:
-    visible = [_visible(logged) for logged in entries]
+    settled = {
+        logged.entry.reply_id: logged.entry.answers
+        for logged in entries
+        if isinstance(logged.entry, ReplySettled)
+    }
+    visible = [_visible(logged, settled) for logged in entries]
     return quote_target(answers, reply_seq, [item for item in visible if item is not None])
 
 
-def _visible(logged: LoggedEntry) -> VisibleEntry | None:
+def _visible(logged: LoggedEntry, settled: Mapping[str, tuple[str, ...]]) -> VisibleEntry | None:
     match logged.entry:
         case UserMessage(id=message_id):
             return VisibleEntry(seq=logged.seq, id=message_id, is_user_message=True)
         case Reply(reply_id=reply_id, text=text) as reply if text or _own_cards(reply):
-            return VisibleEntry(seq=logged.seq, id=reply_id, is_user_message=False)
+            return VisibleEntry(
+                seq=logged.seq,
+                id=reply_id,
+                is_user_message=False,
+                answers=settled.get(reply_id, ()),
+            )
     return None
 
 
