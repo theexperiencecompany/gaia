@@ -35,7 +35,7 @@ Subcommands:
 
 Env contract:
   matrix  none directly; delegates the diff to `changes.sh files py`.
-  history GITHUB_REPOSITORY, PR_BRANCH, GITHUB_RUN_ID, MUTATION_HISTORY_DIR, GH_TOKEN.
+  history GITHUB_REPOSITORY, PR_BRANCH, MUTATION_HISTORY_DIR, GH_TOKEN.
   plan    GITHUB_OUTPUT (stdout-only when unset), MUTATION_HISTORY_DIR.
   shard   GROUP (required, compact JSON array of {module,testfiles,ranges,mutants});
           SHARD_LOG (shard.log), GITHUB_STEP_SUMMARY. Writes <shard>.verdict.json
@@ -525,7 +525,7 @@ def cmd_history(_args: list[str]) -> int:
             "gh",
             "api",
             f"repos/{repo}/actions/workflows/ci.yml/runs?branch={branch}"
-            f"&event=pull_request&per_page={HISTORY_RUNS + 1}",
+            f"&event=pull_request&per_page={HISTORY_RUNS}",
             "--jq",
             f'[.workflow_runs[] | select(.head_repository.full_name == "{repo}") | .id]',
         ],
@@ -539,9 +539,9 @@ def cmd_history(_args: list[str]) -> int:
             f"({listing.stderr.strip()}); the plan uses the estimates"
         )
         return 0
-    current = os.environ.get("GITHUB_RUN_ID", "")
-    earlier = [str(run) for run in json.loads(listing.stdout) if str(run) != current]
-    for run in earlier[:HISTORY_RUNS]:
+    # The run in progress stays in: it has uploaded nothing yet, and a re-run reads its first attempt.
+    earlier = [str(run) for run in json.loads(listing.stdout)][:HISTORY_RUNS]
+    for run in earlier:
         # No such artifact (a run that mutated nothing) is not an error: the next run may have it.
         subprocess.run(
             ["gh", "run", "download", run, "--repo", repo, "-p", f"{DURATIONS_ARTIFACT}-*"]
@@ -550,7 +550,7 @@ def cmd_history(_args: list[str]) -> int:
             check=False,
         )
     measured = measured_durations(out)
-    print(f"mutation history: {len(measured)} module(s) measured by {len(earlier)} earlier run(s)")
+    print(f"mutation history: {len(measured)} module(s) measured across {len(earlier)} run(s)")
     return 0
 
 
