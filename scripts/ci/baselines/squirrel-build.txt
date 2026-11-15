@@ -357,7 +357,6 @@ score:URL Structure=93
 /best-ai-email-assistant	content/keyword-stuffing/keyword-stuffing	email
 /best-ai-email-assistant	perf/cache-headers/cache-control
 /best-ai-executive-assistant	perf/cache-headers/cache-control
-/blog	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /blog	links/no-contextual-inbound/no-contextual-inbound
 /blog/desktop	core/meta-description/meta-description
 /blog/monorepo	core/meta-description/meta-description
@@ -425,7 +424,6 @@ score:URL Structure=93
 /compare/shortwave	content/keyword-stuffing/keyword-stuffing	email
 /compare/spark	content/keyword-stuffing/keyword-stuffing	email
 /compare/zoho	content/keyword-stuffing/keyword-stuffing	zoho
-/contact	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /de/alternative-to	content/keyword-stuffing/keyword-stuffing	mit
 /de/alternative-to	content/keyword-stuffing/keyword-stuffing	und
 /de/alternative-to	links/no-contextual-inbound/no-contextual-inbound
@@ -2097,7 +2095,6 @@ score:URL Structure=93
 /es/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	zero
 /faq	links/no-contextual-inbound/no-contextual-inbound
 /faq	perf/cache-headers/cache-control
-/features	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
 /features	perf/cache-headers/cache-control
 /features/calendar	perf/cache-headers/cache-control
 /features/code-execution	perf/cache-headers/cache-control
@@ -3514,7 +3511,6 @@ score:URL Structure=93
 /marketplace?search=Salesforce	content/word-count/word-count
 /marketplace?search=Stripe	content/word-count/word-count
 /open-source-ai-assistant	perf/cache-headers/cache-control
-/pricing	perf/cache-headers/cache-control
 /privacy	perf/cache-headers/cache-control
 /pt-br/alternative-to	content/keyword-stuffing/keyword-stuffing	com
 /pt-br/alternative-to	content/keyword-stuffing/keyword-stuffing	para
