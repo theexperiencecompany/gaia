@@ -54,9 +54,6 @@ BUILD_ID = re.compile(r"/_next/static/(?!chunks/|media/|css/)[^/\s\"]+/")
 BUILD_PATH = re.compile(r"/_next/")
 # React's useId values move whenever the component tree above them does.
 REACT_ID = re.compile(r"react-aria-[\w-]+")
-# A timing is a moment, not a page: two live crawls an hour apart flagged 1,008 and
-# 1,336 pages slow, so it counts only through the Performance score.
-TIMED_RULES = frozenset({"perf/ttfb"})
 # Rules that judge a page against the rest of the crawl (its inbound links, its schema
 # next to its peers'): on the PR gate's 126 pages they disagreed with the full crawl of
 # the same build on 69 pages, and no-contextual-inbound on 18, so only a full crawl judges them.
@@ -70,6 +67,7 @@ CRAWL_RELATIVE_RULES = frozenset(
 )
 # Listing pages with no sitemap page under them, kept short on purpose (#1701 shortened their intros).
 SHORT_PAGES = frozenset({"/download", "/contact"})
+MARKETPLACE_PAGE = re.compile(r"^/marketplace/[^/]+$")
 WIKI_LINK = re.compile(r"^\[\[[^\[\]'\"]+\]\]$")
 # One integration's page; the paginated hub (/marketplace/page/N) is ours and stays checked.
 MARKETPLACE_DETAIL = re.compile(r"^/marketplace/[^/]+$")
@@ -160,6 +158,11 @@ def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
     return seen.finding.rule == "content/word-count" and (index or listing)
 
 
+def _marketplace_example_contact(seen: Observed, _pages: frozenset[str]) -> bool:
+    page = SITE_LOCALE.sub("", seen.finding.page)
+    return seen.finding.rule == "content/placeholder-contact" and bool(MARKETPLACE_PAGE.match(page))
+
+
 # Only squirrel's own bugs, and one design decision: everything else is a finding.
 IGNORED = (
     Ignore(
@@ -197,6 +200,13 @@ IGNORED = (
         "/ja/for 49 words, /contact 59, /marketplace 178, /blog 188, /download 193; #1701 "
         "shortened their intros on purpose",
         _hub_word_count,
+    ),
+    Ignore(
+        "a marketplace page's text is the integration's tool documentation, served by the API "
+        "and changed without a deploy; its example addresses and handles are not ours to contact",
+        "/marketplace/googlesheets: 'Share my budget spreadsheet with john@example.com'; "
+        "/marketplace/twitter flagged [social] on master run 43716255058, a CI-only change",
+        _marketplace_example_contact,
     ),
 )
 
@@ -276,7 +286,7 @@ def read_crawl(db: Path, site: str) -> Crawl:
         ).fetchall()
     paths = frozenset(_path(u, site) for u in crawled)
     seen = (o for row in rows for o in _observe(row, site, crawled))
-    kept = (o.finding for o in seen if o.finding.rule not in TIMED_RULES and not _ignored(o, paths))
+    kept = (o.finding for o in seen if not _ignored(o, paths))
     return Crawl(paths, frozenset(kept))
 
 

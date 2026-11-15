@@ -3485,7 +3485,6 @@ score:URL Structure=93
 /marketplace/jira	perf/dom-size/dom-max-children
 /marketplace/keyloom-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	component
 /marketplace/keyloom-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
-/marketplace/linear	content/keyword-stuffing/keyword-stuffing	issue
 /marketplace/manufact-mcp-capabilities	content/keyword-stuffing/keyword-stuffing	server
 /marketplace/manufact-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/microsoft-teams	content/keyword-stuffing/keyword-stuffing	teams

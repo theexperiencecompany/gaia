@@ -23,8 +23,8 @@ incremental = false
 [rules]
 enable = ["*"]
 # Agent Experience (ax/*) is off by the founder's decision: not a standard this
-# site is held to. perf/ttfb stays on; smoke-web.sh turns it off only for a local
-# build, where response time measures the machine serving the crawl.
+# site is held to. smoke-web.sh also turns perf/ttfb off: a response time measures the
+# machine crawling, not the page.
 disable = ["ax/*"]
 
 # Off for the PR gate, whose proxy reaches no other host; the full crawl of the
