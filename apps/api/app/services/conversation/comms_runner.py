@@ -232,6 +232,8 @@ class CommsGraphRunner:
         context: Sequence[LoggedEntry],
         ledger: str,
         note: str | None = None,
+        *,
+        owed: frozenset[str] = frozenset(),
     ) -> CommsGraphRun:
         """Start an attempt on batch with context as notes, its closing tools writing ledger; a re-sent batch upserts its own messages."""
         graph = await GraphManager.get_graph(GraphName.COMMS)
@@ -252,9 +254,10 @@ class CommsGraphRunner:
             *_turn_context(turn.closing, batch, len(turn.opening)),
             *([] if note is None else [_still_open_message(batch, note)]),
         ]
-        return CommsGraphRun(
-            claim, graph, config, turn, {**turn.state, "messages": messages}, self._confirm
-        )
+        # Inputs still owed an answer outlive history summarization word for word.
+        verbatim = sorted(entry_message_id(i) for i in owed | set(_answered(batch.waking)))
+        state = {**turn.state, "messages": messages, "verbatim_message_ids": verbatim}
+        return CommsGraphRun(claim, graph, config, turn, state, self._confirm)
 
 
 def _still_open_message(batch: Batch, note: str) -> HumanMessage:

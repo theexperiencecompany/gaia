@@ -46,7 +46,10 @@ from app.agents.middleware.summarization import (
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
-from app.constants.summarization import COMMS_SUMMARIZATION_TRIGGER_TOKENS
+from app.constants.summarization import (
+    COMMS_SUMMARIZATION_KEEP_TOKENS,
+    COMMS_SUMMARIZATION_TRIGGER_TOKENS,
+)
 from app.services.storage import JuiceFSUnavailable
 from tests.helpers import BindableToolsFakeModel, tool_call_request
 
@@ -568,6 +571,7 @@ class TestCommsAndSubagentDelegation:
                 compact=False,
                 archive="executor",
                 summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+                summarization_keep=("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS),
             ),
         }
 

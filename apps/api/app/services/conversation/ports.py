@@ -220,10 +220,13 @@ class CommsRunner(Protocol):
         context: Sequence[LoggedEntry],
         ledger: str,
         note: str | None = None,
+        *,
+        owed: frozenset[str] = frozenset(),
     ) -> CommsRun:
         """Start a run on batch whose closing tools write ledger; context is every entry since the last settled input the batch does not carry, given again on a restart.
 
         A note is said after the batch: the attempt goes on in this run, so it is not counted as a new one.
+        owed holds the ids of older inputs still owed an answer; history summarization keeps them word for word.
         """
         ...
 

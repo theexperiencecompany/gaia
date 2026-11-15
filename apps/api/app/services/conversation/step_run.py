@@ -79,7 +79,14 @@ async def _run_once(
 ) -> bool:
     """Run one graph run of the attempt; False when it ended the attempt failed."""
     try:
-        run = await ports.runner.start(attempt.claim, attempt.batch, context, attempt.ledger, note)
+        run = await ports.runner.start(
+            attempt.claim,
+            attempt.batch,
+            context,
+            attempt.ledger,
+            note,
+            owed=attempt.view.state.owed_answers,
+        )
     except Exception as error:  # a run that cannot start fails its inputs like one that crashed
         await fail_attempt(ports, attempt, error)
         return False
