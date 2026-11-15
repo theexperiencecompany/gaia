@@ -115,7 +115,11 @@ from the cost: each pool gets the fewest shards whose packing keeps every shard
 within `SHARD_BUDGET_SECONDS` (600). The budget is a third of the deadline on
 purpose: no static feature predicts the slow modules (`message_breaks.py`, 96
 mutants, took 245 s on one run and 563 s on the next), and replaying both #1799
-runs' measured durations kept the worst 600 s shard at 1133 s. A
+runs' measured durations kept the worst 600 s shard at 1133 s. Measured beats
+estimated: each shard uploads `mutation-durations-N` (`shard.durations.json`,
+the seconds every started module took), `detect` runs `mutation.py history` to
+download those from the PR's five newest earlier runs, and `plan` costs a
+measured module at its newest measurement, falling back to the estimate. A
 plan below one wave is topped up to `MUTATION_WAVE` (6), because shards that
 run at once cost no wall clock. A plan above `MAX_SHARDS` (24, four waves, far
 under GitHub's 256-job matrix limit) is cut back to it, and the plan warns for
@@ -130,7 +134,8 @@ timeout can no longer kill a shard before it reports. Memory is capped the same
 way: on Linux mutmut gets an `RLIMIT_DATA` of `MUTANT_MEMORY_SHARE` (80%) of the
 shard's cgroup limit (else RAM) split over itself and its workers, inherited by
 every forked mutant. A mutant that loops while a test fake grows then dies of
-`MemoryError` and counts as killed. Before the cap, `conversation/step.py` went
+`MemoryError`, or as a segfault (counted as detected on Linux beside real verdicts,
+and named in the verdict's reason). Before the cap, `conversation/step.py` went
 from 1.1 GB to 8 GB in 50 s and the OOM killer took the whole hosted runner,
 which GitHub reports as "the runner has received a shutdown signal". The constants were fitted
 to PR #1799 (runs 43665639573 and 43677307541), where packing by count left shard 3/6 with 54

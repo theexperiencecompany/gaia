@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import sys
+from typing import ClassVar
 
 import pytest
 import yaml
@@ -78,9 +79,7 @@ def _stub_detector(scripts: Path, body: str) -> None:
     stub.chmod(0o755)
 
 
-PlanRun = Callable[
-    [list[dict[str, object]]], tuple[subprocess.CompletedProcess[str], dict[str, str]]
-]
+PlanRun = Callable[..., tuple[subprocess.CompletedProcess[str], dict[str, str]]]
 
 
 @pytest.fixture
@@ -94,7 +93,14 @@ def harness(tmp_path: Path) -> PlanRun:
 
     def run(
         matrix: list[dict[str, object]],
+        measured: dict[str, dict[str, float]] | None = None,
     ) -> tuple[subprocess.CompletedProcess[str], dict[str, str]]:
+        # measured: run id -> {module: seconds}, as `history` lands earlier runs' shards.
+        history = tmp_path / "history"
+        for run_id, durations in (measured or {}).items():
+            shard = history / run_id / "mutation-durations-0"
+            shard.mkdir(parents=True)
+            (shard / "shard.durations.json").write_text(json.dumps(durations))
         # The changed-file list the real `matrix` filtering runs over: every
         # module in the fixture, under the apps/api/app/ prefix it selects on.
         _stub_changes(
@@ -110,7 +116,11 @@ def harness(tmp_path: Path) -> PlanRun:
             capture_output=True,
             text=True,
             check=False,
-            env={"PATH": "/usr/bin:/bin", "GITHUB_OUTPUT": str(github_output)},
+            env={
+                "PATH": "/usr/bin:/bin",
+                "GITHUB_OUTPUT": str(github_output),
+                "MUTATION_HISTORY_DIR": str(history),
+            },
         )
         outputs = dict(
             line.split("=", 1) for line in github_output.read_text().splitlines() if "=" in line
@@ -527,3 +537,80 @@ def test_each_module_carries_its_mutant_estimate_to_the_shard(harness: PlanRun) 
     _, outputs = harness([_entry("app/a.py", [UNIT_TEST], [1], mutants=42)])
 
     assert _groups(outputs)[0][0]["mutants"] == "42"
+
+
+class TestAModuleMeasuredOnAnEarlierRunIsPlannedAtThatCost:
+    """No static feature predicts the slow modules (#1799: liveness.py estimated 36 s, took 673 s)."""
+
+    SLOW: ClassVar[dict[str, float]] = {f"app/m{i}.py": 500.0 for i in range(10)}
+
+    def _entries(self) -> list[dict[str, object]]:
+        return [_entry(module, [UNIT_TEST], [1]) for module in self.SLOW]
+
+    def test_unmeasured_modules_are_planned_from_the_estimate(self, harness: PlanRun) -> None:
+        _, outputs = harness(self._entries())
+
+        assert int(outputs["count"]) == MUTATION_WAVE
+
+    def test_measured_modules_get_the_shards_their_real_cost_needs(self, harness: PlanRun) -> None:
+        process, outputs = harness(self._entries(), {"101": self.SLOW})
+
+        assert process.returncode == 0, process.stderr
+        assert int(outputs["count"]) == len(self.SLOW)
+        assert all(len(group) == 1 for group in _groups(outputs))
+        assert all(group[0]["seconds"] == "500.0" for group in _groups(outputs))
+
+    def test_the_newest_runs_measurement_wins(self, harness: PlanRun) -> None:
+        _, outputs = harness(
+            [_entry("app/a.py", [UNIT_TEST], [1])],
+            {"101": {"app/a.py": 900.0}, "205": {"app/a.py": 40.0}},
+        )
+
+        ((module,),) = _groups(outputs)
+        assert module["seconds"] == "40.0"
+
+
+GH_STUB = """#!/usr/bin/env python3
+import json, os, pathlib, sys
+calls = pathlib.Path(os.environ["GH_CALLS"])
+calls.write_text(calls.read_text() + " ".join(sys.argv[1:]) + "\\n")
+if sys.argv[1] == "api":
+    print(json.dumps([9, 7, 5]))
+elif sys.argv[1:3] == ["run", "download"] and sys.argv[3] == "5":
+    out = pathlib.Path(sys.argv[sys.argv.index("-D") + 1]) / "mutation-durations-0"
+    out.mkdir(parents=True)
+    (out / "shard.durations.json").write_text(json.dumps({"app/a.py": 42.0}))
+"""
+
+
+def test_history_lands_the_durations_of_this_prs_earlier_runs(tmp_path: Path) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "gh").write_text(GH_STUB)
+    (bin_dir / "gh").chmod(0o755)
+    calls = tmp_path / "calls"
+    calls.write_text("")
+    history = tmp_path / "history"
+
+    process = subprocess.run(
+        [sys.executable, str(PLAN_SCRIPT), "history"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={
+            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            "GH_CALLS": str(calls),
+            "GITHUB_REPOSITORY": "acme/gaia",
+            "PR_BRANCH": "feat/x",
+            "GITHUB_RUN_ID": "9",
+            "MUTATION_HISTORY_DIR": str(history),
+        },
+    )
+
+    assert process.returncode == 0, process.stderr
+    downloads = [line for line in calls.read_text().splitlines() if line.startswith("run download")]
+    # The run in progress is not history; the others are asked for their durations only.
+    assert [line.split()[2] for line in downloads] == ["7", "5"]
+    assert all("-p mutation-durations-*" in line for line in downloads)
+    assert "branch=feat/x&event=pull_request" in calls.read_text()
+    assert "1 module(s) measured by 2 earlier run(s)" in process.stdout
