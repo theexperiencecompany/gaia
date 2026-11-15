@@ -424,11 +424,11 @@ def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     A TodoUpdate writes exactly the fields that are *set* on it, and a field
     cannot be un-set in place, so dropping one means rebuilding from the rest.
     """
-    fields = update.model_dump(exclude_unset=True)
-    fields.pop("completed", None)
-    fields.pop("completed_at", None)
-    fields.pop("completed_by", None)
-    return TodoUpdate(**fields)
+    return TodoUpdate(
+        **update.model_dump(
+            exclude_unset=True, exclude={"completed", "completed_at", "completed_by"}
+        )
+    )
 
 
 async def _complete_if_tracked(todo_id: str, user_id: str, update: TodoUpdate) -> TodoUpdate:

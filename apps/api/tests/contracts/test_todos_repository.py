@@ -1647,11 +1647,12 @@ class TestBriefingReads:
     ):
         user_id = "u-due"
         cutoff = datetime(2026, 11, 15, 18, 30, tzinfo=UTC)
-        overdue = await repo.create(
-            make_doc(user_id=user_id, title="overdue", due_date=cutoff - timedelta(days=4))
-        )
+        # Created before the overdue one, so only the due-date sort puts it second.
         today = await repo.create(
             make_doc(user_id=user_id, title="today", due_date=cutoff - timedelta(hours=1))
+        )
+        overdue = await repo.create(
+            make_doc(user_id=user_id, title="overdue", due_date=cutoff - timedelta(days=4))
         )
         await repo.create(make_doc(user_id=user_id, title="at cutoff", due_date=cutoff))
         await repo.create(make_doc(user_id=user_id, title="undated"))
