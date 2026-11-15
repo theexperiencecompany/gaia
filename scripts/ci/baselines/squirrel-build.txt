@@ -1503,7 +1503,6 @@ score:Security=96
 /pt-br/learn/zero-shot-learning	content/keyword-stuffing/keyword-stuffing	shot
 /signup	a11y/identical-links-same-purpose/identical-links-same-purpose	"sign up" → 2 different URLs
 /signup	content/word-count/word-count
-/signup	images/offscreen-lazy/offscreen-images-not-lazy	image
 /thanks	content/word-count/word-count
 /use-cases/add-deadlines-to-calendar	content/word-count/word-count
 /use-cases/assignment-tracker	content/keyword-stuffing/keyword-stuffing	due
