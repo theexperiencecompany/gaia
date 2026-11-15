@@ -6,8 +6,11 @@ SUMMARIZATION_KEEP_TOKENS = 8000  # Keep ~8K tokens after summarization
 # on the XML it is actually sent as; the rest covers the estimate's error.
 SUMMARY_INPUT_BUDGET_FRACTION = 0.80
 # Comms' whole request, prompt slots (~34K in a real chat) included: every comms call
-# reads it, so past this the oldest turns fold into the rolling summary (130K → ~50K).
+# reads it, so once a turn settles past this its oldest turns fold into the rolling
+# summary in the background (130K → ~50K).
 COMMS_SUMMARIZATION_TRIGGER_TOKENS = 64_000
+# The fold runs inside a turn only past this: turns came faster than background folds landed.
+COMMS_SUMMARIZATION_CEILING_TOKENS = 2 * COMMS_SUMMARIZATION_TRIGGER_TOKENS
 # Recent turns comms keeps word for word after a fold; open requests stay on top of it.
 COMMS_SUMMARIZATION_KEEP_TOKENS = 12_000
 

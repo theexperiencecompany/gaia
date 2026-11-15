@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from hypothesis import given, settings, strategies as st
 import pytest
 
+from app.constants.conversation import REPLY_FAILURE_LINE
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.conversation_frame_models import (
@@ -937,3 +938,37 @@ async def test_loading_reads_the_record_of_running_work_and_its_hand_overs_only(
         WorkDeltaFrame(task_id="t1", index=5, payload=ToolDataEvent(tool_data=_card("z")))
     )
     assert reads[-1] == ("c1", "t1")
+
+
+@pytest.mark.parametrize("reason", list(FailureReason))
+def test_a_failed_reply_carries_the_line_a_chat_platform_shows_under_it(
+    reason: FailureReason,
+) -> None:
+    settled = ReplySettled(
+        id="s1",
+        reply_id="r1",
+        outcome=ReplyOutcome.FAILED,
+        answers=("u1",),
+        through=1,
+        quote_target=None,
+        failure=reason,
+    )
+    reply = Reply(id="o1", reply_id="r1", attempt_id="a1")
+    items = project_screen([logged(1, user("u1")), logged(2, reply), logged(3, settled)])
+    [shown] = [item for item in items if isinstance(item, ReplyItem)]
+    assert shown.failure_line == REPLY_FAILURE_LINE[reason]
+
+
+def test_an_answered_reply_carries_no_failure_line() -> None:
+    reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text="done")
+    settled = ReplySettled(
+        id="s1",
+        reply_id="r1",
+        outcome=ReplyOutcome.ANSWERED,
+        answers=("u1",),
+        through=1,
+        quote_target=None,
+    )
+    items = project_screen([logged(1, user("u1")), logged(2, reply), logged(3, settled)])
+    [shown] = [item for item in items if isinstance(item, ReplyItem)]
+    assert shown.failure_line is None

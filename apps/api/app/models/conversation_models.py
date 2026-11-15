@@ -163,6 +163,7 @@ class MessageShape(BaseModel):
     reply_id: str | None = None
     task_id: str | None = None
     approval_id: str | None = None
+    pinned: bool = False
 
 
 class StoredEntry(BaseModel):

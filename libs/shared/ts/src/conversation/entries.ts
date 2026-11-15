@@ -302,6 +302,7 @@ const ReplyItemSchema = z.object({
       FAILURE_REASON.SERVER_RESTART,
     ])
     .nullable(),
+  failure_line: z.string().nullable(),
   narrates: z.array(z.string()),
   retry_target: z.string().nullable(),
   files: z.array(

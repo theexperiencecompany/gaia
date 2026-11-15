@@ -6,6 +6,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Protocol, TypeAlias
 
+from langchain_core.messages import AnyMessage, RemoveMessage
+
 from app.models.conversation_frame_models import OutputFrame, StreamPayload
 from app.models.conversation_log_models import (
     Batch,
@@ -88,6 +90,10 @@ class ConversationLog(Protocol):
 
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         """Return the conversation's current state."""
+        ...
+
+    async def pinned(self, conversation_id: str, user_id: str) -> Sequence[LoggedEntry]:
+        """Return the user messages and replies the user pinned, in order."""
         ...
 
     async def unsettled(self, conversation_id: str, user_id: str) -> Unsettled:
@@ -210,6 +216,25 @@ class CommsRun(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class Kept:
+    """What history summarization never folds: inputs still owed an answer, and what the user pinned."""
+
+    owed: frozenset[str] = frozenset()
+    pinned: Sequence[LoggedEntry] = ()
+
+
+NOTHING_KEPT = Kept()
+
+
+@dataclass(frozen=True)
+class FoldPlan:
+    """A history fold computed off the reply path: the thread it read, and its summary update."""
+
+    thread: tuple[str | None, ...]
+    messages: tuple[AnyMessage | RemoveMessage, ...]
+
+
 class CommsRunner(Protocol):
     """Starts comms runs."""
 
@@ -221,13 +246,21 @@ class CommsRunner(Protocol):
         ledger: str,
         note: str | None = None,
         *,
-        owed: frozenset[str] = frozenset(),
+        kept: Kept = NOTHING_KEPT,
     ) -> CommsRun:
         """Start a run on batch whose closing tools write ledger; context is every entry since the last settled input the batch does not carry, given again on a restart.
 
         A note is said after the batch: the attempt goes on in this run, so it is not counted as a new one.
-        owed holds the ids of older inputs still owed an answer; history summarization keeps them word for word.
+        kept outlives history summarization word for word, beside the batch.
         """
+        ...
+
+    async def plan_fold(self, conversation_id: str, user_id: str, kept: Kept) -> FoldPlan | None:
+        """Summarize the settled thread's oldest turns past its budget without writing; None under it."""
+        ...
+
+    async def apply_fold(self, claim: StepClaim, plan: FoldPlan) -> bool:
+        """Write plan into the thread under the step's claim; False when a turn wrote the thread since."""
         ...
 
 
@@ -258,6 +291,10 @@ class Effects(Protocol):
 
     async def reset_workflow_threads(self, conversation_id: str) -> None:
         """Start a workflow fire's run from clean threads; called by the step under its claim."""
+        ...
+
+    async def fold_history(self, conversation_id: str, user_id: str) -> None:
+        """Fold the settled comms thread past its budget beside the step, one fold per conversation at a time."""
         ...
 
 

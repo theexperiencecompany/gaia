@@ -66,6 +66,20 @@ async def test_a_fill_replaces_the_reply_at_its_next_revision_and_keeps_the_user
     assert (await _stored(log, conversation, "o1")).entry == amended.entry
 
 
+async def test_pinned_reads_only_the_messages_and_replies_the_user_pinned(
+    log: MongoConversationLog, conversation: str
+) -> None:
+    claim = await _claimed(log, conversation)
+    await log.append_fenced(claim, opened("o1"))
+    await log.append(conversation, UID, user("u1"))
+    await log.append(conversation, UID, user("u2"))
+    repository = ConversationLogRepository()
+    await repository.set_pinned(conversation, user_id=UID, message_id="r1", pinned=True)
+    await repository.set_pinned(conversation, user_id=UID, message_id="u2", pinned=True)
+
+    assert [item.entry.id for item in await log.pinned(conversation, UID)] == ["o1", "u2"]
+
+
 async def test_a_fill_that_takes_back_shown_text_is_refused(
     amends: LogAmends, log: MongoConversationLog, conversation: str
 ) -> None:

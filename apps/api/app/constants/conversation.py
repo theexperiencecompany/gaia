@@ -4,6 +4,22 @@ from datetime import timedelta
 from enum import StrEnum
 
 from app.constants.cache import ONE_DAY_TTL
+from shared.py.conversation_wire import FailureReason
+
+#: The line a chat platform shows under a failed reply: what happened, and how to get an answer.
+REPLY_FAILURE_LINE: dict[FailureReason, str] = {
+    FailureReason.MODEL_ERROR: (
+        "I couldn't finish that reply because something went wrong on my side. "
+        "Send your message again to retry."
+    ),
+    FailureReason.STEP_LIMIT: (
+        "This took more steps than I can take in one go, so I stopped before answering. "
+        "Send it again, or split it into smaller asks."
+    ),
+    FailureReason.SERVER_RESTART: (
+        "I restarted while answering. I'll answer again in a moment, so there's no need to resend."
+    ),
+}
 
 # p90 time to a first reply is about 16s, so a newer input inside this window still beats waiting.
 RESTART_WINDOW_SECONDS = 20.0

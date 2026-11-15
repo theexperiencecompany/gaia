@@ -30,6 +30,7 @@ from app.models.conversation_log_models import (
 from app.models.message_models import MessageDict
 from app.services.conversation.ports import (
     ClaimLost,
+    Kept,
     RuntimePorts,
     Unsettled,
 )
@@ -52,6 +53,7 @@ from shared.py.conversation_wire import (
     FailureReason,
     ReplyOutcome,
 )
+from shared.py.wide_events import log
 
 
 async def advance(ports: RuntimePorts, conversation_id: str, user_id: str) -> None:
@@ -63,19 +65,43 @@ async def advance(ports: RuntimePorts, conversation_id: str, user_id: str) -> No
         await _hold(ports, claim)
 
 
+async def fold_history(ports: RuntimePorts, conversation_id: str, user_id: str) -> None:
+    """Fold the settled comms thread past its budget into its summary, on no reply's path.
+
+    The summary is written under the step's claim, so no turn writes the thread meanwhile;
+    a turn that starts first reads the thread unfolded and asks again once it settles.
+    """
+    state = await ports.log.state(conversation_id, user_id)
+    pinned = await ports.log.pinned(conversation_id, user_id)
+    plan = await ports.runner.plan_fold(conversation_id, user_id, Kept(state.owed_answers, pinned))
+    if plan is None:
+        return
+    claim = await ports.log.claim(conversation_id, user_id)
+    if claim is None:
+        return
+    with contextlib.suppress(ClaimLost):
+        log.set(history_fold={"applied": await ports.runner.apply_fold(claim, plan)})
+        # Whatever arrived while the claim was held is served, as by any step.
+        await _hold(ports, claim)
+
+
 async def _hold(ports: RuntimePorts, claim: StepClaim) -> None:
     """Serve batches until caught up, proving the claim alive from its own task the whole time."""
     beating = _keep_claim_alive(ports, claim)
+    served_any = False
     try:
         await _recover(ports, claim)
         known: StepView | None = None
         for number in itertools.count(1):
             served, known = await _serve(ports, claim, f"{claim.epoch}.{number}", known)
+            served_any |= served
             if served:
                 continue
             # Stopped first: a beat after the release deleted the key would cancel this step.
             beating.cancel()
             if await ports.log.release_if_caught_up(claim):
+                if served_any:
+                    await ports.effects.fold_history(claim.conversation_id, claim.user_id)
                 return
             beating = _keep_claim_alive(ports, claim)
     except asyncio.CancelledError:

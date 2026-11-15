@@ -19,6 +19,13 @@ class LogReads(MongoLogBase):
             raise not_found(conversation_id)
         return entries
 
+    async def pinned(self, conversation_id: str, user_id: str) -> Sequence[LoggedEntry]:
+        """Return the user messages and replies the user pinned, in order."""
+        entries = await self._repository.read_pinned(conversation_id, user_id=user_id)
+        if entries is None:
+            raise not_found(conversation_id)
+        return entries
+
     async def state(self, conversation_id: str, user_id: str) -> ConversationState:
         """Return the conversation's current state."""
         return (await self._head(conversation_id, user_id)).state

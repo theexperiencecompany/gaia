@@ -11,7 +11,9 @@
  *   its first message a native reply to that user message's platform message;
  * - a user item's reaction becomes a native reaction on it;
  * - a work item's open approvals are asked in chat once each, numbered among every open one,
- *   and its browser run's cards are shown as they arrive (browser-progress.ts);
+ *   and its browser run's cards are shown to the requester as they arrive (browser-progress.ts);
+ * - a usage limit the run hit is one line with the upgrade link (rate-limit-notice.ts);
+ * - notices, and replies the platform's message window has closed on, go through sendNotice;
  * - the typing indicator runs while GAIA is thinking or working.
  *
  * Items at or below the floor (the seq the follow started after) in the screen the
@@ -24,7 +26,9 @@ import type {
   ApprovalRequested,
   NoticeItem,
   PartialReply,
+  ReplyFile,
   ReplyItem,
+  ToolDataEntry,
   UserItem,
 } from "../../api/generated";
 import { SCREEN_ITEM_KIND } from "../../conversation/entries";
@@ -35,9 +39,9 @@ import type {
   ScreenItem,
 } from "../../conversation/types";
 import { applyFrame, EMPTY_CONVERSATION_VIEW } from "../../conversation/view";
-import { REPLY_FAILURE_LINE } from "../utils/error-lines";
+import { isChatGone } from "../utils/failure-reasons";
 import { PLATFORM_MARKDOWN } from "../utils/formatters";
-import { createBotLogger } from "../utils/logger";
+import { createBotLogger, sanitizeErrorForLog } from "../utils/logger";
 import { REACTION_OUTCOME } from "../utils/reaction-outcome";
 import { chunkResponse } from "../utils/text";
 import { formatApprovalPrompt } from "./approval-prompt";
@@ -47,8 +51,10 @@ import type {
   FollowStart,
   FollowSummary,
   FollowSurface,
+  PrivateSurface,
   StreamingOptions,
 } from "./follower.types";
+import { rateLimitNotices } from "./rate-limit-notice";
 import { ReplyDelivery } from "./reply-delivery";
 
 const logger = createBotLogger("shared", "conversation-follower");
@@ -98,6 +104,8 @@ export class ConversationFollower {
   private readonly deliveredReplies = new Set<string>();
   /** The emoji GAIA has on each user message, by entry id. */
   private readonly placed = new Map<string, string>();
+  /** Work items whose usage limit was told: a limit ends the work, so it is told once. */
+  private readonly limitTold = new Set<string>();
   /** Each work item's browser run, by item id. */
   private readonly browserRuns = new Map<string, BrowserProgress>();
   private stopTyping: (() => void) | null = null;
@@ -254,8 +262,10 @@ export class ConversationFollower {
       if (item.kind === SCREEN_ITEM_KIND.WORK && item.asked_seq <= this.floor)
         for (const request of item.asking) this.asked.add(request.approval_id);
       if (item.seq > this.floor) continue;
-      if (item.kind === SCREEN_ITEM_KIND.WORK)
+      if (item.kind === SCREEN_ITEM_KIND.WORK) {
         this.browserRun(item.id).skip(browserCards(item.tool_data));
+        this.limitTold.add(item.id);
+      }
       if (item.kind === SCREEN_ITEM_KIND.USER && item.message.reaction)
         this.placed.set(item.id, item.message.reaction.emoji);
       if (item.kind === SCREEN_ITEM_KIND.REPLY && item.outcome !== null)
@@ -285,6 +295,7 @@ export class ConversationFollower {
           )
             await this.askApproval();
           await this.browserRun(item.id).render(browserCards(item.tool_data));
+          await this.tellLimit(item.id, item.tool_data);
           break;
         case SCREEN_ITEM_KIND.NOTICE:
           await this.sendNotice(item);
@@ -325,22 +336,38 @@ export class ConversationFollower {
       this.summary.noticesDelivered += 1;
   }
 
-  /** Send lines outside a reply, chunked for the platform; false when there was nothing to send. */
-  private async sendLines(lines: readonly string[]): Promise<boolean> {
-    const { platform } = this.options;
+  /** Send lines outside a reply, chunked and rendered for the platform; false when there was nothing to send. */
+  private async sendLines(
+    lines: readonly string[],
+    to: Pick<PrivateSurface, "sendNotice"> = this.surface,
+  ): Promise<boolean> {
+    const render = PLATFORM_MARKDOWN[this.options.platform];
     const bubbles = lines.flatMap((line) =>
-      chunkResponse(line, platform, PLATFORM_MARKDOWN[platform]),
+      chunkResponse(line, this.options.platform, render).map(render),
     );
     if (bubbles.length === 0) return false;
-    await this.surface.sendNotice(bubbles);
+    await to.sendNotice(bubbles);
     return true;
+  }
+
+  /** Tell the usage limit a work item's run hit, once per item. */
+  private async tellLimit(
+    itemId: string,
+    cards: readonly ToolDataEntry[],
+  ): Promise<void> {
+    if (this.limitTold.has(itemId)) return;
+    const lines = rateLimitNotices(cards, this.surface.links);
+    if (lines.length === 0) return;
+    this.limitTold.add(itemId);
+    await this.sendLines(lines);
   }
 
   private browserRun(itemId: string): BrowserProgress {
     let run = this.browserRuns.get(itemId);
     if (!run) {
-      run = new BrowserProgress(this.surface, async (lines) => {
-        await this.sendLines(lines);
+      const { requester } = this.surface;
+      run = new BrowserProgress(requester, async (lines) => {
+        await this.sendLines(lines, requester);
       });
       this.browserRuns.set(itemId, run);
     }
@@ -401,6 +428,29 @@ export class ConversationFollower {
     if (this.finishedReplies.has(reply.id)) return;
     this.finishedReplies.add(reply.id);
     this.clearPreview();
+    const tail = [
+      ...rateLimitNotices(reply.tool_data, this.surface.links),
+      ...(reply.failure_line ? [reply.failure_line] : []),
+    ];
+    const says = reply.bubbles.length > 0 || tail.length > 0;
+    if (says && !this.open && (await this.surface.windowClosed())) {
+      // Outside the platform's window only the approved template reaches the user.
+      if (await this.sendLines([...reply.bubbles, ...tail]))
+        this.summary.repliesDelivered += 1;
+    } else {
+      await this.streamReply(reply);
+      await this.sendLines(tail);
+    }
+    for (const file of reply.files) {
+      // react-doctor-disable-next-line async-await-in-loop -- files follow the reply in the order it attached them
+      await this.sendFile(file);
+    }
+    this.deliveredReplies.add(reply.id);
+    this.progress = null;
+  }
+
+  /** Put a settled reply's bubbles on the platform, after whatever of it already streamed. */
+  private async streamReply(reply: ReplyItem): Promise<void> {
     const delivery = this.open?.delivery ?? this.newDelivery(reply);
     this.open = null;
     if (!sameBubbles(delivery.streamed, reply.bubbles)) {
@@ -409,20 +459,21 @@ export class ConversationFollower {
     }
     await delivery.end();
     if (delivery.opened) this.summary.repliesDelivered += 1;
-    for (const file of reply.files) {
-      // react-doctor-disable-next-line async-await-in-loop -- files follow the reply in the order it attached them
+  }
+
+  /** Upload a reply's file; one the platform will not take is named with where to open it. */
+  private async sendFile(file: ReplyFile): Promise<void> {
+    try {
       await this.surface.sendFile(this.conversationId, file);
       this.summary.filesDelivered += 1;
+    } catch (error) {
+      if (isChatGone(error)) throw error;
+      logger.warn("reply_file_failed", sanitizeErrorForLog(error));
+      const name = file.path.split("/").pop() ?? file.path;
+      await this.sendLines([
+        `I couldn't send ${name} here. Open it in GAIA: ${this.surface.links.conversation}`,
+      ]);
     }
-    if (reply.failure) {
-      const { platform } = this.options;
-      await this.surface.send(
-        PLATFORM_MARKDOWN[platform](REPLY_FAILURE_LINE[reply.failure]),
-        null,
-      );
-    }
-    this.deliveredReplies.add(reply.id);
-    this.progress = null;
   }
 
   /** The platform message of the user message a reply quotes, when this follow holds it. */

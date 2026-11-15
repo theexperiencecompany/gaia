@@ -15992,6 +15992,17 @@
               }
             ]
           },
+          "failure_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Line"
+          },
           "files": {
             "items": {
               "$ref": "#/components/schemas/ReplyFile"
@@ -16098,6 +16109,7 @@
           "quote",
           "outcome",
           "failure",
+          "failure_line",
           "narrates",
           "retry_target",
           "files"

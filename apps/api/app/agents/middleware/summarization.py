@@ -30,6 +30,7 @@ from langchain_core.messages import (
     get_buffer_string,
 )
 from langchain_core.messages.utils import count_tokens_approximately
+from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
@@ -152,13 +153,20 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
     async def abefore_model(
         self, state: AgentState[object], runtime: Runtime[None]
     ) -> SummaryUpdate | None:
-        """Fold the oldest turns into one summary; the leading slots are never touched.
+        """Fold the oldest turns into one summary before the model call, past the trigger."""
+        # Runtime carries no config (LangGraph's Runtime deliberately omits it); get_config() does.
+        del runtime
+        return await self.afold(state, get_config())
 
-        A folded turn's notes (recall, clock, presence) go with it, unsummarized.
-        The update is an in-place delta (summary takes the first folded id, the rest
-        are removed) so the checkpoint keeps it ahead of the preserved tail.
+    async def afold(
+        self, state: AgentState[object], config: RunnableConfig
+    ) -> SummaryUpdate | None:
+        """Return the fold of state's oldest turns into one summary, or None under the trigger.
+
+        The leading slots are never touched; a folded turn's notes (recall, clock, presence)
+        go with it, unsummarized. The update is an in-place delta (summary takes the first
+        folded id, the rest are removed) so the checkpoint keeps it ahead of the kept tail.
         """
-        del runtime  # framework contract; the archive reads config via get_config()
         if not self._should_trigger_summarization(state):
             return None
 
@@ -188,7 +196,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         summary_message = self._build_new_messages(summary_text)[0]
         summary_message.id = summarized[0].id
         if self.archive is not None:
-            archive_path = await self._archive_or_none(state)
+            archive_path = await self._archive_or_none(state, config)
             if archive_path:
                 _inject_archive_path(summary_message, archive_path, self.archive)
         return {
@@ -263,10 +271,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             return None
         return text
 
-    async def _archive_or_none(self, state: AgentState[object]) -> str | None:
+    async def _archive_or_none(
+        self, state: AgentState[object], config: RunnableConfig
+    ) -> str | None:
         """Archive the full history; a failed archive is reported and never blocks the summary."""
         try:
-            return await self._archive(state)
+            return await self._archive(state, config)
         except JuiceFSUnavailable as e:
             log.warning(
                 f"{LogTag.AGENT} Archive skipped (workspace unavailable)",
@@ -290,12 +300,9 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         ]
         return self._should_summarize(filtered, self.token_counter(filtered))
 
-    async def _archive(self, state: AgentState[object]) -> str:
+    async def _archive(self, state: AgentState[object], config: RunnableConfig) -> str:
         messages = [m for m in state.get("messages", []) if not is_gaia_authored_note(m)]
-        # `runtime` carries no config (LangGraph's `Runtime` deliberately omits
-        # it) — reading it from there once raised "requires 'user_id'" silently.
-        # `get_config()` is the supported accessor, as LLMAccountingMiddleware uses.
-        configurable: AgentConfigurable = agent_configurable(get_config())
+        configurable: AgentConfigurable = agent_configurable(config)
         user_id = configurable.get("user_id")
         thread_id = configurable.get("thread_id")
         conversation_id = configurable.get("vfs_session_id") or thread_id
