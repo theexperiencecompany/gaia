@@ -7392,7 +7392,7 @@ export interface components {
             edition_image_url: string | null;
             /**
              * Edition Name
-             * @description Air Mail only: the family's name; None for every other family.
+             * @description The daily edition family's name; None for the weekly recap and a quiet note.
              */
             edition_name: string | null;
             /** Edition Paper */

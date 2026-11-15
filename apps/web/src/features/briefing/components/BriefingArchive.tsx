@@ -166,7 +166,6 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
             {group.briefings.map((briefing) => (
               <li key={briefing.id}>
                 <BriefingFold
-                  tone="bare"
                   brief={foldedBriefOf(briefing)}
                   payload={briefing.payload}
                   briefingId={briefing.id}

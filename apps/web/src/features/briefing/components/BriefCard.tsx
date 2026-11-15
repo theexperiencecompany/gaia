@@ -31,8 +31,13 @@ const NOTABLE_NEEDS_YOU = 3;
 const TONE_CLASSES = {
   raised: "bg-zinc-800",
   inset: "bg-zinc-900",
-  bare: "bg-transparent",
 } as const;
+
+/** The preview sits one step off the card it is in, so the edition reads as its own sheet. */
+const PREVIEW_TONE_CLASSES: Record<BriefCardTone, string> = {
+  raised: "bg-zinc-900",
+  inset: "bg-zinc-800",
+};
 
 const KIND_LABELS = { daily: "Daily", weekly: "Weekly" } as const;
 
@@ -40,7 +45,7 @@ export type BriefCardTone = keyof typeof TONE_CLASSES;
 
 interface BriefCardProps {
   brief: FoldedBriefSummary;
-  /** "raised" on the page background, "inset" inside a zinc-800 card, "bare" where the page itself groups the cards. */
+  /** "raised" on the page background, "inset" inside a zinc-800 card. */
   tone?: BriefCardTone;
   isBusy?: boolean;
   onPress: () => void;
@@ -65,23 +70,31 @@ function editionLabel(brief: FoldedBriefSummary): string | null {
   );
 }
 
-/** The edition's masthead. */
-function Preview({ imageUrl }: { imageUrl?: string | null }) {
+/** The edition's masthead, on a well one step off the card. */
+function Preview({
+  imageUrl,
+  tone,
+}: {
+  imageUrl?: string | null;
+  tone: BriefCardTone;
+}) {
   return (
-    <div className="relative aspect-[3/2] overflow-hidden rounded-[10px] bg-zinc-700/40 transition-[filter] duration-200 ease-out group-data-[hover=true]:brightness-110">
-      {imageUrl ? (
-        <Image
-          src={imageUrl}
-          alt=""
-          fill
-          sizes="(max-width: 640px) 50vw, 240px"
-          className="object-cover object-top"
-        />
-      ) : (
-        <span className="absolute inset-0 flex items-center justify-center">
-          <NewsIcon className="size-6 text-zinc-500" />
-        </span>
-      )}
+    <div className={cn("rounded-[10px] p-1.5", PREVIEW_TONE_CLASSES[tone])}>
+      <div className="relative aspect-[3/2] overflow-hidden rounded-[4px] transition-[filter] duration-200 ease-out group-data-[hover=true]:brightness-110">
+        {imageUrl ? (
+          <Image
+            src={imageUrl}
+            alt=""
+            fill
+            sizes="(max-width: 640px) 50vw, 240px"
+            className="object-cover object-top"
+          />
+        ) : (
+          <span className="absolute inset-0 flex items-center justify-center">
+            <NewsIcon className="size-6 text-zinc-500" />
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -112,7 +125,7 @@ export function BriefCard({
         TONE_CLASSES[tone],
       )}
     >
-      <Preview imageUrl={brief.imageUrl} />
+      <Preview imageUrl={brief.imageUrl} tone={tone} />
       <span className="flex min-w-0 flex-1 flex-col gap-1 px-1.5 pt-2 pb-1">
         {(date || needsYou >= NOTABLE_NEEDS_YOU) && (
           <span className="flex items-baseline justify-between gap-2 text-xs text-zinc-500">

@@ -1,27 +1,27 @@
 """The archive's view of a stored brief, and the folded card its notification and chat message carry."""
 
-from app.constants.briefing import POSTAL_FAMILY
 from app.models.briefing_models import (
     NEEDS_YOU_ITEM_KINDS,
     BriefingCardData,
     BriefingModel,
     BriefingView,
 )
+from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.explorer_render import explorer_family_names
 from app.services.briefing.editions.stamps import stamp_catalogue
 
 
 def briefing_view(briefing: BriefingModel) -> BriefingView:
-    """Name an Air Mail brief's family and stamp city, and count what needs the user.
+    """Name the brief's edition and, for Air Mail, its stamp city, and count what needs the user.
 
-    Every other family's name is the design explorer's, so it stays off the card.
+    An edition is named as the editions settings list it; the weekly recap carries its kind instead.
     """
     payload = briefing.payload
     city = stamp_catalogue().get(payload.stamp_city) if payload.stamp_city else None
     return BriefingView(
         **briefing.model_dump(),
-        edition_name=explorer_family_names()[POSTAL_FAMILY]
-        if payload.template_family == POSTAL_FAMILY
+        edition_name=explorer_family_names()[payload.template_family]
+        if payload.template_family in DAILY_FAMILY_WEIGHTS
         else None,
         stamp_city_name=city.name if city else None,
         needs_you_count=sum(

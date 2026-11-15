@@ -2935,7 +2935,7 @@
                 "type": "null"
               }
             ],
-            "description": "Air Mail only: the family's name; None for every other family.",
+            "description": "The daily edition family's name; None for the weekly recap and a quiet note.",
             "title": "Edition Name"
           },
           "edition_paper": {
