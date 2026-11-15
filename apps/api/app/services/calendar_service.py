@@ -269,18 +269,24 @@ async def _resolve_selected_calendars(
 ) -> list[GoogleCalendarListEntry]:
     """Resolve the calendars a read covers.
 
-    An explicit selection filters this read only. Otherwise the stored selection
-    is used and rewritten to the ids it really names. A selection naming no
-    listed calendar, or no selection at all, covers every calendar.
+    An explicit selection filters this read only and covers just the calendars it
+    names. Otherwise the stored selection is used and rewritten to the ids it
+    really names; one naming no listed calendar, or none stored, covers every calendar.
     """
-    if selected_calendars:
-        requested = selected_calendars
-    else:
-        preferences = await calendar_repository.get_for_user(user_id)
-        requested = preferences.selected_calendars if preferences is not None else []
+    if selected_calendars is not None:
+        matched, stale_ids = _match_calendars(calendars, selected_calendars)
+        if stale_ids:
+            log.warning(
+                "Calendar filter names no listed calendar",
+                user_id=user_id,
+                stale_calendar_ids=stale_ids,
+            )
+        return matched
 
-    matched, stale_ids = _match_calendars(calendars, requested)
-    if requested and not matched:
+    preferences = await calendar_repository.get_for_user(user_id)
+    loaded = preferences.selected_calendars if preferences is not None else None
+    matched, stale_ids = _match_calendars(calendars, loaded or [])
+    if loaded and not matched:
         log.warning(
             "Calendar selection names no listed calendar, reading every calendar",
             user_id=user_id,
@@ -289,8 +295,8 @@ async def _resolve_selected_calendars(
     resolved = matched or calendars
 
     resolved_ids = [cal.id for cal in resolved]
-    if not selected_calendars and set(resolved_ids) != set(requested):
-        await calendar_repository.set_selected_calendars(user_id, resolved_ids)
+    if set(resolved_ids) != set(loaded or []):
+        await calendar_repository.repair_selected_calendars(user_id, loaded, resolved_ids)
     return resolved
 
 

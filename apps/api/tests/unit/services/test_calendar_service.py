@@ -117,8 +117,8 @@ class TestCalendarSelectionResolution:
 
         assert _requested_calendar_ids(mock_fetch_events) == [TEAMMATE_PRIMARY_ID]
         assert result.selected_calendars == [TEAMMATE_PRIMARY_ID]
-        mock_calendar_repo.set_selected_calendars.assert_awaited_once_with(
-            USER_ID, [TEAMMATE_PRIMARY_ID]
+        mock_calendar_repo.repair_selected_calendars.assert_awaited_once_with(
+            USER_ID, ["primary"], [TEAMMATE_PRIMARY_ID]
         )
 
     async def test_stored_ids_google_no_longer_lists_are_dropped(
@@ -130,8 +130,8 @@ class TestCalendarSelectionResolution:
         await get_calendar_events(USER_ID)
 
         assert _requested_calendar_ids(mock_fetch_events) == [TEAM_CALENDAR_ID]
-        mock_calendar_repo.set_selected_calendars.assert_awaited_once_with(
-            USER_ID, [TEAM_CALENDAR_ID]
+        mock_calendar_repo.repair_selected_calendars.assert_awaited_once_with(
+            USER_ID, [TEAM_CALENDAR_ID, "deleted-cal"], [TEAM_CALENDAR_ID]
         )
 
     async def test_stored_selection_matching_nothing_warns_and_reads_every_calendar(
@@ -166,8 +166,8 @@ class TestCalendarSelectionResolution:
             TEAMMATE_PRIMARY_ID,
         ]
         mock_log.warning.assert_not_called()
-        mock_calendar_repo.set_selected_calendars.assert_awaited_once_with(
-            USER_ID, [TEAM_CALENDAR_ID, TEAMMATE_PRIMARY_ID]
+        mock_calendar_repo.repair_selected_calendars.assert_awaited_once_with(
+            USER_ID, None, [TEAM_CALENDAR_ID, TEAMMATE_PRIMARY_ID]
         )
 
     async def test_a_valid_stored_selection_is_not_rewritten(
@@ -178,7 +178,7 @@ class TestCalendarSelectionResolution:
 
         await get_calendar_events(USER_ID)
 
-        mock_calendar_repo.set_selected_calendars.assert_not_awaited()
+        mock_calendar_repo.repair_selected_calendars.assert_not_awaited()
 
     async def test_an_explicit_selection_filters_one_read_without_overwriting_the_preference(
         self, mock_proxy, mock_calendar_repo, mock_fetch_events
@@ -187,11 +187,44 @@ class TestCalendarSelectionResolution:
         mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
         mock_calendar_repo.get_for_user.return_value = _prefs([TEAM_CALENDAR_ID])
 
-        result = await get_calendar_events(USER_ID, selected_calendars=["primary"])
+        with patch("app.services.calendar_service.log") as mock_log:
+            result = await get_calendar_events(USER_ID, selected_calendars=["primary"])
 
+        mock_log.warning.assert_not_called()
         assert _requested_calendar_ids(mock_fetch_events) == [TEAMMATE_PRIMARY_ID]
         assert result.selected_calendars == [TEAMMATE_PRIMARY_ID]
         mock_calendar_repo.set_selected_calendars.assert_not_awaited()
+        mock_calendar_repo.repair_selected_calendars.assert_not_awaited()
+
+    async def test_an_explicit_selection_naming_no_listed_calendar_reads_nothing(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
+        mock_calendar_repo.get_for_user.return_value = _prefs([TEAM_CALENDAR_ID])
+
+        with patch("app.services.calendar_service.log") as mock_log:
+            result = await get_calendar_events(USER_ID, selected_calendars=["removed-calendar"])
+
+        mock_fetch_events.assert_not_awaited()
+        assert result.events == []
+        assert result.selected_calendars == []
+        mock_log.warning.assert_called_once_with(
+            "Calendar filter names no listed calendar",
+            user_id=USER_ID,
+            stale_calendar_ids=["removed-calendar"],
+        )
+
+    async def test_an_explicit_empty_selection_reads_nothing(
+        self, mock_proxy, mock_calendar_repo, mock_fetch_events
+    ):
+        mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
+        mock_calendar_repo.get_for_user.return_value = _prefs([TEAM_CALENDAR_ID])
+
+        result = await get_calendar_events(USER_ID, selected_calendars=[])
+
+        mock_fetch_events.assert_not_awaited()
+        assert result.selected_calendars == []
+        mock_calendar_repo.get_for_user.assert_not_awaited()
 
     async def test_search_resolves_the_stored_primary_alias(self, mock_proxy, mock_calendar_repo):
         mock_proxy.return_value = TEAMMATE_CALENDAR_LIST
@@ -743,7 +776,9 @@ class TestGetCalendarEvents:
         ) as mock_fetch:
             mock_fetch.return_value = GoogleCalendarEventsPage()
             await get_calendar_events(USER_ID)
-        mock_calendar_repo.set_selected_calendars.assert_awaited_once()
+        mock_calendar_repo.repair_selected_calendars.assert_awaited_once_with(
+            USER_ID, None, ["c1", "c2"]
+        )
 
 
 class TestGetCalendarEventsById:
