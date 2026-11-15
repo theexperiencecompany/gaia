@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import JsonLd from "@/components/seo/JsonLd";
 import { MarketplaceDirectory } from "@/features/integrations/components/MarketplaceDirectory";
 import { marketplaceDirectoryPages } from "@/features/integrations/lib/marketplaceDirectoryPages";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import {
   getAllCommunityIntegrations,
   getNativeIntegrations,
@@ -16,7 +17,6 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
-
 import { IntegrationsPageClient } from "./client";
 
 const PAGE_TITLE = "AI Integration Marketplace: Connect Your Tools to GAIA";
@@ -74,7 +74,7 @@ export default async function MarketplacePage() {
       ? generateItemListSchema(
           topIntegrations.map((integration) => ({
             name: `${integration.name} AI Integration`,
-            url: `${siteConfig.url}/marketplace/${integration.slug}`,
+            url: `${siteConfig.url}${marketplacePath(integration.slug)}`,
           })),
         )
       : null;

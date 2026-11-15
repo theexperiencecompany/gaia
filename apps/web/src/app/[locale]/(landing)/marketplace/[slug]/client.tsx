@@ -26,8 +26,8 @@ interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
   comparisonSlug?: string;
   alternativeSlug?: string;
-  /** Server-fetched so related links render in SSR HTML for crawlers. */
-  initialRelatedIntegrations?: CommunityIntegration[];
+  /** Server-picked so related links render in SSR HTML for crawlers. */
+  relatedIntegrations: CommunityIntegration[];
   /** Server-fetched so related links render in SSR HTML for crawlers. */
   initialRelatedWorkflows?: CommunityWorkflow[];
   /** Matching automate combos from local JSON (no backend needed). */
@@ -40,7 +40,7 @@ export function IntegrationDetailClient({
   integration,
   comparisonSlug,
   alternativeSlug,
-  initialRelatedIntegrations,
+  relatedIntegrations,
   initialRelatedWorkflows,
   automateCombos,
   docsGuides,
@@ -94,11 +94,7 @@ export function IntegrationDetailClient({
             alternativeSlug={alternativeSlug}
           />
 
-          <IntegrationRelatedIntegrations
-            currentSlug={integration.slug}
-            category={integration.category}
-            initialIntegrations={initialRelatedIntegrations}
-          />
+          <IntegrationRelatedIntegrations integrations={relatedIntegrations} />
 
           {automateCombos && automateCombos.length > 0 && (
             <IntegrationAutomateGuides combos={automateCombos} />

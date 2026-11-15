@@ -20,6 +20,7 @@ import {
   MARKETPLACE_PATH,
   marketplaceDirectoryPages,
 } from "@/features/integrations/lib/marketplaceDirectoryPages";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import {
   getAllCommunityIntegrations,
   getNativeIntegrations,
@@ -229,7 +230,7 @@ async function getIntegrationPages(
   }));
   return [
     ...integrations.map((integration) => ({
-      url: `${baseUrl}/marketplace/${integration.slug}`,
+      url: `${baseUrl}${marketplacePath(integration.slug)}`,
       ...(integration.publishedAt
         ? { lastModified: new Date(integration.publishedAt) }
         : {}),
@@ -362,7 +363,7 @@ async function getNativeIntegrationPages(
 ): Promise<MetadataRoute.Sitemap> {
   const integrations = await getNativeIntegrations();
   return integrations.map((integration) => ({
-    url: `${baseUrl}/marketplace/${integration.slug}`,
+    url: `${baseUrl}${marketplacePath(integration.slug)}`,
     changeFrequency: "weekly" as const,
     priority: 0.8,
   }));

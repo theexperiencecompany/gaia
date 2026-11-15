@@ -3,7 +3,8 @@ import { useState } from "react";
 
 interface ProgressiveImageProps {
   webpSrc: string;
-  pngSrc: string;
+  /** A sharper PNG faded in over the webp once loaded; omit to ship the webp alone. */
+  pngSrc?: string;
   alt: string;
   className?: string;
   shouldHaveInitialFade?: boolean;
@@ -11,6 +12,7 @@ interface ProgressiveImageProps {
   sizes?: string | null;
   width?: number;
   height?: number;
+  quality?: number;
 }
 
 /**
@@ -27,6 +29,7 @@ export default function ProgressiveImage({
   sizes = "100vw",
   width = 1920,
   height = 1080,
+  quality,
 }: ProgressiveImageProps) {
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -39,6 +42,7 @@ export default function ProgressiveImage({
         alt={`${alt} webp`}
         width={width}
         height={height}
+        quality={quality}
         priority={priority}
         fetchPriority={priority ? "high" : undefined}
         sizes={sizes ?? undefined}
@@ -51,12 +55,13 @@ export default function ProgressiveImage({
           priority so it never competes with the LCP image (the webp) for
           bandwidth — even on priority heroes. This keeps the quality upgrade
           without pushing out Largest Contentful Paint. */}
-      {pngSrc !== webpSrc && (
+      {pngSrc && (
         <NextImage
           src={pngSrc}
           alt={`${alt} png`}
           width={width}
           height={height}
+          quality={quality}
           sizes={sizes ?? undefined}
           loading="lazy"
           fetchPriority="low"
