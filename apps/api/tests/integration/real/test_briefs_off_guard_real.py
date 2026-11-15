@@ -176,15 +176,23 @@ class TestBriefsOffGuard:
             SettingsBriefsOffResolved(moved_to_now=2, moved_to_silent=1, via="settings"),
         )
 
-    async def test_weekly_only_stays_allowed_with_brief_workflows(
+    async def test_weekly_only_moves_brief_workflows_to_tell_me_now(
         self, client: AsyncClient, mongo_db, captured: MagicMock
     ) -> None:
-        await _seed(mongo_db, "Morning news", WorkflowDelivery.BRIEF)
+        """With no daily brief to hold them, their results go out at once, so the setting says so."""
+        news = await _seed(mongo_db, "Morning news", WorkflowDelivery.BRIEF)
+        quiet = await _seed(mongo_db, "Quiet log", WorkflowDelivery.SILENT)
+        theirs = await _seed(mongo_db, "Someone else's", WorkflowDelivery.BRIEF, OTHER_USER_ID)
 
         response = await client.put(SCHEDULE_URL, json={"frequency": "weekly_only", "hour": 9})
 
         assert response.status_code == 200
         assert await _stored_schedule(mongo_db) == {"frequency": "weekly_only", "hour": 9}
+        assert [await _delivery(mongo_db, w) for w in (news, quiet, theirs)] == [
+            "now",
+            "silent",
+            "brief",
+        ]
 
     @pytest.mark.parametrize("delivery", ["brief", "silent"])
     async def test_new_deliveries_only_come_with_turning_briefs_off(
