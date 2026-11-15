@@ -62,12 +62,15 @@ box, read from the runner name `gaia-home-<n>` and never from
 `cpu-slots.sh` (the host CPU governor, below),
 `service-images.sh` (the digest-pinned test-service images),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
-`CHANGED_FILES` contract), `bots-facts.mjs` + `evlog-map-bots.mjs` (the bots
+`CHANGED_FILES` contract), `checks-commands.mjs` (every `checks.mjs`
+subcommand but `bot-handles`; the entry loads it only once node_modules is
+installed and otherwise names the install command, so a fresh worktree gets one
+line instead of a module-resolution stack), `bots-facts.mjs` + `evlog-map-bots.mjs` (the bots
 observability scanner behind `checks.mjs evlog-map-bots`),
 `api-contract.mjs` (the twin/boundary detector behind `checks.mjs
 api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
-left in checks.mjs), `heroui-usage.mjs` (the HeroUI rules behind `checks.mjs heroui-style-overrides` and `heroui-usage`, on one parse and binding table), `doc-comments.mjs` (the JSDoc/line-comment content gate
+left in checks-commands.mjs), `heroui-usage.mjs` (the HeroUI rules behind `checks.mjs heroui-style-overrides` and `heroui-usage`, on one parse and binding table), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
 regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
 `cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and

@@ -44,6 +44,12 @@ SCOPED_FILES_MAX = 300
 # an env var or job output: Linux refuses one env string over 128 KiB
 # (MAX_ARG_STRLEN), and a 233-file PR's map was 139,600 bytes.
 TASK_FILES_ENV = "TASK_FILES_PATH"
+# pnpm records a finished install here; the workspace's nx and its plugins are in it.
+PNPM_INSTALL_MARKER = REPO_ROOT / "node_modules" / ".modules.yaml"
+
+
+class NxUnavailableError(RuntimeError):
+    """nx gave no answer: the workspace is not installed, or nx failed before answering."""
 
 
 @dataclass(frozen=True)
@@ -89,14 +95,24 @@ def _target(task: str) -> str:
 
 
 def _nx(*args: str) -> str:
-    return subprocess.run(
+    if not PNPM_INSTALL_MARKER.is_file():
+        raise NxUnavailableError(
+            f"node_modules is not installed in {REPO_ROOT}, so nx cannot run. "
+            "Run: pnpm install --frozen-lockfile"
+        )
+    nx = subprocess.run(
         ["pnpm", "exec", "nx", *args],
         cwd=REPO_ROOT,
         env={**os.environ, "NX_NO_CLOUD": "true", "NX_DAEMON": "false"},
         capture_output=True,
         text=True,
-        check=True,
-    ).stdout
+        check=False,
+    )
+    if nx.returncode != 0:
+        raise NxUnavailableError(
+            f"nx {args[0]} exited {nx.returncode}:\n{(nx.stderr or nx.stdout).strip()}"
+        )
+    return nx.stdout
 
 
 def _json_after_banner(out: str, opener: str) -> object:

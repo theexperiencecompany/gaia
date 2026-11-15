@@ -363,6 +363,23 @@ def test_api_schema_write_regenerates_without_judging(tmp_path: Path) -> None:
     assert (repo / OPENAPI_JSON).read_text() == '{"paths": {"/changed": {}}}'
 
 
+def test_api_schema_without_the_codegen_install_names_the_install_command(
+    tmp_path: Path,
+) -> None:
+    repo = _repo_beside_stubs(tmp_path)
+    _commit(repo, OPENAPI_JSON, '{"paths": {}}')
+    missing = tmp_path / "uninstalled" / "openapi-typescript"
+    env = {**_stub_generators(tmp_path, '{"paths": {}}', ""), "GAIA_OPENAPI_TS": str(missing)}
+
+    process = _run_env(repo, env, "api-schema")
+
+    assert process.returncode == 1
+    assert process.stderr.strip().splitlines() == [
+        f"❌ {missing} is missing. "
+        "Run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace"
+    ]
+
+
 def _schema_repo(tmp_path: Path) -> Path:
     repo = _repo(tmp_path)
     _commit(repo, OPENAPI_JSON, '{"components": {"schemas": {"TodoResponse": {}, "Todo": {}}}}')
@@ -1241,3 +1258,48 @@ def test_v3_usage_and_each_wrapper_in_its_own_file_pass(tmp_path: Path) -> None:
     process = _run(repo, "heroui-usage")
 
     assert process.returncode == 0, process.stdout
+
+
+# ---------------------------------------------------------------------------
+# A checkout with no node_modules: a fresh worktree, before `pnpm install`
+# ---------------------------------------------------------------------------
+
+
+def _run_uninstalled(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run a copy of checks.mjs that sits in `repo`, where no node_modules resolves."""
+    shutil.copytree(
+        REPO_ROOT / "scripts" / "ci",
+        repo / "scripts" / "ci",
+        ignore=shutil.ignore_patterns("tests", "__pycache__"),
+    )
+    return subprocess.run(
+        [NODE, str(repo / "scripts" / "ci" / "checks.mjs"), *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": os.environ["PATH"], "CHANGED_FILES": ""},
+    )
+
+
+def test_bot_handles_runs_before_node_modules_is_installed(tmp_path: Path) -> None:
+    """Regression: this always-run commit hook crashed every commit in a fresh worktree."""
+    repo = _handles_repo(tmp_path)
+    _add_text(repo, "README.md", "[WhatsApp](https://wa.me/12038429512)\n")
+
+    process = _run_uninstalled(repo, "bot-handles")
+
+    assert process.returncode == 0, process.stderr
+
+
+def test_a_check_that_needs_node_modules_names_the_install_command(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _add_text(repo, "src/a.ts", "export const a = 1;\n")
+
+    process = _run_uninstalled(repo, "doc-comments", "src/a.ts")
+
+    assert process.returncode == 1
+    assert process.stderr.strip().splitlines() == [
+        "❌ checks.mjs doc-comments: node_modules is not installed in this checkout. "
+        "Run: pnpm install --frozen-lockfile"
+    ]

@@ -60,9 +60,10 @@ function regenerateApiSchema() {
     process.env.GAIA_OPENAPI_TS || join(codegenDir, "node_modules", ".bin", "openapi-typescript");
   if (!existsSync(codegenBin)) {
     // Never pass on the committed schema when regeneration was skipped.
-    throw new Error(
-      `${codegenBin} is missing. Run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace`,
+    console.error(
+      `❌ ${codegenBin} is missing. Run: pnpm --dir tools/api-codegen install --frozen-lockfile --ignore-workspace`,
     );
+    process.exit(1);
   }
   execFileSync(
     codegenBin,
