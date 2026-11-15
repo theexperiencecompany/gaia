@@ -226,6 +226,8 @@ class TestDelivery:
             # 09:00 UTC is 14:30 in Kolkata, past a 9 AM brief: the first lands tomorrow.
             (BriefingSchedule(hour=9), "their first brief lands tomorrow at 9 AM."),
             (BriefingSchedule(hour=18), "their first brief lands today at 6 PM."),
+            # Noon is still ahead at 09:00 UTC but already past in Kolkata.
+            (BriefingSchedule(hour=12), "their first brief lands tomorrow at 12 PM."),
             # 14 Oct 2026 is a Wednesday: the weekly digest is Sunday's.
             (
                 BriefingSchedule(frequency=BriefingFrequency.WEEKLY_ONLY),
