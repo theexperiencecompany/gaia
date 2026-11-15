@@ -234,4 +234,6 @@ Use `generatePageMetadata({ noIndex: true })` for:
 - Thank-you / success pages
 - Any page with `?q=` or pagination query params that duplicate content
 
+A noindex page lives in the `app/[locale]/(unindexed)` route group, not here: it gets the same chrome without the layout's Organization and WebSite schema, which a noindexed page must not carry (squirrel's `crawl/schema-noindex-conflict`).
+
 Never set `noIndex` on public marketing or programmatic SEO pages.

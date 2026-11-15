@@ -13,6 +13,12 @@ export const BOT_LINKS: Record<BotPlatform, string> = {
   imessage: "/settings/linked-accounts",
 };
 
+/** iMessage is connected from a signed-in page, so a signed-out visitor signs up first; onboarding offers the connect step. */
+export const SIGNED_OUT_BOT_LINKS: Record<BotPlatform, string> = {
+  ...BOT_LINKS,
+  imessage: "/signup",
+};
+
 export interface BotAction {
   label: string;
   href: string;

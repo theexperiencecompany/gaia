@@ -71,8 +71,14 @@ MARKETPLACE_PAGE = re.compile(r"^/marketplace/[^/]+$")
 WIKI_LINK = re.compile(r"^\[\[[^\[\]'\"]+\]\]$")
 # One integration's page; the paginated hub (/marketplace/page/N) is ours and stays checked.
 SYNCED_DOC_RULES = frozenset(
-    {"content/placeholder-contact", "content/placeholder-text", "content/keyword-stuffing"}
+    {
+        "content/placeholder-contact",
+        "content/placeholder-text",
+        "content/keyword-stuffing",
+    }
 )
+# Of the size checks, only the one that counts the synced tool rows; the page shell's stay checked.
+SYNCED_DOC_CHECKS = frozenset({"perf/dom-size/dom-max-children"})
 BASELINE_HEADER = """\
 # squirrelscan's findings, which `scripts/ci/smoke-web.sh` holds to this file:
 # `<page path>\\t<rule id>/<check>[\\t<item>]`, one per line, `*` as the page of a
@@ -149,7 +155,8 @@ def _cron_as_markdown(seen: Observed, _pages: frozenset[str]) -> bool:
 
 def _synced_tool_docs(seen: Observed, _pages: frozenset[str]) -> bool:
     page = SITE_LOCALE.sub("", seen.finding.page)
-    return seen.finding.rule in SYNCED_DOC_RULES and bool(MARKETPLACE_PAGE.match(page))
+    synced = seen.finding.rule in SYNCED_DOC_RULES or seen.finding.check in SYNCED_DOC_CHECKS
+    return synced and bool(MARKETPLACE_PAGE.match(page))
 
 
 def _hub_word_count(seen: Observed, pages: frozenset[str]) -> bool:
@@ -183,12 +190,13 @@ IGNORED = (
     ),
     Ignore(
         "an integration page shows its tools' documentation as the API syncs it from the "
-        "provider (Composio), sample addresses included; it changes with no deploy of ours, "
-        "so no baseline can pin it",
+        "provider (Composio), sample addresses included, one row per tool; its text and size "
+        "change with no deploy of ours, so no baseline can pin them",
         "/marketplace/googlesheets gained jane@example.com and john@example.com from its "
         "Composio tool docs between two crawls on 2026-11-12, with no commit in between; "
         "/marketplace/linear's keyword-stuffing item flipped from 'issue' to 'linear' between "
-        "two CI runs on 2026-11-15, and /marketplace/twitter's [social] appeared on a CI-only change",
+        "two CI runs on 2026-11-15, /marketplace/twitter's [social] appeared on a CI-only change, "
+        "and /marketplace/gmail's dom-max-children read fixed, then new, on two runs of one commit",
         _synced_tool_docs,
     ),
     Ignore(

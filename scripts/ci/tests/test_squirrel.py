@@ -272,6 +272,7 @@ def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
         _row("/ja/marketplace/twitter", "content/placeholder-contact", "placeholder-contact", [{"id": "social"}]),
         _row("/marketplace/linear", "content/keyword-stuffing", "keyword-stuffing", [{"id": "linear"}]),
         _row("/ja/marketplace/linear", "content/keyword-stuffing", "keyword-stuffing", [{"id": "issue"}]),
+        _row("/marketplace/gmail", "perf/dom-size", "dom-max-children"),
     ],
 )  # fmt: skip
 def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -> None:
@@ -302,6 +303,7 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         _row("/b", "content/word-count", "word-count"),
         _row("/blog/launch", "content/placeholder-contact", "placeholder-contact", [{"id": "email"}]),
         _row("/marketplace/page/2", "content/placeholder-contact", "placeholder-contact", [{"id": "email"}]),
+        _row("/marketplace/gmail", "perf/dom-size", "dom-total-nodes"),
     ],
 )  # fmt: skip
 def test_the_same_rules_still_count_a_real_finding(tmp_path: Path, row: Row) -> None:
@@ -316,6 +318,7 @@ def test_the_same_rules_still_count_a_real_finding(tmp_path: Path, row: Row) -> 
         "/ja/compare/asana",
         "/blog/launch",
         "/marketplace/page/2",
+        "/marketplace/gmail",
     ]
     assert _ratchet(tmp_path, [row], "", pages=pages).returncode == 1
 

@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteLink } from "@/components/seo/SiteLink";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { BOT_LINKS } from "@/features/bots/constants";
+import { useBotLinks } from "@/features/bots/hooks/useBotLinks";
 
 import {
   ChatDemo,
@@ -210,7 +211,7 @@ const PLATFORMS: Platform[] = [
     icon: "/images/icons/macos/imessage.webp",
     primaryAction: {
       label: "Connect Your Number",
-      href: "/settings/linked-accounts",
+      href: BOT_LINKS.imessage,
     },
     phone: { screenBackground: "#FFFFFF" },
     demo: {
@@ -239,6 +240,11 @@ function BotsShowcaseDemo() {
   const [activeId, setActiveId] = useState<ChatPlatform>(PLATFORMS[0].id);
   const [userPaused, setUserPaused] = useState(false);
   const active = PLATFORMS.find((p) => p.id === activeId) ?? PLATFORMS[0];
+  const botLinks = useBotLinks();
+  const activeAction = {
+    ...active.primaryAction,
+    href: botLinks?.[active.id] ?? active.primaryAction.href,
+  };
 
   const sectionRef = useRef<HTMLDivElement>(null);
   const inView = useSectionInView(sectionRef, 0.25);
@@ -302,7 +308,7 @@ function BotsShowcaseDemo() {
 
       <FloatingCTA
         isFloating={isCtaFloating}
-        action={active.primaryAction}
+        action={activeAction}
         actionKey={active.id}
         iconSrc={active.icon}
         onPrev={handlePrev}

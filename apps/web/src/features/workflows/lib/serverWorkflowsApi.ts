@@ -14,7 +14,7 @@ export async function getExploreWorkflowsServer(limit: number) {
 }
 
 /** One page of community workflows. */
-export async function getCommunityWorkflowsServer(limit: number, offset = 0) {
+async function getCommunityWorkflowsServer(limit: number, offset = 0) {
   const client = serverApi();
   if (!client) return { workflows: [], total: 0 };
   const result = await client.GET("/api/v1/workflows/community", {
