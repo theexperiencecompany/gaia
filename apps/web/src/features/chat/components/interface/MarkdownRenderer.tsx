@@ -24,6 +24,7 @@ import {
 import { resolveArtifactSrc } from "@/features/chat/api/sessionFilesApi";
 import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
+import { remarkBareListMarker } from "@/features/chat/utils/remarkBareListMarker";
 import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";
 
@@ -67,6 +68,7 @@ const REMARK_PLUGINS = [
   remarkBreaks,
   remarkSmartypants,
   remarkSupersub,
+  remarkBareListMarker,
 ];
 
 interface MarkdownImageProps {
@@ -165,7 +167,7 @@ function buildMarkdownComponents(
       <hr className="my-8 border-t border-zinc-700" {...props} />
     ),
     p: ({ ...props }) => <p className="mb-4 last:mb-0" {...props} />,
-    li: ({ ...props }) => <li className="mb-2" {...props} />,
+    li: ({ ...props }) => <li className="mb-2 last:mb-0" {...props} />,
     img: MarkdownImageNode,
     pre: ({ ...props }) => <pre className="font-serif! text-wrap" {...props} />,
     table: ({ ...props }) => (

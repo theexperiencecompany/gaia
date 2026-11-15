@@ -353,8 +353,6 @@ const SAM_EMAIL = {
     { label: "Subject", value: '"Q3 numbers"' },
   ],
 };
-const PICK_SOME =
-  'Reply *yes* to all, *no* to all, or pick some: "yes 1 and 3".';
 
 describe("an approval the work waits on", () => {
   const asking = (...approvals: ReturnType<typeof approvalAsked>[]) =>
@@ -405,7 +403,7 @@ describe("an approval the work waits on", () => {
     expect(follower.finished).toBe(false);
   });
 
-  it("numbers every approval still open when another one arrives", async () => {
+  it("names only the new approval, under its number among every one still open", async () => {
     const { surface, calls } = recorder();
     const follower = new ConversationFollower(
       startAfter(0),
@@ -423,8 +421,28 @@ describe("an approval the work waits on", () => {
 
     expect(sent(calls).map(({ text }) => text)).toEqual([
       '*GAIA wants to send an email*\nTo: sam@x.com\nSubject: "Q3 numbers"\n\nReply *yes* to send it, or *no* to cancel.',
-      `*2 things need your OK:*\n1. Send an email to sam@x.com: "Q3 numbers"\n2. Book the 9am flight\n\n${PICK_SOME}`,
-      `*2 things need your OK:*\n1. Book the 9am flight\n2. Pay the invoice\n\n${PICK_SOME}`,
+      '*One more needs your OK:*\n2. Book the 9am flight\n\nReply by number: "yes 2" or "no 2".',
+      '*One more needs your OK:*\n2. Pay the invoice\n\nReply by number: "yes 2" or "no 2".',
+    ]);
+  });
+
+  it("asks each approval once when a second arrives just after the first (run 3 bug 12)", async () => {
+    const { surface, calls } = recorder();
+    const follower = new ConversationFollower(
+      startAfter(0),
+      NON_EDITING,
+      surface,
+      "c1",
+    );
+    await feed(follower, [
+      screenFrame([inbound("u1", 1, "11"), workItem("t1", 2, "running")]),
+      asking(flight),
+      asking(flight, invoice),
+    ]);
+
+    expect(sent(calls).map(({ text }) => text)).toEqual([
+      "*GAIA wants to book the 9am flight*\n\nReply *yes* to do it, or *no* to cancel.",
+      '*One more needs your OK:*\n2. Pay the invoice\n\nReply by number: "yes 2" or "no 2".',
     ]);
   });
 
@@ -542,7 +560,7 @@ describe("numbered approvals across two pieces of work", () => {
         .map(({ text }) => text)
         .at(-1),
     ).toBe(
-      `*2 things need your OK:*\n1. Send email to Sam\n2. Pay the invoice\n\n${PICK_SOME}`,
+      '*One more needs your OK:*\n1. Send email to Sam\n\nReply by number: "yes 1" or "no 1".',
     );
   });
 });

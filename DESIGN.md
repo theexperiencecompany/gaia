@@ -480,6 +480,19 @@ Never use `rounded-lg` on card containers — that's the Shadcn base radius, vis
 
 GAIA composes from three component families: **Shadcn** (`src/components/ui/`) for layout primitives, **HeroUI** (`@heroui/*`) for richer in-card UI (chips, accordions, progress, tabs), and a small set of GAIA-native cards built directly to the dark card contract. Pick the right overlay for the context — `Dialog` for focus, `Sheet` for side panels, `Popover` for inline pickers, `Tooltip` for labels only.
 
+### Chat Bubbles
+
+`.imessage-bubble` (`apps/web/src/app/styles/globals.css`) is shared by bot (`imessage-from-them`, zinc-800) and user (`imessage-from-me`, primary) bubbles. Never override its padding per call site.
+
+| Property | Value | Why |
+|---|---|---|
+| Radius | `20px` (`--bubble-radius`) | A one-line bubble is a capsule exactly `2 × radius` tall |
+| Line height | `24px` (`--bubble-line-height`) at 16px Inter | Inter centres the cap height in a 24px line, so text sits optically centred |
+| Block padding | `radius − line-height / 2` = `8px` | One line = 40px; each further line adds 24px |
+| Inline padding | `16px` (`lg`) | Matches the ~14px from cap top to the bubble edge |
+
+The last block inside a bubble carries no bottom margin (`p` and `li` use `last:mb-0`), and a reply that is only a list marker ("42.") renders as text, not as an empty list.
+
 ### Dark Card Styling Contract
 
 Most data cards, tool sections, and info panels follow this two-tone zinc pattern (no borders anywhere). It's the default, not a mandate — a card with a deliberately distinct presentation (e.g. an OS-style notification banner) may diverge when the design calls for it.

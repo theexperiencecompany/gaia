@@ -554,6 +554,30 @@ class TestRedeemExecution:
         assert result.action == ActionResult.UNKNOWN
         assert "never auto-retried" in result.detail
 
+    async def test_an_approval_with_a_change_never_runs_its_stored_call(
+        self, logged_decisions: dict[str, ApprovalDecided]
+    ) -> None:
+        from app.services.hil import ledger_decide
+        from app.services.hil.ledger_decide import redeem_approved
+
+        logged_decisions["ap_abc"] = ApprovalDecided(
+            id="approval:ap_abc:decided",
+            approval_id="ap_abc",
+            outcome=ApprovalOutcome.APPROVED,
+            feedback="cc finance",
+        )
+        repo = self._redeem_repo()
+        with (
+            patch.object(ledger_decide, "approval_ledger_repository", new=repo),
+            patch.object(ledger_decide, "dispatch_tool", new=AsyncMock()) as dispatch,
+        ):
+            result = await redeem_approved("ap_abc", **self._redeem_kwargs())
+
+        assert result.ok is False
+        assert "'cc finance'" in result.detail
+        dispatch.assert_not_awaited()
+        repo.claim_executing.assert_not_awaited()
+
     async def test_redeem_failed_transition_still_returns_state(
         self, logged_decisions: dict[str, ApprovalDecided]
     ) -> None:
@@ -1061,13 +1085,12 @@ class TestApproveResumesBackgroundOwner:
 
 
 @pytest.mark.unit
-class TestConditionalApproveBecomesDeny:
-    async def test_approve_with_feedback_records_denied(self) -> None:
-        # Permission-scope guard: an envelope carries no conditions, so
-        # "approve + note" must never run the unmodified args. It records
-        # as denied with the note attached (chat-classifier parity).
+class TestApproveWithAChange:
+    async def test_approve_with_a_change_hands_the_change_to_the_work(self) -> None:
+        """Regression for conversation a0a0b079: "go ahead but make it high priority" was denied."""
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import decide_ledger
+        from app.services.hil.ticket import approval_ticket
 
         repo = _repo(_row())
         with (
@@ -1076,19 +1099,17 @@ class TestConditionalApproveBecomesDeny:
             patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()) as verdict,
         ):
             outcome = await decide_ledger(
-                "ap_abc", user_id=USER_ID, kind="approve", feedback="cc finance", via="card"
+                "ap_abc", user_id=USER_ID, kind="approve", feedback="cc finance", via="chat"
             )
 
-        assert outcome.committed is True
-        assert outcome.outcome == ApprovalOutcome.DENIED
+        assert outcome.outcome == ApprovalOutcome.APPROVED
         repo.settle.assert_awaited_once_with(
-            "ap_abc",
-            ApprovalOutcome.DENIED,
-            decided_by=USER_ID,
-            feedback="cc finance",
+            "ap_abc", ApprovalOutcome.APPROVED, decided_by=USER_ID, feedback="cc finance"
         )
-        deliver.assert_not_awaited()
-        verdict.assert_awaited_once()
+        verdict.assert_not_awaited()
+        ticket = approval_ticket(deliver.await_args.args[0])
+        assert "'cc finance'" in ticket
+        assert "Do not run the stored call" in ticket
 
     async def test_plain_approve_unaffected(self) -> None:
         from app.services.hil import ledger_decide
@@ -1370,7 +1391,9 @@ class TestDecideLedgerOutcomes:
 
         assert outcome.outcome is ApprovalOutcome.APPROVED
 
-    async def test_a_conditional_approve_is_recorded_as_a_deny(self, seams: LedgerSeams) -> None:
+    async def test_an_approve_with_a_change_is_recorded_as_an_approve(
+        self, seams: LedgerSeams
+    ) -> None:
         seams.rows["ap_1"] = _doc()
 
         await decide_ledger(
@@ -1378,8 +1401,10 @@ class TestDecideLedgerOutcomes:
         )
 
         seams.log.set.assert_any_call(
-            hil={"approval_id": "ap_1", "decision": "deny", "tool": "GMAIL_SEND_EMAIL"}
+            hil={"approval_id": "ap_1", "decision": "approve", "tool": "GMAIL_SEND_EMAIL"}
         )
+        stands = seams.decisions["ap_1"]
+        assert (stands.outcome, stands.feedback) == (ApprovalOutcome.APPROVED, "cc finance")
 
     async def test_a_committed_approve_is_one_exact_decision(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc(created_at=None)
@@ -1947,14 +1972,14 @@ class TestDecideLedgerAlwaysToolScope:
         await self._decide(repo, decision="approve")
         assert repo.get_by_approval_id.await_args_list[0].args == ("ap_abc",)
 
-    async def test_an_approve_with_feedback_is_recorded_as_a_conditional_deny(self) -> None:
+    async def test_an_approve_with_a_change_never_stops_asking_for_the_tool(self) -> None:
         repo = _repo(_row())
         override = await self._decide(
             repo, decision="approve", scope="always_tool", feedback="only to bob"
         )
         repo.settle.assert_awaited_once_with(
             "ap_abc",
-            ApprovalOutcome.DENIED,
+            ApprovalOutcome.APPROVED,
             decided_by=USER_ID,
             feedback="only to bob",
         )
