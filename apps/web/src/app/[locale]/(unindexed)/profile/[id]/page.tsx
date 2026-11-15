@@ -1,11 +1,11 @@
 "use client";
+import "../../../../styles/marketing.css";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
-import { Tooltip } from "@heroui/tooltip";
+import { Skeleton, Tooltip } from "@heroui/react";
 import { Share08Icon } from "@icons";
 import { useParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { HoloCard } from "@/components/ui/holo-card/HoloCard";
 import type { HoloCardDisplayData } from "@/components/ui/holo-card/types";
 import {
@@ -102,10 +102,18 @@ export default function ProfilePage() {
         )}
 
         {holoCardData && (
-          <Tooltip content="Share profile">
-            <Button isIconOnly variant="flat" onPress={handleShare} size="sm">
+          <Tooltip>
+            <GaiaButton
+              isIconOnly
+              variant="default-soft"
+              onPress={handleShare}
+              size="sm"
+              aria-label="Share profile"
+            >
               <Share08Icon size={18} />
-            </Button>
+            </GaiaButton>
+
+            <Tooltip.Content>Share profile</Tooltip.Content>
           </Tooltip>
         )}
       </div>

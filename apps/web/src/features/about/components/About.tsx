@@ -90,7 +90,7 @@ export default async function About() {
                     </h3>
                   ),
                   p: ({ children }) => (
-                    <p className="mb-4 text-left text-lg font-light tracking-tight text-foreground-600">
+                    <p className="mb-4 text-left text-lg font-light tracking-tight text-zinc-300">
                       {children}
                     </p>
                   ),
@@ -100,7 +100,7 @@ export default async function About() {
                     </ul>
                   ),
                   li: ({ children }) => (
-                    <li className="text-foreground-600">{children}</li>
+                    <li className="text-zinc-300">{children}</li>
                   ),
                   strong: ({ children }) => (
                     <strong className="font-semibold text-foreground">
@@ -109,7 +109,7 @@ export default async function About() {
                   ),
                   a: ({ href, children }) => (
                     <a
-                      className="cursor-pointer text-primary hover:underline"
+                      className="cursor-pointer text-accent hover:underline"
                       href={href}
                     >
                       {children}
@@ -133,7 +133,7 @@ export default async function About() {
                 />
               ))}
             </div>
-            <div className="text-foreground-500">
+            <div className="text-zinc-400">
               Founders, The Experience Company
             </div>
           </div>

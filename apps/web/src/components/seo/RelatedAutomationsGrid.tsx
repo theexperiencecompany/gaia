@@ -20,7 +20,7 @@ function ComboCard({ combo }: { readonly combo: IntegrationCombo }) {
     >
       <span className="flex items-center gap-3">
         <ComboAppIcons apps={comboAppsOf(combo)} />
-        <h3 className="text-base font-medium text-white group-hover:text-primary">
+        <h3 className="text-base font-medium text-white group-hover:text-accent">
           {combo.toolA} + {combo.toolB}
         </h3>
       </span>

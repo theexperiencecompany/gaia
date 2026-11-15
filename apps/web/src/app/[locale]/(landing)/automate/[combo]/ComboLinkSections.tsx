@@ -15,7 +15,7 @@ function IntegrationCard({
       href={href}
       className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
     >
-      <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+      <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-accent">
         {title}
       </h3>
       <p className="text-sm leading-relaxed text-zinc-400">{body}</p>
@@ -71,7 +71,7 @@ function CompareCard({
       href={href}
       className="group rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
     >
-      <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+      <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-accent">
         GAIA vs {toolName}: full comparison
       </h3>
       <p className="text-sm leading-relaxed text-zinc-400">

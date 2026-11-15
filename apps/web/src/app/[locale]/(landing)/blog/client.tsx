@@ -40,7 +40,7 @@ export default function BlogPostClient({
 
   if (!blog) {
     return (
-      <div className="flex h-screen items-center justify-center text-medium font-medium text-foreground-500">
+      <div className="flex h-screen items-center justify-center text-base font-medium text-zinc-400">
         Blog post not found.
       </div>
     );

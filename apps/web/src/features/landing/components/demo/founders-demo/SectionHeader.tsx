@@ -28,7 +28,7 @@ export default function SectionHeader({
         initial={{ opacity: 0, y: 8 }}
         animate={inView ? { opacity: 1, y: 0 } : {}}
         transition={{ duration: 0.5, ease }}
-        className="mb-4 flex items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-primary"
+        className="mb-4 flex items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-accent"
       >
         {labelIcon}
         {label}

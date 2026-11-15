@@ -1,4 +1,4 @@
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { PackageOpenIcon } from "@icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -24,7 +24,7 @@ function AddButtonLabel({
   if (isAdding) {
     return (
       <>
-        <Spinner size="sm" color="default" />
+        <Spinner size="sm" color="current" />
         Adding...
       </>
     );

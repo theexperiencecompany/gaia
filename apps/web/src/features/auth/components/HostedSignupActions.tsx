@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import Link from "next/link";
 
+import { LinkButton } from "@/components/shared/LinkButton";
 import { apiBaseUrl } from "@/lib/api/client";
 import { WORKOS_SIGNUP_URL } from "../utils/signupCta";
 
@@ -10,15 +10,14 @@ import { WORKOS_SIGNUP_URL } from "../utils/signupCta";
 export function HostedSignupActions() {
   return (
     <>
-      <Button
-        as={Link}
+      <LinkButton
         href={WORKOS_SIGNUP_URL}
-        color="primary"
-        radius="full"
+        variant="primary"
+        shape="pill"
         fullWidth
       >
         Sign up
-      </Button>
+      </LinkButton>
       <p className="mt-4 text-center text-sm text-zinc-400">
         Already have an account?{" "}
         <Link

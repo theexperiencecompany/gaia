@@ -1,0 +1,12 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "./theme.css";
+
+@import "./generated/content.css";
+
+@reference "@heroui/styles/themes/default";
+@reference "@heroui/styles/utilities";
+@reference "@heroui/styles/variants";
+
+@custom-variant dark (&:is(.dark *));
+@plugin "tailwindcss-animate";

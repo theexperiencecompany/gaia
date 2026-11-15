@@ -5,7 +5,10 @@ import fs from "fs";
 import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
-import { expandCanonicalRedirects } from "./canonical-redirects.mjs";
+import {
+  expandCanonicalRedirects,
+  RETIRED_PAGE_PAIRS,
+} from "./canonical-redirects.mjs";
 import { IMAGE_QUALITIES } from "./image-qualities.mjs";
 import { NEXT_SECURITY_HEADER_RULES } from "./security-headers.mjs";
 import { POSTHOG_HOST } from "./third-party-origins.mjs";
@@ -293,7 +296,11 @@ const nextConfig = {
   // pairs mirror the canonicalSlug/canonicalPath markers in public/data (see
   // canonical-redirects.mjs). Runs before routing/middleware, per locale prefix.
   async redirects() {
-    return [...expandCanonicalRedirects(), ...vanityRedirects()];
+    return [
+      ...expandCanonicalRedirects(),
+      ...expandCanonicalRedirects(RETIRED_PAGE_PAIRS),
+      ...vanityRedirects(),
+    ];
   },
 };
 

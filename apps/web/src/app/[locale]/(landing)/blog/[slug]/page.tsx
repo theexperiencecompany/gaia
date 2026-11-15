@@ -1,3 +1,4 @@
+import "../../../../styles/content.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 

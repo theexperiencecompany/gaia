@@ -1,19 +1,19 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input, Textarea } from "@heroui/input";
-import { Kbd } from "@heroui/kbd";
 import {
+  Input,
+  Kbd,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
+  TextArea,
   Tooltip,
-  useDisclosure,
+  useOverlayState,
 } from "@heroui/react";
 import { AlertCircleIcon, TaskAddIcon } from "@icons";
 import { format } from "date-fns";
 import { useEffect, useMemo } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
@@ -28,7 +28,6 @@ import {
   type TodoCreate,
   type TodoUpdate,
 } from "@/types/features/todoTypes";
-
 import RecurrenceFieldChip from "./fields/RecurrenceFieldChip";
 import ScheduledFieldChip from "./fields/ScheduledFieldChip";
 import SubtaskManager from "./shared/SubtaskManager";
@@ -266,26 +265,23 @@ function TodoModalTrigger({
   onOpen,
 }: TodoModalTriggerProps) {
   return (
-    <Tooltip
-      content={
+    <Tooltip>
+      <GaiaButton
+        variant="accent-soft"
+        className={buttonClassName}
+        size="sm"
+        onPress={onOpen}
+        data-keyboard-shortcut="create-todo"
+      >
+        <TaskAddIcon className="h-4 w-4 outline-0" />
+        {buttonText}
+      </GaiaButton>
+      <Tooltip.Content placement="right">
         <span className="flex items-center gap-2">
           {buttonText}
           <Kbd className="text-[10px]">C</Kbd>
         </span>
-      }
-      placement="right"
-    >
-      <Button
-        className={buttonClassName}
-        color="primary"
-        size="sm"
-        variant="flat"
-        startContent={<TaskAddIcon className="h-4 w-4 outline-0" />}
-        onPress={onOpen}
-        data-keyboard-shortcut="create-todo"
-      >
-        {buttonText}
-      </Button>
+      </Tooltip.Content>
     </Tooltip>
   );
 }
@@ -304,36 +300,37 @@ function TodoTextInputFields({
   onDescriptionChange,
 }: TodoTextInputFieldsProps) {
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col pt-4">
       <Input
         placeholder="Title"
-        classNames={{
-          input:
-            "text-2xl font-semibold bg-transparent border-0 text-zinc-100 placeholder:text-zinc-500",
-          inputWrapper:
-            "border-0 bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
-        }}
+        className={inputVariants({
+          variant: "underlined",
+          placeholder: "faint",
+          className: toneVariants({
+            tone: "strong",
+            className: "text-2xl font-semibold",
+          }),
+        })}
         value={title}
-        variant="underlined"
         onChange={(e) => onTitleChange(e.target.value)}
         required
         autoFocus
       />
 
       {/* Description */}
-      <Textarea
+      <TextArea
         placeholder="Add a description..."
         value={description}
         onChange={(e) => onDescriptionChange(e.target.value)}
-        minRows={1}
-        maxRows={5}
-        variant="underlined"
-        classNames={{
-          input:
-            "bg-transparent border-0 text-zinc-200 placeholder:text-zinc-500",
-          inputWrapper:
-            "border-0 bg-transparent shadow-none hover:bg-transparent focus:bg-transparent data-[focus=true]:bg-transparent",
-        }}
+        rows={1}
+        className={inputVariants({
+          variant: "underlined",
+          placeholder: "faint",
+          className: toneVariants({
+            tone: "bright",
+            className: "max-h-40 min-h-9 resize-none field-sizing-content",
+          }),
+        })}
       />
     </div>
   );
@@ -345,11 +342,16 @@ export default function TodoModal({
   todo,
   initialProjectId,
   buttonText = "Add Task",
-  buttonClassName = "w-full justify-start text-sm text-primary",
+  buttonClassName = "w-full justify-start text-sm text-accent",
 }: TodoModalProps) {
   const user = useCurrentUser();
   const { isMac, modifierKeyName } = usePlatform();
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const {
+    isOpen,
+    open: onOpen,
+    setOpen: onOpenChange,
+    toggle,
+  } = useOverlayState();
   const { projects, createTodo, updateTodo } = useTodoData({ autoLoad: false });
 
   // Get user's preferred timezone or fallback to browser timezone
@@ -372,7 +374,7 @@ export default function TodoModal({
     createTodo,
     updateTodo,
     onComplete: () => {
-      onOpenChange();
+      toggle();
       onSuccess?.();
     },
   });
@@ -397,18 +399,12 @@ export default function TodoModal({
         onOpen={onOpen}
       />
 
-      <Modal
-        isOpen={isOpen}
-        onOpenChange={onOpenChange}
-        size="lg"
-        // isDismissable={false}
-        // isKeyboardDismissDisabled={true}
-        // hideCloseButton
-      >
-        <ModalContent>
-          {(onClose) => (
-            <>
-              <ModalBody className="gap-6 pt-6">
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+        <Modal.Backdrop>
+          <Modal.Container size="lg">
+            <Modal.Dialog>
+              <Modal.CloseTrigger aria-label="Close" />
+              <Modal.Body className="gap-6">
                 <TodoTextInputFields
                   title={formData.title}
                   description={formData.description || ""}
@@ -471,27 +467,30 @@ export default function TodoModal({
                     updateField("subtasks", subtasks)
                   }
                 />
-              </ModalBody>
+              </Modal.Body>
 
-              <ModalFooter>
-                <Button variant="light" onPress={onClose}>
+              <Modal.Footer>
+                <GaiaButton variant="ghost" onPress={() => onOpenChange(false)}>
                   Cancel
-                </Button>
-                <Button
-                  color="primary"
+                </GaiaButton>
+                <GaiaButton
                   onPress={handleSubmit}
                   isDisabled={loading}
-                  isLoading={loading}
-                  endContent={
-                    !loading && <Kbd keys={[modifierKeyName, "enter"]} />
-                  }
+                  isPending={loading}
+                  variant="primary"
                 >
                   {mode === "edit" ? "Save Changes" : "Add Task"}
-                </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
+                  {!loading && (
+                    <Kbd>
+                      <Kbd.Abbr keyValue={modifierKeyName} />
+                      <Kbd.Abbr keyValue="enter" />
+                    </Kbd>
+                  )}
+                </GaiaButton>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
     </>
   );

@@ -1,8 +1,9 @@
-import { Input } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import { Input, ListBox, Select, TextField } from "@heroui/react";
 import { Clock01Icon, InformationCircleIcon } from "@icons";
 import { useEffect, useMemo, useState } from "react";
-
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { getTimezoneList, normalizeTimezone } from "@/utils/timezoneUtils";
 import { useCronValidation } from "../hooks/useCronValidation";
 import {
@@ -88,9 +89,53 @@ const initializeCustomCron = (cronExpression?: string): string => {
 };
 
 // Let each dropdown popover grow to fit its labels instead of inheriting the
-// narrow trigger width (truncates "Custom", "Month", "Wednesday", …) — min-width
-// beats HeroUI's inline trigger-width style on the popover.
-const SELECT_CLASSNAMES = { popoverContent: "min-w-fit" } as const;
+// narrow trigger width (truncates "Custom", "Month", "Wednesday", …).
+const SELECT_POPOVER_CLASSNAME = "min-w-fit";
+
+/** A compact single-select used by the schedule presets: v2's small (32px) select. */
+function CompactSelect({
+  ariaLabel,
+  value,
+  onChange,
+  className,
+  placeholder,
+  options,
+}: {
+  ariaLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+  placeholder?: string;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <Select
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(key) => {
+        if (key != null) onChange(String(key));
+      }}
+      className={inputVariants({ size: "sm", className })}
+      placeholder={placeholder}
+    >
+      <Select.Trigger>
+        <GaiaSelectValue />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover className={SELECT_POPOVER_CLASSNAME}>
+        <ListBox>
+          {options.map((option) => (
+            <GaiaListBoxItem
+              key={option.value}
+              id={option.value}
+              textValue={option.label}
+            />
+          ))}
+        </ListBox>
+      </Select.Popover>
+    </Select>
+  );
+}
 
 // Helper to convert 24h to 12h for display
 const to12Hour = (hour24: number): { hour12: number; ampm: "AM" | "PM" } => {
@@ -130,6 +175,38 @@ function ScheduleTimezone({
   );
 }
 
+const DAY_OF_WEEK_OPTIONS = [
+  { value: "1", label: "Monday" },
+  { value: "2", label: "Tuesday" },
+  { value: "3", label: "Wednesday" },
+  { value: "4", label: "Thursday" },
+  { value: "5", label: "Friday" },
+  { value: "6", label: "Saturday" },
+  { value: "0", label: "Sunday" },
+];
+
+const DAY_OF_MONTH_OPTIONS = Array.from({ length: 31 }, (_, i) => ({
+  value: (i + 1).toString(),
+  label: (i + 1).toString(),
+}));
+
+const FREQUENCY_OPTIONS = [
+  { value: "every", label: "Every" },
+  { value: "once", label: "Once" },
+  { value: "custom", label: "Custom" },
+];
+
+const INTERVAL_OPTIONS = [
+  { value: "day", label: "Day" },
+  { value: "week", label: "Week" },
+  { value: "month", label: "Month" },
+];
+
+const AM_PM_OPTIONS = [
+  { value: "AM", label: "AM" },
+  { value: "PM", label: "PM" },
+];
+
 function DayOfWeekSelect({
   value,
   onSelect,
@@ -138,35 +215,13 @@ function DayOfWeekSelect({
   onSelect: (day: string) => void;
 }) {
   return (
-    <Select
-      size="sm"
-      selectedKeys={new Set([value])}
-      onSelectionChange={(keys) => onSelect(Array.from(keys)[0] as string)}
+    <CompactSelect
+      ariaLabel="Select day of the week"
+      value={value}
+      onChange={onSelect}
       className="w-22 shrink-0"
-      classNames={SELECT_CLASSNAMES}
-    >
-      <SelectItem key="1" textValue="Monday">
-        Monday
-      </SelectItem>
-      <SelectItem key="2" textValue="Tuesday">
-        Tuesday
-      </SelectItem>
-      <SelectItem key="3" textValue="Wednesday">
-        Wednesday
-      </SelectItem>
-      <SelectItem key="4" textValue="Thursday">
-        Thursday
-      </SelectItem>
-      <SelectItem key="5" textValue="Friday">
-        Friday
-      </SelectItem>
-      <SelectItem key="6" textValue="Saturday">
-        Saturday
-      </SelectItem>
-      <SelectItem key="0" textValue="Sunday">
-        Sunday
-      </SelectItem>
-    </Select>
+      options={DAY_OF_WEEK_OPTIONS}
+    />
   );
 }
 
@@ -178,24 +233,14 @@ function DayOfMonthSelect({
   onSelect: (day: string) => void;
 }) {
   return (
-    <Select
-      aria-label="Select day of the month"
-      size="sm"
-      selectionMode="single"
-      selectedKeys={new Set([value])}
-      onSelectionChange={(keys) => {
-        onSelect(Array.from(keys)[0] as string);
-      }}
+    <CompactSelect
+      ariaLabel="Select day of the month"
+      value={value}
+      onChange={onSelect}
       className="w-16 shrink-0"
-      classNames={SELECT_CLASSNAMES}
       placeholder="Day"
-    >
-      {Array.from({ length: 31 }, (_, i) => (
-        <SelectItem key={(i + 1).toString()} textValue={(i + 1).toString()}>
-          {i + 1}
-        </SelectItem>
-      ))}
-    </Select>
+      options={DAY_OF_MONTH_OPTIONS}
+    />
   );
 }
 
@@ -219,41 +264,29 @@ function TimeOfDayInput({
   return (
     <div className="flex shrink-0 items-center gap-1">
       <Input
-        size="sm"
         type="number"
         min="1"
         max="12"
         value={hour12.toString()}
         onChange={(e) => onHour12Change(e.target.value)}
-        className="w-12"
+        className={inputVariants({ size: "sm", className: "w-12" })}
       />
       <span className="text-zinc-500">:</span>
       <Input
-        size="sm"
         type="number"
         min="0"
         max="59"
         value={minute.padStart(2, "0")}
         onChange={(e) => onMinuteChange(e.target.value)}
-        className="w-12"
+        className={inputVariants({ size: "sm", className: "w-12" })}
       />
-      <Select
-        aria-label="Select AM or PM"
-        size="sm"
-        selectedKeys={new Set([ampm])}
-        onSelectionChange={(keys) =>
-          onAmpmChange(Array.from(keys)[0] as "AM" | "PM")
-        }
+      <CompactSelect
+        ariaLabel="Select AM or PM"
+        value={ampm}
+        onChange={(next) => onAmpmChange(next as "AM" | "PM")}
         className="w-17"
-        classNames={SELECT_CLASSNAMES}
-      >
-        <SelectItem key="AM" textValue="AM">
-          AM
-        </SelectItem>
-        <SelectItem key="PM" textValue="PM">
-          PM
-        </SelectItem>
-      </Select>
+        options={AM_PM_OPTIONS}
+      />
     </div>
   );
 }
@@ -424,53 +457,31 @@ export const ScheduleBuilder = ({
       <div className="flex w-full flex-row items-center gap-x-2 text-sm">
         <span className="shrink-0 text-zinc-400">Run</span>
 
-        <Select
-          aria-label="Select every or once or custom"
-          size="sm"
-          selectedKeys={new Set([simpleSchedule.frequency])}
-          onSelectionChange={(keys) =>
+        <CompactSelect
+          ariaLabel="Select every or once or custom"
+          value={simpleSchedule.frequency}
+          onChange={(value) =>
             handleSimpleScheduleChange({
-              frequency: Array.from(keys)[0] as SimpleSchedule["frequency"],
+              frequency: value as SimpleSchedule["frequency"],
             })
           }
           className="w-20 shrink-0"
-          classNames={SELECT_CLASSNAMES}
-        >
-          <SelectItem key="every" textValue="Every">
-            Every
-          </SelectItem>
-          <SelectItem key="once" textValue="Once">
-            Once
-          </SelectItem>
-          <SelectItem key="custom" textValue="Custom">
-            Custom
-          </SelectItem>
-        </Select>
+          options={FREQUENCY_OPTIONS}
+        />
 
         {simpleSchedule.frequency !== "custom" && (
           <>
-            <Select
-              size="sm"
-              aria-label="Select day or week or month"
-              selectedKeys={new Set([simpleSchedule.interval])}
-              onSelectionChange={(keys) =>
+            <CompactSelect
+              ariaLabel="Select day or week or month"
+              value={simpleSchedule.interval}
+              onChange={(value) =>
                 handleSimpleScheduleChange({
-                  interval: Array.from(keys)[0] as SimpleSchedule["interval"],
+                  interval: value as SimpleSchedule["interval"],
                 })
               }
               className="w-20 shrink-0"
-              classNames={SELECT_CLASSNAMES}
-            >
-              <SelectItem key="day" textValue="Day">
-                Day
-              </SelectItem>
-              <SelectItem key="week" textValue="Week">
-                Week
-              </SelectItem>
-              <SelectItem key="month" textValue="Month">
-                Month
-              </SelectItem>
-            </Select>
+              options={INTERVAL_OPTIONS}
+            />
 
             {simpleSchedule.interval === "week" && (
               <>
@@ -520,15 +531,18 @@ export const ScheduleBuilder = ({
 
         {simpleSchedule.frequency === "custom" && (
           <>
-            <Input
-              placeholder="0 9 * * *"
+            <TextField
               aria-label="Cron expression"
               value={customCron}
-              size="sm"
+              onChange={handleCustomCronChange}
               isInvalid={showCronError}
-              onChange={(e) => handleCustomCronChange(e.target.value)}
-              className="w-40 shrink-0"
-            />
+              className={inputVariants({
+                size: "sm",
+                className: "w-40 shrink-0",
+              })}
+            >
+              <Input placeholder="0 9 * * *" />
+            </TextField>
             <span className="shrink-0 text-nowrap text-zinc-500">in</span>
             <ScheduleTimezone
               timezone={normalizedTimezone}

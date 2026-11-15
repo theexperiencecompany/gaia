@@ -96,7 +96,7 @@ export default function MobileMenu() {
         <button
           key={link.href}
           type="button"
-          className="text-left text-sm font-semibold text-primary transition-colors hover:text-primary"
+          className="text-left text-sm font-semibold text-accent transition-colors hover:text-accent"
           onClick={() => {
             track("navigation:cta_clicked", {
               is_logged_in: Boolean(isAuthenticated),
@@ -115,7 +115,7 @@ export default function MobileMenu() {
         <Link
           key={link.href}
           href={isSignup ? signupCtaHref() : link.href}
-          className="text-sm font-semibold text-primary transition-colors hover:text-primary"
+          className="text-sm font-semibold text-accent transition-colors hover:text-accent"
           onClick={() => {
             track("navigation:cta_clicked", {
               is_logged_in: Boolean(isAuthenticated),

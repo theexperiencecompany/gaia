@@ -15,7 +15,7 @@ export function GlossaryTermGrid({
           href={`/learn/${term.slug}`}
           className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
         >
-          <h3 className="mb-2 text-lg font-semibold text-white transition-colors group-hover:text-primary">
+          <h3 className="mb-2 text-lg font-semibold text-white transition-colors group-hover:text-accent">
             {term.term}
           </h3>
           <p className="line-clamp-3 text-sm leading-relaxed text-zinc-400">

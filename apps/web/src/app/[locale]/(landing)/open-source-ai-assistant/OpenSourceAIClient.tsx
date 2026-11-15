@@ -264,7 +264,7 @@ export default function OpenSourceAIClient() {
               {
                 key: "gaia",
                 label: "GAIA",
-                headerClassName: "text-primary",
+                headerClassName: "text-accent",
                 cellClassName: "text-emerald-400",
               },
               ...HOSTED_ASSISTANTS.map((assistant) => ({
