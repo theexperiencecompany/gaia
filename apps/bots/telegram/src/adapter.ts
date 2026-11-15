@@ -317,6 +317,7 @@ export class TelegramAdapter extends BaseBotAdapter {
    */
   protected async registerEvents(): Promise<void> {
     this.bot.on("message:text", async (ctx) => {
+      const receivedAt = Date.now();
       if (ctx.message.text.startsWith("/")) return;
 
       const userId = ctx.from?.id.toString();
@@ -331,7 +332,12 @@ export class TelegramAdapter extends BaseBotAdapter {
       });
 
       if (isPrivate) {
-        await this.handleTelegramStreaming(ctx, userId, ctx.message.text);
+        await this.handleTelegramStreaming(
+          ctx,
+          userId,
+          ctx.message.text,
+          receivedAt,
+        );
         return;
       }
 
@@ -346,7 +352,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleTelegramStreaming(ctx, userId, content);
+      await this.handleTelegramStreaming(ctx, userId, content, receivedAt);
     });
 
     // Inbound media (photos, documents, voice notes, audio, …). Routed through
@@ -564,6 +570,7 @@ export class TelegramAdapter extends BaseBotAdapter {
    */
   private registerGaiaCommand(): void {
     this.bot.command("gaia", async (ctx) => {
+      const receivedAt = Date.now();
       const message = ctx.match;
       const userId = ctx.from?.id.toString();
 
@@ -574,7 +581,7 @@ export class TelegramAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleTelegramStreaming(ctx, userId, message);
+      await this.handleTelegramStreaming(ctx, userId, message, receivedAt);
     });
   }
 
@@ -588,6 +595,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     ctx: Context,
     userId: string,
     message: string,
+    receivedAt: number,
     attachments: BotFileData[] = [],
   ): Promise<void> {
     const chatId = ctx.chat?.id;
@@ -627,6 +635,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           channelId: chatId.toString(),
           isDm: ctx.chat?.type === "private",
           platformMessageId: ctx.msg?.message_id?.toString(),
+          receivedAt,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -795,6 +804,7 @@ export class TelegramAdapter extends BaseBotAdapter {
    * WhatsApp stay byte-for-byte consistent.
    */
   private async handleTelegramMediaMessage(ctx: Context): Promise<void> {
+    const receivedAt = Date.now();
     const userId = ctx.from?.id.toString();
     const msg = ctx.message;
     if (!userId || !msg) return;
@@ -820,7 +830,13 @@ export class TelegramAdapter extends BaseBotAdapter {
       sizeBytes: extracted.sizeBytes,
       caption,
     };
-    await this.handleTelegramMedia(ctx, userId, media, extracted.fileId);
+    await this.handleTelegramMedia(
+      ctx,
+      userId,
+      media,
+      extracted.fileId,
+      receivedAt,
+    );
   }
 
   /** Downloads, routes, and replies for a single inbound media message. */
@@ -829,6 +845,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     userId: string,
     media: IncomingMedia,
     fileId: string,
+    receivedAt: number,
   ): Promise<void> {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
@@ -853,6 +870,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           ctx,
           userId,
           outcome.text,
+          receivedAt,
           outcome.attachments,
         );
       }

@@ -203,6 +203,8 @@ export class ImessageAdapter extends BaseBotAdapter {
   }
 
   private handleInboundMessage(space: Space, message: Message): void {
+    // Before the per-user queue: time spent waiting there is the user's wait too.
+    const receivedAt = Date.now();
     if (message.direction === "outbound" || message.sender?.kind === "agent") {
       return;
     }
@@ -228,22 +230,14 @@ export class ImessageAdapter extends BaseBotAdapter {
     if (content.type === "text" || content.type === "markdown") {
       const text = content.type === "text" ? content.text : content.markdown;
       this.enqueueForUser(handle, () =>
-        this.handleIncomingMessage(handle, space, text, message.id).catch(
-          (err) =>
-            this.adapterLogger.error("incoming_message_processing_failed", {
-              user_hash: handleHash,
-              message_id: message.id,
-              ...sanitizeErrorForLog(err),
-            }),
-        ),
-      );
-      return;
-    }
-
-    if (content.type === "attachment" || content.type === "voice") {
-      this.enqueueForUser(handle, () =>
-        this.handleMediaMessage(handle, space, [content]).catch((err) =>
-          this.adapterLogger.error("media_message_processing_failed", {
+        this.handleIncomingMessage(
+          handle,
+          space,
+          receivedAt,
+          text,
+          message.id,
+        ).catch((err) =>
+          this.adapterLogger.error("incoming_message_processing_failed", {
             user_hash: handleHash,
             message_id: message.id,
             ...sanitizeErrorForLog(err),
@@ -253,9 +247,28 @@ export class ImessageAdapter extends BaseBotAdapter {
       return;
     }
 
+    if (content.type === "attachment" || content.type === "voice") {
+      this.enqueueForUser(handle, () =>
+        this.handleMediaMessage(handle, space, receivedAt, [content]).catch(
+          (err) =>
+            this.adapterLogger.error("media_message_processing_failed", {
+              user_hash: handleHash,
+              message_id: message.id,
+              ...sanitizeErrorForLog(err),
+            }),
+        ),
+      );
+      return;
+    }
+
     if (content.type === "group") {
       this.enqueueForUser(handle, () =>
-        this.handleMultiPartMessage(handle, space, content.items).catch((err) =>
+        this.handleMultiPartMessage(
+          handle,
+          space,
+          receivedAt,
+          content.items,
+        ).catch((err) =>
           this.adapterLogger.error("multipart_message_processing_failed", {
             user_hash: handleHash,
             message_id: message.id,
@@ -303,6 +316,7 @@ export class ImessageAdapter extends BaseBotAdapter {
   private async handleIncomingMessage(
     handle: string,
     space: Space,
+    receivedAt: number,
     text: string,
     messageId?: string,
   ): Promise<void> {
@@ -355,7 +369,13 @@ export class ImessageAdapter extends BaseBotAdapter {
             await this.sendImessageText(space, "Usage: /gaia <your message>");
             return;
           }
-          await this.handleStreamingMessage(handle, space, rest, messageId);
+          await this.handleStreamingMessage(
+            handle,
+            space,
+            receivedAt,
+            rest,
+            messageId,
+          );
           return;
         }
 
@@ -369,7 +389,13 @@ export class ImessageAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(handle, space, chatText, messageId);
+      await this.handleStreamingMessage(
+        handle,
+        space,
+        receivedAt,
+        chatText,
+        messageId,
+      );
     } finally {
       await space.stopTyping().catch(() => undefined);
     }
@@ -378,6 +404,7 @@ export class ImessageAdapter extends BaseBotAdapter {
   private async handleStreamingMessage(
     handle: string,
     space: Space,
+    receivedAt: number,
     text: string,
     messageId?: string,
     attachments: BotFileData[] = [],
@@ -404,6 +431,7 @@ export class ImessageAdapter extends BaseBotAdapter {
           // iMessage handles DMs only; group spaces are ignored upstream.
           isDm: true,
           platformMessageId: messageId,
+          receivedAt,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -528,6 +556,7 @@ export class ImessageAdapter extends BaseBotAdapter {
   private async handleMultiPartMessage(
     handle: string,
     space: Space,
+    receivedAt: number,
     items: MessagePart[],
   ): Promise<void> {
     const handleHash = hashLogIdentifier(handle);
@@ -553,11 +582,17 @@ export class ImessageAdapter extends BaseBotAdapter {
     const caption = texts.join("\n").trim();
 
     if (mediaParts.length > 0) {
-      await this.handleMediaMessage(handle, space, mediaParts, caption);
+      await this.handleMediaMessage(
+        handle,
+        space,
+        receivedAt,
+        mediaParts,
+        caption,
+      );
       return;
     }
     if (caption) {
-      await this.handleIncomingMessage(handle, space, caption);
+      await this.handleIncomingMessage(handle, space, receivedAt, caption);
       return;
     }
 
@@ -574,6 +609,7 @@ export class ImessageAdapter extends BaseBotAdapter {
   private async handleMediaMessage(
     handle: string,
     space: Space,
+    receivedAt: number,
     contents: MediaContent[],
     caption?: string,
   ): Promise<void> {
@@ -645,6 +681,7 @@ export class ImessageAdapter extends BaseBotAdapter {
         await this.handleStreamingMessage(
           handle,
           space,
+          receivedAt,
           text,
           undefined,
           uploaded,

@@ -26,6 +26,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Mock @slack/bolt
 // ---------------------------------------------------------------------------
 
+const RECEIVED_AT = 1_700_000_000_000;
 const mockApp = {
   command: vi.fn(),
   event: vi.fn(),
@@ -347,9 +348,18 @@ describe("SlackAdapter - handleSlackStreaming", () => {
           channelId: string,
           userId: string,
           message: string,
+          isDm: boolean,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleSlackStreaming(client, "C789", "U456", "Plan my day");
+    ).handleSlackStreaming(
+      client,
+      "C789",
+      "U456",
+      "Plan my day",
+      false,
+      RECEIVED_AT,
+    );
 
     expect(client.chat.postMessage).toHaveBeenCalledWith({
       channel: "C789",
@@ -368,9 +378,18 @@ describe("SlackAdapter - handleSlackStreaming", () => {
           channelId: string,
           userId: string,
           message: string,
+          isDm: boolean,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleSlackStreaming(client, "C789", "U456", "Plan my day");
+    ).handleSlackStreaming(
+      client,
+      "C789",
+      "U456",
+      "Plan my day",
+      false,
+      RECEIVED_AT,
+    );
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.any(Object), // gaia client
@@ -379,6 +398,7 @@ describe("SlackAdapter - handleSlackStreaming", () => {
         platform: "slack",
         platformUserId: "U456",
         channelId: "C789",
+        receivedAt: RECEIVED_AT,
       }),
       expect.any(Function), // editMessage callback
       expect.any(Function), // sendNewMessage callback
@@ -404,9 +424,11 @@ describe("SlackAdapter - handleSlackStreaming", () => {
           channelId: string,
           userId: string,
           message: string,
+          isDm: boolean,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleSlackStreaming(client, "C789", "U456", "Test");
+    ).handleSlackStreaming(client, "C789", "U456", "Test", false, RECEIVED_AT);
 
     expect(client.chat.postEphemeral).toHaveBeenCalledWith({
       channel: "C789",
@@ -443,9 +465,11 @@ describe("SlackAdapter - handleSlackStreaming streaming callbacks", () => {
           channelId: string,
           userId: string,
           message: string,
+          isDm: boolean,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleSlackStreaming(client, "C789", "U456", "Hello");
+    ).handleSlackStreaming(client, "C789", "U456", "Hello", false, RECEIVED_AT);
 
     expect(capturedEditMessage).toBeDefined();
 
@@ -1202,6 +1226,7 @@ describe("SlackAdapter - live turn reaction", () => {
       userId: string,
       message: string,
       isDm: boolean,
+      receivedAt: number,
       inboundTs?: string,
     ) => Promise<void>;
   };
@@ -1229,6 +1254,7 @@ describe("SlackAdapter - live turn reaction", () => {
       "U456",
       "thanks!",
       true,
+      RECEIVED_AT,
       "111.222",
     );
 
@@ -1254,6 +1280,7 @@ describe("SlackAdapter - live turn reaction", () => {
       "U456",
       "thanks!",
       true,
+      RECEIVED_AT,
       "111.222",
     );
 
@@ -1275,6 +1302,7 @@ describe("SlackAdapter - live turn reaction", () => {
       "U456",
       "thanks!",
       false,
+      RECEIVED_AT,
     );
 
     await expect(lastReactionHook()("👍")).resolves.toBe("no_target");

@@ -94,6 +94,7 @@ interface StreamScript {
 
 const AUTH_URL = "https://gaia.example.com/auth?token=conf123";
 const PRICING_URL = "https://gaia.example.com/pricing";
+const RECEIVED_AT = 1_700_000_000_000;
 
 function makeGaia(script: StreamScript) {
   return {
@@ -276,9 +277,10 @@ async function driveTelegram(script: StreamScript): Promise<Canonical> {
         ctx: typeof ctx,
         userId: string,
         message: string,
+        receivedAt: number,
       ) => Promise<void>;
     }
-  ).handleTelegramStreaming(ctx, "dev-user-1", "please respond");
+  ).handleTelegramStreaming(ctx, "dev-user-1", "please respond", RECEIVED_AT);
   return reduce(ops);
 }
 
@@ -330,6 +332,7 @@ async function driveSlack(script: StreamScript): Promise<Canonical> {
         userId: string,
         message: string,
         isDm: boolean,
+        receivedAt: number,
         inboundTs: string,
       ) => Promise<void>;
     }
@@ -342,6 +345,7 @@ async function driveSlack(script: StreamScript): Promise<Canonical> {
       "U999",
       "please respond",
       false,
+      RECEIVED_AT,
       "111.1",
     );
   return reduce(ops);
@@ -381,9 +385,12 @@ async function driveDiscord(script: StreamScript): Promise<Canonical> {
 
   await (
     adapter as unknown as {
-      handleGaiaInteraction: (interaction: typeof interaction) => Promise<void>;
+      handleGaiaInteraction: (
+        interaction: typeof interaction,
+        receivedAt: number,
+      ) => Promise<void>;
     }
-  ).handleGaiaInteraction(interaction);
+  ).handleGaiaInteraction(interaction, RECEIVED_AT);
   return reduce(ops);
 }
 
@@ -420,9 +427,15 @@ async function driveWhatsApp(script: StreamScript): Promise<Canonical> {
         waId: string,
         text: string,
         messageId: string,
+        receivedAt: number,
       ) => Promise<void>;
     }
-  ).handleStreamingMessage("dev-user-1", "please respond", "wamid.1");
+  ).handleStreamingMessage(
+    "dev-user-1",
+    "please respond",
+    "wamid.1",
+    RECEIVED_AT,
+  );
   return reduce(ops);
 }
 
@@ -471,9 +484,10 @@ async function driveDiscordMention(script: StreamScript): Promise<Canonical> {
         s: typeof send,
         content: string,
         attachments: unknown[],
+        receivedAt: number,
       ) => Promise<void>;
     }
-  ).streamMentionReply(message, send, "please respond", []);
+  ).streamMentionReply(message, send, "please respond", [], RECEIVED_AT);
   return reduce(ops);
 }
 

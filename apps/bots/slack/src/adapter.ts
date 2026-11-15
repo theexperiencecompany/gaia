@@ -192,6 +192,7 @@ export class SlackAdapter extends BaseBotAdapter {
   protected async registerEvents(): Promise<void> {
     // Channel @mentions
     this.app.event("app_mention", async ({ event, client, context }) => {
+      const receivedAt = Date.now();
       const botMention = context.botUserId
         ? new RegExp(`<@${context.botUserId}>`, "g")
         : null;
@@ -217,12 +218,14 @@ export class SlackAdapter extends BaseBotAdapter {
         userId,
         content,
         false,
+        receivedAt,
         event.ts,
       );
     });
 
     // DM messages
     this.app.message(async ({ message, client }) => {
+      const receivedAt = Date.now();
       const msg = message as SlackMessageEvent;
 
       if (msg.subtype) return;
@@ -235,6 +238,7 @@ export class SlackAdapter extends BaseBotAdapter {
         msg.user,
         msg.text,
         true,
+        receivedAt,
         msg.ts,
       );
     });
@@ -375,6 +379,7 @@ export class SlackAdapter extends BaseBotAdapter {
    */
   private registerGaiaCommand(): void {
     this.app.command("/gaia", async ({ command, ack, client }) => {
+      const receivedAt = Date.now();
       await ack();
 
       const userId = command.user_id;
@@ -396,6 +401,7 @@ export class SlackAdapter extends BaseBotAdapter {
         userId,
         message,
         channelId.startsWith("D"),
+        receivedAt,
       );
     });
   }
@@ -412,6 +418,7 @@ export class SlackAdapter extends BaseBotAdapter {
     userId: string,
     message: string,
     isDm: boolean,
+    receivedAt: number,
     inboundTs?: string,
   ): Promise<void> {
     const result = await client.chat.postMessage({
@@ -467,6 +474,7 @@ export class SlackAdapter extends BaseBotAdapter {
         channelId,
         isDm,
         platformMessageId: inboundTs,
+        receivedAt,
       },
       async (text: string) => {
         await client.chat.update({

@@ -38,6 +38,7 @@ import {
   formatBotError,
   PLATFORM_MARKDOWN,
 } from "./formatters";
+import type { BotLogFields } from "./logger";
 import {
   createBotLogger,
   hashLogIdentifier,
@@ -579,6 +580,7 @@ async function runStreamingChat(
   onNoReply: NoReplyHandler | undefined,
 ): Promise<void> {
   const startMs = Date.now();
+  const stamps: BotTurnStamps = {};
   let responseLength = 0;
   let firstChunkMs: number | null = null;
   let chunkCount = 0;
@@ -642,17 +644,20 @@ async function runStreamingChat(
     deliverOutOfBand: (text: string) => Promise<void>,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
     reactToTurn: ReactionHandler,
-  ) =>
-    gaia.chatStream(
+  ) => {
+    stamps.apiRequestAt ??= Date.now();
+    return gaia.chatStream(
       request,
       (text) => {
         chunkCount++;
         if (firstChunkMs === null) {
-          firstChunkMs = Date.now() - startMs;
+          stamps.firstChunkAt = Date.now();
+          firstChunkMs = stamps.firstChunkAt - startMs;
         }
         return onChunk(text);
       },
       async (fullText, convId) => {
+        stamps.doneAt ??= Date.now();
         responseLength = fullText.length;
         conversationId = convId;
         await onDone(fullText, convId);
@@ -697,14 +702,25 @@ async function runStreamingChat(
         return outcome;
       },
     );
+  };
+
+  // The first call into either is the first thing the user sees from the bot.
+  const timedEdit: MessageEditor = (text) => {
+    stamps.firstSendAt ??= Date.now();
+    return editMessage(text);
+  };
+  const timedSend: NewMessageSender = (text) => {
+    stamps.firstSendAt ??= Date.now();
+    return sendNewMessage(text);
+  };
 
   try {
     await _handleStream(
       streamFn,
       request,
       gaia,
-      editMessage,
-      sendNewMessage,
+      timedEdit,
+      timedSend,
       wrappedOnAuthError,
       wrappedOnGenericError,
       options,
@@ -721,6 +737,42 @@ async function runStreamingChat(
       conversation_id: conversationId || undefined,
       reaction_delivery: reactionDelivered?.delivery,
       reaction_reason: reactionDelivered?.reason,
+      latency: botTurnLatency(stamps, request.receivedAt, options.streaming),
     });
   }
+}
+
+/** Epoch-ms moments of one bot turn, each kept at its first occurrence. */
+interface BotTurnStamps {
+  apiRequestAt?: number;
+  firstChunkAt?: number;
+  doneAt?: number;
+  firstSendAt?: number;
+}
+
+/**
+ * The stretches of a turn the bot itself adds, around the API's own time.
+ *
+ * Egress runs from the frame that makes text visible: the first chunk on a
+ * streaming platform, the end of the stream on a buffered one (WhatsApp,
+ * iMessage, Discord show nothing until then). Ingress needs the adapter's
+ * arrival stamp, so it is absent for a request built without one.
+ */
+function botTurnLatency(
+  stamps: BotTurnStamps,
+  receivedAt: number | undefined,
+  streaming: boolean,
+): BotLogFields {
+  const visibleFrameAt = streaming ? stamps.firstChunkAt : stamps.doneAt;
+  const latency: BotLogFields = {};
+  if (receivedAt !== undefined && stamps.apiRequestAt !== undefined) {
+    latency.bot_ingress_ms = stamps.apiRequestAt - receivedAt;
+  }
+  if (stamps.firstSendAt !== undefined && visibleFrameAt !== undefined) {
+    latency.bot_egress_ms = stamps.firstSendAt - visibleFrameAt;
+  }
+  if (receivedAt !== undefined && stamps.firstSendAt !== undefined) {
+    latency.inbound_to_first_send_ms = stamps.firstSendAt - receivedAt;
+  }
+  return latency;
 }

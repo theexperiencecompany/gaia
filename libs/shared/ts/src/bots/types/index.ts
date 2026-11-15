@@ -62,6 +62,12 @@ export interface ChatRequest {
    */
   platformMessageId?: string;
   /**
+   * When the platform event reached the bot (epoch ms), stamped by the adapter
+   * on arrival — before any per-user queue — so the chat event can report how
+   * much of the reply's latency the bot itself added. Never sent to the API.
+   */
+  receivedAt?: number;
+  /**
    * Full file metadata for the attached files. Sent alongside `fileIds` so
    * the agent can resolve URLs/filenames without an extra DB lookup, matching
    * the web app's chat payload shape.

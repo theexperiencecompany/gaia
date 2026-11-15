@@ -86,6 +86,7 @@ function makeSpace(overrides: Partial<FakeSpace> = {}): FakeSpace {
 
 const ATTACHMENT_CHUNK = 256;
 const CAP = 1000;
+const RECEIVED_AT = 1_700_000_000_000;
 
 function makeAttachment(overrides: { size?: number } = {}) {
   const content = {
@@ -169,11 +170,13 @@ type PrivateAdapter = {
   handleIncomingMessage: (
     handle: string,
     space: FakeSpace,
+    receivedAt: number,
     text: string,
   ) => Promise<void>;
   handleStreamingMessage: (
     handle: string,
     space: FakeSpace,
+    receivedAt: number,
     text: string,
   ) => Promise<void>;
   messageQueues: Map<string, Promise<void>>;
@@ -704,10 +707,18 @@ describe("handleIncomingMessage commands", () => {
   it("/gaia with text streams the rest", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "/gaia hello there");
+    await priv.handleIncomingMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "/gaia hello there",
+    );
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ message: "hello there" }),
+      expect.objectContaining({
+        message: "hello there",
+        receivedAt: RECEIVED_AT,
+      }),
       expect.anything(),
       expect.anything(),
       expect.anything(),
@@ -723,7 +734,7 @@ describe("handleIncomingMessage commands", () => {
   it("/gaia without text sends a usage hint", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "/gaia");
+    await priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "/gaia");
     expect(space.send).toHaveBeenCalledWith("Usage: /gaia <your message>");
     expect(handleStreamingChat).not.toHaveBeenCalled();
   });
@@ -731,14 +742,19 @@ describe("handleIncomingMessage commands", () => {
   it("unknown slash command replies via dispatchCommand", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "/nosuchcmd");
+    await priv.handleIncomingMessage(
+      "+15550100",
+      space,
+      RECEIVED_AT,
+      "/nosuchcmd",
+    );
     expect(space.send).toHaveBeenCalledWith("Unknown command: /nosuchcmd");
   });
 
   it("starts and stops the typing indicator", async () => {
     const { priv } = makeAdapter();
     const space = makeSpace();
-    await priv.handleIncomingMessage("+15550100", space, "hello");
+    await priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "hello");
     expect(space.startTyping).toHaveBeenCalled();
     expect(space.stopTyping).toHaveBeenCalled();
   });
@@ -890,11 +906,12 @@ describe("live turn reaction", () => {
         handleStreamingMessage: (
           handle: string,
           space: FakeSpace,
+          receivedAt: number,
           text: string,
           messageId?: string,
         ) => Promise<void>;
       }
-    ).handleStreamingMessage("+15550100", space, "hi", messageId);
+    ).handleStreamingMessage("+15550100", space, RECEIVED_AT, "hi", messageId);
     const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
     return call?.[8] as (emoji: string) => Promise<string>;
   }

@@ -384,6 +384,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    * unsupported-media handling (serialized per user).
    */
   private handleWebhookEvent(event: KapsoMessageEvent): void {
+    // Before the per-user queue: time spent waiting there is the user's wait too.
+    const receivedAt = Date.now();
     const waId = extractWaId(event);
     const waIdHash = hashLogIdentifier(waId);
     const text = extractTextBody(event);
@@ -425,7 +427,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     // serialized: messages from the same user run one at a time, in order.
     if (text) {
       this.enqueueForUser(waId, () =>
-        this.handleIncomingMessage(waId, text, msgId).catch((err) =>
+        this.handleIncomingMessage(waId, text, msgId, receivedAt).catch((err) =>
           this.adapterLogger.error("incoming_message_processing_failed", {
             user_hash: waIdHash,
             message_id: msgId,
@@ -460,7 +462,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
 
     this.enqueueForUser(waId, () =>
-      this.handleMediaMessage(waId, media, msgId).catch((err) =>
+      this.handleMediaMessage(waId, media, msgId, receivedAt).catch((err) =>
         this.adapterLogger.error("media_message_processing_failed", {
           user_hash: waIdHash,
           message_id: msgId,
@@ -617,6 +619,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     waId: string,
     text: string,
     messageId: string,
+    receivedAt: number,
   ): Promise<void> {
     const waIdHash = hashLogIdentifier(waId);
     this.adapterLogger.info("incoming_message_started", {
@@ -662,7 +665,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
             await this.sendWhatsAppText(waId, "Usage: /gaia <your message>");
             return;
           }
-          await this.handleStreamingMessage(waId, rest, messageId);
+          await this.handleStreamingMessage(waId, rest, messageId, receivedAt);
           return;
         }
 
@@ -677,7 +680,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(waId, chatText, messageId);
+      await this.handleStreamingMessage(waId, chatText, messageId, receivedAt);
     } finally {
       typing.stop();
     }
@@ -694,6 +697,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     waId: string,
     text: string,
     messageId: string,
+    receivedAt: number,
     attachments: BotFileData[] = [],
   ): Promise<void> {
     if (!text.trim() && attachments.length === 0) {
@@ -717,6 +721,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           channelId: waId,
           isDm: true,
           platformMessageId: messageId,
+          receivedAt,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -829,6 +834,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     waId: string,
     media: ExtractedMedia,
     messageId: string,
+    receivedAt: number,
   ): Promise<void> {
     const waIdHash = hashLogIdentifier(waId);
     this.adapterLogger.info("media_message_started", {
@@ -868,6 +874,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           waId,
           outcome.text,
           messageId,
+          receivedAt,
           outcome.attachments,
         );
       }

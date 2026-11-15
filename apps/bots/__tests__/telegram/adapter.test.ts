@@ -155,6 +155,7 @@ import { captureBotEvents } from "../shared/helpers/capture-bot-event";
 
 /** A real-shaped one-tap link code: 22 urlsafe-base64 characters. */
 const LINK_CODE = "Ab3-_xY9zQ1234567890wE";
+const RECEIVED_AT = 1_700_000_000_000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -538,9 +539,10 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "tell me a joke");
+    ).handleTelegramStreaming(ctx, "999", "tell me a joke", RECEIVED_AT);
 
     expect(replyFn).toHaveBeenCalledWith("Thinking...");
     expect(handleStreamingChat).toHaveBeenCalled();
@@ -556,9 +558,10 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "555", "what is 2+2?");
+    ).handleTelegramStreaming(ctx, "555", "what is 2+2?", RECEIVED_AT);
 
     expect(handleStreamingChat).toHaveBeenCalledWith(
       expect.anything(), // gaia client
@@ -567,6 +570,7 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
         platform: "telegram",
         platformUserId: "555",
         channelId: "77777",
+        receivedAt: RECEIVED_AT,
       }),
       expect.any(Function), // editMessage callback
       expect.any(Function), // sendNewMessage callback
@@ -609,12 +613,14 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
     ).handleTelegramStreaming(
       ctx as unknown as ReturnType<typeof makeCtx>,
       "999",
       "hello",
+      RECEIVED_AT,
     );
 
     expect(replyFn).not.toHaveBeenCalled();
@@ -658,9 +664,10 @@ describe("TelegramAdapter - HTML fallback retry (editMessage callback)", () => {
           ctx: ReturnType<typeof makeCtx>,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", message);
+    ).handleTelegramStreaming(ctx, "999", message, RECEIVED_AT);
 
     if (!capturedEditCallback) {
       throw new Error("edit callback was not captured");
@@ -755,9 +762,10 @@ describe("TelegramAdapter - HTML fallback retry (editMessage callback)", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "new content");
+    ).handleTelegramStreaming(ctx, "999", "new content", RECEIVED_AT);
 
     expect(capturedSendNewMessage).toBeDefined();
 
@@ -1190,9 +1198,10 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "do something");
+    ).handleTelegramStreaming(ctx, "999", "do something", RECEIVED_AT);
 
     expect(capturedAuthError).toBeDefined();
 
@@ -1236,9 +1245,10 @@ describe("TelegramAdapter - unauthenticated / unknown chat handling", () => {
           ctx: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "do something");
+    ).handleTelegramStreaming(ctx, "999", "do something", RECEIVED_AT);
 
     expect(capturedGenericError).toBeDefined();
 
@@ -1772,9 +1782,10 @@ describe("TelegramAdapter - live turn reaction", () => {
           c: typeof ctx,
           userId: string,
           message: string,
+          receivedAt: number,
         ) => Promise<void>;
       }
-    ).handleTelegramStreaming(ctx, "999", "thanks!");
+    ).handleTelegramStreaming(ctx, "999", "thanks!", RECEIVED_AT);
     const call = vi.mocked(handleStreamingChat).mock.calls.at(-1);
     return call?.[8] as (emoji: string) => Promise<ReactionOutcome>;
   }

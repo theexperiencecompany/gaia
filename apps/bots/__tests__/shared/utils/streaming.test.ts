@@ -16,6 +16,7 @@ import {
   STREAMING_DEFAULTS,
 } from "@gaia/shared/bots";
 import { describe, expect, it } from "vitest";
+import { captureBotEvents } from "../helpers/capture-bot-event";
 
 const BREAK = "<NEW_MESSAGE_BREAK>";
 
@@ -41,7 +42,8 @@ function body(word: string, sentences: number): string {
 type StreamStep =
   | string
   | { boundary: { discarded: boolean } }
-  | { notice: string };
+  | { notice: string }
+  | { pauseMs: number };
 
 /** The style guard's retraction frame, and the kept boundary that ends a message. */
 const DISCARDED = { boundary: { discarded: true } } as const;
@@ -77,6 +79,10 @@ function streamingGaia(
       };
       for (const [i, step] of chunks.entries()) {
         if (typeof step !== "string") {
+          if ("pauseMs" in step) {
+            await new Promise((resolve) => setTimeout(resolve, step.pauseMs));
+            continue;
+          }
           if ("notice" in step) {
             await onNotice?.(step.notice);
             continue;
@@ -158,6 +164,7 @@ async function deliver(
     approval,
     failEdit,
     failStream,
+    receivedAt,
   }: {
     editable?: boolean;
     approvalAfter?: number;
@@ -166,6 +173,8 @@ async function deliver(
     failEdit?: { at: number; error: unknown };
     /** The transport error to fail the whole stream with, instead of streaming. */
     failStream?: unknown;
+    /** When the platform event reached the bot (epoch ms), as an adapter stamps it. */
+    receivedAt?: number;
   } = {},
 ): Promise<Delivered> {
   const bubbles: string[] = [];
@@ -220,6 +229,7 @@ async function deliver(
       platform,
       platformUserId: "u1",
       channelId: "c1",
+      receivedAt,
     },
     editMessage,
     sendNewMessage,
@@ -740,5 +750,53 @@ describe("a rate-limit notice", () => {
     expect(bubbles.indexOf("all set.")).toBeGreaterThan(
       bubbles.indexOf(NOTICE),
     );
+  });
+});
+
+describe("the chat event's latency stretches", () => {
+  /** Time between the first chunk and the stream's end, so the two cannot be confused. */
+  const GENERATION_MS = 300;
+
+  /** The `latency` namespace of the one `chat` event a delivered turn prints. */
+  async function latencyOf(
+    platform: PlatformName,
+    receivedAt?: number,
+  ): Promise<Record<string, unknown> | undefined> {
+    const events = await captureBotEvents("chat", () =>
+      deliver(platform, [GREETING, { pauseMs: GENERATION_MS }, KEPT], {
+        receivedAt,
+      }),
+    );
+    expect(events).toHaveLength(1);
+    return events[0].latency as Record<string, unknown> | undefined;
+  }
+
+  it("measures inbound-to-API as ingress from the adapter's arrival stamp", async () => {
+    const latency = await latencyOf("telegram", Date.now() - 250);
+
+    expect(latency?.bot_ingress_ms).toBeGreaterThanOrEqual(250);
+    expect(latency?.inbound_to_first_send_ms).toBeGreaterThanOrEqual(250);
+  });
+
+  it("measures egress from the first chunk on a streaming platform", async () => {
+    const latency = await latencyOf("telegram", Date.now());
+
+    expect(latency?.bot_egress_ms).toBeGreaterThanOrEqual(0);
+    expect(latency?.bot_egress_ms).toBeLessThan(GENERATION_MS);
+  });
+
+  it("measures egress from the stream's end on a buffered platform", async () => {
+    const latency = await latencyOf("whatsapp", Date.now());
+
+    expect(latency?.bot_egress_ms).toBeGreaterThanOrEqual(0);
+    expect(latency?.bot_egress_ms).toBeLessThan(GENERATION_MS);
+  });
+
+  it("reports no ingress when the adapter stamped no arrival", async () => {
+    const latency = await latencyOf("telegram");
+
+    expect(latency?.bot_ingress_ms).toBeUndefined();
+    expect(latency?.inbound_to_first_send_ms).toBeUndefined();
+    expect(latency?.bot_egress_ms).toBeGreaterThanOrEqual(0);
   });
 });
