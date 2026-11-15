@@ -2106,9 +2106,36 @@
       "BriefingEvent": {
         "description": "One calendar event on the user's own clock, read from their calendar.",
         "properties": {
+          "calendar": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar"
+          },
           "date": {
             "title": "Date",
             "type": "string"
+          },
+          "end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End"
+          },
+          "guests": {
+            "default": 0,
+            "title": "Guests",
+            "type": "integer"
           },
           "location": {
             "anyOf": [
@@ -2120,6 +2147,21 @@
               }
             ],
             "title": "Location"
+          },
+          "organizer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organizer"
+          },
+          "response": {
+            "$ref": "#/components/schemas/CalendarResponse",
+            "default": "own"
           },
           "start": {
             "anyOf": [
@@ -3764,6 +3806,18 @@
         ],
         "title": "CalendarPreferencesUpdateResponse",
         "type": "object"
+      },
+      "CalendarResponse": {
+        "description": "How the calendar's owner stands on an event: their own, accepted, tentative or unanswered.",
+        "enum": [
+          "own",
+          "accepted",
+          "tentative",
+          "needs_action",
+          "declined"
+        ],
+        "title": "CalendarResponse",
+        "type": "string"
       },
       "CancelStreamResponse": {
         "description": "Outcome of a stream-cancellation request.\n\n``error`` is set only when the stream could not be cancelled at all (it was\nnever started, or already expired from Redis).",
@@ -6244,6 +6298,11 @@
           "shape": {
             "$ref": "#/components/schemas/SeriesShape"
           },
+          "shown_not_total": {
+            "default": false,
+            "title": "Shown Not Total",
+            "type": "boolean"
+          },
           "source": {
             "title": "Source",
             "type": "string"
@@ -6269,7 +6328,8 @@
           "source",
           "app",
           "shape",
-          "points"
+          "points",
+          "shown_not_total"
         ],
         "title": "DataSeries",
         "type": "object"
@@ -8545,6 +8605,18 @@
             "title": "Done",
             "type": "integer"
           },
+          "done_by_gaia": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Done By Gaia",
+            "type": "integer"
+          },
+          "done_by_you": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Done By You",
+            "type": "integer"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -8564,6 +8636,24 @@
           "origin": {
             "$ref": "#/components/schemas/GoalOrigin"
           },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "stalled": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Stalled",
+            "type": "array"
+          },
           "statement": {
             "minLength": 1,
             "title": "Statement",
@@ -8575,8 +8665,12 @@
           "statement",
           "origin",
           "done",
+          "done_by_gaia",
+          "done_by_you",
+          "since",
           "open",
-          "linked"
+          "linked",
+          "stalled"
         ],
         "title": "GoalState",
         "type": "object"

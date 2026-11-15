@@ -54,14 +54,14 @@ def _group_lines(number: int, group: ComposedItems, pool: FactPool) -> str:
 
 async def heading_problems(
     user_id: str, composition: BriefComposition, pool: FactPool
-) -> list[str]:
-    """Name each heading of the rendered composition that is untrue of an item under it.
+) -> dict[int, str]:
+    """Name each heading of the rendered composition untrue of an item under it, by its block number from 1.
 
     Raises AppError when the check leaves a group unjudged: a heading nobody read is not shown.
     """
     groups = _groups(composition)
     if not groups:
-        return []
+        return {}
     answer = await ainvoke_structured(
         HeadingVerdicts,
         BRIEF_HEADING_PROMPT.format(
@@ -80,13 +80,13 @@ async def heading_problems(
             fix="the next scheduled brief retries; a heading nobody checked is never shown",
             meta={"answer": answer.model_dump()},
         )
-    return [
-        f'block {n} heading "{groups[n].heading}" is not true of '
+    return {
+        n: f'block {n} heading "{groups[n].heading}" is not true of '
         f"{_misfits(groups[n], v.misfits, pool) or 'its items'}: {v.why}; move "
         "them under a heading true of what they are, or rename this group"
         for n, v in sorted(verdicts.items())
         if not v.fits
-    ]
+    }
 
 
 def _misfits(group: ComposedItems, ids: list[int], pool: FactPool) -> str:

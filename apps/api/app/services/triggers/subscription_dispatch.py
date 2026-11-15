@@ -17,7 +17,12 @@ from datetime import UTC, datetime
 from redis.exceptions import RedisError
 
 from app.constants.integrations import EVENT_ACCOUNT_ID_KEY
-from app.constants.todos import BLOCKING_LABELS, EXECUTE_TRACKED_TODO_TASK, TodoActivityEvent
+from app.constants.todos import (
+    BLOCKING_LABELS,
+    EXECUTE_TRACKED_TODO_TASK,
+    TodoActivityEvent,
+    TodoCompleter,
+)
 from app.constants.trigger_gates import GateOwner
 from app.db.redis import redis_cache
 from app.db.repositories.todos import todo_repository
@@ -383,6 +388,7 @@ async def _complete(todo: TodoDocument, subscription: TriggerSubscription) -> No
         todo.id,
         todo.user_id,
         summary=f"Completed automatically: {subscription.trigger_name} fired.",
+        by=TodoCompleter.TRIGGER,
     )
     log.info("todo_subscription.completed_todo", todo_id=todo.id)
 

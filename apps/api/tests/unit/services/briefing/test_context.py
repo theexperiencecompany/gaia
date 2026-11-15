@@ -29,6 +29,7 @@ from app.constants.todos import (
     NEEDS_REPLY_LABEL,
     WAITING_FOR_APPROVAL_LABEL,
     WAITING_FOR_REPLY_LABEL,
+    TodoCompleter,
 )
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
@@ -55,8 +56,15 @@ from app.utils.errors import AppError, IntegrationNotConnectedError
 _USER = "user-1"
 
 
-def _todo(todo_id: str, title: str, *labels: str) -> TodoDocument:
-    return TodoDocument(id=todo_id, user_id=_USER, title=title, labels=list(labels))
+def _todo(todo_id: str, title: str, *labels: str, by: TodoCompleter | None = None) -> TodoDocument:
+    return TodoDocument(
+        id=todo_id,
+        user_id=_USER,
+        title=title,
+        labels=list(labels),
+        completed=by is not None,
+        completed_by=by,
+    )
 
 
 def _brief(mood: BriefingMood, *, items: list[str] | None = None) -> BriefingModel:
@@ -285,7 +293,12 @@ class TestLookback:
         monkeypatch.setattr(
             todo_repository,
             "list_completed_since",
-            AsyncMock(return_value=[_todo("c1", "Deck", GAIA_TRACKED_LABEL), _todo("c2", "Gym")]),
+            AsyncMock(
+                return_value=[
+                    _todo("c1", "Deck", GAIA_TRACKED_LABEL, by=TodoCompleter.GAIA),
+                    _todo("c2", "Gym"),
+                ]
+            ),
         )
         monkeypatch.setattr(
             workflow_executions_repository,
@@ -297,9 +310,9 @@ class TestLookback:
             _USER, _brief("clear", items=["Finish the deck"]), _SINCE_BRIEF, _CLOCK
         )
 
-        assert "- Finish the deck" in block
+        assert "- note: Finish the deck" in block
         assert "- GAIA finished: Deck" in block
-        assert "- You finished: Gym" in block
+        assert "- The user finished: Gym" in block
         assert "- Workflow [success]: 3 drafts" in block
 
 
@@ -776,10 +789,14 @@ class TestLookbackBlock:
         self, reads: SimpleNamespace
     ) -> None:
         reads.completed.return_value = [
-            _todo("c1", "Deck", GAIA_TRACKED_LABEL),
+            _todo("c1", "Deck", GAIA_TRACKED_LABEL, by=TodoCompleter.GAIA),
             _untitled("c2", GAIA_TRACKED_LABEL),
             _todo("c3", "Gym"),
             _untitled("c4"),
+            # Audit: GAIA's tracked work the user closed, or an event closed, read "GAIA finished".
+            _todo("c5", "Pay Acme", GAIA_TRACKED_LABEL, by=TodoCompleter.USER),
+            _todo("c6", "Sam's yes", GAIA_TRACKED_LABEL, by=TodoCompleter.TRIGGER),
+            _todo("c7", "Old lead", GAIA_TRACKED_LABEL, by=TodoCompleter.SYSTEM),
         ]
         reads.executions.return_value = [
             _execution("success", "3 drafts"),
@@ -792,14 +809,17 @@ class TestLookbackBlock:
         block = await context.format_lookback_block(_USER, yesterday, since, _CLOCK)
 
         assert block == (
-            "Your last brief, yesterday, told the user you'd focus on:\n"
-            "- Finish the deck\n"
-            "- Book flights\n\n"
+            # Audit: it said the user was told GAIA would "focus on" every item, done or not.
+            "Your last brief, yesterday, told the user about:\n"
+            "- note: Finish the deck\n"
+            "- note: Book flights\n\n"
             "Actually completed since then:\n"
             "- GAIA finished: Deck\n"
-            "- GAIA finished: untitled\n"
-            "- You finished: Gym\n"
-            "- You finished: untitled\n\n"
+            "- The user finished: Gym\n"
+            "- The user finished: untitled\n"
+            "- The user finished: Pay Acme\n"
+            "- Closed (who closed it is not recorded): untitled\n"
+            "- Closed when an event it watched fired: Sam's yes\n\n"
             "Background workflow runs since then:\n"
             "- Workflow [success]: 3 drafts\n"
             "- Workflow [failed]"
@@ -830,7 +850,7 @@ class TestLookbackBlock:
 
         block = await context.format_lookback_block(_USER, None, datetime.now(UTC), _CLOCK)
 
-        assert block.endswith("Actually completed since then:\n- You finished: Gym")
+        assert block.endswith("Actually completed since then:\n- The user finished: Gym")
 
     async def test_a_brief_days_ago_is_named_by_its_day_not_as_yesterday(
         self, reads: SimpleNamespace
@@ -841,7 +861,7 @@ class TestLookbackBlock:
         block = await context.format_lookback_block(_USER, friday, friday.created_at, _CLOCK)
 
         assert block.startswith(
-            "Your last brief, on Friday Oct 9, told the user you'd focus on:\n- Finish the deck"
+            "Your last brief, on Friday Oct 9, told the user about:\n- note: Finish the deck"
         )
         assert "Yesterday" not in block
 

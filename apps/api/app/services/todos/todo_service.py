@@ -10,7 +10,12 @@ import uuid
 
 from pymongo.errors import BulkWriteError, DuplicateKeyError
 
-from app.constants.todos import GAIA_TRACKED_LABEL, REOPENED_IN_THE_APP_DETAIL, TodoActivityEvent
+from app.constants.todos import (
+    GAIA_TRACKED_LABEL,
+    REOPENED_IN_THE_APP_DETAIL,
+    TodoActivityEvent,
+    TodoCompleter,
+)
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.projects import project_repository
@@ -389,7 +394,7 @@ async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _Tracked
     for todo_id in (todo_id for todo_id in todo_ids if todo_id in tracked):
         try:
             await tracked_todo_service.complete_tracked_todo(
-                todo_id, user_id, summary="Completed via bulk operation"
+                todo_id, user_id, summary="Completed via bulk operation", by=TodoCompleter.USER
             )
         except Exception as e:
             # Reported per todo in the response; the todos already completed keep their completion.
@@ -405,6 +410,14 @@ async def _complete_tracked_among(user_id: str, todo_ids: list[str]) -> _Tracked
     return completion
 
 
+def _stamp_users_completion(update: TodoUpdate) -> None:
+    """Stamp when the user completed the todo and that they did; reopening clears both."""
+    if update.completed is None:
+        return
+    update.completed_at = datetime.now(UTC) if update.completed else None
+    update.completed_by = TodoCompleter.USER if update.completed else None
+
+
 def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     """Rebuild update without the completion fields.
 
@@ -414,6 +427,7 @@ def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     fields = update.model_dump(exclude_unset=True)
     fields.pop("completed", None)
     fields.pop("completed_at", None)
+    fields.pop("completed_by", None)
     return TodoUpdate(**fields)
 
 
@@ -432,7 +446,7 @@ async def _complete_if_tracked(todo_id: str, user_id: str, update: TodoUpdate) -
         )
 
         await tracked_todo_service.complete_tracked_todo(
-            todo_id, user_id, summary="Completed via UI"
+            todo_id, user_id, summary="Completed via UI", by=TodoCompleter.USER
         )
     except Exception as e:
         log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
@@ -619,10 +633,7 @@ class TodoService:
         if update.project_id is not None:
             await require_project(user_id, update.project_id)
 
-        # Track completion timestamp (explicit None clears it when un-completing).
-        if update.completed is not None:
-            update.completed_at = datetime.now(UTC) if update.completed else None
-
+        _stamp_users_completion(update)
         if update.completed is True:
             update = await _complete_if_tracked(todo_id, user_id, update)
 
@@ -721,6 +732,7 @@ class TodoService:
         await _refuse_a_bulk_update(request, user_id)
         reopening = request.updates.completed is False
         update = _to_todo_update(request.updates)
+        _stamp_users_completion(update)
         if not update.model_fields_set:
             return BulkOperationResponse(
                 success=[], failed=[], total=len(request.todo_ids), message="No updates provided"

@@ -25,6 +25,9 @@ from app.constants.todos import (
     GAIA_TRACKED_LABEL,
     NEEDS_REPLY_LABEL,
     WAITING_FOR_APPROVAL_LABEL,
+    WAITING_FOR_REPLY_LABEL,
+    TodoCompleter,
+    WaitingOn,
 )
 from app.constants.workflows import WorkflowDelivery
 from app.db.repositories.approval_ledger import approval_ledger_repository
@@ -37,6 +40,7 @@ from app.models.brief_models import PendingBriefItemDocument
 from app.models.briefing_models import BriefingEvent
 from app.models.hil_models import ApprovalLedgerDocument, HILApprovalRecord
 from app.models.reminder_models import AgentType, ReminderDocument
+from app.models.scheduler_models import DeactivationReason
 from app.models.scout_models import (
     RememberedSignal,
     Signal,
@@ -76,17 +80,21 @@ def _todo(todo_id: str, title: str, *labels: str, **fields: Any) -> TodoDocument
 
 
 class TestTrackedTodos:
-    def test_a_todos_description_and_due_date_travel_with_its_candidate(self) -> None:
+    def test_a_todos_due_date_travels_with_its_candidate_and_its_description_never_does(
+        self,
+    ) -> None:
+        """Replay of Dhruv's set: GAIA's own instructions on a todo were voiced to the user."""
         due = NOW + timedelta(days=2)
+        rule = "Do not make a payment without explicit approval."
         work = TrackedWork(
-            blocked=[_todo("d1", "Pay the invoice", description="Acme, net 30", due_date=due)],
-            running=[_todo("d2", "Draft the memo")],
+            blocked=[_todo("d1", "Pay the invoice", description=rule, due_date=due)],
+            running=[_todo("d2", "Draft the memo", description=rule)],
         )
 
         [waiting] = waiting_candidates(work)
-        [running] = gaia_work_candidates(work)
+        [running] = gaia_work_candidates(work, CLOCK)
 
-        assert (waiting.detail, waiting.due_at) == ("Acme, net 30", due)
+        assert (waiting.detail, waiting.due_at) == (None, due)
         assert (running.detail, running.due_at) == (None, None)
 
     def test_what_waits_on_the_user_comes_first_then_what_failed(self) -> None:
@@ -163,25 +171,92 @@ class TestTrackedTodos:
 
     def test_gaias_finished_work_then_its_running_work(self) -> None:
         work = TrackedWork(
-            completed=[_todo("c1", "Investor update")], running=[_todo("r1", "Vet the Q4 leads")]
+            completed=[
+                _todo("c1", "Investor update", completed=True, completed_by=TodoCompleter.GAIA),
+                _todo(
+                    "c2", "Wait for Sam's yes", completed=True, completed_by=TodoCompleter.TRIGGER
+                ),
+            ],
+            running=[_todo("r1", "Vet the Q4 leads")],
         )
 
-        found = gaia_work_candidates(work)
+        found = gaia_work_candidates(work, CLOCK)
 
-        assert [(c.title, c.state, c.outcome) for c in found] == [
-            ("Investor update", "lookback", BriefOutcome.FINISHED),
-            ("Vet the Q4 leads", "gaia", BriefOutcome.STARTED),
+        assert [(c.title, c.state, c.outcome, c.finished_by) for c in found] == [
+            ("Investor update", "lookback", BriefOutcome.FINISHED, TodoCompleter.GAIA),
+            ("Wait for Sam's yes", "lookback", BriefOutcome.FINISHED, TodoCompleter.TRIGGER),
+            ("Vet the Q4 leads", "gaia", BriefOutcome.STARTED, None),
         ]
         assert all(c.action is None for c in found)
 
+    @pytest.mark.parametrize(
+        ("fields", "stands", "outcome"),
+        [
+            (
+                {"labels": [GAIA_TRACKED_LABEL, WAITING_FOR_REPLY_LABEL]},
+                "waiting on someone else's reply, not the user's",
+                BriefOutcome.STARTED,
+            ),
+            (
+                {"pause_reason": DeactivationReason.INTEGRATION_EXPIRED},
+                "paused: its app's connection expired",
+                None,
+            ),
+            (
+                {"waiting_on": WaitingOn.UNPLANNED, "scheduled_at": NOW + timedelta(days=2)},
+                "captured, not started: GAIA plans it Thu Nov 12",
+                None,
+            ),
+            (
+                {"waiting_on": WaitingOn.EVENT},
+                "waiting on an event it watches",
+                BriefOutcome.STARTED,
+            ),
+        ],
+    )
+    def test_open_work_gaia_is_not_running_says_where_it_stands(
+        self, fields: dict[str, Any], stands: str, outcome: BriefOutcome | None
+    ) -> None:
+        """Audit: work waiting on a reply, paused or never planned read as "in progress | started"."""
+        doc = TodoDocument(
+            id="r1",
+            user_id=USER_ID,
+            title="Chase the venue",
+            **{"labels": [GAIA_TRACKED_LABEL], **fields},
+        )
+
+        [found] = gaia_work_candidates(TrackedWork(running=[doc]), CLOCK)
+
+        assert (found.standing, found.outcome) == (stands, outcome)
+
+    def test_a_question_gaia_asked_waits_on_the_user_as_a_reply(self) -> None:
+        asked = _todo(
+            "q1",
+            "Pick the venue",
+            waiting_on=WaitingOn.USER,
+            question="Lisbon or Porto?",
+            description="Book only after the user picks.",
+        )
+
+        [found] = waiting_candidates(TrackedWork(blocked=[asked]))
+
+        assert (found.state, found.action, found.detail) == (
+            "you",
+            BriefAction.REPLY,
+            "Lisbon or Porto?",
+        )
+
     def test_what_the_user_finished_is_an_update_one_per_subject(self) -> None:
         done = [
-            _todo("u1", "Send the deck to Priya"),
-            _todo("u2", "send the  deck to priya"),
-            _todo("u3", "File the VAT return"),
+            _own_todo("u1", "Send the deck to Priya", completed=True),
+            _own_todo("u2", "send the  deck to priya", completed=True),
+            _own_todo("u3", "File the VAT return", completed=True),
         ]
 
         found = user_done_candidates(done)
+
+        # Audit: the user's own finished todos read as GAIA's; they are the user's.
+        assert {c.finished_by for c in found} == {TodoCompleter.USER}
 
         assert [(c.title, c.state, c.todo_id, c.count) for c in found] == [
             ("Send the deck to Priya", "lookback", "u1", 2),
@@ -218,7 +293,7 @@ class TestOwnTodos:
         found = await own_todo_candidates(USER_ID, cutoff, TrackedWork())
 
         assert [(c.title, c.detail, c.due_at, c.todo_id) for c in found] == [
-            ("File the VAT return", "Q3", overdue, "o1"),
+            ("File the VAT return", None, overdue, "o1"),
             ("Renew the passport", None, NOW, "o2"),
         ]
         assert {(c.state, c.action, c.app) for c in found} == {("you", BriefAction.ATTEND, "GAIA")}
@@ -331,6 +406,20 @@ class TestHeldResults:
         ]
         assert found[1].detail is None
         assert find_desk.await_args.args == (USER_ID, INBOX_DESK_REF)
+
+    async def test_a_todo_runs_held_report_is_not_called_finished(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            todo_repository, "find_latest_by_external_ref", AsyncMock(return_value=None)
+        )
+        held = [
+            _held("h1", BriefItemSource.TODO, "t-1", "Book the venue", "Could not reach the venue")
+        ]
+
+        (found,) = await held_candidates(USER_ID, held)
+
+        assert (found.title, found.outcome) == ("Book the venue: Could not reach the venue", None)
 
     async def test_only_a_todo_result_of_the_desk_itself_is_a_gmail_finding(
         self, monkeypatch: pytest.MonkeyPatch
@@ -590,13 +679,14 @@ class TestReminders:
 
 
 def _run(
-    execution_id: str, workflow_id: str, hours_ago: int, error: str
+    execution_id: str, workflow_id: str, hours_ago: int, error: str | None = None
 ) -> WorkflowExecutionDocument:
+    """Return a run that failed with error, or succeeded without one."""
     return WorkflowExecutionDocument(
         execution_id=execution_id,
         workflow_id=workflow_id,
         user_id=USER_ID,
-        status="failed",
+        status="success" if error is None else "failed",
         started_at=NOW - timedelta(hours=hours_ago),
         error_message=error,
     )
@@ -615,6 +705,36 @@ def _workflow(workflow_id: str, title: str) -> WorkflowDocument:
 
 
 class TestFailedRuns:
+    async def test_a_workflow_that_ran_fine_after_failing_reads_as_recovered(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        runs = [
+            _run("e4", "wf-sync", 1),
+            _run("e3", "wf-sync", 2, "Rate limited"),
+            _run("e2", "wf-sync", 3, "Rate limited"),
+            _run("e1", "wf-sync", 4, "Rate limited"),
+        ]
+        monkeypatch.setattr(
+            workflow_executions_repository, "list_since", AsyncMock(return_value=runs)
+        )
+        monkeypatch.setattr(
+            workflow_repository, "find_system_workflows", AsyncMock(return_value=[])
+        )
+        monkeypatch.setattr(
+            workflow_repository,
+            "find_by_ids_for_user",
+            AsyncMock(return_value=[_workflow("wf-sync", "CRM sync")]),
+        )
+
+        (found,) = await failed_run_candidates(USER_ID, NOW - timedelta(days=1))
+
+        assert (found.title, found.detail, found.state, found.action) == (
+            "CRM sync recovered",
+            "failed 3 time(s) since the last brief, then its latest run succeeded",
+            "note",
+            None,
+        )
+
     async def test_one_item_per_failed_workflow_naming_its_latest_error(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -636,14 +756,20 @@ class TestFailedRuns:
         found = await failed_run_candidates(USER_ID, since)
 
         assert [(c.title, c.detail, c.state, c.action) for c in found] == [
-            ("CRM sync failed", "HubSpot token expired", "failed", BriefAction.RETRY),
-            ("Digest failed", "Timed out", "failed", BriefAction.RETRY),
+            (
+                "CRM sync failed",
+                "HubSpot token expired | failed 2 time(s) since the last brief",
+                "failed",
+                BriefAction.RETRY,
+            ),
+            (
+                "Digest failed",
+                "Timed out | failed 1 time(s) since the last brief",
+                "failed",
+                BriefAction.RETRY,
+            ),
         ]
-        assert list_since.await_args.kwargs == {
-            "status": "failed",
-            "exclude_workflow_ids": ["wf-brief"],
-            "limit": 20,
-        }
+        assert list_since.await_args.kwargs == {"exclude_workflow_ids": ["wf-brief"], "limit": 200}
         assert list_since.await_args.args == (USER_ID, since)
         assert find_system.await_args.args == (USER_ID, BRIEFING_RHYTHM_WORKFLOW_KEYS)
         assert find_titles.await_args.args == (["wf-sync", "wf-digest"], USER_ID)

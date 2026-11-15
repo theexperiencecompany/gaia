@@ -84,6 +84,9 @@ _WINBACK = (
     "deliverable they never opened, named concretely ('the 12-investor list is still "
     "sitting here; want it, or should I bin it?').",
     "End on one binary choice: they want it, or they tell GAIA what changed.",
+    "Then say plainly, in one line of its own, that any reply keeps these briefs coming and "
+    "that without one the daily briefs pause after today ('Reply with anything to keep "
+    "these coming; otherwise I'll pause them after today.').",
     "If the facts hold nothing of value, ask one concrete question about whether the goal "
     "itself is still right ('still raising, or has the plan moved?').",
     "Never 'just checking in', never 'we miss you', never a guilt-trip, never a feature tour.",
@@ -183,10 +186,25 @@ def test_a_goal_asked_about_recently_is_not_asked_about_again() -> None:
         recent=RecentLines(),
     )
 
-    assert f"{_GOAL}\n\nYou asked recently whether their goal is still live." in prompt
-    assert "Do not ask about it again today, in any\nwording" in prompt
+    assert f"{_GOAL}\n\nYou asked recently about their goal: whether it is still live" in prompt
+    assert "Do not ask about\nit again today, in any wording" in prompt
     assert "If no goal lane exists" not in prompt
     assert "confirming question" not in prompt
+
+
+def test_a_first_week_asked_for_a_goal_recently_is_not_told_to_ask_for_one() -> None:
+    prompt = " ".join(
+        build_briefing_voice_prompt(
+            date_local="Tuesday, October 14",
+            blocks=_BLOCKS,
+            situation=VoiceSituation(first_week=True, goal_asked_recently=True),
+            recent=RecentLines(),
+        ).split()
+    )
+
+    assert (
+        "offer to connect the one their goal or work most needs; otherwise name one thing"
+    ) in prompt
 
 
 @pytest.mark.parametrize(
@@ -232,13 +250,13 @@ def test_an_account_note_sits_whole_between_goal_memory_and_the_goal_guidance(
 
 
 def test_the_voice_is_told_to_summarise_first_and_link_only_what_the_user_opens() -> None:
-    """Every fact carries a summary and a size; only an item worth opening earns its link."""
+    """Finished work carries a summary, every work fact a size; only what is worth opening links."""
     prompt = " ".join(_prompt().split())
 
     assert "ALWAYS summarise, THEN maybe link — never a bare link." in prompt
     assert (
-        "A work fact carries a ``summary:`` (concrete specifics) you MUST voice and a size hint "
-        "(``artifact holds ~N chars``); a fact with something to open is marked ``linkable`` "
+        "Finished work carries a ``summary:`` of its result (concrete specifics) you MUST voice; "
+        "every work fact carries a size hint (``artifact holds ~N chars``); a fact with something to open is marked ``linkable`` "
         "and you decide whether to link it. A fact not marked ``linkable`` has nothing to link."
     ) in prompt
     assert "the [full list](fact:4) is ready" in prompt
@@ -318,7 +336,12 @@ def test_without_recent_briefs_no_recent_lines_block_is_added() -> None:
 
 @pytest.mark.parametrize(
     "build",
-    [_prompt, partial(build_weekly_voice_prompt, date_local="2026-10-18", blocks=_BLOCKS)],
+    [
+        _prompt,
+        partial(
+            build_weekly_voice_prompt, date_local="2026-10-18", blocks=_BLOCKS, recent=RecentLines()
+        ),
+    ],
     ids=["daily", "weekly"],
 )
 def test_daily_and_weekly_share_one_message_voice_and_slot_grammar(
@@ -333,7 +356,9 @@ def test_daily_and_weekly_share_one_message_voice_and_slot_grammar(
 
 
 def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() -> None:
-    prompt = build_weekly_voice_prompt(date_local="2026-10-18", blocks=_BLOCKS)
+    prompt = build_weekly_voice_prompt(
+        date_local="2026-10-18", blocks=_BLOCKS, recent=RecentLines()
+    )
 
     assert f"## THIS WEEK'S FACTS (final: voice them, never alter them)\n{_BLOCKS.facts}" in prompt
     assert _GOAL in prompt
@@ -344,11 +369,21 @@ def test_the_weekly_voices_the_weeks_facts_and_goals_never_the_daily_extras() ->
 
 
 def test_the_weekly_recaps_the_week_and_asks_at_most_one_grounded_closed_question() -> None:
-    prompt = build_weekly_voice_prompt(date_local="2026-10-18", blocks=_BLOCKS)
+    prompt = build_weekly_voice_prompt(
+        date_local="2026-10-18", blocks=_BLOCKS, recent=RecentLines()
+    )
 
-    assert "## THE RECAP\nOpen on what this week actually held" in prompt
-    assert 'never say "today"\nof it' in prompt
-    assert "leave it out when this\nweek's facts raise none" in prompt
+    assert "## THE RECAP\nAnswer, in this order and only from THIS WEEK'S FACTS:" in prompt
+    for part in (
+        "1. Each goal in [GOALS THIS WEEK]: what moved it forward, and what has been stuck a week",
+        "2. What GAIA did this week, grouped by what it was",
+        "3. What is waiting on them: the approvals, replies owed and todos due",
+        "4. Next week: how many events it holds and the busiest days the week ahead names",
+    ):
+        assert part in prompt
+    flat = " ".join(prompt.split())
+    assert 'Every fact here is about the week: never say "today" of it.' in flat
+    assert "leave it out when this week's facts raise none" in flat
     assert "Never a label and a colon" in prompt
     assert "answer with a single word" not in prompt
 
@@ -358,7 +393,9 @@ _ASKS_FOR_THE_GOAL = "You don't know their goal\nyet, so ask ONE specific questi
 
 
 def test_the_day_zero_hello_offers_a_first_deliverable_when_the_goal_is_known() -> None:
-    prompt = build_day_zero_hello_prompt(first_name="Priya", goal_block=_GOAL, has_goal=True)
+    prompt = build_day_zero_hello_prompt(
+        first_name="Priya", goal_block=_GOAL, has_goal=True, first_brief="tomorrow at 8 AM"
+    )
 
     assert "Say hi to Priya by name" in prompt
     assert _OFFERS_A_DELIVERABLE in prompt
@@ -368,7 +405,7 @@ def test_the_day_zero_hello_offers_a_first_deliverable_when_the_goal_is_known() 
 
 def test_the_day_zero_hello_asks_for_the_goal_when_none_is_known() -> None:
     prompt = build_day_zero_hello_prompt(
-        first_name="Priya", goal_block="(nothing yet)", has_goal=False
+        first_name="Priya", goal_block="(nothing yet)", has_goal=False, first_brief=None
     )
 
     assert "Say hi to Priya by name" in prompt
