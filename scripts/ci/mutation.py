@@ -91,21 +91,22 @@ POOLS = ("unit", "services")
 # `shard` re-derives its own pool from it, through `needs_services`.
 SERVICES_TIER = "tests/contracts/"
 
-# A module's cost in shard seconds: a fixed clean+stats run, then each mutant
-# runs its mapped test files. Fitted to PR #1799's 218 modules (run
-# 43665639573): rank correlation 0.75 unit, 0.93 services. Services is 6x per
-# mutant because a contract-mapped module runs ONE mutant worker (run_mutmut).
+# A module's cost in shard seconds: a clean+stats run, then one pytest session
+# per mutant. Fitted to #1799's 212 graded modules (runs 43665639573, 43677307541);
+# services adds a per-file term because a contract module runs ONE mutant worker.
 MODULE_OVERHEAD_SECONDS = 20
-UNIT_SECONDS_PER_MUTANT_TEST = 0.03
-SERVICES_SECONDS_PER_MUTANT_TEST = 0.18
+UNIT_SECONDS_PER_MUTANT = 0.30
+SERVICES_SECONDS_PER_MUTANT = 0.19
+SERVICES_SECONDS_PER_MUTANT_TEST = 0.061
 # The step's 30-minute timeout less the log tail and report: the shard starts
 # no module it cannot finish by then, so the step never kills it unreported.
 SHARD_DEADLINE_SECONDS = 1680
-# What the plan aims to fit in one shard, under the deadline for estimate error
-# and the CPU-slot wait.
-SHARD_BUDGET_SECONDS = 1200
+# What the plan aims to fit in one shard: replaying both #1799 runs' measured
+# durations, a 600 s budget kept the worst shard at 1133 s, where 1200 s let one
+# reach 2248 s and leave 33 modules unstarted at the deadline.
+SHARD_BUDGET_SECONDS = 600
 # mutmut's cap inside a module: CAP_FACTOR x its estimate, never under the old
-# fixed 720 s, never over the shard budget.
+# fixed 720 s, never past what the deadline leaves after wrap-up.
 CAP_FACTOR = 3
 MUTMUT_CAP_FLOOR_SECONDS = 720
 MUTMUT_CAP_ENV = "MUTMUT_CAP_SECONDS"
@@ -197,18 +198,18 @@ class ModuleWork:
     @property
     def cost(self) -> float:
         """Estimate the shard seconds this module takes."""
-        per_test = (
+        if not self.needs_services:
+            return MODULE_OVERHEAD_SECONDS + self.mutants * UNIT_SECONDS_PER_MUTANT
+        per_mutant = SERVICES_SECONDS_PER_MUTANT + len(self.testfiles) * (
             SERVICES_SECONDS_PER_MUTANT_TEST
-            if self.needs_services
-            else UNIT_SECONDS_PER_MUTANT_TEST
         )
-        return MODULE_OVERHEAD_SECONDS + self.mutants * len(self.testfiles) * per_test
+        return MODULE_OVERHEAD_SECONDS + self.mutants * per_mutant
 
     @property
     def mutmut_cap(self) -> int:
         """Return mutmut's cap for this module, before the shard's deadline shrinks it."""
         scaled = max(CAP_FACTOR * self.cost, MUTMUT_CAP_FLOOR_SECONDS)
-        return int(min(scaled, SHARD_BUDGET_SECONDS))
+        return int(min(scaled, SHARD_DEADLINE_SECONDS - MODULE_WRAPUP_SECONDS))
 
     @classmethod
     def from_matrix(cls, item: dict[str, object]) -> ModuleWork:
