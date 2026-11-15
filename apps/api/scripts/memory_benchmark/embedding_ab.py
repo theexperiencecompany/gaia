@@ -238,6 +238,12 @@ CLOUDFLARE_EMBEDDERS: Final[dict[str, CloudflareModelSpec]] = {
         lambda q: {"queries": q},
         lambda d: {"documents": d},
     ),
+    "embeddinggemma-2": CloudflareModelSpec(
+        "@cf/google/embeddinggemma-2",
+        100,
+        lambda q: {"input": [GEMMA_QUERY_PREFIX + t for t in q]},
+        lambda d: {"input": [GEMMA_DOC_PREFIX + t for t in d]},
+    ),
     "embeddinggemma-300m": CloudflareModelSpec(
         "@cf/google/embeddinggemma-300m",
         100,
@@ -245,6 +251,15 @@ CLOUDFLARE_EMBEDDERS: Final[dict[str, CloudflareModelSpec]] = {
         lambda d: {"text": [GEMMA_DOC_PREFIX + t for t in d]},
     ),
 }
+
+
+def _result_vectors(result: dict[str, object]) -> list[list[float]]:
+    """Vectors from a Workers AI embedding result, native (bare lists) or OpenAI-shaped."""
+    data = result["data"]
+    assert isinstance(data, list)
+    if data and isinstance(data[0], dict):
+        return [item["embedding"] for item in sorted(data, key=lambda item: item["index"])]
+    return data
 
 
 def padded_batches(texts: list[str], max_texts: int, max_padded: int) -> list[list[int]]:
@@ -282,9 +297,7 @@ class CloudflareEmbedder:
         )
         vectors: list[Vector | None] = [None] * len(texts)
         for batch, result in zip(batches, results, strict=True):
-            data = result["data"]
-            assert isinstance(data, list)
-            for index, vector in zip(batch, data, strict=True):
+            for index, vector in zip(batch, _result_vectors(result), strict=True):
                 vectors[index] = np.asarray(vector, dtype=np.float32)
         missing = [i for i, v in enumerate(vectors) if v is None]
         if missing:
