@@ -3562,11 +3562,9 @@ score:URL Structure=93
 /marketplace/google_maps	perf/cache-headers/cache-control
 /marketplace/google_maps	url/hyphens/url-hyphens
 /marketplace/googlecalendar	content/keyword-stuffing/keyword-stuffing	calendar
-/marketplace/googlecalendar	content/placeholder-contact/placeholder-contact	email
 /marketplace/googlecalendar	images/svg-inline/svg-inline
 /marketplace/googlecalendar	perf/cache-headers/cache-control
 /marketplace/googledocs	content/keyword-stuffing/keyword-stuffing	document
-/marketplace/googledocs	content/placeholder-contact/placeholder-contact	email
 /marketplace/googledocs	images/svg-inline/svg-inline
 /marketplace/googledocs	perf/cache-headers/cache-control
 /marketplace/googledrive	content/keyword-stuffing/keyword-stuffing	file
@@ -3577,7 +3575,6 @@ score:URL Structure=93
 /marketplace/googlemeet	images/svg-inline/svg-inline
 /marketplace/googlemeet	perf/cache-headers/cache-control
 /marketplace/googlesheets	content/keyword-stuffing/keyword-stuffing	spreadsheet
-/marketplace/googlesheets	content/placeholder-contact/placeholder-contact	phone
 /marketplace/googlesheets	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/googlesheets	images/svg-inline/svg-inline
 /marketplace/googlesheets	perf/cache-headers/cache-control
@@ -3609,7 +3606,6 @@ score:URL Structure=93
 /marketplace/keyloom-mcp-capabilities	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
 /marketplace/keyloom-mcp-capabilities	images/svg-inline/svg-inline
 /marketplace/keyloom-mcp-capabilities	perf/cache-headers/cache-control
-/marketplace/linear	content/keyword-stuffing/keyword-stuffing	issue
 /marketplace/linear	images/svg-inline/svg-inline
 /marketplace/linear	perf/cache-headers/cache-control
 /marketplace/linkedin	images/svg-inline/svg-inline
@@ -3624,7 +3620,6 @@ score:URL Structure=93
 /marketplace/manufact-mcp-capabilities	perf/cache-headers/cache-control
 /marketplace/microsoft_teams	content/keyword-stuffing/keyword-stuffing	team
 /marketplace/microsoft_teams	content/keyword-stuffing/keyword-stuffing	teams
-/marketplace/microsoft_teams	content/placeholder-contact/placeholder-contact	email
 /marketplace/microsoft_teams	images/svg-inline/svg-inline
 /marketplace/microsoft_teams	perf/cache-headers/cache-control
 /marketplace/microsoft_teams	url/hyphens/url-hyphens
@@ -3643,7 +3638,6 @@ score:URL Structure=93
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	folder
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	use
 /marketplace/outlook	content/keyword-stuffing/keyword-stuffing	user
-/marketplace/outlook	content/placeholder-contact/placeholder-contact	email
 /marketplace/outlook	images/svg-inline/svg-inline
 /marketplace/outlook	perf/cache-headers/cache-control
 /marketplace/outlook	perf/dom-size/dom-max-children
@@ -3712,7 +3706,6 @@ score:URL Structure=93
 /marketplace/render-mcp-developer	links/orphan-pages/orphan-pages
 /marketplace/render-mcp-developer	links/weak-internal-links/weak-internal-links
 /marketplace/render-mcp-developer	perf/cache-headers/cache-control
-/marketplace/resend-mcp-communication	content/placeholder-contact/placeholder-contact	email
 /marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	js-artifact
 /marketplace/resend-mcp-communication	content/placeholder-text/placeholder-content	unrendered-template
 /marketplace/resend-mcp-communication	images/offscreen-lazy/offscreen-images-not-lazy	bWXAAeCwIsOaPyxBmAOlebRsx_9hB2NCuElhaRqD2Fo
@@ -3779,7 +3772,6 @@ score:URL Structure=93
 /marketplace/zoho-mail-mcp-communication	images/svg-inline/svg-inline
 /marketplace/zoho-mail-mcp-communication	perf/cache-headers/cache-control
 /marketplace/zoom	content/keyword-stuffing/keyword-stuffing	meeting
-/marketplace/zoom	content/placeholder-contact/placeholder-contact	address
 /marketplace/zoom	images/svg-inline/svg-inline
 /marketplace/zoom	perf/cache-headers/cache-control
 /marketplace?search=Discord	content/word-count/word-count
