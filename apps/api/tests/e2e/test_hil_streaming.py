@@ -500,6 +500,9 @@ async def hil_world(
         patch.object(conversation_repository, "refresh_live_approval_flag", new=AsyncMock()),
         # None of these conversations is a tracked todo's chat.
         patch.object(conversation_repository, "get_todo_id", new=AsyncMock(return_value=None)),
+        # User turns are never saved here (save_user_message is stubbed below), so no
+        # conversation document exists for a carry run to read its history from.
+        patch.object(conversation_repository, "get", new=AsyncMock(return_value=None)),
         patch.object(user_repository, "get", new=AsyncMock(return_value=stored_user)),
         patch.object(user_repository, "set_hil_tool_override", new=_set_override),
         patch("app.services.hil.bridge.notify_approval_pending", new=AsyncMock()),

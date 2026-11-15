@@ -78,6 +78,7 @@ from app.constants.executor import (
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
+from app.helpers.agent_helpers import recent_user_messages
 from app.models.agent_models import (
     AgentConfigurable,
     AgentConfigurableView,
@@ -86,6 +87,7 @@ from app.models.agent_models import (
 from app.models.chat_models import ToolDataEntry
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
+from app.services.bot_service import BotService
 from app.services.browser.job_stop import stop_browser_job
 from app.services.hil.approvals_store import set_resume_item
 from app.services.hil.resume_slot import release_resume_dispatch
@@ -846,10 +848,11 @@ async def _prepare_executor_run(
 ) -> PreparedQueuedTask | None:
     """Claim the conversation and materialize a detached run for the task.
 
-    Built from the user alone: a caller's configurable belongs to the run that
-    held it (its thread, subagent id, turn hints), never to the run started here.
+    Built from the user alone (a caller's configurable belongs to its own run),
+    plus their recent turns: auto mode grounds every gated call in them.
     None means another run holds the conversation (or Redis is down).
     """
+    history = await BotService.load_conversation_history(conversation_id, user.user_id)
     task_id = str(uuid4())
     # Equivalent under mutation: prepare_run_from_item claims the conversation it is
     # handed, never this item's copy, and the item is never stored.
@@ -869,6 +872,7 @@ async def _prepare_executor_run(
                 "user_timezone": user.timezone,
                 "thread_id": conversation_id,
                 "execution_mode": "interactive",
+                "user_messages": recent_user_messages(history, ""),
             },
             identity=identity,
             workflow_execution_id=workflow_execution_id,
