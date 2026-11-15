@@ -1,8 +1,6 @@
 import type { ToolDataEntry } from "../api/generated";
-import {
-  type ArtifactDeltaFrame,
-  isArtifactDeltaFrame,
-} from "../artifacts/openuiArtifacts";
+import { isArtifactDeltaFrame } from "../artifacts/openuiArtifacts";
+import type { ArtifactDeltaFrame } from "../artifacts/types";
 import {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   type DesktopToolRequest,

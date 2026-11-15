@@ -42,7 +42,13 @@ class GooglePassthroughModel(BaseModel):
     @model_serializer(mode="wrap")
     def _drop_unset_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
         dumped = handler(self)
-        return {key: value for key, value in dumped.items() if key in self.model_fields_set}
+        # A set field is emitted under its name or its alias, whichever the dump asked for.
+        sent = self.model_fields_set | {
+            field.alias
+            for name, field in type(self).model_fields.items()
+            if field.alias and name in self.model_fields_set
+        }
+        return {key: value for key, value in dumped.items() if key in sent}
 
     @classmethod
     def __get_pydantic_json_schema__(
@@ -94,6 +100,19 @@ ATTENDED_RESPONSES: frozenset[CalendarResponse] = frozenset(
 )
 
 
+class GoogleCalendarPerson(GooglePassthroughModel):
+    """An event's organizer or one of its attendees; Google marks the calendar's owner self."""
+
+    #: Google's own key, self, is what reaches the client, whichever way a dump is asked for.
+    model_config = ConfigDict(extra="allow", serialize_by_alias=True)
+
+    is_self: bool = Field(default=False, alias="self")
+    email: str | None = None
+    displayName: str | None = None
+    responseStatus: str | None = None
+    resource: bool = False
+
+
 class GoogleCalendarEventResource(GooglePassthroughModel):
     """A single Google Calendar ``events`` resource, forwarded to the client verbatim.
 
@@ -117,10 +136,8 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     # a raw single-event response.
     calendarId: str | None = None
     calendarTitle: str | None = None
-
-    def _attendees(self) -> list[dict[str, object]]:
-        attendees = (self.model_extra or {}).get("attendees") or []
-        return [a for a in attendees if isinstance(a, dict)]
+    organizer: GoogleCalendarPerson | None = None
+    attendees: list[GoogleCalendarPerson] | None = None
 
     @property
     def declined_by_user(self) -> bool:
@@ -130,30 +147,25 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     @property
     def response(self) -> CalendarResponse:
         """Return how the owner answered: their attendee row's status; their own event when they organize it or none is theirs."""
-        organizer = (self.model_extra or {}).get("organizer")
-        if isinstance(organizer, dict) and organizer.get("self"):
+        if self.organizer is not None and self.organizer.is_self:
             return CalendarResponse.OWN
-        mine = next((a for a in self._attendees() if a.get("self")), None)
-        status = mine.get("responseStatus") if mine is not None else None
+        mine = next((a for a in self.attendees or [] if a.is_self), None)
+        status = mine.responseStatus if mine is not None else None
         return (
-            _GOOGLE_RESPONSES.get(status, CalendarResponse.OWN)
-            if isinstance(status, str)
-            else CalendarResponse.OWN
+            _GOOGLE_RESPONSES.get(status, CalendarResponse.OWN) if status else CalendarResponse.OWN
         )
 
     @property
     def organizer_name(self) -> str | None:
         """Return who organized it when that is someone else: their name, else their email."""
-        organizer = (self.model_extra or {}).get("organizer")
-        if not isinstance(organizer, dict) or organizer.get("self"):
+        if self.organizer is None or self.organizer.is_self:
             return None
-        name = organizer.get("displayName") or organizer.get("email")
-        return name if isinstance(name, str) and name else None
+        return self.organizer.displayName or self.organizer.email or None
 
     @property
     def guests(self) -> int:
         """Return how many people besides the owner are invited, rooms and resources left out."""
-        return sum(1 for a in self._attendees() if not a.get("self") and not a.get("resource"))
+        return sum(1 for a in self.attendees or [] if not a.is_self and not a.resource)
 
 
 class GoogleCalendarEventsPage(BaseModel):
