@@ -15,6 +15,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   LETTER_CLOSE_TRANSITION,
   LETTER_EXIT_SCALE,
+  LETTER_OPEN_TRANSITION,
   LETTER_REDUCED_TRANSITION,
 } from "@/components/shared/LetterModal";
 import { cn } from "@/lib/utils";
@@ -37,8 +38,7 @@ const LIFT_FROM_SCALE = 0.97;
 /** A letter rising from a card is fully shown by this share of its rise. */
 const FADE_IN_END = 0.6;
 
-/** The letter rises (or travels from where it lay) on a soft ease-out. */
-const LIFT_TRANSITION = { duration: 0.32, ease: [0.32, 0.72, 0, 1] } as const;
+/** A letter opened from a card rises on every letter's rise; one opened from chat travels from where it lay. */
 const TRAVEL_TRANSITION = { duration: 0.5, ease: [0.32, 0.72, 0, 1] } as const;
 /** Each crease unpeels gently and settles long, so a panel never flips or snaps flat. */
 const CREASE_TRANSITION = { duration: 0.42, ease: [0.5, 0, 0.15, 1] } as const;
@@ -225,7 +225,11 @@ export function EditionUnfold({
       const opening = reduceMotion
         ? [animate(enter, 1, LETTER_REDUCED_TRANSITION)]
         : [
-            animate(enter, 1, travels ? TRAVEL_TRANSITION : LIFT_TRANSITION),
+            animate(
+              enter,
+              1,
+              travels ? TRAVEL_TRANSITION : LETTER_OPEN_TRANSITION,
+            ),
             ...creases.slice(1).map((crease, index) =>
               animate(crease, 1, {
                 ...CREASE_TRANSITION,
@@ -291,60 +295,49 @@ export function EditionUnfold({
   const shadowScale = useTransform(creases, (opens: number[]) =>
     opens.reduce((sum, open, index) => sum + shares[index] * open, 0),
   );
-  const frost = useTransform(
-    [enter, leave],
-    ([e, gone]: number[]) => e * (1 - gone),
-  );
   const isMoving = isOpening || !isPresent;
 
   return (
-    <>
+    <m.div
+      ref={letterRef}
+      role="img"
+      aria-label={alt}
+      className="relative"
+      style={{
+        opacity,
+        x,
+        y,
+        scale,
+        rotateX,
+        transformPerspective: travels ? LETTER_PERSPECTIVE_PX : undefined,
+        // A settled letter shrinks about its centre; one still travelling keeps the corner it travels by.
+        transformOrigin:
+          travels && (isPresent || isOpening) ? "0 0" : "50% 50%",
+        width,
+        aspectRatio: `1 / ${aspect}`,
+        willChange: isMoving ? "transform, opacity" : "auto",
+      }}
+    >
       <m.div
         aria-hidden
-        className="pointer-events-none fixed inset-0 bg-zinc-950/15 backdrop-blur-[10px]"
-        style={{ opacity: frost }}
+        className="absolute inset-0 origin-top rounded-xl shadow-[0_40px_90px_-28px_rgba(0,0,0,0.8),0_14px_30px_-14px_rgba(0,0,0,0.55)]"
+        style={{ scaleY: isOpening ? shadowScale : 1 }}
       />
-      <m.div
-        ref={letterRef}
-        role="img"
-        aria-label={alt}
-        className="relative"
-        style={{
-          opacity,
-          x,
-          y,
-          scale,
-          rotateX,
-          transformPerspective: travels ? LETTER_PERSPECTIVE_PX : undefined,
-          // A settled letter shrinks about its centre; one still travelling keeps the corner it travels by.
-          transformOrigin:
-            travels && (isPresent || isOpening) ? "0 0" : "50% 50%",
-          width,
-          aspectRatio: `1 / ${aspect}`,
-          willChange: isMoving ? "transform, opacity" : "auto",
-        }}
-      >
-        <m.div
-          aria-hidden
-          className="absolute inset-0 origin-top rounded-xl shadow-[0_40px_90px_-28px_rgba(0,0,0,0.8),0_14px_30px_-14px_rgba(0,0,0,0.55)]"
-          style={{ scaleY: isOpening ? shadowScale : 1 }}
-        />
-        {isOpening ? (
-          <div
-            className="absolute inset-0"
-            style={{ perspective: 1800, perspectiveOrigin: "50% 0%" }}
-          >
-            <Panel index={0} edition={edition} creases={creases} />
-          </div>
-        ) : (
-          <div
-            className="absolute inset-0 overflow-hidden"
-            style={{ borderRadius: CORNER_RADIUS_PX }}
-          >
-            <PanelFace bitmap={edition.sheet} />
-          </div>
-        )}
-      </m.div>
-    </>
+      {isOpening ? (
+        <div
+          className="absolute inset-0"
+          style={{ perspective: 1800, perspectiveOrigin: "50% 0%" }}
+        >
+          <Panel index={0} edition={edition} creases={creases} />
+        </div>
+      ) : (
+        <div
+          className="absolute inset-0 overflow-hidden"
+          style={{ borderRadius: CORNER_RADIUS_PX }}
+        >
+          <PanelFace bitmap={edition.sheet} />
+        </div>
+      )}
+    </m.div>
   );
 }

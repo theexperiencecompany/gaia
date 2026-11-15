@@ -8,9 +8,9 @@ import * as m from "motion/react-m";
 import { type ReactNode, useState } from "react";
 
 /**
- * A letter opens unhurried and leaves quickly: an ease-out entrance with a soft
- * start, a short ease-in exit that fades and shrinks it as one. Every letter
- * surface shares these timings.
+ * A letter opens unhurried and leaves quickly: an ease-out rise, a short
+ * ease-in exit that fades and shrinks it as one. Every letter surface and the
+ * page behind it share these timings.
  */
 export const LETTER_OPEN_TRANSITION = {
   duration: 0.4,
@@ -54,15 +54,51 @@ export const LETTER_SHEET_VARIANTS: Record<"full" | "reduced", Variants> = {
   },
 };
 
-/** The sheet's dimmed, frosted page fades on the sheet's own timings, so neither outlasts the other. */
-const BACKDROP_VARIANTS: Record<"full" | "reduced", Variants> = {
-  full: {
-    arrive: { opacity: 0 },
-    enter: { opacity: 1, transition: LETTER_OPEN_TRANSITION },
-    exit: { opacity: 0, transition: LETTER_CLOSE_TRANSITION },
-  },
-  reduced: LETTER_SHEET_VARIANTS.reduced,
-};
+/** What the page behind a letter becomes: dimmed for a sheet, lightly frosted under a floating letter. */
+const BACKDROP_LOOKS = {
+  sheet: { blurPx: 8, tint: "rgba(0, 0, 0, 0.7)" },
+  floating: { blurPx: 10, tint: "rgba(9, 9, 11, 0.15)" },
+} as const;
+
+type LetterPresentation = keyof typeof BACKDROP_LOOKS;
+
+/**
+ * The page frosts on the letter's own rise, on an even curve so the blur never
+ * jumps ahead of the letter, and clears on its close. The blur radius and tint
+ * ramp themselves rather than fading a finished blur in, which would cross a
+ * sharp page with a blurred copy of it.
+ */
+const BACKDROP_OPEN_TRANSITION = {
+  duration: LETTER_OPEN_TRANSITION.duration,
+  ease: [0.25, 0.1, 0.25, 1],
+} as const;
+
+function backdropVariants(
+  presentation: LetterPresentation,
+  motion: "full" | "reduced",
+): Variants {
+  const { blurPx, tint } = BACKDROP_LOOKS[presentation];
+  const clear = {
+    backdropFilter: "blur(0px)",
+    backgroundColor: "rgba(0, 0, 0, 0)",
+  };
+  return {
+    arrive: clear,
+    enter: {
+      backdropFilter: `blur(${blurPx}px)`,
+      backgroundColor: tint,
+      transition:
+        motion === "full"
+          ? BACKDROP_OPEN_TRANSITION
+          : LETTER_REDUCED_TRANSITION,
+    },
+    exit: {
+      ...clear,
+      transition:
+        motion === "full" ? LETTER_CLOSE_TRANSITION : LETTER_REDUCED_TRANSITION,
+    },
+  };
+}
 
 /**
  * The letter animates itself: HeroUI's wrapper only stays mounted until the
@@ -93,10 +129,10 @@ interface LetterModalProps {
   onClose: () => void;
   ariaLabel: string;
   /**
-   * "sheet" dims the page and tilts the sheet in; "floating" leaves the page as
-   * it is and lets the children animate themselves.
+   * "sheet" dims the page and tilts the sheet in; "floating" frosts the page
+   * lightly and lets the children animate themselves.
    */
-  presentation?: "sheet" | "floating";
+  presentation?: LetterPresentation;
   /** Controls pinned beside the close button, reachable however far the letter scrolls. */
   actions?: ReactNode;
   /** The sheet itself; it brings its own surface. */
@@ -140,16 +176,14 @@ export function LetterModal({
       }}
     >
       <ModalContent>
-        {presentation === "sheet" && (
-          <m.div
-            aria-hidden
-            initial="arrive"
-            animate="enter"
-            exit="exit"
-            variants={BACKDROP_VARIANTS[motion]}
-            className="pointer-events-none fixed inset-0 bg-black/70 backdrop-blur-sm"
-          />
-        )}
+        <m.div
+          aria-hidden
+          initial="arrive"
+          animate="enter"
+          exit="exit"
+          variants={backdropVariants(presentation, motion)}
+          className="pointer-events-none fixed inset-0"
+        />
         <div className="fixed top-3 right-3 z-50 flex items-center gap-2">
           {actions}
           <Button
