@@ -165,7 +165,7 @@ async def test_carried_work_with_no_cause_is_caused_by_everything_logged(rt: Run
     await accept(rt.ports, CONVERSATION, USER, user("u2"))
     assert await record_work_carried(CONVERSATION, USER, "t1", detached=True, exclusive=True)
     assert (await rt.entries())[-1].entry == WorkStarted(
-        id="work:t1", task_id="t1", cause_through=2, detached=True, exclusive=True
+        id="work:t1", task_id="t1", cause_through=2, cause_from=2, detached=True, exclusive=True
     )
 
 
