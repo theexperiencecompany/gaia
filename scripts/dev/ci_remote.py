@@ -67,6 +67,8 @@ from gaia_gh import (
 SCHEMA_VERSION = 2
 MAX_CHECK_PAGES = 6  # 100/page -> up to 600 check runs; plenty for any PR
 MAX_PARALLEL_FETCHES = 8
+# upload-verdict replaces a job's artifact on each upload, so a listed id can 404; list again this often.
+ARTIFACT_LISTINGS = 3
 VERDICT_PREFIX = "verdict-"
 FALLBACK_TAIL_LINES = 40  # kept in --json; the human render shows the last SHOWN_TAIL_LINES
 SHOWN_TAIL_LINES = 20
@@ -395,18 +397,16 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
     Artifacts are downloadable while the run is still in progress — unlike job
     logs, which only materialise once the whole run completes.
     """
-    endpoint = repo.api(f"actions/runs/{run_id}/artifacts")
-    rc, out, err = gh(["api", f"{endpoint}?per_page=100"], repo.timeout_s)
-    if rc != 0:
-        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
-        sys.exit(classify_failure(err, rc))
-    wanted = [
-        a
-        for a in json.loads(out).get("artifacts", [])
-        if a.get("name", "").startswith(VERDICT_PREFIX) and not a.get("expired")
-    ]
-    with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
-        blobs = list(pool.map(lambda a: cached_artifact(repo, a["id"]), wanted))
+    for _ in range(ARTIFACT_LISTINGS):
+        wanted = list_verdict_artifacts(repo, run_id)
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_FETCHES) as pool:
+            fetched = list(pool.map(lambda a: cached_artifact(repo, a["id"]), wanted))
+        if all(blob is not None for blob in fetched):
+            blobs = [blob for blob in fetched if blob is not None]
+            break
+    else:
+        eprint(f"ci:remote: run {run_id}'s verdict artifacts kept being replaced while read")
+        sys.exit(2)
 
     verdicts: list[Verdict] = []
     for artifact, blob in zip(wanted, blobs, strict=True):
@@ -421,15 +421,39 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
     return verdicts
 
 
-def cached_artifact(repo: Repo, artifact_id: int) -> bytes:
+class Artifact(TypedDict):
+    id: int
+    name: str
+
+
+def list_verdict_artifacts(repo: Repo, run_id: int) -> list[Artifact]:
+    endpoint = repo.api(f"actions/runs/{run_id}/artifacts")
+    rc, out, err = gh(["api", f"{endpoint}?per_page=100"], repo.timeout_s)
+    if rc != 0:
+        eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
+        sys.exit(classify_failure(err, rc))
+    return [
+        a
+        for a in json.loads(out).get("artifacts", [])
+        if a.get("name", "").startswith(VERDICT_PREFIX) and not a.get("expired")
+    ]
+
+
+def cached_artifact(repo: Repo, artifact_id: int) -> bytes | None:
+    """Return the artifact's zip, or None when a re-upload replaced it after it was listed."""
     if artifact_id not in repo.artifacts:
-        repo.artifacts[artifact_id] = fetch_artifact(repo, artifact_id)
+        blob = fetch_artifact(repo, artifact_id)
+        if blob is None:
+            return None
+        repo.artifacts[artifact_id] = blob
     return repo.artifacts[artifact_id]
 
 
-def fetch_artifact(repo: Repo, artifact_id: int) -> bytes:
+def fetch_artifact(repo: Repo, artifact_id: int) -> bytes | None:
     endpoint = repo.api(f"actions/artifacts/{artifact_id}/zip")
     rc, blob, err = gh_bytes(["api", endpoint], repo.timeout_s)
+    if rc != 0 and "HTTP 404" in err:
+        return None
     if rc != 0:
         eprint(f"ci:remote: GET {endpoint} failed:\n{err.strip()[:400]}")
         sys.exit(classify_failure(err, rc))

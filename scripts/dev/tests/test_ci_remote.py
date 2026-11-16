@@ -1638,3 +1638,24 @@ def test_a_watch_downloads_each_uploaded_verdict_once(wire) -> None:
     for _ in range(3):
         ci_remote.snapshot_once(repo, 7, "feat/thing", with_stack=False)
     assert sum(1 for call in fake.calls if call.endswith("/72/zip")) == 1
+
+
+def test_a_verdict_re_uploaded_between_listing_and_download_is_read_from_its_new_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """upload-verdict overwrites a job's artifact, so the id listed a moment ago can 404."""
+    verdict = {"lane": "lint-node", "status": "fail", "summary": "1 finding", "findings": []}
+    listings = iter(
+        [[{"id": 1, "name": "verdict-lint-node"}], [{"id": 2, "name": "verdict-lint-node"}]]
+    )
+    monkeypatch.setattr(
+        ci_remote, "gh", lambda *_a, **_k: (0, json.dumps({"artifacts": next(listings)}), "")
+    )
+    blobs = {1: (1, b"", "gh: Not Found (HTTP 404)"), 2: (0, verdict_zip(verdict), "")}
+    monkeypatch.setattr(
+        ci_remote, "gh_bytes", lambda args, _t: blobs[int(args[-1].rsplit("/", 2)[-2])]
+    )
+
+    verdicts = ci_remote.fetch_run_verdicts(ci_remote.Repo("o", "r", 30), 99)
+
+    assert [(v["lane"], v["artifact"]) for v in verdicts] == [("lint-node", "verdict-lint-node")]
