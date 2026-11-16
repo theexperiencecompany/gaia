@@ -128,3 +128,17 @@ def test_every_composio_call_names_its_account() -> None:
             if unscoped:
                 offenders.append(f"{path}:{call.lineno}")
     assert not offenders, "Composio calls with no account:\n" + "\n".join(offenders)
+
+
+def test_only_the_settlement_queue_enqueues_the_settle_job() -> None:
+    """A settle id built outside settle_job_id can drift, and a retry plus the sweep then queue two jobs."""
+    allowed = {"constants/referrals.py", "services/referrals/settlement_queue.py", "worker.py"}
+    offenders = [
+        f"{path}:{node.lineno}"
+        for path in _git_tracked_py_files()
+        if path.relative_to(APP_DIR).as_posix() not in allowed
+        for node in ast.walk(ast.parse(path.read_text()))
+        if (isinstance(node, ast.Name) and node.id == "SETTLE_REWARDS_TASK")
+        or (isinstance(node, ast.alias) and node.name == "SETTLE_REWARDS_TASK")
+    ]
+    assert not offenders, "queue settle jobs through queue_settlement:\n" + "\n".join(offenders)

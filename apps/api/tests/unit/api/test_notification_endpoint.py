@@ -24,6 +24,12 @@ from app.models.notification.notification_models import (
     NotificationView,
 )
 from app.models.user_models import AuthenticatedUser
+from app.utils.notification.unsubscribe import (
+    UNSUBSCRIBE_INVALID_HTML,
+    UnsubscribeScope,
+    render_unsubscribe_confirmation,
+    sign_unsubscribe_token,
+)
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import SettingsNotificationsToggled
 
@@ -757,3 +763,24 @@ class TestGetNotification:
     async def test_get_notification_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.get(f"{NOTIF_BASE}/n1")
         assert response.status_code == 401
+
+
+class TestUnsubscribeConfirmation:
+    async def test_a_valid_link_opens_a_confirm_page_that_posts_the_same_token(
+        self, client: AsyncClient
+    ) -> None:
+        token = sign_unsubscribe_token(UnsubscribeScope.NOTIFICATIONS, FAKE_USER_ID)
+
+        response = await client.get(f"{NOTIF_BASE}/unsubscribe", params={"token": token})
+
+        assert response.status_code == 200
+        assert response.text == render_unsubscribe_confirmation(
+            "Want to stop receiving GAIA emails?",
+            f"/api/v1/notifications/unsubscribe?token={token}",
+        )
+
+    async def test_a_forged_link_opens_the_invalid_page(self, client: AsyncClient) -> None:
+        response = await client.get(f"{NOTIF_BASE}/unsubscribe", params={"token": "forged"})
+
+        assert response.status_code == 400
+        assert response.text == UNSUBSCRIBE_INVALID_HTML

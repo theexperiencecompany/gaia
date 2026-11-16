@@ -53,6 +53,7 @@ import time_machine
 import uvicorn
 from workos.session import SessionModule
 
+from app.config.feature_flags import FeatureFlag
 from app.config.rate_limits import RateLimitConfig
 from app.constants.analytics import AT_MOST_ONCE_TASK_NAME
 from app.constants.db import LANGGRAPH_SETUP_LOCK_ID
@@ -326,6 +327,23 @@ def local_timezone(tz_name: str) -> Iterator[None]:
             os.environ["TZ"] = original
         if hasattr(time, "tzset"):
             time.tzset()
+
+
+@contextmanager
+def referrals_off_for(user_id: str) -> Iterator[None]:
+    """Have PostHog answer the REFERRALS flag off for this user alone and on for everyone else.
+
+    A call with no user skips PostHog for the env default, which is on, so code
+    that loses the user id reads as on. Every other flag goes unanswered.
+    """
+
+    def answer(key: str, distinct_id: str) -> bool | None:
+        return distinct_id != user_id if key == FeatureFlag.REFERRALS.value else None
+
+    client = MagicMock()
+    client.get_feature_flag.side_effect = answer
+    with patch("app.services.feature_flags._get_posthog_client", return_value=client):
+        yield
 
 
 def worker_mongo_db_name(base_name: str | None = None) -> str:

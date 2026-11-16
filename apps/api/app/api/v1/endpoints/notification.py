@@ -1,5 +1,4 @@
 import asyncio
-from html import escape
 from typing import Annotated
 
 from fastapi import (
@@ -45,7 +44,12 @@ from app.services.analytics_service import capture
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
-from app.utils.notification.unsubscribe import verify_unsubscribe_token
+from app.utils.notification.unsubscribe import (
+    NOTIFICATIONS_UNSUBSCRIBE_PATH,
+    UNSUBSCRIBE_INVALID_HTML,
+    render_unsubscribe_confirmation,
+    verify_unsubscribe_token,
+)
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.notifications import (
     NotificationActionExecuted,
@@ -57,12 +61,6 @@ from shared.py.analytics.catalog.settings import SettingsNotificationsToggled
 from shared.py.wide_events import NotificationContext, log
 
 router = APIRouter()
-
-_UNSUBSCRIBE_INVALID_HTML = (
-    "<!doctype html><html><body style='font-family: sans-serif; padding: 40px; "
-    "text-align: center;'><p>This unsubscribe link is invalid.</p>"
-    "</body></html>"
-)
 
 
 @router.get(
@@ -82,17 +80,11 @@ async def unsubscribe_confirmation(token: Annotated[str, Query()]) -> HTMLRespon
     prefetch) can never silently unsubscribe the user; the POST is the
     one-click target for RFC 8058 clients."""
     if not verify_unsubscribe_token(token):
-        return HTMLResponse(content=_UNSUBSCRIBE_INVALID_HTML, status_code=400)
+        return HTMLResponse(content=UNSUBSCRIBE_INVALID_HTML, status_code=400)
 
     log.set(operation="unsubscribe_email_confirmation")
-    escaped_token = escape(token)
-    form = (
-        "<!doctype html><html><body style='font-family: sans-serif; padding: 40px; "
-        "text-align: center;'><p>Want to stop receiving GAIA emails?</p>"
-        f"<form method='post' action='/api/v1/notifications/unsubscribe?token={escaped_token}'>"
-        "<button style='background-color: #00bbff; color: #ffffff; padding: 8px 16px; "
-        "border: none; border-radius: 4px; cursor: pointer;'>Unsubscribe</button>"
-        "</form></body></html>"
+    form = render_unsubscribe_confirmation(
+        "Want to stop receiving GAIA emails?", f"{NOTIFICATIONS_UNSUBSCRIBE_PATH}?token={token}"
     )
     return HTMLResponse(content=form)
 

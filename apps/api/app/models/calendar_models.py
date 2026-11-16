@@ -70,6 +70,13 @@ class GoogleCalendarEventDateTime(GooglePassthroughModel):
     timeZone: str | None = None
 
 
+class GoogleCalendarEventAttendee(GooglePassthroughModel):
+    """One invitee on an event Google returned; GAIA reads who they are."""
+
+    email: str | None = None
+    displayName: str | None = None
+
+
 class GoogleCalendarEventResource(GooglePassthroughModel):
     """A single Google Calendar ``events`` resource, forwarded to the client verbatim.
 
@@ -88,6 +95,7 @@ class GoogleCalendarEventResource(GooglePassthroughModel):
     end: GoogleCalendarEventDateTime | None = None
     recurrence: list[str] | None = None
     htmlLink: str | None = None
+    attendees: list[GoogleCalendarEventAttendee] | None = None
     # Injected by GAIA when events are merged across several calendars; absent from
     # a raw single-event response.
     calendarId: str | None = None

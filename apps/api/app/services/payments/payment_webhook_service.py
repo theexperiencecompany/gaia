@@ -11,6 +11,7 @@ from app.constants.log_tags import LogTag
 from app.constants.payments import SUBSCRIPTION_UNCHANGED_MESSAGE, WEBHOOK_ROW_WAIT_MAX
 from app.db.repositories.processed_webhooks import processed_webhook_repository
 from app.models.payment_models import ProcessedWebhookUpdate
+from app.models.referral_models import ReferralRevokeReason
 from app.models.webhook_models import (
     DodoPaymentData,
     DodoWebhookEvent,
@@ -29,8 +30,10 @@ from app.services.payments.subscription_events import (
     SubscriptionEventOutcome,
     apply_subscription_event,
 )
+from app.services.referrals.revocation import request_reward_revocation
+from app.services.referrals.rewards import record_friend_payment
 from app.utils.money import to_major_units
-from shared.py.analytics import UserId
+from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.catalog.billing import PaymentFailed, PaymentSucceeded
 from shared.py.wide_events import log
 
@@ -94,6 +97,8 @@ class PaymentWebhookService:
             DodoWebhookEventType.PAYMENT_FAILED: self._handle_payment_failed,
             DodoWebhookEventType.PAYMENT_PROCESSING: self._handle_payment_processing,
             DodoWebhookEventType.PAYMENT_CANCELLED: self._handle_payment_cancelled,
+            DodoWebhookEventType.REFUND_SUCCEEDED: self._handle_refund_succeeded,
+            DodoWebhookEventType.DISPUTE_OPENED: self._handle_dispute_opened,
             **dict.fromkeys(SUBSCRIPTION_EVENT_KINDS, self._handle_subscription_event),
         }
 
@@ -301,13 +306,18 @@ class PaymentWebhookService:
                 currency_charged=revenue.currency_charged,
                 amount_usd_pre_tax=revenue.amount_usd_pre_tax,
             ),
+            # Dodo redelivers a webhook whose handler failed later on (e.g. the referral reward).
+            dedupe=Dedupe(
+                key=payment_data.payment_id,
+                occurred_at=datetime.fromisoformat(payment_data.created_at),
+            ),
         )
 
     # Payment event handlers
     async def _handle_payment_succeeded(
         self, event: DodoWebhookEvent
     ) -> DodoWebhookProcessingResult:
-        """Handle successful payment - just log, subscription activation handles the rest."""
+        """Record the payment, and convert a referred friend on their first; activation handles the rest."""
         payment_data = event.get_payment_data()
         if not payment_data:
             raise ValueError("Invalid payment data")
@@ -315,6 +325,8 @@ class PaymentWebhookService:
         log.info(f"{LogTag.PAYMENT} Payment succeeded", payment_id=payment_data.payment_id)
 
         await self._capture_payment(PaymentSucceeded, payment_data)
+        # Raises on a failed delivery, so Dodo's retry finishes the reward; it is idempotent per friend.
+        await record_friend_payment(payment_data)
 
         return DodoWebhookProcessingResult(
             event_type=event.type,
@@ -370,6 +382,34 @@ class PaymentWebhookService:
             message="Payment cancellation noted",
             payment_id=payment_data.payment_id,
             subscription_id=payment_data.subscription_id,
+        )
+
+    async def _handle_refund_succeeded(
+        self, event: DodoWebhookEvent
+    ) -> DodoWebhookProcessingResult:
+        """Take back the free month a referred friend's first payment earned when Dodo refunds it in full."""
+        refund = event.get_refund_data()
+        log.set_ns("payment", refund_id=refund.refund_id, refund_partial=refund.is_partial)
+        # A partial refund is a goodwill adjustment: the friend still paid, so the month stands.
+        if not refund.is_partial:
+            await request_reward_revocation(refund.payment_id, ReferralRevokeReason.REFUND)
+        return DodoWebhookProcessingResult(
+            event_type=event.type,
+            status=WebhookProcessingStatus.PROCESSED,
+            message="Refund noted",
+            payment_id=refund.payment_id,
+        )
+
+    async def _handle_dispute_opened(self, event: DodoWebhookEvent) -> DodoWebhookProcessingResult:
+        """Take back the free month a referred friend's first payment earned once the payer disputes it."""
+        dispute = event.get_dispute_data()
+        log.set_ns("payment", dispute_id=dispute.dispute_id)
+        await request_reward_revocation(dispute.payment_id, ReferralRevokeReason.DISPUTE)
+        return DodoWebhookProcessingResult(
+            event_type=event.type,
+            status=WebhookProcessingStatus.PROCESSED,
+            message="Dispute noted",
+            payment_id=dispute.payment_id,
         )
 
     # Subscription event handlers

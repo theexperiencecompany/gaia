@@ -4,6 +4,8 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import Literal
 
+from dodopayments.types.checkout_session_create_params import BillingAddress
+
 # How many charges a payment-history read returns. Deep history belongs in the
 # billing portal; the agent only ever needs "what have I been charged lately".
 PAYMENT_HISTORY_LIMIT = 10
@@ -62,7 +64,7 @@ NO_USER_MESSAGE = "Could not identify the user, so their billing state is unavai
 #: Everything a checkout opened outside production prefills. The country
 #: matters: Dodo's test card (4242 4242 4242 4242) is a US Visa, and the
 #: Indian rail (chosen by the developer's IP) declines it.
-DODO_TEST_MODE_BILLING_ADDRESS: dict[str, str] = {
+DODO_TEST_MODE_BILLING_ADDRESS: BillingAddress = {
     "country": "US",
     "street": "548 Market St",
     "city": "San Francisco",
@@ -77,6 +79,8 @@ DODO_CHECKOUT_THEME: Literal["dark"] = "dark"
 #: ISO 4217 minor-unit exponents that are not 2: a Dodo amount is in the
 #: currency's smallest unit, so 1000 is ¥1000 but 10.00 USD and 1.000 KWD.
 ISO_4217_DEFAULT_EXPONENT = 2
+#: Prefix symbols for currencies whose copy reads better with one; others print the ISO code.
+CURRENCY_SYMBOLS: dict[str, str] = {"USD": "$", "EUR": "€", "GBP": "£", "INR": "₹"}
 ISO_4217_EXPONENTS: dict[str, int] = {
     **dict.fromkeys(
         (
@@ -114,3 +118,7 @@ DEV_PRO_TERM_DAYS = 365
 # The state a delivery's idempotency record carries between "claimed" and an
 # outcome. A record left in it means the handler died mid-flight.
 CLAIMED_STATUS = "processing"
+
+# Dodo lists discounts at most 100 a page; past this many pages a code is treated as unknown.
+DISCOUNT_LIST_PAGE_SIZE = 100
+DISCOUNT_LOOKUP_MAX_PAGES = 20
