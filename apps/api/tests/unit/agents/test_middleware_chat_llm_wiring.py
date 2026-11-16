@@ -31,6 +31,7 @@ from app.agents.middleware.factory import (
     ContextOptions,
     LoopGuardOptions,
     SubagentStackOptions,
+    create_comms_history_fold,
     create_comms_middleware,
     create_executor_middleware,
     create_middleware_stack,
@@ -47,6 +48,7 @@ from app.agents.middleware.summarization import (
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.summarization import (
+    COMMS_SUMMARIZATION_CEILING_TOKENS,
     COMMS_SUMMARIZATION_KEEP_TOKENS,
     COMMS_SUMMARIZATION_TRIGGER_TOKENS,
 )
@@ -141,15 +143,16 @@ class TestChatLlmWiring:
         # Comms has no read tool, so its archive pointer routes recovery through
         # the executor instead of naming a tool it cannot call.
         assert summarizer.archive == "executor"
-        # Past 272K input tokens OpenAI bills the whole request at 2x; a
-        # fraction of the 1M window crosses it.
-        stack = create_comms_middleware(lookup_tools=frozenset(), chat_llm=_fake_llm())
-
-        summarizer = next(
-            mw for mw in stack if isinstance(mw, WorkspaceArchivingSummarizationMiddleware)
+        # Settled turns fold in the background at the budget; the in-graph fold is the
+        # safety valve past twice it. Past 272K input tokens OpenAI bills the whole
+        # request at 2x, so even the valve stays under it.
+        assert summarizer.trigger == ("tokens", COMMS_SUMMARIZATION_CEILING_TOKENS)
+        assert create_comms_history_fold(llm).trigger == (
+            "tokens",
+            COMMS_SUMMARIZATION_TRIGGER_TOKENS,
         )
-        assert summarizer.trigger == ("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS)
-        assert COMMS_SUMMARIZATION_TRIGGER_TOKENS < 272_000
+        assert COMMS_SUMMARIZATION_CEILING_TOKENS == 2 * COMMS_SUMMARIZATION_TRIGGER_TOKENS
+        assert COMMS_SUMMARIZATION_CEILING_TOKENS < 272_000
 
     def test_subagent_stack_rides_its_own_llm(self) -> None:
         llm = _fake_llm()
@@ -570,7 +573,7 @@ class TestCommsAndSubagentDelegation:
             "context": ContextOptions(
                 compact=False,
                 archive="executor",
-                summarization_trigger=("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS),
+                summarization_trigger=("tokens", COMMS_SUMMARIZATION_CEILING_TOKENS),
                 summarization_keep=("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS),
             ),
         }

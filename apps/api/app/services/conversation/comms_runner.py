@@ -23,6 +23,7 @@ from app.agents.core.nodes.drain_conversation_log import close_feed, feed, open_
 from app.agents.middleware.runtime_adapter import GaiaAgentState
 from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
 from app.agents.tools.executor_tool import call_executor
+from app.agents.tools.invocation import invoke_tool
 from app.constants.agents import TimeHorizon
 from app.constants.conversation import (
     COMMS_CANCEL_CONFIRM_SECONDS,
@@ -167,7 +168,7 @@ class CommsGraphRun:
             "id": f"fallback:{claim.conversation_id}:{seqs[0]}",
             "type": "tool_call",
         }
-        await call_executor.ainvoke(call, config=self._config)
+        await invoke_tool(call_executor, call, config=self._config)
         return not set(seqs) & set(still_open(self._run_id))
 
     async def cancel(self, reason: CancelReason) -> None:

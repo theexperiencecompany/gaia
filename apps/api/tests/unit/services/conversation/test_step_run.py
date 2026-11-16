@@ -89,7 +89,7 @@ async def test_a_run_that_cannot_start_fails_its_inputs_and_says_why(
 ) -> None:
     rt = Runtime()
 
-    async def cannot_start(*_args: object) -> ScriptedRun:
+    async def cannot_start(*_args: object, **_kwargs: object) -> ScriptedRun:
         raise RuntimeError("model down")
 
     monkeypatch.setattr(rt.runner, "start", cannot_start)

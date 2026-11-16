@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.constants.chat import ConversationSource
 from app.models.conversation_frame_models import StateFrame
 from app.models.conversation_log_models import DisplayState
 from app.models.conversation_models import (
@@ -58,7 +59,7 @@ class TestCreateConversation:
         ):
             resp = await client.post(
                 "/api/v1/conversations",
-                json={"conversation_id": "conv_123", "description": "New Chat"},
+                json={"conversation_id": "conv_123", "description": "New Chat", "source": "web"},
             )
 
         assert resp.status_code == 200
@@ -149,6 +150,7 @@ class TestGetConversation:
             {
                 "conversation_id": "conv_123",
                 "user_id": "user_1",
+                "source": ConversationSource.WEB,
                 "metadata": {"legacy": True},
                 "state": StateFrame(head=0, display=DisplayState.IDLE, work=()),
             }

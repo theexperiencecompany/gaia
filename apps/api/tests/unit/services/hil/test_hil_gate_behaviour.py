@@ -32,7 +32,7 @@ POLICY = "app.services.hil.policy"
 TOOL_NAME = "delete_item"
 SERVER_KEY = "mcp:srv_a:delete_item"
 INTEGRATION_NAME = "Alpha Docs"
-SUMMARY = "Delete item in Alpha Docs: i1"
+SUMMARY = "Delete item in Alpha Docs"
 
 
 def _mcp_tool() -> BaseTool:
