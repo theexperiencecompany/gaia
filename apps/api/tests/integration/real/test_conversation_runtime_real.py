@@ -3210,6 +3210,33 @@ async def test_an_approval_tapped_twice_resumes_its_work_once(
 
 
 @pytest.mark.service
+@pytest.mark.parametrize(("feedback", "runs"), [(None, 0), ("call it run7 instead", 1)])
+async def test_a_plain_no_ends_the_parked_work_and_starts_no_run_to_say_it_again(
+    rig_for: RigFactory,
+    mongo_db: AsyncIOMotorDatabase[dict[str, object]],
+    feedback: str | None,
+    runs: int,
+) -> None:
+    """Regression for run 6 bug 25: after "no" a started run re-reported it and invited a yes."""
+    model = gated("I need your approval to send it", "unused")
+    rig = await rig_for(model)
+    approval_id = await _parked_on_a_ledger_approval(rig, model)
+    spawned = _Spawned(rig)
+
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        decided = await ledger_decide.decide_ledger(
+            approval_id, user_id=rig.user_id, kind="deny", feedback=feedback, via="chat"
+        )
+    await rig.settle()
+
+    assert (decided.committed, decided.outcome) == (True, ApprovalOutcome.DENIED)
+    assert len(spawned.task_ids) == runs
+    state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
+    assert "t1" not in [work.task_id for work in state.work]
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
 async def test_a_new_request_while_an_approval_waits_is_not_answered_with_the_old_ask(
     rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
 ) -> None:

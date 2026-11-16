@@ -435,8 +435,25 @@ class TestConversationFlagSync:
 
         repo.settle.assert_not_awaited()
 
+    async def test_a_plain_no_starts_no_run_and_reaches_only_a_live_one(self) -> None:
+        """Regression for run 6 bug 25: a started run re-reported the no and invited a yes."""
+        from app.services.hil.ledger_decide import decide_ledger
+
+        row = _row()
+        with (
+            patch(f"{MODULE}.approval_ledger_repository", new=_repo(row)),
+            patch(f"{MODULE}._deliver_ticket", new=AsyncMock()),
+            patch(f"{MODULE}._deliver_verdict", new=AsyncMock()) as deliver,
+            patch(f"{MODULE}._wake_agent", new=AsyncMock()) as wake,
+        ):
+            outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="deny", via="chat")
+
+        assert outcome.committed is True
+        deliver.assert_not_awaited()
+        wake.assert_awaited_once_with(row, ApprovalOutcome.DENIED, None)
+
     async def test_deny_delivers_verdict_to_start_idle_run(self) -> None:
-        """A deny must reach the agent even when the conversation is idle: the inbox wake alone is only read by a running run."""
+        """A no that asks for something else must reach the agent even when idle: there is work to do."""
         from app.services.hil.ledger_decide import decide_ledger
 
         row = _row()
@@ -1450,15 +1467,15 @@ class TestDecideLedgerOutcomes:
 
         assert "Send it (unknown age)." in seams.deliver.await_args.args[2]
 
-    @pytest.mark.parametrize("kind", ["approve", "deny"])
+    @pytest.mark.parametrize(("kind", "feedback"), [("approve", None), ("deny", "use Bcc")])
     async def test_a_failed_delivery_raises_to_the_tap_and_wakes_nothing(
-        self, seams: LedgerSeams, kind: ApprovalDecision
+        self, seams: LedgerSeams, kind: ApprovalDecision, feedback: str | None
     ) -> None:
         seams.rows["ap_1"] = _doc()
         seams.deliver.side_effect = RuntimeError("redis down")
 
         with pytest.raises(RuntimeError, match="redis down"):
-            await decide_ledger("ap_1", user_id=USER_ID, kind=kind, via="card")
+            await decide_ledger("ap_1", user_id=USER_ID, kind=kind, feedback=feedback, via="card")
 
         assert _inbox_lines(seams) == []
 
@@ -1480,12 +1497,17 @@ class TestDecideLedgerOutcomes:
         assert stands.outcome is ApprovalOutcome.DENIED
         assert stands.feedback == "nope"
 
-    async def test_a_bare_deny_carries_no_preview(self, seams: LedgerSeams) -> None:
+    async def test_a_bare_deny_only_tells_a_live_run_with_no_preview(
+        self, seams: LedgerSeams
+    ) -> None:
         seams.rows["ap_1"] = _doc()
 
         await decide_ledger("ap_1", user_id=USER_ID, kind="deny", via="card")
 
-        assert seams.deliver.await_args.args[2] == f"DECISION ap_1=DENIED Send it{_DENY_TAIL}"
+        seams.deliver.assert_not_awaited()
+        assert _inbox_lines(seams) == [
+            ("conv-1", "DECISIONS: ap_1=denied Send it", AgentTag.HIL_DECISION)
+        ]
 
     async def test_a_long_deny_reason_is_clipped_for_the_agent(self, seams: LedgerSeams) -> None:
         seams.rows["ap_1"] = _doc()

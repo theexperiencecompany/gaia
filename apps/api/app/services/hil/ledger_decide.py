@@ -207,8 +207,13 @@ async def _commit_decision(
         else:
             await _deliver_ticket(row)
     else:
-        # A wake alone reaches only a running run: delivery starts one to report what was skipped.
-        await _deliver_verdict(row, ApprovalOutcome.DENIED, feedback)
+        if feedback is not None:
+            # A no that asks for something else is work: delivery starts a run when none is live.
+            await _deliver_verdict(row, ApprovalOutcome.DENIED, feedback)
+        else:
+            # A plain no is final and its surface already said so (the ack, the card): only a
+            # live run needs telling; a run started to report it re-said it and offered it again.
+            await _wake_agent(row, ApprovalOutcome.DENIED, None)
         # A background todo has no other surface: leave the skip in its log.
         await record_owner_deny(row, feedback)
     await reconcile_conversation_ledger(row.conversation_id)
