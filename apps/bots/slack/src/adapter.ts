@@ -410,7 +410,9 @@ export class SlackAdapter extends BaseBotAdapter {
    * Shared streaming handler for `/gaia`, @mentions, and DMs.
    *
    * Posts an initial "Thinking..." message, then updates it via
-   * `chat.update` as chunks arrive from the streaming API.
+   * `chat.update` as chunks arrive from the streaming API. The placeholder is
+   * posted alongside the API request rather than ahead of it, so the request
+   * never queues behind a Slack round-trip; whatever writes to it awaits it.
    */
   private async handleSlackStreaming(
     client: SlackWebClient,
@@ -421,38 +423,14 @@ export class SlackAdapter extends BaseBotAdapter {
     receivedAt: number,
     inboundTs?: string,
   ): Promise<void> {
-    const result = await client.chat.postMessage({
-      channel: channelId,
-      text: "Thinking...",
-    });
-
-    const ts = (result as { ts?: string }).ts;
-    if (!ts) {
-      this.adapterLogger.warn("post_message_missing_ts", {
-        user_hash: hashLogIdentifier(userId),
-        channel_hash: hashLogIdentifier(channelId),
-      });
-      try {
-        await client.chat.postEphemeral({
-          channel: channelId,
-          user: userId,
-          text: "Something went wrong processing your message. Please try again.",
-        });
-      } catch (fallbackErr) {
-        this.adapterLogger.error(
-          "post_ephemeral_fallback_failed",
-          {
-            user_hash: hashLogIdentifier(userId),
-            channel_hash: hashLogIdentifier(channelId),
-          },
-          fallbackErr,
-        );
-      }
-      return;
-    }
-
-    let currentTs = ts;
+    const analytics = this.analyticsFor(userId);
+    const placeholder = this.postPlaceholder(client, channelId, userId);
+    /** Set once the reply opens a message of its own; until then updates land on the placeholder. */
+    let sentTs: string | undefined;
+    const currentTs = async (): Promise<string> =>
+      sentTs ?? (await placeholder);
     const removePlaceholder = async (): Promise<void> => {
+      const ts = await placeholder;
       try {
         await client.chat.delete({ channel: channelId, ts });
       } catch (err) {
@@ -465,93 +443,141 @@ export class SlackAdapter extends BaseBotAdapter {
       }
     };
 
-    await handleStreamingChat(
-      this.gaia,
-      {
-        message,
-        platform: "slack",
-        platformUserId: userId,
-        channelId,
-        isDm,
-        platformMessageId: inboundTs,
-        receivedAt,
-      },
-      async (text: string) => {
-        await client.chat.update({
-          channel: channelId,
-          ts: currentTs,
-          text,
-        });
-      },
-      async (text: string) => {
-        const newMessage = await client.chat.postMessage({
-          channel: channelId,
-          text,
-        });
-        if ((newMessage as { ts?: string }).ts) {
-          currentTs = (newMessage as { ts: string }).ts;
-        }
-        return async (updatedText: string) => {
+    const turn = analytics.then((analyticsContext) =>
+      handleStreamingChat(
+        this.gaia,
+        {
+          message,
+          platform: "slack",
+          platformUserId: userId,
+          channelId,
+          isDm,
+          platformMessageId: inboundTs,
+          receivedAt,
+        },
+        async (text: string) => {
           await client.chat.update({
             channel: channelId,
-            ts: currentTs,
-            text: updatedText,
+            ts: await currentTs(),
+            text,
           });
-        };
-      },
-      async (authUrl: string) => {
-        const authMessage = renderForPlatform(
-          buildAuthLinkMessage(authUrl),
-          "slack",
-        );
-        // In a DM (channel id starts with "D") there is no risk of exposing the
-        // token to others, and chat.postEphemeral is unreliable there — so put
-        // the link straight into the placeholder message where it always shows.
-        if (channelId.startsWith("D")) {
+        },
+        async (text: string) => {
+          const newMessage = await client.chat.postMessage({
+            channel: channelId,
+            text,
+          });
+          if ((newMessage as { ts?: string }).ts) {
+            sentTs = (newMessage as { ts: string }).ts;
+          }
+          return async (updatedText: string) => {
+            await client.chat.update({
+              channel: channelId,
+              ts: await currentTs(),
+              text: updatedText,
+            });
+          };
+        },
+        async (authUrl: string) => {
+          const authMessage = renderForPlatform(
+            buildAuthLinkMessage(authUrl),
+            "slack",
+          );
+          // In a DM (channel id starts with "D") there is no risk of exposing the
+          // token to others, and chat.postEphemeral is unreliable there — so put
+          // the link straight into the placeholder message where it always shows.
+          if (channelId.startsWith("D")) {
+            await client.chat.update({
+              channel: channelId,
+              ts: await currentTs(),
+              text: authMessage,
+            });
+            return;
+          }
+          // In a public channel, keep the token out of the visible message and
+          // deliver the link as an ephemeral only the requesting user can see.
           await client.chat.update({
             channel: channelId,
-            ts: currentTs,
+            ts: await currentTs(),
+            text: "🔒 Authentication required. Check the private message below to link your account.",
+          });
+          await client.chat.postEphemeral({
+            channel: channelId,
+            user: userId,
             text: authMessage,
           });
-          return;
-        }
-        // In a public channel, keep the token out of the visible message and
-        // deliver the link as an ephemeral only the requesting user can see.
-        await client.chat.update({
-          channel: channelId,
-          ts: currentTs,
-          text: "🔒 Authentication required. Check the private message below to link your account.",
-        });
-        await client.chat.postEphemeral({
-          channel: channelId,
-          user: userId,
-          text: authMessage,
-        });
-      },
-      async (errMsg: string) => {
-        await client.chat.update({
-          channel: channelId,
-          ts: currentTs,
-          text: errMsg,
-        });
-      },
-      STREAMING_DEFAULTS.slack,
-      await this.analyticsFor(userId),
-      async (emoji: string) => {
-        // A slash command has no inbound message to react to.
-        if (!inboundTs) return REACTION_OUTCOME.NO_TARGET;
-        const outcome = await this.reactToMessage(
-          channelId,
-          inboundTs,
-          emoji,
-          true,
-        );
-        if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
-        await removePlaceholder();
-        return outcome;
-      },
-      removePlaceholder,
+        },
+        async (errMsg: string) => {
+          await client.chat.update({
+            channel: channelId,
+            ts: await currentTs(),
+            text: errMsg,
+          });
+        },
+        STREAMING_DEFAULTS.slack,
+        analyticsContext,
+        async (emoji: string) => {
+          // A slash command has no inbound message to react to.
+          if (!inboundTs) return REACTION_OUTCOME.NO_TARGET;
+          const outcome = await this.reactToMessage(
+            channelId,
+            inboundTs,
+            emoji,
+            true,
+          );
+          if (outcome !== REACTION_OUTCOME.ATTACHED) return outcome;
+          await removePlaceholder();
+          return outcome;
+        },
+        removePlaceholder,
+      ),
     );
+
+    // A placeholder that cannot be posted fails the turn as it always has (app.error records
+    // it) — once the request already in flight has settled, so neither rejection goes unhandled.
+    const [placed, streamed] = await Promise.allSettled([placeholder, turn]);
+    if (placed.status === "rejected") throw placed.reason;
+    if (streamed.status === "rejected") throw streamed.reason;
+  }
+
+  /**
+   * Posts the "Thinking..." placeholder a streamed reply fills in, resolving to its `ts`.
+   * A response with no `ts` leaves nothing to fill: the user is told the message failed,
+   * and the placeholder rejects so the turn is recorded as failed.
+   */
+  private async postPlaceholder(
+    client: SlackWebClient,
+    channelId: string,
+    userId: string,
+  ): Promise<string> {
+    const result = await client.chat.postMessage({
+      channel: channelId,
+      text: "Thinking...",
+    });
+    const ts = (result as { ts?: string }).ts;
+    if (ts) return ts;
+
+    this.adapterLogger.warn("post_message_missing_ts", {
+      user_hash: hashLogIdentifier(userId),
+      channel_hash: hashLogIdentifier(channelId),
+    });
+    try {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: "Something went wrong processing your message. Please try again.",
+      });
+    } catch (fallbackErr) {
+      this.adapterLogger.error(
+        "post_ephemeral_fallback_failed",
+        {
+          user_hash: hashLogIdentifier(userId),
+          channel_hash: hashLogIdentifier(channelId),
+        },
+        fallbackErr,
+      );
+    }
+    throw new Error("Slack returned no ts for the Thinking... placeholder");
   }
 
   // ---------------------------------------------------------------------------

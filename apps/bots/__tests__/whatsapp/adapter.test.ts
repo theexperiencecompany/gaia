@@ -200,7 +200,6 @@ type PrivateAdapter = {
     receivedAt: number,
   ) => Promise<void>;
   sendWelcome: (waId: string) => Promise<void>;
-  welcomeSent: Set<string>;
   dispatchCommand: (
     name: string,
     target: {

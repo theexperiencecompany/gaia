@@ -758,6 +758,43 @@ describe("handleIncomingMessage commands", () => {
     expect(space.startTyping).toHaveBeenCalled();
     expect(space.stopTyping).toHaveBeenCalled();
   });
+
+  it("does not hold the turn until the typing indicator is acknowledged", async () => {
+    // startTyping is a Photon round-trip; awaiting it put that round-trip ahead
+    // of the chat request on every message.
+    const { priv } = makeAdapter();
+    const space = makeSpace({
+      startTyping: vi.fn(() => new Promise<void>(() => undefined)),
+    });
+
+    // Not awaited: stopTyping still waits for the indicator to have started.
+    void priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "hello");
+
+    await vi.waitFor(() => expect(handleStreamingChat).toHaveBeenCalled());
+  });
+
+  it("logs a typing indicator that fails, without failing the turn", async () => {
+    const { priv } = makeAdapter();
+    const error = vi.fn();
+    (
+      priv as unknown as { adapterLogger: { error: typeof error } }
+    ).adapterLogger.error = error;
+    const space = makeSpace({
+      startTyping: vi.fn(async () => {
+        throw new Error("typing rejected");
+      }),
+    });
+
+    await priv.handleIncomingMessage("+15550100", space, RECEIVED_AT, "hello");
+
+    expect(handleStreamingChat).toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        "typing_indicator_failed",
+        expect.objectContaining({ error: "typing rejected" }),
+      ),
+    );
+  });
 });
 
 describe("outbound delivery", () => {

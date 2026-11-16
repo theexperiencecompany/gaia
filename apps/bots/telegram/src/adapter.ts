@@ -51,6 +51,7 @@ import {
   sanitizeErrorForLog,
   withWideEvent,
 } from "@gaia/shared/bots";
+import { type RunnerHandle, run, sequentialize } from "@grammyjs/runner";
 import type { Message, ReactionType } from "@grammyjs/types";
 import { Bot, type Context, GrammyError, InputFile } from "grammy";
 
@@ -189,6 +190,8 @@ export class TelegramAdapter extends BaseBotAdapter {
   readonly platform: PlatformName = "telegram";
   protected readonly defaultServerPort = 3202;
   private bot!: Bot;
+  /** The running update loop, once long polling has started. */
+  private runner: RunnerHandle | undefined;
   private token!: string;
   private botUsername: string | undefined;
   private readonly adapterLogger = createBotLogger("telegram", "adapter");
@@ -206,6 +209,10 @@ export class TelegramAdapter extends BaseBotAdapter {
     this.token = token;
 
     this.bot = new Bot(this.token);
+    // The runner handles updates concurrently, so one user's slow turn no longer holds every
+    // other user's message; within a chat they still run in arrival order. Installed first,
+    // ahead of every handler registered after this.
+    this.bot.use(sequentialize((ctx: Context) => ctx.chat?.id.toString()));
     this.registerErrorHandler();
     // Cache the bot username upfront to avoid calling getMe() on every message
     const botInfo = await this.bot.api.getMe();
@@ -372,7 +379,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     );
   }
 
-  /** Starts long polling, retrying after 35 s on 409 Conflict. */
+  /** Starts long polling through the grammY runner, retrying after 35 s on 409 Conflict. */
   protected async start(): Promise<void> {
     // Remove any webhook that may have been set during development.
     // A webhook prevents long polling and immediately returns 409.
@@ -389,9 +396,12 @@ export class TelegramAdapter extends BaseBotAdapter {
         });
         await new Promise<void>((r) => setTimeout(r, retryDelayMs));
       }
-      await this.bot.start({
-        onStart: () => this.adapterLogger.info("long_polling_started"),
-      });
+      // `silent`: the runner would otherwise print each transient getUpdates failure raw on
+      // stderr, outside the NDJSON log stream. It retries those itself, as bot.start() did;
+      // a 401/409 still ends the task and lands below.
+      this.runner = run(this.bot, { runner: { silent: true } });
+      this.adapterLogger.info("long_polling_started");
+      await this.runner.task();
     };
 
     const startWithRetry = (retryDelayMs = 0): void => {
@@ -422,9 +432,9 @@ export class TelegramAdapter extends BaseBotAdapter {
     startWithRetry();
   }
 
-  /** Stops the bot. */
+  /** Stops polling and waits for the updates already in flight to finish. */
   protected async stop(): Promise<void> {
-    await this.bot.stop();
+    await this.runner?.stop();
   }
 
   // ---------------------------------------------------------------------------
@@ -589,7 +599,9 @@ export class TelegramAdapter extends BaseBotAdapter {
    * Shared streaming handler for `/gaia`, DMs, and @mentions.
    *
    * Sends an initial "Thinking..." message with a typing indicator,
-   * then updates it in place as chunks arrive.
+   * then updates it in place as chunks arrive. The placeholder is posted
+   * alongside the API request rather than ahead of it, so the request never
+   * queues behind a Telegram round-trip; whatever writes to it awaits it.
    */
   private async handleTelegramStreaming(
     ctx: Context,
@@ -601,18 +613,23 @@ export class TelegramAdapter extends BaseBotAdapter {
     const chatId = ctx.chat?.id;
     if (!chatId) return;
 
-    const loading = await ctx.reply("Thinking...");
-    let currentMessageId = loading.message_id;
+    const analytics = this.analyticsFor(userId);
+    const loading = ctx.reply("Thinking...");
+    /** Set once the reply opens a message of its own; until then edits land on the placeholder. */
+    let sentMessageId: number | undefined;
+    const currentMessageId = async (): Promise<number> =>
+      sentMessageId ?? (await loading).message_id;
     const removePlaceholder = async (): Promise<void> => {
+      const placeholderId = (await loading).message_id;
       try {
-        await ctx.api.deleteMessage(chatId, loading.message_id);
+        await ctx.api.deleteMessage(chatId, placeholderId);
       } catch (e) {
         // The reply is already settled; a stale "Thinking..." is all this costs.
         this.adapterLogger.error(
           "placeholder_delete_failed",
           {
             channel_hash: hashLogIdentifier(chatId),
-            message_id: loading.message_id,
+            message_id: placeholderId,
           },
           e,
         );
@@ -625,8 +642,8 @@ export class TelegramAdapter extends BaseBotAdapter {
       TELEGRAM_TYPING_REFRESH_INTERVAL_MS,
     );
 
-    try {
-      await handleStreamingChat(
+    const turn = analytics.then((analyticsContext) =>
+      handleStreamingChat(
         this.gaia,
         {
           message,
@@ -644,16 +661,16 @@ export class TelegramAdapter extends BaseBotAdapter {
             : {}),
         },
         async (text: string) => {
+          const messageId = await currentMessageId();
           await this.editHtml(
-            (t, opts) =>
-              ctx.api.editMessageText(chatId, currentMessageId, t, opts),
+            (t, opts) => ctx.api.editMessageText(chatId, messageId, t, opts),
             text,
             (e) =>
               this.adapterLogger.error(
                 "edit_message_text_failed",
                 {
                   channel_hash: hashLogIdentifier(chatId),
-                  message_id: currentMessageId,
+                  message_id: messageId,
                 },
                 e,
               ),
@@ -664,7 +681,7 @@ export class TelegramAdapter extends BaseBotAdapter {
             (t, opts) => ctx.reply(t, opts),
             text,
           );
-          currentMessageId = newMessage.message_id;
+          sentMessageId = newMessage.message_id;
           return async (updatedText: string) => {
             await this.editHtml(
               (t, opts) =>
@@ -700,13 +717,14 @@ export class TelegramAdapter extends BaseBotAdapter {
               );
               await ctx.api.editMessageText(
                 chatId,
-                currentMessageId,
+                await currentMessageId(),
                 "I sent you a DM with the authentication link.",
               );
             } else {
+              const messageId = await currentMessageId();
               await this.editHtml(
                 (t, opts) =>
-                  ctx.api.editMessageText(chatId, currentMessageId, t, opts),
+                  ctx.api.editMessageText(chatId, messageId, t, opts),
                 authHtml,
                 (e) =>
                   this.adapterLogger.error(
@@ -733,7 +751,11 @@ export class TelegramAdapter extends BaseBotAdapter {
               const fallback = this.botUsername
                 ? `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly at @${this.botUsername} and use /auth to link your account.`
                 : `I couldn't send you a DM. Your privacy settings may be blocking bot messages.\n\nPlease message me directly and use /auth to link your account.`;
-              await ctx.api.editMessageText(chatId, currentMessageId, fallback);
+              await ctx.api.editMessageText(
+                chatId,
+                await currentMessageId(),
+                fallback,
+              );
             } catch (fallbackErr) {
               this.adapterLogger.error(
                 "auth_fallback_message_failed",
@@ -749,16 +771,16 @@ export class TelegramAdapter extends BaseBotAdapter {
         async (errMsg: string) => {
           clearTyping();
           try {
+            const messageId = await currentMessageId();
             await this.editHtml(
-              (t, opts) =>
-                ctx.api.editMessageText(chatId, currentMessageId, t, opts),
+              (t, opts) => ctx.api.editMessageText(chatId, messageId, t, opts),
               errMsg,
               (e) =>
                 this.adapterLogger.error(
                   "edit_message_text_failed",
                   {
                     channel_hash: hashLogIdentifier(chatId),
-                    message_id: currentMessageId,
+                    message_id: messageId,
                   },
                   e,
                 ),
@@ -769,7 +791,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           }
         },
         STREAMING_DEFAULTS.telegram,
-        await this.analyticsFor(userId),
+        analyticsContext,
         async (emoji: string) => {
           const inboundId = ctx.msg?.message_id;
           if (inboundId === undefined) return REACTION_OUTCOME.NO_TARGET;
@@ -784,7 +806,15 @@ export class TelegramAdapter extends BaseBotAdapter {
           return outcome;
         },
         removePlaceholder,
-      );
+      ),
+    );
+
+    // A placeholder that cannot be posted fails the turn as it always has (bot.catch records
+    // it) — once the request already in flight has settled, so neither rejection goes unhandled.
+    try {
+      const [placed, streamed] = await Promise.allSettled([loading, turn]);
+      if (placed.status === "rejected") throw placed.reason;
+      if (streamed.status === "rejected") throw streamed.reason;
     } finally {
       clearTyping();
     }

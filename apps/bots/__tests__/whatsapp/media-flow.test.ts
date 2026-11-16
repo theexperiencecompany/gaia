@@ -124,8 +124,8 @@ type MediaOutcome =
 interface MediaInternals {
   waClient: typeof mockWaClientInstance;
   waConfig: typeof MOCK_CONFIG;
-  linkedUsers: Set<string>;
-  welcomeSent: Set<string>;
+  /** The mocked base adapter's once-per-user welcome gate. */
+  _welcomed: Set<string>;
   resolveIncomingMedia: ReturnType<typeof vi.fn>;
 }
 
@@ -135,8 +135,7 @@ function buildAdapter(): WhatsAppAdapter {
   inner.waClient = mockWaClientInstance;
   inner.waConfig = MOCK_CONFIG;
   // Skip the welcome gate so these tests focus on media routing only.
-  inner.linkedUsers = new Set([WA_ID]);
-  inner.welcomeSent = new Set([WA_ID]);
+  inner._welcomed.add(WA_ID);
   return adapter;
 }
 

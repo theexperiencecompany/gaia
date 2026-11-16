@@ -54,6 +54,7 @@ import {
   isLostReply,
   type ReportDeliveryFailure,
 } from "../delivery-failures";
+import type { LinkState } from "../link-codes.types";
 import type {
   AuthStatus,
   BotCommand,
@@ -83,6 +84,7 @@ import {
   type ReactionOutcome,
   reactionDeliveredProperties,
 } from "../utils/reaction-outcome";
+import { withTimeout } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { BotServer } from "./base-server";
 
@@ -643,6 +645,12 @@ export abstract class BaseBotAdapter {
 
   /** Unlinked users greeted this process, deduped so the welcome does not repeat on every message. */
   private readonly welcomedUsers = new Set<string>();
+  /**
+   * Users confirmed linked this process. Linking happens mid-session (the one-tap code, `/auth`),
+   * so only a positive answer is kept: until then every check asks again. Unlinking is not
+   * re-detected here — the chat stream itself refuses an unlinked user with the auth prompt.
+   */
+  private readonly linkedUsers = new Set<string>();
 
   /**
    * The PostHog distinct_id for a platform user: their stable GAIA user id once linked,
@@ -695,33 +703,50 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Welcome gate shared by adapters that greet a user on first contact (Discord DM embed,
-   * WhatsApp text). Greets ONLY while the GAIA account is unlinked — driven by the persistent
-   * auth status (MongoDB), not process memory, which fixes a bug where a restart re-greeted
-   * already-linked users. For an unlinked user it still fires at most once per process.
+   * Whether a platform user is linked to a GAIA account. A known-linked user costs no
+   * round-trip; anyone else is asked about each time. A failed check — including the optional
+   * timeout — is `unknown`, not `unlinked`: callers pick their own safe default from that.
    */
-  protected async shouldSendWelcome(userId: string): Promise<boolean> {
-    if (this.welcomedUsers.has(userId)) return false;
-    // Mark in-flight before the await so two concurrent first messages can't
-    // both pass the check and send duplicate welcomes. Cleared again whenever
-    // the user turns out to be authenticated or the check fails.
-    this.welcomedUsers.add(userId);
+  protected async linkState(
+    userId: string,
+    timeoutMs?: number,
+  ): Promise<LinkState> {
+    if (this.linkedUsers.has(userId)) return "linked";
     try {
-      const status = await this.gaia.checkAuthStatus(this.platform, userId);
-      if (status.authenticated) {
-        this.welcomedUsers.delete(userId);
-        return false;
-      }
+      const statusCheck = this.gaia.checkAuthStatus(this.platform, userId);
+      const status =
+        timeoutMs === undefined
+          ? await statusCheck
+          : await withTimeout(statusCheck, timeoutMs, "auth_check_timeout");
+      if (!status.authenticated) return "unlinked";
+      this.linkedUsers.add(userId);
+      return "linked";
     } catch (error) {
-      this.welcomedUsers.delete(userId);
       this.logger.error(
         "welcome_auth_check_failed",
         { user_hash: hashLogIdentifier(userId) },
         error,
       );
-      return false;
+      return "unknown";
     }
-    return true;
+  }
+
+  /**
+   * Welcome gate shared by adapters that greet a user on first contact (Discord DM embed,
+   * WhatsApp and iMessage text). Greets ONLY while the GAIA account is unlinked — driven by the
+   * persistent auth status (MongoDB), not process memory, which fixes a bug where a restart
+   * re-greeted already-linked users. For an unlinked user it still fires at most once per
+   * process; a failed check greets no one.
+   */
+  protected async shouldSendWelcome(userId: string): Promise<boolean> {
+    if (this.welcomedUsers.has(userId)) return false;
+    // Mark in-flight before the await so two concurrent first messages can't
+    // both pass the check and send duplicate welcomes. Cleared again whenever
+    // the user turns out to be linked or the check fails.
+    this.welcomedUsers.add(userId);
+    if ((await this.linkState(userId)) === "unlinked") return true;
+    this.welcomedUsers.delete(userId);
+    return false;
   }
 
   /**

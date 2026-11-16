@@ -30,7 +30,6 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
-  type LinkState,
   MEDIA_READ_TIMEOUT_MS,
   type OutboundFile,
   type OutboundNotifications,
@@ -140,11 +139,6 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     deliver: (waId, text) => this.sendNotificationTemplate(waId, text),
   };
 
-  /**
-   * Tracks users whose platform_links status has been confirmed as linked this
-   * process. Avoids a backend round-trip on every first-seen message after restart.
-   */
-  private readonly linkedUsers = new Set<string>();
   /**
    * Per-user message processing queue. Serializes handleIncomingMessage calls for
    * the same waId so rapid messages or batched webhook deliveries never run in
@@ -525,51 +519,17 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   }
 
   /**
-   * Sends the one-time welcome to an unlinked, first-time user (tracked for the
-   * process lifetime). Linked users are cached and skipped. `refreshTyping` is
-   * re-fired after the welcome so the indicator survives the extra message.
+   * Sends the one-time welcome to an unlinked, first-time user (the gate is the base
+   * adapter's, shared with Discord and iMessage). `refreshTyping` is re-fired after the
+   * welcome so the indicator survives the extra message.
    */
   private async ensureWelcomed(
     waId: string,
     refreshTyping: () => void,
-    authCheckTimeoutMs?: number,
   ): Promise<void> {
-    // Base gate (shared with Discord): only greets unlinked users, at most once per process.
     if (!(await this.shouldSendWelcome(waId))) return;
-
-    if (this.linkedUsers.has(waId)) return;
-    // A failed check greets rather than staying silent: an unlinked user who
-    // never sees the welcome has no way to discover /auth.
-    if ((await this.waUserLinkState(waId, authCheckTimeoutMs)) !== "linked") {
-      await this.sendWelcome(waId);
-      refreshTyping();
-    }
-  }
-
-  /**
-   * Resolves whether a WhatsApp user is linked, caching a positive result. A
-   * failure (including the optional timeout) is `unknown`, not `unlinked` —
-   * callers pick their own safe default from that.
-   */
-  private async waUserLinkState(
-    waId: string,
-    timeoutMs?: number,
-  ): Promise<LinkState> {
-    try {
-      const statusPromise = this.gaia.checkAuthStatus("whatsapp", waId);
-      const status =
-        timeoutMs === undefined
-          ? await statusPromise
-          : await withTimeout(statusPromise, timeoutMs, "auth_check_timeout");
-      if (status.authenticated) this.linkedUsers.add(waId);
-      return status.authenticated ? "linked" : "unlinked";
-    } catch (err) {
-      this.adapterLogger.warn("welcome_auth_check_failed", {
-        user_hash: hashLogIdentifier(waId),
-        ...sanitizeErrorForLog(err),
-      });
-      return "unknown";
-    }
+    await this.sendWelcome(waId);
+    refreshTyping();
   }
 
   /** Nothing additional to start — base server is started by BaseBotAdapter.boot(). */
@@ -642,14 +602,14 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         platformUserId: waId,
         text,
         target,
-        linkState: () => this.waUserLinkState(waId),
+        linkState: () => this.linkState(waId),
       });
       // null: the message was only a code, or a redemption already delivered
       // GAIA's whole first contact and there is no turn left to run.
       if (inbound === null) return;
       const chatText = inbound;
 
-      await this.ensureWelcomed(waId, typing.refresh, 2_000);
+      await this.ensureWelcomed(waId, typing.refresh);
 
       if (chatText.startsWith("/")) {
         const withoutSlash = chatText.slice(1);
@@ -793,9 +753,8 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   /**
    * Send a welcome message to a first-time WhatsApp user. Adapted from Discord's
    * DM welcome embed, rendered as WhatsApp markdown (no embed/button support).
-   * Gated by a platform_links check via `gaia.checkAuthStatus` (2s timeout); linked
-   * users skip it and are cached in {@link linkedUsers}; unlinked users get it once
-   * per process restart via {@link BaseBotAdapter.shouldSendWelcome}.
+   * Gated by {@link BaseBotAdapter.shouldSendWelcome}: linked users skip it, unlinked
+   * users get it once per process restart.
    */
   private async sendWelcome(waId: string): Promise<void> {
     const text =

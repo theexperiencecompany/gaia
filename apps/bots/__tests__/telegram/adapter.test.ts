@@ -14,7 +14,7 @@
  * 2. group @mention path strips @botUsername and streams the cleaned content
  * 3. createCtxTarget.send — sends HTML text to the correct chat_id
  * 4. createCtxTarget.sendRich — formats rich message via richMessageToMarkdown
- * 5. handleTelegramStreaming — sends "Thinking..." then delegates to handleStreamingChat
+ * 5. handleTelegramStreaming — sends "Thinking..." alongside handleStreamingChat, not ahead of it
  * 6. HTML fallback — edits/sends retry as plain text when Telegram rejects HTML
  * 7. registerCommands — a slash command dispatches with the parsed subcommand args
  * 8. dispatchCommand — unknown command sends ephemeral error
@@ -33,8 +33,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mockBotOn = vi.fn();
 const mockBotCommand = vi.fn();
 const mockBotCatch = vi.fn();
+const mockBotUse = vi.fn();
 const mockBotStart = vi.fn();
 const mockBotStop = vi.fn().mockResolvedValue(undefined);
+const mockDeleteWebhook = vi.fn().mockResolvedValue(true);
 const mockSetMyCommands = vi.fn().mockResolvedValue(undefined);
 const mockGetMe = vi.fn().mockResolvedValue({ username: "gaiabot" });
 const mockGetFile = vi
@@ -47,9 +49,11 @@ const mockBotInstance = {
   on: mockBotOn,
   command: mockBotCommand,
   catch: mockBotCatch,
+  use: mockBotUse,
   start: mockBotStart,
   stop: mockBotStop,
   api: {
+    deleteWebhook: mockDeleteWebhook,
     getMe: mockGetMe,
     getFile: mockGetFile,
     setMyCommands: mockSetMyCommands,
@@ -61,7 +65,10 @@ const mockBotInstance = {
 };
 
 vi.mock("grammy", () => ({
-  Bot: vi.fn().mockImplementation(() => mockBotInstance),
+  // A function, not an arrow: initialize() constructs it with `new`.
+  Bot: vi.fn(function Bot() {
+    return mockBotInstance;
+  }),
   GrammyError: class GrammyError extends Error {
     constructor(
       message: string,
@@ -75,6 +82,27 @@ vi.mock("grammy", () => ({
 }));
 
 vi.mock("@grammyjs/types", () => ({}));
+
+// The update runner: `run` hands back a handle whose task settles when polling
+// ends, and `sequentialize` builds the per-chat ordering middleware.
+const { mockRunnerStop, mockRun, sequentialMiddleware, mockSequentialize } =
+  vi.hoisted(() => {
+    const stop = vi.fn().mockResolvedValue(undefined);
+    const middleware = vi.fn();
+    return {
+      mockRunnerStop: stop,
+      mockRun: vi.fn(() => ({
+        stop,
+        task: () => new Promise<void>(() => undefined),
+      })),
+      sequentialMiddleware: middleware,
+      mockSequentialize: vi.fn(() => middleware),
+    };
+  });
+vi.mock("@grammyjs/runner", () => ({
+  run: mockRun,
+  sequentialize: mockSequentialize,
+}));
 
 // Mocks @gaia/shared via the shared factory (BaseBotAdapter stub + common
 // helpers), layering Telegram-specific exports (HTML converter, htmlToPlainText,
@@ -529,7 +557,7 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
     adapter = makeAdapter();
   });
 
-  it("sends 'Thinking...' via ctx.reply before invoking handleStreamingChat", async () => {
+  it("sends 'Thinking...' via ctx.reply and streams the turn", async () => {
     const replyFn = vi.fn().mockResolvedValue({ message_id: 42 });
     const ctx = makeCtx({ replyFn });
 
@@ -546,6 +574,72 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
 
     expect(replyFn).toHaveBeenCalledWith("Thinking...");
     expect(handleStreamingChat).toHaveBeenCalled();
+  });
+
+  it("starts the chat request without waiting for the Thinking... placeholder", async () => {
+    // The placeholder is a Telegram round-trip; the API request used to queue
+    // behind it, adding that round-trip to every reply's latency.
+    let placePlaceholder: (sent: { message_id: number }) => void = () => {
+      throw new Error("ctx.reply was never called");
+    };
+    const replyFn = vi.fn(
+      () =>
+        new Promise<{ message_id: number }>((resolve) => {
+          placePlaceholder = resolve;
+        }),
+    );
+    const ctx = makeCtx({ chatId: 77777, replyFn });
+
+    const turn = (
+      adapter as unknown as {
+        handleTelegramStreaming: (
+          ctx: ReturnType<typeof makeCtx>,
+          userId: string,
+          message: string,
+          receivedAt: number,
+        ) => Promise<void>;
+      }
+    ).handleTelegramStreaming(ctx, "555", "what is 2+2?", RECEIVED_AT);
+
+    await vi.waitFor(() => expect(handleStreamingChat).toHaveBeenCalled());
+    // The first edit lands on the placeholder, so it waits for it to exist.
+    const editMessage = vi.mocked(handleStreamingChat).mock.calls[0][2];
+    const edit = editMessage("partial reply");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(ctx.api.editMessageText).not.toHaveBeenCalled();
+
+    placePlaceholder({ message_id: 42 });
+    await edit;
+    await turn;
+
+    expect(ctx.api.editMessageText).toHaveBeenCalledWith(
+      77777,
+      42,
+      "partial reply",
+      expect.anything(),
+    );
+  });
+
+  it("fails the turn with the placeholder's own error when it cannot be posted", async () => {
+    const placeholderError = new Error(
+      "Forbidden: bot was blocked by the user",
+    );
+    const ctx = makeCtx({
+      replyFn: vi.fn().mockRejectedValue(placeholderError),
+    });
+
+    await expect(
+      (
+        adapter as unknown as {
+          handleTelegramStreaming: (
+            ctx: ReturnType<typeof makeCtx>,
+            userId: string,
+            message: string,
+            receivedAt: number,
+          ) => Promise<void>;
+        }
+      ).handleTelegramStreaming(ctx, "555", "hi", RECEIVED_AT),
+    ).rejects.toBe(placeholderError);
   });
 
   it("calls handleStreamingChat with the correct request shape", async () => {
@@ -1837,5 +1931,84 @@ describe("TelegramAdapter - live turn reaction", () => {
 
     await expect(hook("👍")).resolves.toBe("no_target");
     expect(react).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Update runner — concurrent across chats, ordered within one
+// ---------------------------------------------------------------------------
+
+describe("TelegramAdapter - update runner", () => {
+  type Lifecycle = {
+    initialize: () => Promise<void>;
+    start: () => Promise<void>;
+    stop: () => Promise<void>;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.TELEGRAM_BOT_TOKEN = "test-token";
+  });
+
+  it("consumes updates through the grammY runner, not one-at-a-time bot.start()", async () => {
+    // bot.start() handles one update at a time across ALL users, so one user's
+    // slow turn held every other user's message in the queue.
+    const adapter = makeAdapter() as unknown as Lifecycle;
+
+    await adapter.start();
+
+    expect(mockDeleteWebhook).toHaveBeenCalledWith({
+      drop_pending_updates: true,
+    });
+    await vi.waitFor(() =>
+      expect(mockRun).toHaveBeenCalledWith(mockBotInstance, expect.anything()),
+    );
+    expect(mockBotStart).not.toHaveBeenCalled();
+  });
+
+  it("keeps each chat's updates in order by sequentializing on the chat id", async () => {
+    const adapter = new TelegramAdapter() as unknown as Lifecycle;
+
+    await adapter.initialize();
+
+    // initialize() runs before boot() registers any handler, so every handler
+    // sits behind the ordering middleware.
+    expect(mockBotUse).toHaveBeenCalledWith(sequentialMiddleware);
+    const [constraint] = mockSequentialize.mock.calls[0] as unknown as [
+      (ctx: { chat?: { id: number } }) => string | undefined,
+    ];
+    expect(constraint({ chat: { id: 42 } })).toBe("42");
+    expect(constraint({ chat: { id: -100123 } })).toBe("-100123");
+    expect(constraint({})).toBeUndefined();
+  });
+
+  it("restarts polling after a 409 Conflict from a lingering getUpdates session", async () => {
+    vi.useFakeTimers();
+    try {
+      mockRun.mockReturnValueOnce({
+        stop: mockRunnerStop,
+        task: () => Promise.reject({ error_code: 409 }),
+      });
+      const adapter = makeAdapter() as unknown as Lifecycle;
+
+      await adapter.start();
+      await vi.advanceTimersByTimeAsync(34_000);
+      expect(mockRun).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(mockRun).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops the runner on shutdown", async () => {
+    const adapter = makeAdapter() as unknown as Lifecycle;
+    await adapter.start();
+    await vi.waitFor(() => expect(mockRun).toHaveBeenCalled());
+
+    await adapter.stop();
+
+    expect(mockRunnerStop).toHaveBeenCalledOnce();
   });
 });

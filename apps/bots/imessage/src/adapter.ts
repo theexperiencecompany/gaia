@@ -12,7 +12,6 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
-  type LinkState,
   MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,
@@ -108,7 +107,6 @@ export class ImessageAdapter extends BaseBotAdapter {
   private spectrumApp: SpectrumApp | null = null;
   private imInstance: ImessageInstance | null = null;
 
-  private readonly linkedUsers = new Set<string>();
   private readonly messageQueues = new Map<string, Promise<void>>();
   private readonly recentMessageIds = new Set<string>();
   private readonly adapterLogger = createBotLogger("imessage", "adapter");
@@ -327,7 +325,9 @@ export class ImessageAdapter extends BaseBotAdapter {
       is_command: text.startsWith("/"),
     });
 
-    await space.startTyping().catch((err: unknown) =>
+    // Not awaited here: a Photon round-trip must not sit ahead of the chat request. Only
+    // stopTyping waits for it, so a fast reply cannot stop typing before it started.
+    const typingStarted = space.startTyping().catch((err: unknown) =>
       this.adapterLogger.error("typing_indicator_failed", {
         user_hash: handleHash,
         ...sanitizeErrorForLog(err),
@@ -345,8 +345,7 @@ export class ImessageAdapter extends BaseBotAdapter {
         platformUserId: handle,
         text,
         target,
-        linkState: () =>
-          this.userLinkState(handle, WELCOME_AUTH_CHECK_TIMEOUT_MS),
+        linkState: () => this.linkState(handle, WELCOME_AUTH_CHECK_TIMEOUT_MS),
       });
       // null: the message was only a code, or a redemption already delivered
       // GAIA's whole first contact and there is no turn left to run.
@@ -397,6 +396,7 @@ export class ImessageAdapter extends BaseBotAdapter {
         messageId,
       );
     } finally {
+      await typingStarted;
       await space.stopTyping().catch(() => undefined);
     }
   }
@@ -490,45 +490,10 @@ export class ImessageAdapter extends BaseBotAdapter {
     }
   }
 
+  /** Sends the one-time welcome to an unlinked, first-time user (the base adapter's gate). */
   private async ensureWelcomed(handle: string, space: Space): Promise<void> {
     if (!(await this.shouldSendWelcome(handle))) return;
-
-    if (this.linkedUsers.has(handle)) return;
-    // A failed check greets rather than staying silent: an unlinked user who
-    // never sees the welcome has no way to discover /auth.
-    const state = await this.userLinkState(
-      handle,
-      WELCOME_AUTH_CHECK_TIMEOUT_MS,
-    );
-    if (state !== "linked") {
-      await this.sendWelcome(space, handle);
-    }
-  }
-
-  /**
-   * A failure (including the timeout) is `unknown`, not `unlinked` — callers
-   * pick their own safe default from that.
-   */
-  private async userLinkState(
-    handle: string,
-    timeoutMs: number,
-  ): Promise<LinkState> {
-    try {
-      const status = await Promise.race([
-        this.gaia.checkAuthStatus("imessage", handle),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("auth_check_timeout")), timeoutMs),
-        ),
-      ]);
-      if (status.authenticated) this.linkedUsers.add(handle);
-      return status.authenticated ? "linked" : "unlinked";
-    } catch (err) {
-      this.adapterLogger.warn("welcome_auth_check_failed", {
-        user_hash: hashLogIdentifier(handle),
-        ...sanitizeErrorForLog(err),
-      });
-      return "unknown";
-    }
+    await this.sendWelcome(space, handle);
   }
 
   private async sendWelcome(space: Space, handle: string): Promise<void> {

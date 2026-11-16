@@ -12,8 +12,8 @@
  * - platform property value
  * - createCommandTarget — send, sendEphemeral, sendRich, startTyping
  * - registerGaiaCommand / handleSlackStreaming:
- *     - posts "Thinking..." before streaming starts
- *     - falls back to ephemeral when postMessage returns no ts
+ *     - posts "Thinking..." alongside the streaming request, not ahead of it
+ *     - falls back to ephemeral (and fails the turn) when postMessage returns no ts
  *     - delegates to handleStreamingChat with correct request shape
  * - registerCommands — ack() called immediately (Slack's 3-second rule)
  * - registerEvents — app_mention strips bot mention, skips bots/subtypes
@@ -338,7 +338,7 @@ describe("SlackAdapter - handleSlackStreaming", () => {
     (adapter as unknown as { gaia: object }).gaia = {};
   });
 
-  it("posts 'Thinking...' before invoking handleStreamingChat", async () => {
+  it("posts 'Thinking...' and streams the turn", async () => {
     const client = makeSlackClient("ts-start");
 
     await (
@@ -366,6 +366,79 @@ describe("SlackAdapter - handleSlackStreaming", () => {
       text: "Thinking...",
     });
     expect(handleStreamingChat).toHaveBeenCalled();
+  });
+
+  it("starts the chat request without waiting for the Thinking... placeholder", async () => {
+    // chat.postMessage is a Slack round-trip; the API request used to queue
+    // behind it, adding that round-trip to every reply's latency.
+    const client = makeSlackClient();
+    let placePlaceholder: (posted: { ts: string }) => void = () => {
+      throw new Error("chat.postMessage was never called");
+    };
+    client.chat.postMessage = vi.fn(
+      () =>
+        new Promise<{ ts: string }>((resolve) => {
+          placePlaceholder = resolve;
+        }),
+    );
+
+    const turn = (
+      adapter as unknown as {
+        handleSlackStreaming: (
+          client: ReturnType<typeof makeSlackClient>,
+          channelId: string,
+          userId: string,
+          message: string,
+          isDm: boolean,
+          receivedAt: number,
+        ) => Promise<void>;
+      }
+    ).handleSlackStreaming(
+      client,
+      "C789",
+      "U456",
+      "Plan my day",
+      false,
+      RECEIVED_AT,
+    );
+
+    await vi.waitFor(() => expect(handleStreamingChat).toHaveBeenCalled());
+    // The first update lands on the placeholder, so it waits for it to exist.
+    const editMessage = vi.mocked(handleStreamingChat).mock.calls[0][2];
+    const edit = editMessage("partial reply");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(client.chat.update).not.toHaveBeenCalled();
+
+    placePlaceholder({ ts: "ts-placeholder" });
+    await edit;
+    await turn;
+
+    expect(client.chat.update).toHaveBeenCalledWith({
+      channel: "C789",
+      ts: "ts-placeholder",
+      text: "partial reply",
+    });
+  });
+
+  it("fails the turn with the placeholder's own error when it cannot be posted", async () => {
+    const client = makeSlackClient();
+    const placeholderError = new Error("channel_not_found");
+    client.chat.postMessage = vi.fn().mockRejectedValue(placeholderError);
+
+    await expect(
+      (
+        adapter as unknown as {
+          handleSlackStreaming: (
+            client: ReturnType<typeof makeSlackClient>,
+            channelId: string,
+            userId: string,
+            message: string,
+            isDm: boolean,
+            receivedAt: number,
+          ) => Promise<void>;
+        }
+      ).handleSlackStreaming(client, "C789", "U456", "Hi", false, RECEIVED_AT),
+    ).rejects.toBe(placeholderError);
   });
 
   it("calls handleStreamingChat with correct request shape", async () => {
@@ -413,29 +486,37 @@ describe("SlackAdapter - handleSlackStreaming", () => {
     );
   });
 
-  it("sends ephemeral fallback when postMessage returns no ts", async () => {
+  it("sends ephemeral fallback and fails the turn when postMessage returns no ts", async () => {
     const client = makeSlackClient();
     client.chat.postMessage = vi.fn().mockResolvedValue({});
 
-    await (
-      adapter as unknown as {
-        handleSlackStreaming: (
-          client: typeof client,
-          channelId: string,
-          userId: string,
-          message: string,
-          isDm: boolean,
-          receivedAt: number,
-        ) => Promise<void>;
-      }
-    ).handleSlackStreaming(client, "C789", "U456", "Test", false, RECEIVED_AT);
+    await expect(
+      (
+        adapter as unknown as {
+          handleSlackStreaming: (
+            client: typeof client,
+            channelId: string,
+            userId: string,
+            message: string,
+            isDm: boolean,
+            receivedAt: number,
+          ) => Promise<void>;
+        }
+      ).handleSlackStreaming(
+        client,
+        "C789",
+        "U456",
+        "Test",
+        false,
+        RECEIVED_AT,
+      ),
+    ).rejects.toThrow("no ts");
 
     expect(client.chat.postEphemeral).toHaveBeenCalledWith({
       channel: "C789",
       user: "U456",
       text: "Something went wrong processing your message. Please try again.",
     });
-    expect(handleStreamingChat).not.toHaveBeenCalled();
   });
 });
 
