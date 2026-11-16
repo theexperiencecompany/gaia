@@ -40,6 +40,7 @@ from app.services.conversation.screen import project_screen
 from app.services.conversation.work_deltas import WorkDeltas
 from app.services.conversation.work_log import record_user_stop
 from app.services.onboarding.first_conversation import FirstConversation
+from app.utils.artifact_utils import FILE_LINKS
 from app.utils.seeding_utils import seed_first_conversation
 from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.conversation_wire import ReplyItem, ReplyOutcome, ToolDataEntry
@@ -77,6 +78,7 @@ def mongo_log(
             analytics=RecordingAnalytics(),
             clock=lambda: datetime.now(UTC),
             tick=_no_tick,
+            links=FILE_LINKS,
         )
     )
     with patch("app.services.conversation_service.capture"):
@@ -287,7 +289,7 @@ async def test_a_stop_mid_work_stops_the_running_work_and_the_screen_shows_it_ca
     entries = await conversation_log_repository.read_log(conversation_id, user_id=user_id)
     [work] = [
         item
-        for item in project_screen(conversation_id, entries or [])
+        for item in project_screen(conversation_id, entries or [], FILE_LINKS)
         if isinstance(item, WorkItem)
     ]
     assert work.status is WorkStatus.CANCELLED
@@ -298,7 +300,7 @@ async def _card_status(user_id: str, conversation_id: str) -> object:
     entries = await conversation_log_repository.read_log(conversation_id, user_id=user_id)
     [work] = [
         item
-        for item in project_screen(conversation_id, entries or [])
+        for item in project_screen(conversation_id, entries or [], FILE_LINKS)
         if isinstance(item, WorkItem)
     ]
     [card] = work.approvals

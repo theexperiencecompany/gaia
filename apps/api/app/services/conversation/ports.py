@@ -25,6 +25,7 @@ from app.models.conversation_log_models import (
 )
 from app.models.message_models import MessageDict
 from app.models.work_cancel_models import WorkCancelled
+from app.utils.file_links import FileLinks
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import (
     ChatBackgroundUpdateResolved,
@@ -347,3 +348,4 @@ class RuntimePorts:
     analytics: TurnAnalytics
     clock: Callable[[], datetime]
     tick: Callable[[], Awaitable[None]]
+    links: FileLinks

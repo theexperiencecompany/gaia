@@ -36,6 +36,7 @@ from app.services.integrations.integration_expiry import AccountExpired, announc
 from app.services.platform_link_service import PlatformLinkService
 from app.services.workflow.notifications import notify_workflow_result
 from app.tasks.reminder_tasks import _execute_static_reminder
+from app.utils.artifact_utils import FILE_LINKS
 from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.runtime_doubles import (
     RecordingAnalytics,
@@ -139,6 +140,7 @@ def _runtime() -> None:
             analytics=RecordingAnalytics(),
             clock=lambda: datetime.now(UTC),
             tick=_no_tick,
+            links=FILE_LINKS,
         )
     )
 

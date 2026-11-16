@@ -17,6 +17,7 @@ from app.services.conversation.reducer import reduce
 from app.services.conversation.screen import project_screen
 from shared.py.conversation_wire import ScreenItemKind
 from tests.factories import CONVERSATION_ID
+from tests.helpers import TEST_FILE_LINKS
 from tests.unit.services.conversation.log_helpers import (
     EMPTY,
     asked,
@@ -163,7 +164,7 @@ def test_the_screen_asks_exactly_the_approvals_the_state_awaits_on_every_prefix(
         state = result.state
         shown = [
             request.approval_id
-            for item in project_screen(CONVERSATION_ID, log)
+            for item in project_screen(CONVERSATION_ID, log, TEST_FILE_LINKS)
             if item.kind is ScreenItemKind.WORK
             for request in item.asking
         ]

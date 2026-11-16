@@ -72,7 +72,7 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingSubdocument,
 )
-from app.utils.artifact_utils import artifact_url_base
+from app.utils.artifact_utils import FILE_LINKS
 
 
 def ctx(
@@ -1318,7 +1318,7 @@ class TestWorkspaceSessionBanner:
         assert banner == (
             f"Session directory: {session_dir('sess-1')}\n"
             "Public artifact URL: a file at `artifacts/<name>` is served at "
-            f"{artifact_url_base('sess-1')}/<name>"
+            f"{FILE_LINKS.artifact_base('sess-1')}/<name>"
         )
 
     async def test_no_vfs_session_id_never_guesses_a_directory(self) -> None:

@@ -32,6 +32,7 @@ from app.services.conversation.screen import (
 )
 from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation.work_deltas import work_payloads
+from app.utils.artifact_utils import FILE_LINKS
 
 
 class ScreenItemMoved(Exception):
@@ -86,7 +87,7 @@ class ScreenTracker:
         """Return the tracker for entries, holding what each running task's work has published so far."""
         live = {
             item.task_id
-            for item in project_screen(conversation_id, entries)
+            for item in project_screen(conversation_id, entries, FILE_LINKS)
             if isinstance(item, WorkItem) and item.status in LIVE_WORK
         }
         started = {
@@ -109,7 +110,8 @@ class ScreenTracker:
     def _project(self) -> list[ScreenItem]:
         entries = [self._entries[seq] for seq in sorted(self._entries)]
         return [
-            self._with_live_cards(item) for item in project_screen(self._conversation_id, entries)
+            self._with_live_cards(item)
+            for item in project_screen(self._conversation_id, entries, FILE_LINKS)
         ]
 
     def _with_live_cards(self, item: ScreenItem) -> ScreenItem:

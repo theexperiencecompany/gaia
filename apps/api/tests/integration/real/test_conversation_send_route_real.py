@@ -41,6 +41,7 @@ from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import install_runtime_ports, runtime_ports
 from app.services.conversation.send import submit_bot_message
+from app.utils.artifact_utils import FILE_LINKS
 from app.utils.notification.channels.conversation import (
     ConversationChannelAdapter,
     ConversationPayload,
@@ -92,6 +93,7 @@ def sends(conversations_collection: object, real_redis: Redis) -> Iterator[Sends
             analytics=RecordingAnalytics(),
             clock=lambda: datetime.now(UTC),
             tick=_no_tick,
+            links=FILE_LINKS,
         )
     )
     with (

@@ -73,10 +73,15 @@ from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.screen import project_screen
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.runtime.secrets_store import fernet_key_from
+from app.utils.artifact_utils import FILE_LINKS
+from app.utils.file_links import FileLinks
 from app.utils.timezone import Timezone
 from shared.py.approvals import ActionResult, ApprovalOutcome
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, ReplyItem, ReplyOutcome, ToolDataEntry
 from shared.py.wide_events import log, log_context
+
+#: Where a test deployment serves and opens files: a screen resolves every sandbox path against it.
+TEST_FILE_LINKS = FileLinks(api_host="https://api.gaia.test", web_app="https://gaia.test")
 
 #: A well-formed user id with no users row behind it.
 UNKNOWN_USER_ID = "6a387b78347776fca38bbd99"
@@ -408,7 +413,7 @@ async def stored_conversation(
 
 def shown_items(conversation_id: str, page: LogPage) -> list[ScreenItem]:
     """Project a read page of entries into the screen items a load serves."""
-    return project_screen(conversation_id, page.entries)
+    return project_screen(conversation_id, page.entries, FILE_LINKS)
 
 
 def item_text(item: ScreenItem) -> str:

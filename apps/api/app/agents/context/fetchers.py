@@ -59,7 +59,7 @@ from app.services.onboarding.first_question import seeded_chips
 from app.services.storage._vfs_common import folder_name
 from app.services.tools.tools_service import get_integration_tool_list
 from app.services.tracked_todo_service import tracked_todo_service
-from app.utils.artifact_utils import artifact_url_base
+from app.utils.artifact_utils import FILE_LINKS
 from app.utils.user_preferences_utils import OnboardingPreferencesRecord
 from shared.py.wide_events import log
 
@@ -379,7 +379,7 @@ async def build_workspace_session_banner(ctx: SectionContext) -> str:
     return (
         f"Session directory: {session_dir(ctx.vfs_session_id)}\n"
         f"Public artifact URL: a file at `artifacts/<name>` is served at "
-        f"{artifact_url_base(ctx.vfs_session_id)}/<name>"
+        f"{FILE_LINKS.artifact_base(ctx.vfs_session_id)}/<name>"
     )
 
 

@@ -56,6 +56,7 @@ from app.services.conversation.reducer import amend_refusal, reduce
 from shared.py.analytics import Dedupe
 from shared.py.analytics.context import AnalyticsContext
 from shared.py.approvals import ApprovalDecider
+from tests.helpers import TEST_FILE_LINKS
 from tests.unit.services.conversation.log_helpers import EMPTY, T0
 
 LIVENESS = timedelta(seconds=10)
@@ -781,6 +782,7 @@ class Runtime:
             analytics=self.analytics,
             clock=self.clock,
             tick=self.ticks.tick,
+            links=TEST_FILE_LINKS,
         )
 
     async def entries(self) -> list[LoggedEntry]:
