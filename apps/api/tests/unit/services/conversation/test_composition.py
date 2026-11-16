@@ -205,7 +205,10 @@ async def test_the_instant_reaction_emits_its_decision_and_latency(
         before = asyncio.all_tasks()
         await RuntimeEffects(log, MagicMock(), lambda: PORTS).start_ack("c1", USER_ID, "u1")
         await asyncio.gather(*(asyncio.all_tasks() - before))
-    reaction = recorder.event("conversation_instant_reaction")["reaction_ack"]
+    log.state.assert_awaited_once_with("c1", USER_ID)
+    event = recorder.event("conversation_instant_reaction")
+    assert event["conversation_id"] == "c1"
+    reaction = event["reaction_ack"]
     assert reaction["reason"] == "needs_words"
     assert isinstance(reaction["latency_ms"], int)
 

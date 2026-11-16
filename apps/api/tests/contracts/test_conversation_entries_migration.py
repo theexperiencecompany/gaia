@@ -602,6 +602,19 @@ async def test_every_head_without_a_source_is_given_its_own_kind_and_verify_fail
     await refuse_unmigrated_conversations()
 
 
+async def test_the_boot_check_names_a_sourceless_head_and_its_migration(
+    raw_collection: Any,
+) -> None:
+    sourceless = await _legacy(raw_collection, [], source=None)
+
+    with pytest.raises(UnmigratedConversationError) as refused:
+        await refuse_unmigrated_conversations()
+    assert refused.value.message == (
+        f"conversation {sourceless.conversation_id} still holds no source: run "
+        "python -m scripts.migrate_conversation_entries --apply, then --verify"
+    )
+
+
 async def test_the_boot_check_finds_a_sourceless_head_through_an_index(raw_collection: Any) -> None:
     await raw_collection.create_index(CONVERSATION_SOURCE_KEYS, **CONVERSATION_SOURCE_OPTIONS)
 

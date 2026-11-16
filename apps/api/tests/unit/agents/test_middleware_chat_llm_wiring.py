@@ -147,10 +147,10 @@ class TestChatLlmWiring:
         # safety valve past twice it. Past 272K input tokens OpenAI bills the whole
         # request at 2x, so even the valve stays under it.
         assert summarizer.trigger == ("tokens", COMMS_SUMMARIZATION_CEILING_TOKENS)
-        assert create_comms_history_fold(llm).trigger == (
-            "tokens",
-            COMMS_SUMMARIZATION_TRIGGER_TOKENS,
-        )
+        fold = create_comms_history_fold(llm)
+        assert fold.trigger == ("tokens", COMMS_SUMMARIZATION_TRIGGER_TOKENS)
+        assert fold.keep == ("tokens", COMMS_SUMMARIZATION_KEEP_TOKENS)
+        assert fold.archive == "executor"
         assert COMMS_SUMMARIZATION_CEILING_TOKENS == 2 * COMMS_SUMMARIZATION_TRIGGER_TOKENS
         assert COMMS_SUMMARIZATION_CEILING_TOKENS < 272_000
 

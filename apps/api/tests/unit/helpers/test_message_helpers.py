@@ -73,6 +73,11 @@ class TestCreateSystemMessage:
         assert isinstance(msg, SystemMessage)
         assert msg.content == comms.content
 
+    def test_a_comms_prompt_without_its_surface_is_refused(self) -> None:
+        with pytest.raises(ValueError) as refused:
+            create_system_message(agent_type="comms")
+        assert str(refused.value) == "a comms prompt needs the surface its reply is read on"
+
 
 # ---------------------------------------------------------------------------
 # format_tool_selection_message
