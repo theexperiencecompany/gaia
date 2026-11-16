@@ -1,11 +1,11 @@
-import { Button } from "@heroui/button";
 import {
+  Description,
   Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Input } from "@heroui/input";
+  Input,
+  Label,
+  Menu,
+  TextField,
+} from "@heroui/react";
 import { MoreHorizontalIcon } from "@icons";
 import type {
   ApprovalDecision,
@@ -19,6 +19,8 @@ import {
 } from "@shared/chat";
 import { endAfterDecision, flattenArgsPreview } from "@shared/utils";
 import { useMemo, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { APPROVAL_COPY } from "@/features/chat/constants/approvalCopy";
@@ -159,19 +161,23 @@ export default function ApprovalRequestSection({
         </div>
         <div className="mt-1 text-xs text-zinc-400">{description.headline}</div>
         <div className="mt-3 flex items-center gap-2">
-          <Button
-            color="primary"
+          <GaiaButton
             size="sm"
             onPress={() => {
               setPhase("idle");
               onApproveTap();
             }}
+            variant="primary"
           >
             {APPROVAL_COPY.reconfirmApprove}
-          </Button>
-          <Button variant="flat" size="sm" onPress={() => setPhase("idle")}>
+          </GaiaButton>
+          <GaiaButton
+            variant="default-soft"
+            size="sm"
+            onPress={() => setPhase("idle")}
+          >
             {APPROVAL_COPY.back}
-          </Button>
+          </GaiaButton>
         </div>
       </div>
     );
@@ -217,70 +223,72 @@ export default function ApprovalRequestSection({
 
       {facts.length > 0 && detailRows(facts)}
 
-      {showAllArgs ? (
+      {description.details.length === 0 || showAllArgs ? (
         <>
           {longText.length > 0 && detailRows(longText)}
           <ArgsPreview args={data.args_preview} />
         </>
       ) : (
-        <Button
-          className="mt-1 px-0 text-zinc-500"
+        <GaiaButton
+          className="mt-1"
           size="sm"
-          variant="light"
+          variant="ghost"
+          inset="none"
+          tone="faint"
           onPress={() => setShowAllArgs(true)}
         >
           {APPROVAL_COPY.showAllDetails}
-        </Button>
+        </GaiaButton>
       )}
 
       <div className="mt-3 flex items-center gap-2">
-        <Input
-          className="flex-1"
-          size="sm"
-          variant="flat"
-          placeholder={APPROVAL_COPY.feedbackPlaceholder}
+        <TextField
+          className={inputVariants({ size: "sm", className: "flex-1" })}
           value={feedback}
-          onValueChange={setFeedback}
+          onChange={setFeedback}
           isDisabled={locked}
-        />
-        <Button
-          color="primary"
+        >
+          <Input placeholder={APPROVAL_COPY.feedbackPlaceholder} />
+        </TextField>
+        <GaiaButton
           size="sm"
           isDisabled={locked}
           onPress={onApproveTap}
+          variant="primary"
         >
           {APPROVAL_COPY.approve}
-        </Button>
-        <Button
-          variant="flat"
+        </GaiaButton>
+        <GaiaButton
+          variant="default-soft"
           size="sm"
           isDisabled={locked}
           onPress={() => submit("deny")}
         >
           {APPROVAL_COPY.deny}
-        </Button>
+        </GaiaButton>
         {!data.always_asks && (
-          <Dropdown placement="bottom-end">
-            <DropdownTrigger>
-              <Button
-                isIconOnly
-                size="sm"
-                variant="light"
-                isDisabled={locked}
-                aria-label={APPROVAL_COPY.moreOptions}
-              >
-                <MoreHorizontalIcon width={18} />
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu aria-label={APPROVAL_COPY.optionsMenu}>
-              <DropdownItem
-                key="always"
-                description={APPROVAL_COPY.alwaysAllowHint}
-                onPress={() => submit("approve", "always_tool")}
-              >
-                {APPROVAL_COPY.alwaysAllow(description.action)}
-              </DropdownItem>
-            </DropdownMenu>
+          <Dropdown>
+            <GaiaButton
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              isDisabled={locked}
+              aria-label={APPROVAL_COPY.moreOptions}
+            >
+              <MoreHorizontalIcon width={18} />
+            </GaiaButton>
+            <Dropdown.Popover placement="bottom end">
+              <Menu aria-label={APPROVAL_COPY.optionsMenu}>
+                <Menu.Item
+                  id="always"
+                  textValue={APPROVAL_COPY.alwaysAllow(description.action)}
+                  onAction={() => submit("approve", "always_tool")}
+                >
+                  <Label>{APPROVAL_COPY.alwaysAllow(description.action)}</Label>
+                  <Description>{APPROVAL_COPY.alwaysAllowHint}</Description>
+                </Menu.Item>
+              </Menu>
+            </Dropdown.Popover>
           </Dropdown>
         )}
       </div>

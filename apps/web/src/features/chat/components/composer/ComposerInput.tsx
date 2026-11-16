@@ -1,7 +1,9 @@
-import { Textarea } from "@heroui/input";
+import { TextArea } from "@heroui/react";
 import type React from "react";
 import { useCallback } from "react";
 
+import { inputVariants } from "@/components/shared/controlVariants";
+import { useAutosizeTextarea } from "@/features/chat/hooks/useAutosizeTextarea";
 import type { SlashCommandDropdownController } from "@/features/chat/hooks/useSlashCommandDropdownState";
 
 import SlashCommandDropdown from "./SlashCommandDropdown";
@@ -11,9 +13,7 @@ interface SearchbarInputProps {
   onSearchbarTextChange: (text: string) => void;
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
   handleKeyDown: React.KeyboardEventHandler<HTMLInputElement>;
-  currentHeight: number;
   hasMessages: boolean;
-  onHeightChange: (height: number) => void;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   slashCommand: SlashCommandDropdownController;
   onIntegrationClick?: (integrationId: string) => void;
@@ -24,8 +24,6 @@ const ComposerInput: React.FC<SearchbarInputProps> = ({
   onSearchbarTextChange,
   handleFormSubmit,
   handleKeyDown,
-  currentHeight,
-  onHeightChange,
   inputRef,
   hasMessages: _hasMessages,
   slashCommand,
@@ -42,8 +40,11 @@ const ComposerInput: React.FC<SearchbarInputProps> = ({
     selectCategory,
   } = slashCommand;
 
+  useAutosizeTextarea(inputRef, searchbarText);
+
   const handleTextChange = useCallback(
-    (text: string) => {
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const text = e.target.value;
       onSearchbarTextChange(text);
 
       // Update slash command detection immediately without setTimeout
@@ -55,7 +56,7 @@ const ComposerInput: React.FC<SearchbarInputProps> = ({
     [onSearchbarTextChange, updateSlashCommandDetection, inputRef],
   );
 
-  const handleKeyDownWithSlashCommands: React.KeyboardEventHandler<HTMLInputElement> =
+  const handleKeyDownWithSlashCommands: React.KeyboardEventHandler<HTMLTextAreaElement> =
     useCallback(
       (e) => {
         // First, handle slash command navigation
@@ -63,7 +64,7 @@ const ComposerInput: React.FC<SearchbarInputProps> = ({
 
         // If not handled by slash command, pass to original handler
         if (!wasHandledBySlashCommand) {
-          handleKeyDown(e);
+          handleKeyDown(e as unknown as React.KeyboardEvent<HTMLInputElement>);
         }
       },
       [handleSlashCommandKeyDown, handleKeyDown],
@@ -82,25 +83,22 @@ const ComposerInput: React.FC<SearchbarInputProps> = ({
 
   return (
     <>
-      <form onSubmit={handleFormSubmit}>
-        <Textarea
+      {/* v2's 48px field: one line centres, more lines grow inside an 8px inset */}
+      <form className="flex min-h-12 items-center" onSubmit={handleFormSubmit}>
+        <TextArea
           ref={inputRef}
           autoFocus
-          classNames={{
-            inputWrapper:
-              " px-3 data-[hover=true]:bg-zinc-800 group-data-[focus-visible=true]:ring-zinc-800 group-data-[focus-visible=true]:ring-offset-0 shadow-none group-data-[focus-visible=true]:ring-transparent",
-            innerWrapper: `${currentHeight > 24 ? "items-end" : "items-center"} `,
-            input:
-              "font-light focus-visible:border-0! focus-visible:border-transparent!",
-          }}
-          maxRows={13}
-          minRows={1}
+          className={inputVariants({
+            variant: "bare",
+            placeholder: "muted",
+            className:
+              "max-h-82 w-full resize-none px-3 py-2 text-base leading-6 font-light shadow-none focus:ring-0",
+          })}
+          rows={1}
           placeholder="What can I do for you today? (Type '/' for tools)"
-          size="lg"
           value={searchbarText}
-          onHeightChange={onHeightChange}
           onKeyDown={handleKeyDownWithSlashCommands}
-          onValueChange={handleTextChange}
+          onChange={handleTextChange}
           onSelect={handleCursorPositionChange}
           onClick={handleCursorPositionChange}
         />

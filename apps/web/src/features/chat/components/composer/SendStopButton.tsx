@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { ArrowUp02Icon, StopIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   type ComposerSendMode,
   useComposerSendMode,
@@ -81,16 +81,17 @@ export default function SendStopButton({
   const stopCursor = showStop ? "cursor-pointer" : "";
 
   return (
-    <Button
+    <GaiaButton
+      variant={bg === "primary" ? "primary" : "default-solid"}
+      shape="pill"
       isIconOnly
       aria-label={MODE_ARIA_LABEL[mode]}
-      className={`transition-all duration-300 ${contentColor} ${className} ${stopCursor}`}
-      color={bg}
+      // The muted icon colour already reads as not-ready; v2 never dimmed it further.
+      className={`transition-all duration-300 disabled:opacity-100 ${contentColor} ${className} ${stopCursor}`}
       // Stop is always pressable; send is gated on
       // readiness — there must be content AND no in-flight upload, otherwise the
       // submit is dropped by the composer's uploading guard.
-      disabled={!showStop && (!hasContent || isUploading)}
-      radius="full"
+      isDisabled={!showStop && (!hasContent || isUploading)}
       // In stop mode the button aborts the stream rather than submitting, so it
       // must not trigger the composer form. Only send submits.
       type={showStop ? "button" : "submit"}
@@ -108,6 +109,6 @@ export default function SendStopButton({
           {renderModeContent(mode)}
         </m.span>
       </AnimatePresence>
-    </Button>
+    </GaiaButton>
   );
 }

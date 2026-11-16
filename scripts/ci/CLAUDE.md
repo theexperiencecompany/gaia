@@ -22,13 +22,12 @@ lane without grepping the workflow first.
 | The self-host stack an end-to-end lane boots and drives | `selfhost.sh` | `prepare`, `stub`, `up`, `mongo`, `logs` |
 | The sim stack (API, worker, web, LLM stub) a browser e2e lane boots and drives | `sim-stack.sh` | `up` |
 | Standing dependency + pin gates | `audit.sh` | `pnpm`, `pip`, `playwright-pin`, `model-pin`, `alert-rule-tools`, `evlog` |
-| Static hygiene over the TS/JS surface | `checks.mjs` | `file-sizes`, `components-per-file`, `types-location`, `duplication`, `evlog-map-bots`, `api-schema`, `analytics-catalog`, `api-schema-types`, `api-client-imports`, `cli-config-schema`, `deploy-templates`, `doc-comments` |
-| The PostHog project against the event catalog | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert` |
+| The PostHog project: the event catalog contract, and the CSP soak its violation reports measure | `analytics.py` | `check`, `sync-actions`, `sync-loop-alert`, `csp-soak` |
 | Turning a run's output into a verdict | `verdict.py` | `emit`, `consolidate`, `dir`, `check-ownership`, `pytest-verdict`, `regression-proof-select`, `regression-proof-verdict`, `check`, `sarif`, `post-statuses`, `reuse-plan` |
 | Publishing what a green master produced | `release.sh` | `resolve-image-tags`, `promote-latest`, `dispatch-cli-publish`, `cli-release-images`, `pin-selfhost-release`, `cli-beta-release`, `selfhost-bots-arm64`, `selfhost-bots-manifest`, `connect-cross-check`, `connect-binaries`, `selfhost-bundle`, `disable-cf-builds` |
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
-| What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `indexnow` |
+| What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `tighten`, `indexnow` |
 
 `.py` concepts decide (parse API results, route, pack, classify); `.sh`
 concepts orchestrate (containers, polling, ordered commands) — "Bash for glue,
@@ -45,7 +44,7 @@ Release and deploy are two concepts, not one: `release.sh` publishes artifacts
 
 `baselines/` holds the ratchet files for the gates that landed on a tree
 that already violated them (`checks.mjs api-schema-types`,
-`api-client-imports`, and `smoke-web.sh squirrel`'s per-rule finding counts). Each line is one known violation, each file has a header
+`api-client-imports`, and `smoke-web.sh squirrel`'s per-page findings). Each line is one known violation, each file has a header
 saying what would remove it, and the gate fails on anything NOT listed while
 reporting a line that no longer matches as merely removable — so a baseline can
 be emptied without reddening the PR that empties it.
@@ -60,6 +59,10 @@ answer; a caller with a safe fallback catches it at the call site), `log.sh` (th
 convention), `runner-host.sh` (`ci_on_the_box`: whether this job is on the home
 box, read from the runner name `gaia-home-<n>` and never from
 `RUNNER_ENVIRONMENT`, which Blacksmith also sets to `self-hosted`),
+`webhook.sh` (`post_webhook`, the one Discord/Slack webhook sender: `deploy.sh
+notify` sources it and `analytics.py csp-soak` runs it through bash),
+`csp_soak.py` (the CSP soak's header classification, HogQL query and Slack
+message behind `analytics.py csp-soak`, kept out of the catalog checks' file),
 `cpu-slots.sh` (the host CPU governor, below),
 `service-images.sh` (the digest-pinned test-service images),
 `image-repos.sh` (the GHCR repo per image group), `explicit-file-list.mjs` (the
@@ -68,17 +71,20 @@ observability scanner behind `checks.mjs evlog-map-bots`),
 `api-contract.mjs` (the twin/boundary detector behind `checks.mjs
 api-schema-types` and `api-client-imports` — pure functions over a file's
 source text plus openapi.json, with the file list, baselines and reporting
-left in checks.mjs), `doc-comments.mjs` (the JSDoc/line-comment content gate
+left in checks.mjs), `heroui-usage.mjs` (the HeroUI rules behind `checks.mjs heroui-style-overrides` and `heroui-usage`, on one parse and binding table), `doc-comments.mjs` (the JSDoc/line-comment content gate
 behind `checks.mjs doc-comments`), `generated-artifacts.mjs` (the
 regenerate-and-diff gates behind `checks.mjs api-schema`, `analytics-catalog`,
 `cli-config-schema` and `deploy-templates`), `deploy_templates.py` (the Coolify and
 Render template generator behind `checks.mjs deploy-templates`; Python for
 PyYAML, run through the apps/api environment), `seo_audit.py` (the sitemap
-crawler behind `smoke-web.sh audit`), `squirrel.py` (squirrelscan's effective
-config and the per-rule ratchet against `baselines/squirrel-build.txt` and
-`squirrel-live.txt` behind
-`smoke-web.sh squirrel`), `origin_proxy.py` (the HTTPS proxy that serves a local
-build to squirrel as https://heygaia.io, since squirrel cannot remap a host),
+crawler behind `smoke-web.sh audit`), `squirrel.py` (the pages a squirrelscan run
+audits, the one ignore list of squirrel's own bugs, `drop` for applying a run's fixes, and the per-page, per-check,
+per-item baseline in `baselines/squirrel-build.txt` and `squirrel-live.txt`, read
+from squirrel's own crawl database behind `smoke-web.sh squirrel`; it reuses
+`indexnow.py`'s diff mapping), `origin_proxy.py` (the HTTPS proxy that serves a local
+build to squirrel as https://heygaia.io, since squirrel cannot remap a host, and
+serves a chosen page list as the sitemap, since squirrel audits sitemap pages and
+not the URL it is given),
 `indexnow.py` (the changed-page submitter behind
 `smoke-web.sh indexnow`, which reuses `seo_audit.py`'s sitemap reader) and
 `mutation_matrix.py` (the AST detector behind `mutation.py matrix`),

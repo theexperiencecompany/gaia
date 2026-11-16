@@ -9,7 +9,7 @@ export function BrandAssets() {
       <section>
         <div className="mb-8 text-center">
           <h2 className="mb-3 text-3xl font-medium">GAIA Logo</h2>
-          <p className="text-foreground-600 dark:text-foreground-400">
+          <p className="text-zinc-300 dark:text-zinc-500">
             The primary GAIA brand mark
           </p>
         </div>
@@ -24,6 +24,7 @@ export function BrandAssets() {
                 { format: ".png", path: "/brand/gaia_logo.png" },
               ]}
               imageAlt="The GAIA logo mark on a dark background"
+              loading="eager"
             />
           </div>
         </div>
@@ -33,7 +34,7 @@ export function BrandAssets() {
       <section>
         <div className="mb-8 text-center">
           <h2 className="mb-3 text-3xl font-medium">GAIA Wordmarks</h2>
-          <p className="text-foreground-600 dark:text-foreground-400">
+          <p className="text-zinc-300 dark:text-zinc-500">
             Full GAIA wordmarks for various backgrounds
           </p>
         </div>
@@ -65,7 +66,7 @@ export function BrandAssets() {
           <h2 className="mb-3 text-3xl font-medium">
             The Experience Company Logo
           </h2>
-          <p className="text-foreground-600 dark:text-foreground-400">
+          <p className="text-zinc-300 dark:text-zinc-500">
             The Experience Company brand mark in multiple variants
           </p>
         </div>
@@ -97,7 +98,7 @@ export function BrandAssets() {
       <section>
         <div className="mb-8 text-center">
           <h2 className="mb-3 text-3xl font-medium">Experience Wordmarks</h2>
-          <p className="text-foreground-600 dark:text-foreground-400">
+          <p className="text-zinc-300 dark:text-zinc-500">
             "Experience" wordmark variations
           </p>
         </div>
@@ -129,7 +130,7 @@ export function BrandAssets() {
           <h2 className="mb-3 text-3xl font-medium">
             The Experience Company Full Wordmarks
           </h2>
-          <p className="text-foreground-600 dark:text-foreground-400">
+          <p className="text-zinc-300 dark:text-zinc-500">
             Complete "The Experience Company" wordmark
           </p>
         </div>

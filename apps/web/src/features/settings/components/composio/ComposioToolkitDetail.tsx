@@ -1,11 +1,18 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Skeleton } from "@heroui/skeleton";
+import {
+  Chip,
+  Description,
+  Input,
+  Label,
+  Skeleton,
+  TextField,
+} from "@heroui/react";
 import { CheckmarkCircle02Icon, Delete02Icon, Link01Icon } from "@icons";
 import { useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type {
   ComposioCatalogEntry,
@@ -68,18 +75,23 @@ export function ComposioToolkitDetail({ slug }: ComposioToolkitDetailProps) {
 
       {canEnable &&
         detail.fields.map((field) => (
-          <Input
+          <TextField
+            className={fieldVariants({
+              labelPlacement: "inside",
+              className: inputVariants({ size: "sm" }),
+            })}
             key={field.name}
-            label={field.display_name}
-            description={field.description}
             isRequired={field.required}
             type={field.is_secret ? "password" : "text"}
-            size="sm"
             value={values[field.name] ?? ""}
-            onValueChange={(value) =>
+            onChange={(value) =>
               setValues((current) => ({ ...current, [field.name]: value }))
             }
-          />
+          >
+            <Label>{field.display_name}</Label>
+            <Input />
+            <Description>{field.description}</Description>
+          </TextField>
         ))}
 
       <ToolkitActions
@@ -145,37 +157,32 @@ function ToolkitActions({
   return (
     <div className="flex items-center justify-end gap-2">
       {toolkit.status === "enabled" && (
-        <Button
+        <GaiaButton
+          variant="danger-soft"
           size="sm"
-          variant="flat"
-          color="danger"
-          startContent={<Delete02Icon className="size-4" />}
-          isLoading={disable.isPending}
+          isPending={disable.isPending}
           onPress={() => disable.mutate({ slug, name })}
         >
+          <Delete02Icon className="size-4" />
           Remove
-        </Button>
+        </GaiaButton>
       )}
       {toolkit.set_up ? (
-        <Chip
-          size="sm"
-          variant="flat"
-          color="success"
-          startContent={<CheckmarkCircle02Icon className="size-3.5" />}
-        >
-          Ready to connect
+        <Chip size="sm" variant="soft" color="success">
+          <CheckmarkCircle02Icon className="size-3.5" />
+          <Chip.Label>Ready to connect</Chip.Label>
         </Chip>
       ) : (
-        <Button
+        <GaiaButton
           size="sm"
-          color="primary"
+          variant="primary"
           isDisabled={!canSubmit}
-          isLoading={enable.isPending}
-          startContent={!enable.isPending && <Link01Icon className="size-4" />}
+          isPending={enable.isPending}
           onPress={() => enable.mutate({ slug, name, credentials })}
         >
+          {!enable.isPending && <Link01Icon className="size-4" />}
           {toolkit.status === "built_in" ? "Set up" : "Enable"}
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

@@ -1,6 +1,4 @@
-import "katex/dist/katex.min.css";
-import "streamdown/styles.css";
-
+import "./markdown.css";
 import Image from "next/image";
 import type React from "react";
 import { useDeferredValue, useMemo } from "react";

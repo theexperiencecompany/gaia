@@ -1,4 +1,4 @@
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { ScrollShadow } from "@heroui/react";
 import { GridIcon } from "@icons";
 import { getToolDisplayName } from "@shared/icons";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";

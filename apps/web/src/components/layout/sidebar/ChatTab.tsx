@@ -1,9 +1,8 @@
 "use client";
-import { Button } from "@heroui/button";
 import { ChatBotIcon, Mail01Icon, StarIcon } from "@icons";
 import { DISPLAY_STATE } from "@shared/conversation";
-import Link from "next/link";
 import React, { memo, useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import { useConversationDisplay } from "@/features/chat/live/useLiveChat";
 import { usePathname } from "@/i18n/navigation";
@@ -79,27 +78,27 @@ export const ChatTab = memo(function ChatTab({
       onFocus={() => setButtonHovered(true)}
       onBlur={() => setButtonHovered(false)}
     >
-      <Button
-        className={`w-full justify-start px-2 font-light text-sm ${isUnread ? "text-white font-normal" : isActive ? "text-zinc-300" : "text-zinc-400 hover:text-zinc-300"}`}
-        size="sm"
-        as={Link}
+      <LinkButton
         href={`/c/${id}`}
-        variant={isActive ? "flat" : "light"}
-        onPress={() => setButtonHovered(false)}
-        startContent={
-          getIcon() &&
+        className={`w-full justify-start font-light text-sm ${isUnread ? "font-normal" : ""}`}
+        size="sm"
+        inset="tight"
+        tone={isUnread ? "white" : isActive ? "dim" : "muted"}
+        hoverTone={isUnread || isActive ? "none" : "dim"}
+        variant={isActive ? "default-soft" : "ghost"}
+        onClick={() => setButtonHovered(false)}
+      >
+        {getIcon() &&
           React.cloneElement(getIcon()!, {
             width: 18,
             height: 18,
-          })
-        }
-      >
+          })}
         <div className="flex w-full items-center justify-start gap-2">
           {/* Streaming indicator — amber when blocked on your approval, else
               the blue "actively streaming" pulse. */}
           {isBusy && (
             <div
-              className={`size-2 shrink-0 rounded-full animate-pulse ${showApprovalDot ? "bg-warning" : "bg-primary"}`}
+              className={`size-2 shrink-0 rounded-full animate-pulse ${showApprovalDot ? "bg-warning" : "bg-accent"}`}
               title={
                 showApprovalDot ? "Waiting for your approval" : "Streaming..."
               }
@@ -107,13 +106,13 @@ export const ChatTab = memo(function ChatTab({
           )}
           {/* Unread indicator */}
           {!isBusy && isUnread && (
-            <div className="size-2.5 shrink-0 rounded-full bg-primary" />
+            <div className="size-2.5 shrink-0 rounded-full bg-accent" />
           )}
           {/* min-w-0 + truncate so a long title shrinks/ellipsizes instead of
               squeezing the fixed-size indicator dot out of view. */}
           <span className="min-w-0 truncate">{name.replace('"', "")}</span>
         </div>
-      </Button>
+      </LinkButton>
 
       <div className={`absolute right-0`}>
         <ChatOptionsDropdown

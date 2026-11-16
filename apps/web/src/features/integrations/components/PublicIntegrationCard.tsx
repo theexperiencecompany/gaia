@@ -1,7 +1,6 @@
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
-import { Tooltip } from "@heroui/tooltip";
+import { Skeleton, Tooltip } from "@heroui/react";
 import {
   CheckmarkBadge01Icon,
   DateTimeIcon,
@@ -11,8 +10,8 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import Link from "next/link";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import { isPrivateBlobUrl } from "@/lib/privateBlob";
-
 import type { CommunityIntegration } from "../types";
 import { IntegrationIcon } from "./IntegrationIcon";
 
@@ -35,7 +34,7 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
   integration,
 }) => {
   return (
-    <Link href={`/marketplace/${integration.slug}`}>
+    <Link href={marketplacePath(integration.slug)}>
       <div className="group relative flex h-full min-h-fit w-full flex-col gap-3 rounded-3xl bg-zinc-800 p-4 outline-1 outline-zinc-800/70 transition-colors select-none cursor-pointer hover:bg-zinc-700/50">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 aspect-square shrink-0 items-center justify-center rounded-xl p-0">
@@ -63,12 +62,8 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
 
         <div className="mt-auto flex items-center justify-between pt-1">
           {integration.source === "platform" ? (
-            <Tooltip
-              content="Built and maintained by the GAIA team"
-              size="sm"
-              placement="top"
-            >
-              <div className="flex items-center gap-1.5">
+            <Tooltip>
+              <Tooltip.Trigger className="flex items-center gap-1.5">
                 <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-zinc-800 p-0.5">
                   <Image
                     src="/brand/gaia_logo.svg"
@@ -84,9 +79,12 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
                 <CheckmarkBadge01Icon
                   width={15}
                   height={15}
-                  className="shrink-0 text-primary"
+                  className="shrink-0 text-accent"
                 />
-              </div>
+              </Tooltip.Trigger>
+              <Tooltip.Content placement="top">
+                Built and maintained by the GAIA team
+              </Tooltip.Content>
             </Tooltip>
           ) : (
             <div className="flex items-center gap-2">

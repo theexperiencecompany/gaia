@@ -1,10 +1,8 @@
-import { Button } from "@heroui/button";
 import { RedoIcon } from "@icons";
 import { SEND_NOT_DELIVERED } from "@shared/conversation";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { ChatBubbleUserProps } from "@/types/features/chatBubbleTypes";
 import { parseDate } from "@/utils/date/dateUtils";
-
 import ChatBubble_Actions from "../actions/ChatBubble_Actions";
 
 interface ChatBubbleUserFooterProps {
@@ -53,21 +51,20 @@ export function ChatBubbleUserFooter({
           {SEND_NOT_DELIVERED}
         </span>
         {onRetry && (
-          <Button
-            className="h-7 min-w-0 px-2 text-xs"
+          <GaiaButton
+            shape="pill"
+            inset="tight"
+            className="h-7 min-w-0 text-xs"
             isDisabled={isRetrying}
             onPress={onRetry}
-            radius="full"
             size="sm"
-            startContent={
-              <div className={isRetrying ? "animate-spin" : ""}>
-                <RedoIcon height={13} width={13} />
-              </div>
-            }
-            variant="flat"
+            variant="default-soft"
           >
+            <div className={isRetrying ? "animate-spin" : ""}>
+              <RedoIcon height={13} width={13} />
+            </div>
             Retry
-          </Button>
+          </GaiaButton>
         )}
       </div>
     );

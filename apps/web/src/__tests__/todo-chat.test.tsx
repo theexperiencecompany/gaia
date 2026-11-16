@@ -102,7 +102,7 @@ describe("Back to task", () => {
     render(<TodoChatBackLink />);
 
     expect(
-      screen.getByRole("button", { name: "Back to task" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Back to task" }).getAttribute("href"),
     ).toBe("/todos?todoId=todo-1");
   });
 

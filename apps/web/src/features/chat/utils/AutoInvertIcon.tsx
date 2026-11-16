@@ -1,7 +1,7 @@
 "use client";
 
 import { PackageOpenIcon } from "@icons";
-import Image from "next/image";
+import Image, { type ImageProps } from "next/image";
 import { useState } from "react";
 
 /** An integration logo image that falls back to the package glyph when it fails to load. */
@@ -12,7 +12,18 @@ export const AutoInvertIcon: React.FC<{
   width?: number;
   height?: number;
   className?: string;
-}> = ({ src, alt, size, width, height, className }) => {
+  loading?: ImageProps["loading"];
+}> = ({
+  src,
+  alt,
+  size,
+  width,
+  height,
+  className,
+  // Eager by default: a lazy logo inside a clipped scroller (the slash menu's
+  // category tabs) is not fetched until scrolled into view, so it showed up blank.
+  loading = "eager",
+}) => {
   const [failed, setFailed] = useState(false);
   const displayWidth = width || size || 20;
   const displayHeight = height || size || 20;
@@ -28,9 +39,6 @@ export const AutoInvertIcon: React.FC<{
   // Border radius scales with the icon size (percentage radius) so small icons
   // aren't disproportionately rounded. object-contain keeps the logo intact.
   const imgClassName = `${className ?? ""} aspect-square rounded-[18%] object-contain`;
-  // Eager: a lazy logo inside a clipped scroller (the slash menu's category
-  // tabs) is not fetched until scrolled into view, so it showed up blank.
-  const loading = "eager";
 
   // Use next/image in unoptimized mode for SVG URLs — SVGs can't pass through
   // the Next.js optimizer (they'd require dangerouslyAllowSVG), so they ship

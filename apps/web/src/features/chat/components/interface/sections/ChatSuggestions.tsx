@@ -1,7 +1,7 @@
-import { Button } from "@heroui/button";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import {
   pickStarterPrompts,
@@ -44,18 +44,19 @@ export const ChatSuggestions: React.FC = () => {
               visible: { opacity: 1, y: 0 },
             }}
           >
-            <Button
+            <GaiaButton
               fullWidth
-              variant="light"
+              variant="ghost"
               size="sm"
+              shape="md"
               onPress={() => appendToInput(prompt)}
-              className="h-10 justify-start gap-3 rounded-xl px-3 text-sm font-normal text-zinc-400 hover:text-zinc-100"
-              startContent={
-                <Icon size={18} className="shrink-0 text-zinc-500" />
-              }
+              tone="muted"
+              hoverTone="strong"
+              className="h-10 justify-start gap-3 text-sm font-normal"
             >
+              <Icon size={18} className="shrink-0 text-zinc-500" />
               {prompt}
-            </Button>
+            </GaiaButton>
           </m.div>
         ))}
       </m.div>

@@ -1,9 +1,9 @@
 "use client";
 
 import { ArrowLeft01Icon, Home01Icon } from "@icons";
-import * as Sentry from "@sentry/nextjs";
 import React from "react";
 import { track } from "@/lib/analytics";
+import { reportToSentry } from "@/lib/observability/reportToSentry";
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -48,7 +48,7 @@ class ErrorBoundary extends React.Component<
 
     // Full diagnostics go to the console and Sentry; error.message/stack can
     // carry user content, so analytics only gets the stable error type.
-    Sentry.captureException(error, {
+    reportToSentry(error, {
       tags: scope ? { error_boundary: scope } : undefined,
       extra: { componentStack: errorInfo.componentStack },
     });
@@ -71,7 +71,7 @@ class ErrorBoundary extends React.Component<
           <div className="flex items-center gap-4 pt-5">
             <button
               type="button"
-              className="flex gap-2 rounded-lg bg-black p-2 px-3 text-white transition-background hover:bg-[#00000086]"
+              className="flex gap-2 rounded-lg bg-black p-2 px-3 text-white transition-colors hover:bg-[#00000086]"
               onClick={() => window.location.replace("/")}
             >
               <Home01Icon width={20} />
@@ -79,7 +79,7 @@ class ErrorBoundary extends React.Component<
             </button>
             <button
               type="button"
-              className="flex gap-2 rounded-lg bg-white p-2 px-3 font-medium text-black transition-background hover:bg-[#ffffff86]"
+              className="flex gap-2 rounded-lg bg-white p-2 px-3 font-medium text-black transition-colors hover:bg-[#ffffff86]"
               onClick={() => window.history.back()}
             >
               <ArrowLeft01Icon width={20} /> Back

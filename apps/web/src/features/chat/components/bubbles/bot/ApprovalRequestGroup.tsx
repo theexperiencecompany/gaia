@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { ShieldIcon } from "@icons";
 import type { ApprovalDecision, ApprovalRequestData } from "@shared/chat";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { BATCH_OUTCOME_REASON } from "@/features/chat/utils/batchOutcome";
 import { toast } from "@/lib/toast";
@@ -83,31 +83,31 @@ export default function ApprovalRequestGroup({
           <div className="min-w-0 flex-1 text-sm text-zinc-100">
             {pending.length} actions need your approval
           </div>
-          <Button
-            color="primary"
+          <GaiaButton
             size="sm"
             isDisabled={batchSubmitting !== null}
             onPress={() => decideAll("approve")}
+            variant="primary"
           >
             Approve all
-          </Button>
-          <Button
-            variant="flat"
+          </GaiaButton>
+          <GaiaButton
+            variant="default-soft"
             size="sm"
             isDisabled={batchSubmitting !== null}
             onPress={() => decideAll("deny")}
           >
             Decline all
-          </Button>
+          </GaiaButton>
           {pending.length >= 3 && (
-            <Button
-              variant="bordered"
+            <GaiaButton
+              variant="outline"
               size="sm"
               isDisabled={batchSubmitting !== null}
               onPress={() => setSheetOpen(true)}
             >
               {`Review ${pending.length}`}
-            </Button>
+            </GaiaButton>
           )}
         </div>
       )}

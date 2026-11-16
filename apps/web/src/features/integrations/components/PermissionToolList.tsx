@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Switch } from "@heroui/switch";
+import { InputGroup, Switch } from "@heroui/react";
 import { Search01Icon } from "@icons";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   type IntegrationPermissions,
   useToolFilter,
@@ -14,7 +14,6 @@ import {
   SEARCH_THRESHOLD,
   TOOL_SECTIONS,
 } from "@/features/integrations/utils/permissionCopy";
-
 import { PermissionCard } from "./PermissionCard";
 
 interface PermissionToolListProps {
@@ -44,15 +43,17 @@ export const PermissionToolList = ({
       description={`${permissions.askCount} of ${tools.length} turned on. Everything else runs without asking.`}
       action={
         permissions.deviations > 0 && (
-          <Button
+          <GaiaButton
             size="sm"
-            variant="light"
-            className="-mr-1 h-7 shrink-0 px-2 text-xs text-zinc-400"
-            isLoading={permissions.isSavingTools}
+            variant="ghost"
+            tone="muted"
+            inset="tight"
+            className="-mr-1 h-7 shrink-0 text-xs"
+            isPending={permissions.isSavingTools}
             onPress={permissions.resetToDefaults}
           >
             Reset to defaults
-          </Button>
+          </GaiaButton>
         )
       }
     >
@@ -61,28 +62,32 @@ export const PermissionToolList = ({
           <p className="flex-1 text-xs leading-relaxed text-amber-400">
             Nothing here will stop GAIA until you change the setting above.
           </p>
-          <Button
+          <GaiaButton
             size="sm"
-            variant="flat"
+            variant="default-soft"
             className="h-7 shrink-0"
-            isLoading={permissions.isSavingMode}
+            isPending={permissions.isSavingMode}
             onPress={() => permissions.changeMode("auto")}
           >
             Turn on
-          </Button>
+          </GaiaButton>
         </div>
       )}
 
       {tools.length > SEARCH_THRESHOLD && (
-        <Input
-          size="sm"
-          variant="flat"
-          className="mb-2"
-          placeholder="Search tools"
-          value={query}
-          onValueChange={setQuery}
-          startContent={<Search01Icon className="size-4 text-zinc-500" />}
-        />
+        <InputGroup
+          className={inputVariants({ size: "sm", className: "mb-2" })}
+          variant="secondary"
+        >
+          <InputGroup.Prefix>
+            <Search01Icon className="size-4 text-zinc-500" />
+          </InputGroup.Prefix>
+          <InputGroup.Input
+            placeholder="Search tools"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </InputGroup>
       )}
 
       {TOOL_SECTIONS.map(({ key, title, destructive }) => {
@@ -110,9 +115,15 @@ export const PermissionToolList = ({
                 <Switch
                   size="sm"
                   isSelected={permissions.asks(tool)}
-                  onValueChange={(next) => permissions.toggle(tool, next)}
+                  onChange={(next) => permissions.toggle(tool, next)}
                   aria-label={`Ask before running ${tool.label}`}
-                />
+                >
+                  <Switch.Content>
+                    <Switch.Control>
+                      <Switch.Thumb />
+                    </Switch.Control>
+                  </Switch.Content>
+                </Switch>
               </div>
             ))}
           </div>

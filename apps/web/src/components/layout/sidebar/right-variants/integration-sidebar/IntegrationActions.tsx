@@ -10,6 +10,7 @@ import { invalidateIntegrationCaches } from "@/features/integrations/api/queryKe
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { useBearerTokenModal } from "@/features/integrations/hooks/useBearerTokenModal";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
+import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import type { Integration } from "@/features/integrations/types";
 import { copyText } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
@@ -283,7 +284,7 @@ export function IntegrationActions({
   const handleShare = async () => {
     try {
       await copyText(
-        `${window.location.origin}/marketplace/${integration.slug}`,
+        `${window.location.origin}${marketplacePath(integration.slug)}`,
       );
       toast.success("Link copied to clipboard!");
     } catch {

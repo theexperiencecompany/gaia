@@ -47,6 +47,7 @@ import {
   WorkflowCircle06Icon,
   ZapIcon,
 } from "@icons";
+import type { ImageProps } from "next/image";
 import {
   getIconPath,
   iconAliases,
@@ -64,6 +65,8 @@ interface IconProps {
   showBackground?: boolean;
   iconOnly?: boolean; // When true, renders just the icon without background wrapper
   pulsating?: boolean; // When true, animates the background with a pulsating effect
+  /** Eager for an image icon that opens in the first viewport. */
+  loading?: ImageProps["loading"];
 }
 
 interface IconConfig {
@@ -165,6 +168,7 @@ export const getToolCategoryIcon = (
     showBackground = true,
     iconOnly = false,
     pulsating = false,
+    loading,
     ...restProps
   } = iconProps;
 
@@ -186,6 +190,7 @@ export const getToolCategoryIcon = (
         height={defaultProps.height}
         className={restProps.className}
         src={iconUrl}
+        loading={loading}
       />
     );
     return showBackground ? (
@@ -236,6 +241,7 @@ export const getToolCategoryIcon = (
       height={defaultProps.height}
       className={restProps.className}
       src={config.icon as string}
+      loading={loading}
     />
   ) : (
     (() => {
