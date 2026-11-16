@@ -474,7 +474,11 @@
             "type": "integer"
           }
         },
-        "required": ["condition", "waiter", "waited_minutes"],
+        "required": [
+          "condition",
+          "waiter",
+          "waited_minutes"
+        ],
         "title": "WaitResumed",
         "type": "object"
       }
