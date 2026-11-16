@@ -1063,6 +1063,55 @@ groups:
           severity: critical
           service: api
 
+      # 30. Our overhead on a direct comms reply, p90 >200ms for 15m. Provider time is
+      # excluded by construction: the stages run from request receipt to the model
+      # request, and from the model's first chunk to the frame written.
+      - uid: gaia-turn-overhead-p90
+        title: Replies spend too long in our own code
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.9, sum by (le) (rate(turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct"}[30m])))
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Our p90 overhead on direct replies is
+            {{ humanizeDuration $values.B.Value }} (budget 200ms){{ else }}Unable
+            to read the turn overhead p90 — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            One direct reply in ten spends over 200ms in our code on top of the
+            model's own time to first token. Split turn_overhead_seconds by stage:
+            ingress (auth, rate limits, before the turn is accepted), prep (context
+            assembly before the model request; per-section times are in
+            context_assemble_seconds) or egress (first token to frame written).
+          runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-turn-overhead-p90
+        labels:
+          severity: warning
+          service: api
+
       # 20. Postgres itself is refusing connections. `up{job="postgres"}` (rule
       # 10) scrapes postgres_exporter:9187 — the sidecar, which keeps answering
       # scrapes while the database behind it is dead, so rule 10 stays green.

@@ -1,0 +1,122 @@
+# gaia-turn-overhead-p90 — fires when our p90 overhead on direct replies exceeds 200ms for 15m.
+#
+# The bucket layout mirrors _OVERHEAD_BUCKETS in apps/api/app/services/latency_metrics.py.
+# Firing: every direct-total bucket up to le=0.2 is zero, so the 90th percentile falls
+# between le=0.2 and le=0.3. Quiet: direct turns sit at le=0.1, and a slow tool-loop
+# turn (no budget) must not count.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-turn-overhead-p90 fires when direct-reply overhead p90 exceeds 200ms
+    interval: 1m
+    input_series:
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.01"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.02"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.04"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.06"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.08"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.1"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.12"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.15"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.2"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.3"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.5"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="1"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="2"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="5"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="+Inf"}'
+        values: '10+10x60'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: gaia-turn-overhead-p90
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                One direct reply in ten spends over 200ms in our code on top of the model's own time to first token. Split turn_overhead_seconds by stage: ingress (auth, rate limits, before the turn is accepted), prep (context assembly before the model request; per-section times are in context_assemble_seconds) or egress (first token to frame written).
+              runbook_url: https://internal.lab.heygaia.io/production/runbooks/gaia-turn-overhead-p90
+
+  - name: gaia-turn-overhead-p90 stays quiet when direct replies are within budget
+    interval: 1m
+    input_series:
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.01"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.02"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.04"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.06"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.08"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.1"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.12"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.15"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.2"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.3"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="0.5"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="1"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="2"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="5"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct",le="+Inf"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.01"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.02"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.04"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.06"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.08"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.1"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.12"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.15"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.2"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.3"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="0.5"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="1"}'
+        values: '0x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="2"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="5"}'
+        values: '10+10x60'
+      - series: 'turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="tool_loop",le="+Inf"}'
+        values: '10+10x60'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: gaia-turn-overhead-p90
+        exp_alerts: []
