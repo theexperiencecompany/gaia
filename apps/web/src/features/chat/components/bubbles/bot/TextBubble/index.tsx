@@ -1,5 +1,4 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { Alert01Icon, RedoIcon } from "@icons";
 import {
   APPROVAL_REQUEST_TOOL_NAME,
@@ -9,6 +8,7 @@ import { parseOpenUISegments, splitMessageByBreaks } from "@shared/utils";
 import * as m from "motion/react-m";
 import dynamic from "next/dynamic";
 import React, { useId } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import {
@@ -76,7 +76,7 @@ function ReplyQuote({
     >
       <span
         aria-hidden
-        className="absolute inset-y-2 left-1.5 w-1 rounded-full bg-zinc-400 transition-colors group-hover/quote:bg-primary"
+        className="absolute inset-y-2 left-1.5 w-1 rounded-full bg-zinc-400 transition-colors group-hover/quote:bg-accent"
       />
       <div className="flex flex-col overflow-hidden">
         <span className="text-[11px] font-semibold text-zinc-400">
@@ -108,21 +108,20 @@ function FailedResponse({
   isRetrying?: boolean;
 }>) {
   const retryButton = onRetry && (
-    <Button
-      className="h-7 min-w-0 shrink-0 px-2 text-xs"
+    <GaiaButton
+      shape="pill"
+      inset="tight"
+      className="h-7 min-w-0 shrink-0 text-xs"
       isDisabled={isRetrying}
       onPress={onRetry}
-      radius="full"
       size="sm"
-      startContent={
-        <div className={isRetrying ? "animate-spin" : ""}>
-          <RedoIcon height={13} width={13} />
-        </div>
-      }
-      variant="flat"
+      variant="default-soft"
     >
+      <div className={isRetrying ? "animate-spin" : ""}>
+        <RedoIcon height={13} width={13} />
+      </div>
       Retry
-    </Button>
+    </GaiaButton>
   );
 
   if (partial) {
@@ -177,16 +176,9 @@ function BubbleContent({
     <div className="flex flex-col gap-3">
       <MarkdownRenderer content={content} isStreaming={isStreaming} />
       {!!disclaimer && showDisclaimer && (
-        <Chip
-          className="text-xs font-medium text-warning-500"
-          color="warning"
-          size="sm"
-          startContent={
-            <Alert01Icon className="text-warning-500" height={17} />
-          }
-          variant="flat"
-        >
-          {disclaimer}
+        <Chip color="warning" size="sm" variant="soft">
+          <Alert01Icon className="text-warning-500" height={17} />
+          <Chip.Label className="text-xs font-medium">{disclaimer}</Chip.Label>
         </Chip>
       )}
     </div>

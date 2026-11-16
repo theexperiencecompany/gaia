@@ -52,12 +52,10 @@ export default function BlogMetadata({
       </div>
       <div>·</div>
       <div>
-        <div className="text-muted-foreground flex items-center text-sm">
-          <span className="text-foreground-500">
-            {formatRelativeDate(date)}
-          </span>
+        <div className="text-zinc-400 flex items-center text-sm">
+          <span className="text-zinc-400">{formatRelativeDate(date)}</span>
           {showUpdated && (
-            <span className="text-foreground-500">
+            <span className="text-zinc-400">
               &nbsp;(Updated {formatRelativeDate(updated)})
             </span>
           )}

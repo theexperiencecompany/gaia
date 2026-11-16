@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
@@ -30,7 +30,7 @@ export function SubscriptionUpsell({
               {copy.planLabel}
             </p>
           </div>
-          <Chip color="warning" variant="flat" size="sm" className="text-xs">
+          <Chip color="warning" variant="soft" size="sm" className="text-xs">
             Inactive
           </Chip>
         </div>
@@ -43,9 +43,8 @@ export function SubscriptionUpsell({
             Subscribe and you get chat, workflows, priority support and the
             private Discord.
           </p>
-          <Button
-            color="primary"
-            className="w-full font-semibold text-black"
+          <GaiaButton
+            className="w-full font-semibold"
             size="sm"
             onPress={() =>
               openUpgradeModal(undefined, {
@@ -53,9 +52,10 @@ export function SubscriptionUpsell({
                 source: "settings_upsell",
               })
             }
+            variant="primary"
           >
             View plans
-          </Button>
+          </GaiaButton>
         </div>
       </SettingsSection>
     </SettingsPage>

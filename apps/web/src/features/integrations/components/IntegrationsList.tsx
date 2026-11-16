@@ -1,6 +1,6 @@
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import type React from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useIntegrationModalActions } from "@/stores/uiStore";
 import { getCategoryLabel } from "../constants/categories";
 import { useIntegrationsList } from "../hooks/useIntegrationsList";
@@ -35,9 +35,9 @@ const NoIntegrationsFound: React.FC<NoIntegrationsFoundProps> = ({
         ? `No integrations found for "${searchQuery}"`
         : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
     </p>
-    <Button onPress={clearFilters} variant="light" color="primary" size="sm">
+    <GaiaButton onPress={clearFilters} variant="ghost" tone="accent" size="sm">
       Clear filters
-    </Button>
+    </GaiaButton>
   </div>
 );
 

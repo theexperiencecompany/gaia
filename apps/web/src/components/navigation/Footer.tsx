@@ -90,7 +90,7 @@ export default function Footer() {
                     prefetch={false}
                     target={link.external ? "_blank" : undefined}
                     rel={link.external ? "noopener noreferrer" : undefined}
-                    className="py-1 text-sm text-zinc-200 transition-colors hover:text-primary"
+                    className="py-1 text-sm text-zinc-200 transition-colors hover:text-accent"
                   >
                     {link.label}
                   </SiteLink>
@@ -128,7 +128,7 @@ export default function Footer() {
               href="https://twitter.com/madebyexp"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex min-h-6 items-center gap-2 text-sm text-zinc-200 transition-colors hover:text-primary"
+              className="flex min-h-6 items-center gap-2 text-sm text-zinc-200 transition-colors hover:text-accent"
             >
               {/* Sized to the text's line box so the mark and the wordmark
                   share one height instead of the mark towering over it. */}
@@ -151,7 +151,7 @@ export default function Footer() {
                   rel={link.external ? "noopener noreferrer" : undefined}
                   title={link.description}
                   aria-label={`${link.label}: ${link.description}`}
-                  className="-m-2 p-2 text-zinc-200 transition-colors hover:text-primary"
+                  className="-m-2 p-2 text-zinc-200 transition-colors hover:text-accent"
                 >
                   {/* Drop each icon's brand color so the row reads as one set
                       and inherits the hover state. The icon is decorative:

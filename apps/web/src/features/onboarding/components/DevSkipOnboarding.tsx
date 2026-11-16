@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { authApi } from "@/features/auth/api/authApi";
 import { CURRENT_USER_QUERY_KEY } from "@/features/auth/hooks/useCurrentUser";
 import { track } from "@/lib/analytics";
@@ -47,16 +47,15 @@ export function DevSkipOnboarding() {
 
   return (
     <div className="fixed bottom-4 left-4 z-50">
-      <Button
+      <GaiaButton
+        variant="warning-soft"
+        shape="pill"
         size="sm"
-        radius="full"
-        variant="flat"
-        color="warning"
-        isLoading={loading}
+        isPending={loading}
         onPress={skip}
       >
         Skip onboarding (dev only)
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

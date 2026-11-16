@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { KeyboardIcon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { LiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 
 interface LiveKeyboardProps {
@@ -29,16 +29,16 @@ export function LiveKeyboard({ live, className }: LiveKeyboardProps) {
         aria-label="Type into the live browser"
         className="fixed -left-[1000px] top-0 size-px text-[16px] opacity-0"
       />
-      <Button
+      <GaiaButton
+        shape="pill"
         size="sm"
-        variant="flat"
-        radius="full"
+        variant="default-soft"
         className={className}
-        startContent={<KeyboardIcon className="size-4" />}
         onPress={live.openKeyboard}
       >
+        <KeyboardIcon className="size-4" />
         Keyboard
-      </Button>
+      </GaiaButton>
     </>
   );
 }

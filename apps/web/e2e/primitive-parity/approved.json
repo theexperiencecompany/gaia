@@ -1,0 +1,265 @@
+[
+  { "key": "select/open/.*", "prop": ".*", "reason": "founder picked v3" },
+  {
+    "key": "pagination/faded::.*",
+    "prop": ".*",
+    "reason": "founder picked v3"
+  },
+  { "key": "progress/.*", "prop": ".*", "reason": "founder picked v3" },
+  { "key": "radio/.*", "prop": ".*", "reason": "founder picked v3" },
+  {
+    "key": "accordion/light-compact::content::(focus|hover|rest)",
+    "prop": "(offset-y|text-y)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "accordion/light-compact::indicator0::(focus|hover|rest)",
+    "prop": "offset-y",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "accordion/light-compact::indicator1::(focus|hover|rest)",
+    "prop": "offset-y",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "accordion/light-compact::item0::(focus|hover|rest)",
+    "prop": "height",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "accordion/light-compact::item1::(focus|hover|rest)",
+    "prop": "(height|offset-y)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "accordion/light-compact::root::(focus|hover|rest)",
+    "prop": "height",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "accordion/(light|light-compact|shadow)::title0::(focus|hover|rest)",
+    "prop": "(font-size|font-weight|line-height)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "accordion/(light|light-compact|shadow)::title1::(focus|hover|rest)",
+    "prop": "(font-size|font-weight|line-height|text-y)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "accordion/(light|light-compact|shadow)::trigger0::(focus|hover|rest)",
+    "prop": "(box-shadow|height|outline-style|outline-width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "accordion/light-compact::trigger1::(focus|hover|rest)",
+    "prop": "(height|offset-y)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "avatar/(md|sm)::root::rest",
+    "prop": "background-color",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "avatar/(md|sm)::text::rest",
+    "prop": "(color|font-size|font-weight|line-height|text-x)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "button/(default-icon-sm|default-md|default-sm|flat-danger-sm|flat-icon-md|flat-icon-md-pill|flat-icon-sm|flat-icon-sm-pill|flat-md|flat-primary-md|flat-primary-sm|flat-primary-sm-disabled|flat-primary-sm-full|flat-sm|flat-success-sm|flat-warning-sm|light-icon-md|light-icon-sm|light-icon-sm-pill|light-md|light-sm|light-sm-full|primary-lg|primary-md|primary-md-disabled|primary-pill|primary-sm)::root::(focus|hover|press|rest)",
+    "prop": "(background-color|box-shadow|opacity|outline-style|outline-width|text-x|transition-duration|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "buttongroup/(flat-full|flat-pill-icons|split-primary|tooltip-direct-sm|tooltip-icons|warning-sm)::button0::(hover|rest)",
+    "prop": "(background-color|opacity|transition-duration)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "buttongroup/(flat-full|flat-pill-icons|split-primary|tooltip-direct-sm|tooltip-icons|warning-sm)::button1::(hover|rest)",
+    "prop": "transition-duration",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "buttongroup/(flat-pill-icons|tooltip-icons)::button2::(hover|rest)",
+    "prop": "transition-duration",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "buttongroup/tooltip-icons::button3::(hover|rest)",
+    "prop": "transition-duration",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "checkbox/(off|on|pill-on)::control::(focus|hover|rest)",
+    "prop": "(background-color|border-bottom-left-radius|border-bottom-right-radius|border-bottom-style|border-bottom-width|border-left-style|border-left-width|border-right-style|border-right-width|border-top-left-radius|border-top-right-radius|border-top-style|border-top-width|box-shadow|height|offset-x|offset-y|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "checkbox/(off|on|pill-on)::root::(focus|hover|rest)",
+    "prop": "(height|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "checkbox/(off|on|pill-on)::text::(focus|hover|rest)",
+    "prop": "(font-size|font-weight|line-height|text-x|text-y)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "chip/(flat-danger-sm|flat-md|flat-primary-md|flat-primary-sm|flat-secondary-sm|flat-sm|flat-sm-radius-sm|flat-success-sm|flat-warning-sm)::root::rest",
+    "prop": "(border-bottom-left-radius|border-bottom-right-radius|border-top-left-radius|border-top-right-radius|height|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "chip/(flat-danger-sm|flat-md|flat-primary-md|flat-primary-sm|flat-secondary-sm|flat-sm|flat-sm-radius-sm|flat-success-sm|flat-warning-sm)::text::rest",
+    "prop": "(font-size|font-weight|line-height|text-x|text-y)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "combobox/placeholder::box::(focus|hover|rest)",
+    "prop": "(box-shadow|height)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "combobox/placeholder::text::(focus|hover|rest)",
+    "prop": "text-y",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "dropdown/menu::box::open",
+    "prop": "(border-bottom-left-radius|border-bottom-right-radius|border-top-left-radius|border-top-right-radius)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "input/(disabled|inside-label|outside-label-sm|pill|placeholder|placeholder-sm)::box::(focus|hover|rest)",
+    "prop": "(border-bottom-left-radius|border-bottom-right-radius|border-top-left-radius|border-top-right-radius|box-shadow|height)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "input/outside-label-sm::label::(focus|hover|rest)",
+    "prop": "(font-weight|text-y)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "input/(disabled|pill|placeholder)::text::(focus|hover|rest)",
+    "prop": "text-y",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "kbd/default::abbr::rest",
+    "prop": "(color|font-weight|height|offset-x|offset-y|text-x|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "kbd/default::root::rest",
+    "prop": "box-shadow",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "modal/(2xl|lg|md|sm)::body::open",
+    "prop": "(color|font-size|height|line-height|offset-x|offset-y|text-y|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "modal/(2xl|lg|md|sm)::box::open",
+    "prop": "(border-bottom-left-radius|border-bottom-right-radius|border-top-left-radius|border-top-right-radius|height)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "modal/(2xl|lg|md|sm)::close::open",
+    "prop": "(background-color|height|offset-x|offset-y|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "modal/(2xl|lg|md|sm)::footer::open",
+    "prop": "(height|offset-x|offset-y|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "modal/(2xl|lg|md|sm)::header::open",
+    "prop": "(height|offset-x|offset-y|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "modal/(2xl|lg|md|sm)::text::open",
+    "prop": "(font-size|font-weight|line-height|text-y)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "select/(placeholder|placeholder-sm|selected)::box::(focus|hover|rest)",
+    "prop": "(box-shadow|height|outline-style|outline-width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "select/(placeholder|placeholder-sm|selected)::icon::(focus|hover|rest)",
+    "prop": "(color|offset-x|offset-y)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "select/(placeholder|selected)::value::(focus|hover|rest)",
+    "prop": "(color|text-y)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "skeleton/default::root::rest",
+    "prop": "(background-color|border-bottom-left-radius|border-bottom-right-radius|border-top-left-radius|border-top-right-radius)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "slider/md::fill::rest",
+    "prop": "height",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "slider/(md|sm)::thumb::rest",
+    "prop": "(border-bottom-left-radius|border-bottom-right-radius|border-top-left-radius|border-top-right-radius|box-shadow|height|offset-x|offset-y|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "slider/(md|sm)::track::rest",
+    "prop": "(background-color|border-bottom-left-radius|border-bottom-right-radius|border-top-left-radius|border-top-right-radius|height)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "spinner/(current-sm|lg|md|sm)::root::rest",
+    "prop": "(height|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "switch/(md-off|md-on|sm-disabled|sm-off|sm-on)::root::(focus|hover|rest)",
+    "prop": "(height|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "switch/(md-off|md-on|sm-disabled|sm-off|sm-on)::thumb::(focus|hover|rest)",
+    "prop": "(background-color|border-bottom-left-radius|border-bottom-right-radius|border-top-left-radius|border-top-right-radius|box-shadow|height|offset-x|offset-y|opacity|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "switch/(md-off|md-on|sm-disabled|sm-off|sm-on)::track::(focus|hover|rest)",
+    "prop": "(background-color|border-bottom-left-radius|border-bottom-right-radius|border-top-left-radius|border-top-right-radius|height|width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "tabs/(light-primary|solid|solid-primary-pill|solid-sm-pill|underlined)::tab0::focus",
+    "prop": "(box-shadow|outline-style|outline-width)",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "tabs/(light-primary|solid|solid-primary-pill|solid-sm-pill|underlined)::tab1::hover",
+    "prop": "opacity",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "textarea/(inside-label|placeholder)::box::focus",
+    "prop": "box-shadow",
+    "reason": "founder picked v3 (choice sheet)"
+  },
+  {
+    "key": "tooltip/(arrow|default|foreground-arrow|primary-arrow)::box::open",
+    "prop": "trigger-gap",
+    "reason": "founder picked v3 (choice sheet)"
+  }
+]
