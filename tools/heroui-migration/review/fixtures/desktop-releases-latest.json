@@ -1,0 +1,104 @@
+{
+  "tag": "desktop-v0.8.0",
+  "name": "desktop: v0.8.0",
+  "html_url": "https://github.com/theexperiencecompany/gaia/releases/tag/desktop-v0.8.0",
+  "published_at": "2026-10-26T07:22:06Z",
+  "assets": [
+    {
+      "name": "GAIA-amd64.deb",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-amd64.deb",
+      "size": 160520904,
+      "content_type": "application/x-debian-package"
+    },
+    {
+      "name": "GAIA-arm64.AppImage",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-arm64.AppImage",
+      "size": 200836601,
+      "content_type": "application/vnd.appimage"
+    },
+    {
+      "name": "GAIA-arm64.deb",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-arm64.deb",
+      "size": 155418736,
+      "content_type": "application/x-debian-package"
+    },
+    {
+      "name": "GAIA-arm64.dmg",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-arm64.dmg",
+      "size": 198673665,
+      "content_type": "application/x-apple-diskimage"
+    },
+    {
+      "name": "GAIA-arm64.exe",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-arm64.exe",
+      "size": 180810460,
+      "content_type": "application/octet-stream"
+    },
+    {
+      "name": "GAIA-arm64.zip",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-arm64.zip",
+      "size": 197906455,
+      "content_type": "application/zip"
+    },
+    {
+      "name": "GAIA-x64.dmg",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-x64.dmg",
+      "size": 206717263,
+      "content_type": "application/x-apple-diskimage"
+    },
+    {
+      "name": "GAIA-x64.exe",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-x64.exe",
+      "size": 184660708,
+      "content_type": "application/octet-stream"
+    },
+    {
+      "name": "GAIA-x64.zip",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-x64.zip",
+      "size": 205885153,
+      "content_type": "application/zip"
+    },
+    {
+      "name": "GAIA-x86_64.AppImage",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-x86_64.AppImage",
+      "size": 200208511,
+      "content_type": "application/vnd.appimage"
+    },
+    {
+      "name": "GAIA-x86_64.rpm",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA-x86_64.rpm",
+      "size": 145373473,
+      "content_type": "application/x-rpm"
+    },
+    {
+      "name": "GAIA.exe",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/GAIA.exe",
+      "size": 364772426,
+      "content_type": "application/octet-stream"
+    },
+    {
+      "name": "latest-linux-arm64.yml",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/latest-linux-arm64.yml",
+      "size": 505,
+      "content_type": "application/yaml"
+    },
+    {
+      "name": "latest-linux.yml",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/latest-linux.yml",
+      "size": 653,
+      "content_type": "application/yaml"
+    },
+    {
+      "name": "latest-mac.yml",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/latest-mac.yml",
+      "size": 754,
+      "content_type": "application/yaml"
+    },
+    {
+      "name": "latest.yml",
+      "download_url": "https://github.com/theexperiencecompany/gaia/releases/download/desktop-v0.8.0/latest.yml",
+      "size": 601,
+      "content_type": "application/yaml"
+    }
+  ]
+}

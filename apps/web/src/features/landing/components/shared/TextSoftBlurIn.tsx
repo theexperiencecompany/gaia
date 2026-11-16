@@ -194,7 +194,7 @@ function TextSoftBlurInImmediate({
       marginBlock: "-0.12em",
       paddingInline: "0.05em",
       marginInline: "-0.05em",
-      animation: `gaia-soft-blur-in ${duration}s ${EASE} ${delay}s both`,
+      animation: `gaia-soft-blur-in-lcp ${duration}s ${EASE} ${delay}s both`,
       "--sbi-blur": `${blur}px`,
       "--sbi-y": `${yOffset}px`,
       ...(gradient ? GRADIENT_INHERIT : null),
@@ -338,7 +338,7 @@ function SoftBlurInBlockImmediate({
   yOffset = 16,
 }: SoftBlurInBlockProps) {
   const style: AnimStyle = {
-    animation: `gaia-soft-blur-in ${duration}s ${EASE} ${delay}s both`,
+    animation: `gaia-soft-blur-in-lcp ${duration}s ${EASE} ${delay}s both`,
     "--sbi-blur": `${blur}px`,
     "--sbi-y": `${yOffset}px`,
   };

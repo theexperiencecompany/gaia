@@ -1,16 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Textarea } from "@heroui/input";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+import { FieldError, Label, Modal, TextArea, TextField } from "@heroui/react";
 import type { MemoryEntry } from "@shared/api/generated";
 import { useEffect, useState, useTransition } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { MAX_MEMORY_LENGTH } from "@/features/memory/constants";
 import { toast } from "@/lib/toast";
@@ -50,44 +43,55 @@ export function EditMemoryModal({
   };
 
   return (
-    <Modal isOpen={memory !== null} onClose={onClose} size="lg">
-      <ModalContent>
-        <ModalHeader className="flex-col gap-1">
-          <span>Edit memory</span>
-          <span className="text-xs font-normal text-zinc-500">
-            Saving keeps the previous version in this memory's history
-          </span>
-        </ModalHeader>
-        <ModalBody>
-          <Textarea
-            value={content}
-            onValueChange={setContent}
-            minRows={3}
-            maxRows={8}
-            isInvalid={content.length > MAX_MEMORY_LENGTH}
-            errorMessage={
-              content.length > MAX_MEMORY_LENGTH
-                ? `Keep it under ${MAX_MEMORY_LENGTH} characters`
-                : undefined
-            }
-            autoFocus
-          />
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="light" className="rounded-xl" onPress={onClose}>
-            Cancel
-          </Button>
-          <Button
-            color="primary"
-            className="rounded-xl"
-            onPress={handleSave}
-            isLoading={isPending}
-            isDisabled={!content.trim() || content.length > MAX_MEMORY_LENGTH}
-          >
-            Save
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+    <Modal
+      isOpen={memory !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Modal.Backdrop>
+        <Modal.Container size="lg">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex-col gap-1">
+              <Modal.Heading>Edit memory</Modal.Heading>
+              <span className="text-xs font-normal text-zinc-500">
+                Saving keeps the previous version in this memory's history
+              </span>
+            </Modal.Header>
+            <Modal.Body>
+              <TextField
+                value={content}
+                onChange={setContent}
+                isInvalid={content.length > MAX_MEMORY_LENGTH}
+              >
+                <Label className="sr-only">Memory content</Label>
+                <TextArea rows={3} autoFocus />
+                {content.length > MAX_MEMORY_LENGTH && (
+                  <FieldError>
+                    Keep it under {MAX_MEMORY_LENGTH} characters
+                  </FieldError>
+                )}
+              </TextField>
+            </Modal.Body>
+            <Modal.Footer>
+              <GaiaButton variant="ghost" onPress={onClose}>
+                Cancel
+              </GaiaButton>
+              <GaiaButton
+                onPress={handleSave}
+                isPending={isPending}
+                isDisabled={
+                  !content.trim() || content.length > MAX_MEMORY_LENGTH
+                }
+                variant="primary"
+              >
+                Save
+              </GaiaButton>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

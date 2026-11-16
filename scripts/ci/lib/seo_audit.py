@@ -198,7 +198,11 @@ def _check_snippet(url: str, page: _PageParser, findings: Findings) -> None:
         findings.warn(f"title under {TITLE_RANGE[0]} chars", f"{len(page.title)} {url}")
     if not page.description:
         findings.error("missing meta description", url)
-    elif not DESCRIPTION_RANGE[0] <= len(page.description) <= DESCRIPTION_RANGE[1]:
+    elif (
+        len(page.description) > DESCRIPTION_RANGE[1]
+        or len(page.description) + len(WIDE_CHARACTER.findall(page.description))
+        < DESCRIPTION_RANGE[0]
+    ):
         findings.warn("meta description length", f"{len(page.description)} {url}")
     if page.h1_count != 1:
         findings.warn("H1 count is not 1", f"{page.h1_count} {url}")

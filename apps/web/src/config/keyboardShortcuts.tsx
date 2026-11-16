@@ -1,6 +1,6 @@
 "use client";
 
-import { Kbd } from "@heroui/kbd";
+import { Kbd } from "@heroui/react";
 import { Fragment } from "react";
 
 /**

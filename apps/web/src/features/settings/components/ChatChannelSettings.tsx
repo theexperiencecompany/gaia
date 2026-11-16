@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { ArrowDown01Icon, ArrowUp01Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   NOTIFICATION_PLATFORM_ICONS,
   NOTIFICATION_PLATFORM_LABELS,
@@ -53,28 +53,26 @@ export function ChatChannelSettings({
             }
           >
             <div className="flex items-center gap-1">
-              <Button
+              <GaiaButton
                 isIconOnly
                 size="sm"
-                variant="light"
-                radius="lg"
+                variant="ghost"
                 aria-label={`Move ${label} up`}
                 isDisabled={index === 0 || saving}
                 onPress={() => move(index, "up")}
               >
                 <ArrowUp01Icon className="size-4" />
-              </Button>
-              <Button
+              </GaiaButton>
+              <GaiaButton
                 isIconOnly
                 size="sm"
-                variant="light"
-                radius="lg"
+                variant="ghost"
                 aria-label={`Move ${label} down`}
                 isDisabled={index === linkedOrder.length - 1 || saving}
                 onPress={() => move(index, "down")}
               >
                 <ArrowDown01Icon className="size-4" />
-              </Button>
+              </GaiaButton>
             </div>
           </SettingsRow>
         );
@@ -83,7 +81,7 @@ export function ChatChannelSettings({
         <SettingsRow label="Linked Accounts">
           <Link
             href="/settings/linked-accounts"
-            className="text-sm text-primary"
+            className="text-sm text-accent"
           >
             Connect a platform
           </Link>
