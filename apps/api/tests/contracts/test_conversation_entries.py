@@ -679,14 +679,14 @@ async def _orphaned(
 
 
 async def test_a_conversation_created_over_a_deleted_ones_leftovers_starts_empty(
-    repo: ConversationRepository, held: HeldFlushes, raw_collection: Any
+    repo: ConversationRepository, held: HeldFlushes, raw_collection: Any, entries_collection: Any
 ) -> None:
     uid = f"u-{uuid.uuid4().hex}"
     cid = await _orphaned(repo, held, raw_collection, uid)
 
     await _chat(repo, uid, conversation_id=cid)
 
-    assert await _log().read_after(cid, uid, 0) == []
+    assert await entries_collection.count_documents({"conversation_id": cid}) == 0
 
 
 async def test_flushing_one_conversations_outbox_leaves_every_other_ones(
