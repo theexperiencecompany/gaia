@@ -15,7 +15,8 @@ import {
   REACTION_OUTCOME,
   type StreamingOptions,
 } from "@gaia/shared/bots";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { retryTransientPlatformCall } from "../../../../../libs/shared/ts/src/bots/utils/delivery-errors";
 import {
   insertFrame,
   replyDelta,
@@ -44,6 +45,10 @@ function grammyError(status: number, description: string): Error {
   );
 }
 const chatNotFound = () => grammyError(400, "Bad Request: chat not found");
+const rateLimited = () =>
+  Object.assign(grammyError(429, "Too Many Requests: retry after 5"), {
+    parameters: { retry_after: 5 },
+  });
 
 function surface(sent: string[], refuse: (() => Error) | null): FollowSurface {
   return {
@@ -166,5 +171,99 @@ describe("a send to a chat that no longer exists", () => {
     expect(unhandled).toEqual([]);
     expect(ended).toBe(true);
     expect(opened).toBe(1);
+  });
+});
+
+describe("a platform outage mid-reply", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps retrying through a rate limit and five bad gateways, then delivers the reply in order", async () => {
+    vi.useFakeTimers();
+    const outage = [
+      rateLimited,
+      ...Array(5).fill(() => grammyError(502, "Bad Gateway")),
+    ];
+    const tried: number[] = [];
+    const sent: string[] = [];
+    const platform = surface(sent, null);
+    const send: FollowSurface["send"] = (text, replyTo) =>
+      retryTransientPlatformCall(async () => {
+        tried.push(Date.now());
+        const failure = outage.shift();
+        if (failure) throw failure();
+        return platform.send(text, replyTo);
+      });
+    const source: ConversationEventSource = async function* () {
+      yield* conversation("r1", "Your flight is booked.");
+    };
+    const followers = new ConversationFollowers(source, TELEGRAM, NOT_KEPT);
+
+    followers.follow({ platform: "telegram", platformUserId: "1" }, "c1", 1, {
+      ...platform,
+      send,
+    });
+    let ended = false;
+    void followers.idle().then(() => {
+      ended = true;
+    });
+    for (let tick = 0; tick < 120 && !ended; tick += 1) {
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+
+    expect(ended).toBe(true);
+    expect(tried).toHaveLength(7);
+    // The platform's retry_after is honoured before the first retry.
+    expect(tried[1] - tried[0]).toBeGreaterThanOrEqual(5_000);
+    expect(sent.at(-1)).toBe("Your flight is booked.");
+    expect(sent[0]).toBe("Your");
+  });
+});
+
+describe("an edit during a platform outage", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps retrying the edit, so the finished text replaces the preview", async () => {
+    vi.useFakeTimers();
+    const outage = Array.from(
+      { length: 5 },
+      () => () => grammyError(502, "Bad Gateway"),
+    );
+    const sent: string[] = [];
+    const platform = surface(sent, null);
+    const send: FollowSurface["send"] = async (text, replyTo) => {
+      const message = await platform.send(text, replyTo);
+      return {
+        ...message,
+        edit: async (updated: string) => {
+          const failure = outage.shift();
+          if (failure) throw failure();
+          await message.edit(updated);
+        },
+      };
+    };
+    const source: ConversationEventSource = async function* () {
+      yield* conversation("r1", "Your flight is booked.");
+    };
+    const followers = new ConversationFollowers(source, TELEGRAM, NOT_KEPT);
+
+    followers.follow({ platform: "telegram", platformUserId: "1" }, "c1", 1, {
+      ...platform,
+      send,
+    });
+    let ended = false;
+    void followers.idle().then(() => {
+      ended = true;
+    });
+    for (let tick = 0; tick < 120 && !ended; tick += 1) {
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+
+    expect(ended).toBe(true);
+    expect(outage).toEqual([]);
+    expect(sent.at(-1)).toBe("Your flight is booked.");
   });
 });

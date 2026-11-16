@@ -20,7 +20,6 @@ from app.services.conversation.step_attempt import (
     folded_reply,
     is_visible,
     quote_in,
-    reply_bubbles,
     reply_deltas,
     settled_entry,
     waking_entry,
@@ -131,10 +130,6 @@ def test_a_settle_keeps_the_quote_and_names_the_work_its_reply_narrates() -> Non
         _attempt(None, finished("f1", "t1")), ReplyOutcome.ANSWERED, ("u1",), 1, "u1"
     )
     assert (settle.quote_target, settle.narrates) == ("u1", ("t1",))
-
-
-def test_reply_text_splits_into_its_bubbles() -> None:
-    assert reply_bubbles("first<NEW_MESSAGE_BREAK>second") == ("first", "second")
 
 
 def test_only_text_and_cards_other_than_a_hand_over_show_a_reply() -> None:

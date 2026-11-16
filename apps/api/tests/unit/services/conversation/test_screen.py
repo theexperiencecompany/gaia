@@ -987,6 +987,10 @@ def test_an_answered_reply_carries_no_failure_line() -> None:
     assert shown.failure_line is None
 
 
+# A link a user taps in a chat app opens the conversation, where the file's card is, in the web app.
+_WEB = f"{app_settings.FRONTEND_URL}/c/{CONVERSATION_ID}"
+
+
 @pytest.mark.parametrize(
     "written",
     [
@@ -996,7 +1000,7 @@ def test_an_answered_reply_carries_no_failure_line() -> None:
         "/workspace/sessions/executor_c1/artifacts/reports/q3.pdf",
     ],
 )
-def test_a_reply_links_its_artifacts_by_the_url_the_conversation_serves_them_at(
+def test_a_reply_links_an_artifact_to_its_conversation_in_the_web_app_and_embeds_images_by_url(
     written: str,
 ) -> None:
     text = f"Done: [the plan]({written}) and ![chart](./artifacts/chart.png)"
@@ -1004,9 +1008,7 @@ def test_a_reply_links_its_artifacts_by_the_url_the_conversation_serves_them_at(
     [_, shown] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
     base = f"{app_settings.HOST}/api/v1/sessions/{CONVERSATION_ID}/artifacts"
     assert isinstance(shown, ReplyItem)
-    assert shown.bubbles == (
-        f"Done: [the plan]({base}/reports/q3.pdf) and ![chart]({base}/chart.png)",
-    )
+    assert shown.bubbles == (f"Done: [the plan]({_WEB}) and ![chart]({base}/chart.png)",)
     assert reply.text == text
 
 
@@ -1030,11 +1032,8 @@ def test_a_reply_naming_an_artifact_by_its_sandbox_path_links_it_by_name(written
     text = f"Saved it: {path}. Anything else?"
     reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text=text)
     [_, shown] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
-    base = f"{app_settings.HOST}/api/v1/sessions/{CONVERSATION_ID}/artifacts"
     assert isinstance(shown, ReplyItem)
-    assert shown.bubbles == (
-        f"Saved it: [inner_planets.csv]({base}/inner_planets.csv). Anything else?",
-    )
+    assert shown.bubbles == (f"Saved it: [inner_planets.csv]({_WEB}). Anything else?",)
 
 
 def test_a_notice_names_a_sandbox_file_outside_artifacts_by_its_name_alone() -> None:
@@ -1048,6 +1047,5 @@ def test_a_link_labelled_with_its_sandbox_path_is_labelled_by_the_files_name() -
     written = "/workspace/sessions/c1/artifacts/a.csv"
     reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text=f"[{written}]({written})")
     [_, shown] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
-    base = f"{app_settings.HOST}/api/v1/sessions/{CONVERSATION_ID}/artifacts"
     assert isinstance(shown, ReplyItem)
-    assert shown.bubbles == (f"[a.csv]({base}/a.csv)",)
+    assert shown.bubbles == (f"[a.csv]({_WEB})",)

@@ -1,7 +1,7 @@
 """A reply's text as it streams, and the bubble deltas that carry it to clients.
 
-The server splits once: the text folds here, its bubbles are split_message_bubbles of it,
-and a client only appends to the bubble a delta names, so live and reloaded bubbles match.
+The server turns text into bubbles in one place, screen_bubbles, for the live deltas and the settled
+screen alike, and a client only appends to the bubble a delta names, so live and reloaded bubbles match.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from app.models.conversation_frame_models import MessageBoundaryEvent, ResponseEvent
+from app.utils.artifact_utils import resolve_sandbox_paths, unfinished_path_start
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, BubblesDelta, BubbleTextDelta
 
@@ -40,13 +41,28 @@ class ReplyText:
                 )
 
     @property
-    def bubbles(self) -> tuple[str, ...]:
-        return tuple(split_message_bubbles(self.raw))
-
-    @property
     def text(self) -> str:
         """Return the bubbles joined by the break: the text a reply entry stores."""
-        return NEW_MESSAGE_BREAKER.join(self.bubbles)
+        return _joined_bubbles(self.raw)
+
+    @property
+    def shown(self) -> str:
+        """Return the text a client may see yet: all of it but a sandbox path the open message is still writing."""
+        if len(self.raw) == self.message_start:
+            return self.text
+        open_message = self.raw[self.message_start :]
+        return _joined_bubbles(
+            self.raw[: self.message_start] + open_message[: unfinished_path_start(open_message)]
+        )
+
+
+def _joined_bubbles(raw: str) -> str:
+    return NEW_MESSAGE_BREAKER.join(split_message_bubbles(raw))
+
+
+def screen_bubbles(text: str, conversation_id: str) -> tuple[str, ...]:
+    """Return the bubbles every client shows for a reply's text, live or settled: sandbox paths resolved, then split."""
+    return tuple(split_message_bubbles(resolve_sandbox_paths(text, conversation_id)))
 
 
 def bubble_deltas(shown: Sequence[str], now: Sequence[str]) -> list[BubbleTextDelta | BubblesDelta]:

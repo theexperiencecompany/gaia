@@ -27,14 +27,13 @@ from app.services.conversation.ports import (
     RuntimePorts,
 )
 from app.services.conversation.reply_analytics import capture_reply_ended, spoken_context
-from app.services.conversation.reply_text import ReplyText
+from app.services.conversation.reply_text import ReplyText, screen_bubbles
 from app.services.conversation.step_attempt import (
     Attempt,
     Quiet,
     Showing,
     base_reply,
     quote_in,
-    reply_bubbles,
     settled_entry,
 )
 from app.services.conversation.step_view import StepView
@@ -141,7 +140,7 @@ async def react_on(ports: RuntimePorts, attempt: Attempt, seqs: Sequence[int], e
 
 async def publish_delta(ports: RuntimePorts, attempt: Attempt, change: ReplyDelta) -> None:
     if isinstance(change, BubbleTextDelta | BubblesDelta):
-        attempt.shown = attempt.text.bubbles
+        attempt.shown = attempt.bubbles
     delta = ReplyDeltaFrame(
         attempt_id=attempt.attempt_id,
         reply_id=attempt.reply_id,
@@ -218,8 +217,9 @@ async def put_reply(ports: RuntimePorts, attempt: Attempt, reply: Reply) -> Logg
     """Store the segment's final reply; once it is shown, clients are carried to the stored text."""
     if not isinstance(attempt.progress, Showing):
         return await append_opening(ports, attempt, await opening_reply(ports, attempt, reply))
-    if reply_bubbles(reply.text) != attempt.shown:
-        await publish_delta(ports, attempt, BubblesDelta(bubbles=reply_bubbles(reply.text)))
+    settled = screen_bubbles(reply.text, attempt.claim.conversation_id)
+    if settled != attempt.shown:
+        await publish_delta(ports, attempt, BubblesDelta(bubbles=settled))
     return await amend_seen(ports, attempt, reply)
 
 

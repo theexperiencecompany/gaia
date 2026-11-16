@@ -21,7 +21,10 @@ import type {
   MessageSlot,
 } from "../utils/bubble-delivery.types";
 import { BUBBLE_PAUSE_MS } from "../utils/bubbles";
-import { isMessageGoneError, retryAfterMs } from "../utils/delivery-errors";
+import {
+  isMessageGoneError,
+  retryTransientPlatformCall,
+} from "../utils/delivery-errors";
 import { createBotLogger, sanitizeErrorForLog } from "../utils/logger";
 import { sleep } from "../utils/timeout";
 import type {
@@ -178,7 +181,7 @@ export class ReplyDelivery {
     }
     const rendered = this.config.render(text);
     try {
-      await message.edit(rendered);
+      await retryTransientPlatformCall(() => message.edit(rendered));
     } catch (err) {
       if (isMessageGoneError(err)) {
         logger.info("stream_edit_recovered", sanitizeErrorForLog(err));
@@ -187,16 +190,8 @@ export class ReplyDelivery {
         await this.post(slot, text);
         return;
       }
-      const waitMs = retryAfterMs(err);
-      if (waitMs !== null) await sleep(waitMs);
-      try {
-        await message.edit(rendered);
-      } catch (retryErr) {
-        logger.info("stream_edit_skipped", {
-          ...sanitizeErrorForLog(retryErr),
-          slot,
-        });
-      }
+      // A permanent refusal such as "message is not modified": the text on screen stands.
+      logger.info("stream_edit_skipped", { ...sanitizeErrorForLog(err), slot });
     }
   }
 

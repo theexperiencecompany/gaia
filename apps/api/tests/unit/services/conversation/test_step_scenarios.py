@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import cast
 
 import pytest
@@ -31,6 +32,7 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkStarted,
 )
+from app.models.conversation_screen_models import ReplyItem
 from app.models.stream_events import MessageBoundaryPayload, ToolOutputPayload
 from app.services.conversation.composition import PostHogTurnAnalytics
 from app.services.conversation.log import accept
@@ -47,10 +49,11 @@ from app.services.conversation.ports import (
     Streamed,
     Summarized,
 )
-from app.services.conversation.screen import TOOL_CALL_CARD
+from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
 from app.services.conversation.step import advance
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
+    BubblesDelta,
     BubbleTextDelta,
     CardsDelta,
     FailureReason,
@@ -125,6 +128,23 @@ def text(chunk: str) -> Streamed:
 def message_ended(message_id: str) -> Streamed:
     boundary = MessageBoundaryPayload(message_id=message_id)
     return Streamed(payload=MessageBoundaryEvent(message_boundary=boundary))
+
+
+def streamed_bubbles(deltas: list[ReplyDelta]) -> list[tuple[str, ...]]:
+    """Each bubble list a client following the deltas shows, in order."""
+    shown: tuple[str, ...] = ()
+    states = []
+    for delta in deltas:
+        if isinstance(delta, BubblesDelta):
+            shown = delta.bubbles
+        elif isinstance(delta, BubbleTextDelta):
+            grown = list(shown) + [""] * (delta.bubble + 1 - len(shown))
+            grown[delta.bubble] += delta.text
+            shown = tuple(grown)
+        else:
+            continue
+        states.append(shown)
+    return states
 
 
 def reply_deltas(rt: Runtime) -> list[ReplyDelta]:
@@ -251,6 +271,26 @@ class StepScenarios:
             "state",
         ]
         await assert_quiet(rt)
+
+    async def test_a_sandbox_path_split_across_deltas_streams_the_bubbles_it_settles_as(
+        self, rt: Runtime
+    ) -> None:
+        said = f"Saved: /workspace/sessions/{CONVERSATION}/artifacts/dentist_note.txt for you."
+        cuts = (11, 30, len(said) - 14, len(said) - 10)
+        chunks = [said[start:end] for start, end in zip((0, *cuts), (*cuts, len(said)))]
+        rt.runner.script(
+            [*(text(chunk) for chunk in chunks), ModelOutput(False), Finished(Replied(said))]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        live = streamed_bubbles(reply_deltas(rt))
+        for before, after in pairwise(live):
+            assert after[: len(before) - 1] == before[:-1]
+            assert after[len(before) - 1].startswith(before[-1])
+        screen = project_screen(CONVERSATION, await rt.entries())
+        settled = [item for item in screen if isinstance(item, ReplyItem)]
+        assert live[-1] == settled[0].bubbles
+        assert "/workspace/sessions" not in "".join(live[-1])
 
     async def test_second_message_before_commit_restarts_into_one_reply_answering_both(
         self, rt: Runtime

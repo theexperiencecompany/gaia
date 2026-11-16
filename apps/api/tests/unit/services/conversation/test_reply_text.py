@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.services.conversation.reply_text import bubble_deltas
+from app.services.conversation.reply_text import bubble_deltas, screen_bubbles
 from shared.py.conversation_wire import BubblesDelta, BubbleTextDelta
 
 
@@ -56,3 +56,7 @@ def test_text_taken_back_to_what_is_shown_stays_until_its_replacement_reads_past
     shown: tuple[str, ...], now: tuple[str, ...]
 ) -> None:
     assert bubble_deltas(shown, now) == []
+
+
+def test_reply_text_splits_into_its_bubbles() -> None:
+    assert screen_bubbles("first<NEW_MESSAGE_BREAK>second", "c1") == ("first", "second")

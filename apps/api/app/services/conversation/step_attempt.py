@@ -30,13 +30,12 @@ from app.services.conversation.ports import (
     Replied,
     RunOutcome,
 )
-from app.services.conversation.reply_text import ReplyText, bubble_deltas
+from app.services.conversation.reply_text import ReplyText, bubble_deltas, screen_bubbles
 from app.services.conversation.screen import handoff_call_id
 from app.services.conversation.step_view import StepView
 from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation.tool_timeline import tool_timeline
 from app.services.conversation.verdict import merge_group, quote_target
-from app.utils.message_breaks import split_message_bubbles
 from shared.py.conversation_wire import (
     CardsDelta,
     FailureReason,
@@ -114,6 +113,11 @@ class Attempt:
     shown: tuple[str, ...] = ()
     # The reply as settled once the answer was final; the run only adds follow-up suggestions after.
     answered: LoggedEntry | None = None
+
+    @property
+    def bubbles(self) -> tuple[str, ...]:
+        """Return the current segment's bubbles as a client may see them while it streams."""
+        return screen_bubbles(self.text.shown, self.claim.conversation_id)
 
     @property
     def attempt_id(self) -> str:
@@ -247,10 +251,6 @@ def _visible(logged: LoggedEntry, settled: Mapping[str, tuple[str, ...]]) -> Vis
                 answers=settled.get(reply_id, ()),
             )
     return None
-
-
-def reply_bubbles(text: str) -> tuple[str, ...]:
-    return tuple(split_message_bubbles(text))
 
 
 def is_text(payload: StreamPayload) -> bool:
