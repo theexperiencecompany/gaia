@@ -47,13 +47,13 @@ export async function loadConfig(): Promise<BotConfig> {
   // 4. Validate required config
   const gaiaApiUrl = process.env.GAIA_API_URL;
   const gaiaApiKey = process.env.GAIA_BOT_API_KEY;
-  const gaiaFrontendUrl = process.env.GAIA_FRONTEND_URL;
+  const gaiaFrontendUrl = process.env.FRONTEND_URL;
   const botLogHashSecret = process.env.BOT_LOG_HASH_SECRET;
 
   const missing: string[] = [];
   if (!gaiaApiUrl) missing.push("GAIA_API_URL");
   if (!gaiaApiKey) missing.push("GAIA_BOT_API_KEY");
-  if (!gaiaFrontendUrl) missing.push("GAIA_FRONTEND_URL");
+  if (!gaiaFrontendUrl) missing.push("FRONTEND_URL");
   if (!botLogHashSecret) missing.push("BOT_LOG_HASH_SECRET");
 
   if (missing.length > 0) {

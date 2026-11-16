@@ -233,8 +233,8 @@ API_PORT=$api_port
 # so the URLs below hold whichever way this worktree boots the API.
 API_HOST_PORT=$api_port
 WEB_PORT=$web_port
-# The API redirects here after login/OAuth and builds notification links from it,
-# so it must point at THIS worktree's web server, not the default :3000.
+# The API redirects here after login/OAuth and builds notification links from it, and
+# the bots link users to it, so it must point at THIS worktree's web server, not :3000.
 FRONTEND_URL=http://localhost:$web_port
 NEXT_PUBLIC_API_BASE_URL=http://localhost:$api_port/api/v1/
 # Every backend client resolves the API from this, so \`gaia-sim\` and the bots

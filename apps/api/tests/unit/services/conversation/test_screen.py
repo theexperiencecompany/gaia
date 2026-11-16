@@ -1016,3 +1016,38 @@ def test_a_reply_leaves_links_that_are_not_artifacts_as_written() -> None:
     [_, shown] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
     assert isinstance(shown, ReplyItem)
     assert shown.bubbles == (text,)
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "/workspace/sessions/d28765d3/artifacts/inner planets.csv",
+        "`/workspace/sessions/d28765d3/artifacts/inner planets.csv`",
+    ],
+)
+def test_a_reply_naming_an_artifact_by_its_sandbox_path_links_it_by_name(written: str) -> None:
+    path = written.replace(" ", "_")
+    text = f"Saved it: {path}. Anything else?"
+    reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text=text)
+    [_, shown] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
+    base = f"{app_settings.HOST}/api/v1/sessions/{CONVERSATION_ID}/artifacts"
+    assert isinstance(shown, ReplyItem)
+    assert shown.bubbles == (
+        f"Saved it: [inner_planets.csv]({base}/inner_planets.csv). Anything else?",
+    )
+
+
+def test_a_notice_names_a_sandbox_file_outside_artifacts_by_its_name_alone() -> None:
+    said = Notice(id="n1", text="Wrote /workspace/sessions/c1/scratch/notes.txt", origin="reminder")
+    [noticed] = project_screen(CONVERSATION_ID, [logged(1, said)])
+    assert isinstance(noticed, NoticeItem)
+    assert noticed.bubbles == ("Wrote notes.txt",)
+
+
+def test_a_link_labelled_with_its_sandbox_path_is_labelled_by_the_files_name() -> None:
+    written = "/workspace/sessions/c1/artifacts/a.csv"
+    reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text=f"[{written}]({written})")
+    [_, shown] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
+    base = f"{app_settings.HOST}/api/v1/sessions/{CONVERSATION_ID}/artifacts"
+    assert isinstance(shown, ReplyItem)
+    assert shown.bubbles == (f"[a.csv]({base}/a.csv)",)

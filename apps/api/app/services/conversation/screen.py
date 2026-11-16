@@ -50,7 +50,7 @@ from app.models.conversation_screen_models import (
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
 from app.services.conversation.reply_files import reply_files
 from app.services.conversation.tool_timeline import tool_timeline
-from app.utils.artifact_utils import resolve_artifact_links
+from app.utils.artifact_utils import resolve_sandbox_paths
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.approvals import ApprovalOutcome
 from shared.py.conversation_wire import (
@@ -331,7 +331,9 @@ def _item(conversation_id: str, logged: Positioned, read: _Log) -> ScreenItem | 
                 id=notice.id,
                 seq=seq,
                 at=at,
-                bubbles=tuple(split_message_bubbles(notice.text)),
+                bubbles=tuple(
+                    split_message_bubbles(resolve_sandbox_paths(notice.text, conversation_id))
+                ),
                 tool_data=notice.tool_data,
                 timeline=tool_timeline(notice.tool_data),
                 follow_up_actions=notice.follow_up_actions,
@@ -439,7 +441,7 @@ def _reply_item(
         id=reply.reply_id,
         seq=seq,
         at=at,
-        bubbles=tuple(split_message_bubbles(resolve_artifact_links(reply.text, conversation_id))),
+        bubbles=tuple(split_message_bubbles(resolve_sandbox_paths(reply.text, conversation_id))),
         tool_data=shown,
         timeline=tool_timeline(shown),
         follow_up_actions=reply.follow_up_actions,
