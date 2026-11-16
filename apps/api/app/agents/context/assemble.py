@@ -26,7 +26,11 @@ from app.agents.context.text import (
     VOLATILE_SECTION_JOIN,
 )
 from app.constants.log_tags import LogTag
-from app.services.latency_metrics import observe_context_assemble, span
+from app.services.latency_metrics import (
+    observe_context_assemble,
+    observe_context_section_budget_exceeded,
+    span,
+)
 from shared.py.wide_events import log
 
 
@@ -68,15 +72,30 @@ def _bounded(volatile_text: str) -> str:
 
 
 async def _render_section(section: Section, ctx: SectionContext) -> tuple[SectionId, str]:
-    """Return a section's id alongside its rendered text.
+    """Return a section's id alongside its rendered text, or "" past its budget.
 
-    The id travels WITH the result so nothing downstream has to re-derive
-    which text belongs to which section — pairing bare strings back by
-    position risked an invisible off-by-one landing in the byte-stable block.
+    The id travels WITH the result: pairing bare strings back by position risked
+    an invisible off-by-one landing in the byte-stable block. The budget is the
+    one place a section is bounded; an overrun degrades to empty, counted and logged.
     """
     with span() as elapsed:
+        budget = asyncio.timeout(section.budget_seconds)
         try:
-            return section.id, await section.fetch(ctx)
+            async with budget:
+                return section.id, await section.fetch(ctx)
+        except TimeoutError:
+            if not budget.expired():
+                raise
+            observe_context_section_budget_exceeded(section=section.id.value)
+            log.warning(
+                f"{LogTag.AGENT} Context section exceeded its budget",
+                section=section.id.value,
+                tier=ctx.tier.value,
+                budget_ms=section.budget_seconds * 1000,
+                elapsed_ms=round(elapsed() * 1000, 2),
+                user_id=ctx.user_id,
+            )
+            return section.id, ""
         finally:
             observe_context_assemble(elapsed(), stage=f"section:{section.id}")
 

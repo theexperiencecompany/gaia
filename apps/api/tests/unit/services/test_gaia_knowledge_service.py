@@ -19,7 +19,6 @@ from app.services.gaia_knowledge_service import (
     GaiaKnowledgeService,
     KnowledgeItem,
     _dot,
-    _load_lock,
     _normalized,
     _Snapshot,
     gaia_knowledge_service,
@@ -113,32 +112,6 @@ class TestVectorMath:
 
     def test_dot_of_orthogonal_vectors_is_zero(self):
         assert _dot([1.0, 0.0], [0.0, 1.0]) == 0.0
-
-
-class TestLoadLock:
-    def test_the_same_loop_reuses_its_lock(self):
-        locks: list[asyncio.Lock] = []
-
-        async def _grab() -> None:
-            locks.append(_load_lock())
-            locks.append(_load_lock())
-
-        asyncio.run(_grab())
-
-        assert isinstance(locks[0], asyncio.Lock)
-        assert locks[0] is locks[1]
-
-    def test_a_new_loop_gets_a_new_lock(self):
-        """A dead loop's id is reused; keying on the id alone would hand over a stale lock."""
-        locks: list[asyncio.Lock] = []
-
-        async def _grab() -> None:
-            locks.append(_load_lock())
-
-        asyncio.run(_grab())
-        asyncio.run(_grab())
-
-        assert locks[0] is not locks[1]
 
 
 class TestInitialState:
@@ -323,6 +296,33 @@ class TestSearchKnowledge:
         chroma.collection.get.side_effect = RuntimeError("chroma down")
 
         assert await gaia_knowledge_service.search_knowledge("anything") == []
+
+    @pytest.mark.regression
+    async def test_a_load_whose_turn_ran_out_of_budget_still_serves_the_next_turn(
+        self, chroma, embeddings
+    ):
+        """A corpus load slower than a turn's budget must not restart, and be cut off, every turn."""
+        _corpus(chroma, embeddings, ["Doc"], [[1.0, 0.0]])
+        loaded = chroma.collection.get.return_value
+        started, release = asyncio.Event(), asyncio.Event()
+
+        async def slow_get(**_kwargs: object) -> dict[str, list[object]]:
+            started.set()
+            await release.wait()
+            return loaded
+
+        chroma.collection.get.side_effect = slow_get
+        turn = asyncio.ensure_future(gaia_knowledge_service.search_knowledge("q"))
+        await started.wait()
+        turn.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await turn
+        release.set()
+
+        results = await gaia_knowledge_service.search_knowledge("q")
+
+        assert [r.content for r in results] == ["Doc"]
+        assert chroma.collection.get.await_count == 1
 
 
 class TestSearchLogsNoUserText:

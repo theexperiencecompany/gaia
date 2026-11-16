@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [options]
@@ -7,7 +7,7 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "P3D"
 
 [options.exclude-newer-package]
-certifi = false
+certifi = "2026-10-21T00:00:00Z"
 
 [manifest]
 requirements = [{ name = "pyyaml", specifier = "==6.0.3" }]

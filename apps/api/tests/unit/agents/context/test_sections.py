@@ -32,6 +32,7 @@ from app.agents.context.text import (
 from app.agents.context.tiers import ALL_TIERS, AgentTier
 from app.agents.prompts.user_instructions_prompts import USER_INSTRUCTIONS_HEADER
 from app.constants.log_tags import LogTag
+from app.constants.memory import FAST_RECALL_BUDGET_SECONDS
 
 #: A real, registered integration, the one the manifest's account records belong to.
 INTEGRATION_ID = "gmail"
@@ -120,6 +121,13 @@ class TestTheTableIsWellFormed:
             "bg_banner",
             "active_todo_banner",
         ]
+
+    def test_comms_memories_wait_no_longer_than_the_fast_lane_budget(self) -> None:
+        """The reply-path memory budget lives on the section, the one place budgets are enforced."""
+        (fast_lane,) = (s for s in SECTIONS if s.id == "fast_memory_recall")
+
+        assert fast_lane.budget_seconds == FAST_RECALL_BUDGET_SECONDS
+        assert all(section.budget_seconds > 0 for section in SECTIONS)
 
     def test_the_executor_receives_its_own_stable_set(self) -> None:
         # ``skills`` sits in the STABLE set: a pure function of (user, agent),

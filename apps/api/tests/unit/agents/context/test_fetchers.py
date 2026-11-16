@@ -19,7 +19,6 @@ from tests._harness.context_sources import knowledge, memory
 from tests.helpers import captured_wide_event
 from tests.integration_account_factories import make_integration_account, make_integration_record
 
-from app.agents.context import fetchers
 from app.agents.context.fetchers import (
     NEW_USER_CONVERSATION_LIMIT,
     _ConnectedIntegration,
@@ -824,17 +823,12 @@ class TestTrackedTodosListIsTheCachedRead:
         assert repo_reads.await_count == 2
 
 
-async def _never_finishes() -> str:
-    await asyncio.sleep(3600)
-    return ""
-
-
 @pytest.mark.unit
 class TestCoreContextSingleFlight:
     """Pin that the two core-memory sections share one in-flight core fetch.
 
-    They run in the same asyncio.gather, so they share rather than race; a task
-    bound to a dead loop is never awaited cross-loop.
+    They run in the same asyncio.gather, so they share rather than race; the
+    registry's own eviction and loop-binding are pinned in test_request_coalescing.
     """
 
     async def test_both_core_sections_share_one_fetch(self) -> None:
@@ -908,39 +902,6 @@ class TestCoreContextSingleFlight:
             with pytest.raises(asyncio.CancelledError):
                 await first
             assert await second == f"{CORE_MEMORY_HEADER}\nDocs."
-
-    async def test_the_inflight_entry_is_evicted_on_completion(self) -> None:
-        """Eviction bounds the registry; a leak would keep every user's core context forever."""
-
-        async def _core(user_id: str) -> str:
-            return "Docs."
-
-        with patch("app.memory.engine.memory_engine.get_core_context", _core):
-            await build_core_memory_block(ctx())
-
-        assert fetchers._inflight_core == {}
-
-    def test_a_task_from_a_previous_loop_is_never_awaited(self) -> None:
-        """A pending task left by a dead loop is ignored, never awaited cross-loop."""
-        other_loop = asyncio.new_event_loop()
-        stale = other_loop.create_task(_never_finishes())
-        fetchers._inflight_core[(other_loop, "user1")] = stale
-        fetched: list[str] = []
-
-        async def _core(user_id: str) -> str:
-            fetched.append(user_id)
-            return "Docs."
-
-        try:
-            with patch("app.memory.engine.memory_engine.get_core_context", _core):
-                block = asyncio.run(build_core_memory_block(ctx()))
-            assert fetched == ["user1"]
-            assert block == f"{CORE_MEMORY_HEADER}\nDocs."
-        finally:
-            fetchers._inflight_core.pop((other_loop, "user1"), None)
-            stale.cancel()
-            other_loop.run_until_complete(asyncio.sleep(0))
-            other_loop.close()
 
 
 @pytest.mark.unit

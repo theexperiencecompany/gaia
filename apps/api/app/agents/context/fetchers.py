@@ -34,7 +34,7 @@ from app.agents.prompts.new_user_prompts import NewUserFacts, build_new_user_gui
 from app.agents.workspace.paths import session_dir
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
-from app.constants.memory import FAST_RECALL_BUDGET_SECONDS, MEMORY_RECALL_BLOCK_LIMIT
+from app.constants.memory import MEMORY_RECALL_BLOCK_LIMIT
 from app.constants.tool_labels import humanize_tool_name
 from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.db.repositories.conversations import conversation_repository
@@ -57,12 +57,12 @@ from app.services.integrations.integration_accounts import (
     list_account_records,
 )
 from app.services.integrations.user_integrations import get_connected_integrations_named
-from app.services.latency_metrics import observe_fast_recall_budget_exceeded
 from app.services.onboarding.first_question import seeded_chips
 from app.services.storage._vfs_common import folder_name
 from app.services.tools.tools_service import get_integration_tool_list
 from app.services.tracked_todo_service import tracked_todo_service
 from app.utils.artifact_utils import artifact_url_base
+from app.utils.request_coalescing import coalesce_request
 from app.utils.user_preferences_utils import OnboardingPreferencesRecord
 from shared.py.wide_events import log
 
@@ -101,41 +101,17 @@ async def _fetch_core_context(user_id: str) -> str:
         return ""
 
 
-#: One in-flight core fetch per (event loop, user): the two core-memory sections
-#: share the task instead of each paying the fetch. Keyed by loop so a task bound
-#: to a closed loop (tests, reloads) is never awaited from another.
-_inflight_core: dict[tuple[asyncio.AbstractEventLoop, str], asyncio.Task[str]] = {}
-
-
-def _forget_inflight(key: tuple[asyncio.AbstractEventLoop, str], task: asyncio.Task[str]) -> None:
-    """Drop the finished fetch, if it is still the registered one.
-
-    Eviction is load-bearing: without it the registry would retain every user's
-    core context for the process's life. The task never holds an exception to
-    retrieve, because _fetch_core_context catches and returns an empty string.
-    """
-    if _inflight_core.get(key) is task:
-        del _inflight_core[key]
-
-
 async def _core_context(user_id: str | None) -> str:
     """Return the memory core as the engine renders it, or an empty string.
 
-    A singleflight over the two sections built from it: an assembly pays the core
-    read once, and the fetch is evicted on completion so a later assembly reads
-    afresh — sharing, not TTL caching.
+    Coalesced over the two sections built from it: an assembly pays the core read
+    once, and a later assembly reads afresh — sharing, not TTL caching.
     """
     if not user_id:
         return ""
-    key = (asyncio.get_running_loop(), user_id)
-    task = _inflight_core.get(key)
-    if task is None:
-        task = asyncio.ensure_future(_fetch_core_context(user_id))
-        _inflight_core[key] = task
-        task.add_done_callback(functools.partial(_forget_inflight, key))
-    # Shielded: cancelling one waiter (a client that disconnected mid-turn)
-    # must not cancel the shared task under the sibling still waiting on it.
-    return await asyncio.shield(task)
+    return await coalesce_request(
+        f"context_core_memory:{user_id}", functools.partial(_fetch_core_context, user_id)
+    )
 
 
 def _split_core_context(core_context: str) -> tuple[str, str, str]:
@@ -228,29 +204,18 @@ async def build_memory_recall_block(ctx: SectionContext) -> str:
 
 
 async def build_fast_recall_block(ctx: SectionContext) -> str:
-    """Comms memories from the fast lane, dated; nothing when it overruns its budget.
+    """Comms memories from the fast lane, dated.
 
-    A turn that goes without is the explicit trade: the reply never waits on
-    memory, the overrun is counted and logged, and search_memory still reaches
-    every memory the lane missed.
+    Its section's budget is the explicit trade: the reply never waits on memory,
+    and search_memory still reaches every memory the lane missed.
     """
     if not (ctx.user_id and ctx.query):
         return ""
     started = time.perf_counter()
     try:
-        async with asyncio.timeout(FAST_RECALL_BUDGET_SECONDS):
-            entries = await fast_recall.fast_recall(
-                ctx.user_id, ctx.query, conversation_id=ctx.conversation_id
-            )
-    except TimeoutError:
-        observe_fast_recall_budget_exceeded()
-        log.warning(
-            "Memory fast lane exceeded its budget",
-            budget_ms=FAST_RECALL_BUDGET_SECONDS * 1000,
-            elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
-            user_id=ctx.user_id,
+        entries = await fast_recall.fast_recall(
+            ctx.user_id, ctx.query, conversation_id=ctx.conversation_id
         )
-        return ""
     except Exception as e:
         # The section contract: one failing source costs only its own section.
         log.error(

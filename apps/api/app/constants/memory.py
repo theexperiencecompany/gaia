@@ -171,6 +171,9 @@ CORE_CONTEXT_CACHE_KEY = "user:{user_id}:memory:core"
 # vector match + one Postgres query for vector hits, pins and OR-matched words.
 # Covers the query embed's p95 (306ms from prod) less the setup it overlaps.
 FAST_RECALL_BUDGET_SECONDS = 0.25
+# The worker tiers' deep recall, off the reply path: its rerank alone was 2.3s p50
+# in prod, so this only cuts off a hung store, never a slow-but-working recall.
+MEMORY_RECALL_BUDGET_SECONDS = 10.0
 FAST_RECALL_SEMANTIC_K = 5
 # Noise floor only: gold scored p50 0.47 but abstention probes reached 0.36
 # (text-embedding-3-small, 2026-11-15); 0.20 keeps 98%+ of gold on both sets.
@@ -184,7 +187,9 @@ HOSTED_EMBEDDING_BATCH_TEXTS = 256
 # A process holds each active user's vectors; Redis carries the version that
 # every memory write bumps, so the API and the worker never serve a stale set.
 MEMORY_VECTORS_VERSION_KEY = "user:{user_id}:memory:vectors_version"
-VECTOR_CACHE_MAX_USERS = 4096
+# Held vectors per process, by size: one 1536-dim float32 vector is 6 KiB, so
+# 256 MiB holds ~43k memories across the most recently active users.
+VECTOR_CACHE_MAX_BYTES = 256 * 1024 * 1024
 QUERY_EMBEDDING_TTL_SECONDS = 60
 FAST_RECALL_MAX_TOKENS = 32
 PRECOMPUTED_RECALL_LIMIT = 8

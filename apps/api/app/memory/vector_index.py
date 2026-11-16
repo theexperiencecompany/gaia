@@ -10,6 +10,7 @@ and the background worker are both seen on the next turn.
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
+import functools
 import uuid
 
 import numpy as np
@@ -17,11 +18,12 @@ import numpy as np
 from app.constants.memory import (
     MEMORY_VECTOR_MODEL,
     MEMORY_VECTORS_VERSION_KEY,
-    VECTOR_CACHE_MAX_USERS,
+    VECTOR_CACHE_MAX_BYTES,
 )
 from app.db.redis import redis_cache
 from app.memory import hosted_embeddings
 from app.memory.pg_store.vectors import Matrix, live_vectors, upsert_vectors
+from app.utils.request_coalescing import coalesce_request
 from shared.py.wide_events import log
 
 
@@ -48,16 +50,28 @@ async def _current_version(user_id: str) -> str:
     return str(raw or "0")
 
 
+async def _load(user_id: str, version: str) -> _UserVectors:
+    """Read and hold the user's set; held here, so a turn that stops waiting still keeps it."""
+    ids, matrix = await live_vectors(user_id, MEMORY_VECTOR_MODEL)
+    held = _UserVectors(version=version, ids=ids, matrix=matrix)
+    _held[user_id] = held
+    return held
+
+
 async def _user_vectors(user_id: str) -> _UserVectors:
     version = await _current_version(user_id)
     held = _held.get(user_id)
     if held is None or held.version != version:
-        ids, matrix = await live_vectors(user_id, MEMORY_VECTOR_MODEL)
-        held = _UserVectors(version=version, ids=ids, matrix=matrix)
-        _held[user_id] = held
+        # Coalesced: a heavy user's load can outlast the fast lane's budget, and
+        # restarting it on every turn would cut it off on every turn.
+        held = await coalesce_request(
+            f"memory_vectors:{user_id}:{version}", functools.partial(_load, user_id, version)
+        )
     _held.move_to_end(user_id)
-    while len(_held) > VECTOR_CACHE_MAX_USERS:
-        _held.popitem(last=False)
+    held_bytes = sum(entry.matrix.nbytes for entry in _held.values())
+    while len(_held) > 1 and held_bytes > VECTOR_CACHE_MAX_BYTES:
+        _, evicted = _held.popitem(last=False)
+        held_bytes -= evicted.matrix.nbytes
     return held
 
 

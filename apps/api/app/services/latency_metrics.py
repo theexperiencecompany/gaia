@@ -302,11 +302,12 @@ _CHAT_TURN_TOTAL = _register_once(
     ),
 )
 
-_MEMORY_FAST_RECALL_BUDGET_EXCEEDED = _register_once(
-    "memory_fast_recall_budget_exceeded",
+_CONTEXT_SECTION_BUDGET_EXCEEDED = _register_once(
+    "context_section_budget_exceeded",
     lambda: Counter(
-        name="memory_fast_recall_budget_exceeded",
-        documentation="Comms turns whose memory fast lane ran past its budget and went without",
+        name="context_section_budget_exceeded",
+        documentation="Context sections that ran past their budget and rendered empty, by section",
+        labelnames=("section",),
     ),
 )
 
@@ -363,6 +364,7 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _LLM_TTFT_SECONDS,
     _COMMS_GRAPH_SECONDS,
     _CONTEXT_ASSEMBLE_SECONDS,
+    _CONTEXT_SECTION_BUDGET_EXCEEDED,
     _EXECUTOR_QUEUE_WAIT_SECONDS,
     _EXECUTOR_TTFT_SECONDS,
     _EXECUTOR_ACTIVE_SECONDS,
@@ -471,9 +473,9 @@ def observe_chat_turn_total(*, source: str, delegated: bool, status: str) -> Non
     )
 
 
-def observe_fast_recall_budget_exceeded() -> None:
-    """Count a comms turn that went without memories because the fast lane was too slow."""
-    _inc(_MEMORY_FAST_RECALL_BUDGET_EXCEEDED)
+def observe_context_section_budget_exceeded(*, section: str) -> None:
+    """Count a context section that rendered empty because it ran past its budget."""
+    _inc(_CONTEXT_SECTION_BUDGET_EXCEEDED, section=section)
 
 
 def observe_turn_overhead(overhead: TurnOverhead, *, source: str) -> None:
@@ -607,6 +609,7 @@ __all__ = [
     "observe_chat_turn_total",
     "observe_comms_graph",
     "observe_context_assemble",
+    "observe_context_section_budget_exceeded",
     "observe_delivery_narration",
     "observe_delivery_persist",
     "observe_executor_active",

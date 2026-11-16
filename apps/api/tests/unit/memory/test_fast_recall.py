@@ -1,20 +1,14 @@
-"""The comms fast lane: query tokens, the hard budget, and the next-turn precompute."""
+"""The comms fast lane: query tokens, the rendered block, and the next-turn precompute."""
 
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage
-from prometheus_client import REGISTRY
 
 from app.agents.context import fetchers
 from app.agents.context.section_context import SectionContext
 from app.agents.context.tiers import AgentTier
 from app.memory import fast_recall
 from app.models.memory_models import MemoryEntry, MemorySearchResult
-
-
-def _budget_trips() -> float:
-    return REGISTRY.get_sample_value("memory_fast_recall_budget_exceeded_total") or 0.0
 
 
 def _comms_ctx() -> SectionContext:
@@ -35,20 +29,7 @@ def test_tokens_are_capped() -> None:
     assert len(fast_recall.fts_tokens(query)) == fast_recall.FAST_RECALL_MAX_TOKENS
 
 
-async def test_a_lane_slower_than_its_budget_renders_nothing_and_is_counted() -> None:
-    async def slow(*_args: object, **_kwargs: object) -> list[MemoryEntry]:
-        await asyncio.sleep(1)
-        return [MemoryEntry(content="Lives in Berlin.")]
-
-    before = _budget_trips()
-    with patch.object(fetchers.fast_recall, "fast_recall", new=slow):
-        block = await fetchers.build_fast_recall_block(_comms_ctx())
-
-    assert block == ""
-    assert _budget_trips() == before + 1
-
-
-async def test_a_lane_within_budget_renders_its_memories() -> None:
+async def test_a_lane_renders_its_memories() -> None:
     entries = [MemoryEntry(content="Lives in Berlin.")]
     with patch.object(
         fetchers.fast_recall, "fast_recall", new=AsyncMock(return_value=entries)

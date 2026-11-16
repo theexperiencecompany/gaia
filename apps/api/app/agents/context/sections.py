@@ -46,7 +46,9 @@ from app.agents.prompts.user_instructions_prompts import render_user_instruction
 from app.agents.skills.discovery import get_available_skills_text
 from app.agents.workspace.skill_loader import target_to_subagent
 from app.agents.workspace.system_docs import integration_skills_block
+from app.constants.context import CONTEXT_SECTION_BUDGET_SECONDS
 from app.constants.log_tags import LogTag
+from app.constants.memory import FAST_RECALL_BUDGET_SECONDS, MEMORY_RECALL_BUDGET_SECONDS
 from app.constants.skills import EXECUTOR_SUBAGENT_ID
 from app.models.chat_models import BOT_CONVERSATION_SOURCES, ConversationSource
 from app.models.user_instructions_models import GLOBAL_INSTRUCTIONS_SCOPE
@@ -94,6 +96,9 @@ class Section:
     #: existing ones without renumbering the table.
     order: int
     fetch: SectionFetch
+    #: Longest the assembly waits on fetch; past it the section renders empty,
+    #: counted and logged, and the turn goes on without it.
+    budget_seconds: float = CONTEXT_SECTION_BUDGET_SECONDS
 
     def applies(self, tier: AgentTier) -> bool:
         return tier in self.applies_to
@@ -326,6 +331,7 @@ SECTIONS: tuple[Section, ...] = (
         frozenset({AgentTier.COMMS}),
         20,
         build_fast_recall_block,
+        budget_seconds=FAST_RECALL_BUDGET_SECONDS,
     ),
     Section(
         SectionId.MEMORY_RECALL,
@@ -333,6 +339,7 @@ SECTIONS: tuple[Section, ...] = (
         WORKER_TIERS,
         20,
         build_memory_recall_block,
+        budget_seconds=MEMORY_RECALL_BUDGET_SECONDS,
     ),
     Section(
         SectionId.GAIA_KNOWLEDGE,
