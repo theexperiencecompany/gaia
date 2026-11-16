@@ -21,7 +21,7 @@ NEAR_GIRLFRIEND = [0.95, 0.05, 0.0, 0.0]
 
 @contextmanager
 def query_embeds_to(vector: Sequence[float]) -> Iterator[None]:
-    """Report Workers AI configured and make the hosted query embedding return vector."""
+    """Report OpenAI configured and make the hosted query embedding return vector."""
     fast_recall._inflight.clear()
     with (
         patch.object(hosted_embeddings, "configured", return_value=True),

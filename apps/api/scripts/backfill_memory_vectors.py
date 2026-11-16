@@ -34,7 +34,7 @@ async def main() -> None:
 
     init_postgresql_engine()
     if not hosted_embeddings.configured():
-        raise SystemExit("Workers AI is not configured (CLOUDFLARE_AI_ACCOUNT_ID / _API_TOKEN)")
+        raise SystemExit("OpenAI is not configured (OPENAI_API_KEY)")
 
     started = time.perf_counter()
     cursor: uuid.UUID | None = None

@@ -72,7 +72,7 @@ async def _query_vector(query: str) -> list[float]:
     start_query_embedding(query)
     entry = _inflight.get(query)
     if entry is None:
-        raise hosted_embeddings.HostedEmbeddingError("Workers AI is not configured")
+        raise hosted_embeddings.HostedEmbeddingError("OpenAI is not configured")
     # Shielded: a lane that runs out of budget must not cancel an embedding
     # another turn with the same text may be waiting on.
     return await asyncio.shield(entry[1])
