@@ -19,7 +19,6 @@ import pytest
 
 from app.constants.chat import ConversationSource
 from app.core.websocket_manager import websocket_manager
-from app.db.repositories.cache import CachePolicy
 from app.db.repositories.conversation_entries import (
     EntryWindow,
     StoredRow,
@@ -34,16 +33,18 @@ from app.db.repositories.conversations import (
 from app.models.conversation_log_models import (
     Entry,
     LoggedEntry,
+    Notice,
     Reply,
     ReplySettled,
     UserMessage,
 )
+from app.models.conversation_screen_models import NoticeItem
+from app.utils.artifact_utils import FILE_LINKS
 from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
 
 CONVERSATION_ID = "conv-1"
 USER_ID = "user-1"
 APPROVAL_ID = "appr-1"
-CACHE_POLICY = CachePolicy(prefix="test-conversations")
 TOOL_DATA_ENTRIES: list[ToolDataEntry] = [{"tool_name": "search", "data": {"ok": True}}]
 
 
@@ -209,3 +210,29 @@ def test_a_stored_copy_newer_than_the_heads_outbox_snapshot_wins_the_read() -> N
     [(_, entries)] = union_with_outboxes([head], [flushed], EntryWindow())
 
     assert [(entry.seq, entry.revision) for entry in entries] == [(1, 2)]
+
+
+async def test_an_artifact_registry_write_touches_only_its_users_conversation(
+    repo: ConversationRepository, collection: MagicMock
+) -> None:
+    await repo.set_artifacts(CONVERSATION_ID, user_id=USER_ID, entries=[])
+
+    filter_, update, _ = _update_call(collection)
+    assert filter_ == {"conversation_id": CONVERSATION_ID, "user_id": USER_ID}
+    assert update == {"$set": {"artifacts": []}}
+
+
+async def test_a_pinned_message_links_its_files_to_its_own_conversation(
+    repo: ConversationRepository,
+) -> None:
+    notice = Notice(id="n1", text="Wrote /workspace/sessions/s1/artifacts/a.csv", origin="reminder")
+    reads = iter([[_row(1, notice)]])
+
+    async def find_entries(_user_id: str, _match: object) -> list[StoredRow]:
+        return next(reads, [])
+
+    with patch.object(repo, "_find_entries", side_effect=find_entries):
+        [hit] = await repo.list_pinned_messages(USER_ID)
+
+    assert isinstance(hit.item, NoticeItem)
+    assert hit.item.bubbles == (f"Wrote [a.csv]({FILE_LINKS.conversation_page(CONVERSATION_ID)})",)

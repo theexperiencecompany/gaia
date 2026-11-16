@@ -357,7 +357,7 @@ class TestDecisionSubmittedEvent:
         repo = _repo(_row())
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
-            patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()),
+            patch.object(ledger_decide, "_wake_agent", new=AsyncMock()),
             patch.object(ledger_decide, "capture") as capture,
         ):
             await decide_ledger("ap_abc", user_id=USER_ID, kind="deny", via="card")
@@ -1954,6 +1954,7 @@ class TestDecideLedgerAlwaysToolScope:
             patch(f"{MODULE}.approval_ledger_repository", new=repo),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()),
             patch(f"{MODULE}._deliver_verdict", new=AsyncMock()),
+            patch(f"{MODULE}._wake_agent", new=AsyncMock()),
             patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
         ):
             await ledger_decide.decide_ledger_card(

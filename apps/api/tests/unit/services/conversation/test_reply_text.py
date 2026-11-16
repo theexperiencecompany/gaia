@@ -64,3 +64,9 @@ def test_reply_text_splits_into_its_bubbles() -> None:
         "first",
         "second",
     )
+
+
+def test_a_file_the_reply_names_links_to_its_own_conversation() -> None:
+    assert screen_bubbles("See [report](artifacts/report.pdf)", "c1", TEST_FILE_LINKS) == (
+        "See [report](https://gaia.test/c/c1)",
+    )

@@ -59,6 +59,7 @@ from app.services.browser.takeover_token import (
     takeover_token_ttl_seconds,
     verify_takeover_token,
 )
+from app.utils.errors import ConversationNotFoundError
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.browser import BrowserHandoffResolved
@@ -311,6 +312,28 @@ class TestDecideBrowserHandoff:
         assert captured == [
             (UserId(USER_ID), BrowserHandoffResolved(decision="cancel", with_note=False))
         ]
+
+    async def test_a_tap_on_a_handoff_whose_conversation_is_gone_names_that_conversation(
+        self, button_world: list[tuple[str, str, str, str]]
+    ) -> None:
+        await create_pending_handoff(
+            "h2",
+            NewHandoff(
+                job_id="job-2",
+                user_id=USER_ID,
+                conversation_id="c-gone",
+                reason="Sign in",
+                reply_to="c-gone",
+            ),
+        )
+
+        with pytest.raises(ConversationNotFoundError) as refused:
+            await handoff_buttons.decide_handoff_by_button(
+                "h2", HandoffDecision.CONTINUE, USER_ID, None
+            )
+
+        assert refused.value.meta == {"conversation_id": "c-gone"}
+        assert button_world == []
 
     async def test_another_users_cancel_stops_nothing(
         self, button_world: list[tuple[str, str, str, str]]

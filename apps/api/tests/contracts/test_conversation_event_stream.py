@@ -36,6 +36,7 @@ from app.services.conversation import event_stream
 from app.services.conversation.event_stream import (
     RedisStreamFrames,
     StreamedFrame,
+    UnreadableFrames,
     event_lines,
     follow,
     follow_screen,
@@ -43,6 +44,7 @@ from app.services.conversation.event_stream import (
     read_frames,
 )
 from shared.py.conversation_wire import BubbleTextDelta, ReplyDeltaFrame
+from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import at, opened, settled, started, user
 from tests.unit.services.conversation.runtime_doubles import (
     FakeClock,
@@ -230,6 +232,56 @@ async def test_a_stream_without_the_followers_entry_is_replayed_from_its_start(
 
 async def publish_frames(*frames: OutputFrame) -> None:
     await RedisStreamFrames().publish(CID, *frames)
+
+
+# A frame kind no deploy of this code writes, padded so its validation error runs long.
+_FOREIGN_FRAME = json.dumps({"kind": "from_another_deploy", "pad": "x" * 400})
+
+
+def _unreadable_warning(stream_id: str) -> dict[str, object]:
+    return {
+        "msg": "conversation stream frame unreadable, written by another deploy",
+        "conversation_id": CID,
+        "stream_id": stream_id,
+    }
+
+
+async def test_a_read_meeting_an_unreadable_frame_fails_naming_the_newest_frame(
+    redis: Redis,
+) -> None:
+    await publish_frames(_delta("a1", None))
+    foreign = await redis.xadd(STREAM, {"frame": _FOREIGN_FRAME})
+
+    async with captured_wide_event() as event:
+        with pytest.raises(UnreadableFrames) as refused:
+            await read_frames(CID, EVENTS_STREAM_START, block_ms=10)
+
+    assert refused.value.through == foreign
+    assert str(refused.value) == f"unreadable frames in {CID}'s stream through {foreign}"
+    [warning] = event["warnings"]
+    error = warning.pop("error")
+    assert warning == _unreadable_warning(foreign)
+    assert len(error) == 300
+    assert "validation error" in error
+
+
+async def test_a_follower_replays_the_readable_frames_after_an_unreadable_one(
+    redis: Redis,
+) -> None:
+    log = await _log(user("u1"), started("w2", "live", 1))
+    foreign = await redis.xadd(STREAM, {"frame": _FOREIGN_FRAME})
+    await publish_frames(_work("live"))
+
+    follower = follow(log, CID, UID, 0)
+    async with captured_wide_event() as event:
+        replayed = [await anext(follower) for _ in range(4)]
+
+    assert replayed[3] is not None
+    assert replayed[3].frame == _work("live")
+    assert [{k: v for k, v in w.items() if k != "error"} for w in event["warnings"]] == [
+        _unreadable_warning(foreign)
+    ]
+    await follower.aclose()
 
 
 async def test_a_draft_whose_reply_settled_is_not_replayed(redis: Redis) -> None:
