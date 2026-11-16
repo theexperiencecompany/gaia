@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import MagicMock
 
 import pytest
-from scripts.analytics_ops.posthog_api import Sender
+from scripts.analytics_ops.posthog_api import CI_ANALYTICS, Sender, _load_ci_analytics
 
 
 def _sender(*failures: Exception) -> Sender:
@@ -37,3 +38,13 @@ def test_a_clean_send_flushes_and_passes() -> None:
         pass
 
     sender.client.shutdown.assert_called_once_with()
+
+
+def test_loading_the_ci_client_leaves_sys_path_as_it_found_it() -> None:
+    before = list(sys.path)
+
+    module = _load_ci_analytics()
+
+    assert module.ENVELOPE_PROPERTIES
+    assert sys.path == before
+    assert str(CI_ANALYTICS.parent) not in sys.path
