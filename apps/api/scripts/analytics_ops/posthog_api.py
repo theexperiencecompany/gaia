@@ -77,6 +77,10 @@ def _load_ci_analytics() -> ModuleType:
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {CI_ANALYTICS}")
     module = importlib.util.module_from_spec(spec)
+    # Run as a script, scripts/ci is on sys.path for its `from lib import ...`; loaded from here it is not.
+    ci_dir = str(CI_ANALYTICS.parent)
+    if ci_dir not in sys.path:
+        sys.path.insert(0, ci_dir)
     # dataclasses resolve their annotations through sys.modules[cls.__module__].
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
