@@ -675,7 +675,7 @@ export abstract class BaseBotAdapter {
     const platformDistinctId = platformIdentity(this.platform, platformUserId);
     let status: AuthStatus;
     try {
-      status = await this.gaia.checkAuthStatus(this.platform, platformUserId);
+      status = await this.checkAuthStatusBounded(platformUserId);
     } catch (error) {
       this.logger.error(
         "analytics_identity_resolve_failed",
@@ -684,14 +684,36 @@ export abstract class BaseBotAdapter {
       );
       return platformDistinctId;
     }
+    return (
+      this.recordLinkedIdentity(platformUserId, status) ?? platformDistinctId
+    );
+  }
 
-    if (!status.user_id) return platformDistinctId;
+  /** The user's auth status, bounded: every caller sits on a user's message path. */
+  private checkAuthStatusBounded(platformUserId: string): Promise<AuthStatus> {
+    return withTimeout(
+      this.gaia.checkAuthStatus(this.platform, platformUserId),
+      LINK_STATE_CHECK_TIMEOUT_MS,
+      "auth_check_timeout",
+    );
+  }
 
-    // First resolution for this user in this process: stitch whatever they did
-    // before linking onto the GAIA profile. Cached below, so it fires once per
-    // process rather than per message.
+  /**
+   * Caches a linked user's GAIA id from any auth-status answer, aliasing the pre-link platform
+   * id onto it the first time this process sees them linked. Null while unlinked.
+   */
+  private recordLinkedIdentity(
+    platformUserId: string,
+    status: AuthStatus,
+  ): AnalyticsId | null {
+    if (!status.user_id) return null;
+    const cached = this.distinctIdCache.get(platformUserId);
+    if (cached) return cached;
     const userId = parseUserId(status.user_id);
-    this.analytics.alias(platformDistinctId, userId);
+    this.analytics.alias(
+      platformIdentity(this.platform, platformUserId),
+      userId,
+    );
     this.distinctIdCache.set(platformUserId, userId);
     return userId;
   }
@@ -716,11 +738,8 @@ export abstract class BaseBotAdapter {
    */
   protected async linkState(userId: string): Promise<LinkState> {
     try {
-      const status = await withTimeout(
-        this.gaia.checkAuthStatus(this.platform, userId),
-        LINK_STATE_CHECK_TIMEOUT_MS,
-        "auth_check_timeout",
-      );
+      const status = await this.checkAuthStatusBounded(userId);
+      this.recordLinkedIdentity(userId, status);
       if (!status.authenticated) {
         this.linkedUsers.delete(userId);
         return "unlinked";

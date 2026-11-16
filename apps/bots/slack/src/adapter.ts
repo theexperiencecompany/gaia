@@ -521,7 +521,7 @@ export class SlackAdapter extends BaseBotAdapter {
         });
       },
       STREAMING_DEFAULTS.slack,
-      await analytics,
+      analytics,
       async (emoji: string) => {
         // A slash command has no inbound message to react to.
         if (!inboundTs) return REACTION_OUTCOME.NO_TARGET;

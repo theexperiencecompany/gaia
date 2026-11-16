@@ -452,9 +452,7 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
       expect.any(Function), // auth error callback
       expect.any(Function), // generic error callback
       expect.objectContaining({ platform: "discord" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
     );
   });
 
@@ -692,9 +690,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -723,9 +719,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -774,9 +768,7 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -899,9 +891,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -1022,9 +1012,7 @@ describe("DiscordAdapter - context menu interaction", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
     );
   });
 
@@ -1078,9 +1066,7 @@ describe("DiscordAdapter - context menu interaction", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "discord" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
     );
   });
 });

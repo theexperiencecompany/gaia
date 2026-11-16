@@ -460,7 +460,7 @@ export class ImessageAdapter extends BaseBotAdapter {
           await this.sendImessageText(space, errMsg);
         },
         STREAMING_DEFAULTS.imessage,
-        await this.analyticsFor(handle),
+        this.analyticsFor(handle),
         async (emoji: string) => {
           // Media turns carry no inbound message id, so there is nothing to react to.
           if (!messageId) return REACTION_OUTCOME.NO_TARGET;

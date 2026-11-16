@@ -18,7 +18,11 @@
  *   await handleStreamingChat(gaia, request, editMessage, onAuth, onErr,
  *     STREAMING_DEFAULTS.discord);
  */
-import type { AnalyticsContext } from "../../analytics";
+import type {
+  AnalyticsContext,
+  BotEventName,
+  EventProperties,
+} from "../../analytics";
 import type { ApprovalRequestData } from "../../chat";
 import { formatApprovalAge } from "../../chat/approvals";
 import type { GaiaClient } from "../api";
@@ -577,7 +581,7 @@ export async function handleStreamingChat(
   onAuthError: (authUrl: string) => Promise<void>,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
-  analytics?: AnalyticsContext,
+  analytics?: Promise<AnalyticsContext>,
   onReaction?: ReactionHandler,
   onNoReply?: NoReplyHandler,
 ): Promise<void> {
@@ -625,7 +629,7 @@ async function runStreamingChat(
   onAuthError: (authUrl: string) => Promise<void>,
   onGenericError: (formattedError: string) => Promise<void>,
   options: StreamingOptions,
-  analytics: AnalyticsContext | undefined,
+  analytics: Promise<AnalyticsContext> | undefined,
   userHash: string | undefined,
   onReaction: ReactionHandler | undefined,
   onNoReply: NoReplyHandler | undefined,
@@ -642,7 +646,17 @@ async function runStreamingChat(
     | ReturnType<typeof reactionDeliveredProperties>
     | undefined;
 
-  analytics?.client.capture(analytics.distinctId, "bot:message_received", {
+  // The identity lookup never holds the turn: each event is captured once it resolves.
+  const track = <E extends BotEventName>(
+    event: E,
+    properties: EventProperties[E],
+  ): void => {
+    void analytics?.then(({ client, distinctId }) =>
+      client.capture(distinctId, event, properties),
+    );
+  };
+
+  track("bot:message_received", {
     interaction_type: "chat",
     message_length: request.message.length,
   });
@@ -678,7 +692,7 @@ async function runStreamingChat(
     }
     // Do not ship the raw error string — it can contain paths, request IDs,
     // or upstream-echoed tokens. `context` is enough to bucket failures.
-    analytics?.client.capture(analytics.distinctId, "bot:error", {
+    track("bot:error", {
       context: "chat:streaming",
       duration_ms: Date.now() - startMs,
     });
@@ -742,11 +756,7 @@ async function runStreamingChat(
           outcome,
           REACTION_SURFACE.LIVE,
         );
-        analytics?.client.capture(
-          analytics.distinctId,
-          "bot:reaction_delivered",
-          reactionDelivered,
-        );
+        track("bot:reaction_delivered", reactionDelivered);
         return outcome;
       },
       async (keptText: string) => {

@@ -319,9 +319,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );
@@ -378,9 +376,7 @@ describe("TelegramAdapter - group mention message handling (registerEvents)", ()
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );
@@ -679,9 +675,7 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
       expect.any(Function), // onAuthError callback
       expect.any(Function), // onGenericError callback
       expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );
@@ -1225,9 +1219,7 @@ describe("TelegramAdapter - /gaia command", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );
@@ -1623,9 +1615,7 @@ describe("TelegramAdapter - media message routing", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "telegram" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
       expect.any(Function), // onNoReply
     );

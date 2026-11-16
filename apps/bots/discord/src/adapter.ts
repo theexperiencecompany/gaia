@@ -449,7 +449,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         }
       },
       STREAMING_DEFAULTS.discord,
-      await this.analyticsFor(userId),
+      this.analyticsFor(userId),
     );
   }
 
@@ -578,7 +578,7 @@ export class DiscordAdapter extends BaseBotAdapter {
         if (!replied) await interaction.editReply({ content: err });
       },
       STREAMING_DEFAULTS.discord,
-      await this.analyticsFor(userId),
+      this.analyticsFor(userId),
     );
   }
 
@@ -728,7 +728,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           }
         },
         STREAMING_DEFAULTS.discord,
-        await this.analyticsFor(userId),
+        this.analyticsFor(userId),
         (emoji: string) =>
           this.reactToMessage(userId, message.id, emoji, false),
       );
@@ -979,7 +979,7 @@ export class DiscordAdapter extends BaseBotAdapter {
           await sendOrEdit(errMsg);
         },
         STREAMING_DEFAULTS.discord,
-        await this.analyticsFor(message.author.id),
+        this.analyticsFor(message.author.id),
         (emoji: string) =>
           message.guild
             ? this.reactToMessage(message.channelId, message.id, emoji, true)

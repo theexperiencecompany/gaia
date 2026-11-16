@@ -531,9 +531,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -616,9 +614,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -644,9 +640,7 @@ describe("WhatsAppAdapter - handleIncomingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });
@@ -738,9 +732,7 @@ describe("WhatsAppAdapter - handleStreamingMessage", () => {
       expect.any(Function),
       expect.any(Function),
       expect.objectContaining({ platform: "whatsapp" }),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function), // onReaction
     );
   });

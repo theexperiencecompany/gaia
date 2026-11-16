@@ -799,7 +799,7 @@ export class TelegramAdapter extends BaseBotAdapter {
           }
         },
         STREAMING_DEFAULTS.telegram,
-        await analytics,
+        analytics,
         async (emoji: string) => {
           const inboundId = ctx.msg?.message_id;
           if (inboundId === undefined) return REACTION_OUTCOME.NO_TARGET;

@@ -197,6 +197,40 @@ describe("BaseBotAdapter.resolveDistinctId", () => {
   });
 });
 
+describe("BaseBotAdapter identity lookup bounds", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("gives up on a hung auth check and keys the event on the platform id", async () => {
+    vi.useFakeTimers();
+    const { adapter } = setup(vi.fn(() => new Promise(() => undefined)));
+
+    let resolved: AnalyticsId | undefined;
+    void adapter.resolve(PLATFORM_USER_ID).then((id) => {
+      resolved = id;
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(resolved).toBe(PLATFORM_DISTINCT_ID);
+  });
+
+  it("reuses the link check's answer, so a linked user costs one lookup, not two", async () => {
+    const checkAuthStatus = vi.fn(async () => ({
+      authenticated: true,
+      platform: "discord",
+      platform_user_id: PLATFORM_USER_ID,
+      user_id: GAIA_USER_ID,
+    }));
+    const { adapter } = setup(checkAuthStatus);
+
+    await adapter.link(PLATFORM_USER_ID);
+    await expect(adapter.resolve(PLATFORM_USER_ID)).resolves.toBe(GAIA_USER_ID);
+
+    expect(checkAuthStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("BaseBotAdapter link state", () => {
   const linked = {
     authenticated: true,

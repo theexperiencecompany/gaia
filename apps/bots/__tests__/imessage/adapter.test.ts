@@ -340,9 +340,7 @@ describe("handleInboundMessage routing", () => {
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function),
     );
   });
@@ -576,9 +574,7 @@ describe("multi-part (group) content", () => {
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function),
     );
   });
@@ -629,9 +625,7 @@ describe("multi-part (group) content", () => {
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function),
     );
   });
@@ -724,9 +718,7 @@ describe("handleIncomingMessage commands", () => {
       expect.anything(),
       expect.anything(),
       expect.anything(),
-      expect.objectContaining({
-        distinctId: expect.any(String),
-      }),
+      expect.any(Promise),
       expect.any(Function),
     );
   });
