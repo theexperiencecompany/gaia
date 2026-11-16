@@ -1,11 +1,4 @@
-import { Button } from "@heroui/button";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Input } from "@heroui/input";
+import { Dropdown, Input, Menu, TextField } from "@heroui/react";
 import { MoreHorizontalIcon } from "@icons";
 import type {
   ApprovalDecision,
@@ -16,6 +9,8 @@ import type {
 import { formatApprovalAge, RECONFIRM_AGE_SECONDS } from "@shared/chat";
 import { flattenArgsPreview, statusAfterDecision } from "@shared/utils";
 import { useMemo, useRef, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ShieldAlertIcon } from "@/components/shared/icons";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useMarkApprovalDecided } from "@/features/chat/hooks/useMarkApprovalDecided";
@@ -148,19 +143,23 @@ export default function ApprovalRequestSection({
         </div>
         <div className="mt-1 text-xs text-zinc-400">{data.summary}</div>
         <div className="mt-3 flex items-center gap-2">
-          <Button
-            color="primary"
+          <GaiaButton
             size="sm"
             onPress={() => {
               setPhase("idle");
               onApproveTap();
             }}
+            variant="primary"
           >
             Yes, still approve
-          </Button>
-          <Button variant="flat" size="sm" onPress={() => setPhase("idle")}>
+          </GaiaButton>
+          <GaiaButton
+            variant="default-soft"
+            size="sm"
+            onPress={() => setPhase("idle")}
+          >
             Back
-          </Button>
+          </GaiaButton>
         </div>
       </div>
     );
@@ -196,52 +195,52 @@ export default function ApprovalRequestSection({
       <ArgsPreview args={data.args_preview} />
 
       <div className="mt-3 flex items-center gap-2">
-        <Input
-          className="flex-1"
-          size="sm"
-          variant="flat"
-          placeholder="Tell GAIA why (optional)"
+        <TextField
+          className={inputVariants({ size: "sm", className: "flex-1" })}
           value={feedback}
-          onValueChange={setFeedback}
+          onChange={setFeedback}
           isDisabled={locked}
-        />
-        <Button
-          color="primary"
+        >
+          <Input placeholder="Tell GAIA why (optional)" />
+        </TextField>
+        <GaiaButton
           size="sm"
           isDisabled={locked}
           onPress={onApproveTap}
+          variant="primary"
         >
           Approve
-        </Button>
-        <Button
-          variant="flat"
+        </GaiaButton>
+        <GaiaButton
+          variant="default-soft"
           size="sm"
           isDisabled={locked}
           onPress={() => submit("deny")}
         >
           Deny
-        </Button>
+        </GaiaButton>
         {!data.always_asks && (
-          <Dropdown placement="bottom-end">
-            <DropdownTrigger>
-              <Button
-                isIconOnly
-                size="sm"
-                variant="light"
-                isDisabled={locked}
-                aria-label="More approval options"
-              >
-                <MoreHorizontalIcon width={18} />
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu aria-label="Approval options">
-              <DropdownItem
-                key="always"
-                onPress={() => submit("approve", "always_tool")}
-              >
-                Always allow this tool
-              </DropdownItem>
-            </DropdownMenu>
+          <Dropdown>
+            <GaiaButton
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              isDisabled={locked}
+              aria-label="More approval options"
+            >
+              <MoreHorizontalIcon width={18} />
+            </GaiaButton>
+            <Dropdown.Popover placement="bottom end">
+              <Menu aria-label="Approval options">
+                <Menu.Item
+                  id="always"
+                  textValue="Always allow this tool"
+                  onAction={() => submit("approve", "always_tool")}
+                >
+                  Always allow this tool
+                </Menu.Item>
+              </Menu>
+            </Dropdown.Popover>
           </Dropdown>
         )}
       </div>

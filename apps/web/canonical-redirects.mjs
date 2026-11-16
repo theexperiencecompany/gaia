@@ -18,6 +18,8 @@ const CANONICAL_REDIRECT_PAIRS = [
   // /automate reverse-order combos
   ["/automate/teams-slack", "/automate/slack-teams"],
   ["/automate/trello-notion", "/automate/notion-trello"],
+  // An app with one combo has no app page (comboAppGroups): its old page goes to that combo
+  ["/automate/with/google-docs", "/automate/google-docs-slack"],
   // /compare vs /alternative-to same-tool pairs
   ["/alternative-to/superhuman", "/compare/superhuman"],
   ["/compare/limitless-ai", "/alternative-to/limitless-ai"],
@@ -39,6 +41,8 @@ const CANONICAL_REDIRECT_PAIRS = [
   ["/learn/embedding", "/learn/embeddings"],
   ["/learn/vector-embeddings", "/learn/embeddings"],
   ["/learn/large-language-model", "/learn/llm"],
+  // /manifesto rendered the same About component as /about
+  ["/manifesto", "/about"],
   // /automate reverse-order combos, wave-2 extension (alphabetical canonical):
   ["/automate/drive-asana", "/automate/asana-drive"],
   ["/automate/figma-asana", "/automate/asana-figma"],
@@ -112,5 +116,16 @@ export function expandCanonicalRedirects(pairs = CANONICAL_REDIRECT_PAIRS) {
   ]);
 }
 
+/**
+ * Pages that were removed: old emails, bookmarks and history still point at
+ * them, so each forwards to what replaced it instead of a 404. /notifications
+ * became the notification panel in the app's sidebar; /blog/create the blog
+ * repository's content files.
+ */
+const RETIRED_PAGE_PAIRS = [
+  ["/notifications", "/c"],
+  ["/blog/create", "/blog"],
+];
+
 /** The root-relative pairs, for the link resolver and the contract test. */
-export { CANONICAL_REDIRECT_PAIRS };
+export { CANONICAL_REDIRECT_PAIRS, RETIRED_PAGE_PAIRS };

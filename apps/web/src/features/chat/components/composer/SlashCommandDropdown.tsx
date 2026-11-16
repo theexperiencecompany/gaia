@@ -1,11 +1,11 @@
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { InputGroup, TextField } from "@heroui/react";
 import { Cancel01Icon, SearchIcon } from "@icons";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   buildCategories,
   handleSlashCommandKey,
@@ -21,7 +21,6 @@ import { IntegrationsCard } from "@/features/integrations/components/Integration
 import { usePathname } from "@/i18n/navigation";
 import { track } from "@/lib/analytics";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
-
 import { CategoryTabs } from "./CategoryTabs";
 import { LockedCategorySection } from "./LockedCategorySection";
 import { LockedToolItem } from "./LockedToolItem";
@@ -114,7 +113,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
             {/* Content */}
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm text-foreground-600">
+                <span className="truncate text-sm text-zinc-300">
                   {formatToolName(match.tool.name)}
                 </span>
                 {selectedCategory === "all" && (
@@ -363,25 +362,30 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
             <div className="flex items-center gap-2 p-3">
               {/* SearchIcon Input */}
               <div className="flex-1">
-                <Input
-                  type="text"
-                  placeholder="Search tools..."
+                <TextField
+                  aria-label="Search tools"
                   value={searchQuery}
-                  radius="full"
-                  startContent={<SearchIcon size={16} />}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
+                  onChange={setSearchQuery}
+                >
+                  <InputGroup>
+                    <InputGroup.Prefix>
+                      <SearchIcon size={16} />
+                    </InputGroup.Prefix>
+                    <InputGroup.Input placeholder="Search tools..." />
+                  </InputGroup>
+                </TextField>
               </div>
               {/* Close Button */}
-              <Button
+              <GaiaButton
+                aria-label="Close"
+                shape="pill"
                 onPress={onClose}
                 isIconOnly
                 size="sm"
-                radius="full"
-                variant="flat"
+                variant="default-soft"
               >
                 <Cancel01Icon size={14} />
-              </Button>
+              </GaiaButton>
             </div>
           )}
 

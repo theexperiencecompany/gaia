@@ -49,7 +49,7 @@ export default function GeneratedImageSheet({
               <ScrollArea className="max-h-[50px]">
                 <div className="font-medium">Your Prompt:</div>
 
-                <div className="text-sm text-foreground-500">
+                <div className="text-sm text-zinc-400">
                   {imageData.prompt}
                 </div>
               </ScrollArea>
@@ -59,7 +59,7 @@ export default function GeneratedImageSheet({
             <div className="w-full">
               <ScrollArea className="h-[70px]">
                 <div className="font-medium">Improved Prompt:</div>
-                <div className="text-sm text-foreground-500">
+                <div className="text-sm text-zinc-400">
                   {imageData.improvedPrompt}
                 </div>
               </ScrollArea>

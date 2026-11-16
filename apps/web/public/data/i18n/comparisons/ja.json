@@ -3650,7 +3650,7 @@
     "tagline": "GoogleのAIアシスタント",
     "description": "GeminiはGoogle Workspaceと統合されていますが、リアクティブなままです。GAIAは、Google製品だけでなく、多数のツール全体で、メール、カレンダー、タスク、ワークフローをプロアクティブに管理します。",
     "metaTitle": "GeminiとGAIAを比較：先回りして動くAIアシスタントはどちらか",
-    "metaDescription": "GeminiはGoogleアプリ内で聞かれたときに答えます。GAIAは先に動き、Gmailの仕分けやタスク、ワークフローを実行。料金を比較。",
+    "metaDescription": "GeminiはGoogleアプリ内で聞かれたときに答えます。GAIAは先回りして動き、Gmailの仕分け、タスク管理、ワークフローの実行まで任せられます。料金を比較。",
     "keywords": [
       "GAIA vs Gemini",
       "Gemini代替",
@@ -5326,7 +5326,7 @@
     "tagline": "The system for product development",
     "description": "Linear is a fast, opinionated issue tracker built for engineering teams. GAIA integrates with Linear while also managing your email, calendar, and entire personal workflow as a proactive AI assistant.",
     "metaTitle": "Linearの代替：メールから自動でIssueを作成するGAIA",
-    "metaDescription": "Linearは手入力の開発Issueを管理します。GAIAはGmailからLinearのIssueを作成し、個人のタスクと予定も管理。違いを比較。",
+    "metaDescription": "Linearは手入力の開発Issueを管理します。GAIAはGmailからLinearのIssueを自動で作成し、個人のタスクと予定も管理。それぞれの得意分野を比較。",
     "keywords": [
       "GAIA vs Linear",
       "Linear alternative",
@@ -6525,7 +6525,7 @@
     "tagline": "Your calendar, connected to your Notion workspace",
     "description": "Notion Calendar (formerly Cron) is a polished, keyboard-driven calendar app that connects Google Calendar events to Notion pages and databases. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across your connected tools.",
     "metaTitle": "Notion Calendarの代替: 予定を動かすAI",
-    "metaDescription": "Notion Calendarは予定を表示するだけ。GAIAはメールを読み、予定とタスクを管理します。Linuxにも対応。機能と料金を比較。",
+    "metaDescription": "Notion Calendarは予定を表示するだけ。GAIAはメールを読み、予定を管理し、タスクまで実行します。Linuxにも対応。機能と料金を比較できます。",
     "keywords": [
       "GAIA vs Notion Calendar",
       "Notion Calendar alternative",
@@ -8393,7 +8393,7 @@
     "tagline": "Mac screen-and-audio memory, discontinued December 2025",
     "description": "Rewind recorded and transcribed everything you saw and heard on your Mac, until Meta (via the Limitless acquisition) shut screen and audio capture down on December 19, 2025. GAIA takes a fundamentally different approach — building structured, graph-based memory from real integrations across email, calendar, and tasks, then acting on that context proactively — and it is actively maintained.",
     "metaTitle": "Rewind AIの代替: Rewindはどうなった？",
-    "metaDescription": "RewindはMetaによるLimitless買収後に終了しました。GAIAはメールと予定の文脈を記憶して行動し、Mac・Windows・Linuxに対応。",
+    "metaDescription": "RewindはMetaによるLimitless買収後に終了しました。GAIAはメールと予定の文脈を記憶して行動し、Mac・Windows・Linuxに対応。代わりの選択肢を比較。",
     "keywords": [
       "GAIA vs Rewind",
       "Rewind AI alternative",
@@ -10500,7 +10500,7 @@
     "tagline": "All-in-one business suite covering CRM, email, projects, and more",
     "description": "Zoho One bundles 50+ business applications into a single subscription covering CRM, project management, email, HR, and finance. GAIA is a proactive AI assistant that augments the tools you already use — including Zoho apps — rather than requiring a full platform migration.",
     "metaTitle": "Zoho One vs GAIA：既存ツールで動くプロアクティブAI",
-    "metaDescription": "Zoho Oneは新しい環境の習得が必要です。GAIAはGmailやSlack、Notionなど既存ツールに先回りAIを足します。料金を比較。",
+    "metaDescription": "Zoho Oneは新しい環境の習得が必要です。GAIAはGmailやSlack、Notionなど既存ツールで、メールの仕分けやタスク管理を先回りで実行。料金を比較。",
     "keywords": [
       "Zoho alternative",
       "GAIA vs Zoho",
@@ -10839,7 +10839,7 @@
     "tagline": "OpenAIのクラウドの常時稼働エージェント",
     "description": "OpenAI DotsはChatGPTとSlackとTeamsで働く持続型エージェントです。GAIAは中身を見て自分で持てるオープンな助手です。",
     "metaTitle": "GAIAとOpenAI Dotsの比較。開いたAIと閉じたAI",
-    "metaDescription": "GAIAとOpenAI Dotsを比較。DotsはOpenAIのクラウドの持続型エージェントで、GAIAは開かれてセルフホストできる代わりです。",
+    "metaDescription": "GAIAとOpenAI Dotsを比較。DotsはOpenAIのクラウドで動く持続型エージェント、GAIAはソース公開でセルフホストもできる代替です。違いを確認できます。",
     "keywords": [
       "GAIAとOpenAI Dotsの比較",
       "OpenAI DotsとGAIA",

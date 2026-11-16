@@ -69,4 +69,20 @@ describe("relatedUseCases", () => {
       Math.min(RELATED_USE_CASES_LIMIT, EXPLORE.length - 1),
     );
   });
+
+  it("links every community workflow after the curated ones from at least two other pages", () => {
+    const community = [
+      { slug: "workflow-229fb7", categories: null },
+      { slug: "hackernews-frontpage", categories: null },
+    ];
+    const pool = [...EXPLORE, ...community];
+    const incoming = new Map(community.map((item) => [item.slug, 0]));
+    for (const page of pool) {
+      for (const linked of relatedUseCases(page, pool)) {
+        const count = incoming.get(linked.slug);
+        if (count !== undefined) incoming.set(linked.slug, count + 1);
+      }
+    }
+    expect([...incoming].filter(([, count]) => count < 2)).toEqual([]);
+  });
 });
