@@ -287,6 +287,9 @@ def test_drop_refuses_a_fix_the_baseline_does_not_list(tmp_path: Path) -> None:
         _row("/faq", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Fwallpapers%2Fcreation_of_adam.webp&w=1920&q=75"}]),
         _row("/brand", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fbrand%2Fgaia_wordmark_black.png&w=1920&q=75"}]),
         _row("/use-cases/rent-reminder", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Fwallpapers%2Fblueprint.webp&w=1920&q=75"}]),
+        _row("/ai-assistant-with-memory", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/images/wallpapers/creation_of_adam.webp"}]),
+        _row("/brand", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/brand/gaia_wordmark_black.png"}]),
+        _row("/use-cases/rent-reminder", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/images/wallpapers/blueprint.webp"}]),
         _row("/marketplace/gmail", "perf/dom-size", "dom-max-children"),
     ],
 )  # fmt: skip
@@ -310,6 +313,7 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         "/faq",
         "/brand",
         "/use-cases/rent-reminder",
+        "/ai-assistant-with-memory",
     ]
     proc = _ratchet(tmp_path, [row], "", pages=pages)
     assert proc.returncode == 0, proc.stdout
@@ -327,6 +331,8 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         _row("/marketplace/page/2", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Ficons%2Fgmail.webp&w=128&q=75"}]),
         _row("/blog", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fimages%2Fblog%2Fopen-source.webp&w=1920&q=75"}]),
         _row("/brand", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/_next/image?url=%2Fbrand%2Fgaia_logo.svg&w=1920&q=75"}]),
+        _row("/brand", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/brand/gaia_logo.svg"}]),
+        _row("/about", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/images/wallpapers/ethereal_alpine_valley.webp"}]),
         _row("/pricing/team", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/brand/gaia_logo.svg"}]),
         _row("/de/compare/asana", "content/word-count", "word-count"),
         _row("/de/compare/asana", "core/meta-title", "meta-title"),
@@ -358,6 +364,7 @@ def test_the_same_rules_still_count_a_real_finding(tmp_path: Path, row: Row) -> 
         "/brand",
         "/pricing/team",
         "/marketplace/gmail",
+        "/about",
     ]
     assert _ratchet(tmp_path, [row], "", pages=pages).returncode == 1
 

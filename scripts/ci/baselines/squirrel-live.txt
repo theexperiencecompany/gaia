@@ -196,6 +196,8 @@ score:Structured Data=93
 /automate/drive-notion	content/keyword-stuffing/keyword-stuffing	drive
 /automate/drive-notion	content/keyword-stuffing/keyword-stuffing	notion
 /automate/drive-slack	content/keyword-stuffing/keyword-stuffing	drive
+/automate/drive-slack	content/keyword-stuffing/keyword-stuffing	google
+/automate/drive-slack	content/keyword-stuffing/keyword-stuffing	slack
 /automate/drive-trello	content/keyword-stuffing/keyword-stuffing	card
 /automate/figma-notion	content/keyword-stuffing/keyword-stuffing	design
 /automate/figma-notion	content/keyword-stuffing/keyword-stuffing	notion
@@ -338,6 +340,8 @@ score:Structured Data=93
 /automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	meeting
 /automate/zoom-drive	content/keyword-stuffing/keyword-stuffing	drive
 /automate/zoom-figma	content/keyword-stuffing/keyword-stuffing	figma
+/automate/zoom-figma	content/keyword-stuffing/keyword-stuffing	zoom
+/automate/zoom-notion	content/keyword-stuffing/keyword-stuffing	notion
 /automate/zoom-teams	content/keyword-stuffing/keyword-stuffing	microsoft
 /best-ai-email-assistant	content/keyword-stuffing/keyword-stuffing	email
 /blog	a11y/duplicate-id-aria/duplicate-id-aria	"react-aria-*" (not found)
@@ -487,6 +491,7 @@ score:Structured Data=93
 /de/automate/hubspot-zoom	core/meta-description/meta-description
 /de/automate/jira-figma	core/meta-description/meta-description
 /de/automate/jira-hubspot	core/meta-description/meta-description
+/de/automate/jira-loom	content/keyword-stuffing/keyword-stuffing	ticket
 /de/automate/jira-todoist	core/meta-description/meta-description
 /de/automate/jira-zoom	core/meta-description/meta-description
 /de/automate/linear-figma	core/meta-description/meta-description
@@ -605,6 +610,7 @@ score:Structured Data=93
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	automatisch
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	meetings
 /de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	planen
+/de/automate/with/zoom	content/keyword-stuffing/keyword-stuffing	zoom
 /de/automate/with/zoom	content/word-count/word-count
 /de/automate/with/zoom	core/meta-description/meta-description
 /de/automate/zoom-clickup	content/keyword-stuffing/keyword-stuffing	aufgaben
@@ -2674,6 +2680,7 @@ score:Structured Data=93
 /settings/linked-accounts	links/internal-links/internal-links
 /settings/linked-accounts	links/weak-internal-links/weak-internal-links
 /settings/linked-accounts	perf/lazy-above-fold/lazy-above-fold	/cdn-cgi/image/width=64,quality=75,format=auto/images/logos/logo.webp
+/signup	content/word-count/word-count
 /signup	core/robots-meta/robots-meta
 /signup	images/offscreen-lazy/offscreen-images-not-lazy	logo.webp
 /signup	perf/cache-headers/cache-control
