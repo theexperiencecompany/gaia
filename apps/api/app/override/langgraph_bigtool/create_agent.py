@@ -873,7 +873,7 @@ def _after_tools(
             isinstance(result, ToolMessage)
             and result.tool_call_id in call_ids
             and result.status == "error"
-            for result in state.get("messages", [])
+            for result in state["messages"]
         )
         return "agent" if failed else exit_node
 

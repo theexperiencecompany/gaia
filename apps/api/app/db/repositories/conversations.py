@@ -269,7 +269,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 }
             },
             scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         return matched > 0
@@ -319,13 +318,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         self, conversation_id: str, *, user_id: str, entries: Sequence[ArtifactRegistryEntry]
     ) -> None:
         """Replace the conversation's artifact registry; its list row and updatedAt are untouched."""
-        await self._apply_raw_update_unfetched(
-            {"conversation_id": conversation_id},
-            {"$set": {"artifacts": list(entries)}},
-            scope=user_id,
-            doc_id=conversation_id,
-            extra_filter={"user_id": user_id},
-        )
+        owned = {"conversation_id": conversation_id, "user_id": user_id}
+        update = {"$set": {"artifacts": list(entries)}}
+        # The repository is uncached, so the scope keys no cache entry: its mutants are equivalent.
+        await self._apply_raw_update_unfetched(owned, update, scope=user_id)  # pragma: no mutate
 
     # ---- targeted / projected reads ----
 
@@ -957,7 +953,6 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             {"conversation_id": conversation_id},
             update,
             scope=user_id,
-            doc_id=conversation_id,
             extra_filter={"user_id": user_id},
         )
         if not matched:

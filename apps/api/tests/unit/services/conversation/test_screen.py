@@ -49,6 +49,7 @@ from app.services.conversation.screen import (
     work_timeline,
 )
 from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
+from app.utils.artifact_utils import FILE_LINKS
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.conversation_wire import (
     FailureReason,
@@ -1077,6 +1078,20 @@ def test_a_notice_names_a_sandbox_file_outside_artifacts_by_its_name_alone() -> 
     [noticed] = project_screen(CONVERSATION_ID, [logged(1, said)], TEST_FILE_LINKS)
     assert isinstance(noticed, NoticeItem)
     assert noticed.bubbles == ("Wrote notes.txt",)
+
+
+def test_a_notice_links_an_artifact_to_its_own_conversation() -> None:
+    said = Notice(id="n1", text="Wrote /workspace/sessions/c1/artifacts/a.csv", origin="reminder")
+    [noticed] = project_screen(CONVERSATION_ID, [logged(1, said)], TEST_FILE_LINKS)
+    assert isinstance(noticed, NoticeItem)
+    assert noticed.bubbles == (f"Wrote [a.csv]({_WEB})",)
+
+
+def test_a_readers_screen_links_files_to_its_own_conversation() -> None:
+    said = Notice(id="n1", text="Wrote /workspace/sessions/c1/artifacts/a.csv", origin="reminder")
+    [noticed] = ScreenTracker(CONVERSATION_ID, [logged(1, said)], {}).items
+    assert isinstance(noticed, NoticeItem)
+    assert noticed.bubbles == (f"Wrote [a.csv]({FILE_LINKS.conversation_page(CONVERSATION_ID)})",)
 
 
 def test_a_link_labelled_with_its_sandbox_path_is_labelled_by_the_files_name() -> None:

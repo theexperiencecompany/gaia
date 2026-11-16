@@ -968,3 +968,19 @@ def test_a_resumed_run_asking_about_an_approval_still_pending_reports_its_finish
     result = _accept(carried, 11, _asking("f2", "t2"))
     assert [item.task_id for item in result.state.finished_work] == ["t2"]
     assert result.effects == (KickStep(),)
+
+
+def test_work_carries_the_first_message_it_answers_from_start_to_finish() -> None:
+    begun = started("w", "t1", 2).model_copy(update={"cause_from": 2})
+    running, _ = fold([user("u1"), user("u2"), begun])
+    assert [item.cause_from for item in running.work] == [2]
+    done, _ = fold([user("u1"), user("u2"), begun, finished("f", "t1")])
+    assert [item.cause_from for item in done.finished_work] == [2]
+
+
+def test_an_approval_decided_for_other_work_never_counts_for_detached_work() -> None:
+    detached = started("w2", "t2", 1).model_copy(update={"detached": True})
+    state, _ = fold(
+        [user("u1"), started("w", "t1", 1), detached, asked("a", "t1", "ap1"), decided("d", "ap1")]
+    )
+    assert [item.decided_approvals for item in state.work if item.task_id == "t2"] == [()]

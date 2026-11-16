@@ -664,6 +664,29 @@ async def test_an_id_less_message_is_left_in_place_with_its_tool_pair() -> None:
     assert {r.id for r in removals} == {"a2"}
 
 
+async def test_messages_kept_verbatim_keep_every_tool_result_they_called_for() -> None:
+    mw = _middleware(trigger=("messages", 4), keep=("messages", 1), archive=None)
+    state: dict[str, object] = {
+        "messages": [
+            HumanMessage("first", id="h1"),
+            AIMessage(content="", id="a1", tool_calls=[{"name": "web", "args": {}, "id": "c1"}]),
+            ToolMessage(content="one", tool_call_id="c1", id="t1"),
+            AIMessage(content="", id="a2", tool_calls=[{"name": "web", "args": {}, "id": "c2"}]),
+            ToolMessage(content="two", tool_call_id="c2", id="t2"),
+            AIMessage("reply", id="a3"),
+            HumanMessage("latest", id="h2"),
+        ],
+        "verbatim_message_ids": ["a1", "a2"],
+    }
+
+    result = await mw.afold(cast("AgentState[object]", state), _config())
+
+    assert result is not None
+    summary, *removals = result["messages"]
+    assert summary.id == "h1"
+    assert {r.id for r in removals} == {"a3"}
+
+
 class _FailingModel(GenericFakeChatModel):
     def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> ChatResult:
         raise RuntimeError("400 context_length_exceeded")

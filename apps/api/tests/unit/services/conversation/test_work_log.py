@@ -1,5 +1,7 @@
 """work_log: background work's entries on the conversation log, and what each write hands back."""
 
+from collections.abc import Sequence
+
 import fakeredis.aioredis
 import pytest
 
@@ -15,6 +17,7 @@ from app.models.conversation_log_models import (
     WorkStarted,
 )
 from app.models.work_cancel_models import WorkCancelled
+from app.services.conversation import work_log
 from app.services.conversation.log import accept
 from app.services.conversation.runtime import install_runtime_ports
 from app.services.conversation.work_log import (
@@ -170,12 +173,53 @@ async def test_carried_work_with_no_cause_is_caused_by_everything_logged(rt: Run
 
 
 async def test_carried_work_answering_a_cause_names_it(rt: Runtime) -> None:
-    cause = (await accept(rt.ports, CONVERSATION, USER, user("u1"))).appended.logged
-    await accept(rt.ports, CONVERSATION, USER, user("u2"))
+    await accept(rt.ports, CONVERSATION, USER, user("u1"))
+    cause = (await accept(rt.ports, CONVERSATION, USER, user("u2"))).appended.logged
+    await accept(rt.ports, CONVERSATION, USER, user("u3"))
     assert await record_work_carried(CONVERSATION, USER, "t1", cause, detached=True, exclusive=True)
     assert (await rt.entries())[-1].entry == WorkStarted(
-        id="work:t1", task_id="t1", cause_through=1, answers=("u1",), detached=True, exclusive=True
+        id="work:t1",
+        task_id="t1",
+        cause_through=2,
+        cause_from=2,
+        answers=("u2",),
+        detached=True,
+        exclusive=True,
     )
+
+
+async def test_started_work_begins_where_the_steps_batch_begins(rt: Runtime) -> None:
+    step = await step_answering(rt, "u1", "u2")
+    step["batch_start"] = 2
+    assert await record_work_started(step, CONVERSATION, USER, "t1")
+    started = (await rt.entries())[-1].entry
+    assert isinstance(started, WorkStarted)
+    assert started.cause_from == 2
+
+
+async def test_finished_work_adds_the_cards_its_conversations_files_still_need(
+    rt: Runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shown: ToolDataEntry = {"tool_name": "weather", "data": {"city": "Pune"}}
+    missed: ToolDataEntry = {"tool_name": "artifact", "data": {"event": "remove", "path": "a.txt"}}
+
+    async def reconcile(
+        user_id: str, conversation_id: str, cards: Sequence[ToolDataEntry]
+    ) -> tuple[ToolDataEntry, ...]:
+        return (
+            (missed,)
+            if (user_id, conversation_id, [*cards]) == (USER, CONVERSATION, [shown])
+            else ()
+        )
+
+    monkeypatch.setattr(work_log, "reconcile_artifacts", reconcile)
+    await accept(rt.ports, CONVERSATION, USER, user("u1"))
+    assert await record_work_carried(CONVERSATION, USER, "t1")
+    report = WorkReport(text="done it", tool_data=[shown])
+    await record_work_finished(CONVERSATION, USER, "t1", WorkOutcome.DONE, report)
+    finished = (await rt.entries())[-1].entry
+    assert isinstance(finished, WorkFinished)
+    assert finished.tool_data == (shown, missed)
 
 
 async def test_carried_work_a_stop_refuses_is_reported_and_never_dispatches(

@@ -357,7 +357,7 @@ class TestDecisionSubmittedEvent:
         repo = _repo(_row())
         with (
             patch.object(ledger_decide, "approval_ledger_repository", new=repo),
-            patch.object(ledger_decide, "_deliver_verdict", new=AsyncMock()),
+            patch.object(ledger_decide, "_wake_agent", new=AsyncMock()),
             patch.object(ledger_decide, "capture") as capture,
         ):
             await decide_ledger("ap_abc", user_id=USER_ID, kind="deny", via="card")
@@ -1679,6 +1679,23 @@ class TestRedeemOutcomes:
         )
         seams.repo.claim_executing.assert_not_awaited()
 
+    async def test_another_worker_redeeming_mid_run_is_told_the_call_is_executing(
+        self, seams: LedgerSeams
+    ) -> None:
+        seams.rows["ap_1"] = _doc(outcome=ApprovalOutcome.APPROVED, action=ActionResult.EXECUTING)
+        # The log records the action only when it ends; the claim is on the ledger alone.
+        seams.decisions["ap_1"] = ApprovalDecided(
+            id="approval:ap_1:decided",
+            approval_id="ap_1",
+            outcome=ApprovalOutcome.APPROVED,
+            decider=ApprovalDecider.USER,
+        )
+
+        refused = await self._redeem(caller="slack_conv-1")
+
+        assert (refused.ok, refused.action) == (False, ActionResult.EXECUTING)
+        seams.repo.claim_executing.assert_not_awaited()
+
     @pytest.mark.parametrize(
         ("current", "state"),
         [(ActionResult.EXECUTING, ActionResult.EXECUTING), (None, ApprovalOutcome.APPROVED)],
@@ -1954,6 +1971,7 @@ class TestDecideLedgerAlwaysToolScope:
             patch(f"{MODULE}.approval_ledger_repository", new=repo),
             patch(f"{MODULE}._deliver_ticket", new=AsyncMock()),
             patch(f"{MODULE}._deliver_verdict", new=AsyncMock()),
+            patch(f"{MODULE}._wake_agent", new=AsyncMock()),
             patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
         ):
             await ledger_decide.decide_ledger_card(

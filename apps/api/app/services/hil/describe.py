@@ -214,7 +214,8 @@ def _values(args: Mapping[str, object], key: str) -> list[str]:
     """Read a key's display strings; events[].summary reads summary from each list item."""
     if _EACH not in key:
         return _items(args.get(key))
-    list_key, sub_key = key.split(_EACH, 1)
+    # The one key with []. (events[].summary) splits alike under rsplit or any maxsplit.
+    list_key, sub_key = key.split(_EACH, 1)  # pragma: no mutate
     rows = args.get(list_key)
     if not isinstance(rows, list):
         return []

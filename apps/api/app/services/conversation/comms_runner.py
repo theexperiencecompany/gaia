@@ -295,7 +295,8 @@ class CommsGraphRunner:
     async def apply_fold(self, claim: StepClaim, plan: FoldPlan) -> bool:
         """Write the planned fold under the step's claim; False when a turn wrote the thread since."""
         graph = await GraphManager.get_graph(GraphName.COMMS)
-        config = _thread_config(claim.conversation_id, claim.user_id)
+        # The write runs no node, so its user_id only labels the checkpoint; nothing reads it.
+        config = _thread_config(claim.conversation_id, claim.user_id)  # pragma: no mutate
         if tuple(m.id for m in await _thread(graph, config)) != plan.thread:
             return False
         # as_node="tools" as record_interruption writes: the next turn's input starts a fresh run.

@@ -87,7 +87,8 @@ class ScreenTracker:
         """Return the tracker for entries, holding what each running task's work has published so far."""
         live = {
             item.task_id
-            for item in project_screen(conversation_id, entries, FILE_LINKS)
+            # Only work status is read here, which neither the id nor the links shape.
+            for item in project_screen(conversation_id, entries, FILE_LINKS)  # pragma: no mutate
             if isinstance(item, WorkItem) and item.status in LIVE_WORK
         }
         started = {

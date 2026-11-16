@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
 import re
 from typing import Any, TypeVar, cast
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -32,7 +32,7 @@ from app.agents.tools.comms_turn_tools import react, stay_silent
 from app.agents.tools.core.registry import init_tool_registry
 from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
-from app.constants.conversation import ABSORBED_NOTE, LOG_SEQ
+from app.constants.conversation import ABSORBED_NOTE, LOG_SEQ, STILL_OPEN_NOTE_SUFFIX
 from app.constants.graphs import GraphName
 from app.core.lazy_loader import providers
 from app.models.agent_config import StepTurnRef
@@ -1059,6 +1059,84 @@ async def test_a_first_run_on_a_fresh_thread_says_the_stop_in_its_context(
             )
             events = await collect(run)
     assert events[-1] == Finished(outcome=Replied(text="after the stop"))
+
+
+async def test_a_run_continuing_its_attempt_says_the_note_last_and_is_not_a_new_agent_run(
+    conversation_id: str, posthog_events: list[dict[str, object]]
+) -> None:
+    model = gated("still on it")
+    async with comms_graph([], model=model) as graph:
+        with patched_graph(graph):
+            run = await runner(conversation_id).start(
+                claim(conversation_id),
+                batch(logged(1, user("u1"))),
+                (),
+                LEDGER,
+                "you still owe #1 an answer",
+            )
+            await collect(run)
+    note = model.prompts[0][-1]
+    assert isinstance(note, HumanMessage)
+    assert note.content == "you still owe #1 an answer"
+    assert note.id == f"log:u1{STILL_OPEN_NOTE_SUFFIX}"
+    assert [e["event"] for e in posthog_events if str(e["event"]).startswith("agent:")] == []
+
+
+async def test_a_fresh_thread_plans_no_fold(conversation_id: str) -> None:
+    async with comms_graph([], model=gated()) as graph:
+        with patched_graph(graph):
+            assert await runner(conversation_id).plan_fold(conversation_id, USER, Kept()) is None
+
+
+def _settled(seq: int) -> list[AnyMessage]:
+    return [
+        HumanMessage(content=f"question {seq}", id=f"log:u{seq}", additional_kwargs={LOG_SEQ: seq}),
+        AIMessage(content=f"answer {seq}", id=f"reply-{seq}"),
+    ]
+
+
+async def test_a_thread_past_its_budget_folds_its_oldest_turns_keeping_what_is_owed(
+    conversation_id: str,
+) -> None:
+    fold = WorkspaceArchivingSummarizationMiddleware(
+        model=GenericFakeChatModel(messages=iter([AIMessage(content="SUMMARY")])),
+        trigger=("messages", 6),
+        keep=("messages", 2),
+        archive="executor",
+    )
+    # The last turn ran out of steps, so the agent node, not the tools, wrote the thread last.
+    out_of_steps = runner(conversation_id, recursion_limit=2)._build_turn
+    folding = CommsGraphRunner(out_of_steps, history_fold=fold)
+    seeded = [m for seq in (1, 2, 3) for m in _settled(seq)]
+    archive = AsyncMock(return_value=("rel", "/workspace/archived.json"))
+    async with comms_graph([], model=gated("answer 4")) as graph:
+        config = {"configurable": {"thread_id": conversation_id}}
+        await graph.aupdate_state(config, {"messages": seeded}, as_node="tools")
+        with patched_graph(graph):
+            turn = batch(logged(4, user("u4")))
+            with pytest.raises(StepLimitReached):
+                await collect(await folding.start(claim(conversation_id), turn, (), LEDGER))
+        before = await thread_of(graph, conversation_id)
+        get_graph = AsyncMock(return_value=graph)
+        with (
+            patch.object(GraphManager, "get_graph", get_graph),
+            patch("app.agents.middleware.summarization.write_session_file", archive),
+        ):
+            plan = await folding.plan_fold(conversation_id, USER, Kept(owed=frozenset({"u2"})))
+            assert plan is not None
+            assert await folding.apply_fold(claim(conversation_id), plan)
+            assert not await folding.apply_fold(claim(conversation_id), plan)
+        left = await thread_of(graph, conversation_id)
+    assert get_graph.await_args_list == [call(GraphName.COMMS)] * 3
+    assert plan.thread == tuple(m.id for m in before)
+    assert archive.await_args.kwargs["user_id"] == USER
+    assert archive.await_args.kwargs["conversation_id"] == conversation_id
+    summary = left[0]
+    assert "SUMMARY" in str(summary.content)
+    assert summary.additional_kwargs["archive_path"] == "/workspace/archived.json"
+    said = {str(m.content) for m in left}
+    assert {"question 2", "answer 4"} <= said
+    assert not {"question 1", "answer 1", "question 3", "answer 3"} & said
 
 
 async def test_every_absorb_reaches_the_next_model_call_until_a_stop(
