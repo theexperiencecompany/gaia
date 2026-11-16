@@ -17,9 +17,10 @@ import {
   type ConversationSurface,
   type OutboundFile,
 } from "@gaia/shared/bots";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GaiaClient } from "../../../../../libs/shared/ts/src/bots/api";
 import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
+import type { FollowSurface } from "../../../../../libs/shared/ts/src/bots/conversation/follower.types";
 import { fetchPublicAsset } from "../../../../../libs/shared/ts/src/bots/utils/public-fetch";
 
 const API_BASE = "https://api.gaia.test";
@@ -62,10 +63,14 @@ class TestAdapter extends BaseBotAdapter {
     /* no outbound delivery under test */
   }
   sentFile: OutboundFile | null = null;
+  /** Errors the platform throws on the next uploads, one per attempt. */
+  uploadFailures: unknown[] = [];
   protected async sendOutboundFile(
     _destinationId: string,
     file: OutboundFile,
   ): Promise<void> {
+    const failure = this.uploadFailures.shift();
+    if (failure !== undefined) throw failure;
     this.sentFile = file;
   }
   override buildContext() {
@@ -83,6 +88,24 @@ class TestAdapter extends BaseBotAdapter {
   async fetch(attachment: OutboundAttachment): Promise<OutboundFile | null> {
     await this.deliverOutboundFile(DESTINATION_ID, attachment, false);
     return this.sentFile;
+  }
+
+  /** Sends a reply's session artifact the way a follow does, through the adapter's real follow surface. */
+  sendFollowFile(path: string): Promise<void> {
+    const surface = (
+      this as unknown as {
+        followSurface: (
+          surface: ConversationSurface,
+          conversationId: string,
+          platformUserId: string,
+          channelId: string | null,
+        ) => FollowSurface;
+      }
+    ).followSurface({} as ConversationSurface, "conv-1", DESTINATION_ID, null);
+    return surface.sendFile("conv-1", {
+      path,
+      content_type: "application/pdf",
+    });
   }
 }
 
@@ -199,4 +222,54 @@ describe("fetchOutboundArtifact URL routing", () => {
       expect(publicFetch.mock.calls[0][0]).toBe(url);
     },
   );
+});
+
+describe("a follow's file the API cannot serve", () => {
+  const unavailable = { response: { status: 503 } };
+  const rateLimited = Object.assign(new Error("Too Many Requests"), {
+    error_code: 429,
+    parameters: { retry_after: 1 },
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    axiosGet.mockReset();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("gives up fetching after a few tries, so the follow can link the file instead", async () => {
+    axiosGet.mockRejectedValue(unavailable);
+    const adapter = setup();
+
+    const sent = adapter.sendFollowFile("report.pdf");
+    const settled = sent.then(
+      () => "delivered",
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+    await expect(
+      Promise.race([settled, Promise.resolve("still retrying")]),
+    ).resolves.toMatchObject({ status: 503 });
+    expect(axiosGet).toHaveBeenCalledTimes(3);
+    expect(adapter.sentFile).toBeNull();
+  });
+
+  it("fetches once and keeps retrying the upload while the platform rate-limits it", async () => {
+    axiosGet.mockResolvedValue({
+      data: new Uint8Array(PNG).buffer,
+      headers: { "content-type": "application/pdf" },
+    });
+    const adapter = setup();
+    adapter.uploadFailures = [rateLimited, rateLimited, rateLimited];
+
+    const sent = adapter.sendFollowFile("report.pdf");
+    await vi.advanceTimersByTimeAsync(5_000);
+    await sent;
+
+    expect(axiosGet).toHaveBeenCalledTimes(1);
+    expect(adapter.sentFile?.filename).toBe("report.pdf");
+  });
 });

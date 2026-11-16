@@ -11,8 +11,8 @@ import {
 import { sanitizeErrorForLog } from "../utils/logger";
 import { wideLog } from "../utils/wide-events";
 
-export const RESUME_LIST_RETRY_BASE_MS = 1_000;
-export const RESUME_LIST_RETRY_MAX_MS = 30_000;
+const RESUME_LIST_RETRY_BASE_MS = 1_000;
+const RESUME_LIST_RETRY_MAX_MS = 30_000;
 
 /** Resolves after ms, or at once when signal aborts. */
 function wait(ms: number, signal: AbortSignal): Promise<void> {

@@ -82,21 +82,22 @@ function transientWaitMs(error: unknown, attempt: number): number | null {
 }
 
 /**
- * Runs one platform call, retrying it in place for as long as it fails transiently:
- * after the platform's retry_after on a rate limit, else a backoff capped at
+ * Runs one call, retrying it in place while it fails transiently: after the
+ * platform's retry_after on a rate limit, else a backoff capped at
  * RATE_LIMIT_MAX_WAIT_MS. A follow waiting here is paused and goes on from where it
- * was once the platform answers. Only a permanent failure (chat not found, bot
- * blocked, a rejected request) throws.
+ * was once the platform answers. A permanent failure (chat not found, bot blocked,
+ * a rejected request) throws, and so does the last failure after maxAttempts.
  */
 export async function retryTransientPlatformCall<T>(
   call: () => Promise<T>,
+  maxAttempts = Number.POSITIVE_INFINITY,
 ): Promise<T> {
   for (let attempt = 1; ; attempt += 1) {
     try {
       return await call();
     } catch (error) {
       const waitMs = transientWaitMs(error, attempt);
-      if (waitMs === null) throw error;
+      if (waitMs === null || attempt >= maxAttempts) throw error;
       wideLog.warning("platform_call_retrying", {
         ...sanitizeErrorForLog(error),
         attempt,

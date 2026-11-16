@@ -102,6 +102,9 @@ import { ArrivalOrder } from "./arrival-order";
 import { BotServer } from "./base-server";
 import { listActiveUntilAnswered } from "./resume-list";
 
+/** Tries at fetching an artifact from GAIA's API before the file counts as undeliverable. */
+const ARTIFACT_FETCH_MAX_ATTEMPTS = 3;
+
 /** An outbound artifact, fetched and within the platform's cap, ready to upload. */
 export interface OutboundFile {
   data: Buffer;
@@ -407,6 +410,8 @@ export abstract class BaseBotAdapter {
     destinationId: string,
     attachment: OutboundAttachment,
     isChannel: boolean,
+    runUpload: (upload: () => Promise<void>) => Promise<void> = (upload) =>
+      upload(),
   ): Promise<void> {
     const artifact = await this.fetchOutboundArtifact(
       destinationId,
@@ -414,15 +419,14 @@ export abstract class BaseBotAdapter {
       isChannel,
     );
     if (!artifact) return; // too large — fetchOutboundArtifact already replied
-    await this.sendOutboundFile(
-      destinationId,
-      {
-        data: artifact.data,
-        mime: attachment.content_type ?? artifact.contentType,
-        filename: attachment.filename,
-        caption: attachment.caption ?? undefined,
-      },
-      isChannel,
+    const file: OutboundFile = {
+      data: artifact.data,
+      mime: attachment.content_type ?? artifact.contentType,
+      filename: attachment.filename,
+      caption: attachment.caption ?? undefined,
+    };
+    await runUpload(() =>
+      this.sendOutboundFile(destinationId, file, isChannel),
     );
   }
 
@@ -445,14 +449,17 @@ export abstract class BaseBotAdapter {
     isChannel: boolean,
   ): Promise<{ data: Buffer; contentType: string } | null> {
     const ctx = { platform: this.platform, platformUserId: destinationId };
-    const artifact =
-      attachment.url != null
-        ? await this.gaia.downloadAttachmentUrl(attachment.url, ctx)
-        : await this.gaia.downloadArtifact(
-            attachment.conversation_id,
-            attachment.path,
-            ctx,
-          );
+    const artifact = await retryTransientPlatformCall(
+      () =>
+        attachment.url != null
+          ? this.gaia.downloadAttachmentUrl(attachment.url, ctx)
+          : this.gaia.downloadArtifact(
+              attachment.conversation_id,
+              attachment.path,
+              ctx,
+            ),
+      ARTIFACT_FETCH_MAX_ATTEMPTS,
+    );
     const limit = OUTBOUND_FILE_LIMITS[this.platform];
     if (artifact.data.length > limit) {
       // `platform` is already on every line's envelope — repeating it as a
@@ -862,17 +869,16 @@ export abstract class BaseBotAdapter {
           )
         : sendNotice,
       sendPhoto: (url: string, caption: string) =>
-        retryTransientPlatformCall(() =>
-          this.deliverOutboundFile(
-            platformUserId,
-            {
-              url,
-              filename: url.split("/").pop() ?? url,
-              content_type: null,
-              caption,
-            },
-            false,
-          ),
+        this.deliverOutboundFile(
+          platformUserId,
+          {
+            url,
+            filename: url.split("/").pop() ?? url,
+            content_type: null,
+            caption,
+          },
+          false,
+          retryTransientPlatformCall,
         ),
     };
     const { gaia } = this;
@@ -891,17 +897,16 @@ export abstract class BaseBotAdapter {
       },
       windowClosed: () => windowClosed(destination, isChannel),
       sendFile: (fileConversationId, file) =>
-        retryTransientPlatformCall(() =>
-          this.deliverOutboundFile(
-            destination,
-            {
-              conversation_id: fileConversationId,
-              path: file.path,
-              filename: file.path.split("/").pop() ?? file.path,
-              content_type: file.content_type,
-            },
-            isChannel,
-          ),
+        this.deliverOutboundFile(
+          destination,
+          {
+            conversation_id: fileConversationId,
+            path: file.path,
+            filename: file.path.split("/").pop() ?? file.path,
+            content_type: file.content_type,
+          },
+          isChannel,
+          retryTransientPlatformCall,
         ),
       sendNotice,
       react: async (platformMessageId, emoji, replaces) => {
