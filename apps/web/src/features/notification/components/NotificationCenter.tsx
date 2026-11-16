@@ -1,13 +1,11 @@
 "use client";
 
-import { Badge } from "@heroui/badge";
-import { Button } from "@heroui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Badge, Popover, Tabs } from "@heroui/react";
 import { NotificationIcon } from "@icons";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { track } from "@/lib/analytics";
@@ -24,7 +22,6 @@ export function NotificationCenter({
 }: NotificationCenterProps) {
   const [activeTab, setActiveTab] = useState<"unread" | "all">("unread");
   const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
-  const router = useRouter();
 
   const notificationOptions = useMemo(
     () => ({
@@ -74,53 +71,68 @@ export function NotificationCenter({
   return (
     <div className={`relative ${className}`}>
       <Popover>
-        <PopoverTrigger>
+        <Popover.Trigger>
           <div className="relative">
-            <Badge
-              color="primary"
-              shape="circle"
-              size="sm"
-              content={unreadCount > 99 ? "99+" : unreadCount}
-              isInvisible={unreadCount === 0}
-              // pointer-events-none lets the bell underneath capture hover/press;
-              // select-none keeps the count from being text-selected.
-              classNames={{ badge: "pointer-events-none select-none border-0" }}
-            >
+            {/* pointer-events-none on the count lets the bell underneath
+                capture hover/press; select-none keeps it from being
+                text-selected. */}
+            <Badge.Anchor>
               <SidebarHeaderButton
                 aria-label="Notifications"
                 tooltip="Notifications"
               >
-                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-primary" />
+                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
               </SidebarHeaderButton>
-            </Badge>
+              {unreadCount > 0 && (
+                <Badge
+                  color="accent"
+                  placement="top-right"
+                  size="sm"
+                  className="pointer-events-none border-0 select-none"
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </Badge>
+              )}
+            </Badge.Anchor>
           </div>
-        </PopoverTrigger>
+        </Popover.Trigger>
 
-        <PopoverContent className="mr-4 w-96 rounded-2xl border-1 border-zinc-700 bg-zinc-800 p-0 shadow-xl">
+        <Popover.Content
+          className={overlayVariants({
+            surface: "raised",
+            className: "mr-4 w-96 border-1 border-zinc-700 shadow-xl",
+          })}
+        >
           <Tabs
             selectedKey={activeTab}
             onSelectionChange={(key) => setActiveTab(key as "unread" | "all")}
-            variant="underlined"
-            fullWidth
+            variant="secondary"
+            className="w-full"
           >
-            <Tab
-              key="unread"
-              title={
-                <Badge
-                  color="primary"
-                  size="sm"
-                  placement="top-right"
-                  content={unreadCount > 99 ? "99+" : unreadCount}
-                  isInvisible={unreadCount === 0}
-                  classNames={{ badge: "select-none border-0" }}
-                >
-                  {/* right padding gives the corner-anchored count room so it
-                      sits after the label instead of overlapping it */}
+            <Tabs.List className="w-full">
+              <Tabs.Tab id="unread">
+                {/* right padding gives the corner-anchored count room so it
+                    sits after the label instead of overlapping it */}
+                <Badge.Anchor>
                   <span className="pr-5">Unread</span>
-                </Badge>
-              }
-            />
-            <Tab key="all" title="All" />
+                  {unreadCount > 0 && (
+                    <Badge
+                      color="accent"
+                      placement="top-right"
+                      size="sm"
+                      className="border-0 select-none"
+                    >
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </Badge>
+                  )}
+                </Badge.Anchor>
+                <Tabs.Indicator />
+              </Tabs.Tab>
+              <Tabs.Tab id="all">
+                All
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            </Tabs.List>
           </Tabs>
 
           {/* Notifications list */}
@@ -159,31 +171,21 @@ export function NotificationCenter({
           <NotificationConnectBanner variant="compact" />
 
           {/* Footer */}
-          <div className="flex w-full items-center justify-evenly gap-3 p-3">
-            {canMarkAllAsRead && (
-              <Button
+          {canMarkAllAsRead && (
+            <div className="flex w-full items-center justify-evenly gap-3 p-3">
+              <GaiaButton
+                variant="default-solid"
                 size="sm"
                 fullWidth
                 onPress={handleMarkAllAsRead}
-                isLoading={isMarkingAllRead}
+                isPending={isMarkingAllRead}
                 isDisabled={isMarkingAllRead}
               >
                 Mark all as read
-              </Button>
-            )}
-
-            <Button
-              fullWidth
-              size="sm"
-              variant={canMarkAllAsRead ? "bordered" : "solid"}
-              onPress={() => {
-                router.push("/notifications");
-              }}
-            >
-              View all notifications
-            </Button>
-          </div>
-        </PopoverContent>
+              </GaiaButton>
+            </div>
+          )}
+        </Popover.Content>
       </Popover>
     </div>
   );

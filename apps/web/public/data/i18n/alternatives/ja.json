@@ -498,7 +498,7 @@
     "name": "ChatGPT",
     "tagline": "OpenAIの対話型AI（ウェブ閲覧・コード実行対応）",
     "metaTitle": "ChatGPTの代替：メールや予定を自分から処理するAIアシスタント",
-    "metaDescription": "ChatGPTは指示を待ちます。GAIAはGmail・Googleカレンダー・Todoistと連携し、文脈を記憶して先に動きます。Plusと料金を比較。",
+    "metaDescription": "ChatGPTは指示を待ちます。GAIAはGmail・Googleカレンダー・Todoistと連携し、文脈を記憶して頼む前に動きます。記憶機能とPlusの料金を比較。",
     "keywords": [
       "chatgpt 代替",
       "最良の chatgpt 代替",
@@ -1027,7 +1027,7 @@
     "name": "Fantastical",
     "tagline": "Mac、iPhone、iPad向けの高機能カレンダーアプリ",
     "metaTitle": "Fantasticalの代替: Mac・Windows対応のAI予定管理",
-    "metaDescription": "FantasticalはApple専用の洗練されたカレンダー。GAIAはMac・Windows・Linuxで動き、メールから予定を作成。Premiumと比較。",
+    "metaDescription": "FantasticalはApple端末向けの洗練されたカレンダー。GAIAはMac・Windows・Linuxで動き、届いたメールから予定を自動で作成します。Premiumと比較。",
     "keywords": [
       "Fantastical 代替",
       "最高の Fantastical 代替",
@@ -1558,7 +1558,7 @@
     "name": "Things 3",
     "tagline": "Appleデバイス専用のプレミアムGTD系タスク管理アプリ",
     "metaTitle": "Things 3の代替: Windows・Linux対応AI",
-    "metaDescription": "Things 3はApple専用でAIもありません。GAIAはWindows・Linux・macOS・Webで動き、メールを自動でタスク化。料金を比較。",
+    "metaDescription": "Things 3はApple専用でAIもありません。GAIAはWindows・Linux・macOS・Webで動き、受信トレイのメールを自動でタスク化。料金と移行方法を確認。",
     "keywords": [
       "things 3 代替",
       "最良のthings 3代替",
@@ -2390,7 +2390,7 @@
     "name": "Bear",
     "tagline": "MacとiOS向けのエレガントなMarkdownノートアプリ",
     "metaTitle": "Bearアプリの代替: Windows・Linuxでも使える",
-    "metaDescription": "BearはApple専用で同期は有料。GAIAはブラウザ・Windows・Linuxで動き、メールから知識を自動で記録。メモの移行方法も確認。",
+    "metaDescription": "BearはApple専用で同期は有料。GAIAはブラウザ・Windows・Linuxで動き、メールから知識を自動で記録します。今あるメモの移行方法も確認できます。",
     "keywords": [
       "bearアプリ代替",
       "最強bearノート代替",
@@ -3350,7 +3350,7 @@
     "name": "OmniFocus",
     "tagline": "The gold standard GTD app for Apple — but Mac/iOS only, paid upfront, and no AI",
     "metaTitle": "OmniFocusの代替 {{CURRENT_YEAR}}: Windows対応AI",
-    "metaDescription": "OmniFocusはApple専用。GAIAはブラウザとWindows・Linux・macOSで動き、Gmailや会議からタスクを作成。移行手順を確認。",
+    "metaDescription": "OmniFocusはApple専用。GAIAはブラウザとWindows・Linux・macOSで動き、Gmailや会議メモからタスクを自動で作成。乗り換え手順を確認できます。",
     "keywords": [
       "omnifocus alternative",
       "omnifocus alternative android",

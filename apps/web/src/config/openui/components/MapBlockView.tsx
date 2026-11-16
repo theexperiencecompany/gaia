@@ -86,7 +86,7 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
 
   const title = props.label ? (
     <span className="flex items-center gap-2">
-      <Location01Icon className="size-4 text-primary" />
+      <Location01Icon className="size-4 text-accent" />
       {props.label}
     </span>
   ) : undefined;
@@ -117,7 +117,7 @@ export function MapBlockView(props: z.infer<typeof mapBlockSchema>) {
               latitude={mk.lat}
             >
               <MarkerContent>
-                <div className="relative h-3.5 w-3.5 rounded-full border-2 border-white bg-primary shadow-lg" />
+                <div className="relative h-3.5 w-3.5 rounded-full border-2 border-white bg-accent shadow-lg" />
                 {mk.label && (
                   <MarkerLabel className="text-zinc-100 bg-zinc-800/80 backdrop-blur-sm rounded px-1.5 py-0.5">
                     {mk.label}

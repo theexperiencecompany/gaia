@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownSection,
-  DropdownTrigger,
-} from "@heroui/dropdown";
+import { Dropdown, Header } from "@heroui/react";
 import {
   AiBrain01Icon,
   ArrowRight01Icon,
@@ -32,6 +26,8 @@ import {
   WhatsappIcon,
 } from "@icons";
 import type React from "react";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 import { NestedMenuTooltip } from "@/features/settings/components/NestedMenuTooltip";
 import { useNestedMenu } from "@/features/settings/hooks/useNestedMenu";
 
@@ -94,163 +90,158 @@ export default function DemoSettingsDropdown({
 
   return (
     <>
-      <Dropdown
-        placement="right-end"
-        className="dark rounded-2xl bg-secondary-bg text-foreground shadow-xl"
-        offset={21}
-        onOpenChange={onOpenChange}
-      >
-        <DropdownTrigger>{children}</DropdownTrigger>
-        <DropdownMenu aria-label="Settings" variant="faded">
-          <DropdownSection
-            showDivider
-            classNames={{ divider: "bg-zinc-800/60" }}
-          >
-            <DropdownItem
-              key="upgrade"
-              startContent={
+      <Dropdown onOpenChange={onOpenChange}>
+        <Dropdown.Trigger>{children}</Dropdown.Trigger>
+        <Dropdown.Popover
+          placement="right bottom"
+          offset={21}
+          className={overlayVariants({
+            surface: "secondary",
+            className: "dark shadow-xl",
+          })}
+        >
+          <Dropdown.Menu aria-label="Settings">
+            <Dropdown.Section>
+              <Dropdown.Item id="upgrade" textValue="Subscribe to GAIA Pro">
                 <CircleArrowUp02Icon className={ic} color="#00bbff" />
-              }
-              classNames={{ title: "text-primary font-medium" }}
-            >
-              Subscribe to GAIA Pro
-            </DropdownItem>
-          </DropdownSection>
+                <span className="text-accent font-medium">
+                  Subscribe to GAIA Pro
+                </span>
+              </Dropdown.Item>
+            </Dropdown.Section>
 
-          <DropdownSection
-            title="Settings"
-            showDivider
-            classNames={{ divider: "bg-zinc-800/60" }}
-          >
-            <DropdownItem
-              key="profile"
-              startContent={<SparklesIcon className={ic} />}
-              className="text-zinc-400 transition hover:text-white"
-            >
-              Profile Card
-            </DropdownItem>
-            <DropdownItem
-              key="account"
-              startContent={<UserCircleIcon className={ic} />}
-              className="text-zinc-400 transition hover:text-white"
-            >
-              Account
-            </DropdownItem>
-            <DropdownItem
-              key="usage"
-              startContent={<ChartLineData02Icon className={ic} />}
-              className="text-zinc-400 transition hover:text-white"
-            >
-              Usage
-            </DropdownItem>
-            <DropdownItem
-              key="preferences"
-              startContent={<MessageMultiple02Icon className={ic} />}
-              className="text-zinc-400 transition hover:text-white"
-            >
-              Preferences
-            </DropdownItem>
-            <DropdownItem
-              key="memory"
-              startContent={<AiBrain01Icon className={ic} />}
-              className="text-zinc-400 transition hover:text-white"
-            >
-              Memories
-            </DropdownItem>
-            <DropdownItem
-              key="shortcuts"
-              startContent={<KeyboardIcon className={ic} />}
-              className="text-zinc-400 transition hover:text-white"
-            >
-              Keyboard Shortcuts
-            </DropdownItem>
-          </DropdownSection>
+            <Dropdown.Section>
+              <Header>Settings</Header>
+              <Dropdown.Item
+                id="profile"
+                textValue="Profile Card"
+                className={toneVariants({ tone: "muted", interactive: true })}
+              >
+                <SparklesIcon className={ic} />
+                Profile Card
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="account"
+                textValue="Account"
+                className={toneVariants({ tone: "muted", interactive: true })}
+              >
+                <UserCircleIcon className={ic} />
+                Account
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="usage"
+                textValue="Usage"
+                className={toneVariants({ tone: "muted", interactive: true })}
+              >
+                <ChartLineData02Icon className={ic} />
+                Usage
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="preferences"
+                textValue="Preferences"
+                className={toneVariants({ tone: "muted", interactive: true })}
+              >
+                <MessageMultiple02Icon className={ic} />
+                Preferences
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="memory"
+                textValue="Memories"
+                className={toneVariants({ tone: "muted", interactive: true })}
+              >
+                <AiBrain01Icon className={ic} />
+                Memories
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="shortcuts"
+                textValue="Keyboard Shortcuts"
+                className={toneVariants({ tone: "muted", interactive: true })}
+              >
+                <KeyboardIcon className={ic} />
+                Keyboard Shortcuts
+              </Dropdown.Item>
+            </Dropdown.Section>
 
-          <DropdownSection
-            title="Community"
-            showDivider
-            classNames={{ divider: "bg-zinc-800/60" }}
-          >
-            <DropdownItem
-              key="twitter"
-              startContent={<TwitterIcon className={ic} />}
-              style={{ color: "#1da1f2" }}
-              className="transition"
-            >
-              Follow Us
-            </DropdownItem>
-            <DropdownItem
-              key="discord"
-              startContent={<DiscordIcon className={ic} />}
-              style={{ color: "#5865F2" }}
-              className="transition"
-            >
-              Join Discord
-            </DropdownItem>
-            <DropdownItem
-              key="whatsapp"
-              startContent={<WhatsappIcon className={ic} />}
-              style={{ color: "#25d366" }}
-              className="transition"
-            >
-              Join WhatsApp
-            </DropdownItem>
-          </DropdownSection>
+            <Dropdown.Section>
+              <Header>Community</Header>
+              <Dropdown.Item
+                id="twitter"
+                textValue="Follow Us"
+                style={{ color: "#1da1f2" }}
+                className="transition"
+              >
+                <TwitterIcon className={ic} />
+                Follow Us
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="discord"
+                textValue="Join Discord"
+                style={{ color: "#5865F2" }}
+                className="transition"
+              >
+                <DiscordIcon className={ic} />
+                Join Discord
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="whatsapp"
+                textValue="Join WhatsApp"
+                style={{ color: "#25d366" }}
+                className="transition"
+              >
+                <WhatsappIcon className={ic} />
+                Join WhatsApp
+              </Dropdown.Item>
+            </Dropdown.Section>
 
-          <DropdownSection>
-            <DropdownItem
-              key="download"
-              startContent={<CloudDownloadIcon className={ic} />}
-              endContent={
-                <ArrowRight01Icon className="h-4 w-4 text-zinc-500" />
-              }
-              className="text-zinc-400 transition hover:text-white"
-              onMouseEnter={downloadMenu.handleMouseEnter}
-              onMouseLeave={downloadMenu.handleMouseLeave}
-            >
-              Download for Desktop
-            </DropdownItem>
-            <DropdownItem
-              key="resources"
-              startContent={<BookOpen02Icon className={ic} />}
-              endContent={
-                <ArrowRight01Icon className="h-4 w-4 text-zinc-500" />
-              }
-              className="text-zinc-400 transition hover:text-white"
-              onMouseEnter={resourcesMenu.handleMouseEnter}
-              onMouseLeave={resourcesMenu.handleMouseLeave}
-            >
-              Resources
-            </DropdownItem>
-            <DropdownItem
-              key="support"
-              startContent={<CustomerService01Icon className={ic} />}
-              endContent={
-                <ArrowRight01Icon className="h-4 w-4 text-zinc-500" />
-              }
-              className="text-zinc-400 transition hover:text-white"
-              onMouseEnter={supportMenu.handleMouseEnter}
-              onMouseLeave={supportMenu.handleMouseLeave}
-            >
-              Support
-            </DropdownItem>
-            <DropdownItem
-              key="settings"
-              startContent={<Settings01Icon className={ic} />}
-              className="text-zinc-400 transition hover:text-white"
-            >
-              Settings
-            </DropdownItem>
-            <DropdownItem
-              key="logout"
-              startContent={<Logout02Icon className={ic} />}
-              color="danger"
-              className="text-danger"
-            >
-              Sign Out
-            </DropdownItem>
-          </DropdownSection>
-        </DropdownMenu>
+            <Dropdown.Section>
+              <Dropdown.Item
+                id="download"
+                textValue="Download for Desktop"
+                className={toneVariants({ tone: "muted", interactive: true })}
+                onMouseEnter={downloadMenu.handleMouseEnter}
+                onMouseLeave={downloadMenu.handleMouseLeave}
+              >
+                <CloudDownloadIcon className={ic} />
+                Download for Desktop
+                <ArrowRight01Icon className="ml-auto h-4 w-4 text-zinc-500" />
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="resources"
+                textValue="Resources"
+                className={toneVariants({ tone: "muted", interactive: true })}
+                onMouseEnter={resourcesMenu.handleMouseEnter}
+                onMouseLeave={resourcesMenu.handleMouseLeave}
+              >
+                <BookOpen02Icon className={ic} />
+                Resources
+                <ArrowRight01Icon className="ml-auto h-4 w-4 text-zinc-500" />
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="support"
+                textValue="Support"
+                className={toneVariants({ tone: "muted", interactive: true })}
+                onMouseEnter={supportMenu.handleMouseEnter}
+                onMouseLeave={supportMenu.handleMouseLeave}
+              >
+                <CustomerService01Icon className={ic} />
+                Support
+                <ArrowRight01Icon className="ml-auto h-4 w-4 text-zinc-500" />
+              </Dropdown.Item>
+              <Dropdown.Item
+                id="settings"
+                textValue="Settings"
+                className={toneVariants({ tone: "muted", interactive: true })}
+              >
+                <Settings01Icon className={ic} />
+                Settings
+              </Dropdown.Item>
+              <Dropdown.Item id="logout" textValue="Sign Out" variant="danger">
+                <Logout02Icon className={ic} />
+                Sign Out
+              </Dropdown.Item>
+            </Dropdown.Section>
+          </Dropdown.Menu>
+        </Dropdown.Popover>
       </Dropdown>
 
       <NestedMenuTooltip

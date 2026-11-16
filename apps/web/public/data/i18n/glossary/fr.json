@@ -2860,7 +2860,7 @@
         "answer": "Le service GAIA hébergé n’utilise pas vos données personnelles pour entraîner des modèles. Lorsque vous auto-hébergez, vos données sont entièrement sous votre contrôle et n’atteignent jamais l’infrastructure de GAIA. Le fournisseur LLM que vous connectez (OpenAI, Anthropic, etc.) traite les requêtes selon ses propres politiques de confidentialité, ce qui peut être géré via des modèles auto-hébergés."
       },
       {
-        "question": "Est-il difficile d’auto-héberger GAIA ?",
+        "question": "Est-il difficile d’auto-héberger GAIA ?",
         "answer": "L’auto-hébergement de GAIA a été conçu pour être accessible grâce à Docker Compose. Un développeur peut généralement terminer l’installation en moins d’une heure. La documentation couvre toutes les options de configuration. Pour les utilisateurs non techniques, GAIA offre un service hébergé qui procure des contrôles de confidentialité similaires, sans la complexité de l’auto-hébergement."
       }
     ]

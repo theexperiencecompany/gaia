@@ -1,15 +1,14 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { ButtonGroup, Tooltip } from "@heroui/react";
 import {
   GlobalIcon,
   LinkSquareIcon,
   RemoveCircleIcon,
   Share08Icon,
 } from "@icons";
-import Link from "next/link";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import type { Integration } from "@/features/integrations/types";
@@ -48,104 +47,96 @@ export function ConnectedActions({
   const { isOwnIntegration } = useIntegrationOwnership(integration);
 
   return (
-    <ButtonGroup variant="flat" className="w-full" fullWidth>
+    <ButtonGroup variant="tertiary" className="w-full" fullWidth>
       {disconnect && (
-        <Tooltip content={`${disconnect.label} this integration`}>
-          <Button
+        <Tooltip>
+          <GaiaButton
             isIconOnly={useIconOnly}
             className="w-full"
-            color="danger"
             onPress={disconnect.onDisconnect}
-            isLoading={disconnect.isPending}
+            isPending={disconnect.isPending}
             isDisabled={disconnect.isPending}
             aria-label={disconnect.label}
-            startContent={disconnect.isPending ? undefined : disconnect.icon}
+            variant="danger"
           >
+            {!disconnect.isPending && disconnect.icon}
             {!useIconOnly && disconnect.label}
-          </Button>
+          </GaiaButton>
+          <Tooltip.Content>{`${disconnect.label} this integration`}</Tooltip.Content>
         </Tooltip>
       )}
 
       {integration.isPublic && (
-        <Tooltip content="View on Marketplace">
-          <Button
-            className="w-full"
+        <Tooltip>
+          <LinkButton
+            variant="primary"
             isIconOnly={useIconOnly}
-            as={Link}
+            className="w-full"
             href={marketplacePath(integration.slug)}
-            color="primary"
             aria-label="View on Marketplace"
-            startContent={
-              <LinkSquareIcon
-                width={18}
-                height={18}
-                className="outline-none!"
-              />
-            }
           >
+            <LinkSquareIcon width={18} height={18} className="outline-none!" />
             {!useIconOnly && "View"}
-          </Button>
+          </LinkButton>
+          <Tooltip.Content>View on Marketplace</Tooltip.Content>
         </Tooltip>
       )}
 
       {isOwnIntegration && integration.isPublic && publish && (
-        <Tooltip content="Unpublish from Marketplace">
-          <Button
+        <Tooltip>
+          <GaiaButton
             isIconOnly={useIconOnly}
-            color="warning"
             className="w-full"
             onPress={publish.onPublish}
-            isLoading={publish.isPending}
+            isPending={publish.isPending}
             isDisabled={publish.isPending}
             aria-label="Unpublish"
-            startContent={
-              !publish.isPending ? (
-                <RemoveCircleIcon
-                  width={18}
-                  height={18}
-                  className="outline-none!"
-                />
-              ) : undefined
-            }
+            variant="primary"
           >
+            {!publish.isPending && (
+              <RemoveCircleIcon
+                width={18}
+                height={18}
+                className="outline-none!"
+              />
+            )}
             {!useIconOnly && "Unpublish"}
-          </Button>
+          </GaiaButton>
+          <Tooltip.Content>Unpublish from Marketplace</Tooltip.Content>
         </Tooltip>
       )}
 
       {isOwnIntegration && !integration.isPublic && publish && (
-        <Tooltip content="Publish to Community Marketplace">
-          <Button
+        <Tooltip>
+          <GaiaButton
             isIconOnly={useIconOnly}
             className="w-full"
-            color="primary"
             onPress={publish.onPublish}
-            isLoading={publish.isPending}
+            isPending={publish.isPending}
             isDisabled={publish.isPending}
             aria-label="Publish"
-            startContent={
-              !publish.isPending ? (
-                <GlobalIcon width={18} height={18} />
-              ) : undefined
-            }
+            variant="primary"
           >
+            {!publish.isPending && <GlobalIcon width={18} height={18} />}
             {!useIconOnly && "Publish"}
-          </Button>
+          </GaiaButton>
+          <Tooltip.Content>Publish to Community Marketplace</Tooltip.Content>
         </Tooltip>
       )}
 
       {integration.isPublic && (
-        <Tooltip content="Copy share link to clipboard">
-          <Button
+        <Tooltip>
+          <GaiaButton
+            variant="default-solid"
             isIconOnly={useIconOnly}
             className="w-full"
-            color="default"
             onPress={onShare}
             aria-label="Share"
-            startContent={<Share08Icon width={18} height={18} />}
           >
+            <Share08Icon width={18} height={18} />
             {!useIconOnly && "Share"}
-          </Button>
+          </GaiaButton>
+          <Tooltip.Content>Copy share link to clipboard</Tooltip.Content>
         </Tooltip>
       )}
     </ButtonGroup>

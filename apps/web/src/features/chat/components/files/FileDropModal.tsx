@@ -26,7 +26,7 @@ export function FileDropModal({
           transition={{ duration: 0.2 }}
         >
           <m.div
-            className="w-full max-w-md rounded-2xl border-2 border-dashed border-primary/70 bg-linear-to-b from-[#092a36] to-black p-8 shadow-2xl"
+            className="w-full max-w-md rounded-2xl border-2 border-dashed border-accent/70 bg-linear-to-b from-[#092a36] to-black p-8 shadow-2xl"
             initial={{ scale: 0.9, y: 10 }}
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.9, y: 10 }}
@@ -34,7 +34,7 @@ export function FileDropModal({
           >
             <div className="flex flex-col items-center text-center">
               <m.div
-                className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary"
+                className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-accent/10 text-accent"
                 animate={{
                   y: [0, -10, 0],
                   scale: [1, 1.05, 1],
@@ -52,11 +52,9 @@ export function FileDropModal({
                 Drop files here
               </h3>
 
-              <p className="text-muted-foreground mb-4">
-                Release to upload your files
-              </p>
+              <p className="text-zinc-400 mb-4">Release to upload your files</p>
 
-              <div className="text-muted-foreground mt-2 flex flex-wrap items-center justify-center gap-2 text-xs">
+              <div className="text-zinc-400 mt-2 flex flex-wrap items-center justify-center gap-2 text-xs">
                 <div className="flex items-center rounded-full bg-zinc-800 px-3 py-1">
                   <FileUploadIcon size={12} className="mr-1" />
                   <span>Max {maxFileSize}MB</span>

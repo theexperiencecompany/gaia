@@ -8,6 +8,9 @@ import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
 import type { CommunityWorkflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 
+// The community grid's first row (lg:grid-cols-4): the server renders it in the first viewport.
+const COMMUNITY_FIRST_ROW = 4;
+
 interface UseCasesPageClientProps {
   communityWorkflows: CommunityWorkflow[];
 }
@@ -30,7 +33,7 @@ export default function UseCasesPageClient({
         </div>
         <UseCaseSection
           dummySectionRef={contentRef}
-          options={{ useBlurEffect: true }}
+          options={{ useBlurEffect: true, opensInView: true }}
         />
         <div id="community-section" className="mt-22 space-y-6">
           <div className="mb-14 text-center">
@@ -43,19 +46,20 @@ export default function UseCasesPageClient({
           </div>
           {communityWorkflows.length === 0 ? (
             <div className="flex h-48 items-center justify-center">
-              <div className="text-foreground-500">
+              <div className="text-zinc-400">
                 No community workflows available yet
               </div>
             </div>
           ) : (
             <div className="mx-auto grid max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
-              {communityWorkflows.map((workflow) => (
+              {communityWorkflows.map((workflow, index) => (
                 <UnifiedWorkflowCard
                   key={workflow.id}
                   communityWorkflow={workflow}
                   useBlurEffect={true}
                   variant="community"
                   showCreator={true}
+                  imageLoading={index < COMMUNITY_FIRST_ROW ? "eager" : "lazy"}
                   href={
                     workflow.slug ? `/use-cases/${workflow.slug}` : undefined
                   }
