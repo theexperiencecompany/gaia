@@ -57,7 +57,11 @@ export default function EventTriggersDemo() {
         >
           {/* Source icon */}
           <div className="shrink-0">
-            {getToolCategoryIcon(trigger.source, { width: 20, height: 20 })}
+            {getToolCategoryIcon(trigger.source, {
+              width: 20,
+              height: 20,
+              loading: index === 0 ? "eager" : undefined,
+            })}
           </div>
 
           {/* Event + action */}

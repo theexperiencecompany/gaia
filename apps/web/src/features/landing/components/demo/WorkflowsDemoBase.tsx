@@ -19,6 +19,8 @@ interface WorkflowsDemoBaseProps {
   schedule: string;
   steps: DemoWorkflowStep[];
   fallbackIcon?: (isDone: boolean, isRunning: boolean) => ReactNode;
+  /** The first step's icon loads eagerly where the demo sits in the first viewport. */
+  eagerFirstIcon?: boolean;
 }
 
 function defaultFallbackIcon(isDone: boolean, isRunning: boolean) {
@@ -34,6 +36,7 @@ export function WorkflowsDemoBase({
   schedule,
   steps,
   fallbackIcon = defaultFallbackIcon,
+  eagerFirstIcon = false,
 }: WorkflowsDemoBaseProps) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, amount: 0.3 });
@@ -122,6 +125,8 @@ export function WorkflowsDemoBase({
                         width: 22,
                         height: 22,
                         showBackground: false,
+                        loading:
+                          eagerFirstIcon && i === 0 ? "eager" : undefined,
                       }) ?? fallbackIcon(isDone, isRunning)}
                     </div>
                     <span
