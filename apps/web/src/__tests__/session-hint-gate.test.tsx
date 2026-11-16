@@ -197,4 +197,23 @@ describe("app pages", () => {
 
     await waitFor(() => expect(fetchUserInfo).toHaveBeenCalledTimes(1));
   });
+
+  it("sign out again after a later session ends, not only the first", async () => {
+    fetchUserInfo.mockRejectedValue(new ApiError("expired", 401));
+    const { result, queryClient } = renderPage({
+      gated: false,
+      cachedUser: SIGNED_IN_USER,
+    });
+    await waitFor(() => expect(result.current.userId).toBe(""));
+
+    fetchUserInfo.mockResolvedValue(SIGNED_IN_USER);
+    await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+    await waitFor(() =>
+      expect(result.current.userId).toBe(SIGNED_IN_USER.user_id),
+    );
+
+    fetchUserInfo.mockRejectedValue(new ApiError("expired", 401));
+    await queryClient.refetchQueries({ queryKey: CURRENT_USER_QUERY_KEY });
+    await waitFor(() => expect(result.current.userId).toBe(""));
+  });
 });

@@ -46,6 +46,8 @@ const useFetchUser = () => {
 
   useEffect(() => {
     if (!data) return;
+    // A user loaded means a live session again, so its later 401 must clear it too.
+    hasClearedOnUnauthorized.current = false;
 
     // Identify the persisted client session with the stable backend user ID.
     if (data.user_id && !hasIdentified.current) {
