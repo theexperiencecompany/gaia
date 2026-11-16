@@ -4,7 +4,11 @@
  * typed face of it and the only place URLs are assembled from the handles.
  */
 import identity from "../../../bot-identity.json";
-import { telegramBotUrl } from "../utils/botLinks";
+import {
+  discordInviteUrl,
+  slackInstallUrl,
+  telegramBotUrl,
+} from "../utils/botLinks";
 
 /** E.164 without the plus, the form wa.me links take. */
 export const WHATSAPP_BOT_NUMBER = identity.whatsappNumber;
@@ -27,4 +31,6 @@ export const BOT_URLS = {
   whatsapp: `https://wa.me/${WHATSAPP_BOT_NUMBER}`,
   telegram: telegramBotUrl(TELEGRAM_BOT_USERNAME),
   discord: DISCORD_COMMUNITY_URL,
+  discordInstall: discordInviteUrl(DISCORD_CLIENT_ID),
+  slackInstall: slackInstallUrl(SLACK_CLIENT_ID),
 } as const;

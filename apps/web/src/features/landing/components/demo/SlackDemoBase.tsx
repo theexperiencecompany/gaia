@@ -14,6 +14,7 @@ interface SlackDemoBaseProps {
   phase2Question: string;
   phase3Time: string;
   phase3Response: ReactNode;
+  eagerFirstLogo?: boolean;
 }
 
 export function SlackDemoBase({
@@ -24,6 +25,7 @@ export function SlackDemoBase({
   phase2Question,
   phase3Time,
   phase3Response,
+  eagerFirstLogo = false,
 }: SlackDemoBaseProps) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, amount: 0.3 });
@@ -67,6 +69,7 @@ export function SlackDemoBase({
                 width={36}
                 height={36}
                 alt="GAIA"
+                loading={eagerFirstLogo ? "eager" : undefined}
                 className="h-full w-full object-cover"
               />
             </div>

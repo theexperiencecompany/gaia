@@ -79,7 +79,13 @@ def _load_ci_analytics() -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     # dataclasses resolve their annotations through sys.modules[cls.__module__].
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    # Run as a script, scripts/ci is on sys.path for its `from lib import ...`; only for the load.
+    ci_dir = str(CI_ANALYTICS.parent)
+    sys.path.insert(0, ci_dir)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.remove(ci_dir)
     return module
 
 
