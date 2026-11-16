@@ -36,7 +36,10 @@ from app.agents.llm.client import _sim_llm
 from app.agents.llm.lane import ModelLane
 from app.agents.middleware.executor import BeforeModelResult
 from app.agents.tools import run_record
+from app.agents.tools.comms_turn_tools import turn_ending
 from app.agents.tools.run_record import read_run_record
+from app.constants.chat import ConversationSource
+from app.constants.comms import REACT_TOOL_NAME
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.llm import (
     COMPLETION_NUDGE_MESSAGE,
@@ -58,6 +61,7 @@ from app.override.langgraph_bigtool.agent_config import (
 from app.override.langgraph_bigtool.create_agent import (
     REJECT_UNBOUND_TOOLS_NODE,
     _after_model_result,
+    _after_tools,
     _agent_sticky_key,
     _AgentDeps,
     _bind_session_id,
@@ -2716,3 +2720,34 @@ class TestTheFallbackTheModelNodeHandsTheClient:
 
         assert invoked.await_args.kwargs["fallback"] is None
         assert invoked.await_args.kwargs["options"].fallback_config is None
+
+
+class TestAfterTools:
+    """A turn ends after the tools only when its turn-ending calls all went through."""
+
+    @staticmethod
+    def route(state: dict[str, list[AnyMessage]], config: RunnableConfig) -> str:
+        # Built per call: a route made at import would outlive the mutant under test.
+        return _after_tools(turn_ending, "end_turn")(state, config)
+
+    @staticmethod
+    def _reacted(emoji: str, status: str) -> dict[str, list[AnyMessage]]:
+        call = ToolCall(name=REACT_TOOL_NAME, args={"emoji": emoji, "message_id": 1}, id="r1")
+        return {
+            "messages": [
+                AIMessage(content="", tool_calls=[call]),
+                ToolMessage(content="done", tool_call_id="r1", status=status),
+            ]
+        }
+
+    def test_a_turn_ending_call_that_went_through_ends_the_turn(self) -> None:
+        assert self.route(self._reacted("👍", "success"), {}) == "end_turn"
+
+    def test_a_turn_ending_call_that_failed_goes_back_to_the_model(self) -> None:
+        assert self.route(self._reacted("👍", "error"), {}) == "agent"
+
+    def test_a_reaction_the_runs_surface_refuses_goes_back_to_the_model(self) -> None:
+        telegram: RunnableConfig = {
+            "configurable": {"conversation_source": ConversationSource.TELEGRAM.value}
+        }
+        assert self.route(self._reacted("🔎", "success"), telegram) == "agent"

@@ -59,7 +59,7 @@ def _say_day(day: date, today: date) -> str:
     offset = (day - today).days
     if offset in _RELATIVE_DAYS:
         return _RELATIVE_DAYS[offset]
-    if 1 < offset < _DAYS_NAMED_BY_WEEKDAY:
+    if 1 < offset < _DAYS_NAMED_BY_WEEKDAY:  # pragma: no mutate — 1 <= is equal: 1 is tomorrow
         return day.strftime("%a")
     if day.year == today.year:
         return f"{day.strftime('%a')} {day.day} {day.strftime('%b')}"

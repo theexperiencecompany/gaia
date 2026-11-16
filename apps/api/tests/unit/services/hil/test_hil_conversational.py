@@ -115,7 +115,7 @@ class TestSingleApproval:
             outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes send it")
 
         assert outcome is not None
-        assert (outcome.action, outcome.decided) == ("approve", (row,))
+        assert (outcome.action, outcome.decided, outcome.amended) == ("approve", (row,), ())
         assert _decided(decide) == [("ap_1", "approve", None)]
         assert decide.await_args.kwargs["via"] == "chat"
 
@@ -125,7 +125,7 @@ class TestSingleApproval:
             outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, reply)
 
         assert outcome is not None
-        assert outcome.action == "deny"
+        assert (outcome.action, outcome.amended) == ("deny", ())
         assert _decided(decide) == [("ap_1", "deny", reply)]
 
     async def test_a_yes_with_a_change_approves_it_and_carries_the_change(
@@ -133,11 +133,12 @@ class TestSingleApproval:
     ) -> None:
         """Regression for conversation a0a0b079: "go ahead but make it high priority" was denied."""
         reply = "go ahead but make it high priority"
-        with _pending(_row("ap_1", "Create todo")), serve_jev(jev_reply_body(("amend", 0.73))):
+        row = _row("ap_1", "Create todo")
+        with _pending(row), serve_jev(jev_reply_body(("amend", 0.73))):
             outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, reply)
 
         assert outcome is not None
-        assert outcome.action == "approve"
+        assert (outcome.action, outcome.amended) == ("approve", (row,))
         assert _decided(decide) == [("ap_1", "approve", reply)]
 
     async def test_an_approve_under_the_line_decides_nothing(self, decide: AsyncMock) -> None:
@@ -184,8 +185,23 @@ class TestBatch:
             )
 
         assert outcome is not None
-        assert (outcome.action, outcome.decided) == ("approve", (older, newer))
+        assert (outcome.action, outcome.decided, outcome.amended) == ("approve", (older, newer), ())
         assert _decided(decide) == [("ap_1", "approve", None), ("ap_2", "deny", "yes to A, not B")]
+
+    async def test_a_yes_with_a_change_to_one_item_approves_it_carrying_the_change(
+        self, decide: AsyncMock
+    ) -> None:
+        reply = "send A, and B but to the team list"
+        older, newer = _row("ap_1", "Send A", age_minutes=9), _row("ap_2", "Send B")
+        with (
+            _pending(older, newer),
+            serve_jev(jev_reply_body(("approve", 0.99), ("amend", 0.73))),
+        ):
+            outcome = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, reply)
+
+        assert outcome is not None
+        assert (outcome.action, outcome.amended) == ("approve", (newer,))
+        assert _decided(decide) == [("ap_1", "approve", None), ("ap_2", "approve", reply)]
 
     async def test_declining_every_one_is_a_deny_of_them_all(self, decide: AsyncMock) -> None:
         older, newer = _row("ap_1", "Send A", age_minutes=9), _row("ap_2", "Send B")

@@ -718,6 +718,26 @@ class TestLedgerAutoMode:
         assert isinstance(kwargs["judge"], JevIntentJudge)
         assert kwargs["user_messages"] == ["send it to b@x"]
 
+    # 20:00 UTC on the 14th is already the 15th in Kolkata.
+    @time_machine.travel(datetime(2026, 11, 14, 20, 0, tzinfo=UTC), tick=False)
+    async def test_the_card_and_the_judge_name_a_date_on_the_users_own_calendar(
+        self, gate_seams: GateSeams
+    ) -> None:
+        todo = gated_request(
+            name="create_todo",
+            args={"title": "Pay rent", "due_date": "2026-11-15"},
+            user_timezone="Asia/Kolkata",
+        )
+
+        await gate.decide_tool_call(todo)
+        gate_seams.policy.return_value = "auto"
+        await gate.decide_tool_call(todo)
+
+        asked = gate_seams.requested.await_args.args[2].description.headline
+        judged = gate_seams.judge.await_args.kwargs["call"].summary
+        assert asked.endswith("for today")
+        assert judged.endswith("for today")
+
     async def test_the_judge_is_told_which_account_the_call_acts_as(
         self, gate_seams: GateSeams
     ) -> None:
