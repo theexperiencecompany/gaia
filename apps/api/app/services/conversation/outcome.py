@@ -18,7 +18,11 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.services.conversation.event_stream import latest_frame_id, read_frames
+from app.services.conversation.event_stream import (
+    UnreadableFrames,
+    latest_frame_id,
+    read_frames,
+)
 from app.services.conversation.ports import ConversationLog
 from shared.py.conversation_wire import ReplyOutcome
 
@@ -103,7 +107,10 @@ async def await_outcome(
 async def _until_the_log_moves(conversation_id: str, cursor: str) -> str:
     """Return the cursor after the next entry or state frame, or after a block that saw none."""
     while True:
-        frames = await read_frames(conversation_id, cursor)
+        try:
+            frames = await read_frames(conversation_id, cursor)
+        except UnreadableFrames as unreadable:
+            return unreadable.through  # it may be the entry waited on; the caller rereads the log
         if not frames:
             return cursor
         cursor = next((f.stream_id for f in reversed(frames) if f.stream_id is not None), cursor)

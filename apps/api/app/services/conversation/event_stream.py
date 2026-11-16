@@ -9,7 +9,7 @@ import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from app.constants.chat import CONVERSATION_READ_LIMIT
 from app.constants.conversation import (
@@ -41,6 +41,7 @@ from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation.ports import ConversationLog
 from app.services.conversation.screen_patches import ScreenTracker
 from shared.py.conversation_wire import ReplyDeltaFrame
+from shared.py.wide_events import log as wide_log
 
 _FRAME: TypeAdapter[OutputFrame] = TypeAdapter(OutputFrame)
 
@@ -116,20 +117,47 @@ class RedisStreamFrames:
         await pipeline.execute()
 
 
-def _frame(fields: object) -> OutputFrame:
-    return _FRAME.validate_json(_StreamFields.model_validate(fields).frame)
+class UnreadableFrames(Exception):
+    """The stream holds frames another deploy wrote in a shape this code cannot read; through is the newest."""
+
+    def __init__(self, conversation_id: str, through: str) -> None:
+        super().__init__(f"unreadable frames in {conversation_id}'s stream through {through}")
+        self.through = through
+
+
+def _readable(
+    conversation_id: str, entries: Sequence[tuple[str, object]]
+) -> tuple[list[StreamedFrame], int]:
+    """Return the frames this code can read, and how many it cannot, logging those loudly."""
+    frames: list[StreamedFrame] = []
+    for stream_id, fields in entries:
+        try:
+            frame = _FRAME.validate_json(_StreamFields.model_validate(fields).frame)
+        except ValidationError as error:
+            wide_log.warning(
+                "conversation stream frame unreadable, written by another deploy",
+                conversation_id=conversation_id,
+                stream_id=stream_id,
+                error=str(error)[:300],
+            )
+            continue
+        frames.append(StreamedFrame(stream_id=stream_id, frame=frame))
+    return frames, len(entries) - len(frames)
 
 
 async def read_frames(
     conversation_id: str, cursor: str, *, block_ms: int = EVENTS_BLOCK_MS
 ) -> list[StreamedFrame]:
-    """Return the frames after cursor, waiting up to block_ms for the first; empty when none came."""
+    """Return the frames after cursor, waiting up to block_ms for the first; empty when none came.
+
+    Raises UnreadableFrames when one can't be read: the reader can't know what it missed.
+    """
     results = await redis_cache.client.xread({_key(conversation_id): cursor}, block=block_ms)
-    return [
-        StreamedFrame(stream_id=stream_id, frame=_frame(fields))
-        for _stream, entries in results
-        for stream_id, fields in entries
-    ]
+    entries = [entry for _stream, stream_entries in results for entry in stream_entries]
+    frames, unreadable = _readable(conversation_id, entries)
+    if unreadable:
+        raise UnreadableFrames(conversation_id, entries[-1][0])
+    return frames
 
 
 async def latest_frame_id(conversation_id: str) -> str:
@@ -188,8 +216,11 @@ async def _unlogged_frames(
     """Return the stream's frames up to through that came after entry after_seq and that no log entry carries yet."""
     if through == EVENTS_STREAM_START:
         return []
-    raw = await redis_cache.client.xrange(_key(conversation_id), "-", through)
-    frames = [_frame(fields) for _stream_id, fields in raw]
+    # Frames an older deploy wrote are skipped: the screen the follower opened on came from the log.
+    readable, _unreadable = _readable(
+        conversation_id, await redis_cache.client.xrange(_key(conversation_id), "-", through)
+    )
+    frames = [streamed.frame for streamed in readable]
     seen = next(
         (
             index
@@ -247,8 +278,20 @@ async def follow_screen(
 ) -> AsyncGenerator[ScreenStreamFrame | None]:
     """Yield the newest page of the screen, then its patches and the deltas of what is still being written.
 
-    A reconnect is a fresh call: the screen it opens with is how a client heals any gap.
+    A reconnect is a fresh call: the screen it opens with is how a client heals any gap, so a
+    live frame another deploy wrote, which this code can't read, reopens on a fresh screen.
     """
+    while True:
+        try:
+            async for frame in _screen_from_the_head(log, conversation_id, user_id):
+                yield frame
+        except UnreadableFrames:
+            continue
+
+
+async def _screen_from_the_head(
+    log: ConversationLog, conversation_id: str, user_id: str
+) -> AsyncGenerator[ScreenStreamFrame | None]:
     entries = await log.read_after(conversation_id, user_id, 0)
     tracker = await ScreenTracker.load(conversation_id, entries)
     head = entries[-1].seq if entries else 0

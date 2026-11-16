@@ -8,7 +8,7 @@ import pytest
 from app.models.conversation_frame_models import EntryFrame
 from app.models.conversation_log_models import Entry, LoggedEntry, Reply, WorkOutcome, WorkStarted
 from app.services.conversation import outcome as outcome_module
-from app.services.conversation.event_stream import StreamedFrame
+from app.services.conversation.event_stream import StreamedFrame, UnreadableFrames
 from app.services.conversation.outcome import STOPPED, EntryOutcome, await_outcome, entry_outcome
 from shared.py.conversation_wire import BubbleTextDelta, ReplyDeltaFrame, ReplyOutcome
 from tests.unit.services.conversation.log_helpers import (
@@ -255,3 +255,13 @@ async def test_a_block_of_replayed_frames_keeps_the_wait_at_its_cursor(
     monkeypatch.setattr(outcome_module, "read_frames", read)
     assert await outcome_module._until_the_log_moves(CONVERSATION, "7-0") == "7-0"
     assert cursors == ["7-0", "7-0"]
+
+
+async def test_an_unreadable_frame_ends_the_wait_after_it_so_the_log_is_reread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def read(conversation_id: str, cursor: str) -> list[StreamedFrame]:
+        raise UnreadableFrames(conversation_id, "9-0")
+
+    monkeypatch.setattr(outcome_module, "read_frames", read)
+    assert await outcome_module._until_the_log_moves(CONVERSATION, "7-0") == "9-0"

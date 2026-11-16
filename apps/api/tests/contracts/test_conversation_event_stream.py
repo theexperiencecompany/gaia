@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from functools import partial
+import json
 
 import pytest
 from redis.asyncio import Redis
@@ -24,7 +26,11 @@ from app.models.conversation_frame_models import (
     state_frame,
 )
 from app.models.conversation_log_models import CommsPhase, Entry
-from app.models.conversation_screen_models import ScreenFrame
+from app.models.conversation_screen_models import (
+    ScreenFrame,
+    ScreenInsertFrame,
+    ScreenStreamFrame,
+)
 from app.models.conversation_send_models import ConversationEvent
 from app.services.conversation import event_stream
 from app.services.conversation.event_stream import (
@@ -32,6 +38,7 @@ from app.services.conversation.event_stream import (
     StreamedFrame,
     event_lines,
     follow,
+    follow_screen,
     latest_frame_id,
     read_frames,
 )
@@ -364,3 +371,70 @@ async def test_a_quiet_stream_keeps_the_client_alive_and_still_follows(redis: Re
 
 async def _never() -> bool:
     return False
+
+
+async def _xadd_from_an_older_deploy(redis: Redis, frame: OutputFrame) -> None:
+    """Write frame as code that still had a field this code dropped would have."""
+    dumped = frame.model_dump(mode="json")
+    dumped["dropped_field"] = "written before the deploy"
+    await redis.xadd(STREAM, {"frame": json.dumps(dumped)})
+
+
+async def _until_live(follower: AsyncGenerator[ScreenStreamFrame | None]) -> None:
+    """Drain the follower's catch-up until its first wait for a live frame."""
+    while await asyncio.wait_for(anext(follower), timeout=5) is not None:
+        pass
+
+
+async def _next_screen_frame(
+    follower: AsyncGenerator[ScreenStreamFrame | None],
+) -> ScreenFrame | ScreenInsertFrame:
+    while True:
+        frame = await asyncio.wait_for(anext(follower), timeout=5)
+        if isinstance(frame, ScreenFrame | ScreenInsertFrame):
+            return frame
+
+
+async def test_a_follower_skips_frames_an_older_deploy_wrote_and_follows_live(
+    redis: Redis,
+) -> None:
+    """Regression for run 6 bug 23: one older frame in the stream crashed every reconnect."""
+    log = await _log(user("u1"), opened("e2", "r1"))
+    await _xadd_from_an_older_deploy(redis, _delta("a1", "r1", 0))
+    follower = follow_screen(log, CID, UID)
+
+    opening = await anext(follower)
+    assert isinstance(opening, ScreenFrame)
+    assert opening.head == 2
+    await _until_live(follower)
+    await log.append(CID, UID, user("u3"))
+    await publish_frames(_frame(3, user("u3")))
+    followed = await _next_screen_frame(follower)
+
+    assert isinstance(followed, ScreenInsertFrame)
+    assert followed.item.id == "u3"
+    await follower.aclose()
+
+
+async def test_a_frame_an_older_deploy_writes_mid_follow_reopens_on_a_fresh_screen(
+    redis: Redis,
+) -> None:
+    log = await _log(user("u1"))
+    follower = follow_screen(log, CID, UID)
+    assert isinstance(await anext(follower), ScreenFrame)
+    await _until_live(follower)
+
+    await log.append(CID, UID, user("u2"))
+    await _xadd_from_an_older_deploy(redis, _frame(2, user("u2")))
+    reopened = await _next_screen_frame(follower)
+
+    assert isinstance(reopened, ScreenFrame)
+    assert [item.id for item in reopened.items] == ["u1", "u2"]
+    assert reopened.head == 2
+    await _until_live(follower)
+    await log.append(CID, UID, user("u3"))
+    await publish_frames(_frame(3, user("u3")))
+    followed = await _next_screen_frame(follower)
+    assert isinstance(followed, ScreenInsertFrame)
+    assert followed.item.id == "u3"
+    await follower.aclose()
