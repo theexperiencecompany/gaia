@@ -666,9 +666,7 @@ class TestTieredRateLimitDecorator:
     async def test_decorator_with_user_in_kwargs(
         self, mock_pay: MagicMock, mock_limiter: MagicMock
     ) -> None:
-        sub_mock = MagicMock()
-        sub_mock.plan_type = PlanType.PRO
-        mock_pay.get_user_subscription_status = AsyncMock(return_value=sub_mock)
+        mock_pay.get_cached_plan_type = AsyncMock(return_value=PlanType.PRO)
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
@@ -684,9 +682,7 @@ class TestTieredRateLimitDecorator:
     async def test_decorator_with_user_in_args(
         self, mock_pay: MagicMock, mock_limiter: MagicMock
     ) -> None:
-        sub_mock = MagicMock()
-        sub_mock.plan_type = PlanType.FREE
-        mock_pay.get_user_subscription_status = AsyncMock(return_value=sub_mock)
+        mock_pay.get_cached_plan_type = AsyncMock(return_value=PlanType.FREE)
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
@@ -716,14 +712,14 @@ class TestTieredRateLimitDecorator:
             await my_endpoint(user=AuthenticatedUser(user_id="", email="no_id"))
         assert exc_info.value.status_code == 401
 
+    @pytest.mark.parametrize("plan", [PlanType.FREE, PlanType.PRO])
     @patch("app.decorators.rate_limiting.tiered_limiter")
     @patch("app.decorators.rate_limiting.payment_service")
-    async def test_decorator_defaults_to_free_plan(
-        self, mock_pay: MagicMock, mock_limiter: MagicMock
+    async def test_decorator_forwards_the_cached_plan_unchanged(
+        self, mock_pay: MagicMock, mock_limiter: MagicMock, plan: PlanType
     ) -> None:
-        sub_mock = MagicMock()
-        sub_mock.plan_type = None
-        mock_pay.get_user_subscription_status = AsyncMock(return_value=sub_mock)
+        """The decorator meters exactly the tier get_cached_plan_type resolved — the None-to-FREE default lives there, not here."""
+        mock_pay.get_cached_plan_type = AsyncMock(return_value=plan)
         mock_limiter.check_and_increment = AsyncMock(return_value={})
 
         @tiered_rate_limit("file_upload")
@@ -731,8 +727,8 @@ class TestTieredRateLimitDecorator:
             return "ok"
 
         await my_endpoint(user=AuthenticatedUser(user_id="u1"))
-        call_args = mock_limiter.check_and_increment.call_args
-        assert call_args.kwargs["user_plan"] == PlanType.FREE
+        mock_pay.get_cached_plan_type.assert_awaited_once_with("u1")
+        assert mock_limiter.check_and_increment.call_args.kwargs["user_plan"] is plan
 
 
 # ---------------------------------------------------------------------------

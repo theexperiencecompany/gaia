@@ -513,7 +513,9 @@ async def build_connected_integrations_manifest(
     account_guidance follows the rows whenever an integration lists its accounts.
     """
     try:
-        items = cast(list[_ConnectedIntegration], await get_connected_integrations_named(user_id))
+        named, accounts = await asyncio.gather(
+            get_connected_integrations_named(user_id), _account_rows(user_id)
+        )
     except Exception as e:
         log.warning(
             "Error building connected-integrations manifest",
@@ -522,15 +524,15 @@ async def build_connected_integrations_manifest(
             user_id=user_id,
         )
         return ""
-    if not items:
+    if not named:
         return ""
-    connected: list[_ConnectedIntegration] = _dedupe_by_provider(items)
-    accounts = await _account_rows(user_id)
+    connected = _dedupe_by_provider(cast(list[_ConnectedIntegration], named))
+    summaries = await asyncio.gather(*(_tool_summary(item["id"]) for item in connected))
     lines = [header, *_builtin_overlap_lines(connected)]
-    for item in connected:
+    for item, summary in zip(connected, summaries, strict=True):
         iid, name = item["id"], item["name"]
         row = f"- {name} ({iid})" if name and name != iid else f"- {iid}"
-        lines.append(f"{row}{accounts.get(iid, '')}{await _tool_summary(iid)}")
+        lines.append(f"{row}{accounts.get(iid, '')}{summary}")
     if accounts:
         lines.append(account_guidance)
     return "\n".join(lines)

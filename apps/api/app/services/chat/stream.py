@@ -330,14 +330,19 @@ async def _run_chat_stream(
         _set_stream_log_context(body, user_id, conversation_id, stream_id, is_new_conversation)
         presence = await _capture_presence(user_id, source)
 
-        await _publish_init_chunk(
-            body,
-            user,
-            conversation_id,
-            stream_id,
-            state,
-            is_new_conversation,
+        # The todo lookup overlaps the user-message save, two Mongo round trips the
+        # reply would otherwise wait on in turn. A new conversation is never a
+        # todo's chat: that is created only for its todo.
+        todo_lookup = (
+            []
+            if is_new_conversation
+            else [conversation_repository.get_todo_id(conversation_id, user_id=user_id)]
         )
+        _, *todo_ids = await asyncio.gather(
+            _publish_init_chunk(body, user, conversation_id, stream_id, state, is_new_conversation),
+            *todo_lookup,
+        )
+        todo_id = todo_ids[0] if todo_ids else None
 
         # A HIL approval can be answered via chat reply only on button-less bot
         # channels (WhatsApp/Telegram/Slack/Discord); web/mobile/desktop use real
@@ -385,10 +390,7 @@ async def _run_chat_stream(
                 source=source,
                 presence=presence,
                 usage_callback=usage_callback,
-                # A new conversation is never a todo's chat: that is created only for its todo.
-                todo_id=None
-                if is_new_conversation
-                else await conversation_repository.get_todo_id(conversation_id, user_id=user_id),
+                todo_id=todo_id,
             ),
             description_task,
             state,

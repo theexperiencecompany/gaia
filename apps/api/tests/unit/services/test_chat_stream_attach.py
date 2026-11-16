@@ -12,6 +12,7 @@ The persist itself goes through conversation_repository.append_message_tool_data
 these tests mock that repository method (never the DB).
 """
 
+import asyncio
 from collections.abc import AsyncGenerator
 import json
 from typing import Any
@@ -466,10 +467,20 @@ class TestRunChatStreamTurnDerivations:
     """_run_chat_stream derives turn state and the new-conversation flag before any collaborator runs; a wrong derivation misattributes the saved reply or picks the wrong branch."""
 
     async def _run(
-        self, body: MessageRequestWithHistory, *, todo_id: str | None = None
+        self,
+        body: MessageRequestWithHistory,
+        *,
+        todo_id: str | None = None,
+        save_waits_for_lookup: bool = False,
     ) -> dict[str, Any]:
         seen: dict[str, Any] = {}
-        get_todo_id = AsyncMock(return_value=todo_id)
+        lookup_started = asyncio.Event()
+
+        async def looked_up(*_args: object, **_kwargs: object) -> str | None:
+            lookup_started.set()
+            return todo_id
+
+        get_todo_id = AsyncMock(side_effect=looked_up)
 
         async def fake_publish_init(
             body_: MessageRequestWithHistory,
@@ -480,6 +491,9 @@ class TestRunChatStreamTurnDerivations:
             is_new_conversation_: bool,
         ) -> None:
             seen["is_new_conversation"] = is_new_conversation_
+            if save_waits_for_lookup:
+                # Finishes only once the lookup is under way: run one after the other, it times out.
+                await asyncio.wait_for(lookup_started.wait(), timeout=1)
 
         async def fake_consume(
             body_: MessageRequestWithHistory,
@@ -587,6 +601,16 @@ class TestRunChatStreamTurnDerivations:
         )
 
         seen["get_todo_id"].assert_awaited_once_with("conv-1", user_id=USER_ID)
+        assert seen["turn"].todo_id == "todo-1"
+
+    async def test_the_todo_lookup_overlaps_the_user_message_save(self) -> None:
+        """Both are Mongo round trips in front of the reply; waited on in turn they add up."""
+        seen = await self._run(
+            MessageRequestWithHistory(message="status?", messages=[], conversation_id="conv-1"),
+            todo_id="todo-1",
+            save_waits_for_lookup=True,
+        )
+
         assert seen["turn"].todo_id == "todo-1"
 
     async def test_a_new_conversation_is_never_looked_up_as_a_todos_chat(self) -> None:
