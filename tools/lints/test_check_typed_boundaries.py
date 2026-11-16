@@ -137,6 +137,21 @@ def test_a_class_built_on_an_imported_library_typeddict_is_a_typeddict(
     assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [11]
 
 
+def test_a_class_built_on_a_parametrized_library_typeddict_is_a_typeddict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("check_typed_boundaries.REPO_ROOT", tmp_path)
+    source = (
+        "from langchain.agents.middleware.types import AgentState\n"
+        "class GaiaState(AgentState[object], total=False):\n"
+        "    ids: list\n"
+        "def f(state: GaiaState, plain: dict) -> None:\n"
+        "    a = state.get('ids')\n"
+        "    b = plain['ids']\n"
+    )
+    assert _rule_lines(tmp_path, source)[STRING_KEY_READ] == [6]
+
+
 def test_a_loop_over_a_typeddict_collection_binds_a_typed_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

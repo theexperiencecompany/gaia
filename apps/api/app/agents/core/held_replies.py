@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, ToolCall, ToolCallChunk
 
 from app.constants.comms import TURN_ENDING_TOOL_NAMES
 from app.models.agent_models import StreamChunkMetadata
@@ -32,14 +32,14 @@ class HeldChunk(NamedTuple):
 def announces_tool_call(chunk: AIMessage) -> bool:
     """Return whether this chunk already carries a work tool call, meaning any text is narration.
 
-    tool_calls (complete) or tool_call_chunks (still assembling) both count; a turn-ending
-    call (answered, react, stay_silent) does not, since the words beside it are the reply.
-    getattr guards the second since only the chunk subclass has that field.
+    tool_calls (complete) or tool_call_chunks (still assembling, on a chunk only) both count;
+    a turn-ending call (answered, react, stay_silent) does not, since the words beside it are
+    the reply.
     """
+    calls: list[ToolCall] = chunk.tool_calls
+    parts: list[ToolCallChunk] = chunk.tool_call_chunks if isinstance(chunk, AIMessageChunk) else []
     # A streamed call names itself in its first chunk only; the rest carry arguments.
-    names = [call["name"] for call in chunk.tool_calls] + [
-        name for call in getattr(chunk, "tool_call_chunks", None) or () if (name := call["name"])
-    ]
+    names = [call["name"] for call in calls] + [name for part in parts if (name := part["name"])]
     return any(name not in TURN_ENDING_TOOL_NAMES for name in names)
 
 

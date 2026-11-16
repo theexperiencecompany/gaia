@@ -14,9 +14,10 @@ from collections.abc import Awaitable, Callable, Sequence
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
-from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, ToolCall, ToolMessage
 from langgraph.types import Command
 
+from app.agents.middleware.runtime_adapter import GaiaAgentState
 from app.constants.conversation import ABSORBED_NOTE_SUFFIX, TURN_CONTEXT_ID_SUFFIX
 from app.services.hil.utils import raw_tool_call
 from shared.py.wide_events import log
@@ -39,9 +40,8 @@ class InterruptedLookupsMiddleware(AgentMiddleware):
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[str]]],
     ) -> ToolMessage | Command[str]:
         call = raw_tool_call(request)
-        if call.name not in self._lookup_tools or not _interrupted(
-            request.state["messages"], call.id
-        ):
+        state: GaiaAgentState = request.state
+        if call.name not in self._lookup_tools or not _interrupted(state["messages"], call.id):
             return await handler(request)
         log.info("comms_lookup_refused_after_interruption", tool_name=call.name)
         return ToolMessage(
@@ -55,8 +55,7 @@ def _interrupted(messages: Sequence[AnyMessage], call_id: str) -> bool:
         (
             index
             for index, message in enumerate(messages)
-            if isinstance(message, AIMessage)
-            and any(call["id"] == call_id for call in message.tool_calls)
+            if isinstance(message, AIMessage) and _makes_call(message, call_id)
         ),
         len(messages),
     )
@@ -71,3 +70,8 @@ def _interrupted(messages: Sequence[AnyMessage], call_id: str) -> bool:
     return any(
         (message.id or "").endswith(ABSORBED_NOTE_SUFFIX) for message in messages[start:step]
     )
+
+
+def _makes_call(message: AIMessage, call_id: str) -> bool:
+    calls: list[ToolCall] = message.tool_calls
+    return any(call["id"] == call_id for call in calls)

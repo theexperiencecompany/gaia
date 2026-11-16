@@ -283,10 +283,10 @@ class CommsGraphRunner:
             messages=thread,
             verbatim_message_ids=verbatim_message_ids(thread, kept.owed, kept.pinned),
         )
-        update = await self._fold.afold(state, config)
-        if update is None:
+        fold = await self._fold.afold(state, config)
+        if fold is None:
             return None
-        return FoldPlan(tuple(m.id for m in thread), tuple(update["messages"]))
+        return FoldPlan(tuple(m.id for m in thread), tuple(fold))
 
     async def apply_fold(self, claim: StepClaim, plan: FoldPlan) -> bool:
         """Write the planned fold under the step's claim; False when a turn wrote the thread since."""
@@ -306,7 +306,8 @@ def _thread_config(conversation_id: str, user_id: str) -> AgentRunnableConfig:
 
 async def _thread(graph: CompiledAgentGraph, config: AgentRunnableConfig) -> list[AnyMessage]:
     snapshot = await graph.aget_state(config)
-    return cast(_ThreadValues, snapshot.values or {}).get("messages", [])
+    values: _ThreadValues = cast(_ThreadValues, snapshot.values or {})
+    return values.get("messages", [])
 
 
 def _still_open_message(batch: Batch, note: str) -> HumanMessage:

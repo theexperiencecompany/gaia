@@ -573,7 +573,8 @@ def _tool_message(call: GatedCall, content: str, status: HILToolMessageStatus) -
 
 def _user_clock(request: ToolCallRequest) -> UserClock:
     """Return the run's home clock, so a description says "tomorrow" on the user's calendar."""
-    return UserClock.current(Timezone.parse(configurable_of(request).get("user_timezone")))
+    configurable: AgentConfigurable = configurable_of(request)
+    return UserClock.current(Timezone.parse(configurable.get("user_timezone")))
 
 
 async def _integration_name_for(

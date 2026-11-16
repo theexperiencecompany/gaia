@@ -2,18 +2,9 @@
 
 from collections.abc import Iterable
 
-from pydantic import BaseModel, ConfigDict
-
 from app.constants.chat import ARTIFACT_CARD
+from app.services.artifact_events import ArtifactCard
 from shared.py.conversation_wire import ReplyFile, ToolDataEntry
-
-
-class _ArtifactCard(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    event: str
-    path: str
-    content_type: str | None = None
 
 
 def reply_files(cards: Iterable[ToolDataEntry]) -> tuple[ReplyFile, ...]:
@@ -22,7 +13,7 @@ def reply_files(cards: Iterable[ToolDataEntry]) -> tuple[ReplyFile, ...]:
     for card in cards:
         if card["tool_name"] != ARTIFACT_CARD:
             continue
-        written = _ArtifactCard.model_validate(card["data"])
+        written = ArtifactCard.model_validate(card["data"])
         if written.event == "upsert":
             files.setdefault(
                 written.path, ReplyFile(path=written.path, content_type=written.content_type)

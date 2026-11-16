@@ -88,6 +88,7 @@ PROTOCOL_MAP_ATTRIBUTES = ("headers", "query_params", "path_params", "cookies")
 EXTERNAL_TYPEDDICTS = (
     "ErrorDetails",
     "ToolCall",
+    "ToolCallChunk",
     "InvalidToolCall",
     "RunnableConfig",
     "UsageMetadata",
@@ -278,6 +279,8 @@ def _imported_external_typeddicts(trees: list[ast.AST]) -> set[str]:
 
 
 def _base_name(base: ast.AST) -> str:
+    if isinstance(base, ast.Subscript):  # a generic base: AgentState[object]
+        return _base_name(base.value)
     if isinstance(base, ast.Name):
         return base.id
     if isinstance(base, ast.Attribute):

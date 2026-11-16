@@ -13,7 +13,7 @@ from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from pydantic import BaseModel, ConfigDict
 
 from app.agents.core.interruption import INTERRUPTION_MARKER, INTERRUPTION_SOURCE
-from app.constants.chat import SUBAGENT_GROUP_TOOL_NAME
+from app.constants.chat import ARTIFACT_CARD, SUBAGENT_GROUP_TOOL_NAME
 from app.constants.conversation import (
     ABSORBED_NOTE,
     ABSORBED_NOTE_SUFFIX,
@@ -47,6 +47,7 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkOutcome,
 )
+from app.services.artifact_events import ArtifactCard
 from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
 
 #: Every user message reads as its text.
@@ -185,12 +186,10 @@ def work_cards_note(finished: WorkFinished) -> str | None:
     """Return the note naming the cards a work's result shows, with the subagent that made each; None when it shows none."""
     makers = _subagent_names(finished.tool_data)
     counts: Counter[tuple[str, str]] = Counter()
-    for card in finished.tool_data:
+    cards: tuple[ToolDataEntry, ...] = finished.tool_data
+    for card in cards:
         data = card["data"]
-        # A remove card retracts a deleted file's card; it shows nothing itself.
-        if card["tool_name"] not in tool_fields or (
-            isinstance(data, dict) and data.get("event") == "remove"
-        ):
+        if card["tool_name"] not in tool_fields or _retracts_a_file(card):
             continue
         maker = makers.get(card.get("subagent_id") or "", "")
         counts[card["tool_name"], maker] += len(data) if isinstance(data, list) else 1
@@ -203,6 +202,14 @@ def work_cards_note(finished: WorkFinished) -> str | None:
         for (name, maker), count in counts.items()
     ]
     return WORK_CARDS_NOTE.format(cards="\n".join(lines))
+
+
+def _retracts_a_file(card: ToolDataEntry) -> bool:
+    """Return whether card is a deleted file's remove card, which shows nothing itself."""
+    return (
+        card["tool_name"] == ARTIFACT_CARD
+        and ArtifactCard.model_validate(card["data"]).event == "remove"
+    )
 
 
 def _subagent_names(cards: Sequence[ToolDataEntry]) -> dict[str, str]:

@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from app.constants.chat import ARTIFACT_CARD
 from app.db.repositories.conversations import conversation_repository
 from app.models.artifact_models import ArtifactRegistryEntry
-from app.services.artifact_events import remove_event, upsert_event
+from app.services.artifact_events import ArtifactCard, remove_event, upsert_event
 from app.services.storage import ArtifactInfo, JuiceFSUnavailable, list_artifacts
 from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log
@@ -33,11 +33,15 @@ async def reconcile_artifacts(
             error_type=type(error).__name__,
         )
         return ()
-    registry = {
-        entry["path"]: entry
-        for entry in await conversation_repository.list_artifacts(conversation_id, user_id=user_id)
+    entries: list[ArtifactRegistryEntry] = await conversation_repository.list_artifacts(
+        conversation_id, user_id=user_id
+    )
+    registry = {entry["path"]: entry for entry in entries}
+    carded = {
+        ArtifactCard.model_validate(card["data"]).path
+        for card in cards
+        if card["tool_name"] == ARTIFACT_CARD
     }
-    carded = {card["data"]["path"] for card in cards if card["tool_name"] == ARTIFACT_CARD}
     on_disk = {info.path for info in listed}
     added = [
         upsert_event(conversation_id, info)

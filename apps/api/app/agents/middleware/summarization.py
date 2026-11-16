@@ -156,11 +156,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         """Fold the oldest turns into one summary before the model call, past the trigger."""
         # Runtime carries no config (LangGraph's Runtime deliberately omits it); get_config() does.
         del runtime
-        return await self.afold(state, get_config())
+        fold = await self.afold(state, get_config())
+        return None if fold is None else {"messages": fold}
 
     async def afold(
         self, state: AgentState[object], config: RunnableConfig
-    ) -> SummaryUpdate | None:
+    ) -> list[AnyMessage | RemoveMessage] | None:
         """Return the fold of state's oldest turns into one summary, or None under the trigger.
 
         The leading slots are never touched; a folded turn's notes (recall, clock, presence)
@@ -173,7 +174,8 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         conversation = [m for m in state["messages"] if slot_of(m) not in LEADING_SLOTS]
         cutoff_index = self._determine_cutoff_index(conversation)
         fold = _foldable(conversation, cutoff_index)
-        verbatim = frozenset(cast("GaiaAgentState", state).get("verbatim_message_ids") or ())
+        gaia_state: GaiaAgentState = cast("GaiaAgentState", state)
+        verbatim = frozenset(gaia_state.get("verbatim_message_ids") or ())
         summarized = self._fitting_prefix(_removable([*fold.older, *fold.progress], verbatim))
         if not summarized:
             return None
@@ -199,12 +201,10 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             archive_path = await self._archive_or_none(state, config)
             if archive_path:
                 _inject_archive_path(summary_message, archive_path, self.archive)
-        return {
-            "messages": [
-                summary_message,
-                *(RemoveMessage(id=cast("str", m.id)) for m in summarized[1:]),
-            ]
-        }
+        return [
+            summary_message,
+            *(RemoveMessage(id=cast("str", m.id)) for m in summarized[1:]),
+        ]
 
     def _fitting_prefix(self, messages: list[AnyMessage]) -> list[AnyMessage]:
         """Return the longest leading run whose summary prompt fits the summary model's input.
@@ -416,7 +416,11 @@ def _removable(prefix: list[AnyMessage], verbatim: frozenset[str]) -> list[AnyMe
     """
     kept = [m for m in prefix if m.id is None or m.id in verbatim]
     kept_results = {m.tool_call_id for m in kept if isinstance(m, ToolMessage)}
-    kept_calls = {tc["id"] for m in kept if isinstance(m, AIMessage) for tc in m.tool_calls}
+    kept_calls: set[str | None] = set()
+    for m in kept:
+        if isinstance(m, AIMessage):
+            kept_ai_calls: list[ToolCall] = m.tool_calls
+            kept_calls |= {tc["id"] for tc in kept_ai_calls}
     removable: list[AnyMessage] = []
     for m in prefix:
         if m in kept:
