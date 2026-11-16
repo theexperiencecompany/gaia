@@ -33,6 +33,7 @@ from app.constants.conversation import (
     WORK_UNFINISHED_NOTE,
     WORKFLOW_RUN_REQUEST,
 )
+from app.models.artifact_models import ArtifactCard
 from app.models.chat_models import ReactionBy, tool_fields
 from app.models.conversation_log_models import (
     Batch,
@@ -47,7 +48,6 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkOutcome,
 )
-from app.services.artifact_events import ArtifactCard
 from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
 
 #: Every user message reads as its text.

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Literal, TypedDict
 
-from pydantic import BaseModel, ConfigDict
-
 from app.services.storage import ArtifactInfo
 
 
@@ -26,16 +24,6 @@ class ArtifactRemoveEvent(TypedDict):
     event: Literal["remove"]
     session_id: str
     path: str
-
-
-class ArtifactCard(BaseModel):
-    """An artifact card's payload as a reader parses it, whichever event it carries."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    event: str
-    path: str
-    content_type: str | None = None
 
 
 def remove_event(session_id: str, path: str) -> ArtifactRemoveEvent:

@@ -3,7 +3,7 @@
 from collections.abc import Iterable
 
 from app.constants.chat import ARTIFACT_CARD
-from app.services.artifact_events import ArtifactCard
+from app.models.artifact_models import ArtifactCard
 from shared.py.conversation_wire import ReplyFile, ToolDataEntry
 
 

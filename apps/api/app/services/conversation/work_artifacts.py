@@ -12,8 +12,8 @@ from datetime import UTC, datetime
 
 from app.constants.chat import ARTIFACT_CARD
 from app.db.repositories.conversations import conversation_repository
-from app.models.artifact_models import ArtifactRegistryEntry
-from app.services.artifact_events import ArtifactCard, remove_event, upsert_event
+from app.models.artifact_models import ArtifactCard, ArtifactRegistryEntry
+from app.services.artifact_events import remove_event, upsert_event
 from app.services.storage import ArtifactInfo, JuiceFSUnavailable, list_artifacts
 from shared.py.conversation_wire import ToolDataEntry
 from shared.py.wide_events import log
