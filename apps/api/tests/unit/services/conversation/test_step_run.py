@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from app.agents.core.comms_ledger import named
 from app.models.conversation_frame_models import ResponseEvent, RetractFrame
 from app.models.conversation_log_models import (
     CommsPhase,
@@ -22,6 +23,7 @@ from app.services.conversation.ports import (
     Finished,
     ModelOutput,
     Replied,
+    Silent,
     Streamed,
 )
 from app.services.conversation.step import advance
@@ -35,9 +37,13 @@ from tests.unit.services.conversation.runtime_doubles import (
     Absorbed,
     Action,
     Cancelled,
+    Close,
     Do,
+    Fail,
+    Forgetful,
     Runtime,
     ScriptedRun,
+    Started,
 )
 
 LOST = Cancelled(CancelReason.LOST)
@@ -257,3 +263,41 @@ async def test_the_first_text_releases_the_writes_waiting_on_it() -> None:
     await send(rt, user("u1"))
     await run(rt)
     assert released == [True]
+
+
+async def test_an_ended_attempt_leaves_no_ledger_for_a_late_closing_tool() -> None:
+    rt = Runtime()
+    rt.runner.script([Finished(Replied("hi"))])
+    await send(rt, user("u1"))
+    await run(rt)
+    assert named({"configurable": {"comms_run": f"{CONVERSATION}:1.1"}}, [1]) is None
+
+
+async def test_a_run_crashing_once_its_answer_left_a_message_owed_fails_it_with_no_second_run() -> (
+    None
+):
+    rt = Runtime()
+    rt.runner.script(
+        [Forgetful(), Answered(Silent()), Fail(RuntimeError("model down"))],
+        [Finished(Replied("late"))],
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    assert rt.runner.calls == [Started(batch=(1,), context=()), LOST]
+    assert [(item.outcome, item.answers) for item in await settles(rt)] == [
+        (ReplyOutcome.FAILED, ("u1",))
+    ]
+
+
+async def test_the_second_run_is_told_exactly_the_messages_still_owed_one_per_line() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [Forgetful(), Close(seqs=(1,)), Finished(Silent())],
+        [Close(), Finished(Silent())],
+    )
+    await send(rt, user("u1"), user("u2"), user("u3"))
+    await run(rt)
+    _, again = rt.runner.calls
+    assert isinstance(again, Started) and again.note is not None
+    assert '#2 "text of u2"\n#3 "text of u3"' in again.note
+    assert "text of u1" not in again.note

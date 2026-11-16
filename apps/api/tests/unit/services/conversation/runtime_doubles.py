@@ -443,6 +443,8 @@ class ScriptedRun:
         self._held = False
         self._swallowed = asyncio.Event()
         self.cancel_attempts = 0
+        # The claim each hand-off was made under, in order.
+        self.handed_by: list[StepClaim] = []
         self.task = asyncio.create_task(self._play())
 
     async def events(self) -> AsyncIterator[RunEvent]:
@@ -460,6 +462,7 @@ class ScriptedRun:
 
     async def hand_off(self, claim: StepClaim, messages: Sequence[LoggedEntry]) -> bool:
         seqs = tuple(item.seq for item in messages)
+        self.handed_by.append(claim)
         self._calls.append(HandedOff(seqs))
         self._close(Closing.HANDED, seqs)
         return True
@@ -558,6 +561,8 @@ class ScriptedRunner:
         self.fold_plans: list[FoldPlan] = []
         # Each fold written, with the epoch of the claim it was written under.
         self.applied: list[tuple[int, FoldPlan]] = []
+        # Each fold plan asked for: the conversation, its user and what the fold must keep.
+        self.fold_asks: list[tuple[str, str, Kept]] = []
         self.runs: list[ScriptedRun] = []
         self.overlaps = 0
         self.swallow_first_cancel = False
@@ -598,6 +603,7 @@ class ScriptedRunner:
         return run
 
     async def plan_fold(self, conversation_id: str, user_id: str, kept: Kept) -> FoldPlan | None:
+        self.fold_asks.append((conversation_id, user_id, kept))
         return self.fold_plans.pop(0) if self.fold_plans else None
 
     async def apply_fold(self, claim: StepClaim, plan: FoldPlan) -> bool:
@@ -611,9 +617,18 @@ class RecordingFrames:
     # The conversation each publish went to.
     conversations: list[str] = field(default_factory=list)
 
+    # How many frames were published when a test last marked the point it reads on from.
+    marked: int = 0
+
     async def publish(self, conversation_id: str, *frames: OutputFrame) -> None:
         self.conversations.append(conversation_id)
         self.published.extend(frames)
+
+    async def mark(self) -> None:
+        self.marked = len(self.published)
+
+    def since_mark(self) -> list[OutputFrame]:
+        return self.published[self.marked :]
 
 
 @dataclass(frozen=True)
@@ -630,7 +645,7 @@ class RecordingEffects:
     # The (conversation, user) each effect was run for.
     addressed: list[tuple[str, str]] = field(default_factory=list)
     # The conversations a settled step asked to fold, in order.
-    folds: list[str] = field(default_factory=list)
+    folds: list[tuple[str, str]] = field(default_factory=list)
 
     async def kick(self, conversation_id: str, user_id: str) -> None:
         self.addressed.append((conversation_id, user_id))
@@ -654,7 +669,7 @@ class RecordingEffects:
         self._record(EffectCall("reset_workflow_threads"))
 
     async def fold_history(self, conversation_id: str, user_id: str) -> None:
-        self.folds.append(conversation_id)
+        self.folds.append((conversation_id, user_id))
 
     def _record(self, call: EffectCall) -> None:
         self.calls.append(call)

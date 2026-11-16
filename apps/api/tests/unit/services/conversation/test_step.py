@@ -34,6 +34,7 @@ from app.services.conversation.ports import (
 )
 from app.utils.liveness import keep_proving
 from shared.py.conversation_wire import ReplyOutcome
+from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import asked, fired, todo_run, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
@@ -348,7 +349,7 @@ async def test_a_settled_turn_asks_for_a_history_fold_and_never_plans_one_itself
     rt.runner.fold_plans = [_FOLD]
     await send(rt, user("u0"))
     await run(rt)
-    assert rt.effects.folds == [CONVERSATION]
+    assert rt.effects.folds == [(CONVERSATION, USER)]
     assert rt.runner.fold_plans == [_FOLD]
 
 
@@ -362,6 +363,49 @@ async def test_a_history_fold_writes_under_the_claim_then_answers_what_arrived()
     assert [item.answers for item in await settles(rt)] == [("u0",)]
     # Released once caught up: the next step can claim it.
     assert await rt.log.claim(CONVERSATION, USER) is not None
+
+
+async def test_a_history_fold_is_planned_keeping_what_is_owed_and_pinned() -> None:
+    rt = Runtime()
+    work = WorkStarted(id="w", task_id="t1", cause_through=1, answers=("u0",))
+    rt.runner.script([Do(lambda: send(rt, work)), Finished(Replied("on it"))])
+    await send(rt, user("u0").model_copy(update={"pinned": True}))
+    await run(rt)
+    await step.fold_history(rt.ports, CONVERSATION, USER)
+    [(conversation_id, user_id, kept)] = rt.runner.fold_asks
+    assert (conversation_id, user_id, kept.owed) == (CONVERSATION, USER, frozenset({"u0"}))
+    assert [item.entry.id for item in kept.pinned] == ["u0"]
+
+
+async def test_a_history_fold_records_that_it_was_applied() -> None:
+    rt = Runtime()
+    rt.runner.fold_plans = [_FOLD]
+    async with captured_wide_event() as event:
+        await step.fold_history(rt.ports, CONVERSATION, USER)
+    assert event["history_fold"] == {"applied": True}
+
+
+async def test_a_history_fold_with_nothing_arrived_asks_for_no_further_fold() -> None:
+    rt = Runtime()
+    rt.runner.fold_plans = [_FOLD]
+    await step.fold_history(rt.ports, CONVERSATION, USER)
+    assert [plan for _, plan in rt.runner.applied] == [_FOLD]
+    assert rt.effects.folds == []
+
+
+async def test_a_history_fold_whose_step_is_taken_over_ends_quietly() -> None:
+    rt = Runtime()
+
+    async def take_over() -> None:
+        await rt.lapse()
+        assert await rt.log.claim(CONVERSATION, USER) is not None
+
+    rt.runner.script([Do(take_over), text("hi"), Finished(Replied("hi"))])
+    rt.runner.fold_plans = [_FOLD]
+    await send(rt, user("u0"))
+    await step.fold_history(rt.ports, CONVERSATION, USER)
+    assert [plan for _, plan in rt.runner.applied] == [_FOLD]
+    assert await settles(rt) == []
 
 
 async def test_a_history_fold_never_writes_while_a_turn_holds_the_step() -> None:

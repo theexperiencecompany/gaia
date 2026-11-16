@@ -17,6 +17,7 @@ from shared.py.conversation_wire import (
     ReplyDeltaFrame,
     ReplyOutcome,
 )
+from tests.helpers import captured_wide_event
 from tests.unit.services.conversation.log_helpers import asked, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
@@ -280,3 +281,112 @@ async def test_a_message_logged_while_a_failed_reply_opens_is_quoted_past_by_its
         ("u1",),
         "u1",
     )
+
+
+async def test_a_message_named_right_after_it_was_handed_below_the_shown_reply_is_answered_below() -> (
+    None
+):
+    rt = Runtime()
+    rt.runner.script(
+        [
+            text("a"),
+            Do(arrive(rt, "u2")),
+            ModelOutput(True),
+            Close(seqs=(3,)),
+            ModelOutput(False),
+            text("b"),
+            Finished(Replied("b")),
+        ]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    assert [(item.answers, item.outcome) for item in await settles(rt)] == [
+        ((), ReplyOutcome.INTERIM),
+        (("u2",), ReplyOutcome.SILENT),
+        (("u1",), ReplyOutcome.ANSWERED),
+    ]
+
+
+async def test_a_reply_split_twice_by_handed_messages_answers_them_all_in_its_last_segment() -> (
+    None
+):
+    rt = Runtime()
+    rt.runner.script(
+        [
+            text("a"),
+            Do(arrive(rt, "u2")),
+            ModelOutput(True),
+            text("b"),
+            Do(arrive(rt, "u3")),
+            ModelOutput(True),
+            text("c"),
+            Finished(Replied("c")),
+        ]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    assert [reply.text for reply in await replies(rt)] == ["a", "b", "c"]
+    assert [(item.answers, item.outcome) for item in await settles(rt)] == [
+        ((), ReplyOutcome.INTERIM),
+        ((), ReplyOutcome.INTERIM),
+        (("u1", "u2", "u3"), ReplyOutcome.ANSWERED),
+    ]
+
+
+async def test_each_reply_delta_streams_under_its_own_segments_reply_id() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [text("a"), Do(arrive(rt, "u2")), ModelOutput(True), text("b"), Finished(Replied("b"))]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    deltas = [f for f in rt.frames.published if isinstance(f, ReplyDeltaFrame)]
+    assert {(f.attempt_id, f.reply_id) for f in deltas} == {("1.1", "r1.1"), ("1.1/1", "r1.1/1")}
+
+
+async def test_each_segment_counts_the_turn_of_only_the_message_it_answered() -> None:
+    analytics = RecordingAnalytics()
+    rt = Runtime(analytics=analytics)
+    rt.runner.script(
+        [
+            text("a"),
+            Do(arrive(rt, "u2")),
+            ModelOutput(True),
+            text("b"),
+            Close(seqs=(3,)),
+            ModelOutput(False),
+            text("c"),
+            Finished(Replied("c")),
+        ]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    ends = [event for _, event, _, _ in analytics.ended if isinstance(event, ChatMessageCompleted)]
+    assert [(event.stream_id, event.is_new_conversation) for event in ends] == [
+        ("u2", False),
+        ("u1", True),
+    ]
+
+
+async def test_words_after_every_message_was_answered_settle_interim_and_count_no_turn() -> None:
+    analytics = RecordingAnalytics()
+    rt = Runtime(analytics=analytics)
+    rt.runner.script(
+        [
+            text("done"),
+            Close(seqs=(1,)),
+            ModelOutput(False),
+            text("one more thing"),
+            Finished(Replied("one more thing")),
+        ]
+    )
+    await send(rt, user("u1"))
+    async with captured_wide_event() as event:
+        await run(rt)
+    assert "errors" not in event
+    assert [item.outcome for item in await settles(rt)] == [
+        ReplyOutcome.ANSWERED,
+        ReplyOutcome.INTERIM,
+    ]
+    ends = [event for _, event, _, _ in analytics.ended if isinstance(event, ChatMessageCompleted)]
+    assert [event.stream_id for event in ends] == ["u1"]
