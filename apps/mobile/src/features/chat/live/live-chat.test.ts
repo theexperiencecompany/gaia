@@ -251,16 +251,17 @@ describe("the mobile chat rendered from the conversation's screen", () => {
     expect(stopped?.toolData).toEqual([card]);
   });
 
-  it("words a failed reply that showed nothing by why it failed", async () => {
+  it("words a failed reply that showed nothing in the server's failure line", async () => {
     release = openConversation(CONVERSATION);
     await flush();
     show(userItem("m1", 1), {
       ...replyItem("r1", 2, "", "failed"),
       failure: "step_limit",
+      failure_line: "The server's own words for a step-limit stop.",
     });
 
     expect(rows().at(-1)?.error).toBe(
-      "GAIA took too many steps on this and stopped before answering.",
+      "The server's own words for a step-limit stop.",
     );
   });
 
