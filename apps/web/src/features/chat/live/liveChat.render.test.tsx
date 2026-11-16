@@ -19,6 +19,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -95,6 +96,15 @@ const shownRows = () =>
   Array.from(
     document.querySelectorAll<HTMLElement>("[data-screen-item-id]"),
   ).map((node) => [node.dataset.screenItemId, node.dataset.screenItemKind]);
+
+/** The row a screen item renders as; every user message carries its own Retry, so a reply's is read here. */
+function screenRow(id: string): HTMLElement {
+  const row = document.querySelector<HTMLElement>(
+    `[data-screen-item-id="${id}"]`,
+  );
+  if (!row) throw new Error(`no row rendered for screen item ${id}`);
+  return row;
+}
 
 const failedReply = (id: string, seq: number, retryTarget: string | null) => ({
   ...replyItem(id, seq, "", "failed"),
@@ -201,7 +211,9 @@ describe("the chat rendered from the server's screen patches", () => {
       insertFrame(userItem("m2", 2, "and a hotel")),
       insertFrame(failedReply("r1", 3, "m1")),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(
+      within(screenRow("r1")).getByRole("button", { name: "Retry" }),
+    );
     expect(vi.mocked(deliverRetry)).toHaveBeenCalledExactlyOnceWith(
       CONVERSATION,
       "m1",
@@ -214,7 +226,9 @@ describe("the chat rendered from the server's screen patches", () => {
       insertFrame(userItem("m1", 1, "hi")),
       insertFrame(failedReply("r1", 2, null)),
     );
-    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(
+      within(screenRow("r1")).queryByRole("button", { name: "Retry" }),
+    ).toBeNull();
   });
 
   it("shows the progress line the server states for the streaming reply", async () => {
