@@ -1,10 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Divider } from "@heroui/divider";
-import { Switch } from "@heroui/switch";
+import { Separator, Switch } from "@heroui/react";
 import { InformationCircleIcon } from "@icons";
 import type { Control, FieldErrors, UseFormSetValue } from "react-hook-form";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import type { Integration } from "@/features/integrations/types";
 import type { PublicWorkflowStep } from "@/types/features/workflowTypes";
@@ -191,14 +190,20 @@ export default function WorkflowModalFormView({
                 <Switch
                   size="sm"
                   isSelected={formData.notify_on_completion}
-                  onValueChange={(enabled) =>
+                  onChange={(enabled) =>
                     setValue("notify_on_completion", enabled, {
                       shouldDirty: true,
                     })
                   }
                   isDisabled={isPreview}
                   aria-label="Notify when runs finish"
-                />
+                >
+                  <Switch.Content>
+                    <Switch.Control>
+                      <Switch.Thumb />
+                    </Switch.Control>
+                  </Switch.Content>
+                </Switch>
               </div>
             </div>
           </fieldset>
@@ -245,7 +250,7 @@ export default function WorkflowModalFormView({
 
       {/* Full-width footer */}
       <div className="shrink-0">
-        <Divider className="bg-zinc-700" />
+        <Separator />
         <div className="px-6 py-4">
           {mode === "preview" ? (
             <PreviewFooter onClose={onClose} />
@@ -284,9 +289,9 @@ function PreviewFooter({ onClose }: { onClose: () => void }) {
           You can customise every detail later from the Workflows page.
         </span>
       </div>
-      <Button color="primary" onPress={onClose}>
+      <GaiaButton onPress={onClose} variant="primary">
         Close
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

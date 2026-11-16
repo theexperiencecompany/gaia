@@ -1,13 +1,13 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { useDisclosure } from "@heroui/react";
-import { Skeleton } from "@heroui/skeleton";
-
+import { Chip, Skeleton } from "@heroui/react";
+import nextDynamic from "next/dynamic";
+import { useState } from "react";
+import { shapeVariants } from "@/components/shared/shape";
+import { toneVariants } from "@/components/shared/tone";
 import { SidebarContent, SidebarHeader } from "@/components/ui/sidebar";
 import { InstanceSetupCallout } from "@/features/integrations/components/InstanceSetupNotice";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
-import { IntegrationInstructionsEditor } from "@/features/integrations/components/IntegrationInstructionsEditor";
 import { IntegrationPermissionsModal } from "@/features/integrations/components/IntegrationPermissionsModal";
 import { IntegrationRelatedWorkflows } from "@/features/integrations/components/IntegrationRelatedWorkflows";
 import { useIntegrationOwnership } from "@/features/integrations/hooks/useIntegrationOwnership";
@@ -21,6 +21,16 @@ import { IntegrationAccounts } from "./integration-sidebar/IntegrationAccounts";
 import { IntegrationActions } from "./integration-sidebar/IntegrationActions";
 import { IntegrationHeaderChips } from "./integration-sidebar/IntegrationHeaderChips";
 import { IntegrationToolsHeading } from "./integration-sidebar/IntegrationToolsHeading";
+
+// Only needed when the instructions modal opens; keeps KaTeX/Streamdown CSS
+// out of the app shell's blocking stylesheets.
+const IntegrationInstructionsEditor = nextDynamic(
+  () =>
+    import(
+      "@/features/integrations/components/IntegrationInstructionsEditor"
+    ).then((mod) => ({ default: mod.IntegrationInstructionsEditor })),
+  { ssr: false },
+);
 
 // Placeholder chip widths shown while an integration's tools load (on-demand
 // fetch or post-connect discovery). Distinct values double as React keys.
@@ -67,7 +77,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   // The sidebar only reads its approval state — configuring it lives in the
   // modal behind the Permissions button.
   const permissions = useIntegrationPermissions(integrationTools);
-  const permissionsModal = useDisclosure();
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
 
   // Show the tool skeleton both on the initial on-demand fetch and while a
   // just-connected integration is still discovering tools in the background —
@@ -144,7 +154,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           isConnected={isConnected}
           showToolsSkeleton={showToolsSkeleton}
           isSettling={isSettling}
-          onOpenPermissions={permissionsModal.onOpen}
+          onOpenPermissions={() => setPermissionsOpen(true)}
         />
       </SidebarHeader>
 
@@ -155,10 +165,15 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
               {integrationTools.map((tool) => (
                 <Chip
                   key={tool.name}
-                  variant="bordered"
+                  variant="secondary"
                   color="default"
-                  radius="full"
-                  className="font-light border-1 text-zinc-300"
+                  className={shapeVariants({
+                    shape: "pill",
+                    className: toneVariants({
+                      tone: "dim",
+                      className: "font-light border-1",
+                    }),
+                  })}
                 >
                   {tool.label}
                 </Chip>
@@ -186,8 +201,8 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
           name={integration.name}
           tools={integrationTools}
           permissions={permissions}
-          isOpen={permissionsModal.isOpen}
-          onOpenChange={permissionsModal.onOpenChange}
+          isOpen={permissionsOpen}
+          onOpenChange={setPermissionsOpen}
         />
       )}
     </div>

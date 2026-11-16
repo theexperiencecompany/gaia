@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
@@ -126,7 +126,7 @@ export function WizardSteps({
                   {step.title}
                 </h1>
                 {step.optional && (
-                  <Chip size="sm" variant="flat">
+                  <Chip size="sm" variant="soft">
                     Optional
                   </Chip>
                 )}

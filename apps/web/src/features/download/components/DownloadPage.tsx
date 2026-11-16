@@ -1,19 +1,14 @@
 "use client";
 
-import { Button, ButtonGroup } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
+import { ButtonGroup, Chip, Dropdown, Menu } from "@heroui/react";
 import { ArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronDown, ChevronRight } from "@/components/shared/icons";
+import { LinkButton } from "@/components/shared/LinkButton";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import { appConfig } from "@/config/appConfig";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
@@ -136,8 +131,8 @@ function DesktopDownloadButton({
 
   const meta = OS_META[os];
   const available = desktopDownloads[os].filter((v) => v.downloadUrl);
-  const buttonVariant = isPrimary ? undefined : ("flat" as const);
-  // Mac's apple.svg is dark; invert it on the light "flat" (secondary) buttons.
+  const buttonVariant = isPrimary ? "default-solid" : "default-soft";
+  // Mac's apple.svg is dark; invert it on the light default-soft buttons.
   const invertIcon = os === "mac" && !isPrimary;
   const iconSize = getImageDimensions(meta.icon);
 
@@ -149,6 +144,8 @@ function DesktopDownloadButton({
         width={iconSize.width}
         height={iconSize.height}
         sizes="16px"
+        // The desktop buttons sit in the page's first section.
+        loading="eager"
         className={
           invertIcon
             ? "absolute inset-0 h-full w-full object-contain filter invert"
@@ -162,30 +159,30 @@ function DesktopDownloadButton({
 
   if (isDesktopReleaseLoading) {
     return (
-      <Button variant={buttonVariant} isLoading startContent={icon}>
+      <GaiaButton variant={buttonVariant} isPending>
+        {icon}
         {baseLabel}
-      </Button>
+      </GaiaButton>
     );
   }
 
   if (available.length === 0) {
     return (
-      <Button
-        as={Link}
+      <LinkButton
         href={GITHUB_RELEASES_BASE}
         target="_blank"
         rel="noopener noreferrer"
         variant={buttonVariant}
-        startContent={icon}
-        onPress={() => {
+        onClick={() => {
           track("navigation:cta_clicked", {
             destination: "github_releases",
             os,
           });
         }}
       >
+        {icon}
         {baseLabel}
-      </Button>
+      </LinkButton>
     );
   }
 
@@ -206,22 +203,21 @@ function DesktopDownloadButton({
     available.length > 1 ? `${baseLabel} (${selected.label})` : baseLabel;
 
   const mainButton = (
-    <Button
-      as={Link}
+    <LinkButton
       href={selected.downloadUrl ?? "#"}
       target="_blank"
       rel="noopener noreferrer"
       variant={buttonVariant}
-      startContent={icon}
-      onPress={() => {
+      onClick={() => {
         track("navigation:cta_clicked", {
           destination: "download",
           os,
         });
       }}
     >
+      {icon}
       {label}
-    </Button>
+    </LinkButton>
   );
 
   if (available.length === 1) {
@@ -231,27 +227,40 @@ function DesktopDownloadButton({
   return (
     <ButtonGroup>
       {mainButton}
-      <Dropdown placement="bottom-end">
-        <DropdownTrigger>
-          <Button isIconOnly variant={buttonVariant}>
-            <ChevronDown width={17} height={17} />
-          </Button>
-        </DropdownTrigger>
-        <DropdownMenu
-          disallowEmptySelection
-          aria-label={`${meta.name} architecture options`}
-          selectedKeys={new Set([effectiveArch])}
-          selectionMode="single"
-          onSelectionChange={(keys) =>
-            setOverrideArch(Array.from(keys)[0] as DesktopArch)
-          }
+      <Dropdown>
+        <GaiaButton
+          aria-label="Choose architecture"
+          isIconOnly
+          variant={buttonVariant}
         >
-          {available.map((variant) => (
-            <DropdownItem key={variant.arch} description={variant.description}>
-              {variant.label}
-            </DropdownItem>
-          ))}
-        </DropdownMenu>
+          <ChevronDown width={17} height={17} />
+        </GaiaButton>
+        <Dropdown.Popover placement="bottom end">
+          <Menu
+            disallowEmptySelection
+            aria-label={`${meta.name} architecture options`}
+            selectedKeys={new Set([effectiveArch])}
+            selectionMode="single"
+            onSelectionChange={(keys) =>
+              setOverrideArch(Array.from(keys)[0] as DesktopArch)
+            }
+          >
+            {available.map((variant) => (
+              <Menu.Item
+                key={variant.arch}
+                id={variant.arch}
+                textValue={variant.label}
+              >
+                <div className="flex flex-col">
+                  <span>{variant.label}</span>
+                  <span className="text-xs text-zinc-400">
+                    {variant.description}
+                  </span>
+                </div>
+              </Menu.Item>
+            ))}
+          </Menu>
+        </Dropdown.Popover>
       </Dropdown>
     </ButtonGroup>
   );
@@ -269,10 +278,9 @@ function DesktopSection() {
       imageAlt="GAIA Desktop App"
       imagePosition="left"
       contentAlignment="right"
-      imagePriority={false}
       title="Download for Desktop"
       chip={
-        <Chip variant="flat" color="success">
+        <Chip variant="soft" color="success">
           Beta
         </Chip>
       }
@@ -327,7 +335,7 @@ function MobileSection() {
       imageHeight={288}
       imageSizes={null}
       chip={
-        <Chip variant="flat" color="warning">
+        <Chip variant="soft" color="warning">
           Waitlist
         </Chip>
       }
@@ -335,54 +343,44 @@ function MobileSection() {
       description="GAIA for iOS and Android is currently in development."
       actions={
         <div className="flex flex-col gap-3">
-          <Button
-            as={Link}
+          <LinkButton
+            variant="default-solid"
             href={appConfig.site.mobileWaitlist}
             target="_blank"
             rel="noopener noreferrer"
-            onPress={() => {
+            onClick={() => {
               track("cta:get_started_clicked", {});
             }}
           >
             Sign up for waitlist <ChevronRight width={17} height={17} />
-          </Button>
+          </LinkButton>
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="flat"
-              isDisabled
-              startContent={
-                <div className="relative h-4 w-4">
-                  <Image
-                    src="/images/icons/apple.svg"
-                    alt=""
-                    width={APPLE_ICON.width}
-                    height={APPLE_ICON.height}
-                    sizes="16px"
-                    className="absolute inset-0 h-full w-full object-contain"
-                  />
-                </div>
-              }
-            >
+            <GaiaButton variant="default-soft" isDisabled>
+              <div className="relative h-4 w-4">
+                <Image
+                  src="/images/icons/apple.svg"
+                  alt=""
+                  width={APPLE_ICON.width}
+                  height={APPLE_ICON.height}
+                  sizes="16px"
+                  className="absolute inset-0 h-full w-full object-contain"
+                />
+              </div>
               App Store
-            </Button>
-            <Button
-              variant="flat"
-              isDisabled
-              startContent={
-                <div className="relative h-4 w-4">
-                  <Image
-                    src="/images/icons/google_play.svg"
-                    alt=""
-                    width={GOOGLE_PLAY_ICON.width}
-                    height={GOOGLE_PLAY_ICON.height}
-                    sizes="16px"
-                    className="absolute inset-0 h-full w-full object-contain"
-                  />
-                </div>
-              }
-            >
+            </GaiaButton>
+            <GaiaButton variant="default-soft" isDisabled>
+              <div className="relative h-4 w-4">
+                <Image
+                  src="/images/icons/google_play.svg"
+                  alt=""
+                  width={GOOGLE_PLAY_ICON.width}
+                  height={GOOGLE_PLAY_ICON.height}
+                  sizes="16px"
+                  className="absolute inset-0 h-full w-full object-contain"
+                />
+              </div>
               Google Play
-            </Button>
+            </GaiaButton>
           </div>
         </div>
       }
@@ -418,6 +416,13 @@ function WebSection() {
       actions={<GetStartedButton />}
       extraContent={
         <div className="flex items-center gap-4 text-sm text-zinc-500">
+          <Link
+            href="/signup"
+            className="flex items-center gap-1 transition hover:text-zinc-300"
+          >
+            Create your account
+            <ArrowRight02Icon className="h-4 w-4" />
+          </Link>
           <Link
             href="https://docs.heygaia.io/release-notes"
             target="_blank"

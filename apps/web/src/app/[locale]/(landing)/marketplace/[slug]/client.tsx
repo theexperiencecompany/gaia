@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import DocsGuidesSection from "@/components/seo/DocsGuidesSection";
 import { PageBreadcrumbs } from "@/components/seo/PageBreadcrumbs";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
@@ -18,7 +19,6 @@ import {
 import { IntegrationHeader } from "./IntegrationHeader";
 import { IntegrationMetaBar } from "./IntegrationMetaBar";
 import { IntegrationRichContent } from "./IntegrationRichContent";
-import { IntegrationToolsCard } from "./IntegrationToolsCard";
 import { IntegrationUseCases } from "./IntegrationUseCases";
 import { useAddIntegration } from "./useAddIntegration";
 
@@ -34,6 +34,10 @@ interface IntegrationDetailClientProps {
   automateCombos?: AutomateCombo[];
   /** Curated docs guides for this slug (server-resolved, fallback included). */
   docsGuides?: readonly DocsGuideLink[];
+  /** The marketplace directory page that lists this integration. */
+  directoryHref: string;
+  /** IntegrationToolsCard, rendered by the server page so the tool markdown never parses in the browser. */
+  toolsCard: ReactNode;
 }
 
 export function IntegrationDetailClient({
@@ -44,6 +48,8 @@ export function IntegrationDetailClient({
   initialRelatedWorkflows,
   automateCombos,
   docsGuides,
+  directoryHref,
+  toolsCard,
 }: IntegrationDetailClientProps) {
   const add = useAddIntegration(integration);
 
@@ -80,7 +86,7 @@ export function IntegrationDetailClient({
 
           <IntegrationUseCases integration={integration} />
 
-          <IntegrationToolsCard integration={integration} />
+          {toolsCard}
 
           <IntegrationRelatedWorkflows
             integrationId={integration.integrationId}
@@ -92,6 +98,7 @@ export function IntegrationDetailClient({
             integration={integration}
             comparisonSlug={comparisonSlug}
             alternativeSlug={alternativeSlug}
+            directoryHref={directoryHref}
           />
 
           <IntegrationRelatedIntegrations integrations={relatedIntegrations} />
