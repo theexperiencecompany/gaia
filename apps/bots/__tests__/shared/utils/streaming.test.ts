@@ -6,16 +6,21 @@
  * is the `GaiaClient` stream source and the platform send/edit callbacks, which
  * stand in for the platform SDK exactly as each adapter wires them.
  */
+import { PassThrough } from "node:stream";
 import type { ApprovalRequestData } from "@gaia/shared";
 import {
-  type GaiaClient,
+  GaiaClient,
   handleStreamingChat,
+  type MessageEditor,
+  type NewMessageSender,
   PLATFORM_LIMITS,
   type PlatformName,
+  REACTION_OUTCOME,
+  type ReactionOutcome,
   renderForPlatform,
   STREAMING_DEFAULTS,
 } from "@gaia/shared/bots";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, type Mock, vi } from "vitest";
 import { captureBotEvents } from "../helpers/capture-bot-event";
 
 const BREAK = "<NEW_MESSAGE_BREAK>";
@@ -150,11 +155,76 @@ interface Delivered {
   errors: string[];
 }
 
+/** A platform's screen, and the send/edit callbacks an adapter hands the streamer. */
+interface PlatformScreen {
+  delivered: Delivered;
+  editMessage: MessageEditor;
+  sendNewMessage: NewMessageSender;
+}
+
 /**
- * Runs one streamed turn against a platform, emulating that platform's real
- * edit semantics: editable platforms update the live message in place,
- * non-editable ones (WhatsApp, iMessage) turn every edit into a new message.
+ * Emulates a platform's real edit semantics: editable platforms update the live
+ * message in place, non-editable ones (WhatsApp, iMessage) turn every edit into
+ * a new message.
  */
+function platformScreen({
+  editable = true,
+  failEdit,
+}: {
+  editable?: boolean;
+  /** Throws on the Nth edit (0-based), emulating a platform rejection. */
+  failEdit?: { at: number; error: unknown };
+} = {}): PlatformScreen {
+  const delivered: Delivered = {
+    bubbles: [],
+    writes: [],
+    newMessages: 0,
+    errors: [],
+  };
+  const { bubbles, writes } = delivered;
+  let current = -1;
+  let editAttempts = 0;
+
+  const maybeFail = (): void => {
+    if (failEdit && editAttempts === failEdit.at) {
+      editAttempts += 1;
+      throw failEdit.error;
+    }
+    editAttempts += 1;
+  };
+
+  const editMessage = async (text: string): Promise<void> => {
+    maybeFail();
+    writes.push(text);
+    if (current === -1 || !editable) {
+      bubbles.push(text);
+      current = bubbles.length - 1;
+      return;
+    }
+    bubbles[current] = text;
+  };
+
+  const sendNewMessage = async (text: string) => {
+    delivered.newMessages += 1;
+    writes.push(text);
+    bubbles.push(text);
+    const index = bubbles.length - 1;
+    current = index;
+    return async (updated: string): Promise<void> => {
+      maybeFail();
+      writes.push(updated);
+      if (editable) {
+        bubbles[index] = updated;
+        return;
+      }
+      bubbles.push(updated);
+    };
+  };
+
+  return { delivered, editMessage, sendNewMessage };
+}
+
+/** Runs one streamed turn against a platform (see {@link platformScreen}). */
 async function deliver(
   platform: PlatformName,
   chunks: StreamStep[],
@@ -177,48 +247,10 @@ async function deliver(
     receivedAt?: number;
   } = {},
 ): Promise<Delivered> {
-  const bubbles: string[] = [];
-  const writes: string[] = [];
-  const errors: string[] = [];
-  let current = -1;
-  let editAttempts = 0;
-  let newMessages = 0;
-
-  const maybeFail = (): void => {
-    if (failEdit && editAttempts === failEdit.at) {
-      editAttempts += 1;
-      throw failEdit.error;
-    }
-    editAttempts += 1;
-  };
-
-  const editMessage = async (text: string): Promise<void> => {
-    maybeFail();
-    writes.push(text);
-    if (current === -1 || !editable) {
-      bubbles.push(text);
-      current = bubbles.length - 1;
-      return;
-    }
-    bubbles[current] = text;
-  };
-
-  const sendNewMessage = async (text: string) => {
-    newMessages += 1;
-    writes.push(text);
-    bubbles.push(text);
-    const index = bubbles.length - 1;
-    current = index;
-    return async (updated: string): Promise<void> => {
-      maybeFail();
-      writes.push(updated);
-      if (editable) {
-        bubbles[index] = updated;
-        return;
-      }
-      bubbles.push(updated);
-    };
-  };
+  const { delivered, editMessage, sendNewMessage } = platformScreen({
+    editable,
+    failEdit,
+  });
 
   await handleStreamingChat(
     failStream === undefined
@@ -237,7 +269,7 @@ async function deliver(
       throw new Error("auth error path is not exercised by these cases");
     },
     async (formattedError: string) => {
-      errors.push(formattedError);
+      delivered.errors.push(formattedError);
       if (failStream === undefined) {
         throw new Error(`unexpected stream error: ${formattedError}`);
       }
@@ -245,7 +277,7 @@ async function deliver(
     STREAMING_DEFAULTS[platform],
   );
 
-  return { bubbles, writes, newMessages, errors };
+  return delivered;
 }
 
 /** Word count, so text is compared by content rather than exact whitespace. */
@@ -799,4 +831,284 @@ describe("the chat event's latency stretches", () => {
     expect(latency?.inbound_to_first_send_ms).toBeUndefined();
     expect(latency?.bot_egress_ms).toBeGreaterThanOrEqual(0);
   });
+});
+
+/** SSE `data:` frames, exactly as the bot chat-stream endpoint writes them. */
+function sseFrames(...payloads: object[]): string {
+  return payloads.map((p) => `data: ${JSON.stringify(p)}\n\n`).join("");
+}
+
+const DONE = { done: true, conversation_id: "c1" } as const;
+const REPLY_COMPLETE = { reply_complete: true } as const;
+const keptBoundary = (id: string) => ({
+  message_boundary: { message_id: id, discarded: false },
+});
+
+/** One turn running through the REAL SSE parser, fed frame by frame by the test. */
+interface LiveTurn {
+  delivered: Delivered;
+  noReply: Mock<() => Promise<void>>;
+  /** Writes frames into the response body the streamer is reading. */
+  send: (...payloads: object[]) => void;
+  /** Ends the response body and waits for the turn to finish. */
+  finish: () => Promise<void>;
+}
+
+/**
+ * Starts a turn whose GaiaClient is real down to the axios transport, which
+ * serves a stream the test writes into — so what a platform shows can be
+ * checked between two frames, e.g. after `reply_complete` but before `done`.
+ */
+function startLiveTurn(
+  platform: PlatformName,
+  {
+    editable = true,
+    onReaction,
+    receivedAt,
+  }: {
+    editable?: boolean;
+    onReaction?: (emoji: string) => Promise<ReactionOutcome>;
+    receivedAt?: number;
+  } = {},
+): LiveTurn {
+  const body = new PassThrough();
+  const gaia = new GaiaClient("http://gaia.test", "key", "http://web.test");
+  (gaia as unknown as { client: unknown }).client = {
+    post: vi.fn(async () => ({ data: body })),
+  };
+  const { delivered, editMessage, sendNewMessage } = platformScreen({
+    editable,
+  });
+  const noReply = vi.fn(async () => undefined);
+
+  const turn = handleStreamingChat(
+    gaia,
+    {
+      message: "drive the streamer",
+      platform,
+      platformUserId: "u1",
+      channelId: "c1",
+      receivedAt,
+    },
+    editMessage,
+    sendNewMessage,
+    async () => {
+      throw new Error("auth error path is not exercised by these cases");
+    },
+    async (formattedError: string) => {
+      throw new Error(`unexpected stream error: ${formattedError}`);
+    },
+    STREAMING_DEFAULTS[platform],
+    undefined,
+    onReaction,
+    noReply,
+  );
+
+  return {
+    delivered,
+    noReply,
+    send: (...payloads) => body.write(sseFrames(...payloads)),
+    finish: async () => {
+      body.end();
+      await turn;
+    },
+  };
+}
+
+const ACK = "On it, pulling your calendar for next week now.";
+const RESULT = "You are free at 3pm on Tuesday and all of Thursday.";
+
+describe("a buffered platform delivers the reply when it is complete, not at done", () => {
+  // `done` waits on end-of-turn work — the follow-up suggestions call, and in a delegated
+  // turn the whole executor run — while the reply the user is waiting for is long final.
+  it.each<[PlatformName, boolean]>([
+    ["whatsapp", false],
+    ["imessage", false],
+    ["discord", true],
+  ])("%s sends on reply_complete, before done", async (platform, editable) => {
+    const live = startLiveTurn(platform, { editable });
+
+    live.send({ text: ANSWER }, keptBoundary("m1"), REPLY_COMPLETE);
+
+    await vi.waitFor(() =>
+      expect(live.delivered.bubbles).toEqual([
+        renderForPlatform(ANSWER, platform),
+      ]),
+    );
+    live.send(DONE);
+    await live.finish();
+  });
+
+  it.each<[PlatformName, boolean]>([
+    ["whatsapp", false],
+    ["discord", true],
+  ])(
+    "%s sends nothing more at done, even when reply_complete repeats",
+    async (platform, editable) => {
+      const live = startLiveTurn(platform, { editable });
+
+      live.send(
+        { text: ANSWER },
+        keptBoundary("m1"),
+        REPLY_COMPLETE,
+        REPLY_COMPLETE,
+        DONE,
+      );
+      await live.finish();
+
+      expect(live.delivered.writes).toEqual([
+        renderForPlatform(ANSWER, platform),
+      ]);
+      expect(live.noReply).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each<[PlatformName, boolean]>([
+    ["whatsapp", false],
+    ["discord", true],
+  ])(
+    "%s delivers a delegated turn's result once, at done, as a new message",
+    async (platform, editable) => {
+      const live = startLiveTurn(platform, { editable });
+
+      live.send({ text: ACK }, keptBoundary("m1"), REPLY_COMPLETE);
+      await vi.waitFor(() =>
+        expect(live.delivered.bubbles).toEqual([
+          renderForPlatform(ACK, platform),
+        ]),
+      );
+      live.send({ text: RESULT }, keptBoundary("m2"), REPLY_COMPLETE, DONE);
+      await live.finish();
+
+      // The ack stays on screen: the result opens a message of its own rather
+      // than overwriting it, and neither is sent twice.
+      expect(live.delivered.bubbles).toEqual([
+        renderForPlatform(ACK, platform),
+        renderForPlatform(RESULT, platform),
+      ]);
+      expect(live.delivered.writes).toHaveLength(2);
+      expect(live.delivered.newMessages).toBe(1);
+      expect(live.noReply).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not take down the waiting indicator for a reply it already delivered", async () => {
+    // onNoReply means "this turn produced no reply": adapters delete their waiting
+    // message on it. A reply delivered at reply_complete is still the turn's reply.
+    const live = startLiveTurn("whatsapp", { editable: false });
+
+    live.send({ text: ANSWER }, keptBoundary("m1"), REPLY_COMPLETE, DONE);
+    await live.finish();
+
+    expect(live.noReply).not.toHaveBeenCalled();
+  });
+
+  describe("an emoji-only turn is unaffected", () => {
+    // The ack is the whole reply: nothing is kept when the first reply_complete
+    // arrives, and the emoji itself lands after it.
+    const EMOJI_TURN = [
+      REPLY_COMPLETE,
+      { emoji_ack: { emoji: "😅", reacts_to_message_id: "u1" } },
+      REPLY_COMPLETE,
+      DONE,
+    ];
+
+    it("attaches the reaction and posts nothing", async () => {
+      const live = startLiveTurn("whatsapp", {
+        editable: false,
+        onReaction: async () => REACTION_OUTCOME.ATTACHED,
+      });
+
+      live.send(...EMOJI_TURN);
+      await live.finish();
+
+      expect(live.delivered.writes).toEqual([]);
+      expect(live.noReply).not.toHaveBeenCalled();
+    });
+
+    it("sends the emoji once as text when the reaction cannot attach", async () => {
+      const live = startLiveTurn("whatsapp", { editable: false });
+
+      live.send(...EMOJI_TURN);
+      await live.finish();
+
+      expect(live.delivered.writes).toEqual(["😅"]);
+    });
+  });
+
+  it("leaves a streaming platform's delivery exactly as it was", async () => {
+    // Telegram already delivers at each kept boundary; reply_complete adds nothing.
+    const turn = (withReplyComplete: boolean) => [
+      { text: ACK },
+      keptBoundary("m1"),
+      ...(withReplyComplete ? [REPLY_COMPLETE] : []),
+      { text: RESULT },
+      keptBoundary("m2"),
+      ...(withReplyComplete ? [REPLY_COMPLETE] : []),
+      DONE,
+    ];
+    const run = async (withReplyComplete: boolean): Promise<Delivered> => {
+      const live = startLiveTurn("telegram");
+      live.send(...turn(withReplyComplete));
+      await live.finish();
+      return live.delivered;
+    };
+
+    const withFrame = await run(true);
+
+    expect(withFrame).toEqual(await run(false));
+    expect(withFrame.bubbles).toEqual([
+      renderForPlatform(ACK, "telegram"),
+      renderForPlatform(RESULT, "telegram"),
+    ]);
+  });
+
+  it("measures egress from the reply_complete that triggered the send", async () => {
+    // Done arrives long after the send; measured from done, egress went negative.
+    const SUGGESTIONS_MS = 300;
+    const events = await captureBotEvents("chat", async () => {
+      const live = startLiveTurn("whatsapp", {
+        editable: false,
+        receivedAt: Date.now(),
+      });
+      live.send({ text: ANSWER }, keptBoundary("m1"), REPLY_COMPLETE);
+      await vi.waitFor(() => expect(live.delivered.writes).toHaveLength(1));
+      await new Promise((resolve) => setTimeout(resolve, SUGGESTIONS_MS));
+      live.send(DONE);
+      await live.finish();
+    });
+
+    const latency = events[0]?.latency as Record<string, number> | undefined;
+    expect(latency?.bot_egress_ms).toBeGreaterThanOrEqual(0);
+    expect(latency?.bot_egress_ms).toBeLessThan(SUGGESTIONS_MS);
+    expect(latency?.inbound_to_first_send_ms).toBeLessThan(SUGGESTIONS_MS);
+  });
+});
+
+describe("a buffered platform never delivers text before it is kept", () => {
+  it.each<[PlatformName, boolean]>([
+    ["whatsapp", false],
+    ["discord", true],
+  ])(
+    "%s posts a mid-reply notice without sending the reply twice or over it",
+    async (platform, editable) => {
+      // A notice is delivered out of band, which flushes "what has streamed so far". On a
+      // buffered platform that was raw, unconfirmed text — sent there, then again at done,
+      // where reopening the live bubble also had the reply overwrite the notice on Discord.
+      const NOTICE = "You've reached your chat limit. Please try again later.";
+      const { writes, bubbles } = await deliver(
+        platform,
+        [GREETING, { notice: NOTICE }, KEPT, CHECKED, KEPT],
+        { editable },
+      );
+
+      const expected = [
+        NOTICE,
+        renderForPlatform(GREETING, platform),
+        renderForPlatform(CHECKED, platform),
+      ];
+      expect(writes).toEqual(expected);
+      expect(bubbles).toEqual(expected);
+    },
+  );
 });

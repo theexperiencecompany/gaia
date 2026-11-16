@@ -24,6 +24,7 @@ import type {
   MessageBoundary,
   MessageBoundaryHandler,
   NoticeHandler,
+  ReplyCompleteHandler,
 } from "./chat-stream.types";
 
 export type { ReactionHandler } from "../utils/reaction-outcome";
@@ -32,6 +33,7 @@ export type {
   ChatStreamClient,
   MessageBoundaryHandler,
   NoticeHandler,
+  ReplyCompleteHandler,
 } from "./chat-stream.types";
 
 /** Exponential-backoff base delay and ceiling for stream retries. */
@@ -64,6 +66,7 @@ export async function streamChat(
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
   onReaction?: ReactionHandler,
+  onReplyComplete?: ReplyCompleteHandler,
   maxRetries = 2,
 ): Promise<string> {
   let lastError: Error | null = null;
@@ -83,6 +86,7 @@ export async function streamChat(
         onMessageBoundary,
         onNotice,
         onReaction,
+        onReplyComplete,
       );
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -135,6 +139,7 @@ interface SseFrame {
   text?: string;
   message_boundary?: MessageBoundary;
   emoji_ack?: { emoji: string; reacts_to_message_id?: string };
+  reply_complete?: boolean;
   done?: boolean;
   conversation_id?: string;
 }
@@ -166,6 +171,7 @@ async function streamChatOnce(
   onMessageBoundary?: MessageBoundaryHandler,
   onNotice?: NoticeHandler,
   onReaction?: ReactionHandler,
+  onReplyComplete?: ReplyCompleteHandler,
 ): Promise<string> {
   let fullText = "";
   // Text streamed since the last message boundary; joins `fullText` only once the backend
@@ -305,6 +311,9 @@ async function streamChatOnce(
         if (frame.message_boundary) {
           await applyMessageBoundary(frame.message_boundary.discarded);
         }
+        // Only KEPT text: anything still pending has no boundary yet, so it could
+        // still be retracted, and the reply it would join is not final.
+        if (frame.reply_complete) await onReplyComplete?.(fullText);
       };
 
       // Applies one parsed SSE frame's side effects. Returns true once the
@@ -492,6 +501,7 @@ async function streamChatOnce(
         // attempt every rate-limit notice it produced.
         onNotice,
         onReaction,
+        onReplyComplete,
       );
     }
 

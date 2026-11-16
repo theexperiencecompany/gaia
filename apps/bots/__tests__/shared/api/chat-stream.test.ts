@@ -41,6 +41,7 @@ async function drive(sseBody: string) {
   const onApproval = vi.fn();
   const onBoundary = vi.fn();
   const onNotice = vi.fn();
+  const onReplyComplete = vi.fn();
   await streamChat(
     makeDeps(sseBody),
     REQUEST,
@@ -51,8 +52,10 @@ async function drive(sseBody: string) {
     onApproval,
     onBoundary,
     onNotice,
+    undefined,
+    onReplyComplete,
   );
-  return { onChunk, onDone, onError, onBoundary, onNotice };
+  return { onChunk, onDone, onError, onBoundary, onNotice, onReplyComplete };
 }
 
 function frames(...payloads: object[]): string {
@@ -192,5 +195,47 @@ describe("streamChat — a chunk carrying several frames", () => {
     // tells a bot its message is final and may now be split into bubbles.
     expect(onBoundary.mock.calls.flat()).toEqual([true, false]);
     expect(onDone).toHaveBeenCalledWith("three", "c1");
+  });
+});
+
+describe("streamChat — the reply_complete frame", () => {
+  it("hands over the kept reply text the moment the reply is final, before done", async () => {
+    // A buffered platform delivers on this frame instead of waiting for done, which
+    // follows the turn's end-of-turn work (suggestions, a delegated executor run).
+    const { onReplyComplete, onDone } = await drive(
+      frames(
+        { text: "let me check" },
+        { message_boundary: { message_id: "m1", discarded: true } },
+        { text: "on it, pulling your calendar now." },
+        { message_boundary: { message_id: "m2", discarded: false } },
+        { reply_complete: true },
+        { text: "you're free all of thursday." },
+        { message_boundary: { message_id: "m3", discarded: false } },
+        { reply_complete: true },
+        { done: true, conversation_id: "c1" },
+      ),
+    );
+
+    expect(onReplyComplete.mock.calls).toEqual([
+      ["on it, pulling your calendar now."],
+      [
+        "on it, pulling your calendar now.<NEW_MESSAGE_BREAK>you're free all of thursday.",
+      ],
+    ]);
+    expect(onReplyComplete.mock.invocationCallOrder[0]).toBeLessThan(
+      onDone.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("never hands over text whose message has not been confirmed kept", async () => {
+    const { onReplyComplete } = await drive(
+      frames(
+        { text: "a draft the guard may still retract" },
+        { reply_complete: true },
+        { done: true, conversation_id: "c1" },
+      ),
+    );
+
+    expect(onReplyComplete).toHaveBeenCalledExactlyOnceWith("");
   });
 });

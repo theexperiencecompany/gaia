@@ -22,7 +22,11 @@ import type { AnalyticsContext } from "../../analytics";
 import type { ApprovalRequestData } from "../../chat";
 import { formatApprovalAge } from "../../chat/approvals";
 import type { GaiaClient } from "../api";
-import { BOT_STREAM_ERROR, type ReactionHandler } from "../api/chat-stream";
+import {
+  BOT_STREAM_ERROR,
+  type ReactionHandler,
+  type ReplyCompleteHandler,
+} from "../api/chat-stream";
 import {
   createDeliveryFailureReporter,
   DELIVERY_FAILURE_KIND,
@@ -125,6 +129,7 @@ async function _handleStream(
     deliverOutOfBand: (text: string) => Promise<void>,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
     onReaction: ReactionHandler,
+    onReplyComplete: ReplyCompleteHandler,
   ) => Promise<string>,
   request: ChatRequest,
   gaia: GaiaClient,
@@ -176,6 +181,8 @@ async function _handleStream(
   let failureReported = false;
   /** True once the turn's emoji ack attached natively, which is a reply of its own. */
   let reacted = false;
+  /** Kept reply text a buffered platform has already delivered, so none of it goes out twice. */
+  let deliveredReply = "";
 
   // Serialization queue to prevent concurrent Telegram API calls
   // which cause out-of-order message updates
@@ -351,15 +358,43 @@ async function _handleStream(
    */
   const handleMessageBoundary = async (discarded: boolean): Promise<void> => {
     await enqueue(async () => {
-      // Non-streaming platforms (Discord, WhatsApp, iMessage) have shown nothing yet: the whole
-      // reply is delivered at stream end from ``finalText``, already built from KEPT messages
-      // only. Acting on a boundary here would deliver that text a second time.
+      // Non-streaming platforms (Discord, WhatsApp, iMessage) deliver only from the kept text
+      // chat-stream hands over at ``reply_complete`` and at stream end (deliverKeptReply).
+      // Acting on a boundary here would deliver that text a second time.
       if (!streaming) return;
       if (discarded) {
         discardCurrentMessage();
         return;
       }
       await flushMessage();
+    });
+  };
+
+  /**
+   * Delivers a buffered platform's reply: every KEPT message not already delivered. Called when
+   * the backend marks the reply final (`reply_complete`) and again at the stream's end, so the
+   * reply goes out without waiting on the turn's end-of-turn work, and whatever is kept after
+   * it — a delegated turn's result — follows at the end as messages of its own.
+   *
+   * `keptText` is the whole kept reply so far, as chat-stream builds it; a retraction only ever
+   * takes back the message in flight, so it can only grow past what was already delivered.
+   */
+  const deliverKeptReply = async (keptText: string): Promise<void> => {
+    if (!keptText.startsWith(deliveredReply)) {
+      throw new Error(
+        "Kept reply text no longer extends the reply already delivered",
+      );
+    }
+    pending = keptText.slice(deliveredReply.length);
+    deliveredReply = keptText;
+    await flushMessage();
+  };
+
+  const handleReplyComplete = async (keptText: string): Promise<void> => {
+    await enqueue(async () => {
+      // A streaming platform delivered each kept message at its boundary already.
+      if (streaming) return;
+      await deliverKeptReply(keptText);
     });
   };
 
@@ -398,8 +433,12 @@ async function _handleStream(
   try {
     await streamFn(
       (chunk) => {
+        // A buffered platform delivers only KEPT text (deliverKeptReply). A raw chunk may still
+        // be retracted, and held in `pending` an out-of-band flush would send it — then the
+        // kept copy again.
+        if (!streaming) return;
         pending += chunk;
-        if (streamDone || !streaming) return;
+        if (streamDone) return;
 
         const now = Date.now();
         if (now - lastEditTime >= editIntervalMs) {
@@ -434,16 +473,14 @@ async function _handleStream(
         // Wait for any in-flight operations to finish before final delivery
         await opQueue;
 
-        // Non-streaming platforms (Discord, WhatsApp, iMessage) show nothing yet, so the whole
-        // reply is delivered here from ``finalText``; streaming platforms already delivered each
+        // Non-streaming platforms (Discord, WhatsApp, iMessage) deliver from ``finalText``
+        // whatever ``reply_complete`` did not already; streaming platforms already delivered each
         // message at its boundary, so ``pending`` only holds a leftover last message — a legacy stream, or one cut short by an error.
-        if (!streaming) {
-          pending = finalText;
-          shownText = "";
-          bubbleSealed = false;
+        if (streaming) {
+          await flushMessage();
+        } else {
+          await deliverKeptReply(finalText);
         }
-
-        await flushMessage();
 
         // A retracted preamble with nothing to replace it means the turn produced no reply at
         // all. The preamble stays — a blank message is worse than the agent's own words — but
@@ -493,6 +530,7 @@ async function _handleStream(
       deliverOutOfBand,
       handleMessageBoundary,
       reactToTurn,
+      handleReplyComplete,
     );
   } catch (error) {
     // `streamChat` reports a non-retryable failure via `onError` and THEN rethrows, so by the
@@ -644,6 +682,7 @@ async function runStreamingChat(
     deliverOutOfBand: (text: string) => Promise<void>,
     onMessageBoundary: (discarded: boolean) => Promise<void>,
     reactToTurn: ReactionHandler,
+    onReplyComplete: ReplyCompleteHandler,
   ) => {
     stamps.apiRequestAt ??= Date.now();
     return gaia.chatStream(
@@ -701,6 +740,11 @@ async function runStreamingChat(
         );
         return outcome;
       },
+      async (keptText: string) => {
+        // The first one with text is what a buffered platform sends on.
+        if (keptText) stamps.replyCompleteAt ??= Date.now();
+        await onReplyComplete(keptText);
+      },
     );
   };
 
@@ -746,6 +790,8 @@ async function runStreamingChat(
 interface BotTurnStamps {
   apiRequestAt?: number;
   firstChunkAt?: number;
+  /** The first `reply_complete` that carried kept text. */
+  replyCompleteAt?: number;
   doneAt?: number;
   firstSendAt?: number;
 }
@@ -754,8 +800,9 @@ interface BotTurnStamps {
  * The stretches of a turn the bot itself adds, around the API's own time.
  *
  * Egress runs from the frame that makes text visible: the first chunk on a
- * streaming platform, the end of the stream on a buffered one (WhatsApp,
- * iMessage, Discord show nothing until then). Ingress needs the adapter's
+ * streaming platform; on a buffered one (WhatsApp, iMessage, Discord) the
+ * `reply_complete` it sends on, or the end of the stream for a turn whose
+ * reply only arrived there. Ingress needs the adapter's
  * arrival stamp, so it is absent for a request built without one.
  */
 function botTurnLatency(
@@ -763,7 +810,9 @@ function botTurnLatency(
   receivedAt: number | undefined,
   streaming: boolean,
 ): BotLogFields {
-  const visibleFrameAt = streaming ? stamps.firstChunkAt : stamps.doneAt;
+  const visibleFrameAt = streaming
+    ? stamps.firstChunkAt
+    : (stamps.replyCompleteAt ?? stamps.doneAt);
   const latency: BotLogFields = {};
   if (receivedAt !== undefined && stamps.apiRequestAt !== undefined) {
     latency.bot_ingress_ms = stamps.apiRequestAt - receivedAt;

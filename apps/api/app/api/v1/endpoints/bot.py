@@ -62,6 +62,7 @@ from app.services.bot.stream_frames import (
     keepalive_frame,
     message_boundary_frame,
     notice_frame,
+    reply_complete_frame,
     session_token_frame,
     stream_error_frame,
     text_frame,
@@ -460,6 +461,9 @@ def _bot_message_frame(data: BotWebStreamPayload) -> tuple[str | None, bool]:
             emoji=data.emoji_ack.emoji,
             reacts_to_message_id=data.emoji_ack.reacts_to_message_id,
         ), False
+
+    if data.main_response_complete:
+        return reply_complete_frame(), False
 
     # Skip web-only fields.
     if present & _WEB_ONLY_STREAM_FIELDS:

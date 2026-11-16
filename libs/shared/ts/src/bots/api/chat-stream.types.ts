@@ -36,6 +36,16 @@ export type MessageBoundaryHandler = (
 export type NoticeHandler = (text: string) => void | Promise<void>;
 
 /**
+ * Fired when the backend marks the reply's text final (`reply_complete`), ahead of `done`.
+ *
+ * `done` only follows the turn's end-of-turn work — follow-up suggestions, and in a delegated
+ * turn the whole executor run — so a platform that sends whole messages delivers here instead.
+ * `keptText` is every KEPT message so far, in the same shape `onDone` receives; the frame can
+ * repeat, and text kept after it (a delegated turn's result) still arrives with `done`.
+ */
+export type ReplyCompleteHandler = (keptText: string) => void | Promise<void>;
+
+/**
  * The slice of {@link GaiaClient} the streamer needs: the HTTP client, auth
  * header builder, and session-token storage. Passed as an explicit deps object
  * so the streaming logic stays decoupled from the client's private internals.
