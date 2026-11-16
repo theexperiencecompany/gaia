@@ -40,11 +40,14 @@ def test_a_clean_send_flushes_and_passes() -> None:
     sender.client.shutdown.assert_called_once_with()
 
 
-def test_loading_the_ci_client_leaves_sys_path_as_it_found_it() -> None:
+def test_loading_the_ci_client_leaves_sys_path_as_it_found_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ci_dir = str(CI_ANALYTICS.parent)
+    monkeypatch.setattr(sys, "path", [entry for entry in sys.path if entry != ci_dir])
     before = list(sys.path)
 
     module = _load_ci_analytics()
 
     assert module.ENVELOPE_PROPERTIES
     assert sys.path == before
-    assert str(CI_ANALYTICS.parent) not in sys.path
