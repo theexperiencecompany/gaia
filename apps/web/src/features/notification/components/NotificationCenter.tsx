@@ -3,14 +3,11 @@
 import { Badge, Popover, Tabs, Tooltip } from "@heroui/react";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
-import { SIDEBAR_HEADER_BUTTON_CLASS } from "@/components/layout/headers/SidebarHeaderButton";
 import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-import { buttonVariants } from "@/components/ui/button-variants";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { track } from "@/lib/analytics";
-import { cn } from "@/lib/utils";
 import { NotificationStatus } from "../../../types/features/notificationTypes";
 import { NotificationConnectBanner } from "./NotificationConnectBanner";
 import { NotificationItem } from "./NotificationItem";
@@ -73,22 +70,21 @@ export function NotificationCenter({
   return (
     <div className={`relative ${className}`}>
       <Popover>
-        {/* The trigger is the bell itself: a button inside it would be a second
-            control with its own tab stop. */}
+        {/* The bell is the popover's trigger itself: wrapped in Popover.Trigger it
+            would be a second button with its own tab stop. */}
         <Tooltip>
-          <Popover.Trigger
+          <GaiaButton
+            isIconOnly
+            variant="ghost"
             aria-label="Notifications"
-            className={cn(
-              buttonVariants({ variant: "ghost", size: "icon" }),
-              "relative cursor-pointer",
-              SIDEBAR_HEADER_BUTTON_CLASS,
-            )}
+            tone="muted"
+            hoverTone="accent"
           >
             {/* pointer-events-none on the count lets the bell underneath
                 capture hover/press; select-none keeps it from being
                 text-selected. */}
             <Badge.Anchor>
-              <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
+              <NotificationIcon className="min-h-[20px] min-w-[20px]" />
               {unreadCount > 0 && (
                 <Badge
                   color="accent"
@@ -100,7 +96,7 @@ export function NotificationCenter({
                 </Badge>
               )}
             </Badge.Anchor>
-          </Popover.Trigger>
+          </GaiaButton>
           <Tooltip.Content>Notifications</Tooltip.Content>
         </Tooltip>
 

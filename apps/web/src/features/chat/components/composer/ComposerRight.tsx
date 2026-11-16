@@ -168,22 +168,12 @@ export default function RightSide({
         </Tooltip>
       )}
 
-      <Tooltip>
-        <SendStopButton
-          hasContent={hasContent}
-          isUploading={isUploading}
-          onSend={handleFormSubmit}
-        />
-        <Tooltip.Content
-          className={overlayVariants({
-            surface: showStop ? "danger" : "accent",
-          })}
-          placement="right"
-          showArrow
-        >
-          {getTooltipContent()}
-        </Tooltip.Content>
-      </Tooltip>
+      <SendStopButton
+        hasContent={hasContent}
+        isUploading={isUploading}
+        onSend={handleFormSubmit}
+        tooltip={getTooltipContent()}
+      />
     </div>
   );
 }
