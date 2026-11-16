@@ -24,7 +24,7 @@ export function VersusLogos({
       >
         <Image
           src="/images/logos/macos.webp"
-          alt="GAIA"
+          alt="GAIA logo"
           width={50}
           height={50}
           loading={loading}
@@ -39,7 +39,7 @@ export function VersusLogos({
             LOCAL_LOGOS[domain] ??
             `https://www.google.com/s2/favicons?domain=${domain}&sz=128`
           }
-          alt={name}
+          alt={`${name} logo`}
           width={40}
           height={40}
           loading={loading}

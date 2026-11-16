@@ -17,7 +17,7 @@ const toolLogoSrc = (domain: string): string | null | undefined => {
   );
   return new DOMParser()
     .parseFromString(html, "text/html")
-    .querySelector('[title="Tool"]')
+    .querySelector('[title="Tool logo"]')
     ?.getAttribute("data-src");
 };
 
