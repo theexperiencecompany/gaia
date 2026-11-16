@@ -1,58 +1,108 @@
-"""A user's held vectors: the similarity floor, k, and reload on a version change."""
+"""A user's held vectors: the similarity floor, k, delta refresh on a write, and the size cap."""
 
 import asyncio
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pytest
 
 from app.memory import vector_index
+from app.memory.pg_store.vectors import VectorDelta, VectorSnapshot
+
+_READ_AT = datetime(2026, 11, 17, tzinfo=UTC)
 
 
-def _held(ids: list[str], rows: list[list[float]]) -> tuple[list[str], np.ndarray]:
+def _unit(rows: list[list[float]]) -> np.ndarray:
     matrix = np.asarray(rows, dtype=np.float32)
-    return ids, matrix / np.linalg.norm(matrix, axis=1, keepdims=True)
+    return matrix / np.linalg.norm(matrix, axis=1, keepdims=True)
+
+
+def _snapshot(ids: list[str], rows: list[list[float]]) -> VectorSnapshot:
+    return VectorSnapshot(ids=ids, matrix=_unit(rows), read_at=_READ_AT)
+
+
+def _delta(live: list[str], rows: list[list[float]], dead: list[str] | None = None) -> VectorDelta:
+    matrix = _unit(rows) if rows else np.empty((0, 0), dtype=np.float32)
+    return VectorDelta(live_ids=live, matrix=matrix, dead_ids=dead or [], read_at=_READ_AT)
+
+
+@pytest.fixture(autouse=True)
+def _empty_index() -> None:
+    vector_index._held.clear()
 
 
 async def test_nearest_keeps_k_best_at_or_above_the_floor() -> None:
-    vector_index._held.clear()
-    ids, matrix = _held(["a", "b", "c"], [[1, 0], [0.8, 0.6], [0, 1]])
+    snapshot = _snapshot(["a", "b", "c"], [[1, 0], [0.8, 0.6], [0, 1]])
     with (
         patch.object(vector_index, "_current_version", new=AsyncMock(return_value="1")),
-        patch.object(vector_index, "live_vectors", new=AsyncMock(return_value=(ids, matrix))),
+        patch.object(vector_index, "live_vectors", new=AsyncMock(return_value=snapshot)),
     ):
         found = await vector_index.nearest("u1", [1.0, 0.0], 2, min_similarity=0.5)
 
     assert found == ["a", "b"]
 
 
-async def test_a_new_version_reloads_the_set_and_the_same_version_does_not() -> None:
-    vector_index._held.clear()
-    first = _held(["a"], [[1, 0]])
-    second = _held(["a", "b"], [[1, 0], [0.9, 0.1]])
-    load = AsyncMock(side_effect=[first, second])
-    version = AsyncMock(side_effect=["1", "1", "2"])
+async def test_a_write_reads_only_what_changed_not_the_whole_set() -> None:
+    """Ingestion bumps the version after nearly every turn; a full reload each time is MBs per turn."""
+    full = AsyncMock(return_value=_snapshot(["a"], [[1, 0]]))
+    changed = AsyncMock(return_value=_delta(["b"], [[0.9, 0.1]]))
     with (
-        patch.object(vector_index, "_current_version", new=version),
-        patch.object(vector_index, "live_vectors", new=load),
+        patch.object(vector_index, "_current_version", new=AsyncMock(side_effect=["1", "1", "2"])),
+        patch.object(vector_index, "live_vectors", new=full),
+        patch.object(vector_index, "vectors_changed_since", new=changed),
     ):
         assert await vector_index.nearest("u1", [1.0, 0.0], 5, min_similarity=0.0) == ["a"]
         assert await vector_index.nearest("u1", [1.0, 0.0], 5, min_similarity=0.0) == ["a"]
         assert await vector_index.nearest("u1", [1.0, 0.0], 5, min_similarity=0.0) == ["a", "b"]
 
-    assert load.await_count == 2
+    assert full.await_count == 1
+    assert changed.await_count == 1
+    assert changed.await_args is not None
+    assert changed.await_args.args[2] < _READ_AT
+
+
+async def test_a_memory_that_stopped_being_live_leaves_the_held_set() -> None:
+    full = AsyncMock(return_value=_snapshot(["a", "b"], [[1, 0], [0.9, 0.1]]))
+    changed = AsyncMock(return_value=_delta(["a"], [[0, 1]], dead=["b"]))
+    with (
+        patch.object(vector_index, "_current_version", new=AsyncMock(side_effect=["1", "2"])),
+        patch.object(vector_index, "live_vectors", new=full),
+        patch.object(vector_index, "vectors_changed_since", new=changed),
+    ):
+        await vector_index.has_vectors("u1")
+        found = await vector_index.nearest("u1", [1.0, 0.0], 5, min_similarity=-1.0)
+
+    assert found == ["a"]
+    assert vector_index._held["u1"].matrix.shape == (1, 2)
+
+
+async def test_a_set_held_past_its_full_reload_age_is_read_whole_again() -> None:
+    """Hard deletes and expiry leave no changed row behind; the periodic full read drops them."""
+    full = AsyncMock(return_value=_snapshot(["a"], [[1, 0]]))
+    changed = AsyncMock(return_value=_delta([], []))
+    with (
+        patch.object(vector_index, "VECTOR_FULL_RELOAD_SECONDS", 0),
+        patch.object(vector_index, "_current_version", new=AsyncMock(side_effect=["1", "2"])),
+        patch.object(vector_index, "live_vectors", new=full),
+        patch.object(vector_index, "vectors_changed_since", new=changed),
+    ):
+        await vector_index.has_vectors("u1")
+        await vector_index.has_vectors("u1")
+
+    assert full.await_count == 2
+    assert changed.await_count == 0
 
 
 async def test_a_load_outlasting_the_turn_budget_is_held_for_the_next_turn() -> None:
     """A heavy user's load must not restart, and be cut off again, on every turn."""
-    vector_index._held.clear()
     started, release = asyncio.Event(), asyncio.Event()
-    ids, matrix = _held(["a"], [[1, 0]])
+    snapshot = _snapshot(["a"], [[1, 0]])
 
-    async def slow_load(*_args: object) -> tuple[list[str], np.ndarray]:
+    async def slow_load(*_args: object) -> VectorSnapshot:
         started.set()
         await release.wait()
-        return ids, matrix
+        return snapshot
 
     load = AsyncMock(side_effect=slow_load)
     with (
@@ -73,12 +123,11 @@ async def test_a_load_outlasting_the_turn_budget_is_held_for_the_next_turn() -> 
 
 async def test_the_held_sets_are_capped_by_size_oldest_out_and_the_current_user_kept() -> None:
     """A user cap alone lets a few thousand heavy users hold gigabytes in one process."""
-    vector_index._held.clear()
-    one_row = _held(["a"], [[1, 0]])
-    big = _held(["a", "b", "c"], [[1, 0], [0, 1], [1, 1]])
+    one_row = _snapshot(["a"], [[1, 0]])
+    big = _snapshot(["a", "b", "c"], [[1, 0], [0, 1], [1, 1]])
     load = AsyncMock(side_effect=[one_row, one_row, big])
     with (
-        patch.object(vector_index, "VECTOR_CACHE_MAX_BYTES", one_row[1].nbytes * 2),
+        patch.object(vector_index, "VECTOR_CACHE_MAX_BYTES", one_row.matrix.nbytes * 2),
         patch.object(vector_index, "_current_version", new=AsyncMock(return_value="1")),
         patch.object(vector_index, "live_vectors", new=load),
     ):

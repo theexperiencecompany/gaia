@@ -1,11 +1,13 @@
 """Hosted-model memory vectors in Postgres: the fast lane's semantic source."""
 
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime
 import uuid
 
 import numpy as np
 from numpy.typing import NDArray
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, Row, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.memory.pg_store._session import memory_session
@@ -13,6 +15,39 @@ from app.memory.pg_store.memories import _not_expired_clause
 from app.models.memory_db_models import MemoryRecord, MemoryVector
 
 Matrix = NDArray[np.float32]
+
+
+@dataclass(frozen=True)
+class VectorSnapshot:
+    """A user's live vectors, and the database time the read started."""
+
+    ids: list[str]
+    matrix: Matrix
+    read_at: datetime
+
+
+@dataclass(frozen=True)
+class VectorDelta:
+    """What changed since a time: live vectors to add or replace, ids no longer live."""
+
+    live_ids: list[str]
+    matrix: Matrix
+    dead_ids: list[str]
+    read_at: datetime
+
+
+def _is_live() -> ColumnElement[bool]:
+    return (
+        MemoryRecord.is_latest.is_(True)
+        & MemoryRecord.is_forgotten.is_(False)
+        & _not_expired_clause()
+    )
+
+
+def _stack(blobs: Sequence[bytes]) -> Matrix:
+    if not blobs:
+        return np.empty((0, 0), dtype=np.float32)
+    return np.vstack([np.frombuffer(blob, dtype="<f4") for blob in blobs]).astype(np.float32)
 
 
 def pack(vector: Sequence[float]) -> bytes:
@@ -37,32 +72,50 @@ async def upsert_vectors(
         await session.execute(
             statement.on_conflict_do_update(
                 index_elements=[MemoryVector.memory_id, MemoryVector.model],
-                set_={"vector": statement.excluded.vector},
+                set_={"vector": statement.excluded.vector, "updated_at": func.now()},
             )
         )
         await session.commit()
 
 
-async def live_vectors(user_id: str, model: str) -> tuple[list[str], Matrix]:
+async def live_vectors(user_id: str, model: str) -> VectorSnapshot:
     """Return the ids and stacked unit vectors of the user's live memories under model."""
     async with memory_session() as session:
+        read_at = (await session.execute(select(func.now()))).scalar_one()
         result = await session.execute(
             select(MemoryVector.memory_id, MemoryVector.vector)
+            .join(MemoryRecord, MemoryRecord.id == MemoryVector.memory_id)
+            .where(MemoryVector.user_id == user_id, MemoryVector.model == model, _is_live())
+        )
+        rows = result.all()
+    return VectorSnapshot(
+        ids=[str(memory_id) for memory_id, _ in rows],
+        matrix=_stack([blob for _, blob in rows]),
+        read_at=read_at,
+    )
+
+
+async def vectors_changed_since(user_id: str, model: str, since: datetime) -> VectorDelta:
+    """Return the user's vectors, or their memories, changed after since, split by liveness."""
+    async with memory_session() as session:
+        read_at = (await session.execute(select(func.now()))).scalar_one()
+        result = await session.execute(
+            select(MemoryVector.memory_id, MemoryVector.vector, _is_live())
             .join(MemoryRecord, MemoryRecord.id == MemoryVector.memory_id)
             .where(
                 MemoryVector.user_id == user_id,
                 MemoryVector.model == model,
-                MemoryRecord.is_latest.is_(True),
-                MemoryRecord.is_forgotten.is_(False),
-                _not_expired_clause(),
+                (MemoryVector.updated_at > since) | (MemoryRecord.updated_at > since),
             )
         )
-        rows = result.all()
-    if not rows:
-        return [], np.empty((0, 0), dtype=np.float32)
-    ids = [str(memory_id) for memory_id, _ in rows]
-    matrix = np.vstack([np.frombuffer(blob, dtype="<f4") for _, blob in rows]).astype(np.float32)
-    return ids, matrix
+        rows: Sequence[Row[tuple[uuid.UUID, bytes, bool]]] = result.all()
+    live = [(str(memory_id), blob) for memory_id, blob, is_live in rows if is_live]
+    return VectorDelta(
+        live_ids=[memory_id for memory_id, _ in live],
+        matrix=_stack([blob for _, blob in live]),
+        dead_ids=[str(memory_id) for memory_id, _, is_live in rows if not is_live],
+        read_at=read_at,
+    )
 
 
 async def live_memories_without_vector(

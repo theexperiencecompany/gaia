@@ -190,6 +190,10 @@ MEMORY_VECTORS_VERSION_KEY = "user:{user_id}:memory:vectors_version"
 # Held vectors per process, by size: one 1536-dim float32 vector is 6 KiB, so
 # 256 MiB holds ~43k memories across the most recently active users.
 VECTOR_CACHE_MAX_BYTES = 256 * 1024 * 1024
+# A write refreshes a held set by delta; the window overlaps the last read so a
+# write committed just after it is still seen. The full read drops hard deletes.
+VECTOR_DELTA_OVERLAP_SECONDS = 60
+VECTOR_FULL_RELOAD_SECONDS = 600
 QUERY_EMBEDDING_TTL_SECONDS = 60
 FAST_RECALL_MAX_TOKENS = 32
 PRECOMPUTED_RECALL_LIMIT = 8

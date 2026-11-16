@@ -129,6 +129,10 @@ class MemoryVector(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), nullable=False
     )
+    #: Advanced on every upsert, so a process holding the set reads only what changed.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     __table_args__ = (Index("ix_memory_vectors_user_model", "user_id", "model"),)
 

@@ -9,7 +9,7 @@ import pytest
 from app.constants.memory import MEMORY_VECTOR_MODEL
 from app.memory import fast_recall, hosted_embeddings, vector_index
 from app.memory.pg_store.memories import mark_forgotten
-from app.memory.pg_store.vectors import upsert_vectors
+from app.memory.pg_store.vectors import live_vectors, upsert_vectors, vectors_changed_since
 from tests.integration.real.memory.store import seed_memories
 
 # Hand-made unit directions stand in for a model: these tests prove the lane's
@@ -154,3 +154,33 @@ async def test_a_forgotten_memory_with_a_held_vector_never_renders(memory_user: 
         after = await fast_recall.fast_recall(memory_user, "zzz", conversation_id=None)
 
     assert before[0].content not in [e.content for e in after]
+
+
+async def test_the_delta_read_names_new_vectors_live_and_forgotten_memories_dead(
+    memory_user: str,
+) -> None:
+    """A write refreshes a held set from this read alone, so it must see adds, edits and forgets."""
+    kept, edited, forgotten = await seed_memories(
+        memory_user,
+        [
+            {"content": "Girlfriend is Priya."},
+            {"content": "Dog's name is Max."},
+            {"content": "Mother's name is Sunita."},
+        ],
+    )
+    await upsert_vectors(
+        memory_user,
+        MEMORY_VECTOR_MODEL,
+        [(kept.id, GIRLFRIEND), (edited.id, DOG), (forgotten.id, MOTHER)],
+    )
+    held = await live_vectors(memory_user, MEMORY_VECTOR_MODEL)
+
+    (late,) = await seed_memories(memory_user, [{"content": "Plays the cello on Sundays."}])
+    await upsert_vectors(memory_user, MEMORY_VECTOR_MODEL, [(late.id, CELLO), (edited.id, CELLO)])
+    await mark_forgotten(str(forgotten.id), memory_user, "user asked to forget")
+
+    delta = await vectors_changed_since(memory_user, MEMORY_VECTOR_MODEL, held.read_at)
+
+    assert sorted(delta.live_ids) == sorted([str(late.id), str(edited.id)])
+    assert delta.dead_ids == [str(forgotten.id)]
+    assert delta.matrix.shape == (2, len(CELLO))
