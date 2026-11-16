@@ -179,13 +179,14 @@ function makeGaia(script: ApiScript) {
 
 // Canonical reduction: a keyed set of bubbles (create then update in place,
 // gone once deleted), every text delivered by any channel (bubbles +
-// ephemerals + DMs), and every emoji attached as a native reaction.
+// ephemerals + DMs), and every native reaction still on the message.
 
 type Op =
   | { op: "create"; id: string; text: string }
   | { op: "update"; id: string; text: string }
   | { op: "remove"; id: string }
   | { op: "react"; emoji: string }
+  | { op: "unreact"; emoji: string }
   | { op: "aux"; text: string };
 
 interface Canonical {
@@ -210,6 +211,12 @@ function reduce(ops: Op[]): Canonical {
     }
     if (op.op === "react") {
       reactions.push(op.emoji);
+      continue;
+    }
+    // Slack's working mark (eyes) comes off when the answer's reaction goes on.
+    if (op.op === "unreact") {
+      const at = reactions.lastIndexOf(op.emoji);
+      if (at !== -1) reactions.splice(at, 1);
       continue;
     }
     if (op.op === "remove" || removed.has(op.id)) continue;
@@ -335,6 +342,10 @@ async function driveSlack(script: ApiScript): Promise<Canonical> {
       reactions: {
         add: vi.fn(async ({ name }: { name: string }) => {
           ops.push({ op: "react", emoji: name });
+          return {};
+        }),
+        remove: vi.fn(async ({ name }: { name: string }) => {
+          ops.push({ op: "unreact", emoji: name });
           return {};
         }),
       },
