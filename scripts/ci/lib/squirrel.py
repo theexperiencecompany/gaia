@@ -74,9 +74,10 @@ WIKI_LINK = re.compile(r"^\[\[[^\[\]'\"]+\]\]$")
 # One integration's page; the paginated hub (/marketplace/page/N) is ours and stays checked.
 # Pages whose first viewport holds fewer than three images, so squirrel's first-three
 # lazy-above-fold rule reaches ones far below it: a combo, glossary term, persona,
-# integration or blog post (one segment under its hub), and three standalone pages.
+# integration or blog post (one segment under its hub), and four standalone pages
+# (/features/workflows: its only lazy image sits at y=872 at 1440x900, 881 at 390x844).
 LAZY_BELOW_FOLD_PAGES = re.compile(
-    r"^/(?:automate|learn|for|marketplace|blog)/[^/]+$|^/(?:pricing|inbox-zero-ai|ai-chief-of-staff)$"
+    r"^/(?:automate|learn|for|marketplace|blog)/[^/]+$|^/(?:pricing|inbox-zero-ai|ai-chief-of-staff|features/workflows)$"
 )
 # Images that sit below the first viewport on every page that renders them: the closing
 # section's wallpaper, the use cases' publish-a-workflow banner, and /brand's wordmarks.
