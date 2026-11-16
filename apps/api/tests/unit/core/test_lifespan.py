@@ -16,6 +16,9 @@ from app.core.lifespan import lifespan
 
 def _boot_patches(mocker: MockerFixture) -> None:
     mocker.patch("app.core.lifespan.unified_startup", new=mocker.AsyncMock())
+    # The runtime's ports build an LLM, and the stubbed startup registered no provider.
+    mocker.patch("app.core.lifespan.build_runtime_ports")
+    mocker.patch("app.core.lifespan.install_runtime_ports")
     mocker.patch("app.core.lifespan.start_browser_reaper")
     mocker.patch("app.core.lifespan.start_revoke_listener")
     mocker.patch("app.core.lifespan.start_up_listener")
