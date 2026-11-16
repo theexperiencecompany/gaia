@@ -1,6 +1,7 @@
 """reply_analytics: the turn-end event a settled reply counts, with its timings, surface and dedupe."""
 
 from datetime import timedelta
+from typing import Literal
 
 import pytest
 
@@ -124,7 +125,7 @@ def test_a_later_turn_with_nothing_before_it_neither_waited_nor_delegated() -> N
     [(ReplyOutcome.ANSWERED, "message"), (ReplyOutcome.SILENT, "silence")],
 )
 def test_finished_work_no_one_asked_about_is_counted_as_resolved_by_the_settle(
-    outcome: ReplyOutcome, resolved: str
+    outcome: ReplyOutcome, resolved: Literal["message", "silence"]
 ) -> None:
     analytics = RecordingAnalytics()
     work = _at(1, finished("w1", "t1"), 0)

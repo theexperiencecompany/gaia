@@ -21,7 +21,10 @@ from app.agents.core.interruption import record_interruption
 from app.agents.core.messages import MessageAttachments, MessageScope, human_content
 from app.agents.core.nodes.drain_conversation_log import close_feed, feed, open_feed
 from app.agents.middleware.runtime_adapter import GaiaAgentState
-from app.agents.middleware.summarization import WorkspaceArchivingSummarizationMiddleware
+from app.agents.middleware.summarization import (
+    SummaryUpdate,
+    WorkspaceArchivingSummarizationMiddleware,
+)
 from app.agents.tools.executor_tool import call_executor
 from app.agents.tools.invocation import invoke_tool
 from app.constants.agents import TimeHorizon
@@ -284,10 +287,10 @@ class CommsGraphRunner:
             messages=thread,
             verbatim_message_ids=verbatim_message_ids(thread, kept.owed, kept.pinned),
         )
-        fold = await self._fold.afold(state, config)
-        if fold is None:
+        update: SummaryUpdate | None = await self._fold.afold(state, config)
+        if update is None:
             return None
-        return FoldPlan(tuple(m.id for m in thread), tuple(fold))
+        return FoldPlan(tuple(m.id for m in thread), tuple(update["messages"]))
 
     async def apply_fold(self, claim: StepClaim, plan: FoldPlan) -> bool:
         """Write the planned fold under the step's claim; False when a turn wrote the thread since."""

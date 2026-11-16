@@ -259,7 +259,6 @@ apps/api/tests/unit/services/test_device_server_lifecycle.py	attr-defined
 apps/api/tests/unit/services/test_device_server_lifecycle.py	misc
 apps/api/tests/unit/services/test_device_server_lifecycle.py	valid-type
 apps/api/tests/unit/services/test_email_delivery.py	arg-type
-apps/api/tests/unit/services/test_integration_inference_service.py	misc
 apps/api/tests/unit/services/test_lab_hooks.py	attr-defined
 apps/api/tests/unit/services/test_lab_hooks.py	list-item
 apps/api/tests/unit/services/test_llm_metering_ledger.py	attr-defined
@@ -364,4 +363,3 @@ apps/api/tests/unit/workers/test_memory_sweep_tasks.py	func-returns-value
 apps/api/tests/unit/workers/test_paid_person_tasks.py	arg-type
 apps/api/tests/unit/workers/test_reminder_tasks.py	unused-ignore
 apps/api/tests/unit/workers/test_tracked_todo_recurrence.py	arg-type
-apps/api/tests/unit/workers/test_worker_lifecycle.py	arg-type

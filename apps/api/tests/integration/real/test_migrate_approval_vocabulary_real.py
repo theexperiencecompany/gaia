@@ -38,7 +38,9 @@ from app.models.conversation_log_models import (
 from app.models.conversation_models import StoredEntry
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.hil.describe import describe_call
+from app.services.hil.when import UserClock
 from app.utils.errors import UnmigratedConversationError
+from app.utils.timezone import Timezone
 from shared.py.approvals import ActionResult, ApprovalDecider
 from tests.unit.services.conversation.log_helpers import barge, decided, fired, logged
 
@@ -203,7 +205,9 @@ def _every_renamed_shape() -> list[tuple[LoggedEntry, dict[str, Any]]]:
         id="approval:a1",
         task_id="t1",
         approval_id="a1",
-        description=describe_call("create_todo", args, "todos"),
+        description=describe_call(
+            "create_todo", args, "todos", clock=UserClock(Timezone.parse("UTC"), NOW)
+        ),
         gated_tool_name="create_todo",
         integration_name="todos",
         args_preview=args,

@@ -34,7 +34,7 @@ async def _construct_web_prompt(user_turn: str) -> list[AnyMessage]:
     """Assemble the message list the production prompt builder produces for a web turn."""
     return await comms_turn_messages(
         query=user_turn,
-        scope=MessageScope(source="web"),
+        scope=MessageScope(source=ConversationSource.WEB),
     )
 
 

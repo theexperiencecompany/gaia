@@ -33,6 +33,7 @@ from app.constants.cache import (
     EXECUTOR_BUSY_TTL,
     EXECUTOR_DEAD_HOLDER_MIN_AGE_SECONDS,
 )
+from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.llm import (
     COMMS_MODEL_NAME,
@@ -150,7 +151,7 @@ def _config() -> Any:
 
 def _scope() -> MessageScope:
     """Return the web chat this conversation runs in, so its turn context reads this conversation's status."""
-    return MessageScope(source="web", conversation_id=CONV)
+    return MessageScope(source=ConversationSource.WEB, conversation_id=CONV)
 
 
 async def _set_lock(client: fakeredis.aioredis.FakeRedis, lock: str) -> None:

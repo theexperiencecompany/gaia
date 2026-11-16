@@ -26,6 +26,7 @@ from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
     SystemMessage,
+    ToolCallChunk,
     ToolMessage,
 )
 from langchain_core.outputs import ChatGenerationChunk
@@ -2742,10 +2743,10 @@ class _TrickleModel(GatedModel):
             yield chunk
         # The call that names what the words answered streams after them, as a model's does.
         for index, call in enumerate(reply.tool_calls):
-            named = {"name": call["name"], "args": json.dumps(call["args"]), "id": call["id"]}
-            yield ChatGenerationChunk(
-                message=AIMessageChunk(content="", tool_call_chunks=[{**named, "index": index}])
+            part = ToolCallChunk(
+                name=call["name"], args=json.dumps(call["args"]), id=call["id"], index=index
             )
+            yield ChatGenerationChunk(message=AIMessageChunk(content="", tool_call_chunks=[part]))
 
 
 async def _production_tick() -> None:

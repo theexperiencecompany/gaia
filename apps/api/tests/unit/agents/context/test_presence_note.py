@@ -468,7 +468,7 @@ class TestComms:
                 query="hi",
                 scope=messages_module.MessageScope(
                     user_id="user-1",
-                    source="telegram",
+                    source=ConversationSource.TELEGRAM,
                     presence=STAYED_ON_TELEGRAM,
                     opens_thread=False,
                     execution_mode="background",
@@ -509,7 +509,7 @@ class TestAConversationsFirstTurn:
                 query="remind me in 2 minutes to drink water",
                 scope=messages_module.MessageScope(
                     user_id="user-1",
-                    source="telegram",
+                    source=ConversationSource.TELEGRAM,
                     presence=STAYED_ON_TELEGRAM,
                     opens_thread=opens_thread,
                 ),

@@ -12,7 +12,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.services.conversation.work_artifacts import reconcile_artifacts
 from app.services.storage.sessions import artifacts as artifacts_module
 from shared.py.conversation_wire import ToolDataEntry
-from tests.contracts.conftest import UID
+from tests.unit.services.conversation.test_conversation_log_contract import UID
 
 
 @pytest.fixture

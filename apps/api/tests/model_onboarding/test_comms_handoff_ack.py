@@ -15,6 +15,7 @@ from app.agents.core.graph_builder.build_graph import comms_tools
 from app.agents.core.messages import MessageScope
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.agents.tools.executor_tool import handoff_message
+from app.constants.chat import ConversationSource
 from app.constants.comms import REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import MESSAGE_HANDLE, REACTION_NOTE
 from app.constants.general import CALL_EXECUTOR_NAME
@@ -30,7 +31,7 @@ REQUEST = "add renew my passport to my todos for friday"
 ACK_MAX_CHARS = 80
 
 
-async def _after_hand_off(source: str, reacted: str | None) -> AIMessage:
+async def _after_hand_off(source: ConversationSource, reacted: str | None) -> AIMessage:
     """Return the model's step right after its own hand-off of REQUEST."""
     model = _model().bind_tools(list(comms_tools().values()))
     config: Any = {"configurable": {"thread_id": f"conv-ack-{source}"}}
@@ -56,9 +57,9 @@ async def _after_hand_off(source: str, reacted: str | None) -> AIMessage:
 
 @pytest.mark.parametrize("attempt", range(REPEATS))
 @pytest.mark.parametrize("reacted", [None, "👀"])
-@pytest.mark.parametrize("source", ["web", "telegram"])
+@pytest.mark.parametrize("source", [ConversationSource.WEB, ConversationSource.TELEGRAM])
 async def test_a_hand_off_gets_a_few_words_of_acknowledgement(
-    source: str, reacted: str | None, attempt: int
+    source: ConversationSource, reacted: str | None, attempt: int
 ) -> None:
     step = await _after_hand_off(source, reacted)
 

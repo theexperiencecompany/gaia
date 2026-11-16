@@ -65,8 +65,10 @@ class TestCreateSystemMessage:
 
     def test_unknown_agent_type_defaults_to_comms(self) -> None:
         msg = create_system_message(
-            user_name="X", agent_type="unknown", source=ConversationSource.WEB
-        )  # type: ignore[arg-type]  # out-of-Literal value exercises the unknown-agent branch
+            user_name="X",
+            agent_type="unknown",  # type: ignore[arg-type]  # out-of-Literal value exercises the unknown-agent branch
+            source=ConversationSource.WEB,
+        )
         comms = create_system_message(agent_type="comms", source=ConversationSource.WEB)
         assert isinstance(msg, SystemMessage)
         assert msg.content == comms.content

@@ -32,7 +32,6 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkStarted,
 )
-from app.models.conversation_screen_models import ReplyItem
 from app.models.stream_events import MessageBoundaryPayload, ToolOutputPayload
 from app.services.conversation.composition import PostHogTurnAnalytics
 from app.services.conversation.log import accept
@@ -59,6 +58,7 @@ from shared.py.conversation_wire import (
     FailureReason,
     ReplyDelta,
     ReplyDeltaFrame,
+    ReplyItem,
     ReplyOutcome,
     ToolDataEntry,
 )
@@ -405,6 +405,7 @@ class StepScenarios:
         await send(rt, user("u1"))
         await run(rt)
         first, again = rt.runner.calls
+        assert isinstance(again, Started)
         assert (first, again.batch) == (Started(batch=(1,), context=()), (1,))
         assert again.note is not None and '#1 "text of u1"' in again.note
 
@@ -426,6 +427,7 @@ class StepScenarios:
         await run(rt)
         first, absorbed, again = rt.runner.calls
         assert (first, absorbed) == (Started(batch=(1,), context=()), Absorbed((3,)))
+        assert isinstance(again, Started)
         assert again.note is not None and '#1 "text of u1"' in again.note
         assert '#3 "text of u2"' in again.note
         assert "just name it" in again.note

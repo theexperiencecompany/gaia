@@ -58,16 +58,16 @@ class FileLinks:
             return f"{base}/{quote(unquote(path), safe='/')}"
 
         def linked_to(found: re.Match[str]) -> str:
-            target = served(found["path"]) if found["image"] else page
+            target = served(found.group("path")) if found.group("image") else page
             # The link's closing parenthesis stays where it was written.
-            return f"{found['image']}[{found['label']}]({target}"
+            return f"{found.group('image')}[{found.group('label')}]({target}"
 
         def named(found: re.Match[str]) -> str:
-            path = found["path"]
+            path = found.group("path")
             name = PurePosixPath(path).name
             # A link's own label, or a file nothing serves, keeps only the name.
-            if found["label"] or not path.startswith(_ARTIFACTS_DIR):
-                return f"{found['label']}{name}"
+            if found.group("label") or not path.startswith(_ARTIFACTS_DIR):
+                return f"{found.group('label')}{name}"
             return f"[{name}]({page})"
 
         return _BARE_SESSION_PATH.sub(named, _ARTIFACT_LINK.sub(linked_to, text))

@@ -26,6 +26,7 @@ from app.agents.llm.dev_lane import build_custom_chat_model, custom_endpoint
 from app.agents.tools.executor_tool import handoff_message
 from app.config.settings import settings
 from app.constants.agents import AgentTag, wrap_agent_payload
+from app.constants.chat import ConversationSource
 from app.constants.llm import (
     COMMS_MODEL_NAME,
     COMMS_REASONING_EFFORT,
@@ -132,7 +133,9 @@ def _frame(paused: bool) -> SystemMessage:
 
 async def _request(case: Case, provider: str) -> list[AnyMessage]:
     """Assemble the request the way the comms graph does: the turn carries the frame ahead of the user's words."""
-    built = await comms_turn_messages(query=case.message, scope=MessageScope(source="web"))
+    built = await comms_turn_messages(
+        query=case.message, scope=MessageScope(source=ConversationSource.WEB)
+    )
     at = next(i for i, message in enumerate(built) if isinstance(message, HumanMessage))
     turn = [*built[:at], _frame(case.paused), *built[at:]]
     state: Any = {"messages": [*_started_turn(), *turn]}

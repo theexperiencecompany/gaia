@@ -266,6 +266,7 @@ async def test_a_spoken_first_send_opens_the_conversation_in_the_app_it_was_spok
     await submit_message(CONVERSATION, world.user, body, ConversationSource.DESKTOP)
 
     [message] = await world.entries()
+    assert isinstance(message, UserMessage)
     assert message.surface is ConversationSource.VOICE
     world.create.assert_awaited_once_with(
         ConversationModel(conversation_id=CONVERSATION, source=ConversationSource.DESKTOP),

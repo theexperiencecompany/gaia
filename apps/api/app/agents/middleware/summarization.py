@@ -79,9 +79,11 @@ Reply with the summary only.
 {messages}"""
 
 
-# What abefore_model returns: the summary message plus tombstones for the
-# messages it folds away, resolved through the messages channel's reducer.
-SummaryUpdate = dict[str, list[AnyMessage | RemoveMessage]]
+class SummaryUpdate(TypedDict):
+    """A fold's state update: the summary message, then a tombstone per message it folds away."""
+
+    messages: list[AnyMessage | RemoveMessage]
+
 
 # Who can reach the archive. The executor has the read tool; comms does not, so
 # its summary routes recovery through the executor instead of naming a tool the
@@ -152,16 +154,16 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
 
     async def abefore_model(
         self, state: AgentState[object], runtime: Runtime[None]
-    ) -> SummaryUpdate | None:
+    ) -> dict[str, list[AnyMessage | RemoveMessage]] | None:
         """Fold the oldest turns into one summary before the model call, past the trigger."""
         # Runtime carries no config (LangGraph's Runtime deliberately omits it); get_config() does.
         del runtime
-        fold = await self.afold(state, get_config())
-        return None if fold is None else {"messages": fold}
+        update: SummaryUpdate | None = await self.afold(state, get_config())
+        return None if update is None else {"messages": update["messages"]}
 
     async def afold(
         self, state: AgentState[object], config: RunnableConfig
-    ) -> list[AnyMessage | RemoveMessage] | None:
+    ) -> SummaryUpdate | None:
         """Return the fold of state's oldest turns into one summary, or None under the trigger.
 
         The leading slots are never touched; a folded turn's notes (recall, clock, presence)
@@ -201,10 +203,12 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             archive_path = await self._archive_or_none(state, config)
             if archive_path:
                 _inject_archive_path(summary_message, archive_path, self.archive)
-        return [
-            summary_message,
-            *(RemoveMessage(id=cast("str", m.id)) for m in summarized[1:]),
-        ]
+        return SummaryUpdate(
+            messages=[
+                summary_message,
+                *(RemoveMessage(id=cast("str", m.id)) for m in summarized[1:]),
+            ]
+        )
 
     def _fitting_prefix(self, messages: list[AnyMessage]) -> list[AnyMessage]:
         """Return the longest leading run whose summary prompt fits the summary model's input.

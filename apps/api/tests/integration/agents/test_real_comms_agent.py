@@ -16,7 +16,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from langchain_core.language_models import LanguageModelInput
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolCall, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolCall,
+    ToolMessage,
+)
 from langchain_core.runnables import RunnableConfig
 import pytest
 
@@ -746,7 +753,7 @@ def _search_result() -> WebSearchResult:
 
 
 async def _run_comms(
-    responses: list[AIMessage], search: AsyncMock, configurable: dict[str, Any]
+    responses: list[BaseMessage], search: AsyncMock, configurable: dict[str, Any]
 ) -> dict[str, ToolMessage]:
     """Run the real comms graph on one turn after an earlier interrupted one; return its tool results by call id."""
     earlier_turn = [

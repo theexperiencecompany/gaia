@@ -30,6 +30,7 @@ from langchain_core.messages import (
 )
 from langchain_core.messages.utils import count_tokens_approximately
 from langchain_core.outputs import ChatResult
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, tool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
@@ -190,7 +191,7 @@ def _assert_no_orphan_tool_results(messages: list[BaseMessage]) -> None:
     assert results <= calls, f"tool results without their call: {results - calls}"
 
 
-def _config(thread_id: str) -> dict[str, Any]:
+def _config(thread_id: str) -> RunnableConfig:
     return {"configurable": {"thread_id": thread_id, "user_id": "u1"}}
 
 
