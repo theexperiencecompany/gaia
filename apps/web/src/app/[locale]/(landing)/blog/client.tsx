@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect } from "react";
 import type { Article, BreadcrumbList, WithContext } from "schema-dts";
 
@@ -16,6 +17,9 @@ import SearchedImageDialog from "@/features/chat/components/bubbles/bot/Searched
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { track } from "@/lib/analytics";
 import type { BlogContentPost, BlogPostMeta } from "@/lib/blog";
+
+// The hero spans the max-w-3xl header column (768px) minus its px-5 padding.
+const BLOG_HERO_IMAGE_SIZES = "(max-width: 768px) 100vw, 728px";
 
 interface BlogPostClientProps {
   blog: BlogContentPost;
@@ -39,7 +43,7 @@ export default function BlogPostClient({
 
   if (!blog) {
     return (
-      <div className="flex h-screen items-center justify-center text-medium font-medium text-foreground-500">
+      <div className="flex h-screen items-center justify-center text-base font-medium text-zinc-400">
         Blog post not found.
       </div>
     );
@@ -66,6 +70,9 @@ export default function BlogPostClient({
                 alt={blog.title}
                 width={1920}
                 height={1080}
+                priority
+                fetchPriority="high"
+                sizes={BLOG_HERO_IMAGE_SIZES}
                 className="w-full rounded-2xl bg-zinc-900 object-cover"
               />
               <GrainOverlay className="rounded-2xl" />
@@ -105,7 +112,15 @@ export default function BlogPostClient({
         {/* Suggested Posts Section */}
         {suggestedPosts.length > 0 && (
           <div className="mx-auto max-w-5xl px-5 my-16">
-            <h2 className="mb-8 text-2xl font-medium">Suggested Posts</h2>
+            <div className="mb-8 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+              <h2 className="text-2xl font-medium">Suggested Posts</h2>
+              <Link
+                href="/blog"
+                className="text-sm text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+              >
+                All posts
+              </Link>
+            </div>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               {suggestedPosts.map((post) => (
                 <BlogCard

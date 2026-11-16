@@ -1,5 +1,6 @@
 import { BOT_URLS, TELEGRAM_BOT_USERNAME } from "@shared/constants/bots";
 import { BOT_PLATFORM_ICONS, type BotPlatform } from "@/config/botPlatforms";
+import { signupCtaHref } from "@/features/auth/utils/signupCta";
 import { siteConfig } from "@/lib/seo";
 
 export type { BotPlatform };
@@ -11,6 +12,12 @@ export const BOT_LINKS: Record<BotPlatform, string> = {
   slack: "/slack-bot",
   whatsapp: BOT_URLS.whatsapp,
   imessage: "/settings/linked-accounts",
+};
+
+/** iMessage is connected from a signed-in page, so a signed-out visitor signs up first; onboarding offers the connect step. */
+export const SIGNED_OUT_BOT_LINKS: Record<BotPlatform, string> = {
+  ...BOT_LINKS,
+  imessage: signupCtaHref(),
 };
 
 export interface BotAction {

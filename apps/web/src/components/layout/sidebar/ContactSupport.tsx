@@ -1,33 +1,39 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { useDisclosure } from "@heroui/react";
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip, useOverlayState } from "@heroui/react";
 import { BubbleChatQuestionIcon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 
 export default function ContactSupport() {
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const { isOpen, setOpen, open } = useOverlayState();
 
   return (
     <>
       <div className="flex w-full justify-center">
-        <Tooltip content="Need support or want a new feature? Talk to us!">
-          <Button
-            variant="flat"
+        <Tooltip>
+          <GaiaButton
+            shape="pill"
+            variant="default-soft"
             fullWidth
-            className="text-left flex justify-center text-zinc-300 h-7"
-            radius="full"
+            tone="dim"
+            className="text-left flex justify-center h-7"
             size="sm"
-            startContent={<BubbleChatQuestionIcon width={17} height={17} />}
-            onPress={onOpen}
+            onPress={open}
           >
+            <BubbleChatQuestionIcon width={17} height={17} />
             Contact Support
-          </Button>
+          </GaiaButton>
+          <Tooltip.Content>
+            Need support or want a new feature? Talk to us!
+          </Tooltip.Content>
         </Tooltip>
       </div>
 
-      <ContactSupportModal isOpen={isOpen} onOpenChange={onOpenChange} />
+      <ContactSupportModal
+        isOpen={isOpen}
+        onOpenChange={() => setOpen(false)}
+      />
     </>
   );
 }

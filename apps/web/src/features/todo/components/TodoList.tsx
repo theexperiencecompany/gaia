@@ -45,7 +45,7 @@ export default function TodoList({
 
   if (sortedTodos.length === 0) {
     return (
-      <div className="flex h-64 flex-col items-center justify-center text-foreground-500 sm:min-w-5xl">
+      <div className="flex h-64 flex-col items-center justify-center text-zinc-400 sm:min-w-5xl">
         <p className="mb-2 text-lg">No tasks found</p>
         <p className="text-sm">Create a new task to get started</p>
       </div>

@@ -1,10 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Input, Label, TextField } from "@heroui/react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { FormError } from "@/components/shared/FormError";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SecretInput } from "@/components/shared/SecretInput";
 import { authApi, getLocalAuthError } from "@/features/auth/api/authApi";
 import { RegistrationClosedNotice } from "@/features/auth/components/RegistrationClosedNotice";
@@ -81,26 +82,29 @@ export function SignupForm({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
-      <Input
-        label="Name"
-        placeholder="Optional"
+      <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         value={name}
-        onValueChange={setName}
-        autoComplete="name"
+        onChange={setName}
         isDisabled={isSubmitting}
-        variant="faded"
-      />
-      <Input
-        type="email"
-        label="Email"
-        placeholder="you@example.com"
+      >
+        <Label>Name</Label>
+        <Input placeholder="Optional" autoComplete="name" />
+      </TextField>
+      <TextField
+        className={fieldVariants({ labelPlacement: "inside" })}
         value={email}
-        onValueChange={setEmail}
-        autoComplete="email"
+        onChange={setEmail}
         isRequired
         isDisabled={isSubmitting}
-        variant="faded"
-      />
+      >
+        <Label>Email</Label>
+        <Input
+          type="email"
+          placeholder="you@example.com"
+          autoComplete="email"
+        />
+      </TextField>
       <SecretInput
         subject="password"
         label="Password"
@@ -110,19 +114,18 @@ export function SignupForm({
         description={`At least ${MIN_PASSWORD_LENGTH} characters`}
         isRequired
         isDisabled={isSubmitting}
-        variant="faded"
       />
 
       {error && <FormError>{error}</FormError>}
 
-      <Button
+      <GaiaButton
         type="submit"
-        color="primary"
-        isLoading={isSubmitting}
+        variant="primary"
+        isPending={isSubmitting}
         className="w-full"
       >
         Create account
-      </Button>
+      </GaiaButton>
     </form>
   );
 }

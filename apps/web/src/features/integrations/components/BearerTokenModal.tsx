@@ -1,17 +1,17 @@
 "use client";
 
-import { Kbd } from "@heroui/kbd";
 import {
-  Button,
-  Input,
+  FieldError,
+  InputGroup,
+  Kbd,
+  Label,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
+  TextField,
 } from "@heroui/react";
 import { KeyIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 
 interface BearerTokenModalProps {
@@ -86,57 +86,77 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={handleClose}
-      placement="center"
-      size="md"
-      className="shadow-none rounded-2xl"
-      backdrop="blur"
-      isDismissable={!isLoading}
-      isKeyboardDismissDisabled={isLoading}
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
     >
-      <ModalContent>
-        <ModalHeader className="flex flex-col gap-1">
-          <h2 className="text-xl font-semibold">Connect {integrationName}</h2>
-          <p className="text-sm font-normal text-zinc-400">
-            Enter your API key / Bearer Token to connect
-          </p>
-        </ModalHeader>
+      <Modal.Backdrop
+        variant="blur"
+        isDismissable={!isLoading}
+        isKeyboardDismissDisabled={isLoading}
+      >
+        <Modal.Container placement="center" size="md">
+          <Modal.Dialog className="shadow-none">
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex flex-col gap-1">
+              <Modal.Heading className="text-xl font-semibold">
+                Connect {integrationName}
+              </Modal.Heading>
+              <p className="text-sm font-normal text-zinc-400">
+                Enter your API key / Bearer Token to connect
+              </p>
+            </Modal.Header>
 
-        <ModalBody>
-          <Input
-            label="API Key / Bearer Token"
-            placeholder="sk-... or your token"
-            value={bearerToken}
-            onValueChange={setBearerToken}
-            type="password"
-            isRequired
-            autoFocus
-            startContent={<KeyIcon width={16} height={16} />}
-            errorMessage={error}
-            isInvalid={!!error}
-          />
-        </ModalBody>
+            <Modal.Body>
+              <TextField
+                className={fieldVariants({ labelPlacement: "inside" })}
+                name="bearerToken"
+                value={bearerToken}
+                onChange={setBearerToken}
+                type="password"
+                isRequired
+                isInvalid={!!error}
+              >
+                <Label>API Key / Bearer Token</Label>
+                <InputGroup>
+                  <InputGroup.Prefix>
+                    <KeyIcon width={16} height={16} />
+                  </InputGroup.Prefix>
+                  <InputGroup.Input
+                    placeholder="sk-... or your token"
+                    autoFocus
+                  />
+                </InputGroup>
+                {error && <FieldError>{error}</FieldError>}
+              </TextField>
+            </Modal.Body>
 
-        <ModalFooter>
-          <Button
-            color="default"
-            variant="light"
-            onPress={handleClose}
-            isDisabled={isLoading}
-          >
-            Cancel
-          </Button>
-          <Button
-            color="primary"
-            onPress={handleSubmit}
-            isLoading={isLoading}
-            isDisabled={!bearerToken.trim() || isLoading}
-            endContent={!isLoading && <Kbd keys={[modifierKeyName, "enter"]} />}
-          >
-            Connect
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+            <Modal.Footer>
+              <GaiaButton
+                variant="ghost"
+                onPress={handleClose}
+                isDisabled={isLoading}
+              >
+                Cancel
+              </GaiaButton>
+              <GaiaButton
+                onPress={handleSubmit}
+                isPending={isLoading}
+                isDisabled={!bearerToken.trim() || isLoading}
+                variant="primary"
+              >
+                Connect
+                {!isLoading && (
+                  <Kbd>
+                    <Kbd.Abbr keyValue={modifierKeyName} />
+                    <Kbd.Abbr keyValue="enter" />
+                  </Kbd>
+                )}
+              </GaiaButton>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 };

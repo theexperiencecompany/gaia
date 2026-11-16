@@ -9,11 +9,11 @@
 
 "use client";
 
-import { Button } from "@heroui/button";
 import { ArrowDown01Icon, Cancel01Icon, Wrench01Icon } from "@icons";
 import * as m from "motion/react-m";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { useProviderCatalog } from "@/features/settings/hooks/useProviderCatalog";
 import { useSetupStatus } from "@/features/settings/hooks/useSetupStatus";
@@ -27,15 +27,14 @@ import { useSetupChecklistStore } from "@/stores/setupChecklistStore";
 
 function ChecklistAction({ item }: { item: SetupChecklistItem }) {
   return (
-    <Button
-      as={Link}
+    <LinkButton
       href={item.href}
       size="sm"
-      variant="flat"
+      variant="default-soft"
       className="shrink-0 font-medium"
     >
       {item.actionLabel}
-    </Button>
+    </LinkButton>
   );
 }
 
@@ -47,17 +46,18 @@ function DismissButton({
   onDismiss: () => void;
 }) {
   return (
-    <Button
+    <GaiaButton
+      shape="pill"
       isIconOnly
       size="sm"
-      variant="light"
-      radius="full"
+      variant="ghost"
       aria-label={label}
       onPress={onDismiss}
-      className="shrink-0 text-zinc-500"
+      tone="faint"
+      className="shrink-0"
     >
       <Cancel01Icon size={14} />
-    </Button>
+    </GaiaButton>
   );
 }
 
@@ -125,24 +125,22 @@ export function SetupChecklistBanner({
               <p className="min-w-0 flex-1 truncate text-xs font-medium text-zinc-200">
                 {visible.length} setup steps left
               </p>
-              <Button
+              <GaiaButton
                 size="sm"
-                variant="flat"
+                variant="default-soft"
                 className="shrink-0 font-medium"
                 aria-expanded={isExpanded}
-                endContent={
-                  <ArrowDown01Icon
-                    size={14}
-                    className={cn(
-                      "transition-transform duration-200",
-                      isExpanded && "rotate-180",
-                    )}
-                  />
-                }
                 onPress={() => setIsExpanded((open) => !open)}
               >
                 {isExpanded ? "Hide" : "Show"}
-              </Button>
+                <ArrowDown01Icon
+                  size={14}
+                  className={cn(
+                    "transition-transform duration-200",
+                    isExpanded && "rotate-180",
+                  )}
+                />
+              </GaiaButton>
             </div>
           )}
           <DismissButton
