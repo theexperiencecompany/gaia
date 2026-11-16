@@ -53,12 +53,13 @@ export default function ProgressiveImage({
 
       {/* Higher-quality PNG fades in AFTER the webp. It is always lazy + low
           priority so it never competes with the LCP image (the webp) for
-          bandwidth — even on priority heroes. This keeps the quality upgrade
-          without pushing out Largest Contentful Paint. */}
+          bandwidth — even on priority heroes. It repeats the webp's picture,
+          so assistive tech skips it. */}
       {pngSrc && (
         <NextImage
           src={pngSrc}
-          alt={`${alt} png`}
+          alt=""
+          aria-hidden="true"
           width={width}
           height={height}
           quality={quality}

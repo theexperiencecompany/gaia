@@ -25,7 +25,7 @@ const DEAL_ITEMS = [
     value: "$91,000",
     sub: "New champion introduced last week",
     info: "Action: re-engage with new contact",
-    infoColor: "text-primary",
+    infoColor: "text-accent",
     urgent: false,
   },
 ];

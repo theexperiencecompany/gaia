@@ -1,4 +1,3 @@
-import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
 import {
   Copy01Icon,
@@ -9,6 +8,7 @@ import {
   ThumbsUpIcon,
 } from "@icons";
 import { useParams } from "next/navigation";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { copyWithFeedback } from "@/lib/clipboard";
 import { toast } from "@/lib/toast";
@@ -95,11 +95,14 @@ export default function ChatBubble_Actions({
     <>
       {!loading && (
         <div className="flex w-fit items-center">
-          <Tooltip content="Reply" placement="bottom">
-            <Button
+          <Tooltip>
+            <GaiaButton
+              aria-label="Reply"
               isIconOnly
-              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-              variant="light"
+              className="aspect-square size-7.5 min-w-7.5 rounded-md"
+              variant="ghost"
+              tone="faint"
+              hoverTone="dim"
               onPress={handleReply}
             >
               <LinkBackwardIcon
@@ -107,40 +110,51 @@ export default function ChatBubble_Actions({
                 height="18"
                 width="18"
               />
-            </Button>
+            </GaiaButton>
+            <Tooltip.Content placement="bottom">Reply</Tooltip.Content>
           </Tooltip>
 
-          <Tooltip content="Copy to clipboard" placement="bottom">
-            <Button
+          <Tooltip>
+            <GaiaButton
+              aria-label="Copy to clipboard"
               isIconOnly
-              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-              variant="light"
+              className="aspect-square size-7.5 min-w-7.5 rounded-md"
+              variant="ghost"
+              tone="faint"
+              hoverTone="dim"
               onPress={copyToClipboard}
             >
               <Copy01Icon className="cursor-pointer" height="20" width="20" />
-            </Button>
+            </GaiaButton>
+            <Tooltip.Content placement="bottom">
+              Copy to clipboard
+            </Tooltip.Content>
           </Tooltip>
 
-          <Tooltip content="Pin message" placement="bottom">
-            <Button
+          <Tooltip>
+            <GaiaButton
+              aria-label="Pin message"
               isIconOnly
-              className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-              variant="light"
-              radius="lg"
+              className="aspect-square size-7.5 min-w-7.5 rounded-md"
+              variant="ghost"
+              tone="faint"
+              hoverTone="dim"
               onPress={handlePinToggle}
-              color={pinned ? "primary" : "default"}
             >
               <PinIcon className={`cursor-pointer`} height="20" width="20" />
-            </Button>
+            </GaiaButton>
+            <Tooltip.Content placement="bottom">Pin message</Tooltip.Content>
           </Tooltip>
 
           {messageRole === "assistant" && (
-            <Tooltip content="Helpful response" placement="bottom">
-              <Button
+            <Tooltip>
+              <GaiaButton
+                aria-label="Helpful response"
                 isIconOnly
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="light"
-                radius="lg"
+                className="aspect-square size-7.5 min-w-7.5 rounded-md"
+                variant="ghost"
+                tone="faint"
+                hoverTone="dim"
                 onPress={handleThumbsUp}
               >
                 <ThumbsUpIcon
@@ -148,17 +162,22 @@ export default function ChatBubble_Actions({
                   height="20"
                   width="20"
                 />
-              </Button>
+              </GaiaButton>
+              <Tooltip.Content placement="bottom">
+                Helpful response
+              </Tooltip.Content>
             </Tooltip>
           )}
 
           {messageRole === "assistant" && (
-            <Tooltip content="Not helpful" placement="bottom">
-              <Button
+            <Tooltip>
+              <GaiaButton
+                aria-label="Not helpful"
                 isIconOnly
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="light"
-                radius="lg"
+                className="aspect-square size-7.5 min-w-7.5 rounded-md"
+                variant="ghost"
+                tone="faint"
+                hoverTone="dim"
                 onPress={handleThumbsDown}
               >
                 <ThumbsDownIcon
@@ -166,24 +185,28 @@ export default function ChatBubble_Actions({
                   height="20"
                   width="20"
                 />
-              </Button>
+              </GaiaButton>
+              <Tooltip.Content placement="bottom">Not helpful</Tooltip.Content>
             </Tooltip>
           )}
 
           {onRetry && (
-            <Tooltip content="Retry" placement="bottom">
-              <Button
+            <Tooltip>
+              <GaiaButton
+                aria-label="Retry"
                 isIconOnly
                 isDisabled={isRetrying}
-                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
-                variant="light"
-                radius="lg"
+                className="aspect-square size-7.5 min-w-7.5 rounded-md"
+                variant="ghost"
+                tone="faint"
+                hoverTone="dim"
                 onPress={onRetry}
               >
                 <div className={isRetrying ? "animate-spin" : ""}>
                   <RedoIcon className="cursor-pointer" height="18" width="18" />
                 </div>
-              </Button>
+              </GaiaButton>
+              <Tooltip.Content placement="bottom">Retry</Tooltip.Content>
             </Tooltip>
           )}
           {/*
@@ -192,7 +215,7 @@ export default function ChatBubble_Actions({
             index={index}
             trigger={
               <Button
-                variant="light"
+                variant="tertiary"
                 className="w-fit p-0 h-fit rounded-md"
                 isIconOnly
                 style={{ minWidth: "22px" }}

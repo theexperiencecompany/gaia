@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/kbd";
+import { Kbd } from "@heroui/react";
 import { ConnectIcon, MessageFavourite02Icon } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -9,6 +8,7 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import RightSidebarPanel from "@/components/layout/sidebar/RightSidebarPanel";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import {
   integrationKeys,
@@ -206,7 +206,9 @@ export default function IntegrationsPage() {
           onEnter={handleEnterSearch}
           endContent={
             <div className="flex items-center gap-1.5">
-              <Kbd keys={[isMac ? "command" : "ctrl"]}>F</Kbd>
+              <Kbd>
+                <Kbd.Abbr keyValue={isMac ? "command" : "ctrl"} />F
+              </Kbd>
             </div>
           }
         />
@@ -243,13 +245,10 @@ export default function IntegrationsPage() {
         </RightSidebarPanel>
       )}
       <div className="absolute right-4 bottom-4 z-1">
-        <Button
-          color="primary"
-          endContent={<MessageFavourite02Icon width={17} height={17} />}
-          onPress={handleRequestIntegration}
-        >
+        <GaiaButton onPress={handleRequestIntegration} variant="primary">
           Request an Integration
-        </Button>
+          <MessageFavourite02Icon width={17} height={17} />
+        </GaiaButton>
       </div>
 
       <div className="flex-1 overflow-y-auto pb-20">

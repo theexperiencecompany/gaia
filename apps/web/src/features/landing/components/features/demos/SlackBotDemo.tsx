@@ -61,6 +61,7 @@ export default function SlackBotDemo() {
       phase2Question="post our weekly metrics summary to this channel"
       phase3Time="9:02 AM"
       phase3Response={phase3Response}
+      eagerFirstLogo
     />
   );
 }

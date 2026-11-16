@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React, { lazy, type ReactNode, Suspense, useCallback } from "react";
 import {
   MessageScrollerProvider,
   useMessageScroller,
@@ -16,15 +16,19 @@ import { useVoiceModeControls } from "@/features/chat/components/interface/hooks
 import { useWorkflowAutoSend } from "@/features/chat/components/interface/hooks/useWorkflowAutoSend";
 import { ChatWithMessages } from "@/features/chat/components/interface/layouts/ChatWithMessages";
 import { NewChatLayout } from "@/features/chat/components/interface/layouts/NewChatLayout";
-import {
-  VoiceControlBarContainer,
-  VoiceControlBarSlot,
-} from "@/features/chat/components/voice-agent/VoiceControlBarContainer";
+import { VoiceControlBarPending } from "@/features/chat/components/voice-agent/VoiceControlBarPending";
 import { VoiceModeBackground } from "@/features/chat/components/voice-agent/VoiceModeBackground";
 import { useStreamResume } from "@/features/chat/hooks/useStreamResume";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { toast } from "@/lib/toast";
+
+// LiveKit (~125 KB gzip) loads only when the user starts voice mode.
+const VoiceSession = lazy(() =>
+  import("@/features/chat/components/voice-agent/VoiceSession").then(
+    (module) => ({ default: module.VoiceSession }),
+  ),
+);
 
 const MainChat = React.memo(function MainChat() {
   // Mounting useIntegrations refreshes the personalized catalog (staleTime: 0)
@@ -84,19 +88,32 @@ const MainChat = React.memo(function MainChat() {
   const useMessagesLayout = voiceModeActive || hasMessages;
 
   if (voiceModeActive) {
+    const renderVoiceConversation = (bottomBar: ReactNode) => (
+      <>
+        <VoiceModeBackground />
+        <ChatWithMessages
+          chatRef={chatRef}
+          dragHandlers={dragHandlers}
+          bottomBar={bottomBar}
+        />
+      </>
+    );
     return (
       // `isolate` creates a stacking context so the gradient (z-index: -10)
       // paints behind content but ABOVE the ancestor <main>'s bg-zinc —
       // without it, the parent's background covers the gradient entirely.
       <div className="relative isolate flex h-full min-h-0 flex-col">
-        <VoiceControlBarContainer>
-          <VoiceModeBackground />
-          <ChatWithMessages
-            chatRef={chatRef}
-            dragHandlers={dragHandlers}
-            bottomBar={<VoiceControlBarSlot onEndCall={endVoiceCall} />}
+        {/* Only the voice bar waits for LiveKit; the conversation stays up meanwhile. */}
+        <Suspense
+          fallback={renderVoiceConversation(
+            <VoiceControlBarPending onEndCall={endVoiceCall} />,
+          )}
+        >
+          <VoiceSession
+            onEndCall={endVoiceCall}
+            renderConversation={renderVoiceConversation}
           />
-        </VoiceControlBarContainer>
+        </Suspense>
       </div>
     );
   }

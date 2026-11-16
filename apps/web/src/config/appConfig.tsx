@@ -15,6 +15,7 @@ import {
   QuillWrite01Icon,
   UserGroupIcon,
 } from "@icons";
+import { BOT_URLS } from "@shared/constants/bots";
 import Image from "next/image";
 import type { ComponentType, ReactElement } from "react";
 import {
@@ -51,6 +52,8 @@ export interface AppLink {
   guestOnly?: boolean;
   commented?: boolean;
   description?: string;
+  /** Accessible name when the visible label is too generic out of context ("Download"). */
+  ariaLabel?: string;
   hideNavbar?: boolean;
 }
 
@@ -170,13 +173,13 @@ export const appConfig = {
         "Chat with GAIA on Telegram",
       ),
       botLink(
-        "/slack-bot",
+        BOT_URLS.slackInstall,
         "Slack",
         "/images/icons/macos/slack.webp",
         "Bring GAIA into your workspace",
       ),
       botLink(
-        "/discord-bot",
+        BOT_URLS.discordInstall,
         "Discord",
         "/images/icons/macos/discord.webp",
         "Add GAIA to your server",
@@ -279,7 +282,6 @@ export const appConfig = {
     ] as AppLink[],
 
     company: [
-      navLink("/manifesto", "Manifesto", GlobalIcon, "Our mission and vision"),
       navLink(
         "/brand",
         "Branding",
@@ -419,12 +421,13 @@ export const footerSections: LinkSection[] = [
     title: "Product",
     links: [
       { label: "Features", href: "/features" },
-      { label: "Download", href: "/download" },
+      { label: "Download", href: "/download", ariaLabel: "Download GAIA" },
       { label: "Self-Host CLI", href: "/cli" },
       { label: "Use Cases", href: "/use-cases" },
       { label: "Marketplace", href: "/marketplace" },
       { label: "Bots", href: "/bots" },
       { label: "Pricing", href: "/pricing" },
+      { label: "Create an account", href: "/signup" },
       { label: "Roadmap", href: vanityTarget("/roadmap"), external: true },
     ],
   },
@@ -466,9 +469,9 @@ export const footerSections: LinkSection[] = [
     title: "Company",
     links: [
       { label: "About", href: "/about" },
-      { label: "Manifesto", href: "/manifesto" },
       { label: "Contact", href: "/contact" },
       { label: "Branding", href: "/brand" },
+      { label: "Tools We Love", href: "/thanks" },
     ],
   },
   {

@@ -1,9 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Link } from "@heroui/link";
-import { Spinner } from "@heroui/spinner";
+import { Chip, Link, Spinner } from "@heroui/react";
 import {
   BookOpen01Icon,
   ComputerIcon,
@@ -11,6 +8,7 @@ import {
   Folder01Icon,
   Link04Icon,
 } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   BRIDGE_ADD_COMMAND,
   BRIDGE_CLI_NAME,
@@ -46,7 +44,7 @@ function DeviceRow({
               <Chip
                 size="sm"
                 color={device.online ? "success" : "default"}
-                variant="flat"
+                variant="soft"
               >
                 {device.online ? "Online" : "Offline"}
               </Chip>
@@ -57,16 +55,15 @@ function DeviceRow({
             </p>
           </div>
         </div>
-        <Button
+        <GaiaButton
+          variant="danger-soft"
           size="sm"
-          variant="flat"
-          color="danger"
-          isLoading={isRevoking}
-          startContent={<Delete02Icon className="size-4" />}
+          isPending={isRevoking}
           onPress={() => onRevoke(device.id)}
         >
+          <Delete02Icon className="size-4" />
           Revoke
-        </Button>
+        </GaiaButton>
       </div>
 
       {device.servers.length > 0 && (
@@ -96,9 +93,8 @@ function DeviceRow({
           </p>
           <Link
             href={DEVICE_BRIDGE_DOCS_URL}
-            isExternal
-            showAnchorIcon
-            size="sm"
+            target="_blank"
+            rel="noreferrer"
             className="text-xs"
           >
             <BookOpen01Icon width={14} height={14} className="mr-1" />
@@ -136,9 +132,13 @@ function PairedDevices({
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800 p-6 text-center text-sm text-zinc-400">
         <span>Couldn&apos;t load your devices.</span>
-        <Button size="sm" variant="flat" onPress={() => void refetch()}>
+        <GaiaButton
+          size="sm"
+          variant="default-soft"
+          onPress={() => void refetch()}
+        >
           Retry
-        </Button>
+        </GaiaButton>
       </div>
     );
   }

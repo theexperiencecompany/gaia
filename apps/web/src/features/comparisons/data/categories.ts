@@ -1,4 +1,4 @@
-export const COMPARISON_CATEGORIES: Record<string, string> = {
+export const COMPARISON_CATEGORIES: Record<string, ComparisonCategory> = {
   // AI Assistants
   chatgpt: "AI Assistants",
   "chatgpt-teams": "AI Assistants",
@@ -85,3 +85,5 @@ export const CATEGORY_ORDER = [
   "Email",
   "Notes & Knowledge",
 ] as const;
+
+export type ComparisonCategory = (typeof CATEGORY_ORDER)[number];

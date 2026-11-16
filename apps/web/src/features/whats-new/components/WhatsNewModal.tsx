@@ -1,16 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { Spinner } from "@heroui/spinner";
+import { Modal, Spinner } from "@heroui/react";
 import { ArrowLeft02Icon, ArrowRight02Icon, ArrowUpRight01Icon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { modalVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { track } from "@/lib/analytics";
 import { useWhatsNewModal, useWhatsNewStore } from "@/stores/whatsNewStore";
 import { useReleases } from "../hooks/useReleases";
@@ -83,16 +78,17 @@ export function WhatsNewModal() {
   const release = releases[selectedIndex];
 
   return (
-    <Modal isOpen={isModalOpen} onClose={closeModal} size="2xl" backdrop="blur">
-      <ModalContent>
-        {() => (
-          <>
-            <ModalHeader>What&apos;s new in GAIA</ModalHeader>
+    <Modal isOpen={isModalOpen} onOpenChange={closeModal}>
+      <Modal.Backdrop variant="blur">
+        <Modal.Container>
+          <Modal.Dialog className={modalVariants({ size: "2xl" })}>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header>What&apos;s new in GAIA</Modal.Header>
 
-            <ModalBody>
+            <Modal.Body>
               {isLoading ? (
                 <div className="flex h-40 items-center justify-center">
-                  <Spinner size="sm" color="primary" />
+                  <Spinner size="sm" color="accent" />
                 </div>
               ) : releases.length === 0 ? (
                 <p className="py-8 text-center text-sm text-zinc-500">
@@ -117,56 +113,58 @@ export function WhatsNewModal() {
                   />
                 </div>
               )}
-            </ModalBody>
+            </Modal.Body>
 
             {showControls && (
-              <ModalFooter className="flex items-center justify-between">
-                <Button
-                  as="a"
-                  href={release?.docsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  variant="light"
-                  size="sm"
-                  endContent={<ArrowUpRight01Icon className="h-3.5 w-3.5" />}
-                  onPress={() =>
-                    release &&
-                    track("whats_new:docs_clicked", {
-                      releaseId: release.id,
-                    })
-                  }
-                >
-                  View all release notes
-                </Button>
+              <Modal.Footer className="flex items-center justify-between">
+                {release && (
+                  <LinkButton
+                    href={release.docsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      track("whats_new:docs_clicked", { releaseId: release.id })
+                    }
+                  >
+                    View all release notes
+                    <ArrowUpRight01Icon className="h-3.5 w-3.5" />
+                  </LinkButton>
+                )}
                 <div className="flex items-center gap-1">
-                  <Button
+                  <GaiaButton
                     isIconOnly
-                    variant="flat"
+                    variant="tertiary"
+                    tone="muted"
+                    hoverTone="white"
                     size="sm"
                     isDisabled={!canScrollPrev}
                     onPress={scrollPrev}
                     aria-label="Previous release"
-                    className="h-7 w-7 min-w-7 bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30"
+                    className="h-7 w-7 min-w-7 disabled:opacity-30"
                   >
                     <ArrowLeft02Icon className="h-4 w-4" />
-                  </Button>
-                  <Button
+                  </GaiaButton>
+                  <GaiaButton
                     isIconOnly
-                    variant="flat"
+                    variant="tertiary"
+                    tone="muted"
+                    hoverTone="white"
                     size="sm"
                     isDisabled={!canScrollNext}
                     onPress={scrollNext}
                     aria-label="Next release"
-                    className="h-7 w-7 min-w-7 bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-30"
+                    className="h-7 w-7 min-w-7 disabled:opacity-30"
                   >
                     <ArrowRight02Icon className="h-4 w-4" />
-                  </Button>
+                  </GaiaButton>
                 </div>
-              </ModalFooter>
+              </Modal.Footer>
             )}
-          </>
-        )}
-      </ModalContent>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }
