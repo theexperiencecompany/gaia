@@ -93,9 +93,9 @@ def unanswered_in_words(messages: Sequence[AnyMessage], seqs: Sequence[int]) -> 
         for index, message in enumerate(messages)
         if isinstance(message, AIMessage) and extract_text_content(message.content).strip()
     ]
-    return [
-        seq for seq in seqs if not any(index > arrived.get(seq, len(messages)) for index in worded)
-    ]
+    since = {seq: arrived.get(seq, len(messages)) for seq in seqs}
+    # `>=` reads the same: a reply's index is never a user message's, nor len(messages).
+    return [seq for seq in seqs if not any(i > since[seq] for i in worded)]  # pragma: no mutate
 
 
 @tool(REACT_TOOL_NAME, args_schema=ReactArgs)

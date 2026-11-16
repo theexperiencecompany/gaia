@@ -339,6 +339,7 @@ async def test_finished_work_is_answered_with_the_prompt_of_the_conversations_ow
 
     await build_comms_turn(CLAIM, _batch(6, [finished("w6", "t1")]))
 
+    seams.conversations.get_source.assert_awaited_once_with(CONVERSATION, user_id=USER)
     scope = seams.turn_context.await_args.args[1]
     assert seams.agent_config.await_args.kwargs["turn"].source == surface.value
     seams.presence.assert_not_awaited()

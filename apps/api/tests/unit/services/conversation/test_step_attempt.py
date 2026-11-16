@@ -33,7 +33,7 @@ from shared.py.conversation_wire import (
     ReplyOutcome,
     ToolDataEntry,
 )
-from tests.unit.services.conversation.log_helpers import EMPTY, at, finished, logged, user
+from tests.unit.services.conversation.log_helpers import EMPTY, at, finished, logged, settled, user
 
 CARD: ToolDataEntry = {"tool_name": "search", "data": {"q": "x"}}
 
@@ -118,6 +118,15 @@ def test_a_reply_showing_text_or_its_own_cards_interrupts_the_answered_message(
 ) -> None:
     entries = [logged(1, user("u1")), logged(2, between)]
     assert quote_in(("u1",), 3, entries) == quoted
+
+
+def test_an_earlier_reply_settled_on_the_same_message_is_not_between_it_and_its_answer() -> None:
+    entries = [
+        logged(1, user("u1")),
+        logged(2, _reply("r1", "on it")),
+        logged(3, settled("s1", ("u1",), 1, reply_id="r1")),
+    ]
+    assert quote_in(("u1",), 4, entries) is None
 
 
 def test_a_reply_is_never_the_message_a_reply_quotes() -> None:

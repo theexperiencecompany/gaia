@@ -66,9 +66,10 @@ async def run_attempt(
     try:
         note = None
         while True:
-            if not await _run_once(ports, attempt, context, note) or not attempt.continuing:
+            await _run_once(ports, attempt, context, note)
+            if not attempt.continuing:
                 return
-            attempt.continuing = False
+            attempt.continuing = False  # pragma: no mutate — read only as truthy
             attempt.answered = None
             note = still_open_note(attempt)
     finally:
@@ -77,8 +78,8 @@ async def run_attempt(
 
 async def _run_once(
     ports: RuntimePorts, attempt: Attempt, context: Sequence[LoggedEntry], note: str | None
-) -> bool:
-    """Run one graph run of the attempt; False when it ended the attempt failed."""
+) -> None:
+    """Run one graph run of the attempt; a failed one leaves it continuing in no further run."""
     try:
         run = await ports.runner.start(
             attempt.claim,
@@ -93,7 +94,7 @@ async def _run_once(
         )
     except Exception as error:  # a run that cannot start fails its inputs like one that crashed
         await fail_attempt(ports, attempt, error)
-        return False
+        return
     try:
         ending = await _watch(ports, attempt, run)
     except ClaimLost:
@@ -105,7 +106,7 @@ async def _run_once(
         await run.cancel(CancelReason.LOST)
         await settle_passed(ports, attempt)
         await fail_attempt(ports, attempt, error)
-        return False
+        return
     except BaseException:
         await run.cancel(CancelReason.LOST)
         raise
@@ -117,8 +118,6 @@ async def _run_once(
         Exception
     ) as error:  # settling failed part-way: its idempotent ids let fail_attempt finish it
         await fail_attempt(ports, attempt, error)
-        return False
-    return True
 
 
 def still_open_note(attempt: Attempt) -> str:

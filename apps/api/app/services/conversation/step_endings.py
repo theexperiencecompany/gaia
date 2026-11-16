@@ -110,25 +110,23 @@ async def _stop(ports: RuntimePorts, attempt: Attempt) -> None:
 
 async def _truncate(ports: RuntimePorts, attempt: Attempt) -> None:
     """Note how much of the reply the user heard before speaking over it; it still answered its inputs."""
-    progress = attempt.progress
     attempt.covers = attempt.unanswered
-    if isinstance(progress, Drafting):
-        await conclude(ports, attempt, progress.reply, ReplyOutcome.TRUNCATED)
-        return
-    if not isinstance(progress, Showing) or attempt.slot is None:
-        await retract_attempt(ports, attempt)
-        return
-    after = await ports.log.read_after(
-        attempt.claim.conversation_id, attempt.claim.user_id, attempt.slot
-    )
-    barges = [
-        logged.entry
-        for logged in after
-        if isinstance(logged.entry, BargeIn) and logged.entry.reply_id == attempt.reply_id
-    ]
-    shown = progress.reply.text
-    heard = min(barges[-1].heard_through, len(shown)) if barges else len(shown)
-    await conclude(ports, attempt, _heard(progress.reply, heard), ReplyOutcome.TRUNCATED)
+    match attempt.progress, attempt.slot:
+        case Drafting(reply=reply), _:
+            await conclude(ports, attempt, reply, ReplyOutcome.TRUNCATED)
+        case Showing(reply=reply), int(slot):
+            after = await ports.log.read_after(
+                attempt.claim.conversation_id, attempt.claim.user_id, slot
+            )
+            barges = [
+                logged.entry
+                for logged in after
+                if isinstance(logged.entry, BargeIn) and logged.entry.reply_id == attempt.reply_id
+            ]
+            heard = min(barges[-1].heard_through, len(reply.text)) if barges else len(reply.text)
+            await conclude(ports, attempt, _heard(reply, heard), ReplyOutcome.TRUNCATED)
+        case _:
+            await retract_attempt(ports, attempt)
 
 
 def _heard(reply: Reply, heard_through: int) -> Reply:
@@ -254,7 +252,8 @@ async def _add_follow_ups(
 
 
 async def fail_attempt(ports: RuntimePorts, attempt: Attempt, error: Exception) -> None:
-    """Settle the attempt failed with what was shown, so the user sees a failed bubble, not silence."""
+    """Settle the attempt failed with what was shown, so the user sees a failed bubble, not silence; no further run goes on with it."""
+    attempt.continuing = False  # pragma: no mutate — read only as truthy
     log.error(
         "comms run failed",
         error=str(error),

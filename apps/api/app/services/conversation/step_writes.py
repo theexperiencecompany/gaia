@@ -60,13 +60,14 @@ async def settle_passed(ports: RuntimePorts, attempt: Attempt) -> LoggedEntry | 
 
 async def end_above(ports: RuntimePorts, attempt: Attempt, covers: Sequence[LoggedEntry]) -> None:
     """End the open reply as interim when it sits above an input covers holds: a reply never answers one below it."""
-    if attempt.slot is not None and any(logged.seq > attempt.slot for logged in covers):
+    if attempt.slot is None:
+        return
+    if any(logged.seq > attempt.slot for logged in covers):  # pragma: no mutate — slot is no input
         await end_interim(ports, attempt)
 
 
 async def end_interim(ports: RuntimePorts, attempt: Attempt) -> None:
     """End the shown reply naming no message; nothing it covered counts answered."""
-    attempt.split = False
     if isinstance(attempt.progress, Showing):
         await conclude(ports, attempt, base_reply(attempt), ReplyOutcome.INTERIM)
         next_segment(attempt)
@@ -114,7 +115,7 @@ def next_segment(attempt: Attempt) -> None:
     attempt.reply_id = f"r{attempt.attempt_id}"
     attempt.progress = Quiet(reason=CommitReason.MODEL_OUTPUT)
     attempt.slot = None
-    attempt.split = False
+    attempt.split = False  # pragma: no mutate — read only as truthy
     attempt.deltas = 0
     attempt.text = ReplyText()
     attempt.shown = ()

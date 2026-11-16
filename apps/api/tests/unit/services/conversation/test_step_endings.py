@@ -8,6 +8,7 @@ from app.constants.general import CALL_EXECUTOR_NAME
 from app.models.chat_models import ReactionBy
 from app.models.conversation_frame_models import (
     EntryUpdatedFrame,
+    OutputFrame,
     ResponseEvent,
     RetractFrame,
     ToolDataEvent,
@@ -33,6 +34,7 @@ from app.services.conversation.ports import (
     ModelOutput,
     Reacted,
     Replied,
+    Silent,
     Streamed,
 )
 from app.services.conversation.reply_analytics import spoken_context
@@ -43,18 +45,22 @@ from app.services.conversation.step_endings import end_attempt
 from app.services.conversation.step_view import StepView
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
-from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
+from shared.py.conversation_wire import FailureReason, ReplyOutcome, ToolDataEntry
 from tests.helpers import captured_wide_event
-from tests.unit.services.conversation.log_helpers import barge, user
+from tests.unit.services.conversation.log_helpers import barge, fired, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
     USER,
     Action,
     Cancelled,
+    Close,
     Do,
     Fail,
+    Forgetful,
+    HandedOff,
     Pause,
     RecordingAnalytics,
+    RecordingFrames,
     Runtime,
     ScriptedRun,
     Started,
@@ -344,3 +350,192 @@ async def test_only_the_first_barge_on_a_settled_reply_cuts_it() -> None:
     await run(rt)
     [first, _] = await replies(rt)
     assert (first.heard_through, first.revision) == (5, 2)
+
+
+async def outcomes(rt: Runtime) -> list[tuple[ReplyOutcome, tuple[str, ...]]]:
+    return [(item.outcome, item.answers) for item in await settles(rt)]
+
+
+async def test_a_run_that_crashes_after_a_tool_closed_its_message_keeps_that_answer() -> None:
+    rt = Runtime()
+    rt.runner.script([text("done"), Close(seqs=(1,)), Fail(RuntimeError("boom"))])
+    await send(rt, user("u1"))
+    await run(rt)
+    first, *_ = await settles(rt)
+    assert (first.outcome, first.answers) == (ReplyOutcome.ANSWERED, ("u1",))
+    assert ("u1",) not in [
+        answers for outcome, answers in await outcomes(rt) if outcome is ReplyOutcome.FAILED
+    ]
+
+
+async def test_words_answering_the_one_open_message_settle_it_and_take_later_suggestions() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [
+            Forgetful(),
+            text("36"),
+            Answered(Replied("36")),
+            Finished(Replied("36", follow_up_actions=("Show the maths",))),
+        ]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    assert rt.runner.calls == [Started(batch=(1,), context=())]
+    [reply] = await replies(rt)
+    assert (reply.text, reply.follow_up_actions) == ("36", ("Show the maths",))
+    assert await outcomes(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
+
+
+async def test_cards_alone_leave_the_one_open_message_owed_to_a_second_run() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [Forgetful(), card(), Finished(Replied(""))],
+        [Close(seqs=(1,)), Finished(Silent())],
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    first, again = rt.runner.calls
+    assert first == Started(batch=(1,), context=())
+    assert isinstance(again, Started) and again.note is not None
+    assert await outcomes(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
+
+
+async def test_a_message_owed_when_the_answer_was_final_is_told_to_one_second_run() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [Forgetful(), Answered(Silent()), Finished(Silent())],
+        [Close(seqs=(1,)), Finished(Silent())],
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    assert [type(call) for call in rt.runner.calls] == [Started, Started]
+    assert await outcomes(rt) == [(ReplyOutcome.SILENT, ("u1",))]
+
+
+async def test_a_message_owed_after_the_reminder_is_handed_off_under_the_steps_claim() -> None:
+    rt = Runtime()
+    rt.runner.script([Forgetful(), Finished(Silent())], [Forgetful(), Finished(Silent())])
+    await send(rt, user("u1"))
+    await run(rt)
+    assert [type(call) for call in rt.runner.calls] == [Started, Started, HandedOff]
+    assert rt.runner.calls[-1] == HandedOff((1,))
+    assert [claim.conversation_id for claim in rt.runner.runs[-1].handed_by] == [CONVERSATION]
+    assert await outcomes(rt) == [(ReplyOutcome.SILENT, ("u1",))]
+
+
+async def test_a_hand_off_made_when_the_answer_was_final_counts_as_the_settled_answer() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [Forgetful(), Finished(Silent())],
+        [Forgetful(), Answered(Silent()), Do(rt.frames.mark), Fail(RuntimeError("late"))],
+    )
+    await send(rt, user("u1"))
+    async with captured_wide_event() as event:
+        await run(rt)
+    assert await outcomes(rt) == [(ReplyOutcome.SILENT, ("u1",))]
+    assert rt.frames.since_mark() == []
+    assert "errors" not in event
+
+
+async def test_a_hand_off_the_executor_refuses_fails_the_owed_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def refuse(run_: ScriptedRun, claim: StepClaim, messages: Sequence[LoggedEntry]) -> bool:
+        return False
+
+    monkeypatch.setattr(ScriptedRun, "hand_off", refuse)
+    rt = Runtime()
+    rt.runner.script([Forgetful(), Finished(Silent())], [Forgetful(), Finished(Silent())])
+    await send(rt, user("u1"))
+    async with captured_wide_event() as event:
+        await run(rt)
+    assert [type(call) for call in rt.runner.calls] == [Started, Started]
+    assert "errors" not in event
+    [settle] = await settles(rt)
+    assert (settle.outcome, settle.answers, settle.failure) == (
+        ReplyOutcome.FAILED,
+        ("u1",),
+        FailureReason.MODEL_ERROR,
+    )
+
+
+@pytest.mark.parametrize(
+    ("script", "expected"),
+    [
+        ([text("report"), Finished(Replied("report"))], ReplyOutcome.ANSWERED),
+        ([card(), Finished(Replied(""))], ReplyOutcome.ANSWERED),
+        ([Finished(Silent())], ReplyOutcome.SILENT),
+    ],
+)
+async def test_a_run_for_a_workflow_answers_it_only_when_it_showed_something(
+    script: list[Streamed | Finished], expected: ReplyOutcome
+) -> None:
+    rt = Runtime()
+    rt.runner.script(script)
+    await send(rt, fired("wf"))
+    await run(rt)
+    assert await outcomes(rt) == [(expected, ("wf",))]
+
+
+async def test_words_after_the_last_message_was_answered_end_as_an_interim_reply() -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [
+            text("done"),
+            Close(seqs=(1,)),
+            ModelOutput(False),
+            text("one more thing"),
+            Finished(Replied("one more thing")),
+        ]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    assert [reply.text for reply in await replies(rt)] == ["done", "one more thing"]
+    assert await outcomes(rt) == [
+        (ReplyOutcome.ANSWERED, ("u1",)),
+        (ReplyOutcome.INTERIM, ()),
+    ]
+
+
+async def test_a_run_that_crashes_after_its_words_answered_the_one_open_message_shows_nothing_more() -> (
+    None
+):
+    rt = Runtime()
+    rt.runner.script(
+        [
+            Forgetful(),
+            text("36"),
+            Answered(Replied("36")),
+            Do(rt.frames.mark),
+            Fail(RuntimeError("late")),
+        ]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    assert await outcomes(rt) == [(ReplyOutcome.ANSWERED, ("u1",))]
+    assert rt.frames.since_mark() == []
+
+
+class _FirstAmendBlips(RecordingFrames):
+    """Fails the first entry update once, as a Redis blip while a reply settles would."""
+
+    failed: bool = False
+
+    async def publish(self, conversation_id: str, *frames: OutputFrame) -> None:
+        if any(isinstance(frame, EntryUpdatedFrame) for frame in frames) and not self.failed:
+            self.failed = True
+            raise ConnectionError("redis down")
+        await super().publish(conversation_id, *frames)
+
+
+async def test_a_reply_that_failed_to_end_above_an_absorbed_message_still_fails_below_it() -> None:
+    rt = Runtime(frames=_FirstAmendBlips())
+    rt.runner.script(
+        [text("a"), Do(arrive(rt, user("u2"))), ModelOutput(True), Finished(Replied("a"))]
+    )
+    await send(rt, user("u1"))
+    await run(rt)
+    assert await outcomes(rt) == [
+        (ReplyOutcome.INTERIM, ()),
+        (ReplyOutcome.FAILED, ("u1", "u2")),
+    ]

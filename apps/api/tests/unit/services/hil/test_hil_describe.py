@@ -77,6 +77,11 @@ class TestEmail:
             )
         ]
 
+    def test_a_body_that_looks_like_a_date_is_shown_as_written(self) -> None:
+        [detail] = describe("GMAIL_SEND_EMAIL", {"body": "2026-11-17"}, "Gmail").details
+
+        assert detail.value == quoted("2026-11-17")
+
     def test_long_content_is_previewed_with_an_ellipsis(self) -> None:
         details = describe("GMAIL_SEND_EMAIL", {"body": "word " * 100}, "Gmail").details
 
@@ -177,6 +182,7 @@ class TestFallback:
                 "id": "x",
                 "block_ids": ["b1"],
                 "timezone": "UTC",
+                "start_tz": "Asia/Kolkata",
                 "notify": False,
                 "permanent": True,
             },
@@ -224,6 +230,12 @@ class TestFallback:
         assert describe_action("GMAIL_DELETE_LABEL", "Gmail") == "Delete label in Gmail"
         assert describe_action("create_todo", None) == "Add a todo"
 
+    def test_an_unmapped_tool_with_no_integration_names_only_its_action(self) -> None:
+        assert describe_action("archive_old_notes", None) == "Archive old notes"
+
+    def test_a_browser_task_is_named_as_one_without_its_arguments(self) -> None:
+        assert describe_action("browser_task", None) == "Start a browser task"
+
 
 class TestWhen:
     @pytest.mark.parametrize(
@@ -233,6 +245,7 @@ class TestWhen:
             ("2026-11-15", "yesterday"),
             ("2026-11-17T00:00:00+05:30", "tomorrow"),
             ("2026-11-17T15:00:00+05:30", "tomorrow at 3 pm"),
+            ("2026-11-18", "Wed"),
             ("2026-11-20T09:30:00", "Fri 9:30 am"),
             ("2026-11-22T12:00:00", "Sun 12 pm"),
             ("2026-11-23", "Mon 23 Nov"),
