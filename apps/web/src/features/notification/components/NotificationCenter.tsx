@@ -1,14 +1,16 @@
 "use client";
 
-import { Badge, Popover, Tabs } from "@heroui/react";
+import { Badge, Popover, Tabs, Tooltip } from "@heroui/react";
 import { NotificationIcon } from "@icons";
 import { useMemo, useState } from "react";
-import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
+import { SIDEBAR_HEADER_BUTTON_CLASS } from "@/components/layout/headers/SidebarHeaderButton";
 import { overlayVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { track } from "@/lib/analytics";
+import { cn } from "@/lib/utils";
 import { NotificationStatus } from "../../../types/features/notificationTypes";
 import { NotificationConnectBanner } from "./NotificationConnectBanner";
 import { NotificationItem } from "./NotificationItem";
@@ -71,18 +73,22 @@ export function NotificationCenter({
   return (
     <div className={`relative ${className}`}>
       <Popover>
-        <Popover.Trigger>
-          <div className="relative">
+        {/* The trigger is the bell itself: a button inside it would be a second
+            control with its own tab stop. */}
+        <Tooltip>
+          <Popover.Trigger
+            aria-label="Notifications"
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "icon" }),
+              "relative cursor-pointer",
+              SIDEBAR_HEADER_BUTTON_CLASS,
+            )}
+          >
             {/* pointer-events-none on the count lets the bell underneath
                 capture hover/press; select-none keeps it from being
                 text-selected. */}
             <Badge.Anchor>
-              <SidebarHeaderButton
-                aria-label="Notifications"
-                tooltip="Notifications"
-              >
-                <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
-              </SidebarHeaderButton>
+              <NotificationIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-colors group-hover:text-accent" />
               {unreadCount > 0 && (
                 <Badge
                   color="accent"
@@ -94,8 +100,9 @@ export function NotificationCenter({
                 </Badge>
               )}
             </Badge.Anchor>
-          </div>
-        </Popover.Trigger>
+          </Popover.Trigger>
+          <Tooltip.Content>Notifications</Tooltip.Content>
+        </Tooltip>
 
         <Popover.Content
           className={overlayVariants({

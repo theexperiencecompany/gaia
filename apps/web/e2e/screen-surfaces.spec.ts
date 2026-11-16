@@ -51,8 +51,8 @@ const replyTo = (live: ScreenItem[], line: string): ScreenItem => {
 /** The unread count beside the header's notification bell. */
 function unreadBadge(page: Page): Promise<number> {
   return page.evaluate(() => {
-    const bell = document.querySelector('button[aria-label="Notifications"]');
-    return Number(bell?.parentElement?.textContent?.replace(/\D/g, "") || 0);
+    const bell = document.querySelector('[aria-label="Notifications"]');
+    return Number(bell?.textContent?.replace(/\D/g, "") || 0);
   });
 }
 

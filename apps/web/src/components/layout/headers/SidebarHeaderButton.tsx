@@ -13,6 +13,10 @@ interface SidebarHeaderButtonProps
   "aria-label": string;
 }
 
+/** The header button's own classes on top of a ghost icon button, for an overlay trigger that must be the one control. */
+export const SIDEBAR_HEADER_BUTTON_CLASS =
+  "group/btn group rounded-xl p-1! hover:bg-accent/20 hover:text-accent";
+
 // Lives in its own module, not HeaderManager: HeaderManager imports every
 // concrete header, and those headers use this button — exporting it from
 // HeaderManager would form an import cycle.
@@ -29,10 +33,7 @@ export const SidebarHeaderButton = ({
       aria-label={ariaLabel}
       size="icon"
       variant="ghost"
-      className={cn(
-        "group/btn group rounded-xl p-1! hover:bg-accent/20 hover:text-accent",
-        className,
-      )}
+      className={cn(SIDEBAR_HEADER_BUTTON_CLASS, className)}
       onClick={onClick}
       {...rest}
     >

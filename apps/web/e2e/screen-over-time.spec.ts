@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { REPLY_CUT_SHORT } from "../../../libs/shared/ts/src/conversation/copy";
 import { APPROVAL_COPY } from "../src/features/chat/constants/approvalCopy";
 import {
   firstShownAt,
@@ -328,7 +329,7 @@ test.describe("screen over time — chat", () => {
       page,
       `${todo("ff-1")} [[say:Partial progress.]] [[fail:provider dropped the stream]]`,
     );
-    await expect(page.getByText("Response was cut short")).toBeVisible({
+    await expect(page.getByText(REPLY_CUT_SHORT)).toBeVisible({
       timeout: TURN_MS,
     });
     const live = await finish(page, "Partial progress.");
@@ -345,7 +346,11 @@ test.describe("screen over time — chat", () => {
       page,
       "two [[say:Second partial.]] [[fail:provider dropped the stream]]",
     );
-    const failed = page.getByRole("button", { name: "Retry" });
+    // Every user message carries its own Retry; this is the failed reply's.
+    const failed = page
+      .getByText(REPLY_CUT_SHORT)
+      .locator("..")
+      .getByRole("button", { name: "Retry" });
     await expect(failed).toBeVisible({ timeout: TURN_MS });
     const before = await currentScreen(page);
     const attemptsBefore = botLinesReading(before, "Second partial.");

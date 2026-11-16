@@ -169,13 +169,11 @@ export default function RightSide({
       )}
 
       <Tooltip>
-        <Tooltip.Trigger>
-          <SendStopButton
-            hasContent={hasContent}
-            isUploading={isUploading}
-            onSend={handleFormSubmit}
-          />
-        </Tooltip.Trigger>
+        <SendStopButton
+          hasContent={hasContent}
+          isUploading={isUploading}
+          onSend={handleFormSubmit}
+        />
         <Tooltip.Content
           className={overlayVariants({
             surface: showStop ? "danger" : "accent",
