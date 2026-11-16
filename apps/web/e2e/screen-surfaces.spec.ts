@@ -88,7 +88,8 @@ test.describe("screen surfaces", () => {
     expect(pinned.ok, await pinned.text()).toBe(true);
 
     await page.goto("/pins");
-    const card = page.getByRole("link").filter({ hasText: word });
+    // The sidebar links the conversation under the same words; the pin card links the reply.
+    const card = page.locator(`a[href*="messageId=${reply.id}"]`);
     await expect(card).toHaveCount(1, { timeout: TURN_MS });
     await expect(card).toContainText(reply.text);
     await card.click();
@@ -239,7 +240,7 @@ test.describe("screen surfaces", () => {
     // under sim; what this pins is that the worker's outcome reaches the open page live.
     await expect(
       page
-        .getByRole("button", { name: "Regenerate" })
+        .getByRole("button", { name: "Regenerate", exact: true })
         .or(page.getByText("Generation failed. Try again?")),
       "the generation outcome is pushed to the open todo",
     ).toBeVisible({ timeout: TURN_MS });

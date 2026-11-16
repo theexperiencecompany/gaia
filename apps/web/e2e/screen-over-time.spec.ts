@@ -509,7 +509,8 @@ test.describe("screen over time — approvals", () => {
     expect(toolSections(live)).toBe(1);
   });
 
-  test("denying leaves the call unrun and the card resolved", async ({
+  // A plain no is final: the card resolves and no run starts to report the skip (7f9de0cdcb).
+  test("denying leaves the call unrun, the card resolved and nothing said after", async ({
     page,
   }) => {
     await askForApproval(page, "dn-1", "Not added.");
@@ -519,8 +520,15 @@ test.describe("screen over time — approvals", () => {
     await expect(page.getByText(APPROVAL_COPY.needsApproval)).toHaveCount(0, {
       timeout: TURN_MS,
     });
-    const live = await settledScreen(page, "Not added.", TURN_MS);
+    await expect(page.getByTestId("chat-loading-row")).toHaveCount(0, {
+      timeout: TURN_MS,
+    });
+    const live = await currentScreen(page);
     await expectScreenOnlyGrew(page);
+    expect(
+      botLinesReading(live, "Not added."),
+      "no run reports a plain no",
+    ).toBe(0);
     expect(toolSections(live)).toBeLessThanOrEqual(1);
     await expectReloadMatches(page, live, TURN_MS);
   });
