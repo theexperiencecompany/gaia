@@ -314,6 +314,7 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         "/brand",
         "/use-cases/rent-reminder",
         "/ai-assistant-with-memory",
+        "/features/workflows",
     ]
     proc = _ratchet(tmp_path, [row], "", pages=pages)
     assert proc.returncode == 0, proc.stdout
@@ -334,6 +335,8 @@ def test_the_ignore_list_drops_what_is_not_a_finding(tmp_path: Path, row: Row) -
         _row("/brand", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/brand/gaia_logo.svg"}]),
         _row("/about", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=1920,quality=75,format=auto/images/wallpapers/ethereal_alpine_valley.webp"}]),
         _row("/pricing/team", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/brand/gaia_logo.svg"}]),
+        _row("/features/workflows", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=256,quality=75,format=auto/images/icons/github.png"}]),
+        _row("/features/event-triggers", "perf/lazy-above-fold", "lazy-above-fold", [{"id": "/cdn-cgi/image/width=128,quality=75,format=auto/images/icons/gmail.webp"}]),
         _row("/de/compare/asana", "content/word-count", "word-count"),
         _row("/de/compare/asana", "core/meta-title", "meta-title"),
         _row("/ja/compare/asana", "core/canonical", "canonical"),
