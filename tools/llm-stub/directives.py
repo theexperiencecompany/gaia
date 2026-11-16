@@ -76,7 +76,10 @@ DEFAULT_REPLY = "ok (llm-stub)"
 STAY_SILENT_TOOL = "stay_silent"
 # Comms names the user's messages each reply answers by their [#n] handle.
 ANSWERED_TOOL = "answered"
-_HANDLE_RE = re.compile(r"^\[#(\d+)\] |^#(\d+) \"", re.MULTILINE)
+_MESSAGE_HANDLE = r"^\[#(\d+)\] "
+_HANDLE_RE = re.compile(_MESSAGE_HANDLE + r'|^#(\d+) "', re.MULTILINE)
+# A hand-off's task is the request as the user wrote it, which is what the brief quotes.
+_LEADING_HANDLE_RE = re.compile(_MESSAGE_HANDLE)
 HAND_OFF_SILENCE_ARGS = {"reason": "the result arrives on its own"}
 CALL_EXECUTOR_TOOL = "call_executor"
 # call_executor's required args beyond the task, so a scripted hand-off is a call
@@ -591,7 +594,9 @@ def _resolve_comms(messages: Sequence[dict[str, Any]], available_tools: frozense
     if latest is None:
         return SayResponse(DEFAULT_REPLY)
 
-    task_text = _strip_echoed_payloads(message_text(messages[latest]))
+    task_text = _LEADING_HANDLE_RE.sub(
+        "", _strip_echoed_payloads(message_text(messages[latest])), count=1
+    )
     script = _script(parse_directives(task_text))
     tool_dirs = script.tools
 

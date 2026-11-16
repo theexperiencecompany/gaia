@@ -760,6 +760,19 @@ def test_a_restated_request_repeating_a_paragraph_runs_each_once() -> None:
     ) == SayResponse(text="done")
 
 
+def test_a_handed_off_request_runs_once_in_the_brief_built_from_it() -> None:
+    """The brief quotes the request without its [#n] handle, so the task must drop it too."""
+    request = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+    hand_off = resolve_response([_user(f"[#1] {request}")], frozenset({CALL_EXECUTOR_TOOL}))
+    assert isinstance(hand_off, ToolCallResponse)
+    assert hand_off.args["task"] == request
+
+    brief = _user(_executor_brief(request, hand_off.args["task"]))
+    assert resolve_response(_after(brief, "create_reminder"), EXECUTOR_TOOLS) == SayResponse(
+        text="Reminder set!"
+    )
+
+
 # --------------------------------------------------------------------------- #
 # A result handed back to a tier is re-voiced, not answered with the script again
 # --------------------------------------------------------------------------- #
