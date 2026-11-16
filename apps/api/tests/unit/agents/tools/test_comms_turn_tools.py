@@ -78,7 +78,7 @@ async def test_answered_with_no_words_names_every_unanswered_message_and_closes_
 
 def test_only_gaias_own_words_after_a_message_answer_it() -> None:
     later_user_text: list[AnyMessage] = [asked(1), HumanMessage(content="also this")]
-    wordless_call = [asked(1), AIMessage(content="")]
+    wordless_call: list[AnyMessage] = [asked(1), AIMessage(content="")]
     never_given = [AIMessage(content="hi")]
     assert unanswered_in_words(later_user_text, [1]) == [1]
     assert unanswered_in_words(wordless_call, [1]) == [1]
