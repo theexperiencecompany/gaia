@@ -22,7 +22,6 @@ import {
 
 import { ChatCodeBlock } from "@/features/chat/components/code-block/ChatCodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
-import { remarkArtifactLinks } from "@/features/chat/utils/remarkArtifactLinks";
 import { remarkBareListMarker } from "@/features/chat/utils/remarkBareListMarker";
 import { cn } from "@/lib/utils";
 import { useImageDialog } from "@/stores/uiStore";
@@ -68,7 +67,6 @@ const REMARK_PLUGINS = [
   remarkSmartypants,
   remarkSupersub,
   remarkBareListMarker,
-  remarkArtifactLinks,
 ];
 
 interface MarkdownImageProps {
@@ -77,7 +75,6 @@ interface MarkdownImageProps {
   onOpen: (src: string) => void;
 }
 
-// remarkArtifactLinks has already pointed an artifact path at the file it serves.
 const MarkdownImage: React.FC<MarkdownImageProps> = ({ src, alt, onOpen }) => {
   if (!src) return null;
   return (

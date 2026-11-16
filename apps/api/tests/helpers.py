@@ -398,13 +398,17 @@ async def stored_conversation(
     if head is None:
         return None
     doc = await conversation_repository.get(conversation_id, user_id=head["user_id"])
-    items = [] if doc is None else [item.model_dump(mode="json") for item in shown_items(doc)]
+    items = (
+        []
+        if doc is None
+        else [item.model_dump(mode="json") for item in shown_items(conversation_id, doc)]
+    )
     return {**head, "items": items}
 
 
-def shown_items(page: LogPage) -> list[ScreenItem]:
+def shown_items(conversation_id: str, page: LogPage) -> list[ScreenItem]:
     """Project a read page of entries into the screen items a load serves."""
-    return project_screen(page.entries)
+    return project_screen(conversation_id, page.entries)
 
 
 def item_text(item: ScreenItem) -> str:

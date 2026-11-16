@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from hypothesis import given, settings, strategies as st
 import pytest
 
+from app.config.settings import settings as app_settings
 from app.constants.conversation import REPLY_FAILURE_LINE
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
@@ -59,6 +60,7 @@ from shared.py.conversation_wire import (
     ToolDataEntry,
     ToolProgress,
 )
+from tests.factories import CONVERSATION_ID
 from tests.helpers import REPO_ROOT
 from tests.hypothesis_profiles import property_examples
 from tests.unit.services.conversation.log_helpers import (
@@ -125,7 +127,7 @@ class _Log:
 
     def _shown(self, frame: EntryFrame | EntryUpdatedFrame) -> None:
         """Project the log, and check the client patched from empty shows exactly that screen."""
-        self.screens.append(project_screen(self.entries))
+        self.screens.append(project_screen(CONVERSATION_ID, self.entries))
         patches = self.tracker.take(frame)
         self.patches.extend(patches)
         self.patched = _apply(self.patched, patches)
@@ -458,7 +460,7 @@ def test_any_conversation_only_grows_at_the_end_and_reloads_to_what_was_shown(
     if not screens:
         return
     final = screens[-1]
-    assert final == project_screen(list(sim.log.entries))
+    assert final == project_screen(CONVERSATION_ID, list(sim.log.entries))
     users = [item.id for item in final if item.kind is ScreenItemKind.USER]
     assert users == sim.sent
     works = [item for item in final if item.kind is ScreenItemKind.WORK]
@@ -493,7 +495,7 @@ def test_every_patch_names_the_log_head_it_reflects_even_when_it_amends_an_older
 
 
 def test_a_projection_that_moves_a_shown_item_fails_loudly() -> None:
-    first, second = project_screen([logged(1, user("u1")), logged(2, user("u2"))])
+    first, second = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, user("u2"))])
     with pytest.raises(ScreenItemMoved):
         screen_patches([first, second], [second, first], 2)
     with pytest.raises(ScreenItemMoved):
@@ -532,10 +534,10 @@ def test_the_founder_conversations_patches_are_the_frames_the_clients_replay() -
 def test_work_lists_the_approvals_it_waits_on_until_each_is_decided() -> None:
     started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
     log = [logged(1, user("u1")), logged(2, started), logged(3, asked("ask:a1", "t1", "a1"))]
-    [_, waiting] = project_screen(log)
+    [_, waiting] = project_screen(CONVERSATION_ID, log)
     assert waiting.kind is ScreenItemKind.WORK
     assert [request.approval_id for request in waiting.asking] == ["a1"]
-    [_, decided_work] = project_screen([*log, logged(4, decided("dec:a1", "a1"))])
+    [_, decided_work] = project_screen(CONVERSATION_ID, [*log, logged(4, decided("dec:a1", "a1"))])
     assert decided_work.kind is ScreenItemKind.WORK
     assert decided_work.asking == ()
 
@@ -555,7 +557,7 @@ def test_a_run_that_ended_leaving_its_approval_to_the_user_still_asks_for_it() -
         logged(3, asked("ask:a1", "t1", "a1")),
         logged(4, ended),
     ]
-    [_, parked] = project_screen(log)
+    [_, parked] = project_screen(CONVERSATION_ID, log)
     assert parked.kind is ScreenItemKind.WORK
     assert [request.approval_id for request in parked.asking] == ["a1"]
     assert (parked.status, parked.asked_seq) == (WorkStatus.AWAITING_APPROVAL, 3)
@@ -564,11 +566,11 @@ def test_a_run_that_ended_leaving_its_approval_to_the_user_still_asks_for_it() -
 def test_a_work_item_says_where_the_newest_approval_it_waits_on_was_logged() -> None:
     started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
     log = [logged(1, user("u1")), logged(2, started)]
-    [_, running] = project_screen(log)
+    [_, running] = project_screen(CONVERSATION_ID, log)
     assert running.kind is ScreenItemKind.WORK
     assert running.asked_seq == 0
     log += [logged(3, user("u2")), logged(4, asked("ask:a1", "t1", "a1"))]
-    [_, waiting, _] = project_screen(log)
+    [_, waiting, _] = project_screen(CONVERSATION_ID, log)
     assert waiting.kind is ScreenItemKind.WORK
     assert (waiting.seq, waiting.asked_seq) == (2, 4)
 
@@ -576,7 +578,7 @@ def test_a_work_item_says_where_the_newest_approval_it_waits_on_was_logged() -> 
 def test_a_work_items_approval_card_is_drawn_in_its_timeline_and_ends_with_its_decision() -> None:
     started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
     log = [logged(1, user("u1")), logged(2, started), logged(3, asked("ask:a1", "t1", "a1"))]
-    [_, waiting] = project_screen(log)
+    [_, waiting] = project_screen(CONVERSATION_ID, log)
     assert waiting.kind is ScreenItemKind.WORK
     [shown] = [entry.card for entry in waiting.timeline.cards]
     [asking] = shown["data"]
@@ -585,7 +587,7 @@ def test_a_work_items_approval_card_is_drawn_in_its_timeline_and_ends_with_its_d
         "a1",
         None,
     )
-    [_, ended] = project_screen([*log, logged(4, decided("dec:a1", "a1"))])
+    [_, ended] = project_screen(CONVERSATION_ID, [*log, logged(4, decided("dec:a1", "a1"))])
     assert ended.kind is ScreenItemKind.WORK
     [card] = [entry.card for entry in ended.timeline.cards]
     [answered] = card["data"]
@@ -608,7 +610,7 @@ def test_an_approval_card_carries_the_calls_plain_description_for_every_surface(
         logged(2, started),
         logged(3, asked("ask:a1", "t1", "a1", described)),
     ]
-    [_, waiting] = project_screen(log)
+    [_, waiting] = project_screen(CONVERSATION_ID, log)
     assert waiting.kind is ScreenItemKind.WORK
     [card] = [entry.card for entry in waiting.timeline.cards]
     [shown] = card["data"]
@@ -640,7 +642,7 @@ def test_a_reply_delivers_the_files_it_and_the_work_it_narrates_wrote_once_each(
         tool_data=(_artifact("out/a.pdf"), _artifact("out/b.pdf")),
     )
     log = [logged(1, user("u1")), logged(2, started), logged(3, finished), logged(4, reply)]
-    [*_, item] = project_screen(log)
+    [*_, item] = project_screen(CONVERSATION_ID, log)
     assert item.kind is ScreenItemKind.REPLY
     assert [file.path for file in item.files] == ["out/a.pdf", "out/b.pdf"]
 
@@ -668,7 +670,7 @@ def test_a_reply_and_its_work_name_the_newest_user_message_they_answer_as_the_re
     ]
     targets = {
         item.id: item.retry_target
-        for item in project_screen(log)
+        for item in project_screen(CONVERSATION_ID, log)
         if isinstance(item, WorkItem | ReplyItem)
     }
     assert targets == {"work:t1": "u2", "r": "u2"}
@@ -685,14 +687,14 @@ def test_a_reply_quoting_a_newer_message_than_it_answers_retries_the_quoted_one(
         quote_target="u2",
     )
     log = [logged(1, user("u1")), logged(2, user("u2")), logged(3, reply), logged(4, settle)]
-    [*_, item] = project_screen(log)
+    [*_, item] = project_screen(CONVERSATION_ID, log)
     assert isinstance(item, ReplyItem)
     assert item.retry_target == "u2"
 
 
 def test_a_reply_showing_only_its_own_card_is_on_the_screen() -> None:
     reply = Reply(id="r:reply", reply_id="r", attempt_id="1", tool_data=(_card("search"),))
-    [*_, item] = project_screen([logged(1, user("u1")), logged(2, reply)])
+    [*_, item] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
     assert isinstance(item, ReplyItem)
     assert (item.bubbles, item.tool_data) == ((), (_card("search"),))
 
@@ -714,7 +716,7 @@ def test_the_progress_line_skips_other_cards_and_silent_calls_down_to_the_newest
     reply = Reply(
         id="r:reply", reply_id="r", attempt_id="1", text="hi", tool_data=(speaks, silent, other)
     )
-    [*_, item] = project_screen([logged(1, user("u1")), logged(2, reply)])
+    [*_, item] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
     assert isinstance(item, ReplyItem)
     assert item.timeline.progress == ToolProgress(
         message="Sending the email",
@@ -728,7 +730,7 @@ def test_the_progress_line_skips_other_cards_and_silent_calls_down_to_the_newest
 
 def test_work_answering_no_user_message_has_no_retry_target() -> None:
     work = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("n1",))
-    [_, item] = project_screen([logged(1, notice("n1")), logged(2, work)])
+    [_, item] = project_screen(CONVERSATION_ID, [logged(1, notice("n1")), logged(2, work)])
     assert isinstance(item, WorkItem)
     assert item.retry_target is None
 
@@ -755,7 +757,7 @@ def test_an_items_timeline_states_the_newest_tool_calls_progress_line() -> None:
         text="hi",
         tool_data=(first, newest, _card("no_message")),
     )
-    [*_, item] = project_screen([logged(1, user("u1")), logged(2, reply)])
+    [*_, item] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
     assert isinstance(item, ReplyItem)
     assert item.timeline.progress == ToolProgress(
         message="Sending the email",
@@ -768,7 +770,7 @@ def test_an_items_timeline_states_the_newest_tool_calls_progress_line() -> None:
 
 
 def test_a_moved_item_is_named_with_both_orders() -> None:
-    first, second = project_screen([logged(1, user("u1")), logged(2, user("u2"))])
+    first, second = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, user("u2"))])
     with pytest.raises(ScreenItemMoved) as moved:
         screen_patches([first, second], [second, first], 2)
     assert str(moved.value) == "shown ['u1', 'u2'], projected ['u2', 'u1']"
@@ -822,7 +824,7 @@ def test_a_hand_over_chain_that_loops_ends_at_the_task_it_came_back_to() -> None
 def test_a_woken_todo_and_a_notice_show_as_their_own_items() -> None:
     woke = todo_woke("tw1")
     said = Notice(id="n1", text="first\n\nsecond", origin="reminder")
-    [woken, noticed] = project_screen([logged(1, woke), logged(2, said)])
+    [woken, noticed] = project_screen(CONVERSATION_ID, [logged(1, woke), logged(2, said)])
     assert woken == TodoWokeItem(id="tw1", seq=1, at=logged(1, woke).at, wake=woke.run.wake)
     assert isinstance(noticed, NoticeItem)
     assert noticed.bubbles == tuple(split_message_bubbles("first\n\nsecond"))
@@ -836,7 +838,8 @@ def test_work_and_a_reply_show_the_image_each_made() -> None:
     done = WorkFinished(id="f1", task_id="t1", outcome=WorkOutcome.DONE, report="r", image=_IMAGE)
     reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text="here", image=_IMAGE)
     items = project_screen(
-        [logged(1, user("u1")), logged(2, started), logged(3, done), logged(4, reply)]
+        CONVERSATION_ID,
+        [logged(1, user("u1")), logged(2, started), logged(3, done), logged(4, reply)],
     )
     images = {item.id: getattr(item, "image", None) for item in items}
     assert (images["work:t1"], images["r1"]) == (_IMAGE, _IMAGE)
@@ -857,13 +860,14 @@ def test_a_reply_narrates_what_its_settle_names_and_keeps_its_failure() -> None:
         narrates=("t1",),
     )
     items = project_screen(
+        CONVERSATION_ID,
         [
             logged(1, user("u1")),
             logged(2, started),
             logged(3, done),
             logged(4, reply),
             logged(5, failed),
-        ]
+        ],
     )
     [shown] = [item for item in items if isinstance(item, ReplyItem)]
     assert (shown.narrates, shown.failure) == (("t1",), FailureReason.MODEL_ERROR)
@@ -878,7 +882,9 @@ def test_a_reply_naming_its_work_is_not_rekeyed_by_a_task_sharing_its_id() -> No
     ]
     reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text="both", narrates=("t1",))
     log: list[Entry] = [user("u1"), first, second, *ends, reply]
-    items = project_screen([logged(seq, entry) for seq, entry in enumerate(log, start=1)])
+    items = project_screen(
+        CONVERSATION_ID, [logged(seq, entry) for seq, entry in enumerate(log, start=1)]
+    )
     [shown] = [item for item in items if isinstance(item, ReplyItem)]
     assert shown.narrates == ("t1",)
 
@@ -895,14 +901,17 @@ def test_an_imported_reply_shows_once_its_history_settled_it() -> None:
         imported=True,
     )
     log = [logged(1, user("u1")), logged(2, reply)]
-    assert [item.id for item in project_screen(log)] == ["u1"]
-    assert [item.id for item in project_screen([*log, logged(3, settle)])] == ["u1", "r1"]
+    assert [item.id for item in project_screen(CONVERSATION_ID, log)] == ["u1"]
+    assert [item.id for item in project_screen(CONVERSATION_ID, [*log, logged(3, settle)])] == [
+        "u1",
+        "r1",
+    ]
 
 
 def test_an_approval_card_on_a_work_item_carries_wire_json() -> None:
     started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
     log = [logged(1, user("u1")), logged(2, started), logged(3, asked("ask:a1", "t1", "a1"))]
-    [_, ended] = project_screen([*log, logged(4, decided("dec:a1", "a1"))])
+    [_, ended] = project_screen(CONVERSATION_ID, [*log, logged(4, decided("dec:a1", "a1"))])
     assert isinstance(ended, WorkItem)
     [card] = [entry.card for entry in ended.timeline.cards]
     [answered] = card["data"]
@@ -954,7 +963,9 @@ def test_a_failed_reply_carries_the_line_a_chat_platform_shows_under_it(
         failure=reason,
     )
     reply = Reply(id="o1", reply_id="r1", attempt_id="a1")
-    items = project_screen([logged(1, user("u1")), logged(2, reply), logged(3, settled)])
+    items = project_screen(
+        CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply), logged(3, settled)]
+    )
     [shown] = [item for item in items if isinstance(item, ReplyItem)]
     assert shown.failure_line == REPLY_FAILURE_LINE[reason]
 
@@ -969,6 +980,39 @@ def test_an_answered_reply_carries_no_failure_line() -> None:
         through=1,
         quote_target=None,
     )
-    items = project_screen([logged(1, user("u1")), logged(2, reply), logged(3, settled)])
+    items = project_screen(
+        CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply), logged(3, settled)]
+    )
     [shown] = [item for item in items if isinstance(item, ReplyItem)]
     assert shown.failure_line is None
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "./artifacts/reports/q3.pdf",
+        "artifacts/reports/q3.pdf",
+        "/artifacts/reports/q3.pdf",
+        "/workspace/sessions/executor_c1/artifacts/reports/q3.pdf",
+    ],
+)
+def test_a_reply_links_its_artifacts_by_the_url_the_conversation_serves_them_at(
+    written: str,
+) -> None:
+    text = f"Done: [the plan]({written}) and ![chart](./artifacts/chart.png)"
+    reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text=text)
+    [_, shown] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
+    base = f"{app_settings.HOST}/api/v1/sessions/{CONVERSATION_ID}/artifacts"
+    assert isinstance(shown, ReplyItem)
+    assert shown.bubbles == (
+        f"Done: [the plan]({base}/reports/q3.pdf) and ![chart]({base}/chart.png)",
+    )
+    assert reply.text == text
+
+
+def test_a_reply_leaves_links_that_are_not_artifacts_as_written() -> None:
+    text = "See [docs](https://example.com/artifacts/x) and [notes](./notes/artifacts.md)"
+    reply = Reply(id="o1", reply_id="r1", attempt_id="a1", text=text)
+    [_, shown] = project_screen(CONVERSATION_ID, [logged(1, user("u1")), logged(2, reply)])
+    assert isinstance(shown, ReplyItem)
+    assert shown.bubbles == (text,)

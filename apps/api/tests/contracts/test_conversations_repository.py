@@ -250,7 +250,7 @@ class TestMessages:
 
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        [user, reply] = shown_items(fetched)
+        [user, reply] = shown_items(doc.conversation_id, fetched)
         assert isinstance(user, UserItem) and isinstance(reply, ReplyItem)
         assert [(user.id, (user.message.text,)), (reply.id, reply.bubbles)] == [
             (asked.id, ("hi",)),
@@ -268,7 +268,7 @@ class TestMessages:
         )
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        [one] = [item for item in shown_items(fetched) if item.id == mid]
+        [one] = [item for item in shown_items(doc.conversation_id, fetched) if item.id == mid]
         assert isinstance(one, ReplyItem) and one.pinned is True
 
         pinned = await repo.list_pinned_messages(doc.user_id)
@@ -292,7 +292,11 @@ class TestMessages:
 
         fetched = await repo.get(doc.conversation_id, user_id=doc.user_id)
         assert fetched is not None
-        [stored] = [item for item in shown_items(fetched) if item.id == replied.reply_id]
+        [stored] = [
+            item
+            for item in shown_items(doc.conversation_id, fetched)
+            if item.id == replied.reply_id
+        ]
         assert isinstance(stored, ReplyItem)
         entry = stored.tool_data[0]
         assert entry.get("tool_category") == "gmail"
@@ -473,7 +477,11 @@ class TestSearchAndSweeps:
         await _say(doc, _asked("go"), replied)
         fetched = await repo.get(doc.conversation_id, user_id=user)
         assert fetched is not None
-        [shown] = [item for item in shown_items(fetched) if item.id == replied.reply_id]
+        [shown] = [
+            item
+            for item in shown_items(doc.conversation_id, fetched)
+            if item.id == replied.reply_id
+        ]
         by_message = await repo.search(user, pattern="weather")
         assert [(h.conversation_id, h.item) for h in by_message.messages] == [
             (doc.conversation_id, shown)

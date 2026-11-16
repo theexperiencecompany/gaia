@@ -547,7 +547,7 @@ async def test_a_load_a_sync_and_recent_reads_are_the_entries_the_events_stream_
     doc = await repo.get(conversation_id, user_id=user_id)
     assert doc is not None
     assert (doc.entries, doc.state, doc.has_older, doc.cursor) == (logged, state, False, None)
-    assert [(item.kind, item.id) for item in shown_items(doc)] == _SCREEN
+    assert [(item.kind, item.id) for item in shown_items(conversation_id, doc)] == _SCREEN
     [synced] = await repo.find_updated_since(
         user_id, [ConversationSyncItem(conversation_id=conversation_id, last_updated=None)]
     )
@@ -603,7 +603,7 @@ async def test_a_failed_reply_names_why_and_an_open_one_shows_once_it_has_words(
 
     doc = await repo.get(conversation_id, user_id=user_id)
     assert doc is not None
-    items = shown_items(doc)
+    items = shown_items(conversation_id, doc)
     assert [item.id for item in items] == ["u1", "r1", "u2"]
     assert [
         (item.id, item.outcome, item.failure) for item in items if isinstance(item, ReplyItem)
@@ -617,7 +617,7 @@ async def test_a_search_hit_is_the_item_its_chat_shows_for_messages_replies_and_
     user_id, conversation_id = await _mixed_chat(log)
     doc = await repo.get(conversation_id, user_id=user_id)
     assert doc is not None
-    screen = {item.id: item for item in shown_items(doc)}
+    screen = {item.id: item for item in shown_items(conversation_id, doc)}
 
     found = await repo.search(user_id, pattern="acme")
     assert [(hit.conversation_id, hit.item) for hit in found.messages] == [

@@ -50,6 +50,7 @@ from app.models.conversation_screen_models import (
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
 from app.services.conversation.reply_files import reply_files
 from app.services.conversation.tool_timeline import tool_timeline
+from app.utils.artifact_utils import resolve_artifact_links
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.approvals import ApprovalOutcome
 from shared.py.conversation_wire import (
@@ -264,12 +265,12 @@ class _Log:
         return WorkStatus.RUNNING if finished is None else WorkStatus(finished.outcome.value)
 
 
-def project_screen(entries: Sequence[Positioned]) -> list[ScreenItem]:
+def project_screen(conversation_id: str, entries: Sequence[Positioned]) -> list[ScreenItem]:
     """Return the screen for entries (ascending by seq): every visible item, at the seq it became visible."""
     read = _Log.of(entries)
     items: list[ScreenItem] = []
     for logged in entries:
-        item = _item(logged, read)
+        item = _item(conversation_id, logged, read)
         if item is not None:
             items.append(item)
     # Only a reply that became visible by failing sits at a later seq than its own entry.
@@ -278,10 +279,10 @@ def project_screen(entries: Sequence[Positioned]) -> list[ScreenItem]:
 
 
 def text_item(
-    logged: Positioned, related: Iterable[Positioned]
+    conversation_id: str, logged: Positioned, related: Iterable[Positioned]
 ) -> UserItem | ReplyItem | NoticeItem | None:
     """Return the item a message shows on its conversation's screen, reading related for what sits beside it."""
-    item = _item(logged, _Log.of([*related, logged]))
+    item = _item(conversation_id, logged, _Log.of([*related, logged]))
     return item if isinstance(item, UserItem | ReplyItem | NoticeItem) else None
 
 
@@ -316,13 +317,13 @@ def needed_beside(
     return sorted(wanted - present), sorted(replies)
 
 
-def _item(logged: Positioned, read: _Log) -> ScreenItem | None:
+def _item(conversation_id: str, logged: Positioned, read: _Log) -> ScreenItem | None:
     seq, at = logged.seq, logged.at
     match logged.entry:
         case UserMessage(retry_of=None) as message:
             return UserItem(id=message.id, seq=seq, at=at, message=message)
         case Reply() as reply:
-            return _reply_item(seq, at, reply, read)
+            return _reply_item(conversation_id, seq, at, reply, read)
         case WorkStarted(task_id=task_id) if read.root(task_id) == task_id:
             return _work_item(seq, at, task_id, read)
         case Notice() as notice:
@@ -411,7 +412,9 @@ def _narrates(reply: Reply, settle: ReplySettled | None, read: _Log) -> tuple[st
     return tuple(dict.fromkeys(named))
 
 
-def _reply_item(seq: int, at: AwareDatetime, reply: Reply, read: _Log) -> ReplyItem | None:
+def _reply_item(
+    conversation_id: str, seq: int, at: AwareDatetime, reply: Reply, read: _Log
+) -> ReplyItem | None:
     settled_at = read.settles.get(reply.reply_id)
     settle = None if settled_at is None else settled_at.entry
     # An imported reply that never settled is a folded emoji_ack's placeholder.
@@ -436,7 +439,7 @@ def _reply_item(seq: int, at: AwareDatetime, reply: Reply, read: _Log) -> ReplyI
         id=reply.reply_id,
         seq=seq,
         at=at,
-        bubbles=tuple(split_message_bubbles(reply.text)),
+        bubbles=tuple(split_message_bubbles(resolve_artifact_links(reply.text, conversation_id))),
         tool_data=shown,
         timeline=tool_timeline(shown),
         follow_up_actions=reply.follow_up_actions,

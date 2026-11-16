@@ -883,7 +883,7 @@ async def test_the_events_stream_opens_on_the_screen_and_patches_it_to_the_log_p
         frames = event_stream.follow_screen(rig.ports.log, rig.conversation_id, rig.user_id)
         opened = await anext(frames)
         assert isinstance(opened, ScreenFrame)
-        assert list(opened.items) == project_screen(await rig.entries())
+        assert list(opened.items) == project_screen(rig.conversation_id, await rig.entries())
         shown = list(opened.items)
         while await anext(frames) is not None:
             pass
@@ -896,7 +896,7 @@ async def test_the_events_stream_opens_on_the_screen_and_patches_it_to_the_log_p
             elif isinstance(frame, ScreenUpdateFrame):
                 shown = [frame.item if item.id == frame.item.id else item for item in shown]
         await frames.aclose()
-    assert shown == project_screen(await rig.entries())
+    assert shown == project_screen(rig.conversation_id, await rig.entries())
     assert [item.id for item in shown][: len(opened.items)] == [item.id for item in opened.items]
 
 
@@ -1610,7 +1610,7 @@ async def test_a_multi_bubble_reply_with_work_shows_live_exactly_what_a_reload_s
         await rig.settle()
         await _until_quiet(frames, screen)
         await frames.aclose()
-    reloaded = project_screen(await rig.entries())
+    reloaded = project_screen(rig.conversation_id, await rig.entries())
     replies = [item for item in reloaded if isinstance(item, ReplyItem)]
     work = next(item for item in reloaded if isinstance(item, WorkItem))
     assert screen.items == reloaded
@@ -1653,7 +1653,11 @@ async def test_an_image_the_work_generated_stays_on_its_work_and_survives_a_relo
     reloaded = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
     assert reloaded is not None
     assert task_reply.text == "Here is your fox"
-    assert [item.image for item in shown_items(reloaded) if isinstance(item, WorkItem)] == [image]
+    assert [
+        item.image
+        for item in shown_items(rig.conversation_id, reloaded)
+        if isinstance(item, WorkItem)
+    ] == [image]
 
 
 @pytest.mark.service
@@ -1710,7 +1714,11 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
         rig.conversation_id, rig.user_id, "t1", WorkOutcome.FAILED, WorkReport("the send failed")
     )
     await rig.settle()
-    [work] = [item for item in project_screen(await rig.entries()) if isinstance(item, WorkItem)]
+    [work] = [
+        item
+        for item in project_screen(rig.conversation_id, await rig.entries())
+        if isinstance(item, WorkItem)
+    ]
     [card] = work.approvals
     assert (card.tool_name, card.data.approval_id) == (APPROVAL_REQUEST_TOOL_NAME, approval_id)
     assert (card.data.outcome, card.data.action) == (ApprovalOutcome.APPROVED, ActionResult.FAILED)
@@ -2675,7 +2683,7 @@ async def test_a_delivered_reminder_is_one_notice_shown_once(
     stored = await conversation_repository.get(rig.conversation_id, user_id=rig.user_id)
     assert notice.text == "time to stretch"
     assert stored is not None
-    assert [(item.kind, item_text(item)) for item in shown_items(stored)] == [
+    assert [(item.kind, item_text(item)) for item in shown_items(rig.conversation_id, stored)] == [
         ("notice", "time to stretch")
     ]
     assert await _unread(rig) is True
@@ -3159,10 +3167,10 @@ async def _asking_on_a_ledger_approval(
     return approval_id
 
 
-def _approval_card(entries: Sequence[LoggedEntry]) -> ApprovalRequestEntry:
+def _approval_card(conversation_id: str, entries: Sequence[LoggedEntry]) -> ApprovalRequestEntry:
     [work] = [
         item
-        for item in project_screen(entries)
+        for item in project_screen(conversation_id, entries)
         if isinstance(item, WorkItem) and item.task_id == "t1"
     ]
     [card] = work.approvals
@@ -3194,7 +3202,10 @@ async def test_an_approval_tapped_twice_resumes_its_work_once(
     ]
     row = await approval_ledger_repository.get_by_approval_id(approval_id)
     assert row is not None and row.outcome is ApprovalOutcome.APPROVED
-    assert _approval_card(await rig.entries()).data.outcome is ApprovalOutcome.APPROVED
+    assert (
+        _approval_card(rig.conversation_id, await rig.entries()).data.outcome
+        is ApprovalOutcome.APPROVED
+    )
     await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
 
 
@@ -3259,14 +3270,14 @@ async def test_an_expired_approval_shows_expired_from_the_log_and_refuses_a_late
     approval_id = await _parked_on_a_ledger_approval(
         rig, model, expires_at=datetime.now(UTC) - timedelta(hours=1)
     )
-    assert _approval_card(await rig.entries()).data.outcome is None
+    assert _approval_card(rig.conversation_id, await rig.entries()).data.outcome is None
 
     await _settled_by_sweeps(rig)
     late = await ledger_decide.decide_ledger(
         approval_id, user_id=rig.user_id, kind="approve", via="card"
     )
 
-    card = _approval_card(await rig.entries())
+    card = _approval_card(rig.conversation_id, await rig.entries())
     assert (card.data.outcome, card.data.decider) == (ApprovalOutcome.EXPIRED, None)
     assert (late.committed, late.outcome) == (False, ApprovalOutcome.EXPIRED)
     row = await approval_ledger_repository.get_by_approval_id(approval_id)
@@ -3298,7 +3309,10 @@ async def test_an_expired_approval_resumes_its_parked_work_once_with_the_expiry(
         ("t1", WorkOutcome.DONE, "Approve the send?"),
         (spawned.task_ids[0], WorkOutcome.DONE, "Expired."),
     ]
-    assert _approval_card(await rig.entries()).data.outcome is ApprovalOutcome.EXPIRED
+    assert (
+        _approval_card(rig.conversation_id, await rig.entries()).data.outcome
+        is ApprovalOutcome.EXPIRED
+    )
     state = await rig.ports.log.state(rig.conversation_id, rig.user_id)
     assert state.work == ()
     assert [reply.text for reply in await rig.of(Reply)][-1] == "It expired, so nothing was sent"
@@ -3346,7 +3360,7 @@ async def test_a_workflow_approval_waits_for_the_user_and_resumes_the_workflow_o
         rig, model, owner_run_type="workflow", owner_id="wf-1"
     )
     queued = AsyncMock()
-    assert _approval_card(await rig.entries()).data.outcome is None
+    assert _approval_card(rig.conversation_id, await rig.entries()).data.outcome is None
 
     with (
         patch.object(executor_runner, "_spawn_detached_run", _Spawned(rig).spawn),
@@ -3361,7 +3375,10 @@ async def test_a_workflow_approval_waits_for_the_user_and_resumes_the_workflow_o
     [resumed] = queued.await_args_list
     assert resumed.args[:2] == ("wf-1", rig.user_id)
     assert resumed.args[2]["resume_from_approval"] == approval_id
-    assert _approval_card(await rig.entries()).data.outcome is ApprovalOutcome.APPROVED
+    assert (
+        _approval_card(rig.conversation_id, await rig.entries()).data.outcome
+        is ApprovalOutcome.APPROVED
+    )
     await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
 
 
@@ -3382,7 +3399,7 @@ async def test_an_approval_pending_across_a_restart_is_still_asked_and_still_dec
             approval_id, user_id=rig.user_id, kind="approve", via="card"
         )
 
-    card = _approval_card(reloaded or [])
+    card = _approval_card(rig.conversation_id, reloaded or [])
     assert (card.data.outcome, card.data.description.headline, card.data.args_preview) == (
         None,
         "Send the invoice",

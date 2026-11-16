@@ -113,7 +113,7 @@ def _turn(text: str, *, cards: tuple[ToolDataEntry, ...] = ()) -> list[Entry]:
 async def _messages(user_id: str, conversation_id: str) -> list[tuple[object, ...]]:
     doc = await conversation_repository.get(conversation_id, user_id=user_id)
     assert doc is not None
-    return [(item.kind, item.id, item_text(item)) for item in shown_items(doc)]
+    return [(item.kind, item.id, item_text(item)) for item in shown_items(conversation_id, doc)]
 
 
 async def test_a_seeded_first_conversation_is_gaias_notices_with_their_cards_and_chips(
@@ -132,7 +132,7 @@ async def test_a_seeded_first_conversation_is_gaias_notices_with_their_cards_and
     assert conversation_id is not None
     doc = await conversation_repository.get(conversation_id, user_id=user_id)
     assert doc is not None
-    items = shown_items(doc)
+    items = shown_items(conversation_id, doc)
     assert [(bool(item_cards(item)), _follow_ups(item)) for item in items] == [
         (False, ()),
         (True, ()),
@@ -180,7 +180,7 @@ async def test_a_pin_survives_reload_and_lists_until_unpinned(
     assert (await client.put(pin, json={"pinned": True})).status_code == 200
     doc = await conversation_repository.get(conversation_id, user_id=FAKE_USER.user_id)
     assert doc is not None
-    [_, reply] = shown_items(doc)
+    [_, reply] = shown_items(conversation_id, doc)
     assert isinstance(reply, ReplyItem) and (reply.id, reply.pinned) == ("r1", True)
     listed = await conversation_repository.list_pinned_messages(FAKE_USER.user_id)
     assert [(hit.conversation_id, hit.item) for hit in listed] == [(conversation_id, reply)]
@@ -207,7 +207,7 @@ async def test_a_detached_runs_cards_sit_where_it_started_until_a_reply_answers_
 
     doc = await conversation_repository.get(conversation_id, user_id=user_id)
     assert doc is not None
-    assert [(item.id, item_cards(item)) for item in shown_items(doc)[2:]] == [
+    assert [(item.id, item_cards(item)) for item in shown_items(conversation_id, doc)[2:]] == [
         ("work:job-1", tuple(cards)),
         ("u2", ()),
     ]
@@ -285,14 +285,22 @@ async def test_a_stop_mid_work_stops_the_running_work_and_the_screen_shows_it_ca
 
     assert steps > 0
     entries = await conversation_log_repository.read_log(conversation_id, user_id=user_id)
-    [work] = [item for item in project_screen(entries or []) if isinstance(item, WorkItem)]
+    [work] = [
+        item
+        for item in project_screen(conversation_id, entries or [])
+        if isinstance(item, WorkItem)
+    ]
     assert work.status is WorkStatus.CANCELLED
 
 
 async def _card_status(user_id: str, conversation_id: str) -> object:
     """Read the approval card the screen draws for t1 from the stored log: its outcome and who decided."""
     entries = await conversation_log_repository.read_log(conversation_id, user_id=user_id)
-    [work] = [item for item in project_screen(entries or []) if isinstance(item, WorkItem)]
+    [work] = [
+        item
+        for item in project_screen(conversation_id, entries or [])
+        if isinstance(item, WorkItem)
+    ]
     [card] = work.approvals
     return card.data.outcome, card.data.decider
 

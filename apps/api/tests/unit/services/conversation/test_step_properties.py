@@ -59,6 +59,7 @@ from shared.py.conversation_wire import (
     ReplyOutcome,
     ToolDataEntry,
 )
+from tests.factories import CONVERSATION_ID
 from tests.hypothesis_profiles import property_examples
 from tests.unit.services.conversation.log_helpers import (
     EMPTY,
@@ -504,7 +505,7 @@ def _assert_every_live_screen_keeps_its_items_and_reloads_the_same(
 ) -> None:
     """Replay the frames as a client does: every prefix keeps the invariant and each shown item."""
     view: dict[int, LoggedEntry] = {}
-    shown = project_screen([])
+    shown = project_screen(CONVERSATION_ID, [])
     for frame in world.rt.frames.published:
         if not isinstance(frame, EntryFrame | EntryUpdatedFrame):
             continue
@@ -519,10 +520,10 @@ def _assert_every_live_screen_keeps_its_items_and_reloads_the_same(
         _assert_every_reply_sits_below_what_it_answers([view[seq] for seq in unbroken])
         if isinstance(frame.entry, Reply) and isinstance(held_reply := held and held.entry, Reply):
             assert frame.entry.text.startswith(held_reply.text), "a shown reply's text shrank"
-        screen = project_screen(prefix)
+        screen = project_screen(CONVERSATION_ID, prefix)
         screen_patches(shown, screen, max(view))
         shown = screen
-    assert shown == project_screen(list(entries))
+    assert shown == project_screen(CONVERSATION_ID, list(entries))
 
 
 def _assert_frames_reproduce_the_log(world: World, entries: Sequence[LoggedEntry]) -> None:

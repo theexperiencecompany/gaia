@@ -768,7 +768,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return [
             ConversationMessageHit(conversation_id=row.conversation_id, item=item)
             for row in rows
-            if (item := text_item(row.logged, related[row.conversation_id])) is not None
+            if (item := text_item(row.conversation_id, row.logged, related[row.conversation_id]))
+            is not None
         ]
 
     async def _related_rows(

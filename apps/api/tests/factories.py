@@ -19,6 +19,9 @@ from app.models.conversation_models import StoredConversation
 from app.models.user_models import AuthenticatedUser
 from shared.py.conversation_wire import ReplyItem, ReplyOutcome, ToolTimeline
 
+#: The conversation a unit test projects its screen for.
+CONVERSATION_ID = "c1"
+
 
 def make_user_id() -> str:
     """Return a fresh GAIA user id: a real ObjectId, as UserId and every capture require."""

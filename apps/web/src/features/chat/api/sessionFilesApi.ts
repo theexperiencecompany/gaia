@@ -21,9 +21,8 @@ const nestedPathSerializer: PathSerializer = (pathname, pathParams) =>
  * Rewrite bot-emitted artifact paths (./artifacts/foo, /artifacts/foo,
  * artifacts/foo, /workspace/sessions/<id>/artifacts/foo) to the auth-gated
  * backend URL for this conversation; returns the original src for anything
- * else. Used for markdown links and images and for OpenUI images. `conversationId` falls
- * back to parsing the pathname when `useParams` doesn't see it (OpenUI's
- * dynamic CSR boundary can mount outside the page's param scope).
+ * else. Used for OpenUI images. `conversationId` falls back to parsing the
+ * pathname when `useParams` doesn't see it (OpenUI's CSR boundary).
  */
 export function resolveArtifactSrc(
   src: string | undefined,

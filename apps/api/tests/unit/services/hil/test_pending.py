@@ -13,6 +13,7 @@ from app.models.hil_models import ApprovalLedgerDocument
 from app.services.conversation.screen import project_screen
 from app.services.hil.errors import ApprovalRequestNotFoundError
 from app.services.hil.pending import pending_approvals
+from tests.factories import CONVERSATION_ID
 from tests.unit.services.conversation.log_helpers import asked, fold, logged, started, user
 
 MODULE = "app.services.hil.pending"
@@ -63,7 +64,9 @@ def ledger(log_state: AsyncMock) -> Iterator[dict[str, ApprovalLedgerDocument]]:
 
 
 def _screen_order() -> list[str]:
-    screen = project_screen([logged(seq, entry) for seq, entry in enumerate(ENTRIES, start=1)])
+    screen = project_screen(
+        CONVERSATION_ID, [logged(seq, entry) for seq, entry in enumerate(ENTRIES, start=1)]
+    )
     return [
         request.approval_id
         for item in screen
