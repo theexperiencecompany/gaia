@@ -1066,6 +1066,10 @@ groups:
       # 30. Our overhead on a direct comms reply, p90 >200ms for 15m. Provider time is
       # excluded by construction: the stages run from request receipt to the model
       # request, and from the model's first chunk to the frame written.
+      # The 30m window outlasts `for`, so on a quiet night one slow turn among a
+      # handful would hold the p90 over budget long enough to fire alone. Below 20
+      # direct turns in the window the query returns nothing (NoData -> OK): a p90
+      # needs at least three slow turns behind it before it can cross 200ms.
       - uid: gaia-turn-overhead-p90
         title: Replies spend too long in our own code
         condition: C
@@ -1075,7 +1079,10 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: histogram_quantile(0.9, sum by (le) (rate(turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct"}[30m])))
+              expr: |
+                histogram_quantile(0.9, sum by (le) (rate(turn_overhead_seconds_bucket{job="gaia-api",stage="total",path="direct"}[30m])))
+                and on ()
+                (sum(increase(turn_overhead_seconds_count{job="gaia-api",stage="total",path="direct"}[30m])) >= 20)
               instant: true
           - refId: B
             datasourceUid: __expr__
