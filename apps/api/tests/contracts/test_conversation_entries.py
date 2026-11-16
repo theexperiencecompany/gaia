@@ -678,6 +678,37 @@ async def _orphaned(
     return cid
 
 
+async def test_a_conversation_created_over_a_deleted_ones_leftovers_starts_empty(
+    repo: ConversationRepository, held: HeldFlushes, raw_collection: Any
+) -> None:
+    uid = f"u-{uuid.uuid4().hex}"
+    cid = await _orphaned(repo, held, raw_collection, uid)
+
+    await _chat(repo, uid, conversation_id=cid)
+
+    assert await _log().read_after(cid, uid, 0) == []
+
+
+async def test_flushing_one_conversations_outbox_leaves_every_other_ones(
+    repo: ConversationRepository,
+    conversation: ConversationDocument,
+    held: HeldFlushes,
+    raw_collection: Any,
+    entries_collection: Any,
+) -> None:
+    await _append(conversation.conversation_id, conversation.user_id, [_flushed_at_once("a1")])
+    other_user = f"u-{uuid.uuid4().hex}"
+    other = await _chat(repo, other_user)
+    await _append(other, other_user, [_flushed_at_once("b1")])
+    held.drop_all()
+
+    await repo.flush_outbox(other, user_id=other_user)
+
+    stored = await entries_collection.find({"conversation_id": other}).to_list(None)
+    assert [entry["id"] for entry in stored] == ["b1"]
+    assert list(await _outbox(raw_collection, conversation)) == ["1"]
+
+
 async def test_a_deleted_conversations_leftover_entries_never_reach_search_or_pins(
     repo: ConversationRepository, held: HeldFlushes, raw_collection: Any
 ) -> None:

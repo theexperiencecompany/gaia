@@ -59,17 +59,11 @@ def _interrupted(messages: Sequence[AnyMessage], call_id: str) -> bool:
         ),
         len(messages),
     )
-    start = next(
-        (
-            index + 1
-            for index in range(step - 1, -1, -1)
-            if f"{TURN_CONTEXT_ID_SUFFIX}:" in (messages[index].id or "")
-        ),
-        0,
-    )
-    return any(
-        (message.id or "").endswith(ABSORBED_NOTE_SUFFIX) for message in messages[start:step]
-    )
+    # An id-less message holds neither suffix, whatever text stands in for its id.
+    ids = [message.id or "" for message in messages]  # pragma: no mutate
+    turns = [index for index in range(step) if f"{TURN_CONTEXT_ID_SUFFIX}:" in ids[index]]
+    start = turns[-1] + 1 if turns else 0
+    return any(message_id.endswith(ABSORBED_NOTE_SUFFIX) for message_id in ids[start:step])
 
 
 def _makes_call(message: AIMessage, call_id: str) -> bool:

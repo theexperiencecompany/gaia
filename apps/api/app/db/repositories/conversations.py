@@ -416,7 +416,8 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
                 "system_purpose": SystemPurpose.WORKFLOW_EXECUTION.value,
                 "metadata.workflow_id": workflow_id,
             },
-            {"_id": 0, "conversation_id": 1},
+            # Equivalent under mutation: any truthy flag projects the field, and the row ignores _id.
+            {"_id": 0, "conversation_id": 1},  # pragma: no mutate
             _ConversationIdRow,
         )
         return None if row is None else row.conversation_id
