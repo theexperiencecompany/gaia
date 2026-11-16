@@ -93,6 +93,13 @@ def _make_ctx(**overrides) -> SubagentExecutionContext:
     return SubagentExecutionContext(**defaults)  # type: ignore[arg-type]  # fixture spreads an untyped defaults dict into the model
 
 
+def _graph_with_an_empty_thread() -> MagicMock:
+    """Return a graph double whose checkpoint holds no messages, so a run closes no open call."""
+    graph = MagicMock()
+    graph.aget_state = AsyncMock(return_value=MagicMock(values={}))
+    return graph
+
+
 def _make_run(**overrides) -> _StreamRun:
     """One in-flight execute_subagent_stream drive, without the stream.
 
@@ -330,7 +337,7 @@ class TestExecuteSubagentStream:
             yield ("messages", (chunk2, {}))
             yield ("messages", (tool_msg, {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
 
         ctx = _make_ctx(subagent_graph=mock_graph)
@@ -350,7 +357,7 @@ class TestExecuteSubagentStream:
             yield ("updates", {NUDGE_CONTINUE_NODE: {"messages": [HumanMessage("finish")]}})
             yield ("messages", (final, {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph, integration_id=EXECUTOR_INTEGRATION_ID)
 
@@ -366,7 +373,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("messages", (chunk, {"silent": True}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -381,7 +388,7 @@ class TestExecuteSubagentStream:
             return
             yield  # NOSONAR — intentionally unreachable: makes this an async generator
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -399,7 +406,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("messages", (tool_msg, {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -421,7 +428,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("messages", (tool_msg, {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -446,7 +453,7 @@ class TestExecuteSubagentStream:
             yield ("updates", {"agent": {"messages": [ai]}})
             yield ("messages", (tool_msg, {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -475,7 +482,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("updates", {"filter_messages_node": {"messages": [stale]}})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -493,7 +500,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("updates", {"agent": {"messages": []}})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -524,7 +531,7 @@ class TestExecuteSubagentStream:
             # Only the "agent" node should produce tool_data
             yield ("updates", {"agent": {"messages": []}})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -559,7 +566,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("custom", custom_payload)
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -577,7 +584,7 @@ class TestExecuteSubagentStream:
             yield ("messages", (tool_msg, {}))
             yield ("custom", {"progress": "done"})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -596,7 +603,7 @@ class TestExecuteSubagentStream:
             yield ("messages", (chunk1, {}))
             yield ("messages", (chunk2, {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
 
@@ -626,7 +633,7 @@ class TestExecuteSubagentStream:
             yield ("updates", {"agent": {"messages": []}})
             yield ("messages", (AIMessageChunk(content="should not reach"), {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph, stream_id="s-1")
 
@@ -657,7 +664,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("messages", (AIMessageChunk(content="partial"), {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         with (
             patch("app.agents.core.subagents.subagent_runner.log"),
@@ -677,7 +684,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("messages", (AIMessageChunk(content="all of it"), {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         with (
             patch("app.agents.core.subagents.subagent_runner.log"),
@@ -702,7 +709,7 @@ class TestExecuteSubagentStream:
             yield ("messages", (AIMessageChunk(content="ok"), {}))
             yield ("messages", (ToolMessage(content="done", tool_call_id="tc-skip"), {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -718,7 +725,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("updates", {"agent": {"messages": []}})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -744,7 +751,7 @@ class TestExecuteSubagentStream:
         async def _fake_astream(*args, **kwargs):
             yield ("messages", (tool_msg, {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -1575,7 +1582,7 @@ class TestReasoningPersistsPerBlock:
                 yield ("updates", {"agent": {"messages": []}})
                 yield ("messages", (_thinking("d"), {}))
 
-            mock_graph = MagicMock()
+            mock_graph = _graph_with_an_empty_thread()
             mock_graph.astream = _fake_astream
             ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -1600,7 +1607,7 @@ class TestReasoningPersistsPerBlock:
                 yield ("messages", (_thinking("no tool "), {}))
                 yield ("messages", (_thinking("followed this"), {}))
 
-            mock_graph = MagicMock()
+            mock_graph = _graph_with_an_empty_thread()
             mock_graph.astream = _fake_astream
             ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -1618,7 +1625,7 @@ class TestReasoningPersistsPerBlock:
                 yield ("messages", (_thinking("needs a human"), {}))
                 yield ("updates", {"__interrupt__": ()})
 
-            mock_graph = MagicMock()
+            mock_graph = _graph_with_an_empty_thread()
             mock_graph.astream = _fake_astream
             ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -1678,7 +1685,7 @@ class TestSubagentRunLatency:
         async def _fake_astream(*args, **kwargs):
             yield ("updates", {"agent": {"messages": [AIMessage(content="done")]}})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
         before = _subagent_count("test", "success")
@@ -1698,7 +1705,7 @@ class TestSubagentRunLatency:
         async def _fake_astream(*args, **kwargs):
             yield ("updates", {"agent": {"messages": [AIMessage(content="done")]}})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -1721,7 +1728,7 @@ class TestSubagentRunLatency:
             raise RuntimeError("graph exploded")
             yield ("updates", {})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
         before = _subagent_count("test", "error")
@@ -1744,7 +1751,7 @@ class TestSubagentRunLatency:
             captured["kwargs"] = kwargs
             yield ("updates", {"agent": {"messages": [AIMessage(content="done")]}})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
 
@@ -1763,7 +1770,7 @@ class TestSubagentRunLatency:
         async def _fake_astream(*args, **kwargs):
             yield ("updates", {"agent": {"messages": [AIMessage(content="done")]}})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(
             subagent_graph=mock_graph,
@@ -1782,7 +1789,7 @@ class TestSubagentRunLatency:
         async def _fake_astream(*args, **kwargs):
             yield ("updates", {"agent": {"messages": [AIMessage(content="done")]}})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
 
         agent_ctx = _make_ctx(subagent_graph=mock_graph, agent_name="test_agent", integration_id="")
@@ -1802,7 +1809,7 @@ class TestSubagentRunLatency:
         async def _fake_astream(*args, **kwargs):
             yield ("messages", (AIMessageChunk(content="partial"), {}))
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph, stream_id="s-cancel")
         cancelled_before = _subagent_count("test", "cancelled")
@@ -1830,7 +1837,7 @@ class TestSubagentRunLatency:
         async def _fake_astream(*args, **kwargs):
             yield ("updates", {"agent": {"messages": [AIMessage(content="done")]}})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
         before = _subagent_sum("test", "success")
@@ -1852,7 +1859,7 @@ class TestSubagentRunLatency:
             raise RuntimeError("graph exploded")
             yield ("updates", {})
 
-        mock_graph = MagicMock()
+        mock_graph = _graph_with_an_empty_thread()
         mock_graph.astream = _fake_astream
         ctx = _make_ctx(subagent_graph=mock_graph)
         before = _subagent_sum("test", "error")
@@ -1884,7 +1891,7 @@ async def _reasoning_frames(*chunks: AIMessageChunk) -> list[dict[str, Any]]:
         for chunk in chunks:
             yield ("messages", (chunk, {}))
 
-    mock_graph = MagicMock()
+    mock_graph = _graph_with_an_empty_thread()
     mock_graph.astream = _fake_astream
     writer = MagicMock()
     with patch("app.agents.core.subagents.subagent_runner.log"):
@@ -1947,7 +1954,7 @@ def _cancellable_run(*events: tuple[str, Any], stream_id: str | None = "s-1") ->
         for event in events:
             yield event
 
-    mock_graph = MagicMock()
+    mock_graph = _graph_with_an_empty_thread()
     mock_graph.astream = _fake_astream
     return _make_ctx(
         subagent_graph=mock_graph,
@@ -2054,7 +2061,7 @@ async def test_an_executor_runs_custom_mcp_tool_card_names_the_integration_it_ca
     async def _fake_astream(*args: Any, **kwargs: Any) -> Any:
         yield ("updates", {"agent": {"messages": [forecast_call]}})
 
-    mock_graph = MagicMock()
+    mock_graph = _graph_with_an_empty_thread()
     mock_graph.astream = _fake_astream
     stream_writer = MagicMock()
 

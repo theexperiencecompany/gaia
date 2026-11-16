@@ -34,12 +34,15 @@ INTERRUPTION_MARKER = (
 INTERRUPTED_TOOL_RESULT = (
     "[Tool call interrupted: the user stopped the response before this tool finished.]"
 )
+UNFINISHED_TOOL_RESULT = "[Tool call did not finish: the run ended before this tool returned.]"
 
 # additional_kwargs source tag; filter/pruning hooks must leave these alone.
 INTERRUPTION_SOURCE = "interruption"
 
 
-def _interrupted_tool_messages(messages: list[AnyMessage], answered: set[str]) -> list[ToolMessage]:
+def _interrupted_tool_messages(
+    messages: list[AnyMessage], answered: set[str], content: str = INTERRUPTED_TOOL_RESULT
+) -> list[ToolMessage]:
     """One error ToolMessage per AI tool call the cancelled run left unanswered."""
     backfill: list[ToolMessage] = []
     for msg in messages:
@@ -50,7 +53,7 @@ def _interrupted_tool_messages(messages: list[AnyMessage], answered: set[str]) -
             if tc["id"] and tc["id"] not in answered:
                 backfill.append(
                     ToolMessage(
-                        content=INTERRUPTED_TOOL_RESULT,
+                        content=content,
                         tool_call_id=tc["id"],
                         name=tc["name"],
                         status="error",
@@ -98,19 +101,18 @@ class _GraphValues(TypedDict, total=False):
     messages: list[AnyMessage]
 
 
-async def record_interruption(graph: CompiledStateGraph, config: RunnableConfig) -> None:
-    """Write the interruption record into the thread's checkpoint.
-
-    Must be called after the cancelled run has actually stopped (the astream
-    generator closed), so the checkpoint read here is the run's final state.
-    """
+async def _thread(graph: CompiledStateGraph, config: RunnableConfig) -> list[AnyMessage]:
     state = await graph.aget_state(config)
     values: _GraphValues = cast("_GraphValues", state.values or {}) if state else {}
-    messages = values.get("messages", [])
-    updates = build_interruption_messages(messages)
-    if not updates:
-        return
+    return values.get("messages", [])
 
+
+async def _write_answers(
+    graph: CompiledStateGraph,
+    config: RunnableConfig,
+    messages: list[AnyMessage],
+    updates: list[AnyMessage],
+) -> None:
     # A call the cut run had not committed yet lives only in pending writes, which the
     # write below discards; re-writing its message (an upsert) keeps each backfill answered.
     backfilled = {update.tool_call_id for update in updates if isinstance(update, ToolMessage)}
@@ -124,9 +126,44 @@ async def record_interruption(graph: CompiledStateGraph, config: RunnableConfig)
     await graph.aupdate_state(
         config, {"messages": with_message_ids([*calls, *updates])}, as_node="tools"
     )
+
+
+async def record_interruption(graph: CompiledStateGraph, config: RunnableConfig) -> None:
+    """Write the interruption record into the thread's checkpoint.
+
+    Must be called after the cancelled run has actually stopped (the astream
+    generator closed), so the checkpoint read here is the run's final state.
+    """
+    messages = await _thread(graph, config)
+    updates = build_interruption_messages(messages)
+    if not updates:
+        return
+    await _write_answers(graph, config, messages, updates)
     configurable: AgentConfigurable = agent_configurable(config)
     log.info(
         f"{LogTag.AGENT} Recorded user interruption in checkpoint",
         thread_id=configurable.get("thread_id"),
         backfilled_tool_calls=len(updates) - 1,
+    )
+
+
+async def close_open_tool_calls(graph: CompiledStateGraph, config: RunnableConfig) -> None:
+    """Answer every tool call the thread left without a result, before a run sends it to a model.
+
+    Providers reject a thread holding an unanswered call, so one a crash or an older stop
+    left open would fail every later run in the conversation.
+    """
+    messages = await _thread(graph, config)
+    answered = {m.tool_call_id for m in messages if isinstance(m, ToolMessage)}
+    backfill: list[AnyMessage] = [
+        *_interrupted_tool_messages(messages, answered, UNFINISHED_TOOL_RESULT)
+    ]
+    if not backfill:
+        return
+    await _write_answers(graph, config, messages, backfill)
+    configurable: AgentConfigurable = agent_configurable(config)
+    log.warning(
+        f"{LogTag.AGENT} Closed tool calls a previous run left open",
+        thread_id=configurable.get("thread_id"),
+        closed_tool_calls=len(backfill),
     )

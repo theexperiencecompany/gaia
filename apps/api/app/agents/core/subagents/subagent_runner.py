@@ -1,7 +1,8 @@
 """Shared logic for subagent invocation, used by delegation.py and executor_tool.py."""
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import AsyncGenerator, Sequence
+from contextlib import aclosing
 from dataclasses import dataclass, field, replace
 import time
 from typing import Any, TypedDict, cast
@@ -32,6 +33,7 @@ from app.agents.core.graph_manager import (
     GraphUnavailableError,
 )
 from app.agents.core.held_replies import HeldReplies
+from app.agents.core.interruption import close_open_tool_calls, record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.llm.lane import AgentRole, dev_option
 from app.agents.llm.reasoning import extract_reasoning_delta
@@ -465,63 +467,81 @@ async def execute_subagent_stream(
         if ctx.agent_name.startswith("custom_mcp_")
         else ctx.integration_id or ctx.agent_name or "unknown"
     )
+    graph_config = cast(RunnableConfig, run_config)
+    await close_open_tool_calls(ctx.subagent_graph, graph_config)
     cancelled = False
+    stopped_by_executor = False
     segment_start = time.perf_counter()
     try:
-        async for event in ctx.subagent_graph.astream(
-            ctx.initial_state,
-            stream_mode=["messages", "custom", "updates"],
-            # build_agent_config returns an AgentRunnableConfig, but run_config may be
-            # rebuilt above as a dict spread, which mypy widens back to a plain dict.
-            config=cast(RunnableConfig, run_config),
-            # Persist checkpoints only on run exit (this path is one unit of work),
-            # collapsing O(steps) writes to one. The comms graph driver keeps
-            # "async" — its mid-run checkpoints are needed.
-            durability="exit",
-        ):
-            if await _stream_cancelled(ctx):
-                log.info(
-                    f"{LogTag.AGENT} Subagent stream cancelled by user", stream_id=ctx.stream_id
-                )
-                cancelled = True
-                break
+        # aclosing: the run must have stopped, its checkpoint written, before a stop closes its calls.
+        # astream is an async generator; langgraph annotates it as a bare AsyncIterator.
+        stream = cast(
+            AsyncGenerator[object],
+            ctx.subagent_graph.astream(
+                ctx.initial_state,
+                stream_mode=["messages", "custom", "updates"],
+                config=graph_config,
+                # Persist checkpoints only on run exit (this path is one unit of work),
+                # collapsing O(steps) writes to one. The comms graph driver keeps
+                # "async" — its mid-run checkpoints are needed.
+                durability="exit",
+            ),
+        )
+        async with aclosing(stream) as events:
+            async for event in events:
+                if await _stream_cancelled(ctx):
+                    log.info(
+                        f"{LogTag.AGENT} Subagent stream cancelled by user",
+                        stream_id=ctx.stream_id,
+                    )
+                    cancelled = True
+                    break
 
-            # Handle 2-tuple format only (no subgraphs)
-            if len(event) != 2:
-                continue
-            # A list `stream_mode` makes astream yield (mode, payload) tuples, which
-            # langgraph's own overload return type does not express.
-            stream_mode, payload = cast(tuple[str, object], event)
+                # Handle 2-tuple format only (no subgraphs)
+                if not isinstance(event, tuple) or len(event) != 2:
+                    continue
+                # A list `stream_mode` makes astream yield (mode, payload) tuples, which
+                # langgraph's own overload return type does not express.
+                stream_mode, payload = cast(tuple[str, object], event)
 
-            # Targeted cancel from the executor, checked once per superstep (one
-            # redis read per reasoning step). Returns a clean cancelled result so
-            # the executor learns it stopped; the executor and siblings keep running.
-            if (
-                stream_mode == "updates"
-                and ctx.stream_id
-                and cancel
-                and await cancel.is_requested()
-            ):
-                await cancel.clear()
-                log.info(f"{LogTag.AGENT} Subagent cancelled by executor", stream_id=ctx.stream_id)
-                outcome = _finalize_run(run)
-                observe_subagent_run(
-                    time.perf_counter() - segment_start, subagent_id=label, status="cancelled"
-                )
-                # What the run said so far, not the finished-run text: that one says
-                # nothing was confirmed or tells the executor to re-issue what it just stopped.
-                return replace(
-                    outcome,
-                    text=wrap_agent_payload(
-                        AgentTag.SUBAGENT_CANCELLED,
-                        run.complete_message or "Stopped by the executor before finishing.",
-                    ),
-                )
+                # Targeted cancel from the executor, checked once per superstep (one
+                # redis read per reasoning step). Returns a clean cancelled result so
+                # the executor learns it stopped; the executor and siblings keep running.
+                if (
+                    stream_mode == "updates"
+                    and ctx.stream_id
+                    and cancel
+                    and await cancel.is_requested()
+                ):
+                    await cancel.clear()
+                    log.info(
+                        f"{LogTag.AGENT} Subagent cancelled by executor", stream_id=ctx.stream_id
+                    )
+                    stopped_by_executor = True
+                    break
 
-            await _consume_stream_event(run, stream_mode, payload)
+                await _consume_stream_event(run, stream_mode, payload)
+        if cancelled:
+            await record_interruption(ctx.subagent_graph, graph_config)
+        elif stopped_by_executor:
+            await close_open_tool_calls(ctx.subagent_graph, graph_config)
     except Exception:
         observe_subagent_run(time.perf_counter() - segment_start, subagent_id=label, status="error")
         raise
+
+    if stopped_by_executor:
+        observe_subagent_run(
+            time.perf_counter() - segment_start, subagent_id=label, status="cancelled"
+        )
+        # What the run said so far, not the finished-run text: that one says
+        # nothing was confirmed or tells the executor to re-issue what it just stopped.
+        return replace(
+            _finalize_run(run),
+            text=wrap_agent_payload(
+                AgentTag.SUBAGENT_CANCELLED,
+                run.complete_message or "Stopped by the executor before finishing.",
+            ),
+        )
 
     outcome = replace(_finalize_run(run), stopped=cancelled)
     observe_subagent_run(
