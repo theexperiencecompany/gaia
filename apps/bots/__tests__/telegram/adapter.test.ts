@@ -175,6 +175,7 @@ import type { Message } from "@grammyjs/types";
 // From source, not the mocked barrel: GaiaApiError is the error class the real
 // link-code path branches on, and the mock does not re-export it.
 import { GaiaApiError } from "../../../../libs/shared/ts/src/bots/api";
+import { isMessageGoneError } from "../../../../libs/shared/ts/src/bots/utils/delivery-errors";
 import {
   extractTelegramMedia,
   TelegramAdapter,
@@ -620,26 +621,33 @@ describe("TelegramAdapter - handleTelegramStreaming (streaming setup)", () => {
     );
   });
 
-  it("fails the turn with the placeholder's own error when it cannot be posted", async () => {
-    const placeholderError = new Error(
-      "Forbidden: bot was blocked by the user",
-    );
-    const ctx = makeCtx({
-      replyFn: vi.fn().mockRejectedValue(placeholderError),
-    });
+  it("keeps the turn going when the placeholder cannot be posted, so the reply opens its own message", async () => {
+    // The chat request is already running when the placeholder fails; failing the turn
+    // here used to strand its reply while the agent still did the user's work.
+    const replyFn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Too Many Requests: retry after 1"));
+    const ctx = makeCtx({ replyFn });
 
-    await expect(
-      (
-        adapter as unknown as {
-          handleTelegramStreaming: (
-            ctx: ReturnType<typeof makeCtx>,
-            userId: string,
-            message: string,
-            receivedAt: number,
-          ) => Promise<void>;
-        }
-      ).handleTelegramStreaming(ctx, "555", "hi", RECEIVED_AT),
-    ).rejects.toBe(placeholderError);
+    await (
+      adapter as unknown as {
+        handleTelegramStreaming: (
+          ctx: ReturnType<typeof makeCtx>,
+          userId: string,
+          message: string,
+          receivedAt: number,
+        ) => Promise<void>;
+      }
+    ).handleTelegramStreaming(ctx, "555", "hi", RECEIVED_AT);
+
+    const editMessage = vi.mocked(handleStreamingChat).mock.calls[0][2];
+    const editError = await editMessage("the reply").then(
+      () => null,
+      (error: unknown) => error,
+    );
+    // The streamer answers a gone message by sending the reply as a new one.
+    expect(isMessageGoneError(editError)).toBe(true);
+    expect(ctx.api.editMessageText).not.toHaveBeenCalled();
   });
 
   it("calls handleStreamingChat with the correct request shape", async () => {

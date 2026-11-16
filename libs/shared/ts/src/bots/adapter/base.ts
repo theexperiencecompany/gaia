@@ -88,6 +88,12 @@ import { withTimeout } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { BotServer } from "./base-server";
 
+/**
+ * Ceiling on the link-status check that runs ahead of a user's message (welcome gate, one-tap
+ * code). Past it the message goes on as if the check failed, rather than waiting on the API.
+ */
+const LINK_STATE_CHECK_TIMEOUT_MS = 2_000;
+
 /** An outbound artifact, fetched and within the platform's cap, ready to upload. */
 export interface OutboundFile {
   data: Buffer;
@@ -646,9 +652,10 @@ export abstract class BaseBotAdapter {
   /** Unlinked users greeted this process, deduped so the welcome does not repeat on every message. */
   private readonly welcomedUsers = new Set<string>();
   /**
-   * Users confirmed linked this process. Linking happens mid-session (the one-tap code, `/auth`),
-   * so only a positive answer is kept: until then every check asks again. Unlinking is not
-   * re-detected here — the chat stream itself refuses an unlinked user with the auth prompt.
+   * Users last seen linked this process, so the welcome gate on every message costs a known-linked
+   * user no round-trip. Only the welcome gate reads it: {@link linkState} always asks, and keeps
+   * this in step with the answer, so a user who unlinked and comes back with a one-tap code is
+   * seen as unlinked and their code redeemed.
    */
   private readonly linkedUsers = new Set<string>();
 
@@ -703,22 +710,21 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Whether a platform user is linked to a GAIA account. A known-linked user costs no
-   * round-trip; anyone else is asked about each time. A failed check — including the optional
-   * timeout — is `unknown`, not `unlinked`: callers pick their own safe default from that.
+   * Whether a platform user is linked to a GAIA account, asked fresh each time. The check sits
+   * ahead of the user's message, so it is bounded: a failed or slow check is `unknown`, not
+   * `unlinked`, and callers pick their own safe default from that.
    */
-  protected async linkState(
-    userId: string,
-    timeoutMs?: number,
-  ): Promise<LinkState> {
-    if (this.linkedUsers.has(userId)) return "linked";
+  protected async linkState(userId: string): Promise<LinkState> {
     try {
-      const statusCheck = this.gaia.checkAuthStatus(this.platform, userId);
-      const status =
-        timeoutMs === undefined
-          ? await statusCheck
-          : await withTimeout(statusCheck, timeoutMs, "auth_check_timeout");
-      if (!status.authenticated) return "unlinked";
+      const status = await withTimeout(
+        this.gaia.checkAuthStatus(this.platform, userId),
+        LINK_STATE_CHECK_TIMEOUT_MS,
+        "auth_check_timeout",
+      );
+      if (!status.authenticated) {
+        this.linkedUsers.delete(userId);
+        return "unlinked";
+      }
       this.linkedUsers.add(userId);
       return "linked";
     } catch (error) {
@@ -739,7 +745,9 @@ export abstract class BaseBotAdapter {
    * process; a failed check greets no one.
    */
   protected async shouldSendWelcome(userId: string): Promise<boolean> {
-    if (this.welcomedUsers.has(userId)) return false;
+    if (this.welcomedUsers.has(userId) || this.linkedUsers.has(userId)) {
+      return false;
+    }
     // Mark in-flight before the await so two concurrent first messages can't
     // both pass the check and send duplicate welcomes. Cleared again whenever
     // the user turns out to be linked or the check fails.

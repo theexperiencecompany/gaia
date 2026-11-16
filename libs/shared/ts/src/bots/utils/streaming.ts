@@ -136,7 +136,8 @@ async function _handleStream(
   editMessage: MessageEditor,
   sendNewMessage: NewMessageSender,
   onAuthError: ((authUrl: string) => Promise<void>) | null,
-  onGenericError: (formattedError: string, cause: unknown) => Promise<void>,
+  onGenericError: (formattedError: string) => Promise<void>,
+  recordFailure: (cause: unknown) => void,
   options: StreamingOptions,
   onReaction: ReactionHandler | undefined,
   onNoReply: NoReplyHandler | undefined,
@@ -147,8 +148,6 @@ async function _handleStream(
   // platform converter HERE, at the single chokepoint, so adapters receive
   // already-converted text and never call convertTo<Platform>Markdown inline.
   const render = PLATFORM_MARKDOWN[platform];
-  const emitGenericError = (text: string, cause: unknown) =>
-    onGenericError(render(text), cause);
   const wrappedEditMessage: MessageEditor = (text) => editMessage(render(text));
   const wrappedSendNewMessage: NewMessageSender = async (text) => {
     const editor = await sendNewMessage(render(text));
@@ -430,6 +429,20 @@ async function _handleStream(
     return outcome;
   };
 
+  /**
+   * Tells the user the turn failed. The adapter renders it over what the user is waiting on —
+   * unless the current message already holds finished text (a delivered reply, or an
+   * out-of-band prompt): that stays, and the failure follows as a message of its own.
+   */
+  const emitGenericError = async (text: string, cause: unknown) => {
+    recordFailure(cause);
+    if (bubbleSealed) {
+      await wrappedSendNewMessage(text);
+      return;
+    }
+    await onGenericError(render(text));
+  };
+
   try {
     await streamFn(
       (chunk) => {
@@ -642,10 +655,7 @@ async function runStreamingChat(
     await onAuthError(authUrl);
   };
 
-  const wrappedOnGenericError = async (
-    formattedError: string,
-    cause: unknown,
-  ) => {
+  const recordFailure = (cause: unknown): void => {
     // The failure with its reason and full latency context — a real-time line,
     // an errors[] entry, and outcome "failed" on this chat's wide event.
     const reason = recordBotFailure("chat_stream_failed", cause, {
@@ -672,7 +682,6 @@ async function runStreamingChat(
       context: "chat:streaming",
       duration_ms: Date.now() - startMs,
     });
-    await onGenericError(formattedError);
   };
 
   const streamFn = (
@@ -766,7 +775,8 @@ async function runStreamingChat(
       timedEdit,
       timedSend,
       wrappedOnAuthError,
-      wrappedOnGenericError,
+      onGenericError,
+      recordFailure,
       options,
       onReaction,
       onNoReply,

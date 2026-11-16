@@ -42,11 +42,7 @@ import {
   Spectrum,
 } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
-import {
-  IMESSAGE_SERVER_PORT,
-  RECENT_MESSAGE_IDS_MAX,
-  WELCOME_AUTH_CHECK_TIMEOUT_MS,
-} from "./constants";
+import { IMESSAGE_SERVER_PORT, RECENT_MESSAGE_IDS_MAX } from "./constants";
 
 interface ImessageConfig {
   projectId: string;
@@ -345,7 +341,7 @@ export class ImessageAdapter extends BaseBotAdapter {
         platformUserId: handle,
         text,
         target,
-        linkState: () => this.linkState(handle, WELCOME_AUTH_CHECK_TIMEOUT_MS),
+        linkState: () => this.linkState(handle),
       });
       // null: the message was only a code, or a redemption already delivered
       // GAIA's whole first contact and there is no turn left to run.

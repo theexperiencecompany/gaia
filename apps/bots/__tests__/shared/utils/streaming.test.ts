@@ -9,6 +9,7 @@
 import { PassThrough } from "node:stream";
 import type { ApprovalRequestData } from "@gaia/shared";
 import {
+  formatBotError,
   GaiaClient,
   handleStreamingChat,
   type MessageEditor,
@@ -17,6 +18,7 @@ import {
   type PlatformName,
   REACTION_OUTCOME,
   type ReactionOutcome,
+  ReplyPlaceholder,
   renderForPlatform,
   STREAMING_DEFAULTS,
 } from "@gaia/shared/bots";
@@ -579,6 +581,28 @@ describe("handleStreamingChat delivery", () => {
     expect(bubbles.at(-1)).toContain("Here is the answer");
   });
 
+  it("delivers the reply as a new message when the Thinking... placeholder was never posted", async () => {
+    // The placeholder posts alongside the chat request, so the turn is already doing the
+    // user's work when it fails; its reply must still reach them.
+    const placeholder = new ReplyPlaceholder<string>(
+      () => Promise.reject(new Error("channel_not_found")),
+      vi.fn(),
+    );
+    const placeholderGone = await placeholder.current().then(
+      () => null,
+      (error: unknown) => error,
+    );
+
+    const { bubbles, newMessages } = await deliver(
+      "discord",
+      ["Here is the answer you asked for, in full."],
+      { failEdit: { at: 0, error: placeholderGone } },
+    );
+
+    expect(newMessages).toBe(1);
+    expect(bubbles.at(-1)).toContain("Here is the answer");
+  });
+
   it("replaces a retracted handoff preamble in place", async () => {
     // The comms agent narrates its own handoff, and the backend retracts that
     // message once the tool call shows up — the user must end with ONE message
@@ -865,10 +889,13 @@ function startLiveTurn(
     editable = true,
     onReaction,
     receivedAt,
+    errorsReplaceCurrent = false,
   }: {
     editable?: boolean;
     onReaction?: (emoji: string) => Promise<ReactionOutcome>;
     receivedAt?: number;
+    /** Render a stream error the way Discord, Telegram and Slack do: over the current message. */
+    errorsReplaceCurrent?: boolean;
   } = {},
 ): LiveTurn {
   const body = new PassThrough();
@@ -896,7 +923,10 @@ function startLiveTurn(
       throw new Error("auth error path is not exercised by these cases");
     },
     async (formattedError: string) => {
-      throw new Error(`unexpected stream error: ${formattedError}`);
+      if (!errorsReplaceCurrent) {
+        throw new Error(`unexpected stream error: ${formattedError}`);
+      }
+      await editMessage(formattedError);
     },
     STREAMING_DEFAULTS[platform],
     undefined,
@@ -989,6 +1019,36 @@ describe("a buffered platform delivers the reply when it is complete, not at don
       expect(live.delivered.writes).toHaveLength(2);
       expect(live.delivered.newMessages).toBe(1);
       expect(live.noReply).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each<[PlatformName, boolean]>([
+    ["discord", true],
+    ["telegram", true],
+  ])(
+    "%s keeps a delivered reply on screen when the turn fails after it",
+    async (platform, editable) => {
+      // The reply is final at reply_complete; a failure in the end-of-turn work after it
+      // (a delegated run, the stream itself) is news of its own, not a replacement.
+      const live = startLiveTurn(platform, {
+        editable,
+        errorsReplaceCurrent: true,
+      });
+
+      const failure = "The background task failed.";
+
+      live.send({ text: ANSWER }, keptBoundary("m1"), REPLY_COMPLETE, {
+        error: failure,
+      });
+      await live.finish();
+
+      expect(live.delivered.bubbles).toEqual([
+        renderForPlatform(ANSWER, platform),
+        renderForPlatform(
+          formatBotError(new Error(failure), platform),
+          platform,
+        ),
+      ]);
     },
   );
 

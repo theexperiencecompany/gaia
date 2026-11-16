@@ -9,8 +9,8 @@
  */
 
 import type { AnalyticsId } from "@gaia/shared/analytics";
-import { BaseBotAdapter } from "@gaia/shared/bots";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { BaseBotAdapter, type LinkState } from "@gaia/shared/bots";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const PLATFORM_USER_ID = "123456789";
 const PLATFORM_DISTINCT_ID = "discord:123456789";
@@ -56,6 +56,14 @@ class TestAdapter extends BaseBotAdapter {
 
   resolve(platformUserId: string): Promise<AnalyticsId> {
     return this.resolveDistinctId(platformUserId);
+  }
+
+  link(platformUserId: string): Promise<LinkState> {
+    return this.linkState(platformUserId);
+  }
+
+  welcome(platformUserId: string): Promise<boolean> {
+    return this.shouldSendWelcome(platformUserId);
   }
 }
 
@@ -186,5 +194,72 @@ describe("BaseBotAdapter.resolveDistinctId", () => {
       PLATFORM_DISTINCT_ID,
     );
     expect(analytics.alias).not.toHaveBeenCalled();
+  });
+});
+
+describe("BaseBotAdapter link state", () => {
+  const linked = {
+    authenticated: true,
+    platform: "discord",
+    platform_user_id: PLATFORM_USER_ID,
+    user_id: GAIA_USER_ID,
+  };
+  const unlinked = {
+    authenticated: false,
+    platform: "discord",
+    platform_user_id: PLATFORM_USER_ID,
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("asks again for a user once seen linked, so a re-link code after unlinking is redeemed", async () => {
+    const checkAuthStatus = vi
+      .fn()
+      .mockResolvedValueOnce(linked)
+      .mockResolvedValueOnce(unlinked);
+    const { adapter } = setup(checkAuthStatus);
+
+    await expect(adapter.link(PLATFORM_USER_ID)).resolves.toBe("linked");
+    await expect(adapter.link(PLATFORM_USER_ID)).resolves.toBe("unlinked");
+  });
+
+  it("spares a known-linked user the round-trip on every message's welcome gate", async () => {
+    const checkAuthStatus = vi.fn(async () => linked);
+    const { adapter } = setup(checkAuthStatus);
+
+    await expect(adapter.welcome(PLATFORM_USER_ID)).resolves.toBe(false);
+    await expect(adapter.welcome(PLATFORM_USER_ID)).resolves.toBe(false);
+
+    expect(checkAuthStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("greets an unlinked user again after a fresh check saw them unlink", async () => {
+    const checkAuthStatus = vi
+      .fn()
+      .mockResolvedValueOnce(linked)
+      .mockResolvedValueOnce(unlinked)
+      .mockResolvedValueOnce(unlinked);
+    const { adapter } = setup(checkAuthStatus);
+
+    await expect(adapter.welcome(PLATFORM_USER_ID)).resolves.toBe(false);
+    await expect(adapter.link(PLATFORM_USER_ID)).resolves.toBe("unlinked");
+    await expect(adapter.welcome(PLATFORM_USER_ID)).resolves.toBe(true);
+  });
+
+  it("does not hold the turn on a hung auth check: the welcome gate gives up", async () => {
+    vi.useFakeTimers();
+    const { adapter } = setup(vi.fn(() => new Promise(() => undefined)));
+
+    const gate = adapter.welcome(PLATFORM_USER_ID);
+    let settled: boolean | undefined;
+    void gate.then((value) => {
+      settled = value;
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    // A failed check greets no one; it must not stall the message behind it.
+    expect(settled).toBe(false);
   });
 });
