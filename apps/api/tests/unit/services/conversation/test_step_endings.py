@@ -25,9 +25,11 @@ from app.models.conversation_log_models import (
 )
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
+    NOTHING_KEPT,
     Answered,
     CancelReason,
     Finished,
+    Kept,
     ModelOutput,
     Reacted,
     Replied,
@@ -227,9 +229,11 @@ async def test_the_next_run_reads_a_settled_reply_as_the_part_the_user_heard(
         context: Sequence[LoggedEntry],
         ledger: str,
         note: str | None = None,
+        *,
+        kept: Kept = NOTHING_KEPT,
     ) -> ScriptedRun:
         contexts.append(context)
-        return await start(claim, batch, context, ledger, note)
+        return await start(claim, batch, context, ledger, note, kept=kept)
 
     monkeypatch.setattr(rt.runner, "start", recording_start)
     rt.runner.script([text("hello there friend"), Finished(Replied("hello there friend"))])

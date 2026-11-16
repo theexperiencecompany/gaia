@@ -62,6 +62,7 @@ from shared.py.conversation_wire import (
     ReplyOutcome,
     ToolDataEntry,
 )
+from tests.helpers import TEST_FILE_LINKS
 from tests.unit.services.conversation.log_helpers import (
     asked,
     barge,
@@ -287,7 +288,7 @@ class StepScenarios:
         for before, after in pairwise(live):
             assert after[: len(before) - 1] == before[:-1]
             assert after[len(before) - 1].startswith(before[-1])
-        screen = project_screen(CONVERSATION, await rt.entries())
+        screen = project_screen(CONVERSATION, await rt.entries(), TEST_FILE_LINKS)
         settled = [item for item in screen if isinstance(item, ReplyItem)]
         assert live[-1] == settled[0].bubbles
         assert "/workspace/sessions" not in "".join(live[-1])

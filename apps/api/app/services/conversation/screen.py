@@ -51,6 +51,7 @@ from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryD
 from app.services.conversation.reply_files import reply_files
 from app.services.conversation.reply_text import screen_bubbles
 from app.services.conversation.tool_timeline import tool_timeline
+from app.utils.file_links import FileLinks
 from shared.py.approvals import ApprovalOutcome
 from shared.py.conversation_wire import (
     ReplyItem,
@@ -264,12 +265,14 @@ class _Log:
         return WorkStatus.RUNNING if finished is None else WorkStatus(finished.outcome.value)
 
 
-def project_screen(conversation_id: str, entries: Sequence[Positioned]) -> list[ScreenItem]:
+def project_screen(
+    conversation_id: str, entries: Sequence[Positioned], links: FileLinks
+) -> list[ScreenItem]:
     """Return the screen for entries (ascending by seq): every visible item, at the seq it became visible."""
     read = _Log.of(entries)
     items: list[ScreenItem] = []
     for logged in entries:
-        item = _item(conversation_id, logged, read)
+        item = _item(conversation_id, logged, read, links)
         if item is not None:
             items.append(item)
     # Only a reply that became visible by failing sits at a later seq than its own entry.
@@ -278,10 +281,10 @@ def project_screen(conversation_id: str, entries: Sequence[Positioned]) -> list[
 
 
 def text_item(
-    conversation_id: str, logged: Positioned, related: Iterable[Positioned]
+    conversation_id: str, logged: Positioned, related: Iterable[Positioned], links: FileLinks
 ) -> UserItem | ReplyItem | NoticeItem | None:
     """Return the item a message shows on its conversation's screen, reading related for what sits beside it."""
-    item = _item(conversation_id, logged, _Log.of([*related, logged]))
+    item = _item(conversation_id, logged, _Log.of([*related, logged]), links)
     return item if isinstance(item, UserItem | ReplyItem | NoticeItem) else None
 
 
@@ -316,13 +319,15 @@ def needed_beside(
     return sorted(wanted - present), sorted(replies)
 
 
-def _item(conversation_id: str, logged: Positioned, read: _Log) -> ScreenItem | None:
+def _item(
+    conversation_id: str, logged: Positioned, read: _Log, links: FileLinks
+) -> ScreenItem | None:
     seq, at = logged.seq, logged.at
     match logged.entry:
         case UserMessage(retry_of=None) as message:
             return UserItem(id=message.id, seq=seq, at=at, message=message)
         case Reply() as reply:
-            return _reply_item(conversation_id, seq, at, reply, read)
+            return _reply_item(conversation_id, seq, at, reply, read, links)
         case WorkStarted(task_id=task_id) if read.root(task_id) == task_id:
             return _work_item(seq, at, task_id, read)
         case Notice() as notice:
@@ -330,7 +335,7 @@ def _item(conversation_id: str, logged: Positioned, read: _Log) -> ScreenItem | 
                 id=notice.id,
                 seq=seq,
                 at=at,
-                bubbles=screen_bubbles(notice.text, conversation_id),
+                bubbles=screen_bubbles(notice.text, conversation_id, links),
                 tool_data=notice.tool_data,
                 timeline=tool_timeline(notice.tool_data),
                 follow_up_actions=notice.follow_up_actions,
@@ -412,7 +417,12 @@ def _narrates(reply: Reply, settle: ReplySettled | None, read: _Log) -> tuple[st
 
 
 def _reply_item(
-    conversation_id: str, seq: int, at: AwareDatetime, reply: Reply, read: _Log
+    conversation_id: str,
+    seq: int,
+    at: AwareDatetime,
+    reply: Reply,
+    read: _Log,
+    links: FileLinks,
 ) -> ReplyItem | None:
     settled_at = read.settles.get(reply.reply_id)
     settle = None if settled_at is None else settled_at.entry
@@ -438,7 +448,7 @@ def _reply_item(
         id=reply.reply_id,
         seq=seq,
         at=at,
-        bubbles=screen_bubbles(reply.text, conversation_id),
+        bubbles=screen_bubbles(reply.text, conversation_id, links),
         tool_data=shown,
         timeline=tool_timeline(shown),
         follow_up_actions=reply.follow_up_actions,

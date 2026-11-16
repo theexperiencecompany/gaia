@@ -92,6 +92,7 @@ from app.models.conversation_models import (
     _TodoBindingRow,
 )
 from app.services.conversation.screen import RELATED_KINDS, needed_beside, text_item
+from app.utils.artifact_utils import FILE_LINKS
 from app.utils.errors import (
     ConversationAlreadyExistsError,
     ConversationIdTakenError,
@@ -768,7 +769,11 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return [
             ConversationMessageHit(conversation_id=row.conversation_id, item=item)
             for row in rows
-            if (item := text_item(row.conversation_id, row.logged, related[row.conversation_id]))
+            if (
+                item := text_item(
+                    row.conversation_id, row.logged, related[row.conversation_id], FILE_LINKS
+                )
+            )
             is not None
         ]
 

@@ -36,6 +36,7 @@ from app.services.conversation.step_view import StepView
 from app.services.conversation.tool_cards import fold_cards
 from app.services.conversation.tool_timeline import tool_timeline
 from app.services.conversation.verdict import merge_group, quote_target
+from app.utils.file_links import FileLinks
 from shared.py.conversation_wire import (
     CardsDelta,
     FailureReason,
@@ -114,10 +115,9 @@ class Attempt:
     # The reply as settled once the answer was final; the run only adds follow-up suggestions after.
     answered: LoggedEntry | None = None
 
-    @property
-    def bubbles(self) -> tuple[str, ...]:
+    def bubbles(self, links: FileLinks) -> tuple[str, ...]:
         """Return the current segment's bubbles as a client may see them while it streams."""
-        return screen_bubbles(self.text.shown, self.claim.conversation_id)
+        return screen_bubbles(self.text.shown, self.claim.conversation_id, links)
 
     @property
     def attempt_id(self) -> str:

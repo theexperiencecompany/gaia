@@ -243,5 +243,7 @@ async def _show(ports: RuntimePorts, attempt: Attempt, payload: StreamPayload) -
         if is_text(payload):
             first_text_shown()
     attempt.progress = Showing(reply=folded) if showing else Drafting(reply=folded)
-    for change in reply_deltas(before, folded, payload, attempt.shown, attempt.bubbles):
+    for change in reply_deltas(
+        before, folded, payload, attempt.shown, attempt.bubbles(ports.links)
+    ):
         await publish_delta(ports, attempt, change)

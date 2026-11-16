@@ -13,7 +13,7 @@ from enum import StrEnum
 
 from langchain_core.runnables import RunnableConfig
 
-from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.models.agent_config import AgentConfigurable, agent_configurable
 
 
 class Closing(StrEnum):

@@ -140,7 +140,7 @@ async def react_on(ports: RuntimePorts, attempt: Attempt, seqs: Sequence[int], e
 
 async def publish_delta(ports: RuntimePorts, attempt: Attempt, change: ReplyDelta) -> None:
     if isinstance(change, BubbleTextDelta | BubblesDelta):
-        attempt.shown = attempt.bubbles
+        attempt.shown = attempt.bubbles(ports.links)
     delta = ReplyDeltaFrame(
         attempt_id=attempt.attempt_id,
         reply_id=attempt.reply_id,
@@ -217,7 +217,7 @@ async def put_reply(ports: RuntimePorts, attempt: Attempt, reply: Reply) -> Logg
     """Store the segment's final reply; once it is shown, clients are carried to the stored text."""
     if not isinstance(attempt.progress, Showing):
         return await append_opening(ports, attempt, await opening_reply(ports, attempt, reply))
-    settled = screen_bubbles(reply.text, attempt.claim.conversation_id)
+    settled = screen_bubbles(reply.text, attempt.claim.conversation_id, ports.links)
     if settled != attempt.shown:
         await publish_delta(ports, attempt, BubblesDelta(bubbles=settled))
     return await amend_seen(ports, attempt, reply)

@@ -215,6 +215,7 @@ from app.services.workflow.playbook import runner as playbook_runner
 from app.services.workflow.playbook.runner import PlaybookNarration
 from app.services.workflow.playbook.scripted_model import ScriptedCall
 from app.services.workflow.service import WorkflowService
+from app.utils.artifact_utils import FILE_LINKS
 from app.utils.errors import ConversationIdTakenError
 from app.utils.notification.channels.conversation import (
     ConversationChannelAdapter,
@@ -468,6 +469,7 @@ async def rig_for(
                 analytics=PostHogTurnAnalytics(),
                 clock=_now,
                 tick=tick,
+                links=FILE_LINKS,
             )
             holder.append(ports)
             install_runtime_ports(ports)
@@ -883,7 +885,9 @@ async def test_the_events_stream_opens_on_the_screen_and_patches_it_to_the_log_p
         frames = event_stream.follow_screen(rig.ports.log, rig.conversation_id, rig.user_id)
         opened = await anext(frames)
         assert isinstance(opened, ScreenFrame)
-        assert list(opened.items) == project_screen(rig.conversation_id, await rig.entries())
+        assert list(opened.items) == project_screen(
+            rig.conversation_id, await rig.entries(), FILE_LINKS
+        )
         shown = list(opened.items)
         while await anext(frames) is not None:
             pass
@@ -896,7 +900,7 @@ async def test_the_events_stream_opens_on_the_screen_and_patches_it_to_the_log_p
             elif isinstance(frame, ScreenUpdateFrame):
                 shown = [frame.item if item.id == frame.item.id else item for item in shown]
         await frames.aclose()
-    assert shown == project_screen(rig.conversation_id, await rig.entries())
+    assert shown == project_screen(rig.conversation_id, await rig.entries(), FILE_LINKS)
     assert [item.id for item in shown][: len(opened.items)] == [item.id for item in opened.items]
 
 
@@ -1610,7 +1614,7 @@ async def test_a_multi_bubble_reply_with_work_shows_live_exactly_what_a_reload_s
         await rig.settle()
         await _until_quiet(frames, screen)
         await frames.aclose()
-    reloaded = project_screen(rig.conversation_id, await rig.entries())
+    reloaded = project_screen(rig.conversation_id, await rig.entries(), FILE_LINKS)
     replies = [item for item in reloaded if isinstance(item, ReplyItem)]
     work = next(item for item in reloaded if isinstance(item, WorkItem))
     assert screen.items == reloaded
@@ -1716,7 +1720,7 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
     await rig.settle()
     [work] = [
         item
-        for item in project_screen(rig.conversation_id, await rig.entries())
+        for item in project_screen(rig.conversation_id, await rig.entries(), FILE_LINKS)
         if isinstance(item, WorkItem)
     ]
     [card] = work.approvals
@@ -3170,7 +3174,7 @@ async def _asking_on_a_ledger_approval(
 def _approval_card(conversation_id: str, entries: Sequence[LoggedEntry]) -> ApprovalRequestEntry:
     [work] = [
         item
-        for item in project_screen(conversation_id, entries)
+        for item in project_screen(conversation_id, entries, FILE_LINKS)
         if isinstance(item, WorkItem) and item.task_id == "t1"
     ]
     [card] = work.approvals

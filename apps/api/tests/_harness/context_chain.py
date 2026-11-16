@@ -44,6 +44,7 @@ from app.agents.llm.lane import ModelLane
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.templates.agent_template import EXECUTOR_PROMPT_TEMPLATE
 from app.config.settings import settings
+from app.constants.chat import ConversationSource
 from app.constants.llm import DEFAULT_MAX_TOKENS, LLMProviderName
 from app.helpers.agent_helpers import (
     AgentIdentity,
@@ -68,6 +69,9 @@ FIXED_NOW = datetime(2026, 3, 17, 14, 30, tzinfo=UTC)
 #: same reason as the clock: settings.HOST is read straight into the seeded
 #: text, so an unpinned one bakes whatever apps/api/.env sets on the recording machine.
 FIXED_HOST = "https://api.heygaia.io"
+
+#: The surface a comms turn is read on, as the comms step sets it: its prompt cannot be built without one.
+HARNESS_SURFACE = ConversationSource.WEB
 
 #: The spawned-subagent tier builds its static prompt from the spawning caller's
 #: text rather than a template, so the harness supplies a stable stand-in.
@@ -191,6 +195,7 @@ async def build_configurable(
             vfs_session_id="conv-1",
         ),
         turn=AgentTurn(
+            source=HARNESS_SURFACE.value if tier is AgentTier.COMMS else None,
             user_preferences=user.preferences or None,
             writing_style=user.writing_style or None,
         ),
@@ -258,7 +263,7 @@ async def _seed_comms(
             user_name=user.name,
             user_dict=user_dict,
             conversation_id="conv-1",
-            source=configurable.get("conversation_source"),
+            source=ConversationSource(configurable.get("conversation_source")),
             active_todo_id=configurable.get("active_todo_id"),
             execution_mode=configurable.get("execution_mode") or "interactive",
             presence=configurable.get("presence"),

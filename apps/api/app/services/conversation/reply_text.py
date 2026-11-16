@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from app.models.conversation_frame_models import MessageBoundaryEvent, ResponseEvent
-from app.utils.artifact_utils import resolve_sandbox_paths, unfinished_path_start
+from app.utils.file_links import FileLinks, unfinished_path_start
 from app.utils.message_breaks import split_message_bubbles
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, BubblesDelta, BubbleTextDelta
 
@@ -60,9 +60,9 @@ def _joined_bubbles(raw: str) -> str:
     return NEW_MESSAGE_BREAKER.join(split_message_bubbles(raw))
 
 
-def screen_bubbles(text: str, conversation_id: str) -> tuple[str, ...]:
+def screen_bubbles(text: str, conversation_id: str, links: FileLinks) -> tuple[str, ...]:
     """Return the bubbles every client shows for a reply's text, live or settled: sandbox paths resolved, then split."""
-    return tuple(split_message_bubbles(resolve_sandbox_paths(text, conversation_id)))
+    return tuple(split_message_bubbles(links.resolve(text, conversation_id)))
 
 
 def bubble_deltas(shown: Sequence[str], now: Sequence[str]) -> list[BubbleTextDelta | BubblesDelta]:

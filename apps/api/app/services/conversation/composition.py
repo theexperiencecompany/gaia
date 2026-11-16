@@ -37,6 +37,7 @@ from app.services.conversation.ports import ConversationAnalyticsEvent, Frames, 
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.step import advance, fold_history
 from app.services.workflow.thread_reset import reset_workflow_threads
+from app.utils.artifact_utils import FILE_LINKS
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.context import AnalyticsContext, analytics_context
@@ -214,6 +215,7 @@ def build_runtime_ports() -> RuntimePorts:
         analytics=PostHogTurnAnalytics(),
         clock=_now,
         tick=_tick,
+        links=FILE_LINKS,
     )
 
 
