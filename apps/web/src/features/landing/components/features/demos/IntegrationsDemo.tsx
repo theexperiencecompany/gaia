@@ -46,6 +46,7 @@ export default function IntegrationsDemo() {
             width: 14,
             height: 14,
             showBackground: false,
+            loading: index === 0 ? "eager" : undefined,
           });
           return (
             <m.div
