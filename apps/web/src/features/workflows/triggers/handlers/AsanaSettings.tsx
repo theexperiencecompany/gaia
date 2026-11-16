@@ -6,7 +6,7 @@
 
 "use client";
 
-import { Input } from "@heroui/input";
+import { Input } from "@heroui/react";
 
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 
@@ -75,7 +75,7 @@ export function AsanaSettings({
           aria-label="Project GID"
           placeholder="Enter project GID (e.g. 1213430481840948)"
           value={triggerData?.project_gid || ""}
-          onValueChange={(val) => updateTriggerData({ project_gid: val })}
+          onChange={(e) => updateTriggerData({ project_gid: e.target.value })}
           className="w-full"
         />
       </TriggerSettingRow>

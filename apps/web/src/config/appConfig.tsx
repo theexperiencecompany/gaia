@@ -279,7 +279,6 @@ export const appConfig = {
     ] as AppLink[],
 
     company: [
-      navLink("/manifesto", "Manifesto", GlobalIcon, "Our mission and vision"),
       navLink(
         "/brand",
         "Branding",
@@ -425,6 +424,7 @@ export const footerSections: LinkSection[] = [
       { label: "Marketplace", href: "/marketplace" },
       { label: "Bots", href: "/bots" },
       { label: "Pricing", href: "/pricing" },
+      { label: "Sign Up", href: "/signup" },
       { label: "Roadmap", href: vanityTarget("/roadmap"), external: true },
     ],
   },
@@ -466,9 +466,9 @@ export const footerSections: LinkSection[] = [
     title: "Company",
     links: [
       { label: "About", href: "/about" },
-      { label: "Manifesto", href: "/manifesto" },
       { label: "Contact", href: "/contact" },
       { label: "Branding", href: "/brand" },
+      { label: "Tools We Love", href: "/thanks" },
     ],
   },
   {

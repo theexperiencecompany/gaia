@@ -1,3 +1,4 @@
+import "../../../../../styles/content.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getAllCombos } from "@/features/integrations/data/combosData";
@@ -28,8 +29,11 @@ export const dynamicParams = false;
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const { locale } = await params;
-  return automateHubMetadata(locale);
+  const [{ locale, page }, combos] = await Promise.all([
+    params,
+    getAllCombos(),
+  ]);
+  return automateHubMetadata(locale, Number(page), hubPageCount(combos.length));
 }
 
 export default async function AutomateHubPage({ params }: PageProps) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { CheckmarkCircle02Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
@@ -54,7 +54,7 @@ export function StatusIndicator({
             className="col-start-1 row-start-1 grid place-items-center text-zinc-500"
             key="working"
           >
-            <Spinner size="sm" variant="simple" />
+            <Spinner size="sm" />
           </m.span>
         )}
       </AnimatePresence>

@@ -191,7 +191,7 @@ const TITLE_MAX_LENGTH = SEO_SNIPPET.titleLength.max;
 /** Shortest title that still says what the page is about. */
 const TITLE_MIN_LENGTH = SEO_SNIPPET.titleLength.min;
 /** Longest meta description a result snippet shows without truncating it. */
-const DESCRIPTION_MAX_LENGTH = 160;
+const DESCRIPTION_MAX_LENGTH = SEO_SNIPPET.descriptionLength.max;
 const BRAND_SUFFIX = ` | ${siteConfig.short_name}`;
 const BRAND_PATTERN = new RegExp(`\\b${siteConfig.short_name}\\b`);
 

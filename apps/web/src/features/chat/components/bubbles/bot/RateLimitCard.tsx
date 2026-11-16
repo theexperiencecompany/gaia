@@ -1,8 +1,8 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Divider } from "@heroui/divider";
+import { Chip, Separator } from "@heroui/react";
 import { Clock01Icon, UploadCircle01Icon } from "@icons";
 import type { RateLimitData } from "@shared/chat";
+import { separatorVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useRateLimitCard } from "@/features/chat/hooks/useRateLimitCard";
 import { DailyLimitBody, UpgradeRequiredBody } from "./RateLimitCardBody";
 
@@ -48,18 +48,15 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
 
         <Chip
           size="sm"
-          variant="flat"
+          variant="soft"
           color={isUpgradeRequired ? "warning" : "danger"}
-          classNames={{
-            base: `shrink-0 ${isUpgradeRequired ? "bg-warning/15" : "bg-red-500/15"}`,
-            content: "text-xs font-semibold",
-          }}
+          className="shrink-0 text-xs font-semibold"
         >
           {isUpgradeRequired ? planName : "Limit Hit"}
         </Chip>
       </div>
 
-      <Divider className="bg-zinc-700/50" />
+      <Separator className={separatorVariants({ surface: "raised" })} />
 
       {/* Body */}
       <div className="flex flex-col gap-3 p-4">
@@ -81,19 +78,19 @@ export default function RateLimitCard({ data }: RateLimitCardProps) {
 
       {showFooter && (
         <>
-          <Divider className="bg-zinc-700/50" />
+          <Separator className={separatorVariants({ surface: "raised" })} />
 
           {/* Footer CTA */}
           <div className="p-3">
-            <Button
+            <GaiaButton
               size="sm"
-              color="primary"
-              variant={isUpgradeRequired ? "solid" : "flat"}
+              shape="md"
+              variant={isUpgradeRequired ? "primary" : "accent-soft"}
               onPress={openPlans}
-              className="w-full rounded-xl font-medium"
+              className="w-full font-medium"
             >
               {isUpgradeRequired ? `Upgrade to ${planName}` : "View Plans"}
-            </Button>
+            </GaiaButton>
           </div>
         </>
       )}

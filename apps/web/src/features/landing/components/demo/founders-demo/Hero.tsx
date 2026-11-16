@@ -1,4 +1,4 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import * as m from "motion/react-m";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import GetStartedButton from "../../shared/GetStartedButton";
@@ -24,7 +24,7 @@ export default function Hero() {
         transition={{ duration: 0.5, ease }}
         className="relative z-10 mb-6"
       >
-        <Chip variant="flat" color="primary" size="md">
+        <Chip variant="soft" color="accent" size="md">
           For Founders
         </Chip>
       </m.div>

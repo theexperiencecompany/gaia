@@ -1,11 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Cancel01Icon, LinkBackwardIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type React from "react";
 import { useEffect, useRef } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useComposerUI } from "@/stores/composerStore";
 import type { ReplyToMessageData } from "@/stores/composerStore.types";
 
@@ -131,7 +131,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
               damping: 20,
               stiffness: 300,
             }}
-            className="relative flex mt-2 w-full items-center cursor-pointer justify-between rounded-2xl px-3 py-2 hover:bg-zinc-700/70 border-dashed border-zinc-500 bg-zinc-700/40 border-1.5 group overflow-hidden"
+            className="relative flex mt-2 w-full items-center cursor-pointer justify-between rounded-2xl px-3 py-2 hover:bg-zinc-700/70 border-dashed border-zinc-500 bg-zinc-700/40 border group overflow-hidden"
             onClick={handleClick}
           >
             <div className="flex items-center gap-2">
@@ -151,15 +151,17 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
 
             <div className="absolute right-2">
               {onRemove && (
-                <Button
+                <GaiaButton
+                  aria-label="Remove reply"
+                  variant="default-solid"
+                  shape="pill"
                   type="button"
                   onPress={onRemove}
                   isIconOnly
                   size="sm"
-                  radius="full"
                 >
                   <Cancel01Icon width={14} height={14} />
-                </Button>
+                </GaiaButton>
               )}
             </div>
           </m.div>
