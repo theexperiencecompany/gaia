@@ -7,7 +7,7 @@ import pytest
 
 from app.agents.prompts.workflow_prompts import TRIGGERED_ACCOUNT_SECTION
 from app.constants.agents import PLAYBOOK_FALLBACK_CONTEXT_KEY
-from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS, ConversationSource
 from app.constants.waits import WAIT_MET_CONTEXT_KEY
 from app.helpers.message_helpers import (
     _uploaded_file_lines,
@@ -33,9 +33,15 @@ class TestCreateSystemMessage:
 
     def test_comms_agent_static_is_per_channel(self) -> None:
         """Different user_name must produce identical content on the same channel; different channels differ."""
-        web_a = create_system_message(user_name="Foo", agent_type="comms", source="web")
-        web_b = create_system_message(user_name="Bar", agent_type="comms", source="web")
-        whatsapp = create_system_message(user_name="Foo", agent_type="comms", source="whatsapp")
+        web_a = create_system_message(
+            user_name="Foo", agent_type="comms", source=ConversationSource.WEB
+        )
+        web_b = create_system_message(
+            user_name="Bar", agent_type="comms", source=ConversationSource.WEB
+        )
+        whatsapp = create_system_message(
+            user_name="Foo", agent_type="comms", source=ConversationSource.WHATSAPP
+        )
         assert isinstance(web_a, SystemMessage)
         assert web_a.content == web_b.content
         assert web_a.content != whatsapp.content
@@ -53,13 +59,15 @@ class TestCreateSystemMessage:
         assert len(msg_a.content) > 0
 
     def test_default_name_not_injected(self) -> None:
-        msg = create_system_message()
+        msg = create_system_message(source=ConversationSource.WEB)
         # "there" used to be injected as user_name fallback; no longer.
         assert "{user_name}" not in msg.content
 
     def test_unknown_agent_type_defaults_to_comms(self) -> None:
-        msg = create_system_message(user_name="X", agent_type="unknown")  # type: ignore[arg-type]  # out-of-Literal value exercises the unknown-agent branch
-        comms = create_system_message(agent_type="comms")
+        msg = create_system_message(
+            user_name="X", agent_type="unknown", source=ConversationSource.WEB
+        )  # type: ignore[arg-type]  # out-of-Literal value exercises the unknown-agent branch
+        comms = create_system_message(agent_type="comms", source=ConversationSource.WEB)
         assert isinstance(msg, SystemMessage)
         assert msg.content == comms.content
 
