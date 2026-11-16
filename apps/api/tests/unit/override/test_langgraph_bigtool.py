@@ -2726,19 +2726,19 @@ class TestAfterTools:
     """A turn ends after the tools only when its turn-ending calls all went through."""
 
     @staticmethod
-    def route(state: dict[str, list[AnyMessage]], config: RunnableConfig) -> str:
+    def route(state: State, config: RunnableConfig) -> str:
         # Built per call: a route made at import would outlive the mutant under test.
         return _after_tools(turn_ending, "end_turn")(state, config)
 
     @staticmethod
-    def _reacted(emoji: str, status: str) -> dict[str, list[AnyMessage]]:
+    def _reacted(emoji: str, status: str) -> State:
         call = ToolCall(name=REACT_TOOL_NAME, args={"emoji": emoji, "message_id": 1}, id="r1")
-        return {
-            "messages": [
+        return _make_state(
+            messages=[
                 AIMessage(content="", tool_calls=[call]),
                 ToolMessage(content="done", tool_call_id="r1", status=status),
             ]
-        }
+        )
 
     def test_a_turn_ending_call_that_went_through_ends_the_turn(self) -> None:
         assert self.route(self._reacted("👍", "success"), {}) == "end_turn"

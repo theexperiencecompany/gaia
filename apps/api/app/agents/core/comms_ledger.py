@@ -114,7 +114,7 @@ def close(
         return tuple(ledger.given[seq] for seq in named)
     ids = _checked(ledger, named)
     ledger.open.difference_update(named)
-    ledger.closed.append(Closure(how=how, seqs=named, emoji=emoji))
+    ledger.closed.append(Closure(how=how, seqs=named))
     return ids
 
 
