@@ -18,7 +18,6 @@ async def _project(
         kind=artifact.kind,
         title=artifact.title,
         program=artifact.program,
-        version=artifact.version,
         created_at=artifact.created_at,
         shared_by=owner.name if owner is not None and owner.name else None,
     )

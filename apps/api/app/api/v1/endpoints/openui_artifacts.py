@@ -20,7 +20,7 @@ async def get_artifact(
     """One of the user's artifacts, program included."""
     log.set(user={"id": user.user_id}, artifact={"operation": "read", "id": artifact_id})
     artifact = await read_artifact(user.user_id, artifact_id)
-    log.set_ns("artifact", kind=artifact.kind.value, version=artifact.version)
+    log.set_ns("artifact", kind=artifact.kind.value)
     return artifact
 
 

@@ -13054,8 +13054,6 @@ export interface components {
             program: string;
             /** Title */
             title: string;
-            /** Version */
-            version: number;
         };
         /**
          * PaginatedNotificationsResponse
@@ -14014,8 +14012,6 @@ export interface components {
             target_type: "openui_artifact";
             /** Title */
             title: string;
-            /** Version */
-            version: number;
         };
         /**
          * PublicSessionArtifact

@@ -15055,10 +15055,6 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
@@ -15066,7 +15062,6 @@
           "kind",
           "title",
           "program",
-          "version",
           "conversation_id",
           "created_at"
         ],
@@ -17019,10 +17014,6 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
@@ -17030,7 +17021,6 @@
           "kind",
           "title",
           "program",
-          "version",
           "created_at",
           "shared_by"
         ],

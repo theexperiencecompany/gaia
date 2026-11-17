@@ -52,19 +52,13 @@ class OpenUIArtifact(UserScopedDocument):
     brief_hash: str
     model: str
     repairs: int = 0
-    version: int = 1
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime | None = None
 
 
 class OpenUIArtifactUpdate(BaseModel):
-    """Typed ``$set`` fields for an artifact."""
+    """An artifact is written once: no field can be ``$set``."""
 
     model_config = ConfigDict(extra="forbid")
-
-    title: str | None = None
-    program: str | None = None
-    version: int | None = None
 
 
 class OpenUIArtifactResponse(ResponseModel):
@@ -74,6 +68,5 @@ class OpenUIArtifactResponse(ResponseModel):
     kind: ArtifactKind
     title: str
     program: str
-    version: int
     conversation_id: str | None
     created_at: datetime

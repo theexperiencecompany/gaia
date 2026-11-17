@@ -18,7 +18,6 @@ ARTIFACT = OpenUIArtifact(
     program='root = Artifact("Q3 plan", "s", [], [])',
     brief_hash="h",
     model="gpt-6-luna",
-    version=3,
 )
 
 
@@ -28,7 +27,6 @@ async def test_the_owner_reads_their_artifact_and_the_event_names_it(client: Asy
         kind=ARTIFACT.kind,
         title=ARTIFACT.title,
         program=ARTIFACT.program,
-        version=ARTIFACT.version,
         conversation_id=None,
         created_at=ARTIFACT.created_at,
     )
@@ -40,7 +38,7 @@ async def test_the_owner_reads_their_artifact_and_the_event_names_it(client: Asy
     assert response.json()["program"] == ARTIFACT.program
     read.assert_awaited_once_with(FAKE_USER.user_id, "a1")
     assert event["user"] == {"id": FAKE_USER.user_id}
-    assert event["artifact"] == {"operation": "read", "id": "a1", "kind": "report", "version": 3}
+    assert event["artifact"] == {"operation": "read", "id": "a1", "kind": "report"}
 
 
 async def test_the_owner_downloads_a_pdf_named_after_the_title(client: AsyncClient) -> None:

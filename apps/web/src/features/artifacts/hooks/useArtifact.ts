@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchArtifact } from "../api/artifactsApi";
 
-/** A stored artifact; a null id waits. A version's program never changes, so it is never refetched. */
+/** A stored artifact; a null id waits. An artifact is written once, so it is never refetched. */
 export function useArtifact(artifactId: string | null) {
   return useQuery({
     queryKey: ["artifact", artifactId],
