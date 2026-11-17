@@ -1,11 +1,11 @@
-# /stop while a tool call is still running (a subagent the work spawned, whose
-# model holds its step), then new work in the same conversation. The stop must
-# leave no call unanswered in the work's thread: a real provider, and the stub,
-# refuse a thread holding one, which broke every later run (bug 24).
+# /stop while a subagent the work spawned is still working (its model holds its
+# step), then new work in the same conversation. The stop must leave the work's
+# thread one the model accepts: a real provider, and the stub, refuse a thread
+# holding a call with no result, which once failed every later run.
 #
 #   mise dev --sim
-#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/stop-mid-tool-call.yaml
-name: stop mid tool call
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/stop-during-subagent.yaml
+name: stop during subagent
 emulate: telegram
 user: bot-stop-mid-tool-scenario@gaia.local
 turns:

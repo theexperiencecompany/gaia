@@ -92,9 +92,9 @@ test.describe("screen during work", () => {
     expect(botLinesReading(live, "Oat milk too."), "one result").toBe(1);
   });
 
-  // Bug 24: a stop while a tool call was in flight left the call unanswered in the
-  // executor's thread, and the provider refused every later run in the conversation.
-  test("a stop while a tool is running leaves the chat able to run new work", async ({
+  // A stop must leave the work's thread one the model accepts: the stub, like a real
+  // provider, refuses a thread holding a call with no result, which failed every later run.
+  test("a stop while a subagent is working leaves the chat able to run new work", async ({
     page,
   }) => {
     const subagentTask = `look into it [[wait:${3 * HOLD_MS}]] [[say:Sub done.]]`;
@@ -103,7 +103,7 @@ test.describe("screen during work", () => {
       page,
       `research [[tool:spawn_subagent ${JSON.stringify({ task: subagentTask, background: false })}]] [[say:Never said.]]`,
     );
-    // The subagent's model holds its step, so the executor's spawn call is in flight.
+    // The subagent's model holds its step while the stop lands.
     await expect(loadingRow(page)).toHaveText(/Working on part of it/, {
       timeout: TURN_MS,
     });
