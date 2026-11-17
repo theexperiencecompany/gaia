@@ -33,6 +33,7 @@ from app.agents.prompts.briefing_prompts import (
     build_weekly_voice_prompt,
     voice_unreadable_note,
 )
+from app.config.settings import settings
 from app.constants.briefing import (
     BRIEF_VOICE_LABEL,
     CALENDAR_UNAVAILABLE,
@@ -137,10 +138,10 @@ from app.services.briefing.candidates.subjects import subject_key
 from app.services.briefing.composition import compose, headings as composition_headings
 from app.services.briefing.composition.headings import HeadingVerdict, HeadingVerdicts
 from app.services.briefing.dormancy import DormancyState
-from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artwork_weights, artworks_for
 from app.services.briefing.prose import reader_block
+from app.services.briefing.render import RenderedImage
 from app.services.briefing.scouts import service as scout_service
 from app.services.briefing.scouts.facts import SHOWN_NOT_TOTAL
 from app.services.cost_budget import DAILY_BUDGET_STOP_FREE
@@ -163,13 +164,11 @@ _DAY_START = datetime(2026, 10, 12, 18, 30, tzinfo=UTC)
 _WEEK_START = datetime(2026, 10, 11, 18, 30, tzinfo=UTC)
 _EVENT = BriefingEvent(date="2026-10-14", start="11:00", title="Sequoia")
 _CHAT = ChatChannel(source=ConversationSource.TELEGRAM, platform_user_id="tg-1", basis="priority")
-_EDITION = HostedEditionImage(
-    display_url="https://cdn.example/f_auto/brief",
-    chat_url="https://cdn.example/f_jpg/brief",
-    fold=0.3,
-    paper=(0.1, 0.2, 0.9, 0.8),
-)
+_RENDERED = RenderedImage(image=b"edition-png", fold=0.3, paper=(0.1, 0.2, 0.9, 0.8))
 _BRIEF_ID = "brief_abc123"
+_EDITION_KEY = "edition0key0of0the0brief0abc0123"
+_EDITION_URL = f"{settings.HOST}/api/v1/briefings/editions/{_EDITION_KEY}/png?t="
+_CHAT_EDITION_URL = f"{settings.HOST}/api/v1/briefings/editions/{_EDITION_KEY}/jpg?t="
 _BRIEF_LINK = "https://heygaia.link/briefabc123"
 _ORCHESTRATED = ["inapp", "email"]
 
@@ -411,7 +410,8 @@ class World:
     set_channels: AsyncMock
     notify: AsyncMock
     post: AsyncMock
-    host_image: AsyncMock
+    render: AsyncMock
+    store_edition: AsyncMock
     consume: AsyncMock
     capture: MagicMock
     voice_prompt: MagicMock
@@ -601,7 +601,7 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
                 date=date,
                 kind=kind,
                 payload=payload,
-                edition_image_url=edition.image_url if edition else None,
+                edition=edition,
             )
         ),
         mint=AsyncMock(return_value=_BRIEF_LINK),
@@ -610,7 +610,8 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
             return_value=SimpleNamespace(channels=[_delivered(c) for c in _ORCHESTRATED])
         ),
         post=AsyncMock(return_value=OutboundResult.PUBLISHED),
-        host_image=AsyncMock(side_effect=lambda payload, *, owner_id, render_key: _EDITION),
+        render=AsyncMock(return_value=_RENDERED),
+        store_edition=AsyncMock(return_value=_EDITION_KEY),
         consume=AsyncMock(),
         capture=MagicMock(),
         voice_prompt=MagicMock(wraps=build_briefing_voice_prompt),
@@ -654,7 +655,9 @@ def world(monkeypatch: pytest.MonkeyPatch) -> Iterator[World]:
             )
         ),
     )
-    monkeypatch.setattr(store, "host_edition_image", w.host_image)
+    monkeypatch.setattr(store, "render_edition_png", w.render)
+    monkeypatch.setattr(store, "store_edition", w.store_edition)
+    monkeypatch.setattr(settings, "INSTANCE_SECRET", "s" * 48)
     monkeypatch.setattr(delivery, "post_to_platform_chat", w.post)
     monkeypatch.setattr(publish, "capture", w.capture)
     _seam(
@@ -783,13 +786,14 @@ class TestDailyBrief:
         message = "Approve the Priya reply\nInvestor update\nSequoia"
         assert payload.message == message
         assert world.upsert.await_args.kwargs["edition"] == EditionRender(
-            image_url=_EDITION.display_url, fold=0.3, paper=[0.1, 0.2, 0.9, 0.8]
+            key=_EDITION_KEY, fold=0.3, paper=[0.1, 0.2, 0.9, 0.8]
         )
+        world.store_edition.assert_awaited_once_with(_USER, _BRIEF_ID, _RENDERED.image)
         request = world.notify.await_args.args[0]
-        assert request.metadata["edition_image_url"] == _EDITION.display_url
+        assert request.metadata["edition"]["image_url"].startswith(_EDITION_URL)
         # One URL, minted before the render: the edition's codes, the email image and the chat post.
         world.mint.assert_awaited_with(_USER, ShortLinkTargetType.BRIEFING, _BRIEF_ID)
-        assert world.host_image.await_args.args[0].link == _BRIEF_LINK
+        assert world.render.await_args.args[0].link == _BRIEF_LINK
         assert request.metadata["brief_url"] == _BRIEF_LINK
         assert request.content.actions[0].config.redirect.url == f"/brief/{_BRIEF_ID}"
         assert [c.channel_type for c in request.channels] == _ORCHESTRATED
@@ -797,13 +801,15 @@ class TestDailyBrief:
         # GAIA's Briefings-conversation message carries the same folded card the notification does.
         user_id, text, card = world.brief_message.await_args.args
         assert (user_id, text, card.briefing_id, card.kind) == (_USER, message, _BRIEF_ID, "daily")
-        assert (card.needs_you_count, card.edition_image_url) == (1, _EDITION.display_url)
+        assert card.needs_you_count == 1
+        assert card.edition is not None and card.edition.image_url.startswith(_EDITION_URL)
         assert request.metadata["needs_you_count"] == card.needs_you_count
         assert request.content.body == message
         assert request.content.rich_content == payload.model_dump()
-        world.host_image.assert_awaited_once()
+        world.render.assert_awaited_once()
         post = world.post.await_args.kwargs
-        assert (post["channel"], post["image"].url) == (_CHAT, _EDITION.chat_url)
+        assert post["channel"] == _CHAT
+        assert post["image"].url.startswith(_CHAT_EDITION_URL)
         assert split_message_bubbles(post["text"]) == [
             "Your morning, sorted",
             f"{message}\n\nFull brief: {_BRIEF_LINK}",
@@ -816,19 +822,18 @@ class TestDailyBrief:
 
         await daily.run_daily_briefing(_USER)
 
-        world.host_image.assert_awaited_once()
+        world.render.assert_awaited_once()
         world.post.assert_not_awaited()
         assert world.set_channels.await_args.args[3] == _ORCHESTRATED
 
-    async def test_every_render_is_hosted_under_one_fresh_opaque_key(self, world: World) -> None:
-        """The image URL goes out in emails and public links, so it names no user, kind or date."""
+    async def test_a_rerun_stores_its_edition_over_the_one_its_brief_had(
+        self, world: World
+    ) -> None:
         await daily.run_daily_briefing(_USER)
         await daily.run_daily_briefing(_USER)
 
-        assert {c.kwargs["owner_id"] for c in world.host_image.await_args_list} == {_USER}
-        keys = [c.kwargs["render_key"] for c in world.host_image.await_args_list]
-        assert len(keys) == 2 and keys[0] != keys[1]
-        assert re.fullmatch(r"[0-9a-f]{32}", keys[0])
+        stored = [c.args[:2] for c in world.store_edition.await_args_list]
+        assert stored == [(_USER, _BRIEF_ID), (_USER, _BRIEF_ID)]
 
     async def test_the_edition_is_addressed_to_the_user_by_name(self, world: World) -> None:
         await daily.run_daily_briefing(_USER)
@@ -941,7 +946,7 @@ class TestDailyBrief:
 
         assert await daily.run_daily_briefing(_USER) is BriefingRunOutcome.SENT
 
-        world.host_image.assert_not_awaited()
+        world.render.assert_not_awaited()
         world.agent.assert_not_awaited()
         payload = _stored_payload(world)
         assert payload.form is BriefForm.QUIET_NOTE
@@ -985,7 +990,7 @@ class TestDailyBrief:
         await daily.run_daily_briefing(_USER)
 
         assert _stored_payload(world).form is BriefForm.QUIET_NOTE
-        world.host_image.assert_not_awaited()
+        world.render.assert_not_awaited()
 
     async def test_a_day_with_something_new_is_an_edition_even_beside_repeats(
         self, world: World
@@ -1247,7 +1252,7 @@ class TestDailyBrief:
         payload = _stored_payload(world)
         assert payload.form is BriefForm.EDITION
         assert [e.title for e in payload.calendar] == ["Sequoia"]
-        world.host_image.assert_awaited_once()
+        world.render.assert_awaited_once()
 
     async def test_a_calendar_that_did_not_answer_is_named_unavailable_never_empty(
         self, world: World
@@ -1929,7 +1934,7 @@ class TestTheWeeklyAnswersTheWeek:
 
         world.composer.assert_not_awaited()
         world.agent.assert_not_awaited()
-        world.host_image.assert_not_awaited()
+        world.render.assert_not_awaited()
         payload = _stored_payload(world)
         assert world.upsert.await_args.args[2] == "weekly"
         assert (payload.form, payload.kicker, payload.headline) == (
@@ -3087,7 +3092,7 @@ class TestTheDailyRunWiring:
         await daily.run_daily_briefing(_USER)
 
         payload = _stored_payload(world)
-        assert [c.args[0] for c in world.host_image.await_args_list] == [payload]
+        assert [c.args[0] for c in world.render.await_args_list] == [payload]
         request = world.notify.await_args.args[0]
         assert request.priority == 2
         action = request.content.actions[0]
@@ -3573,7 +3578,7 @@ class TestOnlyTheItemsTheBriefLinksAreShared:
 
         request = world.notify.await_args.args[0]
         assert request.metadata["brief_url"] == f"https://app.test/brief/{_BRIEF_ID}"
-        assert world.host_image.await_args.args[0].link == f"https://app.test/brief/{_BRIEF_ID}"
+        assert world.render.await_args.args[0].link == f"https://app.test/brief/{_BRIEF_ID}"
         world.post.assert_awaited_once()
         assert world.post.await_args.kwargs["text"].endswith(
             f"Full brief: https://app.test/brief/{_BRIEF_ID}"

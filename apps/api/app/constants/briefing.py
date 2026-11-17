@@ -352,8 +352,7 @@ BRIEFING_RUN_SUMMARIES: Final[dict[BriefingRunOutcome, str]] = {
 }
 
 # Every surface shows the edition at most 540 CSS px wide (email column, chat
-# bubble); 2x covers retina screens. The 2-6 MB original upload stays on the CDN,
-# and each surface is served a delivery transformation capped at this width.
+# bubble); 2x covers retina screens, so the stored variants are capped at this width.
 EDITION_DELIVERY_MAX_WIDTH_PX: Final[int] = 1080
 
 # Every edition template marks the top of its first body block, after the header, with
@@ -366,17 +365,26 @@ PAPER_MARKER_SELECTOR: Final[str] = "[data-paper]"
 
 
 # A desk family's edition is transparent around its paper; a JPG has no alpha, so it is
-# flattened onto Air Mail's desk base instead of Cloudinary's default white.
-EDITION_JPG_BACKGROUND: Final[str] = "rgb:23262a"
+# flattened onto Air Mail's desk base.
+EDITION_JPG_BACKGROUND: Final[tuple[int, int, int]] = (0x23, 0x26, 0x2A)
+EDITION_JPG_QUALITY: Final[int] = 85
+
+# How long a handed-out edition URL loads: an email opened weeks later still shows its image.
+EDITION_URL_TTL_DAYS: Final[int] = 365
+# How long a browser may reuse an edition image: a same-day re-render keeps its URL.
+EDITION_IMAGE_MAX_AGE_SECONDS: Final[int] = 3_600
+# An edition key's length in hex characters: 128 bits, unguessable.
+EDITION_KEY_CHARS: Final[int] = 32
+# Signs edition URLs apart from every other use of the instance secret.
+EDITION_URL_SALT: Final[str] = "brief-edition-url"
 
 
-class EditionDeliveryFormat(StrEnum):
-    """Cloudinary fetch format for an edition delivery URL."""
+class EditionVariant(StrEnum):
+    """One stored encoding of a brief's edition, at most EDITION_DELIVERY_MAX_WIDTH_PX wide."""
 
-    # Negotiated per client from its Accept header (AVIF/WebP, else PNG): browsers and email.
-    AUTO = "auto"
-    # Chat platforms download the file themselves and pick photo vs document by
-    # its size, so they get one fixed, compact format.
+    #: The app and the email: lossless, keeping a desk family's transparency.
+    PNG = "png"
+    #: Chat platforms, which pick photo vs document by size: compact, flattened on the desk base.
     JPG = "jpg"
 
 

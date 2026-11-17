@@ -731,6 +731,10 @@ async def create_briefing_indexes() -> None:
             unique=True,
             name="user_date_kind_unique",
         )
+        # A signed edition URL names only its key: the image route finds the brief by it.
+        await briefings_collection.create_index(
+            [("edition.key", 1)], unique=True, sparse=True, name="edition_key_unique"
+        )
         # The archive now sorts on the unique index (date, kind); drop the old write-time one.
         try:
             await briefings_collection.drop_index("user_id_1_created_at_-1")

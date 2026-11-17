@@ -379,14 +379,30 @@ def new_briefing_id() -> str:
     return f"brief_{uuid.uuid4().hex[:12]}"
 
 
-class EditionRender(BaseModel):
-    """Where a brief's hosted edition render lives, and where its letter sits on it."""
+class EditionLayout(BaseModel):
+    """Where an edition's letter folds and where its paper lies on it."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, json_schema_serialization_defaults_required=True)
 
-    image_url: str
-    fold: float | None = None
-    paper: list[float] | None = None
+    fold: float | None = Field(
+        default=None, description="Share of the edition's height where its letter folds."
+    )
+    paper: list[float] | None = Field(
+        default=None,
+        description="The paper's box on its desk as [left, top, right, bottom] shares; None when it fills the image.",
+    )
+
+
+class EditionRender(EditionLayout):
+    """A brief's stored edition: the opaque key its image blobs are stored under, and its layout."""
+
+    key: str
+
+
+class EditionImage(EditionLayout):
+    """A brief's edition as a surface loads it: its signed URL, its fold and its paper."""
+
+    image_url: str = Field(description="A signed URL that loads the edition image for a year.")
 
 
 class BriefingModel(UserScopedDocument):
@@ -408,12 +424,8 @@ class BriefingModel(UserScopedDocument):
     kind: BriefingKind = BRIEFING_KIND_DAILY
     payload: BriefingPayload
     delivered_channels: list[str] = Field(default_factory=list)
-    #: The hosted full edition render: the in-app page, the email and the short link show it.
-    edition_image_url: str | None = None
-    #: Share of the edition image's height where its letter folds, read from the template's marker.
-    edition_fold: float | None = None
-    #: The paper's box on its desk as [left, top, right, bottom] shares of the edition image.
-    edition_paper: list[float] | None = None
+    #: The stored edition render; None for a quiet day's note, which has none.
+    edition: EditionRender | None = None
     opened_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
@@ -432,8 +444,19 @@ class BriefingUpdate(BaseModel):
     opened_at: datetime | None = None
 
 
-class BriefingView(BriefingModel):
+class BriefingView(BaseModel):
     """A brief as the archive and its folded card show it: the stored brief plus its edition's names."""
+
+    model_config = ConfigDict(json_schema_serialization_defaults_required=True)
+
+    id: str
+    date: str = Field(description="User-local YYYY-MM-DD.")
+    kind: BriefingKind
+    payload: BriefingPayload
+    delivered_channels: list[str]
+    opened_at: datetime | None
+    created_at: datetime
+    edition: EditionImage | None = Field(description="The edition image; None for a quiet note.")
 
     edition_name: str | None = Field(
         description="The daily edition family's name; None for the weekly recap and a quiet note."
@@ -451,9 +474,7 @@ class BriefingCardData(BaseModel):
     date: str
     kind: BriefingKind
     headline: str
-    edition_image_url: str | None
-    edition_fold: float | None
-    edition_paper: list[float] | None
+    edition: EditionImage | None
     edition_name: str | None
     stamp_city_name: str | None
     needs_you_count: int = Field(ge=0)
@@ -483,13 +504,7 @@ class Postmark(ResponseModel):
     stamp_url: str
     date: str = Field(description="User-local YYYY-MM-DD the stamp first arrived.")
     briefing_id: str = Field(description="The brief that first carried the stamp.")
-    edition_image_url: str | None = Field(description="That brief's hosted edition render.")
-    edition_fold: float | None = Field(
-        description="Share of the edition's height where its letter folds."
-    )
-    edition_paper: list[float] | None = Field(
-        description="The paper's box on its desk as [left, top, right, bottom] shares."
-    )
+    edition: EditionImage | None = Field(description="That brief's edition image.")
 
 
 class PostmarksResponse(ResponseModel):

@@ -20,6 +20,7 @@ from app.models.briefing_models import (
     BriefingModel,
     BriefingPayload,
     BriefingSection,
+    EditionRender,
 )
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
@@ -108,7 +109,7 @@ class TestBriefing:
             id="brief_abc",
             user_id="owner",
             date="2026-10-14",
-            edition_image_url="https://cdn.heygaia.io/editions/brief.png",
+            edition=EditionRender(key="edition-key"),
             payload=BriefingPayload(
                 kicker="Tuesday",
                 template_family="swiss",
@@ -150,10 +151,14 @@ class TestBriefing:
         for leaked in ("todo-secret-id", PRIVATE_EMAIL, "brief_abc", "owner", "Room 4B"):
             assert leaked not in body
         repo.get.assert_awaited_once_with("brief_abc", user_id="owner")
+        assert isinstance(view, PublicBriefing) and view.edition_image_url is not None
+        assert view.edition_image_url.startswith(
+            f"{settings.HOST}/api/v1/briefings/editions/edition-key/png?t="
+        )
         assert view == PublicBriefing(
             target_type=ShortLinkTargetType.BRIEFING,
             kind=briefing.kind,
-            edition_image_url="https://cdn.heygaia.io/editions/brief.png",
+            edition_image_url=view.edition_image_url,
             payload=PublicBriefingPayload(
                 kicker="Tuesday",
                 date="Oct 14",

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import time_machine
 
-from app.models.briefing_models import BriefingCardData
+from app.models.briefing_models import BriefingCardData, EditionImage
 from app.models.chat_models import SystemPurpose
 from app.services.briefing.conversation import (
     BRIEFING_CONVERSATION_MAX_MESSAGES,
@@ -20,9 +20,7 @@ CARD = BriefingCardData(
     date="2026-10-23",
     kind="daily",
     headline="Three decisions are waiting",
-    edition_image_url="https://cdn.test/brief_1.png",
-    edition_fold=0.3,
-    edition_paper=None,
+    edition=EditionImage(image_url="https://cdn.test/brief_1.png", fold=0.3),
     edition_name="Air Mail",
     stamp_city_name="Bogotá",
     needs_you_count=3,

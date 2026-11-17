@@ -2894,6 +2894,7 @@
             "type": "string"
           },
           "date": {
+            "description": "User-local YYYY-MM-DD.",
             "title": "Date",
             "type": "string"
           },
@@ -2904,27 +2905,16 @@
             "title": "Delivered Channels",
             "type": "array"
           },
-          "edition_fold": {
+          "edition": {
             "anyOf": [
               {
-                "type": "number"
+                "$ref": "#/components/schemas/EditionImage"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Edition Fold"
-          },
-          "edition_image_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edition Image Url"
+            "description": "The edition image; None for a quiet note."
           },
           "edition_name": {
             "anyOf": [
@@ -2938,26 +2928,11 @@
             "description": "The daily edition family's name; None for the weekly recap and a quiet note.",
             "title": "Edition Name"
           },
-          "edition_paper": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edition Paper"
-          },
           "id": {
             "title": "Id",
             "type": "string"
           },
           "kind": {
-            "default": "daily",
             "enum": [
               "daily",
               "weekly"
@@ -2997,37 +2972,17 @@
             ],
             "description": "Air Mail only: the stamp city's name.",
             "title": "Stamp City Name"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At"
-          },
-          "user_id": {
-            "title": "User Id",
-            "type": "string"
           }
         },
         "required": [
           "id",
-          "user_id",
           "date",
           "kind",
           "payload",
           "delivered_channels",
-          "edition_image_url",
-          "edition_fold",
-          "edition_paper",
           "opened_at",
           "created_at",
-          "updated_at",
+          "edition",
           "edition_name",
           "stamp_city_name",
           "needs_you_count"
@@ -7308,6 +7263,59 @@
           "favourite"
         ],
         "title": "EditionChoice",
+        "type": "string"
+      },
+      "EditionImage": {
+        "description": "A brief's edition as a surface loads it: its signed URL, its fold and its paper.",
+        "properties": {
+          "fold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the edition's height where its letter folds.",
+            "title": "Fold"
+          },
+          "image_url": {
+            "description": "A signed URL that loads the edition image for a year.",
+            "title": "Image Url",
+            "type": "string"
+          },
+          "paper": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The paper's box on its desk as [left, top, right, bottom] shares; None when it fills the image.",
+            "title": "Paper"
+          }
+        },
+        "required": [
+          "fold",
+          "paper",
+          "image_url"
+        ],
+        "title": "EditionImage",
+        "type": "object"
+      },
+      "EditionVariant": {
+        "description": "One stored encoding of a brief's edition, at most EDITION_DELIVERY_MAX_WIDTH_PX wide.",
+        "enum": [
+          "png",
+          "jpg"
+        ],
+        "title": "EditionVariant",
         "type": "string"
       },
       "EmailSearchResponse": {
@@ -15874,44 +15882,16 @@
             "title": "Date",
             "type": "string"
           },
-          "edition_fold": {
+          "edition": {
             "anyOf": [
               {
-                "type": "number"
+                "$ref": "#/components/schemas/EditionImage"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Share of the edition's height where its letter folds.",
-            "title": "Edition Fold"
-          },
-          "edition_image_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "That brief's hosted edition render.",
-            "title": "Edition Image Url"
-          },
-          "edition_paper": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "number"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The paper's box on its desk as [left, top, right, bottom] shares.",
-            "title": "Edition Paper"
+            "description": "That brief's edition image."
           },
           "lat": {
             "title": "Lat",
@@ -15935,9 +15915,7 @@
           "stamp_url",
           "date",
           "briefing_id",
-          "edition_image_url",
-          "edition_fold",
-          "edition_paper"
+          "edition"
         ],
         "title": "Postmark",
         "type": "object"
@@ -26983,6 +26961,86 @@
           }
         },
         "summary": "List Briefings",
+        "tags": [
+          "Briefings",
+          "Briefings"
+        ]
+      }
+    },
+    "/api/v1/briefings/editions/{key}/{variant}": {
+      "get": {
+        "description": "Serve a brief's edition image to whoever holds its signed URL; anything else is a 404.",
+        "operationId": "briefings_get_edition_image",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "variant",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/EditionVariant"
+            }
+          },
+          {
+            "description": "The signature the brief's edition URL carries.",
+            "in": "query",
+            "name": "t",
+            "required": true,
+            "schema": {
+              "description": "The signature the brief's edition URL carries.",
+              "title": "T",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {},
+              "image/png": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Get Edition Image",
         "tags": [
           "Briefings",
           "Briefings"

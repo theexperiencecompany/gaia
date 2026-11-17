@@ -46,6 +46,10 @@ os.environ.setdefault(
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
 )
 os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma: allowlist secret
+# Signs brief edition URLs, which every brief view carries; env wins over the Mongo-held secret.
+os.environ.setdefault(
+    "INSTANCE_SECRET", "test-instance-secret-" + "x" * 32
+)  # pragma: allowlist secret
 # The self-host profile's infra-only required set (capability_requirements.py): the
 # schema export boots under ENV=selfhost, so these need hermetic values too.
 # setdefault-only — a test or export that sets them wins.

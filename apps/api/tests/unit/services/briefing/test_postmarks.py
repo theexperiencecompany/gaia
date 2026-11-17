@@ -7,11 +7,30 @@ from unittest.mock import AsyncMock, patch
 
 from tests.helpers import captured_wide_event
 
-from app.models.briefing_models import BriefingModel, BriefingPayload, Postmark
+from app.config.settings import settings
+from app.models.briefing_models import (
+    BriefingModel,
+    BriefingPayload,
+    EditionImage,
+    EditionRender,
+    Postmark,
+)
 from app.services.briefing.postmarks import collected_postmarks
 
 MODULE = "app.services.briefing.postmarks"
 USER_ID = "user-1"
+_EDITION_URL = f"{settings.HOST}/api/v1/briefings/editions/"
+_PAPER = [0.1, 0.05, 0.9, 0.95]
+
+
+def _unsigned(postmark: Postmark) -> Postmark:
+    """Cut each edition URL's signature, which changes with the day it is issued."""
+    if postmark.edition is None:
+        return postmark
+    url = postmark.edition.image_url.split("?t=")[0] + "?t="
+    return postmark.model_copy(
+        update={"edition": postmark.edition.model_copy(update={"image_url": url})}
+    )
 
 
 def _brief(brief_id: str, date: str, stamp_city: str) -> BriefingModel:
@@ -19,9 +38,7 @@ def _brief(brief_id: str, date: str, stamp_city: str) -> BriefingModel:
         id=brief_id,
         user_id=USER_ID,
         date=date,
-        edition_image_url=f"https://cdn.example/{brief_id}.png",
-        edition_fold=0.31,
-        edition_paper=[0.1, 0.05, 0.9, 0.95],
+        edition=EditionRender(key=f"key-{brief_id}", fold=0.31, paper=[0.1, 0.05, 0.9, 0.95]),
         payload=BriefingPayload(
             kicker="AIR MAIL",
             date=date,
@@ -48,7 +65,7 @@ async def test_each_city_counts_once_on_the_day_it_first_arrived() -> None:
 
     list_stamped.assert_awaited_once_with(USER_ID)
     assert result.total == 85
-    assert result.postmarks == [
+    assert [_unsigned(p) for p in result.postmarks] == [
         Postmark(
             city_slug="tokyo",
             city="Tokyo",
@@ -58,9 +75,9 @@ async def test_each_city_counts_once_on_the_day_it_first_arrived() -> None:
             stamp_url="https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/tokyo.webp",
             date="2026-09-01",
             briefing_id="brief_1",
-            edition_image_url="https://cdn.example/brief_1.png",
-            edition_fold=0.31,
-            edition_paper=[0.1, 0.05, 0.9, 0.95],
+            edition=EditionImage(
+                image_url=f"{_EDITION_URL}key-brief_1/png?t=", fold=0.31, paper=_PAPER
+            ),
         ),
         Postmark(
             city_slug="lima",
@@ -71,9 +88,9 @@ async def test_each_city_counts_once_on_the_day_it_first_arrived() -> None:
             stamp_url="https://res.cloudinary.com/dwhuiazdn/image/upload/briefing/stamps/lima.webp",
             date="2026-09-04",
             briefing_id="brief_2",
-            edition_image_url="https://cdn.example/brief_2.png",
-            edition_fold=0.31,
-            edition_paper=[0.1, 0.05, 0.9, 0.95],
+            edition=EditionImage(
+                image_url=f"{_EDITION_URL}key-brief_2/png?t=", fold=0.31, paper=_PAPER
+            ),
         ),
     ]
 
@@ -86,11 +103,9 @@ async def test_a_postmark_carries_its_briefs_edition_so_the_stamp_opens_without_
         result = await collected_postmarks(USER_ID)
 
     [tokyo] = result.postmarks
-    assert (tokyo.edition_image_url, tokyo.edition_fold, tokyo.edition_paper) == (
-        "https://cdn.example/brief_1.png",
-        0.31,
-        [0.1, 0.05, 0.9, 0.95],
-    )
+    assert tokyo.edition is not None
+    assert tokyo.edition.image_url.startswith(f"{_EDITION_URL}key-brief_1/png?t=")
+    assert (tokyo.edition.fold, tokyo.edition.paper) == (0.31, _PAPER)
 
 
 async def test_no_stamped_briefs_is_an_empty_collection_of_the_full_set() -> None:

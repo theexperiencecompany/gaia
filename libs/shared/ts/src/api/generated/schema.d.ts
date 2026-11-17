@@ -599,6 +599,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/briefings/editions/{key}/{variant}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Edition Image
+         * @description Serve a brief's edition image to whoever holds its signed URL; anything else is a 404.
+         */
+        get: operations["briefings_get_edition_image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/briefings/postmarks": {
         parameters: {
             query?: never;
@@ -7382,26 +7402,24 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            /** Date */
+            /**
+             * Date
+             * @description User-local YYYY-MM-DD.
+             */
             date: string;
             /** Delivered Channels */
             delivered_channels: string[];
-            /** Edition Fold */
-            edition_fold: number | null;
-            /** Edition Image Url */
-            edition_image_url: string | null;
+            /** @description The edition image; None for a quiet note. */
+            edition: components["schemas"]["EditionImage"] | null;
             /**
              * Edition Name
              * @description The daily edition family's name; None for the weekly recap and a quiet note.
              */
             edition_name: string | null;
-            /** Edition Paper */
-            edition_paper: number[] | null;
             /** Id */
             id: string;
             /**
              * Kind
-             * @default daily
              * @enum {string}
              */
             kind: "daily" | "weekly";
@@ -7418,10 +7436,6 @@ export interface components {
              * @description Air Mail only: the stamp city's name.
              */
             stamp_city_name: string | null;
-            /** Updated At */
-            updated_at: string | null;
-            /** User Id */
-            user_id: string;
         };
         /**
          * BriefingWeek
@@ -9486,6 +9500,33 @@ export interface components {
          * @enum {string}
          */
         EditionChoice: "on" | "off" | "favourite";
+        /**
+         * EditionImage
+         * @description A brief's edition as a surface loads it: its signed URL, its fold and its paper.
+         */
+        EditionImage: {
+            /**
+             * Fold
+             * @description Share of the edition's height where its letter folds.
+             */
+            fold: number | null;
+            /**
+             * Image Url
+             * @description A signed URL that loads the edition image for a year.
+             */
+            image_url: string;
+            /**
+             * Paper
+             * @description The paper's box on its desk as [left, top, right, bottom] shares; None when it fills the image.
+             */
+            paper: number[] | null;
+        };
+        /**
+         * EditionVariant
+         * @description One stored encoding of a brief's edition, at most EDITION_DELIVERY_MAX_WIDTH_PX wide.
+         * @enum {string}
+         */
+        EditionVariant: "png" | "jpg";
         /**
          * EmailSearchResponse
          * @description Contact-email addresses extracted from a web search, plus the raw search data.
@@ -13496,21 +13537,8 @@ export interface components {
              * @description User-local YYYY-MM-DD the stamp first arrived.
              */
             date: string;
-            /**
-             * Edition Fold
-             * @description Share of the edition's height where its letter folds.
-             */
-            edition_fold: number | null;
-            /**
-             * Edition Image Url
-             * @description That brief's hosted edition render.
-             */
-            edition_image_url: string | null;
-            /**
-             * Edition Paper
-             * @description The paper's box on its desk as [left, top, right, bottom] shares.
-             */
-            edition_paper: number[] | null;
+            /** @description That brief's edition image. */
+            edition: components["schemas"]["EditionImage"] | null;
             /** Lat */
             lat: number;
             /** Lng */
@@ -18218,6 +18246,8 @@ export type DispatchError = components['schemas']['DispatchError'];
 export type DispatchErrorKind = components['schemas']['DispatchErrorKind'];
 export type DodoWebhookAckResponse = components['schemas']['DodoWebhookAckResponse'];
 export type EditionChoice = components['schemas']['EditionChoice'];
+export type EditionImage = components['schemas']['EditionImage'];
+export type EditionVariant = components['schemas']['EditionVariant'];
 export type EmailSearchResponse = components['schemas']['EmailSearchResponse'];
 export type EnableComposioToolkitRequest = components['schemas']['EnableComposioToolkitRequest'];
 export type EnableComposioToolkitResponse = components['schemas']['EnableComposioToolkitResponse'];
@@ -20184,6 +20214,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BriefingView"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    briefings_get_edition_image: {
+        parameters: {
+            query: {
+                /** @description The signature the brief's edition URL carries. */
+                t: string;
+            };
+            header?: never;
+            path: {
+                key: string;
+                variant: components["schemas"]["EditionVariant"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                    "image/png": unknown;
                 };
             };
             /** @description Unprocessable Entity */

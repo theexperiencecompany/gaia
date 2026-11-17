@@ -3,7 +3,7 @@
 The send is faked at the platform email service (send_email), so assertions are on
 the exact message the provider would receive. The other stubbed collaborator is the
 user repository. A briefing's edition image is rendered and hosted once by the
-briefing service; the email embeds that stored URL, and the rasterizer and CDN upload
+briefing service; the email embeds that stored URL, and the rasterizer and edition store
 are replaced with fakes that fail the test if the email path ever calls them.
 """
 
@@ -33,7 +33,7 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.user_models import UserDocument
-from app.services.briefing import edition_email
+from app.services.briefing import edition_email, edition_image
 from app.services.email.models import EmailMessage
 from app.utils.email_utils import normalize_email
 from app.utils.notification import email_templates
@@ -104,7 +104,8 @@ _WEEKLY = BriefingEmail(
     brief_url=_BRIEF_URL,
     edition_image_url=_EDITION_IMAGE_URL,
 )
-_BRIEFING_METADATA = {"brief_url": _BRIEF_URL, "edition_image_url": _EDITION_IMAGE_URL}
+_EDITION = {"image_url": _EDITION_IMAGE_URL, "fold": None, "paper": None}
+_BRIEFING_METADATA = {"brief_url": _BRIEF_URL, "edition": _EDITION}
 
 
 @pytest.fixture(autouse=True)
@@ -131,11 +132,11 @@ def user_on_file(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 @pytest.fixture(autouse=True)
 def edition_rendering(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, AsyncMock]:
-    """Fake the rasterizer and the CDN upload so any email-path call is visible."""
+    """Fake the rasterizer and the edition store so any email-path call is visible."""
     rasterizer = AsyncMock(side_effect=AssertionError("the email must not render"))
-    upload = AsyncMock(side_effect=AssertionError("the email must not upload"))
+    upload = AsyncMock(side_effect=AssertionError("the email must not store an image"))
     monkeypatch.setattr(edition_email, "render_html_to_image", rasterizer)
-    monkeypatch.setattr(edition_email.EDITION_IMAGE_STORE, "put", upload)
+    monkeypatch.setattr(edition_image, "store_edition", upload)
     return rasterizer, upload
 
 
@@ -237,8 +238,8 @@ class TestEmailChannelAdapterContract:
         "missing",
         [
             {"brief_url": _BRIEF_URL},
-            {"edition_image_url": _EDITION_IMAGE_URL},
-            {"brief_url": _BRIEF_URL, "edition_image_url": None},
+            {"edition": _EDITION},
+            {"brief_url": _BRIEF_URL, "edition": None},
         ],
         ids=["no-image-url", "no-brief-url", "null-image-url"],
     )

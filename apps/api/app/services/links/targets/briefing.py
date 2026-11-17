@@ -10,6 +10,7 @@ from app.models.short_link_models import (
     PublicBriefingSection,
     ShortLinkTargetType,
 )
+from app.services.briefing.view import edition_image
 from app.services.links.spec import LinkTargetSpec, PreviewFacts
 
 _CLOUDINARY_UPLOAD = "/image/upload/"
@@ -35,10 +36,11 @@ async def _project(
     if briefing is None:
         return None
     payload = briefing.payload
+    image = await edition_image(briefing)
     return PublicBriefing(
         target_type=ShortLinkTargetType.BRIEFING,
         kind=briefing.kind,
-        edition_image_url=briefing.edition_image_url,
+        edition_image_url=image.image_url if image is not None else None,
         payload=PublicBriefingPayload(
             kicker=payload.kicker,
             date=payload.date,
@@ -74,7 +76,10 @@ async def _preview(
     if briefing is None:
         return None
     return PreviewFacts(
-        title=briefing.payload.headline, image_url=preview_image_url(briefing.edition_image_url)
+        title=briefing.payload.headline,
+        image_url=preview_image_url(
+            image.image_url if (image := await edition_image(briefing)) else None
+        ),
     )
 
 

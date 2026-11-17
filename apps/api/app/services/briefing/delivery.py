@@ -1,6 +1,9 @@
 """Deliver a stored brief: in-app through the notification orchestrator, by email when wanted, and to the chat platform."""
 
+from datetime import UTC, datetime
+
 from app.agents.core.background.platform_chat import PlatformImage, post_to_platform_chat
+from app.constants.briefing import EditionVariant
 from app.constants.notifications import (
     NotificationChannel,
     ProactiveMessageClass,
@@ -22,6 +25,7 @@ from app.models.notification.notification_models import (
 )
 from app.models.user_models import UserDocument
 from app.services.briefing.conversation import post_brief_message
+from app.services.briefing.edition_image import edition_url
 from app.services.briefing.message import (
     brief_path,
     chat_text,
@@ -82,8 +86,8 @@ async def deliver_brief(
     message = delivered_message(payload)
     target = await resolve_proactive_target(user.id) if push else None
     channel = target if isinstance(target, ChatChannel) else None
-    edition = stored.image
-    card = briefing_card(briefing_view(stored.briefing)) if edition is not None else None
+    edition = stored.briefing.edition
+    card = briefing_card(await briefing_view(stored.briefing)) if edition is not None else None
     channels = [NotificationChannel.INAPP] + (
         [NotificationChannel.EMAIL] if push and _wants_email(user) else []
     )
@@ -131,7 +135,10 @@ async def deliver_brief(
             user,
             channel,
             chat_text(payload, stored.link) if stored.link is not None else message,
-            PlatformImage(url=edition.chat_url, filename=f"gaia-{kind}-brief.jpg")
+            PlatformImage(
+                url=await edition_url(edition.key, EditionVariant.JPG, datetime.now(UTC)),
+                filename=f"gaia-{kind}-brief.jpg",
+            )
             if edition is not None
             else None,
             kind,

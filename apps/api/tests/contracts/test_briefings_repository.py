@@ -33,8 +33,7 @@ def _payload(**overrides: object) -> BriefingPayload:
     return BriefingPayload.model_validate(data)
 
 
-_IMAGE = "https://cdn.example/brief.png"
-_EDITION = EditionRender(image_url=_IMAGE)
+_EDITION = EditionRender(key="edition-key")
 _FRESH = timedelta(minutes=1)
 
 
@@ -92,15 +91,17 @@ class TestBriefingsCore:
 
 
 class TestBriefingsUpsert:
-    async def test_upsert_records_the_hosted_edition_render(self, repo):
+    async def test_upsert_records_the_stored_edition_and_finds_its_owner_by_its_key(self, repo):
         stored = await _upsert(
             repo, "u-image", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=_EDITION
         )
         fetched = await repo.get(stored.id, user_id="u-image")
-        assert fetched is not None and fetched.edition_image_url == _IMAGE
+        assert fetched is not None and fetched.edition == _EDITION
+        assert await repo.owner_of_edition("edition-key") == "u-image"
+        assert await repo.owner_of_edition("another-key") is None
 
     async def test_upsert_records_where_the_edition_folds_and_where_its_paper_sits(self, repo):
-        edition = EditionRender(image_url=_IMAGE, fold=0.4, paper=[0.1, 0.2, 0.9, 0.8])
+        edition = EditionRender(key="fold-key", fold=0.4, paper=[0.1, 0.2, 0.9, 0.8])
         stored = await _upsert(
             repo, "u-fold", "2026-08-06", BRIEFING_KIND_DAILY, _payload(), edition=edition
         )
@@ -108,7 +109,7 @@ class TestBriefingsUpsert:
         fetched = await repo.get(stored.id, user_id="u-fold")
 
         assert fetched is not None
-        assert (fetched.edition_fold, fetched.edition_paper) == (0.4, [0.1, 0.2, 0.9, 0.8])
+        assert fetched.edition == edition
 
     async def test_a_new_brief_is_minted_unopened_undelivered_and_stamped_now(
         self, repo, raw_collection
@@ -297,7 +298,7 @@ class TestBriefingsReads:
             edition.id
         ]
         assert [b.id for b in await repo.list_recent(user_id, limit=10)] == [note.id, edition.id]
-        assert note.edition_image_url is None
+        assert note.edition is None
 
     async def test_list_recent_orders_by_brief_date_not_write_time(self, repo, raw_collection):
         """A backfilled brief is written after newer days but still lists by its own date."""

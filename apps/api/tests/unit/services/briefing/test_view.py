@@ -3,12 +3,14 @@
 The real explorer templates and stamp catalogue (cities.json) are read.
 """
 
+from app.config.settings import settings
 from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.briefing_models import (
     BriefingItem,
     BriefingModel,
     BriefingPayload,
     BriefingSection,
+    EditionRender,
 )
 from app.services.briefing.view import briefing_view
 
@@ -37,14 +39,14 @@ def _brief(
     )
 
 
-def test_an_air_mail_brief_names_its_family_and_stamp_city() -> None:
-    view = briefing_view(_brief(template_family="postal", stamp_city="bogota"))
+async def test_an_air_mail_brief_names_its_family_and_stamp_city() -> None:
+    view = await briefing_view(_brief(template_family="postal", stamp_city="bogota"))
 
     assert (view.edition_name, view.stamp_city_name) == ("Air Mail", "Bogotá")
     assert view.id == "brief_1"
 
 
-def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section() -> None:
+async def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section() -> None:
     """The lead can be a needs-you item too; the editions list it with the other decisions."""
     lead = BriefingSection(
         numeral="I",
@@ -68,19 +70,32 @@ def test_needs_you_counts_every_item_waiting_on_the_reader_in_any_section() -> N
         ],
     )
 
-    view = briefing_view(
+    view = await briefing_view(
         _brief(template_family="flightplan", sections=[lead, needs_you, gaias_work])
     )
 
     assert view.needs_you_count == 3
 
 
-def test_every_daily_edition_is_named_as_its_settings_list_it() -> None:
-    view = briefing_view(_brief(template_family="flightplan"))
+async def test_every_daily_edition_is_named_as_its_settings_list_it() -> None:
+    view = await briefing_view(_brief(template_family="flightplan"))
 
     assert (view.edition_name, view.stamp_city_name) == ("The Blueprint", None)
 
 
-def test_the_weekly_recap_and_a_quiet_note_carry_no_edition_name() -> None:
-    assert briefing_view(_brief(template_family="weekly")).edition_name is None
-    assert briefing_view(_brief(template_family="")).edition_name is None
+async def test_the_weekly_recap_and_a_quiet_note_carry_no_edition_name() -> None:
+    assert (await briefing_view(_brief(template_family="weekly"))).edition_name is None
+    assert (await briefing_view(_brief(template_family=""))).edition_name is None
+
+
+async def test_an_edition_is_shown_by_its_signed_url_and_a_quiet_note_by_none() -> None:
+    stored = _brief(template_family="memo").model_copy(
+        update={"edition": EditionRender(key="k1", fold=0.3, paper=None)}
+    )
+
+    view = await briefing_view(stored)
+
+    assert view.edition is not None
+    assert view.edition.image_url.startswith(f"{settings.HOST}/api/v1/briefings/editions/k1/png?t=")
+    assert (view.edition.fold, view.edition.paper) == (0.3, None)
+    assert (await briefing_view(_brief(template_family=""))).edition is None

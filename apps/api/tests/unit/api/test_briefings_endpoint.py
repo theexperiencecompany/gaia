@@ -8,9 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 
 from app.api.v1.endpoints.briefings import get_briefing, get_postmarks, list_briefings
+from app.config.settings import settings
 from app.models.briefing_models import (
     BriefingModel,
     BriefingPayload,
+    EditionImage,
+    EditionRender,
     Postmark,
     PostmarksResponse,
 )
@@ -39,7 +42,7 @@ def _brief(*, opened: bool) -> BriefingModel:
             mood="packed",
             caption="Onward.",
         ),
-        edition_image_url="https://cdn.example/brief.png",
+        edition=EditionRender(key="k1", fold=0.3),
         opened_at=MagicMock() if opened else None,
     )
 
@@ -57,9 +60,9 @@ async def test_opening_a_brief_returns_it_marks_it_opened_and_reports_it_once(
 
     assert response.status_code == 200
     body = response.json()
-    assert (body["id"], body["edition_image_url"]) == (
-        "brief_abc123",
-        "https://cdn.example/brief.png",
+    assert body["id"] == "brief_abc123"
+    assert body["edition"]["image_url"].startswith(
+        f"{settings.HOST}/api/v1/briefings/editions/k1/png?t="
     )
     get.assert_awaited_once_with("brief_abc123", user_id=FAKE_USER.user_id)
     mark.assert_awaited_once_with(FAKE_USER.user_id, "brief_abc123")
@@ -103,7 +106,7 @@ async def test_the_archive_lists_only_the_users_editions_and_tags_the_wide_event
         async with captured_wide_event() as event:
             response = await list_briefings(user=FAKE_USER, limit=7)
 
-    assert response.briefings == [briefing_view(brief)]
+    assert response.briefings == [await briefing_view(brief)]
     assert response.next_cursor is None
     # One past the page, to learn whether another page follows.
     list_recent.assert_awaited_once_with(
@@ -189,9 +192,7 @@ async def test_postmarks_returns_the_collection_and_reports_the_view(
         stamp_url="https://cdn.example/tokyo.webp",
         date="2026-09-01",
         briefing_id="brief_abc123",
-        edition_image_url="https://cdn.example/edition.png",
-        edition_fold=0.3,
-        edition_paper=None,
+        edition=EditionImage(image_url="https://cdn.example/edition.png", fold=0.3),
     )
     collection = PostmarksResponse(total=85, postmarks=[tokyo])
     with (

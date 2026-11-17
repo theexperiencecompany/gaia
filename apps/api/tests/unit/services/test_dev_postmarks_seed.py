@@ -25,9 +25,9 @@ from app.models.brief_composition_models import SectionBlock
 from app.models.briefing_models import BriefingPayload, EditionRender
 from app.models.user_models import UserDocument
 from app.services import dev_postmarks_seed
-from app.services.briefing.edition_email import HostedEditionImage
 from app.services.briefing.editions import DAILY_FAMILY_WEIGHTS
 from app.services.briefing.editions.artworks import artworks_for
+from app.services.briefing.render import RenderedImage
 from app.services.dev_postmarks_seed import seed_dev_editions, seed_dev_postmarks
 from app.utils.errors import AppError
 
@@ -68,19 +68,18 @@ def seeded() -> Iterator[Seeded]:
     rendered: list[tuple[BriefingPayload, str]] = []
     owners: list[str] = []
 
-    async def fake_host(
-        payload: BriefingPayload, *, owner_id: str, render_key: str
-    ) -> HostedEditionImage:
+    async def fake_render(payload: BriefingPayload) -> RenderedImage:
+        rendered.append((payload, payload.date))
+        return RenderedImage(image=b"png")
+
+    async def fake_store(owner_id: str, briefing_id: str, png: bytes) -> str:
         owners.append(owner_id)
-        rendered.append((payload, render_key))
-        return HostedEditionImage(
-            display_url=f"https://cdn.test/{render_key}.png",
-            chat_url=f"https://cdn.test/{render_key}.jpg",
-        )
+        return f"key-{briefing_id}"
 
     with (
         patch(f"{MODULE}.hosted_stamp_weights", return_value=dict.fromkeys(CITIES, 1)),
-        patch(f"{STORE}.host_edition_image", side_effect=fake_host),
+        patch(f"{STORE}.render_edition_png", side_effect=fake_render),
+        patch(f"{STORE}.store_edition", side_effect=fake_store),
         patch(f"{STORE}.optional_short_link", AsyncMock(return_value=SHORT_LINK)),
         patch(
             f"{MODULE}.briefing_repository.briefing_id_for",
@@ -113,7 +112,7 @@ async def test_each_city_gets_one_brief_on_consecutive_days_ending_at_the_anchor
     assert seeded.owners == [user.id] * len(CITIES)
 
 
-async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its_own_render(
+async def test_each_brief_is_rendered_then_upserted_and_marked_delivered_under_its_own_id(
     user, seeded
 ) -> None:
     await seed_dev_postmarks(user, 3)
@@ -134,9 +133,7 @@ async def test_each_brief_is_hosted_then_upserted_and_marked_delivered_under_its
         assert payload.link == SHORT_LINK
         assert upsert_call.kwargs == {
             "briefing_id": f"brief_{payload.date}",
-            "edition": EditionRender(
-                image_url=f"https://cdn.test/{key}.png", fold=None, paper=None
-            ),
+            "edition": EditionRender(key=f"key-brief_{payload.date}"),
         }
         assert deliver_call.args == (
             user.id,

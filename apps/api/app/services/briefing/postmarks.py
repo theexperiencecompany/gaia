@@ -12,6 +12,7 @@ from app.services.briefing.editions.stamps import (
     stamp_asset_url,
     stamp_catalogue,
 )
+from app.services.briefing.view import edition_image
 from shared.py.wide_events import log
 
 
@@ -37,9 +38,7 @@ async def collected_postmarks(user_id: str) -> PostmarksResponse:
             stamp_url=stamp_asset_url(slug),
             date=brief.date,
             briefing_id=brief.id,
-            edition_image_url=brief.edition_image_url,
-            edition_fold=brief.edition_fold,
-            edition_paper=brief.edition_paper,
+            edition=await edition_image(brief),
         )
     return PostmarksResponse(total=len(hosted_stamp_weights()), postmarks=list(postmarks.values()))
 

@@ -40,7 +40,7 @@ from app.models.todo_models import TodoDocument
 from app.models.user_models import AuthenticatedUser
 from app.services.blob_store import LocalVolumeBlobStore
 from app.services.briefing import store as brief_store
-from app.services.briefing.edition_email import HostedEditionImage
+from app.services.briefing.render import RenderedImage
 from app.services.links import abuse, content as link_content
 from app.services.links.backfill import backfill_snapshots
 from app.services.links.service import optional_short_link
@@ -940,9 +940,12 @@ class TestTheBriefsLink:
             caption="c",
             template_family="memo",
         )
-        hosted = HostedEditionImage("https://cdn.example/b", "https://cdn.example/b", 0.4, None)
+        rendered = RenderedImage(image=b"png", fold=0.4)
 
-        with patch.object(brief_store, "host_edition_image", AsyncMock(return_value=hosted)):
+        with (
+            patch.object(brief_store, "render_edition_png", AsyncMock(return_value=rendered)),
+            patch.object(brief_store, "store_edition", AsyncMock(return_value="edition-key")),
+        ):
             stored = await brief_store.store_brief(OWNER.user_id, "2026-11-09", "daily", payload)
 
         slug = stored.link.removeprefix("https://heygaia.link/") if stored.link else ""

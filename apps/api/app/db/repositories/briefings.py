@@ -11,6 +11,8 @@ be served by a single-id entity cache.
 from datetime import UTC, datetime
 from typing import ClassVar
 
+from pydantic import BaseModel
+
 from app.constants.briefing import BRIEFING_KIND_DAILY, BriefForm
 from app.db.repositories.base import UserScopedRepository
 from app.db.repositories.cache import CachePolicy
@@ -23,6 +25,11 @@ from app.models.briefing_models import (
     new_briefing_id,
 )
 from app.utils.errors import AppError
+
+
+class _BriefingOwner(BaseModel):
+    user_id: str
+
 
 # A brief counts as delivered once it reached at least one channel; one stored but
 # delivered nowhere (its run failed mid-delivery) was never received.
@@ -86,6 +93,13 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             sort=[("date", 1)],
         )
 
+    async def owner_of_edition(self, key: str) -> str | None:
+        """Return who owns the brief an edition key belongs to, for a caller holding its signed URL."""
+        owner = await self._find_one_projected(
+            {"edition.key": key}, {"user_id": 1, "_id": 0}, _BriefingOwner
+        )
+        return owner.user_id if owner is not None else None
+
     async def has_daily_briefing(self, user_id: str) -> bool:
         """Whether the user has ever received a daily briefing (first-briefing gate)."""
         return await self._count({"user_id": user_id, "kind": BRIEFING_KIND_DAILY}) > 0
@@ -126,9 +140,7 @@ class BriefingsRepository(UserScopedRepository[BriefingModel, BriefingUpdate]):
             {
                 "$set": {
                     "payload": payload.model_dump(),
-                    "edition_image_url": edition.image_url if edition else None,
-                    "edition_fold": edition.fold if edition else None,
-                    "edition_paper": edition.paper if edition else None,
+                    "edition": edition.model_dump() if edition else None,
                 },
                 "$setOnInsert": {
                     "created_at": datetime.now(UTC),
