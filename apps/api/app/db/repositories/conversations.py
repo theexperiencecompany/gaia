@@ -601,14 +601,35 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
     ) -> list[BotReplyRow]:
         """Return the user's bot-platform messages sent after since, newest first.
 
-        Bounded; used by the briefing engine's reply-sync read.
+        Bounded; used by the briefing engine's reply-sync read. Only conversations written
+        since then are read, and only their newer user messages are unwound: a message
+        append always advances updatedAt.
         """
-        since_iso = since.astimezone(UTC).isoformat()
+        since = since.astimezone(UTC)
+        since_iso = since.isoformat()
+        newer_user_messages = {
+            "$filter": {
+                "input": "$messages",
+                "as": "message",
+                "cond": {
+                    "$and": [
+                        {"$eq": ["$$message.type", "user"]},
+                        {"$gt": ["$$message.date", since_iso]},
+                    ]
+                },
+            }
+        }
         return await self._aggregate(
             [
-                {"$match": {"user_id": user_id, "source": {"$in": _BOT_SOURCE_VALUES}}},
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "updatedAt": {"$gt": since},
+                        "source": {"$in": _BOT_SOURCE_VALUES},
+                    }
+                },
+                {"$project": {"source": True, "messages": newer_user_messages}},
                 {"$unwind": "$messages"},
-                {"$match": {"messages.type": "user", "messages.date": {"$gt": since_iso}}},
                 {"$sort": {"messages.date": -1}},
                 {"$limit": limit},
                 {"$project": {"source": True, "text": "$messages.response"}},

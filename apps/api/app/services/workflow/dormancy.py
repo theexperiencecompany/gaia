@@ -11,6 +11,7 @@ so a workflow the user switched off themselves is never silently re-enabled.
 "Dormant" is ActivityStatus.DORMANT, the one activity scale every surface records to.
 """
 
+from collections import defaultdict
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -20,7 +21,6 @@ from app.constants.user_activity import ActivityStatus
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
-from app.models.workflow_models import WorkflowDocument
 from app.services.workflow.service import WorkflowService
 from shared.py.wide_events import log
 
@@ -49,23 +49,18 @@ class DormancySweepResult(BaseModel):
 
 async def find_dormancy_candidates(*, max_users: int | None = None) -> list[DormantUserWorkflows]:
     """Return dormant users owning at least one activated workflow; max_users bounds a run."""
-    candidates: list[DormantUserWorkflows] = []
-    for user in await user_repository.find_by_activity_status(ActivityStatus.DORMANT):
-        if max_users is not None and len(candidates) >= max_users:
-            break
-        workflows: list[WorkflowDocument] = await workflow_repository.find_activated_for_user(
-            user.id
+    dormant = await user_repository.find_activity_rows(ActivityStatus.DORMANT)
+    owned: dict[str, list[str]] = defaultdict(list)
+    for workflow in await workflow_repository.find_activated_for_users([u.id for u in dormant]):
+        owned[workflow.user_id].append(workflow.id)
+    candidates = [
+        DormantUserWorkflows(
+            user_id=user.id, last_active_at=user.last_active_at, workflow_ids=owned[user.id]
         )
-        if not workflows:
-            continue
-        candidates.append(
-            DormantUserWorkflows(
-                user_id=user.id,
-                last_active_at=user.last_active_at,
-                workflow_ids=[w.id for w in workflows],
-            )
-        )
-    return candidates
+        for user in dormant
+        if owned.get(user.id)
+    ]
+    return candidates if max_users is None else candidates[:max_users]
 
 
 async def sweep_dormant_workflows(

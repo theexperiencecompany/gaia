@@ -29,7 +29,7 @@ def _owners_are_active_by_default():
             create=True,
         ),
         patch(
-            "app.workers.tasks.maintenance_sweep_tasks.user_repository.find_by_activity_status",
+            "app.workers.tasks.maintenance_sweep_tasks.user_repository.find_activity_rows",
             AsyncMock(return_value=[]),
             create=True,
         ),

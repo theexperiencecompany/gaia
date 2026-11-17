@@ -87,7 +87,7 @@ def wsync():
         patch(f"{WS}.user_repository") as users,
     ):
         by_status: dict[ActivityStatus, list[str]] = {}
-        users.find_by_activity_status = AsyncMock(
+        users.find_activity_rows = AsyncMock(
             side_effect=lambda status: [
                 SimpleNamespace(id=uid) for uid in by_status.get(status, [])
             ]
@@ -103,7 +103,7 @@ def wsync():
             provision=provision,
             connected=connected,
             by_status=by_status,
-            find_by_status=users.find_by_activity_status,
+            find_by_status=users.find_activity_rows,
             all_ids=users.list_all_ids,
             set_active=set_active,
         )

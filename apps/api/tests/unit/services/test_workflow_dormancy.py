@@ -33,14 +33,18 @@ def _patches(
 ):
     return (
         patch(
-            f"{_MOD}.user_repository.find_by_activity_status",
+            f"{_MOD}.user_repository.find_activity_rows",
             new_callable=AsyncMock,
             return_value=users,
         ),
         patch(
-            f"{_MOD}.workflow_repository.find_activated_for_user",
+            f"{_MOD}.workflow_repository.find_activated_for_users",
             new_callable=AsyncMock,
-            side_effect=lambda uid: workflows_by_user.get(uid, []),
+            side_effect=lambda uids: [
+                SimpleNamespace(id=w.id, user_id=uid)
+                for uid in uids
+                for w in workflows_by_user.get(uid, [])
+            ],
         ),
         patch(
             f"{_MOD}.WorkflowService.deactivate_workflow",
@@ -135,10 +139,29 @@ class TestSweepDormantWorkflows:
     async def test_the_cohort_is_the_shared_dormant_status(self):
         """The sweep must not define dormancy itself: it asks for ActivityStatus.DORMANT."""
         find = AsyncMock(return_value=[])
-        with patch(f"{_MOD}.user_repository.find_by_activity_status", find):
+        with (
+            patch(f"{_MOD}.user_repository.find_activity_rows", find),
+            patch(f"{_MOD}.workflow_repository.find_activated_for_users", AsyncMock()),
+        ):
             await sweep_dormant_workflows()
 
         find.assert_awaited_once_with(ActivityStatus.DORMANT)
+
+    @pytest.mark.regression
+    async def test_every_dormant_users_workflows_are_read_in_one_query(self):
+        """The sweep once read workflows one user at a time, a query per dormant user."""
+        p = _patches(
+            users=[_user("u1"), _user("u2"), _user("u3")],
+            workflows_by_user={"u1": [_workflow("wf_a")], "u3": [_workflow("wf_c")]},
+        )
+        with p[0], p[1] as read_workflows, p[2]:
+            result = await sweep_dormant_workflows(dry_run=True)
+
+        read_workflows.assert_awaited_once_with(["u1", "u2", "u3"])
+        assert [(c.user_id, c.workflow_ids) for c in result.candidates] == [
+            ("u1", ["wf_a"]),
+            ("u3", ["wf_c"]),
+        ]
 
 
 @pytest.mark.unit

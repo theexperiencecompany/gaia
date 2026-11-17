@@ -15,7 +15,7 @@ entity/generation cache would churn constantly for little read benefit, and
 the cross-user scan/routing reads are not keyed by id.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 import re
 from typing import Any
@@ -71,6 +71,15 @@ _COMMUNITY_MATCH: dict[str, Any] = {
     "is_public": True,
     "$or": [{"is_explore": {"$exists": False}}, {"is_explore": False}],
 }
+
+
+def _activated_outside_briefs(user_id: str | Mapping[str, object]) -> dict[str, object]:
+    """Filter a user's (or users') activated workflows, the briefs excluded."""
+    return {
+        "user_id": user_id,
+        "activated": True,
+        "system_workflow_key": {"$nin": list(BRIEFING_RHYTHM_WORKFLOW_KEYS)},
+    }
 
 
 class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
@@ -267,13 +276,13 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
 
         A brief winds itself down through its own winback and idle ladder (briefing.dormancy).
         """
-        return await self._find(
-            {
-                "user_id": user_id,
-                "activated": True,
-                "system_workflow_key": {"$nin": list(BRIEFING_RHYTHM_WORKFLOW_KEYS)},
-            }
-        )
+        return await self._find(_activated_outside_briefs(user_id))
+
+    async def find_activated_for_users(self, user_ids: Sequence[str]) -> list[WorkflowDocument]:
+        """find_activated_for_user for many users in one read, so a sweep is not one query per user."""
+        if not user_ids:
+            return []
+        return await self._find(_activated_outside_briefs({"$in": list(user_ids)}))
 
     async def find_paused_for_reason(
         self, user_id: str, reason: DeactivationReason

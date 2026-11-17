@@ -41,6 +41,9 @@ SECURITY_CRITICAL_COLLECTIONS = frozenset(
 # name, or an ordered list of (field, direction | "text") pairs.
 IndexKeys = str | list[tuple[str, int | str]]
 
+# Mongo's IndexNotFound error code.
+_INDEX_NOT_FOUND = 27
+
 # Collections whose indexes enforce correctness, not speed: a failed build stops startup.
 # short_links without its unique indexes mints duplicate or revocation-surviving links.
 INTEGRITY_CRITICAL_COLLECTIONS = frozenset({"short_links"})
@@ -256,6 +259,15 @@ async def create_all_indexes() -> None:
         raise
 
 
+async def _drop_index_if_present(collection: AsyncIOMotorCollection[DocumentT], name: str) -> None:
+    """Drop an index an older spec created; an index already gone (code 27) is the goal."""
+    try:
+        await collection.drop_index(name)
+    except OperationFailure as e:
+        if e.code != _INDEX_NOT_FOUND:
+            raise
+
+
 async def create_user_indexes() -> None:
     """Create indexes for users collection."""
     users_collection = get_async_collection("users")
@@ -268,8 +280,11 @@ async def create_user_indexes() -> None:
             users_collection.create_index([("onboarding.completed", 1), ("created_at", -1)]),
             # Cache cleanup index (sparse since not all users have cached_at)
             users_collection.create_index("cached_at", sparse=True),
-            # Activity tracking index for inactive user queries
-            users_collection.create_index("last_active_at", sparse=True),
+            # Activity-status sweeps: every branch of the last-seen $or, the never-seen
+            # (null) ones included, which a sparse index cannot serve.
+            users_collection.create_index(
+                [("last_active_at", 1), ("created_at", 1)], name="last_seen"
+            ),
             # Inactive email tracking index (sparse since not all users have this field)
             users_collection.create_index("last_inactive_email_sent", sparse=True),
             # Platform links indexes for bot authentication (unique + sparse: only bot users have these,
@@ -279,6 +294,7 @@ async def create_user_indexes() -> None:
             users_collection.create_index("platform_links.telegram.id", unique=True, sparse=True),
             users_collection.create_index("platform_links.whatsapp.id", unique=True, sparse=True),
         )
+        await _drop_index_if_present(users_collection, "last_active_at_1")
 
     except Exception as e:
         log.error(
@@ -320,6 +336,8 @@ async def create_conversation_indexes() -> None:
             # updatedAt is the only activity timestamp stored as a real BSON date —
             # createdAt is an ISO string and can't be range-queried efficiently.
             conversations_collection.create_index([("updatedAt", -1)]),
+            # A user's conversations active since a moment (the brief's bot-reply read).
+            conversations_collection.create_index([("user_id", 1), ("updatedAt", -1)]),
             conversations_collection.create_index(
                 CONVERSATION_TODO_BINDING_KEYS, **CONVERSATION_TODO_BINDING_OPTIONS
             ),
@@ -420,6 +438,21 @@ async def create_todo_indexes() -> None:
             ),
             todos_collection.create_index(
                 TODO_OPEN_EXTERNAL_REF_KEYS, **TODO_OPEN_EXTERNAL_REF_OPTIONS
+            ),
+            # The brief's look-back: a user's todos completed since a moment, newest first.
+            todos_collection.create_index(
+                [("user_id", 1), ("completed", 1), ("completed_at", 1)],
+                name="user_completed_at",
+            ),
+            # A user's todos about one kind of outside object opened or completed since a
+            # moment: one index per branch of that read's $or.
+            todos_collection.create_index(
+                [("user_id", 1), ("external_ref.source", 1), ("created_at", 1)],
+                name="user_external_ref_created",
+            ),
+            todos_collection.create_index(
+                [("user_id", 1), ("external_ref.source", 1), ("completed_at", 1)],
+                name="user_external_ref_completed",
             ),
             # A parent's sub-todos: listing, open counts, and completion/deletion cascades.
             todos_collection.create_index(
@@ -602,13 +635,8 @@ async def create_workflow_indexes() -> None:
     """Create indexes for workflows collection for optimal query performance."""
     workflows_collection = get_async_collection("workflows")
     try:
-        # Drop the old non-unique slug index if present so the partial-unique
-        # replacement below can take over. Mongo error code 27 = IndexNotFound.
-        try:
-            await workflows_collection.drop_index("slug_public_idx")
-        except OperationFailure as e:
-            if e.code != 27:
-                raise
+        # The old non-unique slug index goes so the partial-unique replacement below can take over.
+        await _drop_index_if_present(workflows_collection, "slug_public_idx")
 
         # Create all workflow indexes concurrently
         await asyncio.gather(
@@ -732,11 +760,7 @@ async def create_briefing_indexes() -> None:
             name="user_date_kind_unique",
         )
         # The archive now sorts on the unique index (date, kind); drop the old write-time one.
-        try:
-            await briefings_collection.drop_index("user_id_1_created_at_-1")
-        except OperationFailure as e:
-            if e.code != 27:
-                raise
+        await _drop_index_if_present(briefings_collection, "user_id_1_created_at_-1")
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating briefing indexes",
@@ -1065,6 +1089,10 @@ async def create_approval_ledger_indexes() -> None:
             ),
             approval_ledger_collection.create_index([("conversation_id", 1), ("state", 1)]),
             approval_ledger_collection.create_index([("state", 1), ("executing_started_at", 1)]),
+            # A user's open pendings, oldest first.
+            approval_ledger_collection.create_index(
+                [("user_id", 1), ("state", 1), ("created_at", 1)]
+            ),
         )
     except Exception as e:
         log.error(
@@ -1633,6 +1661,10 @@ async def create_hil_approvals_indexes() -> None:
             hil_approvals_collection.create_index([("status", 1), ("expires_at", 1)]),
             hil_approvals_collection.create_index(
                 [("status", 1), ("resumed_at", 1), ("decided_at", 1)]
+            ),
+            # A user's still-pending approvals, oldest first (expiry filtered on the fetched rows).
+            hil_approvals_collection.create_index(
+                [("user_id", 1), ("status", 1), ("created_at", 1)]
             ),
         )
     except Exception as e:

@@ -1196,6 +1196,10 @@ def _at(minutes: int) -> str:
     return (_SINCE + timedelta(minutes=minutes)).isoformat()
 
 
+#: Every append advances updatedAt, so a conversation holding these messages was written after them.
+_written = _SINCE + timedelta(minutes=10)
+
+
 def _said(kind: str, minutes: int, text: str = "hi") -> MessageModel:
     return MessageModel(type=kind, response=text, date=_at(minutes))
 
@@ -1207,6 +1211,7 @@ class TestBotRepliesSince:
             _doc(
                 user_id=user_id,
                 source=ConversationSource.TELEGRAM,
+                updatedAt=_written,
                 messages=[
                     _said("user", 0, "at the cutoff"),
                     _said("user", 1, "first"),
@@ -1219,14 +1224,24 @@ class TestBotRepliesSince:
             _doc(
                 user_id=user_id,
                 source=ConversationSource.WHATSAPP,
+                updatedAt=_written,
                 messages=[_said("user", 2, "middle")],
             )
         )
         await repo.create(
-            _doc(user_id=user_id, source=ConversationSource.WEB, messages=[_said("user", 5)])
+            _doc(
+                user_id=user_id,
+                source=ConversationSource.WEB,
+                updatedAt=_written,
+                messages=[_said("user", 5)],
+            )
         )
         await repo.create(
-            _doc(source=ConversationSource.TELEGRAM, messages=[_said("user", 5, "someone else")])
+            _doc(
+                source=ConversationSource.TELEGRAM,
+                updatedAt=_written,
+                messages=[_said("user", 5, "someone else")],
+            )
         )
         return user_id
 
