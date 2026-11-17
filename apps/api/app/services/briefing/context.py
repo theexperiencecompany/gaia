@@ -6,9 +6,8 @@ blocks. Every block is plain text — the agent turns it into the payload.
 """
 
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from enum import StrEnum
-from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
 
@@ -52,6 +51,7 @@ from app.services.briefing.candidates.subjects import subject_key
 from app.services.calendar_service import get_calendar_events
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.utils.errors import IntegrationNotConnectedError
+from app.utils.timezone import Timezone
 from shared.py.wide_events import log
 
 # Open tracked todos the brief reports on (in progress / waiting on the user / failed).
@@ -62,7 +62,7 @@ _LOOKBACK_EXECUTIONS_LIMIT = 20
 
 @dataclass
 class UserClock:
-    tz: ZoneInfo
+    tz: tzinfo
     now_local: datetime
     date_str: str
     day_of_year: int
@@ -167,7 +167,8 @@ def is_gaia_tracked(doc: TodoDocument) -> bool:
 
 
 def resolve_clock(user_timezone: str | None) -> UserClock:
-    tz = ZoneInfo(user_timezone or "UTC")
+    """Return the user's clock on their stored zone: an IANA name or a ±HH:MM offset."""
+    tz = Timezone.parse(user_timezone).tzinfo
     now_local = datetime.now(tz)
     return UserClock(
         tz=tz,
@@ -416,7 +417,7 @@ async def compute_winback_state(user: UserDocument, recent: int = 10) -> Winback
     return WinbackState(unacknowledged=unacknowledged, last_was_winback=last_mood == "winback")
 
 
-def _to_event(event: GoogleCalendarEventResource, tz: ZoneInfo) -> BriefingEvent | None:
+def _to_event(event: GoogleCalendarEventResource, tz: tzinfo) -> BriefingEvent | None:
     start = event.start
     if start is None:
         return None

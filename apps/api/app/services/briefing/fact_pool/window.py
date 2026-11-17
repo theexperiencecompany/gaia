@@ -3,8 +3,7 @@
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
-from zoneinfo import ZoneInfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 
 from app.constants.briefing import SERIES_WINDOW_DAYS
 from app.models.brief_pool_models import DataSeries, SeriesPoint, SeriesShape
@@ -17,7 +16,7 @@ class SeriesWindow:
 
     first_day: date
     days: int
-    tz: ZoneInfo
+    tz: tzinfo
 
     @property
     def dates(self) -> list[date]:

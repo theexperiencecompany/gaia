@@ -17,6 +17,7 @@ from app.services.briefing.context import CalendarGap, UserClock
 from app.services.briefing.fact_pool.pool import FactPool, PoolContext
 from app.services.briefing.scouts.facts import people_note, seen_note
 from app.services.briefing.slots import figure, series_figures
+from app.utils.timezone import Timezone
 
 # How a done todo reads, by who closed it.
 _DONE_BY: dict[TodoCompleter | None, str] = {
@@ -219,7 +220,7 @@ def unread_note(unread: list[UnreadSource]) -> str | None:
 def context_block(context: PoolContext) -> str:
     """Say the day the pool sits in: the date, the calendar's load and how recent briefs opened."""
     lines = [
-        f"{context.clock.now_local.strftime('%A %-d %B %Y')}, {context.clock.tz.key}.",
+        f"{context.clock.now_local.strftime('%A %-d %B %Y')}, {Timezone.parse(context.clock.tz)}.",
         _calendar_line(context),
     ]
     if (unread := unread_note(context.unread)) is not None:

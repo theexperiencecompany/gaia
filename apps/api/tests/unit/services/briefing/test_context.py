@@ -51,6 +51,8 @@ from app.models.user_models import OnboardingSubdocument, UserDocument
 from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.services import calendar_service
 from app.services.briefing import context, dormancy
+from app.services.briefing.fact_pool.pool import PoolContext
+from app.services.briefing.fact_pool.render import context_block
 from app.utils.errors import AppError, IntegrationNotConnectedError
 
 _USER = "user-1"
@@ -95,11 +97,28 @@ def _brief(mood: BriefingMood, *, items: list[str] | None = None) -> BriefingMod
 
 class TestClock:
     def test_missing_timezone_is_utc(self) -> None:
-        assert context.resolve_clock(None).tz == ZoneInfo("UTC")
+        assert context.resolve_clock(None).tz is UTC
 
-    def test_unknown_timezone_fails_loud(self) -> None:
-        with pytest.raises(Exception, match="Nowhere/City"):
-            context.resolve_clock("Nowhere/City")
+    def test_unknown_timezone_reads_as_utc_like_every_other_clock(self) -> None:
+        assert context.resolve_clock("Nowhere/City").tz is UTC
+
+    def test_a_stored_utc_offset_is_the_users_clock(self) -> None:
+        clock = context.resolve_clock("+05:30")
+
+        assert clock.now_local.utcoffset() == timedelta(hours=5, minutes=30)
+        assert (
+            context_block(
+                PoolContext(
+                    reader="Ada",
+                    clock=clock,
+                    calendar=0,
+                    calendar_span="today",
+                    done_since=context.day_start_utc(clock),
+                )
+            )
+            .splitlines()[0]
+            .endswith(", +05:30.")
+        )
 
     def test_day_start_is_local_midnight_in_utc(self) -> None:
         tz = ZoneInfo("Asia/Kolkata")
