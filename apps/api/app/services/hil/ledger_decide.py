@@ -289,6 +289,7 @@ async def _deliver_ticket(row: ApprovalLedgerDocument, decision: ApprovalDecided
         row.conversation_id,
         AuthenticatedUser(user_id=row.user_id),
         approval_ticket(row, decision),
+        continues=row.task_id,
     )
 
 
@@ -314,6 +315,7 @@ async def _deliver_verdict(
         row.conversation_id,
         row.user_id,
         _verdict_task(row.approval_id, row.summary, outcome, result),
+        row.task_id,
     )
 
 
@@ -328,12 +330,16 @@ def _verdict_task(approval_id: str, summary: str, outcome: ApprovalOutcome, resu
     )
 
 
-async def _deliver_verdict_task(conversation_id: str, user_id: str, task: str) -> None:
+async def _deliver_verdict_task(
+    conversation_id: str, user_id: str, task: str, asked_by: str | None
+) -> None:
     from app.agents.core.background.executor_runner import (  # noqa: PLC0415 -- same cycle guard as _deliver_ticket
         deliver_to_executor,
     )
 
-    await deliver_to_executor(conversation_id, AuthenticatedUser(user_id=user_id), task)
+    await deliver_to_executor(
+        conversation_id, AuthenticatedUser(user_id=user_id), task, continues=asked_by
+    )
 
 
 def _redeem_refusal(
@@ -688,7 +694,10 @@ async def end_unledgered_approval(
         return False
     summary = requested.description.action
     await _deliver_verdict_task(
-        conversation_id, user_id, _verdict_task(approval_id, summary, outcome, None)
+        conversation_id,
+        user_id,
+        _verdict_task(approval_id, summary, outcome, None),
+        requested.task_id,
     )
     return True
 

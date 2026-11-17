@@ -15,7 +15,7 @@ from app.models.conversation_frame_models import (
     StreamPayload,
     WorkDeltaFrame,
 )
-from app.models.conversation_log_models import LoggedEntry, WorkStarted
+from app.models.conversation_log_models import LoggedEntry, WorkFinished, WorkStarted
 from app.models.conversation_screen_models import (
     ScreenInsertFrame,
     ScreenItem,
@@ -27,6 +27,7 @@ from app.services.conversation.screen import (
     LIVE_WORK,
     Positioned,
     project_screen,
+    work_chain,
     work_root,
     work_timeline,
 )
@@ -118,13 +119,19 @@ class ScreenTracker:
     def _with_live_cards(self, item: ScreenItem) -> ScreenItem:
         if not isinstance(item, WorkItem) or item.status not in LIVE_WORK:
             return item
-        chain = [task for task in self._started if work_root(self._started, task) == item.task_id]
-        live = fold_cards(payload for task in chain for payload in self._work.get(task, ()))
+        ended = {
+            logged.entry.task_id
+            for logged in self._entries.values()
+            if isinstance(logged.entry, WorkFinished)
+        }
+        running = [task for task in work_chain(self._started, item.task_id) if task not in ended]
+        live = fold_cards(payload for task in running for payload in self._work.get(task, ()))
+        cards = (*item.tool_data, *live.tool_data)
         return item.model_copy(
             update={
-                "tool_data": live.tool_data,
-                "timeline": work_timeline(item.handoff, live.tool_data, item.approvals),
-                "image": live.image,
+                "tool_data": cards,
+                "timeline": work_timeline(item.handoff, cards, item.approvals),
+                "image": live.image or item.image,
             }
         )
 
@@ -138,15 +145,8 @@ class ScreenTracker:
         else:
             # A gap: this reader missed frames, so the task's record is the truth.
             self._work[delta.task_id] = await work_payloads(self._conversation_id, delta.task_id)
-        root = work_root(self._started, delta.task_id)
-        patches: list[ScreenPatch] = []
-        for index, item in enumerate(self.items):
-            if isinstance(item, WorkItem) and item.task_id == root:
-                updated = self._with_live_cards(item)
-                if updated != item:
-                    self.items[index] = updated
-                    patches.append(ScreenUpdateFrame(item=updated, head=self.head))
-        return patches
+        # Re-projected, not patched in place: an item shows its ended runs' cards before the live ones.
+        return self._repatch()
 
     def take(self, frame: EntryFrame | EntryUpdatedFrame) -> list[ScreenPatch]:
         """Take a logged or amended entry and return the patches it makes to the screen."""

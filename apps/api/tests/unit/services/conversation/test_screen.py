@@ -1147,3 +1147,57 @@ def test_a_link_labelled_with_its_sandbox_path_is_labelled_by_the_files_name() -
     )
     assert isinstance(shown, ReplyItem)
     assert shown.bubbles == (f"[a.csv]({_WEB})",)
+
+
+def test_the_run_an_approval_woke_shows_on_the_work_that_asked_with_both_runs_cards() -> None:
+    """The approved call's card joins the asking work's item; it never opens a second work item."""
+    asking = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    asked_run = finished("f1", "t1", continued_by_decision=True).model_copy(
+        update={"tool_data": (_card("ask"),)}
+    )
+    redeem = WorkStarted(id="work:t2", task_id="t2", cause_through=4, continues="t1")
+    log = [
+        logged(1, user("u1")),
+        logged(2, asking),
+        logged(3, asked("ask:a1", "t1", "a1")),
+        logged(4, asked_run),
+        logged(5, decided("dec:a1", "a1")),
+        logged(6, redeem),
+    ]
+
+    [_, running] = project_screen(CONVERSATION_ID, log, TEST_FILE_LINKS)
+    redeemed = finished("f2", "t2").model_copy(update={"tool_data": (_card("approved"),)})
+    [_, ended] = project_screen(CONVERSATION_ID, [*log, logged(7, redeemed)], TEST_FILE_LINKS)
+
+    assert isinstance(running, WorkItem)
+    assert isinstance(ended, WorkItem)
+    assert (running.id, running.status) == ("work:t1", WorkStatus.RUNNING)
+    assert (ended.id, ended.status, ended.tool_data) == (
+        "work:t1",
+        WorkStatus.DONE,
+        (_card("ask"), _card("approved")),
+    )
+
+
+async def test_a_running_continuation_adds_its_live_cards_after_the_ended_runs_once_each() -> None:
+    asked_run = finished("f1", "t1", continued_by_decision=True).model_copy(
+        update={"tool_data": (_card("ask"),)}
+    )
+    tracker = ScreenTracker(
+        "c1",
+        [
+            logged(1, user("u1")),
+            logged(2, WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))),
+            logged(3, asked_run),
+            logged(4, WorkStarted(id="work:t2", task_id="t2", cause_through=3, continues="t1")),
+        ],
+        {},
+    )
+    for index, name in enumerate(("x", "y")):
+        delta = WorkDeltaFrame(
+            task_id="t2", index=index, payload=ToolDataEvent(tool_data=_card(name))
+        )
+        await tracker.on_work(delta)
+
+    [work] = [item for item in tracker.items if isinstance(item, WorkItem)]
+    assert (work.task_id, work.tool_data) == ("t1", (_card("ask"), _card("x"), _card("y")))

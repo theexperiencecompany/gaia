@@ -251,32 +251,29 @@ async def record_approved_action_ended(
     await accept(runtime_ports(), conversation_id, user_id, entry)
 
 
+@dataclass(frozen=True)
+class Continuing:
+    """Carried work that carries on ended work (WorkStarted.continues): it answers nothing new."""
+
+    task_id: str
+
+
 async def record_work_carried(
     conversation_id: str,
     user_id: str,
     task_id: str,
-    cause: LoggedEntry | None = None,
+    cause: LoggedEntry | Continuing | None = None,
     *,
     detached: bool = False,
     exclusive: bool = False,
 ) -> bool:
-    """Append WorkStarted for work started outside a step, answering cause, else caused by everything logged so far.
+    """Append WorkStarted for work started outside a step, answering a logged cause, else caused by everything logged so far.
 
     False when a Stop since refuses it, or other work refuses exclusive work, so nothing dispatches; the
     step narrates its WorkFinished unless the work is detached (a subagent, a browser job, a replay).
     """
     ports = runtime_ports()
-    if cause is None:
-        state = await ports.log.state(conversation_id, user_id)
-        entry = WorkStarted(
-            id=f"work:{task_id}",
-            task_id=task_id,
-            cause_through=state.head,
-            cause_from=state.head,
-            detached=detached,
-            exclusive=exclusive,
-        )
-    else:
+    if isinstance(cause, LoggedEntry):
         entry = WorkStarted(
             id=f"work:{task_id}",
             task_id=task_id,
@@ -285,6 +282,17 @@ async def record_work_carried(
             answers=(cause.entry.id,),
             detached=detached,
             exclusive=exclusive,
+        )
+    else:
+        state = await ports.log.state(conversation_id, user_id)
+        entry = WorkStarted(
+            id=f"work:{task_id}",
+            task_id=task_id,
+            cause_through=state.head,
+            cause_from=state.head,
+            detached=detached,
+            exclusive=exclusive,
+            continues=None if cause is None else cause.task_id,
         )
     try:
         await accept(ports, conversation_id, user_id, entry)

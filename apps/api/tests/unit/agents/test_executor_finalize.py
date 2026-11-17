@@ -574,6 +574,22 @@ class TestFinalizeCarriesOnlyWorkTheThreadNeverTook:
         # for the new run's own drain to inject, commit, and retire crash-safely.
         assert still_pending == ["e2"]
 
+    async def test_the_carry_run_shows_as_the_work_of_the_run_it_carries_on(self) -> None:
+        """An approval decided while the run wound down is redeemed by the carry run, on the asking work's item."""
+        cache = _FakeInboxCache()
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(ec, "redis_cache", cache))
+            await ec.ExecutorInbox("conv-1").append("e1", "APPROVAL_READY ap_1: approved")
+            stack.enter_context(patch.object(er, "thread_messages", AsyncMock(return_value=[])))
+            start = stack.enter_context(
+                patch.object(er, "_start_executor_run", new_callable=AsyncMock, return_value=True)
+            )
+
+            await er._carry_pending_into_new_run(_run(RunKind.QUEUED), _executor_ctx())
+
+        assert start.await_args.kwargs["continues"] == "task-1"
+
     async def test_work_staged_into_a_model_call_that_failed_is_still_carried(self) -> None:
         """BUG: the run marked an entry delivered BEFORE the model call, so a call that then failed left it neither answered nor carried — it sat in Redis until its TTL."""
         cache = _FakeInboxCache()
@@ -1193,7 +1209,7 @@ class TestStartingACarryRun:
 
         assert started is False
         task_id = prepare.await_args.args[3]
-        carried.assert_awaited_once_with("conv-1", USER_ID, task_id)
+        carried.assert_awaited_once_with("conv-1", USER_ID, task_id, None)
         release.assert_awaited_once_with("conv-1", "s9", task_id)
         teardown.assert_called_once_with("s9")
         spawn.assert_not_called()

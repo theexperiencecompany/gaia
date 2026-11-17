@@ -118,14 +118,19 @@ def _is_handoff(card: ToolDataEntry) -> bool:
 
 
 def work_root(started: Mapping[str, WorkStarted], task_id: str) -> str:
-    """Return the task whose item task_id belongs to, through any chain of hand-overs."""
+    """Return the task whose item task_id belongs to, through any chain of hand-overs and continuations."""
     seen = {task_id}
-    while (work := started.get(task_id)) and work.joins in started:
-        task_id = work.joins
+    while (work := started.get(task_id)) and (link := work.joins or work.continues) in started:
+        task_id = link
         if task_id in seen:
             break
         seen.add(task_id)
     return task_id
+
+
+def work_chain(started: Mapping[str, WorkStarted], root: str) -> list[str]:
+    """Return every task shown on root's item, in the order the log started them."""
+    return [task for task in started if work_root(started, task) == root]
 
 
 @dataclass(frozen=True)
@@ -262,10 +267,25 @@ class _Log:
         return next((user for user in reversed(self.users) if user in ids), None)
 
     def work_status(self, root: str) -> WorkStatus:
+        """Return the status of the newest run on root's item: a hand-over finishes with its root, a continuation on its own."""
         if self.asking(root):
             return WorkStatus.AWAITING_APPROVAL
-        finished = self.finished.get(root)
+        newest = next(
+            (
+                task
+                for task in reversed(work_chain(self.started, root))
+                if task == root or self.started[task].continues is not None
+            ),
+            root,
+        )
+        finished = self.finished.get(newest)
         return WorkStatus.RUNNING if finished is None else WorkStatus(finished.outcome.value)
+
+    def ended_runs(self, root: str) -> list[WorkFinished]:
+        """Return how each run shown on root's item finished, oldest first."""
+        return [
+            self.finished[task] for task in work_chain(self.started, root) if task in self.finished
+        ]
 
 
 def decided_status(decision: ApprovalDecided) -> ApprovalStatus:
@@ -343,7 +363,9 @@ def needed_beside(
                 }
             case _:
                 pass
-    wanted |= {f"work:{work.joins}" for work in read.started.values() if work.joins}
+    wanted |= {
+        f"work:{link}" for work in read.started.values() if (link := work.joins or work.continues)
+    }
     wanted |= {message.retry_of for message in read.users.values() if message.retry_of}
     present = {logged.entry.id for logged in (*window, *related)}
     return sorted(wanted - present), sorted(replies)
@@ -414,8 +436,8 @@ def work_timeline(
 
 def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkItem:
     started = read.started[task_id]
-    finished = read.finished.get(task_id)
-    cards = () if finished is None else finished.tool_data
+    ended = read.ended_runs(task_id)
+    cards = tuple(card for run in ended for card in run.tool_data)
     handoff = None if started.handoff is None else read.handoffs.get(started.handoff)
     approvals = read.approvals(task_id)
     return WorkItem(
@@ -433,7 +455,7 @@ def _work_item(seq: int, at: AwareDatetime, task_id: str, read: _Log) -> WorkIte
         handoff=handoff,
         tool_data=cards,
         timeline=work_timeline(handoff, cards, approvals),
-        image=None if finished is None else finished.image,
+        image=next((run.image for run in reversed(ended) if run.image is not None), None),
         retry_target=read.newest_asked(started.answers),
     )
 
