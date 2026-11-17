@@ -907,19 +907,21 @@ async def update_workflow(
     )
 
     try:
+        before = await WorkflowService.get_workflow(workflow_id, user.user_id)
         workflow = await WorkflowService.update_workflow(
             workflow_id, request, user.user_id, user_timezone=user_timezone
         )
-        if not workflow:
+        if not workflow or not before:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Workflow {workflow_id} not found",
             )
 
         log.set(outcome="success")
+        changed = request.delivery is not None and request.delivery is not before.delivery
         capture(
             UserId(user.user_id),
-            WorkflowUpdated(delivery=request.delivery.value if request.delivery else None),
+            WorkflowUpdated(delivery=request.delivery.value if changed else None),
         )
         return WorkflowResponse(
             workflow=as_read_view(workflow), message="Workflow updated successfully"

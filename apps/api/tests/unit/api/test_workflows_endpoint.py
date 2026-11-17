@@ -1,5 +1,6 @@
 """Unit tests for the workflows API endpoints (CRUD, execute/status, activate/publish, explore/community, regenerate-steps, generate-prompt)."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1381,6 +1382,14 @@ class TestGetWorkflow:
 
 class TestUpdateWorkflow:
     """Tests for the update workflow endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _stored(self) -> Iterator[None]:
+        """Serve the workflow as stored before the edit, read to tell whether its delivery changed."""
+        with patch(
+            f"{_WF_SERVICE}.get_workflow", new_callable=AsyncMock, return_value=_make_workflow()
+        ):
+            yield
 
     async def test_update_workflow_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow(title="Updated Title")

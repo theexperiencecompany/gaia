@@ -13,6 +13,7 @@ __all__ = [
     "WorkflowCreatedOrigin",
     "WorkflowDeactivated",
     "WorkflowDeleted",
+    "WorkflowDeliveryMode",
     "WorkflowExecuted",
     "WorkflowPublished",
     "WorkflowResultDelivered",
@@ -21,6 +22,10 @@ __all__ = [
     "WorkflowUnpublished",
     "WorkflowUpdated",
 ]
+
+
+#: Where a finished run's result goes: WorkflowDelivery's values, kept equal by a test in apps/api.
+WorkflowDeliveryMode = Literal["now", "brief", "silent"]
 
 
 #: user_created: saved from the editor or a confirmed chat draft; chat_agent: the agent created
@@ -45,7 +50,7 @@ class WorkflowCreated(ServerEvent):
     is_todo_workflow: bool | None = None
     #: The delivery mode chosen at creation: by the user in the modal, or by the
     #: agent from the user's words.
-    delivery: Literal["now", "brief", "silent"] | None = None
+    delivery: WorkflowDeliveryMode
 
 
 class WorkflowExecuted(ServerEvent):
@@ -114,7 +119,7 @@ class WorkflowUpdated(ServerEvent):
     budget_per_user_day: ClassVar[int] = 10
 
     #: The new delivery mode, set only when this edit changed it.
-    delivery: Literal["now", "brief", "silent"] | None = None
+    delivery: WorkflowDeliveryMode | None = None
 
 
 class WorkflowDeleted(ServerEvent):

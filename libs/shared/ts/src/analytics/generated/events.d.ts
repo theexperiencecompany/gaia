@@ -1323,7 +1323,7 @@ export interface EventProperties {
     "actor": "user" | "agent";
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
-    "frequency": string;
+    "frequency": "daily" | "weekdays" | "weekly_only" | "off";
     "hour": number;
     "via": "settings" | "agent";
   };
@@ -1822,7 +1822,7 @@ export interface EventProperties {
     "steps_count"?: number;
     "generated_immediately"?: boolean;
     "is_todo_workflow"?: boolean;
-    "delivery"?: "now" | "brief" | "silent";
+    "delivery": "now" | "brief" | "silent";
   };
   "workflow:deactivated": {
     "actor": "user" | "agent";
