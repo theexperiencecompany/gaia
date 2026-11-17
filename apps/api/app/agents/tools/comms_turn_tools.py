@@ -19,7 +19,11 @@ from app.agents.core.comms_ledger import Closing, close
 from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
 from app.constants.conversation import LOG_SEQ
-from app.constants.reactions import OFFENSIVE_REACTION_EMOJI, REACTION_PALETTE_BY_SURFACE
+from app.constants.reactions import (
+    EMOJI_PRESENTATION_SELECTOR,
+    OFFENSIVE_REACTION_EMOJI,
+    REACTION_PALETTE_BY_SURFACE,
+)
 from app.models.agent_config import read_agent_configurable
 from app.utils.multimodal import extract_text_content
 from shared.py.analytics.catalog.properties import Emoji
@@ -50,7 +54,7 @@ def reaction_refusal(emoji: str, config: RunnableConfig) -> str | None:
         return f"{emoji} is not a reaction GAIA uses. Pick another emoji, or reply in words."
     surface = ConversationSource.coerce(read_agent_configurable(config).conversation_source)
     allowed = REACTION_PALETTE_BY_SURFACE.get(surface) if surface is not None else None
-    if allowed is None or emoji in allowed:
+    if allowed is None or emoji.replace(EMOJI_PRESENTATION_SELECTOR, "") in allowed:
         return None
     return (
         f"{surface.display_name} does not accept {emoji} as a reaction. "

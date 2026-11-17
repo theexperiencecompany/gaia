@@ -13,6 +13,7 @@ from app.agents.core.comms_ledger import (
     open_ledger,
     still_open,
 )
+from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 from app.agents.tools.comms_turn_tools import (
     AnsweredArgs,
     ReactArgs,
@@ -26,7 +27,7 @@ from app.agents.tools.comms_turn_tools import (
 from app.constants.chat import ConversationSource
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME
 from app.constants.conversation import LOG_SEQ
-from app.constants.reactions import TELEGRAM_REACTION_PALETTE
+from app.constants.reactions import TELEGRAM_REACTION_PALETTE, THANKS_REACTION_EMOJI
 from tests.tool_helpers import tool_coroutine
 
 RUN = "comms-turn-tools-run"
@@ -51,6 +52,22 @@ def test_telegram_refuses_an_emoji_outside_its_set_and_lists_the_set_one_by_one(
     assert refusal is not None
     _, offered = refusal.split("Pick exactly one of: ")
     assert offered.split(" ") == list(TELEGRAM_REACTION_PALETTE)
+
+
+def test_telegram_takes_an_emoji_written_with_its_presentation_selector() -> None:
+    surface: RunnableConfig = {
+        "configurable": {"conversation_source": ConversationSource.TELEGRAM.value}
+    }
+    assert reaction_refusal("❤️", surface) is None
+
+
+@pytest.mark.parametrize("source", list(ConversationSource))
+def test_the_prompts_thanks_reaction_is_accepted_on_every_surface(
+    source: ConversationSource,
+) -> None:
+    assert f"{REACT_TOOL_NAME} with {THANKS_REACTION_EMOJI}" in COMMS_AGENT_PROMPT
+    surface: RunnableConfig = {"configurable": {"conversation_source": source.value}}
+    assert reaction_refusal(THANKS_REACTION_EMOJI, surface) is None
 
 
 async def test_answered_closes_messages_a_reply_written_after_them_answers(
