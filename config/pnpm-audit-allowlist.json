@@ -1,4 +1,10 @@
 {
   "_comment": "Advisories scripts/ci/audit.sh pnpm may ignore. Every entry needs id (CVE or GHSA), reason and expires (YYYY-MM-DD); an expired entry fails the lane. Only an advisory with no fixed release reachable from our consumers belongs here \u2014 anything with a fix is pinned through pnpm.overrides in the root package.json instead (CLAUDE.md \u00a79).",
-  "allow": []
+  "allow": [
+    {
+      "id": "GHSA-fc5q-39xc-vjpf",
+      "reason": "picomatch ReDoS on attacker-supplied extglob patterns (CVE-2026-112366). No fixed release exists: every version through the latest, 4.0.7, is affected. The only --prod paths are the mobile app's Expo build tooling (@expo/cli, metro-file-map, react-native codegen), which compile developer-written globs at build time and never match a glob supplied by a user. Remove this entry and pin the fix through pnpm.overrides once picomatch publishes one.",
+      "expires": "2027-02-18"
+    }
+  ]
 }
