@@ -40,6 +40,7 @@ from directives import (
     parse_directives,
     parse_request,
     resolve_response,
+    unanswered_tool_calls,
 )
 from wire import ScriptedFault, build_chat_completion, sse_lines, stream_chunks
 
@@ -1068,3 +1069,16 @@ def test_a_hand_off_names_the_messages_it_handles() -> None:
     )
     assert isinstance(response, ToolCallResponse)
     assert response.args["for_messages"] == [2]
+
+
+def test_a_thread_with_a_tool_call_no_result_answers_is_refused_like_a_real_provider() -> None:
+    call = {"id": "call_1", "type": "function", "function": {"name": "x", "arguments": "{}"}}
+    open_thread = [
+        _user("go"),
+        {"role": "assistant", "content": "", "tool_calls": [call]},
+        _user("next"),
+    ]
+    answered = [*open_thread[:2], {"role": "tool", "tool_call_id": "call_1", "content": "ok"}]
+
+    assert unanswered_tool_calls(open_thread) == ["call_1"]
+    assert unanswered_tool_calls(answered) == []

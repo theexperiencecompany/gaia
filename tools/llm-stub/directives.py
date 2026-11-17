@@ -398,6 +398,23 @@ def message_text(message: dict[str, Any]) -> str:
     return ""
 
 
+def unanswered_tool_calls(messages: Sequence[dict[str, Any]]) -> list[str]:
+    """Ids of assistant tool calls no tool message answers: a thread a real provider rejects.
+
+    OpenAI and OpenRouter refuse such a request (400 "No tool output found for
+    function call"), so the stub refuses it too, or a run that leaves a call open
+    would pass under sim and break every later turn in production.
+    """
+    answered = {m.get("tool_call_id") for m in messages if m.get("role") == "tool"}
+    return [
+        call["id"]
+        for message in messages
+        if message.get("role") == "assistant"
+        for call in message.get("tool_calls") or []
+        if isinstance(call, dict) and call.get("id") and call["id"] not in answered
+    ]
+
+
 def _last_user_index(messages: Sequence[dict[str, Any]]) -> int | None:
     for idx in range(len(messages) - 1, -1, -1):
         if messages[idx].get("role") == "user":

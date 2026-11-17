@@ -56,6 +56,7 @@ from directives import (
     parse_directives,
     parse_request,
     resolve_response,
+    unanswered_tool_calls,
 )
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -64,6 +65,7 @@ from wire import build_chat_completion, prompt_tokens, sse_lines
 
 DEFAULT_PORT = 9797
 SCRIPTED_FAULT_STATUS = 500
+UNANSWERED_TOOL_CALL_STATUS = 400
 
 # A per-response think-delay lets a sim test keep an agent genuinely busy across
 # its scripted steps — the wide, deterministic window the live-steer / inbox-drain
@@ -119,6 +121,18 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     body = await request.json()
     parsed = parse_request(body)
     _log_request(parsed)
+    if open_calls := unanswered_tool_calls(parsed.messages):
+        # What a real provider answers a thread holding a call with no result.
+        return JSONResponse(
+            status_code=UNANSWERED_TOOL_CALL_STATUS,
+            content={
+                "error": {
+                    "message": f"No tool output found for function call {open_calls[0]}.",
+                    "type": "invalid_request_error",
+                    "code": UNANSWERED_TOOL_CALL_STATUS,
+                }
+            },
+        )
     delay_ms = _state["response_delay_ms"]
     if delay_ms:
         await asyncio.sleep(delay_ms / 1000)
