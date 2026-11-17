@@ -27,7 +27,6 @@ from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 import pytest
 from redis.asyncio import Redis
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -90,11 +89,7 @@ async def pg_engine(monkeypatch: pytest.MonkeyPatch) -> AsyncGenerator[AsyncEngi
 
     if not _schema_ready:
         async with engine.begin() as conn:
-            await conn.execute(
-                text("SELECT pg_advisory_xact_lock(:lock_id)"),
-                {"lock_id": postgresql_module.SCHEMA_BOOTSTRAP_LOCK_ID},
-            )
-            await conn.run_sync(postgresql_module.Base.metadata.create_all)
+            await postgresql_module.bootstrap_schema(conn)
         _schema_ready = True
 
     async def _get_engine() -> AsyncEngine:

@@ -349,13 +349,11 @@ async def enforce_tiered_limit(
     auth middleware, and so can't use the decorator form.
     """
     origin = origin or current_limit_origin()
-    subscription = await payment_service.get_user_subscription_status(user_id)
-    user_plan = subscription.plan_type or PlanType.FREE
     # The limiter records the hit (capture_limit_hit) itself before it raises.
     await tiered_limiter.check_and_increment(
         user_id=user_id,
         feature_key=feature_key,
-        user_plan=user_plan,
+        user_plan=await payment_service.get_cached_plan_type(user_id),
         origin=origin,
     )
 

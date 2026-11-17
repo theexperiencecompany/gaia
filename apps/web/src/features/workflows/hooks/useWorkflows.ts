@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
+
 import { workflowKeys } from "../api/queryKeys";
 import { type Workflow, workflowApi } from "../api/workflowApi";
 
@@ -16,11 +18,13 @@ interface UseWorkflowsReturn {
 const EMPTY_WORKFLOWS: Workflow[] = [];
 
 export const useWorkflows = (enabled: boolean = true): UseWorkflowsReturn => {
+  // A user's workflows need their session; a signed-out visitor would get a 401.
+  const { userId } = useCurrentUser();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: workflowKeys.list(),
     queryFn: async () => (await workflowApi.listWorkflows()).workflows,
     staleTime: WORKFLOWS_STALE_TIME,
-    enabled,
+    enabled: enabled && Boolean(userId),
   });
 
   return {
