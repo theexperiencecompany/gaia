@@ -19,11 +19,8 @@ vi.mock("@/lib/timezone", () => ({
 }));
 
 import { QuietHoursSettings } from "@/features/settings/components/QuietHoursSettings";
-import {
-  formatHour,
-  fromAxis,
-  toAxis,
-} from "@/features/settings/utils/quietHoursAxis";
+import { fromAxis, toAxis } from "@/features/settings/utils/quietHoursAxis";
+import { formatHour } from "@/utils/date/clock";
 
 const NIGHT = { enabled: true, start_hour: 22, end_hour: 8 };
 

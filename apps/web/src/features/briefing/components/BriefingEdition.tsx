@@ -13,7 +13,13 @@ import type { ReactNode } from "react";
 
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { cn } from "@/lib/utils";
+import { formatClockTime } from "@/utils/date/clock";
 
+import {
+  BRIEF_PAGE_COLUMN_CLASS,
+  EDITION_RENDER_WIDTH_PX,
+  EDITION_TYPICAL_HEIGHT_PX,
+} from "../letterTokens";
 import {
   BRIEF_ITEM_STATES,
   hiddenEvents,
@@ -48,11 +54,6 @@ export interface BriefingEditionProps {
   /** The day's rendered edition, when the brief was rendered. */
   imageUrl?: string | null;
 }
-
-// Rendered at 3x: a 540px page, plus a desk family's transparent shadow margin. The
-// height only reserves space while loading: `h-auto` keeps the natural ratio.
-const EDITION_WIDTH = 1716;
-const EDITION_TYPICAL_HEIGHT = 4700;
 
 /**
  * The owner's copy carries todo_id and opens the in-app todo; the public copy
@@ -119,17 +120,6 @@ function ItemGroup({
   );
 }
 
-/** A calendar event's wall-clock "HH:MM" as the reader's own clock writes it. */
-function clockTime(start: string): string {
-  const [hours, minutes] = start.split(":").map(Number);
-  const at = new Date();
-  at.setHours(hours, minutes, 0, 0);
-  return at.toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 interface BriefingTextProps {
   payload: BriefingEditionPayload;
   /** Only the letter the edition draws, for a page that lists what it left out below it. */
@@ -165,7 +155,7 @@ export function BriefingText({
                 className="text-sm font-medium text-zinc-200"
               >
                 <span className="mr-2 text-xs text-zinc-500 tabular-nums">
-                  {event.start ? clockTime(event.start) : "All day"}
+                  {event.start ? formatClockTime(event.start) : "All day"}
                 </span>
                 {event.title}
               </p>
@@ -221,7 +211,10 @@ function BelowEdition({
   children: ReactNode;
 }) {
   return (
-    <section aria-labelledby={id} className="mx-auto w-full max-w-[540px]">
+    <section
+      aria-labelledby={id}
+      className={cn("mx-auto w-full", BRIEF_PAGE_COLUMN_CLASS)}
+    >
       <h2 id={id} className="mb-1 text-sm font-medium text-zinc-300">
         {title}
       </h2>
@@ -291,7 +284,10 @@ function OnYourRadar({ items }: { items: BriefPoolItem[] }) {
   return (
     <section
       aria-labelledby="brief-on-your-radar"
-      className="mx-auto w-full max-w-[540px] rounded-2xl bg-zinc-900 p-4"
+      className={cn(
+        "mx-auto w-full rounded-2xl bg-zinc-900 p-4",
+        BRIEF_PAGE_COLUMN_CLASS,
+      )}
     >
       <header className="mb-4 px-1">
         <h2
@@ -333,8 +329,8 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
       <Image
         src={imageUrl}
         alt={payload.headline}
-        width={EDITION_WIDTH}
-        height={EDITION_TYPICAL_HEIGHT}
+        width={EDITION_RENDER_WIDTH_PX}
+        height={EDITION_TYPICAL_HEIGHT_PX}
         sizes="(max-width: 640px) 100vw, 572px"
         // On a phone the image's own transparent margin stands in for StandalonePage's
         // px-4 gutter, so the paper gets the screen's width instead of losing 32px.
@@ -356,7 +352,7 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
               key={`${event.start ?? "all-day"}-${event.title}`}
               className="py-3 text-sm text-zinc-300"
             >
-              {event.start ? `${clockTime(event.start)} ` : ""}
+              {event.start ? `${formatClockTime(event.start)} ` : ""}
               {event.title}
             </li>
           ))}

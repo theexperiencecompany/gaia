@@ -6,14 +6,11 @@ import {
   WORKFLOW_DELIVERY_COPY,
 } from "@gaia/shared";
 import type { WorkflowDelivery } from "@shared/api/generated";
+import { BRIEFINGS_SETTINGS_PATH } from "@shared/constants/routes";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { type Control, Controller } from "react-hook-form";
-import {
-  BRIEFINGS_SETTINGS_PATH,
-  briefingScheduleQuery,
-  hasDailyBrief,
-} from "@/features/briefing";
+import { briefingScheduleQuery, hasDailyBrief } from "@/features/briefing";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { DeliverySegments } from "../DeliverySegments";
 import WorkflowSection from "./WorkflowSection";

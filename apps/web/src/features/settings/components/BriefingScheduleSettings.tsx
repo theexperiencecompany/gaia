@@ -2,7 +2,6 @@
 
 import type { BriefingFrequency } from "@gaia/shared/types";
 import { ListBox, Select } from "@heroui/react";
-import { formatHour12 } from "@shared/utils";
 import { format, parseISO } from "date-fns";
 import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
@@ -17,11 +16,8 @@ import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
 import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
-import { formatHour } from "@/features/settings/utils/quietHoursAxis";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
-
-/** The next daily brief, on the reader's clock: "Mon 16 Nov, 7 AM". */
-const NEXT_BRIEF_FORMAT = "EEE d MMM, h a";
+import { DAY_AND_HOUR_FORMAT, formatHour } from "@/utils/date/clock";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
@@ -123,7 +119,7 @@ export function BriefingScheduleSettings() {
               ? null
               : `Lands at ${formatHour(landsAt)}, when your quiet hours end.`,
             schedule?.next_daily_brief_at
-              ? `Next one ${format(parseISO(schedule.next_daily_brief_at), NEXT_BRIEF_FORMAT)}.`
+              ? `Next one ${format(parseISO(schedule.next_daily_brief_at), DAY_AND_HOUR_FORMAT)}.`
               : null,
           ]
             .filter(Boolean)
@@ -149,7 +145,7 @@ export function BriefingScheduleSettings() {
                 <GaiaListBoxItem
                   key={hour}
                   id={String(hour)}
-                  textValue={formatHour12(hour)}
+                  textValue={formatHour(hour)}
                 />
               ))}
             </ListBox>

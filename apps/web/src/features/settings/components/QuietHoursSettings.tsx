@@ -7,7 +7,6 @@ import { toneVariants } from "@/components/shared/tone";
 import { SettingsSectionHeader } from "@/features/settings/components/ui/SettingsSection";
 import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
 import {
-  formatHour,
   fromAxis,
   QUIET_AXIS_END,
   QUIET_AXIS_MARKS,
@@ -16,6 +15,7 @@ import {
 } from "@/features/settings/utils/quietHoursAxis";
 import { getUserHomeTimezone } from "@/lib/timezone";
 import { cn } from "@/lib/utils";
+import { formatHour } from "@/utils/date/clock";
 
 const QUIET_HOURS_DESCRIPTION =
   "During quiet hours GAIA holds anything that can wait until they end, and only interrupts you for what can't.";

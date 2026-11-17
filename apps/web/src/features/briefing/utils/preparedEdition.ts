@@ -1,12 +1,13 @@
 import {
   BRIEF_LETTER_MAX_WIDTH_PX,
+  CHAT_LETTER_MAX_WIDTH_PX,
   LETTER_VIEWPORT_GUTTER_PX,
-} from "../constants";
+} from "../letterTokens";
 import { frontPaper, type Rgb } from "./frontPaper";
 import {
   type EditionSource,
   findPaper,
-  type PaperSheet,
+  type PaperBox,
   straighten,
 } from "./paperBounds";
 
@@ -17,11 +18,6 @@ const MAX_PIXEL_RATIO = 2;
 const FRONT_SHARE_RANGE = [0.12, 0.6] as const;
 /** A marked paper box is cut this share of its width inside, clear of a tilt's corners and its antialiased edge. */
 const PAPER_BOX_INSET = 0.004;
-/** The folded letter in chat is drawn from the same panels, so they are cut wide enough for it too. */
-export const LETTER_MAX_WIDTH = 460;
-/** The chat letter lies tipped back this far; the open letter straightens from it. */
-export const LETTER_TILT_DEG = 12;
-export const LETTER_PERSPECTIVE_PX = 1100;
 /** Paper darker than this takes light crease highlights instead of dark shading. */
 const DARK_PAPER_LIGHTNESS = 0.45;
 
@@ -66,11 +62,6 @@ export interface EditionHold {
   release: () => void;
 }
 
-/** The back of the edition's paper: its own colour, shaded toward the crease it hangs from. */
-export function paperBackGradient(paper: string): string {
-  return `linear-gradient(180deg, color-mix(in srgb, ${paper} 80%, black) 0%, color-mix(in srgb, ${paper} 92%, black) 45%, ${paper} 100%)`;
-}
-
 /** The edition at its full letter width, or the screen's when narrower; a tall one scrolls. */
 function fittedWidth(): number {
   return Math.round(
@@ -98,8 +89,8 @@ function panelShares(count: number, foldInSheet: number | null): number[] {
   return [front, ...Array.from({ length: count - 1 }, () => rest)];
 }
 
-/** The sheet as the edition's own paper marker places it, a hair inside its box. */
-function markedSheet(image: HTMLImageElement, paper: number[]): PaperSheet {
+/** The paper as the edition's own marker places it, a hair inside its box. */
+function markedBox(image: HTMLImageElement, paper: number[]): PaperBox {
   const [left, top, right, bottom] = paper;
   const width = image.naturalWidth;
   const height = image.naturalHeight;
@@ -109,10 +100,26 @@ function markedSheet(image: HTMLImageElement, paper: number[]): PaperSheet {
     y: top * height + inset,
     width: (right - left) * width - 2 * inset,
     height: (bottom - top) * height - 2 * inset,
-    rgb: [0, 0, 0],
-    desk: null,
-    tilt: 0,
   };
+}
+
+/**
+ * Where the paper lies, and the image to cut it from. A marked box is exact;
+ * only an unmarked edition is read for its desk, and a sheet set at an angle on
+ * it is turned square first, so its border survives the crop.
+ * INTEGRATION(P-api2): once every edition carries the box Chromium measures, the
+ * unmarked branch, straighten() and all of paperBounds.ts are deleted.
+ */
+function locatePaper(
+  image: HTMLImageElement,
+  drawn: EditionSource,
+  paper: number[] | null,
+): { edition: EditionSource; box: PaperBox; tilt: number } {
+  if (paper) return { edition: drawn, box: markedBox(image, paper), tilt: 0 };
+  const found = findPaper(drawn);
+  if (!found.tilt) return { edition: drawn, box: found, tilt: 0 };
+  const edition = straighten(image, found);
+  return { edition, box: findPaper(edition), tilt: found.tilt };
 }
 
 async function decodeAndSlice(
@@ -130,25 +137,21 @@ async function decodeAndSlice(
     width: image.naturalWidth,
     height: image.naturalHeight,
   };
-  // A marked paper box is exact; only an unmarked edition is read for its desk.
-  // INTEGRATION(P-api2): once every edition carries the box Chromium measures, this
-  // branch, straighten() and all of paperBounds.ts are deleted.
-  const asDrawn = paper ? markedSheet(image, paper) : findPaper(drawn);
-  // A sheet set at an angle on its desk is turned square first, so its border survives the crop.
-  const edition = asDrawn.tilt ? straighten(image, asDrawn) : drawn;
-  const sheet = asDrawn.tilt ? findPaper(edition) : asDrawn;
+  const { edition, box: sheet, tilt } = locatePaper(image, drawn, paper);
   const aspect = sheet.height / sheet.width;
   const count = aspect > FOUR_PANEL_ASPECT ? 4 : 3;
   // Turning a tilted sheet square lifts one end of the fold line; the cut moves up by
   // that much, so nothing below the marker rises into the front.
-  const turnLift = (sheet.width / 2) * Math.abs(Math.sin(asDrawn.tilt));
+  const turnLift = (sheet.width / 2) * Math.abs(Math.sin(tilt));
   const foldInSheet =
     fold === null
       ? null
       : (fold * image.naturalHeight - turnLift - sheet.y) / sheet.height;
   const shares = panelShares(count, foldInSheet);
   const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
-  const panelWidth = Math.round(Math.max(width, LETTER_MAX_WIDTH) * ratio);
+  const panelWidth = Math.round(
+    Math.max(width, CHAT_LETTER_MAX_WIDTH_PX) * ratio,
+  );
   const starts = shares.map((_, index) =>
     shares.slice(0, index).reduce((sum, share) => sum + share, 0),
   );

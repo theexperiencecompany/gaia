@@ -2,11 +2,17 @@
 
 import { Chip } from "@heroui/react";
 import { NewsIcon } from "@icons";
-import { format, isToday, isYesterday, parseISO } from "date-fns";
+import { format, parseISO } from "date-fns";
 import Image from "next/image";
 import { useId } from "react";
 
+import {
+  NESTED_TONE,
+  type SurfaceTone,
+  surfaceVariants,
+} from "@/components/shared/surfaceVariants";
 import { cn } from "@/lib/utils";
+import { DAY_FORMAT, relativeDay, TODAY } from "@/utils/date/clock";
 
 import type { BriefTriggerState } from "../hooks/useOpenBrief";
 import type { FoldedBriefSummary } from "../utils/briefCard";
@@ -15,40 +21,22 @@ import { BriefTrigger } from "./BriefTrigger";
 /** Below this, a waiting count is the ordinary day and not worth a line. */
 const NOTABLE_NEEDS_YOU = 3;
 
-const TONE_CLASSES = {
-  raised: "bg-zinc-800",
-  inset: "bg-zinc-900",
-} as const;
-
-/** The preview sits one step off the card it is in, so the edition reads as its own sheet. */
-const PREVIEW_TONE_CLASSES: Record<BriefCardTone, string> = {
-  raised: "bg-zinc-900",
-  inset: "bg-zinc-800",
-};
-
 const KIND_LABELS = { daily: "Daily", weekly: "Weekly" } as const;
-
-export type BriefCardTone = keyof typeof TONE_CLASSES;
 
 interface FoldedBriefCardProps {
   brief: FoldedBriefSummary;
   /** "raised" on the page background, "inset" inside a zinc-800 card. */
-  tone?: BriefCardTone;
+  tone?: SurfaceTone;
   /** Off where the card is filed under its title alone (the archive). */
   showsWaiting?: boolean;
   trigger: BriefTriggerState;
 }
 
-const TODAY_LABEL = "Today";
-
 function dateLabel(brief: FoldedBriefSummary): string | null {
   if (!brief.date) return null;
   const date = parseISO(brief.date);
-  const day = format(date, "EEE d MMM");
-  if (brief.kind === "weekly") return `Week to ${day}`;
-  if (isToday(date)) return TODAY_LABEL;
-  if (isYesterday(date)) return "Yesterday";
-  return day;
+  if (brief.kind === "weekly") return `Week to ${format(date, DAY_FORMAT)}`;
+  return relativeDay(date);
 }
 
 function editionLabel(brief: FoldedBriefSummary): string | null {
@@ -63,10 +51,16 @@ function Preview({
   tone,
 }: {
   imageUrl?: string | null;
-  tone: BriefCardTone;
+  tone: SurfaceTone;
 }) {
+  // The preview sits one step off the card it is in, so the edition reads as its own sheet.
   return (
-    <div className={cn("rounded-[10px] p-1.5", PREVIEW_TONE_CLASSES[tone])}>
+    <div
+      className={surfaceVariants({
+        tone: NESTED_TONE[tone],
+        className: "rounded-[10px] p-1.5",
+      })}
+    >
       <div className="relative aspect-[3/2] overflow-hidden rounded-[4px] transition-[filter] duration-200 ease-out group-hover:brightness-110">
         {imageUrl ? (
           <Image
@@ -116,7 +110,7 @@ export function FoldedBriefCard({
       aria-describedby={describedBy || undefined}
       className={cn(
         "group relative flex h-full w-full min-w-0 flex-col items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal transition-[scale] duration-200 ease-out after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-white/0 after:transition-colors after:duration-200 after:ease-out hover:after:bg-white/5 active:scale-[0.97]",
-        TONE_CLASSES[tone],
+        surfaceVariants({ tone }),
       )}
     >
       <Preview imageUrl={brief.imageUrl} tone={tone} />
@@ -129,7 +123,7 @@ export function FoldedBriefCard({
             <span
               className={cn(
                 "truncate",
-                date === TODAY_LABEL && "font-medium text-accent",
+                date === TODAY && "font-medium text-accent",
               )}
             >
               {date}

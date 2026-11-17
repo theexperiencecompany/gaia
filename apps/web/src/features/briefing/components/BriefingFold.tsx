@@ -13,12 +13,12 @@ import { LinkButton } from "@/components/shared/LinkButton";
 import { LoadError } from "@/components/shared/LoadError";
 
 import { briefingQuery } from "../api/briefingApi";
-import { BRIEF_LETTER_WIDTH } from "../constants";
 import {
   type BriefSource,
   type BriefTriggerState,
   useOpenBrief,
 } from "../hooks/useOpenBrief";
+import { BRIEF_LETTER_WIDTH } from "../letterTokens";
 
 import { briefPath, type FoldedBriefSummary } from "../utils/briefCard";
 import { BriefingEdition, BriefingText } from "./BriefingEdition";

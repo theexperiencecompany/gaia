@@ -156,6 +156,7 @@
 @source "../../../components/shared/IntegrationConnectCard.tsx";
 @source "../../../components/shared/KeyboardShortcutsModal.tsx";
 @source "../../../components/shared/LetterModal.tsx";
+@source "../../../components/shared/letterMotion.ts";
 @source "../../../components/shared/LinkButton.tsx";
 @source "../../../components/shared/LoadError.tsx";
 @source "../../../components/shared/LogoWithContextMenu.tsx";
@@ -168,6 +169,7 @@
 @source "../../../components/shared/RouteError.tsx";
 @source "../../../components/shared/SecretInput.tsx";
 @source "../../../components/shared/shape.ts";
+@source "../../../components/shared/surfaceVariants.ts";
 @source "../../../components/shared/SuspenseLoader.tsx";
 @source "../../../components/shared/tabsVariants.ts";
 @source "../../../components/shared/tone.ts";
@@ -210,6 +212,8 @@
 @source "../../../features/bots/constants.ts";
 @source "../../../features/briefing/constants.ts";
 @source "../../../features/briefing/index.ts";
+@source "../../../features/briefing/letterTokens.ts";
+@source "../../../features/briefing/paperMaterial.ts";
 @source "../../../features/browser/constants.ts";
 @source "../../../features/browser/utils.ts";
 @source "../../../features/chat/constants.tsx";
@@ -272,6 +276,7 @@
 @source "../../../utils/calendar/eventPayloadBuilders.ts";
 @source "../../../utils/calendar/eventTypeGuards.ts";
 @source "../../../utils/date/calendarDateUtils.ts";
+@source "../../../utils/date/clock.ts";
 @source "../../../utils/date/dateUtils.ts";
 @source "../../../../../../libs/shared/ts/src/analytics/identity.ts";
 @source "../../../../../../libs/shared/ts/src/api/apiClient.ts";

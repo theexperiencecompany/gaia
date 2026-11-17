@@ -7,8 +7,10 @@ import { StandalonePage } from "@/components/layout/StandalonePage";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { LoadError } from "@/components/shared/LoadError";
 import { isNotFound } from "@/lib/api/errorMessage";
+import { cn } from "@/lib/utils";
 import { briefingQuery } from "../api/briefingApi";
 import { BACK_TO_BRIEFINGS } from "../constants";
+import { BRIEF_PAGE_COLUMN_CLASS } from "../letterTokens";
 import { StandaloneBriefing } from "./StandaloneBriefing";
 
 /** The /brief/[id] page: loads the signed-in reader's brief into the standalone shell. */
@@ -23,7 +25,12 @@ export function BriefingPage({ briefingId }: { briefingId: string }) {
   if (isLoading) {
     return (
       <StandalonePage width="letter" back={BACK_TO_BRIEFINGS}>
-        <Skeleton className="mx-auto h-[70vh] w-full max-w-[540px] rounded-2xl" />
+        <Skeleton
+          className={cn(
+            "mx-auto h-[70vh] w-full rounded-2xl",
+            BRIEF_PAGE_COLUMN_CLASS,
+          )}
+        />
       </StandalonePage>
     );
   }

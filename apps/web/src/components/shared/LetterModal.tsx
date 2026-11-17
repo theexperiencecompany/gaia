@@ -8,26 +8,12 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { modalVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
-
-/**
- * A letter opens unhurried and leaves quickly: an ease-out rise, a short
- * ease-in exit that fades and shrinks it as one. Every letter surface and the
- * page behind it share these timings.
- */
-export const LETTER_OPEN_TRANSITION = {
-  duration: 0.4,
-  ease: [0.33, 1, 0.68, 1],
-} as const;
-export const LETTER_CLOSE_TRANSITION = {
-  duration: 0.2,
-  ease: [0.4, 0, 1, 1],
-} as const;
-export const LETTER_REDUCED_TRANSITION = {
-  duration: 0.15,
-  ease: "easeOut",
-} as const;
-/** How far a letter shrinks as it leaves; opacity and scale run on the one curve. */
-export const LETTER_EXIT_SCALE = 0.96;
+import {
+  LETTER_CLOSE_TRANSITION,
+  LETTER_EXIT_SCALE,
+  LETTER_OPEN_TRANSITION,
+  LETTER_REDUCED_TRANSITION,
+} from "@/components/shared/letterMotion";
 
 /**
  * A sheet tilts and settles onto the screen, then leaves by fading and

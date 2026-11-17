@@ -12,6 +12,11 @@ import {
   type GaiaButtonVariant,
 } from "@/components/shared/GaiaButton";
 import {
+  NESTED_TONE,
+  type SurfaceTone,
+  surfaceVariants,
+} from "@/components/shared/surfaceVariants";
+import {
   BriefingFold,
   briefPath,
   FoldedBriefCard,
@@ -19,6 +24,7 @@ import {
 } from "@/features/briefing";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
+import { cn } from "@/lib/utils";
 import {
   ActionStyle,
   ActionType,
@@ -34,7 +40,7 @@ interface NotificationCardProps {
    * or a zinc-900 panel) or "inset" (zinc-900 card inside a zinc-800 surface,
    * e.g. chat tool cards).
    */
-  tone?: "raised" | "inset";
+  tone?: SurfaceTone;
   /** Clamp the body to two lines in dense contexts (popover, chat). */
   clampBody?: boolean;
   onMarkAsRead?: (id: string) => void | Promise<void>;
@@ -95,21 +101,21 @@ export const NotificationCard = ({
     await onMarkAsRead?.(notification.id);
   };
 
-  const surface =
-    tone === "raised"
-      ? isUnread
-        ? "bg-zinc-800"
-        : "bg-zinc-800/40"
-      : isUnread
-        ? "bg-zinc-900"
-        : "bg-zinc-900/40";
-
   return (
-    <div className={`w-full rounded-2xl p-4 transition-colors ${surface}`}>
+    <div
+      className={surfaceVariants({
+        tone,
+        faded: !isUnread,
+        className: "w-full rounded-2xl p-4 transition-colors",
+      })}
+    >
       <div className="min-w-0">
         <div className="flex min-h-6 items-center gap-2">
           <h3
-            className={`truncate text-sm font-medium ${isUnread ? "text-zinc-100" : "text-zinc-400"}`}
+            className={cn(
+              "truncate text-sm font-medium",
+              isUnread ? "text-zinc-100" : "text-zinc-400",
+            )}
           >
             {brief ? BRIEF_LABEL : title}
           </h3>
@@ -131,7 +137,7 @@ export const NotificationCard = ({
               {(trigger) => (
                 <FoldedBriefCard
                   brief={brief.summary}
-                  tone={tone === "raised" ? "inset" : "raised"}
+                  tone={NESTED_TONE[tone]}
                   trigger={trigger}
                 />
               )}
@@ -140,7 +146,11 @@ export const NotificationCard = ({
         ) : (
           <MarkdownRenderer
             content={body}
-            className={`mt-0.5 text-sm ${clampBody ? "line-clamp-2" : ""} ${isUnread ? "text-zinc-400" : "text-zinc-500"}`}
+            className={cn(
+              "mt-0.5 text-sm",
+              clampBody && "line-clamp-2",
+              isUnread ? "text-zinc-400" : "text-zinc-500",
+            )}
             hideCodeToolbar
           />
         )}
@@ -148,7 +158,10 @@ export const NotificationCard = ({
 
       {(actions.length > 0 || (isUnread && onMarkAsRead)) && (
         <div
-          className={`mt-3 flex flex-wrap items-center gap-2 ${isUnread ? "" : "opacity-70"}`}
+          className={cn(
+            "mt-3 flex flex-wrap items-center gap-2",
+            !isUnread && "opacity-70",
+          )}
         >
           {actions.map((action) => {
             const isExecuted = Boolean(action.executed);
