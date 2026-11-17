@@ -216,7 +216,6 @@ describe("a shared artifact", () => {
     kind: "report",
     title: "Q3 revenue",
     program: 'root = Report("Q3 revenue", [])',
-    version: 1,
     created_at: "2026-11-10T06:27:00Z",
     shared_by: "Ana",
   };

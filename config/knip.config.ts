@@ -280,7 +280,7 @@ const config: KnipConfig = {
         // Invoked dynamically as `pnpm exec jscpd` inside
         // scripts/ci/checks.mjs duplication, so knip can't see the usage.
         "jscpd",
-        // Imported by scripts/openui/generate-prompt.ts (the OpenUI prompt
+        // Imported by scripts/openui/generate-prompts.ts (the OpenUI prompt
         // codegen). Declared in apps/web; resolved here via pnpm workspace
         // hoisting, so knip reads them as unlisted at the root.
         "@openuidev/react-lang",
@@ -490,6 +490,16 @@ const config: KnipConfig = {
       includeEntryExports: false, // library exports consumed by other workspaces
       // Optional peer: zustand is a peerDependency consumed by importing apps.
       ignoreDependencies: ["zustand"],
+    },
+
+    // ── Artifact Library ─────────────────────────────────────────────
+    "libs/artifacts": {
+      // Every module is a package export ("./*"), read by apps/web, scripts/openui and the validator.
+      entry: ["src/*.ts"],
+      project: ["src/**/*.ts", "!src/**/*.test.ts"],
+      includeEntryExports: false,
+      // Peers of @openuidev/react-ui that the validator bundle inlines; nothing imports them directly.
+      ignoreDependencies: ["react", "react-dom"],
     },
 
     // ── Wake-word Library ────────────────────────────────────────────

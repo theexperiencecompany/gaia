@@ -7,9 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.config.settings import settings
 from app.db.repositories.briefings import briefing_repository
 from app.models.briefing_models import BriefingPayload, EditionRender
-from app.models.short_link_models import ShortLinkTargetType
+from app.models.short_link_models import ShortLink, ShortLinkTargetType
 from app.services.briefing import store
 from app.services.briefing.edition_email import HostedEditionImage
 
@@ -30,12 +31,18 @@ def _payload() -> BriefingPayload:
     )
 
 
+_LINK = ShortLink(
+    slug="abcdefghijk", user_id=_USER, target_type=ShortLinkTargetType.BRIEFING, target_id=_BRIEF_ID
+)
+_LINK_URL = f"{settings.SHORTLINK_BASE_URL}/abcdefghijk"
+
+
 @pytest.fixture
 def seams(monkeypatch: pytest.MonkeyPatch) -> dict[str, AsyncMock]:
     fakes = {
         "briefing_id_for": AsyncMock(return_value=_BRIEF_ID),
         "upsert_briefing": AsyncMock(return_value=MagicMock(id=_BRIEF_ID)),
-        "optional_short_link": AsyncMock(return_value="https://heygaia.link/abc"),
+        "attach_link": AsyncMock(return_value=_LINK),
         "host_edition_image": AsyncMock(
             return_value=HostedEditionImage(
                 display_url="https://cdn.example/f_auto/brief",
@@ -47,7 +54,7 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> dict[str, AsyncMock]:
     }
     monkeypatch.setattr(briefing_repository, "briefing_id_for", fakes["briefing_id_for"])
     monkeypatch.setattr(briefing_repository, "upsert_briefing", fakes["upsert_briefing"])
-    monkeypatch.setattr(store, "optional_short_link", fakes["optional_short_link"])
+    monkeypatch.setattr(store, "attach_link", fakes["attach_link"])
     monkeypatch.setattr(store, "host_edition_image", fakes["host_edition_image"])
     return fakes
 
@@ -61,10 +68,10 @@ class TestStoreBrief:
         stored = await store.store_brief(_USER, _DATE, "daily", payload)
 
         seams["briefing_id_for"].assert_awaited_once_with(_USER, _DATE, "daily")
-        seams["optional_short_link"].assert_awaited_once_with(
+        seams["attach_link"].assert_awaited_once_with(
             _USER, ShortLinkTargetType.BRIEFING, _BRIEF_ID
         )
-        assert payload.link == "https://heygaia.link/abc"
+        assert payload.link == _LINK_URL
         assert seams["host_edition_image"].await_args.args == (payload,)
         assert seams["host_edition_image"].await_args.kwargs["owner_id"] == _USER
         assert seams["upsert_briefing"].await_args.args == (_USER, _DATE, "daily", payload)
@@ -76,7 +83,7 @@ class TestStoreBrief:
                 paper=[0.1, 0.2, 0.9, 0.8],
             ),
         }
-        assert (stored.briefing.id, stored.link) == (_BRIEF_ID, "https://heygaia.link/abc")
+        assert (stored.briefing.id, stored.link) == (_BRIEF_ID, _LINK_URL)
 
     async def test_the_brief_exists_before_its_link_is_minted(
         self, seams: dict[str, AsyncMock]
@@ -88,12 +95,12 @@ class TestStoreBrief:
             order.append("stored" if edition is None else "stored with its edition")
             return MagicMock(id=_BRIEF_ID)
 
-        async def minted(*_a: object) -> str:
+        async def minted(*_a: object) -> ShortLink:
             order.append("minted")
-            return "https://heygaia.link/abc"
+            return _LINK
 
         seams["upsert_briefing"].side_effect = stored
-        seams["optional_short_link"].side_effect = minted
+        seams["attach_link"].side_effect = minted
 
         await store.store_brief(_USER, _DATE, "daily", _payload())
 
@@ -102,7 +109,7 @@ class TestStoreBrief:
     async def test_without_a_short_link_the_link_is_the_briefs_own_page(
         self, seams: dict[str, AsyncMock], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        seams["optional_short_link"].return_value = None
+        seams["attach_link"].return_value = None
         monkeypatch.setattr(
             "app.services.briefing.message.settings.FRONTEND_URL", "https://app.test"
         )
@@ -142,6 +149,6 @@ class TestStoreNote:
             "briefing_id": _BRIEF_ID,
             "edition": None,
         }
-        seams["optional_short_link"].assert_not_awaited()
+        seams["attach_link"].assert_not_awaited()
         seams["host_edition_image"].assert_not_awaited()
         assert (stored.briefing.id, stored.image, stored.link) == (_BRIEF_ID, None, None)

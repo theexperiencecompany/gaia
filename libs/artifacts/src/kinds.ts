@@ -8,14 +8,6 @@ import {
   REACT_UI_ARTIFACT_COMPONENTS,
 } from "./specs";
 
-export const ARTIFACT_KINDS = [
-  "dashboard",
-  "report",
-  "plan",
-  "comparison",
-  "memo",
-  "document",
-] as const satisfies readonly ArtifactKind[];
 export type { ArtifactKind };
 
 /** The components each kind's prompt teaches, besides the Artifact root. */

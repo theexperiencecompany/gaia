@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Iterator
 from datetime import date
 import hashlib
-from typing import Any
+from typing import Any, get_args
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,7 +24,12 @@ from app.services.openui_artifacts.generate import (
 )
 from app.services.openui_artifacts.validate import ArtifactValidation
 from shared.py.analytics import UserId
-from shared.py.analytics.catalog.artifacts import ArtifactCreated, ArtifactFailed
+from shared.py.analytics.catalog.artifacts import (
+    ArtifactCreated,
+    ArtifactFailed,
+    ArtifactFailureReasonName,
+    ArtifactKindName,
+)
 from tests.helpers import captured_wide_event
 
 _SVC = "app.services.openui_artifacts.create"
@@ -249,7 +254,6 @@ async def test_the_success_is_counted_and_logged_with_its_timings(
         output_tokens=50,
         first_component_ms=900.0,
         total_ms=500.0,
-        model=ARTIFACT_MODEL_NAME,
     )
     assert event["artifact"] == {
         "kind": "dashboard",
@@ -326,3 +330,13 @@ async def test_a_generation_past_its_time_limit_fails_as_a_timeout(
     capture.assert_called_once_with(
         UserId(USER_ID), ArtifactFailed(kind="dashboard", reason="timeout", problem_count=0)
     )
+
+
+@pytest.mark.parametrize(
+    ("literal", "source"),
+    [(ArtifactKindName, ArtifactKind), (ArtifactFailureReasonName, ArtifactFailureReason)],
+)
+def test_the_catalog_restates_each_api_set_exactly(
+    literal: object, source: type[ArtifactKind] | type[ArtifactFailureReason]
+) -> None:
+    assert set(get_args(literal)) == {member.value for member in source}

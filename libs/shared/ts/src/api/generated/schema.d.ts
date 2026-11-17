@@ -6435,6 +6435,67 @@ export interface components {
             /** User Code */
             user_code: string;
         };
+        /**
+         * ArtifactCard
+         * @description Where a create_artifact run ended: the artifact_done tool_data entry's data.
+         */
+        ArtifactCard: {
+            /** Artifact Id */
+            artifact_id?: string | null;
+            kind: components["schemas"]["ArtifactKind"];
+            reason?: components["schemas"]["ArtifactFailureReason"] | null;
+            status: components["schemas"]["ArtifactStatus"];
+            /** Stream Id */
+            stream_id: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ArtifactCardEntry
+         * @description The tool_data entry an artifact_done payload becomes on the stream and in the stored turn.
+         */
+        ArtifactCardEntry: {
+            data: components["schemas"]["ArtifactCard"];
+            /** Timestamp */
+            timestamp: string;
+            /**
+             * Tool Name
+             * @constant
+             */
+            tool_name: "artifact_done";
+        };
+        /**
+         * ArtifactCardFrame
+         * @description The stream frame carrying an ArtifactCardEntry.
+         */
+        ArtifactCardFrame: {
+            tool_data: components["schemas"]["ArtifactCardEntry"];
+        };
+        /**
+         * ArtifactDelta
+         * @description A chunk of the first draft's program; the card appends it.
+         */
+        ArtifactDelta: {
+            /** Delta */
+            delta: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** Stream Id */
+            stream_id: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ArtifactDeltaFrame
+         * @description The live-only stream frame carrying an ArtifactDelta.
+         */
+        ArtifactDeltaFrame: {
+            artifact_delta: components["schemas"]["ArtifactDelta"];
+        };
+        /**
+         * ArtifactFailureReason
+         * @enum {string}
+         */
+        ArtifactFailureReason: "validation" | "refused" | "timeout" | "truncated";
         /** ArtifactInfo */
         ArtifactInfo: {
             /** Content Type */
@@ -6454,7 +6515,7 @@ export interface components {
         /**
          * ArtifactKind
          * @description What the artifact is; each kind has its own generated prompt
-         *     (apps/api/app/agents/prompts/artifacts/<kind>.txt, from the web library's kinds.ts).
+         *     (apps/api/app/agents/prompts/artifacts/<kind>.txt, from libs/artifacts/src/kinds.ts).
          * @enum {string}
          */
         ArtifactKind: "dashboard" | "report" | "plan" | "comparison" | "memo" | "document";
@@ -6482,6 +6543,12 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /**
+         * ArtifactStatus
+         * @description Where a create_artifact run ended, as the chat card shows it.
+         * @enum {string}
+         */
+        ArtifactStatus: "ready" | "failed";
         /**
          * AsanaTaskTriggerConfig
          * @description Config for asana_task_trigger (Composio ASANA_TASK_CREATED).
@@ -13054,8 +13121,6 @@ export interface components {
             program: string;
             /** Title */
             title: string;
-            /** Version */
-            version: number;
         };
         /**
          * PaginatedNotificationsResponse
@@ -14014,8 +14079,6 @@ export interface components {
             target_type: "openui_artifact";
             /** Title */
             title: string;
-            /** Version */
-            version: number;
         };
         /**
          * PublicSessionArtifact
@@ -18045,9 +18108,16 @@ export type ApiCallConfig = components['schemas']['ApiCallConfig'];
 export type ApprovalDecisionRequest = components['schemas']['ApprovalDecisionRequest'];
 export type ApprovalDecisionResponse = components['schemas']['ApprovalDecisionResponse'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
+export type ArtifactCard = components['schemas']['ArtifactCard'];
+export type ArtifactCardEntry = components['schemas']['ArtifactCardEntry'];
+export type ArtifactCardFrame = components['schemas']['ArtifactCardFrame'];
+export type ArtifactDelta = components['schemas']['ArtifactDelta'];
+export type ArtifactDeltaFrame = components['schemas']['ArtifactDeltaFrame'];
+export type ArtifactFailureReason = components['schemas']['ArtifactFailureReason'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactKind = components['schemas']['ArtifactKind'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];
+export type ArtifactStatus = components['schemas']['ArtifactStatus'];
 export type AsanaTaskTriggerConfig = components['schemas']['AsanaTaskTriggerConfig'];
 export type AuthenticatedUserResponse = components['schemas']['AuthenticatedUserResponse'];
 export type AuthorDetails = components['schemas']['AuthorDetails'];
@@ -21521,12 +21591,14 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Successful Response */
+            /** @description Server-sent events, one JSON frame per data: line; the frames with a published shape are listed, every frame is in libs/shared/ts/src/chat/schema.ts. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "text/event-stream": components["schemas"]["ArtifactDeltaFrame"] | components["schemas"]["ArtifactCardFrame"];
+                };
             };
             /** @description Unprocessable Entity */
             422: {
@@ -32034,12 +32106,14 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Successful Response */
+            /** @description Server-sent events, one JSON frame per data: line; the frames with a published shape are listed, every frame is in libs/shared/ts/src/chat/schema.ts. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "text/event-stream": components["schemas"]["ArtifactDeltaFrame"] | components["schemas"]["ArtifactCardFrame"];
+                };
             };
             /** @description Unprocessable Entity */
             422: {

@@ -54,6 +54,11 @@
  *                       file, its Caddyfile and the CLI's machine secrets
  *                       (lib/deploy_templates.py), then fail if any differs
  *                       from what is committed. --write is `mise deploy:templates`.
+ *   openui-prompts [--write]
+ *                       Regenerate the comms OpenUI prompt and the artifact
+ *                       model's per-kind prompts (scripts/openui/generate-prompts.ts),
+ *                       then fail if any differs from what is committed.
+ *                       --write is `mise openui:prompts`.
  *   doc-comments        Fail on a JSDoc block that narrates (>6 lines) or
  *                       restates its declaration/@param, a run of more than
  *                       3 // lines, or a banner inside a body. The TS half of
@@ -102,6 +107,7 @@ import {
   cmdCliConfigSchema,
   cmdDeployTemplates,
   cmdLinkConstants,
+  cmdOpenuiPrompts,
 } from "./lib/generated-artifacts.mjs";
 import { runEvlogMapBots } from "./lib/evlog-map-bots.mjs";
 import {
@@ -1065,6 +1071,7 @@ function usage() {
       "  cli-config-schema [--write]            regenerate the CLI's vendored config schema, fail on drift",
       "  deploy-templates [--write]             regenerate the Coolify/Render templates from the compose file, fail on drift",
       "  link-constants [--write]               regenerate the Worker's and CLI's link constants, check the Caddyfile, fail on drift",
+      "  openui-prompts [--write]               regenerate the comms and artifact OpenUI prompts, fail on drift",
       "  doc-comments                           no narrating / restating JSDoc, comment runs, or in-body banners",
       "  heroui-style-overrides                 no colour/radius/padding className or style on a HeroUI component",
       "  heroui-usage                           no v2 HeroUI API, controls render their parts, GAIA wrappers over bare HeroUI",
@@ -1166,6 +1173,9 @@ function cmdFrameworkPair() {
       break;
     case "link-constants":
       cmdLinkConstants(rest);
+      break;
+    case "openui-prompts":
+      cmdOpenuiPrompts(rest);
       break;
     case "doc-comments":
       cmdDocComments(rest);

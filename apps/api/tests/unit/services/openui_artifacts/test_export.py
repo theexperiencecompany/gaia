@@ -14,7 +14,7 @@ from shared.py.analytics import UserId
 from shared.py.analytics.catalog.artifacts import ArtifactPdfExported
 from tests.helpers import captured_wide_event
 
-# Exports are cached per artifact version; a real Redis would carry one test's print into the next.
+# Exports are cached per program; a real Redis would carry one test's print into the next.
 pytestmark = pytest.mark.usefixtures("fake_redis")
 
 _SVC = "app.services.openui_artifacts.export"
@@ -78,15 +78,20 @@ def test_a_title_with_nothing_printable_falls_back_to_the_kind() -> None:
     )
 
 
-async def test_a_print_is_reused_until_the_artifact_or_its_version_changes() -> None:
-    other = ARTIFACT.model_copy(update={"id": "a2"})
-    revised = ARTIFACT.model_copy(update={"version": 2})
+async def test_a_print_is_reused_until_the_program_changes() -> None:
+    same_program = ARTIFACT.model_copy(update={"id": "a2"})
+    other_program = ARTIFACT.model_copy(
+        update={"id": "a3", "program": 'root = Artifact("Q4", "s", [], [])'}
+    )
     with (
         patch(f"{_SVC}.render_program_to_pdf", AsyncMock(return_value=(b"%PDF-1.7", 1))) as render,
         patch(f"{_SVC}.capture"),
     ):
-        for artifact in (ARTIFACT, ARTIFACT, other, revised):
+        for artifact in (ARTIFACT, ARTIFACT, same_program, other_program):
             with patch(f"{_SVC}.get_owned_artifact", AsyncMock(return_value=artifact)):
                 await owner_artifact_pdf(OWNER, artifact.id)
 
-    assert render.await_count == 3
+    assert [call.args[0] for call in render.await_args_list] == [
+        ARTIFACT.program,
+        other_program.program,
+    ]

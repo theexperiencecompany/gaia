@@ -4,20 +4,22 @@
  * `artifact_done` tool_data entry. Both fold into a single card entry keyed by stream_id.
  */
 import type { StreamToolDataEntry } from "../chat/streaming";
-import type { ArtifactCardData, ArtifactDeltaFrame } from "./types";
+import { ArtifactCardDataSchema } from "./schema";
+import type { ArtifactCardData, ArtifactDelta } from "./types";
 
 export const ARTIFACT_CARD_TOOL_NAME = "artifact_done";
 
-const cardOf = (entry: StreamToolDataEntry): ArtifactCardData | null =>
-  entry.tool_name === ARTIFACT_CARD_TOOL_NAME
-    ? (entry.data as ArtifactCardData)
-    : null;
+function cardOf(entry: StreamToolDataEntry): ArtifactCardData | null {
+  if (entry.tool_name !== ARTIFACT_CARD_TOOL_NAME) return null;
+  const parsed = ArtifactCardDataSchema.safeParse(entry.data);
+  return parsed.success ? parsed.data : null;
+}
 
-function upsertCard<T extends StreamToolDataEntry>(
-  entries: T[],
+function upsertCard(
+  entries: StreamToolDataEntry[],
   streamId: string,
-  next: (previous: ArtifactCardData | null) => T,
-): T[] {
+  next: (previous: ArtifactCardData | null) => StreamToolDataEntry,
+): StreamToolDataEntry[] {
   const index = entries.findIndex(
     (entry) => cardOf(entry)?.stream_id === streamId,
   );
@@ -26,38 +28,33 @@ function upsertCard<T extends StreamToolDataEntry>(
 }
 
 /** Append a streamed chunk to its artifact's card, opening the card on the first chunk. */
-export function applyArtifactDelta<T extends StreamToolDataEntry>(
-  entries: T[],
-  frame: ArtifactDeltaFrame,
-): T[] {
-  return upsertCard(
-    entries,
-    frame.stream_id,
-    (previous) =>
-      ({
-        tool_name: ARTIFACT_CARD_TOOL_NAME,
-        timestamp: new Date().toISOString(),
-        data: {
-          stream_id: frame.stream_id,
-          kind: frame.kind,
-          title: frame.title,
-          status: "streaming",
-          program: `${previous?.program ?? ""}${frame.delta}`,
-        } satisfies ArtifactCardData,
-      }) as T,
-  );
+export function applyArtifactDelta(
+  entries: StreamToolDataEntry[],
+  frame: ArtifactDelta,
+): StreamToolDataEntry[] {
+  return upsertCard(entries, frame.stream_id, (previous) => ({
+    tool_name: ARTIFACT_CARD_TOOL_NAME,
+    timestamp: new Date().toISOString(),
+    data: {
+      stream_id: frame.stream_id,
+      kind: frame.kind,
+      title: frame.title,
+      status: "streaming",
+      program: `${previous?.program ?? ""}${frame.delta}`,
+    } satisfies ArtifactCardData,
+  }));
 }
 
 /** The persisted artifact_done entry replaces its streaming card; other entries append. */
-export function upsertArtifactDone<T extends StreamToolDataEntry>(
-  entries: T[],
-  entry: T,
-): T[] {
+export function upsertArtifactDone(
+  entries: StreamToolDataEntry[],
+  entry: StreamToolDataEntry,
+): StreamToolDataEntry[] {
   const done = cardOf(entry);
   if (!done) return [...entries, entry];
   return upsertCard(entries, done.stream_id, (previous) => ({
     ...entry,
-    data: { ...done, program: previous?.program },
+    data: { ...done, program: previous?.program } satisfies ArtifactCardData,
   }));
 }
 
@@ -65,26 +62,16 @@ export function upsertArtifactDone<T extends StreamToolDataEntry>(
  * A stopped turn's artifacts still writing end as stopped. The run is cancelled
  * before create_artifact can send its done frame, so nothing else ends them.
  */
-export function stopStreamingArtifacts<T extends StreamToolDataEntry>(
-  entries: T[],
-): T[] {
+export function stopStreamingArtifacts(
+  entries: StreamToolDataEntry[],
+): StreamToolDataEntry[] {
   return entries.map((entry) => {
     const card = cardOf(entry);
     return card?.status === "streaming"
-      ? { ...entry, data: { ...card, status: "stopped" } }
+      ? {
+          ...entry,
+          data: { ...card, status: "stopped" } satisfies ArtifactCardData,
+        }
       : entry;
   });
-}
-
-export function isArtifactDeltaFrame(
-  value: unknown,
-): value is ArtifactDeltaFrame {
-  if (typeof value !== "object" || value === null) return false;
-  const frame = value as Record<string, unknown>;
-  return (
-    typeof frame.stream_id === "string" &&
-    typeof frame.kind === "string" &&
-    typeof frame.title === "string" &&
-    typeof frame.delta === "string"
-  );
 }

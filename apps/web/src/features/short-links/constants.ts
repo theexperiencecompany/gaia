@@ -129,14 +129,6 @@ export const BROWSER_RESOLVED_DENIALS: ReadonlySet<string> = new Set([
   ...OWNER_REOPENS_DENIALS,
 ]);
 
-/**
- * The sandbox an active (HTML) snapshot runs in: scripts and forms but no
- * same-origin (so no storage or cookies) and no top navigation (so it cannot
- * redirect the viewer's tab). The content origin's CSP repeats it.
- */
-export const ACTIVE_CONTENT_SANDBOX =
-  "allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads";
-
 /** Fetch a fresh content URL this long before the current one expires. */
 export const CONTENT_URL_REFRESH_MARGIN_MS = 30_000;
 

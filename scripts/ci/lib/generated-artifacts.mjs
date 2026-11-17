@@ -3,7 +3,8 @@
 // differs from what is committed, which catches a missed `mise <task>`.
 // `--write` regenerates without the diff, and is what each mise task runs.
 // Reached through `checks.mjs api-schema | analytics-catalog |
-// cli-config-schema | deploy-templates | link-constants`; never run directly.
+// cli-config-schema | deploy-templates | link-constants |
+// openui-prompts`; never run directly.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -18,6 +19,10 @@ const LINK_CONSTANTS = [
   "packages/cli/src/lib/link-constants.generated.json",
 ];
 const SELFHOST_CADDYFILE = "packages/cli/selfhost/Caddyfile";
+const OPENUI_PROMPTS = [
+  "apps/api/app/agents/prompts/openui_generated.txt",
+  "apps/api/app/agents/prompts/artifacts",
+];
 const DEPLOY_TEMPLATES = [
   "deploy/coolify/gaia.yaml",
   "render.yaml",
@@ -188,5 +193,16 @@ export function cmdLinkConstants(argv) {
     drift:
       "The Worker's or CLI's link constants drifted from the API — run `mise links:constants` and commit",
     ok: "The Worker, CLI and Caddyfile link constants match the API.",
+  });
+}
+
+export function cmdOpenuiPrompts(argv) {
+  execFileSync("pnpm", ["exec", "tsx", "scripts/openui/generate-prompts.ts"], {
+    stdio: "inherit",
+  });
+  failOnDrift(argv, OPENUI_PROMPTS, {
+    drift:
+      "The OpenUI prompts drifted from the component libraries — run `mise openui:prompts` and commit",
+    ok: "The OpenUI prompts match the component libraries.",
   });
 }

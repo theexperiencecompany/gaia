@@ -448,6 +448,142 @@
         "title": "ApprovePairingRequest",
         "type": "object"
       },
+      "ArtifactCard": {
+        "description": "Where a create_artifact run ended: the artifact_done tool_data entry's data.",
+        "properties": {
+          "artifact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactFailureReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/ArtifactStatus"
+          },
+          "stream_id": {
+            "title": "Stream Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stream_id",
+          "kind",
+          "title",
+          "status"
+        ],
+        "title": "ArtifactCard",
+        "type": "object"
+      },
+      "ArtifactCardEntry": {
+        "description": "The tool_data entry an artifact_done payload becomes on the stream and in the stored turn.",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ArtifactCard"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "tool_name": {
+            "const": "artifact_done",
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool_name",
+          "data",
+          "timestamp"
+        ],
+        "title": "ArtifactCardEntry",
+        "type": "object"
+      },
+      "ArtifactCardFrame": {
+        "description": "The stream frame carrying an ArtifactCardEntry.",
+        "properties": {
+          "tool_data": {
+            "$ref": "#/components/schemas/ArtifactCardEntry"
+          }
+        },
+        "required": [
+          "tool_data"
+        ],
+        "title": "ArtifactCardFrame",
+        "type": "object"
+      },
+      "ArtifactDelta": {
+        "description": "A chunk of the first draft's program; the card appends it.",
+        "properties": {
+          "delta": {
+            "title": "Delta",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ArtifactKind"
+          },
+          "stream_id": {
+            "title": "Stream Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stream_id",
+          "kind",
+          "title",
+          "delta"
+        ],
+        "title": "ArtifactDelta",
+        "type": "object"
+      },
+      "ArtifactDeltaFrame": {
+        "description": "The live-only stream frame carrying an ArtifactDelta.",
+        "properties": {
+          "artifact_delta": {
+            "$ref": "#/components/schemas/ArtifactDelta"
+          }
+        },
+        "required": [
+          "artifact_delta"
+        ],
+        "title": "ArtifactDeltaFrame",
+        "type": "object"
+      },
+      "ArtifactFailureReason": {
+        "enum": [
+          "validation",
+          "refused",
+          "timeout",
+          "truncated"
+        ],
+        "title": "ArtifactFailureReason",
+        "type": "string"
+      },
       "ArtifactInfo": {
         "properties": {
           "content_type": {
@@ -489,7 +625,7 @@
         "type": "object"
       },
       "ArtifactKind": {
-        "description": "What the artifact is; each kind has its own generated prompt\n(apps/api/app/agents/prompts/artifacts/<kind>.txt, from the web library's kinds.ts).",
+        "description": "What the artifact is; each kind has its own generated prompt\n(apps/api/app/agents/prompts/artifacts/<kind>.txt, from libs/artifacts/src/kinds.ts).",
         "enum": [
           "dashboard",
           "report",
@@ -560,6 +696,15 @@
         ],
         "title": "ArtifactRegistryEntry",
         "type": "object"
+      },
+      "ArtifactStatus": {
+        "description": "Where a create_artifact run ended, as the chat card shows it.",
+        "enum": [
+          "ready",
+          "failed"
+        ],
+        "title": "ArtifactStatus",
+        "type": "string"
       },
       "AsanaTaskTriggerConfig": {
         "description": "Config for asana_task_trigger (Composio ASANA_TASK_CREATED).",
@@ -15055,10 +15200,6 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
@@ -15066,7 +15207,6 @@
           "kind",
           "title",
           "program",
-          "version",
           "conversation_id",
           "created_at"
         ],
@@ -17019,10 +17159,6 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "integer"
           }
         },
         "required": [
@@ -17030,7 +17166,6 @@
           "kind",
           "title",
           "program",
-          "version",
           "created_at",
           "shared_by"
         ],
@@ -28761,7 +28896,23 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response"
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ArtifactDeltaFrame"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ArtifactCardFrame"
+                    }
+                  ],
+                  "title": "Response 200 Chat Chat Stream Endpoint",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Server-sent events, one JSON frame per data: line; the frames with a published shape are listed, every frame is in libs/shared/ts/src/chat/schema.ts."
           },
           "422": {
             "content": {
@@ -42565,7 +42716,23 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response"
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ArtifactDeltaFrame"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ArtifactCardFrame"
+                    }
+                  ],
+                  "title": "Response 200 Chat Subscribe Executor Stream",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Server-sent events, one JSON frame per data: line; the frames with a published shape are listed, every frame is in libs/shared/ts/src/chat/schema.ts."
           },
           "422": {
             "content": {

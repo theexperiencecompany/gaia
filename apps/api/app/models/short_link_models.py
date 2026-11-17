@@ -302,7 +302,6 @@ class PublicOpenUIArtifact(_PublicView):
     kind: ArtifactKind
     title: str
     program: str
-    version: int
     created_at: datetime
     #: The owner's display name, never their email; None when they have none.
     shared_by: str | None

@@ -18,7 +18,11 @@ from app.constants.openui_artifacts import (
     ARTIFACT_DELTA_FLUSH_SECONDS,
     ARTIFACT_DONE_EVENT,
 )
-from app.models.openui_artifact_models import ArtifactFailureReason, ArtifactKind
+from app.models.openui_artifact_models import (
+    ArtifactFailureReason,
+    ArtifactKind,
+    ArtifactStreamHeader,
+)
 from app.models.short_link_models import ShortLink, ShortLinkTargetType
 from app.services.links.placeholders import LINK_NOTE, link_placeholder
 from app.services.openui_artifacts.create import ArtifactCreationError
@@ -29,6 +33,7 @@ CONFIG = RunnableConfig(
     metadata={"user_id": "user-1"},
     configurable={"user_id": "user-1", "vfs_session_id": "conv-1", "user_timezone": "+05:30"},
 )
+HEADER = ArtifactStreamHeader(stream_id="s1", kind=ArtifactKind.REPORT, title="Q3 plan")
 ARGS: dict[str, Any] = {"kind": "report", "title": "Q3 plan", "brief": "revenue is up 12%"}
 
 INTERACTIVE_ARGS: dict[str, Any] = {**ARGS, "interactive": True}
@@ -37,7 +42,7 @@ INTERACTIVE_ARGS: dict[str, Any] = {**ARGS, "interactive": True}
 class TestDeltaBatcher:
     def _batcher(self) -> tuple[_DeltaBatcher, MagicMock]:
         writer = MagicMock()
-        return _DeltaBatcher(writer, "s1", ArtifactKind.REPORT, "Q3 plan"), writer
+        return _DeltaBatcher(writer, HEADER), writer
 
     async def test_small_deltas_wait_and_leave_as_one_frame_carrying_the_header(self) -> None:
         batcher, writer = self._batcher()
@@ -68,7 +73,7 @@ class TestDeltaBatcher:
     async def test_a_slow_delta_flushes_even_when_small(self) -> None:
         writer = MagicMock()
         with patch(f"{_TOOL}.time.monotonic", side_effect=[100.0, 101.0, 101.0]):
-            batcher = _DeltaBatcher(writer, "s1", ArtifactKind.REPORT, "Q3 plan")
+            batcher = _DeltaBatcher(writer, HEADER)
             await batcher.push("a")
 
         writer.assert_called_once()
@@ -76,7 +81,7 @@ class TestDeltaBatcher:
     async def test_the_wait_is_over_exactly_at_the_flush_interval(self) -> None:
         writer = MagicMock()
         with patch(f"{_TOOL}.time.monotonic", side_effect=[0.0, ARTIFACT_DELTA_FLUSH_SECONDS, 0.0]):
-            batcher = _DeltaBatcher(writer, "s1", ArtifactKind.REPORT, "Q3 plan")
+            batcher = _DeltaBatcher(writer, HEADER)
             await batcher.push("a")
 
         writer.assert_called_once()
@@ -102,7 +107,7 @@ class TestDeltaBatcher:
     async def test_a_quick_small_delta_waits(self) -> None:
         writer = MagicMock()
         with patch(f"{_TOOL}.time.monotonic", side_effect=[100.0, 100.01]):
-            batcher = _DeltaBatcher(writer, "s1", ArtifactKind.REPORT, "Q3 plan")
+            batcher = _DeltaBatcher(writer, HEADER)
             await batcher.push("a")
 
         writer.assert_not_called()

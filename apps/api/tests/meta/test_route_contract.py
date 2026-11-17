@@ -236,6 +236,6 @@ def test_every_error_response_is_the_json_envelope(
                 shadowed.append(f"{method} {ctx.path} {code}: {content or 'no body'}")
     assert shadowed == [], (
         "4xx/5xx responses whose body is not the ErrorEnvelope — pass route-level "
-        "descriptions through error_responses(), and give a text/html route "
-        "HTML_ROUTE_ERROR_RESPONSES:\n  " + "\n  ".join(shadowed)
+        "descriptions through error_responses(), and give a non-JSON route "
+        "NON_JSON_ROUTE_ERROR_RESPONSES:\n  " + "\n  ".join(shadowed)
     )

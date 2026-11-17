@@ -843,11 +843,6 @@
           "total_ms": {
             "title": "Total Ms",
             "type": "number"
-          },
-          "model": {
-            "const": "gpt-6-luna",
-            "title": "Model",
-            "type": "string"
           }
         },
         "required": [
@@ -856,8 +851,7 @@
           "repairs",
           "output_tokens",
           "first_component_ms",
-          "total_ms",
-          "model"
+          "total_ms"
         ],
         "title": "ArtifactCreated",
         "type": "object"

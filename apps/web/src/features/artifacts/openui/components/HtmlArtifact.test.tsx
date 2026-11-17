@@ -48,4 +48,20 @@ describe("HtmlArtifact", () => {
 
     expect(frame.style.height).toBe("");
   });
+
+  it("loads only GAIA's stylesheet and runtime, under the page's theme", () => {
+    const { container } = render(<ArtifactRenderer program={PROGRAM} />);
+    const doc = new DOMParser().parseFromString(
+      frameOf(container).getAttribute("srcdoc") ?? "",
+      "text/html",
+    );
+
+    const csp = doc.head.firstElementChild?.getAttribute("content") ?? "";
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain(
+      `script-src ${window.location.origin}/artifact/gaia-runtime.js`,
+    );
+    expect(doc.documentElement.dataset.theme).toBe("dark");
+    expect(doc.querySelector("main form[data-calc]")).not.toBeNull();
+  });
 });

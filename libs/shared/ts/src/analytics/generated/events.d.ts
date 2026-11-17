@@ -371,7 +371,6 @@ export interface EventProperties {
     "output_tokens": number;
     "first_component_ms": number;
     "total_ms": number;
-    "model": "gpt-6-luna";
   };
   "artifact:failed": {
     "actor": "user" | "agent";

@@ -1,4 +1,4 @@
-"""validate_program runs the real Node validator bundle built from the web artifact library."""
+"""validate_program runs the real Node validator bundle built from @gaia/artifacts."""
 
 from datetime import date
 import json
@@ -13,7 +13,7 @@ from app.models.openui_artifact_models import ArtifactKind
 from app.services.openui_artifacts.generate import ArtifactRequest, dated_brief
 from app.services.openui_artifacts.validate import ArtifactValidatorError, validate_program
 
-FIXTURES = REPO_ROOT / "apps" / "web" / "src" / "features" / "artifacts" / "openui" / "__fixtures__"
+FIXTURES = REPO_ROOT / "libs" / "artifacts" / "src" / "__fixtures__"
 SOURCE = (
     "Funnel: signed up 1,840; connected a calendar 1,210; made a first plan 754; "
     "saw the paywall 612; paid 96."

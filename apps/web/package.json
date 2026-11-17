@@ -48,6 +48,7 @@
     "area-css": "node scripts/generate-area-css.mjs"
   },
   "dependencies": {
+    "@gaia/artifacts": "workspace:*",
     "@gaia/shared": "workspace:*",
     "@gaia/wake-word": "workspace:*",
     "@heroui/react": "3.2.7",

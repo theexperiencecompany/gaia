@@ -1,0 +1,26 @@
+{
+  "name": "@gaia/artifacts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The OpenUI artifact library's specs, prompts and validator, shared by the web renderer, the prompt generator and the API's validator bundle.",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@openuidev/react-lang": "^0.2.8",
+    "@openuidev/react-ui": "^0.11.9",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@gaia/shared": "workspace:*",
+    "@types/node": "^24.13.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}

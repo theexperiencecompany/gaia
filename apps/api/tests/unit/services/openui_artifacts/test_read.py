@@ -22,7 +22,6 @@ ARTIFACT = OpenUIArtifact(
     program='root = Artifact("Pilot", "s", [], [])',
     brief_hash="brief-secret",
     model="gpt-6-luna",
-    version=2,
 )
 
 
@@ -51,7 +50,6 @@ async def test_the_response_carries_the_program_and_nothing_internal() -> None:
         "kind": ArtifactKind.PLAN,
         "title": "Pilot",
         "program": ARTIFACT.program,
-        "version": 2,
         "conversation_id": "conv-1",
         "created_at": ARTIFACT.created_at,
     }

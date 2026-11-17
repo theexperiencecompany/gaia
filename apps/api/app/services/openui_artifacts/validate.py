@@ -1,7 +1,7 @@
-"""Validate an artifact program with the web library's own validator (tools/artifact-validate).
+"""Validate an artifact program with @gaia/artifacts' own validator (tools/artifact-validate).
 
 The checks (parser arity, zod props, statement names, slot and number grounding, one program)
-live once, in apps/web/src/features/artifacts/openui/validate.ts; this runs its Node bundle.
+live once, in libs/artifacts/src/validate.ts; this runs its Node bundle.
 """
 
 import asyncio
