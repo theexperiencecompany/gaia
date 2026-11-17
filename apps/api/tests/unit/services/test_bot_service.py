@@ -604,23 +604,16 @@ class TestResetSession:
 class TestLoadConversationHistory:
     """Tests for load_conversation_history mapping stored messages to roles and applying the limit."""
 
-    async def test_returns_empty_when_no_conv(self, mock_conversations: MagicMock) -> None:
-        mock_conversations.get = AsyncMock(return_value=None)
-
-        result = await BotService.load_conversation_history("conv1", "user1")
-
-        assert result == []
-
     async def test_returns_empty_when_no_messages(self, mock_conversations: MagicMock) -> None:
-        mock_conversations.get = AsyncMock(return_value=_conv([]))
+        mock_conversations.recent_messages = AsyncMock(return_value=[])
 
         result = await BotService.load_conversation_history("conv1", "user1")
 
         assert result == []
 
     async def test_maps_user_messages(self, mock_conversations: MagicMock) -> None:
-        mock_conversations.get = AsyncMock(
-            return_value=_conv([{"type": "user", "response": "Hello"}])
+        mock_conversations.recent_messages = AsyncMock(
+            return_value=_conv([{"type": "user", "response": "Hello"}]).messages
         )
 
         result = await BotService.load_conversation_history("conv1", "user1")
@@ -629,8 +622,8 @@ class TestLoadConversationHistory:
         assert result[0] == {"role": "user", "content": "Hello"}
 
     async def test_maps_bot_messages(self, mock_conversations: MagicMock) -> None:
-        mock_conversations.get = AsyncMock(
-            return_value=_conv([{"type": "bot", "response": "Hi there!"}])
+        mock_conversations.recent_messages = AsyncMock(
+            return_value=_conv([{"type": "bot", "response": "Hi there!"}]).messages
         )
 
         result = await BotService.load_conversation_history("conv1", "user1")
@@ -639,13 +632,13 @@ class TestLoadConversationHistory:
         assert result[0] == {"role": "assistant", "content": "Hi there!"}
 
     async def test_skips_unknown_message_types(self, mock_conversations: MagicMock) -> None:
-        mock_conversations.get = AsyncMock(
+        mock_conversations.recent_messages = AsyncMock(
             return_value=_conv(
                 [
                     {"type": "system", "response": "System msg"},
                     {"type": "user", "response": "Hello"},
                 ]
-            )
+            ).messages
         )
 
         result = await BotService.load_conversation_history("conv1", "user1")
@@ -653,18 +646,22 @@ class TestLoadConversationHistory:
         assert len(result) == 1
         assert result[0]["role"] == "user"
 
-    async def test_respects_limit(self, mock_conversations: MagicMock) -> None:
-        messages = [{"type": "user", "response": f"msg{i}"} for i in range(30)]
-        mock_conversations.get = AsyncMock(return_value=_conv(messages))
+    async def test_reads_only_the_newest_limit_messages(
+        self, mock_conversations: MagicMock
+    ) -> None:
+        """The slice happens in Mongo, so a long chat never loads whole."""
+        mock_conversations.recent_messages = AsyncMock(return_value=[])
 
-        result = await BotService.load_conversation_history("conv1", "user1", limit=5)
+        await BotService.load_conversation_history("conv1", "user1", limit=5)
 
-        # Should only return the last 5 messages
-        assert len(result) == 5
-        assert result[0]["content"] == "msg25"
+        mock_conversations.recent_messages.assert_awaited_once_with(
+            "conv1", user_id="user1", limit=5
+        )
 
     async def test_handles_empty_response_field(self, mock_conversations: MagicMock) -> None:
-        mock_conversations.get = AsyncMock(return_value=_conv([{"type": "user", "response": ""}]))
+        mock_conversations.recent_messages = AsyncMock(
+            return_value=_conv([{"type": "user", "response": ""}]).messages
+        )
 
         result = await BotService.load_conversation_history("conv1", "user1")
 
@@ -677,8 +674,8 @@ class TestLoadConversationHistory:
     ) -> None:
         """Regression: one stored reply over MAX_MESSAGE_LENGTH 500'd every later bot turn in that chat."""
         long_reply = "x" * (MAX_MESSAGE_LENGTH + 1)
-        mock_conversations.get = AsyncMock(
-            return_value=_conv([{"type": "bot", "response": long_reply}])
+        mock_conversations.recent_messages = AsyncMock(
+            return_value=_conv([{"type": "bot", "response": long_reply}]).messages
         )
         body = BotChatRequest(
             message="hello?",
@@ -699,7 +696,9 @@ class TestLoadConversationHistory:
         ]
 
     async def test_handles_empty_bot_response_field(self, mock_conversations: MagicMock) -> None:
-        mock_conversations.get = AsyncMock(return_value=_conv([{"type": "bot", "response": ""}]))
+        mock_conversations.recent_messages = AsyncMock(
+            return_value=_conv([{"type": "bot", "response": ""}]).messages
+        )
 
         result = await BotService.load_conversation_history("conv1", "user1")
 

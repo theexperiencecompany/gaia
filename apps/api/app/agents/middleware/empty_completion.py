@@ -22,6 +22,7 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage
 
+from app.constants.general import COMMS_AGENT_NAME
 from app.constants.log_tags import LogTag
 from app.utils.message_breaks import split_message_bubbles
 from app.utils.multimodal import extract_text_content
@@ -67,7 +68,7 @@ class EmptyCompletionRetryMiddleware(AgentMiddleware):
 
         log.warning(
             f"{LogTag.AGENT} Empty completion, retrying the model call once",
-            agent_name="comms_agent",
+            agent_name=COMMS_AGENT_NAME,
         )
         retry = await handler(request)
         recovered = not is_empty_completion(retry)
@@ -78,6 +79,6 @@ class EmptyCompletionRetryMiddleware(AgentMiddleware):
         if not recovered:
             log.error(
                 f"{LogTag.AGENT} Empty completion survived the retry",
-                agent_name="comms_agent",
+                agent_name=COMMS_AGENT_NAME,
             )
         return retry

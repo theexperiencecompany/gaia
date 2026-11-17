@@ -22,6 +22,6 @@ describe("MentionEditor chip props", () => {
     );
 
     expect(await screen.findByTestId("icon-gmail")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "close chip" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remove gmail" })).toBeTruthy();
   });
 });

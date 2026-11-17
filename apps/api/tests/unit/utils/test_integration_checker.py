@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.constants.integrations import ACCOUNT_NEEDS_RECONNECT_HINT, ConnectMode
+from app.constants.waits import WaitCondition
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_mcp_oauth_redirect_uri
 from app.models.mcp_config import MCPConfig
@@ -80,6 +81,7 @@ def _graph_run(
     expired: bool = False,
     execution_mode: str | None = None,
     frontend: str = _FAKE_FRONTEND,
+    conversation_id: str | None = None,
 ) -> Iterator[MagicMock]:
     """Run the prompt inside a graph run of category, yielding its stream writer.
 
@@ -95,6 +97,8 @@ def _graph_run(
     configurable = {"source_category": category}
     if execution_mode is not None:
         configurable["execution_mode"] = execution_mode
+    if conversation_id is not None:
+        configurable.update(conversation_id=conversation_id, stream_id="stream-1")
     config_patch = (
         patch(
             "app.utils.integration_checker.get_config",
@@ -167,6 +171,37 @@ class TestRequestIntegrationConnection:
             msg = await request_integration_connection("slack", "Slack", "user1")
         assert _MAGIC_LINK in msg
         assert writer.call_count == 0
+
+
+class TestConnectAskIsRemembered:
+    """The chat that shows the card is the one resumed when the user connects."""
+
+    async def test_showing_the_card_keeps_the_chat_waiting_on_the_integration(self) -> None:
+        with (
+            _graph_run("ui", conversation_id="conv-1"),
+            patch("app.utils.integration_checker.block_integration", AsyncMock(return_value=True)),
+            patch("app.utils.integration_checker.wait_for_user", AsyncMock()) as remember,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        remember.assert_awaited_once()
+        run, user_id, condition, integration_id, name = remember.await_args.args
+        assert (run.conversation_id, run.stream_id) == ("conv-1", "stream-1")
+        assert (user_id, condition, integration_id, name) == (
+            _USER,
+            WaitCondition.INTEGRATION_CONNECTED,
+            "gmail",
+            "Gmail",
+        )
+
+    async def test_no_card_outside_a_run_means_no_chat_to_resume(self) -> None:
+        with (
+            _graph_run(None),
+            patch("app.utils.integration_checker.wait_for_user", AsyncMock()) as remember,
+        ):
+            await request_integration_connection("gmail", "Gmail", _USER)
+
+        remember.assert_not_awaited()
 
 
 class TestExpiredConnectionPrompt:

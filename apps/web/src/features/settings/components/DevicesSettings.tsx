@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { PlusSignIcon } from "@icons";
 import { useRouter } from "next/navigation";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { DevicesManager } from "@/features/devices/components/DevicesManager";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 
@@ -16,7 +16,7 @@ export default function DevicesSettings() {
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-medium">Devices</h2>
-            <Chip size="sm" variant="flat" color="success">
+            <Chip size="sm" variant="soft" color="success">
               Beta
             </Chip>
           </div>
@@ -26,16 +26,15 @@ export default function DevicesSettings() {
             to instantly cut its access.
           </p>
         </div>
-        <Button
+        <GaiaButton
+          variant="accent-soft"
           size="sm"
-          variant="flat"
-          color="primary"
           className="shrink-0"
-          startContent={<PlusSignIcon className="size-4" />}
           onPress={() => router.push("/settings/devices/approve")}
         >
+          <PlusSignIcon className="size-4" />
           Add device
-        </Button>
+        </GaiaButton>
       </div>
       <DevicesManager />
     </SettingsPage>

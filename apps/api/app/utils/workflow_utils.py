@@ -8,7 +8,8 @@ from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
-from app.models.agent_models import read_agent_configurable
+from app.constants.waits import WaitCondition
+from app.models.agent_models import AgentConfigurableView, read_agent_configurable
 from app.models.trigger_gate_models import GateEdit
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -17,6 +18,7 @@ from app.models.workflow_models import (
     UpdateWorkflowRequest,
     Workflow,
 )
+from app.services.wait_service import wait_for_user
 from app.services.workflow.subagent_output import FinalizedOutput
 from shared.py.wide_events import log
 
@@ -447,6 +449,7 @@ async def apply_workflow_edit(
     workflow: Workflow,
     user_id: str,
     writer: StreamWriter,
+    run: AgentConfigurableView,
     user_timezone: str = "UTC",
 ) -> dict[str, object]:
     """Apply a finalized edit draft to an existing workflow via WorkflowService.update_workflow.
@@ -454,7 +457,7 @@ async def apply_workflow_edit(
     Applies title/description/prompt and manual/scheduled trigger changes directly.
     Integration-trigger changes are NOT applied here (their config — channels,
     repos, calendars — must be set in the app's workflow editor); the caller is
-    told so the user can adjust it there.
+    told so the user can adjust it there, and run waits for the editor save.
     """
     from app.services.workflow.service import WorkflowService
 
@@ -462,6 +465,10 @@ async def apply_workflow_edit(
     trigger_config, needs_editor = _edited_trigger(draft, workflow, user_timezone)
     if trigger_config is not None:
         update_fields["trigger_config"] = trigger_config
+    if needs_editor and workflow.id:
+        await wait_for_user(
+            run, user_id, WaitCondition.WORKFLOW_TRIGGER_CONFIGURED, workflow.id, workflow.title
+        )
 
     if not update_fields:
         if needs_editor:

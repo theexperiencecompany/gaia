@@ -1,9 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import type { DesktopPermissionStatus } from "@shared/desktop-tools";
 import { useCallback, useEffect, useState } from "react";
+import { chipVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { getElectronAPI } from "@/lib/electron/api";
 import { toast } from "@/lib/toast";
@@ -47,7 +48,7 @@ const PERMISSION_ROWS: PermissionRowConfig[] = [
 function statusChip(granted: boolean, known: boolean) {
   if (!known) {
     return (
-      <Chip size="sm" variant="flat" classNames={{ content: "text-xs" }}>
+      <Chip size="sm" variant="soft" className="text-xs">
         Unknown
       </Chip>
     );
@@ -55,21 +56,21 @@ function statusChip(granted: boolean, known: boolean) {
   return granted ? (
     <Chip
       size="sm"
-      variant="flat"
+      variant="soft"
       color="success"
-      classNames={{
-        base: "bg-success/15",
-        content: "text-xs text-emerald-400",
-      }}
+      className={chipVariants({
+        tint: "light",
+        className: "text-xs text-emerald-400",
+      })}
     >
       Granted
     </Chip>
   ) : (
     <Chip
       size="sm"
-      variant="flat"
+      variant="soft"
       color="danger"
-      classNames={{ base: "bg-red-500/15", content: "text-xs text-red-400" }}
+      className="bg-red-500/15 text-xs text-red-400"
     >
       Not granted
     </Chip>
@@ -147,27 +148,26 @@ export function DesktopPermissions() {
             <div className="flex items-center gap-2">
               {statusChip(granted, known)}
               {!granted && (
-                <Button
+                <GaiaButton
                   size="sm"
-                  variant="flat"
-                  className="rounded-xl"
+                  shape="md"
+                  variant="default-soft"
                   onPress={() => {
                     handleRequest(row);
                   }}
                 >
                   {row.promptable ? "Allow" : "Open Settings"}
-                </Button>
+                </GaiaButton>
               )}
               {needsRestart && (
-                <Button
+                <GaiaButton
+                  variant="accent-soft"
                   size="sm"
-                  variant="flat"
-                  color="primary"
-                  className="rounded-xl"
+                  shape="md"
                   onPress={() => getElectronAPI()?.relaunchDesktopApp()}
                 >
                   Restart GAIA
-                </Button>
+                </GaiaButton>
               )}
             </div>
           </SettingsRow>

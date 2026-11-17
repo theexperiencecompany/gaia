@@ -21,9 +21,48 @@ from typing import Final
 from prometheus_client import Counter, Histogram
 
 from app.services.storage.metrics import _register_once
+from app.services.turn_clock import TurnOverhead
 from shared.py.wide_events import log
 
-_TTFT_BUCKETS: Final[tuple[float, ...]] = (0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30)
+#: Sub-second steps where the overhead work moves things, edges at the 5s and
+#: 10s alert thresholds, and a 60s top so the p99 is not clamped at 30s.
+_TTFT_BUCKETS: Final[tuple[float, ...]] = (
+    0.1,
+    0.25,
+    0.5,
+    0.75,
+    1,
+    1.5,
+    2,
+    3,
+    4,
+    5,
+    6,
+    8,
+    10,
+    15,
+    20,
+    30,
+    60,
+)
+
+#: Overhead is budgeted at 120ms p50 / 200ms p90, so resolution sits there.
+_OVERHEAD_BUCKETS: Final[tuple[float, ...]] = (
+    0.01,
+    0.02,
+    0.04,
+    0.06,
+    0.08,
+    0.1,
+    0.12,
+    0.15,
+    0.2,
+    0.3,
+    0.5,
+    1,
+    2,
+    5,
+)
 
 _TURN_BUCKETS: Final[tuple[float, ...]] = (
     0.05,
@@ -68,6 +107,19 @@ _CHAT_E2E_FULL_SECONDS = _register_once(
         documentation="Request accepted to stream DONE per chat turn in seconds",
         labelnames=("source", "voice_mode", "delegated", "status"),
         buckets=_TURN_BUCKETS,
+    ),
+)
+
+_TURN_OVERHEAD_SECONDS = _register_once(
+    "turn_overhead_seconds",
+    lambda: Histogram(
+        name="turn_overhead_seconds",
+        documentation=(
+            "Chat turn latency that is ours, not the provider's, by stage "
+            "(ingress, prep, egress, total) in seconds"
+        ),
+        labelnames=("source", "stage", "path"),
+        buckets=_OVERHEAD_BUCKETS,
     ),
 )
 
@@ -250,6 +302,15 @@ _CHAT_TURN_TOTAL = _register_once(
     ),
 )
 
+_CONTEXT_SECTION_BUDGET_EXCEEDED = _register_once(
+    "context_section_budget_exceeded",
+    lambda: Counter(
+        name="context_section_budget_exceeded",
+        documentation="Context sections that ran past their budget and rendered empty, by section",
+        labelnames=("section",),
+    ),
+)
+
 _EXECUTOR_RUN_TOTAL = _register_once(
     "executor_run_total",
     lambda: Counter(
@@ -303,6 +364,7 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _LLM_TTFT_SECONDS,
     _COMMS_GRAPH_SECONDS,
     _CONTEXT_ASSEMBLE_SECONDS,
+    _CONTEXT_SECTION_BUDGET_EXCEEDED,
     _EXECUTOR_QUEUE_WAIT_SECONDS,
     _EXECUTOR_TTFT_SECONDS,
     _EXECUTOR_ACTIVE_SECONDS,
@@ -409,6 +471,28 @@ def observe_chat_turn_total(*, source: str, delegated: bool, status: str) -> Non
         delegated=_bool_label(delegated),
         status=status,
     )
+
+
+def observe_context_section_budget_exceeded(*, section: str) -> None:
+    """Count a context section that rendered empty because it ran past its budget."""
+    _inc(_CONTEXT_SECTION_BUDGET_EXCEEDED, section=section)
+
+
+def observe_turn_overhead(overhead: TurnOverhead, *, source: str) -> None:
+    """Record one turn's overhead stretches and their total."""
+    for stage, seconds in (
+        ("ingress", overhead.ingress),
+        ("prep", overhead.prep),
+        ("egress", overhead.egress),
+        ("total", overhead.total),
+    ):
+        _observe(
+            _TURN_OVERHEAD_SECONDS,
+            seconds,
+            source=source,
+            stage=stage,
+            path=overhead.path.value,
+        )
 
 
 def observe_llm_ttft(seconds: float, *, model: str, lane: str, agent: str) -> None:
@@ -525,6 +609,7 @@ __all__ = [
     "observe_chat_turn_total",
     "observe_comms_graph",
     "observe_context_assemble",
+    "observe_context_section_budget_exceeded",
     "observe_delivery_narration",
     "observe_delivery_persist",
     "observe_executor_active",

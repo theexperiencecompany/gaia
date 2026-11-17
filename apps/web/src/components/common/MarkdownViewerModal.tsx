@@ -1,9 +1,10 @@
 "use client";
 
-import { Modal, ModalBody, ModalContent, ModalHeader } from "@heroui/react";
-import { Spinner } from "@heroui/spinner";
+import { Modal, Spinner } from "@heroui/react";
 import { AlertCircleIcon } from "@icons";
 import type React from "react";
+import { modalVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 
 interface MarkdownViewerModalProps {
@@ -30,7 +31,7 @@ function renderBody({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
-        <Spinner size="md" color="default" />
+        <Spinner size="md" />
       </div>
     );
   }
@@ -64,23 +65,35 @@ const MarkdownViewerModal: React.FC<MarkdownViewerModalProps> = ({
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
-      size="3xl"
-      scrollBehavior="inside"
-      classNames={{
-        base: "bg-zinc-900 border border-zinc-800",
-        header: "border-b border-zinc-800 pb-3",
-        body: "py-4",
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
     >
-      <ModalContent>
-        <ModalHeader className="text-sm font-medium text-zinc-200">
-          {title}
-        </ModalHeader>
-        <ModalBody>
-          {renderBody({ isLoading, hasError, errorMessage, content })}
-        </ModalBody>
-      </ModalContent>
+      <Modal.Backdrop>
+        <Modal.Container>
+          <Modal.Dialog
+            className={modalVariants({
+              size: "3xl",
+              className: "bg-zinc-900 border border-zinc-800",
+            })}
+          >
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="border-b border-zinc-800 pb-3">
+              <Modal.Heading
+                className={toneVariants({
+                  tone: "bright",
+                  className: "text-sm font-medium",
+                })}
+              >
+                {title}
+              </Modal.Heading>
+            </Modal.Header>
+            <Modal.Body className="py-4">
+              {renderBody({ isLoading, hasError, errorMessage, content })}
+            </Modal.Body>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 };

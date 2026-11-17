@@ -10,6 +10,7 @@ conversation once re-extracted the same transcript ~76 times); Provenance
 not a disclosure).
 """
 
+from collections.abc import Sequence
 import contextlib
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
@@ -34,6 +35,7 @@ from app.constants.memory import (
 from app.db.redis import redis_cache
 from app.db.repositories.conversations import conversation_repository
 from app.memory.engine import memory_engine
+from app.memory.fast_recall import precompute_next_turn
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.utils import State
 from app.utils.background_tasks import spawn_background_task
@@ -54,7 +56,7 @@ _CONTEXT_MARKER = "--- earlier context: already extracted, do NOT re-extract ---
 _DELTA_MARKER = "--- new since the last extraction ---"
 
 
-def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
+def _check_worth_learning(messages: Sequence[AnyMessage]) -> tuple[bool, str]:
     """Return whether a turn carries any substantive user content worth extracting.
 
     No message-count or tool-call gating: a single-message disclosure must
@@ -76,7 +78,7 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
     return False, "No substantive user message"
 
 
-def _delta_worth_learning(delta: list[AnyMessage]) -> bool:
+def _delta_worth_learning(delta: Sequence[AnyMessage]) -> bool:
     """Return whether the NEW slice of a thread justifies an extraction call.
 
     The node's thread-level check passes on ANY substantive user message,
@@ -129,7 +131,7 @@ def _memory_entries(msg: AnyMessage) -> list[tuple[str, str]]:
 
 
 def _format_messages_for_user_memory(
-    messages: list[AnyMessage],
+    messages: Sequence[AnyMessage],
     context_count: int = 0,
 ) -> list[dict[str, str]]:
     """Convert messages to a role/content transcript for the extraction LLM.
@@ -154,8 +156,8 @@ def _format_messages_for_user_memory(
 
 
 async def _messages_to_ingest(
-    user_id: str, thread_id: str | None, messages: list[AnyMessage]
-) -> tuple[list[AnyMessage], int]:
+    user_id: str, thread_id: str | None, messages: Sequence[AnyMessage]
+) -> tuple[Sequence[AnyMessage], int]:
     """Return the slice of the thread to extract from, and how much of it is context.
 
     Returns (messages, context_count): the first context_count entries were
@@ -182,7 +184,9 @@ async def _messages_to_ingest(
     return messages, 0
 
 
-async def _mark_ingested(user_id: str, thread_id: str | None, messages: list[AnyMessage]) -> None:
+async def _mark_ingested(
+    user_id: str, thread_id: str | None, messages: Sequence[AnyMessage]
+) -> None:
     """Record the last message this thread has extracted from.
 
     Written only after retain returns, so a failed ingestion is retried on
@@ -198,7 +202,7 @@ async def _mark_ingested(user_id: str, thread_id: str | None, messages: list[Any
 
 
 async def _store_user_memory_background(
-    messages: list[AnyMessage],
+    messages: Sequence[AnyMessage],
     user_id: str,
     session_id: str | None,
     extraction_prompt: str | None,
@@ -260,6 +264,17 @@ async def _store_user_memory_background(
             await _mark_ingested(user_id, session_id, messages)
 
 
+async def _precompute_next_turn_background(
+    user_id: str, conversation_id: str, messages: Sequence[AnyMessage]
+) -> None:
+    """Background task — pins the deep recall of this exchange for the conversation's next turn."""
+    # wide_task records any failure; suppressed only so the fire-and-forget task
+    # raises no un-retrieved-exception warning, as in the retain task above.
+    with contextlib.suppress(Exception):
+        async with wide_task("memory_precompute", user=UserContext(id=user_id)):
+            await precompute_next_turn(user_id, conversation_id, messages)
+
+
 async def memory_node(
     state: State,
     config: RunnableConfig,
@@ -281,6 +296,11 @@ async def memory_node(
     user_name = configurable.get("user_name")
 
     extraction_prompt = get_memory_extraction_prompt(subagent_id) if subagent_id else None
+
+    # Ahead of the learning gate: the next turn needs its memories whether or
+    # not this one taught anything new.
+    if user_id and conversation_id:
+        spawn_background_task(_precompute_next_turn_background(user_id, conversation_id, messages))
 
     should_learn, reason = _check_worth_learning(messages)
     if not should_learn:

@@ -1005,6 +1005,48 @@ SCENARIOS: list[dict] = [
             }
         ],
     },
+    {
+        "id": "ip_06_relationship_abbreviation",
+        "category": "INDIRECT_PARAPHRASE",
+        "turns": [
+            {
+                "role": "user",
+                "content": "My girlfriend is Priya, we met in college in Pune.",
+                "day_offset": 0,
+            },
+            {"role": "assistant", "content": _ACK, "day_offset": 0},
+            {
+                "role": "user",
+                "content": "Our dog's name is Max, he's a golden retriever.",
+                "day_offset": 0,
+            },
+            {"role": "assistant", "content": _ACK, "day_offset": 0},
+            {
+                "role": "user",
+                "content": "My mother's name is Sunita.",
+                "day_offset": 0,
+            },
+            {"role": "assistant", "content": _ACK, "day_offset": 0},
+        ],
+        "probes": [
+            {
+                "query": "what's my gf's name",
+                # An abbreviation the stored fact never uses; "name" also
+                # matches the dog and the mother, so word overlap misleads.
+                "must_contain": ["priya"],
+                "must_not_contain": [],
+                "description": "Relationship asked by abbreviation, with same-word distractors",
+                "is_negative": False,
+            },
+            {
+                "query": "who am I dating",
+                "must_contain": ["priya"],
+                "must_not_contain": [],
+                "description": "Relationship asked with zero shared vocabulary",
+                "is_negative": False,
+            },
+        ],
+    },
     # ─────────────────────────────────────────────────────────────────────────
     # CATEGORY 7: DISTRACTOR_ROBUSTNESS — 3 similar entities, must get right one
     # ─────────────────────────────────────────────────────────────────────────
