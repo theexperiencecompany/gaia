@@ -229,8 +229,8 @@ class TestARunLandsInTheTodosOwnChat:
         assert isinstance(finished, WorkFinished)
         assert (finished.outcome, finished.report) == (WorkOutcome.DONE, REPORT)
         assert isinstance(reply, Reply) and reply.text == NARRATED
-        assert reply.reply_id == finished.task_id
-        assert "create_flowchart" in _card_tool_names(reply.tool_data)
+        assert reply.narrates == (finished.task_id,)
+        assert "create_flowchart" in _card_tool_names(finished.tool_data)
         assert isinstance(settled, ReplySettled) and settled.outcome is ReplyOutcome.ANSWERED
         assert woke.id in settled.answers
 
@@ -287,7 +287,7 @@ class TestARunLandsInTheTodosOwnChat:
         (failed,) = _finished(shown)
         assert failed.outcome is WorkOutcome.FAILED and failed.report
         (settled,) = [entry for entry in shown if isinstance(entry, ReplySettled)]
-        assert settled.reply_id == failed.task_id and settled.outcome is ReplyOutcome.FAILED
+        assert settled.narrates == (failed.task_id,) and settled.outcome is ReplyOutcome.FAILED
         # A failed run tells the user nothing yet: the worker's retry ladder owns it.
         assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
         todo = await todo_repository.get_by_id(todo_id)
