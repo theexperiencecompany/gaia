@@ -27,7 +27,6 @@ from app.decorators import (
     require_active_subscription,
     tiered_rate_limit,
 )
-from app.memory.fast_recall import start_query_embedding
 from app.models.bot_models import (
     BotAuthStatusResponse,
     BotChatRequest,
@@ -75,6 +74,7 @@ from app.services.bot_service import (
 )
 from app.services.bot_token_service import create_bot_session_token
 from app.services.chat.stream import note_reply_delivered, run_chat_stream_background
+from app.services.chat.turn_prep import start_turn_prep
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.latency_metrics import observe_sse_delivery
@@ -648,9 +648,9 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
     user_id = user.user_id
     log.set(user={"id": user_id}, outcome="success")
-    # Only once the caller is a linked GAIA user: a stranger's text never reaches
-    # the embedding provider. Overlaps the lookups below instead of following them.
-    start_query_embedding(body.message)
+    # Only once the caller is a linked GAIA user, so a stranger's text never
+    # reaches a provider; before the lookups below, so its work overlaps them.
+    start_turn_prep(body.message)
 
     if (refusal := await _bot_stream_entitlement_gate(user_id, body.platform)) is not None:
         return refusal

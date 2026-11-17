@@ -582,7 +582,7 @@ class TestTheMemoryEmbeddingStartsAtArrival:
                 new=AsyncMock(side_effect=lambda *_a, **_k: order.append("cost_budget")),
             ),
             patch(
-                "app.api.v1.endpoints.chat.start_query_embedding",
+                "app.api.v1.endpoints.chat.start_turn_prep",
                 side_effect=lambda text: order.append(f"embed:{text}"),
             ),
         ):

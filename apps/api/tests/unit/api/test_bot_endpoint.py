@@ -1140,7 +1140,7 @@ class TestBotChatStream:
     )
     @patch("app.api.v1.endpoints.bot.capture", new=MagicMock())
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
-    @patch("app.api.v1.endpoints.bot.start_query_embedding")
+    @patch("app.api.v1.endpoints.bot.start_turn_prep")
     async def test_a_linked_message_starts_its_embedding_before_the_session_lookup(
         self,
         mock_embed: MagicMock,
@@ -1178,7 +1178,7 @@ class TestBotChatStream:
     @patch("app.api.v1.endpoints.bot.BotService")
     @patch("app.api.v1.endpoints.bot.capture", new=MagicMock())
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
-    @patch("app.api.v1.endpoints.bot.start_query_embedding")
+    @patch("app.api.v1.endpoints.bot.start_turn_prep")
     async def test_an_unlinked_message_is_never_embedded(
         self, mock_embed: MagicMock, mock_bot_svc: MagicMock
     ):

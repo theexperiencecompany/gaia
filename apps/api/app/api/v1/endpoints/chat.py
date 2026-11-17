@@ -27,7 +27,6 @@ from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamProgress, stream_manager
 from app.db.redis import redis_cache
 from app.decorators import enforce_cost_budget, tiered_rate_limit
-from app.memory.fast_recall import start_query_embedding
 from app.models.chat_models import CancelStreamResponse
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import ErrorFrame
@@ -35,6 +34,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import capture
 from app.services.browser.job_stop import stop_chat_jobs
 from app.services.chat.stream import note_reply_delivered, run_chat_stream_background
+from app.services.chat.turn_prep import start_turn_prep
 from app.services.conversation_service import require_owned_conversation
 from app.services.latency_metrics import observe_sse_delivery
 from app.services.turn_clock import TurnClock
@@ -154,9 +154,8 @@ async def chat_stream_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_USER_ID_REQUIRED,
         )
-    # The memory lane's query embedding is a network call: start it before the
-    # turn's lookups so it overlaps them instead of following them.
-    start_query_embedding(body.message)
+    # Before the turn's lookups, so its background work overlaps them.
+    start_turn_prep(body.message)
     # Cost wall: the decorator above caps how MANY messages; this caps how
     # EXPENSIVE they were. 429s before any stream work when the day's LLM
     # spend (recorded per call by LLMAccountingMiddleware) is exhausted.
