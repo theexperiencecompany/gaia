@@ -44,8 +44,9 @@ from app.services.delivery.chat_channel import (
 )
 from app.services.oauth.oauth_state_service import is_safe_redirect_path
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
+from app.services.quiet_hours import get_quiet_hours
 from app.services.user_quiet_hours import set_quiet_hours
-from app.services.user_service import get_quiet_hours, update_user_profile
+from app.services.user_service import update_user_profile
 from app.services.user_timezone import set_user_timezone
 from app.utils.auth_utils import clear_session_cookie
 from app.utils.errors import AppError

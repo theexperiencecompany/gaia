@@ -20,7 +20,7 @@ from app.constants.briefing import EditionChoice
 from app.db.repositories.base import MongoDocument
 from app.models.briefing_models import BriefingSchedule
 from app.models.first_steps_models import FirstStepsState
-from app.models.quiet_hours_models import QuietHours
+from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
 from app.schemas.common import ResponseModel
 from app.utils.timezone import is_valid_timezone
 from shared.py.analytics.catalog.onboarding import OnboardingStep, ReportedOnboardingStep
@@ -639,10 +639,15 @@ class UserDocument(MongoDocument):
     briefing_dormancy: BriefingDormancy | None = None
     day_zero_hello: DayZeroHello | None = None
     briefing_shuffle_bags: dict[str, ShuffleBag] | None = None
-    # Unset means the default 22:00 to 08:00; read through user_service.get_quiet_hours.
+    # Unset means the default 22:00 to 08:00; read through effective_quiet_hours.
     quiet_hours: QuietHours | None = None
     # Self-host (local auth) accounts only; hosted users never carry a role.
     role: InstanceRole | None = None
+
+    @property
+    def effective_quiet_hours(self) -> QuietHours:
+        """The user's own quiet hours, or the default when they never set any."""
+        return self.quiet_hours or DEFAULT_QUIET_HOURS
 
 
 class AuthenticatedUser(BaseModel):

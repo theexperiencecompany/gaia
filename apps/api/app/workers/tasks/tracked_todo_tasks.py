@@ -75,6 +75,7 @@ from app.services.analytics_service import capture
 from app.services.conversation_service import get_or_create_todo_conversation
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.notification_service import notification_service
+from app.services.quiet_hours import get_quiet_hours, message_class
 from app.services.todo_activity import record_activity
 from app.services.todos.inbox_desk import with_desk_notes
 from app.services.todos.open_state import wake_budget_update
@@ -93,7 +94,6 @@ from app.services.triggers.todo_trigger_window import (
 )
 from app.services.triggers.trigger_gate import GateHold, quiet_hours_hold
 from app.services.user_activity.status import activity_status_of
-from app.services.user_service import get_quiet_hours
 from app.utils.auth_utils import OwnerNotFoundError, require_owner
 from app.utils.cron_utils import CronError, get_next_run_time
 from app.utils.occurrence import occurrence_stamp, parse_occurrence_stamp
@@ -774,9 +774,7 @@ def _message_class(
 ) -> ProactiveMessageClass:
     """URGENT when an event the trigger gate let through quiet hours woke the run."""
     events = [origin, *coalesced] if origin else []
-    if any(event.quiet_hours_bypass for event in events):
-        return ProactiveMessageClass.URGENT
-    return ProactiveMessageClass.ROUTINE
+    return message_class(any(event.quiet_hours_bypass for event in events))
 
 
 def _wake(origin: TriggerOrigin | None, coalesced: Sequence[TriggerOrigin]) -> TodoRunWake:

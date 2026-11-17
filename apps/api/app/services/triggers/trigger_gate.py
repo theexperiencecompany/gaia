@@ -63,11 +63,11 @@ from app.services.mail.email_verdict import (
     keep_conversation_reply,
 )
 from app.services.mail.thread_participation import user_wrote_in_thread
+from app.services.quiet_hours import quiet_hours_end
 from app.services.quiet_hours_urgency import Urgency, read_urgency, urgent_question
 from app.services.triggers.condition_matching import resolve_payload_value
 from app.services.triggers.gmail_signals import GmailGateView, gmail_gate_view
 from app.services.triggers.matchable_fields import get_matchable_trigger
-from app.services.user_service import quiet_hours_end
 from app.utils.general_utils import clip_text
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.attribution import Trigger

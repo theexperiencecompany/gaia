@@ -93,6 +93,7 @@ from app.services.analytics_service import capture
 from app.services.cost_budget import format_reset_date
 from app.services.hil.approvals_store import list_pending_for_conversation
 from app.services.notification_service import notification_service
+from app.services.quiet_hours import message_class
 from app.services.triggers.batching import (
     coalesce_window_seconds,
     drain_trigger_batch,
@@ -987,11 +988,10 @@ async def _deliver_replay(
             reason=result.narration_failed,
         )
     text = result.text
-    message_class = ProactiveMessageClass.ROUTINE
+    broke_through = isinstance(fire.quiet_hours, QuietHoursBypass)
     if isinstance(fire.quiet_hours, QuietHoursBypass):
         opening = QUIET_HOURS_BYPASS_OPENING.format(reason=fire.quiet_hours.reason)
         text = f"{opening}\n\n{text}"
-        message_class = ProactiveMessageClass.URGENT
     await add_playbook_run_messages(
         conversation_id=conversation_id,
         user_id=workflow.user_id,
@@ -1000,7 +1000,9 @@ async def _deliver_replay(
         trace=result.trace,
         playbook=playbook,
     )
-    await _notify_replay_finished(workflow, user, conversation_id, text, message_class)
+    await _notify_replay_finished(
+        workflow, user, conversation_id, text, message_class(broke_through)
+    )
     summary = REPLAY_SUMMARY if result.narration_failed is None else REPLAY_NARRATION_FAILED_SUMMARY
     return conversation_id, result.trace, summary
 

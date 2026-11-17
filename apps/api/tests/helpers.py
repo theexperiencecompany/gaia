@@ -251,7 +251,7 @@ def trigger_gate_seams(tz: Timezone, *, now: datetime | None = None) -> Iterator
             "app.services.user_service.get_profile_timezone", AsyncMock(return_value=tz)
         ) as profile_tz,
         patch(
-            "app.services.user_service.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)
+            "app.services.quiet_hours.get_quiet_hours", AsyncMock(return_value=DEFAULT_QUIET_HOURS)
         ) as quiet_hours,
         patch(f"{gate}.user_wrote_in_thread", AsyncMock(return_value=True)) as wrote,
         patch(f"{gate}.workflow_repository.remember_gate_skip", AsyncMock()) as workflow_skips,

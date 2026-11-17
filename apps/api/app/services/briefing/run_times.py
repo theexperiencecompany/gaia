@@ -20,7 +20,7 @@ from app.constants.briefing import (
 )
 from app.constants.todos import INBOX_DESK_LEAD_HOURS
 from app.models.briefing_models import BriefingSchedule
-from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS, QuietHours
+from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import UserDocument
 
 
@@ -81,7 +81,7 @@ def brief_slots(schedule: BriefingSchedule, quiet_hours: QuietHours) -> dict[str
 
 def user_brief_slots(user: UserDocument) -> dict[str, BriefSlot]:
     """Return the briefs the user's profile runs, by workflow key."""
-    return brief_slots(user.briefing_schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
+    return brief_slots(user.briefing_schedule, user.effective_quiet_hours)
 
 
 _BRIEF_NAMES: dict[str, str] = {
@@ -133,7 +133,7 @@ def _slots_running(key: str, user: UserDocument) -> dict[str, BriefSlot]:
     schedule = user.briefing_schedule
     if key not in BRIEF_RUN_DAYS[schedule.frequency]:
         schedule = schedule.model_copy(update={"frequency": BriefingFrequency.DAILY})
-    return brief_slots(schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
+    return brief_slots(schedule, user.effective_quiet_hours)
 
 
 def _daily_slot(user: UserDocument) -> BriefSlot:

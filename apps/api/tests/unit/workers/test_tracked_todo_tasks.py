@@ -2805,7 +2805,7 @@ class TestOneRunPerOccurrence:
                 "app.services.user_service.get_profile_timezone", AsyncMock(return_value=kolkata)
             ),
             patch(
-                "app.services.user_service.get_quiet_hours",
+                "app.services.quiet_hours.get_quiet_hours",
                 AsyncMock(return_value=DEFAULT_QUIET_HOURS),
             ),
             patch(f"{_GATE}.capture"),

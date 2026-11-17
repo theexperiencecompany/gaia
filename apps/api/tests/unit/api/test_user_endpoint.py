@@ -61,7 +61,7 @@ class TestQuietHours:
 
     async def test_a_user_who_never_set_them_reads_the_default(self, client: AsyncClient):
         with patch(
-            "app.services.user_service.user_repository.get",
+            "app.services.quiet_hours.user_repository.get",
             AsyncMock(return_value=UserDocument(id=FAKE_USER_ID)),
         ):
             response = await client.get(f"{USER_BASE}/quiet-hours")
@@ -72,7 +72,7 @@ class TestQuietHours:
     async def test_a_user_reads_the_hours_they_saved_on_a_logged_read(self, client: AsyncClient):
         saved = QuietHours(enabled=False, start_hour=1, end_hour=6)
         with patch(
-            "app.services.user_service.user_repository.get",
+            "app.services.quiet_hours.user_repository.get",
             AsyncMock(return_value=UserDocument(id=FAKE_USER_ID, quiet_hours=saved)),
         ) as read:
             async with captured_wide_event() as live:
@@ -91,11 +91,11 @@ class TestQuietHours:
         stored = UserDocument(id=FAKE_USER_ID)
         with (
             patch(
-                "app.services.user_quiet_hours.user_repository.get",
+                "app.services.quiet_hours.user_repository.get",
                 AsyncMock(return_value=UserDocument(id=FAKE_USER_ID)),
             ),
             patch(
-                "app.services.user_quiet_hours.user_repository.set_quiet_hours",
+                "app.services.quiet_hours.user_repository.set_quiet_hours",
                 AsyncMock(return_value=stored),
             ) as update,
             patch("app.services.user_quiet_hours.resync_briefing_schedules") as resync,
@@ -125,11 +125,9 @@ class TestQuietHours:
     async def test_hours_for_a_user_that_does_not_exist_are_a_404(self, client: AsyncClient):
         body = {"enabled": True, "start_hour": 23, "end_hour": 7}
         with (
+            patch("app.services.quiet_hours.user_repository.get", AsyncMock(return_value=None)),
             patch(
-                "app.services.user_quiet_hours.user_repository.get", AsyncMock(return_value=None)
-            ),
-            patch(
-                "app.services.user_quiet_hours.user_repository.set_quiet_hours",
+                "app.services.quiet_hours.user_repository.set_quiet_hours",
                 AsyncMock(return_value=None),
             ),
             patch("app.services.user_quiet_hours.resync_briefing_schedules") as resync,
@@ -156,7 +154,7 @@ class TestQuietHours:
         self, client: AsyncClient, body: dict[str, object]
     ):
         with patch(
-            "app.services.user_quiet_hours.user_repository.set_quiet_hours", AsyncMock()
+            "app.services.quiet_hours.user_repository.set_quiet_hours", AsyncMock()
         ) as update:
             response = await client.patch(f"{USER_BASE}/quiet-hours", json=body)
 

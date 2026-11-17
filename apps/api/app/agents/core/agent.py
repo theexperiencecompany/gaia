@@ -67,6 +67,7 @@ from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import agent_run_lifecycle
 from app.services.chat.state import aggregate_usage_metadata
 from app.services.delivery.presence import read_presence
+from app.services.quiet_hours import message_class
 from app.utils.user_preferences_utils import onboarding_preferences
 from shared.py.analytics.catalog.agents import AgentRunStarted
 from shared.py.wide_events import log
@@ -104,9 +105,7 @@ class _AgentTriggerContext(BaseModel):
     @property
     def workflow_message_class(self) -> ProactiveMessageClass:
         """URGENT when the trigger gate let this run through the user's quiet hours."""
-        if isinstance(self.quiet_hours, QuietHoursBypass):
-            return ProactiveMessageClass.URGENT
-        return ProactiveMessageClass.ROUTINE
+        return message_class(isinstance(self.quiet_hours, QuietHoursBypass))
 
 
 @dataclass(frozen=True)
