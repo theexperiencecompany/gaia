@@ -1,6 +1,6 @@
 """The comms fast lane: a turn's memories in one budgeted step in front of the reply.
 
-The query's embedding starts the moment the turn does, on a hosted model, so it
+The query's embedding starts when the request arrives, on a hosted model, so it
 runs alongside the rest of the turn's setup. It is matched against the user's
 vectors held in process, and one Postgres query then returns the semantic hits,
 the memories pinned by the background recall of the conversation's previous
@@ -18,6 +18,7 @@ from pydantic import TypeAdapter
 from app.constants.memory import (
     FAST_RECALL_MAX_TOKENS,
     FAST_RECALL_MIN_SIMILARITY,
+    FAST_RECALL_SEMANTIC_BUDGET_SECONDS,
     FAST_RECALL_SEMANTIC_K,
     MEMORY_RECALL_BLOCK_LIMIT,
     PRECOMPUTED_RECALL_KEY,
@@ -30,9 +31,14 @@ from app.memory import hosted_embeddings, pg_store, vector_index
 from app.memory.engine import memory_engine
 from app.memory.retrieval import build_entries, tokenize
 from app.models.memory_models import MemoryEntry
+from app.services.latency_metrics import observe_fast_recall_semantic_missed
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 _PINNED_IDS = TypeAdapter(list[str])
+
+#: Background task name of the lane's semantic step; its failures emit under it.
+SEMANTIC_STEP_TASK = "fast_recall_semantic"
 
 #: Query text -> (started, embedding task). Shared across turns in the process:
 #: an embedding depends on the text alone.
@@ -87,6 +93,22 @@ async def _semantic_ids(user_id: str, query: str) -> list[str]:
     )
 
 
+async def _semantic_in_time(user_id: str, query: str) -> list[str]:
+    """Return the semantic hits that land within the lane's semantic budget, else none.
+
+    The step is a managed background task, shielded from the wait: a late one
+    keeps running, so the embedding and the user's vector set are ready for the
+    next turn, and a failure is reported whichever way the lane exits.
+    """
+    step = spawn_background_task(_semantic_ids(user_id, query), name=SEMANTIC_STEP_TASK)
+    try:
+        return await asyncio.wait_for(asyncio.shield(step), FAST_RECALL_SEMANTIC_BUDGET_SECONDS)
+    except TimeoutError:
+        observe_fast_recall_semantic_missed()
+        log.set_ns("memory_fast_recall", semantic="late")
+        return []
+
+
 async def store_precomputed(user_id: str, conversation_id: str, memory_ids: list[str]) -> None:
     """Pin memory ids for the conversation's next turn."""
     if not redis_cache.client:
@@ -112,7 +134,7 @@ async def fast_recall(
 ) -> list[MemoryEntry]:
     """Return the turn's memories: semantic matches, then pinned, then any sharing a word."""
     semantic, pinned = await asyncio.gather(
-        _semantic_ids(user_id, query), _pinned_ids(user_id, conversation_id)
+        _semantic_in_time(user_id, query), _pinned_ids(user_id, conversation_id)
     )
     tokens = fts_tokens(query)
     if not (semantic or pinned or tokens):
