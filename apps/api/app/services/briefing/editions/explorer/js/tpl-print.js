@@ -5,7 +5,7 @@
    -> stats; each block drawn in the family's idiom.
    ========================================================================== */
 (() => {
-  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = EXPLORER.blocks.esc;
   // "GitHub, Gmail and Slack": the apps the brief read, named the way a sentence names them.
   const andList = (names) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
   const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "");
