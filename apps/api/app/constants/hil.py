@@ -54,11 +54,10 @@ HIL_JUDGE_MIN_QUOTE_WORDS = 3
 # tool-execution timeout does not cover. Unbounded, a hung provider holds the executor's busy lock forever.
 HIL_LLM_TIMEOUT_SECONDS = 30
 
-# JEV choice judge (auto mode v2): model, endpoint, decision lines. Lines come
+# JEV choice judge (auto mode v2): model, timeout, decision lines. Lines come
 # from the offline sweep (scripts/evals/sweep_hil_judge.py) — the 0.50 plateau
 # scored 49/50 with zero dangerous accepts. Retune via the eval, never by hand.
 HIL_JEV_MODEL_NAME = "typesafe/jev-1.13"
-HIL_JEV_URL = "https://openrouter.ai/api/alpha/decisions"
 HIL_JEV_TIMEOUT_SECONDS = 15
 
 

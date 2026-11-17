@@ -18,11 +18,10 @@ import pytest
 from app.constants.hil import (
     HIL_JEV_MODEL_NAME,
     HIL_JEV_TIMEOUT_SECONDS,
-    HIL_JEV_URL,
 )
 from app.constants.providers import CredentialProviderName
 from app.services.hil.intent import AutoHistory, IntentDecision, JudgedCall, ungrounded_targets
-from app.services.hil.jev_client import jev_http_client
+from app.services.hil.jev_client import jev_http_client, openrouter_decisions_url
 from app.services.hil.jev_judge import (
     JevCase,
     JevIntentJudge,
@@ -444,7 +443,7 @@ class TestTheDecisionsWire:
             )
 
         post = client.post.await_args
-        assert post.args == (HIL_JEV_URL,)
+        assert post.args == (openrouter_decisions_url(None),)
         assert post.kwargs["headers"] == {"Authorization": "Bearer or-key"}
         posted = post.kwargs["json"]
         assert posted["model"] == HIL_JEV_MODEL_NAME

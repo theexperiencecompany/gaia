@@ -13,7 +13,6 @@ import pytest
 import respx
 
 from app.constants.chat import ConversationSource
-from app.constants.hil import HIL_JEV_URL
 from app.constants.reactions import (
     OFFENSIVE_REACTION_EMOJI,
     REACTION_CONTEXT_MAX_CHARS,
@@ -37,7 +36,7 @@ from app.services.conversation.ack import (
     reaction_request,
     read_reaction,
 )
-from app.services.hil.jev_client import JevUnconfiguredError
+from app.services.hil.jev_client import JevUnconfiguredError, openrouter_decisions_url
 from app.services.providers.provider_credentials_service import ProviderConfig
 from tests.helpers import captured_wide_event, reaction_answers
 
@@ -375,7 +374,7 @@ _PROBE_S = 0.05
 
 @asynccontextmanager
 async def _silent_jev() -> AsyncIterator[str]:
-    """Serve a Decisions URL that accepts the connection and never answers."""
+    """Serve an OpenRouter base whose Decisions route accepts the connection and never answers."""
     held: list[asyncio.StreamWriter] = []
 
     async def hold(_: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -384,7 +383,7 @@ async def _silent_jev() -> AsyncIterator[str]:
     server = await asyncio.start_server(hold, "127.0.0.1", 0)
     port = server.sockets[0].getsockname()[1]
     try:
-        yield f"http://127.0.0.1:{port}/api/alpha/decisions"
+        yield f"http://127.0.0.1:{port}/api/v1"
     finally:
         for writer in held:
             writer.close()
@@ -426,7 +425,7 @@ class TestTheDeadlineIsAWallClockBound:
             respx.mock(assert_all_called=True) as router,
             patch("httpx.AsyncClient", side_effect=AssertionError("client built on the call")),
         ):
-            router.post(HIL_JEV_URL).respond(json=reaction_answers())
+            router.post(openrouter_decisions_url(None)).respond(json=reaction_answers())
             decision = await decide_reaction("find my flight email", "", ConversationSource.WEB)
 
         assert decision.reason is ReactionReason.REACTED
@@ -440,7 +439,7 @@ class TestTheDeadlineIsAWallClockBound:
             raise AssertionError("unreachable")
 
         with respx.mock(assert_all_called=False) as router:
-            router.post(HIL_JEV_URL).mock(side_effect=never_connects)
+            router.post(openrouter_decisions_url(None)).mock(side_effect=never_connects)
             decision, elapsed, lateness = await _timed_beside_a_probe(
                 decide_reaction("find it", "", ConversationSource.WEB)
             )
@@ -452,8 +451,9 @@ class TestTheDeadlineIsAWallClockBound:
         assert lateness < _PROBE_S
 
     async def test_a_server_that_never_answers_times_out_on_time(self) -> None:
-        async with _silent_jev() as url:
-            with patch("app.services.hil.jev_client.HIL_JEV_URL", url):
+        async with _silent_jev() as base_url:
+            silent = ProviderConfig(api_key="or-key", base_url=base_url)  # pragma: allowlist secret
+            with patch("app.services.hil.jev_client.resolve", AsyncMock(return_value=silent)):
                 decision, elapsed, lateness = await _timed_beside_a_probe(
                     decide_reaction("find it", "", ConversationSource.WEB)
                 )

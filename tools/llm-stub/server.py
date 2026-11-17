@@ -44,6 +44,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from decisions import DecisionsScriptError, answer_decisions
 from directives import (
     ChatRequest,
     DirectiveError,
@@ -159,8 +160,23 @@ async def _complete(request: Request) -> JSONResponse | StreamingResponse:
     return JSONResponse(content=build_chat_completion(parsed.model, response, request_tokens))
 
 
+# evlog-map-disable-next-line wide-event -- dev-only stub, never deployed; see _complete
+async def _decisions(request: Request) -> JSONResponse:
+    """JEV's Decisions route (decisions.py): a scripted choice, else OpenRouter's no-credit 402."""
+    try:
+        answer = answer_decisions(await request.json())
+    except DecisionsScriptError as exc:
+        return JSONResponse(
+            status_code=500, content={"error": {"message": str(exc), "type": "directive_error"}}
+        )
+    print(f"[llm-stub] decisions status={answer.status}", flush=True)
+    return JSONResponse(status_code=answer.status, content=answer.body)
+
+
 app.add_api_route("/chat/completions", _complete, methods=["POST"], response_model=None)
 app.add_api_route("/api/v1/chat/completions", _complete, methods=["POST"], response_model=None)
+# OpenRouter serves Decisions beside v1 under /api; GAIA derives it from OPENROUTER_BASE_URL.
+app.add_api_route("/api/alpha/decisions", _decisions, methods=["POST"], response_model=None)
 
 
 def main() -> None:
