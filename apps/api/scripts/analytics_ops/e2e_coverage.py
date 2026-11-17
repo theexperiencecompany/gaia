@@ -19,6 +19,7 @@ class Gap(StrEnum):
 UNCOVERED: dict[str, Gap] = {
     "account:setting_changed": Gap.NOT_WRITTEN,
     "agent:run_failed": Gap.NOT_WRITTEN,
+    "agent:wait_resumed": Gap.BACKGROUND,
     "approval:decided": Gap.NOT_WRITTEN,
     "bot:auth_initiated": Gap.NOT_WRITTEN,
     "bot:chat_opened": Gap.NOT_WRITTEN,
