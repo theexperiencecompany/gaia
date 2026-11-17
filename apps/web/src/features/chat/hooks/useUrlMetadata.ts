@@ -2,6 +2,7 @@ import { ApiError } from "@shared/api";
 import type { URLResponse } from "@shared/api/generated";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useCurrentUser } from "@/features/auth/hooks/useCurrentUser";
 import { api } from "@/lib/api/typed";
 
 type UrlMetadata = URLResponse;
@@ -92,8 +93,11 @@ const batchUrlRequest = (url: string): Promise<UrlMetadata> => {
  */
 export const useUrlMetadata = (url: string | undefined | null) => {
   const isValidUrl = url && isPreviewable(url);
+  // The endpoint needs a session; a signed-out reader of a blog post would get a 401.
+  const { userId } = useCurrentUser();
 
   const result = useQuery<UrlMetadata, Error>({
+    enabled: Boolean(isValidUrl && userId),
     queryKey: ["url-metadata", url],
     queryFn: async () => {
       if (!url) {
@@ -136,9 +140,10 @@ export const useUrlMetadata = (url: string | undefined | null) => {
  */
 export const usePrefetchUrlMetadata = () => {
   const queryClient = useQueryClient();
+  const { userId } = useCurrentUser();
 
   return (url: string) => {
-    if (!url || !isPreviewable(url)) return;
+    if (!userId || !url || !isPreviewable(url)) return;
 
     queryClient.prefetchQuery({
       queryKey: ["url-metadata", url],

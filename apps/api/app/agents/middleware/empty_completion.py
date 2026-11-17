@@ -26,6 +26,7 @@ from langchain_core.outputs import ChatGenerationChunk, GenerationChunk
 from langchain_core.tracers.context import register_configure_hook
 
 from app.constants.chat import EMPTY_COMPLETION_RETRY_NOTICE, MAX_LEADING_MESSAGE_BREAKS
+from app.constants.general import COMMS_AGENT_NAME
 from app.constants.log_tags import LogTag
 from app.utils.message_breaks import (
     count_message_breaks,
@@ -159,7 +160,7 @@ async def _guarded_call(request: ModelRequest, handler: ModelCallHandler) -> _At
     except RunawayMessageBreaksError as runaway:
         log.warning(
             f"{LogTag.AGENT} Model streamed only message breaks; stopped the call",
-            agent_name="comms_agent",
+            agent_name=COMMS_AGENT_NAME,
             runaway_breaks=runaway.breaks,
             runaway_chars=runaway.chars,
             elapsed_ms=round((time.monotonic() - started) * 1000, 2),
@@ -193,7 +194,7 @@ class EmptyCompletionRetryMiddleware(AgentMiddleware):
         history = _retry_history(request.messages)
         log.warning(
             f"{LogTag.AGENT} Empty completion, retrying the model call once",
-            agent_name="comms_agent",
+            agent_name=COMMS_AGENT_NAME,
             retry_dropped_messages=len(request.messages) - len(history),
         )
         retry_request = request.override(
@@ -213,6 +214,6 @@ class EmptyCompletionRetryMiddleware(AgentMiddleware):
             return retry.response
         log.error(
             f"{LogTag.AGENT} Empty completion survived the retry",
-            agent_name="comms_agent",
+            agent_name=COMMS_AGENT_NAME,
         )
         return retry.response

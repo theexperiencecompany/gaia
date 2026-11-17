@@ -2,12 +2,15 @@
 import { ApiError } from "@shared/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getExploreWorkflowsServer, getPublicWorkflowServer } = vi.hoisted(
-  () => ({
-    getExploreWorkflowsServer: vi.fn(),
-    getPublicWorkflowServer: vi.fn(),
-  }),
-);
+const {
+  getExploreWorkflowsServer,
+  getPublicWorkflowServer,
+  getCommunityWorkflowsServer,
+} = vi.hoisted(() => ({
+  getExploreWorkflowsServer: vi.fn(),
+  getPublicWorkflowServer: vi.fn(),
+  getCommunityWorkflowsServer: vi.fn(),
+}));
 
 vi.mock("@/app/[locale]/(landing)/use-cases/[slug]/client", () => ({
   default: () => null,
@@ -16,7 +19,9 @@ vi.mock("@/app/[locale]/(landing)/use-cases/[slug]/client", () => ({
 vi.mock("@/features/workflows/lib/serverWorkflowsApi", () => ({
   getExploreWorkflowsServer,
   getPublicWorkflowServer,
+  getCommunityWorkflowsServer,
   getAllCommunityWorkflowsServer: vi.fn(),
+  COMMUNITY_PAGE_SIZE: 100,
 }));
 
 import UseCaseDetailPage, {
@@ -28,6 +33,9 @@ const params = (slug: string) => ({ params: Promise.resolve({ slug }) });
 beforeEach(() => {
   getExploreWorkflowsServer.mockReset().mockResolvedValue([]);
   getPublicWorkflowServer.mockReset();
+  getCommunityWorkflowsServer
+    .mockReset()
+    .mockResolvedValue({ workflows: [], total: 0 });
 });
 
 describe("use-case page resolution", () => {

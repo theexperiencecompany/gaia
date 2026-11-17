@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Cancel01Icon } from "@icons";
 import {
   createContext,
@@ -9,6 +8,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import {
   useCloseRightSidebar,
@@ -87,15 +87,15 @@ export default function RightSidebarSlot() {
 
   const closeButton = (
     <div className="flex w-full items-center justify-end px-3 pt-3 pb-1">
-      <Button
+      <GaiaButton
         onPress={close}
-        variant="light"
+        variant="ghost"
         isIconOnly
         size="sm"
         aria-label="Close"
       >
         <Cancel01Icon className="size-4" />
-      </Button>
+      </GaiaButton>
     </div>
   );
 

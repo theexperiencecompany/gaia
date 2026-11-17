@@ -287,6 +287,7 @@
     {
       "includes": [
         "apps/web/src/components/seo/JsonLd.tsx",
+        "apps/web/src/components/shared/HydrateOnVisible.tsx",
         "apps/web/src/components/ui/chart.tsx",
         "apps/web/src/features/whats-new/components/WhatsNewContent.tsx"
       ],

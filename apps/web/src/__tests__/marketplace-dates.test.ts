@@ -1,4 +1,4 @@
-/** A marketplace page tells the sitemap and its own WebPage schema the same modification date, and names its creator as one Person entity. */
+/** A marketplace page tells the sitemap and its own WebPage schema the same modification date, and declares no Person for a creator without a profile. */
 import type * as NextIntlServer from "next-intl/server";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -94,14 +94,50 @@ describe("marketplace page dates", () => {
     );
   });
 
-  it("names the creator as a Person with a stable @id", async () => {
+  it("declares the integration as its own entity, with no Person for a creator who has no profile", async () => {
     const app = (await pageSchemas()).find(
       (schema) => schema["@type"] === "SoftwareApplication",
     );
-    expect(app?.author).toMatchObject({
-      "@type": "Person",
-      "@id": "https://heygaia.io/#person-vinit-thakkar",
-      name: "Vinit Thakkar",
+    expect(app?.["@id"]).toBe(
+      `https://heygaia.io/marketplace/${SLUG}#integration`,
+    );
+    expect(app?.author).toBeUndefined();
+  });
+
+  it("renders a native integration's page without asking for the community catalog", async () => {
+    const GMAIL: PublicIntegrationResponse = {
+      ...ARXIV,
+      integrationId: "gmail",
+      slug: "gmail",
+      name: "Gmail",
+      source: "platform",
+    };
+    const requested: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Request) => {
+        const { pathname } = new URL(input.url);
+        requested.push(pathname);
+        if (pathname.endsWith("/integrations/public/gmail")) {
+          return Response.json(GMAIL);
+        }
+        if (pathname.endsWith("/workflows")) {
+          return Response.json({ workflows: [], total: 0 });
+        }
+        if (pathname.endsWith("/integrations/config")) {
+          return Response.json({ integrations: [] });
+        }
+        return new Response("not stubbed", { status: 500 });
+      }),
+    );
+
+    const page = await IntegrationPage({
+      params: Promise.resolve({ slug: "gmail" }),
     });
+
+    expect(page).toBeTruthy();
+    expect(
+      requested.some((path) => path.endsWith("/integrations/community")),
+    ).toBe(false);
   });
 });

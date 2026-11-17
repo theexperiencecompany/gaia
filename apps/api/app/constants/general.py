@@ -30,6 +30,9 @@ CALL_EXECUTOR_NAME = "call_executor"
 # in create_agent, which imports the middleware package).
 SPAWN_AGENT_NAME = "spawned_subagent"
 
+# Agent name of the user-facing comms graph: its run config, LLM label and metrics tier.
+COMMS_AGENT_NAME = "comms_agent"
+
 # Thread-id prefix for a spawn's checkpoint thread (`spawn_<conversation>_<call>`).
 # Shared because the middleware mints these and the nightly retention sweep selects
 # on them — a drift between the two would silently strand every spawn thread.

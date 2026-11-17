@@ -1,11 +1,12 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Tooltip } from "@heroui/react";
 import { CheckmarkBadge01Icon } from "@icons";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { DUMMY_NOTIFICATIONS, ease } from "./demoConstants";
 
 interface DemoNotificationsPopoverProps {
@@ -48,11 +49,11 @@ export default function DemoNotificationsPopover({
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm transition-colors ${activeTab === tab ? "border-b-2 border-primary text-white" : "text-zinc-400 hover:text-zinc-300"}`}
+                  className={`flex flex-1 items-center justify-center gap-2 px-4 py-3 text-sm transition-colors ${activeTab === tab ? "border-b-2 border-accent text-white" : "text-zinc-400 hover:text-zinc-300"}`}
                 >
                   <span className="capitalize">{tab}</span>
                   {tab === "unread" && unreadNotifications.length > 0 && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-zinc-950">
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-medium text-zinc-950">
                       {unreadNotifications.length}
                     </span>
                   )}
@@ -75,7 +76,7 @@ export default function DemoNotificationsPopover({
                             {n.title}
                           </h4>
                           {n.unread && (
-                            <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                            <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
                           )}
                         </div>
                         <p className="my-1 line-clamp-2 text-left text-sm font-light text-zinc-400">
@@ -90,14 +91,18 @@ export default function DemoNotificationsPopover({
                       </div>
                       {n.unread && (
                         <div className="flex shrink-0 items-center gap-1">
-                          <Button
-                            variant="flat"
-                            size="sm"
-                            isIconOnly
-                            title="Mark as read"
-                          >
-                            <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
-                          </Button>
+                          <Tooltip>
+                            <GaiaButton
+                              variant="default-soft"
+                              size="sm"
+                              isIconOnly
+                              aria-label="Mark as read"
+                            >
+                              <CheckmarkBadge01Icon className="h-3.5 w-3.5" />
+                            </GaiaButton>
+
+                            <Tooltip.Content>Mark as read</Tooltip.Content>
+                          </Tooltip>
                         </div>
                       )}
                     </div>
@@ -108,12 +113,12 @@ export default function DemoNotificationsPopover({
 
             {/* Footer */}
             <div className="flex w-full items-center justify-evenly gap-3 p-3">
-              <Button size="sm" fullWidth>
+              <GaiaButton variant="default-solid" size="sm" fullWidth>
                 Mark all as read
-              </Button>
-              <Button size="sm" variant="bordered" fullWidth>
+              </GaiaButton>
+              <GaiaButton size="sm" variant="outline" fullWidth>
                 View all notifications
-              </Button>
+              </GaiaButton>
             </div>
           </m.div>
         </>

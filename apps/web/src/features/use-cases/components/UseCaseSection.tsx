@@ -1,11 +1,12 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import Link from "next/link";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronUp } from "@/components/shared/icons";
+import { toneVariants } from "@/components/shared/tone";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
@@ -130,26 +131,26 @@ function CategoryChip({
       }}
     >
       <Chip
-        variant={isSelected ? "solid" : "flat"}
-        color={isSelected ? "primary" : "default"}
-        className={`cursor-pointer capitalize ${isSelected ? "" : "bg-white/5! text-foreground-500"} font-light! backdrop-blur-2xl!`}
+        variant={isSelected ? "primary" : "soft"}
+        color={isSelected ? "accent" : "default"}
+        className={`${toneVariants({ tone: isSelected ? "default" : "muted" })} cursor-pointer capitalize ${isSelected ? "" : "bg-white/5!"} font-light! backdrop-blur-2xl!`}
         size="lg"
-        startContent={
-          category === "featured" ? (
-            <StarAward01Icon width={18} height={18} />
-          ) : category === "workflows" ? (
-            <WorkflowCircle03Icon width={18} height={18} />
-          ) : undefined
-        }
         onClick={onClick}
       >
-        {category === "all"
-          ? "All"
-          : category === "featured"
-            ? "Featured"
-            : category === "workflows"
-              ? "Your Workflows"
-              : category}
+        {category === "featured" ? (
+          <StarAward01Icon width={18} height={18} />
+        ) : category === "workflows" ? (
+          <WorkflowCircle03Icon width={18} height={18} />
+        ) : undefined}
+        <Chip.Label>
+          {category === "all"
+            ? "All"
+            : category === "featured"
+              ? "Featured"
+              : category === "workflows"
+                ? "Your Workflows"
+                : category}
+        </Chip.Label>
       </Chip>
     </m.div>
   );
@@ -170,6 +171,8 @@ interface UseCaseSectionOptions {
   noMaxWidth?: boolean;
   /** Hide the "All" category chip. */
   hideAllCategory?: boolean;
+  /** The section opens in the first viewport, so its grid's first row loads eagerly. */
+  opensInView?: boolean;
 }
 
 export default function UseCaseSection({
@@ -201,6 +204,7 @@ export default function UseCaseSection({
     disableCentering = false,
     noMaxWidth = false,
     hideAllCategory = false,
+    opensInView = false,
   } = options;
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -276,16 +280,17 @@ export default function UseCaseSection({
             }}
             className="pl-2"
           >
-            <Button
+            <GaiaButton
+              aria-label="Hide use cases"
+              shape="pill"
               isIconOnly
-              radius="full"
               size="sm"
-              variant="flat"
+              variant="default-soft"
               onPress={() => setShowUseCases(false)}
-              className="text-zinc-300 "
+              tone="dim"
             >
               <ChevronUp />
-            </Button>
+            </GaiaButton>
           </m.div>
         )}
       </div>
@@ -306,6 +311,7 @@ export default function UseCaseSection({
               setShowUseCases={setShowUseCases}
               showDescriptionAsTooltip={showDescriptionAsTooltip}
               useBlurEffect={useBlurEffect}
+              opensInView={opensInView}
             />
           )}
 
@@ -353,6 +359,7 @@ interface UseCasesGridProps {
   setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
   showDescriptionAsTooltip?: boolean;
   useBlurEffect?: boolean;
+  opensInView: boolean;
 }
 
 function UseCasesGrid({
@@ -365,6 +372,7 @@ function UseCasesGrid({
   setShowUseCases,
   showDescriptionAsTooltip,
   useBlurEffect,
+  opensInView,
 }: UseCasesGridProps) {
   const sliced = sliceUseCases(useCases, slicePerTab, rows, columns);
   return (
@@ -403,6 +411,7 @@ function UseCasesGrid({
             totalExecutions={useCase.total_executions || 0}
             showExecutions={true}
             useBlurEffect={useBlurEffect}
+            imageLoading={opensInView && index < columns ? "eager" : "lazy"}
             variant="explore"
             primaryAction={
               useCase.action_type === "prompt" ? "insert-prompt" : "create"
@@ -490,12 +499,12 @@ function UseCaseEmptyStates({
         workflowsLength === 0 && (
           <div className="flex h-48 items-center justify-center">
             <div className="text-center space-y-1">
-              <p className="text-lg text-foreground-600">No workflows found</p>
-              <p className="text-sm text-foreground-400 mb-5">
+              <p className="text-lg text-zinc-300">No workflows found</p>
+              <p className="text-sm text-zinc-500 mb-5">
                 Create your first workflow to get started
               </p>
               <Link href={"/workflows"}>
-                <Button color="primary">Create</Button>
+                <GaiaButton variant="primary">Create</GaiaButton>
               </Link>
             </div>
           </div>
@@ -504,7 +513,7 @@ function UseCaseEmptyStates({
       {selectedCategory === "workflows" && isLoadingWorkflows && (
         <div className="flex h-48 items-center justify-center">
           <div className="text-center">
-            <p className="text-lg text-foreground-500">Loading workflows...</p>
+            <p className="text-lg text-zinc-400">Loading workflows...</p>
           </div>
         </div>
       )}

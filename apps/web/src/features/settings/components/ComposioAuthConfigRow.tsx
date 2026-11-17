@@ -1,7 +1,8 @@
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Select, SelectItem } from "@heroui/select";
+import { Chip, Input, ListBox, Select, TextField } from "@heroui/react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { IntegrationIcon } from "@/features/integrations/components/IntegrationIcon";
 import type { ComposioIntegrationSetup } from "@/features/settings/api/composioSetupApi";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -50,43 +51,58 @@ export function ComposioAuthConfigRow({
     >
       <div className="flex w-96 items-center justify-end gap-2">
         {!isSetUp && onSetUp && (
-          <Button
+          <GaiaButton
+            variant="accent-soft"
             size="sm"
-            variant="flat"
-            color="primary"
             className="shrink-0"
             onPress={() => onSetUp(row.toolkit.toLowerCase())}
           >
             Set up automatically
-          </Button>
+          </GaiaButton>
         )}
         {row.detected.length > 0 ? (
           <Select
             aria-label={`${row.name} auth config`}
-            size="sm"
             placeholder="Pick an auth config"
-            selectedKeys={value ? [value] : []}
-            onSelectionChange={(keys) => {
-              const [first] = Array.from(keys);
-              onChange(first === undefined ? "" : String(first));
+            selectedKey={value || null}
+            onSelectionChange={(key) => {
+              onChange(key === null ? "" : String(key));
             }}
           >
-            {row.detected.map((candidate) => (
-              <SelectItem key={candidate.id} description={candidate.id}>
-                {candidate.name}
-              </SelectItem>
-            ))}
+            <Select.Trigger>
+              <GaiaSelectValue />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {row.detected.map((candidate) => (
+                  <GaiaListBoxItem
+                    key={candidate.id}
+                    id={candidate.id}
+                    textValue={candidate.name}
+                  >
+                    <span className="flex flex-col items-start">
+                      <span>{candidate.name}</span>
+                      <span className="text-xs text-zinc-500">
+                        {candidate.id}
+                      </span>
+                    </span>
+                  </GaiaListBoxItem>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         ) : (
-          <Input
+          <TextField
+            className={inputVariants({ size: "sm" })}
             aria-label={`${row.name} auth config id`}
-            size="sm"
-            placeholder="ac_..."
             value={value}
-            onValueChange={onChange}
-          />
+            onChange={onChange}
+          >
+            <Input placeholder="ac_..." />
+          </TextField>
         )}
-        <Chip size="sm" variant="flat" color={isSetUp ? "success" : "default"}>
+        <Chip size="sm" variant="soft" color={isSetUp ? "success" : "default"}>
           {isSetUp ? "Set up" : "Not set up"}
         </Chip>
       </div>

@@ -1413,7 +1413,14 @@ class TestConstants:
         assert set(LLM_MODEL_PROFILES) == set(LLM_PROVIDER_PRIORITY) == set(LLMProviderName)
 
     def test_provider_priority_is_ordered(self) -> None:
-        assert LLM_PROVIDER_PRIORITY == ("openrouter", "gemini", "openai", "ollama", "custom")
+        assert LLM_PROVIDER_PRIORITY == (
+            "cloudflare",
+            "openrouter",
+            "gemini",
+            "openai",
+            "ollama",
+            "custom",
+        )
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
         from google.genai.errors import ServerError

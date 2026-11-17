@@ -38,11 +38,11 @@ function MenuItem({ link }: { link: AppLink }) {
     <>
       {link.icon &&
         (link.richIcon ? (
-          <span className="flex min-h-10 min-w-10 items-center justify-center text-primary">
+          <span className="flex min-h-10 min-w-10 items-center justify-center text-accent">
             {link.icon}
           </span>
         ) : (
-          <span className="flex min-h-10 min-w-10 items-center justify-center rounded-xl bg-primary/10 p-2 text-primary transition group-hover:bg-primary/15">
+          <span className="flex min-h-10 min-w-10 items-center justify-center rounded-xl bg-accent/10 p-2 text-accent transition group-hover:bg-accent/15">
             {link.icon}
           </span>
         ))}

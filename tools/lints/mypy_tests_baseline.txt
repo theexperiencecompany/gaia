@@ -71,11 +71,9 @@ apps/api/tests/integration/db/test_chroma_store.py	attr-defined
 apps/api/tests/integration/endpoints/conftest.py	arg-type
 apps/api/tests/integration/endpoints/conftest.py	misc
 apps/api/tests/integration/endpoints/test_members_api.py	attr-defined
-apps/api/tests/integration/endpoints/test_setup_api.py	arg-type
 apps/api/tests/integration/endpoints/test_setup_composio_api.py	attr-defined
 apps/api/tests/integration/endpoints/test_setup_composio_toolkits_api.py	arg-type
 apps/api/tests/integration/endpoints/test_setup_composio_toolkits_api.py	attr-defined
-apps/api/tests/integration/real/memory/conftest.py	attr-defined
 apps/api/tests/integration/real/memory/test_episodes.py	arg-type
 apps/api/tests/integration/real/test_execute_graph_streaming.py	arg-type
 apps/api/tests/integration/real/test_local_sandbox_docker.py	attr-defined
@@ -85,7 +83,6 @@ apps/api/tests/integration/real/test_sandbox_lock_real.py	attr-defined
 apps/api/tests/integration/real/test_websocket_broadcast_real.py	unused-ignore
 apps/api/tests/integration/test_lazy_provider_init.py	arg-type
 apps/api/tests/integration/test_lazy_provider_init.py	var-annotated
-apps/api/tests/integration/test_llm_fallback_chain.py	arg-type
 apps/api/tests/integration/test_websocket_lifecycle.py	assignment
 apps/api/tests/integration/test_websocket_lifecycle.py	method-assign
 apps/api/tests/integration/test_websocket_lifecycle.py	misc
@@ -100,7 +97,6 @@ apps/api/tests/unit/agents/context/test_context_harness.py	attr-defined
 apps/api/tests/unit/agents/context/test_todo_feedback_context.py	arg-type
 apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	arg-type
 apps/api/tests/unit/agents/nodes/test_follow_up_actions.py	attr-defined
-apps/api/tests/unit/agents/nodes/test_memory_node.py	arg-type
 apps/api/tests/unit/agents/test_active_integrations.py	misc
 apps/api/tests/unit/agents/test_call_record.py	arg-type
 apps/api/tests/unit/agents/test_delegation.py	arg-type
@@ -112,9 +108,6 @@ apps/api/tests/unit/agents/test_deliver_to_executor.py	attr-defined
 apps/api/tests/unit/agents/test_email_processor.py	arg-type
 apps/api/tests/unit/agents/test_email_processor.py	list-item
 apps/api/tests/unit/agents/test_email_processor.py	method-assign
-apps/api/tests/unit/agents/test_executor_channel.py	arg-type
-apps/api/tests/unit/agents/test_executor_channel.py	misc
-apps/api/tests/unit/agents/test_executor_channel.py	var-annotated
 apps/api/tests/unit/agents/test_executor_queue.py	attr-defined
 apps/api/tests/unit/agents/test_executor_queue.py	misc
 apps/api/tests/unit/agents/test_executor_queue.py	typeddict-item
@@ -156,13 +149,10 @@ apps/api/tests/unit/agents/tools/test_mutations_factory.py	index
 apps/api/tests/unit/agents/tools/test_mutations_factory.py	var-annotated
 apps/api/tests/unit/api/test_device_self_pair.py	attr-defined
 apps/api/tests/unit/api/test_integrations_user.py	call-arg
-apps/api/tests/unit/api/test_oauth_dependencies.py	attr-defined
 apps/api/tests/unit/api/test_payments_smoke.py	arg-type
 apps/api/tests/unit/api/test_payments_smoke.py	call-arg
 apps/api/tests/unit/api/test_platform_auth_endpoint.py	override
 apps/api/tests/unit/api/test_support_endpoint.py	call-arg
-apps/api/tests/unit/api/test_tiered_rate_limiter.py	index
-apps/api/tests/unit/api/test_tiered_rate_limiter.py	method-assign
 apps/api/tests/unit/api/v1/endpoints/test_browser.py	attr-defined
 apps/api/tests/unit/api/v1/endpoints/test_instructions.py	misc
 apps/api/tests/unit/app/test_main_smoke.py	arg-type
@@ -221,7 +211,6 @@ apps/api/tests/unit/helpers/test_agent_helpers_message_hold.py	arg-type
 apps/api/tests/unit/helpers/test_email_helpers.py	call-arg
 apps/api/tests/unit/helpers/test_graph_driver_latency.py	arg-type
 apps/api/tests/unit/helpers/test_lifespan_helpers.py	arg-type
-apps/api/tests/unit/memory/pg_store/test_memories.py	arg-type
 apps/api/tests/unit/memory/test_chroma_store.py	abstract
 apps/api/tests/unit/memory/test_consolidation.py	attr-defined
 apps/api/tests/unit/memory/test_consolidation.py	misc
@@ -229,13 +218,7 @@ apps/api/tests/unit/memory/test_embeddings.py	attr-defined
 apps/api/tests/unit/memory/test_embeddings.py	func-returns-value
 apps/api/tests/unit/memory/test_embeddings.py	misc
 apps/api/tests/unit/memory/test_embeddings.py	valid-type
-apps/api/tests/unit/memory/test_ingestion.py	arg-type
-apps/api/tests/unit/memory/test_ingestion.py	attr-defined
-apps/api/tests/unit/memory/test_ingestion.py	typeddict-item
-apps/api/tests/unit/memory/test_management.py	attr-defined
-apps/api/tests/unit/memory/test_management.py	misc
 apps/api/tests/unit/memory/test_reconciliation.py	attr-defined
-apps/api/tests/unit/memory/test_retrieval.py	attr-defined
 apps/api/tests/unit/memory/test_user_time.py	attr-defined
 apps/api/tests/unit/middleware/test_loop_guard.py	union-attr
 apps/api/tests/unit/middleware/test_rate_limiter_middleware.py	arg-type
@@ -259,7 +242,6 @@ apps/api/tests/unit/patches/test_langchain_merge_dicts_model_name_patch.py	attr-
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	arg-type
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	method-assign
 apps/api/tests/unit/patches/test_openrouter_cumulative_usage_patch.py	override
-apps/api/tests/unit/patches/test_openrouter_provider_name_patch.py	attr-defined
 apps/api/tests/unit/sandbox/test_artifact_watcher.py	attr-defined
 apps/api/tests/unit/sandbox/test_artifact_watcher.py	return-value
 apps/api/tests/unit/sandbox/test_legacy_workspace_migration.py	attr-defined
@@ -348,9 +330,6 @@ apps/api/tests/unit/services/test_artifact_events.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	arg-type
 apps/api/tests/unit/services/test_billing_visible_output.py	attr-defined
 apps/api/tests/unit/services/test_canvas_storage_atomic.py	arg-type
-apps/api/tests/unit/services/test_chat_stream_attach.py	arg-type
-apps/api/tests/unit/services/test_chat_stream_attach.py	attr-defined
-apps/api/tests/unit/services/test_chat_stream_attach.py	typeddict-item
 apps/api/tests/unit/services/test_composio_service.py	assignment
 apps/api/tests/unit/services/test_connect_link_service.py	attr-defined
 apps/api/tests/unit/services/test_desktop_releases.py	attr-defined

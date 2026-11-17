@@ -172,6 +172,8 @@ In production and self-host, these are also required:
 | `OPENAI_API_KEY`     | OpenAI API key                         |
 | `GOOGLE_API_KEY`     | Google AI API key for Gemini; also embeds tools for tool search (without it, a local model does that) |
 | `OLLAMA_BASE_URL`    | Ollama endpoint (see [Instance & Auth Mode](#instance-auth-mode)) |
+| `CLOUDFLARE_AI_ACCOUNT_ID` | Cloudflare account ID for Workers AI. With the token set too, every AI role runs on Workers AI |
+| `CLOUDFLARE_AI_API_TOKEN`  | Cloudflare API token with Workers AI access |
 
 OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are also configured through **Settings → Providers & Tools**.
 
