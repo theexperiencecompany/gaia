@@ -7,10 +7,13 @@ import {
   WORKFLOW_DELIVERY_COPY,
 } from "@gaia/shared";
 import type { WorkflowDelivery } from "@shared/api/generated";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { type Control, Controller } from "react-hook-form";
-import { BRIEFINGS_SETTINGS_PATH } from "@/features/briefing/constants";
-import { useBriefingScheduleSettings } from "@/features/settings/hooks/useBriefingScheduleSettings";
+import {
+  BRIEFINGS_SETTINGS_PATH,
+  briefingScheduleQuery,
+} from "@/features/briefing";
 import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
 import { DeliverySegments } from "../DeliverySegments";
 import WorkflowSection from "./WorkflowSection";
@@ -33,7 +36,7 @@ export default function WorkflowDeliveryField({
   control,
   isDisabled = false,
 }: WorkflowDeliveryFieldProps) {
-  const { schedule } = useBriefingScheduleSettings();
+  const { data: schedule } = useQuery(briefingScheduleQuery());
   const briefDescription = schedule?.frequency
     ? BRIEF_DELIVERY_DESCRIPTION[schedule.frequency]
     : WORKFLOW_DELIVERY_COPY.brief.description;

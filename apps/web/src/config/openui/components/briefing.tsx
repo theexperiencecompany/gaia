@@ -2,7 +2,11 @@ import { defineComponent } from "@openuidev/react-lang";
 import React from "react";
 import type { z } from "zod";
 
-import { BriefingFold } from "@/features/briefing";
+import {
+  BriefingFold,
+  FoldedBriefCard,
+  payloadBrief,
+} from "@/features/briefing";
 
 import { briefingSchema } from "../promptSpecs";
 
@@ -10,12 +14,12 @@ import { briefingSchema } from "../promptSpecs";
 // (no rendered edition image on this path).
 
 function BriefingView(props: z.infer<typeof briefingSchema>) {
+  const brief = payloadBrief(props);
   return (
     <div className="w-full max-w-56">
-      <BriefingFold
-        brief={{ headline: props.headline, date: props.date, lede: props.lede }}
-        payload={props}
-      />
+      <BriefingFold brief={brief} payload={props}>
+        {(trigger) => <FoldedBriefCard brief={brief} trigger={trigger} />}
+      </BriefingFold>
     </div>
   );
 }

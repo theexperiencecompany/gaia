@@ -5,8 +5,11 @@
  * clock times, and the loading and error states keep the GAIA shell.
  */
 
-import { render, screen } from "@testing-library/react";
+import { ApiError } from "@shared/api";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { renderWithQueryClient } from "@/__tests__/helpers/queryClient";
 
 vi.mock("@/features/auth/hooks/useAuth", () => ({
   useAuth: () => ({ isAuthenticated: true }),
@@ -16,9 +19,9 @@ vi.mock("@/features/short-links/components/ShareLinkControls", () => ({
   ShareLinkControls: () => null,
 }));
 
-const briefingQuery = vi.fn();
-vi.mock("@/features/briefing/hooks/useBriefingQuery", () => ({
-  useBriefingQuery: (id: string) => briefingQuery(id),
+const fetchBriefing = vi.fn();
+vi.mock("@/lib/api/typed", () => ({
+  api: { get: () => fetchBriefing() },
 }));
 
 import {
@@ -52,7 +55,7 @@ const PAYLOAD: BriefingEditionPayload = {
 
 describe("brief page", () => {
   beforeEach(() => {
-    briefingQuery.mockReset();
+    fetchBriefing.mockReset();
   });
 
   it("shows the rendered edition alone, without repeating the letter under it", () => {
@@ -79,16 +82,12 @@ describe("brief page", () => {
     expect(screen.getByText("1:00 PM")).toBeTruthy();
   });
 
-  it("keeps the GAIA shell and offers a way back when the brief is gone", () => {
-    briefingQuery.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: true,
-    });
-    render(<BriefingPage briefingId="brief_gone" />);
+  it("keeps the GAIA shell and offers a way back when the brief is gone", async () => {
+    fetchBriefing.mockRejectedValue(new ApiError("Not found", 404));
+    renderWithQueryClient(<BriefingPage briefingId="brief_gone" />);
 
     expect(
-      screen.getByText("This brief isn't available anymore."),
+      await screen.findByText("This brief isn't available anymore."),
     ).toBeTruthy();
     expect(screen.queryByText(/another account/)).toBeNull();
     expect(screen.getByRole("link", { name: "GAIA home" })).toBeTruthy();
@@ -100,13 +99,22 @@ describe("brief page", () => {
     ).toBe("/briefings");
   });
 
+  it("says the brief could not be loaded, and retries, when the read fails for any other reason", async () => {
+    fetchBriefing
+      .mockRejectedValueOnce(new ApiError("Service unavailable", 503))
+      .mockReturnValue(new Promise(() => undefined));
+    renderWithQueryClient(<BriefingPage briefingId="brief_1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(
+      screen.queryByText("This brief isn't available anymore."),
+    ).toBeNull();
+    expect(fetchBriefing).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps the GAIA shell while the brief loads", () => {
-    briefingQuery.mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      isError: false,
-    });
-    render(<BriefingPage briefingId="brief_1" />);
+    fetchBriefing.mockReturnValue(new Promise(() => undefined));
+    renderWithQueryClient(<BriefingPage briefingId="brief_1" />);
 
     expect(screen.getByRole("link", { name: "GAIA home" })).toBeTruthy();
   });

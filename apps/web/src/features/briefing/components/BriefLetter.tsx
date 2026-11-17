@@ -7,14 +7,17 @@ import { useEffect, useRef, useState } from "react";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 
+import type { BriefTriggerState } from "../hooks/useOpenBrief";
+import type { FoldedBriefSummary } from "../utils/briefCard";
+
 import {
-  type EditionLayout,
   holdEdition,
   LETTER_MAX_WIDTH,
   LETTER_PERSPECTIVE_PX,
   LETTER_TILT_DEG,
   type PreparedEdition,
 } from "../utils/preparedEdition";
+import { BriefTrigger } from "./BriefTrigger";
 import { PanelFace } from "./EditionUnfold";
 
 /** Fine paper fibre: fractal noise, multiplied faintly over the face. */
@@ -34,15 +37,10 @@ const FOLDED_LAYERS = [
 ] as const;
 
 interface BriefLetterProps {
-  headline: string;
-  imageUrl?: string | null;
-  /** Where the edition folds and where its paper lies; the face ends at the fold. */
-  layout: EditionLayout;
-  isBusy?: boolean;
-  /** Hidden while the letter itself is open above the page, so it is never in two places. */
-  isLifted?: boolean;
-  /** Called with where the front panel lies, so the open letter starts exactly there. */
-  onOpen: (origin: DOMRect) => void;
+  /** Its edition, cut where the edition folds; the face ends at the fold. */
+  brief: FoldedBriefSummary;
+  /** Opened with where the front panel lies, so the open letter starts exactly there; hidden while it is lifted. */
+  trigger: BriefTriggerState;
 }
 
 function mix(paper: string, share: number, toward: string): string {
@@ -114,14 +112,9 @@ function FoldedPanels({ edition }: { edition: PreparedEdition }) {
  * down to the edition's own fold, the edge rolling under onto the sheet's plain
  * reverse. Its face is the unfold's first frame; hover lifts the sheet off the desk.
  */
-export function BriefLetter({
-  headline,
-  imageUrl,
-  layout,
-  isBusy = false,
-  isLifted = false,
-  onOpen,
-}: BriefLetterProps) {
+export function BriefLetter({ brief, trigger }: BriefLetterProps) {
+  const { headline, imageUrl } = brief;
+  const { editionFold = null, editionPaper = null } = brief;
   const rootRef = useRef<HTMLDivElement>(null);
   const faceRef = useRef<HTMLSpanElement>(null);
   const isNear = useInView(rootRef, { once: true, margin: PREPARE_MARGIN });
@@ -132,7 +125,10 @@ export function BriefLetter({
     if (!isNear || !imageUrl) return;
     let isCurrent = true;
     setIsFailed(false);
-    const hold = holdEdition(imageUrl, layout);
+    const hold = holdEdition(imageUrl, {
+      fold: editionFold,
+      paper: editionPaper,
+    });
     hold.edition
       .then((prepared) => {
         if (isCurrent) setEdition(prepared);
@@ -145,7 +141,7 @@ export function BriefLetter({
       isCurrent = false;
       hold.release();
     };
-  }, [isNear, imageUrl, layout]);
+  }, [isNear, imageUrl, editionFold, editionPaper]);
 
   return (
     <div
@@ -154,17 +150,16 @@ export function BriefLetter({
       style={{ maxWidth: LETTER_MAX_WIDTH }}
     >
       {edition ? (
-        <button
-          type="button"
-          onClick={() => {
+        <BriefTrigger
+          trigger={trigger}
+          onPress={() => {
             if (faceRef.current)
-              onOpen(faceRef.current.getBoundingClientRect());
+              trigger.open(faceRef.current.getBoundingClientRect());
           }}
           aria-label={`Open brief: ${headline}`}
-          aria-busy={isBusy}
           className={cn(
-            "group relative block h-auto w-full min-w-0 cursor-pointer overflow-visible outline-none focus-visible:ring-2 focus-visible:ring-accent",
-            isLifted && "invisible",
+            "group relative block h-auto w-full min-w-0 overflow-visible",
+            trigger.isLifted && "invisible",
           )}
           style={{ perspective: LETTER_PERSPECTIVE_PX }}
         >
@@ -224,17 +219,17 @@ export function BriefLetter({
             <Crease edition={edition} />
             <FoldedPanels edition={edition} />
           </span>
-        </button>
+        </BriefTrigger>
       ) : !imageUrl || isFailed ? (
         <GaiaButton
           variant="default-soft"
           shape="sm"
           fullWidth
           className="h-auto min-h-11 justify-start text-left text-sm whitespace-normal"
-          aria-busy={isBusy}
+          aria-busy={trigger.isBusy}
           onPress={() => {
             if (rootRef.current)
-              onOpen(rootRef.current.getBoundingClientRect());
+              trigger.open(rootRef.current.getBoundingClientRect());
           }}
         >
           {headline}

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ApiError } from "@shared/api";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -134,7 +135,9 @@ describe("LinkedAccountsSettings", () => {
 
   it("names the platform and says why when disconnecting fails", async () => {
     vi.mocked(api.delete).mockRejectedValue(
-      new Error("That account is still linked to a workflow."),
+      ApiError.fromBody(409, {
+        message: "That account is still linked to a workflow.",
+      }),
     );
 
     render();

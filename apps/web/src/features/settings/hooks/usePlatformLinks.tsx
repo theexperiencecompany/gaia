@@ -21,6 +21,7 @@ import {
 import { preferenceKeys } from "@/features/settings/api/queryKeys";
 import { LINKED_PLATFORM_DETAILS } from "@/features/settings/constants";
 import { useDeployment } from "@/features/settings/hooks/useSetupStatus";
+import { apiErrorMessage } from "@/lib/api/errorMessage";
 import { toast } from "@/lib/toast";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
 import type { PlatformLinks } from "@/types/platform";
@@ -44,11 +45,6 @@ interface UsePlatformLinks {
   connect: (platform: BotPlatform) => void;
   disconnect: (platform: BotPlatform) => void;
   phoneLinkModal: ComponentProps<typeof PhoneLinkModal>;
-}
-
-/** The API's own words for a failed request, under the action that failed. */
-function failureDescription(error: unknown): string | undefined {
-  return error instanceof Error ? error.message : undefined;
 }
 
 /** The user's bot platform links and the real connect / disconnect flows for them. */
@@ -167,7 +163,7 @@ export function usePlatformLinks(): UsePlatformLinks {
     } catch (error) {
       if (attempt !== connectAttemptRef.current) return;
       toast.error(`Couldn't connect ${BOT_PLATFORM_LABELS[platform]}`, {
-        description: failureDescription(error),
+        description: apiErrorMessage(error),
       });
       setConnectingPlatform(null);
     }
@@ -197,7 +193,7 @@ export function usePlatformLinks(): UsePlatformLinks {
     },
     onError: (error, platform) =>
       toast.error(`Couldn't disconnect ${BOT_PLATFORM_LABELS[platform]}`, {
-        description: failureDescription(error),
+        description: apiErrorMessage(error),
       }),
   });
 

@@ -11,13 +11,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchBriefings = vi.fn();
 
-vi.mock("@/features/briefing/api/briefingApi", () => ({
-  briefingApi: {
-    fetchBriefings: (before: string | null) => fetchBriefings(before),
+vi.mock("@/lib/api/typed", () => ({
+  api: {
+    get: (_path: string, init: { query: { before?: string } }) =>
+      fetchBriefings(init.query.before ?? null),
   },
 }));
 
-import { BriefingArchive } from "@/features/briefing/components/BriefingArchive";
+import { BriefingArchive } from "@/features/briefing";
 
 function renderArchive(children: ReactNode = <BriefingArchive />) {
   const client = new QueryClient({

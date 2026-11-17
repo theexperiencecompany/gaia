@@ -2,27 +2,38 @@
 
 import type { BriefFreeDelivery } from "@gaia/shared";
 import type { BriefingScheduleState } from "@gaia/shared/types";
-import { useEffect, useState } from "react";
-import { toast } from "@/lib/toast";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import {
   type BriefsOffBlock,
-  NotificationsAPI,
+  briefingApi,
+  briefingKeys,
+  briefingScheduleQuery,
   readBriefsOffBlock,
-} from "@/services/api/notifications";
+} from "@/features/briefing";
+import { toast } from "@/lib/toast";
+
+type ScheduleChange = Partial<
+  Pick<BriefingScheduleState, "frequency" | "hour">
+>;
+
+interface ScheduleSave {
+  next: BriefingScheduleState;
+  deliveries?: Record<string, BriefFreeDelivery>;
+}
 
 interface UseBriefingScheduleSettings {
   /** null until the stored schedule loads; nothing is shown as stored before then. */
   schedule: BriefingScheduleState | null;
-  /** The stored schedule could not be read; the API client has already reported why. */
+  /** The stored schedule could not be read. */
   loadFailed: boolean;
+  refetch: () => void;
   saving: boolean;
-  update: (
-    change: Partial<Pick<BriefingScheduleState, "frequency" | "hour">>,
-  ) => Promise<void>;
+  update: (change: ScheduleChange) => void;
   /** Set while turning briefs off waits on a new delivery for each brief workflow. */
   briefsOffBlock: BriefsOffBlock | null;
   /** Turn briefs off, moving each brief workflow to its chosen delivery. */
-  turnOff: (deliveries: Record<string, BriefFreeDelivery>) => Promise<void>;
+  turnOff: (deliveries: Record<string, BriefFreeDelivery>) => void;
   /** Drop the refused "off" and keep the schedule as stored. */
   keepBriefs: () => void;
 }
@@ -36,67 +47,56 @@ const SAVE_FAILED = "Couldn't save your briefing schedule.";
  * refusal is kept as briefsOffBlock until those workflows get a new delivery.
  */
 export function useBriefingScheduleSettings(): UseBriefingScheduleSettings {
-  const [schedule, setSchedule] = useState<BriefingScheduleState | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const qc = useQueryClient();
+  const { data, isError, refetch } = useQuery(briefingScheduleQuery());
   const [briefsOffBlock, setBriefsOffBlock] = useState<BriefsOffBlock | null>(
     null,
   );
 
-  useEffect(() => {
-    NotificationsAPI.getBriefingSchedule().then(setSchedule, () =>
-      setLoadFailed(true),
-    );
-  }, []);
-
-  const save = async (
-    previous: BriefingScheduleState,
-    next: BriefingScheduleState,
-    deliveries?: Record<string, BriefFreeDelivery>,
-  ) => {
-    setSchedule(next);
-    setSaving(true);
-    try {
-      setSchedule(
-        await NotificationsAPI.updateBriefingSchedule({
-          frequency: next.frequency,
-          hour: next.hour,
-          workflow_deliveries: deliveries,
-        }),
-      );
+  const mutation = useMutation({
+    mutationFn: ({ next, deliveries }: ScheduleSave) =>
+      briefingApi.updateSchedule({
+        frequency: next.frequency,
+        hour: next.hour,
+        workflow_deliveries: deliveries,
+      }),
+    onMutate: async ({ next }) => {
+      await qc.cancelQueries({ queryKey: briefingKeys.schedule });
+      const previous = qc.getQueryData(briefingKeys.schedule);
+      qc.setQueryData(briefingKeys.schedule, next);
+      return { previous };
+    },
+    onSuccess: (stored) => {
+      qc.setQueryData(briefingKeys.schedule, stored);
       setBriefsOffBlock(null);
-    } catch (error) {
-      setSchedule(previous);
+    },
+    onError: (error, _save, context) => {
+      qc.setQueryData(briefingKeys.schedule, context?.previous);
       const block = readBriefsOffBlock(error);
       if (block) setBriefsOffBlock(block);
       else toast.error(SAVE_FAILED);
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+  });
 
-  const update = async (
-    change: Partial<Pick<BriefingScheduleState, "frequency" | "hour">>,
-  ) => {
-    if (!schedule) return;
-    const next = { ...schedule, ...change };
-    if (next.frequency === schedule.frequency && next.hour === schedule.hour)
-      return;
-    await save(schedule, next);
-  };
-
-  const turnOff = async (deliveries: Record<string, BriefFreeDelivery>) => {
-    if (!schedule) return;
-    await save(schedule, { ...schedule, frequency: "off" }, deliveries);
-  };
+  const schedule = data ?? null;
 
   return {
     schedule,
-    loadFailed,
-    saving,
-    update,
+    loadFailed: isError,
+    refetch: () => void refetch(),
+    saving: mutation.isPending,
+    update: (change) => {
+      if (!schedule) return;
+      const next = { ...schedule, ...change };
+      if (next.frequency === schedule.frequency && next.hour === schedule.hour)
+        return;
+      mutation.mutate({ next });
+    },
     briefsOffBlock,
-    turnOff,
+    turnOff: (deliveries) => {
+      if (!schedule) return;
+      mutation.mutate({ next: { ...schedule, frequency: "off" }, deliveries });
+    },
     keepBriefs: () => setBriefsOffBlock(null),
   };
 }

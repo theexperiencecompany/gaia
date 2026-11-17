@@ -8,6 +8,7 @@ import { inputVariants } from "@/components/shared/controlVariants";
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
 import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { LoadError } from "@/components/shared/LoadError";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { BriefsOffBlockedModal } from "@/features/settings/components/BriefsOffBlockedModal";
@@ -47,6 +48,7 @@ export function BriefingScheduleSettings() {
   const {
     schedule,
     loadFailed,
+    refetch,
     saving,
     update,
     briefsOffBlock,
@@ -68,12 +70,16 @@ export function BriefingScheduleSettings() {
   return (
     <SettingsSection
       title="Schedule"
-      description={
-        loadFailed
-          ? "Couldn't load your briefing schedule. Reload the page to try again."
-          : "How often GAIA briefs you. The weekly digest arrives Sunday evening."
-      }
+      description="How often GAIA briefs you. The weekly digest arrives Sunday evening."
     >
+      {loadFailed && (
+        <LoadError
+          layout="inline"
+          className="px-4 py-3.5"
+          title="Couldn't load your briefing schedule."
+          onRetry={refetch}
+        />
+      )}
       {schedule?.paused_for_plan && (
         <SettingsRow
           label="Your briefs are paused"
@@ -102,7 +108,7 @@ export function BriefingScheduleSettings() {
           isDisabled={!schedule || saving}
           onChange={(key) => {
             const match = FREQUENCIES.find((f) => f.frequency === key);
-            if (match) void update({ frequency: match.frequency });
+            if (match) update({ frequency: match.frequency });
           }}
         >
           <Select.Trigger>
@@ -143,7 +149,7 @@ export function BriefingScheduleSettings() {
           value={schedule?.hour !== undefined ? String(schedule.hour) : null}
           isDisabled={!schedule || saving || !hasDailyBrief}
           onChange={(key) => {
-            if (key != null) void update({ hour: Number(key) });
+            if (key != null) update({ hour: Number(key) });
           }}
         >
           <Select.Trigger>
@@ -166,7 +172,7 @@ export function BriefingScheduleSettings() {
       <BriefsOffBlockedModal
         block={briefsOffBlock}
         saving={saving}
-        onTurnOff={(deliveries) => void turnOff(deliveries)}
+        onTurnOff={turnOff}
         onCancel={keepBriefs}
       />
     </SettingsSection>

@@ -11,9 +11,13 @@ import {
   GaiaButton,
   type GaiaButtonVariant,
 } from "@/components/shared/GaiaButton";
-import { BriefingFold, type FoldedBriefSummary } from "@/features/briefing";
+import {
+  BriefingFold,
+  briefPath,
+  FoldedBriefCard,
+  notificationBrief,
+} from "@/features/briefing";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
-import { NOTIFICATION_KIND_BRIEFING_WEEKLY } from "@/features/notification/constants";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
   ActionStyle,
@@ -46,36 +50,6 @@ const ACTION_BUTTON_VARIANT: Record<ActionStyle, GaiaButtonVariant> = {
 // The folded brief below already carries the headline, so the header names the kind.
 const BRIEF_LABEL = "Briefing";
 
-/** The brief a briefing notification carries (its metadata names it), or null for any other notification. */
-function briefOf(notification: NotificationView) {
-  const metadata = notification.metadata ?? {};
-  const briefingId = metadata.briefing_id;
-  if (typeof briefingId !== "string") return null;
-  const text = (key: string) =>
-    typeof metadata[key] === "string" ? metadata[key] : null;
-  const summary: FoldedBriefSummary = {
-    headline: notification.content.title,
-    date: text("date") ?? undefined,
-    kind:
-      metadata.kind === NOTIFICATION_KIND_BRIEFING_WEEKLY ? "weekly" : "daily",
-    imageUrl: text("edition_image_url"),
-    editionFold:
-      typeof metadata.edition_fold === "number" ? metadata.edition_fold : null,
-    editionPaper: Array.isArray(metadata.edition_paper)
-      ? metadata.edition_paper.filter(
-          (share): share is number => typeof share === "number",
-        )
-      : null,
-    editionName: text("edition_name"),
-    stampCityName: text("stamp_city_name"),
-    needsYouCount:
-      typeof metadata.needs_you_count === "number"
-        ? metadata.needs_you_count
-        : null,
-  };
-  return { briefingId, summary };
-}
-
 /** Done actions show a check; a redirect shows where it goes, out of GAIA (a new tab or another site) or within it. */
 function actionIcon(action: NotificationAction) {
   if (action.executed) return <CheckmarkCircle02Icon className="size-3.5" />;
@@ -92,7 +66,7 @@ function actionIcon(action: NotificationAction) {
 
 /** The folded card already opens its brief, so an action pointing at that same brief is left out. */
 function opensBrief(action: NotificationAction, briefingId: string): boolean {
-  return action.config?.redirect?.url === `/brief/${briefingId}`;
+  return action.config?.redirect?.url === briefPath(briefingId);
 }
 
 export const NotificationCard = ({
@@ -107,7 +81,7 @@ export const NotificationCard = ({
   });
 
   const { title, body } = notification.content;
-  const brief = briefOf(notification);
+  const brief = notificationBrief(notification);
   const actions = (notification.content.actions ?? []).filter(
     (action) => !brief || !opensBrief(action, brief.briefingId),
   );
@@ -153,11 +127,15 @@ export const NotificationCard = ({
         </div>
         {brief ? (
           <div className="mt-2 w-full max-w-56">
-            <BriefingFold
-              brief={brief.summary}
-              briefingId={brief.briefingId}
-              tone={tone === "raised" ? "inset" : "raised"}
-            />
+            <BriefingFold brief={brief.summary} briefingId={brief.briefingId}>
+              {(trigger) => (
+                <FoldedBriefCard
+                  brief={brief.summary}
+                  tone={tone === "raised" ? "inset" : "raised"}
+                  trigger={trigger}
+                />
+              )}
+            </BriefingFold>
           </div>
         ) : (
           <MarkdownRenderer

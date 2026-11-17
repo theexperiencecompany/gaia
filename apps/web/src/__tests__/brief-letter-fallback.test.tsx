@@ -21,18 +21,19 @@ vi.mock("@/features/briefing/components/EditionUnfold", () => ({
 
 import { BriefLetter } from "@/features/briefing/components/BriefLetter";
 
-const LAYOUT = { fold: 0.3, paper: null };
 const HEADLINE = "Three decisions are waiting on you";
+
+function trigger(open: (origin?: DOMRect) => void) {
+  return { open, warm: vi.fn(), isBusy: false, isLifted: false };
+}
 
 describe("BriefLetter without a usable edition image", () => {
   it("opens the brief from a plain headline button when the brief has no image", () => {
     const onOpen = vi.fn();
     render(
       <BriefLetter
-        headline={HEADLINE}
-        imageUrl={null}
-        layout={LAYOUT}
-        onOpen={onOpen}
+        brief={{ headline: HEADLINE, imageUrl: null, editionFold: 0.3 }}
+        trigger={trigger(onOpen)}
       />,
     );
 
@@ -48,10 +49,12 @@ describe("BriefLetter without a usable edition image", () => {
     const onOpen = vi.fn();
     render(
       <BriefLetter
-        headline={HEADLINE}
-        imageUrl="https://cdn/edition.png"
-        layout={LAYOUT}
-        onOpen={onOpen}
+        brief={{
+          headline: HEADLINE,
+          imageUrl: "https://cdn/edition.png",
+          editionFold: 0.3,
+        }}
+        trigger={trigger(onOpen)}
       />,
     );
 

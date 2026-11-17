@@ -28,7 +28,7 @@ vi.mock("@/features/briefing/hooks/useGridColumnCount", () => ({
 }));
 
 // maplibre needs WebGL, which jsdom has none of; the globe is driven in the browser.
-vi.mock("./PostmarksGlobe", () => ({
+vi.mock("@/features/briefing/components/postmarks/LazyPostmarksGlobe", () => ({
   PostmarksGlobe: () => null,
 }));
 

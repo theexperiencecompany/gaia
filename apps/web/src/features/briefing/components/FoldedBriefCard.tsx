@@ -4,25 +4,13 @@ import { Chip } from "@heroui/react";
 import { NewsIcon } from "@icons";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import Image from "next/image";
+import { useId } from "react";
 
 import { cn } from "@/lib/utils";
 
-/** What a folded brief shows before it is opened. */
-export interface FoldedBriefSummary {
-  headline: string;
-  /** ISO day of the brief (YYYY-MM-DD). */
-  date?: string;
-  kind?: "daily" | "weekly";
-  lede?: string;
-  imageUrl?: string | null;
-  /** Share of the edition's height where its letter folds. */
-  editionFold?: number | null;
-  /** The paper's box on its desk, [left, top, right, bottom] shares of the edition. */
-  editionPaper?: number[] | null;
-  editionName?: string | null;
-  stampCityName?: string | null;
-  needsYouCount?: number | null;
-}
+import type { BriefTriggerState } from "../hooks/useOpenBrief";
+import type { FoldedBriefSummary } from "../utils/briefCard";
+import { BriefTrigger } from "./BriefTrigger";
 
 /** Below this, a waiting count is the ordinary day and not worth a line. */
 const NOTABLE_NEEDS_YOU = 3;
@@ -42,13 +30,13 @@ const KIND_LABELS = { daily: "Daily", weekly: "Weekly" } as const;
 
 export type BriefCardTone = keyof typeof TONE_CLASSES;
 
-interface BriefCardProps {
+interface FoldedBriefCardProps {
   brief: FoldedBriefSummary;
   /** "raised" on the page background, "inset" inside a zinc-800 card. */
   tone?: BriefCardTone;
-  isBusy?: boolean;
-  onPress: () => void;
-  onWarm: () => void;
+  /** Off where the card is filed under its title alone (the archive). */
+  showsWaiting?: boolean;
+  trigger: BriefTriggerState;
 }
 
 const TODAY_LABEL = "Today";
@@ -99,35 +87,45 @@ function Preview({
 }
 
 /** A brief folded to a letter: its edition's masthead, then the date, what it said, and the edition. */
-export function BriefCard({
+export function FoldedBriefCard({
   brief,
   tone = "raised",
-  isBusy = false,
-  onPress,
-  onWarm,
-}: BriefCardProps) {
+  showsWaiting = true,
+  trigger,
+}: FoldedBriefCardProps) {
   const date = dateLabel(brief);
   const edition = editionLabel(brief);
-  const needsYou = brief.needsYouCount ?? 0;
+  const needsYou = showsWaiting ? (brief.needsYouCount ?? 0) : 0;
+  const hasMeta = Boolean(date) || needsYou >= NOTABLE_NEEDS_YOU;
+  const hasFoot = Boolean(brief.kind || edition);
+  // The name stays the headline; the date, lede and edition are read after it as its description.
+  const id = useId();
+  const describedBy = [
+    hasMeta && `${id}-meta`,
+    brief.lede && `${id}-lede`,
+    hasFoot && `${id}-foot`,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <button
-      type="button"
-      onClick={onPress}
-      onPointerEnter={onWarm}
-      onPointerDown={onWarm}
-      onFocus={onWarm}
+    <BriefTrigger
+      trigger={trigger}
+      onPress={() => trigger.open()}
       aria-label={`Open brief: ${brief.headline}`}
-      aria-busy={isBusy}
+      aria-describedby={describedBy || undefined}
       className={cn(
-        "group relative flex h-full w-full min-w-0 cursor-pointer flex-col items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal outline-none transition-[scale] duration-200 ease-out after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-white/0 after:transition-colors after:duration-200 after:ease-out hover:after:bg-white/5 focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.97]",
+        "group relative flex h-full w-full min-w-0 flex-col items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal transition-[scale] duration-200 ease-out after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-white/0 after:transition-colors after:duration-200 after:ease-out hover:after:bg-white/5 active:scale-[0.97]",
         TONE_CLASSES[tone],
       )}
     >
       <Preview imageUrl={brief.imageUrl} tone={tone} />
       <span className="flex min-w-0 flex-1 flex-col gap-1 px-1.5 pt-2 pb-1">
-        {(date || needsYou >= NOTABLE_NEEDS_YOU) && (
-          <span className="flex items-baseline justify-between gap-2 text-xs text-zinc-500">
+        {hasMeta && (
+          <span
+            id={`${id}-meta`}
+            className="flex items-baseline justify-between gap-2 text-xs text-zinc-500"
+          >
             <span
               className={cn(
                 "truncate",
@@ -147,12 +145,18 @@ export function BriefCard({
           {brief.headline}
         </span>
         {brief.lede && (
-          <span className="line-clamp-2 text-xs leading-relaxed text-pretty text-zinc-400">
+          <span
+            id={`${id}-lede`}
+            className="line-clamp-2 text-xs leading-relaxed text-pretty text-zinc-400"
+          >
             {brief.lede}
           </span>
         )}
-        {(brief.kind || edition) && (
-          <span className="mt-auto flex min-w-0 items-center gap-1.5 pt-1">
+        {hasFoot && (
+          <span
+            id={`${id}-foot`}
+            className="mt-auto flex min-w-0 items-center gap-1.5 pt-1"
+          >
             {brief.kind && (
               <Chip
                 size="sm"
@@ -169,6 +173,6 @@ export function BriefCard({
           </span>
         )}
       </span>
-    </button>
+    </BriefTrigger>
   );
 }

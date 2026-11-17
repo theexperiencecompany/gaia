@@ -2,26 +2,22 @@
 
 import { Skeleton } from "@heroui/react";
 import type { PostmarksResponse } from "@shared/api/generated";
-import dynamic from "next/dynamic";
+import { useQuery } from "@tanstack/react-query";
 
 import { LoadError } from "@/components/shared/LoadError";
+import {
+  PostmarksGlobe,
+  postmarksQuery,
+  StampCollection,
+} from "@/features/briefing";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
-import { usePostmarksQuery } from "../../hooks/usePostmarksQuery";
-import { StampCollection } from "./StampCollection";
-
-// maplibre is browser-only, and the globe is the heaviest thing on the page:
-// load it on the client, after the copy and the album have painted.
-const PostmarksGlobe = dynamic(
-  () => import("./PostmarksGlobe").then((module) => module.PostmarksGlobe),
-  { ssr: false, loading: () => <Skeleton className="h-full w-full" /> },
-);
 
 const GLOBE_FRAME = "relative h-[clamp(320px,52vh,480px)] w-full bg-zinc-950";
 
 /** Settings > Postmarks: where the user's Air Mail briefs came from. */
 export function PostmarksSettings() {
-  const { data, isLoading, refetch } = usePostmarksQuery();
+  const { data, isLoading, refetch } = useQuery(postmarksQuery());
 
   return (
     <SettingsPage>
