@@ -15,8 +15,10 @@ import { createTheme } from "@openuidev/react-ui/ThemeProvider";
  * zinc-100/400/500, `radius3xl`(Card)=16px=GAIA `rounded-2xl`.
  */
 
-// GAIA data-viz palettes (DESIGN.md). react-ui themes carry no chart palette, so the
-// chart components take these as customPalette (components/charts.tsx).
+/**
+ * GAIA's chart palette (DESIGN.md), the one source for every chart's series colours.
+ * react-ui themes carry none, so the chart components pass it as customPalette.
+ */
 export const CHART_PALETTE = [
   "#00bbff",
   "#34d399",
@@ -24,6 +26,7 @@ export const CHART_PALETTE = [
   "#f472b6",
   "#fb923c",
 ];
+/** The pie and radial variant of CHART_PALETTE, as documented in DESIGN.md. */
 export const PIE_PALETTE = [
   "#00bbff",
   "#34d399",

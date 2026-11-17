@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 
-import {
-  generatePageMetadata,
-  getSiteUrl,
-  type PageMetadataOptions,
-} from "@/lib/seo";
+import { SITE_URL } from "@/config/site";
+import { generatePageMetadata, type PageMetadataOptions } from "@/lib/seo";
 
 import { defaultLocale, locales, localizePath } from "./config";
 
@@ -21,13 +18,13 @@ export function getAlternates(path: string): Record<string, string> {
 
   for (const locale of locales) {
     if (locale === defaultLocale) {
-      alternates[locale] = `${getSiteUrl()}${path}`;
+      alternates[locale] = `${SITE_URL}${path}`;
     } else {
-      alternates[locale] = `${getSiteUrl()}/${locale}${path}`;
+      alternates[locale] = `${SITE_URL}/${locale}${path}`;
     }
   }
 
-  alternates["x-default"] = `${getSiteUrl()}${path}`;
+  alternates["x-default"] = `${SITE_URL}${path}`;
 
   return alternates;
 }
@@ -44,7 +41,7 @@ function getLocalizedAlternates(
   locale: string,
 ): { canonical: string; languages: Record<string, string> } {
   return {
-    canonical: `${getSiteUrl()}${localizePath(path, locale)}`,
+    canonical: `${SITE_URL}${localizePath(path, locale)}`,
     languages: getAlternates(path),
   };
 }

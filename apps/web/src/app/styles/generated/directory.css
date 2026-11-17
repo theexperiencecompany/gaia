@@ -33,6 +33,7 @@
 @source "../../not-found.tsx";
 @source "../../../config/appConfig.tsx";
 @source "../../../config/botPlatforms.ts";
+@source "../../../config/site.ts";
 @source "../../../config/toolIconConfig.ts";
 @source "../../../hooks/useGitHubStars.ts";
 @source "../../../hooks/useOAuthSuccessToast.ts";

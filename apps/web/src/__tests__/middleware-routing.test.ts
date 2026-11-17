@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const intlHandler = vi.hoisted(() => vi.fn());
 vi.mock("next-intl/middleware", () => ({ default: () => intlHandler }));
 
+import { SITE_URL } from "@/config/site";
 import middleware, { config } from "@/middleware";
 
 const matches = (path: string) =>
@@ -51,9 +52,7 @@ describe("the link host is the deployment's, read per request", () => {
     );
 
     expect(response.status).toBe(307);
-    expect(new URL(response.headers.get("location") ?? "").pathname).toBe(
-      "/l/abcdefghijk",
-    );
+    expect(response.headers.get("location")).toBe(`${SITE_URL}/l/abcdefghijk`);
   });
 
   it("treats no host as a link host when the runtime names none", async () => {

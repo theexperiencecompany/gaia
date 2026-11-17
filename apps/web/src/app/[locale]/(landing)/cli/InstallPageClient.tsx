@@ -10,6 +10,7 @@ import { LinkButton } from "@/components/shared/LinkButton";
 import { tabsVariants } from "@/components/shared/tabsVariants";
 import CopyButton from "@/components/ui/CopyButton";
 import InlineCode from "@/components/ui/InlineCode";
+import { SITE_URL } from "@/config/site";
 import SectionHeader from "@/features/landing/components/demo/founders-demo/SectionHeader";
 import NumberedSteps from "@/features/landing/components/shared/NumberedSteps";
 import { copyText } from "@/lib/clipboard";
@@ -55,7 +56,7 @@ function CodeBlock({ code }: { code: string }) {
   );
 }
 
-const INSTALLER_COMMAND = "curl -fsSL https://heygaia.io/install.sh | sh";
+const INSTALLER_COMMAND = `curl -fsSL ${SITE_URL}/install.sh | sh`;
 
 function InstallTab({ code, hint }: { code: string; hint: ReactNode }) {
   return (

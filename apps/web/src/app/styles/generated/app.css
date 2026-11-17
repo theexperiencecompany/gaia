@@ -56,6 +56,7 @@
 @source "../../../config/keyboardShortcuts.tsx";
 @source "../../../config/keyboardShortcutsData.tsx";
 @source "../../../config/offer.ts";
+@source "../../../config/site.ts";
 @source "../../../config/toolIconConfig.ts";
 @source "../../../hooks/useBackgroundSync.ts";
 @source "../../../hooks/useConfirmation.ts";
@@ -245,7 +246,6 @@
 @source "../../../hooks/ui/usePlatform.ts";
 @source "../../../hooks/ui/usePlatformDetection.ts";
 @source "../../../hooks/ui/useWindowOrigin.ts";
-@source "../../../lib/api/baseUrl.ts";
 @source "../../../lib/api/client.ts";
 @source "../../../lib/api/errorCodes.ts";
 @source "../../../lib/api/errorMessage.ts";
@@ -299,6 +299,7 @@
 @source "../../../../../../libs/shared/ts/src/constants/bots.ts";
 @source "../../../../../../libs/shared/ts/src/constants/instructions.ts";
 @source "../../../../../../libs/shared/ts/src/constants/platforms.ts";
+@source "../../../../../../libs/shared/ts/src/constants/routes.ts";
 @source "../../../../../../libs/shared/ts/src/constants/usage.ts";
 @source "../../../../../../libs/shared/ts/src/desktop-tools/index.ts";
 @source "../../../../../../libs/shared/ts/src/desktop-tools/types.ts";

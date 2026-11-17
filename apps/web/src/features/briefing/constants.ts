@@ -17,11 +17,10 @@ export const BRIEF_LETTER_MAX_WIDTH_PX = 760;
 export const LETTER_VIEWPORT_GUTTER_PX = 24;
 export const BRIEF_LETTER_WIDTH = `min(${BRIEF_LETTER_MAX_WIDTH_PX}px, calc(100vw - ${LETTER_VIEWPORT_GUTTER_PX}px))`;
 
-/** Where the reader sets how often briefs come and which editions they draw. */
-export const BRIEFINGS_SETTINGS_PATH = "/settings/briefings";
-
-/** The stamp album. Mirrors POSTMARKS_PATH in apps/api/app/constants/briefing.py. */
-export const POSTMARKS_SETTINGS_PATH = "/settings/postmarks";
+export {
+  BRIEFINGS_SETTINGS_PATH,
+  POSTMARKS_SETTINGS_PATH,
+} from "@shared/constants/routes";
 
 /** A brief's own page leads back to the archive it is filed in. */
 export const BACK_TO_BRIEFINGS: StandalonePageBack = {
