@@ -255,9 +255,10 @@ async def _add_follow_ups(
 
 
 async def fail_attempt(ports: RuntimePorts, attempt: Attempt, error: Exception) -> None:
-    """Settle the inputs still unanswered failed with what was shown, so the user sees why; no further run goes on with it.
+    """Settle what the failure cut short as failed, so the user sees why; no further run goes on with it.
 
-    With every input already answered nothing failed for the user: what is shown ends as it is.
+    Cut short: inputs still unanswered, or a reply being written. With every input answered and
+    nothing being written (a store error after a settled answer), nothing failed for the user.
     """
     attempt.continuing = False  # pragma: no mutate — read only as truthy
     log.error(
@@ -272,7 +273,7 @@ async def fail_attempt(ports: RuntimePorts, attempt: Attempt, error: Exception) 
         if isinstance(error, StepLimitReached)
         else FailureReason.MODEL_ERROR
     )
-    if attempt.unanswered:
+    if attempt.unanswered or isinstance(attempt.progress, Showing | Drafting):
         await _settle_rest(ports, attempt, ReplyOutcome.FAILED, failure)
     else:
         await _settle_rest(ports, attempt)

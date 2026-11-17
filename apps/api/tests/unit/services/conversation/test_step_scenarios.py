@@ -7,6 +7,7 @@ from typing import cast
 
 import pytest
 
+from app.agents.core.comms_ledger import Closing
 from app.constants.chat import ConversationSource
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.hil import HIL_ACK_APPROVED
@@ -1205,6 +1206,27 @@ class StepScenarios:
         assert (await replies(rt))[0].text == "half"
         assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
         assert [s.failure for s in await settles(rt)] == [FailureReason.MODEL_ERROR]
+        await assert_quiet(rt)
+
+    async def test_a_reply_that_breaks_after_its_message_was_answered_still_shows_it_failed(
+        self, rt: Runtime
+    ) -> None:
+        """Regression for web e2e "a failed reply keeps its streamed text": no failure was shown."""
+        rt.runner.script(
+            [
+                Close(Closing.ANSWERED, (1,)),
+                ModelOutput(True),
+                text("Partial progress."),
+                Fail(RuntimeError("provider dropped the stream")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert (await replies(rt))[-1].text == "Partial progress."
+        assert [(s.outcome, s.failure) for s in await settles(rt)][-1] == (
+            ReplyOutcome.FAILED,
+            FailureReason.MODEL_ERROR,
+        )
         await assert_quiet(rt)
 
     async def test_a_retried_model_call_restreaming_the_same_text_follows_what_was_shown(

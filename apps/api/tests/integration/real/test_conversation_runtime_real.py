@@ -3799,7 +3799,7 @@ async def test_a_plain_yes_on_a_bot_decides_its_approval_with_the_classifier_dow
     [decided] = edges.logged.await_args_list
     assert decided.args[2:4] == (approval_id, ApprovalOutcome.APPROVED)
     assert len(model._prompts) == 1  # the ack, not a comms run, answered it
-    assert [r.text for r in await rig.of(Reply)][1:] == ["Got it, I'll create todo."]
+    assert [r.text for r in await rig.of(Reply)][1:] == ["Got it, I'll add a todo."]
 
 
 @pytest.mark.service
