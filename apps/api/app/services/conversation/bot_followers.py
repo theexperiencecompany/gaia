@@ -39,9 +39,12 @@ async def _undelivered_from(head: SweepHead) -> BotDelivery:
 
 
 async def follow_start(conversation_id: str, seq: int) -> BotDelivery:
-    """Return where a follow of message seq starts: the session's cursor while it owes anything, else just before seq."""
+    """Return where a follow of message seq starts: the session's cursor, else (none kept yet) just before seq.
+
+    The cursor, not the recorded debt, decides: an entry logged by a process that died before it
+    owed the bot is still past the cursor, and the follow delivers it.
+    """
     session = await bot_session_repository.get_by_conversation_id(conversation_id)
-    delivery = None if session is None else session.delivery
-    if delivery is not None and delivery.owes:
-        return delivery
-    return BotDelivery(delivered_seq=seq - 1)
+    if session is None or session.delivery is None:
+        return BotDelivery(delivered_seq=seq - 1)
+    return session.delivery

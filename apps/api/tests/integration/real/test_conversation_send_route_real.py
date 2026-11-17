@@ -419,6 +419,43 @@ async def test_a_bot_message_follows_from_what_its_session_still_owes(sends: Sen
     assert (later.after_seq, later.partial_reply) == (first.seq, None)
 
 
+async def test_a_bot_message_follows_from_the_sessions_cursor_even_when_the_debt_was_never_recorded(
+    sends: Sends,
+) -> None:
+    user = AuthenticatedUser(user_id=FAKE_USER.user_id)
+    platform_user_id = f"tg-{uuid4().hex[:8]}"
+    bot_chat = await BotService.get_or_create_session(
+        "telegram", platform_user_id, None, user, is_dm=True
+    )
+    body = BotChatRequest(
+        message="anything new?",
+        platform="telegram",
+        platform_user_id=platform_user_id,
+        platform_message_id="905",
+        is_dm=True,
+    )
+    with patch("app.services.conversation.send.charge_bot_turn", new_callable=AsyncMock):
+        first = await submit_bot_message(body, user)
+    assert await bot_session_repository.record_delivered(
+        bot_chat, platform="telegram", delivered_seq=first.seq, partial_reply=None
+    )
+
+    # A reminder is logged, and the process dies before it owes the bot anything.
+    payload = ConversationPayload(
+        conversation_id=bot_chat,
+        notification_id=f"n-{uuid4().hex[:8]}",
+        text="Your reminder: call the bank",
+        origin="reminder",
+    )
+    await ConversationChannelAdapter().deliver(payload, user.user_id)
+    with patch("app.services.conversation.send.charge_bot_turn", new_callable=AsyncMock):
+        later = await submit_bot_message(
+            body.model_copy(update={"platform_message_id": "906"}), user
+        )
+
+    assert (later.after_seq, later.partial_reply) == (first.seq, None)
+
+
 async def test_a_sent_messages_files_are_stored_on_its_entry_for_every_device(
     client: AsyncClient, sends: Sends, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
 ) -> None:
