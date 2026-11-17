@@ -85,6 +85,10 @@ class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
             }
         )
 
+    async def live_for_user(self, user_id: str) -> list[ShortLink]:
+        """Return every live link the user owns."""
+        return await self._find({"user_id": user_id, "revoked": False})
+
     async def live_target_ids_under(
         self, user_id: str, target_type: ShortLinkTargetType, prefix: str
     ) -> list[str]:

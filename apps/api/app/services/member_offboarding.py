@@ -1,20 +1,23 @@
 """Stop everything that runs on a removed self-host member's behalf; their data stays.
 
-Workflows go through WorkflowService so their Composio triggers are unregistered
-too. Every pause carries DeactivationReason.MEMBER_REMOVED, which no automatic
-resume owns. Each item is attempted even when another fails, so a repeated
-removal finishes what an earlier one left.
+Workflows, their briefs among them, go through WorkflowService so their Composio
+triggers are unregistered too. Every pause carries DeactivationReason.MEMBER_REMOVED,
+which no automatic resume owns, and every link they shared stops opening. Each item
+is attempted even when another fails, so a repeated removal finishes what an earlier
+one left.
 """
 
 from collections.abc import Awaitable, Callable
 from functools import partial
 
+from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
 from app.constants.error_codes import MEMBER_OFFBOARDING_INCOMPLETE
 from app.db.repositories.reminders import reminder_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.scheduler_models import DeactivationReason
 from app.models.todo_models import TodoUpdate
+from app.services.links.service import revoke_all_links_for_user
 from app.services.platform_link_service import PlatformLinkService, disconnect_platform_account
 from app.services.reminder_service import reminder_scheduler
 from app.services.workflow.service import WorkflowService
@@ -25,9 +28,13 @@ _REASON = DeactivationReason.MEMBER_REMOVED
 
 
 async def stop_acting_for_removed_member(user_id: str) -> None:
-    """Deactivate workflows, pause reminders and tracked todos, and unlink every bot platform."""
-    steps: list[tuple[str, Callable[[], Awaitable[object]]]] = []
-    for workflow in await workflow_repository.find_activated_for_user(user_id):
+    """Deactivate workflows and briefs, pause reminders and tracked todos, revoke links, unlink bots."""
+    steps: list[tuple[str, Callable[[], Awaitable[object]]]] = [
+        ("links", partial(revoke_all_links_for_user, user_id))
+    ]
+    briefs = await workflow_repository.find_system_workflows(user_id, BRIEFING_RHYTHM_WORKFLOW_KEYS)
+    running = await workflow_repository.find_activated_for_user(user_id)
+    for workflow in [*running, *(brief for brief in briefs if brief.activated)]:
         steps.append(
             (
                 f"workflow:{workflow.id}",
