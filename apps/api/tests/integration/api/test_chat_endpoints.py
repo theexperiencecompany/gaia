@@ -546,6 +546,54 @@ class TestTheSubmittedEventKeysTheTurn:
 
 
 @pytest.mark.integration
+class TestTheMemoryEmbeddingStartsAtArrival:
+    """The memory lane's query embedding (~180ms) overlaps the endpoint's lookups instead of following them."""
+
+    @pytest.fixture(autouse=True)
+    def mock_rate_limiter(self):
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            yield
+
+    async def test_the_embedding_starts_before_the_cost_budget_read(self, test_client):
+        order: list[str] = []
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+                new=_empty_subscribe_stream,
+            ),
+            patch("app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock),
+            patch("app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock),
+            patch(
+                "app.api.v1.endpoints.chat.spawn_background_task",
+                side_effect=lambda coro, **kw: coro.close() or _make_mock_task(),
+            ),
+            patch("app.api.v1.endpoints.chat.redis_cache") as cache,
+            patch(
+                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                new_callable=AsyncMock,
+                return_value=_make_subscription_mock(),
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.enforce_cost_budget",
+                new=AsyncMock(side_effect=lambda *_a, **_k: order.append("cost_budget")),
+            ),
+            patch(
+                "app.api.v1.endpoints.chat.start_query_embedding",
+                side_effect=lambda text: order.append(f"embed:{text}"),
+            ),
+        ):
+            cache.redis = MagicMock()
+            response = await test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
+
+        assert response.status_code == 200
+        assert order == [f"embed:{_VALID_BODY['message']}", "cost_budget"]
+
+
+@pytest.mark.integration
 class TestChatStreamPaywall:
     """GAIA is paid-only: a FREE-plan user must 402 before any stream work starts."""
 

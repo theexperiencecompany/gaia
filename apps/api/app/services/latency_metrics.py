@@ -311,6 +311,14 @@ _CONTEXT_SECTION_BUDGET_EXCEEDED = _register_once(
     ),
 )
 
+_MEMORY_FAST_RECALL_SEMANTIC_MISSED = _register_once(
+    "memory_fast_recall_semantic_missed",
+    lambda: Counter(
+        name="memory_fast_recall_semantic_missed",
+        documentation="Comms fast-lane turns answered without semantic hits: the embedding was late",
+    ),
+)
+
 _EXECUTOR_RUN_TOTAL = _register_once(
     "executor_run_total",
     lambda: Counter(
@@ -365,6 +373,7 @@ ALL_COLLECTORS: Final[tuple[Histogram | Counter, ...]] = (
     _COMMS_GRAPH_SECONDS,
     _CONTEXT_ASSEMBLE_SECONDS,
     _CONTEXT_SECTION_BUDGET_EXCEEDED,
+    _MEMORY_FAST_RECALL_SEMANTIC_MISSED,
     _EXECUTOR_QUEUE_WAIT_SECONDS,
     _EXECUTOR_TTFT_SECONDS,
     _EXECUTOR_ACTIVE_SECONDS,
@@ -476,6 +485,11 @@ def observe_chat_turn_total(*, source: str, delegated: bool, status: str) -> Non
 def observe_context_section_budget_exceeded(*, section: str) -> None:
     """Count a context section that rendered empty because it ran past its budget."""
     _inc(_CONTEXT_SECTION_BUDGET_EXCEEDED, section=section)
+
+
+def observe_fast_recall_semantic_missed() -> None:
+    """Count a fast-lane turn that answered without semantic hits because the embedding was late."""
+    _inc(_MEMORY_FAST_RECALL_SEMANTIC_MISSED)
 
 
 def observe_turn_overhead(overhead: TurnOverhead, *, source: str) -> None:
@@ -611,6 +625,7 @@ __all__ = [
     "observe_context_assemble",
     "observe_context_section_budget_exceeded",
     "observe_delivery_narration",
+    "observe_fast_recall_semantic_missed",
     "observe_delivery_persist",
     "observe_executor_active",
     "observe_executor_e2e",

@@ -27,6 +27,7 @@ from app.decorators import (
     require_active_subscription,
     tiered_rate_limit,
 )
+from app.memory.fast_recall import start_query_embedding
 from app.models.bot_models import (
     BotAuthStatusResponse,
     BotChatRequest,
@@ -647,6 +648,9 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
     user_id = user.user_id
     log.set(user={"id": user_id}, outcome="success")
+    # Only once the caller is a linked GAIA user: a stranger's text never reaches
+    # the embedding provider. Overlaps the lookups below instead of following them.
+    start_query_embedding(body.message)
 
     if (refusal := await _bot_stream_entitlement_gate(user_id, body.platform)) is not None:
         return refusal

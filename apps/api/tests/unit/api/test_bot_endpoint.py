@@ -1125,6 +1125,75 @@ class TestBotChatStream:
         spawn_call = mock_spawn.call_args
         assert spawn_call.kwargs["on_done"].__name__ == "_log_stream_failure"
 
+    @patch("app.api.v1.endpoints.bot.spawn_background_task", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.run_chat_stream_background", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.create_bot_session_token", new=MagicMock())
+    @patch(
+        "app.utils.auth_utils.user_repository.get_by_platform_id",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.bot.stream_manager")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch(
+        "app.services.bot_service.BotService.load_conversation_history",
+        new=AsyncMock(return_value=[]),
+    )
+    @patch("app.api.v1.endpoints.bot.capture", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    @patch("app.api.v1.endpoints.bot.start_query_embedding")
+    async def test_a_linked_message_starts_its_embedding_before_the_session_lookup(
+        self,
+        mock_embed: MagicMock,
+        mock_bot_svc: MagicMock,
+        mock_sm: MagicMock,
+        mock_get_user: AsyncMock,
+    ):
+        """The memory lane's embedding is a ~180ms network call: it must overlap ingress, not follow it."""
+        order: list[str] = []
+
+        async def session(*_args: object, **_kwargs: object) -> str:
+            order.append("session")
+            return "conv-1"
+
+        mock_embed.side_effect = lambda _text: order.append("embed")
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_bot_svc.get_or_create_session = AsyncMock(side_effect=session)
+        mock_sm.start_stream = AsyncMock()
+        mock_get_user.return_value = UserDocument(id=USER_ID)
+        body = BotChatRequest.model_validate(
+            {"message": "who am I dating", "platform": "telegram", "platform_user_id": "tg_1"}
+        )
+        request = MagicMock()
+        request.state = _make_request()
+
+        await bot_chat_stream(request, body)
+
+        mock_embed.assert_called_once_with("who am I dating")
+        assert order == ["embed", "session"]
+
+    @patch(
+        "app.utils.auth_utils.user_repository.get_by_platform_id",
+        new=AsyncMock(return_value=None),
+    )
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    @patch("app.api.v1.endpoints.bot.start_query_embedding")
+    async def test_an_unlinked_message_is_never_embedded(
+        self, mock_embed: MagicMock, mock_bot_svc: MagicMock
+    ):
+        """A stranger's text must not reach the embedding provider before they are a GAIA user."""
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        body = BotChatRequest.model_validate(
+            {"message": "hello", "platform": "telegram", "platform_user_id": "stranger"}
+        )
+        request = MagicMock()
+        request.state = _make_request()
+
+        await bot_chat_stream(request, body)
+
+        mock_embed.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # The streamed body of POST /bot/chat-stream — translation + keepalive

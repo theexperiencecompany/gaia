@@ -45,7 +45,6 @@ from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_H
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import sse_payload, stream_manager
 from app.db.repositories.conversations import conversation_repository
-from app.memory.fast_recall import start_query_embedding
 from app.models.chat_models import (
     ConversationSource,
     MessageKind,
@@ -311,9 +310,6 @@ async def _run_chat_stream(
     source: str | None = None,
     clock: TurnClock | None = None,
 ) -> None:
-    # First thing: the memory lane's query embedding is a network call, so it
-    # overlaps the turn's setup instead of starting when the context is built.
-    start_query_embedding(body.message)
     state = _StreamState(turn_id=body.turn_id)
     state.t0_perf = clock.marks[TurnMark.T0] if clock is not None else time.perf_counter()
     is_new_conversation = body.conversation_id is None
