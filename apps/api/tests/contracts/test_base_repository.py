@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+import os
+import time
 
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict
@@ -164,6 +166,24 @@ class TestBasePrimitives:
             assert after is not None and after.updated_at is not None
             assert created.updated_at is not None
             assert after.updated_at.replace(tzinfo=UTC) > created.updated_at.replace(tzinfo=UTC)
+
+    async def test_bulk_set_stamps_utc_whatever_the_host_timezone(self, repo, make_doc):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        original_tz = os.environ.get("TZ")
+        os.environ["TZ"] = "Asia/Kolkata"
+        time.tzset()
+        try:
+            await repo._bulk_set([(a.id, _FixtureUpdate(title="A"))], user_id="u")
+        finally:
+            if original_tz is None:
+                del os.environ["TZ"]
+            else:
+                os.environ["TZ"] = original_tz
+            time.tzset()
+        after = await repo.get(a.id, user_id="u")
+        assert after is not None and after.updated_at is not None
+        skew = datetime.now(UTC) - after.updated_at.replace(tzinfo=UTC)
+        assert abs(skew) < timedelta(minutes=1)
 
     async def test_bulk_set_with_no_updates_modifies_nothing(self, repo):
         assert await repo._bulk_set([], user_id="u") == 0
