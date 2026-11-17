@@ -15,8 +15,8 @@ from sentry_sdk.types import Event, Hint
 
 from app.config.deployment import DeploymentKind
 from app.config.loggers import REQUEST_LOGGER_NAME
+from app.config.sentry_scrub import scrub_request
 from app.config.settings import settings
-from app.constants.http import INTERNAL_CALLER_HEADER
 from app.constants.log_tags import LogTag
 from shared.py.logging import (
     ARQ_LOGGER_DISPLAY_NAME,
@@ -217,39 +217,12 @@ def _attribute_user(event: Event) -> None:
         event["user"] = {**merged, "id": user_id}
 
 
-class _EventRequest(BaseModel):
-    """A captured request; every field but headers is carried through untouched."""
-
-    model_config = ConfigDict(extra="allow")
-
-    headers: dict[str, object] = {}
-
-
-class _EventWithRequest(BaseModel):
-    """The captured request on a Sentry event, the one part _drop_internal_token rewrites."""
-
-    request: _EventRequest | None = None
-
-
-def _drop_internal_token(event: Event) -> None:
-    """Remove the web server's INTERNAL_API_TOKEN header from a captured request."""
-    request = _EventWithRequest.model_validate(event).request
-    if request is None:
-        return
-    request.headers = {
-        name: value
-        for name, value in request.headers.items()
-        if name.lower() != INTERNAL_CALLER_HEADER.lower()
-    }
-    event["request"] = request.model_dump()
-
-
 def _before_send(event: Event, hint: Hint) -> Event | None:
     """Decide every event's fate: drop retried LLM attempts, then scrub, group and attribute it."""
     event = _drop_llm_attempt_errors(event, hint)
     if event is None:
         return None
-    _drop_internal_token(event)
+    event = scrub_request(event)
     try:
         _attribute_user(event)
         fingerprint = _stable_fingerprint(event)
@@ -260,6 +233,11 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
     if fingerprint is not None and "fingerprint" not in event:
         event["fingerprint"] = fingerprint
     return event
+
+
+def _before_send_transaction(event: Event, _hint: Hint) -> Event:
+    """Scrub a trace's request the way an error's is: a sampled trace carries the same URL."""
+    return scrub_request(event)
 
 
 def _record_is_skipped(record: _Record, logger_name: str | None) -> bool:
@@ -339,6 +317,7 @@ def init_sentry() -> None:
         # Both re-send every log record the sink below already forwards, unfiltered and unscrubbed.
         disabled_integrations=[LoguruIntegration(), LoggingIntegration()],
         before_send=_before_send,
+        before_send_transaction=_before_send_transaction,
     )
     # The API and the ARQ worker share one project; the Promtail service name tells them apart.
     sentry_sdk.get_global_scope().set_tag("service", env_context().service)
