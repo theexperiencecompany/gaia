@@ -99,13 +99,15 @@ function restarted(active: ActiveBotConversation[]) {
   const adapter = new RestartedAdapter();
   const opened = vi.fn(replay);
   const listActiveConversations = vi.fn(async () => active);
+  const recordDelivered = vi.fn(async () => ({ recorded: true }));
   Object.assign(adapter, {
     gaia: {
       listActiveConversations,
       conversationEvents: opened,
+      recordDelivered,
     },
   });
-  return { adapter, opened, listActiveConversations };
+  return { adapter, opened, listActiveConversations, recordDelivered };
 }
 
 const target = (afterSeq: number): ActiveBotConversation => ({
@@ -226,6 +228,21 @@ describe("a platform send during a follow", () => {
     await adapter.conversationsIdle();
 
     expect(adapter.sent).toEqual(["On it.", "Your flight is booked."]);
+  });
+
+  it("stops after a send whose cursor the server would not keep, so a restart repeats nothing past the kept cursor", async () => {
+    const { adapter, recordDelivered } = restarted([target(1)]);
+    recordDelivered.mockRejectedValue(
+      Object.assign(new Error("Request failed with status code 422"), {
+        response: { status: 422, data: {} },
+      }),
+    );
+
+    await adapter.resume();
+    await adapter.conversationsIdle();
+
+    expect(recordDelivered).toHaveBeenCalledTimes(1);
+    expect(adapter.sent).toEqual([]);
   });
 
   it("is not sent again when the chat is gone, and that follow ends", async () => {

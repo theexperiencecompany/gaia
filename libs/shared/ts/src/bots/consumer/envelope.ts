@@ -79,10 +79,13 @@ const partialReplySchema = z
   .object({
     reply_id: z.string().min(1),
     bubbles: z.number().int().min(0),
-    open_message_ids: z.array(z.string().min(1)).default([]),
+    open_message_ids: z.array(z.string().min(1).nullable()).default([]),
   })
   .refine((p) => p.bubbles > 0 || p.open_message_ids.length > 0, {
     message: "a partial reply has a final bubble or an open message",
+  })
+  .refine((p) => !p.open_message_ids.slice(0, -1).includes(null), {
+    message: "only the last open message can be a send never confirmed",
   }) satisfies z.ZodType<PartialReply>;
 
 /** A wake: the bot conversation to follow, from the delivered-through cursor its follower recorded. */

@@ -14,6 +14,8 @@ export interface StreamingOptions {
   editIntervalMs: number;
   streaming: boolean;
   platform: PlatformName;
+  /** The gap between two bubbles sent back to back. */
+  bubblePauseMs: number;
 }
 
 /** A message the follower posted, edited in place as its bubble grows. */

@@ -126,16 +126,19 @@ function recorder(behaviour: PlatformBehaviour = {}): {
 // A zero edit interval previews every chunk at once, so a run is deterministic.
 const EDITING: StreamingOptions = {
   editIntervalMs: 0,
+  bubblePauseMs: 0,
   streaming: true,
   platform: "telegram",
 };
 const NON_EDITING: StreamingOptions = {
   editIntervalMs: 0,
+  bubblePauseMs: 0,
   streaming: false,
   platform: "whatsapp",
 };
 const SLACK: StreamingOptions = {
   editIntervalMs: 0,
+  bubblePauseMs: 0,
   streaming: true,
   platform: "slack",
 };
@@ -348,6 +351,8 @@ describe("a hand-off preamble", () => {
       insertFrame(replyItem("r1", 2, ["Let me check."])),
       replyDelta("a-r1", "r1", 0, "Let me check."),
       replyDelta("a-r1", "r1", 1, "One sec.", 1),
+      // The preview the delta scheduled has run by the next frame.
+      stateFrame(1, "thinking"),
     ]);
     expect(sent(calls)).toHaveLength(2);
 

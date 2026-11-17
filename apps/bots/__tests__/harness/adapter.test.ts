@@ -136,6 +136,7 @@ function makeGaia(script: ApiScript, held: Promise<void> = Promise.resolve()) {
       authUrl: script.authUrl ?? "https://gaia.test/auth?token=abc123",
     })),
     getPricingUrl: () => "https://gaia.test/pricing",
+    recordDelivered: vi.fn(async () => ({ recorded: true })),
   };
 }
 

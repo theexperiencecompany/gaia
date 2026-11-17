@@ -57,6 +57,20 @@ def test_a_reply_cut_off_mid_bubble_keeps_the_open_message_for_the_restart() -> 
     assert partial.open_message_ids == ["2459"]
 
 
+def test_a_send_recorded_before_it_went_out_is_kept_as_an_unconfirmed_last_message() -> None:
+    partial = PartialReply(reply_id="r7", bubbles=1, open_message_ids=["2459", None])
+
+    assert partial.open_message_ids == ["2459", None]
+
+
+def test_an_unconfirmed_send_before_a_confirmed_one_is_refused() -> None:
+    with pytest.raises(ValidationError) as refused:
+        PartialReply(reply_id="r7", bubbles=1, open_message_ids=[None, "2459"])
+
+    [error] = refused.value.errors()
+    assert error["msg"] == ("Value error, only the last open message can be a send never confirmed")
+
+
 def test_a_partial_reply_with_nothing_on_the_platform_is_refused() -> None:
     with pytest.raises(ValidationError) as refused:
         PartialReply(reply_id="r7", bubbles=0)

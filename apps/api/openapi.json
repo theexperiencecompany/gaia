@@ -13347,7 +13347,7 @@
         "type": "object"
       },
       "PartialReply": {
-        "description": "A reply a bot follower had put only part of on the platform.\n\nbubbles are final; open_message_ids are the platform messages of the next bubble, still being\nwritten, which a restarted follower finishes by editing instead of posting again.",
+        "description": "A reply a bot follower had put only part of on the platform.\n\nbubbles are final; open_message_ids are the platform messages of the next bubble, still being\nwritten, which a restarted follower finishes by editing instead of posting again. A send is\nrecorded before it goes out, so a last id of None is a send never confirmed.",
         "properties": {
           "bubbles": {
             "minimum": 0.0,
@@ -13356,7 +13356,14 @@
           },
           "open_message_ids": {
             "items": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "title": "Open Message Ids",
             "type": "array"

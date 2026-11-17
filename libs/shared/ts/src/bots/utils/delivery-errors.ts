@@ -8,6 +8,14 @@
  * the reply twice with a stale partial copy above it.
  */
 
+import {
+  GIVE_UP,
+  RETRY_TIER,
+  type RetryPolicy,
+  type RetryVerdict,
+  TRY_AGAIN,
+  withRetry,
+} from "../../retry/policy";
 import { classifyBotFailure, isTransientBotFailure } from "./failure-reasons";
 import { getHttpStatus, sanitizeErrorForLog } from "./logger";
 import { sleep } from "./timeout";
@@ -48,7 +56,6 @@ export function isMessageGoneError(error: unknown): boolean {
   const text = errorText(error);
   return MESSAGE_GONE_PATTERNS.some((pattern) => pattern.test(text));
 }
-
 /**
  * How long to wait before retrying a rate-limited platform call (an edit, a
  * send), or `null` when the failure was not a rate limit. Reads the platform's own `retry_after`
@@ -70,40 +77,57 @@ export function retryAfterMs(error: unknown): number | null {
   return isRateLimited ? RATE_LIMIT_DEFAULT_WAIT_MS : null;
 }
 
-const BACKOFF_BASE_MS = 500;
-
-/** How long to wait before retrying call attempt n, or null when its failure is permanent. */
-function transientWaitMs(error: unknown, attempt: number): number | null {
-  if (!isTransientBotFailure(classifyBotFailure(error))) return null;
-  return (
-    retryAfterMs(error) ??
-    Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), RATE_LIMIT_MAX_WAIT_MS)
-  );
+/** Whether a failed call is worth another attempt, and after how long when the other side said. */
+function transientVerdict(error: unknown): RetryVerdict {
+  if (!isTransientBotFailure(classifyBotFailure(error))) return GIVE_UP;
+  const afterMs = retryAfterMs(error);
+  return afterMs === null ? TRY_AGAIN : { retry: true, afterMs };
 }
 
-/**
- * Runs one call, retrying it in place while it fails transiently: after the
- * platform's retry_after on a rate limit, else a backoff capped at
- * RATE_LIMIT_MAX_WAIT_MS. A follow waiting here is paused and goes on from where it
- * was once the platform answers. A permanent failure (chat not found, bot blocked,
- * a rejected request) throws, and so does the last failure after maxAttempts.
- */
-export async function retryTransientPlatformCall<T>(
+/** Runs call under policy, retrying only the failures a resend can get past. */
+function retryTransient<T>(
+  policy: RetryPolicy,
+  retrying: string,
   call: () => Promise<T>,
-  maxAttempts = Number.POSITIVE_INFINITY,
+  signal?: AbortSignal,
 ): Promise<T> {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await call();
-    } catch (error) {
-      const waitMs = transientWaitMs(error, attempt);
-      if (waitMs === null || attempt >= maxAttempts) throw error;
-      wideLog.warning("platform_call_retrying", {
+  return withRetry(policy, call, transientVerdict, {
+    sleep,
+    signal,
+    onRetry: (error, attempt, waitMs) =>
+      wideLog.warning(retrying, {
         ...sanitizeErrorForLog(error),
         attempt,
         wait_ms: waitMs,
-      });
-      await sleep(waitMs);
-    }
-  }
+      }),
+  });
+}
+
+/**
+ * Runs one platform call under the PLATFORM_SEND tier: a transient failure waits
+ * (the platform's retry_after on a rate limit) and tries again. A permanent failure
+ * (chat not found, bot blocked, a rejected request), or the last transient one,
+ * throws: the follow ends there and the durable re-poll delivers once the platform is back.
+ */
+export function retryTransientPlatformCall<T>(
+  call: () => Promise<T>,
+): Promise<T> {
+  return retryTransient(
+    RETRY_TIER.PLATFORM_SEND,
+    "platform_call_retrying",
+    call,
+  );
+}
+
+/** Runs one call to GAIA's own API under the OWN_API tier, by the same rule; signal ends the waiting. */
+export function retryOwnApiCall<T>(
+  call: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  return retryTransient(
+    RETRY_TIER.OWN_API,
+    "own_api_call_retrying",
+    call,
+    signal,
+  );
 }

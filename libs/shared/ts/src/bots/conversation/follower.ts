@@ -71,13 +71,13 @@ interface OpenReply {
   attempts: Set<string>;
 }
 
-const sameBubbles = (a: readonly string[], b: readonly string[]): boolean =>
-  a.length === b.length && a.every((bubble, at) => bubble === b[at]);
+const sameList = <T>(a: readonly T[], b: readonly T[]): boolean =>
+  a.length === b.length && a.every((value, at) => value === b[at]);
 
 const samePartial = (a: PartialReply | null, b: PartialReply | null): boolean =>
   a?.reply_id === b?.reply_id &&
   a?.bubbles === b?.bubbles &&
-  sameBubbles(a?.open_message_ids ?? [], b?.open_message_ids ?? []);
+  sameList(a?.open_message_ids ?? [], b?.open_message_ids ?? []);
 
 /** The log position at which an item has something for the platform: a work item's newest approval. */
 const deliverySeq = (item: ScreenItem): number =>
@@ -152,12 +152,14 @@ export class ConversationFollower {
     this.expected.add(seq);
   }
 
-  /** The approvals the work waits on that this follow asked the user about: it cannot finish before they are decided. */
+  /**
+   * The approvals the conversation waits on, while the server's display says it waits on
+   * them: the same state frame that says when it is finished.
+   */
   get awaitingDecision(): ApprovalRequested[] {
+    if (this.view.display !== DISPLAY_STATE.AWAITING_APPROVAL) return [];
     return this.view.items.flatMap((item) =>
-      item.kind === SCREEN_ITEM_KIND.WORK
-        ? item.asking.filter(({ approval_id }) => this.asked.has(approval_id))
-        : [],
+      item.kind === SCREEN_ITEM_KIND.WORK ? item.asking : [],
     );
   }
 
@@ -453,7 +455,7 @@ export class ConversationFollower {
   private async streamReply(reply: ReplyItem): Promise<void> {
     const delivery = this.open?.delivery ?? this.newDelivery(reply);
     this.open = null;
-    if (!sameBubbles(delivery.streamed, reply.bubbles)) {
+    if (!sameList(delivery.streamed, reply.bubbles)) {
       // A delta gap, or nothing streamed: the saved bubbles extend whatever was shown.
       await delivery.bubbles(reply.bubbles);
     }
@@ -498,7 +500,7 @@ export class ConversationFollower {
   }
 
   private newDelivery(reply: ReplyItem): ReplyDelivery {
-    const { platform, streaming } = this.options;
+    const { platform, streaming, bubblePauseMs } = this.options;
     const { partialReply } = this.start;
     const earlier =
       partialReply?.reply_id === reply.id
@@ -508,7 +510,12 @@ export class ConversationFollower {
           }
         : { bubbles: 0, openMessageIds: [] };
     return new ReplyDelivery(
-      { live: streaming, platform, render: PLATFORM_MARKDOWN[platform] },
+      {
+        live: streaming,
+        platform,
+        render: PLATFORM_MARKDOWN[platform],
+        pauseMs: bubblePauseMs,
+      },
       this.surface,
       this.quoteTarget(reply.quote?.id ?? null),
       earlier,

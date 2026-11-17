@@ -1,7 +1,8 @@
-# Telegram answers 429 and then 502 Bad Gateway for a while as the reply goes
-# out. The bot waits the outage out and delivers the reply once it answers again:
-# every bubble arrives, once, in order — the user never sees a reaction and then
-# nothing.
+# Telegram answers 502 Bad Gateway for a while as the reply goes out, within
+# the PLATFORM_SEND tier. The bot waits the outage out and delivers the reply
+# once it answers again: every bubble arrives, once, in order — the user never
+# sees a reaction and then nothing. An outage past the tier ends the follow and
+# the next owed-conversation poll delivers it (follower-send-failure.test.ts).
 #
 #   mise dev --sim
 #   nx run bot-harness:sim -- run apps/bots/harness/scenarios/platform-outage.yaml
@@ -10,7 +11,7 @@ emulate: telegram
 user: bot-outage-scenario@gaia.local
 turns:
   - send: "two parts [[say:First part of the answer.<NEW_MESSAGE_BREAK>Second part of the answer.]]"
-    outage: { failures: 5, status: 502 }
+    outage: { failures: 4, status: 502 }
     expect:
       - eventTypes: [platform-failure]
       - bubbles: ["First part of the answer.", "Second part of the answer."]

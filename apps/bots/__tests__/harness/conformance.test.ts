@@ -175,6 +175,7 @@ function makeGaia(script: ApiScript) {
     })),
     createLinkToken: vi.fn(async () => ({ token: "tok", authUrl: AUTH_URL })),
     getPricingUrl: () => PRICING_URL,
+    recordDelivered: vi.fn(async () => ({ recorded: true })),
   };
 }
 

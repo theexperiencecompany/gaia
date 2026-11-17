@@ -12154,13 +12154,14 @@ export interface components {
          * @description A reply a bot follower had put only part of on the platform.
          *
          *     bubbles are final; open_message_ids are the platform messages of the next bubble, still being
-         *     written, which a restarted follower finishes by editing instead of posting again.
+         *     written, which a restarted follower finishes by editing instead of posting again. A send is
+         *     recorded before it goes out, so a last id of None is a send never confirmed.
          */
         PartialReply: {
             /** Bubbles */
             bubbles: number;
             /** Open Message Ids */
-            open_message_ids?: string[];
+            open_message_ids?: (string | null)[];
             /** Reply Id */
             reply_id: string;
         };

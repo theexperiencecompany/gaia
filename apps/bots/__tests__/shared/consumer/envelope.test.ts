@@ -180,6 +180,25 @@ describe("follow wake partial_reply (mirrors bot_models.PartialReply)", () => {
     });
   });
 
+  it("keeps a send recorded before it went out as an unconfirmed last message", () => {
+    const parsed = schema.safeParse(
+      wake({ reply_id: "r1", bubbles: 1, open_message_ids: ["m7", null] }),
+    );
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.follow?.partial_reply?.open_message_ids).toEqual([
+      "m7",
+      null,
+    ]);
+  });
+
+  it("rejects an unconfirmed send before a confirmed one, as the server does", () => {
+    expect(
+      schema.safeParse(
+        wake({ reply_id: "r1", bubbles: 1, open_message_ids: [null, "m7"] }),
+      ).success,
+    ).toBe(false);
+  });
+
   it("rejects a partial reply that delivered nothing, as the server does", () => {
     expect(schema.safeParse(wake({ reply_id: "r1", bubbles: 0 })).success).toBe(
       false,

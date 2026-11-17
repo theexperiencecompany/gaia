@@ -41,6 +41,7 @@ import {
   platformIdentity,
 } from "../../analytics";
 import type { ActiveBotConversation } from "../../api/generated";
+import { DURABLE_REPOLL_MS } from "../../retry/policy";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
 import type { OutboundAttachment } from "../consumer/envelope";
@@ -70,7 +71,10 @@ import type {
   PlatformName,
   RichMessageTarget,
 } from "../types";
-import { retryTransientPlatformCall } from "../utils/delivery-errors";
+import {
+  retryOwnApiCall,
+  retryTransientPlatformCall,
+} from "../utils/delivery-errors";
 import {
   BOT_FAILURE_REASON,
   type BotFailureReason,
@@ -97,13 +101,10 @@ import {
   REACTION_OUTCOME,
   type ReactionOutcome,
 } from "../utils/reaction-outcome";
+import { sleep } from "../utils/timeout";
 import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ArrivalOrder } from "./arrival-order";
 import { BotServer } from "./base-server";
-import { listActiveUntilAnswered } from "./resume-list";
-
-/** Tries at fetching an artifact from GAIA's API before the file counts as undeliverable. */
-const ARTIFACT_FETCH_MAX_ATTEMPTS = 3;
 
 /** An outbound artifact, fetched and within the platform's cap, ready to upload. */
 export interface OutboundFile {
@@ -181,7 +182,7 @@ export abstract class BaseBotAdapter {
    */
   protected readonly arrivals = new ArrivalOrder();
   private _followers: ConversationFollowers | null = null;
-  /** Ends the startup resume's wait for the API on shutdown. */
+  /** Ends the owed-conversation poll, and its wait for the API, on shutdown. */
   private readonly resumeAbort = new AbortController();
 
   /**
@@ -255,7 +256,7 @@ export abstract class BaseBotAdapter {
           // reminders) and deliver them via this platform's send primitive.
           this.startOutboundConsumer();
           // In the background, so a slow API never holds the platform's boot.
-          void this.resumeFollows();
+          void this.pollOwedConversations();
 
           // Start the server after registerEvents() so all routes are mounted.
           await this._botServer.start();
@@ -449,16 +450,14 @@ export abstract class BaseBotAdapter {
     isChannel: boolean,
   ): Promise<{ data: Buffer; contentType: string } | null> {
     const ctx = { platform: this.platform, platformUserId: destinationId };
-    const artifact = await retryTransientPlatformCall(
-      () =>
-        attachment.url != null
-          ? this.gaia.downloadAttachmentUrl(attachment.url, ctx)
-          : this.gaia.downloadArtifact(
-              attachment.conversation_id,
-              attachment.path,
-              ctx,
-            ),
-      ARTIFACT_FETCH_MAX_ATTEMPTS,
+    const artifact = await retryOwnApiCall(() =>
+      attachment.url != null
+        ? this.gaia.downloadAttachmentUrl(attachment.url, ctx)
+        : this.gaia.downloadArtifact(
+            attachment.conversation_id,
+            attachment.path,
+            ctx,
+          ),
     );
     const limit = OUTBOUND_FILE_LIMITS[this.platform];
     if (artifact.data.length > limit) {
@@ -777,20 +776,37 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Follows again every conversation the server lists as still answering, so a
-   * result that lands after a restart still reaches the platform, asking until the
-   * API answers. Never throws: a conversation it cannot reach stays in the log and on web.
+   * Polls for owed conversations now and every DURABLE_REPOLL_MS until shutdown, so a
+   * restart, a lost wake and a follow a platform outage ended all deliver on the next poll.
+   */
+  private async pollOwedConversations(): Promise<void> {
+    const { signal } = this.resumeAbort;
+    while (!signal.aborted) {
+      await this.resumeFollows();
+      await sleep(DURABLE_REPOLL_MS, signal);
+    }
+  }
+
+  /**
+   * Follows again every conversation the server lists as still answering or owed,
+   * asking under the OWN_API tier. Never throws: a list it cannot get is asked again
+   * on the next poll, and a conversation it cannot reach stays in the log and on web.
    */
   protected resumeFollows(): Promise<void> {
     return withWideEvent(
       "conversation_resume",
       { platform: this.platform, component: "base-adapter" },
       async () => {
-        const active = await listActiveUntilAnswered(
-          () => this.gaia.listActiveConversations(this.platform),
-          this.resumeAbort.signal,
-        );
-        if (!active) return;
+        let active: ActiveBotConversation[];
+        try {
+          active = await retryOwnApiCall(
+            () => this.gaia.listActiveConversations(this.platform),
+            this.resumeAbort.signal,
+          );
+        } catch (error) {
+          recordBotFailure("conversation_resume_list_failed", error);
+          return;
+        }
         const outcomes = await Promise.allSettled(
           active.map((target) => this.followTarget(target)),
         );
@@ -941,25 +957,20 @@ export abstract class BaseBotAdapter {
   }
 
   /**
-   * Keeps the follower's cursor on the server. A failed write only means a restart
-   * could resend from the last cursor kept, so delivery goes on and the miss is logged.
+   * Keeps the follower's cursor on the server under the OWN_API tier. A write that
+   * still fails ends the follow: a send made past an unkept cursor is one a
+   * restart would repeat. The next poll follows again from the cursor kept.
    */
   private async recordDelivered(
     conversationId: string,
     cursor: DeliveryCursor,
   ): Promise<void> {
-    try {
-      await this.gaia.recordDelivered(conversationId, {
+    await retryOwnApiCall(() =>
+      this.gaia.recordDelivered(conversationId, {
         platform: this.platform,
         ...cursor,
-      });
-    } catch (error) {
-      wideLog.warning("delivery_cursor_not_recorded", {
-        ...sanitizeErrorForLog(error),
-        conversation_id: conversationId,
-        delivered_seq: cursor.delivered_seq,
-      });
-    }
+      }),
+    );
   }
 
   /** Settles once every conversation followed so far is idle with its replies shown. */

@@ -8,9 +8,23 @@
  */
 import type { Readable } from "node:stream";
 import type { AxiosInstance } from "axios";
-import { parseConversationEvent } from "../../conversation/frames";
+import {
+  type FrameParseError,
+  parseConversationEvent,
+} from "../../conversation/frames";
 import type { ConversationFrame } from "../../conversation/types";
-import { wideLog } from "../utils/wide-events";
+
+/** A frame this build's schema cannot read: the server is ahead of the bot, which a reconnect cannot fix. */
+export class UnreadableFrameError extends Error {
+  constructor(readonly parseError: FrameParseError) {
+    super(
+      parseError.kind === "invalid_frame"
+        ? `unreadable conversation frame: ${parseError.issues.join("; ")}`
+        : "unreadable conversation frame: invalid JSON",
+    );
+    this.name = "UnreadableFrameError";
+  }
+}
 
 /** The server sends a keepalive every 15 s; three missed means the connection is dead. */
 const EVENTS_INACTIVITY_MS = 45_000;
@@ -60,17 +74,8 @@ export async function* readConversationEvents(
       buffer = rest;
       for (const raw of data) {
         const parsed = parseConversationEvent(raw);
-        if (!parsed.ok) {
-          // A frame this build cannot read is skipped, never guessed at.
-          wideLog.warning("conversation_event_unparsed", {
-            kind: parsed.error.kind,
-            issues:
-              parsed.error.kind === "invalid_frame"
-                ? parsed.error.issues.join("; ")
-                : undefined,
-          });
-          continue;
-        }
+        // A frame this build cannot read is never guessed at, nor skipped past: whatever it held would never reach the chat.
+        if (!parsed.ok) throw new UnreadableFrameError(parsed.error);
         yield parsed.frame;
       }
     }

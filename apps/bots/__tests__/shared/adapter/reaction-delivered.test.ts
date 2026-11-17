@@ -92,6 +92,7 @@ async function followReaction(outcome: ReactionOutcome) {
       listActiveConversations: async () => [target],
       checkAuthStatus: async () => ({ user_id: null }),
       conversationEvents: () => replay(),
+      recordDelivered: async () => ({ recorded: true }),
     },
   });
   await adapter.resume();

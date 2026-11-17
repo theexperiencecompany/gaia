@@ -260,19 +260,22 @@ class PartialReply(BaseModel):
     """A reply a bot follower had put only part of on the platform.
 
     bubbles are final; open_message_ids are the platform messages of the next bubble, still being
-    written, which a restarted follower finishes by editing instead of posting again.
+    written, which a restarted follower finishes by editing instead of posting again. A send is
+    recorded before it goes out, so a last id of None is a send never confirmed.
     """
 
     model_config = ConfigDict(frozen=True)
 
     reply_id: str = Field(min_length=1)
     bubbles: int = Field(ge=0)
-    open_message_ids: list[str] = Field(default_factory=list)
+    open_message_ids: list[str | None] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _something_delivered(self) -> "PartialReply":
         if self.bubbles == 0 and not self.open_message_ids:
             raise ValueError("a partial reply has a final bubble or an open message")
+        if None in self.open_message_ids[:-1]:
+            raise ValueError("only the last open message can be a send never confirmed")
         return self
 
 
@@ -288,11 +291,6 @@ class BotDelivery(BaseModel):
     delivered_seq: int = Field(ge=0)
     partial_reply: PartialReply | None = None
     owed_seq: int = Field(default=0, ge=0)
-
-    @property
-    def owes(self) -> bool:
-        """Whether the bot has something logged for it, or a cut reply, still to put on the platform."""
-        return self.owed_seq > self.delivered_seq or self.partial_reply is not None
 
 
 class BotSessionDocument(MongoDocument):

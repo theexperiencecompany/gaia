@@ -4,13 +4,16 @@
  * conversation is idle with every posted message answered.
  *
  * A dropped connection reconnects and opens on a fresh screen (the follower is
- * idempotent, so an item it already rendered renders nothing). A server
- * that refuses the stream (4xx) ends the follow; anything else is retried.
+ * idempotent, so an item it already rendered renders nothing) under the
+ * STREAM_RECONNECT tier. A server that refuses the stream (a 4xx other than 408
+ * and 429), or the tier running out, ends the follow until the next owed poll.
  * Each follower reports how far it delivered through record, which the server
  * keeps, so a restarted bot resumes from that cursor.
  */
 
 import type { ConversationFrame } from "../../conversation/types";
+import { backoffMs, isRetryableStatus, RETRY_TIER } from "../../retry/policy";
+import { UnreadableFrameError } from "../api/conversation-events";
 import type { BotUserContext } from "../types";
 import { recordBotFailure } from "../utils/failure-reasons";
 import {
@@ -41,12 +44,6 @@ export type DeliveryRecorder = (
   conversationId: string,
   cursor: DeliveryCursor,
 ) => Promise<void>;
-
-/** Reconnect backoff: doubles from the base, capped. */
-const RECONNECT_BASE_MS = 500;
-const RECONNECT_MAX_MS = 10_000;
-/** Consecutive failed connections before the follow gives up. */
-const MAX_RECONNECTS = 8;
 
 interface Followed {
   follower: ConversationFollower;
@@ -235,18 +232,25 @@ export class ConversationFollowers {
       } catch (error) {
         if (abort.signal.aborted) return;
         if (follower.deliveryFailed) {
-          // The platform refused a send, not the stream: reconnecting replays into the same refusal.
+          // A send or a cursor write failed, not the stream: the next owed poll resumes from the cursor kept.
           recordBotFailure("conversation_delivery_failed", error, {
             conversation_id: conversationId,
             user_hash: hashLogIdentifier(ctx.platformUserId),
           });
           return;
         }
+        if (error instanceof UnreadableFrameError) {
+          // A reconnect replays the same frame: only a bot that reads it can deliver this conversation.
+          recordBotFailure("conversation_frame_unreadable", error, {
+            conversation_id: conversationId,
+          });
+          return;
+        }
         const status = getHttpStatus(error);
         failures += 1;
-        const refused = status !== undefined && status >= 400 && status < 500;
-        if (refused || failures > MAX_RECONNECTS) {
-          // The follow is over; its replies stay in the log for the next follow and the web app.
+        const refused = status !== undefined && !isRetryableStatus(status);
+        if (refused || failures >= RETRY_TIER.STREAM_RECONNECT.maxAttempts) {
+          // The follow is over; the next poll for owed conversations follows it again from its cursor.
           recordBotFailure("conversation_follow_failed", error, { failures });
           return;
         }
@@ -257,7 +261,8 @@ export class ConversationFollowers {
       }
       reconnects += 1;
       await sleep(
-        Math.min(RECONNECT_BASE_MS * 2 ** failures, RECONNECT_MAX_MS),
+        backoffMs(RETRY_TIER.STREAM_RECONNECT, failures + 1),
+        abort.signal,
       );
     }
   }

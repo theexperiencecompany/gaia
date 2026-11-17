@@ -10,6 +10,11 @@
  * restart resumes after it. The messages of the bubble still being written are
  * reported too: a restart finishes them by editing, or deletes and resends one
  * the platform will not let it edit, so no half-written bubble is left behind.
+ *
+ * A send is written ahead: its slot is reported with no id before the platform
+ * call, and the next report carries its id. A restart that finds a slot with no
+ * id knows one send may be on the platform where nothing can address it, says
+ * so, and sends that text again.
  */
 
 import { initialDeliveryState, stepDelivery } from "../utils/bubble-delivery";
@@ -20,13 +25,13 @@ import type {
   DeliveryState,
   MessageSlot,
 } from "../utils/bubble-delivery.types";
-import { BUBBLE_PAUSE_MS } from "../utils/bubbles";
 import {
   isMessageGoneError,
   retryTransientPlatformCall,
 } from "../utils/delivery-errors";
 import { createBotLogger, sanitizeErrorForLog } from "../utils/logger";
 import { sleep } from "../utils/timeout";
+import { wideLog } from "../utils/wide-events";
 import type {
   ConversationSurface,
   ReopenedBubble,
@@ -35,24 +40,35 @@ import type {
 
 const logger = createBotLogger("shared", "reply-delivery");
 
+/** An open bubble's message by its platform id; null for a send started and never confirmed. */
+type OpenMessageId = string | null;
+
 /** How far an earlier follow got: its final bubbles, and the messages of the next one it left mid-way. */
 export interface EarlierDelivery {
   bubbles: number;
-  openMessageIds: readonly string[];
+  openMessageIds: readonly OpenMessageId[];
 }
 
 /** Told each time the final bubbles or the open bubble's messages change. */
 export type DeliveredListener = (
   bubbles: number,
-  openMessageIds: string[],
+  openMessageIds: OpenMessageId[],
 ) => Promise<void>;
 
-const sameIds = (a: readonly string[], b: readonly string[]): boolean =>
-  a.length === b.length && a.every((id, at) => id === b[at]);
+/** How the delivery shows text: the machine's config, plus the gap between two bubbles. */
+interface ReplyDeliveryConfig extends DeliveryConfig {
+  pauseMs: number;
+}
+
+const sameIds = (
+  a: readonly OpenMessageId[],
+  b: readonly OpenMessageId[],
+): boolean => a.length === b.length && a.every((id, at) => id === b[at]);
 
 export class ReplyDelivery {
   private state: DeliveryState = initialDeliveryState();
-  private readonly messages = new Map<MessageSlot, SentBubble>();
+  /** Each opened slot's message; null while its send is on its way. */
+  private readonly messages = new Map<MessageSlot, SentBubble | null>();
   /** Messages an earlier follow left mid-bubble, by the slot this delivery reaches them at. */
   private readonly reopened = new Map<MessageSlot, ReopenedBubble>();
   /** Slots that hold final text: every one written before the last bubble went final. */
@@ -67,10 +83,10 @@ export class ReplyDelivery {
   private fed: readonly string[] = [];
   /** How many of the reply's bubbles an earlier follow already delivered. */
   private readonly skip: number;
-  private reported: { bubbles: number; open: string[] };
+  private reported: { bubbles: number; open: OpenMessageId[] };
 
   constructor(
-    private readonly config: DeliveryConfig,
+    private readonly config: ReplyDeliveryConfig,
     private readonly surface: ConversationSurface,
     /** The platform message the reply's first message answers natively. */
     private readonly replyTo: string | null,
@@ -80,6 +96,11 @@ export class ReplyDelivery {
     this.skip = earlier.bubbles;
     // The machine opens the reply's messages in slot order, so the open bubble's k-th message is slot k.
     for (const [slot, id] of earlier.openMessageIds.entries()) {
+      if (id === null) {
+        // The machine sends one slot at a time, so only the last send can be unconfirmed.
+        wideLog.warning("reply_send_unconfirmed", { slot });
+        continue;
+      }
       const message = surface.reopen(id);
       this.messages.set(slot, message);
       this.reopened.set(slot, message);
@@ -131,7 +152,7 @@ export class ReplyDelivery {
   private async report(bubbles: number): Promise<void> {
     const open = [...this.messages]
       .filter(([slot]) => !this.final.has(slot))
-      .map(([, message]) => message.id);
+      .map(([, message]) => message?.id ?? null);
     if (bubbles === this.reported.bubbles && sameIds(open, this.reported.open))
       return;
     this.reported = { bubbles, open };
@@ -141,7 +162,7 @@ export class ReplyDelivery {
   private async run(op: DeliveryOp): Promise<void> {
     switch (op.kind) {
       case "pause":
-        await sleep(BUBBLE_PAUSE_MS);
+        await sleep(this.config.pauseMs);
         return;
       case "send":
       case "edit":
@@ -170,8 +191,11 @@ export class ReplyDelivery {
     }
   }
 
+  /** Send a slot's message, written ahead: the slot is reported before the send; the next report carries its id. */
   private async post(slot: MessageSlot, text: string): Promise<void> {
     const replyTo = this.opened || this.skip > 0 ? null : this.replyTo;
+    this.messages.set(slot, null);
+    await this.report(this.reported.bubbles);
     this.messages.set(
       slot,
       await this.surface.send(this.config.render(text), replyTo),
@@ -187,7 +211,8 @@ export class ReplyDelivery {
    * Edits a message, posting it when it is not open yet. Only a message that is
    * genuinely gone is posted again: re-sending on a rate limit or a network blip
    * delivered the reply twice. A reopened message that cannot be edited is
-   * deleted first, so its half-written text does not stay above the new one.
+   * deleted first, so its half-written text does not stay above the new one. Any
+   * other refusal fails the delivery (an adapter answers "not modified" as done).
    */
   private async editSlot(slot: MessageSlot, text: string): Promise<void> {
     const message = this.messages.get(slot);
@@ -199,15 +224,11 @@ export class ReplyDelivery {
     try {
       await retryTransientPlatformCall(() => message.edit(rendered));
     } catch (err) {
-      if (isMessageGoneError(err)) {
-        logger.info("stream_edit_recovered", sanitizeErrorForLog(err));
-        const reopened = this.reopened.get(slot);
-        if (reopened) await this.discard(slot, reopened);
-        await this.post(slot, text);
-        return;
-      }
-      // A permanent refusal such as "message is not modified": the text on screen stands.
-      logger.info("stream_edit_skipped", { ...sanitizeErrorForLog(err), slot });
+      if (!isMessageGoneError(err)) throw err;
+      logger.info("stream_edit_recovered", sanitizeErrorForLog(err));
+      const reopened = this.reopened.get(slot);
+      if (reopened) await this.discard(slot, reopened);
+      await this.post(slot, text);
     }
   }
 

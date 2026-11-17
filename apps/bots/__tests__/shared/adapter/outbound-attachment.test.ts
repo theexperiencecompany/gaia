@@ -22,6 +22,7 @@ import { GaiaClient } from "../../../../../libs/shared/ts/src/bots/api";
 import type { OutboundAttachment } from "../../../../../libs/shared/ts/src/bots/consumer/envelope";
 import type { FollowSurface } from "../../../../../libs/shared/ts/src/bots/conversation/follower.types";
 import { fetchPublicAsset } from "../../../../../libs/shared/ts/src/bots/utils/public-fetch";
+import { RETRY_TIER } from "../../../../../libs/shared/ts/src/retry/policy";
 
 const API_BASE = "https://api.gaia.test";
 const DESTINATION_ID = "123456789";
@@ -239,7 +240,7 @@ describe("a follow's file the API cannot serve", () => {
     vi.useRealTimers();
   });
 
-  it("gives up fetching after a few tries, so the follow can link the file instead", async () => {
+  it("gives up fetching after the OWN_API tier, so the follow can link the file instead", async () => {
     axiosGet.mockRejectedValue(unavailable);
     const adapter = setup();
 
@@ -253,7 +254,7 @@ describe("a follow's file the API cannot serve", () => {
     await expect(
       Promise.race([settled, Promise.resolve("still retrying")]),
     ).resolves.toMatchObject({ status: 503 });
-    expect(axiosGet).toHaveBeenCalledTimes(3);
+    expect(axiosGet).toHaveBeenCalledTimes(RETRY_TIER.OWN_API.maxAttempts);
     expect(adapter.sentFile).toBeNull();
   });
 

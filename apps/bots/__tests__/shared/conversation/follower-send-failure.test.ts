@@ -9,6 +9,7 @@
 import {
   type ConversationEventSource,
   ConversationFollowers,
+  type DeliveryCursor,
   type DeliveryRecorder,
   type FollowSurface,
   neverReopened,
@@ -16,6 +17,7 @@ import {
   type StreamingOptions,
 } from "@gaia/shared/bots";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { UnreadableFrameError } from "../../../../../libs/shared/ts/src/bots/api/conversation-events";
 import { retryTransientPlatformCall } from "../../../../../libs/shared/ts/src/bots/utils/delivery-errors";
 import {
   insertFrame,
@@ -34,6 +36,7 @@ const TELEGRAM: StreamingOptions = {
   editIntervalMs: EDIT_INTERVAL_MS,
   streaming: true,
   platform: "telegram",
+  bubblePauseMs: 0,
 };
 const NOT_KEPT: DeliveryRecorder = async () => undefined;
 
@@ -182,14 +185,14 @@ describe("a platform outage mid-reply", () => {
     vi.useRealTimers();
   });
 
-  it("keeps retrying through a rate limit and five bad gateways, then delivers the reply in order", async () => {
-    vi.useFakeTimers();
-    const outage = [
-      rateLimited,
-      ...Array(5).fill(() => grammyError(502, "Bad Gateway")),
-    ];
+  /** Follows c1 from cursor with sends that fail while outage lasts; resolves once the follow ends. */
+  async function followThrough(
+    outage: (() => Error)[],
+    sent: string[],
+    from: DeliveryCursor,
+    kept: (cursor: DeliveryCursor) => void,
+  ): Promise<number[]> {
     const tried: number[] = [];
-    const sent: string[] = [];
     const platform = surface(sent, null);
     const send: FollowSurface["send"] = (text, replyTo) =>
       retryTransientPlatformCall(async () => {
@@ -201,13 +204,15 @@ describe("a platform outage mid-reply", () => {
     const source: ConversationEventSource = async function* () {
       yield* conversation("r1", "Your flight is booked.");
     };
-    const followers = new ConversationFollowers(source, TELEGRAM, NOT_KEPT);
-
-    followers.follow(
+    const followers = new ConversationFollowers(
+      source,
+      TELEGRAM,
+      async (_ctx, _id, cursor) => kept(cursor),
+    );
+    followers.resume(
       { platform: "telegram", platformUserId: "1" },
       "c1",
-      1,
-      { delivered_seq: 0, partial_reply: null },
+      from,
       {
         ...platform,
         send,
@@ -220,13 +225,84 @@ describe("a platform outage mid-reply", () => {
     for (let tick = 0; tick < 120 && !ended; tick += 1) {
       await vi.advanceTimersByTimeAsync(1_000);
     }
-
     expect(ended).toBe(true);
-    expect(tried).toHaveLength(7);
+    return tried;
+  }
+
+  const badGateway = () => grammyError(502, "Bad Gateway");
+
+  it("retries through a rate limit and bad gateways within the tier, then delivers the reply in order", async () => {
+    vi.useFakeTimers();
+    const sent: string[] = [];
+
+    const tried = await followThrough(
+      [rateLimited, badGateway, badGateway, badGateway],
+      sent,
+      { delivered_seq: 0, partial_reply: null },
+      () => undefined,
+    );
+
+    expect(tried).toHaveLength(5);
     // The platform's retry_after is honoured before the first retry.
     expect(tried[1] - tried[0]).toBeGreaterThanOrEqual(5_000);
     expect(sent.at(-1)).toBe("Your flight is booked.");
     expect(sent[0]).toBe("Your");
+  });
+
+  it("stops after the tier, and the next poll's follow delivers the reply once from the cursor kept", async () => {
+    vi.useFakeTimers();
+    const sent: string[] = [];
+    let cursor: DeliveryCursor = { delivered_seq: 0, partial_reply: null };
+    const keep = (kept: DeliveryCursor) => {
+      cursor = kept;
+    };
+
+    const tried = await followThrough(
+      Array.from({ length: 6 }, () => badGateway),
+      sent,
+      cursor,
+      keep,
+    );
+    expect(tried).toHaveLength(5);
+    expect(sent).toEqual([]);
+
+    await followThrough([badGateway], sent, cursor, keep);
+
+    expect(sent.at(-1)).toBe("Your flight is booked.");
+    expect(sent.filter((text) => text === "Your")).toHaveLength(1);
+    expect(cursor).toEqual({ delivered_seq: 2, partial_reply: null });
+  });
+});
+
+describe("a frame this build cannot read", () => {
+  it("ends the follow at once instead of reconnecting into the same frame", async () => {
+    let opened = 0;
+    const source: ConversationEventSource = async function* () {
+      opened += 1;
+      yield screenFrame([
+        userItemWith("u1", 1, {
+          surface: "telegram",
+          platform_message_id: "11",
+        }),
+      ]);
+      throw new UnreadableFrameError({
+        kind: "invalid_frame",
+        raw: "{}",
+        issues: ["frame.items.1.kind: Invalid input"],
+      });
+    };
+    const followers = new ConversationFollowers(source, TELEGRAM, NOT_KEPT);
+
+    followers.follow(
+      { platform: "telegram", platformUserId: "1" },
+      "c1",
+      1,
+      { delivered_seq: 0, partial_reply: null },
+      surface([], null),
+    );
+    await followers.idle();
+
+    expect(opened).toBe(1);
   });
 });
 
@@ -235,10 +311,10 @@ describe("an edit during a platform outage", () => {
     vi.useRealTimers();
   });
 
-  it("keeps retrying the edit, so the finished text replaces the preview", async () => {
+  it("retries the edit within the tier, so the finished text replaces the preview", async () => {
     vi.useFakeTimers();
     const outage = Array.from(
-      { length: 5 },
+      { length: 4 },
       () => () => grammyError(502, "Bad Gateway"),
     );
     const sent: string[] = [];
