@@ -812,7 +812,7 @@ description = "Why a PR is red: each failing lane's verdict artifact or error-an
 run = "uv run python scripts/dev/ci_remote.py"
 
 [tasks."ci:watch"]
-description = "Wait on a PR's CI: `mise ci:watch <PR|branch>` polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
+description = "Wait on CI: `mise ci:watch <PR|branch>` (a branch with no PR, such as master, at its head commit) polls up to an hour and exits at the first red check, printing its failure. The only sanctioned way to wait on CI"
 run = "uv run python scripts/dev/ci_remote.py --watch --fail-fast --max-wait 3600"
 
 [tasks."ci:status"]

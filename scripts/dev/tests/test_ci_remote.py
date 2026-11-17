@@ -32,9 +32,12 @@ from __future__ import annotations
 from collections.abc import Iterator
 import io
 import json
+import os
 from pathlib import Path
+import signal
 import sys
 from typing import Any
+import urllib.parse
 import zipfile
 
 import pytest
@@ -86,6 +89,8 @@ PR_META: dict[str, Any] = {
     "title": "feat: a thing",
     "url": "https://github.com/o/r/pull/7",
     "headRefOid": "abc123",
+    "state": "OPEN",
+    "isCrossRepository": False,
     "baseRefName": "master",
     "headRefName": "feat/thing",
     "isDraft": False,
@@ -98,6 +103,7 @@ OPEN_PR_NODE: dict[str, Any] = {
     "url": "https://github.com/o/r/pull/7",
     "headRefOid": "abc123",
     "state": "OPEN",
+    "isCrossRepository": False,
     "headRepositoryOwner": {"login": "o"},
 }
 
@@ -115,6 +121,20 @@ PASSED_CHECK: dict[str, Any] = {
     "html_url": "https://github.com/o/r/actions/runs/99/job/1235",
     "app": {"slug": "github-actions"},
 }
+
+# The two checks master's ruleset requires, both green: what a finished run has.
+REQUIRED_GREEN: list[dict[str, Any]] = [
+    dict(
+        PASSED_CHECK,
+        name="quality-gate",
+        html_url="https://github.com/o/r/actions/runs/99/job/1299",
+    ),
+    dict(
+        PASSED_CHECK,
+        name="Validate PR Title",
+        html_url="https://github.com/o/r/actions/runs/55/job/5500",
+    ),
+]
 
 
 # The master ruleset's required checks, as `rules/branches/master` returns them.
@@ -194,6 +214,8 @@ class FakeGh:
         self.job_log = job_log
         # Every PR ever opened from the branch, newest first, as the lookup serves them.
         self.branch_prs = [OPEN_PR_NODE]
+        # Branch name -> head sha on origin; read only when a branch has no PR.
+        self.branch_heads = {"master": "f00dbabe", "feat/thing": "abc123"}
         self.calls: list[str] = []
         self.rules: dict[str, list[dict[str, Any]]] = {"master": MASTER_RULES}
         # The head's Actions runs: CI by default; the superseded-run and merge-gate tests set others.
@@ -203,18 +225,34 @@ class FakeGh:
         path = req.path
         self.calls.append(path)
         if path == "/graphql":
-            query = req.body.get("query", "") if isinstance(req.body, dict) else ""
-            if "pullRequests(headRefName" in query:
-                repository = {"pullRequests": {"nodes": self.branch_prs}}
-            else:
-                repository = {"pullRequest": self.pr_meta}
-            return Reply(body={"data": {"repository": repository}})
+            return self.graphql(req)
         if req.method == "POST" and path.endswith("/rerun-failed-jobs"):
             return Reply(201)
+        return self.repo_read(path) or self.run_read(path)
+
+    def graphql(self, req: Request) -> Reply:
+        query = req.body.get("query", "") if isinstance(req.body, dict) else ""
+        if "pullRequests(headRefName" in query:
+            repository = {"pullRequests": {"nodes": self.branch_prs}}
+        else:
+            repository = {"pullRequest": self.pr_meta}
+        return Reply(body={"data": {"repository": repository}})
+
+    def repo_read(self, path: str) -> Reply | None:
+        """Answer reads of the repository itself: its rulesets, default branch and branch heads."""
         if "/rules/branches/" in path:
             return Reply(body=self.rules.get(path.split("/rules/branches/", 1)[1], []))
         if path == "/repos/o/r":
             return Reply(body={"default_branch": "master"})
+        if not path.startswith("/repos/o/r/branches/"):
+            return None
+        branch = urllib.parse.unquote(path.removeprefix("/repos/o/r/branches/"))
+        if branch not in self.branch_heads:
+            return Reply(404, {"message": "Branch not found"})
+        return Reply(body={"name": branch, "commit": {"sha": self.branch_heads[branch]}})
+
+    def run_read(self, path: str) -> Reply:
+        """Answer reads of a head: its runs, checks and statuses, and what its jobs uploaded."""
         listings = {
             "/check-runs": ("check_runs", self.checks),
             "/status": ("statuses", self.statuses),
@@ -229,7 +267,7 @@ class FakeGh:
             return Reply(body=self.zip_blobs.get(artifact_id, self.zip_blobs.get(None, b"")))
         if path.endswith("/logs"):
             return Reply(body=self.job_log.encode())
-        return Reply(418, {"message": f"unexpected request {req.method} {path}"})
+        return Reply(418, {"message": f"unexpected request {path}"})
 
 
 @pytest.fixture
@@ -446,14 +484,66 @@ def graphql_variables(api: FakeGitHub, marker: str) -> list[Any]:
     ]
 
 
-def test_a_branch_with_no_pr_says_so_and_exits_zero(
+def test_a_branch_with_no_pr_is_read_at_its_head_commit(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fake = FakeGh(checks=[PASSED_CHECK])
     fake.branch_prs = []
     wire(fake)
     assert run_cli(monkeypatch, []) == 0
-    assert "ci:remote: no open PR for 'feat/thing'" in capsys.readouterr().out
+    assert "/repos/o/r/commits/abc123/check-runs" in fake.calls
+    assert "Branch feat/thing @ abc123 (no PR)" in capsys.readouterr().out
+
+
+def test_a_branch_with_no_pr_and_none_on_origin_fails_loud(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = []
+    fake.branch_heads = {}
+    wire(fake)
+    assert run_cli(monkeypatch, ["--json", "--compact", "--no-stack"]) == 2
+    out = capsys.readouterr().out
+    assert "no PR and no branch 'feat/thing' on o/r" in json.loads(out)["error"]
+
+
+def test_ci_watch_master_waits_for_the_gate_its_push_run_creates(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: ci:watch could not watch master, so an agent hand-wrote an API poller."""
+    fake = SequencedGh(
+        [[PENDING_CHECK], [PASSED_CHECK], [PASSED_CHECK, REQUIRED_GREEN[0]]],
+        run_polls=[[ci_run(99, "in_progress")], [CI_RUN], [CI_RUN]],
+    )
+    fake.branch_prs = []
+    wire(fake)
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack", "master"]) == 0
+    # Validate PR Title never runs on a push, so master's watch does not wait for it.
+    assert fake.check_polls == 3, "settled before quality-gate reported"
+    assert "/repos/o/r/commits/f00dbabe/check-runs" in fake.calls
+
+
+def test_ci_watch_master_stops_at_a_red_lane_of_its_push_run(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = SequencedGh([[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK]], job_log="")
+    fake.branch_prs = []
+    wire(fake)
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack", "master"]) == 1
+    assert fake.check_polls == 2
+
+
+def test_a_branch_no_workflow_runs_on_needs_no_required_check(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = []
+    wire(fake)
+    run_cli(monkeypatch, ["--json", "--no-stack", "feat/thing"])
+    report = json.loads(capsys.readouterr().out)
+    assert report["pr"] is None
+    assert report["head"] == {"branch": "feat/thing", "sha": "abc123"}
+    assert report["unreported_required"] == []
 
 
 def test_the_open_pr_wins_over_a_newer_closed_one_on_the_same_branch(
@@ -478,6 +568,27 @@ def test_a_branch_whose_only_pr_merged_still_reports_that_pr(
     assert "PR #7 feat: a thing" in capsys.readouterr().out
 
 
+def test_master_is_read_at_its_head_not_through_an_old_closed_pr_named_after_it(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: `ci:remote master` reported closed PR #420, whose fork branch was also named master."""
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = [dict(OPEN_PR_NODE, number=420, state="CLOSED", headRefOid="0ld")]
+    wire(fake)
+    assert run_cli(monkeypatch, ["--no-stack", "master"]) == 0
+    assert "Branch master @ f00dbabe (no PR)" in capsys.readouterr().out
+
+
+def test_an_open_pr_from_a_fork_does_not_stand_in_for_the_branch(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeGh(checks=[PASSED_CHECK])
+    fake.branch_prs = [dict(OPEN_PR_NODE, isCrossRepository=True, headRefOid="f0rk")]
+    wire(fake)
+    assert run_cli(monkeypatch, ["--no-stack", "master"]) == 0
+    assert "Branch master @ f00dbabe (no PR)" in capsys.readouterr().out
+
+
 def test_a_pr_number_is_looked_up_by_number_not_as_a_branch(
     wire, api: FakeGitHub, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -493,11 +604,11 @@ def test_a_pr_number_is_looked_up_by_number_not_as_a_branch(
 def test_a_green_pr_prints_a_header_and_nothing_that_looks_like_a_failure(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    wire(FakeGh(checks=[PASSED_CHECK]))
+    wire(FakeGh(checks=[PASSED_CHECK, *REQUIRED_GREEN]))
     assert run_cli(monkeypatch, []) == 0
     out = capsys.readouterr().out
     assert "PR #7 feat: a thing" in out
-    assert "checks: 1 pass / 0 fail / 0 pending / 0 skipped" in out
+    assert "checks: 3 pass / 0 fail / 0 pending / 0 skipped" in out
     assert "FAIL" not in out and "PEND" not in out
     assert "Nothing blocking on GitHub's side" in out
 
@@ -822,6 +933,15 @@ def test_a_missing_job_log_says_so_instead_of_printing_an_empty_section(
     out = capsys.readouterr().out
     assert "no log yet" in out
     assert "logs appear once the run completes" in out
+
+
+def test_an_expired_job_log_is_named_not_a_crash(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: master's head had a red job whose log GitHub answered 410, and ci:remote exited 2."""
+    answer(monkeypatch, wire(FakeGh(checks=[FAILED_CHECK])), "/logs", Reply(410, {}))
+    assert run_cli(monkeypatch, []) == 1
+    assert "log gone: GET" in capsys.readouterr().out
 
 
 def test_an_aggregate_gate_job_gets_its_own_log_not_another_lanes_verdict(
@@ -1632,9 +1752,22 @@ PENDING_CHECK: dict[str, Any] = dict(
 )
 
 
+class FakeClock:
+    """ci_remote's clock: a sleep advances it, so a watch that never settles ends at --max-wait."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
 @pytest.fixture
 def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ci_remote.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(ci_remote, "time", FakeClock())
 
 
 def test_fail_fast_stops_at_the_first_red_check_and_prints_its_failure(
@@ -1658,7 +1791,13 @@ def test_without_fail_fast_watch_waits_for_every_check_to_finish(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fake = wire(
-        SequencedGh([[PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK], [FAILED_CHECK, PASSED_CHECK]])
+        SequencedGh(
+            [
+                [PENDING_CHECK],
+                [FAILED_CHECK, PENDING_CHECK],
+                [FAILED_CHECK, PASSED_CHECK, *REQUIRED_GREEN],
+            ]
+        )
     )
     assert run_cli(monkeypatch, ["--watch", "--no-stack"]) == 1
     assert fake.check_polls == 3
@@ -1668,7 +1807,7 @@ def test_without_fail_fast_watch_waits_for_every_check_to_finish(
 def test_fail_fast_on_a_green_run_waits_for_it_to_finish_and_exits_zero(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    fake = wire(SequencedGh([[PENDING_CHECK], [PENDING_CHECK], [PASSED_CHECK]]))
+    fake = wire(SequencedGh([[PENDING_CHECK], [PENDING_CHECK], [PASSED_CHECK, *REQUIRED_GREEN]]))
     assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
     assert fake.check_polls == 3
 
@@ -1679,10 +1818,51 @@ def test_a_watch_started_before_the_run_registers_any_check_keeps_waiting(
     """Regression: right after a push the head had no checks yet, and the watch exited green on it."""
     live = ci_run(99, "in_progress")
     fake = wire(
-        SequencedGh([[], [], [PENDING_CHECK], [PASSED_CHECK]], run_polls=[[], [], [live], [CI_RUN]])
+        SequencedGh(
+            [[], [], [PENDING_CHECK], [PASSED_CHECK, *REQUIRED_GREEN]],
+            run_polls=[[], [], [live], [CI_RUN]],
+        )
     )
     assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
     assert fake.check_polls == 4
+
+
+def test_a_watch_does_not_settle_until_every_required_check_has_reported(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: 12 georgetown watches exited green on poll 1 with `0 pass / 0 fail / 0 pending / 1 skipped`."""
+    skipped = dict(PASSED_CHECK, name="changelog-sync", conclusion="skipped")
+    fake = wire(SequencedGh([[skipped], [skipped, PENDING_CHECK], [skipped, *REQUIRED_GREEN]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
+    assert fake.check_polls == 3
+    assert "gate: quality-gate passed" in capsys.readouterr().out
+
+
+def test_a_head_whose_lanes_finished_before_the_gate_exists_is_not_nothing_blocking(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    run_cli(monkeypatch, ["--no-stack"])
+    out = capsys.readouterr().out
+    assert "Nothing blocking" not in out
+    assert "Required Validate PR Title, quality-gate not reported yet: `mise ci:watch" in out
+
+
+def test_compact_json_names_the_required_checks_not_reported_yet(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    run_cli(monkeypatch, ["--json", "--compact", "--no-stack"])
+    report = json.loads(capsys.readouterr().out)
+    assert report["unreported_required"] == ["Validate PR Title", "quality-gate"]
+
+
+def test_a_watch_out_of_time_names_the_required_check_that_never_reported(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(SequencedGh([[PASSED_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--no-stack", "--max-wait", "1"]) == 1
+    assert "(Validate PR Title, quality-gate never reported)" in capsys.readouterr().out
 
 
 def test_a_watch_that_runs_out_of_time_is_not_green(
@@ -1701,7 +1881,7 @@ def test_fail_fast_does_not_stop_at_a_red_check_that_does_not_block_merge(
             [
                 [REACT_DOCTOR_RED, SONAR_RED, PENDING_CHECK],
                 [REACT_DOCTOR_RED, SONAR_RED, PENDING_CHECK],
-                [REACT_DOCTOR_RED, SONAR_RED, PASSED_CHECK],
+                [REACT_DOCTOR_RED, SONAR_RED, PASSED_CHECK, *REQUIRED_GREEN],
             ]
         )
     )
@@ -1751,6 +1931,41 @@ def test_compact_json_says_which_red_checks_do_not_block_merge(
     }
 
 
+def test_a_fail_fast_stop_never_advises_the_watch_that_would_stop_on_the_same_failure(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: ci:watch 1463 stopped on lint-python and advised `mise ci:watch 1463` for its 8 pending lanes."""
+    wire(SequencedGh([[FAILED_CHECK, PENDING_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    out = capsys.readouterr().out
+    assert "`mise ci:watch" not in out
+    assert "1 check still running behind the failure: `mise ci:remote --watch feat/thing`" in out
+
+
+def test_a_green_pr_with_running_checks_still_advises_ci_watch(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[PASSED_CHECK, PENDING_CHECK]))
+    run_cli(monkeypatch, ["--no-stack"])
+    assert "1 check still running: `mise ci:watch feat/thing`" in capsys.readouterr().out
+
+
+def test_the_watch_line_counts_the_red_check_that_stopped_it(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: ci:watch 1735 printed `0 failed, 3 pending` and then stopped at the first failure."""
+    wire(
+        SequencedGh(
+            [[RUNNING_LINT, PENDING_CHECK]],
+            artifacts=[{"id": 70, "name": "verdict-lint-python", "expired": False}],
+            zip_blobs={70: verdict_zip(EARLY_VERDICT)},
+        )
+    )
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("watch[1]"))
+    assert ": 1 failed (1 still running), 1 pending " in line
+
+
 def ci_run(run_id: int, status: str, conclusion: str | None = None) -> dict[str, Any]:
     return {
         "id": run_id,
@@ -1778,7 +1993,7 @@ def test_a_superseded_runs_failed_gate_does_not_stop_the_watch(
     fake = SequencedGh(
         [
             [SUPERSEDED_GATE, job_in(PENDING_CHECK, 99)],
-            [SUPERSEDED_GATE, job_in(PASSED_CHECK, 99)],
+            [SUPERSEDED_GATE, job_in(PASSED_CHECK, 99), *REQUIRED_GREEN],
         ],
         run_polls=[
             [cancelled, ci_run(99, "in_progress")],
@@ -1799,7 +2014,10 @@ def test_the_newest_run_with_no_job_listed_yet_is_pending(
     title = job_in(dict(PASSED_CHECK, name="Validate PR Title"), 97)
     cancelled = ci_run(98, "completed", "cancelled")
     fake = SequencedGh(
-        [[SUPERSEDED_GATE, title], [SUPERSEDED_GATE, title, job_in(PASSED_CHECK, 99)]],
+        [
+            [SUPERSEDED_GATE, title],
+            [SUPERSEDED_GATE, title, job_in(PASSED_CHECK, 99), *REQUIRED_GREEN],
+        ],
         run_polls=[
             [cancelled, ci_run(99, "queued")],
             [cancelled, ci_run(99, "completed", "success")],
@@ -1819,7 +2037,7 @@ def test_a_live_run_with_one_job_passed_is_still_pending(
         PASSED_CHECK, name="quality-gate", html_url="https://github.com/o/r/actions/runs/99/job/101"
     )
     fake = SequencedGh(
-        [[job_in(PASSED_CHECK, 99)], [job_in(PASSED_CHECK, 99), gate]],
+        [[job_in(PASSED_CHECK, 99)], [job_in(PASSED_CHECK, 99), gate, REQUIRED_GREEN[1]]],
         run_polls=[[ci_run(99, "in_progress")], [ci_run(99, "completed", "success")]],
     )
     wire(fake)
@@ -2082,7 +2300,7 @@ def test_a_watch_downloads_each_uploaded_verdict_once(wire) -> None:
     )
     repo = ci_remote.Repo("o", "r", 10, ci_remote.GitHub.from_env())
     for _ in range(3):
-        ci_remote.snapshot_once(repo, 7, "feat/thing", with_stack=False)
+        ci_remote.snapshot_once(repo, ci_remote.Target("feat/thing", 7), with_stack=False)
     assert sum(1 for call in fake.calls if call.endswith("/72/zip")) == 1
 
 
@@ -2107,7 +2325,7 @@ class FlakyZip(SequencedGh):
 
 def flaky_zip(status: int, during_poll: int = 1) -> FlakyZip:
     return FlakyZip(
-        [[RUNNING_LINT], [PASSED_CHECK]],
+        [[RUNNING_LINT], [PASSED_CHECK, *REQUIRED_GREEN]],
         status=status,
         during_poll=during_poll,
         artifacts=[{"id": 72, "name": "verdict-lint-python", "expired": False}],
@@ -2155,3 +2373,46 @@ def test_a_permanent_error_still_ends_the_watch(
     assert "/actions/artifacts/72/zip failed after 1 attempt(s) — HTTP 422" in (
         capsys.readouterr().err
     )
+
+
+# ------------------------------------------------------------- failures under --json
+# `mise ci:status 1784` once printed nothing: the failure went to a discarded stderr.
+
+
+class RejectsCheckRuns(FakeGh):
+    def respond(self, req: Request) -> Reply:
+        if req.path.endswith("/check-runs"):
+            self.calls.append(req.path)
+            return Reply(422, {"message": "Validation Failed"})
+        return super().respond(req)
+
+
+def test_a_failed_read_under_json_still_prints_its_reason_on_stdout(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(RejectsCheckRuns(checks=[]))
+    assert run_cli(monkeypatch, ["--json", "--compact", "--no-stack"]) == 2
+    failure = json.loads(capsys.readouterr().out)
+    assert "check-runs" in failure["error"]
+    assert "HTTP 422" in failure["error"]
+    assert failure["exit_code"] == 2
+
+
+def test_a_terminated_read_under_json_says_so_on_stdout(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An outer `timeout` sends SIGTERM; the reader still learns why the report is missing."""
+    wire(FakeGh(checks=[PASSED_CHECK]))
+    previous = signal.getsignal(signal.SIGTERM)
+
+    def terminated(*_args: Any, **_kwargs: Any) -> tuple[dict, int]:
+        os.kill(os.getpid(), signal.SIGTERM)
+        raise AssertionError("SIGTERM did not interrupt the read")
+
+    monkeypatch.setattr(ci_remote, "snapshot_once", terminated)
+    try:
+        code = run_cli(monkeypatch, ["--json", "--compact", "--no-stack"])
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    assert code == 143
+    assert "SIGTERM" in json.loads(capsys.readouterr().out)["error"]

@@ -28,7 +28,12 @@ a GitHub outage that outlasts lib/github.py's retries skips that poll, not the w
 base's ruleset requires, or a job of the same workflow run, such as a lane
 quality-gate needs) and prints that failure. Other red checks (react-doctor,
 SonarCloud) are printed as not required for merge and the watch keeps going.
+It settles only once every check the base requires has reported: quality-gate
+is created after the last lane it needs, so "nothing pending" alone is not done.
 `mise ci:watch` is `--watch --fail-fast --max-wait 3600`.
+A branch with no PR (master) is read at its head commit, gated by the
+required checks a push to it runs. Under --json a failed read prints
+{"error", "exit_code"} on stdout, so a reader discarding stderr sees why.
 `--stack` prints the gh stack alone, one line per PR.
 `--verbose` adds full finding details, passing lanes, and the source used.
 `--json` emits the same report as one object.
@@ -47,23 +52,27 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from fnmatch import fnmatch
 from http import HTTPStatus
 import io
 import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import sys
 import time
+from types import FrameType
 from typing import TypedDict
+from urllib.parse import quote
 import zipfile
 
 import yaml
 
 sys.path.insert(0, str(__file__.rsplit("/", 1)[0]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
-from gaia_gh import current_branch, eprint, exit_code, parse_repo, resolve_pr
+from gaia_gh import PR_NUMBER_RE, current_branch, eprint, exit_code, parse_repo, resolve_pr
 from lib.github import GitHub, GitHubError, field_of
 
 SCHEMA_VERSION = 2
@@ -259,6 +268,22 @@ class Options:
     timeout_s: int
 
 
+class CiRemoteError(Exception):
+    """A read ci:remote cannot finish; main prints why, on stdout too under --json."""
+
+    def __init__(self, message: str, code: int = 2) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+@dataclass(frozen=True)
+class Target:
+    """What a snapshot reads: an open PR's head, or a branch's head when it has no PR (master)."""
+
+    branch: str
+    pr_number: int | None
+
+
 def slug(text: str) -> str:
     return SLUG_RE.sub("-", text.lower()).strip("-")
 
@@ -285,6 +310,32 @@ query($owner:String!,$name:String!,$number:Int!){
 """
     variables = {"owner": repo.owner, "name": repo.name, "number": pr_number}
     return repo.github.graphql(query, variables)["repository"]["pullRequest"]
+
+
+def fetch_branch_head(repo: Repo, branch: str) -> str | None:
+    """Return the branch's head commit on origin; None when origin has no such branch."""
+    try:
+        doc = repo.github.get(repo.api(f"branches/{quote(branch, safe='')}"))
+    except GitHubError as err:
+        if err.status == HTTPStatus.NOT_FOUND:
+            return None
+        raise
+    return field_of(field_of(doc, "commit", dict), "sha", str)
+
+
+def resolve_target(repo: Repo, selector: str) -> Target:
+    """Pick what to read: the selector's PR, or its branch head when no PR stands for the branch.
+
+    A closed PR, or a fork's PR that only shares the branch name (master), stands
+    for the branch only while the branch still points at that PR's head.
+    """
+    pr = resolve_pr(repo.github, repo.owner, repo.name, selector)
+    if pr is None:
+        return Target(selector, None)
+    if PR_NUMBER_RE.fullmatch(selector) or (pr.is_open and not pr.from_fork):
+        return Target(selector, pr.number)
+    head = fetch_branch_head(repo, selector)
+    return Target(selector, pr.number if head in (None, pr.head_sha) else None)
 
 
 def fetch_pages(repo: Repo, path: str, key: str, query: str = "") -> tuple[list[dict], bool]:
@@ -370,7 +421,7 @@ def required_contexts(repo: Repo, branch: str) -> frozenset[str]:
     )
 
 
-def workflows_running_jobs(names: frozenset[str]) -> frozenset[str]:
+def workflows_running_jobs(names: set[str] | frozenset[str]) -> frozenset[str]:
     """Return the workflow files (repo-relative) that define a job displayed under one of names."""
     paths: set[str] = set()
     for path in sorted(WORKFLOWS_DIR.glob("*.y*ml")):
@@ -380,17 +431,38 @@ def workflows_running_jobs(names: frozenset[str]) -> frozenset[str]:
     return frozenset(paths)
 
 
-def fetch_merge_gate(repo: Repo, base: str, workflow_runs: list[dict]) -> MergeGate:
+def runs_on_push_to(workflow: str, branch: str) -> bool:
+    """Return whether a push to branch triggers workflow (repo-relative path)."""
+    doc = yaml.safe_load((REPO_ROOT / workflow).read_text()) or {}
+    triggers = doc.get(True, doc.get("on")) or {}  # YAML 1.1 reads the bare key `on` as True
+    if isinstance(triggers, str | list):
+        return "push" in triggers
+    if "push" not in triggers:
+        return False
+    branches = (triggers["push"] or {}).get("branches")
+    return branches is None or any(fnmatch(branch, pattern) for pattern in branches)
+
+
+def fetch_merge_gate(
+    repo: Repo, base: str, workflow_runs: list[dict], pushed: str | None = None
+) -> MergeGate:
     """Read what merge waits for: the base's required checks and every job of their workflow runs.
 
     A required job such as quality-gate only appears once all its needs finish, so
     its run's lanes are what make --fail-fast fail fast. A stacked PR's base has
-    no ruleset; it is gated by the trunk its stack lands on.
+    no ruleset; it is gated by the trunk its stack lands on. A branch read with
+    no PR (pushed) waits only for the required checks a push to it runs.
     """
     required = required_contexts(repo, base)
     if not required:
         trunk = repo.github.get(f"repos/{repo.slug}")
         required = required_contexts(repo, field_of(trunk, "default_branch", str))
+    if pushed is not None:
+        required = frozenset(
+            name
+            for name in required
+            if any(runs_on_push_to(path, pushed) for path in workflows_running_jobs({name}))
+        )
     gate_files = workflows_running_jobs(required)
     run_ids = frozenset(run["id"] for run in workflow_runs if run["path"] in gate_files)
     return MergeGate(required=required, run_ids=run_ids)
@@ -453,8 +525,7 @@ def fetch_run_verdicts(repo: Repo, run_id: int) -> list[Verdict]:
         if all(blob is not None for blob in fetched):
             break
     else:
-        eprint(f"ci:remote: run {run_id}'s verdict artifacts kept being replaced while read")
-        sys.exit(2)
+        raise CiRemoteError(f"run {run_id}'s verdict artifacts kept being replaced while read")
     blobs = [blob for blob in fetched if blob is not None]
 
     verdicts: list[Verdict] = []
@@ -632,8 +703,7 @@ def fetch_run_shards(repo: Repo, run_id: int) -> list[Shard]:
     shards: list[Shard] = []
     for artifact, blob in zip(wanted, blobs, strict=True):
         if blob is None:
-            eprint(f"ci:remote: run {run_id}'s artifact {artifact['name']} is gone (HTTP 404)")
-            sys.exit(2)
+            raise CiRemoteError(f"run {run_id}'s artifact {artifact['name']} is gone (HTTP 404)")
         shards.append(read_shard(artifact["name"], run_id, blob))
     return shards
 
@@ -788,6 +858,8 @@ def fetch_job_tail(repo: Repo, job_id: int) -> list[str]:
     except GitHubError as err:
         if err.status == HTTPStatus.NOT_FOUND:
             return [f"(no log yet: GET {endpoint} -> 404; logs appear once the run completes)"]
+        if err.status == HTTPStatus.GONE:
+            return [f"(log gone: GET {endpoint} -> 410; GitHub no longer keeps it)"]
         raise
     return failure_tail(clean_log(blob.decode("utf-8", "replace")))
 
@@ -1100,13 +1172,16 @@ def health_line(health: dict) -> str:
 def header(report: dict) -> None:
     pr = report["pr"]
     counts = report["counts"]
-    draft = "  [DRAFT]" if pr["is_draft"] else ""
-    print(f"PR #{pr['number']} {pr['title']}{draft}")
-    print(
-        f"  base {pr['base']} | {pr['mergeable']} | "
-        f"review: {pr['review_decision'] or 'none yet'} | "
-        f"{plural(report['unresolved_thread_count'], 'unresolved thread')}"
-    )
+    if pr:
+        draft = "  [DRAFT]" if pr["is_draft"] else ""
+        print(f"PR #{pr['number']} {pr['title']}{draft}")
+        print(
+            f"  base {pr['base']} | {pr['mergeable']} | "
+            f"review: {pr['review_decision'] or 'none yet'} | "
+            f"{plural(report['unresolved_thread_count'], 'unresolved thread')}"
+        )
+    else:
+        print(f"Branch {report['head']['branch']} @ {report['head']['sha'][:9]} (no PR)")
     gates = sorted(
         (c for c in report["checks"] if c["name"] == GATE_CHECK),
         key=lambda c: c["started_at"] or "",
@@ -1304,9 +1379,9 @@ def lane_advice(report: dict) -> list[str]:
 def state_advice(report: dict, branch: str) -> list[str]:
     """Collect what the PR's state says to do: conflicts, threads, reruns, reviews."""
     advice: list[str] = []
-    pr = report["pr"]
+    pr = report["pr"] or {}
     counts = report["counts"]
-    if pr["mergeable"] == "CONFLICTING":
+    if pr.get("mergeable") == "CONFLICTING":
         advice.append(f"Merge conflicts with '{pr['base']}' — `git merge origin/{pr['base']}`.")
         if pr["base"] != TRUNK:
             advice.append(
@@ -1318,9 +1393,20 @@ def state_advice(report: dict, branch: str) -> list[str]:
             f"{plural(report['unresolved_thread_count'], 'unresolved review thread')}: "
             f"`mise pr:comments {branch}`."
         )
-    if counts["pending"]:
+    if report["blocking_red"] and counts["pending"]:
+        # ci:watch would stop on the same red check at once; the rest are worth one wait.
+        advice.append(
+            f"{plural(counts['pending'], 'check')} still running behind the failure: "
+            f"`mise ci:remote --watch {branch}` waits for all of them, so one push fixes every red lane."
+        )
+    elif counts["pending"]:
         advice.append(
             f"{plural(counts['pending'], 'check')} still running: `mise ci:watch {branch}`."
+        )
+    elif report["unreported_required"] and not report["blocking_red"]:
+        advice.append(
+            f"Required {', '.join(report['unreported_required'])} not reported yet: "
+            f"`mise ci:watch {branch}`."
         )
     if any(is_timeout_only(s) for s in report["shards"]):
         advice.append(
@@ -1335,7 +1421,7 @@ def state_advice(report: dict, branch: str) -> list[str]:
             "all GitHub has. Give the lane a verdict (.github/actions/upload-verdict) "
             "so the next reader gets file:line."
         )
-    if pr["review_decision"] == "CHANGES_REQUESTED":
+    if pr.get("review_decision") == "CHANGES_REQUESTED":
         advice.append("A reviewer requested changes — address them, then re-request review.")
     return advice
 
@@ -1361,7 +1447,7 @@ def render(report: dict, verbose: bool) -> None:
     print()
     render_failures(report, verbose)
     render_pending(report)
-    render_stack(report["stack"], report["pr"]["number"])
+    render_stack(report["stack"], (report["pr"] or {}).get("number", 0))
     if report["advice"]:
         print("ADVICE")
         for line in report["advice"]:
@@ -1416,17 +1502,24 @@ def render_stack_only(report: dict) -> None:
     render_stack(rows, current or 0)
 
 
-def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> tuple[dict, int]:
+def snapshot_once(repo: Repo, target: Target, with_stack: bool) -> tuple[dict, int]:
     t0 = time.monotonic()
-    pr_meta = fetch_pr_state(repo, pr_number)
-    head = pr_meta["headRefOid"]
+    pr_meta = None if target.pr_number is None else fetch_pr_state(repo, target.pr_number)
+    head = pr_meta["headRefOid"] if pr_meta else fetch_branch_head(repo, target.branch)
+    if head is None:
+        raise CiRemoteError(
+            f"no PR and no branch '{target.branch}' on {repo.slug} — push first or check the name"
+        )
     # Runs first: a run already completed here has every job's check in the reads below.
     workflow_runs, workflows_truncated = fetch_pages(
         repo, "actions/runs", "workflow_runs", f"head_sha={head}&"
     )
     runs, runs_truncated = fetch_pages(repo, f"commits/{head}/check-runs", "check_runs")
     statuses, statuses_truncated = fetch_pages(repo, f"commits/{head}/status", "statuses")
-    gate = fetch_merge_gate(repo, pr_meta["baseRefName"], workflow_runs)
+    if pr_meta:
+        gate = fetch_merge_gate(repo, pr_meta["baseRefName"], workflow_runs)
+    else:
+        gate = fetch_merge_gate(repo, target.branch, workflow_runs, pushed=target.branch)
     checks = live_checks(runs + status_checks(statuses), workflow_runs, gate)
     truncated = runs_truncated or statuses_truncated or workflows_truncated
     counts = {k: sum(1 for c in checks if c["status"] == k) for k in COUNT_KEYS}
@@ -1435,13 +1528,14 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
     stack_payload = fetch_stack(repo) if with_stack else None
     stack_rows = build_stack(repo, stack_payload) if stack_payload else []
 
-    unresolved = sum(1 for t in pr_meta["reviewThreads"]["nodes"] if not t["isResolved"])
-    thread_total = pr_meta["reviewThreads"]["totalCount"]
+    threads = pr_meta["reviewThreads"] if pr_meta else {"nodes": [], "totalCount": 0}
+    unresolved = sum(1 for t in threads["nodes"] if not t["isResolved"])
+    thread_total = threads["totalCount"]
     report = {
         "schema_version": SCHEMA_VERSION,
         "repo": repo.slug,
         "pr": {
-            "number": pr_number,
+            "number": target.pr_number,
             "title": pr_meta["title"],
             "url": pr_meta["url"],
             "head_sha": pr_meta["headRefOid"],
@@ -1450,7 +1544,10 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
             "mergeable": pr_meta["mergeable"],
             "review_decision": pr_meta["reviewDecision"],
             "is_draft": bool(pr_meta["isDraft"]),
-        },
+        }
+        if pr_meta
+        else None,
+        "head": {"branch": pr_meta["headRefName"] if pr_meta else target.branch, "sha": head},
         "checks": checks,
         "verdicts": verdicts,
         "shards": shards,
@@ -1466,14 +1563,20 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
         "fetched_at": datetime.now(UTC).isoformat(),
         "durationMs": int((time.monotonic() - t0) * 1000),
     }
-    report["advice"] = collect_advice(report, branch)
     report["early_failures"] = [c["name"] for c in early_failures(report)]
-    report["merge_blocked"] = pr_meta["mergeable"] == "CONFLICTING" or any(
-        c["blocks_merge"] and (c["status"] in FAILING or c["name"] in report["early_failures"])
+    report["blocking_red"] = [
+        c["name"]
         for c in checks
-    )
+        if c["blocks_merge"] and (c["status"] in FAILING or c["name"] in report["early_failures"])
+    ]
+    # quality-gate is only created once every lane it needs has finished, so a
+    # head whose lanes are all done can still be waiting on it.
+    report["unreported_required"] = sorted(gate.required - {c["name"] for c in checks})
+    report["advice"] = collect_advice(report, target.branch)
+    conflicting = bool(pr_meta) and pr_meta["mergeable"] == "CONFLICTING"
+    report["merge_blocked"] = conflicting or bool(report["blocking_red"])
     red = counts["failed"] or counts["error"] or counts["timeout"] or report["early_failures"]
-    return report, (1 if (red or pr_meta["mergeable"] == "CONFLICTING") else 0)
+    return report, (1 if (red or conflicting) else 0)
 
 
 COMPACT_TAIL_LINES = 12
@@ -1516,6 +1619,7 @@ def compact_report(report: dict) -> dict:
         "schema_version": report["schema_version"],
         "repo": report["repo"],
         "pr": report["pr"],
+        "head": report["head"],
         "counts": report["counts"],
         "unresolved_thread_count": report["unresolved_thread_count"],
         "failed": [
@@ -1528,6 +1632,7 @@ def compact_report(report: dict) -> dict:
             for check in red
         ],
         "early_failures": report["early_failures"],
+        "unreported_required": report["unreported_required"],
         "verdicts": verdicts,
         "shards": shards,
         "fallback_tails": tails,
@@ -1659,40 +1764,49 @@ def parse_options(args: argparse.Namespace) -> Options:
     )
 
 
-def watch(repo: Repo, pr_number: int, branch: str, options: Options) -> tuple[dict, int]:
+def watch(repo: Repo, target: Target, options: Options) -> tuple[dict, int]:
     """Poll until no check is pending, the budget runs out, or (fail-fast) merge is blocked."""
     deadline = time.monotonic() + options.max_wait
     poll = 0
     while True:
         poll += 1
         try:
-            report, exit_code = snapshot_once(repo, pr_number, branch, options.with_stack)
+            report, exit_code = snapshot_once(repo, target, options.with_stack)
         except GitHubError as err:
             if not err.transient or time.monotonic() + options.interval > deadline:
                 raise
             eprint(f"watch[{poll}] {datetime.now(UTC).strftime('%H:%M:%S')}: skipped — {err}")
             time.sleep(options.interval)
             continue
-        pending = report["counts"]["pending"]
+        counts = report["counts"]
+        pending = counts["pending"]
         if not options.as_json:
             elapsed = int(time.monotonic() - (deadline - options.max_wait))
+            early = len(report["early_failures"])
+            red = counts["failed"] + counts["error"] + counts["timeout"] + early
+            running_red = f" ({early} still running)" if early else ""
             print(
                 f"watch[{poll}] {datetime.now(UTC).strftime('%H:%M:%S')}: "
-                f"{report['counts']['failed']} failed, {pending} pending "
+                f"{red} failed{running_red}, {pending - early} pending "
                 f"(elapsed {elapsed}s / max {options.max_wait}s)"
             )
         if options.fail_fast and report["merge_blocked"]:
             if not options.as_json:
                 print("watch: stopping at the first failure that blocks merge (--fail-fast).")
             break
-        # No check at all is a run GitHub has not registered yet, not a finished one.
-        settled = pending == 0 and bool(report["checks"])
+        # A required check that has not reported is a run still starting or a gate not yet created.
+        unreported = report["unreported_required"]
+        settled = pending == 0 and bool(report["checks"]) and not unreported
         if settled or time.monotonic() + options.interval > deadline:
             if not settled:
                 # Out of time is not green: the run is pending, stalled or never started.
                 exit_code = 1
                 if not options.as_json:
-                    print(f"watch: stopped after {options.max_wait}s with {pending} still pending.")
+                    missing = f" ({', '.join(unreported)} never reported)" if unreported else ""
+                    print(
+                        f"watch: stopped after {options.max_wait}s with {pending} still pending"
+                        f"{missing}."
+                    )
             break
         time.sleep(options.interval)
     if not options.as_json:
@@ -1700,16 +1814,29 @@ def watch(repo: Repo, pr_number: int, branch: str, options: Options) -> tuple[di
     return report, exit_code
 
 
+def terminated(signum: int, _frame: FrameType | None) -> None:
+    raise CiRemoteError(
+        f"terminated by {signal.Signals(signum).name} before the read finished (an outer timeout?)",
+        code=128 + signum,
+    )
+
+
 def main() -> int:
     args = build_parser().parse_args()
     options = parse_options(args)
     owner, name = parse_repo()
+    signal.signal(signal.SIGTERM, terminated)
     try:
         github = replace(GitHub.from_env(), timeout=float(options.timeout_s))
         return run(Repo(owner, name, options.timeout_s, github), args.branch, options)
-    except GitHubError as err:
+    except (GitHubError, CiRemoteError) as err:
+        code = exit_code(err) if isinstance(err, GitHubError) else err.code
         eprint(f"ci:remote: {err}")
-        return exit_code(err)
+        if options.as_json:
+            # A reader that discards stderr (ci:status under a timeout) still learns why.
+            failure = {"schema_version": SCHEMA_VERSION, "error": str(err), "exit_code": code}
+            print(json.dumps(failure, indent=2))
+        return code
 
 
 def run(repo: Repo, branch_arg: str | None, options: Options) -> int:
@@ -1722,16 +1849,12 @@ def run(repo: Repo, branch_arg: str | None, options: Options) -> int:
         return exit_code
 
     branch = branch_arg or current_branch()
-    pr = resolve_pr(repo.github, repo.owner, repo.name, branch)
-    if pr is None:
-        print(f"ci:remote: no open PR for '{branch}' — push first or check the branch name.")
-        return 0
-    pr_number = pr.number
+    target = resolve_target(repo, branch)
 
     if options.watch:
-        report, exit_code = watch(repo, pr_number, branch, options)
+        report, exit_code = watch(repo, target, options)
     else:
-        report, exit_code = snapshot_once(repo, pr_number, branch, options.with_stack)
+        report, exit_code = snapshot_once(repo, target, options.with_stack)
 
     if options.rerun_timeouts:
         return rerun_timeouts(repo, report)

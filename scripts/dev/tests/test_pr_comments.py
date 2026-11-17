@@ -30,6 +30,7 @@ PR_NODE = {
     "url": "https://github.com/o/r/pull/42",
     "headRefOid": "abc123def456",
     "state": "OPEN",
+    "isCrossRepository": False,
     "headRepositoryOwner": {"login": "o"},
 }
 FORK_PR_NODE = {
@@ -37,6 +38,7 @@ FORK_PR_NODE = {
     "number": 43,
     "url": "https://github.com/o/r/pull/43",
     "headRefOid": "f0f0f0",
+    "isCrossRepository": True,
     "headRepositoryOwner": {"login": "contributor"},
 }
 
