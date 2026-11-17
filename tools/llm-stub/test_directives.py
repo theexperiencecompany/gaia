@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from directives import (
     CALL_EXECUTOR_TOOL,
     DEFAULT_REPLY,
+    INTENT_SECTION_HEAD,
     SCRIPTED_HAND_OFF_ARGS,
     VERBATIM_REQUEST_HEADER,
     DirectiveError,
@@ -670,6 +671,16 @@ def test_a_brief_quoting_the_request_runs_its_script_once() -> None:
     assert resolve_response([brief], EXECUTOR_TOOLS) == ToolCallResponse(
         name="create_reminder", args={"title": "stretch"}
     )
+    after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
+    assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text="Reminder set!")
+
+
+def test_a_brief_with_an_intent_section_runs_its_script_once() -> None:
+    """Regression: the intent between task and done hid the quote, so every sim hand-off ran twice."""
+    script = '[[tool:create_reminder {"title": "stretch"}]] [[say:Reminder set!]]'
+    task_and_intent = f"{script}\n\n{INTENT_SECTION_HEAD} a reminder\nTime horizon: one_shot"
+    brief = _user(_executor_brief(script, task_and_intent))
+
     after_one = [brief, _assistant_tool_call("create_reminder"), _tool_result("create_reminder")]
     assert resolve_response(after_one, EXECUTOR_TOOLS) == SayResponse(text="Reminder set!")
 

@@ -201,7 +201,7 @@ CLEAN: list[tuple[str, dict[str, object]]] = [
             "is_new_conversation": True,
         },
     ),
-    *[("artifact:created", {**AGENT_WEB, **ARTIFACT_CREATED})] * 2,
+    ("artifact:created", {**AGENT_WEB, **ARTIFACT_CREATED}),
     (
         "short_link:opened",
         {
