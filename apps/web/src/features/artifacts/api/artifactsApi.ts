@@ -1,5 +1,5 @@
 import type { OpenUIArtifactResponse } from "@shared/api/generated";
-import { API_BASE } from "@/lib/api/baseUrl";
+import { apiBaseUrl } from "@/lib/api/client";
 import { api } from "@/lib/api/typed";
 
 /** One of the user's artifacts, program included. */
@@ -14,5 +14,5 @@ export function fetchArtifact(
 
 /** Browser URL of the owner's PDF export; it needs no public link. */
 export function artifactPdfDownloadUrl(artifactId: string): string {
-  return `${API_BASE}/artifacts/${encodeURIComponent(artifactId)}/pdf`;
+  return `${apiBaseUrl}/artifacts/${encodeURIComponent(artifactId)}/pdf`;
 }
