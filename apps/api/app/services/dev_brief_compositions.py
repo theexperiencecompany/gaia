@@ -11,49 +11,10 @@ from typing import Any
 from app.constants.briefing import BriefAction, BriefOutcome
 from app.models.briefing_models import BriefingPayload
 from app.services.briefing.editions.capabilities import split_drawable
-from app.services.briefing.fact_pool.window import SeriesName
 
 TODAY = "2026-11-10"
 _DAYS = [(date(2026, 11, 10) - timedelta(days=6 - n)).isoformat() for n in range(7)]
 _WEEK = [(date(2026, 11, 9) + timedelta(days=n)).isoformat() for n in range(7)]
-
-
-def _series(name: SeriesName, ys: list[float], days: list[str]) -> dict[str, Any]:
-    return {
-        "id": name.id,
-        "label": name.label,
-        "unit": name.unit,
-        "source": name.source,
-        "app": name.app,
-        "shape": "time_series",
-        "points": [{"x": x, "y": y} for x, y in zip(days, ys, strict=True)],
-    }
-
-
-def _ask(
-    text: str, action: BriefAction, source: str, app: str, detail: str | None = None
-) -> dict[str, Any]:
-    return {
-        "text": text,
-        "kind": "you",
-        "action": action,
-        "source": source,
-        "app": app,
-        "detail": detail,
-    }
-
-
-def _done(
-    text: str, outcome: BriefOutcome, source: str, app: str, detail: str | None = None
-) -> dict[str, Any]:
-    return {
-        "text": text,
-        "kind": "lookback",
-        "outcome": outcome,
-        "source": source,
-        "app": app,
-        "detail": detail,
-    }
 
 
 _BASE: dict[str, Any] = {
@@ -72,13 +33,14 @@ _LEAD = {
     "numeral": "I",
     "title": "First up",
     "items": [
-        _ask(
-            "Northwind renewal is up 18%",
-            BriefAction.APPROVE,
-            "gmail",
-            "Gmail",
-            "Due Thu 17:00. Last year's terms capped rises at 10%.",
-        )
+        {
+            "text": "Northwind renewal is up 18%",
+            "kind": "you",
+            "action": BriefAction.APPROVE,
+            "source": "gmail",
+            "app": "Gmail",
+            "detail": "Due Thu 17:00. Last year's terms capped rises at 10%.",
+        }
         | {"offer": "GAIA can draft a reply asking Dana to hold the 10% cap."}
     ],
 }
@@ -86,49 +48,66 @@ _NEEDS_YOU = {
     "numeral": "II",
     "title": "Needs you",
     "items": [
-        _ask(
-            "Priyanka on the Lisbon offsite venues",
-            BriefAction.REPLY,
-            "slack",
-            "Slack",
-            "2 messages in Slack, due today 12:00",
-        ),
-        _ask(
-            "Reconnect Notion",
-            BriefAction.RETRY,
-            "notion",
-            "Notion",
-            "The roadmap sync is paused until you do",
-        ),
-        _ask("PR #1452, the billing webhook fix", BriefAction.REVIEW, "github", "GitHub"),
-        _ask("Linear cycle 14 scope", BriefAction.READ, "linear", "Linear"),
+        {
+            "text": "Priyanka on the Lisbon offsite venues",
+            "kind": "you",
+            "action": BriefAction.REPLY,
+            "source": "slack",
+            "app": "Slack",
+            "detail": "2 messages in Slack, due today 12:00",
+        },
+        {
+            "text": "Reconnect Notion",
+            "kind": "you",
+            "action": BriefAction.RETRY,
+            "source": "notion",
+            "app": "Notion",
+            "detail": "The roadmap sync is paused until you do",
+        },
+        {
+            "text": "PR #1452, the billing webhook fix",
+            "kind": "you",
+            "action": BriefAction.REVIEW,
+            "source": "github",
+            "app": "GitHub",
+        },
+        {
+            "text": "Linear cycle 14 scope",
+            "kind": "you",
+            "action": BriefAction.READ,
+            "source": "linear",
+            "app": "Linear",
+        },
     ],
 }
 _DONE = {
     "numeral": "III",
     "title": "Done for you",
     "items": [
-        _done(
-            "PR #1448, by two reviewers",
-            BriefOutcome.APPROVED,
-            "github",
-            "GitHub",
-            "Sam K. and Ines M. on GitHub",
-        ),
-        _done(
-            "$4,210 Stripe payout",
-            BriefOutcome.LANDED,
-            "gmail",
-            "Gmail",
-            "In the operating account",
-        ),
-        _done(
-            "Replies to 6 newsletters",
-            BriefOutcome.DRAFTED,
-            "gaia",
-            "GAIA",
-            "41 promotions archived too",
-        ),
+        {
+            "text": "PR #1448, by two reviewers",
+            "kind": "lookback",
+            "outcome": BriefOutcome.APPROVED,
+            "source": "github",
+            "app": "GitHub",
+            "detail": "Sam K. and Ines M. on GitHub",
+        },
+        {
+            "text": "$4,210 Stripe payout",
+            "kind": "lookback",
+            "outcome": BriefOutcome.LANDED,
+            "source": "gmail",
+            "app": "Gmail",
+            "detail": "In the operating account",
+        },
+        {
+            "text": "Replies to 6 newsletters",
+            "kind": "lookback",
+            "outcome": BriefOutcome.DRAFTED,
+            "source": "gaia",
+            "app": "GAIA",
+            "detail": "41 promotions archived too",
+        },
     ],
 }
 _CALENDAR = [
@@ -159,16 +138,29 @@ BUSY: dict[str, Any] = _BASE | {
             "title": "Tasks closed each day",
             "takeaway": "Sunday was the week's peak, and GAIA closed two in three.",
             "series": [
-                _series(
-                    SeriesName("you_finished", "You", "tasks", "gaia", "GAIA"),
-                    [4, 6, 3, 5, 7, 1, 0],
-                    _DAYS,
-                ),
-                _series(
-                    SeriesName("gaia_finished", "GAIA", "tasks", "gaia", "GAIA"),
-                    [7, 9, 11, 8, 12, 3, 2],
-                    _DAYS,
-                ),
+                {
+                    "id": "you_finished",
+                    "label": "You",
+                    "unit": "tasks",
+                    "source": "gaia",
+                    "app": "GAIA",
+                    "shape": "time_series",
+                    "points": [
+                        {"x": x, "y": y} for x, y in zip(_DAYS, [4, 6, 3, 5, 7, 1, 0], strict=True)
+                    ],
+                },
+                {
+                    "id": "gaia_finished",
+                    "label": "GAIA",
+                    "unit": "tasks",
+                    "source": "gaia",
+                    "app": "GAIA",
+                    "shape": "time_series",
+                    "points": [
+                        {"x": x, "y": y}
+                        for x, y in zip(_DAYS, [7, 9, 11, 8, 12, 3, 2], strict=True)
+                    ],
+                },
             ],
         },
         {
@@ -198,19 +190,21 @@ QUIET_GOAL: dict[str, Any] = _BASE | {
             "numeral": "I",
             "title": "Done overnight",
             "items": [
-                _done(
-                    "Offer letter for the staff engineer",
-                    BriefOutcome.SENT,
-                    "gmail",
-                    "Gmail",
-                    "Signed copy filed to Drive",
-                ),
-                _done(
-                    "Interview loop for the designer role",
-                    BriefOutcome.BOOKED,
-                    "googlecalendar",
-                    "Google Calendar",
-                ),
+                {
+                    "text": "Offer letter for the staff engineer",
+                    "kind": "lookback",
+                    "outcome": BriefOutcome.SENT,
+                    "source": "gmail",
+                    "app": "Gmail",
+                    "detail": "Signed copy filed to Drive",
+                },
+                {
+                    "text": "Interview loop for the designer role",
+                    "kind": "lookback",
+                    "outcome": BriefOutcome.BOOKED,
+                    "source": "googlecalendar",
+                    "app": "Google Calendar",
+                },
             ],
         }
     ],
@@ -241,13 +235,14 @@ SPIKE: dict[str, Any] = _BASE | {
             "numeral": "I",
             "title": "First up",
             "items": [
-                _ask(
-                    "Acme's security questionnaire",
-                    BriefAction.REVIEW,
-                    "gmail",
-                    "Gmail",
-                    "Due Friday; 42 questions, 30 drafted",
-                )
+                {
+                    "text": "Acme's security questionnaire",
+                    "kind": "you",
+                    "action": BriefAction.REVIEW,
+                    "source": "gmail",
+                    "app": "Gmail",
+                    "detail": "Due Friday; 42 questions, 30 drafted",
+                }
                 | {"offer": "GAIA can fill the rest from last year's answers."}
             ],
         },
@@ -255,20 +250,22 @@ SPIKE: dict[str, Any] = _BASE | {
             "numeral": "II",
             "title": "From the spike",
             "items": [
-                _ask(
-                    "Lena on the launch date",
-                    BriefAction.REPLY,
-                    "gmail",
-                    "Gmail",
-                    "Asked twice since Sunday",
-                ),
-                _done(
-                    "38 launch-list signups",
-                    BriefOutcome.FINISHED,
-                    "gaia",
-                    "GAIA",
-                    "Filed to the waitlist sheet",
-                ),
+                {
+                    "text": "Lena on the launch date",
+                    "kind": "you",
+                    "action": BriefAction.REPLY,
+                    "source": "gmail",
+                    "app": "Gmail",
+                    "detail": "Asked twice since Sunday",
+                },
+                {
+                    "text": "38 launch-list signups",
+                    "kind": "lookback",
+                    "outcome": BriefOutcome.FINISHED,
+                    "source": "gaia",
+                    "app": "GAIA",
+                    "detail": "Filed to the waitlist sheet",
+                },
             ],
         },
     ],
@@ -285,11 +282,18 @@ SPIKE: dict[str, Any] = _BASE | {
             "title": "Emails received each day",
             "takeaway": "Yesterday brought 61, three times a usual day.",
             "series": [
-                _series(
-                    SeriesName("mail_received", "Emails received", "emails", "gmail", "Gmail"),
-                    [18, 22, 19, 24, 20, 23, 61],
-                    _DAYS,
-                ),
+                {
+                    "id": "mail_received",
+                    "label": "Emails received",
+                    "unit": "emails",
+                    "source": "gmail",
+                    "app": "Gmail",
+                    "shape": "time_series",
+                    "points": [
+                        {"x": x, "y": y}
+                        for x, y in zip(_DAYS, [18, 22, 19, 24, 20, 23, 61], strict=True)
+                    ],
+                },
             ],
         },
         {"kind": "items", "section": 1},
@@ -299,17 +303,18 @@ SPIKE: dict[str, Any] = _BASE | {
             "title": "Meeting hours each day",
             "takeaway": "Today holds 3.5 hours, the week's lightest weekday.",
             "series": [
-                _series(
-                    SeriesName(
-                        "calendar_meeting_hours",
-                        "Meeting hours",
-                        "hours",
-                        "googlecalendar",
-                        "Google Calendar",
-                    ),
-                    [5.5, 4, 6, 4.5, 5, 0.5, 3.5],
-                    _DAYS,
-                ),
+                {
+                    "id": "calendar_meeting_hours",
+                    "label": "Meeting hours",
+                    "unit": "hours",
+                    "source": "googlecalendar",
+                    "app": "Google Calendar",
+                    "shape": "time_series",
+                    "points": [
+                        {"x": x, "y": y}
+                        for x, y in zip(_DAYS, [5.5, 4, 6, 4.5, 5, 0.5, 3.5], strict=True)
+                    ],
+                },
             ],
         },
     ],
@@ -325,21 +330,61 @@ WEEKLY: dict[str, Any] = _BASE | {
             "numeral": "I",
             "title": "Shipped",
             "items": [
-                _done("Scouts on the morning brief", BriefOutcome.FINISHED, "github", "GitHub"),
-                _done("Air Mail postmarks", BriefOutcome.FINISHED, "github", "GitHub"),
-                _done("Onboarding paywall copy", BriefOutcome.FINISHED, "linear", "Linear"),
+                {
+                    "text": "Scouts on the morning brief",
+                    "kind": "lookback",
+                    "outcome": BriefOutcome.FINISHED,
+                    "source": "github",
+                    "app": "GitHub",
+                },
+                {
+                    "text": "Air Mail postmarks",
+                    "kind": "lookback",
+                    "outcome": BriefOutcome.FINISHED,
+                    "source": "github",
+                    "app": "GitHub",
+                },
+                {
+                    "text": "Onboarding paywall copy",
+                    "kind": "lookback",
+                    "outcome": BriefOutcome.FINISHED,
+                    "source": "linear",
+                    "app": "Linear",
+                },
             ],
         },
         {
             "numeral": "II",
             "title": "Handled by GAIA",
             "items": [
-                _done("38 routine emails", BriefOutcome.SENT, "gmail", "Gmail"),
-                _done("12 receipts to Drive", BriefOutcome.FINISHED, "gaia", "GAIA"),
-                _done(
-                    "3 clashing meetings", BriefOutcome.CHANGED, "googlecalendar", "Google Calendar"
-                ),
-                _done("Vendor W-9 reminders", BriefOutcome.SENT, "gmail", "Gmail"),
+                {
+                    "text": "38 routine emails",
+                    "kind": "lookback",
+                    "outcome": BriefOutcome.SENT,
+                    "source": "gmail",
+                    "app": "Gmail",
+                },
+                {
+                    "text": "12 receipts to Drive",
+                    "kind": "lookback",
+                    "outcome": BriefOutcome.FINISHED,
+                    "source": "gaia",
+                    "app": "GAIA",
+                },
+                {
+                    "text": "3 clashing meetings",
+                    "kind": "lookback",
+                    "outcome": BriefOutcome.CHANGED,
+                    "source": "googlecalendar",
+                    "app": "Google Calendar",
+                },
+                {
+                    "text": "Vendor W-9 reminders",
+                    "kind": "lookback",
+                    "outcome": BriefOutcome.SENT,
+                    "source": "gmail",
+                    "app": "Gmail",
+                },
             ],
         },
     ],
@@ -364,16 +409,29 @@ WEEKLY: dict[str, Any] = _BASE | {
             "title": "Tasks closed each day",
             "takeaway": "Friday carried the week; the weekend stayed light.",
             "series": [
-                _series(
-                    SeriesName("you_finished", "You", "tasks", "gaia", "GAIA"),
-                    [4, 6, 3, 5, 7, 1, 0],
-                    _WEEK,
-                ),
-                _series(
-                    SeriesName("gaia_finished", "GAIA", "tasks", "gaia", "GAIA"),
-                    [7, 9, 11, 8, 12, 3, 2],
-                    _WEEK,
-                ),
+                {
+                    "id": "you_finished",
+                    "label": "You",
+                    "unit": "tasks",
+                    "source": "gaia",
+                    "app": "GAIA",
+                    "shape": "time_series",
+                    "points": [
+                        {"x": x, "y": y} for x, y in zip(_WEEK, [4, 6, 3, 5, 7, 1, 0], strict=True)
+                    ],
+                },
+                {
+                    "id": "gaia_finished",
+                    "label": "GAIA",
+                    "unit": "tasks",
+                    "source": "gaia",
+                    "app": "GAIA",
+                    "shape": "time_series",
+                    "points": [
+                        {"x": x, "y": y}
+                        for x, y in zip(_WEEK, [7, 9, 11, 8, 12, 3, 2], strict=True)
+                    ],
+                },
             ],
         },
         {
@@ -382,11 +440,18 @@ WEEKLY: dict[str, Any] = _BASE | {
             "title": "Emails GAIA handled",
             "takeaway": "Up every day since Tuesday.",
             "series": [
-                _series(
-                    SeriesName("mail_handled", "Emails handled", "emails", "gmail", "Gmail"),
-                    [9, 12, 8, 15, 18, 21, 27],
-                    _WEEK,
-                ),
+                {
+                    "id": "mail_handled",
+                    "label": "Emails handled",
+                    "unit": "emails",
+                    "source": "gmail",
+                    "app": "Gmail",
+                    "shape": "time_series",
+                    "points": [
+                        {"x": x, "y": y}
+                        for x, y in zip(_WEEK, [9, 12, 8, 15, 18, 21, 27], strict=True)
+                    ],
+                },
             ],
         },
         {
