@@ -655,7 +655,7 @@ Every control and overlay. "How to write frontend code" above lists the wrappers
 | `Tabs` | Tabbed card content · `tabsVariants` |
 | `ProgressBar`, `Avatar`, `ScrollShadow` | Progress, contact avatars, overflowing lists |
 
-Chart palette (Recharts): `["#a78bfa", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`
+Chart palette (Recharts), cyan-led like the rest of the UI: `["#00bbff", "#34d399", "#60a5fa", "#f472b6", "#fb923c"]`; pie and radial charts use `["#00bbff", "#34d399", "#60a5fa", "#a78bfa", "#f472b6"]`. Both are `CHART_PALETTE` / `PIE_PALETTE` in `apps/web/src/config/openui/theme.ts`; import them rather than restating the colours.
 
 ### HeroUI control dimensions
 
