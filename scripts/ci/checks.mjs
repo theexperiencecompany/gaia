@@ -125,6 +125,7 @@ import {
   shapeTwinsIn,
   untypedCallLines,
 } from "./lib/api-contract.mjs";
+import { runSkillsSymlink } from "./lib/skills-symlink.mjs";
 
 // ---------------------------------------------------------------------------
 // file-sizes
@@ -1061,6 +1062,7 @@ function usage() {
       "  heroui-usage                           no v2 HeroUI API, controls render their parts, GAIA wrappers over bare HeroUI",
       "  api-client-imports                     no raw mobile API client import outside apps/mobile/src/lib",
       "  bot-handles                            every WhatsApp / Telegram / Discord link matches libs/shared/bot-identity.json",
+      "  skills-symlink                         .claude/skills is a symlink to .agents/skills, not a second copy",
     ].join("\n"),
   );
 }
@@ -1169,6 +1171,9 @@ function cmdFrameworkPair() {
       break;
     case "bot-handles":
       runBotHandles();
+      break;
+    case "skills-symlink":
+      runSkillsSymlink();
       break;
     case "framework-pair":
       cmdFrameworkPair();

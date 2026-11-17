@@ -1245,6 +1245,28 @@
         }
       }
     },
+    "skills-symlink": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs skills-symlink"
+      },
+      "cache": false,
+      "inputs": [
+        "ciHarness",
+        "{workspaceRoot}/.claude/**/*",
+        "{workspaceRoot}/.agents/skills/**/*",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "metadata": {
+        "ci": {
+          "job": "repo-policy",
+          "check": "skills-symlink",
+          "area": "contracts"
+        }
+      }
+    },
     "analytics-sync": {
       "executor": "nx:noop",
       "inputs": [
