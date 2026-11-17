@@ -296,7 +296,7 @@ async def test_a_stop_mid_work_stops_the_running_work_and_the_screen_shows_it_ca
 
 
 async def _card_status(user_id: str, conversation_id: str) -> object:
-    """Read the approval card the screen draws for t1 from the stored log: its outcome and who decided."""
+    """Read the approval card the screen draws for t1 from the stored log: its status and who decided."""
     entries = await conversation_log_repository.read_log(conversation_id, user_id=user_id)
     [work] = [
         item
@@ -304,7 +304,7 @@ async def _card_status(user_id: str, conversation_id: str) -> object:
         if isinstance(item, WorkItem)
     ]
     [card] = work.approvals
-    return card.data.outcome, card.data.decider
+    return card.data.status, card.data.decider
 
 
 def _ended(outcome: ApprovalOutcome, decider: ApprovalDecider | None = None) -> ApprovalDecided:
@@ -333,7 +333,7 @@ async def test_an_approval_cards_outcome_follows_the_log(
     turn = _turn("send the mail")
     conversation_id = await _chat(user_id, [turn[0], *work, *turn[1:]])
 
-    assert await _card_status(user_id, conversation_id) == (None, None)
+    assert await _card_status(user_id, conversation_id) == ("waiting", None)
     await mongo_log.append(conversation_id, user_id, ending)
     assert await _card_status(user_id, conversation_id) == label
 

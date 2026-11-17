@@ -315,6 +315,8 @@ class TestActivationThroughRealExecutorGraph:
                 "app.services.hil.policy.get_hil_preferences",
                 new=AsyncMock(return_value=HILPreferences()),
             ),
+            # The classifier needs Mongo and an LLM; a read-only lookup is not destructive.
+            patch("app.services.hil.policy.is_tool_destructive", new=AsyncMock(return_value=False)),
         ):
             async with build_executor_graph(chat_llm=model, in_memory_checkpointer=True) as graph:
                 result = await graph.ainvoke(

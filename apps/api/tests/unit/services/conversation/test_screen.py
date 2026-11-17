@@ -569,7 +569,24 @@ def test_a_run_that_ended_leaving_its_approval_to_the_user_still_asks_for_it() -
     assert (parked.status, parked.asked_seq) == (WorkStatus.AWAITING_APPROVAL, 3)
 
 
-def test_an_approval_its_run_left_waiting_when_it_ended_is_withdrawn_and_no_longer_asked() -> None:
+def test_an_approval_its_run_left_waiting_when_it_failed_is_withdrawn_and_no_longer_asked() -> None:
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    ended = WorkFinished(id="fin:t1", task_id="t1", outcome=WorkOutcome.FAILED, report="broke")
+    log = [
+        logged(1, user("u1")),
+        logged(2, started),
+        logged(3, asked("ask:a1", "t1", "a1")),
+        logged(4, ended),
+    ]
+    [_, work] = project_screen(CONVERSATION_ID, log, TEST_FILE_LINKS)
+    assert work.kind is ScreenItemKind.WORK
+    assert (work.asking, work.status) == ((), WorkStatus.FAILED)
+    [card] = work.approvals
+    assert (card.data.status, card.data.outcome) == (ApprovalStatus.WITHDRAWN, None)
+
+
+def test_a_todo_or_workflow_run_done_while_its_approval_waits_still_asks_for_it() -> None:
+    """The decision resumes the todo or workflow that asked, as the reducer keeps it asked."""
     started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
     ended = WorkFinished(id="fin:t1", task_id="t1", outcome=WorkOutcome.DONE, report="done")
     log = [
@@ -580,9 +597,8 @@ def test_an_approval_its_run_left_waiting_when_it_ended_is_withdrawn_and_no_long
     ]
     [_, work] = project_screen(CONVERSATION_ID, log, TEST_FILE_LINKS)
     assert work.kind is ScreenItemKind.WORK
-    assert (work.asking, work.status) == ((), WorkStatus.DONE)
-    [card] = work.approvals
-    assert (card.data.status, card.data.outcome) == (ApprovalStatus.WITHDRAWN, None)
+    assert [request.approval_id for request in work.asking] == ["a1"]
+    assert [card.data.status for card in work.approvals] == [ApprovalStatus.WAITING]
 
 
 def test_an_approval_reads_expired_once_the_log_moves_past_its_time() -> None:

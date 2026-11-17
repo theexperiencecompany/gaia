@@ -26,18 +26,21 @@ from app.core.provider_registration import boot_process
 from app.db.rabbitmq import declare_outbound_topology_on_startup
 from app.db.redis import redis_cache
 from app.helpers.lifespan_helpers import init_mongodb_async
+from app.services.conversation.composition import build_runtime_ports
+from app.services.conversation.runtime import install_runtime_ports
 from app.workers.browser_worker import browser_reaper_cron, build_browser_worker
 from app.workers.config.worker_settings import WorkerSettings
 from tests.integration.real.browser._stack.processes import REAPER_HEALTH_KEY
 
 
 async def start_app_services(context: Literal["main_app", "arq_worker"]) -> None:
-    """Register the providers and bring up the stores a browser task runs on."""
+    """Register the providers, bring up the stores a browser task runs on, and install the conversation runtime."""
     settings.WORKER_TYPE = context
     boot_process(context)
     await init_mongodb_async()
     await redis_cache.verify_connection()
     await declare_outbound_topology_on_startup()
+    install_runtime_ports(build_runtime_ports())
 
 
 async def serve_browser_queue() -> None:

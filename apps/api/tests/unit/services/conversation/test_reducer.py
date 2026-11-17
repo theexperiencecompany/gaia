@@ -924,21 +924,35 @@ def test_a_cancelled_approval_leaves_parked_work_for_its_finish_to_report() -> N
     assert result.effects == (KickStep(),)
 
 
-@pytest.mark.parametrize(
-    "ending",
-    [
-        finished("f", "t1"),
-        _left_to_the_user("f", "t1").model_copy(update={"outcome": WorkOutcome.FAILED}),
-    ],
-)
-def test_a_run_ending_while_its_approval_waits_withdraws_it_and_reports_its_finish(
-    ending: WorkFinished,
-) -> None:
-    """A todo, workflow or failed chat run is gone, so nothing could carry out a decision on what it asked."""
+def test_a_failed_run_ending_while_its_approval_waits_withdraws_it_and_reports_its_finish() -> None:
+    """A failed chat run is gone, so nothing could carry out a decision on what it asked."""
+    ending = _left_to_the_user("f", "t1").model_copy(update={"outcome": WorkOutcome.FAILED})
     result = _accept(_before_park(), 6, ending)
     assert result.state.work == ()
     assert result.state.asking == ()
     assert result.effects == (WithdrawApprovals(approval_ids=("ap1",)), KickStep())
+
+
+def test_a_todo_or_workflow_run_done_while_its_approval_waits_reports_and_keeps_asking() -> None:
+    """The decision resumes the todo or workflow that asked, so its approval still waits after the run reports."""
+    result = _accept(_before_park(), 6, finished("f", "t1"))
+    assert result.state.asking == ("ap1",)
+    assert [item.task_id for item in result.state.finished_work] == ["t1"]
+    assert result.effects == (KickStep(),)
+
+
+def test_a_replay_parked_on_its_approval_does_not_hold_off_other_work() -> None:
+    """A workflow replay that ended waiting on the user runs no longer, so other work may start."""
+    state, _ = fold(
+        [
+            user("u1"),
+            started("w", "t1", 1).model_copy(update={"detached": True, "exclusive": True}),
+            asked("a", "t1", "ap1"),
+        ]
+    )
+    parked = _accept(state, 4, finished("f", "t1")).state
+    result = _accept(parked, 5, started("w2", "t2", 1))
+    assert [item.task_id for item in result.state.work] == ["t1", "t2"]
 
 
 def test_a_stop_cancels_parked_work_and_the_approval_it_waits_on() -> None:

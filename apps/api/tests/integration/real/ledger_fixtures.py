@@ -2,15 +2,17 @@
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import pytest
 
 from app.models.conversation_log_models import ApprovalDecided
+from app.services.conversation.screen import decided_status
 from app.services.conversation.work_log import DecisionTaken
 from app.services.hil import ledger_decide
-from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome, ApprovalStatus
 
 
 @dataclass
@@ -53,11 +55,18 @@ async def edges(mongo_db: AsyncIOMotorDatabase) -> AsyncIterator[Edges]:
     async def _read(conversation_id: str, user_id: str, approval_id: str) -> ApprovalDecided | None:
         return decided.get(approval_id)
 
+    async def _status(
+        conversation_id: str, user_id: str, approval_id: str, now: datetime
+    ) -> ApprovalStatus:
+        decision = decided.get(approval_id)
+        return ApprovalStatus.WAITING if decision is None else decided_status(decision)
+
     with (
         patch.object(
             ledger_decide, "record_approval_decided", new=AsyncMock(side_effect=_decide)
         ) as logged,
         patch.object(ledger_decide, "logged_decision", new=AsyncMock(side_effect=_read)),
+        patch.object(ledger_decide, "logged_status", new=AsyncMock(side_effect=_status)),
         patch.object(ledger_decide, "record_approved_action_ended", new=AsyncMock()) as acted,
         patch.object(ledger_decide, "capture") as events,
         patch.object(ledger_decide, "_deliver_ticket", new=AsyncMock()),
