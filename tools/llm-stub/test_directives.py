@@ -23,6 +23,7 @@ from directives import (
     CALL_EXECUTOR_TOOL,
     DEFAULT_REPLY,
     HAND_OFF_SILENCE_ARGS,
+    REACT_TOOL,
     SCRIPTED_HAND_OFF_ARGS,
     STAY_SILENT_TOOL,
     VERBATIM_REQUEST_HEADER,
@@ -30,6 +31,7 @@ from directives import (
     FailDirective,
     NarrateDirective,
     PaceDirective,
+    Response,
     SayDirective,
     SayResponse,
     ToolCallResponse,
@@ -225,6 +227,20 @@ def test_nested_handoff_script_resolves_through_all_three_tiers():
     )
 
 
+def test_a_scripted_hand_off_names_the_open_messages_it_takes():
+    script = _tool_directive(CALL_EXECUTOR_TOOL, {"task": "work"}) + " [[say:On it.]]"
+    assert resolve_response([_user(f"[#3] {script}")], COMMS_TOOLS) == ToolCallResponse(
+        name=CALL_EXECUTOR_TOOL, args={"task": "work", "for_messages": [3]}
+    )
+
+
+def test_a_scripted_reaction_answers_the_newest_message_with_the_react_tool():
+    tools = COMMS_TOOLS | {REACT_TOOL}
+    assert resolve_response([_user("[#4] thanks [[react:❤️]]")], tools) == ToolCallResponse(
+        name=REACT_TOOL, args={"emoji": "❤️", "message_id": 4}
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Turn counting — executor mode (directive tools are bound in this request)
 # --------------------------------------------------------------------------- #
@@ -356,13 +372,14 @@ def test_comms_after_forwarding_stays_silent():
     ("closing", "expected"),
     [
         ("[[say:Partial.]] [[fail:boom]]", SayResponse(text="Partial.", fail="boom")),
-        ("[[narrate:Let me check.]] [[say:Checked.]]", SayResponse(text="Checked.")),
+        (
+            "[[narrate:Let me check.]] [[say:Checked.]]",
+            ToolCallResponse(name=STAY_SILENT_TOOL, args=HAND_OFF_SILENCE_ARGS),
+        ),
     ],
 )
-def test_comms_after_forwarding_says_a_closing_scripted_for_the_front_door(
-    closing: str, expected: SayResponse
-):
-    """A fail or a narrate scripts the front door's own turn, so its reply is said there."""
+def test_comms_after_forwarding_says_only_a_reply_it_breaks(closing: str, expected: Response):
+    """A fail scripts the front door's own turn; a narrated hand-off's reply comes once, from the work."""
     script = f'[[tool:create_reminder {{"title": "x"}}]] {closing}'
     messages = [
         _user(script),

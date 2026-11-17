@@ -6,6 +6,7 @@ the tool registry (app/agents/tools/core/registry.py), the single source of trut
 for every tool in the app.
 """
 
+from datetime import timedelta
 from enum import StrEnum
 from typing import Final, Literal
 
@@ -32,13 +33,10 @@ HIL_JUDGE_MAX_TURN_CHARS = 800
 # an id minted by an earlier call is only traceable through that output.
 HIL_JUDGE_MAX_ARGS_CHARS = 1500
 HIL_JUDGE_MAX_PRIOR_CALLS = 8
-HIL_JUDGE_MAX_PRIOR_ARGS_CHARS = 200
 HIL_JUDGE_MAX_PRIOR_OUTPUT_CHARS = 300
 
-# The pending tool's arg schema and the run's recent assistant messages: both
-# provenance for JEV, never authorization (the schema explains an opaque id, the
+# The run's recent assistant messages: provenance for JEV, never authorization (the
 # assistant's words say what it told the user). Bounded — prompts are not free.
-HIL_JUDGE_MAX_SCHEMA_CHARS = 2000
 HIL_JUDGE_MAX_ASSISTANT_TURNS = 3
 HIL_JUDGE_MAX_ASSISTANT_CHARS = 500
 
@@ -130,12 +128,16 @@ HIL_CLASSIFIER_HISTORY_TURNS = 4  # recent {role, content} turns of context
 
 # Marks a synthetic ToolMessage the gate produced (rather than a real tool result).
 HIL_STATUS_KWARG = "hil_status"
-HILToolMessageStatus = Literal["denied", "timeout", "error", "already_ran", "pending"]
+HILToolMessageStatus = Literal["denied", "error", "pending"]
 
 # How long an approval may sit unanswered before the sweep resolves it as a
 # timeout. Set by how long a human plausibly takes to answer a push
 # notification, NOT infrastructure — HIL gates irreversible, third-party-visible actions.
 HIL_APPROVAL_TIMEOUT_SECONDS = 6 * 60 * 60
+
+# How long a decision's hand-off to the waiting work may take before the sweeper
+# treats it as failed and carries the logged decision out again.
+DECISION_HANDOFF_LEASE = timedelta(minutes=2)
 
 # How long unread executor inbox work lives: an approval ticket handed over waits
 # as long as the user may take to answer, plus one busy run.
@@ -146,12 +148,6 @@ EXECUTOR_INBOX_TTL = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
 # approval pause must find the dispatch the first pass already made.
 HIL_BG_RESULTS_KEY_PREFIX = "hil:bg_results:"
 HIL_BG_RESULTS_TTL_SECONDS = 7200
-
-# Debounce: at most one executor resume dispatch per conversation at a time —
-# two LangGraph runs on one thread would corrupt its checkpoint. TTL is crash
-# insurance only; the dispatched run deletes the flag when it finalizes.
-HIL_RESUME_ACTIVE_KEY_PREFIX = "hil:resume_active:"
-HIL_RESUME_ACTIVE_TTL_SECONDS = 1800
 
 # Orchestration/plumbing tools that must never be gated (they don't touch the
 # outside world; their inner calls are gated in the child graph). Ticket ops

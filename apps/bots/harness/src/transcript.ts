@@ -20,6 +20,7 @@ import type { TranscriptEvent, TranscriptEventInput } from "./transcript.types";
 export class TranscriptRecorder {
   private readonly events: TranscriptEvent[] = [];
   private seq = 0;
+  private lastMessageId = 0;
   private readonly startedAt = performance.now();
 
   constructor(
@@ -43,6 +44,15 @@ export class TranscriptRecorder {
     if (this.path)
       appendFileSync(this.path, `${JSON.stringify(event)}\n`, "utf8");
     return event;
+  }
+
+  /**
+   * A message id no earlier message of this transcript has, across bot
+   * restarts: a resumed bot edits the bubbles its predecessor sent by id.
+   */
+  newMessageId(prefix: string): string {
+    this.lastMessageId += 1;
+    return `${prefix}${this.lastMessageId}`;
   }
 
   /** All recorded events, in order. */

@@ -36,6 +36,7 @@ import {
   withTimeout,
 } from "@gaia/shared/bots";
 import type { PlatformEmulation } from "./emulation";
+import type { PlatformOutage } from "./scenario.types";
 import type { TranscriptRecorder } from "./transcript";
 
 /**
@@ -63,7 +64,10 @@ export class HarnessAdapter extends BaseBotAdapter {
   private readonly emulation: PlatformEmulation;
   private readonly transcript: TranscriptRecorder;
   private readonly adapterLogger: BotLogger;
-  private nextMessageId = 1;
+  /** What is left of a scripted outage: the platform refuses this many more sends and edits. */
+  private outage: PlatformOutage | null = null;
+  /** The boot's resume of conversations still answering; settled before boot starts one. */
+  private resumed: Promise<void> = Promise.resolve();
   // Platform message ids are deduplicated per conversation, so each run names its own.
   private readonly runId = randomUUID().slice(0, 8);
 
@@ -192,7 +196,7 @@ export class HarnessAdapter extends BaseBotAdapter {
     options: SimulateOptions = {},
   ): Promise<void> {
     const channelId = options.channelId ?? userId;
-    const messageId = `in-${this.runId}-${this.nextMessageId++}`;
+    const messageId = this.transcript.newMessageId(`in-${this.runId}-`);
     this.transcript.record({
       type: "inbound",
       userId,
@@ -205,12 +209,41 @@ export class HarnessAdapter extends BaseBotAdapter {
     );
   }
 
+  /** Records the boot's resume of the conversations still answering, so a turn can wait for it. */
+  protected override resumeFollows(): Promise<void> {
+    this.resumed = super.resumeFollows();
+    return this.resumed;
+  }
+
+  /** From now, the platform refuses the next `outage.failures` sends and edits with `outage.status`. */
+  startOutage(outage: PlatformOutage): void {
+    this.outage = { ...outage };
+  }
+
+  /**
+   * Throws the platform's error while a scripted outage lasts, shaped as
+   * grammY's GrammyError: a `description` and the HTTP status as `error_code`.
+   */
+  private refuseDuringOutage(call: "send" | "edit"): void {
+    if (!this.outage || this.outage.failures <= 0) return;
+    this.outage.failures -= 1;
+    const { status } = this.outage;
+    this.transcript.record({ type: "platform-failure", call, status });
+    const description = `Bad Gateway: the platform answered ${status}`;
+    throw Object.assign(
+      new Error(`Call to '${call}Message' failed! (${status}: ${description})`),
+      { error_code: status, description },
+    );
+  }
+
   /**
    * Waits until every followed conversation is idle, or parked on approvals GAIA asked
    * the user about, which it records as an awaiting-approval event each. A conversation
    * still answering after timeoutMs fails the turn instead of hanging the run.
    */
   async settleTurn(timeoutMs = TURN_SETTLE_TIMEOUT_MS): Promise<void> {
+    // A booted bot resumes in the background; its follows count once they start.
+    await this.resumed;
     const awaited = await withTimeout(
       this.conversationsSettled(),
       timeoutMs,
@@ -329,7 +362,8 @@ export class HarnessAdapter extends BaseBotAdapter {
    */
   private conversationSurface(channelId: string): ConversationSurface {
     const record = (text: string, replyTo: string | null): string => {
-      const id = `m${this.nextMessageId++}`;
+      this.refuseDuringOutage("send");
+      const id = this.transcript.newMessageId("m");
       this.transcript.record({
         type: "send",
         messageId: id,
@@ -341,22 +375,26 @@ export class HarnessAdapter extends BaseBotAdapter {
     };
     const bubble = (id: string) => ({
       id,
-      edit: (updated: string) => {
-        if (!this.emulation.supportsEdit) {
-          record(updated, null);
-        } else {
-          this.transcript.record({
-            type: "edit",
-            messageId: id,
-            text: updated,
-            length: updated.length,
-          });
-        }
-        return Promise.resolve();
-      },
+      // A refused call rejects, as a platform SDK's does.
+      edit: (updated: string) =>
+        new Promise<void>((resolve) => {
+          if (!this.emulation.supportsEdit) {
+            record(updated, null);
+          } else {
+            this.refuseDuringOutage("edit");
+            this.transcript.record({
+              type: "edit",
+              messageId: id,
+              text: updated,
+              length: updated.length,
+            });
+          }
+          resolve();
+        }),
     });
     return {
-      send: (text, replyTo) => Promise.resolve(bubble(record(text, replyTo))),
+      send: (text, replyTo) =>
+        new Promise((resolve) => resolve(bubble(record(text, replyTo)))),
       reopen: (id) => ({
         ...bubble(id),
         delete: () => {
@@ -406,7 +444,7 @@ export class HarnessAdapter extends BaseBotAdapter {
 
       send: (text: string): Promise<SentMessage> => {
         const rendered = this.emulation.render(text);
-        const id = `m${this.nextMessageId++}`;
+        const id = this.transcript.newMessageId("m");
         this.transcript.record({
           type: "send",
           messageId: id,
@@ -419,7 +457,7 @@ export class HarnessAdapter extends BaseBotAdapter {
       sendEphemeral: (text: string): Promise<SentMessage> => {
         const rendered = this.emulation.render(text);
         this.transcript.record({ type: "ephemeral", text: rendered });
-        return Promise.resolve(makeSent(`e${this.nextMessageId++}`));
+        return Promise.resolve(makeSent(this.transcript.newMessageId("e")));
       },
 
       sendRich: (message: RichMessage): Promise<SentMessage> => {
@@ -429,7 +467,7 @@ export class HarnessAdapter extends BaseBotAdapter {
           title: message.title,
           text: rendered,
         });
-        return Promise.resolve(makeSent(`r${this.nextMessageId++}`));
+        return Promise.resolve(makeSent(this.transcript.newMessageId("r")));
       },
 
       startTyping: () => {

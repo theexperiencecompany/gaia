@@ -51,7 +51,20 @@ def reduce(state: ConversationState, logged: LoggedEntry) -> Transition | Reject
     seq = logged.seq
     if seq != state.head + 1:
         return Rejected(reason=RejectReason.OUT_OF_ORDER)
-    return _apply(state.model_copy(update={"head": seq}), seq, logged.entry)
+    result = _apply(state.model_copy(update={"head": seq}), seq, logged.entry)
+    if isinstance(result, Transition) and result.state.approvals_asked and not result.state.asking:
+        # None open: the next approval asked is number 1 again.
+        return result.model_copy(
+            update={"state": result.state.model_copy(update={"approvals_asked": 0})}
+        )
+    return result
+
+
+def stamped(state: ConversationState, entry: Entry) -> Entry:
+    """Return entry as the log stores it after state: an approval request takes the next free number."""
+    if isinstance(entry, ApprovalRequested):
+        return entry.model_copy(update={"number": state.approvals_asked + 1})
+    return entry
 
 
 def _apply(state: ConversationState, seq: int, entry: Entry) -> Transition | Rejected:
@@ -202,7 +215,8 @@ def _request_approval(state: ConversationState, entry: ApprovalRequested) -> Tra
         else item
         for item in state.work
     )
-    return Transition(state=state.model_copy(update={"work": work}), effects=())
+    asked = state.model_copy(update={"work": work, "approvals_asked": state.approvals_asked + 1})
+    return Transition(state=asked, effects=())
 
 
 def _decide_approval(state: ConversationState, entry: ApprovalDecided) -> Transition:

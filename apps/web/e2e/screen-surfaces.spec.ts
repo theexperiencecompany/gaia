@@ -1,6 +1,7 @@
 import { expect, type Page, type Request, test } from "@playwright/test";
 import { API_BASE_URL, DEV_USER, SIM_ENABLED, sendMessage } from "./harness";
 import {
+  answerInEach,
   askBefore,
   conversationIdOf,
   seedInAppNotification,
@@ -185,6 +186,48 @@ test.describe("screen surfaces", () => {
     expect(listReads.length - readsWhenIdle, "an idle list does not poll").toBe(
       0,
     );
+  });
+
+  // Every load used to log "Maximum update depth exceeded" once ~26 cached conversations synced at once.
+  test("a page load that syncs many changed conversations lists them without a render loop", async ({
+    page,
+  }) => {
+    const ids = Array.from({ length: 30 }, () => crypto.randomUUID());
+    await answerInEach(ids, marker("cached"));
+    const syncs: number[] = [];
+    page.on("response", (response) => {
+      if (response.url().endsWith("/conversations/batch-sync"))
+        syncs.push(response.status());
+    });
+    const newest = page.locator(`a[href$="/c/${ids[ids.length - 1]}"]`).first();
+    await page.goto("/c");
+    await expect(newest, "the conversations are listed").toBeVisible({
+      timeout: TURN_MS,
+    });
+    // Each conversation changes while the page is away; the next load syncs all of them.
+    await page.goto("about:blank");
+    await answerInEach(ids, marker("changed"));
+    const errors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    page.on("pageerror", (error) => errors.push(error.message));
+    const syncsBefore = syncs.length;
+    await page.goto("/c");
+    await expect(newest).toBeVisible({ timeout: TURN_MS });
+    await expect
+      .poll(() => syncs.length, { timeout: TURN_MS })
+      .toBeGreaterThan(syncsBefore);
+    // Let the sync land in the store before reading the console.
+    await page.waitForTimeout(5_000);
+    expect(
+      syncs.filter((status) => status !== 200),
+      "every sync answered",
+    ).toEqual([]);
+    expect(
+      errors.filter((error) => /Maximum update depth/.test(error)),
+      "no render loop on load",
+    ).toEqual([]);
   });
 
   test("reading a notification in one tab clears it in the other", async ({

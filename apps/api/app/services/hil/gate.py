@@ -1,18 +1,12 @@
 """The HIL approval gate: it decides whether a tool call may run, and never runs one.
 
-One entry point, decide_tool_call — the only place a tool can run from. A call the
-user has not answered pauses here; siblings are unaffected since each tool call is
-its own node task (fanned via Send) and LangGraph persists completed tasks' writes
-across an interrupt, as long as the checkpoint gets written (see subagent_runner's
-drain note: durability="exit" breaking the stream early used to re-run siblings).
+One entry point, decide_tool_call. A call the user has not answered is asked in the
+conversation log, registered on the ledger, and answered to the model as pending at
+once; the decision wakes the work later, so nothing here pauses the run.
 
 The gate orchestrates, not decides or renders: unpack (utils.py), resolve policy
-(policy.py), judge intent (intent.py), publish card + record (bridge.py), speak to
-the model (prompts.py). interrupt() raises GraphInterrupt as control flow, never
-caught here nor by the wrappers above (the GraphBubbleUp guards in middleware/executor.py
-and LangGraph's ToolNode). A decision is a record, not a resume payload, so one decision can
-wake a run with several approvals outstanding; everything before a pause re-runs
-on replay, re-reading the record instead of remembering.
+(policy.py), judge intent (intent.py), publish the card (bridge.py), speak to the model
+(prompts.py). Any failure denies the call: the gate fails closed.
 """
 
 from collections.abc import Awaitable, Callable
@@ -24,7 +18,6 @@ from typing import Any
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
-from langgraph.errors import GraphBubbleUp
 from langgraph.types import Command
 from pydantic_core import to_jsonable_python
 
@@ -38,7 +31,7 @@ from app.constants.hil import (
     HILToolMessageStatus,
 )
 from app.constants.log_tags import LogTag
-from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.db.repositories.approval_ledger import approval_ledger_repository, new_approval_id
 from app.models.agent_models import AgentConfigurable
 from app.models.conversation_log_models import ApprovalRequested
 from app.models.execute_models import DispatchError
@@ -47,11 +40,16 @@ from app.models.hil_models import (
     ApprovalProposal,
 )
 from app.services.analytics_service import capture
-from app.services.conversation.work_log import record_approval_requested, work_of_run
+from app.services.conversation.work_log import (
+    record_approval_decided,
+    record_approval_requested,
+    work_of_run,
+)
 from app.services.hil.bridge import (
     announce_approval,
 )
 from app.services.hil.describe import describe_call
+from app.services.hil.errors import ApprovalRequestNotFoundError
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import (
     AutoContext,
@@ -136,11 +134,9 @@ async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
 
     try:
         policy = await resolve_policy(request, context.user_id, call.name)
-    except GraphBubbleUp:
-        raise
     except Exception as e:  # an approval gate must fail closed
         log.error(
-            f"{LogTag.HIL} Gate check failed for ; denying",
+            f"{LogTag.HIL} Gate policy check failed; denying",
             name=call.name,
             error=str(e),
             error_type=type(e).__name__,
@@ -204,24 +200,25 @@ async def _decide_ledger(
         configurable: AgentConfigurable = configurable_of(request)
         owner = configurable.get("thread_id") or "unknown"
         task_id = await work_of_run(context.conversation_id, context.user_id, context.stream_id)
-        ap_id = await approval_ledger_repository.register(
-            ApprovalProposal(
-                conversation_id=context.conversation_id,
-                user_id=context.user_id,
-                fingerprint=fingerprint,
-                tool_name=call.name,
-                tool_key=await gated_tool_key(request, context.user_id, call.name),
-                args=call.args,
-                account=call.account,
-                summary=summary,
-                preview=clip_text(json.dumps(call.args, default=str), 500),
-                owner_agent=str(owner),
-                proposing_run_id=context.stream_id,
-                owner_run_type=context.owner_run_type,
-                owner_id=context.owner_id,
-                task_id=task_id,
-            )
+        proposal = ApprovalProposal(
+            conversation_id=context.conversation_id,
+            user_id=context.user_id,
+            fingerprint=fingerprint,
+            tool_name=call.name,
+            tool_key=await gated_tool_key(request, context.user_id, call.name),
+            args=call.args,
+            account=call.account,
+            summary=summary,
+            preview=clip_text(json.dumps(call.args, default=str), 500),
+            owner_agent=str(owner),
+            proposing_run_id=context.stream_id,
+            owner_run_type=context.owner_run_type,
+            owner_id=context.owner_id,
+            task_id=task_id,
         )
+        # Asked in the log first: a ledger row exists only for a request the log holds, and a
+        # request whose row never landed is one the sweeper withdraws.
+        ap_id = new_approval_id()
         await record_approval_requested(
             context.conversation_id,
             context.user_id,
@@ -239,6 +236,16 @@ async def _decide_ledger(
                 always_asks=await asks_every_time(call.name, call.args),
             ),
         )
+        registered = await approval_ledger_repository.register(proposal, ap_id)
+        if registered != ap_id:
+            # A concurrent identical call registered first: this request withdraws, that one stands.
+            await record_approval_decided(
+                context.conversation_id, context.user_id, ap_id, ApprovalOutcome.WITHDRAWN, None
+            )
+            winner = await approval_ledger_repository.get_by_approval_id(registered)
+            if winner is None:
+                raise ApprovalRequestNotFoundError()
+            return _live_envelope_message(call, context, winner)
         log.info(
             f"{LogTag.HIL} Ledger registered gated call",
             approval_id=ap_id,
@@ -271,8 +278,6 @@ async def _decide_ledger(
             f"{deny_note}{auto_note}",
             "pending",
         )
-    except GraphBubbleUp:
-        raise
     except Exception as e:  # an approval gate must fail closed
         log.error(
             f"{LogTag.HIL} Ledger gate failed; denying",
@@ -329,9 +334,9 @@ async def _judge(
     """Ask the intent judge whether the user's request authorizes this call."""
     history = await _auto_history(context.user_id, call.name)
     tool = await gated_tool_object(request, context.user_id, call.name)
-    never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in await _never_auto_tools(
-        context.user_id
-    )
+    # A deny rule is a security input: unreadable, the gate fails closed rather than judging without it.
+    prefs = await get_hil_preferences(context.user_id)
+    never_auto = hil_tool_key(call.name, mcp_tool_identity(tool)) in prefs.never_auto_tools
     decision = await judge_intent(
         AutoContext(
             user_id=context.user_id,
@@ -363,24 +368,6 @@ async def _judge(
             ),
         )
     return decision
-
-
-async def _never_auto_tools(user_id: str) -> frozenset[str]:
-    """Return the user's deny-rule set, or empty when prefs cannot be read.
-
-    Empty-on-failure mirrors _auto_history: prefs were already read for policy
-    resolution, so a blip here skips one refinement, never the call.
-    """
-    try:
-        prefs = await get_hil_preferences(user_id)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.HIL} never-auto list unreadable; judging without it",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        return frozenset()
-    return frozenset(prefs.never_auto_tools)
 
 
 async def _auto_history(user_id: str, tool_name: str) -> AutoHistory:

@@ -126,6 +126,22 @@ describe("ApprovalRequestSection ledger UX", () => {
     );
   });
 
+  it("sends the note typed on the card with an approve, as the change to make", async () => {
+    // Regression: the note was dropped on Approve, so the call ran as it stood.
+    render(<ApprovalRequestSection data={card({ asked_at: askedAgo(5) })} />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "  change the subject to Q4  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    await vi.waitFor(() =>
+      expect(chatApi.postApprovalDecision).toHaveBeenCalledWith("ap_1", {
+        decision: "approve",
+        feedback: "change the subject to Q4",
+        scope: "once",
+      }),
+    );
+  });
+
   it("says an already-decided approval was decided and re-enables the card", async () => {
     vi.mocked(chatApi.postApprovalDecision)
       .mockReset()

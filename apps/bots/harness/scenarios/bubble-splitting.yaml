@@ -24,10 +24,11 @@ turns:
       - minBubbles: 3
       - contains: "Here is the full plan you asked for"
       - contains: "It runs for a few sentences and ends the plan."
-  # R5: the front door narrates, hands off and is retracted; the reply takes its place.
+  # R5: the front door narrates and hands off; the preamble stays and the reply follows it, once.
   - send: '[[pace:60]] [[narrate:Sure thing, give me a moment.<NEW_MESSAGE_BREAK>Let me look into your calendar for that one.]] [[tool:create_todo {"title": "bubble-r5"}]] [[say:All set, I added it to your todo list for today.]]'
     expect:
-      - bubbles: ["All set, I added it to your todo list for today."]
+      - bubbles: ["Sure thing, give me a moment.", "Let me look into your calendar for that one.", "All set, I added it to your todo list for today."]
+      - noTakeBacks: true
   # R10: a reply of three bubbles after a slow tool. It arrives once, through the
   # conversation's events stream, split the same way on every platform.
   - send: '[[tool:create_todo {"title": "bubble-r10"}]] [[wait:3000]] [[say:First result bubble, the todo was created as you asked.<NEW_MESSAGE_BREAK>Second result bubble, it is due today at five in the evening.<NEW_MESSAGE_BREAK>Third result bubble, tell me if you want a reminder too.]]'

@@ -68,9 +68,9 @@ def screen_bubbles(text: str, conversation_id: str, links: FileLinks) -> tuple[s
 def bubble_deltas(shown: Sequence[str], now: Sequence[str]) -> list[BubbleTextDelta | BubblesDelta]:
     """Return the deltas that carry a client from the shown bubbles to now.
 
-    Text only appends to the last shown bubble or opens later ones. Text the model took back
-    stays shown until its replacement reads past it or differently, which then replaces every
-    bubble at once: a retried or retracted message is replaced in place, never blanked first.
+    Text only appends to the last shown bubble or opens later ones. When shown text changes
+    instead (a sandbox path resolved into a link, a bubble re-split as more text arrived),
+    every bubble is replaced at once, in place, never blanked first.
     """
     if NEW_MESSAGE_BREAKER.join(shown).startswith(NEW_MESSAGE_BREAKER.join(now)):
         return []

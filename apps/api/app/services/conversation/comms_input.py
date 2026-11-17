@@ -48,7 +48,7 @@ from app.models.conversation_log_models import (
     WorkflowFired,
     WorkOutcome,
 )
-from shared.py.conversation_wire import ReplyOutcome, ToolDataEntry
+from shared.py.conversation_wire import FailureReason, ToolDataEntry
 
 #: Every user message reads as its text.
 AS_TYPED: Mapping[str, str] = MappingProxyType({})
@@ -176,8 +176,8 @@ def _note_text(logged: LoggedEntry) -> str | None:
             note = NOTICE_DELIVERED_NOTE.format(text=text)
         case IntegrationConnected(integration_name=name):
             note = INTEGRATION_CONNECTED_NOTE.format(integration=name)
-        # A dead holder's open reply is settled failed with no answers by recovery.
-        case ReplySettled(outcome=ReplyOutcome.FAILED, answers=()):
+        # A dead holder's open reply is settled failed by recovery.
+        case ReplySettled(failure=FailureReason.SERVER_RESTART):
             note = SERVER_RESTART_NOTE
     return note
 

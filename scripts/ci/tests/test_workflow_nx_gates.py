@@ -162,6 +162,10 @@ def _run_commands_targets() -> dict[str, dict[str, Any]]:
         ("libs/shared/ts/src/conversation/view.ts", "web:e2e-screen"),
         ("apps/api/app/services/conversation/step.py", "web:e2e-screen"),
         ("apps/web/e2e/screen-over-time.spec.ts", "web:e2e-screen"),
+        # The bot harness scenarios: the shared bot pipeline, the runtime and the scripts.
+        ("libs/shared/ts/src/bots/conversation/follower.ts", "bot-harness:e2e"),
+        ("apps/api/app/services/hil/conversational.py", "bot-harness:e2e"),
+        ("apps/bots/harness/scenarios/approval-yes-no.yaml", "bot-harness:e2e"),
         # A deleted file is a change: a per-file-ignores entry for it goes stale.
         ("apps/api/app/gone_module.py", "ci:ignore-staleness"),
     ],
@@ -184,6 +188,7 @@ def test_detect_selects(path: str, task: str) -> None:
         ("pnpm-lock.yaml", "api:docker:build"),
         ("apps/web/src/features/landing/components/LazyMotionProvider.tsx", "web:e2e-screen"),
         ("apps/api/app/services/mail/email_verdict.py", "web:e2e-screen"),
+        ("apps/api/app/services/mail/email_verdict.py", "bot-harness:e2e"),
     ],
 )
 def test_detect_leaves_out(path: str, task: str) -> None:

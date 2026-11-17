@@ -484,13 +484,12 @@
           "reason": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/DecisionRefusal"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reason"
+            ]
           },
           "success": {
             "title": "Success",
@@ -822,6 +821,18 @@
             "title": "Kind",
             "type": "string"
           },
+          "number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
           "task_id": {
             "title": "Task Id",
             "type": "string"
@@ -844,7 +855,8 @@
           "integration_name",
           "args_preview",
           "auto_reason",
-          "always_asks"
+          "always_asks",
+          "number"
         ],
         "title": "ApprovalRequested",
         "type": "object"
@@ -1593,13 +1605,12 @@
           "reason": {
             "anyOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/DecisionRefusal"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Reason"
+            ]
           },
           "resolved": {
             "title": "Resolved",
@@ -5741,6 +5752,17 @@
           "member_removed"
         ],
         "title": "DeactivationReason",
+        "type": "string"
+      },
+      "DecisionRefusal": {
+        "description": "Why a decision did not commit.",
+        "enum": [
+          "already_decided",
+          "not_found",
+          "forbidden",
+          "error"
+        ],
+        "title": "DecisionRefusal",
         "type": "string"
       },
       "DegradedHealthResponse": {

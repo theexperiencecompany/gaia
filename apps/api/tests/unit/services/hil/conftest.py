@@ -36,9 +36,10 @@ JEV_CLIENT_MODULE = "app.services.hil.jev_client"
 
 @pytest.fixture(autouse=True)
 def logged_work() -> Iterator[AsyncMock]:
-    """Every gated run is the conversation's logged task t1; yields the ApprovalRequested log write."""
+    """Every gated run is the conversation's logged task t1 asking as ap_abc1234567; yields the ApprovalRequested log write."""
     with (
         patch("app.services.hil.gate.work_of_run", new=AsyncMock(return_value="t1")),
+        patch("app.services.hil.gate.new_approval_id", return_value="ap_abc1234567"),
         patch("app.services.hil.gate.record_approval_requested", new=AsyncMock()) as requested,
     ):
         yield requested

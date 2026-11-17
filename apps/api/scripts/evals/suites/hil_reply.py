@@ -171,7 +171,7 @@ class ReplyTransport:
             raise ProviderError(provider.name, "OPENROUTER_API_KEY unset")
         try:
             verdicts, tokens_in, tokens_out = await ask_jev_reply(
-                setup.reply, details, setup.history or None
+                setup.reply, dict(enumerate(details, start=1)), setup.history or None
             )
         except httpx.HTTPError as e:
             raise ProviderError(provider.name, f"decisions API failed: {e}") from e

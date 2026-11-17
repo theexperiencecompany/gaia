@@ -23,14 +23,14 @@ async function api(path: string, init: RequestInit = {}): Promise<void> {
 }
 
 /**
- * Ask before every call of `askFor`; with none, never ask. always_allow gates
- * nothing, overrides included, so asking takes always_ask.
+ * Ask before every call of `askFor` and before no other: per-tool asks on top of
+ * "allow always", the way a user sets them in settings.
  */
 export async function askBefore(askFor: string[]): Promise<void> {
   await api("/approvals/preferences", {
     method: "PUT",
     body: JSON.stringify({
-      mode: askFor.length > 0 ? "always_ask" : "always_allow",
+      mode: "always_allow",
       tool_overrides: Object.fromEntries(askFor.map((tool) => [tool, true])),
       never_auto_tools: [],
     }),
@@ -63,6 +63,42 @@ export async function serverScreen(
   }
   const { items } = (await response.json()) as { items: ServerItem[] };
   return [...items].sort((a, b) => a.seq - b.seq);
+}
+
+/**
+ * Send one message into each conversation through the API, as another device
+ * would, and resolve once every one has answered it. A new id starts a conversation.
+ */
+export async function answerInEach(
+  ids: string[],
+  label: string,
+): Promise<void> {
+  const replies = async (id: string) =>
+    (await serverScreen(id)).filter((item) => item.kind === "reply").length;
+  const before = new Map<string, number>();
+  for (const [n, id] of ids.entries()) {
+    before.set(id, (await conversationExists(id)) ? await replies(id) : 0);
+    await api(`/conversations/${id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        message_id: crypto.randomUUID(),
+        text: `${label} ${n} [[say:${label} answer ${n}.]]`,
+      }),
+    });
+  }
+  const deadline = Date.now() + 120_000;
+  for (const id of ids) {
+    while ((await replies(id)) <= (before.get(id) ?? 0)) {
+      if (Date.now() > deadline)
+        throw new Error(`conversation ${id} never answered "${label}"`);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+}
+
+async function conversationExists(id: string): Promise<boolean> {
+  const response = await fetch(`${API_BASE_URL}/conversations/${id}`);
+  return response.ok;
 }
 
 export function seedInAppNotification(email: string, title: string): void {

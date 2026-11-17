@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from motor.motor_asyncio import AsyncIOMotorCollection, AsyncIOMotorDatabase
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
@@ -41,12 +42,19 @@ from app.db.repositories.conversation_migration_guard import RENAMED_ENTRY_FIELD
 from app.models.conversation_log_models import EntryKind
 from app.models.conversation_models import StoredEntry
 from app.services.hil.describe import describe_call
+from app.services.hil.when import UserClock
+from app.utils.timezone import Timezone
+from scripts.approval_vocabulary import (
+    APPROVED,
+    CARD_STATUSES,
+    DENIED,
+    RECORD_STATUSES,
+    USER,
+)
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 
 LEDGER = "approval_ledger"
 RECORDS = "hil_approvals"
-APPROVED, DENIED = ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED
-USER, AUTO = ApprovalDecider.USER, ApprovalDecider.AUTO
 
 #: Ledger state -> (outcome, action). Old data cannot tell a Stop from an agent revoke: withdrawn.
 LEDGER_STATES: dict[str, tuple[ApprovalOutcome | None, ActionResult | None]] = {
@@ -59,15 +67,6 @@ LEDGER_STATES: dict[str, tuple[ApprovalOutcome | None, ActionResult | None]] = {
     "failed": (APPROVED, ActionResult.FAILED),
     "unknown": (APPROVED, ActionResult.UNKNOWN),
 }
-#: Approval record status -> (outcome, decider). abandoned was written by a Stop or a moved-on reply.
-RECORD_STATUSES: dict[str, tuple[ApprovalOutcome | None, ApprovalDecider | None]] = {
-    "pending": (None, None),
-    "approved": (APPROVED, USER),
-    "denied": (DENIED, USER),
-    "timeout": (ApprovalOutcome.EXPIRED, None),
-    "abandoned": (ApprovalOutcome.CANCELLED, None),
-    "auto_approved": (APPROVED, AUTO),
-}
 #: Log entry decision -> (outcome, decider).
 LOG_DECISIONS: dict[str, tuple[ApprovalOutcome, ApprovalDecider | None]] = {
     "approve": (APPROVED, USER),
@@ -75,18 +74,6 @@ LOG_DECISIONS: dict[str, tuple[ApprovalOutcome, ApprovalDecider | None]] = {
     "timeout": (ApprovalOutcome.EXPIRED, None),
     "abandon": (ApprovalOutcome.CANCELLED, None),
 }
-#: Card status -> (outcome, decider, action): the record's words plus the ledger's.
-CARD_STATUSES: dict[
-    str, tuple[ApprovalOutcome | None, ApprovalDecider | None, ActionResult | None]
-] = {
-    **{status: (outcome, decider, None) for status, (outcome, decider) in RECORD_STATUSES.items()},
-    "cancelled": (ApprovalOutcome.CANCELLED, None, None),
-    "revoked": (ApprovalOutcome.WITHDRAWN, None, None),
-    "executed": (APPROVED, USER, ActionResult.EXECUTED),
-    "failed": (APPROVED, USER, ActionResult.FAILED),
-    "unknown": (APPROVED, USER, ActionResult.UNKNOWN),
-}
-
 _CARD = "tool_data.$[card].data"
 #: Indexes keyed on the old fields; the new build creates their replacements at startup.
 OLD_INDEXES: tuple[tuple[str, str], ...] = (
@@ -121,6 +108,7 @@ class _GatedCall(BaseModel):
     gated_tool_name: str
     args_preview: dict[str, JsonValue] = Field(default_factory=dict)
     integration_name: str | None = None
+    at: datetime
 
 
 class _EntryRef(BaseModel):
@@ -149,7 +137,13 @@ async def _rename_entry_fields(
         return
     async for raw in entries.find({"summary": {"$exists": True}}):
         call = _GatedCall.model_validate(raw)
-        description = describe_call(call.gated_tool_name, call.args_preview, call.integration_name)
+        # Dates read as of the ask, in UTC: an old entry does not carry the user's zone.
+        description = describe_call(
+            call.gated_tool_name,
+            call.args_preview,
+            call.integration_name,
+            clock=UserClock(Timezone.utc(), call.at),
+        )
         await entries.update_one(
             {"_id": raw["_id"]},
             {"$set": {"description": description.model_dump()}, "$unset": {"summary": ""}},
@@ -260,19 +254,29 @@ def _print(report: Report) -> None:
     print(f"total: {report.left}")
 
 
+async def rewrite_all(db: AsyncIOMotorDatabase, *, apply: bool) -> None:
+    """Rewrite (or, without apply, count) every old value, printing the counts."""
+    _print(await rewrite(db, apply=apply))
+    if not apply:
+        print("\ndry run: nothing written. Re-run with --apply to rewrite.")
+
+
+async def verify_all(db: AsyncIOMotorDatabase) -> int:
+    """Print what is left and every entry the build cannot read; 1 while either is non-empty."""
+    report = await verify(db)
+    _print(report)
+    unreadable = await unreadable_entries(db)
+    for line in unreadable:
+        print(f"  UNREADABLE {line}")
+    print(f"unreadable entries: {len(unreadable)}")
+    return 1 if report.left or unreadable else 0
+
+
 async def _run(args: argparse.Namespace) -> int:
     db = MongoDB(settings.MONGO_DB, MONGO_DATABASE_NAME).database
     if args.verify:
-        report = await verify(db)
-        _print(report)
-        unreadable = await unreadable_entries(db)
-        for line in unreadable:
-            print(f"  UNREADABLE {line}")
-        print(f"unreadable entries: {len(unreadable)}")
-        return 1 if report.left or unreadable else 0
-    _print(await rewrite(db, apply=args.apply))
-    if not args.apply:
-        print("\ndry run: nothing written. Re-run with --apply to rewrite.")
+        return await verify_all(db)
+    await rewrite_all(db, apply=args.apply)
     return 0
 
 

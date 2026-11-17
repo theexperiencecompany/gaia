@@ -12,12 +12,11 @@ owner actually looks:
   redeems it and continues with the trace in its conversation.
 
 Every resume costs a fresh human tap, so no count cap is needed; one that
-cannot be enqueued raises to the tap.
+cannot be enqueued raises, and the decision's hand-off is retried by the sweeper.
 """
 
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
-from app.db.repositories.approval_ledger import approval_ledger_repository
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.analytics_service import capture
 from app.services.hil.errors import ResumeNotQueuedError, UnknownResumeOwnerError
@@ -33,9 +32,7 @@ from shared.py.wide_events import log
 
 
 async def resume_owner_after_approval(row: ApprovalLedgerDocument) -> None:
-    """Re-enqueue the background owner parked on this approved row, once per approval."""
-    if not await approval_ledger_repository.claim_resume(row.approval_id):
-        return
+    """Re-enqueue the background owner parked on this approved row; the decision's hand-off lease makes it once."""
     match row.owner_run_type:
         case "todo":
             await _resume_todo(row)
@@ -62,7 +59,7 @@ async def _resume_todo(row: ApprovalLedgerDocument) -> None:
     """Resume in the PARKED conversation so the receipt joins the run's own thread.
 
     The lock/defer machinery stays the arbiter of concurrency, exactly like a
-    scheduled fire. The grant is logged here, under the resume claim, because
+    scheduled fire. The grant is logged here, at the hand-off, because
     the resume job itself may be deferred and run again.
     """
     await record_activity(

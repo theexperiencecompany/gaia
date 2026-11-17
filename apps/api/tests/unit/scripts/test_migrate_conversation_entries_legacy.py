@@ -4,11 +4,10 @@ These builders feed the SSE chat stream and the message-to-tool_data
 conversion, so the wire contract is the invariant:
 
 - convert_legacy_tool_data must move every non-None legacy tool field into
-  a tool_data entry with a parseable ISO timestamp, never leave a converted
+  a tool_data entry stamped with the timestamp it is given, never leave a converted
   field at the top level, and preserve pre-existing unified entries.
 """
 
-from datetime import datetime
 import json
 
 from hypothesis import given, settings, strategies as st
@@ -26,12 +25,13 @@ JSON_VALUE = st.recursive(
 
 
 LEGACY_FIELD = next(field for field in tool_fields if field != "tool_data")
+STAMP = "2026-01-01T09:30:15.123456+00:00"
 
 
 class TestConvertLegacyToolDataExamples:
     def test_existing_entries_come_first_and_the_legacy_field_is_appended(self) -> None:
         existing = {"tool_name": "search_results", "data": {"q": "x"}}
-        output = convert_legacy_tool_data({"tool_data": [existing], LEGACY_FIELD: {"v": 1}})
+        output = convert_legacy_tool_data({"tool_data": [existing], LEGACY_FIELD: {"v": 1}}, STAMP)
 
         entries = output["tool_data"]
         assert isinstance(entries, list)
@@ -40,7 +40,7 @@ class TestConvertLegacyToolDataExamples:
         assert LEGACY_FIELD not in output
 
     def test_an_empty_tool_data_list_is_left_as_it_was(self) -> None:
-        assert convert_legacy_tool_data({"tool_data": [], "content": "hi"}) == {
+        assert convert_legacy_tool_data({"tool_data": [], "content": "hi"}, STAMP) == {
             "tool_data": [],
             "content": "hi",
         }
@@ -58,7 +58,7 @@ class TestConvertLegacyToolData:
     def test_legacy_fields_convert_and_nothing_else_changes(
         self, message: dict[str, object]
     ) -> None:
-        output = convert_legacy_tool_data(message)
+        output = convert_legacy_tool_data(message, STAMP)
         # The output must always be a JSON-serializable dict.
         assert json.dumps(output) is not None
 
@@ -80,9 +80,8 @@ class TestConvertLegacyToolData:
                 field = entry["tool_name"]
                 assert field not in output
                 assert entry["data"] == legacy_present[field]
-                # Timestamp must be a real ISO datetime, not a placeholder.
-                assert isinstance(entry["timestamp"], str)
-                datetime.fromisoformat(entry["timestamp"])
+                # The given stamp, never the clock: verify re-derives it and must match.
+                assert entry["timestamp"] == STAMP
         for field in legacy_present:
             assert field not in output
 

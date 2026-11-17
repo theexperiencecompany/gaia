@@ -5,6 +5,7 @@ import pytest
 from app.models.chat_models import ReactionBy
 from app.models.conversation_log_models import (
     ApprovalDecided,
+    ApprovalRequested,
     CancelWork,
     CommsPhase,
     ConversationState,
@@ -25,10 +26,11 @@ from app.models.conversation_log_models import (
     WorkOutcome,
     WorkStarted,
 )
-from app.services.conversation.reducer import reduce
+from app.services.conversation.reducer import reduce, stamped
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.conversation_wire import ReplyOutcome
 from tests.unit.services.conversation.log_helpers import (
+    EMPTY,
     asked,
     barge,
     decided,
@@ -984,3 +986,42 @@ def test_an_approval_decided_for_other_work_never_counts_for_detached_work() -> 
         [user("u1"), started("w", "t1", 1), detached, asked("a", "t1", "ap1"), decided("d", "ap1")]
     )
     assert [item.decided_approvals for item in state.work if item.task_id == "t2"] == [()]
+
+
+def _numbers_asked(entries: list[Entry]) -> list[int | None]:
+    """Fold entries as the log appends them, each request stamped; return the numbers they took."""
+    state, numbers = EMPTY, []
+    for seq, entry in enumerate(entries, start=1):
+        stored = stamped(state, entry)
+        if isinstance(stored, ApprovalRequested):
+            numbers.append(stored.number)
+        state = _accept(state, seq, stored).state
+    return numbers
+
+
+def test_an_approval_keeps_its_number_when_one_asked_before_it_is_decided() -> None:
+    """Regression: "yes 1" renumbered the rest, so "no 2" fell out of range."""
+    numbers = _numbers_asked(
+        [
+            user("u1"),
+            started("w", "t1", 1),
+            asked("a1", "t1", "ap1"),
+            asked("a2", "t1", "ap2"),
+            decided("d1", "ap1"),
+            asked("a3", "t1", "ap3"),
+        ]
+    )
+    assert numbers == [1, 2, 3]
+
+
+def test_numbering_starts_over_once_no_approval_is_open() -> None:
+    numbers = _numbers_asked(
+        [
+            user("u1"),
+            started("w", "t1", 1),
+            asked("a1", "t1", "ap1"),
+            decided("d1", "ap1"),
+            asked("a2", "t1", "ap2"),
+        ]
+    )
+    assert numbers == [1, 1]

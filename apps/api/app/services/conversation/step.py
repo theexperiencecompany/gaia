@@ -1,7 +1,7 @@
 """The conversation step: the one writer that answers a conversation's waking entries, in order."""
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 import contextlib
 import itertools
 from typing import cast
@@ -28,6 +28,7 @@ from app.models.conversation_log_models import (
     WorkflowFired,
 )
 from app.models.message_models import MessageDict
+from app.services.conversation.placement import watermark
 from app.services.conversation.ports import (
     ClaimLost,
     Kept,
@@ -41,9 +42,7 @@ from app.services.conversation.step_view import StepView
 from app.services.conversation.step_writes import (
     append_entry,
     conclude,
-    quoted_target,
     set_comms,
-    settle_inputs,
 )
 from app.services.conversation.todo_wake import nothing_to_report
 from app.services.conversation.verdict import merge_group
@@ -61,7 +60,7 @@ async def advance(ports: RuntimePorts, conversation_id: str, user_id: str) -> No
     claim = await ports.log.claim(conversation_id, user_id)
     if claim is None:
         return
-    with contextlib.suppress(ClaimLost):
+    with _until_claim_lost(claim):
         await _hold(ports, claim)
 
 
@@ -79,10 +78,23 @@ async def fold_history(ports: RuntimePorts, conversation_id: str, user_id: str) 
     claim = await ports.log.claim(conversation_id, user_id)
     if claim is None:
         return
-    with contextlib.suppress(ClaimLost):
+    with _until_claim_lost(claim):
         log.set(history_fold={"applied": await ports.runner.apply_fold(claim, plan)})
         # Whatever arrived while the claim was held is served, as by any step.
         await _hold(ports, claim)
+
+
+@contextlib.contextmanager
+def _until_claim_lost(claim: StepClaim) -> Iterator[None]:
+    """Stop writing once another holder took the claim: it recovers whatever this one left."""
+    try:
+        yield
+    except ClaimLost:
+        log.warning(
+            "conversation step lost its claim; the next holder recovers it",
+            conversation_id=claim.conversation_id,
+            epoch=claim.epoch,
+        )
 
 
 async def _hold(ports: RuntimePorts, claim: StepClaim) -> None:
@@ -133,31 +145,52 @@ async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
         return
     conversation_id = claim.conversation_id
     state = await ports.log.state(conversation_id, claim.user_id)
-    for logged in await ports.log.read_after(conversation_id, claim.user_id, state.settled_through):
+    logged_since = await ports.log.read_after(conversation_id, claim.user_id, state.settled_through)
+    for logged in logged_since:
         await ports.frames.publish(
             conversation_id, EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
         )
-    reply_id = state.open_reply
+    reply_id, open_seq = state.open_reply, state.open_reply_seq
     if reply_id is None and _started_work_unseen(state):
         # Committed work is never redone silently: the dead attempt gets a failed reply too.
         attempt_id = f"{claim.epoch}.0"
         reply_id = f"r{attempt_id}"
         opened = Reply(id=f"{attempt_id}:reply", reply_id=reply_id, attempt_id=attempt_id)
-        await append_entry(ports, claim, opened)
+        open_seq = (await append_entry(ports, claim, opened)).seq
     if reply_id is not None:
-        # Its inputs stay unsettled, so the next run answers them with this failure in its context.
+        # The work it started answers its inputs; the rest stay unsettled, and the next run
+        # answers them with this failure in its context.
+        answers, through = _answered_by_started_work(state, logged_since, open_seq)
         recovered = ReplySettled(
             id=f"{reply_id}:recovered:{claim.epoch}",
             reply_id=reply_id,
             outcome=ReplyOutcome.FAILED,
-            answers=(),
-            through=state.settled_through,
+            answers=answers,
+            through=through,
             quote_target=None,
             failure=FailureReason.SERVER_RESTART,
         )
         await append_entry(ports, claim, recovered)
     elif state.comms is not CommsPhase.IDLE:
         await set_comms(ports, claim, CommsPhase.IDLE)
+
+
+def _answered_by_started_work(
+    state: ConversationState, logged: Sequence[LoggedEntry], reply_seq: int | None
+) -> tuple[tuple[str, ...], int]:
+    """Return the waking inputs live work already answers, and the seq through which every input is.
+
+    Only inputs above the reply count: a reply never answers one logged below it.
+    """
+    started = {entry_id for work in state.work for entry_id in work.answers}
+    waking = [
+        item
+        for item in logged
+        if item.seq in state.unsettled_waking and (reply_seq is None or item.seq < reply_seq)
+    ]
+    answered = {item.seq for item in waking if item.entry.id in started}
+    through = watermark(waking, answered, state.settled_through)
+    return tuple(item.entry.id for item in waking if item.seq <= through), through
 
 
 def _started_work_unseen(state: ConversationState) -> bool:
@@ -182,9 +215,8 @@ async def _serve(
     pending = [logged for logged in entries if logged.seq in state.unsettled_waking]
     if not pending:
         return False, None
-    if await _answered_as_approval(ports, claim, state, pending[0], attempt_id):
-        return True, None
-    batch = _batch(pending)
+    typed = _typed_decision(state, pending[0])
+    batch = _batch(pending[:1] if typed else pending)
     attempt = Attempt(
         claim=claim,
         run_id=attempt_id,
@@ -196,11 +228,11 @@ async def _serve(
         view=view,
         hint_head=state.head,
     )
-    if await nothing_to_report(ports.log, conversation_id, claim.user_id, batch):
-        # The run said so itself, and its todo lets it: nothing is shown, its report stays on its WorkFinished.
-        attempt.covers = batch.waking
-        await conclude(ports, attempt, empty_reply(attempt), ReplyOutcome.SILENT)
+    if await _answered_without_run(ports, attempt, typed):
         return True, attempt.settled_view()
+    if typed is not None:
+        # Read alone: a typed decision arriving behind it never joins a run that cannot decide it.
+        attempt.closed = True
     if isinstance(batch.waking[0].entry, WorkflowFired) and not state.work:
         # Under this claim no comms run writes the threads, and no live work runs on the executor's.
         await ports.effects.reset_workflow_threads(conversation_id)
@@ -256,49 +288,36 @@ async def _turns_before(ports: RuntimePorts, claim: StepClaim, seq: int) -> list
     return turns
 
 
-async def _answered_as_approval(
-    ports: RuntimePorts,
-    claim: StepClaim,
-    state: ConversationState,
-    first: LoggedEntry,
-    attempt_id: str,
-) -> bool:
-    """Settle a button-less surface's typed answer to pending approvals with its ack, no run.
-
-    An answer with no ack (a yes with a change) settles silent: the work's re-ask is the reply.
-    """
+def _typed_decision(state: ConversationState, first: LoggedEntry) -> UserMessage | None:
+    """Return first when it may decide the approvals waiting: a button-less surface's message."""
     message = first.entry
-    awaiting = sorted(approval for item in state.work for approval in item.pending_approvals)
-    if not (
-        isinstance(message, UserMessage)
-        and message.surface in BOT_CONVERSATION_SOURCES
-        and awaiting
-    ):
+    if state.asking and isinstance(message, UserMessage):
+        return message if message.surface in BOT_CONVERSATION_SOURCES else None
+    return None
+
+
+async def _answered_without_run(
+    ports: RuntimePorts, attempt: Attempt, typed: UserMessage | None
+) -> bool:
+    """Settle the batch with no run: a typed answer to waiting approvals, or a todo run with nothing to report.
+
+    The resolver logs each approval's own decision; an answer with no ack (a yes with a change)
+    settles silent, since the work's re-ask is the reply. A todo run that said so itself shows
+    nothing, and its report stays on its WorkFinished.
+    """
+    claim, batch = attempt.claim, attempt.batch
+    reply, outcome = empty_reply(attempt), ReplyOutcome.SILENT
+    if typed is not None:
+        history = await _turns_before(ports, claim, batch.start)
+        answer = await ports.approvals.resolve(
+            claim.conversation_id, claim.user_id, typed.text, history
+        )
+        if answer is None:
+            return False
+        if answer.ack:
+            reply = reply.model_copy(update={"text": answer.ack})
+            outcome = ReplyOutcome.ANSWERED
+    elif not await nothing_to_report(ports.log, claim.conversation_id, claim.user_id, batch):
         return False
-    history = await _turns_before(ports, claim, first.seq)
-    # The resolver logs each approval's own decision; the step only acknowledges the reply.
-    answer = await ports.approvals.resolve(
-        claim.conversation_id, claim.user_id, message.text, history
-    )
-    if answer is None:
-        return False
-    ack = Reply(
-        id=f"{attempt_id}:reply",
-        reply_id=f"r{attempt_id}",
-        attempt_id=attempt_id,
-        text=answer.ack or "",
-    )
-    shown = await append_entry(ports, claim, ack)
-    answers = (message.id,)
-    settled = ReplySettled(
-        id=f"{attempt_id}:settled",
-        reply_id=ack.reply_id,
-        outcome=ReplyOutcome.ANSWERED if answer.ack else ReplyOutcome.SILENT,
-        answers=answers,
-        through=first.seq,
-        quote_target=(
-            await quoted_target(ports, claim, answers, first, shown.seq) if answer.ack else None
-        ),
-    )
-    await settle_inputs(ports, claim, (first,), settled, None)
+    await conclude(ports, attempt, reply, outcome, batch.waking)
     return True

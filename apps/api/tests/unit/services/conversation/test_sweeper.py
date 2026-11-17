@@ -8,7 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
-from app.constants.conversation import APPROVAL_EXPIRY_GRACE, WORK_LOST_REPORT
+from app.constants.conversation import (
+    APPROVAL_EXPIRY_GRACE,
+    APPROVAL_REGISTER_GRACE,
+    WORK_LOST_REPORT,
+)
 from app.db.repositories.conversation_sweep import SweepHead
 from app.models.conversation_log_models import ApprovalRequested, LiveWork, LoggedEntry, WorkOutcome
 from app.services.conversation.sweeper import SweepReport, sweep_conversations
@@ -88,6 +92,7 @@ def seams() -> Iterator[Seams]:
         repo.flush_outbox = AsyncMock()
         repo.read_log = AsyncMock(return_value=[])
         ledger_repo.get_by_approval_id = AsyncMock(return_value=None)
+        ledger_repo.list_stale_deliveries = AsyncMock(return_value=[])
         yield Seams(
             repo, kick, lost, finished, ledger_repo.get_by_approval_id, expire, unledgered, log
         )
@@ -137,6 +142,7 @@ async def test_it_flushes_ends_lost_work_and_kicks_unsettled_inputs(seams: Seams
         "lost_work": 1,
         "undecidable_approvals": 0,
         "kicked": 1,
+        "handed_off": 0,
         "failed": 0,
     }
 
@@ -212,6 +218,26 @@ async def test_work_left_only_with_approvals_nobody_holds_resumes_withdrawn_neve
     )
     seams.finished.assert_not_awaited()
     assert report == SweepReport(undecidable_approvals=1)
+
+
+async def test_a_request_whose_gate_is_still_registering_its_row_is_left_pending(
+    seams: Seams,
+) -> None:
+    """The gate asks in the log before it registers the row: a sweep in between must not withdraw it."""
+    work = _work("t1", frozenset({"a1"}))
+    asked = logged(3, _requested("a1", None))
+    seams.repo.list_heads_to_sweep.side_effect = [[_head("a", work=(work,))]]
+    seams.repo.read_log.return_value = [asked]
+
+    with patch(f"{MODULE}.runtime_ports") as ports:
+        ports.return_value = SimpleNamespace(
+            clock=lambda: asked.at + APPROVAL_REGISTER_GRACE - timedelta(seconds=1),
+            effects=SimpleNamespace(kick=seams.kick),
+        )
+        report = await sweep_conversations()
+
+    seams.unledgered.assert_not_awaited()
+    assert report == SweepReport()
 
 
 async def test_an_unledgered_approval_a_decision_beat_is_not_counted(seams: Seams) -> None:

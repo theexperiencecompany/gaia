@@ -116,15 +116,14 @@ class ApprovalProposal(BaseModel):
 class ApprovalLedgerDocument(MongoDocument, ApprovalProposal):
     """One entry in the executor-free approval ledger (``approval_ledger``).
 
-    Uncached and never expiring: rows are decision state read at low volume, and
-    a pending row leaves only by user decision or agent revoke — never by timer.
+    Uncached: rows are decision state read at low volume. A pending row leaves by a
+    decision the conversation log took: the user's, the agent's revoke, a stop, or expiry.
     """
 
     approval_id: str
-    # Whether a resume was already enqueued: the approve tap and any retry/reconnect
-    # share it, so exactly one resume per approval. Every further resume needs a
-    # fresh user approval (the human is the loop breaker).
-    owner_resumed: bool = False
+    # Set while a decision is being written and handed to the work, cleared once it was;
+    # one older than the lease is a hand-off that failed, and the sweeper carries it out.
+    delivering_since: datetime | None = None
     # None while pending; written explicitly so the live partial index can match null.
     outcome: ApprovalOutcome | None = None
     # What became of an approved action; None until it starts.

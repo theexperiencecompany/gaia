@@ -19,6 +19,7 @@ import time_machine
 from app.db.repositories.approval_ledger import (
     ApprovalLedgerRepository,
     approval_ledger_repository,
+    new_approval_id,
 )
 from app.models.hil_models import ApprovalProposal
 from shared.py.approvals import ActionResult, ApprovalOutcome
@@ -93,7 +94,7 @@ class TestRegister:
     async def test_inserts_pending_and_returns_new_id(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
-        ap_id = await repo.register(_PROPOSAL)
+        ap_id = await repo.register(_PROPOSAL, new_approval_id())
 
         assert re.fullmatch(r"ap_[0-9a-f]{12}", ap_id)
         inserted = collection.insert_one.await_args.args[0]
@@ -106,7 +107,7 @@ class TestRegister:
     async def test_the_row_is_stamped_now_and_leaves_its_id_to_mongo(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:
-        await repo.register(_PROPOSAL)
+        await repo.register(_PROPOSAL, new_approval_id())
 
         inserted = collection.insert_one.await_args.args[0]
         assert inserted["created_at"] == datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
@@ -121,7 +122,7 @@ class TestRegister:
         cursor.to_list = AsyncMock(return_value=[_doc(outcome="approved")])
         collection.find = MagicMock(return_value=cursor)
 
-        ap_id = await repo.register(_PROPOSAL)
+        ap_id = await repo.register(_PROPOSAL, new_approval_id())
 
         assert ap_id == "ap_1"
         collection.insert_one.assert_not_awaited()
@@ -137,7 +138,7 @@ class TestRegister:
         _find_returns(collection, [], [_doc(approval_id="ap_winner")])
         collection.insert_one = AsyncMock(side_effect=DuplicateKeyError("dup"))
 
-        ap_id = await repo.register(_PROPOSAL)
+        ap_id = await repo.register(_PROPOSAL, new_approval_id())
 
         assert ap_id == "ap_winner"
         lookups = [c.args[0] for c in collection.find.call_args_list]
@@ -153,7 +154,7 @@ class TestRegister:
         collection.insert_one = AsyncMock(side_effect=DuplicateKeyError("dup"))
 
         with pytest.raises(DuplicateKeyError):
-            await repo.register(_PROPOSAL)
+            await repo.register(_PROPOSAL, new_approval_id())
 
     async def test_terminal_fingerprint_registers_fresh(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
@@ -163,7 +164,7 @@ class TestRegister:
         cursor.to_list = AsyncMock(return_value=[_doc(outcome="withdrawn")])
         collection.find = MagicMock(return_value=cursor)
 
-        ap_id = await repo.register(_PROPOSAL)
+        ap_id = await repo.register(_PROPOSAL, new_approval_id())
 
         assert ap_id != "ap_1"
         collection.insert_one.assert_awaited_once()
@@ -242,22 +243,6 @@ class TestFinishAction:
 
 @pytest.mark.unit
 class TestClaims:
-    async def test_claim_resume_wins_only_an_unresumed_row(
-        self, repo: ApprovalLedgerRepository, collection: MagicMock
-    ) -> None:
-        assert await repo.claim_resume("ap_1") is True
-
-        flt, update = collection.update_one.await_args.args
-        assert flt == {"approval_id": "ap_1", "owner_resumed": False}
-        assert update == {"$set": {"owner_resumed": True}}
-
-    async def test_claim_resume_loser_gets_false(
-        self, repo: ApprovalLedgerRepository, collection: MagicMock
-    ) -> None:
-        collection.update_one = AsyncMock(return_value=MagicMock(modified_count=0))
-
-        assert await repo.claim_resume("ap_1") is False
-
     async def test_claim_executing_moves_approved_to_executing_with_a_stamp(
         self, repo: ApprovalLedgerRepository, collection: MagicMock
     ) -> None:

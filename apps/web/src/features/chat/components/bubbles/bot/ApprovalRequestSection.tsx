@@ -115,15 +115,12 @@ export default function ApprovalRequestSection({
   ) => {
     setSubmitting(decision);
     setPhase("submitting");
-    // Feedback rides deny only (sheet parity): an approve-with-note would
-    // execute beyond the granted permission, so the server converts it to
-    // deny — the card says so from the start.
-    const attachedFeedback =
-      decision === "deny" ? feedback.trim() || null : null;
+    // A note rides either decision, as on the review sheet: with Approve it is the
+    // change, and the work asks again with it instead of running the call as it stands.
     try {
       const outcome = await chatApi.postApprovalDecision(data.approval_id, {
         decision,
-        feedback: attachedFeedback ?? undefined,
+        feedback: feedback.trim() || undefined,
         scope,
       });
       // The server's screen ends the card with the action's result; reaching the

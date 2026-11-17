@@ -19,6 +19,7 @@ from app.models.message_models import MessageDict
 from app.services.hil.bridge import build_action_detail
 from app.services.hil.conversational import ledger_outcome_text, resolve_pending_from_message
 from app.services.hil.ledger_decide import LedgerDecision
+from app.services.hil.pending import PendingApproval
 from shared.py.approvals import ActionResult, ApprovalOutcome
 
 from .conftest import CONVERSATION_ID, USER_ID, jev_reply_body, serve_jev
@@ -60,7 +61,8 @@ def decide() -> Iterator[AsyncMock]:
 
 
 def _pending(*rows: ApprovalLedgerDocument) -> Any:
-    return patch(f"{MODULE}.pending_approvals", new=AsyncMock(return_value=list(rows)))
+    numbered = [PendingApproval(number=number, row=row) for number, row in enumerate(rows, 1)]
+    return patch(f"{MODULE}.pending_approvals", new=AsyncMock(return_value=numbered))
 
 
 def _decided(decide: AsyncMock) -> list[tuple[str, str, str | None]]:

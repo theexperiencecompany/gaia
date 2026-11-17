@@ -8,7 +8,7 @@ context slots, and the instant reaction, which is never asked for.
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager, contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
 import json
@@ -78,7 +78,7 @@ from app.constants.todos import TodoWakeKind
 from app.core.lazy_loader import providers
 from app.db.mongodb.indexes import CONVERSATION_ID_UNIQUE_KEYS, CONVERSATION_ID_UNIQUE_OPTIONS
 from app.db.redis import redis_cache
-from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.db.repositories.approval_ledger import approval_ledger_repository, new_approval_id
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversation_log import conversation_log_repository
 from app.db.repositories.conversations import conversation_repository
@@ -280,6 +280,8 @@ _SETTLE_SECONDS = 30.0
 _CONFIRM_SECONDS = 0.05
 _SHORT_TTL_SECONDS = 1
 _TRICKLE_SECONDS = 0.02
+# Later than the approval register grace and a decision hand-off lease: what a sweep that late finds stuck is stuck.
+_PAST_EVERY_SWEEP_GRACE = timedelta(minutes=3)
 
 
 class _Effects(RuntimeEffects):
@@ -1282,10 +1284,15 @@ async def _paused_on(rig: Rig, model: GatedModel, expires_at: datetime | None) -
 
 
 async def _settled_by_sweeps(rig: Rig) -> tuple[list[ApprovalDecided], list[WorkFinished]]:
-    """Sweep twice and let the step answer: what the log then holds for a1 and t1."""
-    for _ in range(2):
-        await sweep_conversations()
-        await rig.settle()
+    """Sweep twice, past every grace a sweep waits out, and let the step answer: what the log then holds."""
+    later = replace(rig.ports, clock=lambda: _now() + _PAST_EVERY_SWEEP_GRACE)
+    install_runtime_ports(later)
+    try:
+        for _ in range(2):
+            await sweep_conversations()
+            await rig.settle()
+    finally:
+        install_runtime_ports(rig.ports)
     return await rig.of(ApprovalDecided), await rig.of(WorkFinished)
 
 
@@ -1396,7 +1403,8 @@ async def test_work_that_ended_on_a_pending_approval_waits_for_it_and_a_stop_clo
             summary="Create the todo",
             owner_agent="executor",
             task_id="t1",
-        )
+        ),
+        new_approval_id(),
     )
     await record_approval_requested(
         rig.conversation_id,
@@ -1684,7 +1692,8 @@ async def test_an_approved_action_that_failed_still_says_so_on_its_card_after_a_
             summary="Send the invoice",
             owner_agent="gmail_agent",
             task_id="t1",
-        )
+        ),
+        new_approval_id(),
     )
     await record_approval_requested(
         rig.conversation_id,
@@ -1749,7 +1758,8 @@ async def test_an_agent_withdrawing_its_approval_reaches_the_log_and_every_devic
             summary="Send the invoice",
             owner_agent="gmail_agent",
             task_id="t1",
-        )
+        ),
+        new_approval_id(),
     )
     await record_approval_requested(
         rig.conversation_id,
@@ -3154,7 +3164,8 @@ async def _asking_on_a_ledger_approval(
             owner_run_type=owner_run_type,
             owner_id=owner_id,
             task_id="t1",
-        )
+        ),
+        new_approval_id(),
     )
     await record_approval_requested(
         rig.conversation_id,
@@ -3383,6 +3394,101 @@ async def test_a_parked_approval_with_no_ledger_entry_resumes_its_work_once_as_w
 
 
 @pytest.mark.service
+async def test_an_approve_whose_hand_off_failed_is_carried_out_once_by_the_sweep(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression for review finding 1: the card showed approved, the retried tap read it back, and the work was never told."""
+    model = gated("I need your approval to send it", "unused")
+    rig = await rig_for(model)
+    approval_id = await _parked_on_a_ledger_approval(rig, model)
+    spawned = _Spawned(rig)
+    blip = AsyncMock(side_effect=RedisConnectionError("blip"))
+
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        with (
+            patch.object(executor_runner, "reclaim_dead_lock", blip),
+            pytest.raises(RedisConnectionError),
+        ):
+            await ledger_decide.decide_ledger(
+                approval_id, user_id=rig.user_id, kind="approve", via="card"
+            )
+        retried = await ledger_decide.decide_ledger(
+            approval_id, user_id=rig.user_id, kind="approve", via="card"
+        )
+        told_before_the_sweep = len(spawned.task_ids)
+        await _settled_by_sweeps(rig)
+        await _settled_by_sweeps(rig)
+
+    assert (retried.committed, retried.outcome) == (False, ApprovalOutcome.APPROVED)
+    assert told_before_the_sweep == 0
+    assert len(spawned.task_ids) == 1
+    row = await approval_ledger_repository.get_by_approval_id(approval_id)
+    assert row is not None and row.outcome is ApprovalOutcome.APPROVED
+    assert row.delivering_since is None
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
+async def test_a_decision_whose_ledger_write_failed_is_followed_and_handed_off_by_the_sweep(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression for review finding 1: the log took the deny, the ledger row stayed live, and the work never heard."""
+    model = gated("I need your approval to send it", "unused")
+    rig = await rig_for(model)
+    approval_id = await _parked_on_a_ledger_approval(rig, model)
+    spawned = _Spawned(rig)
+    settle = approval_ledger_repository.settle
+    failing_once = AsyncMock(side_effect=[ConnectionError("mongo blip"), settle])
+
+    async def _settle_after_a_blip(*args: Any, **kwargs: Any) -> bool:
+        outcome = await failing_once(*args, **kwargs)
+        return await outcome(*args, **kwargs) if callable(outcome) else outcome
+
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        with (
+            patch.object(approval_ledger_repository, "settle", _settle_after_a_blip),
+            pytest.raises(ConnectionError),
+        ):
+            await ledger_decide.decide_ledger(
+                approval_id, user_id=rig.user_id, kind="deny", feedback="call it run7", via="card"
+            )
+        stuck = await approval_ledger_repository.get_by_approval_id(approval_id)
+        await _settled_by_sweeps(rig)
+
+    assert stuck is not None and stuck.outcome is None
+    row = await approval_ledger_repository.get_by_approval_id(approval_id)
+    assert row is not None
+    assert (row.outcome, row.feedback) == (ApprovalOutcome.DENIED, "call it run7")
+    assert len(spawned.task_ids) == 1
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
+async def test_a_tap_after_the_approval_expired_expires_it_and_never_approves(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression for review finding 21: before the sweep's grace ran out, a late Approve still ran the call."""
+    model = gated("I need your approval to send it", "It expired, so nothing was sent")
+    rig = await rig_for(model)
+    approval_id = await _parked_on_a_ledger_approval(
+        rig, model, expires_at=datetime.now(UTC) - timedelta(seconds=1)
+    )
+    spawned = _Spawned(rig)
+
+    with patch.object(executor_runner, "_spawn_detached_run", spawned.spawn):
+        late = await ledger_decide.decide_ledger(
+            approval_id, user_id=rig.user_id, kind="approve", via="card"
+        )
+
+    assert (late.committed, late.outcome) == (False, ApprovalOutcome.EXPIRED)
+    [decided] = await rig.of(ApprovalDecided)
+    assert (decided.outcome, decided.decider) == (ApprovalOutcome.EXPIRED, None)
+    row = await approval_ledger_repository.get_by_approval_id(approval_id)
+    assert row is not None and row.outcome is ApprovalOutcome.EXPIRED
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
+
+
+@pytest.mark.service
 async def test_a_workflow_approval_waits_for_the_user_and_resumes_the_workflow_once(
     rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
 ) -> None:
@@ -3601,7 +3707,8 @@ async def _ask_on_a_bot(rig: Rig, model: GatedModel) -> str:
             summary="Create todo",
             owner_agent=f"todos_{rig.conversation_id}",
             task_id="t1",
-        )
+        ),
+        new_approval_id(),
     )
     await record_approval_requested(
         rig.conversation_id,
@@ -3615,6 +3722,66 @@ async def _ask_on_a_bot(rig: Rig, model: GatedModel) -> str:
         ),
     )
     return approval_id
+
+
+async def _ask_again_in_t1(rig: Rig, title: str) -> str:
+    """Leave one more approval of t1 pending, as the gate asks it: in the log, then on the ledger."""
+    approval_id = new_approval_id()
+    await record_approval_requested(
+        rig.conversation_id,
+        rig.user_id,
+        ApprovalRequested(
+            id=f"approval:{approval_id}",
+            task_id="t1",
+            approval_id=approval_id,
+            description=described(f"Create todo {title}"),
+            expires_at=None,
+        ),
+    )
+    await approval_ledger_repository.register(
+        ApprovalProposal(
+            conversation_id=rig.conversation_id,
+            user_id=rig.user_id,
+            fingerprint=f"fp-todo-{title}",
+            tool_name="create_todo",
+            args={"title": title},
+            summary=f"Create todo {title}",
+            owner_agent=f"todos_{rig.conversation_id}",
+            task_id="t1",
+        ),
+        approval_id,
+    )
+    return approval_id
+
+
+@pytest.mark.service
+async def test_approval_numbers_stay_put_when_one_of_them_is_decided(
+    rig_for: RigFactory, mongo_db: AsyncIOMotorDatabase[dict[str, object]]
+) -> None:
+    """Regression: after "yes 1" the server renumbered the rest, so "no 2" fell out of range and #2 waited forever."""
+    model = gated("on it", "unused", "unused")
+    rig = await rig_for(model, approvals=HilApprovalReplies())
+    first = await _ask_on_a_bot(rig, model)
+    second = await _ask_again_in_t1(rig, "bread")
+
+    with (
+        _jev_out_of_credit(),
+        patch.object(executor_runner, "_spawn_detached_run", _Spawned(rig).spawn),
+    ):
+        await rig.send("m2", "yes 1", ConversationSource.TELEGRAM)
+        await rig.settle()
+        await rig.send("m3", "no 2", ConversationSource.TELEGRAM)
+        await rig.settle()
+
+    assert [(r.approval_id, r.number) for r in await rig.of(ApprovalRequested)] == [
+        (first, 1),
+        (second, 2),
+    ]
+    assert {d.approval_id: d.outcome for d in await rig.of(ApprovalDecided)} == {
+        first: ApprovalOutcome.APPROVED,
+        second: ApprovalOutcome.DENIED,
+    }
+    await mongo_db["approval_ledger"].delete_many({"conversation_id": rig.conversation_id})
 
 
 @pytest.mark.service
@@ -3632,7 +3799,7 @@ async def test_a_plain_yes_on_a_bot_decides_its_approval_with_the_classifier_dow
     [decided] = edges.logged.await_args_list
     assert decided.args[2:4] == (approval_id, ApprovalOutcome.APPROVED)
     assert len(model._prompts) == 1  # the ack, not a comms run, answered it
-    assert [r.text for r in await rig.of(Reply)][1:] == ["Got it, I'll create todo."]
+    assert [r.text for r in await rig.of(Reply)][1:] == ["Got it, I'll add a todo."]
 
 
 @pytest.mark.service
