@@ -9,7 +9,7 @@ import {
 
 function card(
   approval_id: string,
-  end: Partial<ApprovalEnd> = { outcome: null },
+  end: Partial<ApprovalEnd> = { status: "waiting" },
 ): {
   tool_name: string;
   data: ApprovalRequestData;
@@ -23,6 +23,7 @@ function card(
       integration_name: "gmail",
       summary: `Send ${approval_id}`,
       args_preview: {},
+      status: "waiting",
       outcome: null,
       ...end,
       feedback: null,
@@ -34,35 +35,35 @@ function card(
 const ENDINGS: [string, Partial<ApprovalEnd>, string, string][] = [
   [
     "approved by the user",
-    { outcome: "approved", decider: "user" },
+    { status: "approved", decider: "user" },
     "Approved",
     "Approved",
   ],
   [
     "approved by auto mode",
-    { outcome: "approved", decider: "auto" },
+    { status: "approved", decider: "auto" },
     "Ran automatically",
     "Auto-approved",
   ],
-  ["denied", { outcome: "denied", decider: "user" }, "Declined", "Denied"],
-  ["expired", { outcome: "expired" }, "Timed out", "Expired"],
-  ["cancelled", { outcome: "cancelled" }, "Cancelled", "Cancelled"],
-  ["withdrawn", { outcome: "withdrawn" }, "Withdrawn", "Withdrawn"],
+  ["denied", { status: "denied", decider: "user" }, "Declined", "Denied"],
+  ["expired", { status: "expired" }, "Timed out", "Expired"],
+  ["cancelled", { status: "cancelled" }, "Cancelled", "Cancelled"],
+  ["withdrawn", { status: "withdrawn" }, "Withdrawn", "Withdrawn"],
   [
     "approved, then ran",
-    { outcome: "approved", action: "executed" },
+    { status: "approved", action: "executed" },
     "Executed",
     "Executed",
   ],
   [
     "approved, then failed",
-    { outcome: "approved", action: "failed" },
+    { status: "approved", action: "failed" },
     "Failed",
     "Failed",
   ],
   [
     "approved, outcome unknown",
-    { outcome: "approved", action: "unknown" },
+    { status: "approved", action: "unknown" },
     "Unknown",
     "Unknown",
   ],
@@ -70,21 +71,23 @@ const ENDINGS: [string, Partial<ApprovalEnd>, string, string][] = [
 
 describe("resolved card and activity chip labels", () => {
   it.each(ENDINGS)("%s", (_name, end, cardLabel, chipLabel) => {
-    const facts = { outcome: null, ...end };
+    const facts: ApprovalEnd = { status: "waiting", ...end };
     expect(approvalLabel(facts, APPROVAL_RESOLVED_META)?.label).toBe(cardLabel);
     expect(approvalLabel(facts, APPROVAL_CHIP_META)?.label).toBe(chipLabel);
   });
 
   it("a pending card has no resolved label", () => {
-    expect(approvalLabel({ outcome: null }, APPROVAL_RESOLVED_META)).toBeNull();
-    expect(approvalLabel({ outcome: null }, APPROVAL_CHIP_META)).toBeNull();
+    expect(
+      approvalLabel({ status: "waiting" }, APPROVAL_RESOLVED_META),
+    ).toBeNull();
+    expect(approvalLabel({ status: "waiting" }, APPROVAL_CHIP_META)).toBeNull();
   });
 });
 
 describe("approvalOutcomeText", () => {
   it("says an approved action that failed did not go through", () => {
     const { data } = card("ap_1", {
-      outcome: "approved",
+      status: "approved",
       decider: "user",
       action: "failed",
     });
@@ -94,7 +97,7 @@ describe("approvalOutcomeText", () => {
   });
 
   it("prefers the user's own denial words", () => {
-    const { data } = card("ap_1", { outcome: "denied", decider: "user" });
+    const { data } = card("ap_1", { status: "denied", decider: "user" });
     expect(approvalOutcomeText({ ...data, feedback: "wrong person" })).toBe(
       "wrong person",
     );

@@ -4671,6 +4671,8 @@
             "title": "Updatedat"
           },
           "url": {
+            "description": "Return the conversation's web app page, built here so no client spells the route itself.",
+            "readOnly": true,
             "title": "Url",
             "type": "string"
           },
