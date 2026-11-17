@@ -55,7 +55,6 @@ from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
 from app.services.conversation.step import advance
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
-    BubblesDelta,
     BubbleTextDelta,
     CardsDelta,
     FailureReason,
@@ -138,9 +137,7 @@ def streamed_bubbles(deltas: list[ReplyDelta]) -> list[tuple[str, ...]]:
     shown: tuple[str, ...] = ()
     states = []
     for delta in deltas:
-        if isinstance(delta, BubblesDelta):
-            shown = delta.bubbles
-        elif isinstance(delta, BubbleTextDelta):
+        if isinstance(delta, BubbleTextDelta):
             grown = list(shown) + [""] * (delta.bubble + 1 - len(shown))
             grown[delta.bubble] += delta.text
             shown = tuple(grown)

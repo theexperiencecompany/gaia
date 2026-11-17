@@ -39,7 +39,6 @@ const index = z.number().int().min(0);
 
 const ReplyDeltaSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("bubble_text"), bubble: index, text: z.string() }),
-  z.object({ type: z.literal("bubbles"), bubbles: z.array(z.string()) }),
   z.object({
     type: z.literal("cards"),
     tool_data: z.array(ToolDataEntrySchema),

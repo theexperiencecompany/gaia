@@ -249,7 +249,6 @@ from shared.py.analytics.context import (
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
-    BubblesDelta,
     BubbleTextDelta,
     ImageData,
     ReplyDeltaFrame,
@@ -1572,8 +1571,6 @@ class _Screen:
                 if delta.bubble == len(shown):
                     shown.append("")
                 shown[delta.bubble] += delta.text
-            case ReplyDeltaFrame(reply_id=str(reply_id), payload=BubblesDelta(bubbles=bubbles)):
-                self.bubbles[reply_id] = list(bubbles)
             case _:
                 pass
 

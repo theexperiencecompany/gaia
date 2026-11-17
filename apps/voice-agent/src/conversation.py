@@ -21,7 +21,6 @@ from typing_extensions import override
 
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
-    BubblesDelta,
     BubbleTextDelta,
     ConversationUpdatedFrame,
     ReplyDelta,
@@ -196,12 +195,6 @@ class VoiceConversation:
                 self._bubbles[reply_id] = max(self._bubbles.get(reply_id, 0), bubble + 1)
                 piece = f"{NEW_MESSAGE_BREAKER}{text}" if opens and bubble > 0 else text
                 self._spoken(speech, speech.add(piece))
-            case BubblesDelta(bubbles=bubbles):
-                # Text the model took back was already spoken; only what follows it can still be said.
-                said = NEW_MESSAGE_BREAKER.join(bubbles)
-                self._bubbles[reply_id] = len(bubbles)
-                if said.startswith(speech.text):
-                    self._spoken(speech, speech.add(said[len(speech.text) :]))
             case _:
                 pass
 

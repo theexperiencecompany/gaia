@@ -2754,31 +2754,6 @@
         "title": "BubbleTextDelta",
         "type": "object"
       },
-      "BubblesDelta": {
-        "additionalProperties": false,
-        "description": "The reply's bubbles as they now stand, replacing every one shown: text the model took back is gone.",
-        "properties": {
-          "bubbles": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Bubbles",
-            "type": "array"
-          },
-          "type": {
-            "const": "bubbles",
-            "default": "bubbles",
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "bubbles"
-        ],
-        "title": "BubblesDelta",
-        "type": "object"
-      },
       "BudgetWindow": {
         "description": "One cost-budget window: how much of the allowance is used, and when it\nresets. Deliberately no raw USD \u2014 see ``cost_budget.get_budget_status``.",
         "properties": {
@@ -15953,7 +15928,6 @@
             "discriminator": {
               "mapping": {
                 "bubble_text": "#/components/schemas/BubbleTextDelta",
-                "bubbles": "#/components/schemas/BubblesDelta",
                 "cards": "#/components/schemas/CardsDelta",
                 "follow_up_actions": "#/components/schemas/FollowUpsDelta"
               },
@@ -15962,9 +15936,6 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/BubbleTextDelta"
-              },
-              {
-                "$ref": "#/components/schemas/BubblesDelta"
               },
               {
                 "$ref": "#/components/schemas/CardsDelta"

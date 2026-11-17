@@ -27,7 +27,7 @@ from app.services.conversation.ports import (
     RuntimePorts,
 )
 from app.services.conversation.reply_analytics import capture_reply_ended, spoken_context
-from app.services.conversation.reply_text import ReplyText, screen_bubbles
+from app.services.conversation.reply_text import ReplyText, bubble_deltas, screen_bubbles
 from app.services.conversation.step_attempt import (
     Attempt,
     Quiet,
@@ -40,7 +40,6 @@ from app.services.conversation.step_view import StepView
 from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
 from shared.py.conversation_wire import (
-    BubblesDelta,
     BubbleTextDelta,
     FailureReason,
     ReplyDelta,
@@ -138,7 +137,7 @@ async def react_on(ports: RuntimePorts, attempt: Attempt, seqs: Sequence[int], e
 
 
 async def publish_delta(ports: RuntimePorts, attempt: Attempt, change: ReplyDelta) -> None:
-    if isinstance(change, BubbleTextDelta | BubblesDelta):
+    if isinstance(change, BubbleTextDelta):
         attempt.shown = attempt.bubbles(ports.links)
     delta = ReplyDeltaFrame(
         attempt_id=attempt.attempt_id,
@@ -201,8 +200,8 @@ async def put_reply(ports: RuntimePorts, attempt: Attempt, reply: Reply) -> Logg
     if not isinstance(attempt.progress, Showing):
         return await append_opening(ports, attempt, await opening_reply(ports, attempt, reply))
     settled = screen_bubbles(reply.text, attempt.claim.conversation_id, ports.links)
-    if settled != attempt.shown:
-        await publish_delta(ports, attempt, BubblesDelta(bubbles=settled))
+    for change in bubble_deltas(attempt.shown, settled):
+        await publish_delta(ports, attempt, change)
     return await amend_seen(ports, attempt, reply)
 
 

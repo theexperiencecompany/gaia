@@ -224,15 +224,6 @@ class BubbleTextDelta(BaseModel):
     text: str
 
 
-class BubblesDelta(BaseModel):
-    """The reply's bubbles as they now stand, replacing every one shown: text the model took back is gone."""
-
-    model_config = WIRE_CONFIG
-
-    type: Literal["bubbles"] = "bubbles"
-    bubbles: tuple[str, ...]
-
-
 class CardsDelta(BaseModel):
     """The reply's cards as they now stand, with the timeline they fold to."""
 
@@ -252,9 +243,7 @@ class FollowUpsDelta(BaseModel):
     follow_up_actions: tuple[str, ...]
 
 
-ReplyDelta = Annotated[
-    BubbleTextDelta | BubblesDelta | CardsDelta | FollowUpsDelta, Field(discriminator="type")
-]
+ReplyDelta = Annotated[BubbleTextDelta | CardsDelta | FollowUpsDelta, Field(discriminator="type")]
 
 
 class ReplyDeltaFrame(BaseModel):

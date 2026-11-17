@@ -7017,19 +7017,6 @@ export interface components {
             task: string;
         };
         /**
-         * BubblesDelta
-         * @description The reply's bubbles as they now stand, replacing every one shown: text the model took back is gone.
-         */
-        BubblesDelta: {
-            /** Bubbles */
-            bubbles: string[];
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "bubbles";
-        };
-        /**
          * BubbleTextDelta
          * @description More text for one bubble of the reply; a bubble past the last opens it.
          */
@@ -13433,7 +13420,7 @@ export interface components {
              */
             kind: "reply_delta";
             /** Payload */
-            payload: components["schemas"]["BubbleTextDelta"] | components["schemas"]["BubblesDelta"] | components["schemas"]["CardsDelta"] | components["schemas"]["FollowUpsDelta"];
+            payload: components["schemas"]["BubbleTextDelta"] | components["schemas"]["CardsDelta"] | components["schemas"]["FollowUpsDelta"];
             /** Reply Id */
             reply_id: string | null;
         };
@@ -17191,7 +17178,6 @@ export type BrowserSessionStatus = components['schemas']['BrowserSessionStatus']
 export type BrowserStopOutcome = components['schemas']['BrowserStopOutcome'];
 export type BrowserTaskFrame = components['schemas']['BrowserTaskFrame'];
 export type BrowserTaskResponse = components['schemas']['BrowserTaskResponse'];
-export type BubblesDelta = components['schemas']['BubblesDelta'];
 export type BubbleTextDelta = components['schemas']['BubbleTextDelta'];
 export type BudgetWindow = components['schemas']['BudgetWindow'];
 export type BuiltInEngine = components['schemas']['BuiltInEngine'];

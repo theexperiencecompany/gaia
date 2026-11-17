@@ -417,7 +417,7 @@ export class ConversationFollower {
     if (!this.options.streaming) return;
     const reply = this.replyFor(attemptId, replyId);
     if (!reply) return;
-    if (payload.type !== "bubble_text" && payload.type !== "bubbles") return;
+    if (payload.type !== "bubble_text") return;
     const draft = this.view.drafts.find((held) => held.attemptId === attemptId);
     if (!draft) return;
     await reply.delivery.bubbles(draft.content.bubbles);

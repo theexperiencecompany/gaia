@@ -249,6 +249,7 @@ class TestShownSoFar:
             (f"Hello.{BR}Sure", f"Hello.{BR}Sure"),
             ("< 5 items left", "< 5 items left"),
             ("<❤️>", "<❤️>"),
+            ("Hi<NE<", "Hi"),
         ],
     )
     def test_only_a_break_still_being_written_is_held(self, text: str, shown: str) -> None:
