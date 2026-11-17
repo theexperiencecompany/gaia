@@ -21,6 +21,7 @@ from app.agents.prompts.todo_prompts import TODO_SYSTEM_PROMPT
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.agents.workspace.operational_docs import GAIA_CORE
 from app.constants.chat import ConversationSource
+from app.constants.reactions import REACTION_PALETTE_BY_SURFACE
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
 # Approvals inside the app (web, mobile, desktop and a voice call) are decided on a card.
@@ -110,9 +111,11 @@ WHAT TO DO INSTEAD:
 
 # Telegram's reaction API takes only a fixed emoji set; anything else reaches
 # the user as a separate text bubble instead of a reaction on their message.
-_TELEGRAM_REACTIONS: Final[str] = """
-
-REACTIONS ON TELEGRAM: a reaction attaches to their message only with one of 👍 ❤ 🔥 👏 😁 🤣 😭 🙏 👌 🎉 👀 💯 🤝 🤔 😢 🥰 😎 🤗. Pick from these; any other emoji arrives as a separate text message."""
+_TELEGRAM_REACTIONS: Final[str] = (
+    "\n\nREACTIONS ON TELEGRAM: a reaction attaches to their message only with one of "
+    f"{' '.join(REACTION_PALETTE_BY_SURFACE[ConversationSource.TELEGRAM])}. "
+    "Pick from these; any other emoji arrives as a separate text message."
+)
 
 
 _WHATSAPP_ADDENDUM: Final[str] = _text_only_addendum(

@@ -14,6 +14,7 @@ from app.agents.templates.agent_template import (
     get_executor_prompt,
 )
 from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.constants.reactions import REACTION_PALETTE_BY_SURFACE
 
 OPENUI_MARKER = "## Output Format (this app renders rich components)"
 PLATFORM_MARKER = "Platform Context"
@@ -65,6 +66,12 @@ class TestOpenuiVariants:
         ):
             assert TELEGRAM_REACTIONS_MARKER not in get_comms_static_prompt(source)
         assert TELEGRAM_REACTIONS_MARKER in get_comms_static_prompt(ConversationSource.TELEGRAM)
+
+    def test_the_telegram_prompt_lists_exactly_the_palette_the_reaction_check_reads(self) -> None:
+        prompt = get_comms_static_prompt(ConversationSource.TELEGRAM)
+        listed = prompt.split(TELEGRAM_REACTIONS_MARKER)[1].split("one of ")[1].split(". Pick")[0]
+        palette = REACTION_PALETTE_BY_SURFACE[ConversationSource.TELEGRAM]
+        assert listed.split() == list(palette)
 
     def test_reaction_rules_close_the_platform_block(self) -> None:
         assert _text_only_addendum("X", "fmt", "\n\nREACT").endswith("brevity.\n\nREACT")
