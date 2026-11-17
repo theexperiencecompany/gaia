@@ -39,6 +39,7 @@ from app.services.chat.stream import (
 )
 from app.services.files import FileService
 from app.services.turn_clock import TurnClock, TurnMark
+from app.services.turn_timings import TurnStep, begin_turn_timings
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -476,8 +477,9 @@ class TestRunChatStreamTurnDerivations:
         todo_id: str | None = None,
         save_waits_for_lookup: bool = False,
         clock: TurnClock | None = None,
+        resolved_by_approval: bool = False,
     ) -> dict[str, Any]:
-        seen: dict[str, Any] = {}
+        seen: dict[str, Any] = {"timings": begin_turn_timings()}
         lookup_started = asyncio.Event()
 
         async def looked_up(*_args: object, **_kwargs: object) -> str | None:
@@ -516,8 +518,10 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "_capture_presence", AsyncMock(return_value=None)),
             patch.object(chat_stream, "_publish_init_chunk", fake_publish_init),
             patch.object(
-                chat_stream, "_resolve_pending_approval_turn", AsyncMock(return_value=False)
-            ),
+                chat_stream,
+                "_resolve_pending_approval_turn",
+                AsyncMock(return_value=resolved_by_approval),
+            ) as resolve_approval,
             patch.object(chat_stream, "schedule_last_active_touch"),
             patch.object(chat_stream, "forward_artifact_events", AsyncMock()),
             patch.object(chat_stream, "_start_description_task", MagicMock(return_value=None)),
@@ -540,9 +544,42 @@ class TestRunChatStreamTurnDerivations:
             )
 
         seen["register_capture"] = register_capture
+        seen["resolve_approval"] = resolve_approval
         seen["attach_uploads"] = attach_uploads
         seen["get_todo_id"] = get_todo_id
         return seen
+
+    async def test_prep_times_presence_the_init_chunk_and_the_approval_check_in_order(
+        self,
+    ) -> None:
+        seen = await self._run(MessageRequestWithHistory(message="hi", messages=[]))
+
+        assert [step for _, step in seen["timings"].steps] == [
+            TurnStep.PRESENCE,
+            TurnStep.INIT_CHUNK,
+            TurnStep.APPROVAL_CHECK,
+        ]
+
+    async def test_the_approval_check_sees_the_turns_identity(self) -> None:
+        body = MessageRequestWithHistory(message="yes", messages=[], conversation_id="conv-1")
+
+        seen = await self._run(body)
+
+        seen["resolve_approval"].assert_awaited_once_with(
+            body,
+            AuthenticatedUser(user_id=USER_ID),
+            "conv-1",
+            "stream-1",
+            seen["state"],
+            "whatsapp",
+        )
+
+    async def test_a_reply_that_resolves_an_approval_ends_the_turn(self) -> None:
+        seen = await self._run(
+            MessageRequestWithHistory(message="yes", messages=[]), resolved_by_approval=True
+        )
+
+        assert "turn" not in seen
 
     async def test_a_file_turn_on_an_existing_conversation_is_attached(self) -> None:
         seen = await self._run(

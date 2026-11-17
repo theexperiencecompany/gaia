@@ -14,6 +14,8 @@ Add/change config
 import asyncio
 from typing import cast
 
+from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import CheckpointTuple
 from langgraph.checkpoint.postgres.aio import (
     AsyncPostgresSaver,
 )
@@ -29,6 +31,19 @@ from app.constants.db import (
     LANGGRAPH_SETUP_LOCK_POLL_SECONDS,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.services.turn_timings import TurnStep, turn_step
+
+
+class TurnTimedPostgresSaver(AsyncPostgresSaver):
+    """The Postgres checkpointer, timing each thread-state load as the turn's agent_state step.
+
+    Its queries run on this module's own psycopg pool, outside the SQLAlchemy
+    engine the store timings hook, so the step is how they stay visible.
+    """
+
+    async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
+        with turn_step(TurnStep.AGENT_STATE):
+            return await super().aget_tuple(config)
 
 
 class CheckpointerManager:
@@ -71,7 +86,7 @@ class CheckpointerManager:
         # AsyncPostgresSaver sets row_factory=dict_row on every cursor itself,
         # so the pool's own factory is irrelevant — kept on default tuple rows
         # since other callers (cleanup, retention) index by position.
-        self.checkpointer = AsyncPostgresSaver(
+        self.checkpointer = TurnTimedPostgresSaver(
             conn=cast(AsyncConnectionPool[AsyncConnection[DictRow]], self.pool)
         )
         # Session-level lock on an autocommit connection, held across both setups so

@@ -171,6 +171,10 @@ CORE_CONTEXT_CACHE_KEY = "user:{user_id}:memory:core"
 # vector match + one Postgres query for vector hits, pins and OR-matched words.
 # Covers the query embed's p95 (306ms from prod) less the setup it overlaps.
 FAST_RECALL_BUDGET_SECONDS = 0.25
+# The lane's wait for its semantic hits. Past it the lane answers with pins and
+# word matches, so a late embedding costs only the vector hits, never the whole
+# section; what is left of the section budget covers the Postgres read.
+FAST_RECALL_SEMANTIC_BUDGET_SECONDS = 0.2
 # The worker tiers' deep recall, off the reply path: its rerank alone was 2.3s p50
 # in prod, so this only cuts off a hung store, never a slow-but-working recall.
 MEMORY_RECALL_BUDGET_SECONDS = 10.0

@@ -33,6 +33,7 @@ from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.user_models import AuthenticatedUser
 from app.schemas.errors import ErrorEnvelope, error_response
+from app.services.turn_timings import TurnStep, turn_step
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -299,10 +300,10 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         request.state.authenticated = False
         request.state.new_session = None
 
-        if wos_session:
-            await self._authenticate_wos_session(request, wos_session)
-
-        await self._authenticate_agent_token(request, auth_provider="workos")
+        with turn_step(TurnStep.AUTH):
+            if wos_session:
+                await self._authenticate_wos_session(request, wos_session)
+            await self._authenticate_agent_token(request, auth_provider="workos")
 
         self._publish_user(request)
         response = await call_next(request)
