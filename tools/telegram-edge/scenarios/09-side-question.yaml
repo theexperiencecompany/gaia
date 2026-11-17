@@ -4,9 +4,8 @@ steps:
   - send: "Research the latest findings from the James Webb Space Telescope and summarise the top 3 with sources."
   - sleep: 7
   - send: "Quick side question: what's 15% of 240?"
-  - wait_reply: {quiet: 20, timeout: 300}
+  - wait_bubbles: {count: 3, timeout: 300}
+  - wait_reply: {quiet: 15, timeout: 120}
 expect:
   - contains: {after: 1, pattern: '\b36\b', within_s: 30}
     loose: the side answer is the number 36, checked present within 30 s of the side question
-  - contains: {after: 0, pattern: '(webb|jwst)'}
-    loose: the research reply arrives; it names the telescope

@@ -175,6 +175,17 @@ async def _wait_for(ctx: StepContext, step: dict[str, object]) -> None:
     await wait_for(ctx.recorder, str(step["wait_for"]), timeout)
 
 
+async def _wait_bubbles(ctx: StepContext, step: dict[str, object]) -> None:
+    opts = _options(step["wait_bubbles"])
+    count = int(str(opts["count"]))
+    deadline = time.monotonic() + float(str(opts.get("timeout", DEFAULT_REPLY_TIMEOUT_S)))
+    while len(ctx.recorder.t.bot) < count:
+        if time.monotonic() > deadline:
+            ctx.recorder.mark("step_timeout", f"{len(ctx.recorder.t.bot)} of {count} bubbles shown")
+            raise StepTimeoutError(f"{count} bubbles not shown")
+        await asyncio.sleep(WAIT_TICK_S)
+
+
 async def _set_tool_ask(ctx: StepContext, step: dict[str, object]) -> None:
     opts = _options(step["set_tool_ask"])
     tool = str(opts["tool"])
@@ -198,6 +209,7 @@ STEP_HANDLERS: dict[str, StepHandler] = {
     "sleep": _sleep,
     "wait_reply": _wait_reply,
     "wait_for": _wait_for,
+    "wait_bubbles": _wait_bubbles,
     "set_tool_ask": _set_tool_ask,
     "restart_bot": _restart_bot,
 }

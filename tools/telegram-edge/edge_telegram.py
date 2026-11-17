@@ -71,7 +71,8 @@ class Recorder:
         if m.out:
             sent = self._sent.get(m.id)
             emojis = _emojis(m)
-            if sent is not None and (not sent.reactions or sent.reactions[-1].emojis != emojis):
+            previous = sent.reactions[-1].emojis if sent and sent.reactions else ()
+            if sent is not None and emojis != previous:
                 sent.reactions.append(ReactionState(self.now(), emojis))
                 self.last_change = time.monotonic()
             return

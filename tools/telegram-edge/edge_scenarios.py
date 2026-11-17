@@ -3,6 +3,7 @@
 A step is one of:
   send: <text>                     burst: [<text>, ...] (gap: s)      sleep: <s>
   wait_reply: {quiet, timeout}     wait_for: approval_prompt | bot_message (timeout: s)
+  wait_bubbles: {count, timeout}   until the run has shown at least count bot bubbles
   set_tool_ask: {tool, ask}        restart_bot: {down}
 Texts and patterns may use {nonce}, a token unique to the run.
 
@@ -29,13 +30,24 @@ import yaml
 
 SCENARIO_DIR = Path(__file__).resolve().parent / "scenarios"
 STEP_KINDS = frozenset(
-    {"send", "burst", "sleep", "wait_reply", "wait_for", "set_tool_ask", "restart_bot"}
+    {
+        "send",
+        "burst",
+        "sleep",
+        "wait_reply",
+        "wait_for",
+        "wait_bubbles",
+        "set_tool_ask",
+        "restart_bot",
+    }
 )
 WAIT_TARGETS = frozenset({"approval_prompt", "bot_message"})
 EXPECTATION_KINDS = frozenset(
     {"contains", "distinct_answers", "arrives", "prompts", "reaction", "todos", "approval_numbers"}
 )
 TEXT_EXPECTATIONS = frozenset({"contains", "distinct_answers", "arrives"})
+# Work can run for a while with nothing on screen; a scenario ends only after this long with no change.
+DEFAULT_SETTLE_S = 20.0
 SEVERITIES = frozenset({"fail", "warn"})
 
 Todo = dict[str, object]
@@ -77,7 +89,7 @@ class Scenario:
     steps: list[dict[str, object]]
     expect: list[Expectation] = field(default_factory=list)
     budgets: Budgets = field(default_factory=Budgets)
-    settle_s: float = 10.0
+    settle_s: float = DEFAULT_SETTLE_S
     fresh: bool = True
 
     @property
@@ -186,7 +198,7 @@ def parse_scenario(raw: object, nonce: str) -> Scenario:
         budgets=Budgets(
             first_response_s=float(str(budgets.get("first_response_s", Budgets.first_response_s)))
         ),
-        settle_s=float(str(doc.get("settle_s", 10.0))),
+        settle_s=float(str(doc.get("settle_s", DEFAULT_SETTLE_S))),
         fresh=bool(doc.get("fresh", True)),
     )
 
