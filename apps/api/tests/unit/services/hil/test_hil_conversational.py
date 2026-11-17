@@ -105,8 +105,10 @@ class TestNothingPending:
         # The resolver sits on the critical path of EVERY chat message. If it classified
         # before checking whether anything was pending, every user would pay an LLM call
         # per message for a feature most of them have switched off.
-        with patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[])):
+        listed = AsyncMock(return_value=[])
+        with patch(f"{MODULE}.list_pending_for_conversation", new=listed):
             assert await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "hey") is None
+        listed.assert_awaited_once_with(CONVERSATION_ID)
         resolver["llm"].assert_not_awaited()
         resolver["resolve"].assert_not_awaited()
 

@@ -274,7 +274,8 @@ class TestWorkspaceSessionNeverGuesses:
 #: section renders — so a survivor can be told apart from the section that failed.
 FALLIBLE_SOURCES = [
     ("app.memory.engine.memory_engine.get_core_context", "Prefers short answers"),
-    ("app.memory.engine.memory_engine.recall", "Ships on Fridays"),
+    # Comms reads its memories from the fast lane, not the deep recall.
+    ("app.memory.fast_recall.fast_recall", "Ships on Fridays"),
     (
         "app.services.gaia_knowledge_service.gaia_knowledge_service.search_knowledge",
         "GAIA can run scheduled workflows",

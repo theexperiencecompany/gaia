@@ -21,6 +21,7 @@ from app.constants.analytics import POSTHOG_PROVIDER_KEY, POSTHOG_SESSION_HEADER
 from app.constants.auth import (
     DEV_USER_HEADER,
     DEV_USER_MISSING_HINT,
+    SESSION_HINT_COOKIE,
     WOS_SESSION_COOKIE,
     WOS_SESSION_MAX_AGE_SECONDS,
 )
@@ -35,11 +36,14 @@ from app.schemas.errors import ErrorEnvelope, error_response
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
+    clear_session_hint_cookie,
     resolve_dev_bypass_user,
     set_session_cookie,
+    set_session_hint_cookie,
 )
 from app.utils.local_auth_utils import (
     LOCAL_SESSION_COOKIE,
+    SESSION_TTL_SECONDS,
     LocalSessionFailure,
     authenticate_local_session,
 )
@@ -127,6 +131,32 @@ class PostHogRequestContextMiddleware(BaseHTTPMiddleware):
             with new_context(capture_exceptions=False):  # pragma: no mutate — None is falsy too
                 identify_context(str(user_id))
                 return await call_next(request)
+
+
+def _response_sets_hint(response: Response) -> bool:
+    """Whether the route already set or cleared the signed-in hint (login, logout, rotation)."""
+    prefix = f"{SESSION_HINT_COOKIE}="
+    return any(header.startswith(prefix) for header in response.headers.getlist("set-cookie"))
+
+
+def _sync_session_hint(
+    request: Request, response: Response, *, session_cookie: str, max_age: int
+) -> None:
+    """Keep the signed-in hint matching the session cookie the request carried.
+
+    A session from before the hint existed gets one; a hint whose session is gone or
+    rejected is dropped, so the web stops asking /user/me. A transient auth error
+    (no auth_failure recorded) leaves it alone.
+    """
+    if _response_sets_hint(response):
+        return
+    has_session = bool(request.cookies.get(session_cookie))
+    has_hint = SESSION_HINT_COOKIE in request.cookies
+    if request.state.authenticated:
+        if has_session and not has_hint:
+            set_session_hint_cookie(response, request, max_age=max_age)
+    elif has_hint and (not has_session or getattr(request.state, "auth_failure", None)):
+        clear_session_hint_cookie(response, request)
 
 
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):
@@ -286,6 +316,13 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 value=request.state.new_session,
                 max_age=WOS_SESSION_MAX_AGE_SECONDS,
             )
+        else:
+            _sync_session_hint(
+                request,
+                response,
+                session_cookie=WOS_SESSION_COOKIE,
+                max_age=WOS_SESSION_MAX_AGE_SECONDS,
+            )
 
         return response
 
@@ -384,7 +421,11 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         request.state.user = build_user_context(user_data, auth_provider="workos", dev_bypass=True)
         request.state.authenticated = True
         self._publish_user(request)
-        return await call_next(request)
+        response = await call_next(request)
+        # The bypass has no session cookie; the hint still lets marketing pages show the dev user.
+        if SESSION_HINT_COOKIE not in request.cookies and not _response_sets_hint(response):
+            set_session_hint_cookie(response, request, max_age=WOS_SESSION_MAX_AGE_SECONDS)
+        return response
 
     async def _dispatch_local_session(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
@@ -408,16 +449,21 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
         if token:
             session = await authenticate_local_session(token)
-            if isinstance(session, LocalSessionFailure):
-                request.state.auth_failure = session
-            else:
+            if isinstance(session, AuthenticatedUser):
                 request.state.user = session
                 request.state.authenticated = True
+            # An unavailable check is transient, like the WorkOS path's error: no rejection.
+            elif session is not LocalSessionFailure.UNAVAILABLE:
+                request.state.auth_failure = session
 
         await self._authenticate_agent_token(request, auth_provider="email")
 
         self._publish_user(request)
-        return await call_next(request)
+        response = await call_next(request)
+        _sync_session_hint(
+            request, response, session_cookie=LOCAL_SESSION_COOKIE, max_age=SESSION_TTL_SECONDS
+        )
+        return response
 
     @staticmethod
     def _publish_user(request: Request) -> None:
