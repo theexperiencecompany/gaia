@@ -69,6 +69,8 @@ _KEY_FIELDS = (
 
 _SCREENCAST_FRAME_EVENT = "Page.screencastFrame"
 _FRAME_NAVIGATED_EVENT = "Page.frameNavigated"
+# The main frame's document is parsed: its title and icon can be read.
+_DOM_CONTENT_EVENT = "Page.domContentEventFired"
 _DETACHED_EVENT = "Target.detachedFromTarget"
 
 _EventHandler = Callable[[dict[str, Any]], None]
@@ -222,8 +224,9 @@ def _route_event(
     if method == _SCREENCAST_FRAME_EVENT:
         _on_screencast_frame(mux, stream, frames, background, params)
     elif method == _FRAME_NAVIGATED_EVENT and params.get("frame", {}).get("parentId") is None:
-        # The new page's frames can arrive before the reread; they must not name the old page.
+        # The new page's frames can arrive before its title is parsed; they must not name the old page.
         stream.meta.url = params.get("frame", {}).get("url", stream.meta.url)
+    elif method == _DOM_CONTENT_EVENT:
         _spawn(background, _refresh_meta(mux, stream))
     elif method == _DETACHED_EVENT:
         stream.detached.set()
@@ -260,9 +263,9 @@ def _spawn(background: set[asyncio.Task[Any]], coro: Coroutine[object, object, o
     task.add_done_callback(background.discard)
 
 
-# The icon the PAGE declares, resolved absolute, preferring the largest declared
-# size; falls back to /favicon.ico, as a browser does when nothing is declared.
-_FAVICON_JS = """(() => {
+# Read in the document, not via Target.getTargetInfo: the browser process can still
+# answer an empty url for a commit the renderer has already painted. Icon: largest declared, else /favicon.ico.
+_PAGE_META_JS = """(() => {
   const links = [...document.querySelectorAll('link[rel~="icon" i]')];
   const score = (l) => {
     const s = (l.getAttribute('sizes') || '').match(/\\d+/);
@@ -270,41 +273,42 @@ _FAVICON_JS = """(() => {
   };
   const best = links.sort((a, b) => score(b) - score(a))[0];
   const href = best && best.getAttribute('href');
+  let favicon = null;
   try {
-    return new URL(href || '/favicon.ico', document.baseURI).href;
-  } catch (e) {
-    return null;
-  }
+    favicon = new URL(href || '/favicon.ico', document.baseURI).href;
+  } catch (e) {}
+  return {url: location.href, title: document.title, favicon};
 })()"""
 
 
-async def _read_favicon(mux: CdpMux, page_session: str) -> str | None:
-    """Return the page's own favicon URL, or None when it cannot be read.
+async def _refresh_meta(mux: CdpMux, stream: _Stream) -> None:
+    """Reread the tab from the page the frames show, keeping the last one when the page will not answer.
 
-    A favicon is decoration, so a page that blocks evaluation (or is
-    mid-navigation) must not break the metadata the tab actually needs.
+    A page mid-navigation (or blocking evaluation) is reread at its next
+    DOMContentLoaded; its address meanwhile follows Page.frameNavigated.
     """
     try:
         result = await cdp_call(
             mux,
             "Runtime.evaluate",
-            {"expression": _FAVICON_JS, "returnByValue": True},
-            session_id=page_session,
+            {"expression": _PAGE_META_JS, "returnByValue": True},
+            session_id=stream.page_session,
         )
     except (CDPTimeoutError, CdpCommandError) as exc:
-        log.warning(f"{LogTag.BROWSER} Could not read page favicon", error_type=type(exc).__name__)
-        return None
+        log.warning(
+            f"{LogTag.BROWSER} Could not read the live page's tab", error_type=type(exc).__name__
+        )
+        return
     value = result.get("result", {}).get("value")
+    if not isinstance(value, dict):
+        return
+    stream.meta.url = _text(value.get("url"))
+    stream.meta.title = _text(value.get("title"))
+    stream.meta.favicon = _text(value.get("favicon"))
+
+
+def _text(value: object) -> str | None:
     return value if isinstance(value, str) else None
-
-
-async def _refresh_meta(mux: CdpMux, stream: _Stream) -> None:
-    """Reload the tab metadata from the target."""
-    info = await cdp_call(mux, "Target.getTargetInfo", {"targetId": stream.target_id})
-    target_info = info.get("targetInfo", {})
-    stream.meta.url = target_info.get("url")
-    stream.meta.title = target_info.get("title")
-    stream.meta.favicon = await _read_favicon(mux, stream.page_session)
 
 
 async def _start_screencast(

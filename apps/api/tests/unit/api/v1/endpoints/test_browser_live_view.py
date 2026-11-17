@@ -85,10 +85,14 @@ class _Observed:
 class _Viewer(_Observed):
     """The viewer's end of a live-view socket: what it was sent, and how it was closed."""
 
-    def __init__(self, says: list[str] | None = None, *, gone: bool = False) -> None:
+    def __init__(
+        self, says: list[str] | None = None, *, gone: bool = False, leaves: bool = False
+    ) -> None:
         super().__init__()
         #: The viewer has left: a send fails the way Starlette fails one on a closed socket.
         self._gone = gone
+        #: The viewer closes its end once it has said everything.
+        self._leaves = leaves
         self.application_state = WebSocketState.CONNECTED
         self.client_state = WebSocketState.CONNECTED
         self.accepted = False
@@ -101,6 +105,12 @@ class _Viewer(_Observed):
         await self._record()
 
     async def close(self, code: int = status.WS_1000_NORMAL_CLOSURE) -> None:
+        if self.client_state is WebSocketState.DISCONNECTED:
+            # What uvicorn raises for a close sent on a connection the client already closed.
+            raise RuntimeError(
+                "Unexpected ASGI message 'websocket.close', after sending 'websocket.close' "
+                "or response already completed."
+            )
         self.close_code = code
         self.application_state = WebSocketState.DISCONNECTED
         await self._record()
@@ -119,6 +129,10 @@ class _Viewer(_Observed):
     async def receive_text(self) -> str:
         if self._says:
             return self._says.pop(0)
+        if self._leaves:
+            self.client_state = WebSocketState.DISCONNECTED
+            await self._record()
+            raise WebSocketDisconnect
         await asyncio.Event().wait()
         raise WebSocketDisconnect
 
@@ -397,4 +411,15 @@ async def test_a_viewer_gone_mid_frame_ends_the_proxy_without_an_error(
 
     await asyncio.wait_for(_watch(viewer, "sess-1", create_takeover_token("sess-1", "u1")), 2)
 
-    assert viewer.close_code is not None
+    assert viewer.close_code is None
+
+
+async def test_a_viewer_that_leaves_ends_the_proxy_without_closing_its_socket_again(
+    fake_redis: fakeredis.aioredis.FakeRedis, host: _HostStream
+) -> None:
+    await register_session("sess-1", "u1", live_ws=_HOST_STREAM)
+    viewer = _Viewer(leaves=True)
+
+    await asyncio.wait_for(_watch(viewer, "sess-1", create_takeover_token("sess-1", "u1")), 2)
+
+    assert viewer.accepted and viewer.close_code is None
