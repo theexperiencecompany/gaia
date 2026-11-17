@@ -84,6 +84,7 @@ from app.services.platform_link_service import (
     platform_requires_upgrade,
 )
 from app.services.turn_clock import TurnClock
+from app.services.turn_timings import TurnStep, turn_step
 from app.utils.auth_utils import resolve_bot_user
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import UserId
@@ -633,9 +634,11 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     """Stream a bot chat reply as SSE, resolving the linked user and replaying history."""
     await require_bot_api_key(request)
     log.set(operation="bot_chat_stream", platform=body.platform)
-    await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
+    with turn_step(TurnStep.RATE_LIMIT):
+        await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
 
-    user = await _resolve_bot_caller(request, body.platform, body.platform_user_id)
+    with turn_step(TurnStep.RESOLVE_USER):
+        user = await _resolve_bot_caller(request, body.platform, body.platform_user_id)
 
     if user is None:
         log.set(
@@ -649,20 +652,25 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     user_id = user.user_id
     log.set(user={"id": user_id}, outcome="success")
 
-    if (refusal := await _bot_stream_entitlement_gate(user_id, body.platform)) is not None:
+    with turn_step(TurnStep.PAYWALL):
+        refusal = await _bot_stream_entitlement_gate(user_id, body.platform)
+    if refusal is not None:
         return refusal
 
     stream_id = str(uuid4())
-    await charge_bot_turn(user_id, body, stream_id)
+    with turn_step(TurnStep.CHARGE):
+        await charge_bot_turn(user_id, body, stream_id)
     # Only once admitted (linked, paid, within quota and budget): prep spends
     # provider calls. Before the lookups below, so its work overlaps them.
     start_turn_prep(body.message)
 
-    conversation_id = await BotService.get_or_create_session(
-        body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
-    )
+    with turn_step(TurnStep.SESSION):
+        conversation_id = await BotService.get_or_create_session(
+            body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
+        )
 
-    message_request = await build_bot_message_request(body, conversation_id, user_id)
+    with turn_step(TurnStep.HISTORY):
+        message_request = await build_bot_message_request(body, conversation_id, user_id)
 
     # Generate session token upfront so it can be sent in the stream
     session_token = create_bot_session_token(
@@ -672,7 +680,8 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         expires_minutes=15,
     )
 
-    await stream_manager.start_stream(stream_id, conversation_id, user_id)
+    with turn_step(TurnStep.START_STREAM):
+        await stream_manager.start_stream(stream_id, conversation_id, user_id)
     # Same request-accepted clock as the web endpoint, so bot turns share
     # the web turns' TTFT/E2E definition.
     clock = TurnClock.accepted(request)

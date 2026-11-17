@@ -30,6 +30,7 @@ from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser import job_stop
 from app.services.browser.jobs import job_cancel_requested, put_job_state, set_latest_job
 from app.services.turn_clock import TurnClock, TurnMark
+from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.chat import ChatMessageSubmitted
 from tests.browser_factories import make_browser_job_state
@@ -501,6 +502,38 @@ class TestChatTurnClock:
 
         assert response.status_code == 200, response.text
         assert run.call_args.kwargs["clock"].marks[TurnMark.T0] == 42.5
+
+
+class TestChatIngressSteps:
+    async def test_an_accepted_turn_times_its_gates_ownership_and_stream_start_in_order(
+        self, client: AsyncClient, accepted_turn: MagicMock
+    ) -> None:
+        with (
+            patch(
+                "app.api.v1.endpoints.chat.run_chat_stream_background", new_callable=AsyncMock
+            ) as run,
+            patch(
+                "app.api.v1.endpoints.chat.stream_manager.start_stream", new_callable=AsyncMock
+            ) as start_stream,
+        ):
+            timings = begin_turn_timings()
+            response = await client.post(
+                "/api/v1/chat-stream", json={**_DESKTOP_TURN, "conversation_id": "conv-1"}
+            )
+
+        assert response.status_code == 200, response.text
+        assert run.call_args.kwargs["clock"].timings is timings
+        assert [step for phase, step in timings.steps if phase is TurnPhase.INGRESS] == [
+            TurnStep.RATE_LIMIT,
+            TurnStep.CHARGE,
+            TurnStep.OWNERSHIP,
+            TurnStep.START_STREAM,
+        ]
+        start_stream.assert_awaited_once_with(
+            stream_id=response.headers["X-Stream-Id"],
+            conversation_id="conv-1",
+            user_id=FAKE_USER.user_id,
+        )
 
 
 class TestChatCostGate:

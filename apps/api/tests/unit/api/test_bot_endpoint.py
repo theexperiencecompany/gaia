@@ -44,6 +44,7 @@ from app.models.payment_models import (
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.audio_transcription_service import AudioTooLargeError
 from app.services.turn_clock import TurnClock, TurnMark
+from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.bots import BotAudioTranscribed, BotSessionReset
 from shared.py.analytics.catalog.chat import ChatMessageRefused, ChatMessageSubmitted
@@ -1171,11 +1172,24 @@ class TestBotChatStream:
         )
         request = MagicMock()
         request.state = _make_request()
+        timings = begin_turn_timings()
 
         await bot_chat_stream(request, body)
 
         mock_prep.assert_called_once_with("who am I dating")
         assert order == ["charge", "prep", "session"]
+        assert list(timings.steps) == [
+            (TurnPhase.INGRESS, step)
+            for step in (
+                TurnStep.RATE_LIMIT,
+                TurnStep.RESOLVE_USER,
+                TurnStep.PAYWALL,
+                TurnStep.CHARGE,
+                TurnStep.SESSION,
+                TurnStep.HISTORY,
+                TurnStep.START_STREAM,
+            )
+        ]
 
     @patch(
         "app.utils.auth_utils.user_repository.get_by_platform_id",

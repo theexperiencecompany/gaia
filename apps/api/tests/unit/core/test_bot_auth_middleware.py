@@ -19,6 +19,7 @@ from app.constants.log_tags import LogTag
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.bot_token_service import BotSessionClaims
+from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
 from app.utils.log_identifiers import hash_platform_user_id
 
 # ---------------------------------------------------------------------------
@@ -924,3 +925,26 @@ class TestTheBotRequestsWideEvent:
             await _get({"X-Bot-Platform": "discord", "X-Bot-Platform-User-Id": "disc_1"})
 
         mock_log.set.assert_not_called()
+
+
+async def test_bot_authentication_is_timed_as_the_turns_bot_auth_step() -> None:
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/bot/chat-stream",
+            "query_string": b"",
+            "headers": [],
+            "state": {},
+        }
+    )
+    timings = begin_turn_timings()
+    with (
+        patch.object(BotAuthMiddleware, "_authenticate_bearer", AsyncMock(return_value=False)),
+        patch.object(BotAuthMiddleware, "_authenticate_api_key", new_callable=AsyncMock),
+    ):
+        await BotAuthMiddleware(app=MagicMock()).dispatch(
+            request, AsyncMock(return_value=Response())
+        )
+
+    assert list(timings.steps) == [(TurnPhase.INGRESS, TurnStep.BOT_AUTH)]
