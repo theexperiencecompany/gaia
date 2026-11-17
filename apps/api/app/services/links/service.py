@@ -32,6 +32,7 @@ from app.models.short_link_models import (
     LinkSettings,
     LinkSettingsUpdate,
     LinkSnapshot,
+    LinkState,
     LinkViewer,
     LinkViewerKind,
     PublicShortLinkView,
@@ -42,7 +43,14 @@ from app.models.short_link_models import (
     ShortLinkUpdate,
 )
 from app.services.analytics_service import analytics_day_start, capture
-from app.services.links.access import Denied, dead_state, evaluate, servable_content
+from app.services.links.access import (
+    SHARING_OFF,
+    Denied,
+    dead_state,
+    evaluate,
+    link_state,
+    servable_content,
+)
 from app.services.links.content import (
     delete_snapshot,
     framed_content,
@@ -75,17 +83,8 @@ SLUG_LENGTH = 11
 # which must fail loudly rather than silently reuse a slug.
 MAX_SLUG_ATTEMPTS = 10
 
+
 # The newest link to a target revoked for one of these means sharing is off until the owner shares again.
-_SHARING_OFF = frozenset(
-    {
-        RevokeReason.OWNER,
-        RevokeReason.EXPIRED,
-        RevokeReason.TAKEDOWN,
-        RevokeReason.ACCOUNT_REMOVED,
-    }
-)
-
-
 class ShortLinkExhaustedError(RuntimeError):
     """A unique slug could not be minted within MAX_SLUG_ATTEMPTS."""
 
@@ -290,19 +289,13 @@ async def attach_link(
     """
     try:
         latest = await short_link_repository.get_latest_for_target(user_id, target_type, target_id)
-        if latest is not None:
-            off = latest.revoked_reason or RevokeReason.OWNER
-            if (latest.revoked and off in _SHARING_OFF) or dead_state(latest, _now()) in (
-                LinkDenial.EXPIRED,
-                LinkDenial.REMOVED,
-            ):
-                log.info(
-                    "short_link.sharing_disabled", user_id=user_id, target_type=target_type.value
-                )
-                return None
-            if not latest.revoked:
-                await _refresh_snapshot(latest)
-                return latest
+        state = link_state(latest, _now()) if latest is not None else None
+        if state in SHARING_OFF:
+            log.info("short_link.sharing_disabled", user_id=user_id, target_type=target_type.value)
+            return None
+        if latest is not None and state is LinkState.LIVE:
+            await _refresh_snapshot(latest)
+            return latest
         return await share(
             user_id, target_type, target_id, LinkSettings(access=access), gaia_attached=True
         )

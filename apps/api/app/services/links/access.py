@@ -8,6 +8,7 @@ from app.models.short_link_models import (
     LinkAccess,
     LinkDenial,
     LinkSnapshot,
+    LinkState,
     LinkViewer,
     LinkViewerKind,
     RevokeReason,
@@ -22,14 +23,35 @@ _WIDTH: dict[LinkAccess, int] = {
     LinkAccess.PUBLIC: 3,
 }
 
-_REVOKED_DENIAL: dict[RevokeReason, LinkDenial] = {
-    RevokeReason.OWNER: LinkDenial.REVOKED,
-    RevokeReason.ROTATED: LinkDenial.REVOKED,
-    RevokeReason.EXPIRED: LinkDenial.EXPIRED,
-    RevokeReason.TAKEDOWN: LinkDenial.REMOVED,
-    RevokeReason.TARGET_DELETED: LinkDenial.TARGET_DELETED,
-    RevokeReason.ACCOUNT_REMOVED: LinkDenial.REVOKED,
+_REVOKED_STATE: dict[RevokeReason, LinkState] = {
+    RevokeReason.OWNER: LinkState.STOPPED,
+    RevokeReason.ROTATED: LinkState.ROTATED,
+    RevokeReason.EXPIRED: LinkState.EXPIRED,
+    RevokeReason.TAKEDOWN: LinkState.TAKEN_DOWN,
+    RevokeReason.TARGET_DELETED: LinkState.TARGET_DELETED,
+    RevokeReason.ACCOUNT_REMOVED: LinkState.ACCOUNT_REMOVED,
 }
+
+_DENIAL: dict[LinkState, LinkDenial] = {
+    LinkState.SUSPENDED: LinkDenial.REMOVED,
+    LinkState.EXPIRED: LinkDenial.EXPIRED,
+    LinkState.STOPPED: LinkDenial.REVOKED,
+    LinkState.ROTATED: LinkDenial.REVOKED,
+    LinkState.TAKEN_DOWN: LinkDenial.REMOVED,
+    LinkState.TARGET_DELETED: LinkDenial.TARGET_DELETED,
+    LinkState.ACCOUNT_REMOVED: LinkDenial.REVOKED,
+}
+
+#: States after which GAIA attaches no new link to the target until its owner shares it again.
+SHARING_OFF = frozenset(
+    {
+        LinkState.SUSPENDED,
+        LinkState.EXPIRED,
+        LinkState.STOPPED,
+        LinkState.TAKEN_DOWN,
+        LinkState.ACCOUNT_REMOVED,
+    }
+)
 
 _OPEN = frozenset({LinkAccess.PUBLIC, LinkAccess.UNLISTED})
 
@@ -75,15 +97,20 @@ def is_unfurl_bot(user_agent: str) -> bool:
     return any(marker in lowered for marker in UNFURL_BOT_USER_AGENT_MARKERS)
 
 
+def link_state(link: ShortLink, now: datetime) -> LinkState:
+    """Where link stands now; the one reading of revoked, revoked_reason, suspended and expiry."""
+    if link.revoked_reason is not None:
+        return _REVOKED_STATE[link.revoked_reason]
+    if link.suspended:
+        return LinkState.SUSPENDED
+    if link.expires_at is not None and link.expires_at <= now:
+        return LinkState.EXPIRED
+    return LinkState.LIVE
+
+
 def dead_state(link: ShortLink, now: datetime) -> LinkDenial | None:
     """Why a link no longer opens for anyone, or None while it is live."""
-    if link.suspended:
-        return LinkDenial.REMOVED
-    if link.revoked:
-        return _REVOKED_DENIAL[link.revoked_reason or RevokeReason.OWNER]
-    if link.expires_at is not None and link.expires_at <= now:
-        return LinkDenial.EXPIRED
-    return None
+    return _DENIAL.get(link_state(link, now))
 
 
 def _is_grantee(link: ShortLink, viewer: LinkViewer) -> bool:

@@ -14,9 +14,17 @@ raw canvas.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.models.briefing_models import BriefingItemKind, BriefingKind, BriefingMood, BriefingStat
@@ -66,6 +74,21 @@ class RevokeReason(StrEnum):
     TAKEDOWN = "takedown"
     TARGET_DELETED = "target_deleted"
     # The owner was removed from this GAIA (offboarding): every link they made dies with the account.
+    ACCOUNT_REMOVED = "account_removed"
+
+
+class LinkState(StrEnum):
+    """Where a link stands now: read from its stored fields and the clock by access.link_state alone."""
+
+    LIVE = "live"
+    #: Reports suspended it; an admin may restore it.
+    SUSPENDED = "suspended"
+    #: Past its expires_at, whether or not a read has revoked it yet.
+    EXPIRED = "expired"
+    STOPPED = "stopped"
+    ROTATED = "rotated"
+    TAKEN_DOWN = "taken_down"
+    TARGET_DELETED = "target_deleted"
     ACCOUNT_REMOVED = "account_removed"
 
 
@@ -190,6 +213,13 @@ class ShortLink(UserScopedDocument):
     suspended: bool = False
     #: GAIA attached it (the owner has not set it themselves), so a brief carrying it moves its access.
     gaia_attached: bool = False
+
+    @model_validator(mode="after")
+    def _revoked_says_why(self) -> Self:
+        """Refuse a revoked link with no reason, or a reason on a live one: neither has a state."""
+        if self.revoked != (self.revoked_reason is not None):
+            raise ValueError("a link is revoked exactly when it has a revoked_reason")
+        return self
 
 
 class ShortLinkUpdate(BaseModel):

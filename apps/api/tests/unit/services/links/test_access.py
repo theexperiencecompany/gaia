@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
+from pydantic import ValidationError
 import pytest
 
 from app.models.short_link_models import (
@@ -106,8 +107,6 @@ DEAD_STATES = [
         LinkDenial.TARGET_DELETED,
         Denied(LinkDenial.TARGET_DELETED),
     ),
-    # A link revoked before reasons existed reads as the owner's revoke.
-    ({"revoked": True}, LinkDenial.REVOKED, _OWNER),
     ({"suspended": True}, LinkDenial.REMOVED, Denied(LinkDenial.REMOVED)),
     # Suspension wins over a later expiry: the link was removed first.
     (
@@ -220,3 +219,11 @@ def test_a_link_serves_its_bytes_only_live_published_and_within_their_cap(
     link: ShortLink, serves: bool
 ) -> None:
     assert (servable_content(link, NOW) is not None) is serves
+
+
+@pytest.mark.parametrize(
+    "fields", [{"revoked": True}, {"revoked": False, "revoked_reason": RevokeReason.OWNER}]
+)
+def test_a_link_is_revoked_exactly_when_it_says_why(fields: dict[str, object]) -> None:
+    with pytest.raises(ValidationError, match="revoked exactly when"):
+        _link(LinkAccess.UNLISTED, **fields)

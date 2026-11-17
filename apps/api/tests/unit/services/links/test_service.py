@@ -570,7 +570,6 @@ class TestGaiaAttachedSharingRules:
         "latest",
         [
             {"revoked": True, "revoked_reason": RevokeReason.OWNER},
-            {"revoked": True, "revoked_reason": None},
             {"revoked": True, "revoked_reason": RevokeReason.EXPIRED},
             {"revoked": True, "revoked_reason": RevokeReason.TAKEDOWN},
             {"suspended": True},

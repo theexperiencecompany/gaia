@@ -84,7 +84,9 @@ class TestShortLinksLiveTargetUniqueness:
         assert await indexed_repo.get_by_slug(theirs.slug) is not None
 
     async def test_a_revoked_link_does_not_block_a_fresh_mint(self, indexed_repo, make_doc):
-        await indexed_repo.create(make_doc(user_id="u", target_id="t1", revoked=True))
+        await indexed_repo.create(
+            make_doc(user_id="u", target_id="t1", revoked=True, revoked_reason=RevokeReason.OWNER)
+        )
         fresh = await indexed_repo.create(make_doc(user_id="u", target_id="t1"))
         assert await indexed_repo.get_by_slug(fresh.slug) is not None
 
@@ -114,10 +116,12 @@ class TestShortLinksCore:
     async def test_update_partial_and_delete(self, repo, make_doc):
         created = await repo.create(make_doc(user_id="owner", target_id="t1"))
         updated = await repo.update(
-            created.slug, user_id="owner", update=ShortLinkUpdate(revoked=True)
+            created.slug,
+            user_id="owner",
+            update=ShortLinkUpdate(expires_at=datetime(2030, 1, 1, tzinfo=UTC)),
         )
         assert updated is not None
-        assert updated.revoked is True
+        assert updated.expires_at == datetime(2030, 1, 1, tzinfo=UTC)
         assert updated.target_id == "t1"  # untouched
         assert await repo.delete(created.slug, user_id="owner") is True
         assert await repo.get(created.slug, user_id="owner") is None
@@ -150,7 +154,9 @@ class TestShortLinksMintingIdempotency:
         )
 
     async def test_get_live_for_target_skips_revoked_link(self, indexed_repo, make_doc):
-        await indexed_repo.create(make_doc(target_id="t1", revoked=True))
+        await indexed_repo.create(
+            make_doc(target_id="t1", revoked=True, revoked_reason=RevokeReason.OWNER)
+        )
         result = await indexed_repo.get_live_for_target(
             "user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1"
         )
@@ -200,7 +206,7 @@ class TestShortLinksLatestForTarget:
         assert latest is not None and latest.slug == live.slug and latest.revoked
 
     async def test_re_sharing_makes_the_fresh_live_link_the_newest(self, indexed_repo, make_doc):
-        old = make_doc(target_id="t1", revoked=True)
+        old = make_doc(target_id="t1", revoked=True, revoked_reason=RevokeReason.OWNER)
         old.created_at = datetime(2026, 1, 1, tzinfo=UTC)
         await indexed_repo.create(old)
         fresh = await indexed_repo.create(make_doc(target_id="t1"))
@@ -212,7 +218,14 @@ class TestShortLinksLatestForTarget:
         assert latest is not None and latest.slug == fresh.slug and not latest.revoked
 
     async def test_another_owners_link_is_never_the_latest(self, indexed_repo, make_doc):
-        await indexed_repo.create(make_doc(user_id="someone-else", target_id="t1", revoked=True))
+        await indexed_repo.create(
+            make_doc(
+                user_id="someone-else",
+                target_id="t1",
+                revoked=True,
+                revoked_reason=RevokeReason.OWNER,
+            )
+        )
         assert (
             await indexed_repo.get_latest_for_target(
                 "user-1", ShortLinkTargetType.TODO_DELIVERABLE, "t1"

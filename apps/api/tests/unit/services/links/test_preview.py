@@ -11,6 +11,7 @@ from app.models.short_link_models import (
     LinkPreviewMeta,
     LinkSnapshot,
     RenderMode,
+    RevokeReason,
     ShortLink,
     ShortLinkTargetType,
 )
@@ -70,7 +71,7 @@ async def test_an_unknown_link_previews_as_gone() -> None:
 @pytest.mark.parametrize(
     "dead",
     [
-        {"revoked": True},
+        {"revoked": True, "revoked_reason": RevokeReason.OWNER},
         {"suspended": True},
         {"expires_at": datetime.now(UTC) - timedelta(minutes=1)},
     ],

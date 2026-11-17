@@ -19,6 +19,7 @@ from app.models.short_link_models import (
     LinkAccess,
     LinkSnapshot,
     RenderMode,
+    RevokeReason,
     ShortLink,
     ShortLinkTargetType,
 )
@@ -287,7 +288,7 @@ class TestServeThumbnail:
         "link",
         [
             None,
-            LINK.model_copy(update={"revoked": True}),
+            LINK.model_copy(update={"revoked": True, "revoked_reason": RevokeReason.OWNER}),
             LINK.model_copy(update={"access": LinkAccess.PEOPLE}),
             LINK.model_copy(update={"access": LinkAccess.OWNER}),
             LINK.model_copy(update={"snapshot": None}),
