@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, _Call, call, patch
 
 import fakeredis.aioredis
 import pytest
+import time_machine
 
 from app.config.settings import settings
 from app.constants.email import SUPPORT_SENDER
@@ -359,4 +360,37 @@ class TestTakedown:
 
         seams.links.update.assert_awaited_once_with(
             SLUG, user_id=OWNER, update=ShortLinkUpdate(suspended=False)
+        )
+
+
+class TestReportCounts:
+    async def test_an_account_exactly_the_minimum_age_is_trusted(self, seams: Seams) -> None:
+        now = datetime(2026, 11, 18, 12, 0, tzinfo=UTC)
+        seams.users.get.return_value = UserDocument(
+            created_at=now - timedelta(days=TRUSTED_REPORTER_MIN_ACCOUNT_AGE_DAYS)
+        )
+        with time_machine.travel(now, tick=False):
+            await _report(_link())
+        assert seams.reports.add.await_args.args[0].trusted is True
+
+    async def test_each_count_is_read_for_the_reported_link(self, seams: Seams) -> None:
+        seams.users.get.return_value = FRESH
+        seams.reports.trusted_reporters.return_value = 0
+
+        await _report(_link())
+
+        seams.reports.trusted_reporters.assert_awaited_once_with(SLUG)
+        seams.reports.signed_in_reporters.assert_awaited_once_with(SLUG)
+
+    async def test_a_review_email_says_the_link_is_still_live(self, seams: Seams) -> None:
+        seams.users.get.return_value = FRESH
+        seams.reports.trusted_reporters.return_value = 0
+        seams.reports.signed_in_reporters.return_value = 5
+
+        await _report(_link())
+
+        html = seams.send_email.await_args.args[0].html
+        assert html.startswith(
+            f"<p>{settings.SHORTLINK_BASE_URL}/{SLUG} was reported by 5 accounts too new "
+            "to suspend it; it is still live.</p>"
         )

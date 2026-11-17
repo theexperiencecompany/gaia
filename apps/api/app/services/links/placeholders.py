@@ -24,6 +24,7 @@ LINK_NOTE = (
 )
 _PLACEHOLDER_CHARS = "A-Za-z0-9_-"
 _PLACEHOLDER = re.compile(rf"{PLACEHOLDER_PREFIX}([{_PLACEHOLDER_CHARS}]+)")
+_TRAILING_PLACEHOLDER = re.compile(rf"{PLACEHOLDER_PREFIX}[{_PLACEHOLDER_CHARS}]+\Z")
 # A markdown link around a placeholder: an unresolvable one keeps its label as plain text.
 _MARKDOWN_LINK = re.compile(rf"\[([^\]\n]*)\]\({PLACEHOLDER_PREFIX}([{_PLACEHOLDER_CHARS}]+)\)")
 _TARGET_SEPARATOR = ":"  # pragma: no mutate — a target type never holds a colon
@@ -37,7 +38,8 @@ def link_placeholder(target_type: ShortLinkTargetType, target_id: str) -> str:
 
 def _target(token: str) -> tuple[ShortLinkTargetType, str] | None:
     try:
-        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode()
+        # The decoder drops padding past what the token needs, so the most it can need will do.
+        raw = base64.urlsafe_b64decode(token + "==").decode()
     except (binascii.Error, UnicodeDecodeError):
         return None
     type_value, separator, target_id = raw.partition(_TARGET_SEPARATOR)
@@ -79,9 +81,9 @@ def _may_become_placeholder(target: str) -> bool:
 
 
 def _placeholder_tail(text: str) -> int | None:
-    start = text.rfind(PLACEHOLDER_PREFIX)
-    if start != -1 and _PLACEHOLDER.fullmatch(text, start) is not None:
-        return start
+    trailing = _TRAILING_PLACEHOLDER.search(text)
+    if trailing is not None:
+        return trailing.start()
     for length in range(min(len(PLACEHOLDER_PREFIX), len(text)), 0, -1):
         if PLACEHOLDER_PREFIX.startswith(text[-length:]):
             return len(text) - length

@@ -4,6 +4,7 @@ The live-link read is mocked at the repository seam; the same round trip over
 real Mongo is in tests/integration/real/test_links_real.py.
 """
 
+import base64
 from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
@@ -104,3 +105,26 @@ class TestReleasableEnd:
     )
     def test_a_settled_tail_goes_out_whole(self, text: str) -> None:
         assert releasable_end(text) == len(text)
+
+
+def _token(raw: str) -> str:
+    return PLACEHOLDER_PREFIX + base64.urlsafe_b64encode(raw.encode()).rstrip(b"=").decode()
+
+
+@pytest.mark.parametrize("target_id", ["t1", "t12", "t123"])
+async def test_a_placeholder_carries_no_padding_and_resolves_whole(
+    live: AsyncMock, target_id: str
+) -> None:
+    token = link_placeholder(FILE, target_id)
+    assert "=" not in token
+    assert await resolve_link_placeholders(OWNER, f"({token})") == f"({_url()})"
+    live.assert_awaited_once_with(OWNER, FILE, target_id)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [f"{FILE.value}:", "nope:t1", f"{FILE.value}t1", ":t1"],
+)
+async def test_a_token_naming_no_known_target_reads_nothing(live: AsyncMock, raw: str) -> None:
+    await resolve_link_placeholders(OWNER, f"x {_token(raw)}")
+    live.assert_not_awaited()

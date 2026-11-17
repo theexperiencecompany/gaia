@@ -81,9 +81,11 @@ async def test_a_dead_link_discloses_nothing(previewer: AsyncMock, dead: dict[st
     previewer.assert_not_awaited()
 
 
-async def test_a_link_that_expires_later_still_previews(previewer: AsyncMock) -> None:
-    meta = await preview_meta(_link(expires_at=datetime.now(UTC) + timedelta(days=1)))
+async def test_a_link_that_expires_later_still_previews_its_file(previewer: AsyncMock) -> None:
+    link = _link(expires_at=datetime.now(UTC) + timedelta(days=1), snapshot=SNAPSHOT)
+    meta = await preview_meta(link)
     assert meta.live is True
+    previewer.assert_awaited_once_with("owner", "t1", SNAPSHOT)
 
 
 @pytest.mark.parametrize("access", [LinkAccess.PEOPLE, LinkAccess.OWNER])
