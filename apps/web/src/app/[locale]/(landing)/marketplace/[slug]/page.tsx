@@ -1,9 +1,14 @@
+import "../../../../styles/directory.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import JsonLd from "@/components/seo/JsonLd";
 import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
 import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
+import {
+  marketplaceDirectoryHref,
+  marketplaceDirectoryPages,
+} from "@/features/integrations/lib/marketplaceDirectoryPages";
 import { marketplacePath } from "@/features/integrations/lib/marketplaceSlug";
 import { relatedIntegrations } from "@/features/integrations/lib/relatedIntegrations";
 import {
@@ -13,10 +18,9 @@ import {
   getPublicIntegration,
   marketplaceApiIdentifier,
 } from "@/features/integrations/lib/serverMarketplaceApi";
-import type {
-  CommunityIntegration,
-  PublicIntegrationResponse,
-} from "@/features/integrations/types";
+import type { PublicIntegrationResponse } from "@/features/integrations/types";
+import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
+import { workflowIconElements } from "@/features/workflows/lib/workflowIconElements";
 import { isRedirectedPath } from "@/lib/canonicalLinks";
 import {
   getMarketplaceFallbackGuides,
@@ -27,12 +31,12 @@ import {
   generateFAQSchema,
   generateHowToSchema,
   generatePageMetadata,
-  generatePersonSchema,
   generateProOffer,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
 import { IntegrationDetailClient } from "./client";
+import { IntegrationToolsCard } from "./IntegrationToolsCard";
 import {
   generateIntegrationDescription,
   generateIntegrationTitle,
@@ -119,9 +123,10 @@ export default async function IntegrationPage({ params }: Props) {
 
   const breadcrumbSchema = generateBreadcrumbSchema(breadcrumbItems);
 
+  // The page's own title and description, so two integrations sharing a name stay two pages.
   const webPageSchema = generateWebPageSchema(
-    `${integration.name} AI Integration - Automate ${integration.name} with AI`,
-    `Automate ${integration.name} with GAIA AI assistant. Connect ${integration.name} to your AI-powered workflow with ${integration.toolCount || 0} available tools.`,
+    generateIntegrationTitle(integration),
+    generateIntegrationDescription(integration),
     pageUrl,
     breadcrumbItems,
     integration.publishedAt
@@ -135,6 +140,7 @@ export default async function IntegrationPage({ params }: Props) {
   const integrationSchema = {
     "@context": "https://schema.org" as const,
     "@type": "SoftwareApplication" as const,
+    "@id": `${pageUrl}#integration`,
     name: `${integration.name} AI Integration`,
     description: integration.description,
     url: pageUrl,
@@ -142,9 +148,6 @@ export default async function IntegrationPage({ params }: Props) {
     applicationSubCategory: categoryLabel,
     operatingSystem: "Web",
     offers: generateProOffer(),
-    ...(integration.creator?.name && {
-      author: generatePersonSchema({ name: integration.creator.name }),
-    }),
     ...(integration.toolCount && {
       featureList: integration.tools
         ?.map((t: { name: string }) => t.name.replace(/_/g, " "))
@@ -173,13 +176,21 @@ export default async function IntegrationPage({ params }: Props) {
   // Related integrations and workflows are fetched server-side so crawlers
   // see real links in the SSR HTML. Combos and the alternative guide come from
   // local JSON (no backend).
-  const [related, relatedWorkflows, automateCombos, alternative] =
+  const [native, community, relatedWorkflows, automateCombos, alternative] =
     await Promise.all([
-      getRelatedIntegrations(integration),
+      getNativeIntegrations(),
+      // Natives come first in the directory, so a native page needs no community data.
+      integration.source === "platform" ? [] : getAllCommunityIntegrations(),
       getIntegrationWorkflows(integration.integrationId, 4),
       getAutomateCombos(slug),
       getTranslatedAlternative(slug),
     ]);
+  // A native page relates only to natives (community is empty for it).
+  const related = relatedIntegrations(integration, native, community);
+  const directoryHref = marketplaceDirectoryHref(
+    marketplaceDirectoryPages(native, community),
+    integration.slug,
+  );
 
   return (
     <>
@@ -191,21 +202,27 @@ export default async function IntegrationPage({ params }: Props) {
           ...contentSchemas,
         ]}
       />
-      <IntegrationDetailClient
-        integration={integration}
-        comparisonSlug={comparisonSlug}
-        alternativeSlug={
-          alternative && !isRedirectedPath(`/alternative-to/${slug}`)
-            ? slug
-            : undefined
-        }
-        relatedIntegrations={related}
-        initialRelatedWorkflows={relatedWorkflows}
-        automateCombos={automateCombos}
-        docsGuides={
-          MARKETPLACE_DOCS_LINKS[slug] ?? getMarketplaceFallbackGuides()
-        }
-      />
+      <WorkflowIconElementsProvider
+        icons={workflowIconElements(relatedWorkflows)}
+      >
+        <IntegrationDetailClient
+          integration={integration}
+          toolsCard={<IntegrationToolsCard integration={integration} />}
+          comparisonSlug={comparisonSlug}
+          alternativeSlug={
+            alternative && !isRedirectedPath(`/alternative-to/${slug}`)
+              ? slug
+              : undefined
+          }
+          relatedIntegrations={related}
+          directoryHref={directoryHref}
+          initialRelatedWorkflows={relatedWorkflows}
+          automateCombos={automateCombos}
+          docsGuides={
+            MARKETPLACE_DOCS_LINKS[slug] ?? getMarketplaceFallbackGuides()
+          }
+        />
+      </WorkflowIconElementsProvider>
     </>
   );
 }
@@ -227,15 +244,4 @@ async function getAutomateCombos(
       toolB: combo.toolB,
       tagline: combo.tagline,
     }));
-}
-
-/** A native page relates only to natives, so only a community page fetches the community catalog. */
-async function getRelatedIntegrations(
-  integration: PublicIntegrationResponse,
-): Promise<CommunityIntegration[]> {
-  const [native, community] = await Promise.all([
-    getNativeIntegrations(),
-    integration.source === "platform" ? [] : getAllCommunityIntegrations(),
-  ]);
-  return relatedIntegrations(integration, native, community);
 }

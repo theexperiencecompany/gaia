@@ -1,11 +1,5 @@
 import type React from "react";
-import {
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef } from "react";
 
 import FilePreview from "@/features/chat/components/files/FilePreview";
 import { ALLOWED_FILE_TYPES } from "@/features/chat/constants/files";
@@ -55,7 +49,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
   voiceModeActive,
   onVoiceModeHover,
 }) => {
-  const [currentHeight, setCurrentHeight] = useState<number>(24);
   const composerInputRef = useRef<ComposerInputRef>(null);
   const inputText = useInputText();
   const { setInputText } = useComposerTextActions();
@@ -199,8 +192,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
           onSearchbarTextChange={setInputText}
           handleFormSubmit={handleFormSubmit}
           handleKeyDown={handleKeyDown}
-          currentHeight={currentHeight}
-          onHeightChange={setCurrentHeight}
           inputRef={inputRef}
           hasMessages={hasMessages}
           onSlashCommandSelect={handleSlashCommandSelect}

@@ -1,3 +1,4 @@
+import "../../../../styles/content.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -113,17 +114,11 @@ export default async function AutomateComboPage({ params }: PageProps) {
 
   const faqSchema = generateFAQSchema(data.faqs);
 
-  // Direct detail links where the marketplace slug verifiably exists;
-  // otherwise the search page stays the fallback (never link a 404).
-  const [toolAPath, toolBPath] = await Promise.all([
+  // Only a tool with a marketplace page gets a card: a search URL is the marketplace hub again under another address.
+  const [toolAHref, toolBHref] = await Promise.all([
     getMarketplacePath(data.toolASlug),
     getMarketplacePath(data.toolBSlug),
   ]);
-  // URLSearchParams spells a space "+", the form the marketplace URL settles on, so the link never hops.
-  const marketplaceSearch = (tool: string) =>
-    `/marketplace?${new URLSearchParams({ search: tool })}`;
-  const toolAHref = toolAPath ?? marketplaceSearch(data.toolA);
-  const toolBHref = toolBPath ?? marketplaceSearch(data.toolB);
 
   // Head-to-head and alternative guides keyed by the same tool slugs the
   // combo datasets use; only link pages that verifiably exist (never a 404).
@@ -165,6 +160,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
           data={data}
           toolACompareHref={toolACompareHref}
           toolBCompareHref={toolBCompareHref}
+          t={t}
         />
         {relatedRows.map((row) => (
           <RelatedAutomationsGrid

@@ -10,7 +10,7 @@ interface CommunityBannerProps {
 export function CommunityBanner({ onCreateWorkflow }: CommunityBannerProps) {
   return (
     <PromoBanner
-      icon={<UserGroupIcon className="h-6 w-6 text-primary" />}
+      icon={<UserGroupIcon className="h-6 w-6 text-accent" />}
       title="Explore the Community"
       description="Discover community workflows or publish your own for others to use."
       secondaryActions={[

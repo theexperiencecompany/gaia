@@ -1,6 +1,6 @@
 "use client";
 
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import { ArrowRight02Icon, Cancel01Icon, Tick02Icon } from "@icons";
 import Image from "next/image";
 import { SiteLink } from "@/components/seo/SiteLink";
@@ -24,7 +24,7 @@ const COMPETITORS: CompetitorInfo[] = [
   {
     name: "GAIA",
     slug: null,
-    logo: { type: "image", src: "/brand/gaia_logo.png" },
+    logo: { type: "image", src: "/brand/gaia_logo.svg" },
   },
   {
     name: "OpenClaw",
@@ -34,7 +34,7 @@ const COMPETITORS: CompetitorInfo[] = [
   {
     name: "Poke",
     slug: "poke",
-    logo: { type: "image", src: "/images/icons/poke.png" },
+    logo: { type: "image", src: "/images/icons/poke.webp" },
   },
   {
     name: "ChatGPT",
@@ -244,23 +244,30 @@ export default function ComparisonGrid() {
                   <th
                     key={c.name}
                     className={`px-5 py-3 text-center align-middle ${
-                      c.slug === null ? "bg-primary/5" : ""
+                      c.slug === null ? "bg-accent/5" : ""
                     }`}
                   >
-                    <Tooltip content={c.name} placement="top">
-                      {c.slug ? (
-                        <SiteLink
-                          href={`/compare/${c.slug}`}
-                          aria-label={`Compare with ${c.name}`}
-                          className="inline-flex transition-transform hover:scale-110"
-                        >
-                          <BrandLogo competitor={c} alt="" />
-                        </SiteLink>
-                      ) : (
-                        <span className="inline-flex">
-                          <BrandLogo competitor={c} alt={c.name} />
-                        </span>
-                      )}
+                    <Tooltip>
+                      <Tooltip.Trigger
+                        aria-label={c.slug ? `Compare with ${c.name}` : c.name}
+                      >
+                        {c.slug ? (
+                          <SiteLink
+                            href={`/compare/${c.slug}`}
+                            aria-label={`Compare with ${c.name}`}
+                            className="inline-flex transition-transform hover:scale-110"
+                          >
+                            <BrandLogo competitor={c} alt="" />
+                          </SiteLink>
+                        ) : (
+                          <span className="inline-flex">
+                            <BrandLogo competitor={c} alt={c.name} />
+                          </span>
+                        )}
+                      </Tooltip.Trigger>
+                      <Tooltip.Content placement="top">
+                        {c.name}
+                      </Tooltip.Content>
                     </Tooltip>
                   </th>
                 ))}
@@ -281,7 +288,7 @@ export default function ComparisonGrid() {
                     <td
                       key={COMPETITORS[j]?.name ?? `cell-${j}`}
                       className={`p-5 text-center align-middle ${
-                        COMPETITORS[j]?.slug === null ? "bg-primary/5" : ""
+                        COMPETITORS[j]?.slug === null ? "bg-accent/5" : ""
                       }`}
                     >
                       <Cell value={value} />

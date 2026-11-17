@@ -31,7 +31,7 @@ export default defineConfig({
       deps: {
         // ESM packages importing extensionless specifiers ("./library",
         // next-intl's "next/navigation") resolve only when vite inlines them
-        inline: ["@openuidev/react-lang", "next-intl"],
+        inline: ["@openuidev/react-lang", "@openuidev/react-ui", "next-intl"],
       },
     },
   },

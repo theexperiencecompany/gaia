@@ -1,5 +1,6 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { ViewIcon, ViewOffSlashIcon } from "@icons";
+import { toneVariants } from "@/components/shared/tone";
 import { isTooDark } from "@/features/calendar/utils/calendarUtils";
 import type {
   CalendarChipProps,
@@ -19,34 +20,25 @@ function CalendarChip({ calendar, selected, onSelect }: CalendarChipProps) {
       onClick={() => onSelect(calendar.id)}
     >
       <Chip
-        className={`${selected ? "text-zinc-300" : "text-zinc-600"} `}
-        variant="faded"
-        startContent={
-          <div
-            className="mr-2 aspect-square min-h-[12px] min-w-[12px] rounded-full"
-            style={{
-              backgroundColor: computedColor,
-            }}
-          />
-        }
-        endContent={
-          selected ? (
-            <ViewIcon className="mr-1" width={17} height={17} />
-          ) : (
-            <ViewOffSlashIcon className="mr-1" width={17} height={17} />
-          )
-        }
-        style={{
-          margin: "0",
-          background: "transparent",
-          borderWidth: "0px",
-          // color: computedColor,
-          borderRadius: "7px",
-        }}
+        className={toneVariants({ tone: selected ? "dim" : "subtle" })}
+        variant="tertiary"
       >
-        <div className="text-sm truncate max-w-[calc(var(--sidebar-width)-90px)] w-[calc(var(--sidebar-width)-90px)]">
-          {calendar.summary}
-        </div>
+        <div
+          className="mr-2 aspect-square min-h-[12px] min-w-[12px] rounded-full"
+          style={{
+            backgroundColor: computedColor,
+          }}
+        />
+        <Chip.Label>
+          <div className="text-sm truncate max-w-[calc(var(--sidebar-width)-90px)] w-[calc(var(--sidebar-width)-90px)]">
+            {calendar.summary}
+          </div>
+        </Chip.Label>
+        {selected ? (
+          <ViewIcon className="mr-1" width={17} height={17} />
+        ) : (
+          <ViewOffSlashIcon className="mr-1" width={17} height={17} />
+        )}
       </Chip>
     </button>
   );
@@ -73,9 +65,7 @@ export default function CalendarSelector({
             />
           ))
       ) : (
-        <div className="p-3 text-sm text-foreground-500">
-          You have no Calendars
-        </div>
+        <div className="p-3 text-sm text-zinc-400">You have no Calendars</div>
       )}
     </div>
   );

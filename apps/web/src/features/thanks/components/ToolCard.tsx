@@ -1,26 +1,125 @@
 "use client";
 
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import { GlobalIcon } from "@icons";
-import { memo } from "react";
-import type { Tool } from "@/data/tools";
+import Image from "next/image";
+import { memo, useRef, useState } from "react";
+import tinycolor from "tinycolor2";
+import { toneVariants } from "@/components/shared/tone";
+import { type Tool, toolFaviconUrl } from "@/data/tools";
 
 interface ToolCardProps {
   tool: Tool;
 }
 
 const ToolCard = memo(({ tool }: ToolCardProps) => {
+  const elementRef = useRef<HTMLAnchorElement>(null);
+  const [isDarkFavicon, setIsDarkFavicon] = useState(false);
+
+  const checkImageBrightness = (imgElement: HTMLImageElement) => {
+    try {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // Scale down to 10x10 for faster sampling - browser handles averaging
+      const size = 10;
+      canvas.width = size;
+      canvas.height = size;
+
+      ctx.drawImage(imgElement, 0, 0, size, size);
+      const imageData = ctx.getImageData(0, 0, size, size);
+      const data = imageData.data;
+
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      const dataLength = data.length;
+      const pixelCount = dataLength / 4;
+
+      for (let i = 0; i < dataLength; i += 4) {
+        r += data[i];
+        g += data[i + 1];
+        b += data[i + 2];
+      }
+
+      const avgColor = tinycolor({
+        r: Math.round(r / pixelCount),
+        g: Math.round(g / pixelCount),
+        b: Math.round(b / pixelCount),
+      });
+
+      setIsDarkFavicon(avgColor.getBrightness() < 30);
+    } catch {
+      // CORS or other errors - skip brightness check
+      setIsDarkFavicon(false);
+    }
+  };
+
+  // The favicon service draws every tool's logo; a failed load falls back to the globe.
+  const [faviconFailed, setFaviconFailed] = useState(false);
+  const favicon = faviconFailed ? null : toolFaviconUrl(tool.url);
+  const handleFaviconError = () => setFaviconFailed(true);
+
   return (
-    <Tooltip
-      showArrow
-      delay={0}
-      closeDelay={0}
-      className="max-w-[320px] border-0 bg-zinc-900 p-0 text-white shadow-xl rounded-2xl overflow-hidden"
-      content={
+    <Tooltip delay={0} closeDelay={0}>
+      <Tooltip.Trigger className="w-full">
+        <a
+          ref={elementRef}
+          href={tool.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 transition-colors duration-200 hover:border-accent/50 hover:bg-zinc-800/50"
+        >
+          <div
+            className={`relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg ${favicon ? "" : "bg-zinc-800"}`}
+          >
+            {favicon ? (
+              <Image
+                key={favicon}
+                width={100}
+                height={100}
+                alt={`${tool.name} favicon`}
+                className={`h-6 w-6 object-contain ${isDarkFavicon ? "invert" : ""}`}
+                src={favicon}
+                unoptimized
+                onLoad={(e) => checkImageBrightness(e.currentTarget)}
+                onError={handleFaviconError}
+              />
+            ) : (
+              <GlobalIcon className="h-5 w-5 text-zinc-500" />
+            )}
+          </div>
+          <span className="font-medium text-zinc-200 transition-colors group-hover:text-white">
+            {tool.name}
+          </span>
+        </a>
+      </Tooltip.Trigger>
+      <Tooltip.Content
+        showArrow
+        className={toneVariants({
+          tone: "white",
+          className: "max-w-[320px] border-0 p-0 shadow-xl overflow-hidden",
+        })}
+      >
         <div className="flex w-full flex-col rounded-3xl">
           <div className="flex flex-col gap-2 p-4">
             <div className="flex items-center gap-2">
-              <GlobalIcon className="h-5 w-5 text-zinc-400" />
+              {favicon ? (
+                <Image
+                  key={favicon}
+                  width={20}
+                  height={20}
+                  alt={`${tool.name} favicon`}
+                  className={`h-5 w-5 rounded-sm ${isDarkFavicon ? "invert" : ""}`}
+                  src={favicon}
+                  unoptimized
+                  onLoad={(e) => checkImageBrightness(e.currentTarget)}
+                  onError={handleFaviconError}
+                />
+              ) : (
+                <GlobalIcon className="h-5 w-5 text-zinc-400" />
+              )}
               <span className="font-semibold text-white">{tool.name}</span>
             </div>
 
@@ -38,27 +137,13 @@ const ToolCard = memo(({ tool }: ToolCardProps) => {
               href={tool.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-1 truncate text-xs text-primary hover:underline"
+              className="mt-1 truncate text-xs text-accent hover:underline"
             >
               {tool.url.replace("https://", "").replace("http://", "")}
             </a>
           </div>
         </div>
-      }
-    >
-      <a
-        href={tool.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="group flex items-center gap-3 rounded-2xl bg-zinc-900 px-4 py-3 transition-colors duration-200 hover:border-primary/50 hover:bg-zinc-800/50"
-      >
-        <div className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-zinc-800">
-          <GlobalIcon className="h-5 w-5 text-zinc-500" />
-        </div>
-        <span className="font-medium text-zinc-200 transition-colors group-hover:text-white">
-          {tool.name}
-        </span>
-      </a>
+      </Tooltip.Content>
     </Tooltip>
   );
 });

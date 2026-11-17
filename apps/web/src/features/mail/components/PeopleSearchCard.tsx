@@ -1,4 +1,4 @@
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { ScrollShadow } from "@heroui/react";
 import { Call02Icon, Mail01Icon } from "@icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { Gmail } from "@/components/shared/icons";

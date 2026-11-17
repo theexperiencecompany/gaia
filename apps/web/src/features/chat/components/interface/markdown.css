@@ -1,0 +1,3 @@
+/* Markdown-only styles, loaded with MarkdownRenderer wherever it renders. */
+@import "katex/dist/katex.min.css";
+@import "streamdown/styles.css";

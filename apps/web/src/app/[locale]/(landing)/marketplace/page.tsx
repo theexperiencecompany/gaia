@@ -1,3 +1,4 @@
+import "../../../styles/directory.css";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -97,7 +98,7 @@ export default async function MarketplacePage() {
             <h1 className="mb-4 font-serif text-5xl font-normal text-foreground md:text-7xl">
               Integration Marketplace
             </h1>
-            <p className="max-w-2xl text-lg font-light text-foreground-500">
+            <p className="max-w-2xl text-lg font-light text-zinc-400">
               Discover and automate your favorite tools with AI. Browse
               community-built MCP integrations to connect Gmail, Slack, Notion,
               GitHub, and many more services to your AI assistant.

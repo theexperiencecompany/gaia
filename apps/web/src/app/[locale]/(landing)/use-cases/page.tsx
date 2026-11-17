@@ -1,8 +1,15 @@
+import "../../../styles/marketing.css";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
-import { getCommunityWorkflowsServer } from "@/features/workflows/lib/serverWorkflowsApi";
+import { WorkflowIconElementsProvider } from "@/features/workflows/components/shared/WorkflowIconElements";
+import {
+  getAllCommunityWorkflowsServer,
+  getExploreWorkflowsServer,
+} from "@/features/workflows/lib/serverWorkflowsApi";
+import { withoutTemplateCopies } from "@/features/workflows/lib/templateCopies";
+import { workflowIconElements } from "@/features/workflows/lib/workflowIconElements";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -28,11 +35,23 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
+const COMMUNITY_LISTING_SIZE = 8;
+// Every official template, as the sitemap reads them, so no copy slips through.
+const EXPLORE_TEMPLATE_LIMIT = 1000;
+
 export default async function UseCasesPage() {
   // Rendered per request from cached listings, so the build never reads the API.
   await connection();
-  const { workflows: communityWorkflows } =
-    await getCommunityWorkflowsServer(8);
+  const [community, templates] = await Promise.all([
+    getAllCommunityWorkflowsServer(),
+    getExploreWorkflowsServer(EXPLORE_TEMPLATE_LIMIT),
+  ]);
+  // The official templates are listed above; a community copy of one would be the same card twice.
+  // Filter the whole list before taking the newest few, so copies never crowd out originals.
+  const communityWorkflows = withoutTemplateCopies(community, templates).slice(
+    0,
+    COMMUNITY_LISTING_SIZE,
+  );
 
   const webPageSchema = generateWebPageSchema(
     "Use Cases & Workflows",
@@ -63,7 +82,11 @@ export default async function UseCasesPage() {
           and FAQ rich results require the questions to be on the page. */}
       <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
 
-      <UseCasesPageClient communityWorkflows={communityWorkflows} />
+      <WorkflowIconElementsProvider
+        icons={workflowIconElements([...templates, ...communityWorkflows])}
+      >
+        <UseCasesPageClient communityWorkflows={communityWorkflows} />
+      </WorkflowIconElementsProvider>
     </div>
   );
 }

@@ -47,8 +47,8 @@ This applies to both static `export const metadata` objects and dynamic `generat
 
 ## Meta Descriptions
 
-- 120–155 characters (CJK locales run shorter: aim for 80+)
-- Hard bounds are `src/config/seoSnippet.json` (70–165): `src/__tests__/marketing-meta-length.test.ts` renders every landing page's `generateMetadata` in every locale and fails outside them, and the post-deploy SEO audit reads the same file
+- 120–160 characters, squirrelscan's window; a CJK or Hangul character counts twice toward the minimum, so CJK runs ~70–90 characters
+- Hard bounds are `src/config/seoSnippet.json`: `src/__tests__/marketing-meta-length.test.ts` renders every landing page's `generateMetadata` in every locale and fails outside them, and the post-deploy SEO audit reads the same file
 - Describe what the page *does*, not what the product *is*
 - Do not repeat the title verbatim
 - End with a benefit or differentiator
@@ -235,5 +235,7 @@ Use `generatePageMetadata({ noIndex: true })` for:
 - Internal/dashboard pages
 - Thank-you / success pages
 - Any page with `?q=` or pagination query params that duplicate content
+
+A noindex page lives in the `app/[locale]/(unindexed)` route group, not here: it gets the same chrome without the layout's Organization and WebSite schema, which a noindexed page must not carry (squirrel's `crawl/schema-noindex-conflict`).
 
 Never set `noIndex` on public marketing or programmatic SEO pages.
