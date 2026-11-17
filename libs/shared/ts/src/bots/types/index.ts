@@ -62,6 +62,12 @@ export interface ChatRequest {
    */
   platformMessageId?: string;
   /**
+   * When the platform event reached the bot (epoch ms), stamped by the adapter
+   * on arrival — before any per-user queue — so the chat event can report how
+   * much of the reply's latency the bot itself added. Never sent to the API.
+   */
+  receivedAt?: number;
+  /**
    * Full file metadata for the attached files. Sent alongside `fileIds` so
    * the agent can resolve URLs/filenames without an extra DB lookup, matching
    * the web app's chat payload shape.
@@ -447,3 +453,13 @@ export interface OutboundNotifications {
   /** Sends one whole message, already rendered, as the notification template. */
   deliver(destinationId: string, text: string): Promise<void>;
 }
+
+/**
+ * Fired when the backend marks the reply's text final (`reply_complete`), ahead of `done`.
+ *
+ * `done` only follows the turn's end-of-turn work — follow-up suggestions, and in a delegated
+ * turn the whole executor run — so a platform that sends whole messages delivers here instead.
+ * `keptText` is every KEPT message so far, in the same shape `onDone` receives; the frame can
+ * repeat, and text kept after it (a delegated turn's result) still arrives with `done`.
+ */
+export type ReplyCompleteHandler = (keptText: string) => void | Promise<void>;

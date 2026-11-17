@@ -145,6 +145,7 @@ def _ws_token(websocket: WebSocket, cookie_name: str) -> str | None:
 _WS_LOCAL_SESSION_REASONS: dict[LocalSessionFailure, str] = {
     LocalSessionFailure.INVALID_OR_EXPIRED: "local session token rejected",
     LocalSessionFailure.UNKNOWN_USER: "local session user not found",
+    LocalSessionFailure.UNAVAILABLE: "local session check unavailable",
 }
 
 

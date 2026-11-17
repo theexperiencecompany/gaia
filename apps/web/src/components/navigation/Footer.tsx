@@ -90,6 +90,7 @@ export default function Footer() {
                     prefetch={false}
                     target={link.external ? "_blank" : undefined}
                     rel={link.external ? "noopener noreferrer" : undefined}
+                    aria-label={link.ariaLabel}
                     className="py-1 text-sm text-zinc-200 transition-colors hover:text-accent"
                   >
                     {link.label}

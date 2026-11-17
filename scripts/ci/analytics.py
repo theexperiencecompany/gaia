@@ -28,9 +28,9 @@ Subcommands:
                           Update the loop insight's query and its alert's
                           threshold to what the catalog generates. A dry run
                           unless --apply is given.
-  csp-soak                Post the daily CSP soak report to Slack: the live
+  csp-soak                Post the weekly CSP soak report to Slack: the live
                           site's CSP headers, then the report-only
-                          $csp_violation events of the last 24h (lib/csp_soak.py).
+                          $csp_violation events of the last 7 days (lib/csp_soak.py).
                           Enforced: posts "soak over" once and disables its own
                           workflow. No CSP header at all: posts a warning, exits 1.
 
@@ -1169,7 +1169,7 @@ def _post_slack(webhook: str, text: str) -> None:
 
 
 def cmd_csp_soak(args: list[str]) -> int:
-    """Post the day's CSP soak report; 1 when the site serves no CSP or a delivery fails."""
+    """Post the week's CSP soak report; 1 when the site serves no CSP or a delivery fails."""
     argparse.ArgumentParser(prog="analytics.py csp-soak").parse_args(args)
     webhook = os.environ.get("SLACK_WEBHOOK", "")
     if not webhook:
