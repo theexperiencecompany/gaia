@@ -17,6 +17,7 @@ cannot be enqueued raises, and the decision's hand-off is retried by the sweeper
 
 from app.constants.log_tags import LogTag
 from app.constants.todos import TodoActivityEvent
+from app.models.conversation_log_models import ApprovalDecided
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.analytics_service import capture
 from app.services.hil.errors import ResumeNotQueuedError, UnknownResumeOwnerError
@@ -31,13 +32,15 @@ from shared.py.analytics.catalog.hil import HilResumed
 from shared.py.wide_events import log
 
 
-async def resume_owner_after_approval(row: ApprovalLedgerDocument) -> None:
+async def resume_owner_after_approval(
+    row: ApprovalLedgerDocument, decision: ApprovalDecided
+) -> None:
     """Re-enqueue the background owner parked on this approved row; the decision's hand-off lease makes it once."""
     match row.owner_run_type:
         case "todo":
             await _resume_todo(row)
         case "workflow":
-            await _resume_workflow(row)
+            await _resume_workflow(row, decision)
         case _:
             raise UnknownResumeOwnerError(row.approval_id, row.owner_run_type)
 
@@ -80,7 +83,7 @@ async def _resume_todo(row: ApprovalLedgerDocument) -> None:
     capture(UserId(row.user_id), HilResumed(approval_id=row.approval_id, owner_run_type="todo"))
 
 
-async def _resume_workflow(row: ApprovalLedgerDocument) -> None:
+async def _resume_workflow(row: ApprovalLedgerDocument, decision: ApprovalDecided) -> None:
     """Re-queue the workflow with the ticket in its trigger context.
 
     Re-enters through the normal queue (deterministic job id dedups a racing
@@ -104,7 +107,7 @@ async def _resume_workflow(row: ApprovalLedgerDocument) -> None:
         {
             "resume_from_approval": row.approval_id,
             "approval_summary": row.summary,
-            "approval_ticket": approval_ticket(row),
+            "approval_ticket": approval_ticket(row, decision),
             "prior_run_brief": brief,
         },
     )

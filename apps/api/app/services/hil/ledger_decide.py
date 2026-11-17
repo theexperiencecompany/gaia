@@ -274,7 +274,7 @@ async def decide_ledger_batch(
     return outcomes
 
 
-async def _deliver_ticket(row: ApprovalLedgerDocument) -> None:
+async def _deliver_ticket(row: ApprovalLedgerDocument, decision: ApprovalDecided) -> None:
     """Hand an approved ticket to the model — steer or start, never execute.
 
     Delivery reclaims a dead holder's lock, so a crashed run never bricks it.
@@ -288,7 +288,7 @@ async def _deliver_ticket(row: ApprovalLedgerDocument) -> None:
     await deliver_to_executor(
         row.conversation_id,
         AuthenticatedUser(user_id=row.user_id),
-        approval_ticket(row),
+        approval_ticket(row, decision),
     )
 
 
@@ -538,9 +538,9 @@ async def _hand_off(row: ApprovalLedgerDocument, stands: ApprovalDecided) -> Non
     match stands.outcome:
         case ApprovalOutcome.APPROVED if row.owner_run_type:
             # A background owner has no live run: its resume carries the ticket.
-            await resume_owner_after_approval(row)
+            await resume_owner_after_approval(row, stands)
         case ApprovalOutcome.APPROVED:
-            await _deliver_ticket(row)
+            await _deliver_ticket(row, stands)
         case ApprovalOutcome.DENIED:
             if stands.feedback is not None:
                 # A no that asks for something else is work: delivery starts a run when none is live.

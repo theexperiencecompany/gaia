@@ -1,7 +1,10 @@
 """The wake that turns an approval into a redeem: the one text every continuation carries."""
 
+from app.models.conversation_log_models import ApprovalDecided
 from app.models.hil_models import ApprovalLedgerDocument
+from app.services.conversation.screen import decided_status
 from app.utils.timezone import age_since
+from shared.py.approvals import ApprovalStatus
 
 
 def amend_instruction(row: ApprovalLedgerDocument) -> str:
@@ -12,16 +15,16 @@ def amend_instruction(row: ApprovalLedgerDocument) -> str:
     )
 
 
-def approval_ticket(row: ApprovalLedgerDocument) -> str:
-    """Return the ticket for an approved row: its id, its age, and the execute call that honors it.
+def approval_ticket(row: ApprovalLedgerDocument, decision: ApprovalDecided) -> str:
+    """Return the ticket for the row decision approved: its id, its age, and the execute call that honors it.
 
     A yes with a change cannot run as stored, so its ticket hands the change to the work instead.
     """
     age = "unknown age" if row.created_at is None else f"{age_since(row.created_at)} old"
-    if row.feedback:
+    if decided_status(decision) is ApprovalStatus.APPROVED_WITH_CHANGE:
         return (
             f"APPROVAL_READY {row.approval_id}: the user approved {row.summary} ({age}) "
-            f"with a change: {row.feedback!r}. Do not run the stored call, it lacks the change: "
+            f"with a change: {decision.feedback!r}. Do not run the stored call, it lacks the change: "
             f"{amend_instruction(row)}, and continue with its result."
         )
     return (

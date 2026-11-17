@@ -989,7 +989,7 @@ class TestApproveDeliversToExecutor:
 class TestApproveResumesBackgroundOwner:
     @pytest.mark.parametrize("owner_run_type", ["todo", "workflow"])
     async def test_approving_a_background_owners_approval_starts_exactly_one_continuation(
-        self, owner_run_type: str
+        self, owner_run_type: str, logged_decisions: dict[str, ApprovalDecided]
     ) -> None:
         """The owner's resume carries the ticket; no second, ownerless ticket run starts beside it."""
         from app.services.hil import ledger_decide
@@ -1005,10 +1005,12 @@ class TestApproveResumesBackgroundOwner:
             outcome = await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
 
         assert outcome.committed is True
-        resume.assert_awaited_once_with(row)
+        resume.assert_awaited_once_with(row, logged_decisions["ap_abc"])
         deliver.assert_not_awaited()
 
-    async def test_approving_a_live_runs_approval_delivers_only_the_ticket(self) -> None:
+    async def test_approving_a_live_runs_approval_delivers_only_the_ticket(
+        self, logged_decisions: dict[str, ApprovalDecided]
+    ) -> None:
         from app.services.hil import ledger_decide
         from app.services.hil.ledger_decide import decide_ledger
 
@@ -1021,7 +1023,7 @@ class TestApproveResumesBackgroundOwner:
         ):
             await decide_ledger("ap_abc", user_id=USER_ID, kind="approve", via="card")
 
-        deliver.assert_awaited_once_with(row)
+        deliver.assert_awaited_once_with(row, logged_decisions["ap_abc"])
         resume.assert_not_awaited()
 
     async def test_deny_records_todo_skip_and_resumes_nothing(self) -> None:
@@ -1174,7 +1176,7 @@ class TestApproveWithAChange:
             "ap_abc", ApprovalOutcome.APPROVED, decided_by=USER_ID, feedback="cc finance"
         )
         verdict.assert_not_awaited()
-        ticket = approval_ticket(deliver.await_args.args[0])
+        ticket = approval_ticket(*deliver.await_args.args)
         assert "'cc finance'" in ticket
         assert "Do not run the stored call" in ticket
 
@@ -1215,7 +1217,7 @@ class TestTicketCarriesAge:
         deliver.assert_awaited_once()
         claimed_row = deliver.await_args.args[0]
         assert claimed_row.approval_id == "ap_abc"
-        task = approval_ticket(old)
+        task = approval_ticket(*deliver.await_args.args)
         assert task.startswith("APPROVAL_READY ap_abc")
         assert "72h" in task
         assert 'execute(tool_name="approve"' in task
@@ -2003,7 +2005,13 @@ class TestTheTicketReachesARunWhateverHeldTheConversation:
             patch.object(er, "_spawn_detached_run") as spawn,
             patch.object(er, "record_work_carried", AsyncMock(return_value=True)),
         ):
-            await _deliver_ticket(_doc())
+            approved = ApprovalDecided(
+                id="approval:ap_1:decided",
+                approval_id="ap_1",
+                outcome=ApprovalOutcome.APPROVED,
+                decider=ApprovalDecider.USER,
+            )
+            await _deliver_ticket(_doc(), approved)
         return spawn
 
     async def test_a_ticket_for_a_conversation_whose_run_died_starts_a_run(
