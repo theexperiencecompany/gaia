@@ -307,6 +307,31 @@ def test_the_verdict_is_preferred_and_the_job_log_is_not_fetched(
     assert "verdict artifact" in capsys.readouterr().out
 
 
+class ReplacedVerdict(FakeGh):
+    """The lane re-uploads its verdict between the listing and the download, so the listed id is gone."""
+
+    def respond(self, req: Request) -> Reply:
+        if req.path.endswith("/artifacts/55/zip"):
+            self.calls.append(req.path)
+            return Reply(404, {"message": "Not Found"})
+        out = super().respond(req)
+        if req.path.endswith("/artifacts"):
+            self.artifacts = [{"id": 56, "name": "verdict-mutation-shard-3", "expired": False}]
+        return out
+
+
+def test_a_verdict_artifact_replaced_while_it_is_read_is_read_from_its_replacement(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = wire(ReplacedVerdict(checks=[FAILED_CHECK], zip_blobs={56: verdict_zip(VERDICT)}))
+    fake.artifacts = [{"id": 55, "name": "verdict-mutation-shard-3", "expired": False}]
+
+    run_cli(monkeypatch, ["--verbose"])
+
+    assert "verdict artifact" in capsys.readouterr().out
+    assert any(call.endswith("/artifacts/56/zip") for call in fake.calls)
+
+
 def test_a_lane_with_no_verdict_falls_back_to_the_job_log_and_says_so(
     wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -2008,9 +2033,10 @@ def test_a_5xx_is_retried_inside_the_read(
 def test_a_permanent_error_still_ends_the_watch(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    fake = wire(flaky_zip(404))
+    # Not a 404: a verdict zip that 404s was replaced mid-read, and is listed again.
+    fake = wire(flaky_zip(422))
     assert run_cli(monkeypatch, ["--watch", "--no-stack"]) == 2
     assert fake.check_polls == 1
-    assert "/actions/artifacts/72/zip failed after 1 attempt(s) — HTTP 404" in (
+    assert "/actions/artifacts/72/zip failed after 1 attempt(s) — HTTP 422" in (
         capsys.readouterr().err
     )
