@@ -1,12 +1,12 @@
 "use client";
 
-import { Link } from "@heroui/link";
 import type {
   BriefingEvent,
   BriefingPayload,
   BriefPoolItem,
 } from "@shared/api/generated";
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { z } from "zod";
 
@@ -230,7 +230,9 @@ function PoolItemRow({ item }: { item: BriefPoolItem }) {
       {href ? (
         <Link
           href={href}
-          isExternal={!href.startsWith("/")}
+          {...(href.startsWith("/")
+            ? {}
+            : { target: "_blank", rel: "noopener noreferrer" })}
           className="w-fit text-sm text-zinc-100 hover:text-white"
         >
           {item.title}

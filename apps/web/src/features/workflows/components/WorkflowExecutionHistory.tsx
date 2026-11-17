@@ -1,11 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import { Clock04Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ChevronRight } from "@/components/shared/icons";
 import { ShareLinkControls } from "@/features/short-links/components/ShareLinkControls";
 
@@ -161,15 +161,15 @@ export default function WorkflowExecutionHistory({
         ))}
       </div>
       {hasMore && (
-        <Button
+        <GaiaButton
           size="sm"
-          variant="flat"
+          variant="default-soft"
           className="w-full"
           onPress={loadMore}
-          isLoading={isLoading}
+          isPending={isLoading}
         >
           Load More
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

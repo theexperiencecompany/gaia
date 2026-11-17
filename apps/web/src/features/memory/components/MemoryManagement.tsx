@@ -1,8 +1,6 @@
 "use client";
 
-import { Divider } from "@heroui/divider";
-import { Skeleton } from "@heroui/skeleton";
-import { Tab, Tabs } from "@heroui/tabs";
+import { Separator, Skeleton, Tabs } from "@heroui/react";
 import {
   AiBrain01Icon,
   BookOpen01Icon,
@@ -17,6 +15,9 @@ import type { MemoryOverviewResponse } from "@shared/api/generated";
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
+import { separatorVariants } from "@/components/shared/controlVariants";
+import { shapeVariants } from "@/components/shared/shape";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { CoreDocuments } from "@/features/memory/components/CoreDocuments";
 import { MemoryDocsBanner } from "@/features/memory/components/MemoryDocsBanner";
@@ -103,9 +104,12 @@ export default function MemoryManagement({
         {stats.map((stat, index) => (
           <div key={stat.label} className="flex items-center">
             {index > 0 && (
-              <Divider
+              <Separator
                 orientation="vertical"
-                className="mx-6 h-8 bg-zinc-700/50"
+                className={separatorVariants({
+                  surface: "raised",
+                  className: "mx-6 h-8",
+                })}
               />
             )}
             <div className="flex items-center gap-3">
@@ -124,29 +128,37 @@ export default function MemoryManagement({
       </div>
 
       <Tabs
-        variant="solid"
-        color="primary"
-        radius="full"
+        className={tabsVariants({ color: "accent" }).base({
+          className: shapeVariants({ shape: "pill" }),
+        })}
+        variant="primary"
         selectedKey={selectedTab}
         onSelectionChange={(key) => setSelectedTab(key as string)}
       >
-        <Tab
-          key="folders"
-          title={<TabTitle icon={Folder01Icon} label="Folders" />}
-        />
-        <Tab
-          key="documents"
-          title={<TabTitle icon={Note01Icon} label="Documents" />}
-        />
-        <Tab
-          key="graph"
-          title={<TabTitle icon={NeuralNetworkIcon} label="Graph" />}
-        />
-        <Tab
-          key="journal"
-          title={<TabTitle icon={BookOpen01Icon} label="Journal" />}
-        />
-        <Tab key="all" title={<TabTitle icon={ListViewIcon} label="All" />} />
+        <Tabs.ListContainer>
+          <Tabs.List aria-label="Memory views">
+            <Tabs.Tab id="folders">
+              <TabTitle icon={Folder01Icon} label="Folders" />
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="documents">
+              <TabTitle icon={Note01Icon} label="Documents" />
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="graph">
+              <TabTitle icon={NeuralNetworkIcon} label="Graph" />
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="journal">
+              <TabTitle icon={BookOpen01Icon} label="Journal" />
+              <Tabs.Indicator />
+            </Tabs.Tab>
+            <Tabs.Tab id="all">
+              <TabTitle icon={ListViewIcon} label="All" />
+              <Tabs.Indicator />
+            </Tabs.Tab>
+          </Tabs.List>
+        </Tabs.ListContainer>
       </Tabs>
 
       <div className="min-h-0 flex-1">

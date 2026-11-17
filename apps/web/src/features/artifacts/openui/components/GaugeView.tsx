@@ -25,7 +25,7 @@ export function GaugeView(props: z.infer<typeof gaugeSchema>) {
         <path
           d={GAUGE_ARC}
           fill="none"
-          className="stroke-default-200"
+          className="stroke-default"
           strokeWidth="16"
           strokeLinecap="round"
         />
@@ -49,7 +49,7 @@ export function GaugeView(props: z.infer<typeof gaugeSchema>) {
           {props.suffix}
         </text>
       </svg>
-      <span className="text-sm text-default-500">
+      <span className="text-sm text-muted">
         <GroundedText text={props.label} />
       </span>
     </figure>

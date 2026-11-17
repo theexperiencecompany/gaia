@@ -1,5 +1,7 @@
 "use client";
 
+import "../../styles/app.css";
+
 import dynamic from "next/dynamic";
 
 // Client-only: the program arrives on window from the PDF export's own browser.

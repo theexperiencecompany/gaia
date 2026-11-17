@@ -1,10 +1,13 @@
 "use client";
 
 import type { BriefingFrequency } from "@gaia/shared/types";
-import { Button } from "@heroui/button";
-import { Select, SelectItem } from "@heroui/select";
+import { ListBox, Select } from "@heroui/react";
 import { formatHour12 } from "@shared/utils";
 import { format, parseISO } from "date-fns";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { paywallCopyFor } from "@/features/pricing/constants";
 import { useIsPaid } from "@/features/pricing/hooks/useIsPaid";
 import { BriefsOffBlockedModal } from "@/features/settings/components/BriefsOffBlockedModal";
@@ -76,10 +79,10 @@ export function BriefingScheduleSettings() {
           label="Your briefs are paused"
           description="Briefs on a schedule are part of GAIA Pro, so none are sent on the free plan."
         >
-          <Button
+          <GaiaButton
             size="sm"
-            color="primary"
-            className="font-medium text-black"
+            variant="primary"
+            className="font-medium"
             onPress={() =>
               openUpgradeModal(undefined, {
                 dismissible: true,
@@ -88,25 +91,35 @@ export function BriefingScheduleSettings() {
             }
           >
             {paywallCopyFor(hasEverSubscribed).cta}
-          </Button>
+          </GaiaButton>
         </SettingsRow>
       )}
       <SettingsRow label="Frequency">
         <Select
-          size="sm"
-          className="w-44"
+          className={inputVariants({ size: "sm", className: "w-44" })}
           aria-label="Briefing frequency"
-          selectedKeys={schedule?.frequency ? [schedule.frequency] : []}
+          value={schedule?.frequency ?? null}
           isDisabled={!schedule || saving}
-          onSelectionChange={(keys) => {
-            const next = Array.from(keys)[0];
-            const match = FREQUENCIES.find((f) => f.frequency === next);
+          onChange={(key) => {
+            const match = FREQUENCIES.find((f) => f.frequency === key);
             if (match) void update({ frequency: match.frequency });
           }}
         >
-          {FREQUENCIES.map(({ frequency, label }) => (
-            <SelectItem key={frequency}>{label}</SelectItem>
-          ))}
+          <Select.Trigger>
+            <GaiaSelectValue />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {FREQUENCIES.map(({ frequency, label }) => (
+                <GaiaListBoxItem
+                  key={frequency}
+                  id={frequency}
+                  textValue={label}
+                />
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </SettingsRow>
       <SettingsRow
@@ -125,21 +138,29 @@ export function BriefingScheduleSettings() {
         }
       >
         <Select
-          size="sm"
-          className="w-44"
+          className={inputVariants({ size: "sm", className: "w-44" })}
           aria-label="Daily brief hour"
-          selectedKeys={
-            schedule?.hour !== undefined ? [String(schedule.hour)] : []
-          }
+          value={schedule?.hour !== undefined ? String(schedule.hour) : null}
           isDisabled={!schedule || saving || !hasDailyBrief}
-          onSelectionChange={(keys) => {
-            const next = Array.from(keys)[0];
-            if (next !== undefined) void update({ hour: Number(next) });
+          onChange={(key) => {
+            if (key != null) void update({ hour: Number(key) });
           }}
         >
-          {HOURS.map((hour) => (
-            <SelectItem key={String(hour)}>{formatHour12(hour)}</SelectItem>
-          ))}
+          <Select.Trigger>
+            <GaiaSelectValue />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {HOURS.map((hour) => (
+                <GaiaListBoxItem
+                  key={hour}
+                  id={String(hour)}
+                  textValue={formatHour12(hour)}
+                />
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </SettingsRow>
       <BriefsOffBlockedModal

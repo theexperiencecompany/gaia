@@ -1,11 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Skeleton } from "@heroui/skeleton";
-import { Spinner } from "@heroui/spinner";
+import { Chip, Skeleton, Spinner } from "@heroui/react";
 import { Alert01Icon, SquareArrowExpand01Icon } from "@icons";
 import type { ArtifactCardData } from "@shared/chat";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useArtifact } from "@/features/artifacts/hooks/useArtifact";
 import { LazyArtifactRenderer } from "@/features/artifacts/LazyArtifactRenderer";
 import { ArtifactViewer } from "@/features/chat/components/artifacts/ArtifactViewer";
@@ -61,9 +59,13 @@ export function ArtifactCard({ card }: ArtifactCardProps) {
             <Alert01Icon size={16} />
             Couldn't load this {card.kind}.
           </span>
-          <Button size="sm" variant="flat" onPress={() => stored.refetch()}>
+          <GaiaButton
+            size="sm"
+            variant="default-soft"
+            onPress={() => stored.refetch()}
+          >
             Try again
-          </Button>
+          </GaiaButton>
         </div>
       );
     }
@@ -93,22 +95,18 @@ export function ArtifactCard({ card }: ArtifactCardProps) {
   return (
     <div className="w-full max-w-2xl rounded-2xl bg-zinc-800 p-4">
       <div className="mb-3 flex items-center gap-3">
-        <Chip size="sm" variant="flat" className="capitalize">
-          {card.kind}
+        <Chip size="sm" variant="soft">
+          <Chip.Label className="capitalize">{card.kind}</Chip.Label>
         </Chip>
         <p className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100">
           {card.title}
         </p>
         {streaming ? <Spinner size="sm" aria-label="Writing" /> : null}
         {artifactId ? (
-          <Button
-            size="sm"
-            variant="flat"
-            startContent={<SquareArrowExpand01Icon size={14} />}
-            onPress={preview.open}
-          >
+          <GaiaButton size="sm" variant="default-soft" onPress={preview.open}>
+            <SquareArrowExpand01Icon size={14} />
             Open
-          </Button>
+          </GaiaButton>
         ) : null}
       </div>
       {body()}

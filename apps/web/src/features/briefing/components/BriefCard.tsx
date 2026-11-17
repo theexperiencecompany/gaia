@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { NewsIcon } from "@icons";
 import { format, parseISO } from "date-fns";
 import Image from "next/image";
@@ -32,8 +31,8 @@ const PREVIEW_ASPECT = 2 / 3;
 const NOTABLE_NEEDS_YOU = 3;
 
 const TONE_CLASSES = {
-  raised: "bg-zinc-800 data-[hover=true]:bg-zinc-700/80",
-  inset: "bg-zinc-900 data-[hover=true]:bg-zinc-950/80",
+  raised: "bg-zinc-800 hover:bg-zinc-700/80",
+  inset: "bg-zinc-900 hover:bg-zinc-950/80",
 } as const;
 
 export type BriefCardTone = keyof typeof TONE_CLASSES;
@@ -146,16 +145,16 @@ export function BriefCard({
   const needsYou = brief.needsYouCount ?? 0;
 
   return (
-    <Button
-      disableRipple
-      onPress={onPress}
+    <button
+      type="button"
+      onClick={onPress}
       onPointerEnter={onWarm}
       onPointerDown={onWarm}
       onFocus={onWarm}
       aria-label={`Open brief: ${brief.headline}`}
       aria-busy={isBusy}
       className={cn(
-        "h-full w-full min-w-0 items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal transition-[background-color,scale] data-[pressed=true]:scale-[0.97]",
+        "flex h-full w-full min-w-0 cursor-pointer items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal outline-none transition-[background-color,scale] focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.97]",
         isFeature ? "flex-col sm:flex-row" : "flex-col",
         TONE_CLASSES[tone],
       )}
@@ -200,6 +199,6 @@ export function BriefCard({
           </span>
         )}
       </span>
-    </Button>
+    </button>
   );
 }

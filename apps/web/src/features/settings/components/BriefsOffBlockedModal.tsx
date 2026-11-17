@@ -1,15 +1,10 @@
 "use client";
 
 import { BRIEF_FREE_DELIVERIES, type BriefFreeDelivery } from "@gaia/shared";
-import { Button } from "@heroui/button";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+import { Modal } from "@heroui/react";
 import { useState } from "react";
+import { modalVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { DeliverySegments } from "@/features/workflows/components/DeliverySegments";
 import type { BriefsOffBlock } from "@/services/api/notifications";
 
@@ -34,21 +29,23 @@ export function BriefsOffBlockedModal({
   return (
     <Modal
       isOpen={block !== null}
-      onClose={onCancel}
-      isDismissable={!saving}
-      size="xl"
-      scrollBehavior="inside"
+      onOpenChange={(nextOpen) => !nextOpen && onCancel()}
     >
-      <ModalContent>
-        {block && (
-          <BriefsOffChoices
-            block={block}
-            saving={saving}
-            onTurnOff={onTurnOff}
-            onCancel={onCancel}
-          />
-        )}
-      </ModalContent>
+      <Modal.Backdrop isDismissable={!saving}>
+        <Modal.Container scroll="inside">
+          <Modal.Dialog className={modalVariants({ size: "xl" })}>
+            <Modal.CloseTrigger aria-label="Close" />
+            {block && (
+              <BriefsOffChoices
+                block={block}
+                saving={saving}
+                onTurnOff={onTurnOff}
+                onCancel={onCancel}
+              />
+            )}
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }
@@ -69,24 +66,26 @@ function BriefsOffChoices({
 
   return (
     <>
-      <ModalHeader className="flex-col gap-1 pr-10">
-        <span>{block.message}</span>
-        <span className="text-sm font-normal text-zinc-400">
-          With briefs off, their results would go nowhere. Choose where each one
-          goes, then turn briefs off.
-        </span>
-      </ModalHeader>
-      <ModalBody className="gap-3">
+      <Modal.Header>
+        <div className="flex flex-col gap-1 pr-10">
+          <Modal.Heading>{block.message}</Modal.Heading>
+          <span className="text-sm font-normal text-zinc-400">
+            With briefs off, their results would go nowhere. Choose where each
+            one goes, then turn briefs off.
+          </span>
+        </div>
+      </Modal.Header>
+      <Modal.Body className="flex flex-col gap-3">
         <div className="flex justify-end">
-          <Button
+          <GaiaButton
             size="sm"
-            variant="flat"
-            radius="lg"
+            variant="default-soft"
+            shape="md"
             onPress={setAllToNow}
             isDisabled={saving}
           >
             Set all to Tell me now
-          </Button>
+          </GaiaButton>
         </div>
         <ul className="flex flex-col gap-2">
           {block.workflows.map((workflow) => (
@@ -113,31 +112,31 @@ function BriefsOffChoices({
             </li>
           ))}
         </ul>
-      </ModalBody>
-      <ModalFooter className="items-center">
+      </Modal.Body>
+      <Modal.Footer className="items-center">
         {unchosen > 0 && (
           <span className="mr-auto text-sm text-zinc-400">
             {unchosen} left to choose
           </span>
         )}
-        <Button
-          variant="light"
-          radius="lg"
+        <GaiaButton
+          variant="ghost"
+          shape="md"
           onPress={onCancel}
           isDisabled={saving}
         >
           Cancel
-        </Button>
-        <Button
-          color="primary"
-          radius="lg"
+        </GaiaButton>
+        <GaiaButton
+          variant="primary"
+          shape="md"
           isDisabled={unchosen > 0}
-          isLoading={saving}
+          isPending={saving}
           onPress={() => onTurnOff(choices)}
         >
           Turn off briefs
-        </Button>
-      </ModalFooter>
+        </GaiaButton>
+      </Modal.Footer>
     </>
   );
 }

@@ -1,6 +1,7 @@
 """Unit tests for app.utils.auth_utils — WorkOS session authentication."""
 
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,7 +11,11 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from app.config.settings import settings
-from app.constants.auth import DEV_USER_HEADER, WOS_SESSION_COOKIE
+from app.constants.auth import (
+    DEV_USER_HEADER,
+    SESSION_HINT_COOKIE,
+    WOS_SESSION_COOKIE,
+)
 from app.constants.vfs import SYSTEM_USER_ID
 from app.models.user_models import OnboardingPhase, OnboardingSubdocument, UserDocument
 from app.utils import auth_utils
@@ -23,7 +28,12 @@ from app.utils.auth_utils import (
     with_local_onboarding_completed,
 )
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE
-from tests.helpers import UNKNOWN_USER_ID, session_set_cookie, users_get
+from tests.helpers import (
+    UNKNOWN_USER_ID,
+    session_hint_set_cookie,
+    session_set_cookie,
+    users_get,
+)
 from tests.user_document_factories import user_document_sample_values
 
 
@@ -1040,10 +1050,55 @@ class TestSessionCookieSecure:
         assert auth_utils.session_cookie_secure(_connection("http")) is True
 
 
+HOSTED_API = "https://api.heygaia.io"
+HOSTED_WEB = "https://heygaia.io"
+
+
+class TestSessionHintCookieDomain:
+    @pytest.mark.parametrize(
+        ("api_url", "web_url", "domain"),
+        [
+            (HOSTED_API, HOSTED_WEB, ".heygaia.io"),
+            ("https://api.example.com", "https://app.example.com", ".example.com"),
+            ("https://api.example.co.uk", "https://example.co.uk", ".example.co.uk"),
+            ("https://gaia.example.com", "https://gaia.example.com", None),
+            ("http://localhost:8000", "http://localhost:3000", None),
+            ("http://192.168.1.4:8000", "http://192.168.1.4:3000", None),
+            ("https://api.example.com", "https://example.org", None),
+            ("https://api.github.io", "https://web.github.io", None),
+            ("", HOSTED_WEB, None),
+            (HOSTED_API, "", None),
+        ],
+        ids=[
+            "hosted",
+            "sibling-subdomains",
+            "multi-label-suffix",
+            "selfhost-same-host",
+            "localhost",
+            "lan-ip",
+            "unrelated-sites",
+            "private-public-suffix",
+            "no-api-url",
+            "no-web-url",
+        ],
+    )
+    def test_it_is_the_site_web_and_api_share_else_host_only(
+        self, api_url: str, web_url: str, domain: str | None
+    ) -> None:
+        assert auth_utils.session_hint_cookie_domain(api_url, web_url) == domain
+
+
+@pytest.fixture
+def _hosted_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "HOST", HOSTED_API)
+    monkeypatch.setattr(settings, "FRONTEND_URL", HOSTED_WEB)
+
+
+@pytest.mark.usefixtures("_hosted_urls")
 class TestSetSessionCookie:
     @pytest.mark.parametrize("name", [WOS_SESSION_COOKIE, LOCAL_SESSION_COOKIE])
     @pytest.mark.parametrize(("scheme", "secure"), [("http", False), ("https", True)])
-    def test_it_sets_the_one_header_every_session_cookie_carries(
+    def test_it_sets_the_session_and_its_readable_hint_with_the_same_lifetime(
         self, monkeypatch: pytest.MonkeyPatch, name: str, scheme: str, secure: bool
     ) -> None:
         monkeypatch.setattr(settings, "ENV", "selfhost")
@@ -1055,5 +1110,41 @@ class TestSetSessionCookie:
         )
 
         assert response.headers.getlist("set-cookie") == [
-            session_set_cookie(name, "sealed.tok", 3600, secure=secure)
+            session_set_cookie(name, "sealed.tok", 3600, secure=secure),
+            session_hint_set_cookie(3600, secure=secure, domain=".heygaia.io"),
         ]
+
+
+@pytest.mark.usefixtures("_hosted_urls")
+class TestClearSessionCookie:
+    @pytest.mark.parametrize("name", [WOS_SESSION_COOKIE, LOCAL_SESSION_COOKIE])
+    def test_it_expires_the_session_and_the_hint_on_the_domain_it_was_set_on(
+        self, monkeypatch: pytest.MonkeyPatch, name: str
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "production")
+        monkeypatch.setattr(settings, "AUTH_MODE", "workos")
+        response = Response()
+
+        auth_utils.clear_session_cookie(response, _connection("https"), name=name)
+
+        session, hint = (SimpleCookie(h) for h in response.headers.getlist("set-cookie"))
+        expired_session, expired_hint = session[name], hint[SESSION_HINT_COOKIE]
+        assert (expired_session.value, expired_session["max-age"]) == ("", "0")
+        assert (expired_session["httponly"], expired_session["secure"]) == (True, True)
+        assert (expired_hint.value, expired_hint["max-age"]) == ("", "0")
+        assert expired_hint["domain"] == ".heygaia.io"
+        assert (expired_hint["path"], expired_hint["samesite"]) == ("/", "lax")
+        assert (expired_hint["httponly"], expired_hint["secure"]) == ("", True)
+
+    @pytest.mark.parametrize(("scheme", "secure"), [("http", False), ("https", True)])
+    def test_the_hint_is_expired_secure_exactly_when_the_request_is(
+        self, monkeypatch: pytest.MonkeyPatch, scheme: str, secure: bool
+    ) -> None:
+        monkeypatch.setattr(settings, "ENV", "selfhost")
+        monkeypatch.setattr(settings, "AUTH_MODE", "local")
+        response = Response()
+
+        auth_utils.clear_session_cookie(response, _connection(scheme), name=LOCAL_SESSION_COOKIE)
+
+        _, hint = (SimpleCookie(h) for h in response.headers.getlist("set-cookie"))
+        assert hint[SESSION_HINT_COOKIE]["secure"] == (True if secure else "")

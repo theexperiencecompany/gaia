@@ -162,3 +162,11 @@ def test_a_build_chain_reports_through_the_plugin() -> None:
     known = nx_affected.checks()
     assert known["web:build"].chained and known["ci:seo"].chained
     assert not known["ci:ruff"].chained and known["ci:api-schema"].exclusive
+
+
+def test_a_failing_nx_command_raises_with_what_nx_said() -> None:
+    with pytest.raises(
+        nx_affected.NxFailedError, match=r"`nx show project no-such-project` exited [1-9]"
+    ) as failed:
+        nx_affected._nx("show", "project", "no-such-project")
+    assert "no-such-project" in str(failed.value).split("\n", 1)[1]

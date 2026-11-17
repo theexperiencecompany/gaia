@@ -1,12 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Link } from "@heroui/link";
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { Download01Icon, File01Icon, LinkSquare02Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
 
+import { LinkButton } from "@/components/shared/LinkButton";
 import { FileViewerBody } from "@/features/chat/components/artifacts/FileViewerBody";
 import { PREVIEWABLE_CONTENT_TYPES } from "@/features/chat/constants/files";
 import type {
@@ -106,16 +105,15 @@ function FramedContent({
       return (
         <div className="flex flex-col">
           <div className="flex justify-end p-2">
-            <Button
-              as={Link}
+            <LinkButton
               href={url}
               referrerPolicy="no-referrer"
               size="sm"
-              variant="flat"
-              startContent={<LinkSquare02Icon className="size-4" />}
+              variant="default-soft"
             >
+              <LinkSquare02Icon className="size-4" />
               Open
-            </Button>
+            </LinkButton>
           </div>
           <iframe
             title={filename}
@@ -193,16 +191,15 @@ export function PublicSessionArtifactView({
         <div className="flex shrink-0 items-center gap-2">
           {reportAction}
           {downloadable && (
-            <Button
-              as={Link}
+            <LinkButton
               href={linkDownloadUrl(slug)}
               referrerPolicy="no-referrer"
               size="sm"
-              variant="flat"
-              startContent={<Download01Icon className="size-4" />}
+              variant="default-soft"
             >
+              <Download01Icon className="size-4" />
               Download
-            </Button>
+            </LinkButton>
           )}
         </div>
       </header>

@@ -1,41 +1,40 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Modal, ModalContent } from "@heroui/modal";
+import { Modal } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
-import { useReducedMotion } from "motion/react";
-import { type ReactNode, useState } from "react";
+import { AnimatePresence, useReducedMotion, type Variants } from "motion/react";
+import * as m from "motion/react-m";
+import type { ReactNode } from "react";
+
+import { modalVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { cn } from "@/lib/utils";
 
 /**
- * The sheet tilts and settles onto the screen rather than fading in. HeroUI
- * animates between two variants, so the pose it enters from is the pose it
- * exits to; reduced motion gets a plain fade instead.
+ * The sheet tilts and settles onto the screen rather than fading in. It enters
+ * from the pose it exits to; reduced motion gets a plain fade instead.
  */
 const LETTER_EASE: [number, number, number, number] = [0.19, 1, 0.22, 1];
-const SHEET_MOTION = {
+const SHEET_VARIANTS: Record<"full" | "reduced", Variants> = {
   full: {
-    variants: {
-      enter: {
-        opacity: 1,
-        scale: 1,
-        rotate: 0,
-        y: 0,
-        transition: { duration: 0.55, ease: LETTER_EASE },
-      },
-      exit: {
-        opacity: 0,
-        scale: 0.95,
-        rotate: 1,
-        y: 22,
-        transition: { duration: 0.3, ease: LETTER_EASE },
-      },
+    enter: {
+      opacity: 1,
+      scale: 1,
+      rotate: 0,
+      y: 0,
+      transition: { duration: 0.55, ease: LETTER_EASE },
+    },
+    exit: {
+      opacity: 0,
+      scale: 0.95,
+      rotate: 1,
+      y: 22,
+      transition: { duration: 0.3, ease: LETTER_EASE },
     },
   },
   reduced: {
-    variants: {
-      enter: { opacity: 1, transition: { duration: 0.15 } },
-      exit: { opacity: 0, transition: { duration: 0.15 } },
-    },
+    enter: { opacity: 1, transition: { duration: 0.15 } },
+    exit: { opacity: 0, transition: { duration: 0.15 } },
   },
 };
 
@@ -43,31 +42,23 @@ const SHEET_MOTION = {
  * A floating letter animates itself: the wrapper only hands its enter/exit
  * labels down and stays mounted until the letter has finished leaving.
  */
-const FLOATING_MOTION = {
-  variants: {
-    enter: { opacity: 1 },
-    exit: { opacity: 1, transition: { when: "afterChildren" } },
-  },
+const FLOATING_VARIANTS: Variants = {
+  enter: { opacity: 1 },
+  exit: { opacity: 1, transition: { when: "afterChildren" } },
+};
+
+const SCRIM_VARIANTS: Variants = {
+  enter: { opacity: 1, transition: { duration: 0.2 } },
+  exit: { opacity: 0, transition: { duration: 0.15 } },
 };
 
 const PRESENTATIONS = {
   sheet: {
-    backdrop: "opaque",
-    scrollBehavior: "normal",
-    classNames: {
-      backdrop: "bg-black/70 backdrop-blur-sm",
-      wrapper: "items-center justify-center p-3 sm:p-6",
-      base: "m-0 max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain bg-transparent shadow-none",
-    },
+    scrim: "bg-black/70 backdrop-blur-sm",
+    dialog:
+      "max-h-[min(92vh,860px)] w-full max-w-[620px] overflow-y-auto overscroll-contain",
   },
-  floating: {
-    backdrop: "transparent",
-    scrollBehavior: "outside",
-    classNames: {
-      wrapper: "no-scrollbar items-start justify-center px-3 py-8",
-      base: "m-0 my-auto w-auto max-w-none overflow-visible bg-transparent shadow-none sm:my-auto",
-    },
-  },
+  floating: { scrim: null, dialog: undefined },
 } as const;
 
 interface LetterModalProps {
@@ -86,7 +77,8 @@ interface LetterModalProps {
 /**
  * A single sheet handed to the reader, with one close button pinned to the
  * screen's corner so a letter taller than the screen still has a way out.
- * HeroUI owns focus trap, Escape, outside press, scroll lock and focus restore.
+ * HeroUI owns focus trap, Escape, outside press, scroll lock and focus restore;
+ * the letter stays mounted, still open, until its exit animation has run.
  */
 export function LetterModal({
   isOpen,
@@ -96,46 +88,67 @@ export function LetterModal({
   children,
 }: LetterModalProps) {
   const reduceMotion = useReducedMotion();
-  const { backdrop, scrollBehavior, classNames } = PRESENTATIONS[presentation];
-  // HeroUI attaches its motion asynchronously; a close before the entrance starts never runs
-  // the exit and strands the modal open, so it stays mounted until then and closes after.
-  const [isEntering, setIsEntering] = useState(isOpen);
-  const [wasOpen, setWasOpen] = useState(isOpen);
-  if (isOpen !== wasOpen) {
-    setWasOpen(isOpen);
-    if (isOpen) setIsEntering(true);
-  }
-  const motionProps =
+  const { scrim, dialog } = PRESENTATIONS[presentation];
+  const variants =
     presentation === "floating"
-      ? FLOATING_MOTION
-      : SHEET_MOTION[reduceMotion ? "reduced" : "full"];
+      ? FLOATING_VARIANTS
+      : SHEET_VARIANTS[reduceMotion ? "reduced" : "full"];
   return (
-    <Modal
-      isOpen={isOpen || isEntering}
-      onClose={onClose}
-      hideCloseButton
-      aria-label={ariaLabel}
-      backdrop={backdrop}
-      scrollBehavior={scrollBehavior}
-      classNames={classNames}
-      motionProps={{
-        ...motionProps,
-        onAnimationStart: () => setIsEntering(false),
-      }}
-    >
-      <ModalContent>
-        <Button
-          isIconOnly
-          radius="full"
-          variant="flat"
-          aria-label="Close"
-          onPress={onClose}
-          className="fixed top-3 right-3 z-50 bg-zinc-800 text-zinc-200 shadow-[0_6px_20px_-6px_rgba(0,0,0,0.6)] data-[hover=true]:bg-zinc-700"
+    <AnimatePresence>
+      {isOpen && (
+        <Modal
+          key="letter"
+          isOpen
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) onClose();
+          }}
         >
-          <Cancel01Icon className="size-5" />
-        </Button>
-        {children}
-      </ModalContent>
-    </Modal>
+          <Modal.Backdrop
+            variant="transparent"
+            className={presentation === "floating" ? "no-scrollbar" : undefined}
+          >
+            {scrim && (
+              <m.div
+                aria-hidden
+                initial="exit"
+                animate="enter"
+                exit="exit"
+                variants={SCRIM_VARIANTS}
+                className={cn("pointer-events-none fixed inset-0", scrim)}
+              />
+            )}
+            <Modal.Container placement="center" scroll="outside">
+              <Modal.Dialog
+                aria-label={ariaLabel}
+                className={modalVariants({
+                  surface: "bare",
+                  className: dialog,
+                })}
+              >
+                <GaiaButton
+                  isIconOnly
+                  shape="pill"
+                  variant="tertiary"
+                  tone="bright"
+                  aria-label="Close"
+                  onPress={onClose}
+                  className="fixed top-3 right-3 z-50 shadow-[0_6px_20px_-6px_rgba(0,0,0,0.6)]"
+                >
+                  <Cancel01Icon className="size-5" />
+                </GaiaButton>
+                <m.div
+                  initial="exit"
+                  animate="enter"
+                  exit="exit"
+                  variants={variants}
+                >
+                  {children}
+                </m.div>
+              </Modal.Dialog>
+            </Modal.Container>
+          </Modal.Backdrop>
+        </Modal>
+      )}
+    </AnimatePresence>
   );
 }

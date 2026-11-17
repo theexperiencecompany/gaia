@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Dropdown, DropdownMenu, DropdownTrigger } from "@heroui/dropdown";
+import { Dropdown, DropdownMenu, DropdownPopover } from "@heroui/react";
 import { Share08Icon } from "@icons";
 import type { KeyboardEvent, MouseEvent } from "react";
 
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { ShareLinkSettingsModal } from "@/features/short-links/components/ShareLinkSettingsModal";
 import { shareLinkMenuItems } from "@/features/short-links/components/shareLinkMenuItems";
 import { useShareLink } from "@/features/short-links/hooks/useShareLink";
@@ -43,26 +43,22 @@ export function ShareLinkControls({
       onClick={stopPropagation}
       onKeyDown={stopPropagation}
     >
-      <Dropdown placement="bottom-end" onOpenChange={share.onMenuOpenChange}>
-        <DropdownTrigger>
-          <Button
-            size="sm"
-            variant={iconOnly ? "light" : "flat"}
-            isIconOnly={iconOnly}
-            aria-label="Share"
-            isLoading={share.pending !== null}
-            startContent={iconOnly ? undefined : <Share08Icon size={16} />}
-          >
-            {iconOnly ? <Share08Icon size={16} /> : "Share"}
-          </Button>
-        </DropdownTrigger>
-        <DropdownMenu
+      <Dropdown onOpenChange={share.onMenuOpenChange}>
+        <GaiaButton
+          size="sm"
+          variant={iconOnly ? "ghost" : "default-soft"}
+          isIconOnly={iconOnly}
           aria-label="Share"
-          className="max-w-72"
-          itemClasses={{ description: "whitespace-normal" }}
+          isPending={share.pending !== null}
         >
-          {shareLinkMenuItems(share, stopWarning)}
-        </DropdownMenu>
+          <Share08Icon size={16} />
+          {iconOnly ? null : "Share"}
+        </GaiaButton>
+        <DropdownPopover placement="bottom end" className="max-w-72">
+          <DropdownMenu aria-label="Share">
+            {shareLinkMenuItems(share, stopWarning)}
+          </DropdownMenu>
+        </DropdownPopover>
       </Dropdown>
       <ShareLinkSettingsModal share={share} />
     </span>

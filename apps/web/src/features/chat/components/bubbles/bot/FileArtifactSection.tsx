@@ -1,13 +1,14 @@
-import { Button } from "@heroui/button";
 import {
   Dropdown,
   DropdownItem,
   DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
+  DropdownPopover,
+  Label,
+} from "@heroui/react";
 import { Download01Icon, MoreHorizontalIcon } from "@icons";
 import type React from "react";
 import { useCallback, useMemo } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
 import { FileCard } from "@/features/chat/components/files/FileCard";
@@ -115,33 +116,32 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
         sizeBytes={artifact.size_bytes}
         onPress={preview.open}
         actions={
-          <Dropdown
-            placement="bottom-end"
-            onOpenChange={share.onMenuOpenChange}
-          >
-            <DropdownTrigger>
-              <Button
-                isIconOnly
-                size="sm"
-                variant="light"
-                aria-label={`Actions for ${filename}`}
-                isLoading={share.pending !== null}
-              >
-                <MoreHorizontalIcon size={16} />
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu aria-label={`Actions for ${filename}`}>
-              {[
-                <DropdownItem
-                  key="download"
-                  startContent={<Download01Icon size={16} />}
-                  onPress={handleDownload}
-                >
-                  Download
-                </DropdownItem>,
-                ...shareLinkMenuItems(share),
-              ]}
-            </DropdownMenu>
+          <Dropdown onOpenChange={share.onMenuOpenChange}>
+            <GaiaButton
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              aria-label={`Actions for ${filename}`}
+              isPending={share.pending !== null}
+            >
+              <MoreHorizontalIcon size={16} />
+            </GaiaButton>
+            <DropdownPopover placement="bottom end">
+              <DropdownMenu aria-label={`Actions for ${filename}`}>
+                {[
+                  <DropdownItem
+                    key="download"
+                    id="download"
+                    textValue="Download"
+                    onAction={handleDownload}
+                  >
+                    <Download01Icon size={16} />
+                    <Label>Download</Label>
+                  </DropdownItem>,
+                  ...shareLinkMenuItems(share),
+                ]}
+              </DropdownMenu>
+            </DropdownPopover>
           </Dropdown>
         }
       />

@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { appConfig, footerSections } from "@/config/appConfig";
+import { BOT_LINKS, BOTS } from "@/features/bots/constants";
 
 import {
   VANITY_REDIRECT_PAIRS,
@@ -10,6 +11,7 @@ import {
 } from "../../vanity-redirects.mjs";
 
 const VANITY_PATHS = new Set(VANITY_REDIRECT_PAIRS.map(([source]) => source));
+const BOT_INSTALL_ROUTES = ["/slack-bot", "/discord-bot"];
 
 const landingPage = (route: string) =>
   path.join(process.cwd(), "src/app/[locale]/(landing)", route, "page.tsx");
@@ -38,6 +40,21 @@ describe("vanity redirects", () => {
       landingPage(source),
     ).filter(existsSync);
     expect(shadowed).toEqual([]);
+  });
+
+  it("leave the bot install routes to links shared off-site, since a prefetch of their cross-origin redirect fails CORS", () => {
+    const siteHrefs = [
+      ...navAndFooterHrefs,
+      ...Object.values(BOT_LINKS),
+      ...BOTS.flatMap((bot) =>
+        [bot.primaryAction, bot.secondaryAction].map((action) => action?.href),
+      ),
+    ];
+    expect(
+      siteHrefs.filter((href) =>
+        BOT_INSTALL_ROUTES.some((route) => href?.endsWith(route)),
+      ),
+    ).toEqual([]);
   });
 
   it("send /self-host to the install page", () => {

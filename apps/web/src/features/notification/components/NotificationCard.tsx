@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
   ArrowRight01Icon,
   CheckmarkCircle02Icon,
@@ -8,6 +7,10 @@ import {
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import {
+  GaiaButton,
+  type GaiaButtonVariant,
+} from "@/components/shared/GaiaButton";
 import { BriefingFold, type FoldedBriefSummary } from "@/features/briefing";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { NOTIFICATION_KIND_BRIEFING_WEEKLY } from "@/features/notification/constants";
@@ -15,7 +18,6 @@ import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
   ActionStyle,
   ActionType,
-  type ModalConfig,
   type NotificationAction,
   NotificationStatus,
   type NotificationView,
@@ -32,17 +34,13 @@ interface NotificationCardProps {
   /** Clamp the body to two lines in dense contexts (popover, chat). */
   clampBody?: boolean;
   onMarkAsRead?: (id: string) => void | Promise<void>;
-  onModalOpen?: (config: ModalConfig) => void;
   onRefresh?: () => void;
 }
 
-const ACTION_BUTTON_COLOR: Record<
-  ActionStyle,
-  "primary" | "danger" | "default"
-> = {
-  [ActionStyle.PRIMARY]: "primary",
-  [ActionStyle.DANGER]: "danger",
-  [ActionStyle.SECONDARY]: "default",
+const ACTION_BUTTON_VARIANT: Record<ActionStyle, GaiaButtonVariant> = {
+  [ActionStyle.PRIMARY]: "accent-soft",
+  [ActionStyle.DANGER]: "danger-soft",
+  [ActionStyle.SECONDARY]: "default-soft",
 };
 
 // The folded brief below already carries the headline, so the header names the kind.
@@ -102,12 +100,10 @@ export const NotificationCard = ({
   tone = "raised",
   clampBody = false,
   onMarkAsRead,
-  onModalOpen,
   onRefresh,
 }: NotificationCardProps) => {
   const { executeAction, loading, confirmationProps } = useNotificationActions({
     onSuccess: () => onRefresh?.(),
-    onModalOpen,
   });
 
   const { title, body } = notification.content;
@@ -144,7 +140,7 @@ export const NotificationCard = ({
             {brief ? BRIEF_LABEL : title}
           </h3>
           {isUnread && (
-            <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+            <span className="size-1.5 shrink-0 rounded-full bg-accent" />
           )}
           <span
             className="shrink-0 text-xs whitespace-nowrap text-zinc-500"
@@ -181,33 +177,33 @@ export const NotificationCard = ({
             const isLoading = loading === action.id;
 
             return (
-              <Button
+              <GaiaButton
                 key={action.id}
                 size="sm"
-                variant="flat"
-                color={
-                  ACTION_BUTTON_COLOR[action.style ?? ActionStyle.SECONDARY]
+                variant={
+                  ACTION_BUTTON_VARIANT[action.style ?? ActionStyle.SECONDARY]
                 }
-                className="rounded-xl"
+                shape="md"
                 isDisabled={action.disabled || isExecuted || isLoading}
-                isLoading={isLoading}
+                isPending={isLoading}
                 onPress={() => handleActionPress(action)}
-                endContent={actionIcon(action)}
               >
                 {action.label}
-              </Button>
+                {actionIcon(action)}
+              </GaiaButton>
             );
           })}
           {isUnread && onMarkAsRead && (
-            <Button
+            <GaiaButton
               size="sm"
-              variant="light"
-              className="rounded-xl text-zinc-500"
-              startContent={<CheckmarkCircle02Icon className="size-4" />}
+              variant="ghost"
+              shape="md"
+              tone="faint"
               onPress={handleMarkAsRead}
             >
+              <CheckmarkCircle02Icon className="size-4" />
               Mark as read
-            </Button>
+            </GaiaButton>
           )}
         </div>
       )}

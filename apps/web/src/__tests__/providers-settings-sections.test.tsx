@@ -186,7 +186,9 @@ const trigger = (title: string) =>
 
 /** A feature's row, collapsed or open. */
 const row = (title: string) => {
-  const item = trigger(title).closest<HTMLElement>('[data-slot="base"]');
+  const item = trigger(title).closest<HTMLElement>(
+    '[data-slot="accordion-item"]',
+  );
   if (!item) throw new Error(`No row for ${title}`);
   return within(item);
 };
@@ -219,7 +221,7 @@ describe("ProvidersSettings", () => {
       "Integrations",
       "Voice",
     ]);
-    expect(screen.queryByLabelText("API key")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "API key" })).toBeNull();
   });
 
   it("tells your apps apart from tool keys, pointing at Integrations", () => {
@@ -229,11 +231,12 @@ describe("ProvidersSettings", () => {
   });
 
   it("says each feature's state on its closed row", () => {
-    expect(row("Web search").getByText("Working")).toBeTruthy();
-    expect(row("Web search").getByText("DuckDuckGo, free")).toBeTruthy();
-    expect(row("AI models").getByText("OpenAI")).toBeTruthy();
-    expect(row("Email").getByText("Not set up")).toBeTruthy();
-    expect(row("Voice").getByText("Not available here")).toBeTruthy();
+    const closedRow = (title: string) => within(trigger(title));
+    expect(closedRow("Web search").getByText("Working")).toBeTruthy();
+    expect(closedRow("Web search").getByText("DuckDuckGo, free")).toBeTruthy();
+    expect(closedRow("AI models").getByText("OpenAI")).toBeTruthy();
+    expect(closedRow("Email").getByText("Not set up")).toBeTruthy();
+    expect(closedRow("Voice").getByText("Not available here")).toBeTruthy();
   });
 
   it("keeps keyless web search's providers behind an optional upgrade", () => {

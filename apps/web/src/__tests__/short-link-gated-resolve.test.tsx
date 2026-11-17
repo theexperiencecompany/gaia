@@ -43,7 +43,7 @@ describe("GatedLinkView", () => {
     openLinkInBrowser.mockRejectedValue(denial(401, "link_sign_in_required"));
     render(<GatedLinkView slug="abcdefghijk" />);
 
-    const signIn = await screen.findByRole("button", { name: "Sign in" });
+    const signIn = await screen.findByRole("link", { name: "Sign in" });
     expect(signIn.getAttribute("href")).toBe(
       "/login?return_url=%2Fl%2Fabcdefghijk",
     );

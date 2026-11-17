@@ -1,4 +1,5 @@
-import { Link } from "@heroui/link";
+import "../../../styles/marketing.css";
+import { Link } from "@heroui/react";
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
@@ -396,8 +397,8 @@ function DataSharingAndGoogleData() {
           <Link
             className="text-blue-500 underline"
             href="https://developers.google.com/terms/api-services-user-data-policy"
-            isExternal
-            showAnchorIcon={false}
+            target="_blank"
+            rel="noopener noreferrer"
           >
             Google API Services User Data Policy
           </Link>
@@ -430,8 +431,8 @@ function DataSharingAndGoogleData() {
             <Link
               className="text-blue-500 underline"
               href="https://myaccount.google.com/permissions"
-              isExternal
-              showAnchorIcon={false}
+              target="_blank"
+              rel="noopener noreferrer"
             >
               Google Account permissions page
             </Link>

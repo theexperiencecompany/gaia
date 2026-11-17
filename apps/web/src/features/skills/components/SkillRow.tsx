@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import { Switch } from "@heroui/switch";
+import { Chip, Switch } from "@heroui/react";
 import { Delete02Icon, Link04Icon, PencilEdit02Icon } from "@icons";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type { Skill, SkillTarget } from "../api/types";
 import { EXECUTOR_TARGET } from "../constants";
@@ -46,20 +46,22 @@ export function SkillRow({
           {showTarget && isScoped && targetMeta && (
             <Chip
               size="sm"
-              variant="flat"
-              startContent={
-                <SkillTargetIcon
-                  value={targetMeta.value}
-                  icon={targetMeta.icon}
-                  size={12}
-                />
-              }
-              classNames={{
-                base: "h-5 shrink-0 gap-1 bg-zinc-800 pl-1.5",
-                content: "px-1 text-xs text-zinc-400",
-              }}
+              variant="secondary"
+              className="h-5 shrink-0 gap-1 pl-1.5"
             >
-              {targetMeta.label}
+              <SkillTargetIcon
+                value={targetMeta.value}
+                icon={targetMeta.icon}
+                size={12}
+              />
+              <Chip.Label
+                className={toneVariants({
+                  tone: "muted",
+                  className: "px-1 text-xs",
+                })}
+              >
+                {targetMeta.label}
+              </Chip.Label>
             </Chip>
           )}
         </div>
@@ -72,15 +74,13 @@ export function SkillRow({
 
       {skill.source_url &&
         (skill.source === "github" || skill.source === "url") && (
-          <Chip
-            as="a"
-            href={skill.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            size="sm"
-            variant="flat"
-            startContent={
-              skill.source === "github" ? (
+          <a href={skill.source_url} target="_blank" rel="noopener noreferrer">
+            <Chip
+              size="sm"
+              variant="secondary"
+              className="h-6 shrink-0 cursor-pointer gap-1 pl-2"
+            >
+              {skill.source === "github" ? (
                 getToolCategoryIcon("github", {
                   size: 14,
                   width: 14,
@@ -89,46 +89,53 @@ export function SkillRow({
                 })
               ) : (
                 <Link04Icon className="size-3.5 text-zinc-300" />
-              )
-            }
-            classNames={{
-              base: "h-6 shrink-0 cursor-pointer gap-1 bg-zinc-800 pl-2 data-[hover=true]:bg-zinc-700",
-              content: "px-1 text-xs text-zinc-400",
-            }}
-          >
-            {skill.source === "github" ? "GitHub" : "Source"}
-          </Chip>
+              )}
+              <Chip.Label
+                className={toneVariants({
+                  tone: "muted",
+                  className: "px-1 text-xs",
+                })}
+              >
+                {skill.source === "github" ? "GitHub" : "Source"}
+              </Chip.Label>
+            </Chip>
+          </a>
         )}
 
       <div className="flex shrink-0 items-center gap-1">
         <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="light"
+            variant="ghost"
             aria-label={`Edit ${skill.name}`}
             onPress={() => onEdit(skill)}
           >
             <PencilEdit02Icon className="size-4 text-zinc-400" />
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="light"
-            color="danger"
+            variant="ghost"
             aria-label={`Delete ${skill.name}`}
-            isLoading={isDeleting}
+            isPending={isDeleting}
             onPress={() => onDelete(skill)}
           >
             <Delete02Icon className="size-4" />
-          </Button>
+          </GaiaButton>
         </div>
         <Switch
           size="sm"
           isSelected={skill.enabled}
-          onValueChange={(enabled) => onToggle(skill, enabled)}
+          onChange={(enabled) => onToggle(skill, enabled)}
           aria-label={`${skill.enabled ? "Disable" : "Enable"} ${skill.name}`}
-        />
+        >
+          <Switch.Content>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
+          </Switch.Content>
+        </Switch>
       </div>
     </div>
   );

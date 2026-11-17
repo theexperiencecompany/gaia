@@ -1,19 +1,12 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { Radio, RadioGroup } from "@heroui/radio";
+import { Modal, Radio, RadioGroup } from "@heroui/react";
 import { Flag02Icon } from "@icons";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { ApiError } from "@shared/api";
 import { useRef, useState } from "react";
 
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { TURNSTILE_SITE_KEY } from "@/features/contact/constants";
 import type { ReportReason } from "@/types/features/shortLinkTypes";
 
@@ -33,20 +26,27 @@ export function ReportLinkButton({ slug, label }: ReportLinkButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <>
-      <Button
+      <GaiaButton
         size="sm"
-        variant="flat"
-        startContent={<Flag02Icon className="size-4" />}
+        variant="default-soft"
         onPress={() => setIsOpen(true)}
       >
+        <Flag02Icon className="size-4" />
         Report
-      </Button>
-      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)}>
-        <ModalContent>
-          {(onClose) => (
-            <ReportForm slug={slug} label={label} onDone={onClose} />
-          )}
-        </ModalContent>
+      </GaiaButton>
+      <Modal isOpen={isOpen} onOpenChange={setIsOpen}>
+        <Modal.Backdrop>
+          <Modal.Container>
+            <Modal.Dialog>
+              <Modal.CloseTrigger aria-label="Close" />
+              <ReportForm
+                slug={slug}
+                label={label}
+                onDone={() => setIsOpen(false)}
+              />
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
     </>
   );
@@ -96,16 +96,23 @@ function ReportForm({
 
   return (
     <>
-      <ModalHeader>Report this {label}</ModalHeader>
-      <ModalBody>
+      <Modal.Header>
+        <Modal.Heading>Report this {label}</Modal.Heading>
+      </Modal.Header>
+      <Modal.Body className="flex flex-col gap-3">
         <RadioGroup
           aria-label="Why are you reporting this?"
           value={reason}
-          onValueChange={(value) => setReason(value as ReportReason)}
+          onChange={(value) => setReason(value as ReportReason)}
         >
           {REPORT_REASONS.map((value) => (
             <Radio key={value} value={value}>
-              {REPORT_REASON_LABELS[value]}
+              <Radio.Content>
+                <Radio.Control>
+                  <Radio.Indicator />
+                </Radio.Control>
+                {REPORT_REASON_LABELS[value]}
+              </Radio.Content>
             </Radio>
           ))}
         </RadioGroup>
@@ -123,20 +130,20 @@ function ReportForm({
             {REPORT_COPY.verificationFailed}
           </p>
         )}
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="flat" onPress={onDone}>
+      </Modal.Body>
+      <Modal.Footer>
+        <GaiaButton variant="default-soft" onPress={onDone}>
           Cancel
-        </Button>
-        <Button
-          color="danger"
+        </GaiaButton>
+        <GaiaButton
+          variant="danger"
           isDisabled={!reason}
-          isLoading={isSending}
+          isPending={isSending}
           onPress={send}
         >
           Send report
-        </Button>
-      </ModalFooter>
+        </GaiaButton>
+      </Modal.Footer>
     </>
   );
 }

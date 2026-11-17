@@ -1,8 +1,10 @@
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import type { Postmark } from "@shared/api/generated";
 import Image from "next/image";
 import Link from "next/link";
+import { Focusable } from "react-aria-components";
 
+import { overlayVariants } from "@/components/shared/controlVariants";
 import { cn } from "@/lib/utils";
 import { PostmarkCard } from "./PostmarkCard";
 
@@ -28,35 +30,38 @@ export function StampCollection({ postmarks, total }: StampCollectionProps) {
     >
       {postmarks.map((postmark) => (
         <li key={postmark.city_slug}>
-          <Tooltip
-            content={<PostmarkCard postmark={postmark} />}
-            classNames={{ content: "bg-transparent p-0 shadow-none" }}
-            placement="bottom"
-            closeDelay={0}
-          >
-            <Link
-              href={`/brief/${postmark.briefing_id}`}
-              aria-label={`${postmark.city}, ${postmark.country}`}
-              className="group block"
-            >
-              <div
-                className={cn(
-                  STAMP_SLOT,
-                  "transition-transform duration-200 ease-out group-hover:-translate-y-0.5 group-hover:-rotate-2",
-                )}
+          <Tooltip closeDelay={0}>
+            <Focusable>
+              <Link
+                href={`/brief/${postmark.briefing_id}`}
+                aria-label={`${postmark.city}, ${postmark.country}`}
+                className="group block"
               >
-                <Image
-                  src={postmark.stamp_url}
-                  alt=""
-                  width={144}
-                  height={204}
-                  className="h-full w-full object-contain drop-shadow-[0_4px_10px_rgb(0_0_0/0.45)]"
-                />
-              </div>
-              <p className="mt-1 truncate text-center text-xs text-zinc-400 sm:hidden">
-                {postmark.city}
-              </p>
-            </Link>
+                <div
+                  className={cn(
+                    STAMP_SLOT,
+                    "transition-transform duration-200 ease-out group-hover:-translate-y-0.5 group-hover:-rotate-2",
+                  )}
+                >
+                  <Image
+                    src={postmark.stamp_url}
+                    alt=""
+                    width={144}
+                    height={204}
+                    className="h-full w-full object-contain drop-shadow-[0_4px_10px_rgb(0_0_0/0.45)]"
+                  />
+                </div>
+                <p className="mt-1 truncate text-center text-xs text-zinc-400 sm:hidden">
+                  {postmark.city}
+                </p>
+              </Link>
+            </Focusable>
+            <Tooltip.Content
+              placement="bottom"
+              className={overlayVariants({ surface: "bare" })}
+            >
+              <PostmarkCard postmark={postmark} />
+            </Tooltip.Content>
           </Tooltip>
         </li>
       ))}

@@ -118,17 +118,18 @@ async def resolve_session_token(token: str) -> str | None:
 
 
 class LocalSessionFailure(StrEnum):
-    """Which step refused a local session token."""
+    """Why a local session token was refused: a rejection, or a check that could not run."""
 
     INVALID_OR_EXPIRED = "invalid_or_expired_session"
     UNKNOWN_USER = "unknown_local_session_user"
+    UNAVAILABLE = "local_session_check_unavailable"
 
 
 async def authenticate_local_session(token: str) -> AuthenticatedUser | LocalSessionFailure:
     """Resolve a local session token to its account, for the HTTP middleware and WebSockets alike.
 
-    A verification or lookup error is logged and refuses the token: a broken
-    secret store must surface, never pass as a session or crash the caller.
+    A verification or lookup error is logged and refuses the token as UNAVAILABLE: a
+    broken secret store or database must surface, never pass as a session or as a rejection.
     """
     try:
         user_id = await resolve_session_token(token)
@@ -138,19 +139,21 @@ async def authenticate_local_session(token: str) -> AuthenticatedUser | LocalSes
             auth_failure=type(e).__name__,
             error=str(e),
         )
-        user_id = None
+        return LocalSessionFailure.UNAVAILABLE
     if not user_id:
         return LocalSessionFailure.INVALID_OR_EXPIRED
+    if not user_repository.is_valid_id(user_id):
+        return LocalSessionFailure.UNKNOWN_USER
 
     try:
         user_data = await user_repository.get(user_id)
     except Exception as e:
         log.error(
-            f"{LogTag.API} Invalid user_id in local session token",
+            f"{LogTag.API} local session account lookup error",
             error_type=type(e).__name__,
             error=str(e),
         )
-        user_data = None
+        return LocalSessionFailure.UNAVAILABLE
     if user_data is None:
         return LocalSessionFailure.UNKNOWN_USER
     return build_user_context(user_data, auth_provider="email")

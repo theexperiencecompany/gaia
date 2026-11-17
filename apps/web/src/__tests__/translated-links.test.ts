@@ -17,6 +17,17 @@ describe("isTranslatedPath", () => {
     }
   });
 
+  it("judges a link with a fragment or query by its path", () => {
+    for (const path of [
+      "/automate#letter-A",
+      "/learn#ai-concepts",
+      "/compare?ref=hub",
+    ]) {
+      expect(isTranslatedPath(path), path).toBe(true);
+    }
+    expect(isTranslatedPath("/marketplace#directory-native")).toBe(false);
+  });
+
   it("is false for English-only pages and lookalike prefixes", () => {
     for (const path of [
       "/",

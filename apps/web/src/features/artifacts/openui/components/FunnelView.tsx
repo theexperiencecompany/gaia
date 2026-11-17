@@ -1,4 +1,4 @@
-import { Progress } from "@heroui/progress";
+import { ProgressBar } from "@heroui/react";
 import type { z } from "zod";
 import type { funnelSchema } from "../specs";
 import { Figure } from "./ChartFigure";
@@ -16,19 +16,23 @@ export function FunnelView(props: z.infer<typeof funnelSchema>) {
           <div key={label} className="flex flex-col gap-1">
             <div className="flex justify-between gap-3 text-sm">
               <span>{label}</span>
-              <span className="flex gap-3 text-default-500 tabular-nums">
+              <span className="flex gap-3 text-muted tabular-nums">
                 <span>{value.toLocaleString("en")}</span>
                 {carried ? (
-                  <span className="text-default-400">{carried}</span>
+                  <span className="text-zinc-500">{carried}</span>
                 ) : null}
               </span>
             </div>
-            <Progress
+            <ProgressBar
               aria-label={label}
               value={(value / top) * 100}
               size="md"
-              color="primary"
-            />
+              color="accent"
+            >
+              <ProgressBar.Track>
+                <ProgressBar.Fill />
+              </ProgressBar.Track>
+            </ProgressBar>
           </div>
         );
       })}
