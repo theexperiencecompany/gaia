@@ -198,12 +198,6 @@ export const MARKETING_PAGES: readonly MarketingPage[] = [
     category: "Company",
   },
   {
-    path: "/manifesto",
-    title: "Manifesto",
-    description: "Why GAIA exists: a personal AI assistant for everyone.",
-    category: "Company",
-  },
-  {
     path: "/contact",
     title: "Contact",
     description: "Get in touch with the GAIA team.",

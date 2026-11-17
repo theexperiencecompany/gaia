@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
+import { Input } from "@heroui/react";
 import {
   Camera01Icon,
   Logout02Icon,
@@ -12,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import type React from "react";
 import { useRef, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { authApi } from "@/features/auth/api/authApi";
 import {
   patchCurrentUser,
@@ -88,7 +88,7 @@ export default function AccountSection({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isLoading}
-              className="relative h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-zinc-800 transition-shadow duration-200 hover:ring-2 hover:ring-primary hover:ring-offset-2 hover:ring-offset-zinc-900"
+              className="relative h-14 w-14 cursor-pointer overflow-hidden rounded-full bg-zinc-800 transition-shadow duration-200 hover:ring-2 hover:ring-accent hover:ring-offset-2 hover:ring-offset-zinc-900"
             >
               {user?.profilePicture ? (
                 <Image
@@ -104,7 +104,7 @@ export default function AccountSection({
                   <UserCircle02Icon className="h-8 w-8 text-zinc-400" />
                 </div>
               )}
-              <div className="bg-opacity-50 absolute inset-0 flex items-center justify-center bg-black opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                 <Camera01Icon className="h-6 w-6 text-white" />
               </div>
             </button>
@@ -129,16 +129,17 @@ export default function AccountSection({
                 placeholder="Enter your name"
               />
               <div className="flex items-center space-x-3">
-                <Button
+                <GaiaButton
                   onPress={handleSave}
-                  disabled={isLoading}
-                  color="primary"
+                  isDisabled={isLoading}
                   size="sm"
                   fullWidth
+                  variant="primary"
                 >
                   {isLoading ? "Saving..." : "Save Changes"}
-                </Button>
-                <Button
+                </GaiaButton>
+                <GaiaButton
+                  variant="default-solid"
                   fullWidth
                   size="sm"
                   onPress={() => {
@@ -147,7 +148,7 @@ export default function AccountSection({
                   }}
                 >
                   Cancel
-                </Button>
+                </GaiaButton>
               </div>
             </div>
           ) : (
@@ -176,15 +177,14 @@ export default function AccountSection({
           label="Sign out"
           description="Sign out of your account on this device"
         >
-          <Button
-            variant="flat"
-            color="danger"
+          <GaiaButton
+            variant="danger-soft"
             size="sm"
             onPress={() => setModalAction("logout")}
-            startContent={<Logout02Icon className="h-4 w-4" />}
           >
+            <Logout02Icon className="h-4 w-4" />
             Sign out
-          </Button>
+          </GaiaButton>
         </SettingsRow>
       </SettingsSection>
     </SettingsPage>

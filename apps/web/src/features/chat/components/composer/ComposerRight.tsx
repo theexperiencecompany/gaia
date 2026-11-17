@@ -1,7 +1,7 @@
-import { Button } from "@heroui/button";
-import { Kbd } from "@heroui/react";
-import { Tooltip } from "@heroui/tooltip";
+import { Kbd, Tooltip } from "@heroui/react";
 import { AudioWave01Icon } from "@icons";
+import { overlayVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import SendStopButton from "@/features/chat/components/composer/SendStopButton";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useComposerSendMode } from "@/features/chat/hooks/useComposerSendMode";
@@ -121,7 +121,9 @@ export default function RightSide({
       return (
         <div className="flex items-center gap-2">
           Queue message
-          <Kbd className="text-zinc-400" keys={["enter"]} />
+          <Kbd>
+            <Kbd.Abbr keyValue="enter" />
+          </Kbd>
         </div>
       );
     }
@@ -146,7 +148,9 @@ export default function RightSide({
     return (
       <div className="flex items-center gap-2">
         Send Message
-        <Kbd className="text-zinc-400" keys={["enter"]} />
+        <Kbd>
+          <Kbd.Abbr keyValue="enter" />
+        </Kbd>
       </div>
     );
   };
@@ -154,38 +158,46 @@ export default function RightSide({
   return (
     <div className="ml-2 flex items-center gap-2">
       {isVoiceAvailable && (
-        <Tooltip
-          content="Voice Mode"
-          placement="left"
-          color="primary"
-          showArrow
-        >
-          <Button
+        <Tooltip>
+          <GaiaButton
+            variant="default-solid"
+            shape="pill"
             isIconOnly
             aria-label="Voice Mode"
             className="h-9 min-h-9 w-9 max-w-9 min-w-9"
-            color="default"
-            radius="full"
             type="button"
             onMouseEnter={onVoiceModeHover}
             onPress={() => setvoiceModeActive()}
           >
             <AudioWave01Icon className="text-zinc-400" />
-          </Button>
+          </GaiaButton>
+          <Tooltip.Content
+            className={overlayVariants({ surface: "accent" })}
+            placement="left"
+            showArrow
+          >
+            Voice Mode
+          </Tooltip.Content>
         </Tooltip>
       )}
 
-      <Tooltip
-        content={getTooltipContent()}
-        placement="right"
-        color={showStop ? "danger" : "primary"}
-        showArrow
-      >
-        <SendStopButton
-          hasContent={hasContent}
-          isUploading={isUploading}
-          onSend={handleFormSubmit}
-        />
+      <Tooltip>
+        <Tooltip.Trigger>
+          <SendStopButton
+            hasContent={hasContent}
+            isUploading={isUploading}
+            onSend={handleFormSubmit}
+          />
+        </Tooltip.Trigger>
+        <Tooltip.Content
+          className={overlayVariants({
+            surface: showStop ? "danger" : "accent",
+          })}
+          placement="right"
+          showArrow
+        >
+          {getTooltipContent()}
+        </Tooltip.Content>
       </Tooltip>
     </div>
   );

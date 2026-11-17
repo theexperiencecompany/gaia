@@ -12,7 +12,7 @@ cookie contract all run for real.
 import asyncio
 from datetime import UTC, datetime, timedelta
 import hashlib
-from http.cookies import Morsel, SimpleCookie
+from http.cookies import Morsel
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -52,7 +52,13 @@ from app.utils.local_auth_utils import (
 )
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.auth import InstanceMemberJoined
-from tests.helpers import captured_wide_event, forge_jwt, hostile_jwts, session_set_cookie
+from tests.helpers import (
+    captured_wide_event,
+    forge_jwt,
+    hostile_jwts,
+    session_cookie_morsel,
+    session_set_cookies,
+)
 
 TEST_SECRET = "test-instance-secret-" + "x" * 16
 TEST_PASSWORD = "correct-horse-battery"
@@ -803,9 +809,9 @@ class TestLogin:
         assert response.json()["user"]["email"] == "admin@gaia.dev"
         token = response.cookies[LOCAL_SESSION_COOKIE]
         assert await resolve_session_token(token) == admin.id
-        assert response.headers.get_list("set-cookie") == [
-            session_set_cookie(LOCAL_SESSION_COOKIE, token, SESSION_TTL_SECONDS, secure=False)
-        ]
+        assert response.headers.get_list("set-cookie") == session_set_cookies(
+            LOCAL_SESSION_COOKIE, token, SESSION_TTL_SECONDS, secure=False
+        )
 
     async def test_wrong_password_is_401_invalid_credentials(self, admin, _instance_secret):
         app = _build_router_app()
@@ -1547,7 +1553,7 @@ async def _post_as_router(path: str, json: dict[str, str]) -> tuple[httpx.Respon
 
 
 def _session_cookie(response: httpx.Response) -> Morsel[str]:
-    return SimpleCookie(response.headers["set-cookie"])["gaia_session"]
+    return session_cookie_morsel(response.headers.get_list("set-cookie"), LOCAL_SESSION_COOKIE)
 
 
 def _token_version(token: str) -> int:
@@ -1835,9 +1841,9 @@ class TestChangePasswordTrail:
         rotated = _session_cookie(response).value
         assert _token_version(rotated) == 1
         assert await resolve_session_token(rotated) == admin.id
-        assert response.headers.get_list("set-cookie") == [
-            session_set_cookie(LOCAL_SESSION_COOKIE, rotated, SESSION_TTL_SECONDS, secure=False)
-        ]
+        assert response.headers.get_list("set-cookie") == session_set_cookies(
+            LOCAL_SESSION_COOKIE, rotated, SESSION_TTL_SECONDS, secure=False
+        )
 
     async def test_an_unverifiable_current_password_is_rejected_and_changes_nothing(
         self, admin, credential_store

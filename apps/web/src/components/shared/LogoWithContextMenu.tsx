@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import {
   Copy01Icon,
   DownloadCircle01Icon,
@@ -10,6 +9,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useState } from "react";
+import { LinkButton } from "@/components/shared/LinkButton";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -194,7 +194,12 @@ export function LogoWithContextMenu({
   return (
     <ContextMenu onOpenChange={setIsOpen} modal={false}>
       <ContextMenuTrigger asChild>
-        <Button as={Link} href={"/"} variant="light" className={className}>
+        <LinkButton
+          href="/"
+          aria-label="GAIA home"
+          variant="ghost"
+          className={className}
+        >
           <div className="transition-transform duration-200 hover:scale-[1.02]">
             <Image
               src="/images/logos/text_w_logo_white.webp"
@@ -205,12 +210,12 @@ export function LogoWithContextMenu({
               className={imageClassName}
             />
           </div>
-        </Button>
+        </LinkButton>
       </ContextMenuTrigger>
       {isOpen && (
         <ContextMenuContent className="rounded-2xl bg-primary-bg/70 p-1.5">
           {menuItemsConfig.map((item, index) => {
-            const className =
+            const itemClassName =
               "hover:bg-zinc-700! hover:text-white text-zinc-400 animate-in fade-in slide-in-from-left-2 duration-100";
             const style = {
               animationDelay: `${index * 50}ms`,
@@ -222,7 +227,7 @@ export function LogoWithContextMenu({
                 <ContextMenuItem
                   key={item.id}
                   asChild
-                  className={className}
+                  className={itemClassName}
                   style={style}
                 >
                   <Link
@@ -240,7 +245,7 @@ export function LogoWithContextMenu({
             return (
               <ContextMenuItem
                 key={item.id}
-                className={className}
+                className={itemClassName}
                 style={style}
                 onSelect={() => handleAction(item.action)}
               >

@@ -37,6 +37,7 @@ from app.utils.errors import AppError
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.properties import Identifier
 from shared.py.analytics.catalog.settings import SettingsPreferencesChanged
+from shared.py.voice import voice_agent_name
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -114,6 +115,11 @@ async def get_token(
                     can_subscribe=True,
                     can_publish_data=True,
                     can_update_own_metadata=True,
+                )
+            )
+            .with_room_config(
+                api.RoomConfiguration(
+                    agents=[api.RoomAgentDispatch(agent_name=voice_agent_name(settings.ENV))]
                 )
             )
         )

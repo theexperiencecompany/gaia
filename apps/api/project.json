@@ -172,6 +172,9 @@
         "{projectRoot}/tests/**/*",
         "{projectRoot}/pyproject.toml",
         "{projectRoot}/pytest.ini",
+        "{projectRoot}/scripts/**/*",
+        "{workspaceRoot}/scripts/ci/analytics.py",
+        "{workspaceRoot}/scripts/ci/lib/**/*",
         "python",
         "^production",
         {
@@ -266,6 +269,9 @@
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
         "{projectRoot}/tests/helpers.py",
+        "{projectRoot}/scripts/**/*",
+        "{workspaceRoot}/scripts/ci/analytics.py",
+        "{workspaceRoot}/scripts/ci/lib/**/*",
         "python",
         "^production",
         {
@@ -286,6 +292,9 @@
         "{projectRoot}/tests/conftest.py",
         "{projectRoot}/tests/factories.py",
         "{projectRoot}/tests/helpers.py",
+        "{projectRoot}/scripts/**/*",
+        "{workspaceRoot}/scripts/ci/analytics.py",
+        "{workspaceRoot}/scripts/ci/lib/**/*",
         "python",
         "^production",
         {

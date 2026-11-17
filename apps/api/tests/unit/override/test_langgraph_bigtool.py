@@ -10,8 +10,17 @@ from typing import Any, Protocol, cast, runtime_checkable
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import fakeredis
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolCall, ToolMessage
-from langchain_core.runnables import RunnableBinding, RunnableConfig
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    BaseMessage,
+    HumanMessage,
+    ToolCall,
+    ToolMessage,
+)
+from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.runnables import ConfigurableField, Runnable, RunnableBinding, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from langchain_openai import ChatOpenAI
 from langchain_openrouter import ChatOpenRouter
@@ -1327,6 +1336,28 @@ def _gemini_lane() -> ModelLane:
     )
 
 
+class _NamedChatModel(BaseChatModel):
+    """A chat model that answers with its own name and binds tools as real clients do."""
+
+    answer: str
+
+    @property
+    def _llm_type(self) -> str:
+        return "named"
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: object = None,
+        **kwargs: object,
+    ) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=self.answer))])
+
+    def bind_tools(self, tools: Sequence[object], **kwargs: object) -> Runnable:
+        return self.bind(tools=[getattr(t, "name", t) for t in tools])
+
+
 def _next_is_gemini() -> Any:
     return patch.object(
         lane_module,
@@ -1358,8 +1389,10 @@ class TestFallbackPreparation:
 
     def test_the_fallback_targets_the_next_provider_with_the_same_tools(self) -> None:
         llm = MagicMock()
+        configured = MagicMock()
         bound = MagicMock()
-        llm.bind_tools.return_value = bound
+        llm.with_config.return_value = configured
+        configured.bind_tools.return_value = bound
         configurable = cast(
             AgentConfigurable, {LANE_FIELD_ID: _openrouter_lane().to_configurable()}
         )
@@ -1373,9 +1406,39 @@ class TestFallbackPreparation:
         assert fallback_lane.model == "gemini-x"
         # Zero-arg factory: the per-turn, tool-list-sized binding must not happen
         # unless the primary actually fails.
-        llm.bind_tools.assert_not_called()
+        configured.bind_tools.assert_not_called()
         assert factory() is bound
-        llm.bind_tools.assert_called_once_with([dummy_tool_a])
+        configured.bind_tools.assert_called_once_with([dummy_tool_a])
+
+    def test_the_fallback_runs_on_the_fallback_lanes_provider_not_the_default(self) -> None:
+        """Regression: bind_tools on the bare alternatives binds the default, so a fallback away from it re-ran the failed provider."""
+        llm = _NamedChatModel(answer="openrouter").configurable_alternatives(
+            ConfigurableField(id="provider"),
+            default_key=LLMProviderName.OPENROUTER,
+            prefix_keys=False,
+            gemini=_NamedChatModel(answer="gemini"),
+        )
+        config = cast(
+            RunnableConfig,
+            {
+                "configurable": {
+                    **_openrouter_lane().binding_keys(),
+                    LANE_FIELD_ID: _openrouter_lane().to_configurable(),
+                }
+            },
+        )
+
+        with _next_is_gemini():
+            prepared = _prepare_fallback(
+                llm, [dummy_tool_a], cast(AgentConfigurable, config["configurable"])
+            )
+
+        assert prepared is not None
+        factory, fallback_lane = prepared
+        reply = factory().invoke(
+            [HumanMessage(content="hi")], config=_fallback_config(config, fallback_lane)
+        )
+        assert reply.content == "gemini"
 
     def test_the_fallback_config_clears_the_failed_lanes_keys(self) -> None:
         """LangChain merges a passed config over a bound one, so the stale, just-failed provider's keys must be REMOVED, not merged."""
@@ -2520,15 +2583,19 @@ class TestTheFallbackTheModelNodeHandsTheClient:
     def _assert_failover_is_whole(self, kwargs: Any, llm: MagicMock) -> None:
         # The tools the PRIMARY bound this turn — the fallback must re-bind that
         # same list, not a stale or empty one.
-        primary_tools = llm.with_config.return_value.bind_tools.call_args.args[0]
+        selected = llm.with_config.return_value
+        primary_tools = selected.bind_tools.call_args.args[0]
 
         fallback = kwargs["fallback"]
         assert fallback is not None
         # Zero-arg factory: the tool-list-sized re-binding must not have happened
         # yet, since the primary has not failed.
+        assert selected.bind_tools.call_count == 1
+        assert fallback() is selected.bind_tools.return_value
+        assert selected.bind_tools.call_args.args[0] == primary_tools
+        # Bound on the fallback lane's provider: bare, bind_tools binds the default.
         llm.bind_tools.assert_not_called()
-        assert fallback() is llm.bind_tools.return_value
-        llm.bind_tools.assert_called_once_with(primary_tools)
+        llm.with_config.assert_called_with(configurable=_EXPECTED_FALLBACK_CONFIG["configurable"])
 
         assert kwargs["options"].fallback_config == _EXPECTED_FALLBACK_CONFIG
 

@@ -24,21 +24,22 @@ MessageFieldLiteral = Literal[
     "body",
     "time",
     "isRead",
-    "hasAttachment",
     "attachments",
     "labels",
 ]
 
-# Gmail API / snake_case spellings models send for a projected field (prod: "date"
+# Gmail API / Composio / snake_case spellings models send for a projected field (prod: "date"
 # alone was 61 refused GMAIL_FETCH_MESSAGES calls), read as the field they name.
 MESSAGE_FIELD_SYNONYMS: dict[str, MessageFieldLiteral] = {
     "date": "time",
     "internalDate": "time",
     "internal_date": "time",
     "message_id": "id",
+    "messageId": "id",
     "thread_id": "threadId",
     "labelIds": "labels",
     "label_ids": "labels",
+    "hasAttachment": "attachments",
 }
 
 # Curated per-message fields returned when the caller does not specify any:
@@ -53,7 +54,6 @@ DEFAULT_SUMMARY_FIELDS: list[MessageFieldLiteral] = [
     "snippet",
     "time",
     "isRead",
-    "hasAttachment",
     "labels",
 ]
 
