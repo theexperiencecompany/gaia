@@ -10,8 +10,9 @@ export interface ApprovalMeta {
 export const APPROVAL_RESOLVED_META: ApprovalLabels<ApprovalMeta | null> = {
   pending: null,
   autoApproved: { label: "Ran automatically", color: "#34d399" },
-  outcome: {
+  status: {
     approved: { label: "Approved", color: "#34d399" },
+    approved_with_change: { label: "Approved with a change", color: "#34d399" },
     denied: { label: "Declined", color: "#f87171" },
     expired: { label: "Timed out", color: "#fbbf24" },
     cancelled: { label: "Cancelled", color: "#a1a1aa" },
@@ -33,8 +34,9 @@ export const APPROVAL_RESOLVED_META: ApprovalLabels<ApprovalMeta | null> = {
 export const APPROVAL_CHIP_META: ApprovalLabels<ApprovalMeta | null> = {
   pending: null,
   autoApproved: { label: "Auto-approved", color: "#22c55e" },
-  outcome: {
+  status: {
     approved: { label: "Approved", color: "#22c55e" },
+    approved_with_change: { label: "Approved with a change", color: "#22c55e" },
     denied: { label: "Denied", color: "#ef4444" },
     expired: { label: "Expired", color: "#71717a" },
     cancelled: { label: "Cancelled", color: "#71717a" },

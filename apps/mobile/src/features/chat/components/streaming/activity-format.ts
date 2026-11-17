@@ -383,7 +383,7 @@ export function buildApprovalLookup(
       pendingToolCallIds.add(data.tool_call_id);
     } else {
       statusByToolCallId.set(data.tool_call_id, {
-        outcome: data.outcome,
+        status: data.status ?? data.outcome,
         decider: data.decider ?? null,
         action: data.action ?? null,
       });

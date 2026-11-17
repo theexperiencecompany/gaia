@@ -32,8 +32,9 @@ interface ApprovalRequestCardProps {
 const RESOLVED_ICONS: ApprovalLabels<typeof Cancel01Icon> = {
   pending: AlertCircleIcon,
   autoApproved: CheckmarkCircle02Icon,
-  outcome: {
+  status: {
     approved: CheckmarkCircle02Icon,
+    approved_with_change: CheckmarkCircle02Icon,
     denied: Cancel01Icon,
     expired: Clock01Icon,
     cancelled: Cancel01Icon,
@@ -112,7 +113,7 @@ export function ApprovalRequestCard({
   // best-effort and may never arrive. A real frame outranks it (executed/failed).
   const [settled, setSettled] = useState<Pick<
     ApprovalRequestData,
-    "outcome" | "decider" | "action" | "feedback"
+    "status" | "decider" | "action" | "feedback"
   > | null>(null);
   const data: ApprovalRequestData =
     incoming.outcome == null && settled
