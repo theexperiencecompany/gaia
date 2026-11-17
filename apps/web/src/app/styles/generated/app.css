@@ -217,6 +217,7 @@
 @source "../../../features/browser/constants.ts";
 @source "../../../features/browser/utils.ts";
 @source "../../../features/chat/constants.tsx";
+@source "../../../features/chat/index.ts";
 @source "../../../features/contact/constants.ts";
 @source "../../../features/desktop-popup/constants.ts";
 @source "../../../features/desktop-popup/index.ts";

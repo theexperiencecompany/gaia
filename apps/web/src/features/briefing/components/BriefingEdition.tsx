@@ -11,7 +11,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { MarkdownRenderer } from "@/features/chat";
 import { cn } from "@/lib/utils";
 import { formatClockTime } from "@/utils/date/clock";
 

@@ -22,7 +22,7 @@ import {
   FoldedBriefCard,
   notificationBrief,
 } from "@/features/briefing";
-import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
+import { MarkdownRenderer } from "@/features/chat";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import { cn } from "@/lib/utils";
 import {
