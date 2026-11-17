@@ -116,6 +116,10 @@ def _make_session(
 ) -> MagicMock:
     """Create a mock sealed session object."""
     session = MagicMock()
+    # The shared signing-key cache is keyed by the session client's JWKS URL.
+    session.user_management.get_jwks_url.return_value = (
+        "https://api.workos.com/sso/jwks/client_test"
+    )
     session.authenticate.return_value = auth_response
     if refresh_side_effect:
         session.refresh = AsyncMock(side_effect=refresh_side_effect)
