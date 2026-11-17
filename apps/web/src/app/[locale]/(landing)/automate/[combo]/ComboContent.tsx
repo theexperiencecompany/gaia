@@ -31,7 +31,7 @@ export function ComboUseCases({ data, t }: ComboSectionProps) {
             className="rounded-2xl bg-zinc-800 p-5 transition-colors hover:bg-zinc-700/50"
           >
             <div className="mb-3 flex items-start gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-primary">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/20 text-sm font-semibold text-accent">
                 {index + 1}
               </span>
               <h3 className="text-base font-semibold text-white">

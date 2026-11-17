@@ -67,6 +67,8 @@ set -euo pipefail
 source "$(dirname "$0")/lib/log.sh"
 # shellcheck source=scripts/ci/lib/image-repos.sh
 source "$(dirname "$0")/lib/image-repos.sh"
+# shellcheck source=scripts/ci/lib/webhook.sh
+source "$(dirname "$0")/lib/webhook.sh"
 
 cmd_plan() {
 
@@ -319,24 +321,6 @@ cmd_retag() {
       exit 1
       ;;
   esac
-}
-
-# post_webhook <name> <url> <json payload> — prints the response body; returns
-# non-zero (with an ::error) on a non-2xx reply.
-post_webhook() {
-  local name="$1" url="$2" payload="$3" response_file status
-  response_file=$(mktemp)
-  # Bounded: a stuck DNS lookup or socket must not hold a deploy workflow
-  # hostage for a notification that is non-blocking by design.
-  status=$(curl -sS --connect-timeout 5 --max-time 20 -o "$response_file" -w '%{http_code}' \
-    -H 'Content-Type: application/json' -d "$payload" "$url") || status=000
-  if [[ "$status" -lt 200 || "$status" -ge 300 ]]; then
-    echo "::error::$name webhook returned HTTP $status: $(cat "$response_file")" >&2
-    rm -f "$response_file"
-    return 1
-  fi
-  cat "$response_file"
-  rm -f "$response_file"
 }
 
 # A message is a state, its impact, the cause, the action and what clears it —

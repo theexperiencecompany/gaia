@@ -11,6 +11,7 @@ from pydantic import TypeAdapter, ValidationError
 import pytest
 
 from shared.py.analytics.catalog import CATALOG
+from shared.py.analytics.catalog.agents import AiLlmCallCompleted
 from shared.py.analytics.catalog.auth import UserActive
 from shared.py.analytics.catalog.base import (
     EVENT_NAME_PATTERN,
@@ -24,6 +25,7 @@ from shared.py.analytics.catalog.properties import (
     CurrencyCode,
     Emoji,
     Identifier,
+    ModelId,
     ObjectIdStr,
     UrlPath,
 )
@@ -143,10 +145,52 @@ def test_no_catalog_property_accepts_free_text(name: str) -> None:
                 adapter.validate_python(text)
 
 
-@pytest.mark.parametrize("kind", [Identifier, ObjectIdStr, CurrencyCode, Emoji, UrlPath])
+@pytest.mark.parametrize("kind", [Identifier, ModelId, ObjectIdStr, CurrencyCode, Emoji, UrlPath])
 def test_every_id_kind_rejects_whitespace_and_email(kind: object) -> None:
     adapter: TypeAdapter[str] = TypeAdapter(kind)
     for text in ("two words", "someone@example.com", ""):
+        with pytest.raises(ValidationError):
+            adapter.validate_python(text)
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "@cf/deepseek-ai/deepseek-v4.1-flash-1017",
+        "openai/gpt-6-luna",
+        "~typesafe/jev-latest",
+        "gpt-5.6-luna",
+    ],
+)
+def test_an_llm_call_event_carries_every_served_model_id(model: str) -> None:
+    """Workers AI ids start with "@"; Identifier rejected them and dropped every such call's event."""
+    event = AiLlmCallCompleted.model_validate(
+        {
+            "feature": "chat",
+            "agent_name": "comms_agent",
+            "background": False,
+            "charge_to_budget": True,
+            "model": model,
+            "model_served": model,
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "cached_tokens": 0,
+            "reasoning_tokens": 0,
+            "total_tokens": 2,
+            "cost_usd": 0.0,
+            "cost_source": "table",
+            "status": "ok",
+            "llm_call_id": "6af729261de61602f38f0368",
+        }
+    )
+
+    assert (event.model, event.model_served) == (model, model)
+
+
+def test_a_model_id_takes_an_at_sign_only_as_its_first_character() -> None:
+    adapter: TypeAdapter[str] = TypeAdapter(ModelId)
+
+    for text in ("someone@example.com", "@", "@cf/a@b"):
         with pytest.raises(ValidationError):
             adapter.validate_python(text)
 

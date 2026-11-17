@@ -1,6 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { PuzzleIcon, ToolsIcon } from "@icons";
 import type { ApprovalStatus } from "@shared/chat";
 import { AnimatePresence } from "motion/react";
@@ -59,7 +59,7 @@ function ApprovalOutcomeChip({
     <span className="ml-2 inline-flex min-w-0 items-center gap-1.5">
       <Chip
         size="sm"
-        variant="flat"
+        variant="soft"
         color={chip.color}
         className="h-5 shrink-0 text-[10px]"
       >
@@ -211,7 +211,7 @@ export function ToolCallRow({
         <div className="min-h-8 min-w-8 flex items-center justify-center shrink-0">
           <ToolCallIcon call={call} isSkill={!!display.skillLabel} />
         </div>
-        {!isLast && <div className="w-px flex-1 bg-default-200 min-h-4" />}
+        {!isLast && <div className="w-px flex-1 bg-zinc-700 min-h-4" />}
       </div>
 
       <div className="flex-1 min-w-0">

@@ -1,6 +1,6 @@
 "use client";
 
-import { Kbd } from "@heroui/kbd";
+import { Kbd } from "@heroui/react";
 import { MessageMultiple02Icon, SearchIcon } from "@icons";
 import type { SearchResultsResponse } from "@shared/api/generated";
 import { Command } from "cmdk";
@@ -387,7 +387,9 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                   placeholder="Search or run a command..."
                   className={COMMAND_MENU_STYLES.input}
                 />
-                <Kbd keys={[modifierKeyName]}> K</Kbd>
+                <Kbd>
+                  <Kbd.Abbr keyValue={modifierKeyName} /> K
+                </Kbd>
               </div>
 
               <Command.List ref={listRef} className={COMMAND_MENU_STYLES.list}>

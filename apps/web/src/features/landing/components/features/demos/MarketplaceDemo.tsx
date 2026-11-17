@@ -94,6 +94,7 @@ export default function MarketplaceDemo() {
               {getToolCategoryIcon(card.iconCategory, {
                 width: 22,
                 height: 22,
+                loading: index === 0 ? "eager" : undefined,
               })}
             </div>
             <div className="flex-1 min-w-0">

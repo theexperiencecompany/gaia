@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import {
   AiWebBrowsingIcon,
   Cancel01Icon,
@@ -10,6 +9,8 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { BrowserStatusChip } from "@/features/browser/components/BrowserStatusChip";
 import { useLiveBrowser } from "@/features/browser/hooks/useLiveBrowser";
 import { useLiveView } from "@/features/browser/hooks/useLiveView";
@@ -165,17 +166,17 @@ function TabStrip({
       </div>
       <div className="ml-auto flex items-center gap-1.5 pb-1.5 pl-4">
         <BrowserStatusChip phase={phase} />
-        <Button
+        <GaiaButton
+          shape="pill"
           isIconOnly
           size="sm"
-          variant="light"
-          radius="full"
-          className="text-zinc-400"
+          variant="ghost"
+          tone="muted"
           aria-label="Close browser panel"
           onPress={onClose}
         >
           <Cancel01Icon className="size-4" />
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );
@@ -202,21 +203,22 @@ function Omnibox({
         </span>
       </div>
       {pageUrl && (
-        <Tooltip content="Open in a new tab" size="sm" delay={400}>
-          <Button
-            as="a"
+        <Tooltip delay={400}>
+          <LinkButton
+            shape="pill"
             href={pageUrl}
             target="_blank"
             rel="noopener noreferrer"
-            isIconOnly
+            variant="ghost"
             size="sm"
-            variant="light"
-            radius="full"
-            className="shrink-0 text-zinc-400"
+            isIconOnly
+            tone="muted"
+            className="shrink-0"
             aria-label="Open the live browser in a new tab"
           >
             <SquareArrowUpRight02Icon className="size-4" />
-          </Button>
+          </LinkButton>
+          <Tooltip.Content>Open in a new tab</Tooltip.Content>
         </Tooltip>
       )}
     </div>

@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.runnables.config import RunnableConfig
 import pytest
 
+from app.models.agent_config import AgentConfigurableView
 from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowWithIntegrations
 
 MODULE = "app.agents.tools.workflow_tool"
@@ -165,6 +166,7 @@ class TestWorkflowToolPayloadsAreJsonSafe:
                 workflow=current,
                 user_id=FAKE_USER_ID,
                 writer=writer,
+                run=AgentConfigurableView(),
             )
 
         assert result["success"] is True

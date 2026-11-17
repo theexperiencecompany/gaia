@@ -1,3 +1,4 @@
+import "../../../styles/marketing.css";
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
@@ -66,7 +67,7 @@ export default async function ContactPage({
           <h1 className="font-serif text-4xl sm:text-6xl lg:text-8xl font-light tracking-tight text-balance">
             Contact us
           </h1>
-          <p className="mt-3 text-foreground-500">
+          <p className="mt-3 text-zinc-400">
             Get in touch with our team for support, feature requests, or general
             inquiries.
           </p>
@@ -82,7 +83,6 @@ export default async function ContactPage({
               Send us a message
             </h2>
             <ContactForm
-              aria-labelledby="inquiries-heading"
               initialType={initialType}
               initialTitle={params.title}
               initialDescription={params.description}

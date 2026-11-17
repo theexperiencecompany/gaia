@@ -1,3 +1,4 @@
+import "../../../../../styles/content.css";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
@@ -117,7 +118,7 @@ export default async function AutomateAppPage({ params }: PageProps) {
 
         <header className="mb-16">
           <h1 className="mb-4 flex flex-col items-start gap-4 font-serif text-4xl font-normal text-white sm:flex-row sm:items-center sm:text-5xl md:text-6xl">
-            <ComboAppIcon app={app} size={48} />
+            <ComboAppIcon app={app} size={48} loading="eager" />
             {title}
           </h1>
           <p className="max-w-2xl text-xl text-zinc-400">{subtitle}</p>
@@ -130,6 +131,7 @@ export default async function AutomateAppPage({ params }: PageProps) {
           })}
           headingClassName="text-2xl font-semibold text-white"
           combos={app.combos}
+          opensInView
         />
       </div>
 

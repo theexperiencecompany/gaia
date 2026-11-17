@@ -1,8 +1,8 @@
 "use client";
 
-import { Modal, ModalContent } from "@heroui/modal";
+import { Modal } from "@heroui/react";
 import { Tag01Icon } from "@icons";
-
+import { modalVariants } from "@/components/shared/controlVariants";
 import { useUpgradeModal } from "../hooks/useUpgradeModal";
 import { UpgradeModalOffer, UpgradeModalPlanPicker } from "./UpgradeModalModes";
 
@@ -75,44 +75,53 @@ export function UpgradeModal() {
 
   return (
     <Modal
-      size={dismissible ? "full" : "xl"}
-      radius="lg"
       isOpen={open}
       onOpenChange={(isOpen) => {
-        if (!isOpen) closeModal();
-      }}
-      isDismissable={dismissible}
-      isKeyboardDismissDisabled={!dismissible}
-      hideCloseButton={!dismissible}
-      backdrop="blur"
-      scrollBehavior="inside"
-      className="outline-none"
-      classNames={{
-        wrapper: dismissible ? "overflow-hidden" : undefined,
-        closeButton:
-          "text-zinc-400 hover:text-white hover:bg-zinc-800 top-3 right-3",
+        if (!isOpen && dismissible) closeModal();
       }}
     >
-      <ModalContent className={dismissible ? undefined : "p-4"}>
-        {dismissible ? (
-          <UpgradeModalPlanPicker
-            offerMessage={offerMessage}
-            discountBanner={discountBanner}
-            plans={plans}
-          />
-        ) : (
-          <UpgradeModalOffer
-            offerMessage={offerMessage}
-            discountBanner={discountBanner}
-            copy={copy}
-            proPlan={proPlan}
-            isConfirming={isConfirming}
-            checkoutPhase={checkoutPhase}
-            onSubscribe={handleSubscribe}
-            onLogout={logout}
-          />
-        )}
-      </ModalContent>
+      <Modal.Backdrop
+        variant="blur"
+        isDismissable={dismissible}
+        isKeyboardDismissDisabled={!dismissible}
+      >
+        <Modal.Container
+          size={dismissible ? "full" : "lg"}
+          className={dismissible ? "overflow-hidden" : undefined}
+        >
+          <Modal.Dialog
+            className={modalVariants({
+              size: dismissible ? undefined : "xl",
+              className: `outline-none${dismissible ? "" : " p-4"}`,
+            })}
+          >
+            {dismissible && (
+              <Modal.CloseTrigger
+                aria-label="Close"
+                className="top-3 right-3 hover:bg-zinc-800 hover:text-white"
+              />
+            )}
+            {dismissible ? (
+              <UpgradeModalPlanPicker
+                offerMessage={offerMessage}
+                discountBanner={discountBanner}
+                plans={plans}
+              />
+            ) : (
+              <UpgradeModalOffer
+                offerMessage={offerMessage}
+                discountBanner={discountBanner}
+                copy={copy}
+                proPlan={proPlan}
+                isConfirming={isConfirming}
+                checkoutPhase={checkoutPhase}
+                onSubscribe={handleSubscribe}
+                onLogout={logout}
+              />
+            )}
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }

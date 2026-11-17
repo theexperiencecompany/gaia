@@ -1,5 +1,6 @@
 ---
 title: "name"
+description: "What the post covers, 120 to 160 characters"
 date: "2025-12-01"
 authors:
   - name: "Aryan Randeriya"

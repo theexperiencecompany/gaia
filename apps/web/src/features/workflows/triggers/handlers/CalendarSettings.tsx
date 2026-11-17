@@ -8,11 +8,12 @@
 
 "use client";
 
-import { Select, SelectItem } from "@heroui/select";
+import { ListBox, Select, Spinner } from "@heroui/react";
 import { useMemo } from "react";
-
+import { fieldVariants } from "@/components/shared/fieldVariants";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
-
 import { IntervalPicker } from "../components/IntervalPicker";
 import {
   TriggerSettingRow,
@@ -144,18 +145,28 @@ export function CalendarSettings({
           aria-label="Select calendars"
           placeholder="Select calendars to monitor"
           selectionMode="multiple"
-          className="w-full"
-          isLoading={calendarsLoading}
-          selectedKeys={selectedCalendars}
-          onSelectionChange={(keys) =>
-            handleSelectionChange(keys as Set<string>)
-          }
+          className={fieldVariants({
+            labelPlacement: "inside",
+            className: "w-full",
+          })}
+          value={Array.from(selectedCalendars)}
+          onChange={(keys) => handleSelectionChange(new Set(keys as string[]))}
         >
-          {calendarItems.map((item) => (
-            <SelectItem key={item.id} textValue={item.name}>
-              {item.name}
-            </SelectItem>
-          ))}
+          <Select.Trigger>
+            {calendarsLoading ? <Spinner size="sm" /> : <GaiaSelectValue />}
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {calendarItems.map((item) => (
+                <GaiaListBoxItem
+                  key={item.id}
+                  id={item.id}
+                  textValue={item.name}
+                />
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </TriggerSettingRow>
 
