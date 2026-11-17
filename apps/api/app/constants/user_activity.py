@@ -22,3 +22,5 @@ DORMANT_AFTER: Final = timedelta(days=30)
 REACTIVATE_USER_TASK: Final[str] = "reactivate_user"
 #: First retry delay of a reactivation that did not finish; grows per try.
 REACTIVATE_USER_RETRY_DELAY: Final = timedelta(seconds=30)
+#: Tries before a reactivation that keeps failing is given up and left failed.
+REACTIVATE_USER_MAX_TRIES: Final[int] = 6

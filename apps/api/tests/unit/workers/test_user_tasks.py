@@ -1,5 +1,6 @@
 """Unit tests for user_tasks ARQ worker."""
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -282,6 +283,34 @@ class TestCheckInactiveUsers:
 
 
 class TestReactivateUserTask:
+    @pytest.fixture(autouse=True)
+    def _user_exists(self) -> Iterator[AsyncMock]:
+        with patch(
+            "app.workers.tasks.user_tasks.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=UserDocument(id="u1"),
+        ) as get:
+            yield get
+
+    @pytest.mark.regression
+    async def test_a_deleted_user_has_nothing_to_resume_and_is_not_retried(
+        self, _user_exists: AsyncMock
+    ) -> None:
+        _user_exists.return_value = None
+        with patch(_REACTIVATE, new_callable=AsyncMock) as reactivate:
+            result = await reactivate_user_task({"job_try": 1}, "u1")
+
+        reactivate.assert_not_awaited()
+        assert result == "user u1 is gone: nothing to resume"
+
+    @pytest.mark.regression
+    async def test_a_vanished_record_fails_without_a_retry(self) -> None:
+        with (
+            patch(_REACTIVATE, new_callable=AsyncMock, side_effect=LookupError("gone")),
+            pytest.raises(LookupError),
+        ):
+            await reactivate_user_task({"job_try": 1}, "u1")
+
     async def test_it_resumes_the_users_paused_work(self):
         with (
             patch(_REACTIVATE, new_callable=AsyncMock, return_value=3) as reactivate,

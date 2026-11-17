@@ -103,11 +103,17 @@ async def reactivate_user_task(ctx: ArqJobContext, user_id: str) -> str:
     """
     job_try = ctx.get("job_try", 1)
     log.set(user=UserContext(id=user_id))
+    if await user_repository.get(user_id) is None:
+        log.set_ns("reactivation", outcome="user_gone")
+        return f"user {user_id} is gone: nothing to resume"
     try:
         resumed = await reactivate_user(user_id)
+    except LookupError:
+        # Something it resumes vanished: no retry brings it back.
+        raise
     except Exception as e:
         # Broad on purpose: whatever stopped the resume, Retry re-raises it and
-        # max_tries bounds the chain.
+        # REACTIVATE_USER_MAX_TRIES bounds the chain.
         defer = REACTIVATE_USER_RETRY_DELAY * RETRY_BACKOFF_BASE ** (job_try - 1)
         log.warning(
             "user.reactivation_incomplete",

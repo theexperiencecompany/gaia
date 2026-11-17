@@ -28,7 +28,7 @@ from app.constants.todos import (
     TODO_RUN_FINISH_MAX_TRIES,
     TODO_RUN_FINISH_TASK,
 )
-from app.constants.user_activity import REACTIVATE_USER_TASK
+from app.constants.user_activity import REACTIVATE_USER_MAX_TRIES, REACTIVATE_USER_TASK
 from app.constants.waits import RESUME_WAITER_MAX_TRIES, RESUME_WAITER_TASK
 import app.patches  # noqa: F401 -- applies monkeypatches on import; must run before the patched SDKs are used
 from app.workers.browser_worker import browser_reaper_cron
@@ -106,7 +106,9 @@ _cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
 _sweep_hil_approvals = arq_task(sweep_hil_approvals)
 _check_inactive_users = arq_task(check_inactive_users)
 # Named from the constant record_activity enqueues by, so the two cannot drift.
-_reactivate_user = func(arq_task(reactivate_user_task), name=REACTIVATE_USER_TASK)
+_reactivate_user = func(
+    arq_task(reactivate_user_task), name=REACTIVATE_USER_TASK, max_tries=REACTIVATE_USER_MAX_TRIES
+)
 _process_workflow_generation_task = arq_task(process_workflow_generation_task)
 _execute_workflow_by_id = arq_task(execute_workflow_by_id)
 _regenerate_workflow_steps = arq_task(regenerate_workflow_steps)
