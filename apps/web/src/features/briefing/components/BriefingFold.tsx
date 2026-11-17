@@ -1,18 +1,17 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { ArrowExpand01Icon } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReducedMotion } from "motion/react";
 import * as m from "motion/react-m";
-import Link from "next/link";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 
 import {
-  LETTER_CONTROL_CLASSES,
+  LETTER_CONTROL_PROPS,
   LETTER_SHEET_VARIANTS,
   LetterModal,
 } from "@/components/shared/LetterModal";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { cn } from "@/lib/utils";
 
 import { BRIEF_LETTER_WIDTH } from "../constants";
@@ -181,16 +180,14 @@ export function BriefingFold({
         presentation="floating"
         actions={
           content.briefingId && opened?.kind !== "missing" ? (
-            <Button
-              as={Link}
+            <LinkButton
+              {...LETTER_CONTROL_PROPS}
               href={`/brief/${content.briefingId}`}
-              radius="full"
-              variant="flat"
-              startContent={<ArrowExpand01Icon className="size-4" />}
-              className={cn(LETTER_CONTROL_CLASSES, "font-medium")}
+              className={cn(LETTER_CONTROL_PROPS.className, "font-medium")}
             >
+              <ArrowExpand01Icon className="size-4" />
               Open full brief
-            </Button>
+            </LinkButton>
           ) : null
         }
       >

@@ -1,5 +1,5 @@
-import { Button } from "@heroui/button";
-import Image from "next/image";
+import { buttonVariants } from "@heroui/react";
+import Image, { type ImageProps } from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { HubPagination } from "@/components/seo/HubPagination";
 import JsonLd from "@/components/seo/JsonLd";
@@ -7,9 +7,10 @@ import { SiteLink } from "@/components/seo/SiteLink";
 import { getTranslatedCombos } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
-  HUB_PAGE_SIZE,
+  hubCardLoading,
   hubPageCount,
   hubPageHref,
+  hubPageOf,
   hubPageSlice,
 } from "@/lib/hubPagination";
 import {
@@ -49,11 +50,13 @@ function ToolFavicon({
   name,
   rotate,
   zIndex,
+  loading,
 }: {
   readonly slug: string;
   readonly name: string;
   readonly rotate: string;
   readonly zIndex: number;
+  readonly loading: ImageProps["loading"];
 }) {
   const domain = TOOL_DOMAINS[slug];
   if (!domain) return null;
@@ -67,6 +70,7 @@ function ToolFavicon({
         alt={name}
         width={32}
         height={32}
+        loading={loading}
         unoptimized
       />
     </div>
@@ -132,7 +136,7 @@ export async function AutomateHub({ locale, page }: AutomateHubProps) {
   for (const [index, combo] of orderedCombos.entries()) {
     const letter = combo.toolA[0].toUpperCase();
     if (!letterPages.has(letter)) {
-      letterPages.set(letter, Math.floor(index / HUB_PAGE_SIZE) + 1);
+      letterPages.set(letter, hubPageOf(index));
     }
   }
 
@@ -182,13 +186,13 @@ export async function AutomateHub({ locale, page }: AutomateHubProps) {
         </div>
 
         {/* Grouped combos */}
-        {pageLetters.map((letter) => (
+        {pageLetters.map((letter, letterIndex) => (
           <div key={letter} id={`letter-${letter}`} className="mb-12">
             <h2 className="mb-4 border-b border-zinc-700 pb-2 text-xl font-semibold text-zinc-300">
               {letter}
             </h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {grouped[letter].map((combo) => (
+              {grouped[letter].map((combo, index) => (
                 <SiteLink
                   key={combo.slug}
                   href={`/automate/${combo.slug}`}
@@ -200,15 +204,17 @@ export async function AutomateHub({ locale, page }: AutomateHubProps) {
                       name={combo.toolA}
                       rotate="-9deg"
                       zIndex={1}
+                      loading={hubCardLoading(letterIndex, index)}
                     />
                     <ToolFavicon
                       slug={combo.toolBSlug}
                       name={combo.toolB}
                       rotate="9deg"
                       zIndex={0}
+                      loading={hubCardLoading(letterIndex, index)}
                     />
                   </div>
-                  <h3 className="text-base font-medium text-white transition-colors group-hover:text-primary">
+                  <h3 className="text-base font-medium text-white transition-colors group-hover:text-accent">
                     {combo.toolA} + {combo.toolB}
                   </h3>
                   <p className="line-clamp-2 text-sm leading-relaxed text-zinc-500">
@@ -232,9 +238,12 @@ export async function AutomateHub({ locale, page }: AutomateHubProps) {
             {t("dont_see_your_combo")}
           </h2>
           <p className="mb-6 text-zinc-400">{t("dont_see_your_combo_desc")}</p>
-          <Button href="/marketplace" as="a" color="primary">
+          <SiteLink
+            className={buttonVariants({ variant: "primary" })}
+            href="/marketplace"
+          >
             {tCommon("browse_marketplace")}
-          </Button>
+          </SiteLink>
         </div>
       </div>
 

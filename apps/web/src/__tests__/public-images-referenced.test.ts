@@ -2,7 +2,8 @@
  * Every image under public/images is referenced by a tracked file. An image
  * nobody points at still ships in every build and every clone, so a removed
  * usage must take its asset with it. Integration logos are resolved through
- * the shared registry, which builds their paths at runtime.
+ * the shared registry, which builds their paths at runtime. The generated
+ * dimensions file lists every image on disk, so it is no reference.
  */
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -20,6 +21,8 @@ const IMAGE_FILE = /\.(png|jpe?g|gif|webp|avif|svg|ico)$/i;
 /** A public image URL as written in source, markdown, JSON or CSS. */
 const IMAGE_URL = "/images/[[:alnum:]_./@%-]+";
 const GIT_OUTPUT_LIMIT = 64 * 1024 * 1024;
+const IMAGE_DIMENSIONS_FILE =
+  "apps/web/src/lib/image-dimensions.generated.json";
 
 function git(args: string[]): string[] {
   return execFileSync("git", args, {
@@ -42,6 +45,9 @@ function referencedImageUrls(): Set<string> {
     "-I",
     "-E",
     IMAGE_URL,
+    "--",
+    ".",
+    `:!${IMAGE_DIMENSIONS_FILE}`,
   ]);
   const urls = new Set(
     matches.map((url) => decodeURIComponent(url).replace(/\.+$/, "")),

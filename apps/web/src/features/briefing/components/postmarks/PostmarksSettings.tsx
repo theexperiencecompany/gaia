@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import type { PostmarksResponse } from "@shared/api/generated";
 import dynamic from "next/dynamic";
 
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { usePostmarksQuery } from "../../hooks/usePostmarksQuery";
@@ -91,16 +91,15 @@ function PostmarksError({ onRetry }: { onRetry: () => void }) {
       <p className="max-w-sm text-xs text-zinc-500">
         Your stamps are safe. This page just couldn&apos;t reach them.
       </p>
-      <Button
+      <GaiaButton
         size="sm"
-        color="primary"
-        variant="flat"
-        radius="full"
+        variant="accent-soft"
+        shape="pill"
         className="mt-1 font-medium"
         onPress={onRetry}
       >
         Try again
-      </Button>
+      </GaiaButton>
     </div>
   );
 }

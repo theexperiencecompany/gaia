@@ -1,7 +1,6 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
+import { Chip, Description, InputGroup, Label, TextField } from "@heroui/react";
 import { SearchIcon } from "@icons";
 import { useCallback, useMemo, useState } from "react";
 import type { BlogPostMeta } from "@/lib/blog";
@@ -73,10 +72,10 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
         {categories.map((category) => (
           <Chip
             key={category}
-            variant="light"
+            variant="tertiary"
             className="cursor-pointer"
             size="lg"
-            color={selectedCategory === category ? "primary" : "default"}
+            color={selectedCategory === category ? "accent" : "default"}
             onClick={() => handleCategoryChange(category)}
           >
             {category}
@@ -84,16 +83,26 @@ export function BlogFilters({ blogs, onFilterChange }: BlogFiltersProps) {
         ))}
       </div>
 
-      <Input
-        type="text"
-        placeholder="Search posts..."
+      <TextField
         value={searchQuery}
-        onValueChange={handleSearchChange}
-        startContent={<SearchIcon className="size-5 text-default-400" />}
-        variant="flat"
-        radius="full"
+        onChange={handleSearchChange}
         className="w-full max-w-sm"
-      />
+      >
+        <Label className="sr-only">Search posts</Label>
+        <Description className="sr-only">
+          Search blog posts by title or topic
+        </Description>
+        <InputGroup>
+          <InputGroup.Prefix>
+            <SearchIcon className="size-5 text-zinc-500" />
+          </InputGroup.Prefix>
+          <InputGroup.Input
+            type="text"
+            aria-label="Search posts"
+            placeholder="Search posts..."
+          />
+        </InputGroup>
+      </TextField>
     </div>
   );
 }

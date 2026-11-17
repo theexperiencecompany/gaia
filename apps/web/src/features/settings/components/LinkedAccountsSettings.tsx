@@ -1,15 +1,16 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import {
+  Chip,
   Dropdown,
   DropdownItem,
   DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
+  DropdownPopover,
+  Label,
+} from "@heroui/react";
 import { MoreHorizontalIcon, Unlink04Icon } from "@icons";
 import Image from "next/image";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { PhoneLinkModal } from "@/components/shared/PhoneLinkModal";
 import {
   BOT_PLATFORM_ICONS,
@@ -72,52 +73,51 @@ export default function LinkedAccountsSettings() {
                   {details.chat && (
                     <OpenPlatformChatButton platform={platform} />
                   )}
-                  <Dropdown placement="bottom-end">
-                    <DropdownTrigger>
-                      <Button
-                        isIconOnly
-                        size="sm"
-                        variant="light"
-                        aria-label={`More for ${name}`}
-                        isDisabled={isLoading || connectingPlatform != null}
-                      >
-                        <MoreHorizontalIcon className="size-4 text-zinc-400" />
-                      </Button>
-                    </DropdownTrigger>
-                    <DropdownMenu
-                      aria-label={`${name} actions`}
-                      onAction={() => void disconnect(platform)}
+                  <Dropdown>
+                    <GaiaButton
+                      isIconOnly
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`More for ${name}`}
+                      isDisabled={isLoading || connectingPlatform != null}
                     >
-                      <DropdownItem
-                        key="disconnect"
-                        color="danger"
-                        className="text-danger"
-                        startContent={<Unlink04Icon className="size-4" />}
+                      <MoreHorizontalIcon className="size-4 text-zinc-400" />
+                    </GaiaButton>
+                    <DropdownPopover placement="bottom end">
+                      <DropdownMenu
+                        aria-label={`${name} actions`}
+                        onAction={() => void disconnect(platform)}
                       >
-                        Disconnect
-                      </DropdownItem>
-                    </DropdownMenu>
+                        <DropdownItem
+                          id="disconnect"
+                          textValue="Disconnect"
+                          variant="danger"
+                        >
+                          <Unlink04Icon className="size-4" />
+                          <Label>Disconnect</Label>
+                        </DropdownItem>
+                      </DropdownMenu>
+                    </DropdownPopover>
                   </Dropdown>
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
                   {isLockedBehindPro(platform) && (
-                    <Chip size="sm" variant="flat" color="warning">
-                      Pro
+                    <Chip size="sm" variant="soft" color="warning">
+                      <Chip.Label>Pro</Chip.Label>
                     </Chip>
                   )}
-                  <Button
-                    variant="flat"
-                    color="primary"
+                  <GaiaButton
+                    variant="accent-soft"
                     size="sm"
                     aria-label={`Connect ${name}`}
                     onPress={() => connect(platform)}
-                    isLoading={connectingPlatform === platform}
+                    isPending={connectingPlatform === platform}
                     isDisabled={isLoading || connectingPlatform != null}
                     className="text-xs"
                   >
                     Connect
-                  </Button>
+                  </GaiaButton>
                 </div>
               )}
             </SettingsRow>

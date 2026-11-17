@@ -1,10 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
-import Link from "next/link";
+import { Skeleton } from "@heroui/react";
 
 import { StandalonePage } from "@/components/layout/StandalonePage";
+import { LinkButton } from "@/components/shared/LinkButton";
 
 import { BACK_TO_BRIEFINGS } from "../constants";
 import { useBriefingQuery } from "../hooks/useBriefingQuery";
@@ -28,9 +27,9 @@ export function BriefingPage({ briefingId }: { briefingId: string }) {
           <p className="text-sm text-zinc-400">
             This brief isn&apos;t available anymore.
           </p>
-          <Button as={Link} href="/briefings" variant="flat" size="sm">
+          <LinkButton href="/briefings" variant="default-soft" size="sm">
             Open your briefings
-          </Button>
+          </LinkButton>
         </div>
       </StandalonePage>
     );

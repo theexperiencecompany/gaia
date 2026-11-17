@@ -118,9 +118,9 @@ function CityMarker({
           className="group relative flex size-6 items-center justify-center"
         >
           {isLatest && (
-            <span className="absolute size-4 rounded-full bg-primary/40 motion-safe:animate-ping" />
+            <span className="absolute size-4 rounded-full bg-accent/40 motion-safe:animate-ping" />
           )}
-          <span className="size-2.5 rounded-full bg-primary shadow-[0_0_10px_3px_rgb(0_187_255/0.55)] transition-transform duration-200 ease-out group-hover:scale-150" />
+          <span className="size-2.5 rounded-full bg-accent shadow-[0_0_10px_3px_rgb(0_187_255/0.55)] transition-transform duration-200 ease-out group-hover:scale-150" />
         </span>
       </MarkerContent>
       <MarkerTooltip offset={18} className="bg-transparent p-0 shadow-none">

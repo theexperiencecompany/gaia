@@ -1,9 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import Link from "next/link";
-
 import { StandalonePage } from "@/components/layout/StandalonePage";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { useLogout } from "@/features/auth/hooks/useLogout";
 import { loginHref } from "@/features/auth/utils/loginHref";
 
@@ -22,9 +21,9 @@ function linkPath(slug: string): string {
 function SwitchAccountButton({ slug }: { slug: string }) {
   const { logout } = useLogout();
   return (
-    <Button variant="flat" onPress={() => logout(linkPath(slug))}>
+    <GaiaButton variant="default-soft" onPress={() => logout(linkPath(slug))}>
       Sign in with another account
-    </Button>
+    </GaiaButton>
   );
 }
 
@@ -35,14 +34,13 @@ function Message({ state }: { state: LinkUnavailableState }) {
         <h1 className="text-2xl font-medium text-balance text-white">
           {SIGN_IN_REQUIRED_COPY}
         </h1>
-        <Button
-          as={Link}
+        <LinkButton
           href={loginHref(linkPath(state.slug))}
-          color="primary"
+          variant="primary"
           className="mt-3"
         >
           Sign in
-        </Button>
+        </LinkButton>
       </>
     );
   }
@@ -57,9 +55,9 @@ function Message({ state }: { state: LinkUnavailableState }) {
         </p>
         <div className="mt-3 flex flex-wrap justify-center gap-2">
           <SwitchAccountButton slug={state.slug} />
-          <Button as={Link} href="/" color="primary">
+          <LinkButton href="/" variant="primary">
             Go to GAIA
-          </Button>
+          </LinkButton>
         </div>
       </>
     );
@@ -69,9 +67,9 @@ function Message({ state }: { state: LinkUnavailableState }) {
       <h1 className="text-2xl font-medium text-balance text-white">
         {DEAD_LINK_COPY[state.denial]}
       </h1>
-      <Button as={Link} href="/" color="primary" className="mt-3">
+      <LinkButton href="/" variant="primary" className="mt-3">
         Go to GAIA
-      </Button>
+      </LinkButton>
     </>
   );
 }

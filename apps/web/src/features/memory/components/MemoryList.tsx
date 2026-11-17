@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Skeleton } from "@heroui/skeleton";
+import { InputGroup, Skeleton, TextField } from "@heroui/react";
 import {
   AiBrain01Icon,
   ArrowLeft01Icon,
@@ -12,6 +10,8 @@ import {
 } from "@icons";
 import { useCallback, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { memoryApi } from "@/features/memory/api/memoryApi";
 import { AddMemoryModal } from "@/features/memory/components/AddMemoryModal";
 import { EditMemoryModal } from "@/features/memory/components/EditMemoryModal";
@@ -87,39 +87,39 @@ export function MemoryList({ onChanged }: MemoryListProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <Input
-          size="sm"
-          variant="flat"
-          radius="lg"
-          placeholder="Search memories"
+        <TextField
           value={list.query}
-          onValueChange={list.setQuery}
-          startContent={<Search01Icon className="size-4 text-zinc-500" />}
-          className="max-w-xs"
-          isClearable
-        />
+          onChange={list.setQuery}
+          className={inputVariants({ size: "sm", className: "max-w-xs" })}
+        >
+          <InputGroup variant="secondary">
+            <InputGroup.Prefix>
+              <Search01Icon className="size-4 text-zinc-500" />
+            </InputGroup.Prefix>
+            <InputGroup.Input placeholder="Search memories" />
+          </InputGroup>
+        </TextField>
         <div className="flex-1" />
         {totalCount > 0 && (
-          <Button
+          <GaiaButton
+            variant="danger-soft"
             size="sm"
-            color="danger"
-            variant="flat"
-            className="rounded-xl"
-            isLoading={isClearing}
+            shape="md"
+            isPending={isClearing}
             onPress={handleClearAll}
           >
             Clear all
-          </Button>
+          </GaiaButton>
         )}
-        <Button
+        <GaiaButton
           size="sm"
-          color="primary"
-          className="rounded-xl"
-          startContent={<PlusSignIcon className="size-4" />}
+          shape="md"
           onPress={() => setIsAddModalOpen(true)}
+          variant="primary"
         >
+          <PlusSignIcon className="size-4" />
           Add memory
-        </Button>
+        </GaiaButton>
       </div>
 
       {list.loading ? (
@@ -166,28 +166,28 @@ export function MemoryList({ onChanged }: MemoryListProps) {
           <span className="text-xs text-zinc-500">
             Page {page} of {totalPages}
           </span>
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="flat"
-            className="rounded-xl"
+            shape="md"
+            variant="default-soft"
             aria-label="Previous page"
             isDisabled={page <= 1}
             onPress={() => list.setPage(page - 1)}
           >
             <ArrowLeft01Icon className="size-4" />
-          </Button>
-          <Button
+          </GaiaButton>
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="flat"
-            className="rounded-xl"
+            shape="md"
+            variant="default-soft"
             aria-label="Next page"
             isDisabled={page >= totalPages}
             onPress={() => list.setPage(page + 1)}
           >
             <ArrowRight01Icon className="size-4" />
-          </Button>
+          </GaiaButton>
         </div>
       )}
 

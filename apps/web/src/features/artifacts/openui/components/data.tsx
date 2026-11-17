@@ -1,5 +1,4 @@
-import { Card, CardBody } from "@heroui/card";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { ArrowDown01Icon, ArrowUp01Icon } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import { GroundedText } from "../GroundedText";
@@ -31,26 +30,23 @@ export const statsDef = defineComponent({
       className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-3"
     >
       {props.items.map(([label, value, note, trend, sentiment]) => (
-        <Card
+        <div
           key={`${label} ${value}`}
-          shadow="none"
-          className="bg-default-100"
+          className="flex flex-col gap-1 rounded-2xl bg-default p-4"
         >
-          <CardBody className="gap-1 p-4">
-            <span className="text-sm text-default-500">{label}</span>
-            <span className="text-3xl font-semibold tracking-tight text-foreground tabular-nums">
-              <GroundedText text={value} />
+          <span className="text-sm text-muted">{label}</span>
+          <span className="text-3xl font-semibold tracking-tight text-foreground tabular-nums">
+            <GroundedText text={value} />
+          </span>
+          {note ? (
+            <span
+              className={`flex items-center gap-1 text-sm ${SENTIMENT_TEXT[sentiment ?? ""] ?? "text-muted"}`}
+            >
+              <Trend trend={trend} />
+              <GroundedText text={note} />
             </span>
-            {note ? (
-              <span
-                className={`flex items-center gap-1 text-sm ${SENTIMENT_TEXT[sentiment ?? ""] ?? "text-default-500"}`}
-              >
-                <Trend trend={trend} />
-                <GroundedText text={note} />
-              </span>
-            ) : null}
-          </CardBody>
-        </Card>
+          ) : null}
+        </div>
       ))}
     </div>
   ),
@@ -65,28 +61,25 @@ export const kanbanDef = defineComponent({
       {props.columns.map(([title, cards]) => (
         <div
           key={title}
-          className="flex flex-col gap-2 rounded-2xl bg-default-100 p-3"
+          className="flex flex-col gap-2 rounded-2xl bg-default p-3"
         >
           <p className="flex justify-between text-sm font-semibold">
             {title}
-            <span className="text-default-500 tabular-nums">
-              {cards.length}
-            </span>
+            <span className="text-muted tabular-nums">{cards.length}</span>
           </p>
           {cards.map(([cardTitle, meta, tag]) => (
-            <Card key={cardTitle} shadow="none" className="bg-background">
-              <CardBody className="gap-1 p-3 text-sm">
-                <span className="font-medium">{cardTitle}</span>
-                {meta ? (
-                  <span className="text-xs text-default-500">{meta}</span>
-                ) : null}
-                {tag ? (
-                  <Chip size="sm" variant="flat">
-                    {tag}
-                  </Chip>
-                ) : null}
-              </CardBody>
-            </Card>
+            <div
+              key={cardTitle}
+              className="flex flex-col gap-1 rounded-2xl bg-background p-3 text-sm"
+            >
+              <span className="font-medium">{cardTitle}</span>
+              {meta ? <span className="text-xs text-muted">{meta}</span> : null}
+              {tag ? (
+                <Chip size="sm" variant="soft" className="self-start">
+                  <Chip.Label>{tag}</Chip.Label>
+                </Chip>
+              ) : null}
+            </div>
           ))}
         </div>
       ))}

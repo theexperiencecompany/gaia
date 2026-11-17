@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { NewsIcon } from "@icons";
 import { format, isToday, isYesterday, parseISO } from "date-fns";
 import Image from "next/image";
@@ -80,7 +79,7 @@ function Preview({
 }) {
   return (
     <div className={cn("rounded-[10px] p-1.5", PREVIEW_TONE_CLASSES[tone])}>
-      <div className="relative aspect-[3/2] overflow-hidden rounded-[4px] transition-[filter] duration-200 ease-out group-data-[hover=true]:brightness-110">
+      <div className="relative aspect-[3/2] overflow-hidden rounded-[4px] transition-[filter] duration-200 ease-out group-hover:brightness-110">
         {imageUrl ? (
           <Image
             src={imageUrl}
@@ -112,16 +111,16 @@ export function BriefCard({
   const needsYou = brief.needsYouCount ?? 0;
 
   return (
-    <Button
-      disableRipple
-      onPress={onPress}
+    <button
+      type="button"
+      onClick={onPress}
       onPointerEnter={onWarm}
       onPointerDown={onWarm}
       onFocus={onWarm}
       aria-label={`Open brief: ${brief.headline}`}
       aria-busy={isBusy}
       className={cn(
-        "group relative h-full w-full min-w-0 flex-col items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal transition-[scale] duration-200 ease-out after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-white/0 after:transition-colors after:duration-200 after:ease-out data-[hover=true]:opacity-100 data-[hover=true]:after:bg-white/5 data-[pressed=true]:scale-[0.97]",
+        "group relative flex h-full w-full min-w-0 cursor-pointer flex-col items-stretch justify-start gap-0 rounded-2xl p-1.5 text-left whitespace-normal outline-none transition-[scale] duration-200 ease-out after:pointer-events-none after:absolute after:inset-0 after:rounded-2xl after:bg-white/0 after:transition-colors after:duration-200 after:ease-out hover:after:bg-white/5 focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.97]",
         TONE_CLASSES[tone],
       )}
     >
@@ -132,7 +131,7 @@ export function BriefCard({
             <span
               className={cn(
                 "truncate",
-                date === TODAY_LABEL && "font-medium text-primary",
+                date === TODAY_LABEL && "font-medium text-accent",
               )}
             >
               {date}
@@ -157,11 +156,11 @@ export function BriefCard({
             {brief.kind && (
               <Chip
                 size="sm"
-                variant="flat"
-                color={brief.kind === "weekly" ? "primary" : "default"}
+                variant="soft"
+                color={brief.kind === "weekly" ? "accent" : "default"}
                 className="shrink-0"
               >
-                {KIND_LABELS[brief.kind]}
+                <Chip.Label>{KIND_LABELS[brief.kind]}</Chip.Label>
               </Chip>
             )}
             {edition && (
@@ -170,6 +169,6 @@ export function BriefCard({
           </span>
         )}
       </span>
-    </Button>
+    </button>
   );
 }

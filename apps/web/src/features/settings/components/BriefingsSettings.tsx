@@ -1,9 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { NotificationIcon } from "@icons";
 import dynamic from "next/dynamic";
-import Link from "next/link";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { BriefingScheduleSettings } from "@/features/settings/components/BriefingScheduleSettings";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
@@ -32,14 +31,13 @@ export function BriefingsSettings() {
             </div>
           }
         >
-          <Button
-            as={Link}
+          <LinkButton
             href={NOTIFICATIONS_SETTINGS_PATH}
             size="sm"
-            variant="flat"
+            variant="default-soft"
           >
             Notifications
-          </Button>
+          </LinkButton>
         </SettingsRow>
       </SettingsSection>
       <BriefingEditionsSettings />

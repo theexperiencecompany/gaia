@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { ArrowLeft02Icon, ArrowRight02Icon } from "@icons";
 import * as m from "motion/react-m";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { MOTION_FADE_UP } from "@/features/onboarding/constants/motion";
 
 interface WizardFooterProps {
@@ -27,29 +27,23 @@ export function WizardFooter({
     >
       <div className="flex w-full items-center justify-between gap-2">
         {onBack ? (
-          <Button
-            variant="light"
-            startContent={<ArrowLeft02Icon className="size-4" />}
-            onPress={onBack}
-          >
+          <GaiaButton variant="ghost" onPress={onBack}>
+            <ArrowLeft02Icon className="size-4" />
             Back
-          </Button>
+          </GaiaButton>
         ) : (
           <span />
         )}
         <div className="flex items-center gap-2">
           {onSkip && (
-            <Button variant="flat" onPress={onSkip}>
+            <GaiaButton variant="default-soft" onPress={onSkip}>
               Skip for now
-            </Button>
+            </GaiaButton>
           )}
-          <Button
-            color="primary"
-            endContent={<ArrowRight02Icon className="size-4" />}
-            onPress={onContinue}
-          >
+          <GaiaButton variant="primary" onPress={onContinue}>
             Continue
-          </Button>
+            <ArrowRight02Icon className="size-4" />
+          </GaiaButton>
         </div>
       </div>
       <p

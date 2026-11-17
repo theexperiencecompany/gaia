@@ -171,12 +171,12 @@ describe("NotificationSettings", () => {
     for (const label of ["WhatsApp", "iMessage", "Slack", "Discord"]) {
       expect(
         channels
-          .getByRole("button", { name: `Link ${label} in Linked Accounts` })
+          .getByRole("link", { name: `Link ${label} in Linked Accounts` })
           .getAttribute("href"),
       ).toBe("/settings/linked-accounts");
     }
     expect(
-      channels.getByRole("button", { name: "Manage" }).getAttribute("href"),
+      channels.getByRole("link", { name: "Manage" }).getAttribute("href"),
     ).toBe("/settings/linked-accounts");
     expect(channels.queryByRole("button", { name: /^Connect/ })).toBeNull();
     expect(channels.queryByRole("button", { name: /^More for/ })).toBeNull();

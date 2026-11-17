@@ -1,6 +1,6 @@
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import type { BriefingEdition } from "@shared/api/generated";
 import Image from "next/image";
 import { useState } from "react";

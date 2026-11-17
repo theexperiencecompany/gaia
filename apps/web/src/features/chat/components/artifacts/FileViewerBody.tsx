@@ -1,6 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import Image from "next/image";
 
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";

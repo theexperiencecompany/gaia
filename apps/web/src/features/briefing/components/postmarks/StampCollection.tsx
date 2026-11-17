@@ -1,7 +1,9 @@
-import { Button } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import type { Postmark } from "@shared/api/generated";
 import Image from "next/image";
+import { Focusable } from "react-aria-components";
+
+import { overlayVariants } from "@/components/shared/controlVariants";
 
 import { useGridColumnCount } from "../../hooks/useGridColumnCount";
 import { postmarkBrief } from "../../utils/postmarkBrief";
@@ -23,35 +25,38 @@ function CollectedStamp({ postmark }: { postmark: Postmark }) {
       briefingId={postmark.briefing_id}
       brief={postmarkBrief(postmark)}
       renderTrigger={({ open, warm, isBusy }) => (
-        <Tooltip
-          content={<PostmarkCard postmark={postmark} />}
-          classNames={{ content: "bg-transparent p-0 shadow-none" }}
-          placement="bottom"
-          closeDelay={0}
-        >
-          <Button
-            disableRipple
-            onPress={open}
-            onPointerEnter={warm}
-            onPointerDown={warm}
-            onFocus={warm}
-            aria-label={place}
-            aria-busy={isBusy}
-            className="group block h-auto w-full min-w-0 overflow-visible rounded-none bg-transparent p-0 data-[hover=true]:bg-transparent"
+        <Tooltip closeDelay={0}>
+          <Focusable>
+            <button
+              type="button"
+              onClick={open}
+              onPointerEnter={warm}
+              onPointerDown={warm}
+              onFocus={warm}
+              aria-label={place}
+              aria-busy={isBusy}
+              className="group block h-auto w-full min-w-0 cursor-pointer overflow-visible outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <span className="block aspect-[600/850] w-full transition-transform duration-200 ease-out group-hover:-translate-y-1 group-hover:-rotate-2 group-active:scale-95">
+                <Image
+                  src={postmark.stamp_url}
+                  alt=""
+                  width={200}
+                  height={284}
+                  className="h-full w-full object-contain drop-shadow-[0_6px_12px_rgb(0_0_0/0.45)]"
+                />
+              </span>
+              <span className="mt-1.5 block truncate text-center text-xs text-zinc-400 sm:hidden">
+                {postmark.city}
+              </span>
+            </button>
+          </Focusable>
+          <Tooltip.Content
+            placement="bottom"
+            className={overlayVariants({ surface: "bare" })}
           >
-            <span className="block aspect-[600/850] w-full transition-transform duration-200 ease-out group-data-[hover=true]:-translate-y-1 group-data-[hover=true]:-rotate-2 group-data-[pressed=true]:scale-95">
-              <Image
-                src={postmark.stamp_url}
-                alt=""
-                width={200}
-                height={284}
-                className="h-full w-full object-contain drop-shadow-[0_6px_12px_rgb(0_0_0/0.45)]"
-              />
-            </span>
-            <span className="mt-1.5 block truncate text-center text-xs text-zinc-400 sm:hidden">
-              {postmark.city}
-            </span>
-          </Button>
+            <PostmarkCard postmark={postmark} />
+          </Tooltip.Content>
         </Tooltip>
       )}
     />

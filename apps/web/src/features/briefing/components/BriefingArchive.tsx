@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import { News01Icon } from "@icons";
 import type { BriefingView } from "@shared/api/generated";
 import {
@@ -13,8 +12,9 @@ import {
   startOfWeek,
   subWeeks,
 } from "date-fns";
-import Link from "next/link";
 
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { cn } from "@/lib/utils";
 
 import { BRIEFINGS_SETTINGS_PATH } from "../constants";
@@ -103,15 +103,14 @@ function ArchiveEmpty() {
       <p className="max-w-xs text-sm text-pretty text-zinc-500">
         Every brief GAIA sends you is filed here by week, ready to unfold again.
       </p>
-      <Button
-        as={Link}
+      <LinkButton
         href={BRIEFINGS_SETTINGS_PATH}
         size="sm"
-        variant="flat"
+        variant="default-soft"
         className="mt-1"
       >
         Set your brief schedule
-      </Button>
+      </LinkButton>
     </div>
   );
 }
@@ -146,9 +145,9 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
     return (
       <div className="flex items-center gap-3">
         <p className="text-sm text-zinc-500">Couldn't load your briefings.</p>
-        <Button size="sm" variant="flat" onPress={() => refetch()}>
+        <GaiaButton size="sm" variant="default-soft" onPress={() => refetch()}>
           Try again
-        </Button>
+        </GaiaButton>
       </div>
     );
   }
@@ -176,15 +175,15 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
         </section>
       ))}
       {hasNextPage && (
-        <Button
+        <GaiaButton
           size="sm"
-          variant="flat"
+          variant="default-soft"
           className="self-center"
-          isLoading={isFetchingNextPage}
+          isPending={isFetchingNextPage}
           onPress={() => void fetchNextPage()}
         >
           Show older briefs
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

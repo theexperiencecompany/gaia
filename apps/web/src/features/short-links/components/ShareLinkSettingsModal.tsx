@@ -1,19 +1,22 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
 import {
+  Description,
+  InputGroup,
+  Label,
+  ListBox,
   Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
-import { Radio, RadioGroup } from "@heroui/radio";
-import { Select, SelectItem } from "@heroui/select";
-import { Spinner } from "@heroui/spinner";
+  Radio,
+  RadioGroup,
+  Select,
+  Spinner,
+} from "@heroui/react";
 import { Alert01Icon, Copy01Icon, RefreshIcon } from "@icons";
 import { useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import { GranteeEmailsInput } from "@/features/short-links/components/GranteeEmailsInput";
 import {
   EXPIRY_PRESETS,
@@ -64,26 +67,34 @@ export function ShareLinkSettingsModal({ share }: { share: ShareLink }) {
   return (
     <Modal
       isOpen={share.isSettingsOpen}
-      onClose={share.closeSettings}
-      isDismissable={!share.isSaving}
-      size="md"
-      scrollBehavior="inside"
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) share.closeSettings();
+      }}
     >
-      <ModalContent>
-        <ModalHeader className="flex-col gap-1">
-          <span>Share settings</span>
-          <span className="text-sm font-normal text-zinc-400">
-            Who can open this link, and for how long.
-          </span>
-        </ModalHeader>
-        {share.link === undefined ? (
-          <ModalBody className="items-center py-8">
-            <Spinner size="sm" />
-          </ModalBody>
-        ) : (
-          <ShareSettingsForm share={share} link={share.link} />
-        )}
-      </ModalContent>
+      <Modal.Backdrop isDismissable={!share.isSaving}>
+        <Modal.Container scroll="inside">
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header>
+              <div className="flex flex-col gap-1">
+                <Modal.Heading>Share settings</Modal.Heading>
+                <span className="text-sm font-normal text-zinc-400">
+                  Who can open this link, and for how long.
+                </span>
+              </div>
+            </Modal.Header>
+            {share.link === undefined ? (
+              <Modal.Body>
+                <div className="flex justify-center py-8">
+                  <Spinner size="sm" />
+                </div>
+              </Modal.Body>
+            ) : (
+              <ShareSettingsForm share={share} link={share.link} />
+            )}
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }
@@ -108,6 +119,11 @@ function ShareSettingsForm({
     maxAccess != null &&
     LINK_ACCESS_OPTIONS[access].breadth >
       LINK_ACCESS_OPTIONS[maxAccess].breadth;
+  const expiryChoices = [
+    ...(link?.expires_at ? [{ key: "keep", label: "Keep current" }] : []),
+    ...EXPIRY_PRESETS,
+    { key: "never", label: "Never" },
+  ];
 
   const save = () => {
     const isPeople = access === "people";
@@ -124,25 +140,37 @@ function ShareSettingsForm({
 
   return (
     <>
-      <ModalBody className="gap-5">
+      <Modal.Body className="flex flex-col gap-5">
         <Select
-          label="Who can open it"
-          labelPlacement="outside"
-          selectedKeys={[access]}
-          disallowEmptySelection
-          onSelectionChange={(keys) => {
-            const [next] = Array.from(keys);
-            if (isLinkAccess(next)) setAccess(next);
+          className={inputVariants()}
+          value={access}
+          onChange={(key) => {
+            if (isLinkAccess(key)) setAccess(key);
           }}
         >
-          {LINK_ACCESS_ORDER.map((level) => (
-            <SelectItem
-              key={level}
-              description={LINK_ACCESS_OPTIONS[level].description}
-            >
-              {LINK_ACCESS_OPTIONS[level].label}
-            </SelectItem>
-          ))}
+          <Label>Who can open it</Label>
+          <Select.Trigger>
+            <GaiaSelectValue />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {LINK_ACCESS_ORDER.map((level) => (
+                <GaiaListBoxItem
+                  key={level}
+                  id={level}
+                  textValue={LINK_ACCESS_OPTIONS[level].label}
+                >
+                  <div className="flex min-w-0 flex-col">
+                    <Label>{LINK_ACCESS_OPTIONS[level].label}</Label>
+                    <Description>
+                      {LINK_ACCESS_OPTIONS[level].description}
+                    </Description>
+                  </div>
+                </GaiaListBoxItem>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
 
         {access === "people" && (
@@ -168,93 +196,92 @@ function ShareSettingsForm({
         )}
 
         <RadioGroup
-          label="Expires"
           orientation="horizontal"
           value={expiry}
-          onValueChange={(value) => {
+          onChange={(value) => {
             if (isExpiryChoice(value)) setExpiry(value);
           }}
-          description={link ? describeExpiry(link.expires_at) : undefined}
         >
-          {link?.expires_at && <Radio value="keep">Keep current</Radio>}
-          {EXPIRY_PRESETS.map((preset) => (
-            <Radio key={preset.key} value={preset.key}>
-              {preset.label}
-            </Radio>
-          ))}
-          <Radio value="never">Never</Radio>
+          <Label>Expires</Label>
+          <div className="flex flex-wrap gap-4">
+            {expiryChoices.map((choice) => (
+              <Radio key={choice.key} value={choice.key}>
+                <Radio.Content>
+                  <Radio.Control>
+                    <Radio.Indicator />
+                  </Radio.Control>
+                  {choice.label}
+                </Radio.Content>
+              </Radio>
+            ))}
+          </div>
+          {link && <Description>{describeExpiry(link.expires_at)}</Description>}
         </RadioGroup>
 
         {link && (
           <div className="flex flex-col gap-2 rounded-2xl bg-zinc-900 p-3">
-            <Input
-              aria-label="Link"
-              isReadOnly
-              size="sm"
-              value={link.url}
-              endContent={
-                <Button
+            <InputGroup className={inputVariants({ size: "sm" })}>
+              <InputGroup.Input aria-label="Link" readOnly value={link.url} />
+              <InputGroup.Suffix>
+                <GaiaButton
                   isIconOnly
                   size="sm"
-                  variant="light"
+                  variant="ghost"
                   aria-label="Copy link"
                   onPress={() => copyShortLink(link)}
                 >
                   <Copy01Icon size={16} />
-                </Button>
-              }
-            />
+                </GaiaButton>
+              </InputGroup.Suffix>
+            </InputGroup>
             {confirmingRotate ? (
               <div className="flex flex-col gap-2">
                 <span className="text-sm text-zinc-400">
                   The old link stops working for everyone who has it.
                 </span>
                 <div className="flex gap-2">
-                  <Button
+                  <GaiaButton
                     size="sm"
-                    color="danger"
-                    variant="flat"
+                    variant="danger-soft"
                     onPress={() => {
                       share.rotate();
                       setConfirmingRotate(false);
                     }}
                   >
                     Replace link
-                  </Button>
-                  <Button
+                  </GaiaButton>
+                  <GaiaButton
                     size="sm"
-                    variant="light"
+                    variant="ghost"
                     onPress={() => setConfirmingRotate(false)}
                   >
                     Keep this link
-                  </Button>
+                  </GaiaButton>
                 </div>
               </div>
             ) : (
-              <Button
+              <GaiaButton
                 size="sm"
-                variant="flat"
+                variant="default-soft"
                 className="self-start"
-                isLoading={share.isRotating}
-                startContent={
-                  share.isRotating ? undefined : <RefreshIcon size={16} />
-                }
+                isPending={share.isRotating}
                 onPress={() => setConfirmingRotate(true)}
               >
+                {share.isRotating ? null : <RefreshIcon size={16} />}
                 Get a new link
-              </Button>
+              </GaiaButton>
             )}
           </div>
         )}
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="light" onPress={share.closeSettings}>
+      </Modal.Body>
+      <Modal.Footer>
+        <GaiaButton variant="ghost" onPress={share.closeSettings}>
           Cancel
-        </Button>
-        <Button color="primary" isLoading={share.isSaving} onPress={save}>
+        </GaiaButton>
+        <GaiaButton variant="primary" isPending={share.isSaving} onPress={save}>
           Save
-        </Button>
-      </ModalFooter>
+        </GaiaButton>
+      </Modal.Footer>
     </>
   );
 }

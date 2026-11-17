@@ -109,7 +109,7 @@ describe("a heygaia.link that doesn't open", () => {
 
       expect(screen.getByRole("heading", { name: copy })).toBeTruthy();
       expect(
-        screen.getByRole("button", { name: "Go to GAIA" }).getAttribute("href"),
+        screen.getByRole("link", { name: "Go to GAIA" }).getAttribute("href"),
       ).toBe("/");
     },
   );
@@ -139,7 +139,7 @@ describe("a heygaia.link that doesn't open", () => {
       screen.getByRole("heading", { name: "Sign in to open this" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Sign in" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Sign in" }).getAttribute("href"),
     ).toBe("/login?return_url=%2Fl%2Fabcdefghijk");
   });
 
@@ -331,7 +331,7 @@ describe("a shared file", () => {
     const frame = container.querySelector("iframe");
     expect(frame?.getAttribute("src")).toBe(CONTENT_URL);
     expect(frame?.hasAttribute("sandbox")).toBe(false);
-    const open = screen.getByRole("button", { name: "Open" });
+    const open = screen.getByRole("link", { name: "Open" });
     expect(open.getAttribute("href")).toBe(CONTENT_URL);
     expect(open.getAttribute("target")).toBeNull();
   });
@@ -358,7 +358,7 @@ describe("a shared file", () => {
     expect(screen.getByText("Made with GAIA")).toBeTruthy();
     expect(screen.getByText("report")).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Download" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Download" }).getAttribute("href"),
     ).toBe("http://localhost:8000/l/abcdefghijk/download");
   });
 
@@ -369,7 +369,7 @@ describe("a shared file", () => {
       false,
     );
 
-    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Download" })).toBeNull();
     expect(screen.queryByText(/Download it to open it/)).toBeNull();
     expect(screen.getByText("report")).toBeTruthy();
   });

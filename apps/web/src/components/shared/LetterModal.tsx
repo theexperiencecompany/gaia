@@ -1,11 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Modal, ModalContent } from "@heroui/modal";
+import { Modal } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
-import { useReducedMotion, type Variants } from "motion/react";
+import { AnimatePresence, useReducedMotion, type Variants } from "motion/react";
 import * as m from "motion/react-m";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
+
+import { modalVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 /**
  * A letter opens unhurried and leaves quickly: an ease-out rise, a short
@@ -92,29 +94,13 @@ function backdropVariants(
   };
 }
 
-/**
- * The letter animates itself: HeroUI's wrapper only stays mounted until the
- * letter has finished leaving.
- */
-const WRAPPER_MOTION = {
-  variants: {
-    enter: { opacity: 1 },
-    exit: { opacity: 1, transition: { when: "afterChildren" } },
-  },
-};
-
-/**
- * Both presentations scroll the whole screen, so a letter taller than it is
- * never cut by a box of its own; the letter sets its own width.
- */
-const MODAL_CLASS_NAMES = {
-  wrapper: "no-scrollbar items-start justify-center px-3 py-8",
-  base: "m-0 my-auto w-auto max-w-none overflow-visible bg-transparent shadow-none sm:my-auto",
+/** The close button's look, for any control pinned beside it to match. */
+export const LETTER_CONTROL_PROPS = {
+  variant: "tertiary",
+  tone: "bright",
+  shape: "pill",
+  className: "shadow-[0_6px_20px_-6px_rgba(0,0,0,0.6)]",
 } as const;
-
-/** The close button's surface, for any control pinned beside it to match. */
-export const LETTER_CONTROL_CLASSES =
-  "bg-zinc-800 text-zinc-200 shadow-[0_6px_20px_-6px_rgba(0,0,0,0.6)] data-[hover=true]:bg-zinc-700";
 
 interface LetterModalProps {
   isOpen: boolean;
@@ -134,7 +120,9 @@ interface LetterModalProps {
 /**
  * A single sheet handed to the reader, with one close button pinned to the
  * screen's corner so a letter taller than the screen still has a way out.
- * HeroUI owns focus trap, Escape, outside press, scroll lock and focus restore.
+ * HeroUI owns focus trap, Escape, outside press, scroll lock and focus restore;
+ * the letter stays mounted, still open, until it and the page behind it have
+ * finished leaving. The whole screen scrolls, so a tall letter is never cut.
  */
 export function LetterModal({
   isOpen,
@@ -145,64 +133,59 @@ export function LetterModal({
   children,
 }: LetterModalProps) {
   const motion = useReducedMotion() ? "reduced" : "full";
-  // HeroUI attaches its motion asynchronously; a close before the entrance starts never runs
-  // the exit and strands the modal open, so it stays mounted until then and closes after.
-  const [isEntering, setIsEntering] = useState(isOpen);
-  const [wasOpen, setWasOpen] = useState(isOpen);
-  if (isOpen !== wasOpen) {
-    setWasOpen(isOpen);
-    if (isOpen) setIsEntering(true);
-  }
   return (
-    <Modal
-      isOpen={isOpen || isEntering}
-      onClose={onClose}
-      hideCloseButton
-      aria-label={ariaLabel}
-      backdrop="transparent"
-      scrollBehavior="outside"
-      classNames={MODAL_CLASS_NAMES}
-      motionProps={{
-        ...WRAPPER_MOTION,
-        onAnimationStart: () => setIsEntering(false),
-      }}
-    >
-      <ModalContent>
-        <m.div
-          aria-hidden
-          initial="arrive"
-          animate="enter"
-          exit="exit"
-          variants={backdropVariants(presentation, motion)}
-          className="pointer-events-none fixed inset-0"
-        />
-        <div className="fixed top-3 right-3 z-50 flex items-center gap-2">
-          {actions}
-          <Button
-            isIconOnly
-            radius="full"
-            variant="flat"
-            aria-label="Close"
-            onPress={onClose}
-            className={LETTER_CONTROL_CLASSES}
-          >
-            <Cancel01Icon className="size-5" />
-          </Button>
-        </div>
-        {presentation === "sheet" ? (
-          <m.div
-            initial="arrive"
-            animate="enter"
-            exit="exit"
-            variants={LETTER_SHEET_VARIANTS[motion]}
-            className="relative"
-          >
-            {children}
-          </m.div>
-        ) : (
-          children
-        )}
-      </ModalContent>
-    </Modal>
+    <AnimatePresence>
+      {isOpen && (
+        <Modal
+          key="letter"
+          isOpen
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) onClose();
+          }}
+        >
+          <Modal.Backdrop variant="transparent" className="no-scrollbar">
+            <m.div
+              aria-hidden
+              initial="arrive"
+              animate="enter"
+              exit="exit"
+              variants={backdropVariants(presentation, motion)}
+              className="pointer-events-none fixed inset-0"
+            />
+            <Modal.Container placement="center" scroll="outside">
+              <Modal.Dialog
+                aria-label={ariaLabel}
+                className={modalVariants({ surface: "bare" })}
+              >
+                <div className="fixed top-3 right-3 z-50 flex items-center gap-2">
+                  {actions}
+                  <GaiaButton
+                    {...LETTER_CONTROL_PROPS}
+                    isIconOnly
+                    aria-label="Close"
+                    onPress={onClose}
+                  >
+                    <Cancel01Icon className="size-5" />
+                  </GaiaButton>
+                </div>
+                {presentation === "sheet" ? (
+                  <m.div
+                    initial="arrive"
+                    animate="enter"
+                    exit="exit"
+                    variants={LETTER_SHEET_VARIANTS[motion]}
+                    className="relative"
+                  >
+                    {children}
+                  </m.div>
+                ) : (
+                  children
+                )}
+              </Modal.Dialog>
+            </Modal.Container>
+          </Modal.Backdrop>
+        </Modal>
+      )}
+    </AnimatePresence>
   );
 }

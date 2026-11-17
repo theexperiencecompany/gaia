@@ -1,8 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Input } from "@heroui/input";
-import { Tab, Tabs } from "@heroui/tabs";
+import { SearchField, Tabs } from "@heroui/react";
 import {
   FolderLibraryIcon,
   PlusSignIcon,
@@ -12,6 +10,10 @@ import {
 import type { ComponentType } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { shapeVariants } from "@/components/shared/shape";
+import { tabsVariants } from "@/components/shared/tabsVariants";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { track } from "@/lib/analytics";
 import type { Skill } from "../api/types";
@@ -22,6 +24,12 @@ import { SkillEditorModal } from "./SkillEditorModal";
 import type { SkillPreview } from "./SkillPreviewModal";
 import { SkillPreviewModal } from "./SkillPreviewModal";
 import { SkillsList } from "./SkillsList";
+
+const pageTabs = tabsVariants({
+  variant: "solid",
+  color: "accent",
+  shape: "pill",
+});
 
 export default function SkillsManagement() {
   const { skills, targets, loading, refetch, setEnabled, removeSkill } =
@@ -92,43 +100,51 @@ export default function SkillsManagement() {
       {/* Tabs, search, and New skill share one row. */}
       <div className="flex items-center gap-3">
         <Tabs
-          variant="solid"
-          color="primary"
-          radius="full"
+          className={pageTabs.base({
+            className: shapeVariants({ shape: "pill", className: "shrink-0" }),
+          })}
+          variant="primary"
           selectedKey={tab}
           onSelectionChange={(key) => setTab(key as string)}
         >
-          <Tab
-            key="yours"
-            title={<TabTitle icon={PuzzleIcon} label="Your Skills" />}
-          />
-          <Tab
-            key="builtin"
-            title={<TabTitle icon={FolderLibraryIcon} label="Built-in" />}
-          />
+          <Tabs.ListContainer>
+            <Tabs.List aria-label="Skills" className={pageTabs.tabList()}>
+              <Tabs.Tab id="yours" className={pageTabs.tab()}>
+                <TabTitle icon={PuzzleIcon} label="Your Skills" />
+                <Tabs.Indicator className={pageTabs.tabIndicator()} />
+              </Tabs.Tab>
+              <Tabs.Tab id="builtin" className={pageTabs.tab()}>
+                <TabTitle icon={FolderLibraryIcon} label="Built-in" />
+                <Tabs.Indicator className={pageTabs.tabIndicator()} />
+              </Tabs.Tab>
+            </Tabs.List>
+          </Tabs.ListContainer>
         </Tabs>
         <div className="flex-1" />
-        <Input
-          size="sm"
-          variant="flat"
-          radius="lg"
-          placeholder="Search skills"
+        <SearchField
+          aria-label="Search skills"
           value={query}
-          onValueChange={setQuery}
-          startContent={<Search01Icon className="size-4 text-zinc-500" />}
-          className="max-w-56"
-          isClearable
-          onClear={() => setQuery("")}
-        />
-        <Button
-          size="sm"
-          color="primary"
-          className="shrink-0 rounded-xl"
-          startContent={<PlusSignIcon className="size-4" />}
-          onPress={openCreate}
+          onChange={setQuery}
+          className={inputVariants({ size: "sm", className: "max-w-56" })}
         >
+          <SearchField.Group>
+            <SearchField.SearchIcon>
+              <Search01Icon className="size-4 text-zinc-500" />
+            </SearchField.SearchIcon>
+            <SearchField.Input placeholder="Search skills" />
+            <SearchField.ClearButton />
+          </SearchField.Group>
+        </SearchField>
+        <GaiaButton
+          size="sm"
+          shape="md"
+          className="shrink-0"
+          onPress={openCreate}
+          variant="primary"
+        >
+          <PlusSignIcon className="size-4" />
           New skill
-        </Button>
+        </GaiaButton>
       </div>
 
       <div className="min-h-0 flex-1">

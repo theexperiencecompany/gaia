@@ -1,6 +1,5 @@
 "use client";
 
-import { Link } from "@heroui/link";
 import { ArrowUpRight01Icon } from "@icons";
 import type {
   BriefingEvent,
@@ -8,6 +7,7 @@ import type {
   BriefPoolItem,
 } from "@shared/api/generated";
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { z } from "zod";
 
@@ -259,8 +259,10 @@ function PoolItemRow({
       {href ? (
         <Link
           href={href}
-          isExternal={!href.startsWith("/")}
-          className="w-fit gap-1 text-sm text-zinc-100 hover:text-white"
+          {...(href.startsWith("/")
+            ? {}
+            : { target: "_blank", rel: "noopener noreferrer" })}
+          className="inline-flex w-fit items-center gap-1 text-sm text-zinc-100 hover:text-white"
         >
           {item.title}
           <ArrowUpRight01Icon aria-hidden className="size-3.5 text-zinc-500" />

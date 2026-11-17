@@ -1,12 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Link as HeroLink } from "@heroui/link";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { ChevronLeft } from "@/components/shared/icons";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 
 /** Where a signed-in reader's back button leads, and what it says. */
@@ -51,19 +50,21 @@ export function StandalonePage({
         <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
           <div className="flex min-w-0 items-center">
             {isAuthenticated && (
-              <Button
-                as={Link}
+              <LinkButton
                 href={back.href}
-                variant="light"
+                variant="ghost"
                 size="sm"
-                className="-ml-2 gap-1 px-2 text-zinc-400 data-[hover=true]:text-zinc-100"
-                startContent={<ChevronLeft aria-hidden className="size-4" />}
+                inset="tight"
+                tone="muted"
+                hoverTone="strong"
+                className="-ml-2 gap-1"
               >
+                <ChevronLeft aria-hidden className="size-4" />
                 {back.label}
-              </Button>
+              </LinkButton>
             )}
           </div>
-          <HeroLink as={Link} href="/" aria-label="GAIA home">
+          <Link href="/" aria-label="GAIA home">
             <Image
               src="/images/logos/text_w_logo_white.webp"
               alt="GAIA"
@@ -71,7 +72,7 @@ export function StandalonePage({
               height={26}
               className="object-contain"
             />
-          </HeroLink>
+          </Link>
           <div className="flex min-w-0 items-center justify-end gap-2">
             {actions}
           </div>

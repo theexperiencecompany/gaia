@@ -75,7 +75,7 @@ export default function WorkflowDeliveryField({
             {noDailyBrief && (
               <p className="px-1 text-sm text-zinc-400">
                 {NO_DAILY_BRIEF_DELIVERY_REASON}{" "}
-                <Link href={BRIEFINGS_SETTINGS_PATH} className="text-primary">
+                <Link href={BRIEFINGS_SETTINGS_PATH} className="text-accent">
                   Turn on daily briefs
                 </Link>
               </p>

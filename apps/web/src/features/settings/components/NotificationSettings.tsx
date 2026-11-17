@@ -2,12 +2,14 @@
 
 import { EMAIL_CHANNEL_DESCRIPTION } from "@gaia/shared";
 import type { ChannelPlatform, ChannelPreferences } from "@gaia/shared/types";
-import { Button } from "@heroui/button";
-import { Select, SelectItem } from "@heroui/select";
-import { Switch } from "@heroui/switch";
+import { ListBox, Select, Switch } from "@heroui/react";
 import Image from "next/image";
-import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { isBotPlatform } from "@/config/botPlatforms";
 import {
   NOTIFICATION_CHANNEL_ICONS,
@@ -94,9 +96,15 @@ export default function NotificationSettings() {
       size="sm"
       isSelected={!!channelPrefs?.[channel]}
       isDisabled={togglingChannel === channel}
-      onValueChange={(enabled) => handleToggle(channel, enabled)}
+      onChange={(enabled) => handleToggle(channel, enabled)}
       aria-label={`Enable ${NOTIFICATION_CHANNEL_LABELS[channel]} notifications`}
-    />
+    >
+      <Switch.Content>
+        <Switch.Control>
+          <Switch.Thumb />
+        </Switch.Control>
+      </Switch.Content>
+    </Switch>
   );
 
   return (
@@ -125,16 +133,15 @@ export default function NotificationSettings() {
               channel={platform}
               description="Not linked"
             >
-              <Button
-                as={Link}
+              <LinkButton
                 href={LINKED_ACCOUNTS_SETTINGS_PATH}
                 size="sm"
-                variant="flat"
+                variant="default-soft"
                 aria-label={`Link ${NOTIFICATION_CHANNEL_LABELS[platform]} in Linked Accounts`}
                 className="text-xs"
               >
                 Link
-              </Button>
+              </LinkButton>
             </ChannelRow>
           ))}
           {linkedOrder.length > 1 && (
@@ -143,22 +150,30 @@ export default function NotificationSettings() {
               description="When you haven't chatted lately, GAIA starts here."
             >
               <Select
-                size="sm"
-                className="w-36"
+                className={inputVariants({ size: "sm", className: "w-36" })}
                 aria-label="Text me first on"
-                disallowEmptySelection
-                selectedKeys={[linkedOrder[0]]}
+                value={linkedOrder[0]}
                 isDisabled={saving}
-                onSelectionChange={(keys) => {
-                  const [next] = Array.from(keys, String);
+                onChange={(key) => {
+                  const next = key == null ? null : String(key);
                   if (next && isBotPlatform(next)) void putFirst(next);
                 }}
               >
-                {linkedOrder.map((platform) => (
-                  <SelectItem key={platform}>
-                    {NOTIFICATION_CHANNEL_LABELS[platform]}
-                  </SelectItem>
-                ))}
+                <Select.Trigger>
+                  <GaiaSelectValue />
+                  <Select.Indicator />
+                </Select.Trigger>
+                <Select.Popover>
+                  <ListBox>
+                    {linkedOrder.map((platform) => (
+                      <GaiaListBoxItem
+                        key={platform}
+                        id={platform}
+                        textValue={NOTIFICATION_CHANNEL_LABELS[platform]}
+                      />
+                    ))}
+                  </ListBox>
+                </Select.Popover>
               </Select>
             </SettingsRow>
           )}
@@ -166,15 +181,14 @@ export default function NotificationSettings() {
             label="Linked accounts"
             description="Connect, disconnect or open a chat app."
           >
-            <Button
-              as={Link}
+            <LinkButton
               href={LINKED_ACCOUNTS_SETTINGS_PATH}
               size="sm"
-              variant="flat"
+              variant="default-soft"
               className="text-xs"
             >
               Manage
-            </Button>
+            </LinkButton>
           </SettingsRow>
         </SettingsSection>
       )}
@@ -224,16 +238,15 @@ function PreferencesError({ onRetry }: { onRetry: () => void }) {
         Your channels are unchanged — this page just couldn&apos;t reach them.
         Try again in a moment.
       </p>
-      <Button
+      <GaiaButton
         size="sm"
-        color="primary"
-        variant="flat"
-        radius="full"
+        variant="accent-soft"
+        shape="pill"
         className="mt-1 font-medium"
         onPress={onRetry}
       >
         Try again
-      </Button>
+      </GaiaButton>
     </div>
   );
 }
