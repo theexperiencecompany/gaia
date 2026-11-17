@@ -35,6 +35,7 @@ from app.services.onboarding.first_question import (
 from app.services.onboarding.intelligence_job import abort_active_intelligence_job
 from app.services.platform_link_service import linked_platforms_of
 from app.services.system_workflows.provisioner import provision_briefing_workflows
+from app.services.user_timezone import set_user_timezone
 from app.services.workflow.service import WorkflowService
 from app.utils.auth_utils import with_local_onboarding_completed
 from app.utils.background_tasks import spawn_background_task
@@ -91,7 +92,6 @@ async def complete_onboarding(
         # `onboarding` subdoc wins; concurrent POSTs and replays get None.
         updated_user = await user_repository.complete_onboarding(
             user_id,
-            timezone=onboarding_data.timezone.strip() if onboarding_data.timezone else None,
             phase=OnboardingPhase.COMPLETED,
             bio_status=BioStatus.PENDING,
             preferences=preferences,
@@ -106,7 +106,13 @@ async def complete_onboarding(
                 user_id=user_id,
                 phase=existing.onboarding.phase if existing.onboarding else None,
             )
+            # A first submit that died after its completion write left no briefs; this is idempotent.
+            await provision_briefing_workflows(user_id)
             return _onboarding_user(existing)
+
+        timezone = onboarding_data.timezone.strip() if onboarding_data.timezone else None
+        if timezone and await set_user_timezone(user_id, timezone) is None:
+            raise LookupError(f"User {user_id} vanished while onboarding stored their timezone")
 
         # The wizard submits only once the chosen platform's link has landed
         # (or the user went on without one), so the link is on this document.

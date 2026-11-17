@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""One-time, idempotent existing-user briefing rollout.
+"""Idempotent existing-user briefing rollout; a dry run unless --apply.
 
-For every user: provision the daily-briefing + weekly-digest system workflows.
-Users we can derive a goal for get a real first briefing next morning; sparse
-users with no derivable goal have their briefings held (bootstrap marker) until a
-goal arrives or the grace window elapses. The user-facing announcement is sent
-manually by email, not from here. Safe to re-run — provisioning is idempotent by
-``system_workflow_key`` and the path taken is logged.
+For every onboarded user: provision the daily-briefing + weekly-digest system workflows
+and fit them to the user's schedule and plan. Users we can derive a goal for get a real
+first briefing next morning; sparse users with no derivable goal have their briefings
+held (bootstrap marker) until a goal arrives or the grace window elapses. A user still
+in the wizard is left to it. Safe to re-run: provisioning is idempotent by
+system_workflow_key and the path taken is printed.
 
-Run: uv run python -m scripts.provision_daily_briefings [--dry-run]
+Run: uv run python -m scripts.provision_daily_briefings [--apply]
 """
 
 import asyncio
+from collections import Counter
 import sys
 
 from app.core.provider_registration import register_lazy_providers
@@ -21,33 +22,27 @@ from shared.py.analytics.catalog.attribution import Trigger
 from shared.py.analytics.context import analytics_context, worker_context
 
 
-async def rollout(dry_run: bool) -> None:
+async def rollout(apply: bool) -> Counter[str]:
+    """Roll briefings out to every user, or only count them on a dry run; return the paths taken."""
+    mode = "APPLY" if apply else "DRY RUN"
+    user_ids = await user_repository.list_all_ids()
+    print(f"[{mode}] users to roll out: {len(user_ids)}")
+    paths: Counter[str] = Counter()
+    if not apply:
+        print("Re-run with --apply to provision them.")
+        return paths
+
     # No app lifespan here: register the providers capture() and provisioning read.
     register_lazy_providers("main_app")
-    user_ids = await user_repository.list_all_ids()
-    total = len(user_ids)
-    print(f"users to roll out: {total}")
-    if dry_run:
-        return
-
-    paths: dict[str, int] = {}
-    processed = 0
-    for user_id in user_ids:
-        try:
-            # A script is an entry point: each user's rollout reports through capture().
-            with analytics_context(worker_context(Trigger.SYSTEM)):
-                path = await provision_existing_user(user_id)
-        except Exception as e:  # one bad user must not abort the whole rollout
-            print(f"  user {user_id}: FAILED ({e})")
-            paths["failed"] = paths.get("failed", 0) + 1
-            continue
-        paths[path] = paths.get(path, 0) + 1
-        processed += 1
-        if processed % 100 == 0:
-            print(f"  ...{processed}/{total}")
-
-    print(f"done: {processed}/{total} rolled out; breakdown={paths}")
+    for done, user_id in enumerate(user_ids, start=1):
+        # A script is an entry point: each user's rollout reports through capture().
+        with analytics_context(worker_context(Trigger.SYSTEM)):
+            paths[await provision_existing_user(user_id)] += 1
+        if done % 100 == 0:
+            print(f"  ...{done}/{len(user_ids)}")
+    print(f"[{mode}] done: {sum(paths.values())}/{len(user_ids)}; breakdown={dict(paths)}")
+    return paths
 
 
 if __name__ == "__main__":
-    asyncio.run(rollout(dry_run="--dry-run" in sys.argv))
+    asyncio.run(rollout(apply="--apply" in sys.argv))

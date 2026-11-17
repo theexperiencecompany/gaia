@@ -20,8 +20,8 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 
 from app.constants.briefing import (
+    BRIEF_RUN_DAYS,
     DAILY_BRIEFING_WORKFLOW_KEY,
-    ENABLED_BRIEFING_KEYS,
     FIRST_WEEK_DAYS,
     GOAL_QUESTION_REASK,
     IDLE_DORMANT_DAYS,
@@ -176,7 +176,7 @@ async def climb_weekly_ladder(
     Their loop goes dormant after IDLE_DORMANT_DAYS idle digests in a row; a user with a
     daily brief climbs the ladder on it instead.
     """
-    if DAILY_BRIEFING_WORKFLOW_KEY in ENABLED_BRIEFING_KEYS[user.briefing_schedule.frequency]:
+    if DAILY_BRIEFING_WORKFLOW_KEY in BRIEF_RUN_DAYS[user.briefing_schedule.frequency]:
         return
     idle = not has_news and not has_goal and not in_first_week(user, datetime.now(UTC))
     idle_days = await record_idle_day(user.id, prior, idle, date_str)

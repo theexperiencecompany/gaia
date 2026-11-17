@@ -78,7 +78,7 @@ from app.services.briefing.publish import (
     publish_quiet_note,
     quiet_note,
 )
-from app.services.briefing.schedule import describe_briefing_schedule
+from app.services.briefing.run_times import describe_briefing_schedule
 from app.services.briefing.scouts.facts import signals_block
 from app.services.briefing.scouts.service import ScoutSignals, scout_signals
 from app.services.briefing.sections import (

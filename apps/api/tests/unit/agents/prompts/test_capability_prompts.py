@@ -17,7 +17,7 @@ from app.agents.prompts.capability_prompts import (
 )
 from app.agents.prompts.comms_prompts import COMMS_AGENT_PROMPT
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
-from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
+from app.constants.todos import INBOX_DESK_LEAD_HOURS, INBOX_DESK_TITLE
 from app.constants.workflows import WorkflowDelivery
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -136,7 +136,7 @@ class TestCapabilityBlock:
 
     def test_schedules_and_event_triggers_read_as_times_not_cron(self) -> None:
         block = build_capability_block()
-        assert "every day at 07:00 in their timezone" in block
+        assert "every day 1h before the daily brief" in block
         assert "60 minutes before any calendar event" in block
         assert "10 minutes before any calendar event" in block
         assert "0 7 * * *" not in block
@@ -166,8 +166,8 @@ class TestCapabilityBlock:
         assert f"\n\n{_inbox_desk_line()}\n\n" in build_capability_block()
         assert _inbox_desk_line() == (
             f"INBOX DESK: once Gmail is connected, GAIA keeps one tracked todo, the "
-            f"{INBOX_DESK_TITLE}, that runs {_describe_cron(INBOX_DESK_RECURRENCE)}. It goes "
-            "through every connected inbox, opens a tracked todo for every thread where the user "
+            f"{INBOX_DESK_TITLE}, that runs every day {INBOX_DESK_LEAD_HOURS}h before the daily "
+            "brief. It goes through every connected inbox, opens a tracked todo for every thread where the user "
             "owes a reply or is waiting on one, saves reply drafts without sending them, puts "
             "personal events from mail on the calendar, and what it finds goes into the daily "
             "brief. It organizes their Gmail or adds mail's tasks to their todos only after they "

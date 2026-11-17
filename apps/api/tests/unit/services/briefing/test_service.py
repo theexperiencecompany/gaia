@@ -3905,8 +3905,8 @@ class TestTheLighterCadenceOffer:
         await daily.run_daily_briefing(_USER)
 
         assert (
-            "Their briefs now: a daily brief every day at 08:00, plus the Sunday evening "
-            "weekly digest.\nApps they've connected: Gmail."
+            "Their briefs now: a daily brief every day at 08:00, plus the weekly digest on "
+            "Sunday at 17:00.\nApps they've connected: Gmail."
         ) in _prompt(world)
 
     async def test_an_active_user_is_not(self, world: World) -> None:

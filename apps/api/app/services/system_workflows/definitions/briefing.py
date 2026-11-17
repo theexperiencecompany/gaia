@@ -9,11 +9,7 @@ prompt/steps here are display metadata only.
 from collections.abc import Callable
 from uuid import uuid4
 
-from app.constants.briefing import (
-    DAILY_BRIEFING_WORKFLOW_KEY,
-    WEEKLY_DIGEST_CRON,
-    WEEKLY_DIGEST_WORKFLOW_KEY,
-)
+from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY
 from app.constants.workflows import WorkflowDelivery
 from app.models.briefing_models import BriefingSchedule
 from app.models.quiet_hours_models import DEFAULT_QUIET_HOURS
@@ -23,7 +19,9 @@ from app.models.workflow_models import (
     TriggerType,
     WorkflowStep,
 )
-from app.services.briefing.schedule import daily_briefing_cron
+from app.services.briefing.run_times import brief_slots
+
+_DEFAULT_SLOTS = brief_slots(BriefingSchedule(), DEFAULT_QUIET_HOURS)
 
 
 def _daily_briefing() -> CreateWorkflowRequest:
@@ -43,7 +41,7 @@ def _daily_briefing() -> CreateWorkflowRequest:
         trigger_config=TriggerConfig(
             type=TriggerType.SCHEDULE,
             # The default schedule's slot; provisioning stamps the user's own.
-            cron_expression=daily_briefing_cron(BriefingSchedule(), DEFAULT_QUIET_HOURS),
+            cron_expression=_DEFAULT_SLOTS[DAILY_BRIEFING_WORKFLOW_KEY].cron,
         ),
         steps=[
             WorkflowStep(
@@ -74,7 +72,7 @@ def _weekly_digest() -> CreateWorkflowRequest:
         system_workflow_key=WEEKLY_DIGEST_WORKFLOW_KEY,
         trigger_config=TriggerConfig(
             type=TriggerType.SCHEDULE,
-            cron_expression=WEEKLY_DIGEST_CRON,
+            cron_expression=_DEFAULT_SLOTS[WEEKLY_DIGEST_WORKFLOW_KEY].cron,
         ),
         steps=[
             WorkflowStep(

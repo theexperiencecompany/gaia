@@ -52,7 +52,7 @@ class TestSetBriefingSchedule:
         setter.assert_awaited_once_with("user-1", wanted, via="agent")
         assert result == (
             "Briefing schedule updated: a daily brief Monday to Friday at 09:00, "
-            "plus the Sunday evening weekly digest."
+            "plus the weekly digest on Sunday at 17:00."
         )
 
     async def test_a_free_user_is_told_the_briefs_stay_paused_until_pro(
@@ -77,8 +77,8 @@ class TestSetBriefingSchedule:
             )
 
         assert result == (
-            "Briefing schedule updated: a daily brief every day at 09:00, plus the Sunday "
-            "evening weekly digest. None of these run yet: briefs on a schedule need Pro, "
+            "Briefing schedule updated: a daily brief every day at 09:00, plus the weekly "
+            "digest on Sunday at 17:00. None of these run yet: briefs on a schedule need Pro, "
             "and the user is on the free plan."
         )
 
@@ -97,7 +97,7 @@ class TestSetBriefingSchedule:
             )
 
         setter.assert_awaited_once_with("user-1", wanted, via="agent")
-        assert result.endswith("only the Sunday evening weekly digest, no daily brief.")
+        assert result.endswith("only the weekly digest on Sunday at 17:00, no daily brief.")
 
     async def test_an_unknown_frequency_is_refused_before_anything_changes(self) -> None:
         with (

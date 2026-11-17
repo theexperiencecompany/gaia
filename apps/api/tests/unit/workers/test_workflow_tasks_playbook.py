@@ -244,6 +244,11 @@ class _Harness:
                 f"{MODULE}.workflow_repository.find_system_workflow",
                 AsyncMock(return_value=MagicMock(activated=True)),
             ),
+            # brief_will_carry's winback read: no brief has gone unanswered.
+            patch(
+                "app.services.briefing.context.briefing_repository.list_recent",
+                AsyncMock(return_value=[]),
+            ),
             patch(f"{MODULE}.enforce_tiered_limit", self.tiered_limit),
             patch(f"{MODULE}.get_or_create_workflow_conversation", self.conversation),
             patch(f"{MODULE}.try_acquire_lock", self.acquire),

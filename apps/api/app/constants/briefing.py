@@ -5,6 +5,7 @@ schedules, budgets the prompt is held to, and the deterministic hue rotation. Sh
 workflow-execution branch so nothing hardcodes these values.
 """
 
+from collections.abc import Mapping
 from datetime import timedelta
 from enum import StrEnum
 from typing import Final, Literal
@@ -28,12 +29,12 @@ BRIEFING_RHYTHM_WORKFLOW_KEYS: Final[tuple[str, ...]] = (
 # The daily brief's default local hour; the user picks their own, and quiet hours
 # covering it push it to when they end (briefing.schedule).
 DAILY_BRIEFING_HOUR: Final[int] = 8
-# Cron day-of-week field for a brief that runs every day, and for Monday to Friday.
-EVERY_DAY_CRON_DAYS: Final[str] = "*"
-WEEKDAYS_CRON_DAYS: Final[str] = "1-5"
-#: The weekly digest's local hour, on Sunday.
+#: The weekly digest's local hour, on Sunday; quiet hours covering it push it to when they end.
 WEEKLY_DIGEST_HOUR: Final[int] = 17
-WEEKLY_DIGEST_CRON: Final[str] = f"0 {WEEKLY_DIGEST_HOUR} * * 0"
+# The weekdays (Monday 0) a brief lands on.
+EVERY_DAY: Final[frozenset[int]] = frozenset(range(7))
+MONDAY_TO_FRIDAY: Final[frozenset[int]] = frozenset(range(5))
+SUNDAY: Final[frozenset[int]] = frozenset({6})
 
 # Briefing kinds — key the payload variant and the unique-per-day constraint.
 BRIEFING_KIND_DAILY: Final[Literal["daily"]] = "daily"
@@ -231,12 +232,19 @@ class BriefingFrequency(StrEnum):
     OFF = "off"
 
 
-# The briefing workflows each frequency keeps running.
-ENABLED_BRIEFING_KEYS: Final[dict[BriefingFrequency, frozenset[str]]] = {
-    BriefingFrequency.DAILY: frozenset(BRIEFING_RHYTHM_WORKFLOW_KEYS),
-    BriefingFrequency.WEEKDAYS: frozenset(BRIEFING_RHYTHM_WORKFLOW_KEYS),
-    BriefingFrequency.WEEKLY_ONLY: frozenset({WEEKLY_DIGEST_WORKFLOW_KEY}),
-    BriefingFrequency.OFF: frozenset(),
+#: The briefing workflows each frequency runs, by key, and the weekdays each lands on;
+#: a workflow a frequency leaves out does not run.
+BRIEF_RUN_DAYS: Final[Mapping[BriefingFrequency, Mapping[str, frozenset[int]]]] = {
+    BriefingFrequency.DAILY: {
+        DAILY_BRIEFING_WORKFLOW_KEY: EVERY_DAY,
+        WEEKLY_DIGEST_WORKFLOW_KEY: SUNDAY,
+    },
+    BriefingFrequency.WEEKDAYS: {
+        DAILY_BRIEFING_WORKFLOW_KEY: MONDAY_TO_FRIDAY,
+        WEEKLY_DIGEST_WORKFLOW_KEY: SUNDAY,
+    },
+    BriefingFrequency.WEEKLY_ONLY: {WEEKLY_DIGEST_WORKFLOW_KEY: SUNDAY},
+    BriefingFrequency.OFF: {},
 }
 
 # Idle wind-down: consecutive daily runs that found nothing to work on (no goal,

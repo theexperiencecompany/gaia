@@ -254,23 +254,6 @@ class TestOnboardingWrites:
         assert second is None
         assert (await repo.get(created.id)).onboarding.phase == OnboardingPhase.COMPLETED
 
-    async def test_complete_onboarding_writes_timezone_at_the_document_root(
-        self, repo, make_user, raw_collection
-    ):
-        """user.timezone is the single source of truth — the wizard's answer must land at the root, not on the subdocument."""
-        created = await repo.create(make_user(email="tz@y.com"))
-        completed = await repo.complete_onboarding(
-            created.id,
-            phase=OnboardingPhase.COMPLETED,
-            bio_status=BioStatus.COMPLETED,
-            preferences=OnboardingPreferences(profession="eng"),
-            timezone="Europe/Berlin",
-        )
-        assert completed is not None
-        assert completed.timezone == "Europe/Berlin"
-        stored = await raw_collection.find_one({"email": "tz@y.com"})
-        assert stored["timezone"] == "Europe/Berlin"
-
     async def test_complete_onboarding_without_timezone_keeps_the_stored_one(
         self, repo, make_user, raw_collection
     ):

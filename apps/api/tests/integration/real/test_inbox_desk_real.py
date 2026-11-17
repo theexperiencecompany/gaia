@@ -18,12 +18,15 @@ from app.agents.prompts.todo_prompts import INBOX_DESK_DESCRIPTION
 from app.constants.integrations import GMAIL_INTEGRATION_ID
 from app.constants.todos import (
     GAIA_TRACKED_LABEL,
-    INBOX_DESK_RECURRENCE,
     INBOX_DESK_TITLE,
 )
 from app.models.todo_models import TodoDocument
+from app.models.user_models import UserDocument
+from app.services.briefing.run_times import inbox_desk_recurrence
 from app.services.todos.inbox_desk import INBOX_DESK_REF, provision_inbox_desk
 from app.utils.redis_utils import RedisPoolManager
+
+_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(UserDocument())
 
 pytestmark = pytest.mark.service
 
@@ -64,7 +67,7 @@ async def test_connecting_gmail_twice_at_once_makes_one_armed_desk(
     assert desk.description == INBOX_DESK_DESCRIPTION
     assert desk.external_ref == INBOX_DESK_REF
     assert GAIA_TRACKED_LABEL in desk.labels and desk.notify_on_run
-    assert desk.recurrence == INBOX_DESK_RECURRENCE
+    assert desk.recurrence == _DEFAULT_DESK_RECURRENCE
     assert desk.scheduled_at is not None
     assert before < desk.scheduled_at.replace(tzinfo=UTC) <= before + timedelta(days=1)
     # New mail never wakes the desk: it runs on its schedule, its thread todos watch their threads.

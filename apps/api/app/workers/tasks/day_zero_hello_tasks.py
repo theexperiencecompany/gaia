@@ -19,7 +19,7 @@ from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.services.analytics_service import capture
 from app.services.briefing import context
-from app.services.briefing.schedule import next_brief_lands
+from app.services.briefing.run_times import next_brief_lands
 from app.services.briefing.silent_turn import run_silent_turn
 from app.services.delivery.chat_channel import pick_chat_channel
 from app.services.outbound_delivery import OutboundResult

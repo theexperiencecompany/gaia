@@ -91,10 +91,15 @@ class TestQuietHours:
         stored = UserDocument(id=FAKE_USER_ID)
         with (
             patch(
+                "app.services.user_quiet_hours.user_repository.get",
+                AsyncMock(return_value=UserDocument(id=FAKE_USER_ID)),
+            ),
+            patch(
                 "app.services.user_quiet_hours.user_repository.set_quiet_hours",
                 AsyncMock(return_value=stored),
             ) as update,
             patch("app.services.user_quiet_hours.resync_briefing_schedules") as resync,
+            patch("app.services.user_quiet_hours.follow_the_brief") as desk,
             patch("app.services.user_quiet_hours.capture") as capture,
         ):
             async with captured_wide_event() as live:
@@ -111,6 +116,7 @@ class TestQuietHours:
             FAKE_USER_ID, QuietHours(enabled=True, start_hour=23, end_hour=7)
         )
         resync.assert_awaited_once_with(stored)
+        desk.assert_awaited_once_with(FAKE_USER_ID, "0 7 * * *", "0 7 * * *")
         capture.assert_called_once_with(
             UserId(FAKE_USER_ID),
             SettingsQuietHoursUpdated(enabled=True, start_hour=23, end_hour=7),
@@ -119,6 +125,9 @@ class TestQuietHours:
     async def test_hours_for_a_user_that_does_not_exist_are_a_404(self, client: AsyncClient):
         body = {"enabled": True, "start_hour": 23, "end_hour": 7}
         with (
+            patch(
+                "app.services.user_quiet_hours.user_repository.get", AsyncMock(return_value=None)
+            ),
             patch(
                 "app.services.user_quiet_hours.user_repository.set_quiet_hours",
                 AsyncMock(return_value=None),

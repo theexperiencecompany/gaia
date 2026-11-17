@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from app.models.brief_pool_models import GoalOrigin
-from app.models.user_models import BriefingBootstrap, UserDocument
+from app.models.user_models import BriefingBootstrap, OnboardingSubdocument, UserDocument
 from app.services.briefing import context, rollout
 from app.services.briefing.rollout import provision_existing_user
 from shared.py.analytics import UserId
@@ -17,6 +17,7 @@ from shared.py.analytics.catalog.briefings import BriefingProvisioned
 from shared.py.wide_events import log, log_context
 
 USER_ID = "64f1c0ffee0000000000abcd"
+_ONBOARDED = OnboardingSubdocument(completed=True)
 
 
 class FakeIntegrationRepo:
@@ -31,7 +32,7 @@ class FakeIntegrationRepo:
 
 class FakeUserRepo:
     def __init__(self) -> None:
-        self.user: UserDocument | None = UserDocument(id=USER_ID)
+        self.user: UserDocument | None = UserDocument(id=USER_ID, onboarding=_ONBOARDED)
         self.lookups: list[str] = []
         self.bootstrap_calls: list[str] = []
 
@@ -99,6 +100,7 @@ class TestReRun:
         harness.has_goal = False
         harness.users.user = UserDocument(
             id=USER_ID,
+            onboarding=_ONBOARDED,
             briefing_bootstrap=BriefingBootstrap(
                 pending=True, since=datetime(2026, 10, 1, tzinfo=UTC)
             ),
@@ -125,6 +127,23 @@ class TestUnknownUser:
         assert await provision_existing_user(USER_ID) == "skipped"
         assert harness.provisioned == []
         assert harness.goal_calls == []
+        assert harness.users.bootstrap_calls == []
+        assert harness.captured == []
+
+
+@pytest.mark.unit
+class TestMidOnboarding:
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "onboarding", [None, OnboardingSubdocument(completed=False)], ids=["none", "unfinished"]
+    )
+    async def test_a_user_still_in_the_wizard_is_left_to_it(
+        self, harness: Harness, onboarding: OnboardingSubdocument | None
+    ) -> None:
+        harness.users.user = UserDocument(id=USER_ID, onboarding=onboarding)
+
+        assert await provision_existing_user(USER_ID) == "mid_onboarding"
+        assert harness.provisioned == []
         assert harness.users.bootstrap_calls == []
         assert harness.captured == []
 

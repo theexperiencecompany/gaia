@@ -4,7 +4,7 @@ import uuid
 
 from pymongo.errors import DuplicateKeyError
 
-from app.constants.briefing import DAILY_BRIEFING_WORKFLOW_KEY, ENABLED_BRIEFING_KEYS
+from app.constants.briefing import BRIEF_RUN_DAYS, DAILY_BRIEFING_WORKFLOW_KEY
 from app.constants.error_codes import BRIEFS_OFF
 from app.constants.log_tags import LogTag
 from app.constants.trigger_gates import GateAuthor, GateOwner
@@ -90,8 +90,7 @@ def delivers_to_a_missing_brief(
     """Report whether delivery is the brief while the owner gets no daily brief to carry it."""
     return (
         delivery is WorkflowDelivery.BRIEF
-        and DAILY_BRIEFING_WORKFLOW_KEY
-        not in ENABLED_BRIEFING_KEYS[owner.briefing_schedule.frequency]
+        and DAILY_BRIEFING_WORKFLOW_KEY not in BRIEF_RUN_DAYS[owner.briefing_schedule.frequency]
     )
 
 

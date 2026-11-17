@@ -68,7 +68,6 @@ from app.constants.todos import (
     ACTIVITY_PROMPT_TAIL_CHARS,
     CANVAS_PROMPT_MAX_CHARS,
     FAILED_LABEL,
-    INBOX_DESK_RECURRENCE,
     LOCK_DEFER_BACKOFF,
     LOCK_TTL_SECONDS,
     MAX_HOLD_CHECK_AHEAD,
@@ -117,8 +116,9 @@ from app.models.trigger_subscription_models import (
     TriggerOrigin,
     TriggerSubscription,
 )
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_models import TriggerType
+from app.services.briefing.run_times import inbox_desk_recurrence
 from app.services.providers.provider_credentials_service import ProviderConfig
 from app.services.tracked_todo_service import starting_canvas, tracked_todo_service
 from app.services.triggers.batching import MAX_TRIGGER_BATCH_EVENTS
@@ -165,6 +165,9 @@ from tests.integration_account_factories import make_integration_account, make_i
 OWNER_ID = "6812f0b3c9a14e2b7d5a91cf"
 _GMAIL_ORIGIN = TriggerOrigin(subscription_id="sub-1", trigger_name="gmail_new_message")
 _MEETING = "someone is waiting on you for a meeting happening soon"
+
+
+_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(UserDocument())
 
 
 def _user_context(*, timezone: str | None = None) -> Callable[[str], AuthenticatedUser]:
@@ -2782,7 +2785,7 @@ class TestOneRunPerOccurrence:
                 external_ref=ExternalRef(
                     source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID
                 ),
-                recurrence=INBOX_DESK_RECURRENCE,
+                recurrence=_DEFAULT_DESK_RECURRENCE,
                 scheduled_at=morning.astimezone(UTC),
                 trigger_subscriptions=[watch],
             )
@@ -2850,7 +2853,7 @@ class TestOneRunPerOccurrence:
                 external_ref=ExternalRef(
                     source=ExternalRefSource.INBOX_DESK, id=GMAIL_INTEGRATION_ID
                 ),
-                recurrence=INBOX_DESK_RECURRENCE,
+                recurrence=_DEFAULT_DESK_RECURRENCE,
             )
         )
         await tracked_todo_service.schedule_execution("todo-1", row.doc.scheduled_at)

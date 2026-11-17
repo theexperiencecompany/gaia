@@ -7299,8 +7299,18 @@ export interface components {
          * @description The stored schedule and whether it runs: briefs on a schedule are a Pro feature.
          */
         BriefingScheduleState: {
+            /**
+             * Daily Brief Hour
+             * @description The local hour the daily brief lands, past quiet hours; None without one.
+             */
+            daily_brief_hour: number | null;
             /** @default daily */
             frequency?: components["schemas"]["BriefingFrequency"];
+            /**
+             * Has Daily Brief
+             * @description The schedule's frequency runs a daily brief.
+             */
+            has_daily_brief: boolean;
             /**
              * Hour
              * @default 8

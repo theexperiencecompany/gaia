@@ -1,54 +1,59 @@
-"""Idempotent migration: move every Inbox desk's daily sweep ahead of the morning brief.
+"""Idempotent migration: move every Inbox desk's daily sweep ahead of its user's daily brief.
 
-The desk's scheduled report is now held for the brief rather than sent, so the
-sweep has to finish before the brief runs. Desks provisioned on the old 08:00
-recurrence move to INBOX_DESK_RECURRENCE; a desk whose recurrence the user
-changed is left alone, and re-running is safe. The occurrence already queued
-fires once at its old time, then the desk follows the new recurrence.
+The desk's scheduled report is held for the brief, so the sweep has to finish before
+the brief runs: INBOX_DESK_LEAD_HOURS before the user's own brief hour. Desks still
+on one of the fixed recurrences GAIA used to give them move to their user's; a desk
+whose recurrence the user changed is left alone, and re-running is safe. The next run
+is re-armed on the new recurrence, which retires the occurrence already queued.
 
     cd apps/api && uv run python scripts/migrate_inbox_desk_recurrence.py [--apply]
 """
 
 import asyncio
-from datetime import UTC, datetime
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.constants.todos import INBOX_DESK_RECURRENCE
 from app.db.mongodb.collections import get_async_collection
+from app.db.repositories.users import user_repository
 from app.models.todo_models import ExternalRefSource
+from app.services.briefing.run_times import inbox_desk_recurrence
+from app.services.todos.inbox_desk import follow_the_brief
 
-_PREVIOUS_RECURRENCE = "0 8 * * *"
+#: The recurrences GAIA gave every desk before the sweep followed the brief hour.
+_FIXED_RECURRENCES = ("0 8 * * *", "0 7 * * *")
 
 todos_collection = get_async_collection("todos")
 
 
-async def migrate(apply: bool) -> None:
-    """Point every desk still on the old recurrence at INBOX_DESK_RECURRENCE."""
+async def migrate(apply: bool) -> int:
+    """Move every open desk still on a fixed recurrence onto its user's; return the count."""
     mode = "APPLY" if apply else "DRY RUN"
-    print(
-        f"[{mode}] Moving Inbox desks from {_PREVIOUS_RECURRENCE!r} to {INBOX_DESK_RECURRENCE!r}\n"
-    )
-
+    print(f"[{mode}] Moving Inbox desks off {_FIXED_RECURRENCES} onto each user's brief hour\n")
     query = {
         "external_ref.source": ExternalRefSource.INBOX_DESK.value,
-        "recurrence": _PREVIOUS_RECURRENCE,
+        "completed": {"$ne": True},
+        "recurrence": {"$in": list(_FIXED_RECURRENCES)},
     }
     moved = 0
-    async for doc in todos_collection.find(query, {"_id": 1}):
+    async for doc in todos_collection.find(query, {"_id": 1, "user_id": 1, "recurrence": 1}):
+        user = await user_repository.get(doc["user_id"])
+        if user is None:
+            print(f"  {doc['_id']}: no user {doc['user_id']}, left alone")
+            continue
+        target = inbox_desk_recurrence(user)
+        if target == doc["recurrence"]:
+            continue
         moved += 1
-        print(f"  {doc['_id']}")
+        print(f"  {doc['_id']}: {doc['recurrence']!r} -> {target!r}")
         if apply:
-            await todos_collection.update_one(
-                {"_id": doc["_id"], "recurrence": _PREVIOUS_RECURRENCE},
-                {"$set": {"recurrence": INBOX_DESK_RECURRENCE, "updated_at": datetime.now(UTC)}},
-            )
+            await follow_the_brief(doc["user_id"], doc["recurrence"], target)
 
     print(f"\n[{mode}] Done. desks={moved}")
     if not apply:
         print("Re-run with --apply to write these changes.")
+    return moved
 
 
 if __name__ == "__main__":

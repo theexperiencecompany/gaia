@@ -22,6 +22,7 @@ from app.services.account_settings import (
     set_preferences,
 )
 from app.services.briefing import schedule as briefing_schedule
+from app.services.briefing.run_times import describe_briefing_schedule
 from app.services.platform_link_service import (
     disconnect_platform_account,
     start_platform_connect,
@@ -146,9 +147,7 @@ async def _set_briefing_schedule(
         frequency=frequency, hour=user.briefing_schedule.hour if hour is None else hour
     )
     updated = await briefing_schedule.set_briefing_schedule(user_id, schedule, via="agent")
-    described = (
-        f"Briefing schedule updated: {briefing_schedule.describe_briefing_schedule(updated)}."
-    )
+    described = f"Briefing schedule updated: {describe_briefing_schedule(updated)}."
     if await briefing_schedule.briefs_paused_for_plan(updated):
         return f"{described} {BRIEFS_PAUSED_FOR_PLAN_NOTE}"
     return described

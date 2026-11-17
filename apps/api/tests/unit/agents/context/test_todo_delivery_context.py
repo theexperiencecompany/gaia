@@ -20,13 +20,16 @@ from app.agents.core.background.session import ExecutorRun, RunKind, TodoRun
 from app.agents.core.graph_manager import GraphManager
 from app.agents.prompts.todo_prompts import INBOX_DESK_DELIVERY_RULE
 from app.constants.notifications import ProactiveMessageClass
-from app.constants.todos import INBOX_DESK_RECURRENCE, INBOX_DESK_TITLE
+from app.constants.todos import INBOX_DESK_TITLE
 from app.db.repositories.workflows import workflow_repository
 from app.models.todo_models import TodoDocument
-from app.models.user_models import AuthenticatedUser
+from app.models.user_models import AuthenticatedUser, UserDocument
 from app.models.workflow_models import TriggerType
+from app.services.briefing.run_times import inbox_desk_recurrence
 from app.services.delivery.chat_channel import InApp
 from app.services.tracked_todo_service import starting_canvas
+
+_DEFAULT_DESK_RECURRENCE = inbox_desk_recurrence(UserDocument())
 
 pytestmark = pytest.mark.unit
 
@@ -36,7 +39,7 @@ DESK = TodoDocument(
     user_id=USER.user_id,
     title=INBOX_DESK_TITLE,
     notify_on_run=True,
-    recurrence=INBOX_DESK_RECURRENCE,
+    recurrence=_DEFAULT_DESK_RECURRENCE,
     canvas_content=starting_canvas(INBOX_DESK_TITLE, [INBOX_DESK_DELIVERY_RULE]),
 )
 BRIEFING = "FYI: HDFC statement for September.\nToday: dentist at 16:00."
