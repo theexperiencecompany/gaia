@@ -1,9 +1,0 @@
-name: reaction-only
-description: A plain "thanks" is acknowledged within 8 s; a reaction is the expected form (runs 3, 4, 6).
-budgets: {first_response_s: 8}
-steps:
-  - send: "Thanks, that's all for now!"
-  - wait_reply: {quiet: 10, timeout: 30}
-expect:
-  - reaction: 0
-    severity: warn

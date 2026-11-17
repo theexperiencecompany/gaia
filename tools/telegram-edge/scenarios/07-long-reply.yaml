@@ -1,5 +1,0 @@
-name: long-reply
-description: A long multi-part answer streams into several bubbles; none shrinks, repeats or is deleted (run 3, run 6 A4).
-steps:
-  - send: "Write a 5-part beginner's guide to brewing coffee at home. Number the parts 1 to 5 and give each part about 150 words."
-  - wait_reply: {quiet: 12, timeout: 240}

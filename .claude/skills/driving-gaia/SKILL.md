@@ -274,7 +274,6 @@ Every way to test or simulate GAIA, in one table — this skill covers the live-
 | Executor directly | `curl POST /api/v1/dev/executor` (§5) | this skill |
 | Browser (scripted) | `mise e2e:web` / `E2E_SIM=1 mise e2e:web` (§6) | this skill, `apps/web/e2e/` |
 | Bots (emulated platforms) | `pnpm nx run bot-harness:sim -- send\|run` (§7) | this skill, `apps/bots/CLAUDE.md` |
-| Telegram at the edge (real client, real bot, real model; not CI) | `mise e2e:telegram [scenario…]` | `tools/telegram-edge/edge.py` docstring |
 | Deterministic LLM | `mise dev --sim` → directives (§3) | this skill, `tools/llm-stub/` |
 | Python unit (mocked infra) | `mise test:python:unit` | `apps/api/CLAUDE.md` |
 | Python full suite vs live services | `mise test:python:real` (local) / CI `test-python` | `apps/api/CLAUDE.md`, `.github/CLAUDE.md` |

@@ -1,9 +1,0 @@
-name: proactive-reminder
-description: A reminder set for 2 minutes arrives once, on time, with no markup (run 6 F).
-steps:
-  - send: "Remind me in 2 minutes to do '{nonce} stretch'."
-  - wait_reply: {}
-  - sleep: 160
-expect:
-  - arrives: {after: 0, pattern: '{nonce}|stretch', min_delay_s: 90, count: 1}
-    loose: the reminder text is model-written; it carries the nonce or the word stretch

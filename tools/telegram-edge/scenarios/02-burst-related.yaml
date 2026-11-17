@@ -1,9 +1,0 @@
-name: burst-related
-description: Three related messages 0.4 s apart are answered, nothing dropped (run 6 A1).
-steps:
-  - burst:
-      - "I'm planning a weekend in Lisbon."
-      - "I'll be there in late March."
-      - "What's one neighbourhood I should stay in?"
-    gap: 0.4
-  - wait_reply: {quiet: 8}

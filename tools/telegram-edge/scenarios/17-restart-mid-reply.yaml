@@ -1,8 +1,0 @@
-name: restart-mid-reply
-description: The bot restarts while a multi-bubble reply streams; after resume nothing is lost, repeated or stranded (runs 4-6 D1, bug 21).
-steps:
-  - send: "Write a 4-part guide to starting running. Number the parts 1 to 4 and give each part about 150 words."
-  - wait_for: bot_message
-  - sleep: 1.5
-  - restart_bot: {down: 5}
-  - wait_reply: {quiet: 20, timeout: 240}

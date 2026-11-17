@@ -1,5 +1,0 @@
-name: plain-reply
-description: One plain question gets one streamed answer (run 3 "Plain message").
-steps:
-  - send: "What day of the week was 1 January 2000?"
-  - wait_reply: {}

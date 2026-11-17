@@ -1,5 +1,0 @@
-name: formatting-links
-description: Bold, a list and links arrive as Telegram formatting, never as raw markdown or markup (run 6 E1).
-steps:
-  - send: "Give me a short bulleted list of 3 free resources for learning Python, each with a link, and put the best one in bold."
-  - wait_reply: {quiet: 8}

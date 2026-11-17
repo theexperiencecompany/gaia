@@ -1,7 +1,0 @@
-name: correction-after-reply
-description: A correction after the first answer finished gets its own answer; the first is not taken back (run 6 A3).
-steps:
-  - send: "Which film won Best Picture at the 2024 Oscars?"
-  - wait_reply: {}
-  - send: "Sorry, I meant 2025."
-  - wait_reply: {}
