@@ -25,7 +25,8 @@ Cutover, in this order:
      no pass marked, message-shaped entries, a head with no source, or a failed pass.
 
 The migration copies and never deletes: the arrays stay as they were, so rollback is
-redeploying the old build, after setting each archived head's messages back from its rows.
+redeploying the old build after --restore-archived --apply has put every archived array back
+on its head (it reports, and leaves archived, a head that would no longer fit).
 
 Usage::
 
@@ -33,6 +34,7 @@ Usage::
     uv run python -m scripts.migrate_conversation_entries               # dry run
     uv run python -m scripts.migrate_conversation_entries --apply
     uv run python -m scripts.migrate_conversation_entries --verify
+    uv run python -m scripts.migrate_conversation_entries --restore-archived [--apply]
 """
 
 from __future__ import annotations
@@ -51,6 +53,7 @@ from scripts.migrate_conversation_entries.migration import (
     VerifyReport,
     conversation_entries_migration,
 )
+from scripts.migrate_conversation_entries.restore import RestoreAction, archived_head_restore
 from scripts.migrate_conversation_entries.sources import conversation_source_backfill
 
 _BATCH = 200
@@ -174,9 +177,31 @@ async def verify_all() -> int:
     return 1 if failed or sourceless else 0
 
 
+async def restore_all(*, apply: bool) -> int:
+    """Put every archived array back on its head; 1 while any head would not fit or raced."""
+    actions: Counter[RestoreAction] = Counter()
+    scan = archived_head_restore.archived_heads
+    async for ref in _heads(lambda after: scan(after_head_id=after, batch=_BATCH)):
+        outcome = await archived_head_restore.restore(ref, apply=apply)
+        if outcome is None:
+            continue
+        actions[outcome.action] += 1
+        print(
+            f"  [{outcome.action}] {ref.conversation_id}: {outcome.elements} messages, "
+            f"{outcome.restored_size} bytes with them back"
+        )
+    counts = ", ".join(f"{n} {a}" for a, n in sorted(actions.items())) or "nothing archived"
+    print(f"Restore: {counts}.")
+    if not apply:
+        print("Dry run only. Re-run with --apply to write.")
+    return 1 if actions[RestoreAction.TOO_LARGE] or actions[RestoreAction.RACED] else 0
+
+
 async def _run(args: argparse.Namespace) -> int:
     if args.verify:
         return await verify_all()
+    if args.restore_archived:
+        return await restore_all(apply=args.apply)
     return await migrate_all(apply=args.apply)
 
 
@@ -195,6 +220,11 @@ def _parser() -> argparse.ArgumentParser:
         "--verify",
         action="store_true",
         help="Check what clients read back against each old array.",  # pragma: no mutate — help text only
+    )
+    mode.add_argument(
+        "--restore-archived",
+        action="store_true",
+        help="Put each archived array back on its head, for a rollback.",  # pragma: no mutate — help text only
     )
     return parser
 

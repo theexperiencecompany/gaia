@@ -193,7 +193,7 @@ class EmbeddedHead(BaseModel):
     state: ConversationState | None = None
     messages: list[LegacyMessage] = Field(default_factory=list)
     migrated_fingerprint: int | None = None
-    messages_archived: bool = False
+    messages_archived: int | None = None
     fingerprint: int = Field(alias="_fingerprint")
     # The head's stored BSON size, so a write that would pass Mongo's limit is planned around.
     size: int = Field(alias="_size")

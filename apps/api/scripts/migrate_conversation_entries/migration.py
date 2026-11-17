@@ -122,7 +122,7 @@ _ID_FIELD = "message_id"
 _FOUND = "_found"
 #: Mongo's BSON document limit: a head write that would pass it fails the whole update.
 MAX_HEAD_BYTES = 16 * 1024 * 1024
-#: Set on a head whose embedded array a pass moved to the archive collection to make room for the log.
+#: The fingerprint of the embedded array a pass moved to the archive collection to make room for the log.
 ARCHIVED_FIELD = "messages_archived"
 
 
@@ -549,7 +549,7 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
     async def heads_with_embedded(self, *, after_head_id: str | None, batch: int) -> list[HeadRef]:
         """Return the next batch of heads holding an embedded array, or whose array a pass archived, in _id order."""
         match: dict[str, object] = {
-            "$or": [{"messages.0": {"$exists": True}}, {ARCHIVED_FIELD: True}]
+            "$or": [{"messages.0": {"$exists": True}}, {ARCHIVED_FIELD: {"$exists": True}}]
         }
         return await self._scan(match, after_head_id=after_head_id, batch=batch)
 
@@ -671,7 +671,11 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
             return report
         if head.log_head != max(log, default=0) or head.state != state:
             report.mismatches.append("the head's log_head or state is not the fold of its entries")
-        archived = await self._archived(ref) if head.messages_archived else []
+        archived = (
+            []
+            if head.messages_archived is None
+            else await self._archived(ref, head.messages_archived)
+        )
         if elements := [*archived, *(m.stored() for m in head.messages)]:
             await self._compare_reads(ref, elements, head.conversation_at, report)
         return report
@@ -824,11 +828,12 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
                 {"head_id": ref.head_id, "fingerprint": head.fingerprint}
             )
 
-    async def _archived(self, ref: HeadRef) -> list[dict[str, object]]:
-        """Return the elements earlier passes moved off the head, in the order they sat."""
+    async def _archived(self, ref: HeadRef, fingerprint: int) -> list[dict[str, object]]:
+        """Return the elements of the array a pass moved off the head, in the order they sat."""
         archive = self._sibling_collection(CONVERSATION_ARCHIVED_MESSAGES_COLLECTION)
+        source = {"head_id": ref.head_id, "fingerprint": fingerprint}
         with store_errors("migration read"):  # pragma: no mutate — error label only
-            rows = await archive.find({"head_id": ref.head_id}).sort([("_id", 1)]).to_list(None)
+            rows = await archive.find(source).sort([("_id", 1)]).to_list(None)
         return [ArchivedElement.model_validate(row).message for row in rows]
 
     async def _scan(
@@ -896,7 +901,7 @@ def _marks(head: EmbeddedHead, plan: _Plan, *, relocate: bool) -> dict[str, obje
         STATE_FIELD: plan.state.model_dump(mode="json"),
     }
     if relocate:
-        marks[ARCHIVED_FIELD] = True
+        marks[ARCHIVED_FIELD] = head.fingerprint
     elif head.messages:
         marks[MIGRATED_FINGERPRINT_FIELD] = head.fingerprint
     return marks

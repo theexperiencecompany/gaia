@@ -663,7 +663,7 @@ async def test_a_head_too_full_for_the_log_pointer_moves_its_array_aside_and_sti
     assert code == 0, out
     assert any(full.conversation_id in line and "moved to the archive" in line for line in out)
     head = await _head(raw_collection, full)
-    assert "messages" not in head and head["messages_archived"] is True
+    assert "messages" not in head and isinstance(head["messages_archived"], int)
     assert head["log_head"] == 96 and await _bson_size(raw_collection, full) < 1024
     assert len(await _entries(entries_collection, small)) == 3
     assert (await _cli(capsys, "--verify"))[0] == 0
@@ -817,3 +817,54 @@ async def test_a_conversation_verify_cannot_read_is_reported_and_the_rest_still_
     assert any(line.startswith(f"  MISMATCH {bad.conversation_id}: crashed: ") for line in out)
     assert not any(good.conversation_id in line for line in out)
     assert "Verified 2 conversations: 1 with mismatches." in out
+
+
+async def test_restoring_an_archived_head_gives_back_the_original_head_and_it_migrates_again(
+    raw_collection: Any, entries_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    full = await _at_the_size_limit(raw_collection, spare=70)
+    original = await _head(raw_collection, full)
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    archived = await _head(raw_collection, full)
+    assert "messages" not in archived
+
+    code, out = await _cli(capsys, "--restore-archived")
+    assert code == 0 and out[-2:] == [
+        "Restore: 1 restored.",
+        "Dry run only. Re-run with --apply to write.",
+    ]
+    assert await _head(raw_collection, full) == archived
+
+    assert (await _cli(capsys, "--restore-archived", "--apply"))[0] == 0
+    restored = await _head(raw_collection, full)
+    assert {k: v for k, v in restored.items() if k != "updatedAt"} == {
+        k: v for k, v in original.items() if k != "updatedAt"
+    }
+    archive = raw_collection.database[f"{raw_collection.name}_conversation_archived_messages"]
+    assert await archive.count_documents({}) == 0
+    code, out = await _cli(capsys, "--restore-archived", "--apply")
+    assert code == 0 and out[0] == "Restore: nothing archived."
+    assert await _head(raw_collection, full) == restored
+
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    assert (await _cli(capsys, "--verify"))[0] == 0
+
+
+async def test_an_archived_head_that_no_longer_fits_its_array_is_reported_and_left_archived(
+    raw_collection: Any, entries_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    full = await _at_the_size_limit(raw_collection, spare=70)
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    await raw_collection.update_one(
+        {"_id": ObjectId(full.head_id)}, {"$set": {"description": "x" * 4096}}
+    )
+    before = await _head(raw_collection, full)
+
+    code, out = await _cli(capsys, "--restore-archived", "--apply")
+
+    assert code == 1
+    assert any(
+        line.startswith(f"  [too_large] {full.conversation_id}: 64 messages") for line in out
+    )
+    assert await _head(raw_collection, full) == before
+    assert (await _cli(capsys, "--verify"))[0] == 0
