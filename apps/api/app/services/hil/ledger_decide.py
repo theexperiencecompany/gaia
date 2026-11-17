@@ -43,10 +43,11 @@ from app.schemas.hil_schemas import (
     DecisionRefusal,
 )
 from app.services.analytics_service import capture
+from app.services.conversation.screen import decided_status
 from app.services.conversation.work_log import (
     DecisionTaken,
     logged_decision,
-    logged_request,
+    logged_status,
     record_approval_decided,
     record_approved_action_ended,
 )
@@ -69,9 +70,11 @@ from shared.py.analytics.catalog.hil import (
     HilRevoked,
 )
 from shared.py.approvals import (
+    DECIDED_OUTCOMES,
     ActionResult,
     ApprovalDecider,
     ApprovalOutcome,
+    ApprovalStatus,
     UndecidedOutcome,
 )
 from shared.py.wide_events import log
@@ -289,6 +292,13 @@ async def _deliver_ticket(row: ApprovalLedgerDocument) -> None:
     )
 
 
+#: The statuses of an approval nobody can decide any more, as the outcome a decision on it ends it with.
+_LET_GO: dict[ApprovalStatus, ApprovalOutcome] = {
+    ApprovalStatus.EXPIRED: ApprovalOutcome.EXPIRED,
+    ApprovalStatus.CANCELLED: ApprovalOutcome.CANCELLED,
+    ApprovalStatus.WITHDRAWN: ApprovalOutcome.WITHDRAWN,
+}
+
 _VERDICT_INSTRUCTIONS: dict[ApprovalOutcome, str] = {
     ApprovalOutcome.DENIED: "The user said no",
     ApprovalOutcome.EXPIRED: "Nobody answered before it expired",
@@ -337,7 +347,7 @@ def _redeem_refusal(
             action=None if decided is None else decided.action,
             detail=f"Already {_standing(decided)}; report that instead of retrying.",
         )
-    if decided.feedback:
+    if decided_status(decided) is ApprovalStatus.APPROVED_WITH_CHANGE:
         return RedeemResult(
             ok=False,
             approval_id=row.approval_id,
@@ -479,30 +489,26 @@ async def _decide(
 
     The hand-off is leased on the ledger row before the log is written, so a decision whose
     ledger write or hand-off fails is found by the sweeper and carried out from the log.
-    An approval past its expiry can only expire, whoever decides it: then this decision was not taken.
+    An approval that expired or was let go with its work ends that way: then this decision was not taken.
     """
+    now = datetime.now(UTC)
     leased = await approval_ledger_repository.claim_delivery(
-        row.approval_id, datetime.now(UTC), DECISION_HANDOFF_LEASE
+        row.approval_id, now, DECISION_HANDOFF_LEASE
     )
-    lapsed = await _lapsed(row)
+    status = await logged_status(row.conversation_id, row.user_id, row.approval_id, now)
+    # A yes or no counts only while the approval waits; one nobody can decide ends as its status says.
+    let_go = _LET_GO.get(status) if outcome in DECIDED_OUTCOMES else None
     taken = await record_approval_decided(
         row.conversation_id,
         row.user_id,
         row.approval_id,
-        ApprovalOutcome.EXPIRED if lapsed else outcome,
-        None if lapsed else decider,
-        feedback=None if lapsed else feedback,
+        outcome if let_go is None else let_go,
+        decider if let_go is None else None,
+        feedback=feedback if let_go is None else None,
     )
     if leased is not None:
         await _carry_out(leased, taken.stands)
     return DecisionTaken(stands=taken.stands, taken=taken.taken and taken.stands.outcome is outcome)
-
-
-async def _lapsed(row: ApprovalLedgerDocument) -> bool:
-    """Return whether the approval's request, as the log asked it, has expired."""
-    requested = await logged_request(row.conversation_id, row.user_id, row.approval_id)
-    expires_at = None if requested is None else requested.expires_at
-    return expires_at is not None and expires_at <= datetime.now(UTC)
 
 
 async def _carry_out(leased: ApprovalLedgerDocument, stands: ApprovalDecided) -> None:

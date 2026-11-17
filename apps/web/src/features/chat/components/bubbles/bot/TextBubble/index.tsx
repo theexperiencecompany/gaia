@@ -376,7 +376,7 @@ export default function TextBubble({
     tool_data?.forEach((entry) => {
       if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
       const data = entry.data as ApprovalRequestData | null;
-      if (data && data.outcome == null && data.tool_call_id) {
+      if (data?.status === "waiting" && data.tool_call_id) {
         ids.add(data.tool_call_id);
       }
     });
@@ -390,9 +390,9 @@ export default function TextBubble({
     tool_data?.forEach((entry) => {
       if (entry.tool_name !== APPROVAL_REQUEST_TOOL_NAME) return;
       const data = entry.data as ApprovalRequestData | null;
-      if (data?.tool_call_id && data.outcome != null) {
+      if (data?.tool_call_id && data.status !== "waiting") {
         outcomes.set(data.tool_call_id, {
-          outcome: data.outcome,
+          status: data.status,
           decider: data.decider ?? null,
           action: data.action ?? null,
           feedback: data.feedback ?? null,

@@ -54,7 +54,7 @@ from typing import Any, Literal
 from pydantic import AwareDatetime, BaseModel, JsonValue
 
 from app.models.hil_models import ApprovalDescription
-from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome, ApprovalStatus
 
 # ---------------------------------------------------------------------------
 # Structured payloads (wrapped in a one-word envelope key at the emit site)
@@ -100,8 +100,9 @@ class ApprovalRequestEntryData(BaseModel):
     description: ApprovalDescription
     # The gated call's own arguments — arbitrary LLM-authored JSON, no fixed schema.
     args_preview: dict[str, JsonValue]
-    # How the approval ended (None while pending), who decided, and what the action did.
-    # The card's label is read from these; nothing stores a label.
+    # Where the approval stands: the one status every client renders; it is never re-derived.
+    status: ApprovalStatus
+    # How the log recorded its end (None while none is), who decided, and what the action did.
     outcome: ApprovalOutcome | None
     decider: ApprovalDecider | None = None
     action: ActionResult | None = None

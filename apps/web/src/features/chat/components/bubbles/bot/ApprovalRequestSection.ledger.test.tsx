@@ -32,6 +32,7 @@ const card = (
     ],
   },
   args_preview: { to: "b@x", thread_id: "th_42" },
+  status: "waiting",
   outcome: null,
   feedback: null,
   auto_reason: null,

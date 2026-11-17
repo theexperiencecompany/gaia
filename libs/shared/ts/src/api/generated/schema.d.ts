@@ -6250,9 +6250,16 @@ export interface components {
             /** Integration Name */
             integration_name: string | null;
             outcome: components["schemas"]["ApprovalOutcome"] | null;
+            status: components["schemas"]["ApprovalStatus"];
             /** Tool Call Id */
             tool_call_id: string;
         };
+        /**
+         * ApprovalStatus
+         * @description Where an approval stands, as the conversation log has it: the one status every surface renders.
+         * @enum {string}
+         */
+        ApprovalStatus: "waiting" | "approved" | "approved_with_change" | "denied" | "expired" | "cancelled" | "withdrawn";
         /**
          * ApprovePairingRequest
          * @description The signed-in browser approves a pairing by its short user_code.
@@ -17132,6 +17139,7 @@ export type ApprovalOutcome = components['schemas']['ApprovalOutcome'];
 export type ApprovalRequested = components['schemas']['ApprovalRequested'];
 export type ApprovalRequestEntry = components['schemas']['ApprovalRequestEntry'];
 export type ApprovalRequestEntryData = components['schemas']['ApprovalRequestEntryData'];
+export type ApprovalStatus = components['schemas']['ApprovalStatus'];
 export type ApprovePairingRequest = components['schemas']['ApprovePairingRequest'];
 export type ArtifactInfo = components['schemas']['ArtifactInfo'];
 export type ArtifactRegistryEntry = components['schemas']['ArtifactRegistryEntry'];

@@ -28,6 +28,7 @@ from app.models.conversation_log_models import (
     Reply,
     StepClaim,
     UserMessage,
+    WithdrawApprovals,
 )
 from app.models.message_models import MessageDict
 from app.models.work_cancel_models import WorkCancelled
@@ -649,6 +650,12 @@ class RecordingEffects:
         self.addressed.append((conversation_id, user_id))
         self._record(EffectCall("cancel_work", cancel.task_ids))
         return WorkCancelled(pending_task_ids=list(cancel.task_ids))
+
+    async def withdraw_approvals(
+        self, conversation_id: str, user_id: str, withdraw: WithdrawApprovals
+    ) -> None:
+        self.addressed.append((conversation_id, user_id))
+        self._record(EffectCall("withdraw_approvals", withdraw.approval_ids))
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:
         self.addressed.append((conversation_id, user_id))

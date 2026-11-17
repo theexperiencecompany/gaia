@@ -9,6 +9,7 @@ from app.models.conversation_log_models import (
     Entry,
     KickStep,
     StartAck,
+    WithdrawApprovals,
 )
 from app.models.work_cancel_models import WorkCancelled
 from app.services.conversation.ports import Appended, Effects, Frames, RuntimePorts
@@ -76,6 +77,8 @@ async def _run(
             await effects.kick(conversation_id, user_id)
         case CancelWork():
             return await effects.cancel_work(conversation_id, user_id, effect)
+        case WithdrawApprovals():
+            await effects.withdraw_approvals(conversation_id, user_id, effect)
         case StartAck(message_id=message_id):
             await effects.start_ack(conversation_id, user_id, message_id)
     return None

@@ -22,6 +22,7 @@ from app.models.conversation_log_models import (
     Reply,
     StepClaim,
     UserMessage,
+    WithdrawApprovals,
 )
 from app.models.message_models import MessageDict
 from app.models.work_cancel_models import WorkCancelled
@@ -280,6 +281,12 @@ class Effects(Protocol):
         self, conversation_id: str, user_id: str, cancel: CancelWork
     ) -> WorkCancelled:
         """Cancel exactly the effect's tasks and close its approvals; return what that came to."""
+        ...
+
+    async def withdraw_approvals(
+        self, conversation_id: str, user_id: str, withdraw: WithdrawApprovals
+    ) -> None:
+        """Close the effect's approvals as withdrawn, so no later decision is carried out on them."""
         ...
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:

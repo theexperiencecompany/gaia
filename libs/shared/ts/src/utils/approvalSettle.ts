@@ -4,7 +4,7 @@ import type { ApprovalDecision, ApprovalEnd } from "../chat/approvals";
 /** How a card the user decided ends, before the server says anything more. */
 export function decidedEnd(decision: ApprovalDecision): ApprovalEnd {
   return {
-    outcome: decision === "approve" ? "approved" : "denied",
+    status: decision === "approve" ? "approved" : "denied",
     decider: "user",
     action: null,
   };
@@ -25,5 +25,5 @@ export function endAfterDecision(
   const action = response.action ?? null;
   if (response.success) return { ...decidedEnd(decision), action };
   const outcome = response.outcome ?? null;
-  return outcome === null ? null : { outcome, decider: null, action };
+  return outcome === null ? null : { status: outcome, decider: null, action };
 }

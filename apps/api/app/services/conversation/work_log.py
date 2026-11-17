@@ -2,6 +2,7 @@
 
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 from app.agents.core.background.executor_queue import get_lock_holder, parse_lock_value
 from app.db.repositories.conversation_log import conversation_log_repository
@@ -23,8 +24,9 @@ from app.services.conversation.log import accept, publish_appended
 from app.services.conversation.ports import ClaimLost, EntryRejected
 from app.services.conversation.reply_analytics import capture_unanswered_stop, stopped_waking
 from app.services.conversation.runtime import runtime_ports
+from app.services.conversation.screen import approval_status
 from app.services.conversation.work_artifacts import reconcile_artifacts
-from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome, ApprovalStatus
 from shared.py.conversation_wire import ImageData, ToolDataEntry
 from shared.py.wide_events import log
 
@@ -210,6 +212,25 @@ async def logged_request(
     )
     requests = [item.entry for item in logged or () if isinstance(item.entry, ApprovalRequested)]
     return requests[0] if requests else None
+
+
+async def logged_status(
+    conversation_id: str, user_id: str, approval_id: str, now: datetime
+) -> ApprovalStatus:
+    """Return where the approval stands in the log as of now; one the log never asked raises.
+
+    Undecided and no longer waited on by live work, it was let go with its work.
+    """
+    request = await logged_request(conversation_id, user_id, approval_id)
+    if request is None:
+        raise LookupError(f"approval {approval_id} was never asked in {conversation_id}")
+    waited_on = approval_id in (await runtime_ports().log.state(conversation_id, user_id)).asking
+    return approval_status(
+        request,
+        await logged_decision(conversation_id, user_id, approval_id),
+        ended_by=None if waited_on else ApprovalStatus.WITHDRAWN,
+        now=now,
+    )
 
 
 def _acted_id(approval_id: str) -> str:

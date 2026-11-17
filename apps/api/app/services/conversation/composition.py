@@ -23,6 +23,7 @@ from app.models.conversation_log_models import (
     Reaction,
     Reply,
     UserMessage,
+    WithdrawApprovals,
 )
 from app.models.work_cancel_models import WorkCancelled
 from app.services.analytics_service import capture
@@ -36,11 +37,13 @@ from app.services.conversation.mongo_log import MongoConversationLog
 from app.services.conversation.ports import ConversationAnalyticsEvent, Frames, RuntimePorts
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.step import advance, fold_history
+from app.services.hil.ledger_decide import cancel_ledger_approvals
 from app.services.workflow.thread_reset import reset_workflow_threads
 from app.utils.artifact_utils import FILE_LINKS
 from app.utils.background_tasks import spawn_background_task
 from shared.py.analytics import Dedupe, UserId
 from shared.py.analytics.context import AnalyticsContext, analytics_context
+from shared.py.approvals import ApprovalOutcome
 from shared.py.wide_events import log, spawn_logged_task
 
 # The entries before a message the instant reaction reads GAIA's previous words from.
@@ -106,6 +109,14 @@ class RuntimeEffects:
         """Cancel exactly the named tasks, running or queued, and close the approvals they wait on."""
         return await cancel_named_work(
             conversation_id, user_id, cancel.task_ids, approval_ids=cancel.approval_ids
+        )
+
+    async def withdraw_approvals(
+        self, conversation_id: str, user_id: str, withdraw: WithdrawApprovals
+    ) -> None:
+        """Withdraw the approvals an ended run left waiting; nothing waits on them, so nothing is told."""
+        await cancel_ledger_approvals(
+            conversation_id, user_id, withdraw.approval_ids, ApprovalOutcome.WITHDRAWN
         )
 
     async def start_ack(self, conversation_id: str, user_id: str, message_id: str) -> None:

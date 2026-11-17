@@ -728,6 +728,9 @@
               }
             ]
           },
+          "status": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
           "tool_call_id": {
             "title": "Tool Call Id",
             "type": "string"
@@ -740,6 +743,7 @@
           "integration_name",
           "description",
           "args_preview",
+          "status",
           "outcome",
           "feedback",
           "auto_reason"
@@ -860,6 +864,20 @@
         ],
         "title": "ApprovalRequested",
         "type": "object"
+      },
+      "ApprovalStatus": {
+        "description": "Where an approval stands, as the conversation log has it: the one status every surface renders.",
+        "enum": [
+          "waiting",
+          "approved",
+          "approved_with_change",
+          "denied",
+          "expired",
+          "cancelled",
+          "withdrawn"
+        ],
+        "title": "ApprovalStatus",
+        "type": "string"
       },
       "ApprovePairingRequest": {
         "description": "The signed-in browser approves a pairing by its short user_code.",

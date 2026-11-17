@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Protocol, assert_never
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict
@@ -52,7 +53,7 @@ from app.services.conversation.reply_files import reply_files
 from app.services.conversation.reply_text import screen_bubbles
 from app.services.conversation.tool_timeline import tool_timeline
 from app.utils.file_links import FileLinks
-from shared.py.approvals import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome, ApprovalStatus
 from shared.py.conversation_wire import (
     ReplyItem,
     ReplyOutcome,
@@ -77,6 +78,8 @@ RELATED_KINDS: frozenset[str] = frozenset(
 )
 #: The suffixes of the two entries that can end a task: its result, or the sweeper's lost marker.
 _ENDS = ("finished", "lost")
+#: The log's time before its first entry.
+_BEFORE_ANY_ENTRY = datetime.min.replace(tzinfo=UTC)
 
 
 class _CardData(BaseModel):
@@ -146,11 +149,14 @@ class _Log:
     decisions: dict[str, ApprovalDecided] = field(default_factory=dict)
     handoffs: dict[str, ToolDataEntry] = field(default_factory=dict)
     stopped_through: int = 0
+    # The newest entry's time: the screen is a function of the log alone, so its clock is the log's.
+    latest: AwareDatetime = _BEFORE_ANY_ENTRY
 
     @classmethod
     def of(cls, entries: Iterable[Positioned]) -> _Log:
         read = cls()
         for logged in entries:
+            read.latest = max(read.latest, logged.at)
             match logged.entry:
                 case UserMessage() as message:
                     read.users[message.id] = message
@@ -193,16 +199,6 @@ class _Log:
 
     def _approval_card(self, request: ApprovalRequested) -> ApprovalRequestEntry:
         decision = self.decisions.get(request.approval_id)
-        root = self.root(request.task_id)
-        work = self.finished.get(root)
-        stopped = self._stopped(root) or (work is not None and work.outcome in _STOPPED_WORK)
-        outcome = (
-            decision.outcome
-            if decision is not None
-            else ApprovalOutcome.CANCELLED
-            if stopped
-            else None
-        )
         asked_at = self.request_ats[request.approval_id]
         return ApprovalRequestEntry(
             tool_name=APPROVAL_REQUEST_TOOL_NAME,
@@ -214,7 +210,8 @@ class _Log:
                 integration_name=request.integration_name,
                 description=request.description,
                 args_preview=request.args_preview,
-                outcome=outcome,
+                status=self.status(request),
+                outcome=None if decision is None else decision.outcome,
                 decider=None if decision is None else decision.decider,
                 action=None if decision is None else decision.action,
                 feedback=None if decision is None else decision.feedback,
@@ -225,27 +222,33 @@ class _Log:
             timestamp=asked_at.isoformat(),
         )
 
+    def status(self, request: ApprovalRequested) -> ApprovalStatus:
+        return approval_status(
+            request,
+            self.decisions.get(request.approval_id),
+            ended_by=self._ended_by(self.root(request.task_id)),
+            now=self.latest,
+        )
+
+    def _ended_by(self, root: str) -> ApprovalStatus | None:
+        """Return how work under root let its undecided approvals go: a Stop cancels them, an ended run withdraws them."""
+        finished = self.finished.get(root)
+        if self._stopped(root) or (finished is not None and finished.outcome in _STOPPED_WORK):
+            return ApprovalStatus.CANCELLED
+        if finished is not None and not finished.left_to_decision:
+            return ApprovalStatus.WITHDRAWN
+        return None
+
     def _stopped(self, root: str) -> bool:
         started = self.started.get(root)
         return started is not None and started.cause_through <= self.stopped_through
 
-    def _waits(self, root: str) -> bool:
-        """Return whether work under root still waits on its approvals, as the reducer keeps it live."""
-        if self._stopped(root):
-            return False
-        finished = self.finished.get(root)
-        return finished is None or (
-            finished.continued_by_decision and finished.outcome is WorkOutcome.DONE
-        )
-
     def asking(self, root: str) -> tuple[ApprovalRequested, ...]:
         """Return the approvals work under root waits on, oldest first, its run ended or not."""
-        if not self._waits(root):
-            return ()
         return tuple(
             request
-            for approval_id, request in self.requests.items()
-            if self.root(request.task_id) == root and approval_id not in self.decisions
+            for request in self.requests.values()
+            if self.root(request.task_id) == root and self.status(request) is ApprovalStatus.WAITING
         )
 
     def original(self, message_id: str) -> str:
@@ -263,6 +266,33 @@ class _Log:
             return WorkStatus.AWAITING_APPROVAL
         finished = self.finished.get(root)
         return WorkStatus.RUNNING if finished is None else WorkStatus(finished.outcome.value)
+
+
+def decided_status(decision: ApprovalDecided) -> ApprovalStatus:
+    """Return the status a logged decision gives its approval: a yes that carries a change is approved with it."""
+    if decision.outcome is ApprovalOutcome.APPROVED and decision.feedback:
+        return ApprovalStatus.APPROVED_WITH_CHANGE
+    return ApprovalStatus(decision.outcome.value)
+
+
+def approval_status(
+    request: ApprovalRequested,
+    decision: ApprovalDecided | None,
+    *,
+    ended_by: ApprovalStatus | None,
+    now: datetime,
+) -> ApprovalStatus:
+    """Return where an approval stands: its decision, else how its work let it go, else whether its time ran out.
+
+    ended_by is None while the work still waits on the approval.
+    """
+    if decision is not None:
+        return decided_status(decision)
+    if ended_by is not None:
+        return ended_by
+    if request.expires_at is not None and request.expires_at < now:
+        return ApprovalStatus.EXPIRED
+    return ApprovalStatus.WAITING
 
 
 def project_screen(

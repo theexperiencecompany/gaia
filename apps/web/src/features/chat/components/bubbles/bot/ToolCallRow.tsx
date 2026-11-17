@@ -43,8 +43,9 @@ interface ApprovalChip {
 const APPROVAL_CHIP: ApprovalLabels<ApprovalChip | null> = {
   pending: null,
   autoApproved: { label: "Auto-approved", color: "success" },
-  outcome: {
+  status: {
     approved: { label: "Approved", color: "success" },
+    approved_with_change: { label: "Approved with a change", color: "success" },
     denied: { label: "Denied", color: "danger" },
     expired: { label: "Expired", color: "warning" },
     cancelled: { label: "Cancelled", color: "warning" },

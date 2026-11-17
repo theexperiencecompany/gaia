@@ -22,6 +22,7 @@ from app.models.conversation_log_models import (
     StartAck,
     StopBy,
     Transition,
+    WithdrawApprovals,
     WorkFinished,
     WorkOutcome,
     WorkStarted,
@@ -914,10 +915,21 @@ def test_a_cancelled_approval_leaves_parked_work_for_its_finish_to_report() -> N
     assert result.effects == (KickStep(),)
 
 
-def test_a_todo_or_workflow_run_waiting_on_an_approval_still_reports_its_finish() -> None:
-    result = _accept(_before_park(), 6, finished("f", "t1"))
+@pytest.mark.parametrize(
+    "ending",
+    [
+        finished("f", "t1"),
+        _left_to_the_user("f", "t1").model_copy(update={"outcome": WorkOutcome.FAILED}),
+    ],
+)
+def test_a_run_ending_while_its_approval_waits_withdraws_it_and_reports_its_finish(
+    ending: WorkFinished,
+) -> None:
+    """A todo, workflow or failed chat run is gone, so nothing could carry out a decision on what it asked."""
+    result = _accept(_before_park(), 6, ending)
     assert result.state.work == ()
-    assert result.effects == (KickStep(),)
+    assert result.state.asking == ()
+    assert result.effects == (WithdrawApprovals(approval_ids=("ap1",)), KickStep())
 
 
 def test_a_stop_cancels_parked_work_and_the_approval_it_waits_on() -> None:

@@ -47,8 +47,8 @@ export default function ApprovalRequestGroup({
   const [batchSubmitting, setBatchSubmitting] =
     useState<ApprovalDecision | null>(null);
 
-  const pending = items.filter((item) => item.outcome == null);
-  const revoked = items.filter((item) => item.outcome === "withdrawn");
+  const pending = items.filter((item) => item.status === "waiting");
+  const revoked = items.filter((item) => item.status === "withdrawn");
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const decideAll = async (decision: ApprovalDecision) => {

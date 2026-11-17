@@ -30,6 +30,7 @@ const card = (id: string, integration: string): ApprovalRequestData => ({
     details: [],
   },
   args_preview: { to: "b@x" },
+  status: "waiting",
   outcome: null,
   feedback: null,
   auto_reason: null,
