@@ -1,0 +1,7 @@
+{
+  "contentRoute": "/api/v1/usercontent",
+  "contentIdAlphabet": "abcdefghijklmnopqrstuvwxyz234567",
+  "contentIdLength": 26,
+  "thumbnailPath": "thumb.jpg",
+  "shortLinkWebRoute": "/l"
+}

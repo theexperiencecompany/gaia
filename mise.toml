@@ -575,6 +575,10 @@ run = "nx run cli:test"
 description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from the API's settings groups and capability table — CI's api-schema lane fails when it drifts"
 run = "node scripts/ci/checks.mjs cli-config-schema --write"
 
+[tasks."links:constants"]
+description = "Regenerate the usercontent Worker's and CLI's link-constants.generated.json from apps/api/app/constants/short_links.py and check the self-host Caddyfile spells the same routes — CI's link-constants check fails when they drift"
+run = "node scripts/ci/checks.mjs link-constants --write"
+
 [tasks."deploy:templates"]
 description = "Regenerate the one-click deploy templates (deploy/coolify/gaia.yaml, render.yaml, deploy/proxy.Dockerfile) from the self-host compose file, its Caddyfile and the CLI's machine secrets — CI's api-schema lane fails when they drift"
 run = "node scripts/ci/checks.mjs deploy-templates --write"

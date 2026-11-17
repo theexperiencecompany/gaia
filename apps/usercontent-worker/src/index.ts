@@ -7,6 +7,9 @@
  * cookies out in both directions.
  */
 
+// Generated from apps/api/app/constants/short_links.py by `mise links:constants`.
+import linkConstants from "./link-constants.generated.json";
+
 export interface Env {
   /** The API's origin, e.g. https://api.heygaia.io (wrangler var). */
   API_ORIGIN: string;
@@ -17,9 +20,11 @@ export interface Env {
 }
 
 const CONTENT_HOST_SUFFIX = ".heygaia.link";
-const CONTENT_ID_PATTERN = /^[a-z2-7]{26}$/;
-const CONTENT_ROUTE = "/api/v1/usercontent";
-const THUMBNAIL_PATH = "/thumb.jpg";
+const CONTENT_ID_PATTERN = new RegExp(
+  `^[${linkConstants.contentIdAlphabet}]{${linkConstants.contentIdLength}}$`,
+);
+const CONTENT_ROUTE = linkConstants.contentRoute;
+const THUMBNAIL_PATH = `/${linkConstants.thumbnailPath}`;
 const ALLOWED_METHODS = ["GET", "HEAD"];
 // Only what the API's serving rules read; Cookie and Authorization never leave the edge.
 const FORWARDED_REQUEST_HEADERS = ["Sec-Fetch-Dest", "Range", "If-None-Match"];

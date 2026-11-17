@@ -41,10 +41,9 @@ from app.constants.search import (
     CRAWL4AI_DEFAULT_MAX_BROWSERS,
     CRAWL4AI_MIN_MAX_BROWSERS,
 )
+from app.constants.short_links import SHORTLINK_WEB_ROUTE
 from shared.py.wide_events import log
 
-# The web app route a heygaia.link slug rewrites to.
-SHORTLINK_WEB_ROUTE = "/l"
 MIN_LINK_CONTENT_SIGNING_KEY_LENGTH = 32
 
 load_dotenv()

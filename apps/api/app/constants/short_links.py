@@ -1,4 +1,11 @@
-"""heygaia.link constants."""
+"""heygaia.link constants.
+
+The ones the usercontent Worker, the CLI and the self-host Caddyfile mirror are
+generated from here by mise links:constants (apps/api/scripts/dump_link_constants.py).
+"""
+
+# The web app route a heygaia.link slug rewrites to.
+SHORTLINK_WEB_ROUTE = "/l"
 
 #: User-agent markers of the bots that fetch a link to build a chat preview (and
 #: the crawlers that run a page's script). Matched case-insensitively; their

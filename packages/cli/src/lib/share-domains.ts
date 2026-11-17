@@ -9,6 +9,8 @@
 
 import type { CLIStore } from "../ui/store.js";
 import { SHARE_DOMAIN_KINDS } from "./env-writer.js";
+// Generated from apps/api/app/constants/short_links.py by `mise links:constants`.
+import linkConstants from "./link-constants.generated.json";
 import { generateMachineSecret } from "./machine-secrets.js";
 import type {
   ShareDomainFlags,
@@ -25,7 +27,7 @@ const CONTENT_URL_TEMPLATE_KEY = "LINK_CONTENT_URL_TEMPLATE";
 const CONTENT_SIGNING_KEY_KEY = "LINK_CONTENT_SIGNING_KEY";
 
 /** The API's content route; the API fills {content_id} per snapshot. */
-const CONTENT_ROUTE = "/api/v1/usercontent/{content_id}";
+const CONTENT_ROUTE = `${linkConstants.contentRoute}/{content_id}`;
 
 const FLAG_NAMES: Record<ShareDomainKind, string> = {
   link: "--link-domain",
