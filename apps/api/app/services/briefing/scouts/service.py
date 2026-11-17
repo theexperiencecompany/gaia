@@ -160,12 +160,9 @@ async def _source_failed(
 async def _replay(
     user: UserDocument, integration: ScoutIntegration, tools: ScoutTools, scout: ScoutDocument
 ) -> ScoutResult:
-    """Replay a watching scout; a moved result shape relearns it, an app that fails keeps it.
-
-    A scout frozen with no criteria (before they existed) relearns: its rows cannot be judged.
-    """
-    if scout.playbook is None or not scout.criteria.strip():
-        return await _relearn(user, integration, tools, scout)
+    """Replay a watching scout; a moved result shape relearns it, an app that fails keeps it."""
+    if scout.playbook is None:
+        raise ValueError("only a watching scout replays, and it always holds its playbook")
     try:
         signals = await watch(
             _playbook_user(user),
@@ -308,7 +305,9 @@ async def scout_signals(user: UserDocument, now: datetime) -> ScoutSignals:
     results = await run_scouts(user)
     remembered = await remember(user.id, [s for r in results for s in r.signals], now)
     criteria = {
-        r.app: r.criteria for r in results if r.outcome is ScoutOutcome.REPLAYED and r.criteria
+        r.app: r.criteria.line()
+        for r in results
+        if r.outcome is ScoutOutcome.REPLAYED and r.criteria is not None
     }
     return ScoutSignals(remembered=remembered, criteria=criteria, results=results)
 

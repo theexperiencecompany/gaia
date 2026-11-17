@@ -24,6 +24,9 @@ SCOUT_TOOL_QUERY: Final[str] = (
     "mentions, messages waiting on my reply, open tasks due soon or overdue, pending approvals"
 )
 
+#: Longest one criterion a scout keeps; a learn run's longer text is cut, never stored whole.
+SCOUT_CRITERION_MAX_CHARS: Final[int] = 200
+
 #: Safety ceiling on signals one scout may hand the brief: a runaway list, not a quota.
 SCOUT_SIGNAL_CEILING: Final[int] = 50
 #: How recently an app must say an item was created for a brief to call its first sighting new.
