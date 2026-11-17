@@ -26,6 +26,7 @@ from app.services.delivery_alerts.dead_letter_tap import start_dead_letter_tap
 from app.services.device.up_listener import start_up_listener
 from app.utils.browser_reaper import start_browser_reaper
 from app.workers.browser_worker import start_browser_worker
+from app.workers.lifecycle.post_deploy import start_post_deploy
 from app.workers.metrics import start_metrics_server
 from shared.py.wide_events import log, log_context
 
@@ -74,6 +75,9 @@ async def startup(ctx: MutableMapping[str, object]) -> None:
 
         # Alerts on outbound messages the broker dead-lettered with no bot involved.
         start_dead_letter_tap(ctx)
+
+        # The release's data migrations, each once, beside the jobs (scripts/post_deploy.py).
+        start_post_deploy()
 
         # Last: browser jobs run on the services everything above just started.
         start_browser_worker(ctx)

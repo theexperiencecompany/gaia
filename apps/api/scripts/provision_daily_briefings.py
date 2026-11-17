@@ -37,7 +37,7 @@ async def rollout(apply: bool) -> Counter[str]:
     for done, user_id in enumerate(user_ids, start=1):
         # A script is an entry point: each user's rollout reports through capture().
         with analytics_context(worker_context(Trigger.SYSTEM)):
-            paths[await provision_existing_user(user_id)] += 1
+            paths[(await provision_existing_user(user_id)).value] += 1
         if done % 100 == 0:
             print(f"  ...{done}/{len(user_ids)}")
     print(f"[{mode}] done: {sum(paths.values())}/{len(user_ids)}; breakdown={dict(paths)}")
