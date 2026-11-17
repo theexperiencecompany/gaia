@@ -3,6 +3,7 @@
 import { Spinner } from "@heroui/react";
 import Image from "next/image";
 
+import { AgentHtmlFrame } from "@/components/shared/AgentHtmlFrame";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { getExtension } from "@/features/chat/utils/fileExtension";
 
@@ -44,42 +45,12 @@ function getLanguage(filename: string): string {
   return langMap[ext] || "text";
 }
 
-function buildHtmlPreviewDocument(content: string): string {
-  const previewStyles = `
-    <style>
-      html, body {
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        overscroll-behavior: contain;
-      }
-      body {
-        min-height: 100%;
-      }
-    </style>
-  `;
+// Fills the panel: an agent's page often sizes itself to the viewport.
+const HTML_PREVIEW_STYLES =
+  "<style>html, body { height: 100%; margin: 0; padding: 0; overscroll-behavior: contain; } body { min-height: 100%; }</style>";
 
-  const hasHtmlTag = /<html[\s>]/i.test(content);
-  const hasHeadTag = /<head[\s>]/i.test(content);
-
-  if (hasHtmlTag) {
-    if (hasHeadTag) {
-      return content.replace(
-        /<head[^>]*>/i,
-        (match) => `${match}${previewStyles}`,
-      );
-    }
-
-    return content.replace(
-      /<html[^>]*>/i,
-      (match) => `${match}<head>${previewStyles}</head>`,
-    );
-  }
-
-  return `<!doctype html><html><head><meta charset="utf-8" />${previewStyles}</head><body>${content}</body></html>`;
-}
-
-function FileContentRenderer({
+/** A file's text, rendered by its type or shown as highlighted source. */
+export function FileContentRenderer({
   content,
   contentType,
   filename,
@@ -108,15 +79,13 @@ function FileContentRenderer({
   }
 
   if (contentType === "text/html") {
-    const previewDoc = buildHtmlPreviewDocument(content);
-
     return (
       <div className="h-full min-h-0">
-        <iframe
+        <AgentHtmlFrame
+          trust="page"
           title={filename}
-          srcDoc={previewDoc}
+          html={`${HTML_PREVIEW_STYLES}${content}`}
           className="block h-full w-full bg-white"
-          sandbox=""
         />
       </div>
     );

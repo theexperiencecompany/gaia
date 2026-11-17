@@ -1,6 +1,6 @@
 /**
  * Validate one artifact program: reads {"program", "brief", "interactive"} as JSON on stdin and writes the
- * ValidationResult as JSON on stdout. The API (app/services/artifacts/validate.py) runs it.
+ * ValidationResult as JSON on stdout. The API (apps/api/app/services/openui_artifacts/validate.py) runs it.
  */
 import { readFileSync } from "node:fs";
 import { z } from "zod";
