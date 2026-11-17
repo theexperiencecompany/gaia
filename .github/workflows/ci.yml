@@ -452,7 +452,7 @@ jobs:
       # packages for the next job on this runner, and a shared cache crashed mypy's cache load.
       # Under the API's environment livekit resolves only partly and reads as Any.
       - name: Heal the voice-agent venv
-        if: contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'voice-agent:type-check')
+        if: contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'voice-agent:type-check') || contains(fromJSON(needs.detect.outputs.job_tasks)['lint-python'], 'voice-agent:test')
         run: python3 scripts/ci/runner.py heal-venv .venv-voice-agent
 
       # Grafana's alert rules are managed objects, not Prometheus rule files; the
