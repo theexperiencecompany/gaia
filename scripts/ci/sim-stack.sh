@@ -115,7 +115,7 @@ cmd_up() {
     # What the bot harness reads (apps/bots config): the API, its bot key, the web app.
     echo "GAIA_API_URL=http://localhost:$API_PORT"
     echo "GAIA_BOT_API_KEY=$GAIA_BOT_API_KEY"
-    echo "GAIA_FRONTEND_URL=$FRONTEND_URL"
+    echo "FRONTEND_URL=$FRONTEND_URL"
     echo "BOT_LOG_HASH_SECRET=0000000000000000000000000000000000000000000000000000000000000000" # pragma: allowlist secret
   } >> "$GITHUB_ENV"
   ci_ok "sim stack: web http://localhost:$WEB_PORT, API http://localhost:$API_PORT"
