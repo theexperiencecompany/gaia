@@ -13,11 +13,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.constants.hil import TOOL_READ_ONLY_VERDICT_TTL
 from app.constants.user_activity import ActivityStatus
 from app.db.mongodb import indexes
 from app.db.repositories.approval_ledger import ApprovalLedgerRepository
 from app.db.repositories.conversations import ConversationRepository
-from app.db.repositories.hil import HilApprovalRepository
+from app.db.repositories.hil import HilApprovalRepository, ToolReadOnlyVerdictRepository
 from app.db.repositories.todos import TodosRepository
 from app.db.repositories.users import UserRepository
 from app.models.todo_models import ExternalRefSource
@@ -183,3 +184,23 @@ async def test_users_by_activity_status_never_scan_the_collection(
 
     assert plans
     assert not any("COLLSCAN" in plan for plan in plans), plans
+
+
+@pytest.mark.regression
+async def test_a_read_only_verdict_is_read_by_tool_shape_and_classifier(
+    raw_collection, query_plans: QueryPlans
+) -> None:
+    await raw_collection.create_index([("tool_hash", 1)], unique=True)
+    await indexes.create_tool_read_only_verdict_indexes()
+    await raw_collection.insert_many(
+        [
+            {"tool_hash": "shape", "classifier": f"judge-{i}", "tool_name": "t", "read_only": True}
+            for i in range(_NOISE)
+        ]
+    )
+
+    plans = await query_plans(ToolReadOnlyVerdictRepository().find_verdict("shape", "judge-7"))
+
+    assert _served_by(plans, "IXSCAN { tool_hash: 1, classifier: 1 }"), plans
+    ttl = {i["name"]: i.get("expireAfterSeconds") async for i in raw_collection.list_indexes()}
+    assert ttl["classified_at_ttl"] == TOOL_READ_ONLY_VERDICT_TTL.total_seconds()

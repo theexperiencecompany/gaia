@@ -11,6 +11,7 @@ from pymongo.errors import OperationFailure
 from app.constants.auth import InstanceRole
 from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
+from app.constants.hil import TOOL_READ_ONLY_VERDICT_TTL
 from app.constants.log_tags import LogTag
 from app.constants.payments import CLAIMED_STATUS
 from app.constants.scouts import SIGNAL_MEMORY_RETENTION
@@ -923,10 +924,18 @@ async def create_signal_memory_indexes() -> None:
 
 
 async def create_tool_read_only_verdict_indexes() -> None:
-    """Index tool_read_only_verdicts on tool_hash, unique: one verdict per tool shape."""
+    """Index tool_read_only_verdicts: one verdict per tool shape and classifier, each expiring."""
+    verdicts = get_async_collection("tool_read_only_verdicts")
     try:
-        await get_async_collection("tool_read_only_verdicts").create_index(
-            [("tool_hash", 1)], unique=True
+        # The tool_hash-only key could hold one verdict per shape, whatever judged it.
+        await _drop_index_if_present(verdicts, "tool_hash_1")
+        await asyncio.gather(
+            verdicts.create_index([("tool_hash", 1), ("classifier", 1)], unique=True),
+            verdicts.create_index(
+                "classified_at",
+                expireAfterSeconds=int(TOOL_READ_ONLY_VERDICT_TTL.total_seconds()),
+                name="classified_at_ttl",
+            ),
         )
     except Exception as e:
         log.error(
