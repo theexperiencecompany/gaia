@@ -3,7 +3,7 @@
 The running app reads only the conversation log. Five marks say a conversation is not readable
 yet: an embedded messages array no migration pass marked, a message-shaped entry, a head with no
 source this build knows, an entry still holding a field this stack renamed, and a conversation the
-last migration pass failed on. Every query is index-backed (see indexes.py), so the
+last migration pass or verify failed on. Every query is index-backed (see indexes.py), so the
 check stays a few indexed lookups however large the data grows.
 """
 
@@ -77,7 +77,7 @@ class ConversationMigrationGuard(ConversationRepository):
         return None if head is None else _ConversationIdRow.model_validate(head).conversation_id
 
     async def first_failed(self) -> str | None:
-        """Name one conversation the entries migration's last pass failed on."""
+        """Name one conversation the entries migration's last pass or verify failed on."""
         failures = self._sibling_collection(CONVERSATION_MIGRATION_FAILURES_COLLECTION)
         with store_errors("migration check"):  # pragma: no mutate — error label only
             # pragma: no mutate start — the projection only trims the read
@@ -103,7 +103,7 @@ async def refuse_unmigrated_conversations() -> None:
     if conversation_id := await guard.first_failed():
         raise unmigrated(
             conversation_id,
-            what="a failed migration pass",
+            what="a failed migration pass or verify",
             script=CONVERSATION_ENTRIES_MIGRATION_SCRIPT,
         )
     if conversation_id := await guard.first_unmigrated():

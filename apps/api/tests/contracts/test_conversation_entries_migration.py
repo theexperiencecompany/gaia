@@ -9,6 +9,7 @@ import uuid
 
 from bson import ObjectId
 import pytest
+from scripts.migrate_approval_vocabulary import rewrite
 from scripts.migrate_conversation_entries import __main__ as script
 from scripts.migrate_conversation_entries.legacy import ConversationEntry, LegacyMessage
 from scripts.migrate_conversation_entries.migration import (
@@ -718,7 +719,7 @@ async def test_a_conversation_whose_write_fails_is_reported_left_whole_and_refus
     with pytest.raises(UnmigratedConversationError) as refused:
         await refuse_unmigrated_conversations()
     assert refused.value.message.startswith(
-        f"conversation {bad.conversation_id} still holds a failed migration pass"
+        f"conversation {bad.conversation_id} still holds a failed migration pass or verify"
     )
 
     await raw_collection.database.command("collMod", raw_collection.name, validator={})
@@ -868,3 +869,68 @@ async def test_an_archived_head_that_no_longer_fits_its_array_is_reported_and_le
     )
     assert await _head(raw_collection, full) == before
     assert (await _cli(capsys, "--verify"))[0] == 0
+
+
+class _Database:
+    """The database the vocabulary rewrite takes, with each collection this test's own."""
+
+    def __init__(self, raw_collection: Any, entries_collection: Any) -> None:
+        self._raw, self._entries = raw_collection, entries_collection
+
+    def __getitem__(self, name: str) -> Any:
+        if name == "conversation_entries":
+            return self._entries
+        return self._raw.database[f"{self._raw.name}_{name}"]
+
+
+async def test_an_old_approval_card_reads_in_the_new_vocabulary_whichever_migration_runs_first(
+    migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
+) -> None:
+    old = {"tool_name": "approval_request", "data": {"status": "executed", "tool": "send_email"}}
+    ref = await _legacy(raw_collection, [_message(1), _message(2, "bot", tool_data=[old])])
+    # The same old card as an earlier build of this stack stored it on an entry.
+    await entries_collection.insert_one(
+        {
+            "user_id": USER,
+            "conversation_id": "c-earlier",
+            "seq": 1,
+            "id": "e1",
+            "kind": "reply",
+            "tool_data": [old],
+        }
+    )
+    await rewrite(_Database(raw_collection, entries_collection), apply=True)
+    rewritten = (await entries_collection.find_one({"id": "e1"}))["tool_data"][0]["data"]
+    await entries_collection.delete_one({"id": "e1"})
+
+    await migration.migrate(ref, apply=True)
+
+    reply = await entries_collection.find_one({"conversation_id": ref.conversation_id, "id": "m2"})
+    assert reply["tool_data"][0]["data"] == rewritten
+    assert rewritten == {
+        "tool": "send_email",
+        "outcome": "approved",
+        "decider": "user",
+        "action": "executed",
+    }
+    report = await rewrite(_Database(raw_collection, entries_collection), apply=True)
+    assert report.counts["card status=executed"] == 0
+    verified = await migration.verify(ref)
+    assert verified.ok, verified.mismatches
+
+
+async def test_a_conversation_verify_finds_wrong_is_refused_at_boot_until_it_verifies(
+    raw_collection: Any, entries_collection: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ref = await _legacy(raw_collection, [_message(1), _message(2, "bot")])
+    assert (await _cli(capsys, "--apply"))[0] == 0
+    entry_of = {"user_id": USER, "conversation_id": ref.conversation_id, "id": "m1"}
+    await entries_collection.update_one(entry_of, {"$set": {"text": "tampered"}})
+
+    assert (await _cli(capsys, "--verify"))[0] == 1
+
+    with pytest.raises(UnmigratedConversationError, match=ref.conversation_id):
+        await refuse_unmigrated_conversations()
+    await entries_collection.update_one(entry_of, {"$set": {"text": "message 1"}})
+    assert (await _cli(capsys, "--verify"))[0] == 0
+    await refuse_unmigrated_conversations()

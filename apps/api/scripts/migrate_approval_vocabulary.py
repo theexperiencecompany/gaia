@@ -44,12 +44,17 @@ from app.models.conversation_models import StoredEntry
 from app.services.hil.describe import describe_call
 from app.services.hil.when import UserClock
 from app.utils.timezone import Timezone
+from scripts.approval_vocabulary import (
+    APPROVED,
+    CARD_STATUSES,
+    DENIED,
+    RECORD_STATUSES,
+    USER,
+)
 from shared.py.approvals import ActionResult, ApprovalDecider, ApprovalOutcome
 
 LEDGER = "approval_ledger"
 RECORDS = "hil_approvals"
-APPROVED, DENIED = ApprovalOutcome.APPROVED, ApprovalOutcome.DENIED
-USER, AUTO = ApprovalDecider.USER, ApprovalDecider.AUTO
 
 #: Ledger state -> (outcome, action). Old data cannot tell a Stop from an agent revoke: withdrawn.
 LEDGER_STATES: dict[str, tuple[ApprovalOutcome | None, ActionResult | None]] = {
@@ -62,15 +67,6 @@ LEDGER_STATES: dict[str, tuple[ApprovalOutcome | None, ActionResult | None]] = {
     "failed": (APPROVED, ActionResult.FAILED),
     "unknown": (APPROVED, ActionResult.UNKNOWN),
 }
-#: Approval record status -> (outcome, decider). abandoned was written by a Stop or a moved-on reply.
-RECORD_STATUSES: dict[str, tuple[ApprovalOutcome | None, ApprovalDecider | None]] = {
-    "pending": (None, None),
-    "approved": (APPROVED, USER),
-    "denied": (DENIED, USER),
-    "timeout": (ApprovalOutcome.EXPIRED, None),
-    "abandoned": (ApprovalOutcome.CANCELLED, None),
-    "auto_approved": (APPROVED, AUTO),
-}
 #: Log entry decision -> (outcome, decider).
 LOG_DECISIONS: dict[str, tuple[ApprovalOutcome, ApprovalDecider | None]] = {
     "approve": (APPROVED, USER),
@@ -78,18 +74,6 @@ LOG_DECISIONS: dict[str, tuple[ApprovalOutcome, ApprovalDecider | None]] = {
     "timeout": (ApprovalOutcome.EXPIRED, None),
     "abandon": (ApprovalOutcome.CANCELLED, None),
 }
-#: Card status -> (outcome, decider, action): the record's words plus the ledger's.
-CARD_STATUSES: dict[
-    str, tuple[ApprovalOutcome | None, ApprovalDecider | None, ActionResult | None]
-] = {
-    **{status: (outcome, decider, None) for status, (outcome, decider) in RECORD_STATUSES.items()},
-    "cancelled": (ApprovalOutcome.CANCELLED, None, None),
-    "revoked": (ApprovalOutcome.WITHDRAWN, None, None),
-    "executed": (APPROVED, USER, ActionResult.EXECUTED),
-    "failed": (APPROVED, USER, ActionResult.FAILED),
-    "unknown": (APPROVED, USER, ActionResult.UNKNOWN),
-}
-
 _CARD = "tool_data.$[card].data"
 #: Indexes keyed on the old fields; the new build creates their replacements at startup.
 OLD_INDEXES: tuple[tuple[str, str], ...] = (

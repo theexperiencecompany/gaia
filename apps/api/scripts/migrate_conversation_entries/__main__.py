@@ -22,7 +22,7 @@ Cutover, in this order:
   2. Stop the old build, so nothing writes an embedded array.
   3. --apply again, then --verify; both must exit 0.
   4. Deploy the new build. It refuses to boot while any conversation has an embedded array
-     no pass marked, message-shaped entries, a head with no source, or a failed pass.
+     no pass marked, message-shaped entries, a head with no source, or a failed pass or verify.
 
 The migration copies and never deletes: the arrays stay as they were, so rollback is
 redeploying the old build after --restore-archived --apply has put every archived array back
@@ -61,6 +61,8 @@ _Scan = Callable[[str | None], Awaitable[list[HeadRef]]]
 _FAILED = (MigrationAction.RACED, MigrationAction.REFUSED, MigrationAction.FAILED)
 #: Outcomes the boot check refuses until a later pass migrates the conversation; RACED only needs a re-run.
 _RECORDED = (MigrationAction.REFUSED, MigrationAction.FAILED)
+#: A mismatch can quote whole messages: the record keeps its start, the run's output keeps all of it.
+_RECORDED_MISMATCH_CHARS = 500
 
 
 @dataclass
@@ -157,15 +159,29 @@ async def migrate_all(*, apply: bool) -> int:
     return 1 if any(actions[action] for action in _FAILED) else 0
 
 
+async def verify_one(ref: HeadRef) -> VerifyReport:
+    """Verify one conversation, a crash reported as its mismatch; a mismatch is recorded for the boot check."""
+    migration = conversation_entries_migration
+    try:
+        report = await migration.verify(ref)
+    except Exception as exc:  # one conversation's crash must not stop the others
+        report = VerifyReport(ref.conversation_id, mismatches=[f"crashed: {_crash(exc)}"])
+    if report.ok:
+        await migration.clear_failed(ref)
+    else:
+        first = report.mismatches[0][:_RECORDED_MISMATCH_CHARS]
+        await migration.mark_failed(
+            ref, f"verify: {len(report.mismatches)} mismatches, first {first}"
+        )
+    return report
+
+
 async def verify_all() -> int:
-    """Verify every head with an embedded array or message entries, printing each mismatch."""
+    """Verify every head with an embedded array or message entries, printing and recording each mismatch."""
     verified = failed = 0
     for scan in _scans(every_embedded=True):
         async for ref in _heads(scan):
-            try:
-                report = await conversation_entries_migration.verify(ref)
-            except Exception as exc:  # one conversation's crash must not stop the others
-                report = VerifyReport(ref.conversation_id, mismatches=[f"crashed: {_crash(exc)}"])
+            report = await verify_one(ref)
             verified += 1
             if not report.ok:
                 failed += 1

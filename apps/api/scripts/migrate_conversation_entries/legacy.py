@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.chat import ARTIFACT_CARD
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.models.chat_models import ReactionBy, tool_fields
 from app.models.conversation_log_models import ConversationState
 from app.models.conversation_models import MessageShape
@@ -22,6 +23,7 @@ from app.models.message_models import (
     SelectedWorkflowData,
 )
 from app.models.todo_wake_models import TodoRunWake
+from scripts.approval_vocabulary import current_card_data
 from shared.py.conversation_wire import ImageData, ReplyToMessageData, ToolDataEntry
 
 #: MessageModel.type of a message the human wrote, and of one GAIA wrote.
@@ -113,11 +115,16 @@ def convert_legacy_tool_data(message: Mapping[str, object], timestamp: str) -> d
 
 
 def _current_card(card: object) -> object:
-    """Return an artifact card the first artifacts build wrote, with no event, as the upsert it announced."""
-    if not isinstance(card, dict) or card.get("tool_name") != ARTIFACT_CARD:
+    """Return an old card as this build reads it.
+
+    An artifact card the first artifacts build wrote, with no event, is the upsert it announced;
+    an approval card's old status is the outcome, decider and action the vocabulary rewrite gives it.
+    """
+    if not isinstance(card, dict) or not isinstance(data := card.get("data"), dict):
         return card
-    data = card.get("data")
-    if not isinstance(data, dict) or "event" in data:
+    if card.get("tool_name") == APPROVAL_REQUEST_TOOL_NAME:
+        return {**card, "data": current_card_data(data)}
+    if card.get("tool_name") != ARTIFACT_CARD or "event" in data:
         return card
     return {**card, "data": {**data, "event": WRITTEN_ARTIFACT_EVENT}}
 
