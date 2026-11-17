@@ -28,6 +28,7 @@ _REVOKED_DENIAL: dict[RevokeReason, LinkDenial] = {
     RevokeReason.EXPIRED: LinkDenial.EXPIRED,
     RevokeReason.TAKEDOWN: LinkDenial.REMOVED,
     RevokeReason.TARGET_DELETED: LinkDenial.TARGET_DELETED,
+    RevokeReason.ACCOUNT_REMOVED: LinkDenial.REVOKED,
 }
 
 # Dead by the owner's own hand (stopped, rotated or expired): still theirs to open.

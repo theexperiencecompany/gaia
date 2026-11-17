@@ -32,6 +32,7 @@ from app.models.conversation_models import ConversationDocument
 from app.models.openui_artifact_models import ArtifactKind, OpenUIArtifact
 from app.models.short_link_models import (
     LinkAccess,
+    LinkSettings,
     ReportReason,
     RevokeReason,
     ShortLink,
@@ -44,7 +45,7 @@ from app.services.briefing import store as brief_store
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.links import abuse, content as link_content
 from app.services.links.backfill import backfill_snapshots
-from app.services.links.service import optional_short_link
+from app.services.links.service import optional_short_link, revoke_all_links_for_user, share
 from app.services.storage import ArtifactInfo
 from shared.py.analytics import UserId
 from tests.conftest import FAKE_USER
@@ -195,7 +196,11 @@ async def _artifact(conversation_id: str) -> str:
 
 
 async def _todo(title: str = "Reply to Acme") -> str:
-    todo = await todo_repository.create(TodoDocument(user_id=OWNER.user_id, title=title))
+    return await _todo_for(OWNER, title)
+
+
+async def _todo_for(owner: AuthenticatedUser, title: str = "Reply to Acme") -> str:
+    todo = await todo_repository.create(TodoDocument(user_id=owner.user_id, title=title))
     return todo.id
 
 
@@ -969,6 +974,48 @@ class TestDeletingTheSource:
             await link_content.read_snapshot(OWNER.user_id, cid)
         assert await mongo_db["artifacts"].count_documents({"conversation_id": "conv-1"}) == 0
         assert (await _open(client, elsewhere_slug)).status_code == 200
+
+
+class TestRemovingTheOwner:
+    async def test_revoking_all_of_a_users_links_kills_each_and_deletes_their_files(
+        self,
+        client: AsyncClient,
+        viewer: Viewer,
+        workspace: Workspace,
+        content_origin: None,
+        captured: list,
+    ) -> None:
+        file_slug = (await _share(client, SESSION, workspace.write("chart.png", PNG)))["slug"]
+        cid = (await _stored(file_slug)).snapshot.content_id
+        todo_slug = (await _share(client, TODO, await _todo()))["slug"]
+        others = await share(
+            GRANTEE.user_id,
+            ShortLinkTargetType.TODO_DELIVERABLE,
+            await _todo_for(GRANTEE),
+            LinkSettings(),
+        )
+        others_slug = others.slug
+
+        assert await revoke_all_links_for_user(OWNER.user_id) == 2
+        assert await revoke_all_links_for_user(OWNER.user_id) == 0
+
+        for slug in (file_slug, todo_slug):
+            gone = await _open(client, slug)
+            assert (gone.status_code, gone.json()["code"]) == (410, "link_revoked")
+            assert (await _stored(slug)).revoked_reason is RevokeReason.ACCOUNT_REMOVED
+        with pytest.raises(FileNotFoundError):
+            await link_content.read_snapshot(OWNER.user_id, cid)
+        assert (await _open(client, others_slug)).status_code == 200
+        assert (
+            await optional_short_link(
+                OWNER.user_id,
+                ShortLinkTargetType.TODO_DELIVERABLE,
+                (await _stored(todo_slug)).target_id,
+            )
+            is None
+        )
+        revoked = [event for _, event in captured if type(event).__name__ == "ShortLinkRevoked"]
+        assert [event.reason for event in revoked] == ["account_removed", "account_removed"]
 
 
 class TestTheBriefsLink:

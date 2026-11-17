@@ -27,7 +27,9 @@ ShortLinkTarget = Literal[
     "todo_deliverable", "briefing", "session_artifact", "workflow_run", "openui_artifact"
 ]
 ShortLinkAccess = Literal["public", "unlisted", "people", "owner"]
-ShortLinkRevokeReason = Literal["owner", "rotated", "expired", "takedown", "target_deleted"]
+ShortLinkRevokeReason = Literal[
+    "owner", "rotated", "expired", "takedown", "target_deleted", "account_removed"
+]
 ShortLinkDenialReason = Literal[
     "expired", "revoked", "removed", "target_deleted", "sign_in_required", "forbidden"
 ]
@@ -89,7 +91,7 @@ class ShortLinkRotated(ServerEvent):
 
 
 class ShortLinkRevoked(ServerEvent):
-    """The user stopped sharing one of their artifacts."""
+    """One of the user's links was turned off: by them, or with their account."""
 
     event: ClassVar[str] = "short_link:revoked"
     budget_per_user_day: ClassVar[int] = 50

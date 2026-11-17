@@ -99,6 +99,10 @@ class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
             },
         )
 
+    async def live_for_owner(self, user_id: str) -> list[ShortLink]:
+        """Return every live link the owner holds."""
+        return await self._find({"user_id": user_id, "revoked": False})
+
     async def get_latest_for_target(
         self, user_id: str, target_type: ShortLinkTargetType, target_id: str
     ) -> ShortLink | None:

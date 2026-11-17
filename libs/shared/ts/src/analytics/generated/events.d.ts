@@ -1451,7 +1451,7 @@ export interface EventProperties {
     "trigger": "interactive" | "schedule" | "integration_trigger" | "webhook" | "system";
     "surface": "web" | "desktop" | "bot" | "voice" | "worker";
     "target_type": "todo_deliverable" | "briefing" | "session_artifact" | "workflow_run" | "openui_artifact";
-    "reason": "owner" | "rotated" | "expired" | "takedown" | "target_deleted";
+    "reason": "owner" | "rotated" | "expired" | "takedown" | "target_deleted" | "account_removed";
   };
   "short_link:rotated": {
     "actor": "user" | "agent";

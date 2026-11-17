@@ -73,7 +73,14 @@ SLUG_LENGTH = 11
 MAX_SLUG_ATTEMPTS = 10
 
 # The newest link to a target revoked for one of these means sharing is off until the owner shares again.
-_SHARING_OFF = frozenset({RevokeReason.OWNER, RevokeReason.EXPIRED, RevokeReason.TAKEDOWN})
+_SHARING_OFF = frozenset(
+    {
+        RevokeReason.OWNER,
+        RevokeReason.EXPIRED,
+        RevokeReason.TAKEDOWN,
+        RevokeReason.ACCOUNT_REMOVED,
+    }
+)
 
 
 class ShortLinkExhaustedError(RuntimeError):
@@ -414,6 +421,26 @@ async def revoke_deleted_targets(
         if await short_link_repository.revoke(user_id, link.slug, RevokeReason.TARGET_DELETED):
             await _release_snapshot(user_id, link.snapshot)
             revoked += 1
+    return revoked
+
+
+async def revoke_all_links_for_user(user_id: str) -> int:
+    """Kill every live link a user owns and delete the snapshots they pinned; the count killed.
+
+    For removing the user's account: GAIA attaches no new link to their targets afterwards. Idempotent.
+    """
+    revoked = 0
+    for link in await short_link_repository.live_for_owner(user_id):
+        if await short_link_repository.revoke(user_id, link.slug, RevokeReason.ACCOUNT_REMOVED):
+            await _release_snapshot(user_id, link.snapshot)
+            capture(
+                UserId(user_id),
+                ShortLinkRevoked(
+                    target_type=link.target_type.value, reason=RevokeReason.ACCOUNT_REMOVED.value
+                ),
+            )
+            revoked += 1
+    log.set(short_link={"revoked_for_account": revoked})
     return revoked
 
 

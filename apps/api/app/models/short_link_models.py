@@ -65,6 +65,8 @@ class RevokeReason(StrEnum):
     EXPIRED = "expired"
     TAKEDOWN = "takedown"
     TARGET_DELETED = "target_deleted"
+    # The owner was removed from this GAIA (offboarding): every link they made dies with the account.
+    ACCOUNT_REMOVED = "account_removed"
 
 
 class LinkDenial(StrEnum):
