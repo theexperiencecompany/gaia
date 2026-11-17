@@ -15,6 +15,7 @@ from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
     BatchDecisionItem,
     BatchDecisionOutcome,
+    DecisionRefusal,
 )
 from app.services.hil.errors import (
     ApprovalRequestForbiddenError,
@@ -165,7 +166,7 @@ class TestPostBatchDecision:
             BatchDecisionOutcome(
                 approval_id="ap_2",
                 resolved=False,
-                reason="already_decided",
+                reason=DecisionRefusal.ALREADY_DECIDED,
                 outcome=ApprovalOutcome.EXPIRED,
             ),
         ]

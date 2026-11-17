@@ -24,7 +24,12 @@ from app.models.conversation_log_models import ApprovalDecided, ApprovalRequeste
 from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.hil_models import ApprovalLedgerDocument
 from app.models.user_models import AuthenticatedUser
-from app.schemas.hil_schemas import ApprovalDecisionRequest, BatchDecisionItem, BatchDecisionOutcome
+from app.schemas.hil_schemas import (
+    ApprovalDecisionRequest,
+    BatchDecisionItem,
+    BatchDecisionOutcome,
+    DecisionRefusal,
+)
 from app.services.conversation.work_log import DecisionTaken
 from app.services.hil import ledger_decide
 from app.services.hil.errors import (
@@ -1611,17 +1616,24 @@ class TestDecideLedgerBatchOutcomes:
             for item in items
         ]
         assert outcomes == [
-            BatchDecisionOutcome(approval_id="ap_1", resolved=False, reason="not_found"),
-            BatchDecisionOutcome(approval_id="ap_2", resolved=False, reason="forbidden"),
-            BatchDecisionOutcome(approval_id="ap_3", resolved=False, reason="error"),
+            BatchDecisionOutcome(
+                approval_id="ap_1", resolved=False, reason=DecisionRefusal.NOT_FOUND
+            ),
+            BatchDecisionOutcome(
+                approval_id="ap_2", resolved=False, reason=DecisionRefusal.FORBIDDEN
+            ),
+            BatchDecisionOutcome(approval_id="ap_3", resolved=False, reason=DecisionRefusal.ERROR),
             BatchDecisionOutcome(approval_id="ap_4", resolved=True),
             BatchDecisionOutcome(
-                approval_id="ap_5", resolved=False, reason="already_decided", outcome=None
+                approval_id="ap_5",
+                resolved=False,
+                reason=DecisionRefusal.ALREADY_DECIDED,
+                outcome=None,
             ),
             BatchDecisionOutcome(
                 approval_id="ap_6",
                 resolved=False,
-                reason="already_decided",
+                reason=DecisionRefusal.ALREADY_DECIDED,
                 outcome=ApprovalOutcome.DENIED,
             ),
         ]
