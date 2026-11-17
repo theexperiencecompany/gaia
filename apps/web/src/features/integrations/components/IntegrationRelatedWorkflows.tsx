@@ -1,6 +1,6 @@
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import { CircleArrowUpRightIcon } from "@icons";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";

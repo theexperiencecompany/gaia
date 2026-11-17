@@ -23,9 +23,12 @@ def is_disconnect(exc: BaseException, sockets: Sequence[WebSocket] = ()) -> bool
     """
     if isinstance(exc, ConnectionClosed | WebSocketDisconnect):
         return True
-    return type(exc) is RuntimeError and any(
-        WebSocketState.DISCONNECTED in (ws.client_state, ws.application_state) for ws in sockets
-    )
+    return type(exc) is RuntimeError and any(is_closed(ws) for ws in sockets)
+
+
+def is_closed(ws: WebSocket) -> bool:
+    """Whether either end has closed ws: once one has, the server refuses another close."""
+    return WebSocketState.DISCONNECTED in (ws.client_state, ws.application_state)
 
 
 async def pump_until_first_close(

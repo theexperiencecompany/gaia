@@ -44,7 +44,7 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
     <div className="absolute -top-9 flex w-full justify-center pointer-events-none pb-10">
       <button
         type="button"
-        className="flex w-[90%] items-center gap-3 rounded-full bg-zinc-800/40 pr-8 pl-8 pt-2 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer pb-14!"
+        className="flex w-[90%] items-center gap-3 rounded-full bg-zinc-800/40 pr-8 pl-8 pt-2 text-xs text-zinc-600 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer pb-14!"
         onClick={onToggleSlashCommand}
       >
         <span className="text-xs whitespace-nowrap shrink-0">

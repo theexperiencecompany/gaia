@@ -1,6 +1,7 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import { CheckmarkCircle02Icon } from "@icons";
 
+import { shapeVariants } from "@/components/shared/shape";
 import { RichContentRenderer } from "@/features/chat/components/interface/RichContentRenderer";
 import type { PublicTodoDeliverable } from "@/types/features/shortLinkTypes";
 
@@ -14,13 +15,13 @@ export function PublicTodoDeliverableView({
       <div className="flex flex-col gap-2">
         {view.completed && (
           <Chip
+            className={shapeVariants({ shape: "sm", className: "self-start" })}
             size="sm"
             color="success"
-            variant="flat"
-            radius="sm"
-            startContent={<CheckmarkCircle02Icon className="h-3 w-3" />}
+            variant="soft"
           >
-            Done
+            <CheckmarkCircle02Icon className="h-3 w-3" />
+            <Chip.Label>Done</Chip.Label>
           </Chip>
         )}
         <h1 className="text-2xl font-medium text-white">{view.title}</h1>

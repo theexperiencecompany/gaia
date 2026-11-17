@@ -11,3 +11,6 @@ export const CANONICAL_REDIRECT_PAIRS: readonly CanonicalRedirectPair[];
 export function expandCanonicalRedirects(
   pairs?: readonly CanonicalRedirectPair[],
 ): Array<{ source: string; destination: string; permanent: true }>;
+
+/** [removed page path, the page that replaced it], root-relative, locale-unprefixed. */
+export const RETIRED_PAGE_PAIRS: readonly CanonicalRedirectPair[];
