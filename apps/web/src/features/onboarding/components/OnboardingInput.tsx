@@ -9,13 +9,19 @@
  * answer the list does not have is still their own words.
  */
 
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
-import { Tooltip } from "@heroui/tooltip";
+import {
+  Chip,
+  Description,
+  FieldError,
+  Input,
+  TextField,
+  Tooltip,
+} from "@heroui/react";
 import { SparklesIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo } from "react";
-
+import { inputVariants } from "@/components/shared/controlVariants";
+import { shapeVariants } from "@/components/shared/shape";
 import {
   isListedProfession,
   isRoleNeed,
@@ -101,7 +107,7 @@ function ProfessionInput({
           placeholder="What do you do?"
           maxLength={PROFESSION_MAX_LENGTH}
           value={customText}
-          onValueChange={(text) =>
+          onValueChange={(text: string) =>
             onSelectProfession(text.trim() ? text : OTHER_PROFESSION)
           }
           onSubmit={() => {
@@ -207,34 +213,38 @@ function OwnWordsInput({
   const showsCounter = remaining <= COUNTER_REVEAL_WINDOW;
 
   return (
-    <Input
+    <TextField
       aria-label={label}
-      placeholder={placeholder}
-      maxLength={maxLength}
-      value={value}
-      onValueChange={onValueChange}
       isInvalid={isAtLimit}
-      description={
-        showsCounter && !isAtLimit ? `${value.length}/${maxLength}` : undefined
-      }
-      errorMessage={
-        isAtLimit ? `Keep it under ${maxLength} characters` : undefined
-      }
       // The counter and message sit under the field, so the row can grow taller
       // but never wider — `max-w-56` above stays the field's whole width.
-      classNames={{ description: "text-tiny", errorMessage: "text-tiny" }}
-      onKeyDown={(event) => {
-        // Enter also confirms a candidate in CJK input methods; submitting
-        // then would send half a word.
-        if (event.nativeEvent.isComposing) return;
-        if (event.key === "Enter") onSubmit();
-      }}
-      variant="flat"
-      size="sm"
-      radius="lg"
-      className="max-w-56"
-      autoFocus
-    />
+      className={inputVariants({ size: "sm", className: "max-w-56" })}
+    >
+      <Input
+        placeholder={placeholder}
+        maxLength={maxLength}
+        value={value}
+        onChange={(event) => onValueChange(event.target.value)}
+        onKeyDown={(event) => {
+          // Enter also confirms a candidate in CJK input methods; submitting
+          // then would send half a word.
+          if (event.nativeEvent.isComposing) return;
+          if (event.key === "Enter") onSubmit();
+        }}
+        variant="secondary"
+        autoFocus
+      />
+      {showsCounter && !isAtLimit && (
+        <Description className="text-xs">
+          {`${value.length}/${maxLength}`}
+        </Description>
+      )}
+      {isAtLimit && (
+        <FieldError className="text-xs">
+          {`Keep it under ${maxLength} characters`}
+        </FieldError>
+      )}
+    </TextField>
   );
 }
 
@@ -272,27 +282,25 @@ function OptionChips({
         const note = personalisedNote?.(option.value) ?? null;
         const { icon: Icon, tint } = OPTION_STYLE[option.value];
         const chip = (
-          <Chip
-            as="button"
-            type="button"
+          <Chip<"button">
             size="lg"
-            radius="full"
-            variant="flat"
+            variant="tertiary"
             aria-pressed={selected}
-            isDisabled={disabled}
-            onClick={() => onSelect(option.value)}
+            aria-disabled={disabled}
+            render={(props) => <button type="button" {...props} />}
+            onClick={() => {
+              if (!disabled) onSelect(option.value);
+            }}
             // One pastel per option, on the fill, the text and the icon; the
             // fill goes solid when picked. Founder's call, not a theme override.
-            classNames={{
-              base: `cursor-pointer ${selected ? tint.active : tint.idle}`,
-              content: "font-medium",
-            }}
-            startContent={<Icon className="size-4 shrink-0" />}
-            endContent={
-              note ? <SparklesIcon className="size-3.5 shrink-0" /> : undefined
-            }
+            className={shapeVariants({
+              shape: "pill",
+              className: `cursor-pointer ${selected ? tint.active : tint.idle} ${disabled ? "pointer-events-none opacity-50" : ""}`,
+            })}
           >
-            {option.label}
+            <Icon className="size-4 shrink-0" />
+            <Chip.Label className="font-medium">{option.label}</Chip.Label>
+            {note ? <SparklesIcon className="size-3.5 shrink-0" /> : null}
           </Chip>
         );
         return (
@@ -319,8 +327,9 @@ function OptionChips({
               transition={{ type: "spring", stiffness: 500, damping: 28 }}
             >
               {note ? (
-                <Tooltip content={note} placement="top" delay={200}>
-                  {chip}
+                <Tooltip delay={200}>
+                  <Tooltip.Trigger>{chip}</Tooltip.Trigger>
+                  <Tooltip.Content placement="top">{note}</Tooltip.Content>
                 </Tooltip>
               ) : (
                 chip

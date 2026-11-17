@@ -1,7 +1,6 @@
 "use client";
 
-import { Button as HeroButton } from "@heroui/button";
-import { Tooltip } from "@heroui/tooltip";
+import { Tooltip } from "@heroui/react";
 import {
   AlertCircleIcon,
   CheckmarkBadge01Icon,
@@ -10,7 +9,7 @@ import {
 } from "@icons";
 import { useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { Button } from "@/components/ui/button";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
@@ -98,7 +97,7 @@ export const EnhancedNotificationCard = ({
                 {notification.content.title}
               </h3>
               {isUnread && (
-                <div className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />
+                <div className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" />
               )}
             </div>
 
@@ -113,15 +112,19 @@ export const EnhancedNotificationCard = ({
           {/* Mark as read button */}
           {notification.status !== NotificationStatus.READ &&
             notification.status !== NotificationStatus.ARCHIVED && (
-              <Tooltip content="Mark as read" delay={300}>
-                <HeroButton
-                  size="sm"
-                  onPress={handleMarkAsRead}
-                  variant="light"
-                  isIconOnly
-                >
-                  <CheckmarkBadge01Icon className="h-4 w-4 text-zinc-500" />
-                </HeroButton>
+              <Tooltip delay={300}>
+                <Tooltip.Trigger>
+                  <GaiaButton
+                    aria-label="Mark as read"
+                    size="sm"
+                    onPress={handleMarkAsRead}
+                    variant="tertiary"
+                    isIconOnly
+                  >
+                    <CheckmarkBadge01Icon className="h-4 w-4 text-zinc-500" />
+                  </GaiaButton>
+                </Tooltip.Trigger>
+                <Tooltip.Content>Mark as read</Tooltip.Content>
               </Tooltip>
             )}
         </div>
@@ -143,13 +146,23 @@ export const EnhancedNotificationCard = ({
                   const showLoading = isLoading && action.type !== "modal";
 
                   return (
-                    <Button
-                      key={action.id}
-                      disabled={buttonProps.disabled || isLoading || isExecuted}
-                      onClick={() => handleActionClick(action.id)}
-                      className={`gap-1.5 rounded-lg px-4 text-xs font-normal transition ${
+                    <GaiaButton
+                      variant={
                         action.style === "primary"
-                          ? "bg-primary/10 text-primary hover:bg-primary/20"
+                          ? "accent-soft"
+                          : action.style === "danger"
+                            ? "danger-soft"
+                            : "tertiary"
+                      }
+                      shape="sm"
+                      key={action.id}
+                      isDisabled={
+                        buttonProps.disabled || isLoading || isExecuted
+                      }
+                      onPress={() => handleActionClick(action.id)}
+                      className={`gap-1.5 text-xs font-normal transition ${
+                        action.style === "primary"
+                          ? "bg-accent/10 text-accent hover:bg-accent/20"
                           : action.style === "danger"
                             ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
                             : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
@@ -170,7 +183,7 @@ export const EnhancedNotificationCard = ({
                           {!isExecuted && getActionIcon(action.type)}
                         </>
                       )}
-                    </Button>
+                    </GaiaButton>
                   );
                 })}
               </div>

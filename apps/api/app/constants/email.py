@@ -24,7 +24,6 @@ MessageFieldLiteral = Literal[
     "body",
     "time",
     "isRead",
-    "hasAttachment",
     "attachments",
     "labels",
 ]
@@ -40,6 +39,7 @@ MESSAGE_FIELD_SYNONYMS: dict[str, MessageFieldLiteral] = {
     "thread_id": "threadId",
     "labelIds": "labels",
     "label_ids": "labels",
+    "hasAttachment": "attachments",
 }
 
 # Curated per-message fields returned when the caller does not specify any:
@@ -54,7 +54,6 @@ DEFAULT_SUMMARY_FIELDS: list[MessageFieldLiteral] = [
     "snippet",
     "time",
     "isRead",
-    "hasAttachment",
     "labels",
 ]
 

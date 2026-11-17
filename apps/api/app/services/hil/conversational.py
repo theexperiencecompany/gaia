@@ -12,6 +12,7 @@ user's flag is on, the LLM on its transport failure. Fails safe: a classifier
 error leaves approvals pending, never approves.
 """
 
+import asyncio
 import contextlib
 from typing import Literal, assert_never
 
@@ -85,18 +86,17 @@ async def resolve_pending_from_message(
     "deny" when things were only declined, "unrelated" when the user moved on),
     or None when nothing was pending or the reply addressed none of it.
     """
-    pending = await list_pending_for_conversation(conversation_id)
-    if pending:
-        if len(pending) == 1:
-            return await _resolve_single(pending[0], conversation_id, user_id, message, history)
-        return await _resolve_batch(pending, conversation_id, user_id, message, history)
-    # Barrier store empty: ledger-enabled users' rows live in approval_ledger.
-    ledger_pending = await _list_pending_ledger(conversation_id)
-    if not ledger_pending:
+    # Both stores read at once: every bot turn waits on this, nearly always to find nothing.
+    # The barrier store wins; ledger-enabled users' rows live in approval_ledger.
+    barrier, ledger = await asyncio.gather(
+        list_pending_for_conversation(conversation_id), _list_pending_ledger(conversation_id)
+    )
+    pending = barrier or ledger
+    if not pending:
         return None
-    if len(ledger_pending) == 1:
-        return await _resolve_single(ledger_pending[0], conversation_id, user_id, message, history)
-    return await _resolve_batch(ledger_pending, conversation_id, user_id, message, history)
+    if len(pending) == 1:
+        return await _resolve_single(pending[0], conversation_id, user_id, message, history)
+    return await _resolve_batch(pending, conversation_id, user_id, message, history)
 
 
 async def _resolve_single(

@@ -73,7 +73,7 @@ export function BrandColors() {
     <div>
       <div className="mb-8">
         <h2 className="mb-3 text-3xl font-medium">Brand Colors</h2>
-        <p className="text-foreground-600 dark:text-foreground-400">
+        <p className="text-zinc-300 dark:text-zinc-500">
           Our primary brand colors. Click any color to copy its hex or RGB
           value.
         </p>

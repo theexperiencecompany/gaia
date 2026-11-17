@@ -265,6 +265,20 @@ def test_survivors_rejects_a_foreign_json_instead_of_crashing(tmp_path: Path) ->
     assert "shard.verdict.json" in result.stderr
 
 
+def test_survivors_names_a_record_missing_its_status(tmp_path: Path) -> None:
+    """A record with a module but no status is malformed: name the file, never a KeyError."""
+    records = tmp_path / "records"
+    records.mkdir()
+    (records / "app_x.py.json").write_text(json.dumps({"module": "app/x.py"}))
+
+    result = _run(["survivors", str(records)])
+
+    assert result.returncode != 0
+    assert "app_x.py.json" in result.stderr
+    assert "not a mutation record" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_survivors_rejects_a_null_module_list(tmp_path: Path) -> None:
     """A record set whose modules is null is malformed, not an empty run with no survivors."""
     broken = tmp_path / "shard.verdict.json"
@@ -1091,8 +1105,8 @@ def test_mutation_py_exposes_replay() -> None:
     assert "replay <verdict|dir|shard.log>" in usage.stderr
 
 
-def test_mutation_py_exposes_survivors_and_one() -> None:
-    """Both actionable commands are reachable and self-documenting from the entrypoint."""
+def test_mutation_py_exposes_survivors() -> None:
+    """The survivors command is reachable and self-documenting from the entrypoint."""
     survivors = subprocess.run(
         [sys.executable, str(MUTATION_PY), "survivors"],
         capture_output=True,
@@ -1103,16 +1117,6 @@ def test_mutation_py_exposes_survivors_and_one() -> None:
     assert survivors.returncode == 2
     assert "usage: mutation.py survivors" in survivors.stderr
 
-    one = subprocess.run(
-        [sys.executable, str(MUTATION_PY), "one"],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=REPO_ROOT,
-    )
-    assert one.returncode == 2
-    assert "usage: mutation.py one" in one.stderr
-
     usage = subprocess.run(
         [sys.executable, str(MUTATION_PY), "nonsense"],
         capture_output=True,
@@ -1121,7 +1125,6 @@ def test_mutation_py_exposes_survivors_and_one() -> None:
         cwd=REPO_ROOT,
     )
     assert "survivors <verdict|dir|shard.log>" in usage.stderr
-    assert "one <mod> [tests]" in usage.stderr
 
 
 @pytest.mark.parametrize(

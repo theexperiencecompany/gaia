@@ -37,7 +37,7 @@ function CommandRow({ command }: { command: string }) {
       </code>
       <CopyButton
         textToCopy={command}
-        variant="light"
+        variant="ghost"
         size="md"
         className="shrink-0 text-zinc-400 data-[hover=true]:text-zinc-100"
       />

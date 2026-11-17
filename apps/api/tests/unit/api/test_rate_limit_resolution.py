@@ -17,6 +17,7 @@ import pytest
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.core.request_context import set_authenticated_user
 from app.decorators import tiered_rate_limit
+from app.models.payment_models import PlanType
 from app.models.user_models import AuthenticatedUser
 
 USER = AuthenticatedUser(user_id="u1", email="a@b.c")
@@ -83,11 +84,11 @@ class TestRateLimitParamNameIndependence:
                 new_callable=AsyncMock,
             ) as fired,
             patch(
-                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
                 new_callable=AsyncMock,
-            ) as sub,
+                return_value=PlanType.FREE,
+            ),
         ):
-            sub.return_value.plan_type = None
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.get(path)
@@ -153,11 +154,11 @@ async def test_route_without_an_auth_dependency_is_still_limited() -> None:
             new_callable=AsyncMock,
         ) as fired,
         patch(
-            "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+            "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
             new_callable=AsyncMock,
-        ) as sub,
+            return_value=PlanType.FREE,
+        ),
     ):
-        sub.return_value.plan_type = None
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.get("/no-auth-param", params={"query": "x"})

@@ -1,7 +1,6 @@
 "use client";
 
-import { Avatar } from "@heroui/avatar";
-import { Skeleton } from "@heroui/skeleton";
+import { Avatar, Skeleton } from "@heroui/react";
 import {
   Alert01Icon,
   Calendar03Icon,
@@ -198,11 +197,12 @@ export default function HomePage() {
           <div className="flex items-center gap-2">
             {user?.profilePicture && (
               <Avatar
-                src={user?.profilePicture}
-                name={user?.name || "User"}
                 size="sm"
                 className="shrink-0 ml-1 hover:scale-120 rotate-6 transition"
-              />
+              >
+                <Avatar.Image src={user?.profilePicture} />
+                <Avatar.Fallback>{user?.name?.[0] ?? "U"}</Avatar.Fallback>
+              </Avatar>
             )}
             <h1 className="font-medium text-4xl text-zinc-700">
               {user?.name?.split(" ")[0]}

@@ -64,6 +64,9 @@ class TestRegisterAndDone:
         assert session is not None
         assert session.kind is RunKind.LIVE
         assert done is session.done_event
+        # A plain chat turn never asks the executor for a spoken voice_tts frame.
+        assert session.voice_mode is False
+        assert session.clock is None
 
     async def test_await_returns_immediately_when_no_executor_spawned(self) -> None:
         register_executor_capture("s1")

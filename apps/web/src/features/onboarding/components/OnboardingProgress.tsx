@@ -5,24 +5,11 @@
  * one — and Restart, which confirms via a modal before invoking `onRestart`.
  */
 
-import { Button } from "@heroui/button";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownSection,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import {
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/modal";
+import { Dropdown, Header, Modal } from "@heroui/react";
 import { Logout02Icon, RedoIcon, UserCircleIcon } from "@icons";
 import * as m from "motion/react-m";
 import { memo, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 
 interface OnboardingProgressProps {
@@ -82,7 +69,7 @@ function OnboardingProgressImpl({
             }}
           >
             <m.div
-              className="absolute inset-0 origin-left rounded-full bg-primary"
+              className="absolute inset-0 origin-left rounded-full bg-accent"
               initial={{ scaleX: 0 }}
               animate={{ scaleX: scaleXValue }}
               transition={{ duration: 0.4, ease: "easeInOut" }}
@@ -91,92 +78,93 @@ function OnboardingProgressImpl({
         );
       })}
 
-      <Dropdown placement={isMobile ? "bottom-end" : "top-end"}>
-        <DropdownTrigger>
-          <Button
-            size="sm"
-            variant="flat"
-            radius="full"
-            isLoading={isRestarting}
-            isIconOnly={isMobile}
-            startContent={
-              !isRestarting && !isMobile && <UserCircleIcon size={14} />
-            }
-            // A phone has no spare bottom edge (the composer lives there), so
-            // the menu is a small icon in the top-right corner instead.
-            className={
-              isMobile ? "fixed top-3 right-3 z-20" : "fixed right-3 bottom-3"
-            }
-            aria-label="Account"
-          >
-            {isMobile
-              ? !isRestarting && <UserCircleIcon size={16} />
-              : isRestarting
-                ? "Restarting…"
-                : (email ?? "Account")}
-          </Button>
-        </DropdownTrigger>
-        <DropdownMenu
+      <Dropdown>
+        <GaiaButton
+          shape="pill"
+          size="sm"
+          variant="default-soft"
+          isPending={isRestarting}
+          isDisabled={isRestarting}
+          isIconOnly={isMobile}
+          // A phone has no spare bottom edge (the composer lives there), so
+          // the menu is a small icon in the top-right corner instead.
+          className={
+            isMobile ? "fixed top-3 right-3 z-20" : "fixed right-3 bottom-3"
+          }
           aria-label="Account"
-          disabledKeys={currentStep === 0 || isRestarting ? [RESTART_KEY] : []}
-          onAction={(key) => {
-            if (key === RESTART_KEY) setConfirmOpen(true);
-            if (key === LOGOUT_KEY) onLogout();
-          }}
         >
-          <DropdownSection title={email ? `Signed in as ${email}` : undefined}>
-            <DropdownItem
-              key={RESTART_KEY}
-              startContent={<RedoIcon size={16} />}
-            >
-              Restart onboarding
-            </DropdownItem>
-            <DropdownItem
-              key={LOGOUT_KEY}
-              color="danger"
-              className="text-danger"
-              startContent={<Logout02Icon size={16} />}
-            >
-              Log out
-            </DropdownItem>
-          </DropdownSection>
-        </DropdownMenu>
+          {!isRestarting && !isMobile && <UserCircleIcon size={14} />}
+          {isMobile
+            ? !isRestarting && <UserCircleIcon size={16} />
+            : isRestarting
+              ? "Restarting…"
+              : (email ?? "Account")}
+        </GaiaButton>
+        <Dropdown.Popover placement={isMobile ? "bottom end" : "top end"}>
+          <Dropdown.Menu aria-label="Account">
+            <Dropdown.Section>
+              {email && <Header>Signed in as {email}</Header>}
+              <Dropdown.Item
+                id={RESTART_KEY}
+                textValue="Restart onboarding"
+                isDisabled={currentStep === 0 || isRestarting}
+                onAction={() => setConfirmOpen(true)}
+              >
+                <div className="flex flex-row items-center justify-start gap-2">
+                  <RedoIcon size={16} />
+                  Restart onboarding
+                </div>
+              </Dropdown.Item>
+              <Dropdown.Item
+                id={LOGOUT_KEY}
+                textValue="Log out"
+                variant="danger"
+                onAction={onLogout}
+              >
+                <div className="flex flex-row items-center justify-start gap-2">
+                  <Logout02Icon size={16} />
+                  Log out
+                </div>
+              </Dropdown.Item>
+            </Dropdown.Section>
+          </Dropdown.Menu>
+        </Dropdown.Popover>
       </Dropdown>
 
-      <Modal
-        isOpen={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        size="md"
-        backdrop="blur"
-        placement="center"
-      >
-        <ModalContent>
-          {(onClose) => (
-            <>
-              <ModalHeader>Start from scratch?</ModalHeader>
-              <ModalBody>
+      <Modal isOpen={confirmOpen} onOpenChange={setConfirmOpen}>
+        <Modal.Backdrop variant="blur">
+          <Modal.Container placement="center" size="md">
+            <Modal.Dialog>
+              <Modal.CloseTrigger aria-label="Close" />
+              <Modal.Header>
+                <Modal.Heading>Start from scratch?</Modal.Heading>
+              </Modal.Header>
+              <Modal.Body>
                 <p className="text-sm text-zinc-400">
                   This wipes your answers, linked apps and what I've learned
                   about you. Nothing about your subscription changes.
                 </p>
-              </ModalBody>
-              <ModalFooter>
-                <Button variant="flat" onPress={onClose}>
+              </Modal.Body>
+              <Modal.Footer>
+                <GaiaButton
+                  variant="default-soft"
+                  onPress={() => setConfirmOpen(false)}
+                >
                   Cancel
-                </Button>
-                <Button
-                  color="danger"
+                </GaiaButton>
+                <GaiaButton
                   onPress={() => {
-                    onClose();
-                    onRestart();
+                    setConfirmOpen(false);
+                    onRestart?.();
                   }}
+                  variant="danger"
                 >
                   Restart
-                </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
+                </GaiaButton>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
       </Modal>
     </nav>
   );
