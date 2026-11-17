@@ -84,7 +84,6 @@ from tests.unit.services.conversation.runtime_doubles import (
     Do,
     Fail,
     Forgetful,
-    HandedOff,
     Pause,
     RecordingFrames,
     Runtime,
@@ -440,7 +439,7 @@ class StepScenarios:
         ]
         await assert_quiet(rt)
 
-    async def test_a_message_still_open_after_the_note_is_handed_to_the_executor(
+    async def test_a_message_still_open_after_the_note_fails_instead_of_being_guessed_at(
         self, rt: Runtime
     ) -> None:
         rt.runner.script(
@@ -449,9 +448,8 @@ class StepScenarios:
         )
         await send(rt, user("u1"))
         await run(rt)
-        assert [type(call) for call in rt.runner.calls] == [Started, Started, HandedOff]
-        assert rt.runner.calls[-1] == HandedOff((1,))
-        assert await answered(rt) == [(ReplyOutcome.SILENT, ("u1",))]
+        assert [type(call) for call in rt.runner.calls] == [Started, Started]
+        assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
         await assert_quiet(rt)
 
     @pytest.mark.parametrize(

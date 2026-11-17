@@ -402,11 +402,6 @@ class Started:
 
 
 @dataclass(frozen=True)
-class HandedOff:
-    seqs: tuple[int, ...]
-
-
-@dataclass(frozen=True)
 class Absorbed:
     seqs: tuple[int, ...]
 
@@ -416,7 +411,7 @@ class Cancelled:
     reason: CancelReason
 
 
-RunnerCall = Started | Absorbed | Cancelled | HandedOff
+RunnerCall = Started | Absorbed | Cancelled
 
 
 class ScriptedRun:
@@ -443,8 +438,6 @@ class ScriptedRun:
         self._held = False
         self._swallowed = asyncio.Event()
         self.cancel_attempts = 0
-        # The claim each hand-off was made under, in order.
-        self.handed_by: list[StepClaim] = []
         self.task = asyncio.create_task(self._play())
 
     async def events(self) -> AsyncIterator[RunEvent]:
@@ -459,13 +452,6 @@ class ScriptedRun:
 
     async def absorb(self, entries: Sequence[LoggedEntry]) -> None:
         self._calls.append(Absorbed(tuple(item.seq for item in entries)))
-
-    async def hand_off(self, claim: StepClaim, messages: Sequence[LoggedEntry]) -> bool:
-        seqs = tuple(item.seq for item in messages)
-        self.handed_by.append(claim)
-        self._calls.append(HandedOff(seqs))
-        self._close(Closing.HANDED, seqs)
-        return True
 
     def _close(self, how: Closing, seqs: Sequence[int] | None, emoji: str | None = None) -> None:
         named = list(still_open(self._ledger)) if seqs is None else list(seqs)

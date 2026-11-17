@@ -1,6 +1,6 @@
 """How an attempt ends: a finished, failed, restarted, stopped, spoken-over or lost run, and its follow-ups."""
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 
 from app.agents.core.comms_ledger import answer_sole, still_open
 from app.models.conversation_log_models import (
@@ -67,7 +67,7 @@ async def end_attempt(ports: RuntimePorts, attempt: Attempt, run: CommsRun, endi
         case Finished(outcome=outcome) if attempt.answered is not None:
             await _add_follow_ups(ports, attempt, attempt.answered, outcome)
         case Finished(outcome=outcome):
-            attempt.answered = await finish_run(ports, attempt, run, outcome)
+            attempt.answered = await finish_run(ports, attempt, outcome)
         case Crashed(error=error) if attempt.answered is not None:
             await run.cancel(CancelReason.LOST)
             log.warning(
@@ -180,13 +180,13 @@ _AFTER_CANCEL: dict[Verdict, Callable[[RuntimePorts, Attempt], Awaitable[None]]]
 
 
 async def finish_run(
-    ports: RuntimePorts, attempt: Attempt, run: CommsRun, outcome: RunOutcome
+    ports: RuntimePorts, attempt: Attempt, outcome: RunOutcome
 ) -> LoggedEntry | None:
     """Settle a run that ended on its own, or mark the attempt continuing while it owes messages.
 
     Words ending a run answer the one message open, unnamed. The first end that owes messages
-    goes on in a run told which; the next hands them to the executor, as a hand-off the user
-    sees. Inputs no message answers settle with the last reply.
+    goes on in a run told which; a run that still owes them after that broke its contract, and
+    they fail. Inputs no message answers settle with the last reply.
     """
     if attempt.split:
         await end_interim(ports, attempt)
@@ -204,11 +204,13 @@ async def finish_run(
         attempt.continuing = True
         return None
     if owing:
-        if not await run.hand_off(attempt.claim, _owed_entries(attempt, owing)):
-            return await _settle_rest(
-                ports, attempt, ReplyOutcome.FAILED, FailureReason.MODEL_ERROR
-            )
-        named = await settle_passed(ports, attempt) or named
+        log.error(
+            "comms run still owed messages after it was told which",
+            owed=list(owing),
+            conversation_id=attempt.claim.conversation_id,
+            attempt_id=attempt.attempt_id,
+        )
+        return await _settle_rest(ports, attempt, ReplyOutcome.FAILED, FailureReason.MODEL_ERROR)
     return await _settle_rest(ports, attempt) or named
 
 
@@ -236,10 +238,6 @@ async def _settle_rest(
     return await conclude(
         ports, attempt, reply, ReplyOutcome.ANSWERED if worded else ReplyOutcome.SILENT, covers
     )
-
-
-def _owed_entries(attempt: Attempt, owing: Mapping[int, str]) -> tuple[LoggedEntry, ...]:
-    return tuple(logged for logged in attempt.handed if logged.seq in owing)
 
 
 async def _add_follow_ups(

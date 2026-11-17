@@ -151,7 +151,7 @@ async def _watch(ports: RuntimePorts, attempt: Attempt, run: CommsRun) -> Ending
             if isinstance(signal, Finished | Crashed):
                 return signal
             if isinstance(signal, Answered):
-                attempt.answered = await finish_run(ports, attempt, run, signal.outcome)
+                attempt.answered = await finish_run(ports, attempt, signal.outcome)
             elif not isinstance(signal, Tick | Summarized):
                 await _handle(ports, attempt, run, signal)
     finally:
