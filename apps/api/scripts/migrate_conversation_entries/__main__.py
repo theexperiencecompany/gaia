@@ -9,19 +9,23 @@ one repeating an earlier element's, first gets a fresh id written back into the 
 to re-run: a pass visits only conversations whose array changed since (any append, trim or
 in-place edit) and sets only the fields whose source changed. A head written meanwhile is
 reported RACED and changes nothing; re-run until 0 raced. A conversation the log cannot hold
-is reported REFUSED with why. Both make the run exit 1. Every head with no source is given
+is reported REFUSED with why, and one whose pass crashed FAILED with the error; the run goes
+on to the next, and the boot check refuses both until a later pass migrates them. All three
+make the run exit 1. A head too full to take the log pointer beside its array (Mongo's 16 MB
+limit) has the array moved to conversation_archived_messages in the same write; verify reads
+it there. Every head with no source is given
 one (a todo's chat background, a workflow's workflow_system, any other web), and --verify
 fails while any head still has none.
 
 Cutover, in this order:
-  1. --apply while the old build serves; repeat until it reports 0 raced and 0 refused.
+  1. --apply while the old build serves; repeat until it reports 0 raced, refused or failed.
   2. Stop the old build, so nothing writes an embedded array.
   3. --apply again, then --verify; both must exit 0.
   4. Deploy the new build. It refuses to boot while any conversation has an embedded array
-     no pass marked, message-shaped entries, or a head with no source.
+     no pass marked, message-shaped entries, a head with no source, or a failed pass.
 
 The migration copies and never deletes: the arrays stay as they were, so rollback is
-redeploying the old build.
+redeploying the old build, after setting each archived head's messages back from its rows.
 
 Usage::
 
@@ -43,13 +47,17 @@ from scripts.migrate_conversation_entries.migration import (
     NOT_KEPT_FIELDS,
     HeadRef,
     MigrationAction,
+    MigrationOutcome,
+    VerifyReport,
     conversation_entries_migration,
 )
 from scripts.migrate_conversation_entries.sources import conversation_source_backfill
 
 _BATCH = 200
 _Scan = Callable[[str | None], Awaitable[list[HeadRef]]]
-_FAILED = (MigrationAction.RACED, MigrationAction.REFUSED)
+_FAILED = (MigrationAction.RACED, MigrationAction.REFUSED, MigrationAction.FAILED)
+#: Outcomes the boot check refuses until a later pass migrates the conversation; RACED only needs a re-run.
+_RECORDED = (MigrationAction.REFUSED, MigrationAction.FAILED)
 
 
 @dataclass
@@ -85,13 +93,31 @@ def _scans(*, every_embedded: bool) -> tuple[_Scan, _Scan]:
     )
 
 
+def _crash(exc: Exception) -> str:
+    return f"{type(exc).__name__}: {exc}"
+
+
+async def migrate_one(ref: HeadRef, *, apply: bool) -> MigrationOutcome:
+    """Migrate one conversation, a crash reported as its own failure; an applied pass records it for the boot check."""
+    migration = conversation_entries_migration
+    try:
+        outcome = await migration.migrate(ref, apply=apply)
+    except Exception as exc:  # one conversation's crash must not stop the others
+        outcome = MigrationOutcome(ref.conversation_id, MigrationAction.FAILED, reason=_crash(exc))
+    if apply and outcome.action in _RECORDED:
+        await migration.mark_failed(ref, outcome.reason)
+    elif apply and outcome.action is not MigrationAction.RACED:
+        await migration.clear_failed(ref)
+    return outcome
+
+
 async def migrate_all(*, apply: bool) -> int:
     """Migrate every head the log lags; 1 while any conversation raced or was refused."""
     actions: Counter[MigrationAction] = Counter()
     totals = _Totals()
     for scan in _scans(every_embedded=False):
         async for ref in _heads(scan):
-            outcome = await conversation_entries_migration.migrate(ref, apply=apply)
+            outcome = await migrate_one(ref, apply=apply)
             actions[outcome.action] += 1
             totals.written += outcome.written
             totals.rewritten += outcome.rewritten
@@ -101,9 +127,10 @@ async def migrate_all(*, apply: bool) -> int:
             if outcome.action in _FAILED:
                 print(f"  [{outcome.action}] {ref.conversation_id}: {outcome.reason or 're-run'}")
             elif outcome.action is not MigrationAction.UNCHANGED:
+                moved = "; array moved to the archive" if outcome.relocated else ""
                 print(
                     f"  [{outcome.action}] {ref.conversation_id}: {outcome.written} written, "
-                    f"{outcome.rewritten} rewritten, {outcome.identified} given an id"
+                    f"{outcome.rewritten} rewritten, {outcome.identified} given an id{moved}"
                 )
     counts = ", ".join(f"{n} {a}" for a, n in sorted(actions.items())) or "nothing to migrate"
     print(
@@ -132,7 +159,10 @@ async def verify_all() -> int:
     verified = failed = 0
     for scan in _scans(every_embedded=True):
         async for ref in _heads(scan):
-            report = await conversation_entries_migration.verify(ref)
+            try:
+                report = await conversation_entries_migration.verify(ref)
+            except Exception as exc:  # one conversation's crash must not stop the others
+                report = VerifyReport(ref.conversation_id, mismatches=[f"crashed: {_crash(exc)}"])
             verified += 1
             if not report.ok:
                 failed += 1

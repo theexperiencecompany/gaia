@@ -105,6 +105,7 @@ def _message(logged: LoggedEntry, beside: _Beside) -> ConversationEntry | None:
                 tool_data=list(reply.tool_data) or None,
                 follow_up_actions=list(reply.follow_up_actions) or None,
                 image_data=reply.image,
+                fileIds=list(reply.file_ids),
                 replyToMessage=_quote(beside, target),
                 in_progress=True if settled is None else None,
                 stopped=True if settled and settled.outcome is ReplyOutcome.STOPPED else None,

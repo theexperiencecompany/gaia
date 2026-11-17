@@ -24,7 +24,11 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 import pytest
 from redis.asyncio import Redis
 
-from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION
+from app.constants.chat import (
+    CONVERSATION_ARCHIVED_MESSAGES_COLLECTION,
+    CONVERSATION_ENTRIES_COLLECTION,
+    CONVERSATION_MIGRATION_FAILURES_COLLECTION,
+)
 from app.db.mongodb.indexes import CONVERSATION_ENTRY_INDEXES
 from app.db.repositories import conversations as conversations_module
 from app.db.repositories.conversation_log import ConversationLogRepository
@@ -78,9 +82,16 @@ async def raw_collection(
     # Namespaced like every other test database (worker_mongo_db_name) so a
     # lane sharing one mongod owns — and can drop — everything it creates.
     coll = client[worker_mongo_db_name()][f"contract_fixture_{worker}_{uuid.uuid4().hex}"]
-    # The one collection a repository writes beside its own: the conversation
-    # repository's entry log, kept apart so heads and entries never mix.
-    entries = coll.database[f"{coll.name}_{CONVERSATION_ENTRIES_COLLECTION}"]
+    # The collections the conversation repository writes beside its own (its entry
+    # log, and the entries migration's records), kept apart so heads never mix with them.
+    siblings = {
+        name: coll.database[f"{coll.name}_{name}"]
+        for name in (
+            CONVERSATION_ENTRIES_COLLECTION,
+            CONVERSATION_MIGRATION_FAILURES_COLLECTION,
+            CONVERSATION_ARCHIVED_MESSAGES_COLLECTION,
+        )
+    }
 
     # Both modules that hold the accessor: the base owns every standard path,
     # and notifications binds its own for the one bulk update_many the base
@@ -89,7 +100,7 @@ async def raw_collection(
         # pymongo refuses a non-str name, so a repository that lost its name fails here too.
         if not isinstance(name, str):
             raise TypeError("name must be an instance of str")
-        return entries if name == CONVERSATION_ENTRIES_COLLECTION else coll
+        return siblings.get(name, coll)
 
     monkeypatch.setattr("app.db.repositories.base.get_async_collection", accessor)
     monkeypatch.setattr("app.db.repositories.notifications.get_async_collection", accessor)
@@ -99,7 +110,8 @@ async def raw_collection(
     # A flush still in flight would recreate the collections after the drop.
     await asyncio.gather(*_spawned_tasks, return_exceptions=True)
     await coll.drop()
-    await entries.drop()
+    for sibling in siblings.values():
+        await sibling.drop()
     client.close()
 
 

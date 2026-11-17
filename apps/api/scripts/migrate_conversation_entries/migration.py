@@ -18,10 +18,15 @@ from enum import StrEnum
 import hashlib
 import json
 
-from bson import ObjectId
+from bson import ObjectId, encode
 from pydantic import ValidationError
 
-from app.constants.chat import CONVERSATION_ENTRIES_COLLECTION, ConversationSource
+from app.constants.chat import (
+    CONVERSATION_ARCHIVED_MESSAGES_COLLECTION,
+    CONVERSATION_ENTRIES_COLLECTION,
+    CONVERSATION_MIGRATION_FAILURES_COLLECTION,
+    ConversationSource,
+)
 from app.db.repositories.conversation_entries import (
     EMPTY_LOG_STATE,
     LOG_HEAD_FIELD,
@@ -56,12 +61,15 @@ from app.services.conversation.reducer import reduce
 from scripts.migrate_conversation_entries.legacy import (
     BOT_MESSAGE_TYPE,
     USER_MESSAGE_TYPE,
+    ArchivedElement,
     ConversationEntry,
     EmbeddedHead,
     HeadRefRow,
     LegacyMessage,
     LegacyShape,
     NotKeptFields,
+    entry_at,
+    legacy_message,
 )
 from scripts.migrate_conversation_entries.oracle import legacy_messages
 from shared.py.conversation_wire import FailureReason, ReplyOutcome
@@ -112,6 +120,10 @@ _HEAD_REF_STAGE: dict[str, object] = {
 _BY_HEAD_ID: dict[str, object] = {"$sort": {"_id": 1}}
 _ID_FIELD = "message_id"
 _FOUND = "_found"
+#: Mongo's BSON document limit: a head write that would pass it fails the whole update.
+MAX_HEAD_BYTES = 16 * 1024 * 1024
+#: Set on a head whose embedded array a pass moved to the archive collection to make room for the log.
+ARCHIVED_FIELD = "messages_archived"
 
 
 class MigrationAction(StrEnum):
@@ -122,6 +134,7 @@ class MigrationAction(StrEnum):
     UNCHANGED = "unchanged"
     RACED = "raced"
     REFUSED = "refused"
+    FAILED = "failed"
 
 
 @dataclass
@@ -135,6 +148,7 @@ class MigrationOutcome:
     identified: int = 0
     folded: int = 0
     not_kept: int = 0
+    relocated: bool = False
     reason: str = ""
 
 
@@ -246,17 +260,6 @@ def minted_ids(elements: Sequence[LegacyMessage]) -> list[str | None]:
     return minted
 
 
-def entry_at(date: object) -> datetime | None:
-    """Return when an old message was written: its ISO date (a naive one read as UTC); None when it has none."""
-    if not isinstance(date, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(date)
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-
-
 def _ack_target(element: _Element, users: set[str]) -> tuple[str, str] | None:
     """Return (target id, emoji) of an emoji_ack whose emoji and target both exist."""
     shape = LegacyShape.model_validate(element.fields)
@@ -281,7 +284,7 @@ def _settle_outcome(message: ConversationEntry) -> tuple[ReplyOutcome, FailureRe
 
 
 def _planned(
-    elements: Sequence[_Element], surface: ConversationSource
+    elements: Sequence[_Element], surface: ConversationSource, conversation_at: datetime
 ) -> tuple[list[_Planned], int]:
     """Turn the source into the log entries it holds, in order; return them and how many acks folded."""
     users = {element.id for element in elements if element.is_user}
@@ -293,7 +296,9 @@ def _planned(
     last_user: str | None = None
     for element in elements:
         try:
-            planned += _element_entries(element, surface, users, reactions, last_user)
+            planned += _element_entries(
+                element, surface, users, reactions, last_user, conversation_at
+            )
         except ValidationError as exc:
             raise MigrationRefused(f"message {element.id} cannot be a log entry: {exc}") from exc
         last_user = element.id if element.is_user else last_user
@@ -306,9 +311,10 @@ def _element_entries(
     users: set[str],
     reactions: Mapping[str, str],
     last_user: str | None,
+    conversation_at: datetime,
 ) -> list[_Planned]:
     """Return the entries one old message becomes: none for a folded ack, a reply's settle after it."""
-    message = ConversationEntry.model_validate({**element.fields, "seq": 0})
+    message = legacy_message(element.fields, conversation_at)
     at = entry_at(LegacyShape.model_validate(element.fields).date)
     if element.is_user:
         return [_Planned(_user_message(message, surface, reactions), element.seq, at)]
@@ -363,6 +369,7 @@ def _reply(message: ConversationEntry, users: set[str], *, blank: bool) -> Reply
         tool_data=tuple(message.tool_data or ()),
         follow_up_actions=tuple(message.follow_up_actions or ()),
         image=message.image_data,
+        file_ids=tuple(message.fileIds or ()),
         quote_target=quoted if quoted in users else None,
         pinned=bool(message.pinned),
         imported=True,
@@ -452,7 +459,9 @@ def _normalized(payload: Mapping[str, object], *, dated: bool) -> dict[str, obje
     return shown
 
 
-def expected_messages(elements: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+def expected_messages(
+    elements: Sequence[Mapping[str, object]], conversation_at: datetime
+) -> list[dict[str, object]]:
     """Return what a client reads of the old array once migrated, derived from the array alone.
 
     An emoji_ack with a target and an emoji is its target's chat-model reaction (kept, emptied,
@@ -460,7 +469,7 @@ def expected_messages(elements: Sequence[Mapping[str, object]]) -> list[dict[str
     none, server_restart when the old reply never finished; a bot quote of a user message reads
     that message's text.
     """
-    parsed = [(e, ConversationEntry.model_validate({**e, "seq": 0})) for e in elements]
+    parsed = [(e, legacy_message(e, conversation_at)) for e in elements]
     users = {m.message_id: m for _, m in parsed if m.type == USER_MESSAGE_TYPE}
     reactions: dict[str, str] = {}
     folded: set[str] = set()
@@ -538,8 +547,10 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
         return await self._scan(dict(UNMIGRATED_HEADS), after_head_id=after_head_id, batch=batch)
 
     async def heads_with_embedded(self, *, after_head_id: str | None, batch: int) -> list[HeadRef]:
-        """Return the next batch of heads still holding an embedded array, in _id order."""
-        match: dict[str, object] = {"messages.0": {"$exists": True}}
+        """Return the next batch of heads holding an embedded array, or whose array a pass archived, in _id order."""
+        match: dict[str, object] = {
+            "$or": [{"messages.0": {"$exists": True}}, {ARCHIVED_FIELD: True}]
+        }
         return await self._scan(match, after_head_id=after_head_id, batch=batch)
 
     async def heads_with_message_entries(
@@ -586,15 +597,16 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
             )
         minted = minted_ids(head.messages)
         identified = sum(entry_id is not None for entry_id in minted)
-        if identified and apply:
-            if not await self._identify(ref, head.fingerprint, minted):
-                return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
-            head = await self._head(ref)
-            if head is None:
-                return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
-        stored = await self._stored(ref)
         try:
-            plan = self._plan(ref, head, stored, minted=None if apply else minted)
+            plan = self._plan(ref, head, await self._stored(ref), minted=minted)
+            relocate = _needs_room(head, plan, minted)
+            if identified and apply and not relocate:
+                if not await self._identify(ref, head.fingerprint, minted):
+                    return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
+                head = await self._head(ref)
+                if head is None:
+                    return MigrationOutcome(ref.conversation_id, MigrationAction.RACED)
+                plan = self._plan(ref, head, await self._stored(ref), minted=None)
         except MigrationRefused as exc:
             return MigrationOutcome(ref.conversation_id, MigrationAction.REFUSED, reason=str(exc))
         action = MigrationAction.COPIED if head.log_head is None else MigrationAction.MERGED
@@ -609,14 +621,32 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
             identified=identified,
             folded=plan.folded,
             not_kept=plan.not_kept,
+            relocated=relocate,
         )
+        archived = _identified(head.messages, minted) if relocate else None
         if (
             apply
             and action is not MigrationAction.UNCHANGED
-            and not await self._write(ref, head, plan)
+            and not await self._write(ref, head, plan, archived=archived)
         ):
             outcome.action = MigrationAction.RACED
         return outcome
+
+    async def mark_failed(self, ref: HeadRef, reason: str) -> None:
+        """Record that the last pass failed on this conversation, so the boot check refuses it."""
+        failures = self._sibling_collection(CONVERSATION_MIGRATION_FAILURES_COLLECTION)
+        with store_errors("migration failure record"):  # pragma: no mutate — error label only
+            await failures.update_one(
+                _of(ref),
+                {"$set": {"head_id": ref.head_id, "reason": reason}},
+                upsert=True,
+            )
+
+    async def clear_failed(self, ref: HeadRef) -> None:
+        """Drop the conversation's failure record once a pass migrated it."""
+        failures = self._sibling_collection(CONVERSATION_MIGRATION_FAILURES_COLLECTION)
+        with store_errors("migration failure record"):  # pragma: no mutate — error label only
+            await failures.delete_one(_of(ref))
 
     async def verify(self, ref: HeadRef) -> VerifyReport:
         """Check that what clients read back (history, sync, search, pinned) is what the old array showed."""
@@ -641,14 +671,19 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
             return report
         if head.log_head != max(log, default=0) or head.state != state:
             report.mismatches.append("the head's log_head or state is not the fold of its entries")
-        if head.messages:
-            await self._compare_reads(ref, [m.stored() for m in head.messages], report)
+        archived = await self._archived(ref) if head.messages_archived else []
+        if elements := [*archived, *(m.stored() for m in head.messages)]:
+            await self._compare_reads(ref, elements, head.conversation_at, report)
         return report
 
     async def _compare_reads(
-        self, ref: HeadRef, elements: Sequence[Mapping[str, object]], report: VerifyReport
+        self,
+        ref: HeadRef,
+        elements: Sequence[Mapping[str, object]],
+        conversation_at: datetime,
+        report: VerifyReport,
     ) -> None:
-        expected = expected_messages(elements)
+        expected = expected_messages(elements, conversation_at)
         shapes = [LegacyShape.model_validate(e) for e in elements]
         dated = {str(shape.message_id) for shape in shapes if entry_at(shape.date) is not None}
         report.messages = len(expected)
@@ -684,10 +719,10 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
     ) -> _Plan:
         """Plan the writes that turn the sources into log entries, then fold the result and require it idle.
 
-        minted names the ids a dry run would write back, so its plan matches the applied one.
+        minted names the ids not yet written into the array, so a dry run plans what apply writes.
         """
         elements, existing, shaped = _sources(head, stored, minted)
-        planned, folded = _planned(elements, _surface(head.source))
+        planned, folded = _planned(elements, _surface(head.source), head.conversation_at)
         plan = _Plan(folded=folded)
         plan.not_kept = sum(NotKeptFields.model_validate(e.fields).carried() for e in elements)
         plan.log = {row.seq: logged_of(row) for row in existing.values()}
@@ -720,39 +755,81 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
         plan.state = _fold(plan.log)
         return plan
 
-    async def _write(self, ref: HeadRef, head: EmbeddedHead, plan: _Plan) -> bool:
-        """Write the plan's entries, then the head, only while it is as read; a raced pass removes its inserts."""
-        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
-        read_head = head.log_head or 0
+    async def _write(
+        self,
+        ref: HeadRef,
+        head: EmbeddedHead,
+        plan: _Plan,
+        *,
+        archived: Sequence[Mapping[str, object]] | None,
+    ) -> bool:
+        """Write the plan's entries, then the head, only while it is as read.
+
+        archived is the array to move off the head (its minted ids written into it) when the head
+        is too full to keep it beside the log pointer.
+
+        A raced or failed pass removes its entries past the head and its archive rows, so nothing
+        is orphaned; rewrites at or below the head are by entry id, so the next pass completes them.
+        """
         expected: dict[str, object] = {
             "_id": ObjectId(ref.head_id),
             LOG_HEAD_FIELD: head.log_head if head.log_head is not None else {"$exists": False},
             "$expr": {"$eq": [EMBEDDED_FINGERPRINT, head.fingerprint]},
         }
-        marks: dict[str, object] = {
-            LOG_HEAD_FIELD: max(plan.log, default=0),
-            STATE_FIELD: plan.state.model_dump(mode="json"),
-        }
-        if head.messages:
-            marks[MIGRATED_FINGERPRINT_FIELD] = head.fingerprint
-        with store_errors("migration write"):  # pragma: no mutate — error label only
-            await entries.delete_many({**_of(ref), "seq": {"$gt": read_head}})
-            for seq, document in plan.replaces:
-                await entries.replace_one({**_of(ref), "seq": seq}, document)
-            for entry_id, update in plan.updates:
-                await entries.update_one({**_of(ref), "id": entry_id}, update)
-            if plan.inserts:
-                await entries.insert_many(plan.inserts)
-            result = await self._raw_collection().update_one(
-                expected,
-                {
-                    "$set": marks,
-                    **({"$currentDate": {"updatedAt": True}} if plan.writes else {}),
-                },
-            )
-            if not result.matched_count:
-                await entries.delete_many({**_of(ref), "seq": {"$gt": read_head}})
+        relocate = archived is not None
+        update: dict[str, object] = {"$set": _marks(head, plan, relocate=relocate)}
+        if plan.writes:
+            update["$currentDate"] = {"updatedAt": True}
+        if relocate:
+            update["$unset"] = {"messages": ""}
+        try:
+            with store_errors("migration write"):  # pragma: no mutate — error label only
+                await self._write_entries(ref, head, plan)
+                if archived is not None:
+                    await self._archive(ref, head.fingerprint, archived)
+                result = await self._raw_collection().update_one(expected, update)
+        except Exception:
+            await self._undo(ref, head)
+            raise
+        if not result.matched_count:
+            await self._undo(ref, head)
         return result.matched_count > 0
+
+    async def _write_entries(self, ref: HeadRef, head: EmbeddedHead, plan: _Plan) -> None:
+        entries = self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION)
+        await entries.delete_many({**_of(ref), "seq": {"$gt": head.log_head or 0}})
+        for seq, document in plan.replaces:
+            await entries.replace_one({**_of(ref), "seq": seq}, document)
+        for entry_id, entry_update in plan.updates:
+            await entries.update_one({**_of(ref), "id": entry_id}, entry_update)
+        if plan.inserts:
+            await entries.insert_many(plan.inserts)
+
+    async def _archive(
+        self, ref: HeadRef, fingerprint: int, elements: Sequence[Mapping[str, object]]
+    ) -> None:
+        """Copy the array, one row per element, keyed by the array it came from."""
+        archive = self._sibling_collection(CONVERSATION_ARCHIVED_MESSAGES_COLLECTION)
+        source = {"head_id": ref.head_id, "fingerprint": fingerprint}
+        await archive.delete_many(source)
+        await archive.insert_many([{**source, "message": dict(e)} for e in elements])
+
+    async def _undo(self, ref: HeadRef, head: EmbeddedHead) -> None:
+        """Remove the entries a pass wrote past the head as read, and the archive rows it wrote."""
+        with store_errors("migration undo"):  # pragma: no mutate — error label only
+            await self._sibling_collection(CONVERSATION_ENTRIES_COLLECTION).delete_many(
+                {**_of(ref), "seq": {"$gt": head.log_head or 0}}
+            )
+            await self._sibling_collection(CONVERSATION_ARCHIVED_MESSAGES_COLLECTION).delete_many(
+                {"head_id": ref.head_id, "fingerprint": head.fingerprint}
+            )
+
+    async def _archived(self, ref: HeadRef) -> list[dict[str, object]]:
+        """Return the elements earlier passes moved off the head, in the order they sat."""
+        archive = self._sibling_collection(CONVERSATION_ARCHIVED_MESSAGES_COLLECTION)
+        with store_errors("migration read"):  # pragma: no mutate — error label only
+            rows = await archive.find({"head_id": ref.head_id}).sort([("_id", 1)]).to_list(None)
+        return [ArchivedElement.model_validate(row).message for row in rows]
 
     async def _scan(
         self, match: dict[str, object], *, after_head_id: str | None, batch: int
@@ -772,7 +849,18 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
     async def _head(self, ref: HeadRef) -> EmbeddedHead | None:
         pipeline: list[Mapping[str, object]] = [
             {"$match": {"_id": ObjectId(ref.head_id)}},
-            {"$addFields": {"_fingerprint": EMBEDDED_FINGERPRINT}},
+            {
+                "$addFields": {
+                    "_fingerprint": EMBEDDED_FINGERPRINT,
+                    "_size": {"$bsonSize": "$$ROOT"},
+                    "_conversation_at": {
+                        "$ifNull": [
+                            {"$convert": {"input": "$createdAt", "to": "date", "onError": None}},
+                            {"$toDate": "$_id"},
+                        ]
+                    },
+                }
+            },
         ]
         with store_errors("migration read"):  # pragma: no mutate — error label only
             raws = await self._raw_collection().aggregate(pipeline).to_list(length=None)
@@ -799,6 +887,39 @@ class ConversationEntriesMigration(ConversationMigrationGuard):
                 [{"$set": {"messages": _with_ids(minted)}}],
             )
         return result.modified_count > 0
+
+
+def _marks(head: EmbeddedHead, plan: _Plan, *, relocate: bool) -> dict[str, object]:
+    """Return what the head write sets: the log pointer, and which array the log now holds."""
+    marks: dict[str, object] = {
+        LOG_HEAD_FIELD: max(plan.log, default=0),
+        STATE_FIELD: plan.state.model_dump(mode="json"),
+    }
+    if relocate:
+        marks[ARCHIVED_FIELD] = True
+    elif head.messages:
+        marks[MIGRATED_FINGERPRINT_FIELD] = head.fingerprint
+    return marks
+
+
+def _needs_room(head: EmbeddedHead, plan: _Plan, minted: Sequence[str | None]) -> bool:
+    """Whether the head is too full to take the minted ids and the log pointer beside its array.
+
+    Every field is counted as new, so the bound only ever errs towards moving the array.
+    """
+    marks = encode({**_marks(head, plan, relocate=False), "updatedAt": datetime.now(UTC)})
+    ids = sum(len(encode({_ID_FIELD: entry_id})) for entry_id in minted if entry_id)
+    return bool(head.messages) and head.size + len(marks) + ids > MAX_HEAD_BYTES
+
+
+def _identified(
+    elements: Sequence[LegacyMessage], minted: Sequence[str | None]
+) -> list[dict[str, object]]:
+    """Return the array as stored, with each minted id in its element."""
+    return [
+        element.stored() if entry_id is None else {**element.stored(), _ID_FIELD: entry_id}
+        for element, entry_id in zip(elements, minted, strict=True)
+    ]
 
 
 def _surface(source: str | None) -> ConversationSource:
