@@ -793,6 +793,17 @@ class TestPresentation:
     def test_with_a_content_origin_every_mode_renders_as_published(self, origin: None) -> None:
         assert all(presented_render(_snapshot(render)) is render for render in RenderMode)
 
+    def test_on_one_content_host_a_pdf_downloads_and_html_still_runs(
+        self, origin: None, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A PDF can't be sandboxed: only a per-snapshot host isolates it from the next link's file."""
+        monkeypatch.setattr(
+            settings, "LINK_CONTENT_URL_TEMPLATE", "https://u.example.com/usercontent/{content_id}"
+        )
+        assert presented_render(_snapshot(RenderMode.PDF)) is RenderMode.DOWNLOAD
+        assert framed_content(_snapshot(RenderMode.PDF), LinkAccess.PUBLIC) is None
+        assert presented_render(_snapshot(RenderMode.FRAME_ACTIVE)) is RenderMode.FRAME_ACTIVE
+
     @pytest.mark.parametrize("render", [RenderMode.FRAME_ACTIVE, RenderMode.PDF, RenderMode.IMAGE])
     def test_framed_content_names_the_snapshot(self, origin: None, render: RenderMode) -> None:
         framed = framed_content(_snapshot(render), LinkAccess.UNLISTED)

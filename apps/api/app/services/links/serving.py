@@ -14,6 +14,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from app.config.settings import settings
 from app.models.short_link_models import LinkSnapshot, RenderMode
+from app.services.links.content import isolates_each_snapshot
 
 _SHARED_HEADERS = {
     "X-Content-Type-Options": "nosniff",
@@ -41,7 +42,8 @@ _FRAME_ACTIVE_CSP = (
     "media-src data: blob: https:; connect-src 'none'; form-action 'none'; base-uri 'none'; "
     "frame-src 'none'; worker-src 'none'; frame-ancestors {app_origin}"
 )
-# Browsers refuse to render a PDF in a sandboxed document, so its isolation is the origin alone.
+# Browsers won't render a PDF in a sandbox, so a per-snapshot host is its only isolation;
+# without one (a self-host's single content host) a PDF is only ever a download.
 _PDF_CSP = "default-src 'none'; object-src 'self'; frame-ancestors {app_origin}"
 _SVG_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 
@@ -107,6 +109,8 @@ def snapshot_response(
                 varies_by_dest=True,
             )
         case RenderMode.PDF:
+            if not isolates_each_snapshot():
+                return download_response(body, snapshot)
             csp = _PDF_CSP.format(app_origin=app_origin)
             return _response(body, snapshot.mime, csp, "inline", SNAPSHOT_CACHE_CONTROL)
         case RenderMode.TEXT:

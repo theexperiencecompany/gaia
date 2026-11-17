@@ -362,8 +362,19 @@ def active_link_content() -> bool:
 _WITHOUT_ORIGIN: dict[RenderMode, RenderMode] = {RenderMode.FRAME_ACTIVE: RenderMode.TEXT}
 
 
+def isolates_each_snapshot() -> bool:
+    """Whether every snapshot gets a host of its own, the only isolation a PDF can have.
+
+    A self-host serves every snapshot from one host, where one link's PDF could read the next's.
+    """
+    template = settings.LINK_CONTENT_URL_TEMPLATE
+    return template is not None and "{content_id}" in urlsplit(template).netloc
+
+
 def presented_render(snapshot: LinkSnapshot) -> RenderMode:
     """How the page shows a snapshot on this deployment."""
+    if snapshot.render is RenderMode.PDF and not isolates_each_snapshot():
+        return RenderMode.DOWNLOAD
     if active_link_content() or snapshot.render is RenderMode.TEXT:
         return snapshot.render
     return _WITHOUT_ORIGIN.get(snapshot.render, RenderMode.DOWNLOAD)

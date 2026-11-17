@@ -118,6 +118,7 @@ class TestSvg:
         assert response.headers["vary"] == "Sec-Fetch-Dest"
 
 
+@pytest.mark.usefixtures("origin")
 def test_a_pdf_renders_in_the_browser_viewer_framed_only_by_the_app() -> None:
     response = snapshot_response(
         b"%PDF", _snapshot(RenderMode.PDF, "application/pdf", "d.pdf"), "iframe", LINK
@@ -132,6 +133,19 @@ def test_a_pdf_renders_in_the_browser_viewer_framed_only_by_the_app() -> None:
     assert headers["content-security-policy"] == (
         "default-src 'none'; object-src 'self'; frame-ancestors https://heygaia.io"
     )
+
+
+def test_on_one_content_host_a_pdf_is_only_ever_a_download(
+    origin: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        settings, "LINK_CONTENT_URL_TEMPLATE", "https://u.example.com/usercontent/{content_id}"
+    )
+    response = snapshot_response(
+        b"%PDF", _snapshot(RenderMode.PDF, "application/pdf", "d.pdf"), "iframe", LINK
+    )
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["content-disposition"] == "attachment; filename*=UTF-8''d.pdf"
 
 
 @pytest.mark.parametrize(
