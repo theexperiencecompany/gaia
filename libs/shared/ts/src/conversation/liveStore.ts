@@ -66,6 +66,23 @@ export interface LiveConversationState<Send extends QueuedSend> {
   mirror: (conversationId: string, live: LiveConversation<Send>) => void;
 }
 
+/**
+ * The sends the server has not delivered yet: one is delivered once its item is on the screen
+ * and the server's state has caught up to it, whatever this device's POST reported.
+ */
+function undelivered<Send extends QueuedSend>(
+  view: ConversationView,
+  sends: Readonly<Record<string, Send>>,
+): Readonly<Record<string, Send>> {
+  const delivered = new Set(
+    view.items.filter((item) => item.seq <= view.head).map((item) => item.id),
+  );
+  if (!Object.keys(sends).some((id) => delivered.has(id))) return sends;
+  return Object.fromEntries(
+    Object.entries(sends).filter(([id]) => !delivered.has(id)),
+  );
+}
+
 const fold = (
   view: ConversationView,
   frames: readonly ConversationFrame[],
@@ -100,12 +117,13 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
       head,
       screenHead: head,
     };
-    const view = Object.entries(sends).reduce(
+    const owed = undelivered(known, sends);
+    const view = Object.entries(owed).reduce(
       (current, [id, send]) =>
         addPendingSend(current, { id, text: send.body.text }),
       known,
     );
-    return { view, sends, olderBefore };
+    return { view, sends: owed, olderBefore };
   };
 
   const paged = (
@@ -116,6 +134,7 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
     return {
       ...live,
       view,
+      sends: undelivered(view, live.sends),
       olderBefore: olderBefore(view, page, live.olderBefore),
     };
   };
@@ -166,7 +185,11 @@ export function createLiveConversationStore<Send extends QueuedSend>() {
           set((state) => ({
             conversations: {
               ...state.conversations,
-              [conversationId]: { ...live, view },
+              [conversationId]: {
+                ...live,
+                view,
+                sends: undelivered(view, live.sends),
+              },
             },
           }));
         }

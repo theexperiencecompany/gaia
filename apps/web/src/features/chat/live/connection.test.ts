@@ -470,6 +470,37 @@ describe("reload", () => {
     expect(view().drafts[0]?.content.bubbles).toEqual(["on it"]);
   });
 
+  it("forgets a send once the server shows it, so a reload never calls a delivered message undelivered", async () => {
+    sendResult.fail = new Error("timed out after the server took it");
+    release = openConversation(CONVERSATION);
+    await flush();
+    await expect(
+      sendMessage("hello", { conversationId: CONVERSATION }),
+    ).rejects.toThrow();
+    const [{ id }] = view().pending;
+    expect(liveConversation(CONVERSATION).sends[id]?.failed).toBe(true);
+
+    lastStream().push(insertFrame(userItem(id, 1, "hello")));
+    lastStream().push(state(1, "thinking"));
+    persistConversation(CONVERSATION, { immediately: true });
+    await flush();
+    expect(liveConversation(CONVERSATION).sends).toEqual({});
+
+    // A reload whose saved window no longer holds the message.
+    release();
+    release = null;
+    useLiveConversationStore.setState({ conversations: {} });
+    const log = saved.get(CONVERSATION) as { items: ScreenItem[] };
+    saved.set(CONVERSATION, { ...log, items: [] });
+    sendResult.fail = null;
+    sendResult.calls = [];
+    release = openConversation(CONVERSATION);
+    await flush();
+
+    expect(view().pending).toEqual([]);
+    expect(sendResult.calls).toEqual([]);
+  });
+
   it("saves the screen and the sends it holds", async () => {
     release = openConversation(CONVERSATION);
     await flush();
