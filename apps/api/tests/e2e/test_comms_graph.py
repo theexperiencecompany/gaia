@@ -14,9 +14,10 @@ turn carries into the next.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from itertools import pairwise
 import json
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from langchain_core.messages import (
@@ -34,6 +35,7 @@ from app.agents.context.section_context import SectionContext
 from app.agents.context.slots import MEMORY_RECALL_MARKER, mark
 from app.agents.context.tiers import AgentTier
 from app.constants.browser import HandoffStatus
+from app.models.agent_config import StepTurnRef
 from app.schemas.browser import NewHandoff
 from app.schemas.browser_job import BrowserJobStatus
 from app.services.browser.handoff import create_pending_handoff, get_handoff
@@ -53,6 +55,24 @@ from tests.e2e._harness.graph_run import (
 )
 
 pytestmark = pytest.mark.e2e
+
+#: The step attempt every comms run belongs to; the step stamps it, a bare graph run does not.
+STEP: StepTurnRef = {
+    "epoch": 1,
+    "batch_start": 1,
+    "cause_through": 1,
+    "answers": ["m1"],
+    "asked": True,
+}
+
+
+@pytest.fixture
+def logged_work() -> Iterator[AsyncMock]:
+    """Accept the hand-off's WorkStarted, which the step's log fences; work_log's tests prove that write."""
+    with patch(
+        "app.agents.tools.executor_tool.record_work_started", new=AsyncMock(return_value=True)
+    ) as record:
+        yield record
 
 
 class TestCommsToolSurface:
@@ -81,24 +101,34 @@ class TestCommsToolSurface:
 
         assert REJECT_NODE not in run.nodes(), f"{tool} was not bound to comms"
 
-    async def test_delegating_to_the_executor_actually_dispatches(self):
+    async def test_delegating_to_the_executor_actually_dispatches(self, logged_work: AsyncMock):
         """Uses its own thread: call_executor's busy lock (executor:busy:{thread_id}, 30-minute TTL) would otherwise queue this dispatch instead of running it."""
         async with comms_graph(
             [call("call_executor", {"task": "book a table"}, call_id="c1"), "On it."]
         ) as graph:
-            run = await run_graph(graph, "book me a table", thread_id=f"dispatch-{uuid4()}")
+            run = await run_graph(
+                graph,
+                "book me a table",
+                thread_id=f"dispatch-{uuid4()}",
+                conversation_step=STEP,
+            )
 
         result = run.result_for("call_executor") or ""
         assert not result.startswith("Error"), result
         assert "task_id" in result, f"the handoff was never dispatched: {result!r}"
+        assert logged_work.await_args.args[0] == STEP
 
     @pytest.mark.regression
-    async def test_a_handoff_missing_a_required_argument_is_corrected_then_dispatched(self):
+    async def test_a_handoff_missing_a_required_argument_is_corrected_then_dispatched(
+        self, logged_work: AsyncMock
+    ):
         """A dropped acceptance_criteria comes back naming the field to fix, and the retry runs."""
         incomplete = {"name": "call_executor", "args": {"task": "sign me in"}, "id": "c1"}
         retry = call("call_executor", {"task": "sign me in"}, call_id="c2")
         async with comms_graph([incomplete, retry, "On it."]) as graph:
-            run = await run_graph(graph, "sign me in to github", thread_id=f"retry-{uuid4()}")
+            run = await run_graph(
+                graph, "sign me in to github", thread_id=f"retry-{uuid4()}", conversation_step=STEP
+            )
 
         results = {
             event.message.tool_call_id: event.message

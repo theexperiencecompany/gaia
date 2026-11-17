@@ -64,6 +64,7 @@ from app.workers.tasks.workflow_tasks import execute_workflow_by_id
 from shared.py.conversation_wire import ReplyOutcome
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel, users_get
+from tests.unit.services.conversation.log_helpers import EMPTY
 
 
 @pytest.mark.e2e
@@ -540,19 +541,30 @@ class TestWorkflowExecutionFailurePropagation:
             "get_or_create_workflow_conversation",
             AsyncMock(return_value="conv-workflow-1"),
         )
-        # The fire claims that conversation before it spends anything. Stubbed
-        # so the tier stays offline: the claim is Redis, and its own behaviour
-        # is proven in tests/unit/agents/test_executor_queue.py.
-        monkeypatch.setattr(workflow_tasks, "try_acquire_lock", AsyncMock(return_value=True))
-        monkeypatch.setattr(workflow_tasks, "release_lock_if_owned", AsyncMock())
+        # The fire is admitted to that conversation before it spends anything. Stubbed
+        # so the tier stays offline: the admission is Redis and the log, and its own
+        # behaviour is proven in tests/unit/workers/test_workflow_tasks_playbook.py.
+        monkeypatch.setattr(
+            workflow_tasks,
+            "redis_cache",
+            MagicMock(
+                client=MagicMock(
+                    set=AsyncMock(return_value=True),
+                    get=AsyncMock(return_value=None),
+                    delete=AsyncMock(),
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            workflow_tasks,
+            "runtime_ports",
+            MagicMock(return_value=MagicMock(log=MagicMock(state=AsyncMock(return_value=EMPTY)))),
+        )
         monkeypatch.setattr(
             workflow_tasks, "get_user_by_id", AsyncMock(return_value=UserDocument(timezone="UTC"))
         )
         # The owner check reads the users collection; every owner here is a real user.
         monkeypatch.setattr(user_repository, "get", users_get)
-        # The checkpoint reset is Postgres; its own behaviour is proven in
-        # tests/unit/services/workflow/test_thread_reset.py.
-        monkeypatch.setattr(workflow_tasks, "reset_workflow_threads", AsyncMock(return_value=0))
         monkeypatch.setattr(
             tiered_rate_limiter.tiered_limiter, "check_and_increment", AsyncMock(return_value={})
         )
@@ -608,7 +620,6 @@ class TestWorkflowExecutionFailurePropagation:
         async def _outcome(*_args: object) -> EntryOutcome:
             return outcomes[-1]
 
-        monkeypatch.setattr(workflow_tasks, "runtime_ports", MagicMock())
         monkeypatch.setattr(workflow_tasks, "accept", _fire)
         monkeypatch.setattr(workflow_tasks, "await_outcome", _outcome)
         # The record is written by the invocation layer inside the real run; the

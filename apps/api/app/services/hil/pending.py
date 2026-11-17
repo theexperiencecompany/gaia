@@ -32,6 +32,8 @@ async def pending_approvals(conversation_id: str, user_id: str) -> list[PendingA
     One past its time is the sweep's to expire, never a reply's to decide.
     """
     asking = (await runtime_ports().log.state(conversation_id, user_id)).asking
+    if not asking:
+        return []
     logged = await conversation_log_repository.read_log(
         conversation_id, user_id=user_id, ids=[f"approval:{approval_id}" for approval_id in asking]
     )
