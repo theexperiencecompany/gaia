@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
 from langchain_core.tools import BaseTool, tool
+from prometheus_client import REGISTRY
 import pytest
 from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
@@ -765,6 +766,25 @@ class TestOneScoutFailing:
         assert error["msg"] == "briefing.scout_failed"
         assert error["error"] == "no tools reachable for github"
         assert error["error_type"] == "AppError"
+
+    @pytest.mark.regression
+    async def test_every_scouts_turn_is_counted_for_the_scout_failure_alert(
+        self, scouts: Scouts
+    ) -> None:
+        """A failed scout was only a wide-event error; no series could alert on the rate."""
+        scouts.integrations = [GITHUB, LINEAR]
+        scouts.broken_tools = {"github": AppError(message="no tools reachable for github")}
+        scouts.stored["linear"] = _scout(LINEAR)
+
+        def counted(outcome: str, skip_reason: str) -> float:
+            labels = {"outcome": outcome, "skip_reason": skip_reason}
+            return REGISTRY.get_sample_value("gaia_brief_scout_total", labels) or 0.0
+
+        failed, replayed = counted("skipped", "failed"), counted("replayed", "none")
+        await service.run_scouts(USER)
+
+        assert counted("skipped", "failed") == failed + 1
+        assert counted("replayed", "none") == replayed + 1
 
     async def test_a_scout_that_never_returns_is_skipped_so_the_next_one_still_runs(
         self, scouts: Scouts, monkeypatch: pytest.MonkeyPatch

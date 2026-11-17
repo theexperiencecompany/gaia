@@ -32,6 +32,7 @@ from app.models.scout_models import (
 from app.models.user_models import UserDocument
 from app.services.briefing.scouts.learn import learn_scout
 from app.services.briefing.scouts.memory import remember
+from app.services.briefing.scouts.metrics import record_scout_turn
 from app.services.briefing.scouts.spend import reserve_learn
 from app.services.briefing.scouts.tools import (
     ScoutIntegration,
@@ -278,6 +279,8 @@ async def run_scouts(user: UserDocument) -> list[ScoutResult]:
             return await _scout_turn(user, integration)
 
     results = list(await asyncio.gather(*(turn(i) for i in await scout_integrations(user.id))))
+    for result in results:
+        record_scout_turn(result)
     log.set_ns(
         "scouts",
         outcomes={r.integration_id: r.outcome.value for r in results},
