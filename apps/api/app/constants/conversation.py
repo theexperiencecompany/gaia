@@ -74,13 +74,6 @@ STILL_OPEN_NOTE = (
 STILL_OPEN_LINE = '#{seq} "{text}"'
 #: Suffix of the id of the still-open note, after the batch's anchor.
 STILL_OPEN_NOTE_SUFFIX = ":still-open"
-#: The hand-off the step makes for messages a run ended owing twice; one line per message follows.
-FALLBACK_HANDOFF_TASK = (
-    "The chat ended without answering these messages from the user. Handle each one and "
-    "answer it:\n{messages}"
-)
-FALLBACK_HANDOFF_DONE = "message #{seq} is answered or done"
-FALLBACK_HANDOFF_OUTCOME = "every one of these messages gets an answer"
 
 #: How much of an open message the still-open note quotes.
 STILL_OPEN_QUOTE_CHARS = 80

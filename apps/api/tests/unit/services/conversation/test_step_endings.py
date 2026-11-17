@@ -47,7 +47,7 @@ from shared.py.analytics import Dedupe
 from shared.py.analytics.catalog.chat import ChatTurnReacted
 from shared.py.conversation_wire import FailureReason, ReplyOutcome, ToolDataEntry
 from tests.helpers import captured_wide_event
-from tests.unit.services.conversation.log_helpers import barge, fired, user
+from tests.unit.services.conversation.log_helpers import barge, user
 from tests.unit.services.conversation.runtime_doubles import (
     CONVERSATION,
     USER,
@@ -57,7 +57,6 @@ from tests.unit.services.conversation.runtime_doubles import (
     Do,
     Fail,
     Forgetful,
-    HandedOff,
     Pause,
     RecordingAnalytics,
     RecordingFrames,
@@ -412,69 +411,36 @@ async def test_a_message_owed_when_the_answer_was_final_is_told_to_one_second_ru
     assert await outcomes(rt) == [(ReplyOutcome.SILENT, ("u1",))]
 
 
-async def test_a_message_owed_after_the_reminder_is_handed_off_under_the_steps_claim() -> None:
-    rt = Runtime()
-    rt.runner.script([Forgetful(), Finished(Silent())], [Forgetful(), Finished(Silent())])
-    await send(rt, user("u1"))
-    await run(rt)
-    assert [type(call) for call in rt.runner.calls] == [Started, Started, HandedOff]
-    assert rt.runner.calls[-1] == HandedOff((1,))
-    assert [claim.conversation_id for claim in rt.runner.runs[-1].handed_by] == [CONVERSATION]
-    assert await outcomes(rt) == [(ReplyOutcome.SILENT, ("u1",))]
-
-
-async def test_a_hand_off_made_when_the_answer_was_final_counts_as_the_settled_answer() -> None:
+async def test_a_message_owed_when_the_second_answer_was_final_fails_once_and_the_late_crash_adds_nothing() -> (
+    None
+):
     rt = Runtime()
     rt.runner.script(
         [Forgetful(), Finished(Silent())],
         [Forgetful(), Answered(Silent()), Do(rt.frames.mark), Fail(RuntimeError("late"))],
     )
     await send(rt, user("u1"))
-    async with captured_wide_event() as event:
-        await run(rt)
-    assert await outcomes(rt) == [(ReplyOutcome.SILENT, ("u1",))]
+    await run(rt)
+    assert [(item.outcome, item.answers) for item in await settles(rt)] == [
+        (ReplyOutcome.FAILED, ("u1",))
+    ]
     assert rt.frames.since_mark() == []
-    assert "errors" not in event
 
 
-async def test_a_hand_off_the_executor_refuses_fails_the_owed_message(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def refuse(run_: ScriptedRun, claim: StepClaim, messages: Sequence[LoggedEntry]) -> bool:
-        return False
-
-    monkeypatch.setattr(ScriptedRun, "hand_off", refuse)
+async def test_a_message_owed_after_the_reminder_fails_loudly_with_no_invented_hand_off() -> None:
     rt = Runtime()
     rt.runner.script([Forgetful(), Finished(Silent())], [Forgetful(), Finished(Silent())])
     await send(rt, user("u1"))
     async with captured_wide_event() as event:
         await run(rt)
     assert [type(call) for call in rt.runner.calls] == [Started, Started]
-    assert "errors" not in event
+    assert [error["owed"] for error in event["errors"]] == [[1]]
     [settle] = await settles(rt)
     assert (settle.outcome, settle.answers, settle.failure) == (
         ReplyOutcome.FAILED,
         ("u1",),
         FailureReason.MODEL_ERROR,
     )
-
-
-@pytest.mark.parametrize(
-    ("script", "expected"),
-    [
-        ([text("report"), Finished(Replied("report"))], ReplyOutcome.ANSWERED),
-        ([card(), Finished(Replied(""))], ReplyOutcome.ANSWERED),
-        ([Finished(Silent())], ReplyOutcome.SILENT),
-    ],
-)
-async def test_a_run_for_a_workflow_answers_it_only_when_it_showed_something(
-    script: list[Streamed | Finished], expected: ReplyOutcome
-) -> None:
-    rt = Runtime()
-    rt.runner.script(script)
-    await send(rt, fired("wf"))
-    await run(rt)
-    assert await outcomes(rt) == [(expected, ("wf",))]
 
 
 async def test_words_after_the_last_message_was_answered_end_as_an_interim_reply() -> None:
@@ -538,4 +504,26 @@ async def test_a_reply_that_failed_to_end_above_an_absorbed_message_still_fails_
     assert await outcomes(rt) == [
         (ReplyOutcome.INTERIM, ()),
         (ReplyOutcome.FAILED, ("u1", "u2")),
+    ]
+
+
+async def test_speaking_over_a_reply_that_a_later_message_split_ends_it_heard_and_answers_both() -> (
+    None
+):
+    rt = Runtime()
+    rt.runner.script(
+        [
+            text("hello there friend"),
+            Do(arrive(rt, user("u2", voice=True))),
+            ModelOutput(True),
+            Pause((arrive(rt, barge("b", "r1.1", 5)),)),
+        ],
+    )
+    await send(rt, user("u1", voice=True))
+    await run(rt)
+    spoken_over = (await replies(rt))[0]
+    assert (spoken_over.text, spoken_over.heard_through) == ("hello there friend", 5)
+    assert [(item.outcome, item.answers) for item in await settles(rt)] == [
+        (ReplyOutcome.INTERIM, ()),
+        (ReplyOutcome.TRUNCATED, ("u1", "u2")),
     ]

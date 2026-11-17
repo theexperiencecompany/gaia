@@ -31,7 +31,7 @@ from app.services.conversation.comms_input import (
     attempt_messages,
     entry_messages,
 )
-from shared.py.conversation_wire import ReplyOutcome
+from shared.py.conversation_wire import FailureReason, ReplyOutcome
 from tests.unit.services.conversation.log_helpers import (
     barge,
     finished,
@@ -266,3 +266,12 @@ def test_an_interruption_before_the_stops_inputs_does_not_record_the_stop() -> N
         "log:s2",
         "log:u3",
     ]
+
+
+def test_only_a_settle_failed_by_a_restart_tells_the_model_it_was_cut_off() -> None:
+    recovered = settled("r1:recovered:2", ("u1",), 1, outcome=ReplyOutcome.FAILED)
+    model_error = settled("r2:settled", (), 1, outcome=ReplyOutcome.FAILED).model_copy(
+        update={"failure": FailureReason.MODEL_ERROR}
+    )
+    assert [m.content for m in entry_messages(logged(4, recovered))] == [SERVER_RESTART_NOTE]
+    assert entry_messages(logged(5, model_error)) == []

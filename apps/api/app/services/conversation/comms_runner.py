@@ -10,12 +10,11 @@ from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, 
 from dataclasses import dataclass, replace
 from typing import TypedDict, cast
 
-from langchain_core.messages import AnyMessage, HumanMessage, ToolCall
+from langchain_core.messages import AnyMessage, HumanMessage
 from langgraph.constants import CONF
 from langgraph.errors import GraphRecursionError
 from langgraph.types import StreamMode
 
-from app.agents.core.comms_ledger import still_open
 from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.interruption import record_interruption
 from app.agents.core.messages import MessageAttachments, MessageScope, human_content
@@ -25,20 +24,12 @@ from app.agents.middleware.summarization import (
     SummaryUpdate,
     WorkspaceArchivingSummarizationMiddleware,
 )
-from app.agents.tools.executor_tool import call_executor
-from app.agents.tools.invocation import invoke_tool
-from app.constants.agents import TimeHorizon
 from app.constants.conversation import (
     COMMS_CANCEL_CONFIRM_SECONDS,
-    FALLBACK_HANDOFF_DONE,
-    FALLBACK_HANDOFF_OUTCOME,
-    FALLBACK_HANDOFF_TASK,
-    STILL_OPEN_LINE,
     STILL_OPEN_NOTE_SUFFIX,
     TURN_CONTEXT_ID_SUFFIX,
     WORKFLOW_RUN_REQUEST,
 )
-from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.graphs import GraphName
 from app.models.agent_config import StepTurnRef
 from app.models.agent_models import AgentConfigurable, AgentRunnableConfig, agent_configurable
@@ -150,29 +141,6 @@ class CommsGraphRun:
         if (step := configurable.get("conversation_step")) is not None:
             _join(step, joined)
         self._sealed = len(joined) < len(entries)
-
-    async def hand_off(self, claim: StepClaim, messages: Sequence[LoggedEntry]) -> bool:
-        """Hand messages the finished run never closed to the executor through call_executor itself."""
-        seqs = [logged.seq for logged in messages]
-        said = [
-            STILL_OPEN_LINE.format(seq=logged.seq, text=logged.entry.text)
-            for logged in messages
-            if isinstance(logged.entry, UserMessage)
-        ]
-        call: ToolCall = {
-            "name": CALL_EXECUTOR_NAME,
-            "args": {
-                "task": FALLBACK_HANDOFF_TASK.format(messages="\n".join(said)),
-                "for_messages": seqs,
-                "acceptance_criteria": [FALLBACK_HANDOFF_DONE.format(seq=seq) for seq in seqs],
-                "desired_outcome": FALLBACK_HANDOFF_OUTCOME,
-                "time_horizon": TimeHorizon.ONE_SHOT,
-            },
-            "id": f"fallback:{claim.conversation_id}:{seqs[0]}",
-            "type": "tool_call",
-        }
-        await invoke_tool(call_executor, call, config=self._config)
-        return not set(seqs) & set(still_open(self._run_id))
 
     async def cancel(self, reason: CancelReason) -> None:
         """Cancel until the task is done, then record a Stop in the thread; any other reason leaves no trace."""

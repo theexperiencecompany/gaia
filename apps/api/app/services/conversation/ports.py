@@ -212,10 +212,6 @@ class CommsRun(Protocol):
         """Cancel the run and return only once it is certainly dead."""
         ...
 
-    async def hand_off(self, claim: StepClaim, messages: Sequence[LoggedEntry]) -> bool:
-        """Hand messages the finished run never closed to the executor, as call_executor does; False when it would not start."""
-        ...
-
 
 @dataclass(frozen=True)
 class Kept:

@@ -32,11 +32,13 @@ from app.models.conversation_log_models import (
     UserMessage,
     WorkStarted,
 )
+from app.models.message_models import MessageDict
 from app.models.stream_events import MessageBoundaryPayload, ToolOutputPayload
 from app.services.conversation.composition import PostHogTurnAnalytics
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
     Answered,
+    ApprovalAnswer,
     CancelReason,
     EntryRejected,
     Finished,
@@ -82,7 +84,6 @@ from tests.unit.services.conversation.runtime_doubles import (
     Do,
     Fail,
     Forgetful,
-    HandedOff,
     Pause,
     RecordingFrames,
     Runtime,
@@ -438,7 +439,7 @@ class StepScenarios:
         ]
         await assert_quiet(rt)
 
-    async def test_a_message_still_open_after_the_note_is_handed_to_the_executor(
+    async def test_a_message_still_open_after_the_note_fails_instead_of_being_guessed_at(
         self, rt: Runtime
     ) -> None:
         rt.runner.script(
@@ -447,9 +448,8 @@ class StepScenarios:
         )
         await send(rt, user("u1"))
         await run(rt)
-        assert [type(call) for call in rt.runner.calls] == [Started, Started, HandedOff]
-        assert rt.runner.calls[-1] == HandedOff((1,))
-        assert await answered(rt) == [(ReplyOutcome.SILENT, ("u1",))]
+        assert [type(call) for call in rt.runner.calls] == [Started, Started]
+        assert await answered(rt) == [(ReplyOutcome.FAILED, ("u1",))]
         await assert_quiet(rt)
 
     @pytest.mark.parametrize(
@@ -648,21 +648,48 @@ class StepScenarios:
         assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1", "u2"))]
         await assert_quiet(rt)
 
-    async def test_a_dead_attempt_that_started_work_unseen_is_not_redone_silently(
+    async def test_a_dead_attempt_that_started_work_unseen_fails_visibly_and_is_never_rerun(
         self, rt: Runtime
     ) -> None:
+        """The work it started answers the message: a second run could hand it off again."""
+
         async def die() -> None:
             await rt.lapse()
 
         work = WorkStarted(id="w", task_id="t1", cause_through=1, answers=("u1",))
         rt.runner.script(
             [Do(arrive(rt, work)), ModelOutput(True), Pause((die,))],
-            [Finished(Replied("sorry, I was restarted; the work is running"))],
+            [Finished(Replied("on it again"))],
         )
         await send(rt, user("u1"))
         await run(rt)
         await run(rt)
-        assert [s.failure for s in await settles(rt)] == [FailureReason.SERVER_RESTART, None]
+        assert rt.runner.calls == [Started(batch=(1,), context=()), LOST]
+        assert [(s.outcome, s.answers, s.failure) for s in await settles(rt)] == [
+            (ReplyOutcome.FAILED, ("u1",), FailureReason.SERVER_RESTART)
+        ]
+        await assert_quiet(rt)
+
+    async def test_a_dead_attempt_reruns_the_message_its_work_did_not_start_for(
+        self, rt: Runtime
+    ) -> None:
+        async def die() -> None:
+            await rt.lapse()
+
+        work = WorkStarted(id="w", task_id="t1", cause_through=2, answers=("u1",))
+        rt.runner.script(
+            [Do(arrive(rt, work)), ModelOutput(True), Pause((die,))],
+            [Finished(Replied("and the other one"))],
+        )
+        await send(rt, user("u1"), user("u2"))
+        await run(rt)
+        await run(rt)
+        assert rt.runner.calls[-1] == Started(batch=(2,), context=(3, 4, 5))
+        assert [(s.outcome, s.answers) for s in await settles(rt)] == [
+            (ReplyOutcome.FAILED, ("u1",)),
+            (ReplyOutcome.ANSWERED, ("u2",)),
+        ]
+        await assert_quiet(rt)
 
     async def test_a_message_after_the_restart_window_does_not_restart(self, rt: Runtime) -> None:
         async def late() -> None:
@@ -870,6 +897,42 @@ class StepScenarios:
         assert (await answered(rt))[-1] == (ReplyOutcome.ANSWERED, ("u6",))
         state = await rt.log.state(CONVERSATION, USER)
         assert [item.pending_approvals for item in state.work] == [()]
+        await assert_quiet(rt)
+
+    async def test_a_typed_answer_behind_another_message_is_read_as_a_decision_not_run(
+        self, rt: Runtime, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        await start_work(rt)
+        await send(rt, asked("ask", "t1", "ap1"))
+        rt.approvals.decision = "approve"
+        resolve = rt.approvals.resolve
+
+        async def only_a_yes(
+            conversation_id: str, user_id: str, text: str, history: list[MessageDict]
+        ) -> ApprovalAnswer | None:
+            if not text.startswith("yes"):
+                return None
+            return await resolve(conversation_id, user_id, text, history)
+
+        monkeypatch.setattr(rt.approvals, "resolve", only_a_yes)
+        question = UserMessage(
+            id="u5", text="what's the weather", surface=ConversationSource.TELEGRAM
+        )
+        rt.runner.script([Finished(Replied("sunny"))])
+        await send(rt, question, bot_user("u6"))
+        await run(rt)
+        [asked_seq] = [item.seq for item in await rt.entries() if item.entry.id == "u5"]
+        assert [call.batch for call in rt.runner.calls if isinstance(call, Started)] == [
+            (asked_seq,)
+        ]
+        decided = [
+            item.entry for item in await rt.entries() if isinstance(item.entry, ApprovalDecided)
+        ]
+        assert [(item.approval_id, item.outcome) for item in decided] == [("ap1", "approved")]
+        assert (await answered(rt))[-2:] == [
+            (ReplyOutcome.ANSWERED, ("u5",)),
+            (ReplyOutcome.ANSWERED, ("u6",)),
+        ]
         await assert_quiet(rt)
 
     async def test_a_yes_with_a_change_settles_silent_so_the_re_ask_is_the_reply(
