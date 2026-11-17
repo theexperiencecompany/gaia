@@ -57,6 +57,7 @@ from app.services.limit_upsell import LimitHitOrigin
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.billing import LimitWindow
 from shared.py.wide_events import log
+from tests.helpers import captured_wide_event
 
 #: A stored lane, whole: to_configurable writes every key, so a fixture must too.
 _LANE: dict[str, object] = {
@@ -883,13 +884,35 @@ async def test_a_budget_check_failure_fails_open_and_still_runs_the_model() -> N
 
 
 class _RecordingLedger:
-    """A spend ledger that remembers what each call booked."""
+    """A spend ledger that remembers what each call booked, spent out once it holds limit."""
 
-    def __init__(self) -> None:
+    def __init__(self, limit: float = 1.0) -> None:
         self.booked: list[float] = []
+        self.limit = limit
 
     async def book(self, cost_usd: float) -> None:
         self.booked.append(cost_usd)
+
+    def exhausted(self) -> bool:
+        return sum(self.booked) >= self.limit
+
+
+@pytest.mark.regression
+async def test_a_ledger_that_is_spent_out_stops_the_next_call_before_the_model_runs() -> None:
+    """A scout learn past its reservation was bounded only by its recursion limit and timeout."""
+    ledger = _RecordingLedger(limit=0.1)
+    ledger.booked.append(0.12)
+    mw = LLMAccountingMiddleware(agent_name="brief_scout", ledger=ledger)
+    captured, handler = _recording_handler()
+    with patch.object(accounting, "current_run_config", lambda: CONFIG):
+        async with captured_wide_event() as event:
+            response = await mw.awrap_model_call(_model_request(), handler)
+
+    assert captured == []
+    [reply] = response.result
+    assert reply.response_metadata[BUDGET_STOP_METADATA_KEY] is True
+    [warning] = [w for w in event["warnings"] if w["msg"] == "ledger_stop"]
+    assert warning["agent_name"] == "brief_scout"
 
 
 @pytest.mark.regression

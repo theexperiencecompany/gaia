@@ -76,6 +76,18 @@ class TestBook:
 
         assert await _tally(fake_redis) == pytest.approx(SCOUT_LEARN_RESERVATION_USD + 0.004)
 
+    @pytest.mark.regression
+    @pytest.mark.usefixtures("fake_redis")
+    async def test_a_learn_is_spent_out_once_its_reservation_is_booked(self) -> None:
+        """Booking only recorded: nothing told the run to stop at its slice of the day."""
+        spend = await reserve_learn(USER_ID)
+        assert spend is not None
+
+        await spend.book(SCOUT_LEARN_RESERVATION_USD / 2)
+        assert spend.exhausted() is False
+        await spend.book(SCOUT_LEARN_RESERVATION_USD / 2)
+        assert spend.exhausted() is True
+
     async def test_release_hands_back_the_unspent_part(
         self, fake_redis: fakeredis.aioredis.FakeRedis
     ) -> None:

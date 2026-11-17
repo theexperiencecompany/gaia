@@ -6,7 +6,8 @@ slice straight back and wait for tomorrow. The run's accounting books each model
 its reservation (ScoutSpend is the run's ledger), never into the user's budget windows, so
 the brief writer that runs after the scouts is never starved by them. A call that costs
 more than the slice books the difference; the learn's unspent slice is handed back when it
-ends, failed or not. The tally is whole micro-dollars per user per UTC day.
+ends, failed or not. Once the slice is booked the accounting wall stops the run's next call,
+so one learn overruns it by at most one call. The tally is whole micro-dollars per user per UTC day.
 """
 
 from dataclasses import dataclass
@@ -68,6 +69,10 @@ class ScoutSpend:
         extra = max(self.booked - _RESERVATION, 0) - over_before
         if extra:
             await _add(self.key, extra)
+
+    def exhausted(self) -> bool:
+        """Whether the learn has booked its whole reservation, so the accounting wall stops it."""
+        return self.booked >= _RESERVATION
 
     async def release(self) -> None:
         """Hand back the part of the reservation the learn did not spend."""
