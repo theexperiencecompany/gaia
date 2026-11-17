@@ -1,64 +1,96 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  linkedPlatform,
+  platformLinks,
+} from "@/__tests__/helpers/platformLinks";
+import { renderWithQueryClient } from "@/__tests__/helpers/queryClient";
 import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
 import { api } from "@/lib/api/typed";
+import { toast } from "@/lib/toast";
 
+const push = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push }),
 }));
 
 vi.mock("@/lib/toast", () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
 }));
 
+vi.mock("@/lib/analytics", () => ({
+  track: vi.fn(),
+}));
+
 vi.mock("@/lib/api/typed", () => ({
   api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
 }));
 
+const plan = { isPaid: true, isUnknown: false, bills: true };
 vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
-  useIsPaid: () => ({ isPaid: true, isUnknown: false }),
+  useIsPaid: () => ({ isPaid: plan.isPaid, isUnknown: plan.isUnknown }),
 }));
 
 vi.mock("@/features/settings/hooks/useSetupStatus", () => ({
-  useDeployment: () => ({ bills: true }),
+  useDeployment: () => ({ bills: plan.bills }),
 }));
 
+const openUpgradeModal = vi.fn();
 vi.mock("@/stores/upgradeModalStore", () => ({
   useUpgradeModalStore: (selector: (s: unknown) => unknown) =>
-    selector({ openModal: vi.fn() }),
+    selector({ openModal: openUpgradeModal }),
 }));
 
-function link(platform: string) {
-  return {
-    platform,
-    platformUserId: `${platform}-1`,
-    username: null,
-    displayName: null,
-    connectedAt: null,
-  };
+function mockLinked(...platforms: string[]) {
+  vi.mocked(api.get).mockResolvedValue(platformLinks(...platforms));
 }
 
-function mockLinked(...platforms: string[]) {
-  vi.mocked(api.get).mockResolvedValue({
-    platform_links: Object.fromEntries(platforms.map((p) => [p, link(p)])),
+function render() {
+  return renderWithQueryClient(<LinkedAccountsSettings />);
+}
+
+/** The platform's row, found through its own Connect or menu button once the links load. */
+async function findPlatformRow(label: string) {
+  const name = new RegExp(`^(Connect|More for) ${label}$`);
+  const action = await waitFor(() => {
+    const button = screen.getByRole("button", { name }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    return button;
   });
+  const row = action.closest("div.flex.px-4") as HTMLElement;
+  expect(row).not.toBeNull();
+  return within(row);
 }
 
 describe("LinkedAccountsSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.assign(plan, { isPaid: true, isUnknown: false, bills: true });
     mockLinked("telegram");
   });
 
-  it("names the linked account on its row", async () => {
-    vi.mocked(api.get).mockResolvedValue({
-      platform_links: {
-        telegram: { ...link("telegram"), username: "aryan" },
-      },
-    });
+  it("offers a retry instead of a Connect for every platform when the links fail to load", async () => {
+    vi.mocked(api.get)
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValue(platformLinks("telegram"));
 
-    render(<LinkedAccountsSettings />);
+    render();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    expect(screen.queryByRole("button", { name: /^Connect / })).toBeNull();
+    expect(
+      await screen.findByRole("button", { name: "More for Telegram" }),
+    ).toBeTruthy();
+  });
+
+  it("names the linked account on its row", async () => {
+    vi.mocked(api.get).mockResolvedValue(
+      platformLinks(linkedPlatform("telegram", { username: "aryan" })),
+    );
+
+    render();
 
     expect(await screen.findByText("Connected as @aryan")).toBeTruthy();
   });
@@ -66,7 +98,7 @@ describe("LinkedAccountsSettings", () => {
   it("says how to reach GAIA on a linked app that has no chat to open", async () => {
     mockLinked("slack");
 
-    render(<LinkedAccountsSettings />);
+    render();
 
     expect(
       await screen.findByText(
@@ -75,19 +107,15 @@ describe("LinkedAccountsSettings", () => {
     ).toBeTruthy();
   });
 
-  it("disconnects a linked platform from its menu and offers Connect again", async () => {
+  it("disconnects a linked platform from its menu, names it, and offers Connect again", async () => {
+    mockLinked("imessage");
     vi.mocked(api.delete).mockResolvedValue({});
 
-    render(<LinkedAccountsSettings />);
-    const menu = await screen.findByRole("button", {
-      name: "More for Telegram",
-    });
-    await waitFor(() =>
-      expect((menu as HTMLButtonElement).disabled).toBe(false),
-    );
+    render();
+    const row = await findPlatformRow("iMessage");
 
     mockLinked();
-    fireEvent.click(menu);
+    fireEvent.click(row.getByRole("button", { name: "More for iMessage" }));
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Disconnect" }),
     );
@@ -95,15 +123,33 @@ describe("LinkedAccountsSettings", () => {
     await waitFor(() =>
       expect(api.delete).toHaveBeenCalledWith(
         "/api/v1/platform-links/{platform}",
-        expect.objectContaining({ path: { platform: "telegram" } }),
+        expect.objectContaining({ path: { platform: "imessage" } }),
       ),
     );
     expect(
-      await screen.findByRole("button", { name: "Connect Telegram" }),
+      await screen.findByRole("button", { name: "Connect iMessage" }),
     ).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "More for Telegram" }),
-    ).toBeNull();
+    expect(toast.success).toHaveBeenCalledWith("Disconnected from iMessage");
+  });
+
+  it("names the platform and says why when disconnecting fails", async () => {
+    vi.mocked(api.delete).mockRejectedValue(
+      new Error("That account is still linked to a workflow."),
+    );
+
+    render();
+    const row = await findPlatformRow("Telegram");
+    fireEvent.click(row.getByRole("button", { name: "More for Telegram" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Disconnect" }),
+    );
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't disconnect Telegram", {
+        description: "That account is still linked to a workflow.",
+      }),
+    );
+    expect(row.getByRole("button", { name: "More for Telegram" })).toBeTruthy();
   });
 
   it("connects an unlinked platform in place and turns its row into a linked one", async () => {
@@ -113,15 +159,10 @@ describe("LinkedAccountsSettings", () => {
     const popup = { closed: false };
     vi.spyOn(window, "open").mockReturnValue(popup as Window);
 
-    render(<LinkedAccountsSettings />);
-    const connect = await screen.findByRole("button", {
-      name: "Connect Slack",
-    });
-    await waitFor(() =>
-      expect((connect as HTMLButtonElement).disabled).toBe(false),
-    );
+    render();
+    const row = await findPlatformRow("Slack");
 
-    fireEvent.click(connect);
+    fireEvent.click(row.getByRole("button", { name: "Connect Slack" }));
 
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith(
@@ -146,5 +187,98 @@ describe("LinkedAccountsSettings", () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Connect Slack" })).toBeNull();
+  });
+
+  describe("open chat", () => {
+    it.each([
+      ["telegram", "Telegram"],
+      ["whatsapp", "WhatsApp"],
+      ["imessage", "iMessage"],
+    ])(
+      "opens the %s conversation and navigates to it",
+      async (platform, label) => {
+        mockLinked(platform);
+        vi.mocked(api.post).mockResolvedValue({
+          conversation_id: `conv-${platform}`,
+        });
+
+        render();
+        const row = await findPlatformRow(label);
+        fireEvent.click(row.getByRole("button", { name: "Open chat" }));
+
+        await waitFor(() =>
+          expect(api.post).toHaveBeenCalledWith(
+            "/api/v1/platform-links/{platform}/conversation",
+            { path: { platform } },
+          ),
+        );
+        await waitFor(() =>
+          expect(push).toHaveBeenCalledWith(`/c/conv-${platform}`),
+        );
+      },
+    );
+
+    it("does not offer a chat for other platforms or for a disconnected account", async () => {
+      mockLinked("slack", "discord");
+
+      render();
+
+      for (const label of [
+        "Telegram",
+        "WhatsApp",
+        "Slack",
+        "Discord",
+        "iMessage",
+      ]) {
+        const row = await findPlatformRow(label);
+        expect(row.queryByRole("button", { name: "Open chat" })).toBeNull();
+      }
+      expect(api.post).not.toHaveBeenCalled();
+    });
+  });
+
+  // The premium gate reads useIsPaid(): a cold plan read is unknown, never "free",
+  // so a paying user is never shown the badge or sent to the paywall mid-fetch.
+  describe("iMessage (premium) gate", () => {
+    beforeEach(() => mockLinked());
+
+    it("never paywalls a free user on an instance that does not bill", async () => {
+      Object.assign(plan, { isPaid: false, bills: false });
+      render();
+      const row = await findPlatformRow("iMessage");
+
+      expect(row.queryByText("Pro")).toBeNull();
+      fireEvent.click(row.getByRole("button", { name: "Connect iMessage" }));
+      expect(openUpgradeModal).not.toHaveBeenCalled();
+    });
+
+    it("shows the Pro badge and paywalls the connect attempt for a known-free user", async () => {
+      plan.isPaid = false;
+      render();
+      const row = await findPlatformRow("iMessage");
+
+      expect(row.getByText("Pro")).not.toBeNull();
+      fireEvent.click(row.getByRole("button", { name: "Connect iMessage" }));
+      expect(openUpgradeModal).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not show the Pro badge and does not paywall the connect attempt for a paid user", async () => {
+      render();
+      const row = await findPlatformRow("iMessage");
+
+      expect(row.queryByText("Pro")).toBeNull();
+      fireEvent.click(row.getByRole("button", { name: "Connect iMessage" }));
+      expect(openUpgradeModal).not.toHaveBeenCalled();
+    });
+
+    it("does not show the Pro badge and lets the connect attempt proceed while the plan is still unknown", async () => {
+      Object.assign(plan, { isPaid: false, isUnknown: true });
+      render();
+      const row = await findPlatformRow("iMessage");
+
+      expect(row.queryByText("Pro")).toBeNull();
+      fireEvent.click(row.getByRole("button", { name: "Connect iMessage" }));
+      expect(openUpgradeModal).not.toHaveBeenCalled();
+    });
   });
 });

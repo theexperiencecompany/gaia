@@ -7,10 +7,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fetchHours = vi.fn();
 const updateHours = vi.fn();
 
-vi.mock("@/features/settings/api/quietHoursApi", () => ({
-  quietHoursApi: {
-    fetch: () => fetchHours(),
-    update: (...args: unknown[]) => updateHours(...args),
+vi.mock("@/lib/api/typed", () => ({
+  api: {
+    get: () => fetchHours(),
+    patch: (_path: string, init: { body: unknown }) => updateHours(init.body),
   },
 }));
 

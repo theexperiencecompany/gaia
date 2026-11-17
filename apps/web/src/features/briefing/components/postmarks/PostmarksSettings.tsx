@@ -4,7 +4,7 @@ import { Skeleton } from "@heroui/react";
 import type { PostmarksResponse } from "@shared/api/generated";
 import dynamic from "next/dynamic";
 
-import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LoadError } from "@/components/shared/LoadError";
 import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { usePostmarksQuery } from "../../hooks/usePostmarksQuery";
@@ -26,7 +26,13 @@ export function PostmarksSettings() {
   return (
     <SettingsPage>
       {isLoading && <PostmarksSkeleton />}
-      {!isLoading && !data && <PostmarksError onRetry={() => void refetch()} />}
+      {!isLoading && !data && (
+        <LoadError
+          title="Couldn't load your postmarks"
+          description="Your stamps are safe. This page just couldn't reach them."
+          onRetry={() => void refetch()}
+        />
+      )}
       {data && <PostmarksCollection collection={data} />}
     </SettingsPage>
   );
@@ -79,27 +85,5 @@ function PostmarksSkeleton() {
     <SettingsSection title="Postmarks" description={POSTMARKS_DESCRIPTION}>
       <Skeleton className={GLOBE_FRAME} />
     </SettingsSection>
-  );
-}
-
-function PostmarksError({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-900/60 p-10 text-center">
-      <p className="text-sm font-medium text-zinc-200">
-        Couldn&apos;t load your postmarks
-      </p>
-      <p className="max-w-sm text-xs text-zinc-500">
-        Your stamps are safe. This page just couldn&apos;t reach them.
-      </p>
-      <GaiaButton
-        size="sm"
-        variant="accent-soft"
-        shape="pill"
-        className="mt-1 font-medium"
-        onPress={onRetry}
-      >
-        Try again
-      </GaiaButton>
-    </div>
   );
 }

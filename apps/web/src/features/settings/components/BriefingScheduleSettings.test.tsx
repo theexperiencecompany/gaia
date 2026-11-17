@@ -4,7 +4,6 @@ import type { QuietHours } from "@shared/api/generated";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { quietHoursApi } from "@/features/settings/api/quietHoursApi";
 import { BriefingScheduleSettings } from "@/features/settings/components/BriefingScheduleSettings";
 import { NotificationsAPI } from "@/services/api/notifications";
 import { useUpgradeModalStore } from "@/stores/upgradeModalStore";
@@ -24,8 +23,9 @@ vi.mock("@/features/pricing/hooks/useIsPaid", () => ({
   }),
 }));
 
-vi.mock("@/features/settings/api/quietHoursApi", () => ({
-  quietHoursApi: { fetch: vi.fn(), update: vi.fn() },
+const fetchQuietHours = vi.fn();
+vi.mock("@/lib/api/typed", () => ({
+  api: { get: () => fetchQuietHours() },
 }));
 
 const NIGHT: QuietHours = { enabled: true, start_hour: 22, end_hour: 8 };
@@ -47,7 +47,7 @@ function renderSchedule(
     ...runs,
   };
   vi.mocked(NotificationsAPI.getBriefingSchedule).mockResolvedValue(schedule);
-  vi.mocked(quietHoursApi.fetch).mockResolvedValue(quietHours);
+  fetchQuietHours.mockResolvedValue(quietHours);
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });

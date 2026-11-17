@@ -156,6 +156,7 @@
 @source "../../../components/shared/KeyboardShortcutsModal.tsx";
 @source "../../../components/shared/LetterModal.tsx";
 @source "../../../components/shared/LinkButton.tsx";
+@source "../../../components/shared/LoadError.tsx";
 @source "../../../components/shared/LogoWithContextMenu.tsx";
 @source "../../../components/shared/PanelRow.tsx";
 @source "../../../components/shared/panelRowButtonProps.ts";
@@ -770,13 +771,13 @@
 @source "../../../features/search/components/CommandMenu.tsx";
 @source "../../../features/search/config/commandMenuConfig.tsx";
 @source "../../../features/settings/api/approvalsApi.ts";
-@source "../../../features/settings/api/chatChannelApi.ts";
 @source "../../../features/settings/api/composioSetupApi.ts";
 @source "../../../features/settings/api/featureFlagsApi.ts";
 @source "../../../features/settings/api/membersApi.ts";
+@source "../../../features/settings/api/platformLinksApi.ts";
+@source "../../../features/settings/api/preferencesApi.ts";
 @source "../../../features/settings/api/providersApi.ts";
 @source "../../../features/settings/api/queryKeys.ts";
-@source "../../../features/settings/api/quietHoursApi.ts";
 @source "../../../features/settings/api/usageApi.ts";
 @source "../../../features/settings/api/voiceApi.ts";
 @source "../../../features/settings/components/AccountSettings.tsx";
@@ -824,6 +825,7 @@
 @source "../../../features/settings/config/settingsConfig.tsx";
 @source "../../../features/settings/hooks/useBriefingEditionsSettings.ts";
 @source "../../../features/settings/hooks/useBriefingScheduleSettings.ts";
+@source "../../../features/settings/hooks/useChannelPreferences.ts";
 @source "../../../features/settings/hooks/useChatChannelSettings.ts";
 @source "../../../features/settings/hooks/useComposioSetup.ts";
 @source "../../../features/settings/hooks/useComposioToolkits.ts";

@@ -15,6 +15,7 @@ import {
 
 import { GaiaButton } from "@/components/shared/GaiaButton";
 import { LinkButton } from "@/components/shared/LinkButton";
+import { LoadError } from "@/components/shared/LoadError";
 import { cn } from "@/lib/utils";
 
 import { BRIEFINGS_SETTINGS_PATH } from "../constants";
@@ -143,12 +144,11 @@ export function BriefingArchive({ className }: BriefingArchiveProps) {
 
   if (isError) {
     return (
-      <div className="flex items-center gap-3">
-        <p className="text-sm text-zinc-500">Couldn't load your briefings.</p>
-        <GaiaButton size="sm" variant="default-soft" onPress={() => refetch()}>
-          Try again
-        </GaiaButton>
-      </div>
+      <LoadError
+        layout="inline"
+        title="Couldn't load your briefings."
+        onRetry={() => void refetch()}
+      />
     );
   }
 

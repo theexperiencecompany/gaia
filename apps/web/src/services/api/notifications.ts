@@ -1,4 +1,3 @@
-import type { ChannelPlatform } from "@gaia/shared/types";
 import { ApiError } from "@shared/api";
 import type {
   BriefDeliveryWorkflow,
@@ -85,11 +84,6 @@ export class NotificationsAPI {
     });
   }
 
-  /** The enabled state of every user-configurable notification channel. */
-  static getChannelPreferences() {
-    return api.get("/api/v1/notifications/preferences/channels");
-  }
-
   /** How often briefs come, and the daily brief's hour on the user's clock. */
   static getBriefingSchedule() {
     return api.get("/api/v1/notifications/preferences/briefing-schedule");
@@ -113,15 +107,6 @@ export class NotificationsAPI {
     return api.put("/api/v1/notifications/preferences/briefing-editions", {
       body: update,
       silent: true,
-    });
-  }
-
-  static async updateChannelPreference(
-    channel: ChannelPlatform,
-    enabled: boolean,
-  ): Promise<void> {
-    await api.put("/api/v1/notifications/preferences/channels", {
-      body: { [channel]: enabled },
     });
   }
 }
