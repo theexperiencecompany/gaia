@@ -1,7 +1,9 @@
 """Store clients report their round trips to the current chat turn."""
 
 from collections.abc import Iterator
-from unittest.mock import MagicMock
+import itertools
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import fakeredis
 from fakeredis.aioredis import FakeConnection
@@ -11,6 +13,7 @@ from redis.exceptions import ResponseError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.db import store_timing
 from app.db.store_timing import MongoTurnListener, TimedRedis, instrument_postgres
 from app.services import turn_timings
 from app.services.turn_timings import (
@@ -29,6 +32,19 @@ def _no_current_turn() -> Iterator[None]:
     token = turn_timings._turn.set(None)
     yield
     turn_timings._turn.reset(token)
+
+
+#: Each perf_counter read advances the store hooks' clock by this much: a round trip lasts one tick.
+_TICK = 0.25
+
+
+@pytest.fixture(autouse=True)
+def _ticking_clock() -> Iterator[None]:
+    """Drive the hooks' clock, so a duration is exact rather than bounded by wall time."""
+    ticks = itertools.count()
+    clock = SimpleNamespace(perf_counter=lambda: next(ticks) * _TICK)
+    with patch.object(store_timing, "time", clock):
+        yield
 
 
 def _calls(timings: TurnTimings, store: Store) -> StoreTally:
@@ -65,7 +81,7 @@ async def test_each_postgres_statement_is_one_round_trip() -> None:
 
     tally = _calls(timings, Store.POSTGRES)
     assert tally.calls == 2
-    assert 0 < tally.seconds < 1
+    assert tally.seconds == tally.calls * _TICK
 
 
 async def test_each_redis_command_is_one_round_trip() -> None:
@@ -77,7 +93,7 @@ async def test_each_redis_command_is_one_round_trip() -> None:
 
     tally = _calls(timings, Store.REDIS)
     assert tally.calls == 2
-    assert 0 < tally.seconds < 1
+    assert tally.seconds == tally.calls * _TICK
 
 
 async def test_a_redis_commands_options_reach_the_server() -> None:
@@ -117,7 +133,7 @@ async def test_a_redis_pipeline_is_one_round_trip_however_many_commands_it_carri
 
     tally = _calls(timings, Store.REDIS)
     assert tally.calls == 1
-    assert 0 < tally.seconds < 1
+    assert tally.seconds == tally.calls * _TICK
 
 
 async def test_store_calls_outside_a_request_are_not_recorded() -> None:
@@ -143,4 +159,4 @@ async def test_a_watched_pipelines_immediate_commands_are_round_trips_too() -> N
     # WATCH and ZRANGE run immediately (options intact), then MULTI/EXEC goes as one batch.
     tally = _calls(timings, Store.REDIS)
     assert tally.calls == 3
-    assert 0 < tally.seconds < 1
+    assert tally.seconds == tally.calls * _TICK

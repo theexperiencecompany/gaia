@@ -406,10 +406,9 @@ class TestAuthenticateWorkosSession:
 
     async def test_exception_during_session_authenticate(self) -> None:
         """When session.authenticate() raises, caught by outer try/except -> ({}, None)."""
-        session = MagicMock()
+        session = _make_session(MagicMock())
         session.authenticate.side_effect = RuntimeError("corrupt session")
-        client = MagicMock()
-        client.user_management.load_sealed_session = AsyncMock(return_value=session)
+        client = _make_workos_client(session)
 
         with patch(_PATCH_LOG), patch(_PATCH_SETTINGS) as mock_settings:
             mock_settings.WORKOS_COOKIE_PASSWORD = (
@@ -420,6 +419,7 @@ class TestAuthenticateWorkosSession:
                 session_token="tok", workos_client=client
             )
 
+        session.authenticate.assert_called_once_with()
         assert user_info is None
         assert new_session is None
 

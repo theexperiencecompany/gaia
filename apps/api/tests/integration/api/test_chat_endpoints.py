@@ -1,6 +1,7 @@
 """Integration tests for chat API endpoints."""
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -549,7 +550,7 @@ class TestTheSubmittedEventKeysTheTurn:
 
 @pytest.mark.integration
 class TestTurnPrepStartsOnceAdmitted:
-    """Prep spends provider calls, so it starts once the cost budget admits the turn, then overlaps the rest."""
+    """Prep spends provider calls, so it starts only once every refusal has passed, then overlaps stream start."""
 
     @pytest.fixture(autouse=True)
     def mock_rate_limiter(self) -> Iterator[None]:
@@ -560,10 +561,15 @@ class TestTurnPrepStartsOnceAdmitted:
         ):
             yield
 
-    async def test_prep_starts_right_after_the_cost_budget_admits_the_turn(
-        self, test_client: httpx.AsyncClient
-    ) -> None:
+    @contextmanager
+    def _send(self, *, claimed: bool = True) -> Iterator[list[str]]:
+        """Patch an accepted send's collaborators; yield the order the gates and prep ran in."""
         order: list[str] = []
+
+        async def claim(*_args: object, **_kwargs: object) -> bool:
+            order.append("dedupe")
+            return claimed
+
         with (
             patch(
                 "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
@@ -591,10 +597,39 @@ class TestTurnPrepStartsOnceAdmitted:
             ),
         ):
             cache.redis = MagicMock()
-            response = await test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
+            cache.redis.set = AsyncMock(side_effect=claim)
+            yield order
+
+    async def test_prep_starts_once_the_budget_and_the_send_claim_admit_the_turn(
+        self, test_client: httpx.AsyncClient
+    ) -> None:
+        with self._send() as order:
+            response = await test_client.post(
+                "/api/v1/chat-stream", json={**_VALID_BODY, "turn_id": "turn-1"}
+            )
 
         assert response.status_code == 200
-        assert order == ["cost_budget", f"prep:{_VALID_BODY['message']}"]
+        assert order == ["cost_budget", "dedupe", f"prep:{_VALID_BODY['message']}"]
+
+    async def test_a_duplicate_send_starts_no_prep(self, test_client: httpx.AsyncClient) -> None:
+        with self._send(claimed=False) as order:
+            response = await test_client.post(
+                "/api/v1/chat-stream", json={**_VALID_BODY, "turn_id": "turn-1"}
+            )
+
+        assert response.status_code == 409
+        assert order == ["cost_budget", "dedupe"]
+
+    async def test_a_send_to_someone_elses_conversation_starts_no_prep(
+        self, test_client: httpx.AsyncClient
+    ) -> None:
+        with self._send() as order:
+            response = await test_client.post(
+                "/api/v1/chat-stream", json={**_VALID_BODY, "conversation_id": "conv-not-mine"}
+            )
+
+        assert response.status_code == 404
+        assert order == ["cost_budget"]
 
 
 @pytest.mark.integration

@@ -160,9 +160,6 @@ async def chat_stream_endpoint(
     # spend (recorded per call by LLMAccountingMiddleware) is exhausted.
     with turn_step(TurnStep.CHARGE):
         await enforce_cost_budget(user_id, feature_key="chat_messages")
-    # Once the budget admits the turn (prep spends provider calls), and before
-    # the remaining lookups so its background work overlaps them.
-    start_turn_prep(body.message)
     # Seed the agent's home zone (DB-resolved, browser-header-healed) so its
     # "now" and schedule defaults run in the user's real zone, not stored UTC.
     user = user.with_timezone(home_timezone)
@@ -194,6 +191,9 @@ async def chat_stream_endpoint(
                 detail=_DUPLICATE_TURN,
             )
 
+    # Only once every refusal above has passed (prep spends provider calls), and
+    # before stream start so its background work overlaps the rest of the turn.
+    start_turn_prep(body.message)
     with turn_step(TurnStep.START_STREAM):
         await stream_manager.start_stream(
             stream_id=stream_id,
