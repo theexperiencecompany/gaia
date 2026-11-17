@@ -26,7 +26,7 @@ from app.agents.tools.execute.dispatch import (
     dispatch_config_for,
     dispatch_tool,
 )
-from app.constants.agents import AgentTag
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.general import EXECUTOR_THREAD_PREFIX
 from app.constants.hil import DECISION_HANDOFF_LEASE, DECISION_OUTCOME, ApprovalDecision
 from app.constants.log_tags import LogTag
@@ -318,13 +318,18 @@ async def _deliver_verdict(
 
 
 def _verdict_task(approval_id: str, summary: str, outcome: ApprovalOutcome, result: object) -> str:
-    """Word a verdict that did not approve as the task the waiting work resumes with."""
+    """Word a verdict that did not approve as the task the waiting work resumes with.
+
+    Framed as a decision, not a request: it continues the delegation that asked, so the
+    completion guard counts that work instead of sending a report-only resume back to it.
+    """
     preview = "" if result is None else str(result)[:500]
-    return (
+    return wrap_agent_payload(
+        AgentTag.HIL_DECISION,
         f"DECISION {approval_id}={outcome.upper()} {summary}"
         + (f" :: {preview}" if preview else "")
         + f" {_VERDICT_INSTRUCTIONS[outcome]} — report what you skipped and continue without it. "
-        "Do not re-request it."
+        "Do not re-request it.",
     )
 
 
