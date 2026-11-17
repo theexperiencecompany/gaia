@@ -31,7 +31,7 @@ query($owner:String!,$name:String!,$branch:String!){{
   repository(owner:$owner,name:$name){{
     pullRequests(headRefName:$branch,states:[OPEN,CLOSED,MERGED],first:{BRANCH_PR_WINDOW},
                  orderBy:{{field:CREATED_AT,direction:DESC}}){{
-      nodes{{ number url headRefOid state isCrossRepository }} }} }} }}
+      nodes{{ number url headRefOid state isCrossRepository headRepositoryOwner{{ login }} }} }} }} }}
 """
 
 
@@ -95,16 +95,23 @@ def _pull_request(node: Json) -> PullRequest:
 def resolve_pr(github: GitHub, owner: str, name: str, selector: str) -> PullRequest | None:
     """Find the PR a number names, or a branch's open PR else its newest closed one, as gh pr view does.
 
-    None when the branch never had a PR (state, not an error).
+    A branch is this repo's unless qualified as owner:branch, so a fork's same-named
+    branch never stands in for it. None when the branch never had a PR (state, not an error).
     """
     variables: dict[str, object] = {"owner": owner, "name": name}
     if number := PR_NUMBER_RE.fullmatch(selector):
         variables["number"] = int(number.group(1))
         repo = field_of(github.graphql(PR_BY_NUMBER_QUERY, variables), "repository", dict)
         return _pull_request(field_of(repo, "pullRequest", dict))
-    variables["branch"] = selector
+    head_owner, _, branch = selector.rpartition(":")
+    variables["branch"] = branch
     repo = field_of(github.graphql(PRS_BY_BRANCH_QUERY, variables), "repository", dict)
-    nodes = records(field_of(repo, "pullRequests", dict), "nodes")
+    nodes = [
+        node
+        for node in records(field_of(repo, "pullRequests", dict), "nodes")
+        if (node.get("headRepositoryOwner") or {}).get("login", "").lower()
+        == (head_owner or owner).lower()
+    ]
     if not nodes:
         return None
     return _pull_request(next((n for n in nodes if n.get("state") == "OPEN"), nodes[0]))

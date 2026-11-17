@@ -104,6 +104,7 @@ OPEN_PR_NODE: dict[str, Any] = {
     "headRefOid": "abc123",
     "state": "OPEN",
     "isCrossRepository": False,
+    "headRepositoryOwner": {"login": "o"},
 }
 
 FAILED_CHECK: dict[str, Any] = {
@@ -634,6 +635,18 @@ def test_a_conflicting_pr_is_red_even_with_green_checks(
     wire(FakeGh(checks=[PASSED_CHECK], pr_meta=dict(PR_META, mergeable="CONFLICTING")))
     assert run_cli(monkeypatch, []) == 1
     assert "git merge origin/master" in capsys.readouterr().out
+
+
+def test_a_conflicting_stacked_pr_names_master_as_the_other_side(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: GitHub marks a stacked PR conflicting against master even when its base merges clean."""
+    stacked = dict(PR_META, baseRefName="feat/lower", mergeable="CONFLICTING")
+    wire(FakeGh(checks=[PASSED_CHECK], pr_meta=stacked))
+    assert run_cli(monkeypatch, ["--no-stack"]) == 1
+    out = capsys.readouterr().out
+    assert "git merge origin/feat/lower" in out
+    assert "merge origin/master into the stack's bottom branch and up" in out
 
 
 # -------------------------------------------------------------------------------- stack

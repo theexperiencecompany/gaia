@@ -22,9 +22,9 @@ that bumps any invocation, or this fails and tells you which side drifted.
 
 Usage::
 
-    python3 tools/lints/check_tool_pins.py
+    uv run --frozen --no-build --isolated --only-group harness python3 tools/lints/check_tool_pins.py
 
-Stdlib only.
+Needs PyYAML, which the harness dependency group provides.
 """
 
 from __future__ import annotations

@@ -42,6 +42,7 @@ from app.constants.log_tags import LogTag
 from app.core.request_context import get_authenticated_user
 from app.models.user_models import AuthenticatedUser, UserDocument
 from app.services.analytics_service import capture
+from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
 from app.utils.auth_utils import clear_session_cookie
 from app.utils.local_auth_utils import LOCAL_SESSION_COOKIE, SESSION_TTL_SECONDS
 from shared.py.analytics import UserId
@@ -1403,3 +1404,26 @@ class TestWorkOSClientChoice:
 
         assert middleware.workos is None
         build.assert_not_called()
+
+
+class TestAuthStepTiming:
+    async def test_session_authentication_is_timed_as_the_turns_auth_step(self) -> None:
+        request = Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/api/v1/chat-stream",
+                "query_string": b"",
+                "headers": [(b"cookie", b"wos_session=tok")],
+                "state": {},
+            }
+        )
+        timings = begin_turn_timings()
+        with (
+            patch.object(WorkOSAuthMiddleware, "_authenticate_wos_session", new_callable=AsyncMock),
+            patch.object(WorkOSAuthMiddleware, "_authenticate_agent_token", new_callable=AsyncMock),
+            patch.object(WorkOSAuthMiddleware, "_publish_user"),
+        ):
+            await _middleware().dispatch(request, AsyncMock(return_value=Response()))
+
+        assert list(timings.steps) == [(TurnPhase.INGRESS, TurnStep.AUTH)]

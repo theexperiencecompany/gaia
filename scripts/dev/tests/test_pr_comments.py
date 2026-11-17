@@ -14,8 +14,8 @@ from collections.abc import Callable, Iterator
 import json
 from pathlib import Path
 import sys
-import time
-from typing import Any
+from typing import Any, NoReturn
+import urllib.request
 
 import pytest
 
@@ -31,6 +31,15 @@ PR_NODE = {
     "headRefOid": "abc123def456",
     "state": "OPEN",
     "isCrossRepository": False,
+    "headRepositoryOwner": {"login": "o"},
+}
+FORK_PR_NODE = {
+    **PR_NODE,
+    "number": 43,
+    "url": "https://github.com/o/r/pull/43",
+    "headRefOid": "f0f0f0",
+    "isCrossRepository": True,
+    "headRepositoryOwner": {"login": "contributor"},
 }
 
 
@@ -173,6 +182,33 @@ def test_the_branch_lookup_asks_for_the_named_branch(
     assert report(capsys)["pr"]["number"] == 42
 
 
+def test_a_fork_pr_from_a_same_named_branch_is_not_the_branch_pr(
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(api, two_pages, branch_prs=[FORK_PR_NODE, PR_NODE])
+    run_cli("--json")
+    assert report(capsys)["pr"]["number"] == 42
+
+
+def test_an_owner_qualified_branch_selects_that_owner_pr(
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(api, two_pages, branch_prs=[PR_NODE, FORK_PR_NODE])
+    run_cli(f"contributor:{BRANCH}", "--json")
+    lookup = api.requests[0].body
+    assert isinstance(lookup, dict)
+    assert lookup["variables"]["branch"] == BRANCH
+    assert report(capsys)["pr"]["number"] == 43
+
+
+def test_a_branch_whose_only_pr_is_a_fork_has_no_pr(
+    api: FakeGitHub, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(api, two_pages, branch_prs=[FORK_PR_NODE])
+    run_cli("--json")
+    assert report(capsys)["pr"] is None
+
+
 def test_unresolved_threads_print_their_ids_and_the_next_steps(
     api: FakeGitHub, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -207,19 +243,22 @@ def test_bad_credentials_exit_one(api: FakeGitHub, capsys: pytest.CaptureFixture
     assert "HTTP 401" in capsys.readouterr().err
 
 
+@pytest.mark.usefixtures("api")
 def test_a_hung_request_times_out_and_exits_one(
-    api: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv("GITHUB_API_ATTEMPTS", "1")
 
-    def hang(req: Request) -> Reply:
-        time.sleep(2)
-        return two_pages(req)
+    timeouts: list[float] = []
 
-    wire(api, hang)
-    started = time.monotonic()
+    def stalled_socket(_req: urllib.request.Request, timeout: float) -> NoReturn:
+        timeouts.append(timeout)
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(urllib.request, "urlopen", stalled_socket)
     assert run_cli("--timeout", "1") == 1
-    assert time.monotonic() - started < 2
+    assert timeouts == [1.0]
+    assert "network: timed out" in capsys.readouterr().err
 
 
 def test_a_graphql_errors_payload_exits_two(
