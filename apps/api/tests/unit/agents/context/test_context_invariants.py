@@ -504,7 +504,8 @@ class TestTheAssemblyIsRecordedOnTheWideEvent:
 
         assert event["dynamic_context"] == {
             "tier": "comms",
-            "source": "web",
+            # A context built with no surface records none, not a guessed "web".
+            "source": None,
             "has_core_memory": True,
             "has_memories": True,
             "has_gaia_knowledge": True,

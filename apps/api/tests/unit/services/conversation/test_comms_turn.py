@@ -1,7 +1,7 @@
 """build_comms_turn: the run config, context and attribution of one comms attempt on its batch."""
 
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
@@ -21,6 +21,7 @@ from app.models.presence_models import PresenceSnapshot
 from app.models.user_models import AuthenticatedUser, OnboardingSubdocument
 from app.services.conversation.comms_turn import build_comms_turn
 from app.services.conversation.reply_analytics import spoken_context
+from app.services.delivery.chat_channel import ChatChannel, InApp
 from app.utils.errors import ConversationNotFoundError
 from shared.py.analytics.catalog.attribution import Actor, Attribution, EntrySurface, Trigger
 from shared.py.analytics.context import AnalyticsContext
@@ -59,6 +60,7 @@ class Seams:
     context: TurnContext
     log: object
     owner: AsyncMock
+    target: AsyncMock
 
 
 @pytest.fixture
@@ -87,6 +89,10 @@ def seams() -> Iterator[Seams]:
         patch(f"{MODULE}.todo_runs_reported", AsyncMock(return_value=[])) as reported,
         patch(f"{MODULE}.write_up_note", AsyncMock(return_value="write it up")) as write_up,
         patch(f"{MODULE}.runtime_ports", return_value=SimpleNamespace(log=log)),
+        patch(
+            f"{MODULE}.resolve_proactive_target",
+            AsyncMock(return_value=InApp(reason="active_in_app")),
+        ) as target,
     ):
         conversations.get_todo_id = AsyncMock(return_value=None)
         conversations.is_workflow_execution = AsyncMock(return_value=False)
@@ -104,6 +110,7 @@ def seams() -> Iterator[Seams]:
             context,
             log,
             owner,
+            target,
         )
 
 
@@ -222,7 +229,7 @@ async def test_a_workflow_fire_runs_in_the_background_on_its_own_record(seams: S
     seams.touch.assert_not_called()
     query, scope = seams.turn_context.await_args.args
     assert query == "Execute workflow: Morning brief"
-    assert (scope.execution_mode, scope.source) == ("background", "background")
+    assert (scope.execution_mode, scope.source) == ("background", ConversationSource.WEB)
     assert scope.user_dict.timezone == "Asia/Kolkata"
     agent_turn = seams.agent_config.await_args.kwargs["turn"]
     assert agent_turn.workflow_id == "wf_1"
@@ -240,6 +247,35 @@ async def test_a_workflow_fire_runs_in_the_background_on_its_own_record(seams: S
     assert turn.run_started.mode == "background"
 
 
+TELEGRAM_TARGET = ChatChannel(
+    source=ConversationSource.TELEGRAM, platform_user_id="tg_1", basis="priority"
+)
+
+
+@pytest.mark.parametrize("kind", ["todo", "workflow"])
+async def test_a_background_result_for_a_telegram_user_is_written_with_the_telegram_prompt(
+    seams: Seams, kind: str
+) -> None:
+    seams.target.return_value = TELEGRAM_TARGET
+    work = finished("w6", "t1")
+    if kind == "todo":
+        seams.reported.return_value = [(work, todo_run())]
+        batch = _batch(6, [work])
+    else:
+        batch = _batch(3, [fired("f1")])
+
+    await build_comms_turn(CLAIM, batch)
+
+    seams.target.assert_awaited_once_with(USER)
+    scope = seams.turn_context.await_args.args[1]
+    assert scope.source is ConversationSource.TELEGRAM
+    assert seams.agent_config.await_args.kwargs["turn"].source == "telegram"
+    stable = AssembledContext(stable=SystemMessage(content="context"), volatile=None)
+    with patch("app.agents.core.messages.assemble_context", AsyncMock(return_value=stable)):
+        system = (await build_turn_context("report", replace(scope, presence=None))).chain[0]
+    assert OPENUI_INSTRUCTIONS not in str(system.content)
+
+
 async def test_finished_work_with_no_one_asking_is_unprompted_and_quiet_by_default(
     seams: Seams,
 ) -> None:
@@ -252,7 +288,7 @@ async def test_finished_work_with_no_one_asking_is_unprompted_and_quiet_by_defau
             actor=Actor.AGENT, trigger=Trigger.SYSTEM, surface=EntrySurface.WORKER
         )
     )
-    assert seams.turn_context.await_args.args[1].source == "background"
+    assert seams.turn_context.await_args.args[1].source is ConversationSource.WEB
     seams.reported.assert_awaited_once_with(seams.log, CONVERSATION, USER, batch)
     seams.conversations.is_workflow_execution.assert_awaited_once_with(CONVERSATION)
     assert turn.closing == [seams.context.clock]

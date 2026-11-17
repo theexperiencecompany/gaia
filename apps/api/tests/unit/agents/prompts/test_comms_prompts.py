@@ -29,7 +29,7 @@ class TestTrackedTodoDeliveryNote:
             "result is that answer and they are waiting for it: always send it, even when the "
             "answer is no or nothing to worry about. "
         ) in once
-        assert "Write it up: it reaches their chat app as plain text" in once
+        assert "Write it up: lead with what changed" in once
         assert "When you do write" not in once
         assert "Nobody asked for it just now" not in once
         assert STAY_SILENT_TOOL_NAME not in once
@@ -70,7 +70,7 @@ class TestTrackedTodoDeliveryNote:
                 "Decide first and do only one of the two: a message, or the call alone, never a "
                 "recap of open items beside it. "
                 "There is no message of theirs to react to, so never answer with a reaction. When "
-                "you do write, it reaches their chat app as plain text with no cards: lead with "
+                "you do write, lead with "
                 "what changed or what they must decide, give the concrete details they need, keep "
                 "it short, never mention runs, schedules or internal ids, and never promise to "
                 f"follow up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than "

@@ -138,14 +138,11 @@ _SLACK_ADDENDUM: Final[str] = _text_only_addendum(
 )
 
 
-# One byte-identical prompt per surface, so the provider cache matches across users.
-# Background and workflow runs are read in the app, so they take its prompt.
+# One byte-identical prompt per surface a reply is read on, so the provider cache matches across users.
 COMMS_PROMPT_BY_SOURCE: Final[dict[ConversationSource, str]] = {
     ConversationSource.WEB: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
     ConversationSource.MOBILE: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
     ConversationSource.DESKTOP: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM + _DESKTOP_ADDENDUM,
-    ConversationSource.WORKFLOW_SYSTEM: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
-    ConversationSource.BACKGROUND: COMMS_AGENT_PROMPT + _OPENUI_ADDENDUM,
     ConversationSource.VOICE: COMMS_AGENT_PROMPT + _APP_APPROVALS + _VOICE_ADDENDUM,
     ConversationSource.WHATSAPP: COMMS_AGENT_PROMPT + _WHATSAPP_ADDENDUM,
     ConversationSource.TELEGRAM: COMMS_AGENT_PROMPT + _TELEGRAM_ADDENDUM,
@@ -158,7 +155,8 @@ COMMS_PROMPT_BY_SOURCE: Final[dict[ConversationSource, str]] = {
 def get_comms_static_prompt(source: ConversationSource) -> str:
     """Return the static comms prompt of the surface the reply is read on.
 
-    Every surface has one, so a value outside the enum raises KeyError rather than reading as web.
+    A background or workflow source is not a surface (comms_turn resolves where such a reply is read),
+    so it raises KeyError rather than reading as web.
     """
     return COMMS_PROMPT_BY_SOURCE[source]
 

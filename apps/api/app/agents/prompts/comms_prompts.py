@@ -556,14 +556,12 @@ OUTPUT CONTRACT
 PLATFORM_DELIVERY_NOTE = wrap_agent_payload(
     AgentTag.PLATFORM_DELIVERY,
     "This is an automated WORKFLOW result. It ran on its own in the background, so "
-    "the user has NOT seen any of it, and it's delivered as plain chat messages "
-    "(Telegram, WhatsApp, web) with NO cards, NO UI, NO screen, only your words. "
+    "the user has NOT seen any of it: your reply is all they get. "
     "That makes every result critical: surface EVERYTHING the workflow found, in "
     "full. Actually list the concrete items: each headline with its link, each "
     "email's sender and subject, each event's title and time, every id and figure "
     "the user needs. Never compress it to a vague 'done', 'saved to your list', or "
-    "'here's your summary 👇', and never point at anything 'on screen', because "
-    "there is no screen.\n"
+    "'here's your summary 👇', and never point at anything as already shown.\n"
     f"Split your reply into a few separate bubbles with {NEW_MESSAGE_BREAKER}: open "
     "with a short, warm lead-in line, then break the results into readable chunks "
     "(group related items together, don't cram everything into one giant bubble, "
@@ -612,9 +610,8 @@ def _run_record(run_history: Sequence[str]) -> str:
 
 #: A reaction is not a delivery for a todo run: it is dropped and nothing is sent.
 _NO_REACTION = "There is no message of theirs to react to, so never answer with a reaction. "
-_HOW_IT_READS = (
-    "it reaches their chat app as plain text with no cards: lead with what "
-    "changed or what they must decide, give the concrete details they need, keep it "
+_HOW_TO_WRITE = (
+    "lead with what changed or what they must decide, give the concrete details they need, keep it "
     "short, never mention runs, schedules or internal ids, and never promise to follow "
     f"up later. Split with {NEW_MESSAGE_BREAKER} only when there is more than one beat.\n"
 )
@@ -656,7 +653,7 @@ def tracked_todo_delivery_note(
     return wrap_agent_payload(
         AgentTag.DELIVERY_INSTRUCTIONS,
         f'This is the result of a background run of the user\'s tracked todo "{todo_title}". '
-        f"{_RUN_CANNOT_MESSAGE}{_run_record(run_history)}{when_to_send}{_HOW_IT_READS}{rules}",
+        f"{_RUN_CANNOT_MESSAGE}{_run_record(run_history)}{when_to_send}{_HOW_TO_WRITE}{rules}",
     )
 
 

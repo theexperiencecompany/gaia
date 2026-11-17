@@ -70,8 +70,20 @@ class TestOpenuiVariants:
         assert _text_only_addendum("X", "fmt", "\n\nREACT").endswith("brevity.\n\nREACT")
         assert _text_only_addendum("X", "fmt").endswith("outranks brevity.")
 
-    def test_every_surface_has_its_own_prompt(self) -> None:
-        assert set(COMMS_PROMPT_BY_SOURCE) == set(ConversationSource)
+    def test_every_surface_a_reply_is_read_on_has_its_own_prompt(self) -> None:
+        assert set(COMMS_PROMPT_BY_SOURCE) == set(ConversationSource) - {
+            ConversationSource.BACKGROUND,
+            ConversationSource.WORKFLOW_SYSTEM,
+        }
+
+    @pytest.mark.parametrize(
+        "source", [ConversationSource.BACKGROUND, ConversationSource.WORKFLOW_SYSTEM]
+    )
+    def test_a_background_source_is_no_surface_and_raises_instead_of_reading_as_web(
+        self, source: ConversationSource
+    ) -> None:
+        with pytest.raises(KeyError):
+            get_comms_static_prompt(source)
 
     def test_an_unknown_surface_raises_instead_of_reading_as_web(self) -> None:
         with pytest.raises(KeyError):
@@ -105,10 +117,8 @@ class TestExecutorPrompt:
 
 
 MESSAGING_SOURCES = tuple(sorted(BOT_CONVERSATION_SOURCES))
-# Everything read in the app, a call and background work included, decides approvals on a card.
-UI_SOURCES = tuple(
-    sorted(source for source in ConversationSource if source not in BOT_CONVERSATION_SOURCES)
-)
+# Everything read in the app, a call included, decides approvals on a card.
+UI_SOURCES = tuple(sorted(set(COMMS_PROMPT_BY_SOURCE) - BOT_CONVERSATION_SOURCES))
 
 
 class TestApprovalMessagingWording:

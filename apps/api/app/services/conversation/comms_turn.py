@@ -10,7 +10,7 @@ from app.agents.core.background.todo_run_delivery import write_up_note
 from app.agents.core.messages import MessageScope, build_turn_context
 from app.agents.llm.lane import AgentRole
 from app.agents.prompts.comms_prompts import PLATFORM_DELIVERY_NOTE
-from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource
+from app.constants.chat import BOT_CONVERSATION_SOURCES, ConversationSource, SourceCategory
 from app.constants.conversation import WORKFLOW_RUN_REQUEST
 from app.db.repositories.conversations import conversation_repository
 from app.helpers.agent_helpers import (
@@ -37,6 +37,7 @@ from app.services.conversation.reply_analytics import UNPROMPTED, spoken_context
 from app.services.conversation.runtime import runtime_ports
 from app.services.conversation.todo_wake import todo_runs_reported
 from app.services.conversation.workspace import schedule_last_active_touch
+from app.services.delivery.chat_channel import proactive_surface, resolve_proactive_target
 from app.services.delivery.presence import presence_before
 from app.utils.auth_utils import require_owner
 from app.utils.user_preferences_utils import onboarding_preferences
@@ -56,7 +57,7 @@ async def build_comms_turn(claim: StepClaim, batch: Batch) -> CommsTurn:
     mode: Literal["interactive", "background"] = "interactive"
     if fired is not None:
         user, mode = user.with_timezone(fired.timezone), "background"
-    source = await _answering_surface(claim, said, fired)
+    source = await _reply_surface(claim, said, fired)
     pinned = next((message for message in reversed(said) if message.selected_tool), None)
     # Work that finished with no one asking switched no surface, so it gets no presence note.
     presence = (
@@ -139,7 +140,7 @@ async def _delivery_note(
 ) -> list[AnyMessage]:
     """Tell a reply that reports finished work how to deliver it.
 
-    A todo's run is written up by its note, a workflow's work is read as plain text, and work
+    A todo's run is written up by its note, a workflow's result is told it is all the user gets, and work
     read in the app is told which of its cards are already on the screen.
     """
     finished = [logged.entry for logged in batch.waking if isinstance(logged.entry, WorkFinished)]
@@ -194,18 +195,22 @@ def _analytics(said: list[UserMessage], fired: WorkflowRun | None) -> AnalyticsC
     return UNPROMPTED
 
 
-async def _answering_surface(
+async def _reply_surface(
     claim: StepClaim, said: list[UserMessage], fired: WorkflowRun | None
 ) -> ConversationSource:
-    """Return the surface the reply is read on, which picks its prompt: the newest message's, else the conversation's own.
+    """Return the surface the reply is read on, which picks its prompt.
 
-    A workflow fire runs in the background. Every conversation names its source (the boot check refuses one that doesn't).
+    The newest message's, else the conversation's own. A background or workflow conversation has no
+    surface of its own: its reply is sent on to wherever the user is reached, the same target delivery uses.
     """
     if said:
         return said[-1].surface
-    if fired is not None:
-        return ConversationSource.BACKGROUND
-    stored = await conversation_repository.get_source(claim.conversation_id, user_id=claim.user_id)
-    if stored is None:
-        raise not_found(claim.conversation_id)
-    return stored
+    if fired is None:
+        stored = await conversation_repository.get_source(
+            claim.conversation_id, user_id=claim.user_id
+        )
+        if stored is None:
+            raise not_found(claim.conversation_id)
+        if SourceCategory.from_source(stored) is not SourceCategory.BG:
+            return stored
+    return proactive_surface(await resolve_proactive_target(claim.user_id))
