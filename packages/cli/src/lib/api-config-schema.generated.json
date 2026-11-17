@@ -416,6 +416,14 @@
         "description": "Resend email delivery service",
         "affectedFeatures": "Email notifications and communication",
         "docsUrl": "https://resend.com/docs/api-reference/api-keys"
+      },
+      {
+        "name": "EMAIL_FROM",
+        "required": false,
+        "category": "Resend Email Service",
+        "description": "Resend email delivery service",
+        "affectedFeatures": "Email notifications and communication",
+        "docsUrl": "https://resend.com/docs/api-reference/api-keys"
       }
     ]
   },

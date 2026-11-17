@@ -216,6 +216,7 @@ OpenAI-compatible gateways (OpenCode, Nous Research, or any custom endpoint) are
 | `LOCAL_SANDBOX_LAB_EVENTS_CALLBACK_URL` | Self-host only: where coding-agent runs in a local sandbox report back (the proxy on the host gateway). Set by the same `docker-compose.sandbox.yml` override |
 | `RESEND_API_KEY`          | Resend email API key             |
 | `RESEND_AUDIENCE_ID`      | Resend audience ID               |
+| `EMAIL_FROM`              | Sender of notification and brief email, on a domain your Resend account verifies. Defaults to `brief@` your `FRONTEND_URL` host on a self-host |
 | `BLOG_BEARER_TOKEN`       | Bearer token for blog management |
 
 ---
