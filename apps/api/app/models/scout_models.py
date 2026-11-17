@@ -282,6 +282,10 @@ class ScoutSkipReason(StrEnum):
     UNKNOWN_INTEGRATION = "unknown_integration"
     #: The app's sign-in expired or was revoked: only the user reconnecting it brings it back.
     SIGNED_OUT = "signed_out"
+    #: Scouts are a Pro feature: a free user's brief runs none.
+    FREE_PLAN = "free_plan"
+    #: A dormant user's brief runs none: nobody would read what they found.
+    DORMANT = "dormant"
 
 
 class ScoutResult(BaseModel):

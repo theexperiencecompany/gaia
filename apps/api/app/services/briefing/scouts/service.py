@@ -20,7 +20,7 @@ from app.constants.scouts import (
 )
 from app.constants.user_activity import ActivityStatus
 from app.db.repositories.scouts import scouts_repository
-from app.models.payment_models import PlanType
+from app.decorators.entitlements import is_paid
 from app.models.scout_models import (
     RememberedSignal,
     ScoutDocument,
@@ -42,7 +42,6 @@ from app.services.briefing.scouts.tools import (
 )
 from app.services.briefing.scouts.watch import FrozenWatch, ScoutSourceFailed, watch
 from app.services.mcp.mcp_errors import MCP_SIGN_IN_ERRORS, MCPIntegrationNotFoundError
-from app.services.payments.payment_service import payment_service
 from app.services.user_activity.status import activity_status_of
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.utils.timezone import Timezone
@@ -256,12 +255,12 @@ async def _scout_turn(user: UserDocument, integration: ScoutIntegration) -> Scou
         )
 
 
-async def _scouts_skipped(user_id: str) -> str | None:
+async def _scouts_skipped(user_id: str) -> ScoutSkipReason | None:
     """Why this user's brief runs no scouts at all, or None when it does."""
-    if await payment_service.get_cached_plan_type(user_id) is PlanType.FREE:
-        return "free_plan"
+    if not await is_paid(user_id):
+        return ScoutSkipReason.FREE_PLAN
     if await activity_status_of(user_id) is ActivityStatus.DORMANT:
-        return "dormant"
+        return ScoutSkipReason.DORMANT
     return None
 
 
@@ -269,7 +268,7 @@ async def run_scouts(user: UserDocument) -> list[ScoutResult]:
     """Run the scout of every connected integration the brief does not cover elsewhere, a few at once."""
     skipped = await _scouts_skipped(user.id)
     if skipped is not None:
-        log.set_ns("scouts", skipped=skipped)
+        log.set_ns("scouts", skipped=skipped.value)
         return []
     slots = asyncio.Semaphore(SCOUT_CONCURRENCY)
 

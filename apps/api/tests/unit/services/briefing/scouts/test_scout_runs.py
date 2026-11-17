@@ -52,7 +52,6 @@ from app.services.mcp.mcp_errors import (
     MCPAuthorizationRequiredError,
     MCPIntegrationNotFoundError,
 )
-from app.services.payments.payment_service import payment_service
 from app.services.workflow.playbook.evaluator import PlaceholderError, PlaybookUser
 from app.utils.errors import AppError
 
@@ -192,9 +191,9 @@ def scouts(
         assert user_id == USER_ID
         return s.activity
 
-    async def plan(user_id: str) -> PlanType:
+    async def paid(user_id: str) -> bool:
         assert user_id == USER_ID
-        return s.plan
+        return s.plan is PlanType.PRO
 
     monkeypatch.setattr(service, "scout_integrations", integrations)
     monkeypatch.setattr(service, "scout_tools", tools)
@@ -203,7 +202,7 @@ def scouts(
     monkeypatch.setattr(service, "learn_scout", s.learn)
     monkeypatch.setattr(service, "watch", s.watch)
     monkeypatch.setattr(service, "activity_status_of", activity)
-    monkeypatch.setattr(payment_service, "get_cached_plan_type", plan)
+    monkeypatch.setattr(service, "is_paid", paid)
     with time_machine.travel(_NOW, tick=False):
         yield s
 
