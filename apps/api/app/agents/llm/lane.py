@@ -19,11 +19,11 @@ from enum import StrEnum
 
 from pydantic import TypeAdapter
 
-from app.agents.llm.client import chat_model, chat_route, provider_configured
-from app.agents.llm.dev_lane import dev_default_model_id, dev_default_option
+from app.agents.llm.client import chat_model, chat_route, one_shot_route, provider_configured
+from app.agents.llm.dev_lane import custom_lane_forced, dev_default_model_id, dev_default_option
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.config.settings import settings
 from app.constants.llm import (
-    AUX_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -40,6 +40,7 @@ from app.constants.llm import (
     DevModelOption,
     LaneConfig,
     LLMProviderName,
+    ModelUse,
     OpenRouterModelKwargs,
     OpenRouterReasoning,
 )
@@ -222,17 +223,25 @@ def _default_lane() -> ModelLane:
     )
 
 
-def helper_lane() -> ModelLane:
-    """Return the lane resolve_model(ModelUse.HELPER) serves, for an agent graph run on it.
+def one_shot_lane(use: ModelUse) -> ModelLane:
+    """Return the lane resolve_model(use) serves, from the same route, for an agent graph run on it.
 
-    Accounting prices a call by its run's lane, so a graph on the helper model needs this
-    on its configurable or its calls price as unknown.
+    Accounting prices a call by its run's lane, so a graph on a one-shot model needs this
+    on its configurable or its calls price against another model. Raises
+    LLMNotConfiguredError when nothing configured serves use, as resolve_model does.
     """
+    if custom_lane_forced():
+        provider, model = LLMProviderName.CUSTOM, chat_model(LLMProviderName.CUSTOM)
+    else:
+        route = one_shot_route(use)
+        if route is None:
+            raise LLMNotConfiguredError(f"No configured AI provider can serve {use.value} calls.")
+        provider, model = route
     return ModelLane(
-        provider=LLMProviderName.OPENROUTER,
-        model=AUX_MODEL_NAME,
+        provider=provider,
+        model=model,
         reasoning=None,
-        provider_pin=None,
+        provider_pin=_provider_pin(provider, model),
         max_input_tokens=DEFAULT_MAX_TOKENS,
     )
 

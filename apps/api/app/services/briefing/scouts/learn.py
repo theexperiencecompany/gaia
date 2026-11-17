@@ -16,7 +16,7 @@ from langchain_core.messages import HumanMessage
 from langchain_core.tools import BaseTool
 
 from app.agents.llm.client import resolve_model
-from app.agents.llm.lane import helper_lane
+from app.agents.llm.lane import one_shot_lane
 from app.agents.middleware.factory import AccountingOptions
 from app.agents.prompts.scout_prompts import SCOUT_LEARN_PROMPT
 from app.constants.llm import ModelUse
@@ -67,7 +67,7 @@ async def _run_agent(
         "user_id": user_id,
         "conversation_id": f"scout-{integration.integration_id}-{user_id}-{uuid4().hex[:6]}",
         "execution_mode": "background",
-        "lane": helper_lane().to_configurable(),
+        "lane": one_shot_lane(ModelUse.HELPER).to_configurable(),
         "read_only": True,
     }
     async with asyncio.timeout(SCOUT_LEARN_TIMEOUT.total_seconds()):

@@ -29,12 +29,12 @@ from tests.factories import make_user_id
 from tests.helpers import captured_wide_event
 import time_machine
 
-from app.agents.llm.lane import helper_lane
+from app.agents.llm import lane as lane_module
 from app.agents.middleware.factory import AccountingOptions
 from app.agents.prompts.scout_prompts import SCOUT_LEARN_PROMPT
 from app.constants import scouts as scout_constants
 from app.constants.hil import HIL_STATUS_KWARG
-from app.constants.llm import ModelUse
+from app.constants.llm import LLMProviderName, ModelUse
 from app.constants.log_tags import LogTag
 from app.constants.scouts import SCOUT_AGENT_NAME, SCOUT_LEARN_RECURSION_LIMIT
 from app.models import scout_models
@@ -73,6 +73,14 @@ _SPEND = ScoutSpend(f"scouts:spend:{USER_ID}:2026-10-22")
 
 # Learn runs book their spend to the scout tally in Redis.
 pytestmark = pytest.mark.usefixtures("fake_redis")
+
+
+@pytest.fixture(autouse=True)
+def _helper_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route helper calls to one known model, which the run's lane must be priced by."""
+    monkeypatch.setattr(
+        lane_module, "one_shot_route", lambda use: (LLMProviderName.GEMINI, "gemini-helper")
+    )
 
 
 class _Learner(ScriptedModel):
@@ -409,11 +417,12 @@ class TestTheLearnRun:
             "lane",
             "read_only",
         }
-        # Priced by the helper model's own lane, and refused anything that writes.
-        assert (configurable["lane"], configurable["read_only"]) == (
-            helper_lane().to_configurable(),
-            True,
+        # Priced by the route the helper model runs on, and refused anything that writes.
+        assert (configurable["lane"]["provider"], configurable["lane"]["model"]) == (
+            LLMProviderName.GEMINI,
+            "gemini-helper",
         )
+        assert configurable["read_only"] is True
         assert re.fullmatch(r"scout_[0-9a-f]{32}", configurable["stream_id"])
         assert re.fullmatch(
             rf"scout-linear-{USER_ID}-[0-9a-f]{{6}}", configurable["conversation_id"]

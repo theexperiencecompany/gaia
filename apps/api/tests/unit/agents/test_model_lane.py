@@ -19,13 +19,11 @@ from app.agents.llm.lane import (
     ModelLane,
     dev_option,
     dev_option_for,
-    helper_lane,
     inherits_lane,
     resolve_lane,
 )
 from app.config.settings import settings
 from app.constants.llm import (
-    AUX_MODEL_NAME,
     COMMS_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
@@ -37,6 +35,7 @@ from app.constants.llm import (
     PAID_MODEL_NAME,
     PAID_MODEL_PROVIDER,
     LLMProviderName,
+    ModelUse,
     OpenRouterModelKwargs,
 )
 from app.constants.log_tags import LogTag
@@ -156,14 +155,25 @@ class TestPlanRouting:
         assert comms.reasoning == {"effort": "comms-only"}
         assert executor.reasoning == {"effort": "everyone-else"}
 
-    def test_the_helper_lane_is_the_aux_model_on_openrouter(self) -> None:
-        assert helper_lane() == ModelLane(
-            provider=LLMProviderName.OPENROUTER,
-            model=AUX_MODEL_NAME,
-            reasoning=None,
-            provider_pin=None,
-            max_input_tokens=DEFAULT_MAX_TOKENS,
-        )
+    @pytest.mark.regression
+    def test_a_one_shot_lane_is_the_route_its_model_runs_on(self) -> None:
+        """A scout learn ran on Gemini but was priced as OpenRouter's aux model."""
+        with patch.object(
+            lane_module, "one_shot_route", return_value=(LLMProviderName.GEMINI, "gemini-x")
+        ) as route:
+            lane = lane_module.one_shot_lane(ModelUse.HELPER)
+
+        route.assert_called_once_with(ModelUse.HELPER)
+        assert (lane.provider, lane.model) == (LLMProviderName.GEMINI, "gemini-x")
+
+    def test_a_one_shot_lane_on_the_forced_custom_endpoint_names_its_model(self) -> None:
+        with (
+            patch.object(lane_module, "custom_lane_forced", return_value=True),
+            patch.object(lane_module, "chat_model", return_value="local-model"),
+        ):
+            lane = lane_module.one_shot_lane(ModelUse.HELPER)
+
+        assert (lane.provider, lane.model) == (LLMProviderName.CUSTOM, "local-model")
 
     async def test_every_lane_carries_the_context_window(self) -> None:
         """A lane with no budget silently uncaps the summarization middleware."""
