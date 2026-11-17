@@ -471,7 +471,7 @@ export class ConversationFollower {
       logger.warn("reply_file_failed", sanitizeErrorForLog(error));
       const name = file.path.split("/").pop() ?? file.path;
       await this.sendLines([
-        `I couldn't send ${name} here. Open it in GAIA: ${this.surface.links.conversation}`,
+        `I couldn't send ${name} here. Open it in GAIA: ${file.opens_at}`,
       ]);
     }
   }

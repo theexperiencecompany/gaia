@@ -359,18 +359,18 @@ describe("handleTodoDelete", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleConversationList", () => {
-  it("returns formatted conversation list with frontend URLs", async () => {
+  it("lists each conversation with the link the server built", async () => {
     const gaia = makeGaia();
     vi.mocked(gaia.listConversations).mockResolvedValue({
       conversations: [
         {
           conversation_id: "c-1",
+          url: "https://heygaia.io/c/c-1",
           title: "Work chat",
           message_count: 12,
         },
       ],
     } as never);
-    vi.mocked(gaia.getFrontendUrl).mockReturnValue("https://heygaia.io");
 
     const result = await handleConversationList(gaia, ctx);
 

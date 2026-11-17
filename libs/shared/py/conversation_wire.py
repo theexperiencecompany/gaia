@@ -190,6 +190,8 @@ class ReplyFile(BaseModel):
 
     path: str = Field(min_length=1)
     content_type: str | None
+    #: The web page the file opens on: where a platform that refuses the upload points the user.
+    opens_at: str = Field(min_length=1)
 
 
 class ReplyItem(ScreenItemBase):

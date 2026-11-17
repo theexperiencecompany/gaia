@@ -99,7 +99,11 @@ const row = (id: string) => ({
   updatedAt: AT,
 });
 
-const listed = (id: string): Conversation => ({ ...row(id), user_id: "u1" });
+const listed = (id: string): Conversation => ({
+  ...row(id),
+  user_id: "u1",
+  url: `https://app.test/c/${id}`,
+});
 
 const synced = (id: string, updatedAt = AT): SyncedConversation => ({
   ...row(id),

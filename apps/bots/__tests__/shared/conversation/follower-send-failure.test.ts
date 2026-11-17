@@ -55,7 +55,6 @@ function surface(sent: string[], refuse: (() => Error) | null): FollowSurface {
     sendNotice: async () => undefined,
     windowClosed: async () => false,
     links: {
-      conversation: "https://gaia.test/c/c1",
       pricing: "https://gaia.test/pricing",
     },
     requester: {

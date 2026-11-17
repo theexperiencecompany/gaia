@@ -794,8 +794,8 @@ async def test_an_artifact_card_from_the_first_artifacts_build_reads_as_the_file
 
     reply = await entries_collection.find_one({"conversation_id": ref.conversation_id, "id": "m2"})
     assert reply["tool_data"][0]["data"] == {**written, "event": "upsert"}
-    assert reply_files(reply["tool_data"]) == (
-        ReplyFile(path=written["path"], content_type="text/markdown"),
+    assert reply_files(reply["tool_data"], "page") == (
+        ReplyFile(path=written["path"], content_type="text/markdown", opens_at="page"),
     )
     report = await migration.verify(ref)
     assert report.ok, report.mismatches

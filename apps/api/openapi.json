@@ -4677,6 +4677,10 @@
             ],
             "title": "Updatedat"
           },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
           "user_id": {
             "title": "User Id",
             "type": "string"
@@ -4693,7 +4697,8 @@
           "source",
           "awaiting_approval",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "url"
         ],
         "title": "ConversationSummary",
         "type": "object"
@@ -15993,6 +15998,11 @@
             ],
             "title": "Content Type"
           },
+          "opens_at": {
+            "minLength": 1,
+            "title": "Opens At",
+            "type": "string"
+          },
           "path": {
             "minLength": 1,
             "title": "Path",
@@ -16001,7 +16011,8 @@
         },
         "required": [
           "path",
-          "content_type"
+          "content_type",
+          "opens_at"
         ],
         "title": "ReplyFile",
         "type": "object"

@@ -464,5 +464,7 @@ def _reply_item(
         retry_target=read.newest_asked(
             (*(() if settle is None else settle.answers), *(() if target is None else (target,)))
         ),
-        files=reply_files([*work_cards, *reply.tool_data]),
+        files=reply_files(
+            [*work_cards, *reply.tool_data], links.conversation_page(conversation_id)
+        ),
     )

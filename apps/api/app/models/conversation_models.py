@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES
 from app.models.artifact_models import ArtifactRegistryEntry
@@ -34,6 +34,7 @@ from app.models.conversation_log_models import ConversationState
 from app.models.conversation_screen_models import ScreenItem, TextItem
 from app.models.document_models import UserScopedDocument
 from app.schemas.common import ResponseModel
+from app.utils.artifact_utils import FILE_LINKS
 
 
 class ConversationDocument(UserScopedDocument, ConversationModel):
@@ -90,6 +91,13 @@ class ConversationSummary(ResponseModel):
     awaiting_approval: bool = False
     createdAt: str | None = None
     updatedAt: datetime | None = None
+    #: The conversation's web app page, built here so no client spells the route itself.
+    url: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def _link(cls, row: dict[str, object]) -> dict[str, object]:
+        return {**row, "url": FILE_LINKS.conversation_page(str(row["conversation_id"]))}
 
 
 class ConversationMessageHit(BaseModel):

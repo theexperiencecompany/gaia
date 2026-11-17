@@ -76,7 +76,7 @@ function recorder(behaviour: PlatformBehaviour = {}): {
   const surface: FollowSurface = {
     sendNotice,
     windowClosed: async () => behaviour.windowClosed ?? false,
-    links: { conversation: CONVERSATION_LINK, pricing: PRICING_LINK },
+    links: { pricing: PRICING_LINK },
     requester: {
       sendNotice: behaviour.group
         ? async (bubbles) => {
@@ -830,7 +830,13 @@ describe("a notice and a reply's files", () => {
       screenFrame([inbound("u1", 1, "11")]),
       updateFrame({
         ...replyItem("r1", 2, "Here is the report", "answered"),
-        files: [{ path: "out/report.pdf", content_type: "application/pdf" }],
+        files: [
+          {
+            path: "out/report.pdf",
+            content_type: "application/pdf",
+            opens_at: CONVERSATION_LINK,
+          },
+        ],
       }),
       insertFrame(replyItem("r2", 3, "And one more thing", "answered")),
     ]);
@@ -872,7 +878,13 @@ describe("a notice and a reply's files", () => {
       "c1",
     );
     follower.expect(1);
-    const files = [{ path: "out/report.pdf", content_type: "application/pdf" }];
+    const files = [
+      {
+        path: "out/report.pdf",
+        content_type: "application/pdf",
+        opens_at: CONVERSATION_LINK,
+      },
+    ];
     const settled = {
       ...replyItem("r1", 2, "Here is the report.", "answered"),
       files,

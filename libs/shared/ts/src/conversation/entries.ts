@@ -307,7 +307,11 @@ const ReplyItemSchema = z.object({
   narrates: z.array(z.string()),
   retry_target: z.string().nullable(),
   files: z.array(
-    z.object({ path: z.string().min(1), content_type: z.string().nullable() }),
+    z.object({
+      path: z.string().min(1),
+      content_type: z.string().nullable(),
+      opens_at: z.string().min(1),
+    }),
   ),
 }) satisfies z.ZodType<ReplyItem>;
 

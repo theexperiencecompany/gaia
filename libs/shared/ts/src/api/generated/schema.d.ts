@@ -7932,6 +7932,8 @@ export interface components {
             system_purpose: components["schemas"]["SystemPurpose"] | null;
             /** Updatedat */
             updatedAt: string | null;
+            /** Url */
+            url: string;
             /** User Id */
             user_id: string;
         } & {
@@ -13437,6 +13439,8 @@ export interface components {
         ReplyFile: {
             /** Content Type */
             content_type: string | null;
+            /** Opens At */
+            opens_at: string;
             /** Path */
             path: string;
         };

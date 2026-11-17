@@ -7,8 +7,8 @@ from app.models.artifact_models import ArtifactCard
 from shared.py.conversation_wire import ReplyFile, ToolDataEntry
 
 
-def reply_files(cards: Iterable[ToolDataEntry]) -> tuple[ReplyFile, ...]:
-    """Return each file the cards wrote, once per path, in the order they were written."""
+def reply_files(cards: Iterable[ToolDataEntry], opens_at: str) -> tuple[ReplyFile, ...]:
+    """Return each file the cards wrote, once per path, in the order they were written, each opening on opens_at."""
     files: dict[str, ReplyFile] = {}
     for card in cards:
         if card["tool_name"] != ARTIFACT_CARD:
@@ -16,6 +16,7 @@ def reply_files(cards: Iterable[ToolDataEntry]) -> tuple[ReplyFile, ...]:
         written = ArtifactCard.model_validate(card["data"])
         if written.event == "upsert":
             files.setdefault(
-                written.path, ReplyFile(path=written.path, content_type=written.content_type)
+                written.path,
+                ReplyFile(path=written.path, content_type=written.content_type, opens_at=opens_at),
             )
     return tuple(files.values())

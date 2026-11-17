@@ -124,10 +124,7 @@ export async function handleConversationList(
 ): Promise<string> {
   try {
     const response = await gaia.listConversations(ctx, { page, limit: 5 });
-    return formatConversationList(
-      response.conversations,
-      gaia.getFrontendUrl(),
-    );
+    return formatConversationList(response.conversations);
   } catch (error: unknown) {
     return reportCommandFailure("list_conversations", error, ctx);
   }

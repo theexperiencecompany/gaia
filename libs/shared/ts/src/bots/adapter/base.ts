@@ -767,7 +767,6 @@ export abstract class BaseBotAdapter {
           },
           this.followSurface(
             surface,
-            accepted.conversation_id,
             request.platformUserId,
             request.isDm || !request.channelId ? null : request.channelId,
           ),
@@ -821,7 +820,6 @@ export abstract class BaseBotAdapter {
       },
       this.followSurface(
         surface,
-        target.conversation_id,
         target.platform_user_id,
         target.is_dm ? null : target.channel_id,
       ),
@@ -836,7 +834,6 @@ export abstract class BaseBotAdapter {
    */
   private followSurface(
     surface: ConversationSurface,
-    conversationId: string,
     platformUserId: string,
     channelId: string | null,
   ): FollowSurface {
@@ -892,9 +889,6 @@ export abstract class BaseBotAdapter {
       requester,
       // Read when a line needs one: most follows link to neither.
       links: {
-        get conversation() {
-          return `${gaia.getFrontendUrl()}/c/${conversationId}`;
-        },
         get pricing() {
           return gaia.getPricingUrl();
         },

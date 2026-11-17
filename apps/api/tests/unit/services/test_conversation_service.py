@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import HTTPException
 import pytest
 
+from app.config.settings import settings
 from app.models.chat_models import (
     BatchSyncRequest,
     ConversationModel,
@@ -406,6 +407,11 @@ class TestListConversations:
 
         ids = [c.conversation_id for c in result.conversations]
         assert ids == ["s1", "a1"]  # starred first
+        # The server builds each row's link, so a bot's list command never spells the route.
+        assert [c.url for c in result.conversations] == [
+            f"{settings.FRONTEND_URL}/c/s1",
+            f"{settings.FRONTEND_URL}/c/a1",
+        ]
         assert result.page == 2 and result.limit == 10
         assert result.total == 1 + 25
         assert result.total_pages == 3  # 25 active / 10

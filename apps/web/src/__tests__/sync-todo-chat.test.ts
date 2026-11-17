@@ -26,6 +26,7 @@ const LONG_AGO = new Date("2026-01-01T00:00:00Z");
 
 const LISTED = {
   conversation_id: "listed",
+  url: "https://app.test/c/listed",
   user_id: "u1",
   description: "listed",
   starred: null,
@@ -69,6 +70,7 @@ describe("syncing a tracked todo's chat", () => {
       conversations: [
         {
           conversation_id: "listed",
+          url: "https://app.test/c/listed",
           user_id: "u1",
           description: "listed",
           starred: null,

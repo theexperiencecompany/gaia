@@ -21,7 +21,9 @@ def test_each_written_file_is_listed_once_with_its_type_past_other_cards() -> No
         _artifact("upsert", "/a/report.pdf", "text/plain"),
     ]
 
-    assert reply_files(cards) == (
-        ReplyFile(path="/a/report.pdf", content_type="application/pdf"),
-        ReplyFile(path="/a/chart.png", content_type="image/png"),
+    page = "https://app.test/c/c1"
+
+    assert reply_files(cards, page) == (
+        ReplyFile(path="/a/report.pdf", content_type="application/pdf", opens_at=page),
+        ReplyFile(path="/a/chart.png", content_type="image/png", opens_at=page),
     )

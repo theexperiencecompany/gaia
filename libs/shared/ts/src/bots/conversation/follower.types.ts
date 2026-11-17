@@ -57,8 +57,6 @@ export interface PrivateSurface {
 
 /** The GAIA web pages a follower links to from a chat platform. */
 export interface FollowLinks {
-  /** This conversation in the web app, where a file the platform refused can be opened. */
-  conversation: string;
   /** The plans page a usage limit points to. */
   pricing: string;
 }

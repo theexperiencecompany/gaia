@@ -186,6 +186,8 @@ export interface BotCreateTodoRequest {
 
 export interface BotConversation {
   conversation_id: string;
+  /** The conversation's web app page, built by the server. */
+  url: string;
   title?: string;
   description?: string;
   created_at: string;

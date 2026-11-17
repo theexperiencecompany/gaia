@@ -841,6 +841,7 @@ function mapConversationResponse(
   return {
     conversation_id:
       (data.conversation_id as string) || (data.id as string) || "",
+    url: data.url as string,
     title: (data.title as string) || (data.description as string) || undefined,
     created_at: (data.createdAt as string) || (data.created_at as string) || "",
     updated_at: (data.updatedAt as string) || (data.updated_at as string) || "",

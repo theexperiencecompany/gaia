@@ -71,12 +71,9 @@ export function formatTodoList(todos: BotTodo[]): string {
 /**
  * Formats a conversation for display.
  */
-export function formatConversation(
-  conversation: BotConversation,
-  baseUrl: string,
-): string {
+export function formatConversation(conversation: BotConversation): string {
   const title = conversation.title || "Untitled Conversation";
-  const url = `${baseUrl}/c/${conversation.conversation_id}`;
+  const { url } = conversation;
   const messageCount = conversation.message_count
     ? ` (${conversation.message_count} messages)`
     : "";
@@ -89,13 +86,12 @@ export function formatConversation(
  */
 export function formatConversationList(
   conversations: BotConversation[],
-  baseUrl: string,
 ): string {
   if (conversations.length === 0) {
     return "No conversations found.";
   }
 
-  return conversations.map((c) => formatConversation(c, baseUrl)).join("\n\n");
+  return conversations.map(formatConversation).join("\n\n");
 }
 
 // ---------------------------------------------------------------------------
