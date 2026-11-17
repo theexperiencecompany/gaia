@@ -234,6 +234,10 @@ async def fts_search(user_id: str, query: str, limit: int) -> list[tuple[MemoryR
         return [(row[0], float(row[1])) for row in result.all()]
 
 
+# as_uuid only shapes result rows; this type is used only to cast a bound array.
+_UUID_ARRAY = ARRAY(UUID(as_uuid=True))  # pragma: no mutate — bind-only cast
+
+
 async def fast_candidates(
     user_id: str,
     tokens: list[str],
@@ -259,9 +263,7 @@ async def fast_candidates(
         rank = func.ts_rank_cd(MemoryRecord.search_tsv, tsquery)
     semantic_first = (
         (
-            func.array_position(
-                cast(pg_array(semantic_uuids), ARRAY(UUID(as_uuid=True))), MemoryRecord.id
-            )
+            func.array_position(cast(pg_array(semantic_uuids), _UUID_ARRAY), MemoryRecord.id)
             .asc()
             .nulls_last(),
         )

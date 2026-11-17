@@ -113,7 +113,7 @@ async def _user_vectors(user_id: str) -> _UserVectors:
     _held.move_to_end(user_id)
     held_bytes = sum(entry.matrix.nbytes for entry in _held.values())
     while len(_held) > 1 and held_bytes > VECTOR_CACHE_MAX_BYTES:
-        _, evicted = _held.popitem(last=False)
+        _, evicted = _held.popitem(last=False)  # pragma: no mutate — None pops oldest too
         held_bytes -= evicted.matrix.nbytes
     return held
 
@@ -130,7 +130,8 @@ async def nearest(
     held = await _user_vectors(user_id)
     if not held.ids:
         return []
-    unit = np.asarray(query, dtype=np.float32)
+    # float32 keeps the product in the matrix's dtype instead of upcasting a copy of it.
+    unit = np.asarray(query, dtype=np.float32)  # pragma: no mutate — same scores, a copy
     scores = held.matrix @ (unit / np.linalg.norm(unit))
     top = np.argsort(-scores)[:k]
     return [held.ids[i] for i in top if scores[i] >= min_similarity]

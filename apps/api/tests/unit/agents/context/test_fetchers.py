@@ -30,6 +30,7 @@ from app.agents.context.fetchers import (
     build_background_banner,
     build_connected_integrations_manifest,
     build_core_memory_block,
+    build_fast_recall_block,
     build_gaia_knowledge_block,
     build_memory_recall_block,
     build_new_user_guidance_block,
@@ -93,6 +94,65 @@ def ctx(
         user_preferences=user_preferences,
         source=source,
     )
+
+
+_FAST_RECALL = "app.memory.fast_recall.fast_recall"
+
+
+@pytest.mark.unit
+class TestFastRecallBlock:
+    async def test_renders_the_turns_memories_recalled_for_this_user_and_conversation(
+        self,
+    ) -> None:
+        recall = AsyncMock(
+            return_value=[
+                memory("User likes coffee", mentioned="2026-01-05"),
+                memory("User prefers dark mode", mentioned="2026-02-11"),
+            ]
+        )
+        turn = replace(ctx(user_id="user-7", query="coffee?"), conversation_id="conv-1")
+        with patch(_FAST_RECALL, recall):
+            async with captured_wide_event() as event:
+                block = await build_fast_recall_block(turn)
+
+        assert block == (
+            f"{MEMORY_RECALL_HEADER}\n"
+            "- User likes coffee [mentioned 2026-01-05]\n"
+            "- User prefers dark mode [mentioned 2026-02-11]"
+        )
+        recall.assert_awaited_once_with("user-7", "coffee?", conversation_id="conv-1")
+        assert event["memory_fast_recall"] == {"count": 2}
+
+    @pytest.mark.parametrize("turn", [ctx(query=None), ctx(user_id=None)])
+    async def test_renders_nothing_without_both_a_user_and_a_query(
+        self, turn: SectionContext
+    ) -> None:
+        recall = AsyncMock(return_value=[memory("never shown")])
+        with patch(_FAST_RECALL, recall):
+            assert await build_fast_recall_block(turn) == ""
+
+        recall.assert_not_awaited()
+
+    async def test_renders_nothing_when_nothing_matched(self) -> None:
+        with patch(_FAST_RECALL, AsyncMock(return_value=[])):
+            async with captured_wide_event() as event:
+                assert await build_fast_recall_block(ctx()) == ""
+
+        assert event["memory_fast_recall"] == {"count": 0}
+
+    async def test_a_failed_lane_costs_only_its_section_and_is_logged(self) -> None:
+        with patch(_FAST_RECALL, AsyncMock(side_effect=RuntimeError("pg down"))):
+            async with captured_wide_event() as event:
+                assert await build_fast_recall_block(ctx(user_id="user-7")) == ""
+
+        assert event["errors"] == [
+            {
+                "msg": "Memory fast lane failed",
+                "user_id": "user-7",
+                "error_type": "RuntimeError",
+                "error": "pg down",
+            }
+        ]
 
 
 @pytest.mark.unit

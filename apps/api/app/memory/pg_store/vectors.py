@@ -52,7 +52,7 @@ def _stack(blobs: Sequence[bytes]) -> Matrix:
 
 def pack(vector: Sequence[float]) -> bytes:
     """Encode a vector as unit-normalised little-endian float32 bytes."""
-    array: Matrix = np.asarray(vector, dtype="<f4")
+    array = np.asarray(vector)
     unit: Matrix = (array / np.linalg.norm(array)).astype("<f4")
     return bytes(unit.tobytes())
 
@@ -84,7 +84,7 @@ async def live_vectors(user_id: str, model: str) -> VectorSnapshot:
         read_at = (await session.execute(select(func.now()))).scalar_one()
         result = await session.execute(
             select(MemoryVector.memory_id, MemoryVector.vector)
-            .join(MemoryRecord, MemoryRecord.id == MemoryVector.memory_id)
+            .join(MemoryRecord)
             .where(MemoryVector.user_id == user_id, MemoryVector.model == model, _is_live())
         )
         rows = result.all()
@@ -101,7 +101,7 @@ async def vectors_changed_since(user_id: str, model: str, since: datetime) -> Ve
         read_at = (await session.execute(select(func.now()))).scalar_one()
         result = await session.execute(
             select(MemoryVector.memory_id, MemoryVector.vector, _is_live())
-            .join(MemoryRecord, MemoryRecord.id == MemoryVector.memory_id)
+            .join(MemoryRecord)
             .where(
                 MemoryVector.user_id == user_id,
                 MemoryVector.model == model,
@@ -122,13 +122,13 @@ async def live_memories_without_vector(
     model: str, after: uuid.UUID | None, limit: int
 ) -> list[MemoryRecord]:
     """Live memories with no vector under model, in id order from after — the backfill's cursor."""
-    missing = (
-        ~select(MemoryVector.memory_id)
+    has_vector = (
+        select(MemoryVector.memory_id)
         .where(MemoryVector.memory_id == MemoryRecord.id, MemoryVector.model == model)
         .exists()
     )
     query = select(MemoryRecord).where(
-        MemoryRecord.is_latest.is_(True), MemoryRecord.is_forgotten.is_(False), missing
+        MemoryRecord.is_latest.is_(True), MemoryRecord.is_forgotten.is_(False), ~has_vector
     )
     if after is not None:
         query = query.where(MemoryRecord.id > after)

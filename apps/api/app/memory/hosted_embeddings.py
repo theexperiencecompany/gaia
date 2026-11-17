@@ -24,6 +24,7 @@ from app.services.providers.provider_credentials_service import is_usable, resol
 
 _EMBEDDINGS_URL: Final = "https://api.openai.com/v1/embeddings"
 _RETRYABLE: Final = frozenset({429, 500, 502, 503, 504})
+_ERROR_BODY_CHARS: Final = 300
 
 
 class HostedEmbeddingError(RuntimeError):
@@ -63,31 +64,37 @@ def _client() -> httpx.AsyncClient:
     return client
 
 
+async def _post(texts: list[str]) -> httpx.Response:
+    return await _client().post(
+        _EMBEDDINGS_URL, json={"model": MEMORY_VECTOR_MODEL, "input": texts}
+    )
+
+
+def _vectors(response: httpx.Response, texts: list[str]) -> list[list[float]]:
+    if response.is_error:
+        raise HostedEmbeddingError(
+            f"{MEMORY_VECTOR_MODEL}: HTTP {response.status_code} {response.text[:_ERROR_BODY_CHARS]}"
+        )
+    data = _EmbeddingsResponse.model_validate_json(response.content).data
+    if len(data) != len(texts):
+        raise HostedEmbeddingError(
+            f"{MEMORY_VECTOR_MODEL}: {len(data)} vectors for {len(texts)} texts"
+        )
+    return [item.embedding for item in sorted(data, key=lambda item: item.index)]
+
+
 async def _embed(texts: list[str], *, retries: int) -> list[list[float]]:
-    for attempt in range(retries + 1):
+    """Retry transport errors and retryable statuses with backoff; the last try stands."""
+    for attempt in range(retries):
         try:
-            response = await _client().post(
-                _EMBEDDINGS_URL, json={"model": MEMORY_VECTOR_MODEL, "input": texts}
-            )
+            response = await _post(texts)
         except httpx.TransportError:
-            if attempt == retries:
-                raise
             await asyncio.sleep(2**attempt)
             continue
-        if response.status_code in _RETRYABLE and attempt < retries:
-            await asyncio.sleep(2**attempt)
-            continue
-        if response.is_error:
-            raise HostedEmbeddingError(
-                f"{MEMORY_VECTOR_MODEL}: HTTP {response.status_code} {response.text[:300]}"
-            )
-        data = _EmbeddingsResponse.model_validate_json(response.content).data
-        if len(data) != len(texts):
-            raise HostedEmbeddingError(
-                f"{MEMORY_VECTOR_MODEL}: {len(data)} vectors for {len(texts)} texts"
-            )
-        return [item.embedding for item in sorted(data, key=lambda item: item.index)]
-    raise HostedEmbeddingError(f"{MEMORY_VECTOR_MODEL}: retries exhausted")
+        if response.status_code not in _RETRYABLE:
+            return _vectors(response, texts)
+        await asyncio.sleep(2**attempt)
+    return _vectors(await _post(texts), texts)
 
 
 async def embed_documents(texts: Sequence[str]) -> list[list[float]]:

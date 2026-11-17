@@ -584,7 +584,7 @@ describe("handleStreamingChat delivery", () => {
   it("delivers the reply as a new message when the Thinking... placeholder was never posted", async () => {
     // The placeholder posts alongside the chat request, so the turn is already doing the
     // user's work when it fails; its reply must still reach them.
-    const placeholder = new ReplyPlaceholder<string>(
+    const placeholder = ReplyPlaceholder.post<string>(
       () => Promise.reject(new Error("channel_not_found")),
       vi.fn(),
     );

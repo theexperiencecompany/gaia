@@ -18,6 +18,7 @@ import math
 from time import monotonic
 from typing import Any, cast
 
+from chromadb.api.types import GetResult
 from langchain_core.embeddings import Embeddings
 from pydantic import BaseModel, Field, field_validator
 
@@ -230,7 +231,7 @@ class GaiaKnowledgeService:
     async def _load_snapshot(self) -> _Snapshot:
         client = await ChromaClient.get_client()
         collection = await client.get_or_create_collection(name=self.collection_name)
-        result = await collection.get(include=["documents", "metadatas"])
+        result: GetResult = await collection.get(include=["documents", "metadatas"])
         documents = result.get("documents") or []
         metadatas = result.get("metadatas") or []
         if not documents:

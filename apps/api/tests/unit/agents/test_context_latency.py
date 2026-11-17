@@ -90,7 +90,7 @@ async def test_a_section_over_its_budget_renders_empty_while_the_others_render()
         frozenset({AgentTier.COMMS}),
         30,
         _hung,
-        budget_seconds=0.0,
+        budget_seconds=0.001,
     )
     fast = _stub_section(SectionId.USER_PREFS, 0.0, PromptSlot.DYNAMIC_STABLE)
     before = _budget_trips(SectionId.GAIA_KNOWLEDGE)
@@ -105,9 +105,17 @@ async def test_a_section_over_its_budget_renders_empty_while_the_others_render()
     assert result.volatile is None
     assert "text-user_prefs" in result.stable.content
     assert _budget_trips(SectionId.GAIA_KNOWLEDGE) == before + 1
-    (warning,) = event["warnings"]
-    assert warning["section"] == SectionId.GAIA_KNOWLEDGE.value
-    assert warning["budget_ms"] == 0.0
+    assert event["warnings"] == [
+        {
+            "msg": "[AGENT] Context section exceeded its budget",
+            "section": SectionId.GAIA_KNOWLEDGE.value,
+            "tier": AgentTier.COMMS.value,
+            "budget_ms": 1.0,
+            "user_id": "u",
+            "error_type": "TimeoutError",
+            "error": "",
+        }
+    ]
 
 
 async def test_a_timeout_the_section_raised_itself_is_not_mistaken_for_its_budget() -> None:
@@ -123,3 +131,19 @@ async def test_a_timeout_the_section_raised_itself_is_not_mistaken_for_its_budge
         await assemble._render_section(section, _ctx())
 
     assert _budget_trips(SectionId.USER_PREFS) == before
+
+
+@pytest.mark.parametrize("memory_section", [SectionId.MEMORY_RECALL, SectionId.FAST_MEMORY_RECALL])
+async def test_either_memory_section_marks_the_turn_as_having_memories(
+    memory_section: SectionId,
+) -> None:
+    rendered = _stub_section(memory_section, 0.0, PromptSlot.MEMORY_RECALL)
+
+    def _fake_sections_for(tier: AgentTier, slot: PromptSlot) -> list[Section]:
+        return [rendered] if slot == PromptSlot.MEMORY_RECALL else []
+
+    with patch.object(assemble, "sections_for", side_effect=_fake_sections_for):
+        async with captured_wide_event() as event:
+            await assemble._gather_sections(_ctx())
+
+    assert event["dynamic_context"]["has_memories"] is True

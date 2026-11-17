@@ -41,6 +41,8 @@ _MEMORY_SEARCH_TSV = (
     "setweight(to_tsvector('english', replace(category_path, '/', ' ')), 'B')"
 )
 
+_MEMORY_ID_FK = "memories.id"
+
 
 class MemoryRecord(Base):
     """An atomic memory: a semantic fact or an experience.
@@ -121,7 +123,7 @@ class MemoryVector(Base):
     __tablename__ = "memory_vectors"
 
     memory_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("memories.id", ondelete="CASCADE"), primary_key=True
+        UUID(as_uuid=True), ForeignKey(_MEMORY_ID_FK, ondelete="CASCADE"), primary_key=True
     )
     model: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -164,7 +166,7 @@ class MemoryEntityLink(Base):
     __tablename__ = "memory_entity_links"
 
     memory_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("memories.id", ondelete="CASCADE"), primary_key=True
+        UUID(as_uuid=True), ForeignKey(_MEMORY_ID_FK, ondelete="CASCADE"), primary_key=True
     )
     entity_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("memory_entities.id", ondelete="CASCADE"), primary_key=True
@@ -186,7 +188,7 @@ class MemoryGraphEdge(Base):
     )
     relationship: Mapped[str] = mapped_column(String(255), nullable=False)
     memory_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("memories.id", ondelete="SET NULL"), nullable=True
+        UUID(as_uuid=True), ForeignKey(_MEMORY_ID_FK, ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=func.now(), nullable=False

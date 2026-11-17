@@ -173,7 +173,7 @@ class TestCoreAgentLogic:
         patches = _common_patches()
         with (
             patches["construct"],
-            patches["get_graph"],
+            patches["get_graph"] as get_graph,
             patches["build_state"],
             patches["build_config"],
             patches["log"],
@@ -184,6 +184,7 @@ class TestCoreAgentLogic:
                 user=_make_user(),
             )
 
+        get_graph.assert_awaited_once_with("comms_agent")
         assert graph is FAKE_GRAPH
         assert state is FAKE_STATE
         assert config is FAKE_CONFIG

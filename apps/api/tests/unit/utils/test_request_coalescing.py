@@ -27,6 +27,21 @@ async def test_concurrent_callers_share_one_run() -> None:
     assert runs == 1
 
 
+async def test_different_keys_run_separately() -> None:
+    release = asyncio.Event()
+
+    async def work(value: str) -> str:
+        await release.wait()
+        return value
+
+    first = asyncio.ensure_future(coalesce_request("one", lambda: work("one")))
+    second = asyncio.ensure_future(coalesce_request("two", lambda: work("two")))
+    await asyncio.sleep(0)
+    release.set()
+
+    assert await asyncio.gather(first, second) == ["one", "two"]
+
+
 @pytest.mark.regression
 async def test_a_cancelled_waiter_leaves_the_run_going_for_the_others() -> None:
     started, release = asyncio.Event(), asyncio.Event()

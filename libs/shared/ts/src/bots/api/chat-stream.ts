@@ -11,7 +11,7 @@
 import type { Readable } from "node:stream";
 import type { ApprovalRequestData } from "../../chat";
 import { NEW_MESSAGE_BREAK_TOKEN } from "../../utils/messageBreakUtils";
-import type { ChatRequest } from "../types";
+import type { ChatRequest, ReplyCompleteHandler } from "../types";
 import { getHttpStatus } from "../utils/logger";
 import {
   REACTION_OUTCOME,
@@ -24,16 +24,15 @@ import type {
   MessageBoundary,
   MessageBoundaryHandler,
   NoticeHandler,
-  ReplyCompleteHandler,
 } from "./chat-stream.types";
 
+export type { ReplyCompleteHandler } from "../types";
 export type { ReactionHandler } from "../utils/reaction-outcome";
 export type {
   ApprovalUpdateHandler,
   ChatStreamClient,
   MessageBoundaryHandler,
   NoticeHandler,
-  ReplyCompleteHandler,
 } from "./chat-stream.types";
 
 /** Exponential-backoff base delay and ceiling for stream retries. */

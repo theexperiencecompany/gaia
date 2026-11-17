@@ -22,6 +22,16 @@ from app.constants.memory import MEMORY_VECTOR_MODEL
 from app.db.postgresql import init_postgresql_engine
 from app.memory import hosted_embeddings, vector_index
 from app.memory.pg_store.vectors import live_memories_without_vector, upsert_vectors
+from app.models.memory_db_models import MemoryRecord
+
+
+async def _embed_and_store(rows: list[MemoryRecord]) -> None:
+    vectors = await hosted_embeddings.embed_documents([row.content for row in rows])
+    by_user: dict[str, list[tuple[uuid.UUID, list[float]]]] = defaultdict(list)
+    for row, vector in zip(rows, vectors, strict=True):
+        by_user[row.user_id].append((row.id, vector))
+    for user_id, pairs in by_user.items():
+        await upsert_vectors(user_id, MEMORY_VECTOR_MODEL, pairs)
 
 
 async def main() -> None:
@@ -42,12 +52,7 @@ async def main() -> None:
     while rows := await live_memories_without_vector(MEMORY_VECTOR_MODEL, cursor, args.batch):
         cursor = rows[-1].id
         if not args.dry_run:
-            vectors = await hosted_embeddings.embed_documents([row.content for row in rows])
-            by_user: dict[str, list[tuple[uuid.UUID, list[float]]]] = defaultdict(list)
-            for row, vector in zip(rows, vectors, strict=True):
-                by_user[row.user_id].append((row.id, vector))
-            for user_id, pairs in by_user.items():
-                await upsert_vectors(user_id, MEMORY_VECTOR_MODEL, pairs)
+            await _embed_and_store(rows)
         for row in rows:
             touched[row.user_id] += 1
         print(f"{sum(touched.values())} memories, {len(touched)} users", flush=True)

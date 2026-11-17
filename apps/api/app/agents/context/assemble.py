@@ -92,7 +92,6 @@ async def _render_section(section: Section, ctx: SectionContext) -> tuple[Sectio
                 section=section.id.value,
                 tier=ctx.tier.value,
                 budget_ms=section.budget_seconds * 1000,
-                elapsed_ms=round(elapsed() * 1000, 2),
                 user_id=ctx.user_id,
             )
             return section.id, ""

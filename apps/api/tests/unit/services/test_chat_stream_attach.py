@@ -23,7 +23,8 @@ import pytest
 
 from app.agents.core.agent import AgentRunOptions, StreamMessageIds
 from app.agents.core.background.session import RunKind, create_session, get_session
-from app.models.message_models import FileData, MessageRequestWithHistory
+from app.db.repositories.conversations import conversation_repository
+from app.models.message_models import FileData, MessageDict, MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.chat.stream import (
@@ -36,6 +37,8 @@ from app.services.chat.stream import (
     _StreamState,
     _TurnContext,
 )
+from app.services.files import FileService
+from app.services.turn_clock import TurnClock, TurnMark
 
 USER_ID = "6812f0b3c9a14e2b7d5a91cc"
 
@@ -175,7 +178,7 @@ class TestFinalizeStreamBackstop:
             [
                 {"tool_name": "search", "data": {}},
                 {"tool_name": "search", "data": {}},
-                {"data": {}},
+                {"tool_name": "fetch", "data": {}},
             ]
         )
 
@@ -189,7 +192,7 @@ class TestFinalizeStreamBackstop:
                 "s1", MagicMock(), AuthenticatedUser(user_id=USER_ID), "conv-1", state, None
             )
 
-        assert log.set.call_args.kwargs["tool_types"] == ["search"]
+        assert sorted(log.set.call_args.kwargs["tool_types"]) == ["fetch", "search"]
         assert log.set.call_args.kwargs["tool_calls_count"] == 3
 
     async def test_saved_turn_is_not_resaved_or_reattached(self) -> None:
@@ -217,7 +220,7 @@ class TestFinalizeStreamBackstop:
 
 class TestRecentHistory:
     def test_a_trailing_user_turn_is_dropped_from_the_prior_context(self) -> None:
-        messages = [
+        messages: list[MessageDict] = [
             {"role": "user", "content": "draft it"},
             {"role": "assistant", "content": "drafted"},
             {"role": "user", "content": "send it"},
@@ -226,7 +229,7 @@ class TestRecentHistory:
         assert _recent_history(messages) == messages[:2]
 
     def test_a_trailing_assistant_turn_is_kept(self) -> None:
-        messages = [
+        messages: list[MessageDict] = [
             {"role": "user", "content": "draft it"},
             {"role": "assistant", "content": "drafted"},
         ]
@@ -472,6 +475,7 @@ class TestRunChatStreamTurnDerivations:
         *,
         todo_id: str | None = None,
         save_waits_for_lookup: bool = False,
+        clock: TurnClock | None = None,
     ) -> dict[str, Any]:
         seen: dict[str, Any] = {}
         lookup_started = asyncio.Event()
@@ -507,7 +511,7 @@ class TestRunChatStreamTurnDerivations:
 
         with (
             patch.object(chat_stream, "stream_manager") as sm,
-            patch.object(chat_stream, "register_executor_capture"),
+            patch.object(chat_stream, "register_executor_capture") as register_capture,
             patch.object(chat_stream, "_set_stream_log_context"),
             patch.object(chat_stream, "_capture_presence", AsyncMock(return_value=None)),
             patch.object(chat_stream, "_publish_init_chunk", fake_publish_init),
@@ -525,18 +529,17 @@ class TestRunChatStreamTurnDerivations:
             patch.object(chat_stream, "capture"),
             patch.object(chat_stream, "_finalize_stream", AsyncMock()),
             patch.object(chat_stream, "_wait_for_artifact_forwarder", AsyncMock()),
-            patch.object(chat_stream.conversation_repository, "get_todo_id", get_todo_id),
-            patch.object(
-                chat_stream.FileService, "attach_uploads", new_callable=AsyncMock
-            ) as attach_uploads,
+            patch.object(conversation_repository, "get_todo_id", get_todo_id),
+            patch.object(FileService, "attach_uploads", new_callable=AsyncMock) as attach_uploads,
         ):
             sm.publish_chunk = AsyncMock()
             sm.complete_stream = AsyncMock()
             sm.is_cancelled = AsyncMock(return_value=False)
             await chat_stream._run_chat_stream(
-                "stream-1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", "whatsapp"
+                "stream-1", body, AuthenticatedUser(user_id=USER_ID), "conv-1", "whatsapp", clock
             )
 
+        seen["register_capture"] = register_capture
         seen["attach_uploads"] = attach_uploads
         seen["get_todo_id"] = get_todo_id
         return seen
@@ -612,6 +615,21 @@ class TestRunChatStreamTurnDerivations:
         )
 
         assert seen["turn"].todo_id == "todo-1"
+
+    async def test_the_turns_clock_rides_on_the_executor_session_it_registers(self) -> None:
+        """The LLM callback and the reply reader stamp the clock through that session."""
+        clock = TurnClock(received=1.0)
+        clock.marks[TurnMark.T0] = 2.0
+
+        seen = await self._run(
+            MessageRequestWithHistory(
+                message="hi", messages=[], conversation_id="conv-1", voice_mode=True
+            ),
+            clock=clock,
+        )
+
+        seen["register_capture"].assert_called_once_with("stream-1", voice_mode=True, clock=clock)
+        assert seen["state"].t0_perf == 2.0
 
     async def test_a_new_conversation_is_never_looked_up_as_a_todos_chat(self) -> None:
         seen = await self._run(MessageRequestWithHistory(message="hi", messages=[]))

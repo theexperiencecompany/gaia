@@ -1,7 +1,6 @@
 """The chat turn's overhead clock: stamped by the reply reader, recorded at turn close."""
 
 from collections.abc import Iterator
-from unittest.mock import patch
 
 from prometheus_client import REGISTRY
 import pytest
@@ -13,6 +12,7 @@ from app.agents.core.background.executor_capture import (
 from app.agents.core.background.session import get_session
 from app.services.chat import stream as stream_module
 from app.services.turn_clock import TurnClock, TurnMark
+from tests.helpers import captured_wide_event
 
 _STREAM_ID = "turn-overhead-test-stream"
 # The wire format subscribe_stream really yields: an SSE id line, then the data line.
@@ -56,39 +56,81 @@ def test_reply_reader_without_a_session_is_a_no_op() -> None:
     assert get_session("no-such-stream") is None
 
 
-def test_turn_close_records_every_stage_of_a_complete_clock(clock: TurnClock) -> None:
+async def test_turn_close_records_every_stage_of_a_complete_clock(clock: TurnClock) -> None:
+    # Sub-millisecond stamps, so the event's 2-decimal rounding of each stretch is pinned.
     clock.note_comms_call()
-    clock.marks[TurnMark.LLM_REQUEST] = 100.090
-    clock.marks[TurnMark.LLM_FIRST_CHUNK] = 101.290
-    clock.marks[TurnMark.FRAME_WRITTEN] = 101.305
+    clock.marks[TurnMark.T0] = 100.0101234
+    clock.marks[TurnMark.LLM_REQUEST] = 100.0905678
+    clock.marks[TurnMark.LLM_FIRST_CHUNK] = 101.2909906
+    clock.marks[TurnMark.FRAME_WRITTEN] = 101.3054321
     before = {stage: _overhead_count(stage) for stage in ("ingress", "prep", "egress", "total")}
     state = stream_module._StreamState(turn_id=None)
 
-    with patch.object(stream_module.log, "set") as log_set:
+    async with captured_wide_event() as event:
         stream_module._close_turn_timings(
             _STREAM_ID, state, source="web", voice_mode=False, status="success"
         )
 
     for stage, count in before.items():
         assert _overhead_count(stage) == count + 1
-    latency = next(c.kwargs["latency"] for c in log_set.call_args_list if "latency" in c.kwargs)
-    assert latency["total_ms"] == pytest.approx(105.0)
-    assert latency["provider_ttft_ms"] == pytest.approx(1200.0)
-    assert latency["path"] == "direct"
+    assert event["latency"] == {
+        "ingress_ms": 10.12,
+        "prep_ms": 80.44,
+        "egress_ms": 14.44,
+        "total_ms": 105.01,
+        "provider_ttft_ms": 1200.42,  # 1200.4228 ms, so a third decimal would show
+        "path": "direct",
+        "comms_calls_before_text": 1,
+    }
 
 
-def test_an_incomplete_clock_records_no_overhead_and_names_what_is_missing(
+async def test_a_delegated_turn_is_recorded_on_the_delegated_path(clock: TurnClock) -> None:
+    clock.marks[TurnMark.LLM_REQUEST] = 100.090
+    clock.marks[TurnMark.LLM_FIRST_CHUNK] = 101.290
+    clock.marks[TurnMark.FRAME_WRITTEN] = 101.305
+    before = _overhead_count("total", path="delegated")
+    session = get_session(_STREAM_ID)
+    assert session is not None
+    session.executor_spawned = True
+    state = stream_module._StreamState(turn_id=None)
+
+    async with captured_wide_event() as event:
+        stream_module._close_turn_timings(
+            _STREAM_ID, state, source="web", voice_mode=False, status="success"
+        )
+
+    assert _overhead_count("total", path="delegated") == before + 1
+    assert event["latency"]["path"] == "delegated"
+
+
+async def test_a_turn_with_no_source_is_counted_under_unknown(clock: TurnClock) -> None:
+    clock.marks[TurnMark.LLM_REQUEST] = 100.090
+    clock.marks[TurnMark.LLM_FIRST_CHUNK] = 101.290
+    clock.marks[TurnMark.FRAME_WRITTEN] = 101.305
+    before = _overhead_count("total", source="unknown")
+
+    stream_module._close_turn_timings(
+        _STREAM_ID,
+        stream_module._StreamState(turn_id=None),
+        source=None,
+        voice_mode=False,
+        status="success",
+    )
+
+    assert _overhead_count("total", source="unknown") == before + 1
+
+
+async def test_an_incomplete_clock_records_no_overhead_and_names_what_is_missing(
     clock: TurnClock,
 ) -> None:
     clock.marks[TurnMark.LLM_REQUEST] = 100.090
     before = _overhead_count("total")
     state = stream_module._StreamState(turn_id=None)
 
-    with patch.object(stream_module.log, "set") as log_set:
+    async with captured_wide_event() as event:
         stream_module._close_turn_timings(
             _STREAM_ID, state, source="web", voice_mode=False, status="success"
         )
 
     assert _overhead_count("total") == before
-    latency = next(c.kwargs["latency"] for c in log_set.call_args_list if "latency" in c.kwargs)
-    assert latency == {"missing_marks": ["llm_first_chunk", "frame_written"]}
+    assert event["latency"] == {"missing_marks": ["llm_first_chunk", "frame_written"]}

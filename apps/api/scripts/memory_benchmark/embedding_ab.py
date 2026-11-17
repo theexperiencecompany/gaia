@@ -21,8 +21,11 @@ The baseline runs the app's own fastembed helpers (``_embed_sync``,
 reimplementation. Embeddings are cached on disk per model, so reruns only pay
 for new texts.
 
+Inputs, the vector cache and the report all live in ``BENCH_DIR``; ``--lme``
+names a file inside it.
+
     uv run python -m scripts.memory_benchmark.embedding_ab \\
-        --lme /tmp/lme-data/longmemeval_s_cleaned.json --lme-num 100
+        --lme longmemeval_s_cleaned.json --lme-num 100
 """
 
 from __future__ import annotations
@@ -39,7 +42,7 @@ import random
 import sqlite3
 import sys
 import time
-from typing import Final, Protocol
+from typing import Final, NotRequired, Protocol, TypedDict
 
 import httpx
 import numpy as np
@@ -69,7 +72,9 @@ CF_MAX_PADDED_TOKENS: Final = 16_000
 MAX_DOC_CHARS: Final = 2000
 BOOTSTRAP_SAMPLES: Final = 10_000
 BASELINE_ARM: Final = "mxbai-embed-large-v1 + jina-reranker-v1-turbo"
-CACHE_DIR: Final = Path("/tmp/embedding_ab_cache")
+BENCH_DIR: Final = Path.home() / ".cache" / "gaia" / "embedding_ab"
+CACHE_DIR: Final = BENCH_DIR / "vectors"
+REPORT_PATH: Final = BENCH_DIR / "report.json"
 BGE_QUERY_PREFIX: Final = "Represent this sentence for searching relevant passages: "
 GEMMA_QUERY_PREFIX: Final = "task: search result | query: "
 GEMMA_DOC_PREFIX: Final = "title: none | text: "
@@ -95,7 +100,7 @@ class _VectorCache:
     """On-disk vector cache keyed by (model, role, text)."""
 
     def __init__(self, model: str) -> None:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        CACHE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
         slug = hashlib.sha256(model.encode()).hexdigest()[:12]
         self._db = sqlite3.connect(CACHE_DIR / f"{slug}.sqlite")
         self._db.execute("CREATE TABLE IF NOT EXISTS v (k TEXT PRIMARY KEY, b BLOB)")
@@ -465,65 +470,90 @@ class Dataset:
     skipped: int = 0
 
 
+class LmeTurn(TypedDict):
+    role: str
+    content: str
+    has_answer: NotRequired[bool]
+
+
+class LmeItem(TypedDict):
+    question_id: str
+    question_type: str
+    question: str
+    haystack_sessions: list[list[LmeTurn]]
+
+
+def bench_file(name: str) -> Path:
+    """Resolve a file name inside BENCH_DIR, refusing any path that leaves it."""
+    root = BENCH_DIR.resolve()
+    path = (root / name).resolve()
+    if not path.is_relative_to(root):
+        raise ValueError(f"{name!r} is outside {root}")
+    return path
+
+
+def _answerable(item: LmeItem) -> bool:
+    """A non-abstention question whose answer sits in some user turn."""
+    if item["question_id"].endswith("_abs"):
+        return False
+    return any(
+        t.get("has_answer") and t["role"] == "user" for s in item["haystack_sessions"] for t in s
+    )
+
+
+def _user_turns(item: LmeItem) -> tuple[list[str], frozenset[int]]:
+    """A question's haystack user turns, and the indices of those holding the answer."""
+    docs: list[str] = []
+    gold: set[int] = set()
+    for session in item["haystack_sessions"]:
+        for turn in session:
+            if turn["role"] != "user":
+                continue
+            if turn.get("has_answer"):
+                gold.add(len(docs))
+            docs.append(turn["content"][:MAX_DOC_CHARS])
+    return docs, frozenset(gold)
+
+
 def load_lme(path: Path, num: int, seed: int) -> Dataset:
-    raw = json.loads(path.read_text())
-    eligible: list[dict[str, object]] = []
-    for item in raw:
-        if str(item["question_id"]).endswith("_abs"):
-            continue
-        if any(
-            t.get("has_answer") and t["role"] == "user"
-            for s in item["haystack_sessions"]
-            for t in s
-        ):
-            eligible.append(item)
-    by_type: dict[str, list[dict[str, object]]] = {}
+    raw: list[LmeItem] = json.loads(path.read_text())
+    eligible = [item for item in raw if _answerable(item)]
+    by_type: dict[str, list[LmeItem]] = {}
     for item in eligible:
-        by_type.setdefault(str(item["question_type"]), []).append(item)
+        by_type.setdefault(item["question_type"], []).append(item)
     rng = random.Random(seed)
     per_type = max(1, num // len(by_type))
     sample = [x for items in by_type.values() for x in rng.sample(items, min(per_type, len(items)))]
 
     dataset = Dataset("lme", {}, [], skipped=len(raw) - len(eligible))
     for item in sample:
-        docs: list[str] = []
-        gold: set[int] = set()
-        for session in item["haystack_sessions"]:
-            for turn in session:
-                if turn["role"] != "user":
-                    continue
-                if turn.get("has_answer"):
-                    gold.add(len(docs))
-                docs.append(str(turn["content"])[:MAX_DOC_CHARS])
-        corpus_id = str(item["question_id"])
+        docs, gold = _user_turns(item)
+        corpus_id = item["question_id"]
         dataset.corpora[corpus_id] = docs
-        dataset.queries.append(Query(str(item["question"]), corpus_id, frozenset(gold)))
+        dataset.queries.append(Query(item["question"], corpus_id, gold))
     return dataset
 
 
 def load_gaia() -> Dataset:
-    docs: list[str] = []
-    owner: list[str] = []
-    for scenario in SCENARIOS:
-        for turn in scenario["turns"]:
-            if turn["role"] == "user":
-                docs.append(str(turn["content"])[:MAX_DOC_CHARS])
-                owner.append(str(scenario["id"]))
-    dataset = Dataset("gaia", {"pooled": docs}, [])
-    for scenario in SCENARIOS:
-        for probe in scenario["probes"]:
-            if probe.get("is_negative"):
-                continue
-            terms = [str(t).lower() for t in probe["must_contain"]]
-            gold = {
-                i
-                for i, (doc, sid) in enumerate(zip(docs, owner, strict=True))
-                if sid == scenario["id"] and any(term in doc.lower() for term in terms)
-            }
-            if not gold:
-                dataset.skipped += 1
-                continue
-            dataset.queries.append(Query(str(probe["query"]), "pooled", frozenset(gold)))
+    pooled = [
+        (str(turn["content"])[:MAX_DOC_CHARS], str(scenario["id"]))
+        for scenario in SCENARIOS
+        for turn in scenario["turns"]
+        if turn["role"] == "user"
+    ]
+    dataset = Dataset("gaia", {"pooled": [doc for doc, _ in pooled]}, [])
+    probes = [(s, p) for s in SCENARIOS for p in s["probes"] if not p.get("is_negative")]
+    for scenario, probe in probes:
+        terms = [str(t).lower() for t in probe["must_contain"]]
+        gold = frozenset(
+            i
+            for i, (doc, sid) in enumerate(pooled)
+            if sid == scenario["id"] and any(term in doc.lower() for term in terms)
+        )
+        if gold:
+            dataset.queries.append(Query(str(probe["query"]), "pooled", gold))
+        else:
+            dataset.skipped += 1
     return dataset
 
 
@@ -565,7 +595,8 @@ def paired_delta_ci(
 
 def _normalize(vectors: list[Vector]) -> NDArray[np.float32]:
     matrix = np.vstack(vectors).astype(np.float32)
-    return matrix / np.linalg.norm(matrix, axis=1, keepdims=True)
+    normed: NDArray[np.float32] = matrix / np.linalg.norm(matrix, axis=1, keepdims=True)
+    return normed
 
 
 async def ann_rankings(embedder: Embedder, dataset: Dataset) -> list[list[int]]:
@@ -650,7 +681,7 @@ def _print_table(rows: list[dict[str, object]]) -> None:
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--lme", type=Path, help="Path to longmemeval_s_cleaned.json")
+    parser.add_argument("--lme", help="LongMemEval _s (cleaned) file name inside BENCH_DIR")
     parser.add_argument("--lme-num", type=int, default=100)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument(
@@ -658,15 +689,14 @@ async def main() -> None:
         default=",".join(CLOUDFLARE_EMBEDDERS),
         help="Comma-separated hosted embedders (Workers AI, OpenAI, Gemini) to compare against the baseline",
     )
-    parser.add_argument("--out", type=Path, default=Path("/tmp/embedding_ab_report.json"))
     args = parser.parse_args()
 
     datasets = [load_gaia()]
     if args.lme:
-        datasets.append(load_lme(args.lme, args.lme_num, args.seed))
+        datasets.append(load_lme(bench_file(args.lme), args.lme_num, args.seed))
     report = await run(datasets, args.embedders.split(","), args.seed)
-    args.out.write_text(json.dumps(report, indent=2))
-    print(f"\nwrote {args.out}")
+    REPORT_PATH.write_text(json.dumps(report, indent=2))
+    print(f"\nwrote {REPORT_PATH}")
 
 
 if __name__ == "__main__":

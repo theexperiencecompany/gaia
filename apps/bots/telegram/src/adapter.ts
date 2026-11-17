@@ -618,7 +618,7 @@ export class TelegramAdapter extends BaseBotAdapter {
     if (!chatId) return;
 
     const analytics = this.analyticsFor(userId);
-    const placeholder = new ReplyPlaceholder(
+    const placeholder = ReplyPlaceholder.post(
       async () => (await ctx.reply("Thinking...")).message_id,
       (e) =>
         this.adapterLogger.warn("placeholder_post_failed", {

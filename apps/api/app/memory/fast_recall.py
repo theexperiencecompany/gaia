@@ -41,11 +41,7 @@ _inflight: dict[str, tuple[float, asyncio.Task[list[float]]]] = {}
 
 def fts_tokens(query: str) -> list[str]:
     """Return the query's distinct words, safe to OR into a tsquery, in order and capped."""
-    words: dict[str, None] = {}
-    for token in tokenize(query):
-        word = token.replace("'", "")
-        if word:
-            words.setdefault(word, None)
+    words = dict.fromkeys(word for token in tokenize(query) if (word := token.replace("'", "")))
     return list(words)[:FAST_RECALL_MAX_TOKENS]
 
 
@@ -59,9 +55,13 @@ def start_query_embedding(query: str) -> None:
     if not query.strip() or not hosted_embeddings.configured():
         return
     now = time.monotonic()
-    for text, (started, _task) in list(_inflight.items()):
-        if now - started > QUERY_EMBEDDING_TTL_SECONDS:
-            del _inflight[text]
+    stale = [
+        text
+        for text, (started, _) in _inflight.items()
+        if now - started > QUERY_EMBEDDING_TTL_SECONDS
+    ]
+    for text in stale:
+        del _inflight[text]
     if query not in _inflight:
         task = asyncio.create_task(hosted_embeddings.embed_query(query))
         task.add_done_callback(_consume_failure)
@@ -124,7 +124,8 @@ async def fast_recall(
 
 
 def _last_text(messages: Sequence[AnyMessage], kind: type[HumanMessage | AIMessage]) -> str:
-    return next((m.text for m in reversed(messages) if isinstance(m, kind) and m.text), "")
+    texts = (m.text for m in reversed(messages) if isinstance(m, kind) and m.text)
+    return next(texts, "")  # pragma: no mutate — the exchange join drops empty text
 
 
 async def precompute_next_turn(

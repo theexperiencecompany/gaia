@@ -619,7 +619,10 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         """Return the newest limit messages, oldest first, without loading the whole array."""
         row = await self._find_one_projected(
             {"conversation_id": conversation_id, "user_id": user_id},
-            {"_id": 0, "messages": {"$slice": -limit}},
+            {
+                "_id": 0,  # pragma: no mutate — the row model ignores _id
+                "messages": {"$slice": -limit},
+            },
             _MessageProjectionRow,
         )
         return [] if row is None else row.messages

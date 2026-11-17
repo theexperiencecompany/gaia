@@ -1,12 +1,14 @@
 """A user's held vectors: the similarity floor, k, delta refresh on a write, and the size cap."""
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pytest
 
+from app.constants.memory import MEMORY_VECTOR_MODEL, VECTOR_DELTA_OVERLAP_SECONDS
 from app.memory import vector_index
 from app.memory.pg_store.vectors import VectorDelta, VectorSnapshot
 
@@ -135,3 +137,102 @@ async def test_the_held_sets_are_capped_by_size_oldest_out_and_the_current_user_
             await vector_index.has_vectors(user_id)
 
     assert list(vector_index._held) == ["u3"]
+
+
+async def test_a_query_is_normalised_before_the_similarity_floor() -> None:
+    """An unnormalised query would inflate every score past the floor."""
+    snapshot = _snapshot(["a"], [[0.6, 0.8]])
+    with (
+        patch.object(vector_index, "_current_version", new=AsyncMock(return_value="1")),
+        patch.object(vector_index, "live_vectors", new=AsyncMock(return_value=snapshot)),
+    ):
+        assert await vector_index.nearest("u1", [3.0, 0.0], 1, min_similarity=0.9) == []
+
+
+async def test_a_memory_exactly_at_the_floor_is_kept() -> None:
+    snapshot = _snapshot(["a"], [[1, 0]])
+    with (
+        patch.object(vector_index, "_current_version", new=AsyncMock(return_value="1")),
+        patch.object(vector_index, "live_vectors", new=AsyncMock(return_value=snapshot)),
+    ):
+        assert await vector_index.nearest("u1", [1.0, 0.0], 1, min_similarity=1.0) == ["a"]
+
+
+async def test_each_read_is_for_this_user_and_model_from_just_before_the_last_read() -> None:
+    later = _READ_AT + timedelta(hours=1)
+    full = AsyncMock(return_value=_snapshot(["a"], [[1, 0]]))
+    first = _delta(["b"], [[0, 1]])
+    changed = AsyncMock(
+        side_effect=[
+            VectorDelta(first.live_ids, first.matrix, first.dead_ids, read_at=later),
+            _delta([], []),
+        ]
+    )
+    version = AsyncMock(side_effect=["1", "2", "2", "3"])
+    overlap = timedelta(seconds=VECTOR_DELTA_OVERLAP_SECONDS)
+    with (
+        patch.object(vector_index, "_current_version", new=version),
+        patch.object(vector_index, "live_vectors", new=full),
+        patch.object(vector_index, "vectors_changed_since", new=changed),
+    ):
+        for _ in range(4):
+            await vector_index.has_vectors("u1")
+
+    version.assert_awaited_with("u1")
+    full.assert_awaited_once_with("u1", MEMORY_VECTOR_MODEL)
+    assert [c.args for c in changed.await_args_list] == [
+        ("u1", MEMORY_VECTOR_MODEL, _READ_AT - overlap),
+        ("u1", MEMORY_VECTOR_MODEL, later - overlap),
+    ]
+
+
+async def test_a_set_exactly_at_its_full_reload_age_still_reads_only_the_delta() -> None:
+    full = AsyncMock(return_value=_snapshot(["a"], [[1, 0]]))
+    changed = AsyncMock(return_value=_delta([], []))
+    with (
+        patch.object(vector_index, "VECTOR_FULL_RELOAD_SECONDS", 0),
+        patch("app.memory.vector_index.time", SimpleNamespace(monotonic=lambda: 100.0)),
+        patch.object(vector_index, "_current_version", new=AsyncMock(side_effect=["1", "2"])),
+        patch.object(vector_index, "live_vectors", new=full),
+        patch.object(vector_index, "vectors_changed_since", new=changed),
+    ):
+        await vector_index.has_vectors("u1")
+        await vector_index.has_vectors("u1")
+
+    assert full.await_count == 1
+    assert changed.await_count == 1
+
+
+async def test_two_users_loading_at_once_each_get_their_own_set() -> None:
+    sets = {"u1": _snapshot(["a"], [[1, 0]]), "u2": _snapshot(["b"], [[0, 1]])}
+    release = asyncio.Event()
+
+    async def load(user_id: str, _model: str) -> VectorSnapshot:
+        await release.wait()
+        return sets[user_id]
+
+    with (
+        patch.object(vector_index, "_current_version", new=AsyncMock(return_value="1")),
+        patch.object(vector_index, "live_vectors", new=AsyncMock(side_effect=load)),
+    ):
+        both = asyncio.gather(
+            vector_index.nearest("u1", [1.0, 1.0], 5, min_similarity=-1.0),
+            vector_index.nearest("u2", [1.0, 1.0], 5, min_similarity=-1.0),
+        )
+        await asyncio.sleep(0)
+        release.set()
+
+        assert await both == [["a"], ["b"]]
+
+
+async def test_eviction_stops_once_the_held_sets_fit() -> None:
+    one_row = _snapshot(["a"], [[1, 0]])
+    with (
+        patch.object(vector_index, "VECTOR_CACHE_MAX_BYTES", one_row.matrix.nbytes * 2),
+        patch.object(vector_index, "_current_version", new=AsyncMock(return_value="1")),
+        patch.object(vector_index, "live_vectors", new=AsyncMock(return_value=one_row)),
+    ):
+        for user_id in ("u1", "u2", "u3"):
+            await vector_index.has_vectors(user_id)
+
+    assert list(vector_index._held) == ["u2", "u3"]

@@ -324,6 +324,29 @@ class TestSearchKnowledge:
         assert [r.content for r in results] == ["Doc"]
         assert chroma.collection.get.await_count == 1
 
+    async def test_concurrent_searches_share_one_load(self, chroma, embeddings):
+        _corpus(chroma, embeddings, ["Doc"], [[1.0, 0.0]])
+
+        await asyncio.gather(
+            gaia_knowledge_service.search_knowledge("q"),
+            gaia_knowledge_service.search_knowledge("q"),
+        )
+
+        assert chroma.collection.get.await_count == 1
+
+    async def test_each_service_loads_and_holds_its_own_corpus(self, chroma, embeddings):
+        """Sharing one load across instances would leave the instance that waited holding nothing."""
+        _corpus(chroma, embeddings, ["Doc"], [[1.0, 0.0]])
+        other = GaiaKnowledgeService()
+
+        await asyncio.gather(
+            gaia_knowledge_service.search_knowledge("q"), other.search_knowledge("q")
+        )
+
+        assert chroma.collection.get.await_count == 2
+        assert other._snapshot is not None
+        assert gaia_knowledge_service._snapshot is not None
+
 
 class TestSearchLogsNoUserText:
     async def test_the_chat_turn_event_records_the_query_shape_and_never_its_words(

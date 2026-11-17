@@ -426,7 +426,7 @@ export class SlackAdapter extends BaseBotAdapter {
     inboundTs?: string,
   ): Promise<void> {
     const analytics = this.analyticsFor(userId);
-    const placeholder = new ReplyPlaceholder(
+    const placeholder = ReplyPlaceholder.post(
       () => this.postPlaceholder(client, channelId),
       (err) =>
         this.adapterLogger.warn("placeholder_post_failed", {

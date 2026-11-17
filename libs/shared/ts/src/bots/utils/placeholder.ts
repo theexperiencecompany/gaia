@@ -9,19 +9,27 @@
 import { PlaceholderUnavailableError } from "./delivery-errors";
 
 export class ReplyPlaceholder<Id> {
-  private readonly placeholderId: Promise<Id | null>;
   /** Set once the reply opens a message of its own; edits land there from then on. */
   private replyId: Id | undefined;
 
+  private constructor(private readonly placeholderId: Promise<Id | null>) {}
+
   /**
-   * @param post - Posts the placeholder and resolves to its id; called immediately.
+   * Starts posting the placeholder and returns without waiting for it.
+   *
+   * @param post - Posts the placeholder and resolves to its id.
    * @param onPostFailed - Records why it could not be posted. The turn goes on without it.
    */
-  constructor(post: () => Promise<Id>, onPostFailed: (error: unknown) => void) {
-    this.placeholderId = post().catch((error: unknown) => {
-      onPostFailed(error);
-      return null;
-    });
+  static post<Id>(
+    post: () => Promise<Id>,
+    onPostFailed: (error: unknown) => void,
+  ): ReplyPlaceholder<Id> {
+    return new ReplyPlaceholder(
+      post().catch((error: unknown) => {
+        onPostFailed(error);
+        return null;
+      }),
+    );
   }
 
   /** The placeholder's id once posted, or null when it could not be. */

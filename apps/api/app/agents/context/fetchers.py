@@ -16,7 +16,6 @@ import asyncio
 from datetime import UTC, datetime
 import functools
 import re
-import time
 from typing import TypedDict, cast
 
 from app.agents.context.section_context import SectionContext
@@ -211,25 +210,17 @@ async def build_fast_recall_block(ctx: SectionContext) -> str:
     """
     if not (ctx.user_id and ctx.query):
         return ""
-    started = time.perf_counter()
     try:
         entries = await fast_recall.fast_recall(
             ctx.user_id, ctx.query, conversation_id=ctx.conversation_id
         )
-    except Exception as e:
+    except Exception:
         # The section contract: one failing source costs only its own section.
-        log.error(
-            "Memory fast lane failed",
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=ctx.user_id,
-        )
+        # The logger stamps the handled exception's type and message.
+        log.error("Memory fast lane failed", user_id=ctx.user_id)
         return ""
-    log.set_ns(
-        "memory_fast_recall",
-        elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
-        count=len(entries),
-    )
+    # Its time is the section's own context_assemble_seconds{stage="section:..."}.
+    log.set_ns("memory_fast_recall", count=len(entries))
     if not entries:
         return ""
     notes = "\n".join(f"- {entry_to_note(entry)}" for entry in entries)
@@ -491,16 +482,21 @@ async def build_connected_integrations_manifest(
         return ""
     if not named:
         return ""
-    connected = _dedupe_by_provider(cast(list[_ConnectedIntegration], named))
-    summaries = await asyncio.gather(*(_tool_summary(item["id"]) for item in connected))
-    lines = [header, *_builtin_overlap_lines(connected)]
-    for item, summary in zip(connected, summaries, strict=True):
-        iid, name = item["id"], item["name"]
-        row = f"- {name} ({iid})" if name and name != iid else f"- {iid}"
-        lines.append(f"{row}{accounts.get(iid, '')}{summary}")
+    connected: list[_ConnectedIntegration] = _dedupe_by_provider(
+        cast(list[_ConnectedIntegration], named)
+    )
+    rows = await asyncio.gather(*(_manifest_row(item, accounts) for item in connected))
+    lines = [header, *_builtin_overlap_lines(connected), *rows]
     if accounts:
         lines.append(account_guidance)
     return "\n".join(lines)
+
+
+async def _manifest_row(item: _ConnectedIntegration, accounts: dict[str, str]) -> str:
+    """One manifest line: the integration, its accounts on record, and its tool summary."""
+    iid, name = item["id"], item["name"]
+    row = f"- {name} ({iid})" if name and name != iid else f"- {iid}"
+    return f"{row}{accounts.get(iid, '')}{await _tool_summary(iid)}"
 
 
 async def _account_rows(user_id: str) -> dict[str, str]:
