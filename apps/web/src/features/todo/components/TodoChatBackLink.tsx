@@ -1,9 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { ArrowLeft01Icon } from "@icons";
-import Link from "next/link";
 import { useParams } from "next/navigation";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { useConversationRow } from "@/features/chat/hooks/useConversationList";
 
 /**
@@ -17,14 +16,9 @@ export function TodoChatBackLink() {
   if (!todoId) return null;
 
   return (
-    <Button
-      as={Link}
-      href={`/todos?todoId=${todoId}`}
-      size="sm"
-      variant="light"
-      startContent={<ArrowLeft01Icon className="size-4" />}
-    >
+    <LinkButton href={`/todos?todoId=${todoId}`} size="sm" variant="ghost">
+      <ArrowLeft01Icon className="size-4" />
       Back to task
-    </Button>
+    </LinkButton>
   );
 }

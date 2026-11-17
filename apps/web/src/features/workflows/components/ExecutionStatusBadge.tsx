@@ -1,6 +1,6 @@
-import { Chip } from "@heroui/chip";
-import { Spinner } from "@heroui/spinner";
+import { Chip, Spinner } from "@heroui/react";
 import { AlertCircleIcon, CheckmarkCircle02Icon } from "@icons";
+import { shapeVariants } from "@/components/shared/shape";
 
 import type { WorkflowExecution } from "../types/workflowExecutionTypes";
 
@@ -13,49 +13,48 @@ export function ExecutionStatusBadge({
     case "success":
       return (
         <Chip
+          className={shapeVariants({ shape: "sm" })}
           size="sm"
           color="success"
-          variant="flat"
-          radius="sm"
-          startContent={<CheckmarkCircle02Icon className="h-3 w-3" />}
+          variant="soft"
         >
-          Success
+          <CheckmarkCircle02Icon className="h-3 w-3" />
+          <Chip.Label>Success</Chip.Label>
         </Chip>
       );
     case "failed":
       return (
         <Chip
+          className={shapeVariants({ shape: "sm" })}
           size="sm"
           color="danger"
-          variant="flat"
-          radius="sm"
-          startContent={<AlertCircleIcon className="h-3 w-3" />}
+          variant="soft"
         >
-          Failed
+          <AlertCircleIcon className="h-3 w-3" />
+          <Chip.Label>Failed</Chip.Label>
         </Chip>
       );
     case "skipped":
       return (
-        <Chip size="sm" color="default" variant="flat" radius="sm">
-          Skipped
+        <Chip
+          className={shapeVariants({ shape: "sm" })}
+          size="sm"
+          color="default"
+          variant="soft"
+        >
+          <Chip.Label>Skipped</Chip.Label>
         </Chip>
       );
     case "running":
       return (
         <Chip
+          className={shapeVariants({ shape: "sm" })}
           size="sm"
-          color="primary"
-          radius="sm"
-          variant="flat"
-          startContent={
-            <Spinner
-              size="sm"
-              color="current"
-              classNames={{ wrapper: "h-3 w-3" }}
-            />
-          }
+          color="accent"
+          variant="soft"
         >
-          Running
+          <Spinner size="sm" color="current" className="size-3" />
+          <Chip.Label>Running</Chip.Label>
         </Chip>
       );
   }

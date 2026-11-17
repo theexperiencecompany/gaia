@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { FileViewerBody } from "@/features/chat/components/artifacts/FileViewerBody";
 
-const GLOBALS_CSS = join(__dirname, "../app/styles/globals.css");
+const GLOBALS_CSS = join(__dirname, "../app/styles/base.css");
 // The highlighter loads its grammar lazily; a cold run takes well over waitFor's 1s default.
 const HIGHLIGHT_TIMEOUT_MS = 10_000;
 

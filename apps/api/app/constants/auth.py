@@ -28,6 +28,9 @@ PLATFORM_LINK_CODE_BYTES = 16
 WOS_SESSION_COOKIE = "wos_session"
 # How long a WorkOS session cookie lives, set at sign-in and at every refresh.
 WOS_SESSION_MAX_AGE_SECONDS = 7 * 24 * 3600
+# Non-secret "a session exists" cookie the web reads before asking /user/me; it rides
+# with every session cookie. Paired with SESSION_HINT_COOKIE in libs/shared/ts/src/utils/sessionCookies.ts.
+SESSION_HINT_COOKIE = "gaia_signed_in"
 
 # Dev auth bypass: per-request impersonation header (development only). When the
 # bypass is active, this header selects the Mongo user to authenticate as instead

@@ -1,8 +1,8 @@
 "use client";
 
-import { Link } from "@heroui/link";
 import type { BriefingEvent } from "@shared/api/generated";
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { z } from "zod";
 

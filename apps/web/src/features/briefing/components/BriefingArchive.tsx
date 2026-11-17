@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import type { BriefingView } from "@shared/api/generated";
 import {
   endOfWeek,
@@ -12,6 +11,7 @@ import {
   subWeeks,
 } from "date-fns";
 
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 
 import { useBriefingsQuery } from "../hooks/useBriefingsQuery";
@@ -109,9 +109,9 @@ export function BriefingArchive({
     return (
       <div className="flex items-center gap-3">
         <p className="text-sm text-zinc-500">Couldn't load your briefings.</p>
-        <Button size="sm" variant="flat" onPress={() => refetch()}>
+        <GaiaButton size="sm" variant="default-soft" onPress={() => refetch()}>
           Try again
-        </Button>
+        </GaiaButton>
       </div>
     );
   }

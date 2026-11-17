@@ -48,7 +48,7 @@ describe("a stopped heygaia.link", () => {
       screen.getByText("The person who shared it may have turned it off."),
     ).toBeTruthy();
     expect(
-      screen.getByRole("button", { name: "Go to GAIA" }).getAttribute("href"),
+      screen.getByRole("link", { name: "Go to GAIA" }).getAttribute("href"),
     ).toBe("/");
   });
 });

@@ -4,7 +4,7 @@
     "toolB": "Slack",
     "tagline": "Convierte correos en mensajes de Slack y viceversa automáticamente",
     "metaTitle": "Integración de Gmail + Slack: correos VIP a canales de Slack",
-    "metaDescription": "Envía correos VIP a los canales de Slack adecuados y recibe allí un resumen diario de tu bandeja. GAIA también convierte decisiones de Slack en borradores de correo.",
+    "metaDescription": "Lleva los correos VIP al canal de Slack que toca y recibe allí un resumen diario de tu bandeja. GAIA convierte además las decisiones de Slack en borradores.",
     "keywords": [
       "integración de Gmail y Slack",
       "automatización de Gmail y Slack",
@@ -135,7 +135,7 @@
     "toolB": "Todoist",
     "tagline": "Convierte correos en tareas automáticamente: bandeja a cero, nada olvidado",
     "metaTitle": "Integración de Gmail + Todoist: de correo a tarea",
-    "metaDescription": "Convierte los correos que piden acción en tareas de Todoist con los plazos extraídos del mensaje.",
+    "metaDescription": "Convierte los correos que piden acción en tareas de Todoist con su plazo. GAIA programa los seguimientos para que nada de tu bandeja se quede olvidado.",
     "keywords": [
       "integración de Gmail y Todoist",
       "automatización de correo a tarea",
@@ -200,7 +200,7 @@
     "toolB": "Linear",
     "tagline": "Conecta los correos de clientes con las incidencias de ingeniería automáticamente",
     "metaTitle": "Gmail + Linear: correos que se vuelven incidencias",
-    "metaDescription": "Convierte los correos de reporte de errores en incidencias de Linear vinculadas al hilo original, con duplicados fusionados. GAIA redacta las respuestas al cliente.",
+    "metaDescription": "Convierte los correos con reportes de errores en incidencias de Linear vinculadas al hilo y sin duplicados. GAIA redacta las respuestas a tus clientes.",
     "keywords": [
       "integración de Gmail y Linear",
       "correo a incidencia de Linear",
@@ -330,7 +330,7 @@
     "toolB": "Notion",
     "tagline": "Guarda conversaciones y decisiones de Slack en Notion automáticamente",
     "metaTitle": "Slack + Notion: de los hilos a un registro de decisiones",
-    "metaDescription": "Guarda en Notion las decisiones de los hilos de Slack y las notas de las reuniones rápidas.",
+    "metaDescription": "Guarda en Notion las decisiones de los hilos de Slack y las notas de las reuniones rápidas. GAIA captura lo que sabe el equipo antes de que se pierda.",
     "keywords": [
       "integración de Slack y Notion",
       "guardar Slack en Notion",
@@ -525,7 +525,7 @@
     "toolB": "Asana",
     "tagline": "Crea tareas de Asana desde Slack y sigue el avance en el chat",
     "metaTitle": "Integración de Slack + Asana: tareas de Asana desde Slack",
-    "metaDescription": "Convierte las peticiones de Slack en trabajo con seguimiento. GAIA crea tareas de Asana a partir de mensajes de Slack.",
+    "metaDescription": "Convierte las peticiones de Slack en trabajo con seguimiento: GAIA crea tareas de Asana desde los mensajes y envía al canal un resumen diario del equipo.",
     "keywords": [
       "integración de Slack y Asana",
       "crear tarea de Asana desde Slack",
@@ -687,7 +687,7 @@
       "automatización de GitHub y Linear",
       "sincronización de código y proyectos"
     ],
-    "metaDescription": "Automatiza GitHub y Linear con GAIA. Sincroniza los pull requests con las incidencias de Linear.",
+    "metaDescription": "Olvídate de mover incidencias de Linear a mano tras cada merge. GAIA actualiza su estado al abrir y fusionar pull requests y mide el tiempo de ciclo.",
     "metaTitle": "GitHub + Linear: sincroniza código e incidencias",
     "tagline": "Sincroniza los PR y las incidencias de GitHub con los tíquets de Linear automáticamente",
     "toolA": "GitHub",
@@ -980,7 +980,7 @@
     "toolB": "Slack",
     "tagline": "Recibe los cambios de tu calendario en Slack y gestiona las reuniones desde el chat",
     "metaTitle": "Google Calendar + Slack: recordatorios de reunión",
-    "metaDescription": "Recibe en Slack recordatorios de reunión y un resumen diario de tu agenda, con tu estado ajustado desde el calendario. GAIA también te recuerda las notas de reunión.",
+    "metaDescription": "Recibe en Slack recordatorios de reunión y un resumen diario de tu agenda, con el estado ajustado según tu calendario. GAIA hace seguimiento de las notas.",
     "keywords": [
       "integración de Google Calendar y Slack",
       "automatización del calendario en Slack",
@@ -1045,7 +1045,7 @@
     "toolB": "Notion",
     "tagline": "Sincroniza los eventos del calendario con Notion y prepara las reuniones automáticamente",
     "metaTitle": "Google Calendar + Notion: páginas de notas de reunión",
-    "metaDescription": "Ten una página de notas en Notion para cada reunión del calendario, con el contexto reunido antes de entrar.",
+    "metaDescription": "Ten en Notion una página de notas para cada reunión del calendario, con el contexto listo antes de entrar. GAIA mantiene también tu calendario en Notion.",
     "keywords": [
       "integración de Google Calendar y Notion",
       "automatización del calendario en Notion",
@@ -1110,7 +1110,7 @@
     "toolB": "Todoist",
     "tagline": "Convierte los eventos del calendario en tareas y prepara los pendientes automáticamente",
     "metaTitle": "Integración de Google Calendar + Todoist: tareas de reunión",
-    "metaDescription": "Convierte los eventos del calendario en tareas de preparación, tareas con plazo y seguimientos posteriores en Todoist.",
+    "metaDescription": "Convierte los eventos del calendario en tareas de preparación, plazos y seguimientos en Todoist. GAIA arma tu lista de tareas a partir de tu agenda.",
     "keywords": [
       "integración de Google Calendar y Todoist",
       "automatización del calendario en Todoist",
@@ -3972,7 +3972,7 @@
       "conectar Slack y Microsoft Teams",
       "sincronización de mensajes Slack Teams"
     ],
-    "metaDescription": "Conecta Slack y Microsoft Teams con GAIA. Publica mensajes entre plataformas.",
+    "metaDescription": "Conecta Slack y Microsoft Teams con GAIA: publica en Teams las novedades de Slack, deriva escalados y envía resúmenes. Para un espejo en vivo, usa un puente.",
     "metaTitle": "Slack + Microsoft Teams: mensajería multiplataforma",
     "tagline": "Une Slack y Microsoft Teams para organizaciones que usan ambas plataformas",
     "toolA": "Slack",
@@ -8506,7 +8506,7 @@
       "conectar Linear y Todoist",
       "productividad personal de ingeniería"
     ],
-    "metaDescription": "Conecta Linear y Todoist con GAIA. Crea tareas en Todoist al asignarte incidencias, sincroniza finalizaciones.",
+    "metaDescription": "Convierte las incidencias que te asignan en Linear en tareas de Todoist y marca en Linear las que completas. GAIA mantiene tu lista personal siempre al día.",
     "metaTitle": "Linear + Todoist: tus incidencias en tus tareas personales",
     "tagline": "Convierte tus incidencias asignadas en tareas personales de Todoist automáticamente",
     "toolA": "Linear",
@@ -8573,7 +8573,7 @@
       "automatización de producto e ingeniería",
       "vincular tarjeta con incidencia"
     ],
-    "metaDescription": "Conecta Linear y Trello con GAIA. Vincula tarjetas de roadmap con incidencias de ingeniería.",
+    "metaDescription": "Mantén tu roadmap de Trello fiel a la realidad. GAIA crea incidencias de Linear desde cada tarjeta y la mueve en cuanto se entregan todas sus incidencias.",
     "metaTitle": "Linear + Trello: tarjetas de roadmap e incidencias",
     "tagline": "Vincula tarjetas de roadmap de Trello con incidencias de ingeniería",
     "toolA": "Linear",
@@ -8707,7 +8707,7 @@
       "conectar Linear y Discord",
       "publicar novedades de Linear en Discord"
     ],
-    "metaDescription": "Conecta Linear y Discord con GAIA. Publica actualizaciones de incidencias, cierres de sprint.",
+    "metaDescription": "Envía por mensaje directo las asignaciones de Linear, lleva alertas y bloqueos a los canales y celebra los logros del sprint. GAIA reduce el ruido en Discord.",
     "metaTitle": "Linear + Discord: novedades de ingeniería en tu servidor",
     "tagline": "Publica actualizaciones de Linear en canales de Discord automáticamente",
     "toolA": "Linear",
@@ -8975,7 +8975,7 @@
       "sincronizar Linear con Airtable",
       "automatización de métricas de sprint"
     ],
-    "metaDescription": "Conecta Linear y Airtable con GAIA. Sincroniza incidencias y métricas con tus bases, crea paneles de ingeniería.",
+    "metaDescription": "Refleja las incidencias y métricas de ciclo de Linear en bases de Airtable y crea vistas para clasificar errores. GAIA mantiene los datos siempre actualizados.",
     "metaTitle": "Linear + Airtable: métricas de ingeniería en Airtable",
     "tagline": "Sincroniza métricas e incidencias de ingeniería con paneles de Airtable",
     "toolA": "Linear",
@@ -9042,7 +9042,7 @@
       "flujo de errores de Stripe",
       "seguimiento de fallos de pago"
     ],
-    "metaDescription": "Conecta Linear y Stripe con GAIA. Crea incidencias desde fallos de pago, añade contexto de ingresos a los errores y destaca los temas con mayor impacto en clientes.",
+    "metaDescription": "Abre incidencias en Linear cuando se disparan los fallos de pago en Stripe y añade a cada error su impacto en ingresos. GAIA te ayuda a priorizar arreglos.",
     "metaTitle": "Linear + Stripe: prioriza ingeniería por ingresos",
     "tagline": "Vincula errores de pago con Linear y prioriza por impacto en ingresos",
     "toolA": "Linear",
@@ -9109,7 +9109,7 @@
       "conectar Jira y Notion",
       "documentación de ingeniería en Jira"
     ],
-    "metaDescription": "Conecta Jira y Notion con GAIA. Sincroniza épicas con páginas de proyecto, rellena plantillas de retrospectiva y mantén la documentación vinculada al trabajo activo.",
+    "metaDescription": "Crea páginas de proyecto en Notion desde las épicas de Jira y muestra el estado de cada historia en tus especificaciones. GAIA enlaza tíquets y documentación.",
     "metaTitle": "Jira + Notion: registro de tíquets y documentación",
     "tagline": "Sincroniza épicas con páginas de proyecto y documenta retrospectivas automáticamente",
     "toolA": "Jira",
@@ -9243,7 +9243,7 @@
       "conectar Jira y ClickUp",
       "flujo de producto e ingeniería"
     ],
-    "metaDescription": "Conecta Jira y ClickUp con GAIA. Sincroniza historias con tareas, propaga estados en ambas herramientas y elimina traspasos manuales entre producto e ingeniería.",
+    "metaDescription": "Sincroniza el estado de las historias de Jira con tareas de ClickUp y crea historias desde funciones de ClickUp. GAIA respeta jerarquía y prioridades.",
     "metaTitle": "Jira + ClickUp: desarrollo y planificación en sintonía",
     "tagline": "Une el seguimiento en Jira con la planificación de producto en ClickUp",
     "toolA": "Jira",
@@ -9578,7 +9578,7 @@
       "sincronización de Jira y Drive",
       "automatización de documentación"
     ],
-    "metaDescription": "Conecta Jira y Google Drive con GAIA. Adjunta requisitos a épicas, crea post mortem desde incidentes resueltos y mantén la documentación vinculada al trabajo activo.",
+    "metaDescription": "Adjunta los documentos de requisitos de Drive a las épicas de Jira y crea épicas a partir de nuevos PRD. GAIA redacta post mortems de los incidentes.",
     "metaTitle": "Jira + Google Drive: requisitos vinculados a épicas",
     "tagline": "Adjunta documentos de requisitos de Drive a épicas automáticamente",
     "toolA": "Jira",
@@ -9855,7 +9855,7 @@
       "alertas de incidencias en Teams",
       "flujo de ingeniería en Microsoft Teams"
     ],
-    "metaDescription": "Automatiza Linear y Microsoft Teams con GAIA. Publica resúmenes de sprint, avisos de incidencias.",
+    "metaDescription": "Publica en los canales de Teams el avance del sprint, las asignaciones de incidencias y los lanzamientos de Linear. GAIA mantiene informada a toda la empresa.",
     "metaTitle": "Integración de Linear + Microsoft Teams: novedades en Teams",
     "tagline": "Muestra actualizaciones de incidencias y sprints dentro de Microsoft Teams",
     "toolA": "Linear",
@@ -10065,7 +10065,7 @@
       "flujo de Salesforce y Jira",
       "error de cliente en Jira y Salesforce"
     ],
-    "metaDescription": "Automatiza Jira y Salesforce con GAIA. Vincula tíquets con casos y oportunidades, actualiza el CRM al corregir errores y da a ventas el estado de ingeniería en vivo.",
+    "metaDescription": "Convierte los casos de Salesforce en tíquets de errores en Jira y ciérralos al publicar el arreglo. GAIA prioriza los errores según los ingresos de cada cuenta.",
     "metaTitle": "Jira + Salesforce: CRM empresarial y desarrollo",
     "tagline": "Conecta tíquets de ingeniería de Jira con casos y oportunidades de Salesforce",
     "toolA": "Jira",
@@ -10205,7 +10205,7 @@
       "alertas de tíquets en Teams",
       "flujo de ingeniería en Microsoft Teams"
     ],
-    "metaDescription": "Automatiza Jira y Microsoft Teams con GAIA. Publica resúmenes de sprint, avisos de tíquets.",
+    "metaDescription": "Publica resúmenes de sprint, escalados urgentes y notas de versión de cada proyecto de Jira en su canal de Teams. GAIA responde además tus dudas sobre Jira.",
     "metaTitle": "Integración de Jira + Microsoft Teams: novedades en Teams",
     "tagline": "Lleva actualizaciones de sprint y alertas de tíquets directamente a Microsoft Teams",
     "toolA": "Jira",
@@ -10275,7 +10275,7 @@
       "de Jira a registros de Airtable",
       "informes transversales con Jira"
     ],
-    "metaDescription": "Automatiza Jira y Airtable con GAIA. Sincroniza tíquets con Airtable, crea paneles transversales.",
+    "metaDescription": "Sincroniza las incidencias de Jira con registros de Airtable y envía al backlog de Jira las solicitudes de tus formularios. GAIA crea vistas de roadmap.",
     "metaTitle": "Jira + Airtable: datos de ingeniería en tu base",
     "tagline": "Sincroniza datos de sprints de Jira con Airtable para informes transversales",
     "toolA": "Jira",
@@ -10345,7 +10345,7 @@
       "actualizaciones asíncronas de ingeniería",
       "grabación de demo de sprint"
     ],
-    "metaDescription": "Automatiza Jira y Loom con GAIA. Adjunta grabaciones de errores a los tíquets, crea temas desde informes en vídeo.",
+    "metaDescription": "Convierte las grabaciones de errores de Loom en tíquets de Jira y adjunta a las historias los vídeos de requisitos. GAIA mantiene cada vídeo junto a su tíquet.",
     "metaTitle": "Jira + Loom: errores en vídeo y novedades de sprint",
     "tagline": "Adjunta contexto en vídeo de Loom a tíquets para resolver más rápido",
     "toolA": "Jira",
@@ -10415,7 +10415,7 @@
       "impacto en ingresos en Jira",
       "flujo de facturación empresarial"
     ],
-    "metaDescription": "Automatiza Jira y Stripe con GAIA. Convierte fallos de pago en tíquets, anota temas con impacto en ingresos.",
+    "metaDescription": "Detecta errores de facturación antes de que cuesten ingresos. GAIA abre un incidente en Jira si se disparan los fallos de pago en Stripe y anota el riesgo.",
     "metaTitle": "Jira + Stripe: seguimiento de errores críticos de ingresos",
     "tagline": "Convierte fallos de facturación de Stripe en tíquets con contexto de ingresos",
     "toolA": "Jira",
@@ -10481,7 +10481,7 @@
       "gestión multiplataforma de proyectos",
       "sincronizar tareas entre Asana y ClickUp"
     ],
-    "metaDescription": "Deja de duplicar trabajo entre Asana y ClickUp. GAIA mantiene tareas, estados y plazos sincronizados para ver datos fieles del proyecto uses la herramienta que uses.",
+    "metaDescription": "Deja de duplicar trabajo: GAIA refleja las tareas nuevas entre Asana y ClickUp y sincroniza su finalización en ambos sentidos. Las dos herramientas cuadran.",
     "metaTitle": "Asana + ClickUp: sincroniza tareas en ambas plataformas",
     "tagline": "Une Asana y ClickUp cuando los equipos usan ambas plataformas",
     "toolA": "Asana",
@@ -10547,7 +10547,7 @@
       "automatización de Asana y Trello",
       "sincronización de gestión de tareas"
     ],
-    "metaDescription": "Conecta proyectos de Asana y tableros de Trello con GAIA. Sincroniza tareas, mueve tarjetas al cambiar estados y mantén ambas plataformas al día sin anotar a mano.",
+    "metaDescription": "Crea tarjetas de Trello desde tareas nuevas de Asana, refleja en Asana cada movimiento y migra proyectos en bloque. GAIA mantiene tareas y tableros al día.",
     "metaTitle": "Asana + Trello: sincroniza tareas y tableros",
     "tagline": "Migra o sincroniza tareas entre proyectos de Asana y tableros de Trello",
     "toolA": "Asana",
@@ -10613,7 +10613,7 @@
       "automatización de Asana y Linear",
       "sincronización de gestión y desarrollo"
     ],
-    "metaDescription": "Mantén producto e ingeniería alineados con GAIA. Sincroniza hitos de Asana con incidencias, refleja el avance en Asana.",
+    "metaDescription": "Ve el avance de ingeniería en los cronogramas de Asana. GAIA crea incidencias de Linear desde tareas de Asana y sincroniza los ciclos con los hitos.",
     "metaTitle": "Automatización de Asana + Linear: une producto e ingeniería",
     "tagline": "Sincroniza la gestión de producto en Asana con la ejecución en Linear",
     "toolA": "Asana",
@@ -10679,7 +10679,7 @@
       "traspaso de diseño en Asana",
       "automatización del flujo de revisión"
     ],
-    "metaDescription": "Une diseño y gestión con GAIA. Adjunta archivos de Figma a tareas, avisa cuando los diseños están listos para revisión.",
+    "metaDescription": "Adjunta archivos de Figma a tus tareas de Asana y recibe un aviso cuando los diseños estén listos. GAIA sigue el estado de aprobación de cada diseño.",
     "metaTitle": "Asana + Figma: entregables de diseño en tus tareas",
     "tagline": "Vincula entregables de Figma directamente con tareas de proyecto de Asana",
     "toolA": "Asana",
@@ -10943,7 +10943,7 @@
       "sincronización de Salesforce y Asana",
       "automatización de proyectos de cliente"
     ],
-    "metaDescription": "Une gestión y ventas con GAIA. Crea proyectos en Asana desde oportunidades, sincroniza hitos con el CRM.",
+    "metaDescription": "Empieza la entrega en cuanto se cierra un acuerdo. GAIA crea un proyecto de Asana por cada oportunidad ganada en Salesforce y te avisa de los riesgos.",
     "metaTitle": "Asana + Salesforce: entrega conectada al CRM",
     "tagline": "Vincula tareas de proyecto de Asana con oportunidades y cuentas de Salesforce",
     "toolA": "Asana",
@@ -11339,7 +11339,7 @@
       "tarjeta de Figma en Trello",
       "automatización del flujo de diseño"
     ],
-    "metaDescription": "Une diseño y gestión con GAIA. Adjunta archivos de Figma a tarjetas, mueve tarjetas al aprobar diseños y mantén tu revisión encauzada sin actualizar estados a mano.",
+    "metaDescription": "Adjunta archivos de Figma a tus tarjetas de Trello y muévelas cuando los diseños estén listos para revisión. GAIA mantiene diseño y tablero alineados.",
     "metaTitle": "Trello + Figma: archivos de diseño en tus tarjetas",
     "tagline": "Vincula diseños de Figma con tarjetas de Trello y automatiza la revisión",
     "toolA": "Trello",
@@ -11603,7 +11603,7 @@
       "flujo de ventas a entrega",
       "automatización de incorporación"
     ],
-    "metaDescription": "Une ventas y entrega con GAIA. Crea proyectos de incorporación en Asana al cerrar acuerdos.",
+    "metaDescription": "Pasa los acuerdos cerrados a entrega al instante. GAIA crea en Asana un proyecto de incorporación por cada acuerdo de HubSpot y registra allí los hitos.",
     "metaTitle": "HubSpot + Asana: de acuerdos cerrados a tareas",
     "tagline": "Crea tareas de incorporación en Asana desde nuevos acuerdos de HubSpot",
     "toolA": "HubSpot",
@@ -11669,7 +11669,7 @@
       "flujo de peticiones en CRM",
       "alineación de ventas e ingeniería"
     ],
-    "metaDescription": "Une ventas e ingeniería con GAIA. Crea incidencias desde peticiones en acuerdos, sigue el estado en el CRM y cierra el ciclo entre feedback de clientes y entrega.",
+    "metaDescription": "Muestra a ingeniería lo que piden tus clientes. GAIA convierte las peticiones de funciones de HubSpot en incidencias de Linear y avisa a ventas al lanzarlas.",
     "metaTitle": "HubSpot + Linear: feedback de clientes a ingeniería",
     "tagline": "Vincula peticiones de funciones en HubSpot con incidencias en Linear",
     "toolA": "HubSpot",
@@ -11867,7 +11867,7 @@
       "conectar HubSpot y Zoom",
       "actividad de reuniones en HubSpot"
     ],
-    "metaDescription": "Conecta HubSpot y Zoom con GAIA. Registra llamadas como actividades, publica resúmenes en los acuerdos.",
+    "metaDescription": "Deja de copiar notas de llamadas en HubSpot a mano. GAIA registra cada llamada de Zoom como actividad y publica su resumen en el acuerdo que corresponde.",
     "metaTitle": "HubSpot + Zoom: registra llamadas y crea seguimientos",
     "tagline": "Registra llamadas de Zoom en HubSpot y crea seguimientos desde las notas",
     "toolA": "HubSpot",
@@ -11933,7 +11933,7 @@
       "flujo de CRM en Slack",
       "alertas de ingresos en Slack"
     ],
-    "metaDescription": "Conecta Salesforce y Slack con GAIA. Recibe alertas de etapa al instante, actualiza registros desde mensajes.",
+    "metaDescription": "Sigue cada acuerdo desde Slack. GAIA celebra los cierres, señala las oportunidades en riesgo y actualiza Salesforce desde el chat sin salir del canal.",
     "metaTitle": "Salesforce + Slack: alertas de acuerdos en tiempo real",
     "tagline": "Publica alertas de acuerdos en Slack y actualiza registros desde mensajes",
     "toolA": "Salesforce",
@@ -12816,7 +12816,7 @@
       "flujo de Zoom y Teams",
       "GAIA Zoom Microsoft Teams"
     ],
-    "metaDescription": "Conecta Zoom y Microsoft Teams con GAIA. Comparte resúmenes entre plataformas, avisa en canales de Teams de eventos de Zoom y mantén sincronizadas ambas plataformas.",
+    "metaDescription": "Publica en los canales de Teams los resúmenes y grabaciones de tus reuniones de Zoom y envía recordatorios antes de cada llamada. GAIA une ambas plataformas.",
     "metaTitle": "Zoom + Microsoft Teams: puente entre plataformas",
     "tagline": "Une Zoom y Microsoft Teams para organizaciones con ambas plataformas",
     "toolA": "Zoom",
@@ -13609,7 +13609,7 @@
       "GAIA Google Drive Trello",
       "flujo de Drive y Trello"
     ],
-    "metaDescription": "Conecta Google Drive y Trello con GAIA. Adjunta documentos a tarjetas automáticamente, crea carpetas para tableros y mantén organizados tus archivos de proyecto.",
+    "metaDescription": "Adjunta los archivos de Drive adecuados a cada tarjeta de Trello y crea carpetas al lanzar tableros. GAIA archiva los archivos cuando termina el trabajo.",
     "metaTitle": "Google Drive + Trello: archivos en cada tarjeta",
     "tagline": "Adjunta archivos de Drive a tarjetas y mantén accesibles tus documentos",
     "toolA": "Google Drive",
@@ -13975,7 +13975,7 @@
       "GAIA Airtable Slack",
       "flujo de Airtable y Slack"
     ],
-    "metaDescription": "Conecta Airtable y Slack con GAIA. Recibe avisos de novedades en canales y crea registros directamente desde mensajes.",
+    "metaDescription": "Recibe alertas en Slack cuando cambian los registros de Airtable, filtradas por las vistas que te importan. GAIA también crea registros desde tus mensajes.",
     "metaTitle": "Airtable + Slack: tu base de datos en el chat",
     "tagline": "Publica novedades de registros en Slack y crea registros desde el chat",
     "toolA": "Airtable",

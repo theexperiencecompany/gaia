@@ -1,13 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { Cancel01Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
 import type { ReactNode } from "react";
 import { useState } from "react";
 
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { FileTypeIcon } from "@/features/chat/components/files/FileTypeIcon";
 import {
   getFileTypeExtension,
@@ -68,7 +68,7 @@ export function FileCard({
     <>
       {isUploading ? (
         <span className="flex size-9 shrink-0 items-center justify-center">
-          <Spinner size="sm" variant="simple" />
+          <Spinner size="sm" />
         </span>
       ) : thumbnailUrl ? (
         <Image
@@ -117,17 +117,16 @@ export function FileCard({
       onMouseLeave={() => setIsHovered(false)}
     >
       {onPress ? (
-        <Button
-          disableRipple
-          variant="light"
+        <button
+          type="button"
           aria-label={`Open ${name}`}
           // A click opens the viewer without pulling focus off the composer input.
-          preventFocusOnPress
-          onPress={onPress}
-          className="h-auto min-w-0 flex-1 justify-start gap-2.5 rounded-2xl bg-transparent p-2 pr-3 data-[hover=true]:bg-transparent"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onPress}
+          className="flex min-w-0 flex-1 cursor-pointer items-center justify-start gap-2.5 rounded-2xl p-2 pr-3 outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           {body}
-        </Button>
+        </button>
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-2.5 p-2 pr-3">
           {body}
@@ -141,17 +140,17 @@ export function FileCard({
       )}
 
       {onRemove && (
-        <Button
+        <GaiaButton
           isIconOnly
           size="sm"
-          variant="faded"
-          radius="full"
+          variant="tertiary"
+          shape="pill"
           aria-label={`Remove ${name}`}
           onPress={onRemove}
           className="absolute -top-1.5 -right-1.5 z-10 h-6 w-6 min-w-0 opacity-0 transition-opacity group-hover/file:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
         >
           <Cancel01Icon size={12} />
-        </Button>
+        </GaiaButton>
       )}
     </div>
   );

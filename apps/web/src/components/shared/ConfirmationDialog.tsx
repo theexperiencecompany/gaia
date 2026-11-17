@@ -1,15 +1,8 @@
 "use client";
 
-import { Kbd } from "@heroui/kbd";
-import {
-  Button,
-  Modal,
-  ModalBody,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-} from "@heroui/react";
+import { Kbd, Modal } from "@heroui/react";
 import { useEffect, useEffectEvent, useRef } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -82,40 +75,48 @@ export function ConfirmationDialog({
 
   return (
     <Modal isOpen={isOpen} onOpenChange={handleOpenChange}>
-      <ModalContent>
-        {(onClose) => (
-          <>
-            <ModalHeader className="flex flex-col gap-1">{title}</ModalHeader>
-            <ModalBody>
+      <Modal.Backdrop>
+        <Modal.Container>
+          <Modal.Dialog>
+            <Modal.CloseTrigger aria-label="Close" />
+            <Modal.Header className="flex flex-col gap-1">{title}</Modal.Header>
+            <Modal.Body>
               <p>{message}</p>
-            </ModalBody>
-            <ModalFooter>
-              <Button
-                variant="flat"
+            </Modal.Body>
+            <Modal.Footer>
+              <GaiaButton
+                variant="tertiary"
+                tone="dim"
+                className="hover:bg-zinc-700"
                 onPress={() => {
                   onCancel();
-                  onClose();
+                  handleOpenChange(false);
                 }}
-                className="bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
-                endContent={<Kbd keys={["escape"]} />}
                 isDisabled={isLoading}
               >
                 {cancelText}
-              </Button>
-              <Button
+                <Kbd>
+                  <Kbd.Abbr keyValue="escape" />
+                </Kbd>
+              </GaiaButton>
+              <GaiaButton
                 ref={confirmButtonRef}
-                color={variant === "destructive" ? "danger" : "primary"}
                 onPress={handleConfirmPress}
-                endContent={!isLoading && <Kbd keys={["enter"]} />}
-                isLoading={isLoading}
+                variant={variant === "destructive" ? "danger" : "primary"}
+                isPending={isLoading}
                 isDisabled={isLoading}
               >
                 {confirmText}
-              </Button>
-            </ModalFooter>
-          </>
-        )}
-      </ModalContent>
+                {!isLoading && (
+                  <Kbd>
+                    <Kbd.Abbr keyValue="enter" />
+                  </Kbd>
+                )}
+              </GaiaButton>
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Modal>
   );
 }
