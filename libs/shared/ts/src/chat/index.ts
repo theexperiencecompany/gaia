@@ -5,7 +5,7 @@ export {
 export type {
   ArtifactCardData,
   ArtifactCardStatus,
-  ArtifactDeltaFrame,
+  ArtifactDelta,
 } from "../artifacts/types";
 export type {
   ApprovalDecision,

@@ -24,6 +24,7 @@ PRE_COMMIT = REPO_ROOT / ".pre-commit-config.yaml"
 HOOK_TASKS = {
     "api-types": "ci:api-schema",
     "analytics-types": "ci:analytics-catalog",
+    "openui-prompts": "ci:openui-prompts",
     "plr-complexity": "ci:plr-complexity",
 }
 # Every check reads the CI harness (nx.json's ciHarness); a hook has no reason to.

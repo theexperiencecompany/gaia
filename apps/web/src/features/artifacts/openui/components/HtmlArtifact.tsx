@@ -1,3 +1,7 @@
+import {
+  describeArtifactComponent,
+  htmlArtifactSchema,
+} from "@gaia/artifacts/specs";
 import { defineComponent } from "@openuidev/react-lang";
 import { type RefObject, useContext, useEffect, useRef, useState } from "react";
 import type { z } from "zod";
@@ -8,7 +12,6 @@ import {
 } from "@/components/shared/AgentHtmlFrame";
 import { ARTIFACT_HEIGHT_MESSAGE } from "../constants";
 import { ArtifactAppearanceContext } from "../renderContext";
-import { describeArtifactComponent, htmlArtifactSchema } from "../specs";
 
 // What a frame sandboxed without allow-same-origin posts as its origin.
 const OPAQUE_ORIGIN = "null";

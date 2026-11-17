@@ -5,8 +5,8 @@ import { createTheme, ThemeProvider } from "@openuidev/react-ui/ThemeProvider";
 import { useCallback, useState } from "react";
 import { OpenUIErrorBoundary } from "@/config/openui/OpenUIErrorBoundary";
 import "@/config/openui/openui.css";
+import { buildIndex, type GroundingIndex } from "@gaia/artifacts/grounding";
 import { GroundingContext } from "./GroundingContext";
-import { buildIndex, type GroundingIndex } from "./grounding";
 import { artifactLibrary } from "./library";
 import {
   ArtifactAppearanceContext,

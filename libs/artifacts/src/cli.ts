@@ -4,7 +4,7 @@
  */
 import { readFileSync } from "node:fs";
 import { z } from "zod";
-import { validateArtifact } from "../../../apps/web/src/features/artifacts/openui/validate";
+import { validateArtifact } from "./validate";
 
 const request = z.object({
   program: z.string(),

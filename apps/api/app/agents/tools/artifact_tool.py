@@ -16,7 +16,13 @@ from app.constants.openui_artifacts import (
 )
 from app.decorators import with_doc, with_rate_limiting
 from app.models.agent_models import current_stream_writer, get_session_id, get_user_id
-from app.models.openui_artifact_models import ArtifactKind, ArtifactStatus
+from app.models.openui_artifact_models import (
+    ArtifactCard,
+    ArtifactDelta,
+    ArtifactKind,
+    ArtifactStatus,
+    ArtifactStreamHeader,
+)
 from app.models.short_link_models import ShortLinkTargetType
 from app.services.links.service import optional_short_link
 from app.services.openui_artifacts.create import ArtifactCreationError, create_openui_artifact
@@ -28,11 +34,9 @@ from app.utils.timezone import home_timezone_from_config
 class _DeltaBatcher:
     """Batch the model's token-sized deltas into a few stream frames for one artifact."""
 
-    def __init__(
-        self, writer: StreamWriter, stream_id: str, kind: ArtifactKind, title: str
-    ) -> None:
+    def __init__(self, writer: StreamWriter, header: ArtifactStreamHeader) -> None:
         self._writer = writer
-        self._header = {"stream_id": stream_id, "kind": kind.value, "title": title}
+        self._header = header
         self._pending: list[str] = []
         self._size = 0
         self._last_flush = time.monotonic()
@@ -47,10 +51,15 @@ class _DeltaBatcher:
     def flush(self) -> None:
         if not self._pending:
             return
-        self._writer({ARTIFACT_DELTA_EVENT: {**self._header, "delta": "".join(self._pending)}})
+        delta = ArtifactDelta(**self._header.model_dump(mode="json"), delta="".join(self._pending))
+        self._writer({ARTIFACT_DELTA_EVENT: delta.model_dump(mode="json")})
         self._pending.clear()
         self._size = 0
         self._last_flush = time.monotonic()
+
+
+def _write_card(writer: StreamWriter, card: ArtifactCard) -> None:
+    writer({ARTIFACT_DONE_EVENT: card.model_dump(mode="json", exclude_none=True)})
 
 
 @tool
@@ -66,8 +75,8 @@ async def create_artifact(
     ] = False,
 ) -> str:
     writer = current_stream_writer()
-    stream_id = uuid.uuid4().hex
-    batcher = _DeltaBatcher(writer, stream_id, kind, title)
+    header = ArtifactStreamHeader(stream_id=uuid.uuid4().hex, kind=kind, title=title)
+    batcher = _DeltaBatcher(writer, header)
     request = ArtifactRequest(
         kind=kind,
         brief=brief,
@@ -76,39 +85,34 @@ async def create_artifact(
         today=home_timezone_from_config(config).now().date(),
         interactive=interactive,
     )
-    card = {"stream_id": stream_id, "kind": kind.value, "title": title}
     try:
         artifact = await create_openui_artifact(request, title, batcher.push)
     except ArtifactCreationError as exc:
         batcher.flush()
-        writer(
-            {
-                ARTIFACT_DONE_EVENT: {
-                    **card,
-                    "status": ArtifactStatus.FAILED.value,
-                    "reason": exc.reason.value,
-                }
-            }
+        _write_card(
+            writer,
+            ArtifactCard(
+                **header.model_dump(mode="json"), status=ArtifactStatus.FAILED, reason=exc.reason
+            ),
         )
         problems = "".join(f"\n- {p}" for p in exc.problems[:10])
         return f"The {kind.value} could not be made ({exc.reason.value}).{problems}"
     except Exception:
         # The card is already on screen streaming; close it, then let the failure surface.
         batcher.flush()
-        writer({ARTIFACT_DONE_EVENT: {**card, "status": ArtifactStatus.FAILED.value}})
+        _write_card(
+            writer, ArtifactCard(**header.model_dump(mode="json"), status=ArtifactStatus.FAILED)
+        )
         raise
     batcher.flush()
     short_url = await optional_short_link(
         request.user_id, ShortLinkTargetType.OPENUI_ARTIFACT, artifact.id
     )
-    writer(
-        {
-            ARTIFACT_DONE_EVENT: {
-                **card,
-                "status": ArtifactStatus.READY.value,
-                "artifact_id": artifact.id,
-            }
-        }
+    _write_card(
+        writer,
+        ArtifactCard(
+            **header.model_dump(mode="json"), status=ArtifactStatus.READY, artifact_id=artifact.id
+        ),
     )
     link = f" Public link: {short_url}." if short_url else ""
     return (

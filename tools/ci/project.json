@@ -726,6 +726,35 @@
         }
       }
     },
+    "openui-prompts": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/ci/checks.mjs openui-prompts"
+      },
+      "cache": false,
+      "inputs": [
+        "{workspaceRoot}/scripts/openui/**/*",
+        "{workspaceRoot}/apps/web/src/config/openui/**/*",
+        "{workspaceRoot}/libs/artifacts/src/**/*",
+        "{workspaceRoot}/libs/shared/ts/src/artifacts/**/*",
+        "{workspaceRoot}/apps/api/app/agents/prompts/openui_generated.txt",
+        "{workspaceRoot}/apps/api/app/agents/prompts/artifacts/**/*",
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/scripts/ci/checks.mjs",
+        "ciHarness",
+        {
+          "externalDependencies": []
+        }
+      ],
+      "parallelism": false,
+      "metadata": {
+        "ci": {
+          "job": "lint-mixed",
+          "check": "openui-prompts",
+          "area": "contracts"
+        }
+      }
+    },
     "analytics-check": {
       "executor": "nx:noop",
       "inputs": [

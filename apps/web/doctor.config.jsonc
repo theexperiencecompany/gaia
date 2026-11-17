@@ -61,7 +61,7 @@
         "files": ["src/app/styles/hero.ts"],
         "rules": ["deslop/unused-export"]
       },
-      // GAIA_COMPONENT_SPECS feeds scripts/openui/generate-prompt.ts and the
+      // GAIA_COMPONENT_SPECS feeds scripts/openui/generate-prompts.ts and the
       // openui pre-commit sync hook — consumed outside the scanned graph.
       {
         "files": ["src/config/openui/promptSpecs.ts"],

@@ -3,7 +3,7 @@
 // differs from what is committed, which catches a missed `mise <task>`.
 // `--write` regenerates without the diff, and is what each mise task runs.
 // Reached through `checks.mjs api-schema | analytics-catalog |
-// cli-config-schema | deploy-templates`; never run directly.
+// cli-config-schema | deploy-templates | openui-prompts`; never run directly.
 import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -13,6 +13,10 @@ const GENERATED_TYPES = "libs/shared/ts/src/api/generated/schema.d.ts";
 const ANALYTICS_GENERATED_DIR = "libs/shared/ts/src/analytics/generated";
 const ANALYTICS_CATALOG_JSON = `${ANALYTICS_GENERATED_DIR}/analytics-catalog.json`;
 const CLI_CONFIG_SCHEMA = "packages/cli/src/lib/api-config-schema.generated.json";
+const OPENUI_PROMPTS = [
+  "apps/api/app/agents/prompts/openui_generated.txt",
+  "apps/api/app/agents/prompts/artifacts",
+];
 const DEPLOY_TEMPLATES = [
   "deploy/coolify/gaia.yaml",
   "render.yaml",
@@ -150,5 +154,16 @@ export function cmdDeployTemplates(argv) {
     drift:
       "The deploy templates drifted from the self-host compose file — run `mise deploy:templates` and commit",
     ok: "The deploy templates match the self-host compose file.",
+  });
+}
+
+export function cmdOpenuiPrompts(argv) {
+  execFileSync("pnpm", ["exec", "tsx", "scripts/openui/generate-prompts.ts"], {
+    stdio: "inherit",
+  });
+  failOnDrift(argv, OPENUI_PROMPTS, {
+    drift:
+      "The OpenUI prompts drifted from the component libraries — run `mise openui:prompts` and commit",
+    ok: "The OpenUI prompts match the component libraries.",
   });
 }

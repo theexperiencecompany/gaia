@@ -575,6 +575,10 @@ run = "nx run cli:test"
 description = "Regenerate the CLI's vendored API config schema (packages/cli/src/lib/api-config-schema.generated.json) from the API's settings groups and capability table — CI's api-schema lane fails when it drifts"
 run = "node scripts/ci/checks.mjs cli-config-schema --write"
 
+[tasks."openui:prompts"]
+description = "Regenerate the comms OpenUI prompt (apps/api/app/agents/prompts/openui_generated.txt) and the artifact model's per-kind prompts (apps/api/app/agents/prompts/artifacts/) from the component libraries — CI's openui-prompts check fails when they drift"
+run = "node scripts/ci/checks.mjs openui-prompts --write"
+
 [tasks."deploy:templates"]
 description = "Regenerate the one-click deploy templates (deploy/coolify/gaia.yaml, render.yaml, deploy/proxy.Dockerfile) from the self-host compose file, its Caddyfile and the CLI's machine secrets — CI's api-schema lane fails when they drift"
 run = "node scripts/ci/checks.mjs deploy-templates --write"

@@ -1,8 +1,12 @@
+import {
+  describeArtifactComponent,
+  kanbanSchema,
+  statsSchema,
+} from "@gaia/artifacts/specs";
 import { Chip } from "@heroui/react";
 import { ArrowDown01Icon, ArrowUp01Icon } from "@icons";
 import { defineComponent } from "@openuidev/react-lang";
 import { GroundedText } from "../GroundedText";
-import { describeArtifactComponent, kanbanSchema, statsSchema } from "../specs";
 
 // Views stay file-private: this module's surface is the defs (react-refresh/only-export-components).
 

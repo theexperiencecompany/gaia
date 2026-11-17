@@ -34,7 +34,7 @@ from app.constants.browser import (
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import HandoffDecisionRequest, HandoffDecisionResponse
-from app.schemas.errors import HTML_ROUTE_ERROR_RESPONSES
+from app.schemas.errors import NON_JSON_ROUTE_ERROR_RESPONSES
 from app.services.browser import registry
 from app.services.browser.handoff_buttons import decide_handoff_by_button
 from app.services.browser.live_code import live_code_ended, resolve_live_code
@@ -114,7 +114,9 @@ async def step_screenshot(code: str, index: int) -> Response:
     return Response(content=frame, media_type="image/jpeg")
 
 
-@router.get("/replays/{code}", response_class=HTMLResponse, responses=HTML_ROUTE_ERROR_RESPONSES)
+@router.get(
+    "/replays/{code}", response_class=HTMLResponse, responses=NON_JSON_ROUTE_ERROR_RESPONSES
+)
 async def replay_page(code: str) -> HTMLResponse:
     """Standalone recap slideshow for a finished session: its code is the capability."""
     log.set(browser={"operation": "replay_page"})

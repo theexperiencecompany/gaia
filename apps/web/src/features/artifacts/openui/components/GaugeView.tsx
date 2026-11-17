@@ -1,9 +1,9 @@
+import type { gaugeSchema } from "@gaia/artifacts/specs";
 import type { z } from "zod";
-import { ARTIFACT_PALETTE } from "../constants";
+import { CHART_PALETTE } from "@/config/openui/theme";
 import { GroundedText } from "../GroundedText";
-import type { gaugeSchema } from "../specs";
 
-const [FIRST_COLOUR] = ARTIFACT_PALETTE;
+const [FIRST_COLOUR] = CHART_PALETTE;
 
 const GAUGE_ARC = "M20 115 A90 90 0 0 1 200 115";
 const GAUGE_LENGTH = Math.PI * 90;

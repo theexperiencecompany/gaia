@@ -1,6 +1,6 @@
 import type { ToolDataEntry } from "../api/generated";
-import { isArtifactDeltaFrame } from "../artifacts/openuiArtifacts";
-import type { ArtifactDeltaFrame } from "../artifacts/types";
+import { ArtifactDeltaSchema } from "../artifacts/schema";
+import type { ArtifactDelta } from "../artifacts/types";
 import {
   DESKTOP_TOOL_DEFAULT_TIMEOUT_MS,
   type DesktopToolRequest,
@@ -78,7 +78,7 @@ export type ChatStreamEvent =
   | { type: "tool_output"; output: StreamToolOutput }
   | { type: "reasoning"; content: string; subagent_id?: string }
   | { type: "todo_progress"; snapshot: TodoProgressSnapshot }
-  | { type: "artifact_delta"; frame: ArtifactDeltaFrame }
+  | { type: "artifact_delta"; frame: ArtifactDelta }
   | { type: "follow_up_actions"; actions: string[] }
   | { type: "subagent_start"; payload: SubagentStartPayload }
   | { type: "subagent_end"; payload: SubagentEndPayload }
@@ -368,10 +368,10 @@ const extractTodoProgress = (payload: JsonObject): ChatStreamEvent[] =>
       ]
     : [];
 
-const extractArtifactDelta = (payload: JsonObject): ChatStreamEvent[] =>
-  isArtifactDeltaFrame(payload.artifact_delta)
-    ? [{ type: "artifact_delta", frame: payload.artifact_delta }]
-    : [];
+const extractArtifactDelta = (payload: JsonObject): ChatStreamEvent[] => {
+  const parsed = ArtifactDeltaSchema.safeParse(payload.artifact_delta);
+  return parsed.success ? [{ type: "artifact_delta", frame: parsed.data }] : [];
+};
 
 const extractConversation = (payload: JsonObject): ChatStreamEvent[] => {
   const hasConversationInitData =

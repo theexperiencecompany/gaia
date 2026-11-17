@@ -1,31 +1,12 @@
 /**
- * Generate the artifact model's per-kind system prompts.
- *
- * The artifact library (apps/web/src/features/artifacts/openui/specs.ts plus react-ui's
- * PieChart, Slice and CodeBlock) is the single source for the renderer, the validator and
- * these prompts. Each kind keeps only its own components, so its prompt stays short and its
- * static text caches by prefix. Writes apps/api/app/agents/prompts/artifacts/<kind>.txt.
- *
- * Run via `pnpm openui:gen-artifact-prompts`. A pre-commit hook fails on drift.
+ * What each kind's system prompt teaches beyond the component signatures: the grounding rules
+ * the validator enforces, the statement names it checks, and the HtmlArtifact rule. Rendered
+ * to apps/api/app/agents/prompts/artifacts/<kind>.txt by scripts/openui/generate-prompts.ts.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { generatePrompt } from "@openuidev/react-lang";
-import {
-  ARTIFACT_KINDS,
-  type ArtifactKind,
-  KIND_COMPONENTS,
-  STATEMENT_NAMES,
-} from "../../apps/web/src/features/artifacts/openui/kinds";
-import { artifactSpecLibrary } from "../../apps/web/src/features/artifacts/openui/specLibrary";
-import { ARTIFACT_ROOT } from "../../apps/web/src/features/artifacts/openui/specs";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUTPUT_DIR = resolve(
-  __dirname,
-  "../../apps/api/app/agents/prompts/artifacts",
-);
+import type { PromptSpec } from "@openuidev/react-lang";
+import { type ArtifactKind, KIND_COMPONENTS, STATEMENT_NAMES } from "./kinds";
+import { artifactSpecLibrary } from "./specLibrary";
+import { ARTIFACT_ROOT } from "./specs";
 
 const PREAMBLE =
   "Your entire response is openui-lang code that renders one artifact. Write root = Artifact(...) first, then the data statements (charts, funnels, tables, stats), then the text statements, each exactly once. Output only openui-lang statements.";
@@ -42,6 +23,9 @@ const GROUNDING_RULES = [
   "Write the text like a person: open on the point, plain words, varied sentence length, a clear position. No filler, no hype words, no em or en dashes. Do not overcorrect into a gimmicky voice.",
 ];
 
+const HTML_ARTIFACT_RULE =
+  "HtmlArtifact is only for a request that asks for inputs to play with (a calculator, a simulator, a small tool); everything else uses the other components. Its html is structure and classes only, and every result it shows is a data-formula over its inputs.";
+
 function namingRule(components: readonly string[]): string {
   const names = components
     .filter((c) => STATEMENT_NAMES[c])
@@ -49,23 +33,12 @@ function namingRule(components: readonly string[]): string {
   return `Statement names: root, then for each component exactly this name plus a number counting from 1 per type. ${names.join("; ")}. Slots use these names, e.g. {funnel1.worstStepLoss}.`;
 }
 
-// lang-core hardcodes this rule into every prompt; artifacts render the user's real data.
-const FABRICATE_DATA_RULE =
-  "- When asked about data, generate realistic/plausible data\n";
-
-const HTML_ARTIFACT_RULE =
-  "HtmlArtifact is only for a request that asks for inputs to play with (a calculator, a simulator, a small tool); everything else uses the other components. Its html is structure and classes only, and every result it shows is a data-formula over its inputs.";
-
-function kindRules(kind: ArtifactKind): string[] {
-  return KIND_COMPONENTS[kind].includes("HtmlArtifact")
-    ? [HTML_ARTIFACT_RULE]
-    : [];
-}
-
-function promptFor(kind: ArtifactKind): string {
-  const keep = new Set([ARTIFACT_ROOT, ...KIND_COMPONENTS[kind]]);
+/** One kind's prompt spec: only its own components, so the prompt stays short and caches by prefix. */
+export function artifactPromptSpec(kind: ArtifactKind): PromptSpec {
+  const components = KIND_COMPONENTS[kind];
+  const keep = new Set([ARTIFACT_ROOT, ...components]);
   const spec = artifactSpecLibrary.toSpec();
-  const prompt = generatePrompt({
+  return {
     ...spec,
     components: Object.fromEntries(
       Object.entries(spec.components).filter(([name]) => keep.has(name)),
@@ -73,24 +46,9 @@ function promptFor(kind: ArtifactKind): string {
     componentGroups: undefined,
     preamble: PREAMBLE,
     additionalRules: [
-      namingRule(KIND_COMPONENTS[kind]),
+      namingRule(components),
       ...GROUNDING_RULES,
-      ...kindRules(kind),
+      ...(components.includes("HtmlArtifact") ? [HTML_ARTIFACT_RULE] : []),
     ],
-  });
-  if (!prompt.includes(FABRICATE_DATA_RULE)) {
-    throw new Error(
-      "lang-core's plausible-data rule changed wording: re-check generatePrompt output",
-    );
-  }
-  // the prompts directory forbids em/en dashes in prompt prose
-  return prompt.replace(FABRICATE_DATA_RULE, "").replace(/[—–]/g, "-");
-}
-
-mkdirSync(OUTPUT_DIR, { recursive: true });
-for (const kind of ARTIFACT_KINDS) {
-  const path = resolve(OUTPUT_DIR, `${kind}.txt`);
-  const prompt = promptFor(kind);
-  writeFileSync(path, prompt, "utf-8");
-  console.log(`Wrote ${prompt.length} chars to ${path}`);
+  };
 }

@@ -2,7 +2,7 @@
 
 The component vocabulary (syntax rules + every component signature) is generated
 from the merged @openuidev/react-ui + GAIA component library by
-scripts/openui/generate-prompt.ts and read here from openui_generated.txt.
+scripts/openui/generate-prompts.ts and read here from openui_generated.txt.
 A pre-commit hook keeps the artifact in sync with the TypeScript specs, so this
 module never hand-maintains the component catalog.
 
@@ -20,7 +20,7 @@ OPENUI_SUPPRESSED_TOOLS: list[str] = list(tool_fields)
 _suppression_list: str = "\n".join(f"  - {t}" for t in OPENUI_SUPPRESSED_TOOLS)
 
 # Generated component vocabulary (syntax rules + component signatures), produced
-# by `pnpm openui:gen-prompt` from the merged TypeScript component library.
+# by `mise openui:prompts` from the merged TypeScript component library.
 _GENERATED_PROMPT_PATH: Path = Path(__file__).parent / "openui_generated.txt"
 OPENUI_COMPONENT_PROMPT: str = _GENERATED_PROMPT_PATH.read_text(encoding="utf-8")
 
