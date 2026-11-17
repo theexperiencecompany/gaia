@@ -74,7 +74,7 @@ export default function WorkflowDeliveryField({
             {briefsOff && (
               <p className="px-1 text-sm text-zinc-400">
                 {BRIEFS_OFF_DELIVERY_REASON}{" "}
-                <Link href="/settings/notifications" className="text-primary">
+                <Link href="/settings/notifications" className="text-accent">
                   Turn on briefs
                 </Link>
               </p>

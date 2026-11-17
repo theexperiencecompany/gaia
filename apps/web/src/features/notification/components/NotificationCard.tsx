@@ -1,15 +1,17 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { CheckmarkCircle02Icon, LinkSquare02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import {
+  GaiaButton,
+  type GaiaButtonVariant,
+} from "@/components/shared/GaiaButton";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
 import { useNotificationActions } from "@/hooks/useNotificationActions";
 import {
   ActionStyle,
   ActionType,
-  type ModalConfig,
   type NotificationAction,
   NotificationStatus,
   type NotificationView,
@@ -26,17 +28,13 @@ interface NotificationCardProps {
   /** Clamp the body to two lines in dense contexts (popover, chat). */
   clampBody?: boolean;
   onMarkAsRead?: (id: string) => void | Promise<void>;
-  onModalOpen?: (config: ModalConfig) => void;
   onRefresh?: () => void;
 }
 
-const ACTION_BUTTON_COLOR: Record<
-  ActionStyle,
-  "primary" | "danger" | "default"
-> = {
-  [ActionStyle.PRIMARY]: "primary",
-  [ActionStyle.DANGER]: "danger",
-  [ActionStyle.SECONDARY]: "default",
+const ACTION_BUTTON_VARIANT: Record<ActionStyle, GaiaButtonVariant> = {
+  [ActionStyle.PRIMARY]: "accent-soft",
+  [ActionStyle.DANGER]: "danger-soft",
+  [ActionStyle.SECONDARY]: "default-soft",
 };
 
 export const NotificationCard = ({
@@ -44,12 +42,10 @@ export const NotificationCard = ({
   tone = "raised",
   clampBody = false,
   onMarkAsRead,
-  onModalOpen,
   onRefresh,
 }: NotificationCardProps) => {
   const { executeAction, loading, confirmationProps } = useNotificationActions({
     onSuccess: () => onRefresh?.(),
-    onModalOpen,
   });
 
   const { title, body, actions = [] } = notification.content;
@@ -82,7 +78,7 @@ export const NotificationCard = ({
             {title}
           </h3>
           {isUnread && (
-            <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+            <span className="size-1.5 shrink-0 rounded-full bg-accent" />
           )}
           <span
             className="shrink-0 text-xs whitespace-nowrap text-zinc-500"
@@ -109,39 +105,37 @@ export const NotificationCard = ({
             const isLoading = loading === action.id;
 
             return (
-              <Button
+              <GaiaButton
                 key={action.id}
                 size="sm"
-                variant="flat"
-                color={
-                  ACTION_BUTTON_COLOR[action.style ?? ActionStyle.SECONDARY]
+                variant={
+                  ACTION_BUTTON_VARIANT[action.style ?? ActionStyle.SECONDARY]
                 }
-                className="rounded-xl"
+                shape="md"
                 isDisabled={action.disabled || isExecuted || isLoading}
-                isLoading={isLoading}
+                isPending={isLoading}
                 onPress={() => handleActionPress(action)}
-                endContent={
-                  isExecuted ? (
-                    <CheckmarkCircle02Icon className="size-3.5" />
-                  ) : action.type === ActionType.REDIRECT ? (
-                    <LinkSquare02Icon className="size-3.5" />
-                  ) : undefined
-                }
               >
                 {action.label}
-              </Button>
+                {isExecuted ? (
+                  <CheckmarkCircle02Icon className="size-3.5" />
+                ) : action.type === ActionType.REDIRECT ? (
+                  <LinkSquare02Icon className="size-3.5" />
+                ) : null}
+              </GaiaButton>
             );
           })}
           {isUnread && onMarkAsRead && (
-            <Button
+            <GaiaButton
               size="sm"
-              variant="light"
-              className="rounded-xl text-zinc-500"
-              startContent={<CheckmarkCircle02Icon className="size-4" />}
+              variant="ghost"
+              shape="md"
+              tone="faint"
               onPress={handleMarkAsRead}
             >
+              <CheckmarkCircle02Icon className="size-4" />
               Mark as read
-            </Button>
+            </GaiaButton>
           )}
         </div>
       )}

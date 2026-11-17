@@ -1,37 +1,43 @@
-import { DropdownItem } from "@heroui/dropdown";
+import { Description, DropdownItem, Label } from "@heroui/react";
 import { Link01Icon, Unlink01Icon } from "@icons";
-import type { CollectionElement } from "@react-types/shared";
+import type { ReactElement } from "react";
 
 import type { ShareLink } from "@/features/short-links/hooks/useShareLink";
 
 /**
  * The share entries of a menu: "Copy link", plus "Stop sharing" only while a
- * live link exists. A plain function, not a component, because a DropdownMenu
- * only accepts DropdownItems as its direct children.
+ * live link exists. A plain function, not a component, because a menu's
+ * collection takes its items as direct children.
  */
 export function shareLinkMenuItems(
   share: ShareLink,
   stopWarning?: string,
-): CollectionElement<object>[] {
-  const items: CollectionElement<object>[] = [
+): ReactElement[] {
+  const items: ReactElement[] = [
     <DropdownItem
       key="copy-link"
-      startContent={<Link01Icon size={16} />}
-      onPress={share.copyLink}
+      id="copy-link"
+      textValue="Copy link"
+      onAction={share.copyLink}
     >
-      Copy link
+      <Link01Icon size={16} />
+      <Label>Copy link</Label>
     </DropdownItem>,
   ];
   if (share.isShared) {
     items.push(
       <DropdownItem
         key="stop-sharing"
-        color="danger"
-        description={stopWarning}
-        startContent={<Unlink01Icon size={16} />}
-        onPress={share.stopSharing}
+        id="stop-sharing"
+        textValue="Stop sharing"
+        variant="danger"
+        onAction={share.stopSharing}
       >
-        Stop sharing
+        <Unlink01Icon size={16} />
+        <Label>Stop sharing</Label>
+        {stopWarning && (
+          <Description className="whitespace-normal">{stopWarning}</Description>
+        )}
       </DropdownItem>,
     );
   }

@@ -1,22 +1,16 @@
 "use client";
 
-import {
-  Autocomplete,
-  AutocompleteItem,
-  Avatar,
-  Input,
-  Select,
-  SelectItem,
-  type Selection,
-} from "@heroui/react";
+import { Avatar, ComboBox, ListBox, SearchField, Select } from "@heroui/react";
 import {
   FemaleSymbolIcon,
   Globe02Icon,
   MaleSymbolIcon,
   Search01Icon,
 } from "@icons";
-import { type ReactNode, useMemo } from "react";
-
+import { useMemo } from "react";
+import { ComboBoxInput } from "@/components/shared/ComboBoxInput";
+import { GaiaListBoxItem } from "@/components/shared/GaiaListBoxItem";
+import { GaiaSelectValue } from "@/components/shared/GaiaSelectValue";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import {
   ALL_FILTER,
@@ -42,12 +36,6 @@ interface VoiceFiltersProps {
   countryFilter: string;
   onCountryFilterChange: (value: string) => void;
 }
-
-/** First key of a HeroUI single-select change, or the all-items fallback. */
-const selectedFilterKey = (keys: Selection): string => {
-  const key = keys === "all" ? undefined : Array.from(keys)[0];
-  return typeof key === "string" ? key : ALL_FILTER;
-};
 
 /** Search box + gender/country dropdowns above the voice table. */
 export function VoiceFilters({
@@ -78,101 +66,105 @@ export function VoiceFilters({
       .sort((a, b) => a.accent.localeCompare(b.accent));
   }, [voices]);
 
-  // Resolved ahead of the JSX so the trigger content is a plain expression,
-  // not a component defined inline in the render tree. Shows the chosen
-  // country's flag inline in the trigger, not just inside the open list.
-  let countryStartContent: ReactNode;
-  if (countryFilter !== ALL_FILTER) {
-    const code = countryOptions.find(
-      (c) => c.accent === countryFilter,
-    )?.countryCode;
-    countryStartContent = code ? (
-      <Avatar
-        src={flagUrl(code)}
-        alt={`${countryFilter} flag`}
-        className="h-4 w-4 shrink-0"
-      />
+  const genderLabel =
+    genderFilter === ALL_FILTER ? "All genders" : genderFilter;
+
+  const selectedCountryCode =
+    countryFilter === ALL_FILTER
+      ? undefined
+      : countryOptions.find((c) => c.accent === countryFilter)?.countryCode;
+  const countryStartContent =
+    countryFilter === ALL_FILTER ? null : selectedCountryCode ? (
+      <Avatar className="h-4 w-4 shrink-0">
+        <Avatar.Image
+          src={flagUrl(selectedCountryCode)}
+          alt={`${countryFilter} flag`}
+        />
+        <Avatar.Fallback />
+      </Avatar>
     ) : (
       <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
     );
-  }
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <Input
+      <SearchField
         aria-label="Search voices"
-        placeholder="Search voices"
         value={search}
-        onValueChange={onSearchChange}
-        isClearable
-        startContent={<Search01Icon className="h-4 w-4 text-zinc-500" />}
+        onChange={onSearchChange}
         className="sm:max-w-xs"
-      />
+      >
+        <SearchField.Group>
+          <Search01Icon className="h-4 w-4 text-zinc-500" />
+          <SearchField.Input placeholder="Search voices" />
+          <SearchField.ClearButton />
+        </SearchField.Group>
+      </SearchField>
       <Select
         aria-label="Filter by gender"
-        placeholder="Gender"
-        selectedKeys={[genderFilter]}
-        onSelectionChange={(keys) =>
-          onGenderFilterChange(selectedFilterKey(keys))
-        }
-        startContent={
-          genderFilter === ALL_FILTER ? undefined : (
-            <GenderIcon gender={genderFilter} />
-          )
+        selectedKey={genderFilter}
+        onSelectionChange={(key) =>
+          onGenderFilterChange(typeof key === "string" ? key : ALL_FILTER)
         }
         className="sm:max-w-40"
       >
-        {[
-          <SelectItem key={ALL_FILTER}>All genders</SelectItem>,
-          ...genderOptions.map((g) => (
-            <SelectItem key={g} startContent={<GenderIcon gender={g} />}>
-              {g}
-            </SelectItem>
-          )),
-        ]}
+        <Select.Trigger>
+          {genderFilter === ALL_FILTER ? null : (
+            <GenderIcon gender={genderFilter} />
+          )}
+          <GaiaSelectValue>{genderLabel}</GaiaSelectValue>
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox>
+            <GaiaListBoxItem id={ALL_FILTER} textValue="All genders" />
+            {genderOptions.map((g) => (
+              <GaiaListBoxItem key={g} id={g} textValue={g}>
+                <GenderIcon gender={g} />
+                {g}
+              </GaiaListBoxItem>
+            ))}
+          </ListBox>
+        </Select.Popover>
       </Select>
-      <Autocomplete
+      <ComboBox
         aria-label="Filter by country"
-        placeholder="Country"
-        // Autocomplete is single-key: null on clear maps back to the all-filter.
         selectedKey={countryFilter}
         onSelectionChange={(key) =>
           onCountryFilterChange(typeof key === "string" ? key : ALL_FILTER)
         }
-        startContent={countryStartContent}
         className="sm:max-w-44"
       >
-        {[
-          <AutocompleteItem
-            key={ALL_FILTER}
-            textValue="All countries"
-            startContent={
+        <ComboBoxInput
+          placeholder="Country"
+          startContent={countryStartContent}
+          isClearable
+        />
+        <ComboBox.Popover>
+          <ListBox aria-label="Countries">
+            <GaiaListBoxItem id={ALL_FILTER} textValue="All countries">
               <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-            }
-          >
-            All countries
-          </AutocompleteItem>,
-          ...countryOptions.map(({ accent, countryCode }) => (
-            <AutocompleteItem
-              key={accent}
-              textValue={accent}
-              startContent={
-                countryCode ? (
-                  <Avatar
-                    src={flagUrl(countryCode)}
-                    alt={`${accent} flag`}
-                    className="h-4 w-4 shrink-0"
-                  />
+              All countries
+            </GaiaListBoxItem>
+            {countryOptions.map(({ accent, countryCode }) => (
+              <GaiaListBoxItem key={accent} id={accent} textValue={accent}>
+                {countryCode ? (
+                  <Avatar className="h-4 w-4 shrink-0">
+                    <Avatar.Image
+                      src={flagUrl(countryCode)}
+                      alt={`${accent} flag`}
+                    />
+                    <Avatar.Fallback />
+                  </Avatar>
                 ) : (
                   <Globe02Icon className="h-4 w-4 shrink-0 text-zinc-500" />
-                )
-              }
-            >
-              {accent}
-            </AutocompleteItem>
-          )),
-        ]}
-      </Autocomplete>
+                )}
+                {accent}
+              </GaiaListBoxItem>
+            ))}
+          </ListBox>
+        </ComboBox.Popover>
+      </ComboBox>
     </div>
   );
 }

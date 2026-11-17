@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Link } from "@heroui/link";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
+import Link from "next/link";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 
 import { useBriefingsQuery } from "../hooks/useBriefingsQuery";
 import { BriefingEdition } from "./BriefingEdition";
@@ -36,9 +36,9 @@ export function BriefingArchive({
     return (
       <div className="flex items-center gap-3">
         <p className="text-sm text-zinc-500">Couldn't load your briefings.</p>
-        <Button size="sm" variant="flat" onPress={() => refetch()}>
+        <GaiaButton size="sm" variant="default-soft" onPress={() => refetch()}>
           Try again
-        </Button>
+        </GaiaButton>
       </div>
     );
   }

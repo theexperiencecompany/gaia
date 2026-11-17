@@ -1,5 +1,5 @@
 // ImageBubble.tsx
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import Image from "next/image";
 import { isPrivateBlobUrl } from "@/lib/privateBlob";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
@@ -25,11 +25,8 @@ export default function ImageBubble({
 
   return (
     <>
-      <Skeleton
-        className="mb-4 aspect-square max-h-[350px] min-h-[350px] max-w-[350px] min-w-[350px] overflow-hidden rounded-3xl"
-        isLoaded={!loading && Boolean(image_data?.url)}
-      >
-        {image_data?.url && (
+      {!loading && image_data?.url ? (
+        <div className="mb-4 aspect-square max-h-[350px] min-h-[350px] max-w-[350px] min-w-[350px] overflow-hidden rounded-3xl">
           <Image
             alt="Generated Image"
             className="my-2 cursor-pointer! rounded-3xl"
@@ -46,8 +43,10 @@ export default function ImageBubble({
               });
             }}
           />
-        )}
-      </Skeleton>
+        </div>
+      ) : (
+        <Skeleton className="mb-4 aspect-square max-h-[350px] min-h-[350px] max-w-[350px] min-w-[350px] overflow-hidden rounded-3xl" />
+      )}
       {text.trim() && (
         <div className="chat_bubble bg-zinc-800">
           <span>{text}</span>

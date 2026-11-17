@@ -6,7 +6,7 @@ import { PromoBanner } from "@/components/shared/PromoBanner";
 export function MemoryDocsBanner() {
   return (
     <PromoBanner
-      icon={<AiBrain01Icon className="h-6 w-6 text-primary" />}
+      icon={<AiBrain01Icon className="h-6 w-6 text-accent" />}
       title="How GAIA Remembers"
       description="Learn how memory works, what the four memory types mean, and how to stay in control of what GAIA knows."
       primaryAction={{

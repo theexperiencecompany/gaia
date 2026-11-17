@@ -45,7 +45,7 @@ export const CurrentTimeLine: React.FC = () => {
 
   return (
     <div
-      className="absolute right-0 left-20 z-[1] h-[1px] bg-primary/50"
+      className="absolute right-0 left-20 z-[1] h-[1px] bg-accent/50"
       style={{ top: `${currentTimeTop}px` }}
     />
   );
@@ -61,7 +61,7 @@ export const CurrentTimeLabel: React.FC = () => {
 
   return (
     <div
-      className="absolute left-0 z-[12] flex w-20 flex-shrink-0 items-center justify-end bg-primary-bg pr-3 text-xs text-primary"
+      className="absolute left-0 z-[12] flex w-20 flex-shrink-0 items-center justify-end bg-primary-bg pr-3 text-xs text-accent"
       style={{ top: `${currentTimeTop - 8}px` }}
     >
       {label}

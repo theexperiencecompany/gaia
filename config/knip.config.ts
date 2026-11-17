@@ -172,7 +172,10 @@ const config: KnipConfig = {
 
     // Tailwind v4 entry: knip misreads the `@source` content globs as JS
     // imports. Tailwind scans these paths; they are not module imports.
-    "apps/web/src/app/styles/globals.css",
+    "apps/web/src/app/styles/*.css",
+
+    // Hand-run migration and review scripts, not imported by app code.
+    "tools/heroui-migration/**",
   ],
 
   // Binaries provided by monorepo root, mise, Nx, or pnpm scripts (not in each
@@ -296,7 +299,7 @@ const config: KnipConfig = {
         "src/app/**/manifest.{ts,tsx}",
         "src/app/api/**/*.{ts,tsx}",
         // Global styles (Tailwind entry)
-        "src/app/styles/globals.css",
+        "src/app/styles/*.css",
         // next.config
         "next.config.mjs",
         "open-next.config.ts",

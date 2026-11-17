@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Textarea } from "@heroui/input";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton, TextArea } from "@heroui/react";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import {
   GLOBAL_INSTRUCTIONS_SCOPE,
   InstructionsConflictNotice,
@@ -37,17 +37,17 @@ export const GlobalInstructionsEditor = () => {
       {isLoading ? (
         <Skeleton className="h-20 rounded-xl" />
       ) : (
-        <Textarea
+        <TextArea
           aria-label="Custom instructions"
           placeholder="Add any specific instructions for how GAIA should assist you..."
           value={draft}
-          onValueChange={setDraft}
+          onChange={(e) => setDraft(e.target.value)}
           maxLength={MAX_INSTRUCTIONS_CHARS}
-          minRows={3}
-          classNames={{
-            input: "bg-zinc-800/50 text-sm",
-            inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
-          }}
+          rows={3}
+          className={inputVariants({
+            variant: "translucent",
+            className: "text-sm",
+          })}
         />
       )}
 
@@ -70,15 +70,15 @@ export const GlobalInstructionsEditor = () => {
         <span className="text-xs font-light text-zinc-500">
           {draft.length} / {MAX_INSTRUCTIONS_CHARS}
         </span>
-        <Button
+        <GaiaButton
           size="sm"
-          color="primary"
+          variant="primary"
           onPress={save}
-          isLoading={isSaving}
+          isPending={isSaving}
           isDisabled={!isDirty || hasConflict}
         >
           Save
-        </Button>
+        </GaiaButton>
       </div>
     </div>
   );
