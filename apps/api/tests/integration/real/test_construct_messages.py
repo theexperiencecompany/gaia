@@ -18,6 +18,7 @@ from app.agents.core.messages import (
     MessageAttachments,
     MessageScope,
 )
+from app.constants.chat import ConversationSource
 from tests._harness.context_chain import comms_turn_messages
 
 _EMPTY_DYNAMIC = AssembledContext(stable=SystemMessage(content=""), volatile=None)
@@ -37,7 +38,9 @@ class TestConstructMessagesReal:
         ):
             messages = await comms_turn_messages(
                 query="Hello",
-                scope=MessageScope(user_id="test-user", user_name="Test"),
+                scope=MessageScope(
+                    user_id="test-user", user_name="Test", source=ConversationSource.WEB
+                ),
             )
 
         assert len(messages) >= 2
@@ -57,7 +60,9 @@ class TestConstructMessagesReal:
         ):
             messages = await comms_turn_messages(
                 query="Search for cats",
-                scope=MessageScope(user_id="test-user", user_name="Test"),
+                scope=MessageScope(
+                    user_id="test-user", user_name="Test", source=ConversationSource.WEB
+                ),
                 attachments=MessageAttachments(selected_tool="web_search"),
             )
 
@@ -74,7 +79,7 @@ class TestConstructMessagesReal:
         ):
             messages = await comms_turn_messages(
                 query="What can you do?",
-                scope=MessageScope(user_id="test-user"),
+                scope=MessageScope(user_id="test-user", source=ConversationSource.WEB),
             )
 
         assert len(messages) >= 1

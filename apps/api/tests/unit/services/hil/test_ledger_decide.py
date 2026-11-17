@@ -7,12 +7,14 @@ from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 from uuid import UUID
 
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 import pytest
 
 from app.agents.core.background.executor_channel import ExecutorInbox
 from app.agents.core.background.executor_queue import hold_run_alive
-from app.constants.agents import AgentTag
+from app.agents.middleware.completion import work_looks_unfinished
+from app.constants.agents import AgentTag, wrap_agent_payload
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
@@ -24,6 +26,7 @@ from app.models.conversation_log_models import ApprovalDecided, ApprovalRequeste
 from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.hil_models import ApprovalLedgerDocument
 from app.models.user_models import AuthenticatedUser
+from app.override.langgraph_bigtool.utils import State
 from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
     BatchDecisionItem,
@@ -1476,6 +1479,27 @@ class TestDecideLedgerOutcomes:
 
         assert _inbox_lines(seams) == []
 
+    async def test_a_denied_calls_report_is_taken_without_sending_the_run_back_to_work(
+        self, seams: LedgerSeams
+    ) -> None:
+        """Regression: the verdict read as a fresh request with no work done, so the completion nudge goaded a re-ask."""
+        seams.rows["ap_1"] = _doc()
+
+        await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="nope", via="card")
+
+        [(_, _, verdict)] = [call.args for call in seams.deliver.await_args_list]
+        asked = AIMessage(
+            content="", tool_calls=[{"name": "send_email", "args": {}, "id": "call_1"}]
+        )
+        thread = [
+            HumanMessage(content="send the email"),
+            asked,
+            ToolMessage(content="PENDING ap_1: Send it", tool_call_id="call_1", name="send_email"),
+            HumanMessage(content=verdict),
+            AIMessage(content="Skipped sending it, as you declined."),
+        ]
+        assert work_looks_unfinished(State(messages=thread)) is False
+
     async def test_a_deny_settles_the_card_and_tells_the_agent_why(
         self, seams: LedgerSeams
     ) -> None:
@@ -1487,7 +1511,9 @@ class TestDecideLedgerOutcomes:
         seams.deliver.assert_awaited_once_with(
             "conv-1",
             AuthenticatedUser(user_id=USER_ID),
-            f"DECISION ap_1=DENIED Send it :: nope{_DENY_TAIL}",
+            wrap_agent_payload(
+                AgentTag.HIL_DECISION, f"DECISION ap_1=DENIED Send it :: nope{_DENY_TAIL}"
+            ),
             continues="t-asked",
         )
         [(denied, note)] = [call.args for call in seams.record_deny.await_args_list]
@@ -1517,8 +1543,8 @@ class TestDecideLedgerOutcomes:
 
         await decide_ledger("ap_1", user_id=USER_ID, kind="deny", feedback="n" * 600, via="card")
 
-        assert seams.deliver.await_args.args[2] == (
-            f"DECISION ap_1=DENIED Send it :: {'n' * 500}{_DENY_TAIL}"
+        assert seams.deliver.await_args.args[2] == wrap_agent_payload(
+            AgentTag.HIL_DECISION, f"DECISION ap_1=DENIED Send it :: {'n' * 500}{_DENY_TAIL}"
         )
 
 
@@ -2089,9 +2115,10 @@ async def test_an_unledgered_approval_is_decided_once_and_resumes_its_work(
     decided.assert_awaited_once_with("c1", "u1", "ap-gone", outcome, None)
     conversation_id, user, task = deliver.await_args.args
     assert (conversation_id, user) == ("c1", AuthenticatedUser(user_id="u1"))
-    assert task == (
+    assert task == wrap_agent_payload(
+        AgentTag.HIL_DECISION,
         f"DECISION ap-gone={outcome.upper()} Send it {says} — report what you skipped and "
-        "continue without it. Do not re-request it."
+        "continue without it. Do not re-request it.",
     )
 
 

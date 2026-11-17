@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.constants.chat import BOT_CONVERSATION_SOURCES
 from app.models.artifact_models import ArtifactRegistryEntry
@@ -91,13 +91,11 @@ class ConversationSummary(ResponseModel):
     awaiting_approval: bool = False
     createdAt: str | None = None
     updatedAt: datetime | None = None
-    #: The conversation's web app page, built here so no client spells the route itself.
-    url: str
 
-    @model_validator(mode="before")
-    @classmethod
-    def _link(cls, row: dict[str, object]) -> dict[str, object]:
-        return {**row, "url": FILE_LINKS.conversation_page(str(row["conversation_id"]))}
+    @computed_field
+    def url(self) -> str:
+        """Return the conversation's web app page, built here so no client spells the route itself."""
+        return FILE_LINKS.conversation_page(self.conversation_id)
 
 
 class ConversationMessageHit(BaseModel):

@@ -704,7 +704,7 @@ async def _plan(
     pinned: tuple[LoggedEntry, ...] = (),
 ) -> FoldPlan:
     with patch.object(GraphManager, "get_graph", AsyncMock(return_value=graph)):
-        plan = await runner.plan_fold(thread_id, "u1", Kept(owed, pinned))
+        plan = await runner.plan_fold(thread_id, "u1", AsyncMock(return_value=Kept(owed, pinned)))
     assert plan is not None
     return plan
 

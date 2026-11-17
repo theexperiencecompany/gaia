@@ -80,7 +80,7 @@ from shared.py.analytics.catalog.workflows import (
     WorkflowUnpublished,
     WorkflowUpdated,
 )
-from shared.py.approvals import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome, ApprovalStatus
 
 pytestmark = pytest.mark.unit
 
@@ -630,11 +630,14 @@ class TestLedgerApprovalEvents:
             user_id="507f1f77bcf86cd799439011",
         )
         repo = MagicMock(
-            get_by_approval_id=AsyncMock(return_value=row), settle=AsyncMock(return_value=True)
+            get_by_approval_id=AsyncMock(return_value=row),
+            claim_delivery=AsyncMock(return_value=None),
+            settle=AsyncMock(return_value=True),
         )
         ledger = "app.services.hil.ledger_decide"
         with (
             patch(f"{ledger}.approval_ledger_repository", new=repo),
+            patch(f"{ledger}.logged_status", new=AsyncMock(return_value=ApprovalStatus.WAITING)),
             patch(
                 f"{ledger}.record_approval_decided",
                 new=AsyncMock(

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.constants.chat import CONVERSATION_READ_LIMIT
+from app.constants.chat import CONVERSATION_READ_LIMIT, ConversationSource
 from app.models.conversation_frame_models import StateFrame
 from app.models.conversation_log_models import DisplayState
 from app.models.conversation_models import (
@@ -76,6 +76,7 @@ class TestConversationEndpoints:
             json={
                 "conversation_id": "conv-123",
                 "description": "Test conversation",
+                "source": ConversationSource.WEB,
             },
         )
         assert response.status_code == 200
@@ -92,7 +93,11 @@ class TestConversationEndpoints:
         mock_create.side_effect = Exception("DB error")
         response = await test_client.post(
             "/api/v1/conversations",
-            json={"conversation_id": "conv-err", "description": "Fail"},
+            json={
+                "conversation_id": "conv-err",
+                "description": "Fail",
+                "source": ConversationSource.WEB,
+            },
         )
         assert response.status_code == 500
 
@@ -110,6 +115,7 @@ class TestConversationEndpoints:
             conversation_id="conv-456",
             user_id=FAKE_USER.user_id,
             description="A conversation",
+            source=ConversationSource.WEB,
             state=StateFrame(head=0, display=DisplayState.IDLE, work=()),
         )
         response = await test_client.get("/api/v1/conversations/conv-456")

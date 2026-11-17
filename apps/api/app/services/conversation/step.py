@@ -70,9 +70,12 @@ async def fold_history(ports: RuntimePorts, conversation_id: str, user_id: str) 
     The summary is written under the step's claim, so no turn writes the thread meanwhile;
     a turn that starts first reads the thread unfolded and asks again once it settles.
     """
-    state = await ports.log.state(conversation_id, user_id)
-    pinned = await ports.log.pinned(conversation_id, user_id)
-    plan = await ports.runner.plan_fold(conversation_id, user_id, Kept(state.owed_answers, pinned))
+
+    async def kept() -> Kept:
+        state = await ports.log.state(conversation_id, user_id)
+        return Kept(state.owed_answers, await ports.log.pinned(conversation_id, user_id))
+
+    plan = await ports.runner.plan_fold(conversation_id, user_id, kept)
     if plan is None:
         return
     claim = await ports.log.claim(conversation_id, user_id)

@@ -43,7 +43,7 @@ from app.models.conversation_screen_models import (
 )
 from app.models.conversation_send_models import ConversationEvent
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
-from shared.py.approvals import ApprovalDecider, ApprovalOutcome
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome, ApprovalStatus
 from shared.py.conversation_wire import (
     BubbleTextDelta,
     FailureReason,
@@ -135,6 +135,7 @@ def approval_card(outcome: ApprovalOutcome | None) -> ApprovalRequestEntry:
             integration_name=None,
             description=SEND_EMAIL,
             args_preview={},
+            status=ApprovalStatus.WAITING if outcome is None else ApprovalStatus(outcome.value),
             outcome=outcome,
             decider=None if outcome is None else ApprovalDecider.USER,
             feedback=None,

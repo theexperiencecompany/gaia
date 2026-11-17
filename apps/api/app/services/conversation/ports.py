@@ -224,6 +224,9 @@ class Kept:
 
 NOTHING_KEPT = Kept()
 
+#: Reads what a fold keeps; called only once the thread is past its budget.
+KeptReader: TypeAlias = Callable[[], Awaitable[Kept]]
+
 
 @dataclass(frozen=True)
 class FoldPlan:
@@ -253,8 +256,10 @@ class CommsRunner(Protocol):
         """
         ...
 
-    async def plan_fold(self, conversation_id: str, user_id: str, kept: Kept) -> FoldPlan | None:
-        """Summarize the settled thread's oldest turns past its budget without writing; None under it."""
+    async def plan_fold(
+        self, conversation_id: str, user_id: str, kept: KeptReader
+    ) -> FoldPlan | None:
+        """Summarize the settled thread's oldest turns past its budget without writing; None under it, reading kept only past it."""
         ...
 
     async def apply_fold(self, claim: StepClaim, plan: FoldPlan) -> bool:

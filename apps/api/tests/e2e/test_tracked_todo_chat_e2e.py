@@ -229,8 +229,8 @@ class TestARunLandsInTheTodosOwnChat:
         assert isinstance(finished, WorkFinished)
         assert (finished.outcome, finished.report) == (WorkOutcome.DONE, REPORT)
         assert isinstance(reply, Reply) and reply.text == NARRATED
-        assert reply.reply_id == finished.task_id
-        assert "create_flowchart" in _card_tool_names(reply.tool_data)
+        assert reply.narrates == (finished.task_id,)
+        assert "create_flowchart" in _card_tool_names(finished.tool_data)
         assert isinstance(settled, ReplySettled) and settled.outcome is ReplyOutcome.ANSWERED
         assert woke.id in settled.answers
 
@@ -287,7 +287,7 @@ class TestARunLandsInTheTodosOwnChat:
         (failed,) = _finished(shown)
         assert failed.outcome is WorkOutcome.FAILED and failed.report
         (settled,) = [entry for entry in shown if isinstance(entry, ReplySettled)]
-        assert settled.reply_id == failed.task_id and settled.outcome is ReplyOutcome.FAILED
+        assert settled.narrates == (failed.task_id,) and settled.outcome is ReplyOutcome.FAILED
         # A failed run tells the user nothing yet: the worker's retry ladder owns it.
         assert await mongo_db["notifications"].count_documents({"user_id": owner.user_id}) == 0
         todo = await todo_repository.get_by_id(todo_id)
@@ -596,9 +596,6 @@ READ_APPROVAL_ID = "<the approval id in the prompt>"
 APPROVAL_READY = re.compile(r"APPROVAL_READY (\S+):")
 WAITING = "Waiting on your approval to draw the deploy's flowchart."
 DRAWN = "Drew the deploy's flowchart."
-RESUMED = "The flowchart is in; nothing else is left this run."
-#: A resume does no tool work of its own, so the completion nudge asks once more.
-NOTHING_PENDING = "Confirmed: the approved flowchart already ran; nothing is pending."
 SKIPPED = "Skipped the flowchart, as you declined it."
 RECHECK = "recheck the deploy right now"
 RECHECKED = "Rechecked: the deploy is still green."
@@ -744,29 +741,25 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
         client: AsyncClient,
         worker_pool: ArqRedis,
     ) -> None:
-        """The ticket run is still going when the resume job lands, as with a real model: the resume waits its turn."""
+        """Regression for 435eb0d18b: one tap starts exactly one continuation, the owner's resume, which carries the ticket."""
         await ask_before(mongo_db, "create_flowchart")
         todo_id = await _new_tracked_todo(owner)
-        executor = gated_run([redeem(), DRAWN, RESUMED, NOTHING_PENDING])
+        executor = gated_run([redeem(), DRAWN])
 
-        async with open_stack(executor=executor, comms=[NARRATED] * 3) as stack:
+        async with open_stack(executor=executor, comms=[NARRATED] * 2) as stack:
             await _run(todo_id, owner)
             conversation_id = (await _chat_of(mongo_db, todo_id))["conversation_id"]
             row = await _only_approval(mongo_db)
             parked = (await client.get(f"/api/v1/todos/{todo_id}")).json()["pending_approval"]
             parked_threads = await stack.threads_of(conversation_id)
 
-            ticket_run = executor.hold_calls_seeing("APPROVAL_READY")
             decided = await client.post(
                 f"/api/v1/approvals/{row['approval_id']}/decision", json={"decision": "approve"}
             )
-            await ticket_run.reached.wait()
-            (enqueued,) = await _queued_resumes(worker_pool)
-            landed_mid_ticket_run = await resume_tracked_todo({}, *enqueued)
-            ticket_run.released.set()
             await drain_background_runs()
-            (deferred,) = [job for job in await _queued_resumes(worker_pool) if job != enqueued]
-            resumed = await resume_tracked_todo({}, *deferred)
+            (enqueued,) = await _queued_resumes(worker_pool)
+            resumed = await resume_tracked_todo({}, *enqueued)
+            await drain_background_runs()
             resumed_threads = await stack.threads_of(conversation_id)
             after = (await client.get(f"/api/v1/todos/{todo_id}")).json()["pending_approval"]
 
@@ -790,32 +783,27 @@ class TestAnApprovalTheRunWaitsOnStaysInTheTodosChat:
             "approved",
             "executed",
         )
-        # The resume that landed while that run held the chat waited instead of failing.
-        assert landed_mid_ticket_run == f"resume_deferred:{todo_id} (executor busy)"
-        assert deferred == (todo_id, conversation_id, row["approval_id"], row["summary"], 1)
+        # The tap's one continuation: the owner's resume, in the parked chat.
+        assert enqueued == (todo_id, conversation_id, row["approval_id"], row["summary"])
         assert resumed == f"resumed:{todo_id}"
         assert after is None
 
         shown = await _shown(mongo_db, todo_id)
-        # The approval's resume says the approval woke it; the ticket run is no todo run.
         assert _wake_kinds(shown) == [TodoWakeKind.SCHEDULE.value, TodoWakeKind.APPROVAL.value]
-        # The parked run, the ticket run the approval started, then the resume.
-        assert _reports(shown) == [
-            WAITING,
-            DRAWN,
-            # Two model messages, so two bubbles (HeldReplies, app/agents/core/held_replies.py).
-            f"{RESUMED}{NEW_MESSAGE_BREAKER}{NOTHING_PENDING}",
-        ]
-        assert [reply.text for reply in _write_ups(shown)] == [NARRATED] * 3
+        # The parked run, then the resume that redeemed the ticket.
+        assert _reports(shown) == [WAITING, DRAWN]
+        assert [reply.text for reply in _write_ups(shown)] == [NARRATED] * 2
         assert "approve" in _card_tool_names(_finished(shown)[1].tool_data)
-        # Every leg continued the parked execution: no reset dropped its thread.
+        # The resume continued the parked execution: no reset dropped its thread.
         executor_thread = f"executor_{conversation_id}"
         assert resumed_threads[executor_thread] == parked_threads[executor_thread]
 
         activity = await _activity(todo_id)
         assert activity.count(f"[{TodoActivityEvent.APPROVAL_GRANTED.value}]") == 1
         assert f"[{TodoActivityEvent.RUN_FAILED.value}]" not in activity
-        assert activity.count(f"[{TodoActivityEvent.RUN_FINISHED.value}]") == 2
+        # The parked run and its resume are one run, finished once, with what the resume drew.
+        assert activity.count(f"[{TodoActivityEvent.RUN_FINISHED.value}]") == 1
+        assert f"(summary={DRAWN!r})" in activity
 
     async def test_denying_reports_the_skip_in_the_chat_and_resumes_nothing(
         self,

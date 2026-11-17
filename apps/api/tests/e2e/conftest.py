@@ -387,6 +387,13 @@ def open_stack(
                     new=AsyncMock(side_effect=lambda name="default_graph": graphs[name]),
                 )
             )
+            # The history fold's model is the one production model the ports build themselves.
+            stack.enter_context(
+                patch(
+                    "app.services.conversation.composition.init_llm",
+                    return_value=built.comms_model,
+                )
+            )
             install_runtime_ports(build_runtime_ports())
             try:
                 yield built

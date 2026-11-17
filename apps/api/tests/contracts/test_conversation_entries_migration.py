@@ -732,7 +732,12 @@ async def test_a_conversation_whose_write_fails_is_reported_left_whole_and_refus
 async def test_a_card_from_a_per_tool_field_is_stamped_with_its_message_time_so_verify_can_pass(
     migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
 ) -> None:
-    undated = {"type": "bot", "response": "sunny", "message_id": "m3", "weather_data": {"t": 21}}
+    undated: dict[str, object] = {
+        "type": "bot",
+        "response": "sunny",
+        "message_id": "m3",
+        "weather_data": {"t": 21},
+    }
     ref = await _legacy(
         raw_collection,
         [_message(1), _message(2, "bot", search_results={"q": "x"}), undated],
@@ -751,7 +756,12 @@ async def test_a_card_from_a_per_tool_field_is_stamped_with_its_message_time_so_
 async def test_an_undated_card_in_a_head_with_no_creation_date_takes_the_heads_id_time(
     migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
 ) -> None:
-    undated = {"type": "bot", "response": "sunny", "message_id": "m2", "weather_data": {"t": 21}}
+    undated: dict[str, object] = {
+        "type": "bot",
+        "response": "sunny",
+        "message_id": "m2",
+        "weather_data": {"t": 21},
+    }
     ref = await _legacy(raw_collection, [_message(1), undated], createdAt=None)
 
     await migration.migrate(ref, apply=True)
@@ -781,8 +791,9 @@ async def test_the_upload_ids_on_a_bot_message_are_kept_and_verify_compares_them
 async def test_an_artifact_card_from_the_first_artifacts_build_reads_as_the_file_it_wrote(
     migration: ConversationEntriesMigration, raw_collection: Any, entries_collection: Any
 ) -> None:
+    path = "/sessions/c1/.user-visible/report.md"
     written = {
-        "path": "/sessions/c1/.user-visible/report.md",
+        "path": path,
         "filename": "report.md",
         "content_type": "text/markdown",
         "size_bytes": 12,
@@ -795,7 +806,7 @@ async def test_an_artifact_card_from_the_first_artifacts_build_reads_as_the_file
     reply = await entries_collection.find_one({"conversation_id": ref.conversation_id, "id": "m2"})
     assert reply["tool_data"][0]["data"] == {**written, "event": "upsert"}
     assert reply_files(reply["tool_data"], "page") == (
-        ReplyFile(path=written["path"], content_type="text/markdown", opens_at="page"),
+        ReplyFile(path=path, content_type="text/markdown", opens_at="page"),
     )
     report = await migration.verify(ref)
     assert report.ok, report.mismatches

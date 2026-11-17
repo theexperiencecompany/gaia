@@ -409,7 +409,7 @@ async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the
     ledger.find_live = AsyncMock(return_value=None)
     ledger.find_latest_denied = AsyncMock(return_value=None)
     ledger.find_amended = AsyncMock(return_value=None)
-    ledger.register = AsyncMock(return_value="ap_ledger01")
+    ledger.register = AsyncMock(side_effect=lambda _proposal, approval_id: approval_id)
     runtime = Runtime()
     install_runtime_ports(runtime.ports)
     await runtime.log.append("conv_1", USER_ID, user("m1"))
@@ -419,6 +419,7 @@ async def test_a_ledger_gated_call_stops_the_replay_pending_without_invoking_the
     )
     with (
         patch(f"{GATE}.approval_ledger_repository", ledger),
+        patch(f"{GATE}.new_approval_id", return_value="ap_ledger01"),
         patch(f"{GATE}._integration_name_for", AsyncMock(return_value=None)),
         patch(f"{GATE}.announce_approval", AsyncMock()) as publish,
     ):

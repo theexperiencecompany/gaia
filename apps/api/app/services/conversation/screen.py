@@ -236,11 +236,14 @@ class _Log:
         )
 
     def _ended_by(self, root: str) -> ApprovalStatus | None:
-        """Return how work under root let its undecided approvals go: a Stop cancels them, an ended run withdraws them."""
+        """Return how work under root let its undecided approvals go: a Stop cancels them, a failed run withdraws them.
+
+        A run done while they wait leaves them to the user: the decision carries them out.
+        """
         finished = self.finished.get(root)
         if self._stopped(root) or (finished is not None and finished.outcome in _STOPPED_WORK):
             return ApprovalStatus.CANCELLED
-        if finished is not None and not finished.left_to_decision:
+        if finished is not None and finished.outcome is not WorkOutcome.DONE:
             return ApprovalStatus.WITHDRAWN
         return None
 

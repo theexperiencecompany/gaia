@@ -7926,8 +7926,11 @@ export interface components {
             system_purpose: components["schemas"]["SystemPurpose"] | null;
             /** Updatedat */
             updatedAt: string | null;
-            /** Url */
-            url: string;
+            /**
+             * Url
+             * @description Return the conversation's web app page, built here so no client spells the route itself.
+             */
+            readonly url: string;
             /** User Id */
             user_id: string;
         } & {
