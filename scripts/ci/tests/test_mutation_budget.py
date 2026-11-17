@@ -87,7 +87,7 @@ def test_preparation_time_comes_out_of_mutmuts_cap(
         return mutation.MUTMUT_TIMED_OUT, ""
 
     monkeypatch.setenv(mutation.MUTMUT_CAP_ENV, "300")
-    monkeypatch.setattr(mutation.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(mutation, "copy_workdir", slow_copy)
     monkeypatch.setattr(mutation, "configure_mutmut", lambda _request, _workdir: None)
     monkeypatch.setattr(mutation, "run_mutmut", fake_mutmut)
