@@ -4,9 +4,18 @@ default_stages: [pre-commit]
 repos:
   - repo: local
     hooks:
+      # Before lint-all: a fresh worktree has no node_modules.
+      - id: ensure-node-modules
+        name: node_modules installed (one-time pnpm install in a fresh checkout)
+        entry: mise exec -- bash ../../scripts/dev/ensure-node-modules.sh
+        language: system
+        types_or: [javascript, jsx, ts, tsx, json, markdown, css]
+        pass_filenames: false
+        priority: 0
       - id: lint-all
         name: Format & Lint & Apply Fixes
         entry: bash -c 'pnpm fix'
         language: system
         types_or: [javascript, jsx, ts, tsx, json, markdown, css]
         pass_filenames: false
+        priority: 1

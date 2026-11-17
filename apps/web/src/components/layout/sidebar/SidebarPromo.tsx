@@ -1,9 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import { CancelIcon, ZapIcon } from "@icons";
 import { useEffect, useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { RaisedButton } from "@/components/ui/raised-button";
 import type { PaywallCopy } from "@/features/pricing/constants";
 
@@ -52,16 +52,20 @@ export function SidebarPromo({
         <>
           <div className="flex w-full justify-between items-center gap-1">
             <div className="font-medium text-sm">{copy.heading}</div>
-            <Button
+            <GaiaButton
+              aria-label="Dismiss"
+              shape="pill"
               isIconOnly
-              variant="light"
+              variant="ghost"
               size="sm"
-              radius="full"
-              className="p-0! text-zinc-400 hover:text-white relative left-3 group-hover/pricingsidebar:opacity-100 opacity-0 transition"
+              tone="muted"
+              hoverTone="white"
+              inset="none"
+              className="relative left-3 group-hover/pricingsidebar:opacity-100 opacity-0 transition"
               onPress={() => handleCollapse()}
             >
               <CancelIcon width={15} height={15} />
-            </Button>
+            </GaiaButton>
           </div>
           {price !== null ? (
             <p className="text-xs text-zinc-400">{copy.sidebarBody(price)}</p>

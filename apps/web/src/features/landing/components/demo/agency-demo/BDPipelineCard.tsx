@@ -8,7 +8,7 @@ const PIPELINE_ITEMS = [
     hot: true,
     sub: "Inbound: website redesign + SEO",
     info: "Last contact: Today",
-    infoColor: "text-primary",
+    infoColor: "text-accent",
   },
   {
     id: "bd-2",
@@ -26,7 +26,7 @@ const PIPELINE_ITEMS = [
     hot: false,
     sub: "RFP received · deadline Friday",
     info: "GAIA drafted proposal outline",
-    infoColor: "text-primary",
+    infoColor: "text-accent",
   },
   {
     id: "bd-4",

@@ -144,11 +144,18 @@ jobs:
           persist-credentials: false
       - name: Crawl the live site as a search engine would (status, canonical, hreflang, links, noindex)
         run: bash scripts/ci/smoke-web.sh audit
-      # The PR gate's squirrel ratchet, run against the live edge: a count above
-      # the baseline here and not on the PR is something only production serves.
-      - name: Audit the live site with squirrelscan against its baseline
-        if: ${{ !cancelled() }}
-        run: bash scripts/ci/smoke-web.sh squirrel
+
+  # The PR gate's squirrel baseline held on every live page, the edge included: a
+  # finding here and not on the PR is something only production serves. Alerting,
+  # like seo-audit; the same crawl also runs nightly from its own schedule.
+  seo-crawl:
+    needs: deploy-production
+    if: github.ref == 'refs/heads/master'
+    uses: ./.github/workflows/seo-crawl.yml
+    permissions:
+      contents: write
+      pull-requests: write
+    secrets: inherit # pragma: allowlist secret
 
   indexnow:
     name: IndexNow (post-deploy)

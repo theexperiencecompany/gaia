@@ -1,6 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 
 interface CheckoutConfirmingProps {
   /** Past the visible budget: the webhook is late, so say so rather than

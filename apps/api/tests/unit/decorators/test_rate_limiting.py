@@ -33,6 +33,7 @@ from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.models.user_models import AuthenticatedUser
 from app.services.limit_upsell import LimitHitOrigin
+from app.services.turn_timings import TurnPhase, TurnStep, begin_turn_timings
 from shared.py.analytics import UserId
 
 RESET_AT = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
@@ -474,9 +475,9 @@ class TestTieredRateLimitMetersUnderItsOrigin:
                 return_value=AuthenticatedUser(user_id=USER_ID),
             ),
             patch(
-                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
                 new_callable=AsyncMock,
-                return_value=MagicMock(plan_type=PlanType.FREE),
+                return_value=PlanType.FREE,
             ),
             patch(
                 "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
@@ -1053,3 +1054,19 @@ class TestLimitHitExceptionDetailFallbacks:
         assert result.reset_time == RESET_AT.isoformat()
         card = writer.call_args.args[0]
         assert card["tool_data"]["data"]["plan_required"] is None
+
+
+class TestTieredRateLimitStepTiming:
+    async def test_the_limit_check_is_timed_as_the_turns_rate_limit_step(self) -> None:
+        decorated = rl.tiered_rate_limit("chat_messages")(_endpoint)
+        timings = begin_turn_timings()
+        with (
+            patch(
+                "app.core.request_context.get_authenticated_user",
+                return_value=AuthenticatedUser(user_id="u1", email="x@example.com"),
+            ),
+            patch("app.decorators.rate_limiting.enforce_tiered_limit", new_callable=AsyncMock),
+        ):
+            await decorated()
+
+        assert list(timings.steps) == [(TurnPhase.INGRESS, TurnStep.RATE_LIMIT)]

@@ -1,4 +1,4 @@
-import { ScrollShadow } from "@heroui/scroll-shadow";
+import { ScrollShadow } from "@heroui/react";
 import { GridIcon } from "@icons";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";

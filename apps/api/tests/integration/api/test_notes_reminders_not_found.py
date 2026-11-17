@@ -6,23 +6,6 @@ from fastapi import HTTPException, status
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def _bypass_rate_limiter():
-    """Bypass the tiered rate limiter's Redis/payment calls (notes writes use it)."""
-    with (
-        patch(
-            "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-        patch(
-            "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
-            new_callable=AsyncMock,
-        ),
-    ):
-        yield
-
-
 def _not_found(detail: str):
     return AsyncMock(
         side_effect=HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)

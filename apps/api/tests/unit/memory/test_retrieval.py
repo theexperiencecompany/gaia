@@ -7,6 +7,7 @@ is mocked; the fusion, filtering, scoring and assembly logic under test is real.
 import asyncio
 from datetime import UTC, date as date_type, datetime, timedelta
 from fnmatch import fnmatch
+import inspect
 import json
 import math
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,6 +21,7 @@ from app.constants.memory import (
     CONFIDENT_COSINE,
     CONFIDENT_RERANK_LOGIT,
     DEFAULT_RECALL_LIMIT,
+    EPISODE_SEARCH_DAYS,
     EPISODE_SEARCH_MIN_TOKEN_LENGTH,
     GRAPH_EXPANSION_MAX_SIBLINGS,
     IMPORTANCE_BOOST_BASE,
@@ -34,10 +36,9 @@ from app.constants.memory import (
     MemoryKind,
     MemoryRelationType,
 )
-from app.memory import retrieval
+from app.memory import chroma_store, pg_store, retrieval
 from app.memory.retrieval import (
     EpisodeHit,
-    _build_entries,
     _cap_weak_results,
     _drop_below_relevance,
     _elapsed_ms,
@@ -51,11 +52,12 @@ from app.memory.retrieval import (
     _recency_boost,
     _rerank_and_boost,
     _rrf_fuse,
-    _tokenize,
+    build_entries,
     invalidate_recall_cache,
     recall,
     recall_episodes,
     recall_transcripts,
+    tokenize,
 )
 from app.models.memory_db_models import MemoryRecord
 from app.utils.log_identifiers import user_text_shape
@@ -252,7 +254,7 @@ class TestInCategory:
 
 
 # ---------------------------------------------------------------------------
-# _episode_id_to_date / _tokenize / _elapsed_ms
+# _episode_id_to_date / tokenize / _elapsed_ms
 # ---------------------------------------------------------------------------
 
 
@@ -273,19 +275,19 @@ class TestEpisodeIdToDate:
 class TestTokenize:
     def test_drops_tokens_below_the_minimum_length(self) -> None:
         assert EPISODE_SEARCH_MIN_TOKEN_LENGTH == 3
-        assert _tokenize("I am at the gym") == ["the", "gym"]
+        assert tokenize("I am at the gym") == ["the", "gym"]
 
     def test_lowercases_and_strips_punctuation(self) -> None:
-        assert _tokenize("Nadia's BIRTHDAY, March!") == ["nadia's", "birthday", "march"]
+        assert tokenize("Nadia's BIRTHDAY, March!") == ["nadia's", "birthday", "march"]
 
     def test_query_of_only_short_words_yields_no_tokens(self) -> None:
-        assert _tokenize("hi ok up") == []
+        assert tokenize("hi ok up") == []
 
     def test_empty_query_yields_no_tokens(self) -> None:
-        assert _tokenize("") == []
+        assert tokenize("") == []
 
     def test_digits_are_kept_as_tokens(self) -> None:
-        assert _tokenize("ticket 4821") == ["ticket", "4821"]
+        assert tokenize("ticket 4821") == ["ticket", "4821"]
 
 
 def test_elapsed_ms_is_non_negative_integer() -> None:
@@ -521,9 +523,7 @@ class TestHydrateCandidates:
     ) -> list[MemoryRecord]:
         kwargs.setdefault("category_prefix", None)
         kwargs.setdefault("kinds", None)
-        with patch.object(
-            retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=extra_rows)
-        ):
+        with patch.object(pg_store, "get_memories_by_ids", new=AsyncMock(return_value=extra_rows)):
             return await _hydrate_candidates(USER, fused_ids, fts_hits, **kwargs)
 
     async def test_preserves_fused_ranking_order(self) -> None:
@@ -534,7 +534,7 @@ class TestHydrateCandidates:
     async def test_reuses_fts_rows_instead_of_refetching_them(self) -> None:
         row = make_row("from fts")
         fetch = AsyncMock(return_value=[])
-        with patch.object(retrieval.pg_store, "get_memories_by_ids", new=fetch):
+        with patch.object(pg_store, "get_memories_by_ids", new=fetch):
             got = await _hydrate_candidates(
                 USER, [str(row.id)], [(row, 0.9)], category_prefix=None, kinds=None
             )
@@ -783,10 +783,8 @@ class TestGraphSiblings:
     async def test_no_entities_returns_no_siblings_without_a_second_query(self) -> None:
         siblings = AsyncMock()
         with (
-            patch.object(
-                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-            ),
-            patch.object(retrieval.pg_store, "get_memories_for_entities", new=siblings),
+            patch.object(pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})),
+            patch.object(pg_store, "get_memories_for_entities", new=siblings),
         ):
             got = await _graph_siblings(USER, [make_row("only")], kinds=None)
         assert got == []
@@ -797,12 +795,12 @@ class TestGraphSiblings:
         sibling = make_row("sibling")
         with (
             patch.object(
-                retrieval.pg_store,
+                pg_store,
                 "get_entities_for_memories",
                 new=AsyncMock(return_value={base[0].id: [_entity()]}),
             ),
             patch.object(
-                retrieval.pg_store,
+                pg_store,
                 "get_memories_for_entities",
                 new=AsyncMock(return_value=[sibling]),
             ),
@@ -815,7 +813,7 @@ class TestGraphSiblings:
 
         base = [make_row(f"c{i}") for i in range(GRAPH_EXPANSION_SOURCE_RESULTS + 3)]
         entities = AsyncMock(return_value={})
-        with patch.object(retrieval.pg_store, "get_entities_for_memories", new=entities):
+        with patch.object(pg_store, "get_entities_for_memories", new=entities):
             await _graph_siblings(USER, base, kinds=None)
         entities.assert_awaited_once_with([row.id for row in base[:GRAPH_EXPANSION_SOURCE_RESULTS]])
 
@@ -824,11 +822,11 @@ class TestGraphSiblings:
         fetch = AsyncMock(return_value=[])
         with (
             patch.object(
-                retrieval.pg_store,
+                pg_store,
                 "get_entities_for_memories",
                 new=AsyncMock(return_value={base[0].id: [_entity()]}),
             ),
-            patch.object(retrieval.pg_store, "get_memories_for_entities", new=fetch),
+            patch.object(pg_store, "get_memories_for_entities", new=fetch),
         ):
             await _graph_siblings(USER, base, kinds=[MemoryKind.FACT])
         kwargs = fetch.await_args.kwargs
@@ -842,11 +840,11 @@ class TestGraphSiblings:
         fetch = AsyncMock(return_value=[])
         with (
             patch.object(
-                retrieval.pg_store,
+                pg_store,
                 "get_entities_for_memories",
                 new=AsyncMock(return_value={base[0].id: [_entity()]}),
             ),
-            patch.object(retrieval.pg_store, "get_memories_for_entities", new=fetch),
+            patch.object(pg_store, "get_memories_for_entities", new=fetch),
         ):
             await _graph_siblings(USER, base, kinds=None)
         assert fetch.await_args.kwargs["kinds"] is None
@@ -857,18 +855,18 @@ class TestGraphSiblings:
         fetch = AsyncMock(return_value=[])
         with (
             patch.object(
-                retrieval.pg_store,
+                pg_store,
                 "get_entities_for_memories",
                 new=AsyncMock(return_value={base[0].id: [shared], base[1].id: [shared]}),
             ),
-            patch.object(retrieval.pg_store, "get_memories_for_entities", new=fetch),
+            patch.object(pg_store, "get_memories_for_entities", new=fetch),
         ):
             await _graph_siblings(USER, base, kinds=None)
         assert fetch.await_args.args[1] == [shared.id]
 
 
 # ---------------------------------------------------------------------------
-# _build_entries
+# build_entries
 # ---------------------------------------------------------------------------
 
 
@@ -876,8 +874,8 @@ class TestBuildEntries:
     async def test_maps_rows_to_entries_with_rounded_scores(self) -> None:
         row = make_row("mapped")
         fetch_entities = AsyncMock(return_value={})
-        with patch.object(retrieval.pg_store, "get_entities_for_memories", new=fetch_entities):
-            entries = await _build_entries([(row, 0.123456789)])
+        with patch.object(pg_store, "get_entities_for_memories", new=fetch_entities):
+            entries = await build_entries([(row, 0.123456789)])
         assert entries[0].content == "mapped"
         assert entries[0].id == str(row.id)
         assert entries[0].relevance_score == 0.1235
@@ -894,13 +892,13 @@ class TestBuildEntries:
         )
         with (
             patch.object(
-                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
+                pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
             ) as fetch_entities,
             patch.object(
-                retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
+                pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
             ) as fetch_parents,
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
 
         # The liveness fetch must be scoped to the OWNER of the recalled rows:
         # unscoped (None) it returns nothing and every parent silently reads
@@ -916,12 +914,10 @@ class TestBuildEntries:
         row = make_row("standalone")
         fetch = AsyncMock(return_value=[])
         with (
-            patch.object(
-                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-            ),
-            patch.object(retrieval.pg_store, "get_memories_by_ids", new=fetch),
+            patch.object(pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})),
+            patch.object(pg_store, "get_memories_by_ids", new=fetch),
         ):
-            entries = await _build_entries([(row, 0.9)])
+            entries = await build_entries([(row, 0.9)])
         fetch.assert_not_awaited()
         assert entries[0].previous_content is None
 
@@ -932,12 +928,10 @@ class TestBuildEntries:
         )
         fetch = AsyncMock(return_value=[parent])
         with (
-            patch.object(
-                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-            ),
-            patch.object(retrieval.pg_store, "get_memories_by_ids", new=fetch),
+            patch.object(pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})),
+            patch.object(pg_store, "get_memories_by_ids", new=fetch),
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
         fetch.assert_not_awaited()
         assert entries[0].previous_content is None
 
@@ -951,14 +945,12 @@ class TestBuildEntries:
         )
         with (
             freeze_time(now),
+            patch.object(pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})),
             patch.object(
-                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-            ),
-            patch.object(
-                retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
+                pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
             ) as fetch_parents,
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
 
         # The liveness fetch must be scoped to the OWNER of the recalled rows:
         # unscoped (None) it returns nothing and every parent silently reads
@@ -971,12 +963,10 @@ class TestBuildEntries:
             "orphan", parent_id=uuid.uuid4(), relation_type=MemoryRelationType.UPDATES.value
         )
         with (
-            patch.object(
-                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-            ),
-            patch.object(retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[])),
+            patch.object(pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})),
+            patch.object(pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[])),
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
         assert entries[0].previous_content is None
 
     async def test_entities_are_attached_to_their_own_entry(self) -> None:
@@ -986,18 +976,16 @@ class TestBuildEntries:
         entity.name = "Nadia"
         entity.entity_type = "person"
         with patch.object(
-            retrieval.pg_store,
+            pg_store,
             "get_entities_for_memories",
             new=AsyncMock(return_value={row.id: [entity]}),
         ):
-            entries = await _build_entries([(row, 0.5)])
+            entries = await build_entries([(row, 0.5)])
         assert [ref.name for ref in entries[0].entities] == ["Nadia"]
 
     async def test_empty_input_returns_no_entries(self) -> None:
-        with patch.object(
-            retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-        ):
-            assert await _build_entries([]) == []
+        with patch.object(pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})):
+            assert await build_entries([]) == []
 
     async def test_entity_and_parent_fetches_overlap(self) -> None:
         """The entity and parent lookups must start concurrently, not in sequence."""
@@ -1018,10 +1006,10 @@ class TestBuildEntries:
             return [parent]
 
         with (
-            patch.object(retrieval.pg_store, "get_entities_for_memories", new=slow_entities),
-            patch.object(retrieval.pg_store, "get_memories_by_ids", new=fast_parents),
+            patch.object(pg_store, "get_entities_for_memories", new=slow_entities),
+            patch.object(pg_store, "get_memories_by_ids", new=fast_parents),
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
         assert entries[0].previous_content == "parent content"
 
 
@@ -1054,18 +1042,16 @@ class _RecallHarness:
     ):
         return (
             patch.object(retrieval, "embed_query", new=AsyncMock(return_value=[0.1] * 8)),
-            patch.object(retrieval.chroma_store, "query_similar", new=AsyncMock(return_value=ann)),
-            patch.object(retrieval.pg_store, "fts_search", new=AsyncMock(return_value=fts)),
+            patch.object(chroma_store, "query_similar", new=AsyncMock(return_value=ann)),
+            patch.object(pg_store, "fts_search", new=AsyncMock(return_value=fts)),
+            patch.object(pg_store, "get_memories_by_ids", new=AsyncMock(return_value=rows)),
             patch.object(
-                retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=rows)
-            ),
-            patch.object(
-                retrieval.pg_store,
+                pg_store,
                 "get_entities_for_memories",
                 new=AsyncMock(return_value=entities or {}),
             ),
             patch.object(
-                retrieval.pg_store,
+                pg_store,
                 "get_memories_for_entities",
                 new=AsyncMock(return_value=siblings or []),
             ),
@@ -1079,7 +1065,7 @@ async def _run_recall(harness: _RecallHarness, patches, *, query: str = "the que
     with ExitStack() as stack:
         for patcher in patches:
             stack.enter_context(patcher)
-        return await recall.__wrapped__(USER, query, **kwargs)
+        return await inspect.unwrap(recall)(USER, query, **kwargs)
 
 
 class TestRecallCaching:
@@ -1439,14 +1425,12 @@ class TestRecallQualityRegressions:
             relation_type=MemoryRelationType.UPDATES.value,
         )
         with (
+            patch.object(pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})),
             patch.object(
-                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-            ),
-            patch.object(
-                retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
+                pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
             ) as fetch_parents,
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
 
         # The liveness fetch must be scoped to the OWNER of the recalled rows:
         # unscoped (None) it returns nothing and every parent silently reads
@@ -1464,14 +1448,12 @@ class TestRecallQualityRegressions:
             relation_type=MemoryRelationType.UPDATES.value,
         )
         with (
+            patch.object(pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})),
             patch.object(
-                retrieval.pg_store, "get_entities_for_memories", new=AsyncMock(return_value={})
-            ),
-            patch.object(
-                retrieval.pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
+                pg_store, "get_memories_by_ids", new=AsyncMock(return_value=[parent])
             ) as fetch_parents,
         ):
-            entries = await _build_entries([(child, 0.9)])
+            entries = await build_entries([(child, 0.9)])
 
         # The liveness fetch must be scoped to the OWNER of the recalled rows:
         # unscoped (None) it returns nothing and every parent silently reads
@@ -1499,7 +1481,7 @@ class TestRecallEpisodes:
         entry_day, summary_day = date_type(2026, 3, 12), date_type(2025, 1, 1)
         with (
             patch.object(
-                retrieval.pg_store,
+                pg_store,
                 "search_episode_entries",
                 new=AsyncMock(
                     return_value=[(entry_day, {"time": "09:30", "text": "shipped the API"})]
@@ -1522,7 +1504,7 @@ class TestRecallEpisodes:
         day = date_type(2026, 3, 12)
         with (
             patch.object(
-                retrieval.pg_store,
+                pg_store,
                 "search_episode_entries",
                 new=AsyncMock(return_value=[(day, {"time": "09:30", "text": "shipped"})]),
             ),
@@ -1540,7 +1522,7 @@ class TestRecallEpisodes:
         day = date_type(2026, 3, 12)
         with (
             patch.object(
-                retrieval.pg_store,
+                pg_store,
                 "search_episode_entries",
                 new=AsyncMock(return_value=[(day, {"time": "09:30"})]),
             ),
@@ -1553,9 +1535,7 @@ class TestRecallEpisodes:
         day = date_type(2026, 3, 12)
         rows = [(day, {"time": f"0{i}:00", "text": f"entry {i}"}) for i in range(5)]
         with (
-            patch.object(
-                retrieval.pg_store, "search_episode_entries", new=AsyncMock(return_value=rows)
-            ),
+            patch.object(pg_store, "search_episode_entries", new=AsyncMock(return_value=rows)),
             patch.object(retrieval, "_episode_summary_search", new=AsyncMock(return_value=[])),
         ):
             hits = await recall_episodes(USER, "entry", limit=2)
@@ -1567,9 +1547,7 @@ class TestRecallEpisodes:
         local_today = AsyncMock(return_value=date_type(2026, 3, 15))
         with (
             patch("app.memory.retrieval.local_today", local_today),
-            patch.object(
-                retrieval.pg_store, "search_episode_entries", new=AsyncMock(return_value=[])
-            ),
+            patch.object(pg_store, "search_episode_entries", new=AsyncMock(return_value=[])),
             patch.object(retrieval, "_episode_summary_search", new=AsyncMock(return_value=[])),
         ):
             await recall_episodes(USER, "anything")
@@ -1580,7 +1558,7 @@ class TestRecallEpisodes:
 
         search = AsyncMock(return_value=[])
         with (
-            patch.object(retrieval.pg_store, "search_episode_entries", new=search),
+            patch.object(pg_store, "search_episode_entries", new=search),
             patch.object(retrieval, "_episode_summary_search", new=AsyncMock(return_value=[])),
         ):
             await recall_episodes(USER, "Nadia's BIRTHDAY at 5")
@@ -1597,11 +1575,11 @@ class TestEpisodeSummarySearch:
         with (
             patch.object(retrieval, "embed_query", new=AsyncMock(return_value=[0.1])),
             patch.object(
-                retrieval.chroma_store,
+                chroma_store,
                 "query_episodes",
                 new=AsyncMock(return_value=[(f"{USER}:2026-03-12", 0.812345)]),
             ),
-            patch.object(retrieval.pg_store, "get_episode", new=AsyncMock(return_value=episode)),
+            patch.object(pg_store, "get_episode", new=AsyncMock(return_value=episode)),
         ):
             hits = await _episode_summary_search(USER, "productive", 5)
         assert hits == [
@@ -1613,11 +1591,11 @@ class TestEpisodeSummarySearch:
         with (
             patch.object(retrieval, "embed_query", new=AsyncMock(return_value=[0.1])),
             patch.object(
-                retrieval.chroma_store,
+                chroma_store,
                 "query_episodes",
                 new=AsyncMock(return_value=[("no-date-here", 0.8)]),
             ),
-            patch.object(retrieval.pg_store, "get_episode", new=get_episode),
+            patch.object(pg_store, "get_episode", new=get_episode),
         ):
             hits = await _episode_summary_search(USER, "q", 5)
         assert hits == []
@@ -1629,11 +1607,11 @@ class TestEpisodeSummarySearch:
         with (
             patch.object(retrieval, "embed_query", new=AsyncMock(return_value=[0.1])),
             patch.object(
-                retrieval.chroma_store,
+                chroma_store,
                 "query_episodes",
                 new=AsyncMock(return_value=[(f"{USER}:2026-03-12", 0.8)]),
             ),
-            patch.object(retrieval.pg_store, "get_episode", new=AsyncMock(return_value=episode)),
+            patch.object(pg_store, "get_episode", new=AsyncMock(return_value=episode)),
         ):
             assert await _episode_summary_search(USER, "q", 5) == []
 
@@ -1641,11 +1619,11 @@ class TestEpisodeSummarySearch:
         with (
             patch.object(retrieval, "embed_query", new=AsyncMock(return_value=[0.1])),
             patch.object(
-                retrieval.chroma_store,
+                chroma_store,
                 "query_episodes",
                 new=AsyncMock(return_value=[(f"{USER}:2026-03-12", 0.8)]),
             ),
-            patch.object(retrieval.pg_store, "get_episode", new=AsyncMock(return_value=None)),
+            patch.object(pg_store, "get_episode", new=AsyncMock(return_value=None)),
         ):
             assert await _episode_summary_search(USER, "q", 5) == []
 
@@ -1658,7 +1636,7 @@ class TestRecallTranscripts:
         query_chunks = AsyncMock(return_value=chunks)
         with (
             patch.object(retrieval, "embed_query", new=AsyncMock(return_value=[0.5, 0.5])),
-            patch.object(retrieval.chroma_store, "query_conversation_chunks", new=query_chunks),
+            patch.object(chroma_store, "query_conversation_chunks", new=query_chunks),
         ):
             got = await recall_transcripts(USER, "that list you gave me")
         assert got == chunks
@@ -1668,7 +1646,7 @@ class TestRecallTranscripts:
         query_chunks = AsyncMock(return_value=[])
         with (
             patch.object(retrieval, "embed_query", new=AsyncMock(return_value=[0.5])),
-            patch.object(retrieval.chroma_store, "query_conversation_chunks", new=query_chunks),
+            patch.object(chroma_store, "query_conversation_chunks", new=query_chunks),
         ):
             await recall_transcripts(USER, "q", limit=11)
         assert query_chunks.await_args.args[2] == 11
@@ -1682,14 +1660,12 @@ class TestEpisodeSearchWindowFollowsTheUsersTimezone:
         search = AsyncMock(return_value=[])
         with (
             patch("app.memory.retrieval.local_today", AsyncMock(return_value=local)),
-            patch.object(retrieval.pg_store, "search_episode_entries", search),
+            patch.object(pg_store, "search_episode_entries", search),
             patch.object(retrieval, "_episode_summary_search", AsyncMock(return_value=[])),
         ):
             await retrieval.recall_episodes("u1", "ran the release")
 
-        assert search.await_args.kwargs["since"] == local - timedelta(
-            days=retrieval.EPISODE_SEARCH_DAYS
-        )
+        assert search.await_args.kwargs["since"] == local - timedelta(days=EPISODE_SEARCH_DAYS)
 
 
 class TestInteractiveRecallEmbeds:
@@ -1708,7 +1684,7 @@ class TestInteractiveRecallEmbeds:
 
         with (
             patch.object(retrieval, "embed_query", new=fake_embed),
-            patch.object(retrieval.chroma_store, "query_similar", new=fake_query),
+            patch.object(chroma_store, "query_similar", new=fake_query),
         ):
             hits = await retrieval._ann_search(USER, "the query", {})
 
@@ -1729,7 +1705,7 @@ class TestInteractiveRecallEmbeds:
 
         with (
             patch.object(retrieval, "embed_query", new=fake_embed),
-            patch.object(retrieval.chroma_store, "query_conversation_chunks", new=fake_chunks),
+            patch.object(chroma_store, "query_conversation_chunks", new=fake_chunks),
         ):
             await retrieval.recall_transcripts(USER, "the query", 5)
 
@@ -1749,7 +1725,7 @@ class TestInteractiveRecallEmbeds:
 
         with (
             patch.object(retrieval, "embed_query", new=fake_embed),
-            patch.object(retrieval.chroma_store, "query_episodes", new=fake_episodes),
+            patch.object(chroma_store, "query_episodes", new=fake_episodes),
         ):
             await retrieval._episode_summary_search(USER, "the query", 5)
 
@@ -1783,7 +1759,7 @@ class TestInteractiveRecallEmbeds:
             patch.object(
                 retrieval, "embed_query", new=AsyncMock(side_effect=httpx.ReadTimeout("slow"))
             ),
-            patch.object(retrieval.chroma_store, "query_similar", new=query_similar),
+            patch.object(chroma_store, "query_similar", new=query_similar),
         ):
             hits = await retrieval._ann_search(USER, "the query", {})
         assert hits is None
@@ -1795,7 +1771,7 @@ class TestInteractiveRecallEmbeds:
             patch.object(
                 retrieval, "embed_query", new=AsyncMock(side_effect=httpx.ReadTimeout("slow"))
             ),
-            patch.object(retrieval.chroma_store, "query_conversation_chunks", new=query_chunks),
+            patch.object(chroma_store, "query_conversation_chunks", new=query_chunks),
         ):
             assert await retrieval.recall_transcripts(USER, "q", 5) == []
         query_chunks.assert_not_awaited()
@@ -1806,7 +1782,7 @@ class TestInteractiveRecallEmbeds:
             patch.object(
                 retrieval, "embed_query", new=AsyncMock(side_effect=httpx.ReadTimeout("slow"))
             ),
-            patch.object(retrieval.chroma_store, "query_episodes", new=query_episodes),
+            patch.object(chroma_store, "query_episodes", new=query_episodes),
         ):
             assert await retrieval._episode_summary_search(USER, "q", 5) == []
         query_episodes.assert_not_awaited()

@@ -40,8 +40,17 @@ function errorText(error: unknown): string {
   return String(error);
 }
 
+/** The "Thinking..." placeholder an edit was aimed at could never be posted. */
+export class PlaceholderUnavailableError extends Error {
+  constructor() {
+    super("The placeholder message was never posted");
+    this.name = "PlaceholderUnavailableError";
+  }
+}
+
 /** True when the target message is gone and the text needs a new one. */
 export function isMessageGoneError(error: unknown): boolean {
+  if (error instanceof PlaceholderUnavailableError) return true;
   const text = errorText(error);
   return MESSAGE_GONE_PATTERNS.some((pattern) => pattern.test(text));
 }

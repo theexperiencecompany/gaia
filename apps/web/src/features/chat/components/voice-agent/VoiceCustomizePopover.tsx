@@ -1,10 +1,10 @@
 "use client";
 
-import { Button, Popover, PopoverContent, PopoverTrigger } from "@heroui/react";
+import { Popover } from "@heroui/react";
 import { EditIcon } from "@icons";
 import { useLocalParticipant } from "@livekit/components-react";
 import { useCallback } from "react";
-
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { VoiceTable } from "@/features/settings/components/VoiceTable";
 
 /**
@@ -41,31 +41,34 @@ export function VoiceCustomizePopover() {
   );
 
   return (
-    <Popover placement="top-end" offset={12}>
-      <PopoverTrigger>
-        <Button
-          variant="flat"
-          radius="full"
-          startContent={<EditIcon className="h-4 w-4" />}
-          className="bg-zinc-900/80 text-zinc-200 shadow-lg backdrop-blur-md hover:bg-zinc-800"
-        >
-          Customise voice
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[30rem] max-w-[calc(100vw-2rem)] p-2">
-        <VoiceTable
-          aria-label="Choose a voice"
-          showLanguage={false}
-          showPreview={false}
-          inlineGender
-          wrapText
-          onSelect={applyLiveVoice}
-          classNames={{
-            base: "max-h-[60vh] overflow-y-auto overflow-x-hidden",
-            wrapper: "p-0 shadow-none bg-transparent",
-          }}
-        />
-      </PopoverContent>
+    <Popover>
+      <GaiaButton
+        shape="pill"
+        variant="default-soft"
+        tone="bright"
+        className="bg-zinc-900/80 shadow-lg backdrop-blur-md hover:bg-zinc-800"
+      >
+        <EditIcon className="h-4 w-4" />
+        Customise voice
+      </GaiaButton>
+      <Popover.Content
+        placement="top end"
+        offset={12}
+        className="w-[30rem] max-w-[calc(100vw-2rem)]"
+      >
+        <div className="p-2">
+          <VoiceTable
+            aria-label="Choose a voice"
+            showLanguage={false}
+            showPreview={false}
+            inlineGender
+            wrapText
+            onSelect={applyLiveVoice}
+            surface="plain"
+            className="max-h-[60vh] overflow-y-auto overflow-x-hidden"
+          />
+        </div>
+      </Popover.Content>
     </Popover>
   );
 }
