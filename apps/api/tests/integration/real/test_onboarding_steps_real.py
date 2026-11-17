@@ -20,6 +20,8 @@ from app.db.redis import delete_cache
 from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.models.user_models import OnboardingAnswers, OnboardingNeed, OnboardingRequest
+from app.services.conversation.composition import build_runtime_ports
+from app.services.conversation.runtime import install_runtime_ports
 from app.services.onboarding import onboarding_service
 from app.services.platform_link_service import PlatformLinkService
 from shared.py.analytics import UserId
@@ -104,6 +106,13 @@ async def test_a_reset_starts_a_new_run(mongo_db, captured: MagicMock) -> None:
     assert captured.call_count == 2
 
 
+@pytest.fixture
+def runtime() -> None:
+    """Install the production conversation ports, as the app's startup does, for the seeded welcome."""
+    install_runtime_ports(build_runtime_ports())
+
+
+@pytest.mark.usefixtures("runtime")
 async def test_the_bot_link_landing_finishes_onboarding_once(mongo_db, captured: MagicMock) -> None:
     """A paid user who taps Start in Telegram and never returns to the web tab is not left unfinished."""
     await onboarding_service.save_onboarding_answers(
