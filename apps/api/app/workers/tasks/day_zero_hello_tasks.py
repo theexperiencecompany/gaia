@@ -15,17 +15,18 @@ from app.agents.prompts.briefing_prompts import build_day_zero_hello_prompt
 from app.constants.briefing import SilentTurnSource
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.constants.notifications import ProactiveMessageClass
+from app.constants.platform_links import DAY_ZERO_HELLO_TASK
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.services.analytics_service import capture
 from app.services.briefing import context
 from app.services.briefing.schedule import next_brief_lands
 from app.services.briefing.silent_turn import run_silent_turn
-from app.services.delivery.chat_channel import pick_chat_channel
+from app.services.delivery.chat_channel import channel_for
 from app.services.outbound_delivery import OutboundResult
-from app.services.platform_link_service import linked_platforms_of
 from app.utils.auth_utils import build_user_context
 from app.utils.markdown_utils import decode_json_blocks
+from app.utils.timezone import as_utc
 from app.utils.user_display import display_first_name
 from app.workers.task_envelope import ArqJobContext
 from shared.py.analytics import UserId
@@ -35,8 +36,6 @@ from shared.py.wide_events import UserContext, log, wide_task
 # Only greet accounts young enough that a first hello still makes sense; an old
 # account linking a platform for the first time is not a day-zero moment.
 DAY_ZERO_MAX_ACCOUNT_AGE_DAYS = 14
-
-# Extracts a ```json fenced block (or a bare array) from the agent's final text.
 
 
 class DayZeroHelloError(Exception):
@@ -62,7 +61,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
     DAY_ZERO_MAX_ACCOUNT_AGE_DAYS, and the platform is still linked. A failing guard is a
     normal skip; only a real broker failure raises.
     """
-    async with wide_task("send_day_zero_hello", user=UserContext(id=user_id)):
+    async with wide_task(DAY_ZERO_HELLO_TASK, user=UserContext(id=user_id)):
         log.set(platform=platform)
         source = ConversationSource.coerce(platform)
         if source is None:
@@ -78,9 +77,7 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             log.set(skipped="already_sent")
             return f"skip {user_id}: day-zero hello already sent"
 
-        created_at = user.created_at
-        if created_at is not None and created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=UTC)
+        created_at = as_utc(user.created_at)
         account_too_old = created_at is None or datetime.now(UTC) - created_at > timedelta(
             days=DAY_ZERO_MAX_ACCOUNT_AGE_DAYS
         )
@@ -88,9 +85,8 @@ async def send_day_zero_hello(ctx: ArqJobContext, user_id: str, platform: str) -
             log.set(skipped="account_too_old")
             return f"skip {user_id}: account older than {DAY_ZERO_MAX_ACCOUNT_AGE_DAYS} days"
 
-        # The platform just linked, regardless of priority or preferences: the
-        # hello greets the account the user connected.
-        channel = pick_chat_channel([source.value], linked_platforms_of(user), {}, active=None)
+        # The hello greets the account the user just connected, whatever their order says.
+        channel = channel_for(user, source)
         if channel is None:
             log.set(skipped="not_linked")
             return f"skip {user_id}: {platform} not linked"

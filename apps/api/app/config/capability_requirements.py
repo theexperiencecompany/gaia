@@ -38,18 +38,14 @@ CAPABILITY_REQUIREMENTS: tuple[CapabilityRequirement, ...] = (
             "AGENT_SECRET",
             "BOT_SESSION_TOKEN_SECRET",
             "EMAIL_UNSUBSCRIBE_SECRET",
+            # Every real web server is told apart from viewers by it, not only the edge's.
+            "INTERNAL_API_TOKEN",
         ),
     ),
     CapabilityRequirement(
         capability="not local_auth: WorkOS signs users in",
         applies=lambda profile: not profile.local_auth,
         keys=("WORKOS_API_KEY", "WORKOS_CLIENT_ID", "WORKOS_COOKIE_PASSWORD"),
-        unused_otherwise=True,
-    ),
-    CapabilityRequirement(
-        capability="edge_web_server: the web server's requests are told apart from viewers",
-        applies=lambda profile: profile.edge_web_server,
-        keys=("INTERNAL_API_TOKEN",),
         unused_otherwise=True,
     ),
     CapabilityRequirement(

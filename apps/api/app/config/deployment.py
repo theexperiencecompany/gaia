@@ -96,9 +96,6 @@ class DeploymentProfile:
     public_readiness: bool
     trusted_origins: OriginPolicy
     link_base: LinkBase
-    # The web app's server runs on Cloudflare's edge: its requests share Cloudflare's
-    # addresses, so they carry INTERNAL_API_TOKEN to be counted apart from viewers.
-    edge_web_server: bool
     # Every client reaches it over https: session cookies are always Secure and
     # share links refuse a plain-http HOST.
     https_only: bool
@@ -187,7 +184,6 @@ def deployment_profile(
         requires_complete_config=kind is DeploymentKind.SELFHOST,
         public_readiness=kind is not DeploymentKind.PRODUCTION,
         trusted_origins=_TRUSTED_ORIGINS[kind],
-        edge_web_server=kind is DeploymentKind.PRODUCTION,
         link_base=LinkBase.GAIA_LINK_DOMAIN
         if kind is DeploymentKind.PRODUCTION
         else LinkBase.INSTANCE_WEB_ROUTE,

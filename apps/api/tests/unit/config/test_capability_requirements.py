@@ -34,9 +34,17 @@ PRODUCTION_REQUIRED = frozenset(
 SELFHOST_REQUIRED = frozenset(
     {
         "AGENT_SECRET", "BOT_SESSION_TOKEN_SECRET", "CHROMADB_HOST", "CHROMADB_PORT",
-        "EMAIL_UNSUBSCRIBE_SECRET", "MONGO_DB", "POSTGRES_URL", "RABBITMQ_URL", "REDIS_URL",
+        "EMAIL_UNSUBSCRIBE_SECRET", "INTERNAL_API_TOKEN", "MONGO_DB", "POSTGRES_URL",
+        "RABBITMQ_URL", "REDIS_URL",
     }
 )  # fmt: skip
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("kind", [DeploymentKind.PRODUCTION, DeploymentKind.SELFHOST])
+def test_every_real_deployment_needs_the_web_servers_token(kind: DeploymentKind) -> None:
+    """Self-host's web server renders from one docker address too: without it every page is one anonymous viewer."""
+    assert "INTERNAL_API_TOKEN" in required_keys(baseline_profile(kind))
 
 
 def test_production_requires_exactly_what_it_always_has() -> None:
