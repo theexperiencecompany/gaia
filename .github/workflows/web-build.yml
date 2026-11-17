@@ -16,8 +16,9 @@ jobs:
     timeout-minutes: 15
     # The public build values (vars.NEXT_PUBLIC_*) live on the production
     # environment, so only the build a master push deploys bakes them in; a PR
-    # or merge-group build is a check and takes no environment.
-    environment: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'production' || '' }}
+    # or merge-group build, or a dispatch off another branch, is a check and takes
+    # no environment (production refuses every branch but master).
+    environment: ${{ (github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')) && 'production' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,7 +58,7 @@ jobs:
           NEXT_PUBLIC_SENTRY_RELEASE: ${{ github.sha }}
           NEXT_PUBLIC_RYBBIT_SITE_ID: ${{ vars.NEXT_PUBLIC_RYBBIT_SITE_ID }}
           NEXT_PUBLIC_FASTLANE_TRACKING_ID: ${{ vars.NEXT_PUBLIC_FASTLANE_TRACKING_ID }}
-          DEPLOYS: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          DEPLOYS: ${{ github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
         shell: bash
         run: |
           # A production bundle missing a public value ships a dead link or silent analytics.
@@ -114,7 +115,7 @@ jobs:
         run: bash scripts/ci/smoke-worker.sh
 
       - name: Upload bundle artifact
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: open-next
