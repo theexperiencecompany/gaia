@@ -29,6 +29,8 @@ SCOUT_CRITERION_MAX_CHARS: Final[int] = 200
 
 #: Safety ceiling on signals one scout may hand the brief: a runaway list, not a quota.
 SCOUT_SIGNAL_CEILING: Final[int] = 50
+#: How long the brief remembers an item no brief has seen since; the TTL index expires the rest.
+SIGNAL_MEMORY_RETENTION: Final = timedelta(days=90)
 #: How recently an app must say an item was created for a brief to call its first sighting new.
 SIGNAL_NEW_WITHIN: Final = timedelta(days=1)
 

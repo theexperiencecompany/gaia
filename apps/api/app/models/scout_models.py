@@ -306,6 +306,8 @@ class SignalMemoryDocument(UserScopedDocument):
     integration_id: str
     external_id: str
     first_seen: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    #: The latest brief that saw it; a memory not seen for SIGNAL_MEMORY_RETENTION expires.
+    last_seen: datetime = Field(default_factory=lambda: datetime.now(UTC))
     times_shown: int = 0
     last_shown: datetime | None = None
     last_state: str | None = None

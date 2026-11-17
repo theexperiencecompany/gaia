@@ -13,6 +13,7 @@ from app.constants.browser import BROWSER_PROFILE_TTL_SECONDS
 from app.constants.desk_buckets import EMAIL_VERDICT_TTL_SECONDS
 from app.constants.log_tags import LogTag
 from app.constants.payments import CLAIMED_STATUS
+from app.constants.scouts import SIGNAL_MEMORY_RETENTION
 from app.constants.waits import WAIT_TTL_SECONDS
 from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
@@ -44,9 +45,9 @@ IndexKeys = str | list[tuple[str, int | str]]
 # Mongo's IndexNotFound error code.
 _INDEX_NOT_FOUND = 27
 
-# Collections whose indexes enforce correctness, not speed: a failed build stops startup.
-# short_links without its unique indexes mints duplicate or revocation-surviving links.
-INTEGRITY_CRITICAL_COLLECTIONS = frozenset({"short_links"})
+# Unique keys that enforce correctness, not speed: without them short_links mints duplicates
+# and a brief, scout or signal memory rerun adds a second row instead of replacing the first.
+INTEGRITY_CRITICAL_COLLECTIONS = frozenset({"short_links", "briefings", "scouts", "signal_memory"})
 # The index helpers never read a document, so they take a collection of any document type.
 DocumentT = TypeVar("DocumentT", bound=Mapping[str, object])
 
@@ -145,6 +146,7 @@ async def create_all_indexes() -> None:
             create_tool_output_shapes_indexes(),
             create_pending_brief_item_indexes(),
             create_scout_indexes(),
+            create_signal_memory_indexes(),
             create_tool_read_only_verdict_indexes(),
             create_email_verdict_indexes(),
             create_wait_indexes(),
@@ -194,6 +196,7 @@ async def create_all_indexes() -> None:
             "tool_output_shapes",
             "pending_brief_items",
             "scouts",
+            "signal_memory",
             "tool_read_only_verdicts",
             "email_verdicts",
             "waits",
@@ -882,19 +885,37 @@ async def create_pending_brief_item_indexes() -> None:
 
 
 async def create_scout_indexes() -> None:
-    """Index scouts and signal_memory on their per-user business keys, both unique."""
+    """Index scouts on their per-user business key, unique: one scout per user and integration."""
     try:
-        await asyncio.gather(
-            get_async_collection("scouts").create_index(
-                [("user_id", 1), ("integration_id", 1)], unique=True
-            ),
-            get_async_collection("signal_memory").create_index(
-                [("user_id", 1), ("integration_id", 1), ("external_id", 1)], unique=True
-            ),
+        await get_async_collection("scouts").create_index(
+            [("user_id", 1), ("integration_id", 1)], unique=True
         )
     except Exception as e:
         log.error(
             f"{LogTag.MONGO} Error creating scout indexes",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+async def create_signal_memory_indexes() -> None:
+    """Index signal_memory on its unique per-user key, and expire what no brief has seen lately."""
+    signal_memory = get_async_collection("signal_memory")
+    try:
+        await asyncio.gather(
+            signal_memory.create_index(
+                [("user_id", 1), ("integration_id", 1), ("external_id", 1)], unique=True
+            ),
+            signal_memory.create_index(
+                "last_seen",
+                expireAfterSeconds=int(SIGNAL_MEMORY_RETENTION.total_seconds()),
+                name="last_seen_ttl",
+            ),
+        )
+    except Exception as e:
+        log.error(
+            f"{LogTag.MONGO} Error creating signal memory indexes",
             error=str(e),
             error_type=type(e).__name__,
         )

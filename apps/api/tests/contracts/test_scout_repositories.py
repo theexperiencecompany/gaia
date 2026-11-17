@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.constants.scouts import SIGNAL_MEMORY_RETENTION
+from app.db.mongodb import indexes
 from app.db.repositories.scouts import ScoutsRepository
 from app.db.repositories.signal_memory import SignalMemoryRepository
 from app.models.scout_models import ScoutDocument, ScoutStatus, Signal
@@ -46,6 +48,48 @@ class TestSignalMemory:
             "Done",
             0,
         )
+
+    @pytest.mark.regression
+    async def test_every_sighting_stamps_when_it_was_last_seen(self, memory):
+        """last_seen is what the retention TTL expires a memory by."""
+        await memory.record_seen("owner", [_signal("1", "Todo")], _START)
+        await memory.record_seen("owner", [_signal("1", "Done")], _START + timedelta(days=2))
+
+        [remembered] = await memory.find_for("owner", [_signal("1", None)])
+
+        assert remembered.model_dump()["last_seen"] == _START + timedelta(days=2)
+
+    async def test_a_memory_no_brief_has_seen_for_the_retention_expires(
+        self, raw_collection, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.setattr(indexes, "get_async_collection", lambda name: raw_collection)
+
+        await indexes.create_signal_memory_indexes()
+
+        ttl = {
+            index["name"]: index.get("expireAfterSeconds")
+            async for index in raw_collection.list_indexes()
+        }["last_seen_ttl"]
+        assert ttl == SIGNAL_MEMORY_RETENTION.total_seconds()
+
+    @pytest.mark.regression
+    async def test_a_brief_records_all_its_sightings_in_one_write(
+        self, memory, raw_collection, monkeypatch: pytest.MonkeyPatch
+    ):
+        writes: list[int] = []
+        bulk_write = raw_collection.bulk_write
+
+        async def counted(requests, **kwargs):
+            writes.append(len(requests))
+            return await bulk_write(requests, **kwargs)
+
+        monkeypatch.setattr(raw_collection, "bulk_write", counted)
+        signals = [_signal(str(n), "Todo") for n in range(5)]
+
+        await memory.record_seen("owner", signals, _START)
+
+        assert writes == [5]
+        assert len(await memory.find_for("owner", signals)) == 5
 
     async def test_marking_shown_counts_each_delivery_for_that_user_only(self, memory):
         signals = [_signal("1", "Todo"), _signal("2", "Todo")]
