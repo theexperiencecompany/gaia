@@ -9,6 +9,8 @@ check stays a few indexed lookups however large the data grows.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from app.constants.chat import (
     CONVERSATION_ENTRIES_COLLECTION,
     CONVERSATION_ENTRIES_MIGRATION_SCRIPT,
@@ -97,30 +99,35 @@ class ConversationMigrationGuard(ConversationRepository):
         return None if entry is None else _ConversationIdRow.model_validate(entry).conversation_id
 
 
+@dataclass(frozen=True)
+class Refusal:
+    """One conversation the build cannot serve yet, what it still holds and the command that fixes it."""
+
+    conversation_id: str
+    what: str
+    script: str
+
+    def error(self) -> UnmigratedConversationError:
+        return unmigrated(self.conversation_id, what=self.what, script=self.script)
+
+
+async def first_refusal() -> Refusal | None:
+    """Name one conversation the build cannot serve: the one check the boot and the pre-boot migration share."""
+    guard = ConversationMigrationGuard()
+    entries = CONVERSATION_ENTRIES_MIGRATION_SCRIPT
+    checks = (
+        (guard.first_failed, "a failed migration pass or verify", entries),
+        (guard.first_unmigrated, "messages in the old shape", entries),
+        (guard.first_sourceless, "no source", entries),
+        (guard.first_renamed, "log entries with renamed fields", ENTRY_RENAMES_MIGRATION_SCRIPT),
+    )
+    for first, what, script in checks:
+        if conversation_id := await first():
+            return Refusal(conversation_id, what, script)
+    return None
+
+
 async def refuse_unmigrated_conversations() -> None:
     """Refuse to boot while any conversation needs the entries migration (its messages or its source) or the entry renames."""
-    guard = ConversationMigrationGuard()
-    if conversation_id := await guard.first_failed():
-        raise unmigrated(
-            conversation_id,
-            what="a failed migration pass or verify",
-            script=CONVERSATION_ENTRIES_MIGRATION_SCRIPT,
-        )
-    if conversation_id := await guard.first_unmigrated():
-        raise unmigrated(
-            conversation_id,
-            what="messages in the old shape",
-            script=CONVERSATION_ENTRIES_MIGRATION_SCRIPT,
-        )
-    if conversation_id := await guard.first_sourceless():
-        raise unmigrated(
-            conversation_id,
-            what="no source",
-            script=CONVERSATION_ENTRIES_MIGRATION_SCRIPT,
-        )
-    if conversation_id := await guard.first_renamed():
-        raise unmigrated(
-            conversation_id,
-            what="log entries with renamed fields",
-            script=ENTRY_RENAMES_MIGRATION_SCRIPT,
-        )
+    if refusal := await first_refusal():
+        raise refusal.error()

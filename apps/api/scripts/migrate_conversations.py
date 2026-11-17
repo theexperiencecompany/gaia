@@ -2,9 +2,10 @@
 """Bring every conversation into the shape this build reads, before it boots; exit 1 on any failure.
 
 Runs each one-time migration only while its data is still in the old shape, then that
-migration's verify: the entries migration while the boot check finds an unmarked array, a
-message-shaped entry or a head with no source, then the approval vocabulary while any old
-value is left. With nothing to do it is a few indexed reads, so it runs on every start.
+migration's verify: the entries migration while the boot check names it (an unmarked array, a
+message-shaped entry, a head with no source, or a recorded failed pass or verify), then the
+approval vocabulary while any old value is left. It ends with the boot check itself, so it exits
+0 exactly when the build will boot. With nothing to do it is a few indexed reads, so it runs on every start.
 Run it with the old build stopped: the self-host compose runs it as gaia-migrate, which the
 API and the worker wait on.
 
@@ -21,26 +22,29 @@ import asyncio
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config.settings import settings
+from app.constants.chat import CONVERSATION_ENTRIES_MIGRATION_SCRIPT
 from app.db.mongodb.mongodb import MONGO_DATABASE_NAME, MongoDB
-from app.db.repositories.conversation_migration_guard import ConversationMigrationGuard
+from app.db.repositories.conversation_migration_guard import first_refusal
 from scripts import migrate_approval_vocabulary as vocabulary
 from scripts.migrate_conversation_entries import __main__ as entries
 
 
 async def migrate_conversations(db: AsyncIOMotorDatabase) -> int:
-    """Run the entries migration, then the vocabulary rewrite in db, each only when needed and each verified."""
-    guard = ConversationMigrationGuard()
-    if await guard.first_unmigrated() or await guard.first_sourceless():
+    """Run the entries migration, then the vocabulary rewrite in db, each only when needed and verified; 0 only when the build will boot."""
+    failed = 0
+    refusal = await first_refusal()
+    if refusal is not None and refusal.script == CONVERSATION_ENTRIES_MIGRATION_SCRIPT:
         print("Moving conversations into the conversation log...")
-        if failed := await entries.migrate_all(apply=True):
-            return failed
-        if failed := await entries.verify_all():
-            return failed
-    if (await vocabulary.verify(db)).left:
+        failed = await entries.migrate_all(apply=True) or await entries.verify_all()
+    if not failed and (await vocabulary.verify(db)).left:
         print("Rewriting stored approvals...")
         await vocabulary.rewrite_all(db, apply=True)
-        if failed := await vocabulary.verify_all(db):
-            return failed
+        failed = await vocabulary.verify_all(db)
+    if refusal := await first_refusal():
+        print(f"The build will refuse to boot: {refusal.error().message}")
+        return 1
+    if failed:
+        return failed
     print("Every conversation is in this build's shape.")
     return 0
 

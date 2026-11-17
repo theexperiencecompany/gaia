@@ -10,6 +10,7 @@ import uuid
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 import pytest
 from scripts.migrate_approval_vocabulary import LEDGER
+from scripts.migrate_conversation_entries import __main__ as entries
 from scripts.migrate_conversations import migrate_conversations
 
 from app.db.repositories.conversation_migration_guard import refuse_unmigrated_conversations
@@ -86,3 +87,26 @@ async def test_a_conversation_the_log_refuses_fails_the_run_and_the_boot_stays_r
     assert "Every conversation is in this build's shape." not in capsys.readouterr().out
     with pytest.raises(UnmigratedConversationError):
         await refuse_unmigrated_conversations()
+
+
+async def test_a_conversation_a_verify_found_wrong_fails_the_run_until_it_verifies(
+    raw_collection: AsyncIOMotorCollection,
+    entries_collection: AsyncIOMotorCollection,
+    db: AsyncIOMotorDatabase,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    conversation_id = await _legacy(raw_collection)
+    assert await migrate_conversations(db) == 0
+    entry = {"conversation_id": conversation_id, "id": "m1"}
+    await entries_collection.update_one(entry, {"$set": {"text": "tampered"}})
+    assert await entries.verify_all() == 1
+    capsys.readouterr()
+
+    assert await migrate_conversations(db) == 1
+
+    out = capsys.readouterr().out
+    assert f"conversation {conversation_id} still holds a failed migration pass or verify" in out
+    assert "Every conversation is in this build's shape." not in out
+    await entries_collection.update_one(entry, {"$set": {"text": "hi"}})
+    assert await migrate_conversations(db) == 0
+    await refuse_unmigrated_conversations()
