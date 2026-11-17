@@ -357,18 +357,3 @@ class TestShortLinksSnapshots:
         await indexed_repo.revoke("user-1", second.slug, RevokeReason.OWNER)
 
         assert await indexed_repo.count_takedowns("user-1") == 1
-
-    async def test_the_backfill_finds_live_file_links_without_a_snapshot(
-        self, indexed_repo, make_doc
-    ):
-        session = ShortLinkTargetType.SESSION_ARTIFACT
-        legacy = await indexed_repo.create(make_doc(target_type=session, target_id="c/a.html"))
-        await indexed_repo.create(
-            make_doc(target_type=session, target_id="c/b.html", snapshot=self._snapshot("a" * 26))
-        )
-        gone = await indexed_repo.create(make_doc(target_type=session, target_id="c/c.html"))
-        await indexed_repo.revoke("user-1", gone.slug, RevokeReason.OWNER)
-
-        pending = await indexed_repo.live_without_snapshot(session)
-
-        assert [link.slug for link in pending] == [legacy.slug]

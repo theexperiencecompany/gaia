@@ -44,7 +44,6 @@ from app.services.blob_store import LocalVolumeBlobStore
 from app.services.briefing import store as brief_store
 from app.services.briefing.edition_email import HostedEditionImage
 from app.services.links import abuse, content as link_content
-from app.services.links.backfill import backfill_snapshots
 from app.services.links.placeholders import link_placeholder, resolve_link_placeholders
 from app.services.links.service import attach_link, revoke_all_links_for_user, share
 from app.services.storage import ArtifactInfo
@@ -1074,35 +1073,6 @@ class TestTheBriefsLink:
         opened = await _open(client, slug)
         assert opened.status_code == 200, opened.text
         assert opened.json()["view"]["payload"]["headline"] == "Google Cloud waits"
-
-
-class TestBackfill:
-    async def test_a_legacy_file_link_gets_its_snapshot_and_a_gone_file_says_deleted(
-        self, client: AsyncClient, viewer: Viewer, workspace: Workspace, store: LocalVolumeBlobStore
-    ) -> None:
-        present = workspace.write("kept.md", b"# kept")
-        for slug, target in (("legacyAAAAA", present), ("legacyBBBBB", "conv-1/gone.md")):
-            await short_link_repository.create(
-                ShortLink(
-                    slug=slug,
-                    user_id=OWNER.user_id,
-                    target_type=ShortLinkTargetType.SESSION_ARTIFACT,
-                    target_id=target,
-                )
-            )
-
-        dry = await backfill_snapshots(apply=False)
-        assert (dry.pending, dry.published, dry.target_deleted) == (2, 0, 0)
-        assert (await _stored("legacyAAAAA")).snapshot is None
-
-        applied = await backfill_snapshots(apply=True)
-        again = await backfill_snapshots(apply=False)
-
-        assert (applied.pending, applied.published, applied.target_deleted) == (2, 1, 1)
-        assert again.pending == 0
-        assert (await _open(client, "legacyAAAAA")).json()["view"]["text"] == "# kept"
-        gone = await _open(client, "legacyBBBBB")
-        assert (gone.status_code, gone.json()["code"]) == (410, "link_target_deleted")
 
 
 @pytest.fixture(autouse=True)

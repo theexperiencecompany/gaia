@@ -169,9 +169,5 @@ class ShortLinksRepository(UserScopedRepository[ShortLink, ShortLinkUpdate]):
         )
         return rows[0].total if rows else 0
 
-    async def live_without_snapshot(self, target_type: ShortLinkTargetType) -> list[ShortLink]:
-        """Return every live link of target_type that never published a snapshot (the backfill's work)."""
-        return await self._find({"target_type": target_type, "revoked": False, "snapshot": None})
-
 
 short_link_repository = ShortLinksRepository()
