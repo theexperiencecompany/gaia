@@ -67,6 +67,7 @@ from gaia_gh import (
 SCHEMA_VERSION = 2
 MAX_CHECK_PAGES = 6  # 100/page -> up to 600 check runs; plenty for any PR
 MAX_PARALLEL_FETCHES = 8
+TRUNK = "master"
 VERDICT_PREFIX = "verdict-"
 FALLBACK_TAIL_LINES = 40  # kept in --json; the human render shows the last SHOWN_TAIL_LINES
 SHOWN_TAIL_LINES = 20
@@ -929,7 +930,7 @@ def parse_greptile(pr_state: dict) -> Greptile:
 
 def build_stack(repo: Repo, payload: dict) -> list[StackRow]:
     branches = payload.get("branches") or []
-    trunk = payload.get("trunk") or "master"
+    trunk = payload.get("trunk") or TRUNK
     numbers = [b["pr"]["number"] for b in branches if b.get("pr")]
     states = fetch_stack_states(repo, numbers)
     rows: list[StackRow] = []
@@ -1224,6 +1225,11 @@ def state_advice(report: dict, branch: str) -> list[str]:
     counts = report["counts"]
     if pr["mergeable"] == "CONFLICTING":
         advice.append(f"Merge conflicts with '{pr['base']}' — `git merge origin/{pr['base']}`.")
+        if pr["base"] != TRUNK:
+            advice.append(
+                f"A stacked PR is also checked against {TRUNK}: if the head already contains "
+                f"'{pr['base']}', merge origin/{TRUNK} into the stack's bottom branch and up."
+            )
     if report["unresolved_thread_count"]:
         advice.append(
             f"{plural(report['unresolved_thread_count'], 'unresolved review thread')}: "
