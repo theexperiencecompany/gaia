@@ -37,7 +37,6 @@ from app.models.conversation_screen_models import (
 from app.models.conversation_send_models import ConversationEvent, MessageAccepted
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
-    BubblesDelta,
     BubbleTextDelta,
     CardsDelta,
     FollowUpsDelta,
@@ -246,8 +245,6 @@ class TurnReader:
                 if bubble == len(bubbles):
                     bubbles.append("")
                 bubbles[bubble] += text
-            case BubblesDelta(bubbles=now):
-                self._attempt_text[attempt_id] = list(now)
             case CardsDelta(tool_data=cards):
                 for card in cards:
                     self._delta_cards.setdefault(_card_key(card), card)
