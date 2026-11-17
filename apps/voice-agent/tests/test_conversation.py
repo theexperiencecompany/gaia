@@ -95,6 +95,7 @@ def entry(seq: int, kind: str, reply_id: str, outcome: ReplyOutcome = ReplyOutco
         quote=None,
         outcome=None if opened else outcome,
         failure=None,
+        failure_line=None,
         narrates=(),
         retry_target=None,
         files=(),
