@@ -9,8 +9,9 @@ throwaway collection) drives the whole base:
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict
@@ -30,6 +31,7 @@ from app.db.repositories.cached_base import (
     cached_query,
 )
 from app.db.repositories.errors import AlreadyExistsError, RepositoryError
+from app.utils.errors import EmptyUpdateError
 from tests.contracts.base_contract import UserScopedRepositoryContract
 
 
@@ -149,6 +151,26 @@ class TestBasePrimitives:
         after_b = await repo.get(b.id, user_id="u")
         assert after_a is not None and after_a.title == "A"
         assert after_b is not None and after_b.title == "B"
+
+    async def test_bulk_set_stamps_updated_at_on_every_document(self, repo, make_doc):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        b = await repo.create(make_doc(user_id="u", title="b"))
+        await asyncio.sleep(0.01)  # Mongo keeps milliseconds; the stamp must land in a later one
+        await repo._bulk_set(
+            [(a.id, _FixtureUpdate(title="A")), (b.id, _FixtureUpdate(title="B"))], user_id="u"
+        )
+        for created in (a, b):
+            after = await repo.get(created.id, user_id="u")
+            assert after is not None and after.updated_at is not None
+            assert created.updated_at is not None
+            assert after.updated_at.replace(tzinfo=UTC) > created.updated_at.replace(tzinfo=UTC)
+
+    async def test_bulk_set_rejects_an_update_with_no_fields_naming_the_document(
+        self, repo, make_doc
+    ):
+        a = await repo.create(make_doc(user_id="u", title="a"))
+        with pytest.raises(EmptyUpdateError, match=f"bulk update for {a.id} has no fields to set"):
+            await repo._bulk_set([(a.id, _FixtureUpdate())], user_id="u")
 
     async def test_a_bulk_set_that_fails_partway_leaves_no_stale_cache(
         self, repo, make_doc, raw_collection
