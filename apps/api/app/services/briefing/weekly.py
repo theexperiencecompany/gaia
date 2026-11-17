@@ -76,6 +76,7 @@ from app.services.briefing.sections import (
     log_composition,
     sources_shown,
 )
+from app.services.hil.utils import untrusted_fence
 from app.utils.user_display import display_first_name
 from shared.py.wide_events import log
 
@@ -224,7 +225,9 @@ async def run_weekly_digest(user_id: str) -> BriefingRunOutcome:
     async with asyncio.timeout(WEEKLY_GENERATION_TIMEOUT_SECONDS):
         voice, draft = await written_brief(
             user_id,
-            build_weekly_voice_prompt(date_local=clock.date_str, blocks=blocks, recent=recent),
+            build_weekly_voice_prompt(
+                date_local=clock.date_str, blocks=blocks, recent=recent, fence=untrusted_fence()
+            ),
             Writing(
                 values=facts.values,
                 lead=facts.lead,

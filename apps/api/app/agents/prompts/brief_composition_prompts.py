@@ -9,6 +9,8 @@ for: an item is never noise for being done, and a week's series are often the st
 
 COMPOSITION_PROMPT = """{frame}
 
+{untrusted}
+
 You decide everything the brief holds: what goes in, in what order, how items group and what each
 group is called, and whether a chart, a quote, a goal's progress or a note earns a place. Code
 renders exactly what you choose, from the facts below, so you place things by id and never type a
@@ -113,7 +115,9 @@ matter to {reader} today, not because they exist. Everything you leave out stays
 full page, so leaving something out loses nothing.
 
 ## How each app's scout tells what matters there
+{fence}
 {criteria}
+{fence}
 
 ## Today
 {context}
@@ -124,7 +128,9 @@ scout's own judgement; the states are defined beside ITEMS. Series: id | label, 
 render. Quotes: id | author, app, the item they belong to: the words. Goals: id | the goal | the
 todos linked to it.
 
+{fence}
 {pool}
+{fence}
 
 ## Three compositions from other people's days, for how this reads when it is done well
 They show judgement and shape only. Their people, items and wording belong to those days: write

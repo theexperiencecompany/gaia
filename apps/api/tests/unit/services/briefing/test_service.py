@@ -194,8 +194,9 @@ _FACT_LINE = re.compile(r"^- fact (\d+) \| ", re.M)
 
 
 def _facts_shown(prompt: str) -> str:
-    """Return the prompt's facts block."""
-    return _FACTS_HEADER.split(prompt, maxsplit=1)[1].split("\n\n## ", 1)[0]
+    """Return the prompt's facts block, inside its fence."""
+    block = _FACTS_HEADER.split(prompt, maxsplit=1)[1].split("\n\n## ", 1)[0]
+    return "\n".join(block.strip("\n").splitlines()[1:-1])
 
 
 _FACT_OF = re.compile(r"<fact of ([^>]+)>")
@@ -3341,15 +3342,15 @@ class TestTheFactsTheModelVoices:
         offsite = BriefingEvent(date=_DATE, title="Offsite")
         world.calendar = [offsite, _EVENT]
         await daily.run_daily_briefing(_USER)
-        assert (
+        assert _facts_shown(_prompt(world)).endswith(
             "is empty.\nToday's calendar:\n"
-            "- fact 1 | all day: Offsite\n- fact 2 | [[fact:2.time]] (11:00 AM): Sequoia\n\n## YESTERDAY"
-        ) in _prompt(world)
+            "- fact 1 | all day: Offsite\n- fact 2 | [[fact:2.time]] (11:00 AM): Sequoia"
+        )
 
         world.calendar = []
         await daily.run_daily_briefing(_USER)
-        assert ("is empty.\nThe user's calendar has nothing today.\n\n## YESTERDAY") in _prompt(
-            world
+        assert _facts_shown(_prompt(world)).endswith(
+            "is empty.\nThe user's calendar has nothing today."
         )
 
     async def test_with_no_calendar_connected_no_prompt_calls_the_calendar_empty(
@@ -3361,7 +3362,7 @@ class TestTheFactsTheModelVoices:
         await daily.run_daily_briefing(_USER)
 
         composed = world.composer.await_args.args[1]
-        assert f"is empty.\n{NO_CALENDAR_CONNECTED}\n\n## YESTERDAY" in _prompt(world)
+        assert _facts_shown(_prompt(world)).endswith(f"is empty.\n{NO_CALENDAR_CONNECTED}")
         assert NO_CALENDAR_CONNECTED in composed
         assert "Nothing on the calendar" not in composed
 

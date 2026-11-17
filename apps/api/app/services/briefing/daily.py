@@ -91,6 +91,7 @@ from app.services.briefing.sections import (
     sources_shown,
 )
 from app.services.briefing.slots import figures_in
+from app.services.hil.utils import untrusted_fence
 from app.services.integrations.user_integrations import (
     ConnectedIntegration,
     get_connected_integrations_named,
@@ -277,6 +278,7 @@ async def run_daily_briefing(user_id: str) -> BriefingRunOutcome:
             goal_asked_recently=ladder.goal_question is dormancy.GoalQuestion.ASKED,
         ),
         recent=recent,
+        fence=untrusted_fence(),
     )
     voice, draft = await written_brief(
         user_id,

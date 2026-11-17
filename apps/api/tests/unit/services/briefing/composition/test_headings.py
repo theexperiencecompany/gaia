@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from tests.helpers import user_clock
+from tests.helpers import unfenced, user_clock
 
 from app.constants.briefing import BRIEF_HEADING_CHECK_LABEL
 from app.models.brief_candidate_models import BriefCandidate
@@ -88,6 +88,14 @@ async def test_each_group_is_shown_with_its_items_states_and_sides(model: AsyncM
         "- item 2: Investor update | done | outcome sent"
     ) in prompt
     assert model.await_args.kwargs["options"].schema_held is True
+
+
+async def test_item_titles_are_fenced_as_data(model: AsyncMock) -> None:
+    await heading_problems(USER, COMPOSITION, POOL)
+
+    prompt = model.await_args.args[1]
+    assert "Offsite venues" in prompt
+    assert "Offsite venues" not in unfenced(prompt)
 
 
 async def test_the_call_is_labelled_and_metered_to_the_user(model: AsyncMock) -> None:
