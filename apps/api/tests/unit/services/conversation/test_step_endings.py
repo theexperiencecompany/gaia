@@ -539,3 +539,25 @@ async def test_a_reply_that_failed_to_end_above_an_absorbed_message_still_fails_
         (ReplyOutcome.INTERIM, ()),
         (ReplyOutcome.FAILED, ("u1", "u2")),
     ]
+
+
+async def test_speaking_over_a_reply_that_a_later_message_split_ends_it_heard_and_answers_both() -> (
+    None
+):
+    rt = Runtime()
+    rt.runner.script(
+        [
+            text("hello there friend"),
+            Do(arrive(rt, user("u2", voice=True))),
+            ModelOutput(True),
+            Pause((arrive(rt, barge("b", "r1.1", 5)),)),
+        ],
+    )
+    await send(rt, user("u1", voice=True))
+    await run(rt)
+    spoken_over = (await replies(rt))[0]
+    assert (spoken_over.text, spoken_over.heard_through) == ("hello there friend", 5)
+    assert [(item.outcome, item.answers) for item in await settles(rt)] == [
+        (ReplyOutcome.INTERIM, ()),
+        (ReplyOutcome.TRUNCATED, ("u1", "u2")),
+    ]

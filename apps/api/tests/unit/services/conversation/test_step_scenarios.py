@@ -648,21 +648,48 @@ class StepScenarios:
         assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1", "u2"))]
         await assert_quiet(rt)
 
-    async def test_a_dead_attempt_that_started_work_unseen_is_not_redone_silently(
+    async def test_a_dead_attempt_that_started_work_unseen_fails_visibly_and_is_never_rerun(
         self, rt: Runtime
     ) -> None:
+        """The work it started answers the message: a second run could hand it off again."""
+
         async def die() -> None:
             await rt.lapse()
 
         work = WorkStarted(id="w", task_id="t1", cause_through=1, answers=("u1",))
         rt.runner.script(
             [Do(arrive(rt, work)), ModelOutput(True), Pause((die,))],
-            [Finished(Replied("sorry, I was restarted; the work is running"))],
+            [Finished(Replied("on it again"))],
         )
         await send(rt, user("u1"))
         await run(rt)
         await run(rt)
-        assert [s.failure for s in await settles(rt)] == [FailureReason.SERVER_RESTART, None]
+        assert rt.runner.calls == [Started(batch=(1,), context=()), LOST]
+        assert [(s.outcome, s.answers, s.failure) for s in await settles(rt)] == [
+            (ReplyOutcome.FAILED, ("u1",), FailureReason.SERVER_RESTART)
+        ]
+        await assert_quiet(rt)
+
+    async def test_a_dead_attempt_reruns_the_message_its_work_did_not_start_for(
+        self, rt: Runtime
+    ) -> None:
+        async def die() -> None:
+            await rt.lapse()
+
+        work = WorkStarted(id="w", task_id="t1", cause_through=2, answers=("u1",))
+        rt.runner.script(
+            [Do(arrive(rt, work)), ModelOutput(True), Pause((die,))],
+            [Finished(Replied("and the other one"))],
+        )
+        await send(rt, user("u1"), user("u2"))
+        await run(rt)
+        await run(rt)
+        assert rt.runner.calls[-1] == Started(batch=(2,), context=(3, 4, 5))
+        assert [(s.outcome, s.answers) for s in await settles(rt)] == [
+            (ReplyOutcome.FAILED, ("u1",)),
+            (ReplyOutcome.ANSWERED, ("u2",)),
+        ]
+        await assert_quiet(rt)
 
     async def test_a_message_after_the_restart_window_does_not_restart(self, rt: Runtime) -> None:
         async def late() -> None:

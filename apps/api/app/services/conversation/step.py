@@ -28,6 +28,7 @@ from app.models.conversation_log_models import (
     WorkflowFired,
 )
 from app.models.message_models import MessageDict
+from app.services.conversation.placement import watermark
 from app.services.conversation.ports import (
     ClaimLost,
     Kept,
@@ -133,31 +134,52 @@ async def _recover(ports: RuntimePorts, claim: StepClaim) -> None:
         return
     conversation_id = claim.conversation_id
     state = await ports.log.state(conversation_id, claim.user_id)
-    for logged in await ports.log.read_after(conversation_id, claim.user_id, state.settled_through):
+    logged_since = await ports.log.read_after(conversation_id, claim.user_id, state.settled_through)
+    for logged in logged_since:
         await ports.frames.publish(
             conversation_id, EntryFrame(seq=logged.seq, at=logged.at, entry=logged.entry)
         )
-    reply_id = state.open_reply
+    reply_id, open_seq = state.open_reply, state.open_reply_seq
     if reply_id is None and _started_work_unseen(state):
         # Committed work is never redone silently: the dead attempt gets a failed reply too.
         attempt_id = f"{claim.epoch}.0"
         reply_id = f"r{attempt_id}"
         opened = Reply(id=f"{attempt_id}:reply", reply_id=reply_id, attempt_id=attempt_id)
-        await append_entry(ports, claim, opened)
+        open_seq = (await append_entry(ports, claim, opened)).seq
     if reply_id is not None:
-        # Its inputs stay unsettled, so the next run answers them with this failure in its context.
+        # The work it started answers its inputs; the rest stay unsettled, and the next run
+        # answers them with this failure in its context.
+        answers, through = _answered_by_started_work(state, logged_since, open_seq)
         recovered = ReplySettled(
             id=f"{reply_id}:recovered:{claim.epoch}",
             reply_id=reply_id,
             outcome=ReplyOutcome.FAILED,
-            answers=(),
-            through=state.settled_through,
+            answers=answers,
+            through=through,
             quote_target=None,
             failure=FailureReason.SERVER_RESTART,
         )
         await append_entry(ports, claim, recovered)
     elif state.comms is not CommsPhase.IDLE:
         await set_comms(ports, claim, CommsPhase.IDLE)
+
+
+def _answered_by_started_work(
+    state: ConversationState, logged: Sequence[LoggedEntry], reply_seq: int | None
+) -> tuple[tuple[str, ...], int]:
+    """Return the waking inputs live work already answers, and the seq through which every input is.
+
+    Only inputs above the reply count: a reply never answers one logged below it.
+    """
+    started = {entry_id for work in state.work for entry_id in work.answers}
+    waking = [
+        item
+        for item in logged
+        if item.seq in state.unsettled_waking and (reply_seq is None or item.seq < reply_seq)
+    ]
+    answered = {item.seq for item in waking if item.entry.id in started}
+    through = watermark(waking, answered, state.settled_through)
+    return tuple(item.entry.id for item in waking if item.seq <= through), through
 
 
 def _started_work_unseen(state: ConversationState) -> bool:
@@ -198,8 +220,7 @@ async def _serve(
     )
     if await nothing_to_report(ports.log, conversation_id, claim.user_id, batch):
         # The run said so itself, and its todo lets it: nothing is shown, its report stays on its WorkFinished.
-        attempt.covers = batch.waking
-        await conclude(ports, attempt, empty_reply(attempt), ReplyOutcome.SILENT)
+        await conclude(ports, attempt, empty_reply(attempt), ReplyOutcome.SILENT, batch.waking)
         return True, attempt.settled_view()
     if isinstance(batch.waking[0].entry, WorkflowFired) and not state.work:
         # Under this claim no comms run writes the threads, and no live work runs on the executor's.

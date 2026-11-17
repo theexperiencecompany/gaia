@@ -109,11 +109,13 @@ async def _stop(ports: RuntimePorts, attempt: Attempt) -> None:
 
 
 async def _truncate(ports: RuntimePorts, attempt: Attempt) -> None:
-    """Note how much of the reply the user heard before speaking over it; it still answered its inputs."""
-    attempt.covers = attempt.unanswered
+    """Note how much of the reply the user heard before speaking over it; it still answered its inputs.
+
+    A reply that sits above an input handed below it ends interim first, as any settle does.
+    """
     match attempt.progress, attempt.slot:
-        case Drafting(reply=reply), _:
-            await conclude(ports, attempt, reply, ReplyOutcome.TRUNCATED)
+        case Drafting(), _:
+            pass
         case Showing(reply=reply), int(slot):
             after = await ports.log.read_after(
                 attempt.claim.conversation_id, attempt.claim.user_id, slot
@@ -124,9 +126,13 @@ async def _truncate(ports: RuntimePorts, attempt: Attempt) -> None:
                 if isinstance(logged.entry, BargeIn) and logged.entry.reply_id == attempt.reply_id
             ]
             heard = min(barges[-1].heard_through, len(reply.text)) if barges else len(reply.text)
-            await conclude(ports, attempt, _heard(reply, heard), ReplyOutcome.TRUNCATED)
+            attempt.progress = Showing(reply=_heard(reply, heard))
         case _:
             await retract_attempt(ports, attempt)
+            return
+    covers = attempt.unanswered
+    await end_above(ports, attempt, covers)
+    await conclude(ports, attempt, base_reply(attempt), ReplyOutcome.TRUNCATED, covers)
 
 
 def _heard(reply: Reply, heard_through: int) -> Reply:
@@ -223,13 +229,12 @@ async def _settle_rest(
     await end_above(ports, attempt, covers)
     reply = base_reply(attempt)
     worded = bool(reply.text or reply.tool_data)
-    attempt.covers = covers
     if failed is not None:
-        return await conclude(ports, attempt, reply, failed, failure)
-    if not attempt.covers:
-        return await conclude(ports, attempt, reply, ReplyOutcome.INTERIM) if worded else None
+        return await conclude(ports, attempt, reply, failed, covers, failure)
+    if not covers:
+        return await conclude(ports, attempt, reply, ReplyOutcome.INTERIM, ()) if worded else None
     return await conclude(
-        ports, attempt, reply, ReplyOutcome.ANSWERED if worded else ReplyOutcome.SILENT
+        ports, attempt, reply, ReplyOutcome.ANSWERED if worded else ReplyOutcome.SILENT, covers
     )
 
 
@@ -252,7 +257,10 @@ async def _add_follow_ups(
 
 
 async def fail_attempt(ports: RuntimePorts, attempt: Attempt, error: Exception) -> None:
-    """Settle the attempt failed with what was shown, so the user sees a failed bubble, not silence; no further run goes on with it."""
+    """Settle the inputs still unanswered failed with what was shown, so the user sees why; no further run goes on with it.
+
+    With every input already answered nothing failed for the user: what is shown ends as it is.
+    """
     attempt.continuing = False  # pragma: no mutate — read only as truthy
     log.error(
         "comms run failed",
@@ -266,4 +274,7 @@ async def fail_attempt(ports: RuntimePorts, attempt: Attempt, error: Exception) 
         if isinstance(error, StepLimitReached)
         else FailureReason.MODEL_ERROR
     )
-    await _settle_rest(ports, attempt, ReplyOutcome.FAILED, failure)
+    if attempt.unanswered:
+        await _settle_rest(ports, attempt, ReplyOutcome.FAILED, failure)
+    else:
+        await _settle_rest(ports, attempt)
