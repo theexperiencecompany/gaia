@@ -58,6 +58,11 @@ export class ReplyDelivery {
   /** Slots that hold final text: every one written before the last bubble went final. */
   private readonly final = new Set<MessageSlot>();
   private readonly written = new Set<MessageSlot>();
+  /**
+   * Text for a reopened message whose bubble is not final yet. The earlier follow showed an unknown
+   * prefix of it, so the message is edited only once its bubble is final: never back to less.
+   */
+  private readonly held = new Map<MessageSlot, string>();
   /** The bubbles fed last, to compare with the reply's saved ones. */
   private fed: readonly string[] = [];
   /** How many of the reply's bubbles an earlier follow already delivered. */
@@ -140,10 +145,12 @@ export class ReplyDelivery {
         return;
       case "send":
       case "edit":
-        await this.editSlot(op.slot, op.text);
+        if (this.reopened.has(op.slot)) this.held.set(op.slot, op.text);
+        else await this.editSlot(op.slot, op.text);
         this.written.add(op.slot);
         return;
       case "delivered":
+        await this.releaseHeld();
         for (const slot of this.written) this.final.add(slot);
         await this.report(op.bubbles === 0 ? 0 : this.skip + op.bubbles);
         return;
@@ -151,6 +158,15 @@ export class ReplyDelivery {
         const unhandled: never = op;
         return unhandled;
       }
+    }
+  }
+
+  /** Edit each reopened message to its bubble's final text. */
+  private async releaseHeld(): Promise<void> {
+    for (const [slot, text] of this.held) {
+      this.held.delete(slot);
+      // react-doctor-disable-next-line async-await-in-loop -- reopened messages are edited in slot order
+      await this.editSlot(slot, text);
     }
   }
 

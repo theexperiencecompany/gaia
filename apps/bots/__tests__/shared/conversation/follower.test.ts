@@ -1085,6 +1085,53 @@ describe("a live bot that stops while a bubble is still being written (run 4 bug
     expect(screen(chat.calls)).toEqual([GUIDE]);
     expect(kept()).toEqual(cursorAt(2));
   });
+
+  it("never edits the half-written bubble back to less than it showed while the reply still streams", async () => {
+    let kept: DeliveryCursor = cursorAt(1);
+    const keep = async (cursor: DeliveryCursor) => {
+      kept = cursor;
+    };
+    const chat = recorder();
+    const first = new ConversationFollower(
+      { floor: 1, partialReply: null, record: keep },
+      EDITING,
+      chat.surface,
+      "c1",
+    );
+    await feed(first, [
+      screenFrame([inbound("u1", 1, "11")]),
+      insertFrame(replyItem("r1", 2, "1")),
+      replyDelta("a-r1", "r1", 0, "1. Preheat the oven"),
+      stateFrame(1, "thinking"),
+    ]);
+    first.close();
+    expect(screen(chat.calls)).toEqual(["1. Preheat the oven"]);
+
+    // The restarted follow opens while the reply is still streaming from its first words.
+    const restarted = new ConversationFollower(
+      {
+        floor: kept.delivered_seq,
+        partialReply: kept.partial_reply,
+        record: keep,
+      },
+      EDITING,
+      chat.surface,
+      "c1",
+    );
+    await feed(restarted, [
+      screenFrame([inbound("u1", 1, "11"), replyItem("r1", 2, "1")]),
+      replyDelta("a-r1", "r1", 0, "1. Pre"),
+      stateFrame(1, "thinking"),
+      replyDelta("a-r1", "r1", 1, "heat the oven to 200C and line a tray."),
+      stateFrame(1, "thinking"),
+      updateFrame(reply),
+      stateFrame(2, "idle"),
+    ]);
+
+    expect(takenBack(chat.calls)).toEqual([]);
+    expect(screen(chat.calls)).toEqual([GUIDE]);
+    expect(kept).toEqual(cursorAt(2));
+  });
 });
 
 describe("a browser run on a work item", () => {
