@@ -519,13 +519,13 @@ export class ConversationFollower {
       this.surface,
       this.quoteTarget(reply.quote?.id ?? null),
       earlier,
-      async (bubbles, openMessageIds) => {
+      async ({ bubbles, openMessageIds }) => {
         this.progress =
           bubbles > 0 || openMessageIds.length > 0
             ? {
                 reply_id: reply.id,
                 bubbles,
-                open_message_ids: openMessageIds,
+                open_message_ids: [...openMessageIds],
               }
             : null;
         await this.recordDelivered();
