@@ -1,0 +1,12 @@
+name: burst-unrelated
+description: Three unrelated questions 0.4 s apart; every answer is there and told apart (run 3 burst, runs 4-5 scenario 2).
+steps:
+  - burst:
+      - "What's 17 times 3?"
+      - "What's the capital of Peru?"
+      - "What's the largest moon of Jupiter?"
+    gap: 0.4
+  - wait_reply: {quiet: 8}
+expect:
+  - distinct_answers: ['\b51\b', 'lima', 'ganymede']
+    loose: the factual answers are fixed (51, Lima, Ganymede); only their presence is checked

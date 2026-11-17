@@ -1,0 +1,12 @@
+name: side-question
+description: A side question 7 s into research is answered on its own and fast, and the research still arrives (runs 3-6 B1, bug 1/15).
+steps:
+  - send: "Research the latest findings from the James Webb Space Telescope and summarise the top 3 with sources."
+  - sleep: 7
+  - send: "Quick side question: what's 15% of 240?"
+  - wait_reply: {quiet: 20, timeout: 300}
+expect:
+  - contains: {after: 1, pattern: '\b36\b', within_s: 30}
+    loose: the side answer is the number 36, checked present within 30 s of the side question
+  - contains: {after: 0, pattern: '(webb|jwst)'}
+    loose: the research reply arrives; it names the telescope

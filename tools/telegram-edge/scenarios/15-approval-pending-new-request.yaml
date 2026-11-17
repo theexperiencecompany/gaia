@@ -1,0 +1,16 @@
+name: approval-pending-new-request
+description: An unrelated question while an approval is pending is answered without a re-ask, and a later "yes" still works (run 3, run 6 C6).
+budgets: {first_response_s: 30}
+steps:
+  - set_tool_ask: {tool: create_todo, ask: true}
+  - send: "Add a todo titled '{nonce} later' for tomorrow."
+  - wait_for: approval_prompt
+  - send: "Unrelated: what's the boiling point of water in Fahrenheit?"
+  - wait_reply: {quiet: 8}
+  - send: "yes"
+  - wait_reply: {quiet: 10}
+expect:
+  - prompts: 1
+  - todos: [{tag: later, exists: true}]
+  - contains: {after: 1, pattern: '212'}
+    loose: the boiling point is a fixed number
