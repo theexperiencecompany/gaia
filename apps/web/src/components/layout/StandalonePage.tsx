@@ -1,12 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Link as HeroLink } from "@heroui/link";
 import { ArrowLeft01Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-
+import { LinkButton } from "@/components/shared/LinkButton";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 
 /**
@@ -20,7 +18,7 @@ export function StandalonePage({ children }: { children: ReactNode }) {
     <main className="min-h-dvh w-full bg-primary-bg px-4 py-6">
       <div className="mx-auto w-full max-w-3xl space-y-4">
         <div className="flex items-center justify-between gap-4">
-          <HeroLink as={Link} href="/" aria-label="GAIA home">
+          <Link href="/" aria-label="GAIA home">
             <Image
               src="/images/logos/text_w_logo_white.webp"
               alt="GAIA"
@@ -28,17 +26,12 @@ export function StandalonePage({ children }: { children: ReactNode }) {
               height={26}
               className="object-contain"
             />
-          </HeroLink>
+          </Link>
           {isAuthenticated && (
-            <Button
-              as={Link}
-              href="/c"
-              variant="flat"
-              size="sm"
-              startContent={<ArrowLeft01Icon className="size-4" />}
-            >
+            <LinkButton href="/c" variant="default-soft" size="sm">
+              <ArrowLeft01Icon className="size-4" />
               Back to chats
-            </Button>
+            </LinkButton>
           )}
         </div>
         {children}

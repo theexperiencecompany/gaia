@@ -2,17 +2,10 @@
 
 import {
   Avatar,
-  Button,
   Chip,
   type Selection,
   Spinner,
   Table,
-  TableBody,
-  TableCell,
-  TableColumn,
-  TableHeader,
-  type TableProps,
-  TableRow,
   Tooltip,
 } from "@heroui/react";
 import {
@@ -23,6 +16,9 @@ import {
   StarIcon,
 } from "@icons";
 import { useCallback, useDeferredValue, useMemo } from "react";
+import { tableVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import type { VoiceOption } from "@/features/settings/api/voiceApi";
 import { GenderIcon } from "@/features/settings/components/VoiceFilters";
 import { useVoicePreview } from "@/features/settings/hooks/useVoicePreview";
@@ -61,7 +57,10 @@ interface VoiceTableProps {
   /** Fired (after persisting) when the selection changes — lets the live
    * session re-point the agent's voice. */
   onSelect?: (voiceId: string) => void;
-  classNames?: TableProps["classNames"];
+  /** card is the settings page's padded card; plain sits flush inside another surface. */
+  surface?: "card" | "plain";
+  /** Layout classes for the table root, e.g. a scroll height. */
+  className?: string;
   "aria-label"?: string;
 }
 
@@ -78,6 +77,167 @@ interface Column {
  * "Customise voice" popover. Owns its own data/selection/star/preview state;
  * callers only choose which columns to show and supply filter values.
  */
+interface VoiceCellProps {
+  voice: VoiceRow;
+  columnKey: string;
+  inlineGender: boolean;
+  wrapText: boolean;
+  onToggleStar: (voice: VoiceRow) => void;
+  onTogglePreview: (voice: VoiceRow) => void;
+}
+
+/** One cell of the voice table, by column. */
+function VoiceCell({
+  voice,
+  columnKey,
+  inlineGender,
+  wrapText,
+  onToggleStar,
+  onTogglePreview,
+}: Readonly<VoiceCellProps>) {
+  switch (columnKey) {
+    case "voice":
+      return (
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-2",
+            // Keep the voice column narrow in the compact picker so the
+            // description wraps early and country gets room.
+            wrapText && "max-w-[16rem]",
+          )}
+        >
+          {/* Star toggle — propagation stopped so starring never doubles
+                as selecting the row. */}
+          <div // NOSONAR S6848: propagation guard around the interactive Button below, not a control itself
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            <GaiaButton
+              shape="pill"
+              isIconOnly
+              size="sm"
+              variant="ghost"
+              aria-label={
+                voice.starred ? `Unstar ${voice.name}` : `Star ${voice.name}`
+              }
+              tone="subtle"
+              hoverTone={voice.starred ? "none" : "dim"}
+              className={cn(
+                voice.starred && "text-yellow-400 hover:text-yellow-300",
+              )}
+              onPress={() => onToggleStar(voice)}
+            >
+              <StarIcon className="h-4 w-4" />
+            </GaiaButton>
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-sm text-white">{voice.name}</p>
+              {inlineGender && <GenderIcon gender={voice.gender} />}
+              {voice.isSelected && (
+                <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-accent" />
+              )}
+            </div>
+            <p
+              className={cn(
+                "mt-0.5 text-xs text-zinc-500",
+                wrapText ? "whitespace-normal break-words" : "truncate",
+              )}
+            >
+              {voice.description}
+            </p>
+          </div>
+        </div>
+      );
+    case "gender":
+      return (
+        <div className="flex items-center gap-1.5">
+          <GenderIcon gender={voice.gender} />
+          <span className="text-sm text-zinc-400">{voice.gender}</span>
+        </div>
+      );
+    case "language":
+      return (
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm text-zinc-400">{voice.language}</span>
+          {voice.languages.length > 1 && (
+            <Tooltip>
+              <Tooltip.Trigger>
+                <Chip
+                  size="sm"
+                  variant="secondary"
+                  className={toneVariants({
+                    tone: "muted",
+                    className: "cursor-default",
+                  })}
+                >
+                  +{voice.languages.length - 1}
+                </Chip>
+              </Tooltip.Trigger>
+              <Tooltip.Content>
+                <div className="max-w-56 px-1 py-1.5 text-xs">
+                  {voice.languages.join(", ")}
+                </div>
+              </Tooltip.Content>
+            </Tooltip>
+          )}
+        </div>
+      );
+    case "country":
+      return (
+        <div className="flex items-center gap-2">
+          {voice.country_code ? (
+            <Avatar className="h-5 w-5 shrink-0">
+              <Avatar.Image
+                src={flagUrl(voice.country_code)}
+                alt={`${voice.accent} flag`}
+              />
+              <Avatar.Fallback />
+            </Avatar>
+          ) : (
+            <Globe02Icon className="h-5 w-5 shrink-0 text-zinc-500" />
+          )}
+          <span className="text-sm text-zinc-400">{voice.accent}</span>
+        </div>
+      );
+    case "preview": {
+      const PreviewIcon = voice.isPlaying ? PauseIcon : PlayIcon;
+      return (
+        // Stop pointer events here so playing a sample never doubles as
+        // selecting the row.
+        <div // NOSONAR S6848: propagation guard around the interactive Button below, not a control itself
+          className="flex justify-end"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <GaiaButton
+            shape="pill"
+            isIconOnly
+            size="sm"
+            variant="default-soft"
+            aria-label={
+              voice.isPlaying
+                ? `Pause ${voice.name} preview`
+                : `Play ${voice.name} preview`
+            }
+            isDisabled={!voice.preview_url}
+            tone={voice.isPlaying ? "accent" : "default"}
+            onPress={() => onTogglePreview(voice)}
+          >
+            <PreviewIcon className="h-4 w-4" />
+          </GaiaButton>
+        </div>
+      );
+    }
+    default:
+      return null;
+  }
+}
+
 export function VoiceTable({
   search = "",
   genderFilter = ALL_FILTER,
@@ -88,13 +248,19 @@ export function VoiceTable({
   wrapText = false,
   previewOnSelect = true,
   onSelect,
-  classNames,
+  surface = "card",
+  className,
   "aria-label": ariaLabel = "Available voices",
 }: Readonly<VoiceTableProps>) {
   const { data, isLoading } = useVoices();
   const selectVoice = useSelectVoice();
   const starVoice = useStarVoice();
   const { playingVoiceId, playPreview, togglePreview } = useVoicePreview();
+  const toggleStar = useCallback(
+    (voice: VoiceRow) =>
+      starVoice.mutate({ voiceId: voice.voice_id, starred: !voice.starred }),
+    [starVoice],
+  );
   // Typing stays instant; the (cheap but table-rebuilding) filter pass runs
   // at deferred priority so fast keystrokes never jank the input.
   const deferredSearch = useDeferredValue(search);
@@ -184,186 +350,61 @@ export function VoiceTable({
     ],
   );
 
-  const renderCell = useCallback(
-    (voice: VoiceRow, columnKey: string) => {
-      switch (columnKey) {
-        case "voice":
-          return (
-            <div
-              className={cn(
-                "flex min-w-0 items-center gap-2",
-                // Keep the voice column narrow in the compact picker so the
-                // description wraps early and country gets room.
-                wrapText && "max-w-[16rem]",
-              )}
-            >
-              {/* Star toggle — propagation stopped so starring never doubles
-                  as selecting the row. */}
-              <div // NOSONAR S6848: propagation guard around the interactive Button below, not a control itself
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-                onPointerUp={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              >
-                <Button
-                  isIconOnly
-                  size="sm"
-                  radius="full"
-                  variant="light"
-                  aria-label={
-                    voice.starred
-                      ? `Unstar ${voice.name}`
-                      : `Star ${voice.name}`
-                  }
-                  className={cn(
-                    "text-zinc-600 hover:text-zinc-300",
-                    voice.starred && "text-yellow-400 hover:text-yellow-300",
-                  )}
-                  onPress={() =>
-                    starVoice.mutate({
-                      voiceId: voice.voice_id,
-                      starred: !voice.starred,
-                    })
-                  }
-                >
-                  <StarIcon className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <p className="truncate text-sm text-white">{voice.name}</p>
-                  {inlineGender && <GenderIcon gender={voice.gender} />}
-                  {voice.isSelected && (
-                    <CheckmarkCircle02Icon className="h-4 w-4 shrink-0 text-primary" />
-                  )}
-                </div>
-                <p
-                  className={cn(
-                    "mt-0.5 text-xs text-zinc-500",
-                    wrapText ? "whitespace-normal break-words" : "truncate",
-                  )}
-                >
-                  {voice.description}
-                </p>
-              </div>
-            </div>
-          );
-        case "gender":
-          return (
-            <div className="flex items-center gap-1.5">
-              <GenderIcon gender={voice.gender} />
-              <span className="text-sm text-zinc-400">{voice.gender}</span>
-            </div>
-          );
-        case "language":
-          return (
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm text-zinc-400">{voice.language}</span>
-              {voice.languages.length > 1 && (
-                <Tooltip
-                  content={
-                    <div className="max-w-56 px-1 py-1.5 text-xs">
-                      {voice.languages.join(", ")}
-                    </div>
-                  }
-                >
-                  <Chip
-                    size="sm"
-                    variant="flat"
-                    className="cursor-default bg-zinc-800 text-zinc-400"
-                  >
-                    +{voice.languages.length - 1}
-                  </Chip>
-                </Tooltip>
-              )}
-            </div>
-          );
-        case "country":
-          return (
-            <div className="flex items-center gap-2">
-              {voice.country_code ? (
-                <Avatar
-                  src={flagUrl(voice.country_code)}
-                  alt={`${voice.accent} flag`}
-                  className="h-5 w-5 shrink-0"
-                />
-              ) : (
-                <Globe02Icon className="h-5 w-5 shrink-0 text-zinc-500" />
-              )}
-              <span className="text-sm text-zinc-400">{voice.accent}</span>
-            </div>
-          );
-        case "preview": {
-          const PreviewIcon = voice.isPlaying ? PauseIcon : PlayIcon;
-          return (
-            // Stop pointer events here so playing a sample never doubles as
-            // selecting the row.
-            <div // NOSONAR S6848: propagation guard around the interactive Button below, not a control itself
-              className="flex justify-end"
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              onPointerUp={(e) => e.stopPropagation()}
-              onKeyDown={(e) => e.stopPropagation()}
-            >
-              <Button
-                isIconOnly
-                size="sm"
-                radius="full"
-                variant="flat"
-                aria-label={
-                  voice.isPlaying
-                    ? `Pause ${voice.name} preview`
-                    : `Play ${voice.name} preview`
-                }
-                isDisabled={!voice.preview_url}
-                className={cn(voice.isPlaying && "text-primary")}
-                onPress={() => togglePreview(voice)}
-              >
-                <PreviewIcon className="h-4 w-4" />
-              </Button>
-            </div>
-          );
-        }
-        default:
-          return null;
-      }
-    },
-    [starVoice, togglePreview, inlineGender, wrapText],
-  );
-
   return (
-    <Table
-      aria-label={ariaLabel}
-      selectionMode="single"
-      classNames={{ tr: "cursor-pointer", ...classNames }}
-      disallowEmptySelection
-      selectedKeys={selectedKeys}
-      onSelectionChange={handleSelectionChange}
-    >
-      <TableHeader columns={columns}>
-        {(column) => (
-          <TableColumn
-            key={column.key}
-            className={column.align === "end" ? "text-right" : undefined}
-          >
-            {column.label}
-          </TableColumn>
-        )}
-      </TableHeader>
-      <TableBody
-        items={rows}
-        isLoading={isLoading}
-        loadingContent={<Spinner size="sm" label="Loading voices" />}
-        emptyContent={isLoading ? " " : "No voices match your filters"}
+    <Table className={tableVariants({ surface, className })}>
+      <Table.Content
+        aria-label={ariaLabel}
+        selectionMode="single"
+        disallowEmptySelection
+        selectedKeys={selectedKeys}
+        onSelectionChange={handleSelectionChange}
       >
-        {(voice) => (
-          <TableRow key={voice.voice_id} textValue={voice.name}>
-            {(columnKey) => (
-              <TableCell>{renderCell(voice, String(columnKey))}</TableCell>
-            )}
-          </TableRow>
-        )}
-      </TableBody>
+        <Table.Header columns={columns}>
+          {(column) => (
+            <Table.Column
+              key={column.key}
+              id={column.key}
+              isRowHeader={column.key === "voice"}
+              className={column.align === "end" ? "text-right" : undefined}
+            >
+              {column.label}
+            </Table.Column>
+          )}
+        </Table.Header>
+        <Table.Body
+          items={rows}
+          dependencies={[isLoading]}
+          renderEmptyState={() =>
+            isLoading ? (
+              <Spinner size="sm" aria-label="Loading voices" />
+            ) : (
+              "No voices match your filters"
+            )
+          }
+        >
+          {(voice) => (
+            <Table.Row
+              key={voice.voice_id}
+              id={voice.voice_id}
+              textValue={voice.name}
+              columns={columns}
+            >
+              {(column) => (
+                <Table.Cell>
+                  <VoiceCell
+                    voice={voice}
+                    columnKey={column.key}
+                    inlineGender={inlineGender}
+                    wrapText={wrapText}
+                    onToggleStar={toggleStar}
+                    onTogglePreview={togglePreview}
+                  />
+                </Table.Cell>
+              )}
+            </Table.Row>
+          )}
+        </Table.Body>
+      </Table.Content>
     </Table>
   );
 }

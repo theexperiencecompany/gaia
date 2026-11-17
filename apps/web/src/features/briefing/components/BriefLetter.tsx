@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import { useInView } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { cn } from "@/lib/utils";
 
 import {
@@ -152,16 +152,16 @@ export function BriefLetter({
       style={{ maxWidth: LETTER_MAX_WIDTH }}
     >
       {edition ? (
-        <Button
-          disableRipple
-          onPress={() => {
+        <button
+          type="button"
+          onClick={() => {
             if (faceRef.current)
               onOpen(faceRef.current.getBoundingClientRect());
           }}
           aria-label={`Open brief: ${headline}`}
           aria-busy={isBusy}
           className={cn(
-            "group relative block h-auto w-full min-w-0 overflow-visible rounded-none bg-transparent p-0 data-[hover=true]:bg-transparent",
+            "group relative block h-auto w-full min-w-0 cursor-pointer overflow-visible outline-none focus-visible:ring-2 focus-visible:ring-accent",
             isLifted && "invisible",
           )}
           style={{ perspective: LETTER_PERSPECTIVE_PX }}
@@ -171,7 +171,7 @@ export function BriefLetter({
             className={cn(
               "absolute -inset-x-5 -bottom-4 h-10 rounded-[50%] bg-black/50 blur-2xl transition-[opacity,scale] duration-300",
               EASE_OUT,
-              "group-data-[hover=true]:scale-x-105 group-data-[hover=true]:opacity-75",
+              "group-hover:scale-x-105 group-hover:opacity-75",
             )}
           />
           <span
@@ -179,12 +179,12 @@ export function BriefLetter({
             className={cn(
               "absolute inset-x-3 -bottom-1 h-3 rounded-[50%] bg-black/55 blur-md transition-opacity duration-300",
               EASE_OUT,
-              "group-data-[hover=true]:opacity-60",
+              "group-hover:opacity-60",
             )}
           />
           <span
             className={cn(
-              "relative block origin-top transition-[translate,scale] duration-300 group-data-[hover=true]:-translate-y-0.5 group-data-[pressed=true]:scale-[0.985]",
+              "relative block origin-top transition-[translate,scale] duration-300 group-hover:-translate-y-0.5 group-active:scale-[0.985]",
               EASE_OUT,
             )}
             style={{
@@ -222,12 +222,13 @@ export function BriefLetter({
             <Crease edition={edition} />
             <FoldedPanels edition={edition} />
           </span>
-        </Button>
+        </button>
       ) : !imageUrl || isFailed ? (
-        <Button
-          variant="flat"
-          radius="sm"
-          className="h-auto w-full justify-start px-4 py-3 text-left text-sm"
+        <GaiaButton
+          variant="default-soft"
+          shape="sm"
+          fullWidth
+          className="h-auto min-h-11 justify-start text-left text-sm whitespace-normal"
           aria-busy={isBusy}
           onPress={() => {
             if (rootRef.current)
@@ -235,7 +236,7 @@ export function BriefLetter({
           }}
         >
           {headline}
-        </Button>
+        </GaiaButton>
       ) : (
         <Skeleton
           className="w-full rounded-[3px]"

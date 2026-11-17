@@ -7,6 +7,10 @@ the local server answers: CONNECT to a site host is terminated with a certificat
 from a throwaway CA (the crawler trusts it through NODE_EXTRA_CA_CERTS) and piped to
 the origin, so the server sees Host: heygaia.io. Every other host is refused, so the
 audit never reaches the live site.
+
+With --sitemap the proxy answers /sitemap.xml itself, listing only that file's URLs:
+squirrel picks the pages it audits from the sitemap, never from the URL it is given,
+so this is how a run audits a chosen set of pages and nothing else.
 """
 
 from __future__ import annotations
@@ -20,10 +24,13 @@ import subprocess
 import sys
 import threading
 import urllib.parse
+from xml.sax.saxutils import escape
 
 HEAD_LIMIT = 65536
 CHUNK = 65536
 CERT_DAYS = "2"
+SITEMAP_PATH = "/sitemap.xml"
+HEAD_END = b"\r\n\r\n"
 
 
 def make_certificates(cert_dir: Path, hosts: list[str]) -> tuple[Path, Path]:
@@ -104,7 +111,7 @@ def _pump(source: socket.socket, sink: socket.socket) -> None:
 
 def _read_head(client: socket.socket) -> bytes:
     head = b""
-    while b"\r\n\r\n" not in head and len(head) < HEAD_LIMIT:
+    while HEAD_END not in head and len(head) < HEAD_LIMIT:
         chunk = client.recv(4096)
         if not chunk:
             break
@@ -112,8 +119,68 @@ def _read_head(client: socket.socket) -> bytes:
     return head
 
 
+def sitemap_response(urls: list[str]) -> bytes:
+    """Render a sitemap listing exactly urls as a complete HTTP response that closes the connection."""
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "".join(f"<url><loc>{escape(url)}</loc></url>\n" for url in urls)
+        + "</urlset>\n"
+    ).encode()
+    head = (
+        "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\n"
+        f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n"
+    )
+    return head.encode() + body
+
+
+def _content_length(head: bytes) -> int:
+    for line in head.split(b"\r\n")[1:]:
+        name, _, value = line.partition(b":")
+        if name.strip().lower() == b"transfer-encoding":
+            raise ValueError("a chunked request body")
+        if name.strip().lower() == b"content-length":
+            return int(value.strip())
+    return 0
+
+
+def _forward_requests(source: socket.socket, sink: socket.socket, sitemap: bytes | None) -> None:
+    """Copy requests from source to sink one at a time, answering the sitemap path from sitemap.
+
+    The sitemap answer closes the connection, so it can never interleave with an origin
+    response still in flight: a crawler that does not pipeline sends its next request only
+    after the previous answer, on this connection or a new one.
+    """
+    buffer = b""
+    with contextlib.suppress(OSError):
+        while True:
+            while HEAD_END not in buffer:
+                if not (chunk := source.recv(CHUNK)):
+                    return
+                buffer += chunk
+            head, _, buffer = buffer.partition(HEAD_END)
+            length = _content_length(head)
+            while len(buffer) < length:
+                if not (chunk := source.recv(CHUNK)):
+                    return
+                buffer += chunk
+            body, buffer = buffer[:length], buffer[length:]
+            parts = head.split(b" ", 2)
+            if len(parts) < 3:
+                raise ValueError(f"a malformed request line {head[:80]!r}")
+            target = parts[1].decode("latin-1")
+            if sitemap is not None and urllib.parse.urlsplit(target).path == SITEMAP_PATH:
+                source.sendall(sitemap)
+                return
+            sink.sendall(head + HEAD_END + body)
+
+
 def _handle(
-    client: socket.socket, hosts: set[str], origin: tuple[str, int], tls: ssl.SSLContext
+    client: socket.socket,
+    hosts: set[str],
+    origin: tuple[str, int],
+    tls: ssl.SSLContext,
+    sitemap: bytes | None,
 ) -> None:
     with client:
         request_line = _read_head(client).split(b"\r\n", 1)[0].decode("latin-1")
@@ -136,11 +203,24 @@ def _handle(
         with secure, socket.create_connection(origin) as upstream:
             back = threading.Thread(target=_pump, args=(upstream, secure), daemon=True)
             back.start()
-            _pump(secure, upstream)
+            try:
+                _forward_requests(secure, upstream, sitemap)
+            except ValueError as exc:
+                print(f"origin-proxy: refused {exc}", file=sys.stderr, flush=True)
+            for sock in (secure, upstream):
+                with contextlib.suppress(OSError):
+                    sock.shutdown(socket.SHUT_RDWR)
             back.join()
 
 
-def serve(listener: socket.socket, hosts: set[str], origin: str, cert: Path, key: Path) -> None:
+def serve(
+    listener: socket.socket,
+    hosts: set[str],
+    origin: str,
+    cert: Path,
+    key: Path,
+    sitemap: bytes | None = None,
+) -> None:
     """Accept proxy connections on listener forever, tunnelling site hosts to origin."""
     parsed = urllib.parse.urlparse(origin)
     if parsed.scheme != "http" or parsed.hostname is None or parsed.port is None:
@@ -150,7 +230,9 @@ def serve(listener: socket.socket, hosts: set[str], origin: str, cert: Path, key
     while True:
         client, _ = listener.accept()
         threading.Thread(
-            target=_handle, args=(client, hosts, (parsed.hostname, parsed.port), tls), daemon=True
+            target=_handle,
+            args=(client, hosts, (parsed.hostname, parsed.port), tls, sitemap),
+            daemon=True,
         ).start()
 
 
@@ -166,7 +248,13 @@ def main() -> int:
     parser.add_argument(
         "--port-file", type=Path, required=True, help="written with the port once listening"
     )
+    parser.add_argument(
+        "--sitemap",
+        type=Path,
+        help="answer /sitemap.xml with this file's URLs, one per line, instead of the origin's",
+    )
     args = parser.parse_args()
+    sitemap = sitemap_response(args.sitemap.read_text().split()) if args.sitemap else None
     site_host = urllib.parse.urlparse(args.site).hostname
     if site_host is None:
         raise SystemExit(f"origin-proxy: no host in --site {args.site}")
@@ -174,7 +262,7 @@ def main() -> int:
     cert, key = make_certificates(args.cert_dir, hosts)
     listener = socket.create_server(("127.0.0.1", 0))
     args.port_file.write_text(str(listener.getsockname()[1]))
-    serve(listener, set(hosts), args.origin, cert, key)
+    serve(listener, set(hosts), args.origin, cert, key, sitemap)
     return 0
 
 

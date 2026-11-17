@@ -37,9 +37,14 @@ for (const file of files) {
     process.exit(1);
   }
   seenSlugs.add(slug);
+  if (!data.description) {
+    console.error(`[extract-blog] ${file} has no description: frontmatter`);
+    process.exit(1);
+  }
   const post = {
     slug,
     title: data.title,
+    description: data.description,
     ...(data.metaTitle ? { metaTitle: data.metaTitle } : {}),
     date: data.date,
     // Optional: when a post is revised, set `updated:` in frontmatter so

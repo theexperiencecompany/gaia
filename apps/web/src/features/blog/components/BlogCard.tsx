@@ -1,7 +1,8 @@
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import Image from "next/image";
 import Link from "next/link";
 
+import { chipVariants } from "@/components/shared/controlVariants";
 import { GrainOverlay } from "@/components/ui/GrainOverlay";
 import type { BlogPostMeta } from "@/lib/blog";
 import { getImageDimensions } from "@/lib/imageDimensions";
@@ -13,9 +14,16 @@ interface BlogCardProps {
   variant?: "large" | "small";
   /** h2 where the cards sit directly under the page h1, h3 under a section heading. */
   titleAs: "h2" | "h3";
+  /** For a card in the first row of the page: its image is likely the LCP. */
+  priority?: boolean;
 }
 
-export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
+export function BlogCard({
+  blog,
+  variant = "large",
+  titleAs,
+  priority = false,
+}: BlogCardProps) {
   const isLarge = variant === "large";
   const Title = titleAs;
   const image = blog.image ? getImageDimensions(blog.image) : null;
@@ -33,15 +41,19 @@ export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
               width={image.width}
               height={image.height}
               sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+              priority={priority}
               className="absolute inset-0 h-full w-full rounded-2xl object-cover"
             />
             <GrainOverlay className="rounded-2xl" />
             {blog.featured && (
               <Chip
-                variant="flat"
-                color="primary"
+                variant="soft"
+                color="accent"
                 size="sm"
-                className="absolute top-3 right-3 text-primary"
+                className={chipVariants({
+                  hue: "brand",
+                  className: "absolute top-3 right-3",
+                })}
               >
                 Featured
               </Chip>
@@ -73,10 +85,10 @@ export function BlogCard({ blog, variant = "large", titleAs }: BlogCardProps) {
           </div>
 
           <div className="mb-1 flex items-center gap-3">
-            <span className="text-xs text-foreground-500 group-hover:text-foreground">
+            <span className="text-xs text-zinc-400 group-hover:text-foreground">
               {blog.category}
             </span>
-            <span className="text-xs text-foreground-300 group-hover:text-foreground-500">
+            <span className="text-xs text-zinc-600 group-hover:text-zinc-400">
               {new Date(blog.date).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",

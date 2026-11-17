@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect } from "react";
 
 import { type ToolCategory, toolCategories, tools } from "@/data/tools";
@@ -46,6 +47,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
           height={BACKGROUND_LOGO.height}
           className="absolute inset-0 h-full w-full scale-110 object-contain grayscale"
           sizes="100vw"
+          priority
         />
       </div>
 
@@ -57,6 +59,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
               alt="GAIA Logo"
               width={80}
               height={80}
+              loading="eager"
             />
           </div>
 
@@ -64,7 +67,7 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
             <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl">
               Tools We Love
             </h1>
-            <p className="mx-auto max-w-2xl text-lg font-light leading-relaxed text-foreground-500">
+            <p className="mx-auto max-w-2xl text-lg font-light leading-relaxed text-zinc-400">
               GAIA is built on the shoulders of giants. This page exists to
               celebrate open-source culture and the incredible tools that make
               building great software possible. These projects inspire us daily,
@@ -104,9 +107,12 @@ export default function Thanks({ toolsMetadata }: ThanksProps) {
         </div>
 
         <div className="border-t border-zinc-800 pt-12 text-center">
-          <p className="text-sm text-foreground-500">
+          <p className="text-sm text-zinc-400">
             Thank you to all the maintainers, contributors, and communities
-            behind these amazing projects.
+            behind these amazing projects.{" "}
+            <Link href="/about" className="underline underline-offset-2">
+              Why we build GAIA in the open
+            </Link>
           </p>
         </div>
       </div>

@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
+import { Chip } from "@heroui/react";
 import {
   Calendar03Icon,
   Clock01Icon,
@@ -10,8 +9,8 @@ import {
   PencilEdit01Icon,
 } from "@icons";
 import { useState } from "react";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
-
 import { getScheduleDescription } from "../utils/cronUtils";
 import WorkflowModal from "./WorkflowModal";
 
@@ -38,8 +37,8 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
         return {
           label: cronLabel,
           icon: <Clock01Icon className="size-3.5" />,
-          color: "primary" as const,
-          bgColor: "bg-primary/15",
+          color: "accent" as const,
+          bgColor: "bg-accent/15",
         };
       }
       case "integration":
@@ -51,7 +50,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
               .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
               .join(" ") || "Integration",
           icon: <Calendar03Icon className="size-3.5" />,
-          color: "secondary" as const,
+          color: "default" as const,
           bgColor: "bg-secondary/15",
         };
       default:
@@ -71,14 +70,11 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
       <div className="group relative z-1 flex w-full max-w-md flex-col gap-3 rounded-3xl border border-dashed border-warning/40 bg-zinc-800/40 p-4 backdrop-blur-lg transition-colors hover:bg-zinc-700/50">
         <Chip
           size="sm"
-          variant="flat"
+          variant="soft"
           color="warning"
-          classNames={{
-            base: "absolute -top-2 -right-2 bg-warning/20",
-            content: "text-xs font-semibold text-warning",
-          }}
+          className="absolute -top-2 -right-2"
         >
-          Draft
+          <Chip.Label className="text-xs font-semibold">Draft</Chip.Label>
         </Chip>
 
         <button
@@ -88,8 +84,8 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15">
-                <FlowIcon className="size-5 text-primary" />
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent/15">
+                <FlowIcon className="size-5 text-accent" />
               </div>
               <div className="flex flex-col">
                 <span className="line-clamp-2 text-base font-medium leading-tight">
@@ -102,15 +98,14 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
             </div>
             <Chip
               size="sm"
-              variant="flat"
+              variant="soft"
               color={trigger.color}
-              startContent={trigger.icon}
-              classNames={{
-                base: `${trigger.bgColor} shrink-0`,
-                content: "text-xs font-medium",
-              }}
+              className={`${trigger.bgColor} shrink-0`}
             >
-              {trigger.label}
+              {trigger.icon}
+              <Chip.Label className="text-xs font-medium">
+                {trigger.label}
+              </Chip.Label>
             </Chip>
           </div>
 
@@ -131,16 +126,16 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           )}
         </button>
 
-        <Button
+        <GaiaButton
+          variant="accent-soft"
           size="sm"
-          color="primary"
-          variant="flat"
-          startContent={<PencilEdit01Icon className="size-3.5" />}
+          shape="md"
           onPress={() => setIsModalOpen(true)}
-          className="mt-1 w-full rounded-xl font-medium"
+          className="mt-1 w-full font-medium"
         >
-          Review & Create
-        </Button>
+          <PencilEdit01Icon className="size-3.5" />
+          Review &amp; Create
+        </GaiaButton>
       </div>
 
       {isModalOpen && (

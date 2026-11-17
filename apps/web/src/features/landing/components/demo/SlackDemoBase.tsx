@@ -14,6 +14,7 @@ interface SlackDemoBaseProps {
   phase2Question: string;
   phase3Time: string;
   phase3Response: ReactNode;
+  eagerFirstLogo?: boolean;
 }
 
 export function SlackDemoBase({
@@ -24,6 +25,7 @@ export function SlackDemoBase({
   phase2Question,
   phase3Time,
   phase3Response,
+  eagerFirstLogo = false,
 }: SlackDemoBaseProps) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, amount: 0.3 });
@@ -67,13 +69,14 @@ export function SlackDemoBase({
                 width={36}
                 height={36}
                 alt="GAIA"
+                loading={eagerFirstLogo ? "eager" : undefined}
                 className="h-full w-full object-cover"
               />
             </div>
             <div className="min-w-0 flex-1">
               <div className="mb-1.5 flex items-baseline gap-2">
                 <span className="text-sm font-bold text-zinc-100">GAIA</span>
-                <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                <span className="rounded-sm bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
                   App
                 </span>
                 <span className="text-[11px] text-zinc-600">{phase1Time}</span>
@@ -105,7 +108,7 @@ export function SlackDemoBase({
                 <span className="text-[11px] text-zinc-600">{phase2Time}</span>
               </div>
               <p className="text-sm text-zinc-300">
-                <span className="font-semibold text-primary">@GAIA</span>{" "}
+                <span className="font-semibold text-accent">@GAIA</span>{" "}
                 {phase2Question}
               </p>
             </div>
@@ -131,7 +134,7 @@ export function SlackDemoBase({
             <div>
               <div className="mb-1 flex items-baseline gap-2">
                 <span className="text-sm font-bold text-zinc-100">GAIA</span>
-                <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                <span className="rounded-sm bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
                   App
                 </span>
                 <span className="text-[11px] text-zinc-600">{phase3Time}</span>
