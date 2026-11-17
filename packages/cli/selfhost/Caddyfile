@@ -61,7 +61,8 @@ http://localhost, http://host.docker.internal {
 # GAIA_USERCONTENT_DOMAIN: shared files' bytes, apart from GAIA's origin. Only
 # the content route is reachable here; the API serves a snapshot only when it
 # arrived on this host. No cookie or credential travels either way, and the
-# API's CSP sandbox gives every document an opaque origin.
+# API's CSP sandbox gives every document an opaque origin. Every snapshot shares
+# this one host, and a browser renders no PDF inside a sandbox, so PDFs download.
 {$GAIA_USERCONTENT_SITE_ADDRESS:http://usercontent.gaia.invalid} {
 	request_header -Cookie
 	request_header -Authorization
