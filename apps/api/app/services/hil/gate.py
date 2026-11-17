@@ -38,7 +38,7 @@ from app.constants.hil import (
     HILToolMessageStatus,
 )
 from app.constants.log_tags import LogTag
-from app.db.repositories.approval_ledger import approval_ledger_repository
+from app.db.repositories.approval_ledger import approval_ledger_repository, new_approval_id
 from app.models.agent_models import AgentConfigurable
 from app.models.conversation_log_models import ApprovalRequested
 from app.models.execute_models import DispatchError
@@ -47,11 +47,16 @@ from app.models.hil_models import (
     ApprovalProposal,
 )
 from app.services.analytics_service import capture
-from app.services.conversation.work_log import record_approval_requested, work_of_run
+from app.services.conversation.work_log import (
+    record_approval_decided,
+    record_approval_requested,
+    work_of_run,
+)
 from app.services.hil.bridge import (
     announce_approval,
 )
 from app.services.hil.describe import describe_call
+from app.services.hil.errors import ApprovalRequestNotFoundError
 from app.services.hil.fingerprint import approval_fingerprint
 from app.services.hil.intent import (
     AutoContext,
@@ -204,24 +209,25 @@ async def _decide_ledger(
         configurable: AgentConfigurable = configurable_of(request)
         owner = configurable.get("thread_id") or "unknown"
         task_id = await work_of_run(context.conversation_id, context.user_id, context.stream_id)
-        ap_id = await approval_ledger_repository.register(
-            ApprovalProposal(
-                conversation_id=context.conversation_id,
-                user_id=context.user_id,
-                fingerprint=fingerprint,
-                tool_name=call.name,
-                tool_key=await gated_tool_key(request, context.user_id, call.name),
-                args=call.args,
-                account=call.account,
-                summary=summary,
-                preview=clip_text(json.dumps(call.args, default=str), 500),
-                owner_agent=str(owner),
-                proposing_run_id=context.stream_id,
-                owner_run_type=context.owner_run_type,
-                owner_id=context.owner_id,
-                task_id=task_id,
-            )
+        proposal = ApprovalProposal(
+            conversation_id=context.conversation_id,
+            user_id=context.user_id,
+            fingerprint=fingerprint,
+            tool_name=call.name,
+            tool_key=await gated_tool_key(request, context.user_id, call.name),
+            args=call.args,
+            account=call.account,
+            summary=summary,
+            preview=clip_text(json.dumps(call.args, default=str), 500),
+            owner_agent=str(owner),
+            proposing_run_id=context.stream_id,
+            owner_run_type=context.owner_run_type,
+            owner_id=context.owner_id,
+            task_id=task_id,
         )
+        # Asked in the log first: a ledger row exists only for a request the log holds, and a
+        # request whose row never landed is one the sweeper withdraws.
+        ap_id = new_approval_id()
         await record_approval_requested(
             context.conversation_id,
             context.user_id,
@@ -239,6 +245,16 @@ async def _decide_ledger(
                 always_asks=await asks_every_time(call.name, call.args),
             ),
         )
+        registered = await approval_ledger_repository.register(proposal, ap_id)
+        if registered != ap_id:
+            # A concurrent identical call registered first: this request withdraws, that one stands.
+            await record_approval_decided(
+                context.conversation_id, context.user_id, ap_id, ApprovalOutcome.WITHDRAWN, None
+            )
+            winner = await approval_ledger_repository.get_by_approval_id(registered)
+            if winner is None:
+                raise ApprovalRequestNotFoundError()
+            return _live_envelope_message(call, context, winner)
         log.info(
             f"{LogTag.HIL} Ledger registered gated call",
             approval_id=ap_id,

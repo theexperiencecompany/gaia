@@ -117,6 +117,56 @@ class TestLedgerBranch:
         (_, _, request), _ = logged_work.await_args
         assert (request.task_id, request.approval_id) == ("t1", "ap_abc1234567")
 
+    async def test_a_request_the_log_refuses_leaves_no_ledger_row(
+        self, logged_work: AsyncMock
+    ) -> None:
+        """Regression for review finding 8: the row was registered first, so a failed log append left a live row with no card."""
+        ledger = _ledger()
+        logged_work.side_effect = ConnectionError("mongo blip")
+        with (
+            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
+            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
+            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()),
+        ):
+            result = await gate.decide_tool_call(_gated_request())
+
+        ledger.register.assert_not_awaited()
+        assert result is not None and "NOT performed" in str(result.content)
+
+    async def test_a_request_that_loses_the_register_race_withdraws_and_points_at_the_winner(
+        self,
+    ) -> None:
+        winner = ApprovalLedgerDocument(
+            approval_id="ap_winner00001",
+            conversation_id=CONVERSATION_ID,
+            user_id=USER_ID,
+            fingerprint="fp",
+            tool_name="GMAIL_SEND_EMAIL",
+            summary="Send it",
+            owner_agent="executor",
+        )
+        ledger = _ledger(registered_id="ap_winner00001")
+        ledger.get_by_approval_id = AsyncMock(
+            side_effect=lambda approval_id: winner if approval_id == "ap_winner00001" else None
+        )
+        withdrawn = AsyncMock()
+        with (
+            patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")),
+            patch(f"{MODULE}.approval_ledger_repository", new=ledger),
+            patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value="gmail")),
+            patch(f"{MODULE}.announce_approval", new=AsyncMock()) as announced,
+            patch(f"{MODULE}.record_approval_decided", new=withdrawn),
+        ):
+            result = await gate.decide_tool_call(_gated_request())
+
+        withdrawn.assert_awaited_once_with(
+            CONVERSATION_ID, USER_ID, "ap_abc1234567", ApprovalOutcome.WITHDRAWN, None
+        )
+        announced.assert_not_awaited()
+        assert result is not None and "ap_winner00001" in str(result.content)
+        assert "ap_abc1234567" not in str(result.content)
+
     async def test_a_call_from_no_logged_work_is_refused_and_never_registered(self) -> None:
         ledger = _ledger()
         unlogged = AsyncMock(side_effect=LookupError("run s1 is no logged work"))
@@ -403,7 +453,8 @@ class TestLedgerRegistration:
                 owner_agent="gmail_conv-1",
                 proposing_run_id=STREAM_ID,
                 task_id="t1",
-            )
+            ),
+            "ap_abc1234567",
         )
         gate_seams.announce.assert_awaited_once_with(
             GatedApproval(

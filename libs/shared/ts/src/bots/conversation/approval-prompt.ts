@@ -1,8 +1,8 @@
 /**
  * The chat prompt for approvals the work waits on. A bot has no approve/deny
  * buttons, so the user answers in words and the server's classifier reads the
- * answer; several open approvals are numbered oldest first, as the classifier
- * numbers them, and one already asked is never asked again: a later prompt names
+ * answer; several open approvals carry the numbers the server gave them when
+ * they were asked, and one already asked is never asked again: a later prompt names
  * only the new ones, under their numbers. Every word of what is asked comes from
  * the server's description: its question for one approval (which leads with the
  * change on an ask after a yes with a change), its headline in a list.
@@ -48,12 +48,23 @@ function singlePrompt(approval: ApprovalRequestedEntry): string {
   return [facts.join("\n"), APPROVAL_PROMPT_COPY.singleReply].join("\n\n");
 }
 
-/** Each approval's line under its number among every open approval. */
+/**
+ * The number the server gave the approval when it was asked, which the reply
+ * resolver reads "yes 2" against; a request logged before numbering takes its place.
+ */
+function numberOf(
+  open: readonly ApprovalRequestedEntry[],
+  approval: ApprovalRequestedEntry,
+): number {
+  return approval.number ?? open.indexOf(approval) + 1;
+}
+
+/** Each approval's line under its number. */
 function numbered(
   open: readonly ApprovalRequestedEntry[],
   named: readonly ApprovalRequestedEntry[],
 ): { lines: string; first: number } {
-  const numbers = named.map((approval) => open.indexOf(approval) + 1);
+  const numbers = named.map((approval) => numberOf(open, approval));
   const lines = named
     .map((approval, at) => {
       const { headline, change_note } = approval.description;

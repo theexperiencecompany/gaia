@@ -1007,10 +1007,9 @@ async def create_wait_indexes() -> None:
 async def create_approval_ledger_indexes() -> None:
     """Create indexes for the approval_ledger collection.
 
-    Unique on approval_id (the CAS filter keys on it). Partial unique on
-    (conversation_id, fingerprint) over live rows IS the dedup atomicity —
-    the loser of a concurrent propose reads the winner's id. (conversation_id,
-    outcome) serves open pendings; (action, executing_started_at) the reconciler.
+    Partial unique (conversation_id, fingerprint) over live rows IS the dedup atomicity: the
+    loser of a concurrent propose reads the winner's id. delivering_since serves the sweep
+    of decisions whose hand-off failed, (action, executing_started_at) the reconciler.
     """
     approval_ledger_collection = get_async_collection("approval_ledger")
     try:
@@ -1027,6 +1026,10 @@ async def create_approval_ledger_indexes() -> None:
                 [("owner_run_type", 1), ("owner_id", 1), ("created_at", 1)]
             ),
             approval_ledger_collection.create_index([("action", 1), ("executing_started_at", 1)]),
+            approval_ledger_collection.create_index(
+                "delivering_since",
+                partialFilterExpression={"delivering_since": {"$type": "date"}},
+            ),
         )
     except Exception as e:
         log.error(

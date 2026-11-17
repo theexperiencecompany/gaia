@@ -9,11 +9,13 @@ from app.models.conversation_frame_models import ResponseEvent, RetractFrame
 from app.models.conversation_log_models import (
     CommsPhase,
     Entry,
+    LoggedEntry,
     PreemptHint,
     Reply,
     ReplySettled,
     StepClaim,
     StopBy,
+    UserMessage,
 )
 from app.services.conversation.log import accept
 from app.services.conversation.ports import (
@@ -301,3 +303,30 @@ async def test_the_second_run_is_told_exactly_the_messages_still_owed_one_per_li
     assert isinstance(again, Started) and again.note is not None
     assert '#2 "text of u2"\n#3 "text of u3"' in again.note
     assert "text of u1" not in again.note
+
+
+async def test_a_store_failure_after_the_answer_settled_adds_no_failed_reply_under_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rt = Runtime()
+    rt.runner.script(
+        [
+            text("done"),
+            Answered(Replied("done")),
+            Finished(Replied("done", follow_up_actions=("Book it",))),
+        ]
+    )
+    await send(rt, user("u1"))
+    amend = rt.log.amend
+
+    async def fail_the_follow_ups(claim: StepClaim, entry: Reply | UserMessage) -> LoggedEntry:
+        if isinstance(entry, Reply) and entry.follow_up_actions:
+            raise RuntimeError("store down")
+        return await amend(claim, entry)
+
+    monkeypatch.setattr(rt.log, "amend", fail_the_follow_ups)
+    await run(rt)
+    assert [(item.outcome, item.answers) for item in await settles(rt)] == [
+        (ReplyOutcome.ANSWERED, ("u1",))
+    ]
+    assert [reply.text for reply in await replies(rt)] == ["done"]

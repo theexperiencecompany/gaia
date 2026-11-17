@@ -204,14 +204,15 @@ async def test_a_turn_that_hands_its_run_a_message_spends_a_fixed_number_of_log_
     await send(rt, user("u1"))
     calls = counting_log_calls(rt)
     await run(rt)
-    # The arrival is the one append; every read past the view is for what it logged.
+    # The arrival is the one append; every read past the view is for what it logged. The interim
+    # reply the arrival split off answers no one, so its settle reads nothing to count it.
     assert calls == Counter(
         append=1,
         claim=1,
         unsettled=2,
         set_comms=1,
         hint=4,
-        read_after=6,
+        read_after=5,
         state=4,
         append_fenced=4,
         amend=2,

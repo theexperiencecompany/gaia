@@ -20,7 +20,7 @@ from app.models.conversation_log_models import (
 from app.services.conversation.mongo_log_base import MongoLogBase
 from app.services.conversation.mongo_log_hint import publish_hint
 from app.services.conversation.ports import Appended, ClaimLost, EntryRejected
-from app.services.conversation.reducer import reduce
+from app.services.conversation.reducer import reduce, stamped
 from app.utils.errors import ConversationStoreError
 from shared.py.conversation_wire import ReplyOutcome
 
@@ -49,7 +49,11 @@ class LogAppends(MongoLogBase):
             seq = head.known.get(entry.id)
             if seq is not None:
                 return await self._duplicate(head, seq)
-            logged = LoggedEntry(seq=head.log_head + 1, at=stored_at(self._clock()), entry=entry)
+            logged = LoggedEntry(
+                seq=head.log_head + 1,
+                at=stored_at(self._clock()),
+                entry=stamped(head.state, entry),
+            )
             result = reduce(head.state, logged)
             if isinstance(result, Rejected):
                 raise EntryRejected(result.reason)

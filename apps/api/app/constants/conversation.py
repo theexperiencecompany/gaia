@@ -74,13 +74,6 @@ STILL_OPEN_NOTE = (
 STILL_OPEN_LINE = '#{seq} "{text}"'
 #: Suffix of the id of the still-open note, after the batch's anchor.
 STILL_OPEN_NOTE_SUFFIX = ":still-open"
-#: The hand-off the step makes for messages a run ended owing twice; one line per message follows.
-FALLBACK_HANDOFF_TASK = (
-    "The chat ended without answering these messages from the user. Handle each one and "
-    "answer it:\n{messages}"
-)
-FALLBACK_HANDOFF_DONE = "message #{seq} is answered or done"
-FALLBACK_HANDOFF_OUTCOME = "every one of these messages gets an answer"
 
 #: How much of an open message the still-open note quotes.
 STILL_OPEN_QUOTE_CHARS = 80
@@ -156,6 +149,8 @@ WORK_LOST_REPORT = (
 )
 # Past its expiry by this much, an approval the HIL sweep has not timed out is the conversation sweep's to settle.
 APPROVAL_EXPIRY_GRACE = timedelta(minutes=5)
+# The gate asks in the log, then registers the row: a request older than this with no row never will have one.
+APPROVAL_REGISTER_GRACE = timedelta(minutes=1)
 # How long a shutting-down process lets its running conversation steps finish.
 STEP_DRAIN_GRACE_SECONDS = 20.0
 # How far back a connect looks for work waiting on that integration.

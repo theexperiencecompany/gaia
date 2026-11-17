@@ -10,6 +10,7 @@ from app.db.repositories.approval_ledger import (
     LIVE_ROW_FILTER,
     LIVE_ROW_INDEX_NAME,
     approval_ledger_repository,
+    new_approval_id,
 )
 from app.models.hil_models import ApprovalProposal
 from app.services.hil import ledger_decide
@@ -34,7 +35,8 @@ async def _propose() -> str:
             summary="Send it",
             owner_agent=OWNER,
             task_id="t1",
-        )
+        ),
+        new_approval_id(),
     )
 
 
