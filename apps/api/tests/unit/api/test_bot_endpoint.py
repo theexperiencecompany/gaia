@@ -1140,22 +1140,28 @@ class TestBotChatStream:
     )
     @patch("app.api.v1.endpoints.bot.capture", new=MagicMock())
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    @patch("app.api.v1.endpoints.bot.charge_bot_turn")
     @patch("app.api.v1.endpoints.bot.start_turn_prep")
-    async def test_a_linked_message_starts_its_embedding_before_the_session_lookup(
+    async def test_an_admitted_message_starts_prep_after_charging_and_before_the_session(
         self,
-        mock_embed: MagicMock,
+        mock_prep: MagicMock,
+        mock_charge: AsyncMock,
         mock_bot_svc: MagicMock,
         mock_sm: MagicMock,
         mock_get_user: AsyncMock,
     ):
-        """The memory lane's embedding is a ~180ms network call: it must overlap ingress, not follow it."""
+        """Prep spends provider calls, so it waits for admission; it then overlaps the remaining lookups."""
         order: list[str] = []
 
         async def session(*_args: object, **_kwargs: object) -> str:
             order.append("session")
             return "conv-1"
 
-        mock_embed.side_effect = lambda _text: order.append("embed")
+        async def charge(*_args: object, **_kwargs: object) -> None:
+            order.append("charge")
+
+        mock_charge.side_effect = charge
+        mock_prep.side_effect = lambda _text: order.append("prep")
         mock_bot_svc.enforce_rate_limit = AsyncMock()
         mock_bot_svc.get_or_create_session = AsyncMock(side_effect=session)
         mock_sm.start_stream = AsyncMock()
@@ -1168,8 +1174,33 @@ class TestBotChatStream:
 
         await bot_chat_stream(request, body)
 
-        mock_embed.assert_called_once_with("who am I dating")
-        assert order == ["embed", "session"]
+        mock_prep.assert_called_once_with("who am I dating")
+        assert order == ["charge", "prep", "session"]
+
+    @patch(
+        "app.utils.auth_utils.user_repository.get_by_platform_id",
+        new=AsyncMock(return_value=UserDocument(id=USER_ID)),
+    )
+    @patch("app.api.v1.endpoints.bot._bot_stream_entitlement_gate")
+    @patch("app.api.v1.endpoints.bot.BotService")
+    @patch("app.api.v1.endpoints.bot.capture", new=MagicMock())
+    @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
+    @patch("app.api.v1.endpoints.bot.start_turn_prep")
+    async def test_a_refused_message_starts_no_prep(
+        self, mock_prep: MagicMock, mock_bot_svc: MagicMock, mock_gate: AsyncMock
+    ):
+        """A turn the paywall refuses must cost no provider call."""
+        mock_bot_svc.enforce_rate_limit = AsyncMock()
+        mock_gate.return_value = MagicMock()
+        body = BotChatRequest.model_validate(
+            {"message": "hello", "platform": "telegram", "platform_user_id": "tg_1"}
+        )
+        request = MagicMock()
+        request.state = _make_request()
+
+        await bot_chat_stream(request, body)
+
+        mock_prep.assert_not_called()
 
     @patch(
         "app.utils.auth_utils.user_repository.get_by_platform_id",
@@ -1179,8 +1210,8 @@ class TestBotChatStream:
     @patch("app.api.v1.endpoints.bot.capture", new=MagicMock())
     @patch("app.api.v1.endpoints.bot.require_bot_api_key", new=AsyncMock())
     @patch("app.api.v1.endpoints.bot.start_turn_prep")
-    async def test_an_unlinked_message_is_never_embedded(
-        self, mock_embed: MagicMock, mock_bot_svc: MagicMock
+    async def test_an_unlinked_message_starts_no_prep(
+        self, mock_prep: MagicMock, mock_bot_svc: MagicMock
     ):
         """A stranger's text must not reach the embedding provider before they are a GAIA user."""
         mock_bot_svc.enforce_rate_limit = AsyncMock()
@@ -1192,7 +1223,7 @@ class TestBotChatStream:
 
         await bot_chat_stream(request, body)
 
-        mock_embed.assert_not_called()
+        mock_prep.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

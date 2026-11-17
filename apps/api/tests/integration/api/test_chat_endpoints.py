@@ -546,8 +546,8 @@ class TestTheSubmittedEventKeysTheTurn:
 
 
 @pytest.mark.integration
-class TestTheMemoryEmbeddingStartsAtArrival:
-    """The memory lane's query embedding (~180ms) overlaps the endpoint's lookups instead of following them."""
+class TestTurnPrepStartsOnceAdmitted:
+    """Prep spends provider calls, so it starts once the cost budget admits the turn, then overlaps the rest."""
 
     @pytest.fixture(autouse=True)
     def mock_rate_limiter(self):
@@ -558,7 +558,7 @@ class TestTheMemoryEmbeddingStartsAtArrival:
         ):
             yield
 
-    async def test_the_embedding_starts_before_the_cost_budget_read(self, test_client):
+    async def test_prep_starts_right_after_the_cost_budget_admits_the_turn(self, test_client):
         order: list[str] = []
         with (
             patch(
@@ -583,14 +583,14 @@ class TestTheMemoryEmbeddingStartsAtArrival:
             ),
             patch(
                 "app.api.v1.endpoints.chat.start_turn_prep",
-                side_effect=lambda text: order.append(f"embed:{text}"),
+                side_effect=lambda text: order.append(f"prep:{text}"),
             ),
         ):
             cache.redis = MagicMock()
             response = await test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
 
         assert response.status_code == 200
-        assert order == [f"embed:{_VALID_BODY['message']}", "cost_budget"]
+        assert order == ["cost_budget", f"prep:{_VALID_BODY['message']}"]
 
 
 @pytest.mark.integration

@@ -154,12 +154,13 @@ async def chat_stream_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_USER_ID_REQUIRED,
         )
-    # Before the turn's lookups, so its background work overlaps them.
-    start_turn_prep(body.message)
     # Cost wall: the decorator above caps how MANY messages; this caps how
     # EXPENSIVE they were. 429s before any stream work when the day's LLM
     # spend (recorded per call by LLMAccountingMiddleware) is exhausted.
     await enforce_cost_budget(user_id, feature_key="chat_messages")
+    # Once the budget admits the turn (prep spends provider calls), and before
+    # the remaining lookups so its background work overlaps them.
+    start_turn_prep(body.message)
     # Seed the agent's home zone (DB-resolved, browser-header-healed) so its
     # "now" and schedule defaults run in the user's real zone, not stored UTC.
     user = user.with_timezone(home_timezone)

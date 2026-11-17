@@ -648,15 +648,15 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
     user_id = user.user_id
     log.set(user={"id": user_id}, outcome="success")
-    # Only once the caller is a linked GAIA user, so a stranger's text never
-    # reaches a provider; before the lookups below, so its work overlaps them.
-    start_turn_prep(body.message)
 
     if (refusal := await _bot_stream_entitlement_gate(user_id, body.platform)) is not None:
         return refusal
 
     stream_id = str(uuid4())
     await charge_bot_turn(user_id, body, stream_id)
+    # Only once admitted (linked, paid, within quota and budget): prep spends
+    # provider calls. Before the lookups below, so its work overlaps them.
+    start_turn_prep(body.message)
 
     conversation_id = await BotService.get_or_create_session(
         body.platform, body.platform_user_id, body.channel_id, user, is_dm=body.is_dm
