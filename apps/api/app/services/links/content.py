@@ -18,7 +18,7 @@ import secrets
 from urllib.parse import urlsplit
 
 import filetype
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 import pymupdf
 
 from app.agents.workspace.paths import is_inlineable_content_type
@@ -57,6 +57,7 @@ from app.services.analytics_service import analytics_day_start, capture
 from app.services.blob_store import link_content_store
 from app.services.links.access import at_most
 from app.services.links.spec import SnapshotSource
+from app.utils.image_codec import ImageCodec
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.short_links import (
     ShortLinkContentPublished,
@@ -186,6 +187,7 @@ def _thumbnail(render: RenderMode, data: bytes) -> bytes | None:
     """Render the preview image of a raster or a PDF's first page; other types get the generated card."""
     try:
         if render is RenderMode.IMAGE:
+            ImageCodec.probe(data)
             with Image.open(io.BytesIO(data)) as image:
                 return _jpeg(image)
         if render is RenderMode.PDF:
@@ -199,7 +201,7 @@ def _thumbnail(render: RenderMode, data: bytes) -> bytes | None:
                 )
                 pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale))
                 return _jpeg(pixmap.pil_image())
-    except (UnidentifiedImageError, pymupdf.FileDataError, OSError, ValueError) as exc:
+    except (pymupdf.FileDataError, OSError, ValueError) as exc:
         # A broken file still shares; only its preview image is lost.
         log.warning(
             "short_link.thumbnail_failed", render=render.value, error_type=type(exc).__name__

@@ -8,8 +8,10 @@ import hmac
 import io
 from pathlib import Path
 import random
+import struct
 from unittest.mock import AsyncMock, call, patch
 import wave
+import zlib
 
 import fakeredis.aioredis
 from PIL import Image
@@ -19,6 +21,7 @@ import time_machine
 
 from app.config.settings import settings
 from app.constants.files import BlobKind
+from app.constants.media import MAX_IMAGE_PIXELS
 from app.constants.short_links import (
     CONTENT_TOKEN_TTL_SECONDS,
     MAX_HTML_SNAPSHOT_BYTES,
@@ -92,6 +95,22 @@ def _pdf_page(width: float, height: float) -> bytes:
     with pymupdf.open() as document:
         document.new_page(width=width, height=height)
         return document.tobytes()
+
+
+def _png_chunk(kind: bytes, data: bytes) -> bytes:
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+
+def _blank_png(side: int) -> bytes:
+    """Build a 1-bit side x side PNG by hand: tiny on disk, enormous once decoded."""
+    header = struct.pack(">IIBBBBB", side, side, 1, 0, 0, 0, 0)
+    rows = (b"\x00" * (1 + (side + 7) // 8)) * side
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(rows, 9))
+        + _png_chunk(b"IEND", b"")
+    )
 
 
 PNG = _png()
@@ -318,6 +337,32 @@ class TestPublish:
             assert image.format == "JPEG"
             assert image.size == (1200, 630)
 
+    @pytest.mark.usefixtures("store", "no_takedowns", "unlimited")
+    @pytest.mark.parametrize(
+        "side",
+        [
+            # Past the pixel budget, though Pillow would still decode it whole.
+            int(MAX_IMAGE_PIXELS**0.5) + 1,
+            # Past Pillow's own decompression-bomb limit.
+            20_000,
+        ],
+    )
+    async def test_an_image_past_the_pixel_budget_shares_without_decoding_a_preview(
+        self, side: int
+    ) -> None:
+        source = _source("big.png", "image/png", _blank_png(side))
+        async with captured_wide_event() as event:
+            snapshot = await publish(OWNER, SESSION, source)
+        assert snapshot.content_id is not None
+        assert not snapshot.has_thumbnail
+        assert event["warnings"] == [
+            {
+                "msg": "short_link.thumbnail_failed",
+                "render": "image",
+                "error_type": "InvalidImageError",
+            }
+        ]
+
     async def test_a_pdf_previews_its_first_page(
         self, store: LocalVolumeBlobStore, no_takedowns: AsyncMock, unlimited: None
     ) -> None:
@@ -434,7 +479,7 @@ class TestPublish:
     @pytest.mark.parametrize(
         ("source", "render", "error_type"),
         [
-            (_source("chart.png", "image/png", PNG[:40]), "image", "UnidentifiedImageError"),
+            (_source("chart.png", "image/png", PNG[:40]), "image", "InvalidImageError"),
             (
                 _source("deck.pdf", "application/pdf", b"%PDF-1.7 truncated"),
                 "pdf",
