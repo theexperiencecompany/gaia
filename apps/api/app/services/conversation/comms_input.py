@@ -109,11 +109,7 @@ def attempt_messages(
 def _left_to_its_decision(logged: LoggedEntry) -> bool:
     """Return True for a chat run's finish that its approval's decision carries on, so the next work reports."""
     entry = logged.entry
-    return (
-        isinstance(entry, WorkFinished)
-        and entry.continued_by_decision
-        and entry.outcome is WorkOutcome.DONE
-    )
+    return isinstance(entry, WorkFinished) and entry.left_to_decision
 
 
 def absorbed_messages(

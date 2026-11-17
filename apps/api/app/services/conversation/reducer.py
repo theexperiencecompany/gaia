@@ -27,6 +27,7 @@ from app.models.conversation_log_models import (
     TodoWoke,
     Transition,
     UserMessage,
+    WithdrawApprovals,
     WorkFinished,
     WorkflowFired,
     WorkOutcome,
@@ -258,17 +259,20 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
     live = _live(state, entry.task_id)
     if live is None:
         return Transition(state=state, effects=())
-    left_to_the_user = entry.continued_by_decision and entry.outcome is WorkOutcome.DONE
-    if left_to_the_user and live.pending_approvals:
+    if entry.left_to_decision and live.pending_approvals:
         return Transition(state=_park(state, live), effects=())
     remaining = state.model_copy(
         update={"work": tuple(item for item in state.work if item.task_id != entry.task_id)}
     )
-    if left_to_the_user and entry.awaits_decision and live.decided_approvals:
+    # Nothing carries out a decision on what the ended run still asked: it is withdrawn, unanswerable.
+    withdraw: tuple[Effect, ...] = (
+        (WithdrawApprovals(approval_ids=live.pending_approvals),) if live.pending_approvals else ()
+    )
+    if entry.left_to_decision and entry.awaits_decision and live.decided_approvals:
         # Decided before its run ended: the work that decision started reports, not this ask.
-        return Transition(state=remaining, effects=())
+        return Transition(state=remaining, effects=withdraw)
     if entry.outcome is WorkOutcome.CANCELLED or live.detached:
-        return Transition(state=remaining, effects=())
+        return Transition(state=remaining, effects=withdraw)
     result = FinishedWork(
         seq=seq,
         task_id=entry.task_id,
@@ -277,7 +281,7 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
         answers=live.answers,
     )
     awaiting = remaining.model_copy(update={"finished_work": (*state.finished_work, result)})
-    return Transition(state=_wake(awaiting, seq), effects=(KickStep(),))
+    return Transition(state=_wake(awaiting, seq), effects=(*withdraw, KickStep()))
 
 
 def _open_reply(state: ConversationState, seq: int, entry: Reply) -> Transition | Rejected:
@@ -299,16 +303,32 @@ def _settle_reply(state: ConversationState, seq: int, entry: ReplySettled) -> Tr
     if entry.answers and state.open_reply_seq is not None and entry.through > state.open_reply_seq:
         # through is the newest input it answers: a reply never sits above what it answers.
         return Rejected(reason=RejectReason.REPLY_ABOVE_ITS_INPUT)
-    settled = max(state.settled_through, entry.through)
-    finished = _drop_waking_through(state, settled).model_copy(
-        update={
-            "comms": CommsPhase.IDLE,
-            "open_reply": None,
-            "open_reply_seq": None,
-            "settled_through": settled,
-        }
+    answered = _answered(state, entry)
+    finished = answered.model_copy(
+        update={"comms": CommsPhase.IDLE, "open_reply": None, "open_reply_seq": None}
     )
     return Transition(state=finished, effects=())
+
+
+def _answered(state: ConversationState, entry: ReplySettled) -> ConversationState:
+    """Settle the inputs the reply answered; the settled mark stops below the oldest one still open.
+
+    A settle that names no seqs was written before they were recorded: it settles every input through.
+    """
+    if entry.answered_seqs is None:
+        settled = max(state.settled_through, entry.through)
+        return _drop_waking_through(state, settled).model_copy(update={"settled_through": settled})
+    answered = frozenset(entry.answered_seqs)
+    left = state.model_copy(
+        update={
+            "unsettled_waking": tuple(w for w in state.unsettled_waking if w not in answered),
+            "unsettled_fires": tuple(f for f in state.unsettled_fires if f not in answered),
+            "finished_work": tuple(w for w in state.finished_work if w.seq not in answered),
+        }
+    )
+    open_below = min(left.unsettled_waking, default=entry.through + 1) - 1
+    settled = max(state.settled_through, min(entry.through, open_below))
+    return left.model_copy(update={"settled_through": settled})
 
 
 def _settle_imported(

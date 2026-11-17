@@ -74,6 +74,7 @@ from app.models.trigger_subscription_models import TriggerOrigin
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import TriggerType
 from app.services.analytics_service import capture
+from app.services.conversation.work_log import logged_decision
 from app.services.conversation_service import get_or_create_todo_conversation
 from app.services.hil.errors import ApprovalRequestNotFoundError
 from app.services.hil.ticket import approval_ticket
@@ -956,6 +957,9 @@ async def _resume_holding_lock(
         row = await approval_ledger_repository.get_by_approval_id(approval_id)
         if row is None:
             raise ApprovalRequestNotFoundError()
+        decision = await logged_decision(row.conversation_id, row.user_id, approval_id)
+        if decision is None:
+            raise ApprovalRequestNotFoundError()
         # The parked conversation, so the executor continues its own thread.
         await run_todo_on_executor(
             TodoRunRequest(
@@ -967,7 +971,7 @@ async def _resume_holding_lock(
                         kind=TodoWakeKind.APPROVAL, trigger_names=[], approval_summary=receipt
                     ),
                 ),
-                task=approval_ticket(row),
+                task=approval_ticket(row, decision),
                 conversation_id=conversation_id,
                 fresh_thread=False,
             )

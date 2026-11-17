@@ -25,7 +25,7 @@ describe("StepRow approval outcome", () => {
             [
               "call-1",
               {
-                outcome: "approved",
+                status: "approved",
                 decider: "user",
                 feedback: "Done: deleted xyz",
               },
@@ -46,7 +46,7 @@ describe("StepRow approval outcome", () => {
         pendingApprovalToolCallIds={new Set()}
         approvalOutcomeByToolCallId={
           new Map([
-            ["call-1", { outcome: "denied", decider: "user", feedback: null }],
+            ["call-1", { status: "denied", decider: "user", feedback: null }],
           ])
         }
       />,
@@ -68,7 +68,7 @@ describe("StepRow approval outcome", () => {
           pendingApprovalToolCallIds={new Set()}
           approvalOutcomeByToolCallId={
             new Map([
-              ["call-1", { outcome: "approved", action, feedback: null }],
+              ["call-1", { status: "approved", action, feedback: null }],
             ])
           }
         />,
@@ -77,10 +77,10 @@ describe("StepRow approval outcome", () => {
     },
   );
   it.each([
-    [{ outcome: "approved", decider: "auto" }, "Auto-approved"],
-    [{ outcome: "expired" }, "Expired"],
-    [{ outcome: "cancelled" }, "Cancelled"],
-    [{ outcome: "withdrawn" }, "Withdrawn"],
+    [{ status: "approved", decider: "auto" }, "Auto-approved"],
+    [{ status: "expired" }, "Expired"],
+    [{ status: "cancelled" }, "Cancelled"],
+    [{ status: "withdrawn" }, "Withdrawn"],
   ] as const)("labels an approval that ended %o", (end, label) => {
     render(
       <StepRow

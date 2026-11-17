@@ -56,7 +56,7 @@ class Quiet:
 
 @dataclass(frozen=True)
 class Drafting:
-    """Committed with nothing shown: hand-offs, which the work's own bubble shows, or text held until it is known what it answers."""
+    """Committed, having streamed only hand-offs, which the work's own bubble shows: the reply has no slot yet."""
 
     reply: Reply
 
@@ -224,6 +224,7 @@ def settled_entry(
         quote_target=quote,
         failure=failure,
         narrates=_narrated(attempt),
+        answered_seqs=tuple(logged.seq for logged in attempt.covers),
     )
 
 

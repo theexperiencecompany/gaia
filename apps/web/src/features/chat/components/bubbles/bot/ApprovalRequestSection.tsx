@@ -148,7 +148,7 @@ export default function ApprovalRequestSection({
     void submit("approve");
   };
 
-  if (data.outcome != null) return null;
+  if (data.status !== "waiting") return null;
 
   if (phase === "reconfirm") {
     return (

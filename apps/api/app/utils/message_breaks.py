@@ -82,8 +82,10 @@ def shown_so_far(text: str) -> str:
 
     Each result extends the one before, so a client can append the difference.
     """
-    tail = _BREAK_TAIL_RE.search(text)
-    return text[: tail.start()] if tail else text
+    # A stuttered break ("<NE" then "<NEW_MESSAGE_BREAK>") is dropped whole, so every tail is held.
+    while tail := _BREAK_TAIL_RE.search(text):
+        text = text[: tail.start()]
+    return text
 
 
 def append_message_bubble(message: str, bubble: str) -> str:

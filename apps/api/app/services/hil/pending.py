@@ -11,7 +11,9 @@ from app.db.repositories.conversation_log import conversation_log_repository
 from app.models.conversation_log_models import ApprovalRequested
 from app.models.hil_models import ApprovalLedgerDocument
 from app.services.conversation.runtime import runtime_ports
+from app.services.conversation.screen import approval_status
 from app.services.hil.errors import ApprovalRequestNotFoundError
+from shared.py.approvals import ApprovalStatus
 
 
 @dataclass(frozen=True)
@@ -23,28 +25,36 @@ class PendingApproval:
 
 
 async def pending_approvals(conversation_id: str, user_id: str) -> list[PendingApproval]:
-    """Return the approvals the conversation's log has pending, in the screen's order, each under its number.
+    """Return the approvals the conversation's log has waiting, in the screen's order, each under its number.
 
     A typed "yes 2" names the number the request was logged with. A request logged before
-    approvals were numbered takes its place in this list; a pending one with no ledger row raises.
+    approvals were numbered takes its place in this list; a waiting one with no ledger row raises.
+    One past its time is the sweep's to expire, never a reply's to decide.
     """
     asking = (await runtime_ports().log.state(conversation_id, user_id)).asking
-    rows = await asyncio.gather(*map(approval_ledger_repository.get_by_approval_id, asking))
-    found = [row for row in rows if row is not None]
-    if len(found) != len(asking):
-        raise ApprovalRequestNotFoundError()
     logged = await conversation_log_repository.read_log(
         conversation_id, user_id=user_id, ids=[f"approval:{approval_id}" for approval_id in asking]
     )
-    numbers = {
-        item.entry.approval_id: item.entry.number
+    requests = {
+        item.entry.approval_id: item.entry
         for item in logged or ()
         if isinstance(item.entry, ApprovalRequested)
     }
-    if set(numbers) != set(asking):
+    if set(requests) != set(asking):
+        raise ApprovalRequestNotFoundError()
+    now = datetime.now(UTC)
+    waiting = [
+        approval_id
+        for approval_id in asking
+        if approval_status(requests[approval_id], None, ended_by=None, now=now)
+        is ApprovalStatus.WAITING
+    ]
+    rows = await asyncio.gather(*map(approval_ledger_repository.get_by_approval_id, waiting))
+    found = [row for row in rows if row is not None]
+    if len(found) != len(waiting):
         raise ApprovalRequestNotFoundError()
     return [
-        PendingApproval(number=numbers[row.approval_id] or place, row=row)
+        PendingApproval(number=requests[row.approval_id].number or place, row=row)
         for place, row in enumerate(found, start=1)
     ]
 

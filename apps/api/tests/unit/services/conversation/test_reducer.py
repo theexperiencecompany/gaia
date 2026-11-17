@@ -22,6 +22,7 @@ from app.models.conversation_log_models import (
     StartAck,
     StopBy,
     Transition,
+    WithdrawApprovals,
     WorkFinished,
     WorkOutcome,
     WorkStarted,
@@ -447,6 +448,15 @@ def test_reply_settled_sets_comms_idle_and_settles_through_its_newest_answer() -
     assert result.state.settled_through == 2
     assert result.state.unsettled_waking == (3,)
     assert result.effects == ()
+
+
+def test_a_settle_naming_its_answered_seqs_leaves_an_earlier_input_it_did_not_answer_open() -> None:
+    state, _ = fold([user("u1"), user("u2"), user("u3"), opened("o")])
+    answered = settled("r", ["u2"], 2).model_copy(update={"answered_seqs": (2,)})
+    result = _accept(state, 5, answered)
+    assert result.state.unsettled_waking == (1, 3)
+    # The settled mark stays below u1, so the step still reads it.
+    assert result.state.settled_through == 0
 
 
 @pytest.mark.parametrize("outcome", list(ReplyOutcome))
@@ -914,10 +924,21 @@ def test_a_cancelled_approval_leaves_parked_work_for_its_finish_to_report() -> N
     assert result.effects == (KickStep(),)
 
 
-def test_a_todo_or_workflow_run_waiting_on_an_approval_still_reports_its_finish() -> None:
-    result = _accept(_before_park(), 6, finished("f", "t1"))
+@pytest.mark.parametrize(
+    "ending",
+    [
+        finished("f", "t1"),
+        _left_to_the_user("f", "t1").model_copy(update={"outcome": WorkOutcome.FAILED}),
+    ],
+)
+def test_a_run_ending_while_its_approval_waits_withdraws_it_and_reports_its_finish(
+    ending: WorkFinished,
+) -> None:
+    """A todo, workflow or failed chat run is gone, so nothing could carry out a decision on what it asked."""
+    result = _accept(_before_park(), 6, ending)
     assert result.state.work == ()
-    assert result.effects == (KickStep(),)
+    assert result.state.asking == ()
+    assert result.effects == (WithdrawApprovals(approval_ids=("ap1",)), KickStep())
 
 
 def test_a_stop_cancels_parked_work_and_the_approval_it_waits_on() -> None:

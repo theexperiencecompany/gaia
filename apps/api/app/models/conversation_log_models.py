@@ -287,6 +287,11 @@ class WorkFinished(_Entry):
     # The run ended asking the user to decide; an approval it asked that is already decided answers it.
     awaits_decision: bool = False
 
+    @property
+    def left_to_decision(self) -> bool:
+        """Return whether the run ended leaving its proposals to the user, so its approvals still wait."""
+        return self.continued_by_decision and self.outcome is WorkOutcome.DONE
+
 
 class IntegrationNeeded(_Entry):
     """Work in this conversation is waiting on the user to connect an integration."""
@@ -352,6 +357,9 @@ class ReplySettled(_Entry):
     narrates: tuple[str, ...] = ()
     # Settles an imported Reply, which never opened; old history may hold a reply to nothing.
     imported: bool = False
+    # The seqs of the inputs this reply answered, as its closures named them; None on a settle
+    # written before, which settles every input through.
+    answered_seqs: tuple[int, ...] | None = None
 
     @model_validator(mode="after")
     def _answers_unless_cut_short(self) -> "ReplySettled":
@@ -515,6 +523,14 @@ class CancelWork(BaseModel):
     approval_ids: tuple[str, ...] = ()
 
 
+class WithdrawApprovals(BaseModel):
+    """Close the approvals a run left waiting when it ended: nothing can carry out a decision on them now."""
+
+    model_config = WIRE_CONFIG
+
+    approval_ids: tuple[str, ...] = Field(min_length=1)
+
+
 class StartAck(BaseModel):
     """React to a user message the moment it is accepted."""
 
@@ -523,7 +539,7 @@ class StartAck(BaseModel):
     message_id: str
 
 
-Effect = KickStep | Preempt | CancelWork | StartAck
+Effect = KickStep | Preempt | CancelWork | WithdrawApprovals | StartAck
 
 
 class Transition(BaseModel):

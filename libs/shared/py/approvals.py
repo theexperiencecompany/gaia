@@ -46,3 +46,16 @@ DECIDED_OUTCOMES: frozenset[ApprovalOutcome] = frozenset(
 UndecidedOutcome = Literal[
     ApprovalOutcome.EXPIRED, ApprovalOutcome.CANCELLED, ApprovalOutcome.WITHDRAWN
 ]
+
+
+class ApprovalStatus(StrEnum):
+    """Where an approval stands, as the conversation log has it: the one status every surface renders."""
+
+    WAITING = "waiting"
+    APPROVED = "approved"
+    # Approved with a change the user asked for: the stored call never runs as it stands.
+    APPROVED_WITH_CHANGE = "approved_with_change"
+    DENIED = "denied"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+    WITHDRAWN = "withdrawn"

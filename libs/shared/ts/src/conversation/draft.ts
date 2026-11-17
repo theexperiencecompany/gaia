@@ -23,8 +23,6 @@ export function applyReplyDelta(
       bubbles[delta.bubble] = (bubbles[delta.bubble] ?? "") + delta.text;
       return { ...draft, bubbles };
     }
-    case "bubbles":
-      return { ...draft, bubbles: delta.bubbles };
     case "cards":
       return { ...draft, tool_data: delta.tool_data, timeline: delta.timeline };
     case "follow_up_actions":

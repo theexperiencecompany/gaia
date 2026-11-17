@@ -92,7 +92,7 @@ from app.constants.trigger_gates import GateAuthor, SystemGatePreset
 from app.constants.vfs import SYSTEM_USER_ID
 from app.constants.waits import WAIT_MET_TRIGGER
 from app.db.repositories.todos import todo_repository
-from app.models.conversation_log_models import TodoReportForm
+from app.models.conversation_log_models import ApprovalDecided, TodoReportForm
 from app.models.hil_models import ApprovalLedgerDocument
 from app.models.notification.notification_models import (
     NotificationSourceEnum,
@@ -150,6 +150,7 @@ from shared.py.analytics.context import (
     current_analytics_context,
     worker_context,
 )
+from shared.py.approvals import ApprovalDecider, ApprovalOutcome
 from shared.py.wide_events import log
 from tests.helpers import (
     UNKNOWN_USER_ID,
@@ -4089,8 +4090,9 @@ class _ResumeRun:
         return [f"[{c.args[2].value}] {c.args[3]}" for c in self.timeline.call_args_list]
 
 
-def _approved_ledger_row() -> AbstractContextManager[AsyncMock]:
-    """Serve the ledger row ap_1 a resume redeems."""
+@contextmanager
+def _approved_ledger_row() -> Iterator[None]:
+    """Serve the ledger row ap_1 a resume redeems, and the log's approval of it."""
     row = ApprovalLedgerDocument(
         approval_id="ap_1",
         conversation_id="conv-parked",
@@ -4100,10 +4102,20 @@ def _approved_ledger_row() -> AbstractContextManager[AsyncMock]:
         args={},
         summary="Send briefing",
     )
-    return patch(
-        f"{MODULE}.approval_ledger_repository.get_by_approval_id",
-        AsyncMock(side_effect=lambda approval_id: row if approval_id == "ap_1" else None),
+    approved = ApprovalDecided(
+        id="approval:ap_1:decided",
+        approval_id="ap_1",
+        outcome=ApprovalOutcome.APPROVED,
+        decider=ApprovalDecider.USER,
     )
+    with (
+        patch(
+            f"{MODULE}.approval_ledger_repository.get_by_approval_id",
+            AsyncMock(side_effect=lambda approval_id: row if approval_id == "ap_1" else None),
+        ),
+        patch(f"{MODULE}.logged_decision", AsyncMock(return_value=approved)),
+    ):
+        yield
 
 
 class TestResumeTrackedTodo:

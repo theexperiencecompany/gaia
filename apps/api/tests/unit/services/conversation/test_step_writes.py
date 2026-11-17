@@ -13,7 +13,7 @@ from app.services.conversation.step import advance
 from shared.py.analytics.catalog.chat import ChatMessageCompleted
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
-    BubblesDelta,
+    BubbleTextDelta,
     ReplyDeltaFrame,
     ReplyOutcome,
 )
@@ -149,8 +149,8 @@ async def test_a_reply_opening_below_a_message_that_arrived_after_commit_quotes_
     assert set(rt.frames.conversations) == {CONVERSATION}
 
 
-async def test_bubbles_the_saved_reply_no_longer_has_are_taken_back_from_clients() -> None:
-    # A stuttered break sentinel reads as text until the whole one lands, and the split drops both.
+async def test_a_stuttered_break_is_never_shown_so_nothing_shown_is_taken_back() -> None:
+    # The split drops a stuttered sentinel whole, so the stream holds it until it reads as text or a break.
     rt = Runtime()
     rt.runner.script(
         [
@@ -165,7 +165,7 @@ async def test_bubbles_the_saved_reply_no_longer_has_are_taken_back_from_clients
     deltas = [f.payload for f in rt.frames.published if isinstance(f, ReplyDeltaFrame)]
     [reply] = await replies(rt)
     assert reply.text == "Hi"
-    assert deltas[-1] == BubblesDelta(bubbles=("Hi",))
+    assert deltas == [BubbleTextDelta(bubble=0, text="Hi")]
 
 
 async def test_a_plain_turn_reads_nothing_its_own_writes_already_told_it() -> None:

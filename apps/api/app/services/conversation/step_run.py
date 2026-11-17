@@ -217,10 +217,6 @@ async def _handle(
             await _show(ports, attempt, payload)
 
 
-def _held(attempt: Attempt, payload: StreamPayload) -> bool:
-    return is_text(payload) and len(still_open(attempt.ledger)) > 1
-
-
 def _commit_quietly(attempt: Attempt) -> None:
     if attempt.progress is None:
         attempt.progress = Quiet(reason=CommitReason.MODEL_OUTPUT)
@@ -229,16 +225,14 @@ def _commit_quietly(attempt: Attempt) -> None:
 async def _show(ports: RuntimePorts, attempt: Attempt, payload: StreamPayload) -> None:
     """Stream the delta; the reply's entry opens holding its first visible delta, so it appears below everything shown before it.
 
-    A hand-off alone opens nothing: the work's bubble, at its WorkStarted, shows it. Text written
-    while several messages are open is held until a closing tool or the run's end says which it
-    answers, so the reply opens quoting the right one and is never shown twice.
+    A hand-off alone opens nothing: the work's bubble, at its WorkStarted, shows it.
     """
     before = base_reply(attempt)
     if isinstance(payload, ResponseEvent | MessageBoundaryEvent):
         attempt.text = attempt.text.take(payload)
     folded = folded_reply(before, payload, attempt.text)
     showing = isinstance(attempt.progress, Showing)
-    if not showing and is_visible(payload) and not _held(attempt, payload):
+    if not showing and is_visible(payload):
         folded = await opening_reply(ports, attempt, folded)
         opened = await append_opening(ports, attempt, folded)
         showing = True
@@ -248,8 +242,6 @@ async def _show(ports: RuntimePorts, attempt: Attempt, payload: StreamPayload) -
         if is_text(payload):
             first_text_shown()
     attempt.progress = Showing(reply=folded) if showing else Drafting(reply=folded)
-    if not showing:
-        return
     for change in reply_deltas(
         before, folded, payload, attempt.shown, attempt.bubbles(ports.links)
     ):

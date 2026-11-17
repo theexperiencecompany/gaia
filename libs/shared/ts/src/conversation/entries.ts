@@ -4,6 +4,7 @@ import type {
   ApprovalOutcome,
   ApprovalRequestEntry,
   ApprovalRequested,
+  ApprovalStatus,
   ConversationSource,
   FailureReason,
   FileData,
@@ -198,6 +199,16 @@ const APPROVAL_OUTCOMES = [
   "withdrawn",
 ] as const satisfies readonly ApprovalOutcome[];
 
+const APPROVAL_STATUSES = [
+  "waiting",
+  "approved",
+  "approved_with_change",
+  "denied",
+  "expired",
+  "cancelled",
+  "withdrawn",
+] as const satisfies readonly ApprovalStatus[];
+
 const ApprovalCardSchema = z.object({
   tool_name: z.string(),
   tool_category: z.string(),
@@ -209,6 +220,7 @@ const ApprovalCardSchema = z.object({
     integration_name: z.string().nullable(),
     description: ApprovalDescriptionSchema,
     args_preview: z.record(z.string(), z.unknown()),
+    status: z.enum(APPROVAL_STATUSES),
     outcome: z.enum(APPROVAL_OUTCOMES).nullable(),
     decider: z.enum(["user", "auto"]).nullable().optional(),
     action: z

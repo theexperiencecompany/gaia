@@ -1,7 +1,7 @@
 """A reply's text as it streams, and the bubble deltas that carry it to clients.
 
 The server turns text into bubbles in one place, screen_bubbles, for the live deltas and the settled
-screen alike, and a client only appends to the bubble a delta names, so live and reloaded bubbles match.
+screen alike, and shown text only grows: a client only appends to the bubble a delta names.
 """
 
 from __future__ import annotations
@@ -10,9 +10,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from app.models.conversation_frame_models import MessageBoundaryEvent, ResponseEvent
+from app.utils.errors import ShownTextTakenBackError
 from app.utils.file_links import FileLinks, unfinished_path_start
-from app.utils.message_breaks import split_message_bubbles
-from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, BubblesDelta, BubbleTextDelta
+from app.utils.message_breaks import shown_so_far, split_message_bubbles
+from shared.py.conversation_wire import NEW_MESSAGE_BREAKER, BubbleTextDelta
 
 
 @dataclass(frozen=True)
@@ -47,10 +48,10 @@ class ReplyText:
 
     @property
     def shown(self) -> str:
-        """Return the text a client may see yet: all of it but a sandbox path the open message is still writing."""
+        """Return the text a client may see yet: all of it but a break or sandbox path the open message is still writing."""
         if len(self.raw) == self.message_start:
             return self.text
-        open_message = self.raw[self.message_start :]
+        open_message = shown_so_far(self.raw[self.message_start :])
         return _joined_bubbles(
             self.raw[: self.message_start] + open_message[: unfinished_path_start(open_message)]
         )
@@ -65,22 +66,22 @@ def screen_bubbles(text: str, conversation_id: str, links: FileLinks) -> tuple[s
     return tuple(split_message_bubbles(links.resolve(text, conversation_id)))
 
 
-def bubble_deltas(shown: Sequence[str], now: Sequence[str]) -> list[BubbleTextDelta | BubblesDelta]:
-    """Return the deltas that carry a client from the shown bubbles to now.
+def bubble_deltas(shown: Sequence[str], now: Sequence[str]) -> list[BubbleTextDelta]:
+    """Return the deltas that carry a client from the shown bubbles to now: text only appends.
 
-    Text only appends to the last shown bubble or opens later ones. When shown text changes
-    instead (a sandbox path resolved into a link, a bubble re-split as more text arrived),
-    every bubble is replaced at once, in place, never blanked first.
+    The one place shown text is guarded: now short of shown is held until it reads past it, and
+    now that changes shown text raises, since no client takes back what it showed.
     """
     if NEW_MESSAGE_BREAKER.join(shown).startswith(NEW_MESSAGE_BREAKER.join(now)):
         return []
-    if list(now[: max(len(shown) - 1, 0)]) != list(shown[:-1]) or len(now) < len(shown):
-        return [BubblesDelta(bubbles=tuple(now))]
-    if shown and not now[len(shown) - 1].startswith(shown[-1]):
-        return [BubblesDelta(bubbles=tuple(now))]
-    deltas: list[BubbleTextDelta | BubblesDelta] = []
-    for bubble in range(len(now)):
-        before = shown[bubble] if bubble < len(shown) else ""
-        if now[bubble] != before:
-            deltas.append(BubbleTextDelta(bubble=bubble, text=now[bubble][len(before) :]))
-    return deltas
+    rewrites = list(now[: max(len(shown) - 1, 0)]) != list(shown[:-1]) or len(now) < len(shown)
+    if rewrites or (shown and not now[len(shown) - 1].startswith(shown[-1])):
+        raise ShownTextTakenBackError(
+            message="a reply's bubbles would change text a client already showed",
+            meta={"shown": list(shown), "now": list(now)},
+        )
+    return [
+        BubbleTextDelta(bubble=bubble, text=now[bubble][len(before) :])
+        for bubble in range(len(now))
+        if now[bubble] != (before := shown[bubble] if bubble < len(shown) else "")
+    ]

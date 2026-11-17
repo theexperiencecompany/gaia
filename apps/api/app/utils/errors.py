@@ -158,6 +158,11 @@ class ShownReplyRetriedError(AppError):
     """A model call restarted after the user saw part of its reply; the reply fails as shown, never retracted."""
 
 
+@dataclass
+class ShownTextTakenBackError(AppError):
+    """Bubbles a client already showed would change; shown text only grows, so this is a server bug."""
+
+
 __all__ = [
     "AppError",
     "ConversationAlreadyExistsError",
@@ -168,6 +173,7 @@ __all__ = [
     "IntegrationNotConnectedError",
     "RepositoryMisconfiguredError",
     "ShownReplyRetriedError",
+    "ShownTextTakenBackError",
     "UnmigratedConversationError",
     "create_error",
 ]

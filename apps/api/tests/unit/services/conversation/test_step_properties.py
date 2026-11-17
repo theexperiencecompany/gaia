@@ -52,7 +52,6 @@ from app.services.conversation.step import advance
 from app.utils.errors import ShownReplyRetriedError
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
-    BubblesDelta,
     BubbleTextDelta,
     CardsDelta,
     ReplyDeltaFrame,
@@ -448,8 +447,6 @@ def _streamed(deltas: list[ReplyDeltaFrame]) -> tuple[str, tuple[ToolDataEntry, 
                 if bubble == len(bubbles):
                     bubbles.append("")
                 bubbles[bubble] += more
-            case BubblesDelta(bubbles=now):
-                bubbles = list(now)
             case CardsDelta(tool_data=now):
                 cards = now
             case _:

@@ -3,7 +3,8 @@
 import pytest
 
 from app.services.conversation.reply_text import bubble_deltas, screen_bubbles
-from shared.py.conversation_wire import BubblesDelta, BubbleTextDelta
+from app.utils.errors import ShownTextTakenBackError
+from shared.py.conversation_wire import BubbleTextDelta
 from tests.helpers import TEST_FILE_LINKS
 
 
@@ -38,10 +39,11 @@ def test_streamed_text_only_appends_to_the_last_bubble_or_opens_later_ones(
         (("ab", "c"), ("ab", "x", "c")),
     ],
 )
-def test_text_the_model_took_back_replaces_every_bubble(
+def test_bubbles_that_would_change_shown_text_are_refused(
     shown: tuple[str, ...], now: tuple[str, ...]
 ) -> None:
-    assert bubble_deltas(shown, now) == [BubblesDelta(bubbles=now)]
+    with pytest.raises(ShownTextTakenBackError):
+        bubble_deltas(shown, now)
 
 
 @pytest.mark.parametrize(

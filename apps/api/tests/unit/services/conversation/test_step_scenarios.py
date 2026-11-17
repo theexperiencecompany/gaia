@@ -55,7 +55,6 @@ from app.services.conversation.screen import TOOL_CALL_CARD, project_screen
 from app.services.conversation.step import advance
 from shared.py.conversation_wire import (
     NEW_MESSAGE_BREAKER,
-    BubblesDelta,
     BubbleTextDelta,
     CardsDelta,
     FailureReason,
@@ -138,9 +137,7 @@ def streamed_bubbles(deltas: list[ReplyDelta]) -> list[tuple[str, ...]]:
     shown: tuple[str, ...] = ()
     states = []
     for delta in deltas:
-        if isinstance(delta, BubblesDelta):
-            shown = delta.bubbles
-        elif isinstance(delta, BubbleTextDelta):
+        if isinstance(delta, BubbleTextDelta):
             grown = list(shown) + [""] * (delta.bubble + 1 - len(shown))
             grown[delta.bubble] += delta.text
             shown = tuple(grown)
@@ -368,6 +365,37 @@ class StepScenarios:
         assert [settled.quote_target for settled in await settles(rt)] == [None, None, "u1"]
         await assert_quiet(rt)
 
+    async def test_a_side_question_answered_while_research_runs_leaves_the_research_open(
+        self, rt: Runtime
+    ) -> None:
+        """Regression for live-run #1/#15: the side question's settle names only its own message."""
+        open_while_researching: list[tuple[int, ...]] = []
+
+        async def research_still_open() -> None:
+            state = await rt.log.state(CONVERSATION, USER)
+            open_while_researching.append(state.unsettled_waking)
+
+        rt.runner.script(
+            [
+                ModelOutput(True),
+                card(),
+                Do(arrive(rt, user("u2"))),
+                ModelOutput(True),
+                text("36"),
+                Close(seqs=(3,)),
+                ModelOutput(True),
+                Do(research_still_open),
+                text("the summary"),
+                Close(seqs=(1,)),
+                Finished(Replied("the summary")),
+            ]
+        )
+        await send(rt, user("u1"))
+        await run(rt)
+        assert open_while_researching == [(1,)]
+        assert [settled.answered_seqs for settled in await settles(rt)] == [(), (3,), (1,)]
+        await assert_quiet(rt)
+
     async def test_one_reply_naming_two_messages_answers_both(self, rt: Runtime) -> None:
         rt.runner.script(
             [
@@ -411,7 +439,7 @@ class StepScenarios:
         assert (first, again.batch) == (Started(batch=(1,), context=()), (1,))
         assert again.note is not None and '#1 "text of u1"' in again.note
 
-    async def test_words_ending_a_run_with_two_messages_open_answer_both_in_one_run(
+    async def test_a_run_ending_with_two_messages_open_is_told_and_naming_both_answers_them(
         self, rt: Runtime
     ) -> None:
         rt.runner.script(
@@ -422,11 +450,17 @@ class StepScenarios:
                 ModelOutput(True),
                 text("36 and the summary"),
                 Finished(Replied("36 and the summary")),
-            ]
+            ],
+            [Close(seqs=(1, 3)), Finished(Silent())],
         )
         await send(rt, user("u1"))
         await run(rt)
-        assert rt.runner.calls == [Started(batch=(1,), context=()), Absorbed((3,))]
+        first, absorbed, again = rt.runner.calls
+        assert (first, absorbed) == (Started(batch=(1,), context=()), Absorbed((3,)))
+        assert isinstance(again, Started)
+        assert again.note is not None and '#1 "text of u1"' in again.note
+        assert '#3 "text of u2"' in again.note
+        assert "just name it" in again.note
         assert [reply.text for reply in await replies(rt)] == ["on it", "36 and the summary"]
         assert await answered(rt) == [
             (ReplyOutcome.INTERIM, ()),
@@ -804,34 +838,6 @@ class StepScenarios:
             (ReplyOutcome.ANSWERED, ("u2",)),
         ]
         assert [settled.quote_target for settled in await settles(rt)] == ["u1", "u2"]
-        # The quote a platform sends with the first bubble is the reply's, fixed as it opens.
-        assert [reply.quote_target for reply in await replies(rt)] == ["u1", "u2"]
-
-    async def test_two_messages_answered_by_one_unnamed_reply_show_it_once_quoting_neither(
-        self, rt: Runtime
-    ) -> None:
-        """Regression (Telegram edge 04): the answer was shown, then shown again by a second run."""
-        rt.runner.script(
-            [
-                Forgetful(),
-                text("Canberra."),
-                text(NEW_MESSAGE_BREAKER),
-                text("Eight."),
-                Finished(Replied("Canberra.\nEight.")),
-            ],
-            [text("Canberra. Eight."), Finished(Replied("Canberra. Eight."))],
-        )
-        await send(rt, user("u1"))
-        await send(rt, user("u2"))
-        await run(rt)
-        assert len(rt.runner.calls) == 1
-        [reply] = await replies(rt)
-        assert (reply.text, reply.quote_target) == (
-            f"Canberra.{NEW_MESSAGE_BREAKER}Eight.",
-            None,
-        )
-        assert await answered(rt) == [(ReplyOutcome.ANSWERED, ("u1", "u2"))]
-        await assert_quiet(rt)
 
     async def test_a_result_after_a_silent_hand_off_does_not_quote_its_request(
         self, rt: Runtime

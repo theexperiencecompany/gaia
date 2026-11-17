@@ -728,6 +728,9 @@
               }
             ]
           },
+          "status": {
+            "$ref": "#/components/schemas/ApprovalStatus"
+          },
           "tool_call_id": {
             "title": "Tool Call Id",
             "type": "string"
@@ -740,6 +743,7 @@
           "integration_name",
           "description",
           "args_preview",
+          "status",
           "outcome",
           "feedback",
           "auto_reason"
@@ -860,6 +864,20 @@
         ],
         "title": "ApprovalRequested",
         "type": "object"
+      },
+      "ApprovalStatus": {
+        "description": "Where an approval stands, as the conversation log has it: the one status every surface renders.",
+        "enum": [
+          "waiting",
+          "approved",
+          "approved_with_change",
+          "denied",
+          "expired",
+          "cancelled",
+          "withdrawn"
+        ],
+        "title": "ApprovalStatus",
+        "type": "string"
       },
       "ApprovePairingRequest": {
         "description": "The signed-in browser approves a pairing by its short user_code.",
@@ -2734,31 +2752,6 @@
           "text"
         ],
         "title": "BubbleTextDelta",
-        "type": "object"
-      },
-      "BubblesDelta": {
-        "additionalProperties": false,
-        "description": "The reply's bubbles as they now stand, replacing every one shown: text the model took back is gone.",
-        "properties": {
-          "bubbles": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Bubbles",
-            "type": "array"
-          },
-          "type": {
-            "const": "bubbles",
-            "default": "bubbles",
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "bubbles"
-        ],
-        "title": "BubblesDelta",
         "type": "object"
       },
       "BudgetWindow": {
@@ -15940,7 +15933,6 @@
             "discriminator": {
               "mapping": {
                 "bubble_text": "#/components/schemas/BubbleTextDelta",
-                "bubbles": "#/components/schemas/BubblesDelta",
                 "cards": "#/components/schemas/CardsDelta",
                 "follow_up_actions": "#/components/schemas/FollowUpsDelta"
               },
@@ -15949,9 +15941,6 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/BubbleTextDelta"
-              },
-              {
-                "$ref": "#/components/schemas/BubblesDelta"
               },
               {
                 "$ref": "#/components/schemas/CardsDelta"

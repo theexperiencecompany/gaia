@@ -51,6 +51,7 @@ from app.services.conversation.screen import (
 from app.services.conversation.screen_patches import ScreenItemMoved, ScreenTracker, screen_patches
 from app.utils.artifact_utils import FILE_LINKS
 from app.utils.message_breaks import split_message_bubbles
+from shared.py.approvals import ApprovalStatus
 from shared.py.conversation_wire import (
     FailureReason,
     ImageData,
@@ -65,6 +66,7 @@ from tests.helpers import REPO_ROOT, TEST_FILE_LINKS
 from tests.hypothesis_profiles import property_examples
 from tests.unit.services.conversation.log_helpers import (
     asked,
+    at,
     decided,
     finished,
     logged,
@@ -565,6 +567,49 @@ def test_a_run_that_ended_leaving_its_approval_to_the_user_still_asks_for_it() -
     assert parked.kind is ScreenItemKind.WORK
     assert [request.approval_id for request in parked.asking] == ["a1"]
     assert (parked.status, parked.asked_seq) == (WorkStatus.AWAITING_APPROVAL, 3)
+
+
+def test_an_approval_its_run_left_waiting_when_it_ended_is_withdrawn_and_no_longer_asked() -> None:
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    ended = WorkFinished(id="fin:t1", task_id="t1", outcome=WorkOutcome.DONE, report="done")
+    log = [
+        logged(1, user("u1")),
+        logged(2, started),
+        logged(3, asked("ask:a1", "t1", "a1")),
+        logged(4, ended),
+    ]
+    [_, work] = project_screen(CONVERSATION_ID, log, TEST_FILE_LINKS)
+    assert work.kind is ScreenItemKind.WORK
+    assert (work.asking, work.status) == ((), WorkStatus.DONE)
+    [card] = work.approvals
+    assert (card.data.status, card.data.outcome) == (ApprovalStatus.WITHDRAWN, None)
+
+
+def test_an_approval_reads_expired_once_the_log_moves_past_its_time() -> None:
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    request = asked("ask:a1", "t1", "a1").model_copy(update={"expires_at": at(3)})
+    log = [logged(1, user("u1")), logged(2, started), logged(3, request)]
+    [_, waiting] = project_screen(CONVERSATION_ID, log, TEST_FILE_LINKS)
+    assert waiting.kind is ScreenItemKind.WORK
+    assert [card.data.status for card in waiting.approvals] == [ApprovalStatus.WAITING]
+    [_, lapsed, _] = project_screen(CONVERSATION_ID, [*log, logged(4, user("u2"))], TEST_FILE_LINKS)
+    assert lapsed.kind is ScreenItemKind.WORK
+    assert lapsed.asking == ()
+    assert [card.data.status for card in lapsed.approvals] == [ApprovalStatus.EXPIRED]
+
+
+def test_a_yes_with_a_change_reads_approved_with_change() -> None:
+    started = WorkStarted(id="work:t1", task_id="t1", cause_through=1, answers=("u1",))
+    change = decided("dec:a1", "a1").model_copy(update={"feedback": "cc Sam"})
+    log = [
+        logged(1, user("u1")),
+        logged(2, started),
+        logged(3, asked("ask:a1", "t1", "a1")),
+        logged(4, change),
+    ]
+    [_, work] = project_screen(CONVERSATION_ID, log, TEST_FILE_LINKS)
+    assert work.kind is ScreenItemKind.WORK
+    assert [card.data.status for card in work.approvals] == [ApprovalStatus.APPROVED_WITH_CHANGE]
 
 
 def test_a_work_item_says_where_the_newest_approval_it_waits_on_was_logged() -> None:

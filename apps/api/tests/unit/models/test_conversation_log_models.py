@@ -45,7 +45,6 @@ from app.models.stream_events import (
     ToolOutputPayload,
 )
 from shared.py.conversation_wire import (
-    BubblesDelta,
     BubbleTextDelta,
     CardsDelta,
     FailureReason,
@@ -253,7 +252,6 @@ def test_every_work_delta_round_trips_with_its_payload_type(payload: StreamPaylo
 
 _REPLY_DELTAS: list[ReplyDelta] = [
     BubbleTextDelta(bubble=1, text="more"),
-    BubblesDelta(bubbles=("one", "two")),
     CardsDelta(
         tool_data=({"tool_name": "search", "data": {"q": "x"}},),
         timeline=ToolTimeline(),

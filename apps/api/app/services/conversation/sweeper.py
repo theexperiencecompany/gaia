@@ -33,6 +33,7 @@ from app.models.conversation_log_models import (
 )
 from app.services.conversation.ports import RuntimePorts
 from app.services.conversation.runtime import runtime_ports
+from app.services.conversation.screen import approval_status
 from app.services.conversation.work_log import (
     WorkReport,
     record_work_finished,
@@ -42,7 +43,7 @@ from app.services.hil.ledger_decide import (
     expire_ledger_approval,
     hand_off_stale_decision,
 )
-from shared.py.approvals import ApprovalOutcome
+from shared.py.approvals import ApprovalOutcome, ApprovalStatus
 from shared.py.wide_events import log
 
 
@@ -165,8 +166,11 @@ async def _end_undecidable(
     if not isinstance(requested, ApprovalRequested):
         raise TypeError(f"entry {requested.id} holds a {requested.kind}, not an approval request")
     now = clock()
-    expires_at = requested.expires_at
-    expired = expires_at is not None and expires_at + APPROVAL_EXPIRY_GRACE < now
+    # The grace lets a decision made at the deadline land before the sweep expires it.
+    expired = (
+        approval_status(requested, None, ended_by=None, now=now - APPROVAL_EXPIRY_GRACE)
+        is ApprovalStatus.EXPIRED
+    )
     row = await approval_ledger_repository.get_by_approval_id(requested.approval_id)
     if row is not None:
         return expired and await expire_ledger_approval(row)

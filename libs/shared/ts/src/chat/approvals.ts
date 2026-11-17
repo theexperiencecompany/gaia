@@ -56,30 +56,31 @@ export function formatApprovalAge(
   return `asked ${Math.floor(hours / 24)}d ago`;
 }
 
-/** A decided approval — no longer actionable, kept as a receipt. */
+/** An approval no longer waiting — not actionable, kept as a receipt. */
 export function isSettled(end: ApprovalEnd): boolean {
-  return end.outcome != null;
+  return end.status !== "waiting";
 }
 
-/** Pick a card's words from its outcome, decider and action: the one rule every client reads. */
+/** Pick a card's words from the status the server gave it, its decider and action: the one rule every client reads. */
 export function approvalLabel<T>(
   end: ApprovalEnd,
   labels: ApprovalLabels<T>,
 ): T {
-  if (end.outcome == null) return labels.pending;
-  if (end.outcome === "approved" && end.action)
-    return labels.action[end.action];
-  if (end.outcome === "approved" && end.decider === "auto")
+  if (end.status === "waiting") return labels.pending;
+  if (end.status === "approved" && end.action) return labels.action[end.action];
+  if (end.status === "approved" && end.decider === "auto")
     return labels.autoApproved;
-  return labels.outcome[end.outcome];
+  return labels.status[end.status];
 }
 
 const OUTCOME_LINES: ApprovalLabels<(data: ApprovalRequestData) => string> = {
   pending: () => "",
   autoApproved: (data) =>
     data.auto_reason?.trim() || "Matched what you asked for",
-  outcome: {
+  status: {
     approved: () => "You approved this",
+    approved_with_change: (data) =>
+      `You approved this with a change: ${data.feedback?.trim()}`,
     denied: (data) => data.feedback?.trim() || "You declined this",
     expired: () => "Expired without a response",
     cancelled: () => "Cancelled before you decided",
