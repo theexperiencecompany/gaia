@@ -55,6 +55,7 @@ from app.services.conversation.ports import (
     Finished,
     FoldPlan,
     Kept,
+    KeptReader,
     RunEvent,
     StepLimitReached,
 )
@@ -246,14 +247,19 @@ class CommsGraphRunner:
         state = {**turn.state, "messages": messages, "verbatim_message_ids": verbatim}
         return CommsGraphRun(claim, graph, config, turn, state, self._confirm)
 
-    async def plan_fold(self, conversation_id: str, user_id: str, kept: Kept) -> FoldPlan | None:
-        """Summarize the thread's oldest turns past its budget, writing nothing; None under it."""
+    async def plan_fold(
+        self, conversation_id: str, user_id: str, kept: KeptReader
+    ) -> FoldPlan | None:
+        """Summarize the thread's oldest turns past its budget, writing nothing; None under it, before reading kept."""
         graph = await GraphManager.get_graph(GraphName.COMMS)
         config = _thread_config(conversation_id, user_id)
         thread = await _thread(graph, config)
+        if not self._fold.should_fold(GaiaAgentState(messages=thread)):
+            return None
+        keep = await kept()
         state = GaiaAgentState(
             messages=thread,
-            verbatim_message_ids=verbatim_message_ids(thread, kept.owed, kept.pinned),
+            verbatim_message_ids=verbatim_message_ids(thread, keep.owed, keep.pinned),
         )
         update: SummaryUpdate | None = await self._fold.afold(state, config)
         if update is None:

@@ -170,7 +170,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         go with it, unsummarized. The update is an in-place delta (summary takes the first
         folded id, the rest are removed) so the checkpoint keeps it ahead of the kept tail.
         """
-        if not self._should_trigger_summarization(state):
+        if not self.should_fold(state):
             return None
 
         conversation = [m for m in state["messages"] if slot_of(m) not in LEADING_SLOTS]
@@ -290,7 +290,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
             log.error(f"{LogTag.AGENT} Archive failed", error_type=type(e).__name__)
         return None
 
-    def _should_trigger_summarization(self, state: AgentState[object]) -> bool:
+    def should_fold(self, state: AgentState[object]) -> bool:
         """Return whether the context is large enough to summarize.
 
         Measured over the whole request (prompt slots included), since that is

@@ -371,6 +371,7 @@ async def test_a_history_fold_is_planned_keeping_what_is_owed_and_pinned() -> No
     rt.runner.script([Do(lambda: send(rt, work)), Finished(Replied("on it"))])
     await send(rt, user("u0").model_copy(update={"pinned": True}))
     await run(rt)
+    rt.runner.fold_plans = [_FOLD]
     await step.fold_history(rt.ports, CONVERSATION, USER)
     [(conversation_id, user_id, kept)] = rt.runner.fold_asks
     assert (conversation_id, user_id, kept.owed) == (CONVERSATION, USER, frozenset({"u0"}))

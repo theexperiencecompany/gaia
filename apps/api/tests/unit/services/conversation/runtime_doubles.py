@@ -46,6 +46,7 @@ from app.services.conversation.ports import (
     Finished,
     FoldPlan,
     Kept,
+    KeptReader,
     Reacted,
     RunEvent,
     RuntimePorts,
@@ -552,7 +553,7 @@ class ScriptedRunner:
         self.fold_plans: list[FoldPlan] = []
         # Each fold written, with the epoch of the claim it was written under.
         self.applied: list[tuple[int, FoldPlan]] = []
-        # Each fold plan asked for: the conversation, its user and what the fold must keep.
+        # Each fold plan asked for past its budget: the conversation, its user and what the fold must keep.
         self.fold_asks: list[tuple[str, str, Kept]] = []
         self.runs: list[ScriptedRun] = []
         self.overlaps = 0
@@ -593,9 +594,14 @@ class ScriptedRunner:
         self.runs.append(run)
         return run
 
-    async def plan_fold(self, conversation_id: str, user_id: str, kept: Kept) -> FoldPlan | None:
-        self.fold_asks.append((conversation_id, user_id, kept))
-        return self.fold_plans.pop(0) if self.fold_plans else None
+    async def plan_fold(
+        self, conversation_id: str, user_id: str, kept: KeptReader
+    ) -> FoldPlan | None:
+        # A thread with no plan scripted is under its budget, so what it keeps is never read.
+        if not self.fold_plans:
+            return None
+        self.fold_asks.append((conversation_id, user_id, await kept()))
+        return self.fold_plans.pop(0)
 
     async def apply_fold(self, claim: StepClaim, plan: FoldPlan) -> bool:
         self.applied.append((claim.epoch, plan))

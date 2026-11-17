@@ -114,7 +114,7 @@ def _gates_agree(
     mw: WorkspaceArchivingSummarizationMiddleware, messages: list[AnyMessage]
 ) -> tuple[bool, bool]:
     """Return (archive gate, the parent's own summarization decision)."""
-    archive = mw._should_trigger_summarization({"messages": messages})
+    archive = mw.should_fold({"messages": messages})
     summarize = mw._should_summarize(messages, mw.token_counter(messages))
     return archive, summarize
 
@@ -147,8 +147,8 @@ def test_the_archive_fires_exactly_at_the_threshold_not_one_past_it() -> None:
     # Regression: a strict `>` here meant the run that summarized at exactly the
     # threshold wrote no archive at all.
     mw = _middleware(trigger=("tokens", 100))
-    assert mw._should_trigger_summarization({"messages": _humans(100)}) is True
-    assert mw._should_trigger_summarization({"messages": _humans(99)}) is False
+    assert mw.should_fold({"messages": _humans(100)}) is True
+    assert mw.should_fold({"messages": _humans(99)}) is False
 
 
 def test_a_list_of_triggers_is_honoured() -> None:
@@ -178,9 +178,9 @@ def test_provider_reported_tokens_trigger_the_archive_too() -> None:
 
 
 def test_an_empty_history_never_triggers_an_archive() -> None:
-    assert _middleware()._should_trigger_summarization({"messages": []}) is False
+    assert _middleware().should_fold({"messages": []}) is False
     # Deliberately outside AgentState's declared shape: pins the hook's missing-key default.
-    assert _middleware()._should_trigger_summarization(cast(AgentState[object], {})) is False
+    assert _middleware().should_fold(cast(AgentState[object], {})) is False
 
 
 def test_a_failing_token_counter_surfaces_instead_of_silently_skipping() -> None:
@@ -189,7 +189,7 @@ def test_a_failing_token_counter_surfaces_instead_of_silently_skipping() -> None
 
     mw = _middleware(token_counter=broken)
     with pytest.raises(RuntimeError, match="token counter unavailable"):
-        mw._should_trigger_summarization({"messages": _humans(5)})
+        mw.should_fold({"messages": _humans(5)})
 
 
 # --- excluded tools ----------------------------------------------------------- #
@@ -203,7 +203,7 @@ def test_excluded_tool_output_does_not_push_the_archive_gate_over() -> None:
         *_humans(3),
         *[ToolMessage(content="x", tool_call_id=str(i), name="noisy") for i in range(10)],
     ]
-    assert mw._should_trigger_summarization({"messages": mixed}) is False
+    assert mw.should_fold({"messages": mixed}) is False
 
 
 def test_a_history_of_nothing_but_excluded_output_never_triggers() -> None:
@@ -211,7 +211,7 @@ def test_a_history_of_nothing_but_excluded_output_never_triggers() -> None:
     noisy: list[AnyMessage] = [
         ToolMessage(content="x", tool_call_id=str(i), name="noisy") for i in range(10)
     ]
-    assert mw._should_trigger_summarization({"messages": noisy}) is False
+    assert mw.should_fold({"messages": noisy}) is False
 
 
 def test_other_tool_output_still_counts_towards_the_archive_gate() -> None:
@@ -219,7 +219,7 @@ def test_other_tool_output_still_counts_towards_the_archive_gate() -> None:
     quiet: list[AnyMessage] = [
         ToolMessage(content="x", tool_call_id=str(i), name="quiet") for i in range(10)
     ]
-    assert mw._should_trigger_summarization({"messages": quiet}) is True
+    assert mw.should_fold({"messages": quiet}) is True
 
 
 def test_no_exclusions_are_configured_by_default() -> None:

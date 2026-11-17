@@ -952,12 +952,12 @@ class _Budget:
     redis_before_text: int
 
 
-# Through submit_message: before the reply opens, accept 2, claim 1, unsettled 1, comms 1.
+# Before the reply opens: accept 2, claim 1, unsettled 1, comms 1, pinned 2 (kept through summarization).
 # Redis includes one list-push PUBLISH per sync-clock advance (message, reply, settle), off the writer's path.
 # Measured at the production tick, so no tick-driven hint read is counted.
-PLAIN_TURN = _Budget(mongo=24, mongo_before_text=5, redis=31, redis_before_text=17)
+PLAIN_TURN = _Budget(mongo=26, mongo_before_text=7, redis=31, redis_before_text=17)
 # The same turn with the attempt also logging the work it hands the executor before any text (its push too).
-WORK_TURN = _Budget(mongo=43, mongo_before_text=13, redis=33, redis_before_text=20)
+WORK_TURN = _Budget(mongo=45, mongo_before_text=15, redis=33, redis_before_text=20)
 
 
 @dataclass(frozen=True)

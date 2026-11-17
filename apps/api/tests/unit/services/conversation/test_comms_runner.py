@@ -488,9 +488,7 @@ async def test_summarization_is_reported_before_any_visible_output(conversation_
     model = gated("SUMMARY OF THE OLD TURNS", "fresh answer")
     # Only the decision to summarize is forced; the summary call itself is the real middleware's.
     trigger_once = MagicMock(side_effect=[True, *[False] * 5])
-    with patch.object(
-        WorkspaceArchivingSummarizationMiddleware, "_should_trigger_summarization", trigger_once
-    ):
+    with patch.object(WorkspaceArchivingSummarizationMiddleware, "should_fold", trigger_once):
         async with comms_graph([], model=model) as graph:
             await graph.aupdate_state(
                 {"configurable": {"thread_id": conversation_id}}, {"messages": history}
@@ -1082,10 +1080,14 @@ async def test_a_run_continuing_its_attempt_says_the_note_last_and_is_not_a_new_
     assert [e["event"] for e in posthog_events if str(e["event"]).startswith("agent:")] == []
 
 
-async def test_a_fresh_thread_plans_no_fold(conversation_id: str) -> None:
+async def test_a_fresh_thread_plans_no_fold_and_reads_nothing_it_would_keep(
+    conversation_id: str,
+) -> None:
+    kept = AsyncMock(return_value=Kept())
     async with comms_graph([], model=gated()) as graph:
         with patched_graph(graph):
-            assert await runner(conversation_id).plan_fold(conversation_id, USER, Kept()) is None
+            assert await runner(conversation_id).plan_fold(conversation_id, USER, kept) is None
+    kept.assert_not_awaited()
 
 
 def _settled(seq: int) -> list[AnyMessage]:
@@ -1122,7 +1124,9 @@ async def test_a_thread_past_its_budget_folds_its_oldest_turns_keeping_what_is_o
             patch.object(GraphManager, "get_graph", get_graph),
             patch("app.agents.middleware.summarization.write_session_file", archive),
         ):
-            plan = await folding.plan_fold(conversation_id, USER, Kept(owed=frozenset({"u2"})))
+            plan = await folding.plan_fold(
+                conversation_id, USER, AsyncMock(return_value=Kept(owed=frozenset({"u2"})))
+            )
             assert plan is not None
             assert await folding.apply_fold(claim(conversation_id), plan)
             assert not await folding.apply_fold(claim(conversation_id), plan)
