@@ -51,6 +51,8 @@ CONTENT_HMAC_DOMAIN = "link-content"
 THUMBNAIL_SIZE = (1200, 630)
 THUMBNAIL_MAX_BYTES = 300 * 1024
 THUMBNAIL_PATH = "thumb.jpg"
+#: What a file that is only ever saved, never rendered, is served as.
+DOWNLOAD_MIME = "application/octet-stream"
 
 # Rate limits (slowapi strings) on the link routes.
 MINT_RATE_LIMIT = "60/hour;500/day"

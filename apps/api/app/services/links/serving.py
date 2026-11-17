@@ -13,6 +13,7 @@ from urllib.parse import quote
 from fastapi.responses import RedirectResponse, Response
 
 from app.config.settings import settings
+from app.constants.short_links import DOWNLOAD_MIME
 from app.models.short_link_models import LinkSnapshot, RenderMode
 from app.services.links.content import isolates_each_snapshot
 
@@ -30,7 +31,6 @@ _SHARED_HEADERS = {
 SNAPSHOT_CACHE_CONTROL = "private, max-age=600"
 THUMBNAIL_CACHE_CONTROL = "public, max-age=3600"
 _INERT_CSP = "default-src 'none'; sandbox"
-_DOWNLOAD_MIME = "application/octet-stream"
 # Scripts, styles and fonts from any CDN (agent reports draw charts); no fetch, form post or frame.
 # Not silent: script/image/font URLs reach any https host and popups escape, so the page can
 # send out what it holds. It holds nothing of the viewer's (opaque origin, no cookie).
@@ -126,7 +126,7 @@ def snapshot_response(
 def download_response(body: bytes, snapshot: LinkSnapshot) -> Response:
     """Serve a snapshot as a file to save, never rendered: safe from any origin, the app's included."""
     return _response(
-        body, _DOWNLOAD_MIME, _INERT_CSP, _attachment(snapshot.filename), "private, no-store"
+        body, DOWNLOAD_MIME, _INERT_CSP, _attachment(snapshot.filename), "private, no-store"
     )
 
 

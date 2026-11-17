@@ -29,6 +29,7 @@ from app.constants.short_links import (
     CONTENT_ID_ALPHABET,
     CONTENT_ID_LENGTH,
     CONTENT_TOKEN_TTL_SECONDS,
+    DOWNLOAD_MIME,
     EXECUTABLE_EXTENSIONS,
     MAX_HTML_SNAPSHOT_BYTES,
     MAX_PUBLISHED_BYTES_PER_DAY,
@@ -66,8 +67,6 @@ from shared.py.analytics.catalog.short_links import (
     ShortLinkPublishRejected,
 )
 from shared.py.wide_events import log
-
-_DOWNLOAD_MIME = "application/octet-stream"
 
 # Declared types served as themselves once the bytes agree; anything else is TEXT or a download.
 _RENDER_BY_MIME: dict[str, RenderMode] = {
@@ -134,14 +133,14 @@ def served_type(declared_mime: str, data: bytes) -> ServedType:
     if render is None and is_inlineable_content_type(declared_mime):
         render = RenderMode.TEXT
     if render is None:
-        return ServedType(_DOWNLOAD_MIME, RenderMode.DOWNLOAD)
+        return ServedType(DOWNLOAD_MIME, RenderMode.DOWNLOAD)
     if render in _TEXTUAL_RENDERS:
         agrees = _is_text(data)
     else:
         sniffed = filetype.guess_mime(data)
         agrees = sniffed in _MAGIC_ALIASES.get(declared_mime, frozenset({declared_mime}))
     if not agrees:
-        return ServedType(_DOWNLOAD_MIME, RenderMode.DOWNLOAD)
+        return ServedType(DOWNLOAD_MIME, RenderMode.DOWNLOAD)
     return ServedType(declared_mime, render)
 
 
@@ -266,7 +265,7 @@ async def publish(
     """Store source as a new snapshot and describe it; a capped or over-quota file is described, not stored."""
     data = source.data
     if data is None:
-        unread = ServedType(_DOWNLOAD_MIME, RenderMode.DOWNLOAD)
+        unread = ServedType(DOWNLOAD_MIME, RenderMode.DOWNLOAD)
         return _rejected(owner_id, target_type, source, unread, PublishRejection.TOO_LARGE)
     kind = served_type(source.declared_mime, data)
     size = len(data)
