@@ -117,6 +117,53 @@ PASSED_CHECK: dict[str, Any] = {
 }
 
 
+# The master ruleset's required checks, as `rules/branches/master` returns them.
+MASTER_RULES: list[dict[str, Any]] = [
+    {"type": "merge_queue", "parameters": {}},
+    {
+        "type": "required_status_checks",
+        "parameters": {
+            "required_status_checks": [
+                {"context": "Validate PR Title", "integration_id": 15368},
+                {"context": "quality-gate", "integration_id": 15368},
+            ]
+        },
+    },
+]
+# Run 99 is ci.yml, the workflow whose quality-gate job is required.
+
+
+def workflow_run(run_id: int, workflow_id: int, name: str, path: str) -> dict[str, Any]:
+    return {
+        "id": run_id,
+        "workflow_id": workflow_id,
+        "name": name,
+        "path": f".github/workflows/{path}",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": f"https://github.com/o/r/actions/runs/{run_id}",
+    }
+
+
+CI_RUN = workflow_run(99, 394732533, "CI", "ci.yml")
+REACT_DOCTOR_RUN = workflow_run(77, 2, "React Doctor", "react-doctor.yml")
+PR_TITLE_RUN = workflow_run(55, 3, "PR Title", "pr-title.yml")
+REACT_DOCTOR_RED: dict[str, Any] = {
+    "name": "react-doctor",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/o/r/actions/runs/77/job/7701",
+    "app": {"slug": "github-actions"},
+}
+SONAR_RED: dict[str, Any] = {
+    "name": "SonarCloud Code Analysis",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://sonarcloud.io/dashboard?id=x",
+    "app": {"slug": "sonarqubecloud"},
+}
+
+
 def verdict_zip(*verdicts: dict[str, Any]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
@@ -140,8 +187,6 @@ class FakeGh:
         self.checks = checks
         # The legacy commit-status endpoint; only the tests that read it set it.
         self.statuses: list[dict[str, Any]] = []
-        # The head's Actions runs; only the tests about superseded runs set them.
-        self.workflow_runs: list[dict[str, Any]] = []
         self.pr_meta = pr_meta or PR_META
         self.artifacts = artifacts if artifacts is not None else []
         # Keyed by artifact id; the None key is served for any artifact id.
@@ -150,6 +195,9 @@ class FakeGh:
         # Every PR ever opened from the branch, newest first, as the lookup serves them.
         self.branch_prs = [OPEN_PR_NODE]
         self.calls: list[str] = []
+        self.rules: dict[str, list[dict[str, Any]]] = {"master": MASTER_RULES}
+        # The head's Actions runs: CI by default; the superseded-run and merge-gate tests set others.
+        self.workflow_runs: list[dict[str, Any]] = [CI_RUN]
 
     def respond(self, req: Request) -> Reply:
         path = req.path
@@ -163,6 +211,10 @@ class FakeGh:
             return Reply(body={"data": {"repository": repository}})
         if req.method == "POST" and path.endswith("/rerun-failed-jobs"):
             return Reply(201)
+        if "/rules/branches/" in path:
+            return Reply(body=self.rules.get(path.split("/rules/branches/", 1)[1], []))
+        if path == "/repos/o/r":
+            return Reply(body={"default_branch": "master"})
         listings = {
             "/check-runs": ("check_runs", self.checks),
             "/status": ("statuses", self.statuses),
@@ -1562,15 +1614,15 @@ class SequencedGh(FakeGh):
     ) -> None:
         super().__init__(checks=polls[0], **kwargs)
         self.polls = polls
-        # The head's Actions runs as each poll sees them, in step with polls.
-        self.run_polls = run_polls or [[]]
+        # The head's Actions runs as each poll sees them, in step with polls; None keeps the default.
+        self.run_polls = run_polls
         self.check_polls = 0
 
     def respond(self, req: Request) -> Reply:
         if req.path.endswith("/check-runs"):
             self.checks = self.polls[min(self.check_polls, len(self.polls) - 1)]
             self.check_polls += 1
-        if req.path.endswith("/actions/runs"):
+        if self.run_polls and req.path.endswith("/actions/runs"):
             self.workflow_runs = self.run_polls[min(self.check_polls, len(self.run_polls) - 1)]
         return super().respond(req)
 
@@ -1625,7 +1677,10 @@ def test_a_watch_started_before_the_run_registers_any_check_keeps_waiting(
     wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Regression: right after a push the head had no checks yet, and the watch exited green on it."""
-    fake = wire(SequencedGh([[], [], [PENDING_CHECK], [PASSED_CHECK]]))
+    live = ci_run(99, "in_progress")
+    fake = wire(
+        SequencedGh([[], [], [PENDING_CHECK], [PASSED_CHECK]], run_polls=[[], [], [live], [CI_RUN]])
+    )
     assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 0
     assert fake.check_polls == 4
 
@@ -1637,11 +1692,71 @@ def test_a_watch_that_runs_out_of_time_is_not_green(
     assert run_cli(monkeypatch, ["--watch", "--no-stack", "--max-wait", "1"]) == 1
 
 
+def test_fail_fast_does_not_stop_at_a_red_check_that_does_not_block_merge(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: a red react-doctor or SonarCloud ended ci:watch ~40s in, long before quality-gate."""
+    fake = wire(
+        SequencedGh(
+            [
+                [REACT_DOCTOR_RED, SONAR_RED, PENDING_CHECK],
+                [REACT_DOCTOR_RED, SONAR_RED, PENDING_CHECK],
+                [REACT_DOCTOR_RED, SONAR_RED, PASSED_CHECK],
+            ]
+        )
+    )
+    run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"])
+    out = capsys.readouterr().out
+    assert fake.check_polls == 3, "stopped on a check merge does not wait for"
+    assert "stopping at the first failure" not in out
+    assert "FAIL  react-doctor  [not required for merge]" in out
+
+
+def test_a_red_lane_of_the_gates_workflow_trips_fail_fast_before_the_gate_job_exists(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = wire(SequencedGh([[REACT_DOCTOR_RED, PENDING_CHECK], [FAILED_CHECK, PENDING_CHECK]]))
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    assert fake.check_polls == 2
+
+
+def test_a_stacked_pr_is_gated_by_the_checks_its_trunk_requires(
+    wire, no_sleep: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    red_title = dict(
+        REACT_DOCTOR_RED,
+        name="Validate PR Title",
+        html_url="https://github.com/o/r/actions/runs/55/job/5501",
+    )
+    fake = wire(
+        SequencedGh(
+            [[REACT_DOCTOR_RED, PENDING_CHECK], [red_title, PENDING_CHECK]],
+            pr_meta=dict(PR_META, baseRefName="feat/parent"),
+        )
+    )
+    assert run_cli(monkeypatch, ["--watch", "--fail-fast", "--no-stack"]) == 1
+    assert fake.check_polls == 2
+
+
+def test_compact_json_says_which_red_checks_do_not_block_merge(
+    wire, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    wire(FakeGh(checks=[FAILED_CHECK, REACT_DOCTOR_RED, SONAR_RED]))
+    run_cli(monkeypatch, ["--json", "--compact", "--no-stack"])
+    failed = {c["name"]: c["blocks_merge"] for c in json.loads(capsys.readouterr().out)["failed"]}
+    assert failed == {
+        "mutation (shard 3/6 (19 modules))": True,
+        "react-doctor": False,
+        "SonarCloud Code Analysis": False,
+    }
+
+
 def ci_run(run_id: int, status: str, conclusion: str | None = None) -> dict[str, Any]:
     return {
         "id": run_id,
         "workflow_id": 394732533,
         "name": "CI",
+        "path": ".github/workflows/ci.yml",
         "status": status,
         "conclusion": conclusion,
         "html_url": f"https://github.com/o/r/actions/runs/{run_id}",

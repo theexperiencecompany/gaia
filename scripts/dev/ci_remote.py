@@ -24,7 +24,10 @@ explained twice.
 
 `--watch` polls until checks go terminal (bounded), printing transitions;
 a GitHub outage that outlasts lib/github.py's retries skips that poll, not the watch.
-`--fail-fast` stops it at the first red check and prints that failure.
+`--fail-fast` stops it at the first red check that blocks merge (a check the
+base's ruleset requires, or a job of the same workflow run, such as a lane
+quality-gate needs) and prints that failure. Other red checks (react-doctor,
+SonarCloud) are printed as not required for merge and the watch keeps going.
 `mise ci:watch` is `--watch --fail-fast --max-wait 3600`.
 `--stack` prints the gh stack alone, one line per PR.
 `--verbose` adds full finding details, passing lanes, and the source used.
@@ -56,10 +59,12 @@ import time
 from typing import TypedDict
 import zipfile
 
+import yaml
+
 sys.path.insert(0, str(__file__.rsplit("/", 1)[0]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ci"))
 from gaia_gh import current_branch, eprint, exit_code, parse_repo, resolve_pr
-from lib.github import GitHub, GitHubError
+from lib.github import GitHub, GitHubError, field_of
 
 SCHEMA_VERSION = 2
 MAX_CHECK_PAGES = 6  # 100/page -> up to 600 check runs; plenty for any PR
@@ -78,6 +83,8 @@ MAX_CHECK_PAGE_SIZE = 100
 FAILING = ("failed", "error", "timeout")
 # The one required check: ci.yml's aggregate over every gated job.
 GATE_CHECK = "quality-gate"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 # The app slug a commit status is filed under once it is read as a check.
 STATUS_APP = "commit-status"
 VERDICT_BAD = ("fail", "error", "timed_out")
@@ -176,6 +183,18 @@ class Check(TypedDict):
     job_id: int | None
     started_at: str | None
     completed_at: str | None
+    blocks_merge: bool
+
+
+@dataclass(frozen=True)
+class MergeGate:
+    """The check names merge requires, and the workflow runs whose jobs feed them."""
+
+    required: frozenset[str]
+    run_ids: frozenset[int]
+
+    def blocks(self, name: str, run_id: int | None) -> bool:
+        return name in self.required or run_id in self.run_ids
 
 
 class Greptile(TypedDict):
@@ -299,7 +318,7 @@ def superseded_runs(runs: list[tuple[int, int]]) -> set[int]:
     return {run_id for run_id, workflow_id in runs if run_id != newest[workflow_id]}
 
 
-def live_checks(raw: list[dict], workflow_runs: list[dict]) -> list[Check]:
+def live_checks(raw: list[dict], workflow_runs: list[dict], gate: MergeGate) -> list[Check]:
     """Normalise the head's checks from each workflow's newest run.
 
     A newest run also reports as itself while it is live, since a job waiting on
@@ -314,7 +333,7 @@ def live_checks(raw: list[dict], workflow_runs: list[dict]) -> list[Check]:
         for run in workflow_runs
         if run["id"] not in superseded and (run["status"] != "completed" or run["id"] not in listed)
     ]
-    return normalize(kept + as_itself)
+    return normalize(kept + as_itself, gate)
 
 
 def status_checks(statuses: list[dict]) -> list[dict]:
@@ -341,7 +360,43 @@ def status_checks(statuses: list[dict]) -> list[dict]:
     return out
 
 
-def normalize(runs: list[dict]) -> list[Check]:
+def required_contexts(repo: Repo, branch: str) -> frozenset[str]:
+    rules = repo.github.get_list(repo.api(f"rules/branches/{branch}"))
+    return frozenset(
+        check["context"]
+        for rule in rules
+        if rule["type"] == "required_status_checks"
+        for check in rule["parameters"]["required_status_checks"]
+    )
+
+
+def workflows_running_jobs(names: frozenset[str]) -> frozenset[str]:
+    """Return the workflow files (repo-relative) that define a job displayed under one of names."""
+    paths: set[str] = set()
+    for path in sorted(WORKFLOWS_DIR.glob("*.y*ml")):
+        jobs = (yaml.safe_load(path.read_text()) or {}).get("jobs") or {}
+        if any(job.get("name", job_id) in names for job_id, job in jobs.items()):
+            paths.add(path.relative_to(REPO_ROOT).as_posix())
+    return frozenset(paths)
+
+
+def fetch_merge_gate(repo: Repo, base: str, workflow_runs: list[dict]) -> MergeGate:
+    """Read what merge waits for: the base's required checks and every job of their workflow runs.
+
+    A required job such as quality-gate only appears once all its needs finish, so
+    its run's lanes are what make --fail-fast fail fast. A stacked PR's base has
+    no ruleset; it is gated by the trunk its stack lands on.
+    """
+    required = required_contexts(repo, base)
+    if not required:
+        trunk = repo.github.get(f"repos/{repo.slug}")
+        required = required_contexts(repo, field_of(trunk, "default_branch", str))
+    gate_files = workflows_running_jobs(required)
+    run_ids = frozenset(run["id"] for run in workflow_runs if run["path"] in gate_files)
+    return MergeGate(required=required, run_ids=run_ids)
+
+
+def normalize(runs: list[dict], gate: MergeGate) -> list[Check]:
     out: list[Check] = []
     for run in runs:
         completed = run.get("status") == "completed"
@@ -352,16 +407,19 @@ def normalize(runs: list[dict]) -> list[Check]:
             status = CONCLUSION_MAP.get(conclusion, "error")
         url = run.get("html_url") or ""
         job_match = JOB_ID_RE.search(url)
+        name = run.get("name", "?")
+        run_id = run_id_of(url)
         out.append(
             Check(
-                name=run.get("name", "?"),
+                name=name,
                 app=(run.get("app") or {}).get("slug", ""),
                 status=status,
                 url=run.get("html_url"),
-                run_id=run_id_of(url),
+                run_id=run_id,
                 job_id=int(job_match.group(1)) if job_match else None,
                 started_at=run.get("started_at"),
                 completed_at=run.get("completed_at"),
+                blocks_merge=gate.blocks(name, run_id),
             )
         )
     return sorted(
@@ -1087,8 +1145,13 @@ def render_verdict(verdict: Verdict, verbose: bool, pad: str = "  ") -> None:
             print(f"{pad}    … {len(detail) - DETAIL_PREVIEW_LINES} more lines (--verbose)")
 
 
+def print_fail_line(check: Check, source: str) -> None:
+    scope = "" if check["blocks_merge"] else "  [not required for merge]"
+    print(f"FAIL  {check['name']}{scope}  [{check['status']}]  ({source})")
+
+
 def render_log_tail(report: dict, check: Check, source: str, verbose: bool) -> None:
-    print(f"FAIL  {check['name']}  [{check['status']}]  ({source})")
+    print_fail_line(check, source)
     tail = report["fallback_tails"].get(check["name"], [])
     shown = tail if verbose else tail[-SHOWN_TAIL_LINES:]
     if len(tail) > len(shown):
@@ -1100,7 +1163,7 @@ def render_log_tail(report: dict, check: Check, source: str, verbose: bool) -> N
 
 
 def render_shard(check: Check, shard: Shard, source: str) -> None:
-    print(f"FAIL  {check['name']}  [{check['status']}]  ({source})")
+    print_fail_line(check, source)
     for module in failing_modules(shard):
         print(f"  {module_line(module, shard)}")
 
@@ -1126,7 +1189,7 @@ def render_failing_check(report: dict, check: Check, verbose: bool) -> set[str]:
     elif not matched:
         render_log_tail(report, check, source, verbose)
     else:
-        print(f"FAIL  {check['name']}  [{check['status']}]  ({source})")
+        print_fail_line(check, source)
         render_matched(check, matched, verbose)
     steps = red_steps_by_job(report["checks"]).get(check["job_id"] or 0, [])
     if steps:
@@ -1363,7 +1426,8 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
     )
     runs, runs_truncated = fetch_pages(repo, f"commits/{head}/check-runs", "check_runs")
     statuses, statuses_truncated = fetch_pages(repo, f"commits/{head}/status", "statuses")
-    checks = live_checks(runs + status_checks(statuses), workflow_runs)
+    gate = fetch_merge_gate(repo, pr_meta["baseRefName"], workflow_runs)
+    checks = live_checks(runs + status_checks(statuses), workflow_runs, gate)
     truncated = runs_truncated or statuses_truncated or workflows_truncated
     counts = {k: sum(1 for c in checks if c["status"] == k) for k in COUNT_KEYS}
     verdicts, shards, tails, sources = diagnose(repo, checks)
@@ -1404,6 +1468,10 @@ def snapshot_once(repo: Repo, pr_number: int, branch: str, with_stack: bool) -> 
     }
     report["advice"] = collect_advice(report, branch)
     report["early_failures"] = [c["name"] for c in early_failures(report)]
+    report["merge_blocked"] = pr_meta["mergeable"] == "CONFLICTING" or any(
+        c["blocks_merge"] and (c["status"] in FAILING or c["name"] in report["early_failures"])
+        for c in checks
+    )
     red = counts["failed"] or counts["error"] or counts["timeout"] or report["early_failures"]
     return report, (1 if (red or pr_meta["mergeable"] == "CONFLICTING") else 0)
 
@@ -1451,7 +1519,13 @@ def compact_report(report: dict) -> dict:
         "counts": report["counts"],
         "unresolved_thread_count": report["unresolved_thread_count"],
         "failed": [
-            {"name": check["name"], "status": check["status"], "url": check["url"]} for check in red
+            {
+                "name": check["name"],
+                "status": check["status"],
+                "url": check["url"],
+                "blocks_merge": check["blocks_merge"],
+            }
+            for check in red
         ],
         "early_failures": report["early_failures"],
         "verdicts": verdicts,
@@ -1586,7 +1660,7 @@ def parse_options(args: argparse.Namespace) -> Options:
 
 
 def watch(repo: Repo, pr_number: int, branch: str, options: Options) -> tuple[dict, int]:
-    """Poll until no check is pending, the budget runs out, or (fail-fast) a check goes red."""
+    """Poll until no check is pending, the budget runs out, or (fail-fast) merge is blocked."""
     deadline = time.monotonic() + options.max_wait
     poll = 0
     while True:
@@ -1607,9 +1681,9 @@ def watch(repo: Repo, pr_number: int, branch: str, options: Options) -> tuple[di
                 f"{report['counts']['failed']} failed, {pending} pending "
                 f"(elapsed {elapsed}s / max {options.max_wait}s)"
             )
-        if options.fail_fast and exit_code:
+        if options.fail_fast and report["merge_blocked"]:
             if not options.as_json:
-                print("watch: stopping at the first failure (--fail-fast).")
+                print("watch: stopping at the first failure that blocks merge (--fail-fast).")
             break
         # No check at all is a run GitHub has not registered yet, not a finished one.
         settled = pending == 0 and bool(report["checks"])
