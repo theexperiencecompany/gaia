@@ -3,15 +3,17 @@
  *
  * The API's /api/v1/usercontent route owns every serving rule (headers, the
  * Sec-Fetch-Dest gate, tokens, liveness). This Worker only proves the host,
- * names it in X-Gaia-Content-Host beside the internal token, and keeps cookies
- * out in both directions.
+ * names it in X-Gaia-Content-Host beside the content-edge token, and keeps
+ * cookies out in both directions.
  */
 
 export interface Env {
   /** The API's origin, e.g. https://api.heygaia.io (wrangler var). */
   API_ORIGIN: string;
-  /** The API's INTERNAL_API_TOKEN (wrangler secret); vouches for X-Gaia-Content-Host. */
+  /** The API's INTERNAL_API_TOKEN (wrangler secret); counts each viewer apart in its rate limits. */
   INTERNAL_API_TOKEN: string;
+  /** The API's LINK_CONTENT_EDGE_TOKEN (wrangler secret); the only vouch for X-Gaia-Content-Host. */
+  LINK_CONTENT_EDGE_TOKEN: string;
 }
 
 const CONTENT_HOST_SUFFIX = ".heygaia.link";
@@ -43,6 +45,7 @@ function upstreamHeaders(request: Request, host: string, env: Env): Headers {
     if (value !== null) headers.set(name, value);
   }
   headers.set("X-Gaia-Content-Host", host);
+  headers.set("X-Gaia-Content-Edge", env.LINK_CONTENT_EDGE_TOKEN);
   headers.set("X-Gaia-Internal", env.INTERNAL_API_TOKEN);
   const viewerIp = request.headers.get("CF-Connecting-IP");
   if (viewerIp !== null) headers.set("X-Gaia-Viewer-IP", viewerIp);

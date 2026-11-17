@@ -618,7 +618,7 @@ class TestSharedFiles:
             f"https://heygaia.link/{slug}",
         )
 
-    async def test_a_forwarded_host_counts_only_with_the_internal_token(
+    async def test_a_forwarded_host_counts_only_with_the_content_edge_token(
         self,
         client: AsyncClient,
         viewer: Viewer,
@@ -627,6 +627,7 @@ class TestSharedFiles:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(settings, "INTERNAL_API_TOKEN", "i" * 40)
+        monkeypatch.setattr(settings, "LINK_CONTENT_EDGE_TOKEN", "e" * 40)
         slug = (await _share(client, SESSION, workspace.write("n.png", PNG)))["slug"]
         url = (await client.post(f"/api/v1/l/{slug}/content-token")).json()["content_url"]
         cid = url.split("//", 1)[1].split(".", 1)[0]
@@ -634,9 +635,11 @@ class TestSharedFiles:
         forwarded = {"x-gaia-content-host": f"{cid}.u.test", "sec-fetch-dest": "image"}
 
         spoofed = await client.get(path, headers=forwarded)
-        worker = await client.get(path, headers={**forwarded, "x-gaia-internal": "i" * 40})
+        internal = await client.get(path, headers={**forwarded, "x-gaia-internal": "i" * 40})
+        worker = await client.get(path, headers={**forwarded, "x-gaia-content-edge": "e" * 40})
 
         assert spoofed.status_code == 404
+        assert internal.status_code == 404
         assert worker.status_code == 200
         assert worker.headers["content-type"] == "image/png"
 
