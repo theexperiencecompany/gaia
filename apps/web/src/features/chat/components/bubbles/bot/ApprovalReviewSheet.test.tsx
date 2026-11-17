@@ -45,6 +45,15 @@ describe("ApprovalReviewSheet", () => {
     vi.mocked(toast.error).mockReset();
   });
 
+  it("draws no client-timed ghost for a withdrawn approval; its tool row shows the server's status", () => {
+    render(
+      <ApprovalRequestGroup
+        items={[{ ...card("a", "gmail"), status: "withdrawn" }]}
+      />,
+    );
+    expect(screen.queryByText(/withdrew/i)).toBeNull();
+  });
+
   it("offers a review sheet at three pendings, not below", () => {
     const { rerender } = render(
       <ApprovalRequestGroup items={[card("a", "gmail")]} />,

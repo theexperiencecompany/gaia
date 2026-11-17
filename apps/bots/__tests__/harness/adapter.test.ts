@@ -537,6 +537,24 @@ describe("HarnessAdapter — settling a turn", () => {
     ]);
   });
 
+  it("does not end a turn on an asked approval while the server says other work still runs", async () => {
+    const asked = approvalAsked("t1", "ap1", 'Create a todo: "tg-1"');
+    const { adapter, recorder } = heldOpen([
+      screenFrame([user]),
+      insertFrame(workItem("t1", 2, "awaiting_approval", [asked])),
+      stateFrame(3, "working", [liveTask("t1", true), liveTask("t2", false)]),
+    ]);
+
+    await adapter.simulateMessage("dev-user-1", "add a todo");
+    await expect(adapter.settleTurn(50)).rejects.toThrow(
+      "still answering after 50 ms",
+    );
+    await adapter.shutdown("test");
+    expect(
+      recorder.getEvents().some((e) => e.type === "awaiting-approval"),
+    ).toBe(false);
+  });
+
   it("fails a turn still answering past its bound instead of hanging", async () => {
     const { adapter, recorder } = heldOpen([
       screenFrame([user]),

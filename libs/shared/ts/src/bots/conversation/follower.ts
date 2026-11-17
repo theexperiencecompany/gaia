@@ -152,12 +152,11 @@ export class ConversationFollower {
     this.expected.add(seq);
   }
 
-  /** The approvals the work waits on that this follow asked the user about: it cannot finish before they are decided. */
+  /** The approvals the server says the conversation waits on: none unless its state is awaiting approval. */
   get awaitingDecision(): ApprovalRequested[] {
+    if (this.view.display !== DISPLAY_STATE.AWAITING_APPROVAL) return [];
     return this.view.items.flatMap((item) =>
-      item.kind === SCREEN_ITEM_KIND.WORK
-        ? item.asking.filter(({ approval_id }) => this.asked.has(approval_id))
-        : [],
+      item.kind === SCREEN_ITEM_KIND.WORK ? item.asking : [],
     );
   }
 
