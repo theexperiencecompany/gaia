@@ -26,6 +26,7 @@ from app.models.conversation_log_models import ApprovalDecided, ApprovalRequeste
 from app.models.execute_models import DispatchError, DispatchErrorKind
 from app.models.hil_models import ApprovalLedgerDocument
 from app.models.user_models import AuthenticatedUser
+from app.override.langgraph_bigtool.utils import State
 from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
     BatchDecisionItem,
@@ -1557,7 +1558,7 @@ class TestDecideLedgerOutcomes:
             HumanMessage(content=verdict),
             AIMessage(content="Skipped sending it, as you declined."),
         ]
-        assert work_looks_unfinished({"messages": thread}) is False
+        assert work_looks_unfinished(State(messages=thread)) is False
 
     async def test_a_deny_settles_the_card_and_tells_the_agent_why(
         self, seams: LedgerSeams
