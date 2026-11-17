@@ -32,9 +32,13 @@ from app.memory.engine import memory_engine
 from app.memory.retrieval import build_entries, tokenize
 from app.models.memory_models import MemoryEntry
 from app.services.latency_metrics import observe_fast_recall_semantic_missed
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 _PINNED_IDS = TypeAdapter(list[str])
+
+#: Background task name of the lane's semantic step; its failures emit under it.
+SEMANTIC_STEP_TASK = "fast_recall_semantic"
 
 #: Query text -> (started, embedding task). Shared across turns in the process:
 #: an embedding depends on the text alone.
@@ -89,26 +93,17 @@ async def _semantic_ids(user_id: str, query: str) -> list[str]:
     )
 
 
-def _log_late_failure(task: asyncio.Task[list[str]]) -> None:
-    if not task.cancelled() and (error := task.exception()) is not None:
-        log.warning(
-            "Late semantic step failed after the lane answered",
-            error=str(error),
-            error_type=type(error).__name__,
-        )
-
-
 async def _semantic_in_time(user_id: str, query: str) -> list[str]:
     """Return the semantic hits that land within the lane's semantic budget, else none.
 
-    A late step is shielded and keeps running, so the embedding and the user's
-    vector set are ready for the next turn instead of thrown away.
+    The step is a managed background task, shielded from the wait: a late one
+    keeps running, so the embedding and the user's vector set are ready for the
+    next turn, and a failure is reported whichever way the lane exits.
     """
-    step = asyncio.ensure_future(_semantic_ids(user_id, query))
+    step = spawn_background_task(_semantic_ids(user_id, query), name=SEMANTIC_STEP_TASK)
     try:
         return await asyncio.wait_for(asyncio.shield(step), FAST_RECALL_SEMANTIC_BUDGET_SECONDS)
     except TimeoutError:
-        step.add_done_callback(_log_late_failure)
         observe_fast_recall_semantic_missed()
         log.set_ns("memory_fast_recall", semantic="late")
         return []

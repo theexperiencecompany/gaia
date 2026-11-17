@@ -1,7 +1,9 @@
 """Integration tests for chat API endpoints."""
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from app.db.redis import redis_cache
@@ -550,7 +552,7 @@ class TestTurnPrepStartsOnceAdmitted:
     """Prep spends provider calls, so it starts once the cost budget admits the turn, then overlaps the rest."""
 
     @pytest.fixture(autouse=True)
-    def mock_rate_limiter(self):
+    def mock_rate_limiter(self) -> Iterator[None]:
         with patch(
             "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
             new_callable=AsyncMock,
@@ -558,7 +560,9 @@ class TestTurnPrepStartsOnceAdmitted:
         ):
             yield
 
-    async def test_prep_starts_right_after_the_cost_budget_admits_the_turn(self, test_client):
+    async def test_prep_starts_right_after_the_cost_budget_admits_the_turn(
+        self, test_client: httpx.AsyncClient
+    ) -> None:
         order: list[str] = []
         with (
             patch(
