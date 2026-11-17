@@ -44,6 +44,7 @@ from app.services.briefing.held import daily_brief_is_live, release_held_items
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import AppError
 from app.utils.timezone import Timezone
+from app.workers.brief_slots import spread_cron
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import (
     BriefingScheduleChangedVia,
@@ -172,12 +173,13 @@ def next_brief_lands(user: UserDocument, now_local: datetime) -> str | None:
 
 
 def briefing_cron(key: str, user: UserDocument) -> str:
-    """Return the cron the user's profile gives the briefing workflow under key."""
-    return (
+    """Return the cron the user's profile gives the briefing workflow under key, at their slot minute."""
+    cron = (
         daily_briefing_cron(user.briefing_schedule, user.quiet_hours or DEFAULT_QUIET_HOURS)
         if key == DAILY_BRIEFING_WORKFLOW_KEY
         else WEEKLY_DIGEST_CRON
     )
+    return spread_cron(cron, user.id)
 
 
 async def _next_run_base(user: UserDocument, kind: BriefingKind) -> datetime:

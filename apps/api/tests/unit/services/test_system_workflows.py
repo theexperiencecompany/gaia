@@ -24,6 +24,7 @@ from app.models.quiet_hours_models import QuietHours
 from app.models.user_models import UserDocument
 from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
+from app.workers.brief_slots import spread_cron
 
 MODULE = "app.services.system_workflows.provisioner"
 
@@ -1407,8 +1408,9 @@ class TestTheDailyBriefFollowsQuietHours:
             call.args[0].system_workflow_key: call.args[0].trigger_config
             for call in mock_service.create_workflow.await_args_list
         }
-        assert created[DAILY_BRIEFING_WORKFLOW_KEY].cron_expression == cron
+        assert created[DAILY_BRIEFING_WORKFLOW_KEY].cron_expression == spread_cron(cron, user.id)
         assert created[DAILY_BRIEFING_WORKFLOW_KEY].timezone == "Asia/Kolkata"
+        # The weekly digest takes its slot minute in the resync that follows.
         assert created[WEEKLY_DIGEST_WORKFLOW_KEY].cron_expression == WEEKLY_DIGEST_CRON
 
     @pytest.mark.asyncio
@@ -1431,17 +1433,14 @@ class TestTheDailyBriefFollowsQuietHours:
         existing.activated = False
         mock_repo.get_system_workflow_for_user = AsyncMock(return_value=existing)
         mock_repo.reset_system_workflow = AsyncMock()
-        mock_users.get = AsyncMock(
-            return_value=UserDocument(
-                quiet_hours=QuietHours(enabled=True, start_hour=0, end_hour=10)
-            )
-        )
+        user = UserDocument(quiet_hours=QuietHours(enabled=True, start_hour=0, end_hour=10))
+        mock_users.get = AsyncMock(return_value=user)
         mock_timezone.return_value = MagicMock(value="UTC")
 
         assert await reset_system_workflow_to_default("wf-1", "user-1") is True
 
         definition = mock_repo.reset_system_workflow.await_args.args[1]
-        assert definition.trigger_config.cron_expression == "0 10 * * *"
+        assert definition.trigger_config.cron_expression == spread_cron("0 10 * * *", user.id)
 
     @pytest.mark.asyncio
     async def test_a_user_gone_before_the_briefs_are_fitted_fails_loud_naming_them(

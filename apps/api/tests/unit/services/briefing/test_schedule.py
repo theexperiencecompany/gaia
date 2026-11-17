@@ -30,6 +30,7 @@ from app.models.workflow_models import TriggerConfig, TriggerType
 from app.services.briefing import schedule
 from app.services.notification_service import notification_service
 from app.services.workflow.service import WorkflowService
+from app.workers import brief_slots
 from shared.py.analytics import UserId
 from shared.py.analytics.catalog.settings import (
     SettingsBriefingScheduleUpdated,
@@ -97,6 +98,12 @@ class TestDailyBriefingHour:
         quiet_hours.end_after.assert_called_once_with(datetime(1, 1, 1, 9, tzinfo=UTC))
 
 
+def _slot(cron: str, user_id: str = _USER) -> str:
+    """Return cron at the user's slot minute, as every stored brief cron is."""
+    minute, rest = cron.split(" ", 1)
+    return f"{brief_slots.slot_minute(user_id)} {rest}"
+
+
 def _workflow(key: str, cron: str, timezone: str = _TZ, *, activated: bool = True) -> MagicMock:
     workflow = MagicMock(id=f"wf-{key}", system_workflow_key=key, activated=activated)
     workflow.trigger_config = TriggerConfig(
@@ -138,8 +145,8 @@ def seams(monkeypatch: pytest.MonkeyPatch) -> Iterator[Seams]:
     s = Seams(
         find=AsyncMock(
             return_value=[
-                _workflow(DAILY_BRIEFING_WORKFLOW_KEY, "0 8 * * *"),
-                _workflow(WEEKLY_DIGEST_WORKFLOW_KEY, WEEKLY_DIGEST_CRON),
+                _workflow(DAILY_BRIEFING_WORKFLOW_KEY, _slot("0 8 * * *")),
+                _workflow(WEEKLY_DIGEST_WORKFLOW_KEY, _slot(WEEKLY_DIGEST_CRON)),
             ]
         ),
         update=AsyncMock(return_value=MagicMock()),
@@ -183,6 +190,21 @@ def _moves(update: AsyncMock) -> dict[str, tuple[str | None, str | None, object]
     }
 
 
+class TestBriefsAreSpreadAcrossTheirHour:
+    @pytest.mark.regression
+    def test_two_users_with_one_hour_fire_at_their_own_minutes(self) -> None:
+        """Every brief fired at minute 0 of its hour, the whole hour's users in one second."""
+        crons = {
+            schedule.briefing_cron(
+                DAILY_BRIEFING_WORKFLOW_KEY, _user(DEFAULT_QUIET_HOURS).model_copy(update={"id": u})
+            )
+            for u in ("user-a", "user-b", "user-c", "user-d")
+        }
+
+        assert len(crons) > 1
+        assert all(cron.endswith(" 8 * * *") for cron in crons)
+
+
 class TestResyncBriefingSchedules:
     async def test_new_quiet_hours_move_only_the_daily_brief(self, seams: Seams) -> None:
         await schedule.resync_briefing_schedules(
@@ -192,7 +214,9 @@ class TestResyncBriefingSchedules:
         seams.find.assert_awaited_once_with(
             _USER, (DAILY_BRIEFING_WORKFLOW_KEY, WEEKLY_DIGEST_WORKFLOW_KEY)
         )
-        assert _moves(seams.update) == {"wf-daily_briefing": ("0 10 * * *", _TZ, _TODAY_START)}
+        assert _moves(seams.update) == {
+            "wf-daily_briefing": (_slot("0 10 * * *"), _TZ, _TODAY_START)
+        }
         assert seams.update.await_args.args[2] == _USER
 
     async def test_a_new_timezone_moves_both_briefs_onto_it(self, seams: Seams) -> None:
@@ -203,8 +227,8 @@ class TestResyncBriefingSchedules:
         # 21:35 on the 13th in New York: that day, on that clock, is "today".
         new_york_today = datetime(2026, 10, 13, 4, 0, tzinfo=UTC)
         assert _moves(seams.update) == {
-            "wf-daily_briefing": ("0 8 * * *", "America/New_York", new_york_today),
-            "wf-weekly_digest": (WEEKLY_DIGEST_CRON, "America/New_York", new_york_today),
+            "wf-daily_briefing": (_slot("0 8 * * *"), "America/New_York", new_york_today),
+            "wf-weekly_digest": (_slot(WEEKLY_DIGEST_CRON), "America/New_York", new_york_today),
         }
 
     async def test_a_brief_already_delivered_today_is_counted_from_tomorrow(
@@ -224,8 +248,8 @@ class TestResyncBriefingSchedules:
         self, seams: Seams
     ) -> None:
         seams.find.return_value = [
-            _workflow(DAILY_BRIEFING_WORKFLOW_KEY, "0 8 * * *", timezone="America/New_York"),
-            _workflow(WEEKLY_DIGEST_WORKFLOW_KEY, WEEKLY_DIGEST_CRON),
+            _workflow(DAILY_BRIEFING_WORKFLOW_KEY, _slot("0 8 * * *"), timezone="America/New_York"),
+            _workflow(WEEKLY_DIGEST_WORKFLOW_KEY, _slot(WEEKLY_DIGEST_CRON)),
         ]
 
         await schedule.resync_briefing_schedules(
@@ -280,7 +304,9 @@ class TestTheFrequencySwitchesTheBriefs:
             _user(DEFAULT_QUIET_HOURS, frequency=BriefingFrequency.WEEKDAYS)
         )
 
-        assert _moves(seams.update) == {"wf-daily_briefing": ("0 8 * * 1-5", _TZ, _TODAY_START)}
+        assert _moves(seams.update) == {
+            "wf-daily_briefing": (_slot("0 8 * * 1-5"), _TZ, _TODAY_START)
+        }
         seams.activate.assert_not_awaited()
         seams.deactivate.assert_not_awaited()
 
