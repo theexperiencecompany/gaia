@@ -1331,6 +1331,9 @@ jobs:
         env:
           GROUP: ${{ fromJSON(needs.detect.outputs.mutation_shard_defs)[matrix.shard].group }}
           SHARD_LANE: mutation/shard-${{ strategy.job-index }}
+          # Under the job's own temp dir: the home runner keeps the checkout, so
+          # a shard file there could be an earlier job's.
+          SHARD_LOG: ${{ runner.temp }}/shard.log
         run: python3 scripts/ci/mutation.py shard
       - name: Upload the verdicts so far (a module failed)
         if: always() && env.GAIA_VERDICT_PENDING == '1'
@@ -1357,8 +1360,8 @@ jobs:
           # shard.verdict.json is the replay artifact every failing mutation
           # verdict's advice points at.
           path: |
-            shard.log
-            shard.verdict.json
+            ${{ runner.temp }}/shard.log
+            ${{ runner.temp }}/shard.verdict.json
           retention-days: 3
           if-no-files-found: ignore
       - name: Upload the module durations
@@ -1367,7 +1370,7 @@ jobs:
         with:
           # mutation.py history reads these on the PR's next run; tiny, unlike the log.
           name: mutation-durations-${{ strategy.job-index }}
-          path: shard.durations.json
+          path: ${{ runner.temp }}/shard.durations.json
           retention-days: 14
           if-no-files-found: ignore
       - name: Upload the verdict
