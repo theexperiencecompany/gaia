@@ -58,9 +58,9 @@ export default function PipelineCard() {
               <CheckmarkBadge01Icon
                 width={12}
                 height={12}
-                className="text-primary"
+                className="text-accent"
               />
-              <span className="text-xs text-primary">{item.action}</span>
+              <span className="text-xs text-accent">{item.action}</span>
             </div>
           </div>
         ))}

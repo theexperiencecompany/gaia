@@ -51,7 +51,8 @@ function readBaseline(name) {
   return new Set(
     readFileSync(file, "utf8")
       .split("\n")
-      .map((line) => line.replace(/#.*$/, "").trim())
+      // A comment starts a line or follows whitespace: `bg-[#00bbff]` is an entry.
+      .map((line) => line.replace(/(^|\s)#.*$/, "").trim())
       .filter(Boolean),
   );
 }

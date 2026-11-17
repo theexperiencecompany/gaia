@@ -1,4 +1,4 @@
-/** Every blog post, role page, comparison, alternative and automation combo is linked from at least two of its siblings, so none is reachable only from its hub. */
+/** Every blog post, role page, comparison, alternative, automation combo and app page is linked from at least two of its siblings, so none is reachable only from its hub. */
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 
@@ -7,7 +7,11 @@ import { getAllAlternatives } from "@/features/alternatives/data/alternativesDat
 import { comparisonCategoryOf } from "@/features/comparisons/data/comparisonCategories";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
-import { comboAppsOf } from "@/features/integrations/lib/comboApps";
+import {
+  appPagePath,
+  comboAppGroups,
+  comboAppsOf,
+} from "@/features/integrations/lib/comboApps";
 import { relatedComboRows } from "@/features/integrations/lib/relatedCombos";
 import { getRelatedPersonas } from "@/features/personas/data/getTranslatedPersona";
 import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
@@ -88,6 +92,26 @@ describe("sibling links", () => {
       underLinked(
         inboundCounts(
           combos.map((combo) => combo.slug),
+          linksFrom,
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("links every app page from at least two of its combos", async () => {
+    const combos = await getAllCombos();
+    const linksFrom = new Map(
+      combos.map((combo) => [
+        combo.slug,
+        relatedComboRows(combo, combos)
+          .filter((row) => row.combos.length > 0)
+          .map((row) => appPagePath(row.app.slug)),
+      ]),
+    );
+    expect(
+      underLinked(
+        inboundCounts(
+          comboAppGroups(combos).map((app) => appPagePath(app.slug)),
           linksFrom,
         ),
       ),

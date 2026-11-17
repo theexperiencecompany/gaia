@@ -12,7 +12,6 @@ import {
   handleStreamingChat,
   hashLogIdentifier,
   type IncomingMedia,
-  type LinkState,
   MEDIA_READ_TIMEOUT_MS,
   MediaReadTimeoutError,
   mediaKindFromMime,
@@ -43,11 +42,7 @@ import {
   Spectrum,
 } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
-import {
-  IMESSAGE_SERVER_PORT,
-  RECENT_MESSAGE_IDS_MAX,
-  WELCOME_AUTH_CHECK_TIMEOUT_MS,
-} from "./constants";
+import { IMESSAGE_SERVER_PORT, RECENT_MESSAGE_IDS_MAX } from "./constants";
 
 interface ImessageConfig {
   projectId: string;
@@ -108,7 +103,6 @@ export class ImessageAdapter extends BaseBotAdapter {
   private spectrumApp: SpectrumApp | null = null;
   private imInstance: ImessageInstance | null = null;
 
-  private readonly linkedUsers = new Set<string>();
   private readonly messageQueues = new Map<string, Promise<void>>();
   private readonly recentMessageIds = new Set<string>();
   private readonly adapterLogger = createBotLogger("imessage", "adapter");
@@ -203,6 +197,8 @@ export class ImessageAdapter extends BaseBotAdapter {
   }
 
   private handleInboundMessage(space: Space, message: Message): void {
+    // Before the per-user queue: time spent waiting there is the user's wait too.
+    const receivedAt = Date.now();
     if (message.direction === "outbound" || message.sender?.kind === "agent") {
       return;
     }
@@ -228,22 +224,14 @@ export class ImessageAdapter extends BaseBotAdapter {
     if (content.type === "text" || content.type === "markdown") {
       const text = content.type === "text" ? content.text : content.markdown;
       this.enqueueForUser(handle, () =>
-        this.handleIncomingMessage(handle, space, text, message.id).catch(
-          (err) =>
-            this.adapterLogger.error("incoming_message_processing_failed", {
-              user_hash: handleHash,
-              message_id: message.id,
-              ...sanitizeErrorForLog(err),
-            }),
-        ),
-      );
-      return;
-    }
-
-    if (content.type === "attachment" || content.type === "voice") {
-      this.enqueueForUser(handle, () =>
-        this.handleMediaMessage(handle, space, [content]).catch((err) =>
-          this.adapterLogger.error("media_message_processing_failed", {
+        this.handleIncomingMessage(
+          handle,
+          space,
+          receivedAt,
+          text,
+          message.id,
+        ).catch((err) =>
+          this.adapterLogger.error("incoming_message_processing_failed", {
             user_hash: handleHash,
             message_id: message.id,
             ...sanitizeErrorForLog(err),
@@ -253,9 +241,28 @@ export class ImessageAdapter extends BaseBotAdapter {
       return;
     }
 
+    if (content.type === "attachment" || content.type === "voice") {
+      this.enqueueForUser(handle, () =>
+        this.handleMediaMessage(handle, space, receivedAt, [content]).catch(
+          (err) =>
+            this.adapterLogger.error("media_message_processing_failed", {
+              user_hash: handleHash,
+              message_id: message.id,
+              ...sanitizeErrorForLog(err),
+            }),
+        ),
+      );
+      return;
+    }
+
     if (content.type === "group") {
       this.enqueueForUser(handle, () =>
-        this.handleMultiPartMessage(handle, space, content.items).catch((err) =>
+        this.handleMultiPartMessage(
+          handle,
+          space,
+          receivedAt,
+          content.items,
+        ).catch((err) =>
           this.adapterLogger.error("multipart_message_processing_failed", {
             user_hash: handleHash,
             message_id: message.id,
@@ -303,6 +310,7 @@ export class ImessageAdapter extends BaseBotAdapter {
   private async handleIncomingMessage(
     handle: string,
     space: Space,
+    receivedAt: number,
     text: string,
     messageId?: string,
   ): Promise<void> {
@@ -313,7 +321,9 @@ export class ImessageAdapter extends BaseBotAdapter {
       is_command: text.startsWith("/"),
     });
 
-    await space.startTyping().catch((err: unknown) =>
+    // Not awaited here: a Photon round-trip must not sit ahead of the chat request. Only
+    // stopTyping waits for it, so a fast reply cannot stop typing before it started.
+    const typingStarted = space.startTyping().catch((err: unknown) =>
       this.adapterLogger.error("typing_indicator_failed", {
         user_hash: handleHash,
         ...sanitizeErrorForLog(err),
@@ -331,8 +341,7 @@ export class ImessageAdapter extends BaseBotAdapter {
         platformUserId: handle,
         text,
         target,
-        linkState: () =>
-          this.userLinkState(handle, WELCOME_AUTH_CHECK_TIMEOUT_MS),
+        linkState: () => this.linkState(handle),
       });
       // null: the message was only a code, or a redemption already delivered
       // GAIA's whole first contact and there is no turn left to run.
@@ -355,7 +364,13 @@ export class ImessageAdapter extends BaseBotAdapter {
             await this.sendImessageText(space, "Usage: /gaia <your message>");
             return;
           }
-          await this.handleStreamingMessage(handle, space, rest, messageId);
+          await this.handleStreamingMessage(
+            handle,
+            space,
+            receivedAt,
+            rest,
+            messageId,
+          );
           return;
         }
 
@@ -369,8 +384,15 @@ export class ImessageAdapter extends BaseBotAdapter {
         return;
       }
 
-      await this.handleStreamingMessage(handle, space, chatText, messageId);
+      await this.handleStreamingMessage(
+        handle,
+        space,
+        receivedAt,
+        chatText,
+        messageId,
+      );
     } finally {
+      await typingStarted;
       await space.stopTyping().catch(() => undefined);
     }
   }
@@ -378,6 +400,7 @@ export class ImessageAdapter extends BaseBotAdapter {
   private async handleStreamingMessage(
     handle: string,
     space: Space,
+    receivedAt: number,
     text: string,
     messageId?: string,
     attachments: BotFileData[] = [],
@@ -404,6 +427,7 @@ export class ImessageAdapter extends BaseBotAdapter {
           // iMessage handles DMs only; group spaces are ignored upstream.
           isDm: true,
           platformMessageId: messageId,
+          receivedAt,
           ...(attachments.length > 0
             ? {
                 fileIds: attachments.map((a) => a.fileId),
@@ -436,7 +460,7 @@ export class ImessageAdapter extends BaseBotAdapter {
           await this.sendImessageText(space, errMsg);
         },
         STREAMING_DEFAULTS.imessage,
-        await this.analyticsFor(handle),
+        this.analyticsFor(handle),
         async (emoji: string) => {
           // Media turns carry no inbound message id, so there is nothing to react to.
           if (!messageId) return REACTION_OUTCOME.NO_TARGET;
@@ -462,45 +486,10 @@ export class ImessageAdapter extends BaseBotAdapter {
     }
   }
 
+  /** Sends the one-time welcome to an unlinked, first-time user (the base adapter's gate). */
   private async ensureWelcomed(handle: string, space: Space): Promise<void> {
     if (!(await this.shouldSendWelcome(handle))) return;
-
-    if (this.linkedUsers.has(handle)) return;
-    // A failed check greets rather than staying silent: an unlinked user who
-    // never sees the welcome has no way to discover /auth.
-    const state = await this.userLinkState(
-      handle,
-      WELCOME_AUTH_CHECK_TIMEOUT_MS,
-    );
-    if (state !== "linked") {
-      await this.sendWelcome(space, handle);
-    }
-  }
-
-  /**
-   * A failure (including the timeout) is `unknown`, not `unlinked` — callers
-   * pick their own safe default from that.
-   */
-  private async userLinkState(
-    handle: string,
-    timeoutMs: number,
-  ): Promise<LinkState> {
-    try {
-      const status = await Promise.race([
-        this.gaia.checkAuthStatus("imessage", handle),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("auth_check_timeout")), timeoutMs),
-        ),
-      ]);
-      if (status.authenticated) this.linkedUsers.add(handle);
-      return status.authenticated ? "linked" : "unlinked";
-    } catch (err) {
-      this.adapterLogger.warn("welcome_auth_check_failed", {
-        user_hash: hashLogIdentifier(handle),
-        ...sanitizeErrorForLog(err),
-      });
-      return "unknown";
-    }
+    await this.sendWelcome(space, handle);
   }
 
   private async sendWelcome(space: Space, handle: string): Promise<void> {
@@ -528,6 +517,7 @@ export class ImessageAdapter extends BaseBotAdapter {
   private async handleMultiPartMessage(
     handle: string,
     space: Space,
+    receivedAt: number,
     items: MessagePart[],
   ): Promise<void> {
     const handleHash = hashLogIdentifier(handle);
@@ -553,11 +543,17 @@ export class ImessageAdapter extends BaseBotAdapter {
     const caption = texts.join("\n").trim();
 
     if (mediaParts.length > 0) {
-      await this.handleMediaMessage(handle, space, mediaParts, caption);
+      await this.handleMediaMessage(
+        handle,
+        space,
+        receivedAt,
+        mediaParts,
+        caption,
+      );
       return;
     }
     if (caption) {
-      await this.handleIncomingMessage(handle, space, caption);
+      await this.handleIncomingMessage(handle, space, receivedAt, caption);
       return;
     }
 
@@ -574,6 +570,7 @@ export class ImessageAdapter extends BaseBotAdapter {
   private async handleMediaMessage(
     handle: string,
     space: Space,
+    receivedAt: number,
     contents: MediaContent[],
     caption?: string,
   ): Promise<void> {
@@ -645,6 +642,7 @@ export class ImessageAdapter extends BaseBotAdapter {
         await this.handleStreamingMessage(
           handle,
           space,
+          receivedAt,
           text,
           undefined,
           uploaded,

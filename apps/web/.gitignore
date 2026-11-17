@@ -12,3 +12,4 @@ C\:*
 # Each developer can re-stage via: bash scripts/copy-ort-wasm.sh
 public/wake-word/ort/*.wasm
 public/wake-word/ort/*.mjs
+

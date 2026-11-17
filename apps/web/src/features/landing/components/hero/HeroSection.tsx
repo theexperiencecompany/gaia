@@ -103,6 +103,7 @@ export default function HeroSection({
                   className="inline-block size-7 rotate-12 hover:scale-105 transition-transform ml-2"
                   width={28}
                   height={28}
+                  loading="eager"
                 />
                 <Image
                   src="/images/icons/macos/slack.webp"
@@ -110,6 +111,7 @@ export default function HeroSection({
                   className="inline-block size-7 -rotate-12 hover:scale-105 transition-transform"
                   width={28}
                   height={28}
+                  loading="eager"
                 />
                 <Image
                   src="/images/icons/macos/discord.webp"
@@ -117,6 +119,7 @@ export default function HeroSection({
                   className="inline-block size-7 rotate-12 hover:scale-105 transition-transform"
                   width={28}
                   height={28}
+                  loading="eager"
                 />
                 <Image
                   src="/images/icons/macos/telegram.webp"
@@ -124,6 +127,7 @@ export default function HeroSection({
                   className="inline-block size-7 -rotate-12 hover:scale-105 transition-transform mr-1"
                   width={28}
                   height={28}
+                  loading="eager"
                 />
               </SiteLink>
               <span>or use the web app.</span>
