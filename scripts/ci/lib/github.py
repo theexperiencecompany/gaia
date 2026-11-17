@@ -42,11 +42,15 @@ T = TypeVar("T")
 
 
 class GitHubError(Exception):
-    """An API call that did not produce the document the caller needs; status is its HTTP code."""
+    """An API call that did not produce the document the caller needs.
 
-    def __init__(self, message: str, status: int | None = None) -> None:
+    status is its HTTP code; transient means an outage outlasted the retries, so a later call may succeed.
+    """
+
+    def __init__(self, message: str, status: int | None = None, *, transient: bool = False) -> None:
         super().__init__(message)
         self.status = status
+        self.transient = transient
 
 
 def field_of(doc: Json, key: str, kind: type[T]) -> T:
@@ -134,13 +138,15 @@ class GitHub:
         self, method: str, url: str, body: Mapping[str, object] | None
     ) -> urllib.request.Request:
         headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-        if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
         data = None
         if body is not None:
             data = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
-        return urllib.request.Request(url, data=data, headers=headers, method=method)  # noqa: S310  # scheme checked in _url
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)  # noqa: S310  # scheme checked in _url
+        if self.token:
+            # Unredirected: downloads redirect to blob storage, which rejects a forwarded token with 401.
+            req.add_unredirected_header("Authorization", f"Bearer {self.token}")
+        return req
 
     def _delay(self, attempt: int, limit: _RateLimit | None) -> float:
         if limit is None:
@@ -184,7 +190,9 @@ class GitHub:
                 failure = f"network: {err}"
             if not retryable or attempt == self.attempts:
                 raise GitHubError(
-                    f"{method} {url} failed after {attempt} attempt(s) — {failure}", status
+                    f"{method} {url} failed after {attempt} attempt(s) — {failure}",
+                    status,
+                    transient=retryable,
                 )
             delay = self._delay(attempt, limit)
             print(
