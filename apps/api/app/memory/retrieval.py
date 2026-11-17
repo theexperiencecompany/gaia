@@ -160,7 +160,7 @@ async def recall(
 
     kept = _cap_weak_results(_drop_below_relevance(scored))[:limit]
     stage = time.perf_counter()
-    entries = await _build_entries(kept)
+    entries = await build_entries(kept)
     timings["build_ms"] = _elapsed_ms(stage)
 
     timings["total_ms"] = _elapsed_ms(started)
@@ -203,7 +203,7 @@ async def recall_episodes(
     exact evidence of recent activity, so they outrank semantic summary hits,
     which extend coverage to any past day whose rollover summary matches.
     """
-    tokens = _tokenize(query)
+    tokens = tokenize(query)
     # Journal days are keyed by the user's LOCAL date (user_time.py); a UTC
     # anchor started the window a day early/late at timezone edges and could
     # exclude the newest local day entirely.
@@ -487,7 +487,7 @@ async def _graph_siblings(
     )
 
 
-async def _build_entries(scored: list[tuple[MemoryRecord, float]]) -> list[MemoryEntry]:
+async def build_entries(scored: list[tuple[MemoryRecord, float]]) -> list[MemoryEntry]:
     """Map reranked (record, score) pairs to API entries with their entities.
 
     A superseded entry also carries its parent's content (previous_content),
@@ -573,7 +573,7 @@ def _episode_id_to_date(episode_id: str) -> date_type | None:
         return None
 
 
-def _tokenize(query: str) -> list[str]:
+def tokenize(query: str) -> list[str]:
     """Lowercase alphanumeric tokens long enough to be meaningful."""
     return [
         token

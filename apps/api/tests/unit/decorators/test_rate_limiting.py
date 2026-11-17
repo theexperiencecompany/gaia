@@ -474,9 +474,9 @@ class TestTieredRateLimitMetersUnderItsOrigin:
                 return_value=AuthenticatedUser(user_id=USER_ID),
             ),
             patch(
-                "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
+                "app.decorators.rate_limiting.payment_service.get_cached_plan_type",
                 new_callable=AsyncMock,
-                return_value=MagicMock(plan_type=PlanType.FREE),
+                return_value=PlanType.FREE,
             ),
             patch(
                 "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
