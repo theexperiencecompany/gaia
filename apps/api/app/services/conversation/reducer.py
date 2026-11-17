@@ -186,7 +186,7 @@ def _overlaps_a_replay(state: ConversationState, entry: WorkStarted) -> bool:
     """Return whether the work would run beside a replay, or the replay beside other work or an unanswered fire."""
     if entry.exclusive:
         return bool(state.work or state.unsettled_fires)
-    return any(item.exclusive for item in state.work)
+    return any(item.exclusive and not item.ended for item in state.work)
 
 
 def _join_work(state: ConversationState, entry: WorkStarted, joins: str) -> Transition | Rejected:
@@ -259,12 +259,16 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
     live = _live(state, entry.task_id)
     if live is None:
         return Transition(state=state, effects=())
-    if entry.left_to_decision and live.pending_approvals:
-        return Transition(state=_park(state, live), effects=())
+    if live.pending_approvals and entry.outcome is WorkOutcome.DONE:
+        parked = _park(state, live)
+        if entry.left_to_decision or live.detached:
+            return Transition(state=parked, effects=())
+        # A todo or workflow run reports now; the decision resumes its owner, so its approvals still wait.
+        return _report_finished(parked, seq, entry, live, ())
     remaining = state.model_copy(
         update={"work": tuple(item for item in state.work if item.task_id != entry.task_id)}
     )
-    # Nothing carries out a decision on what the ended run still asked: it is withdrawn, unanswerable.
+    # Nothing carries out a decision on what a failed or stopped run still asked: it is withdrawn.
     withdraw: tuple[Effect, ...] = (
         (WithdrawApprovals(approval_ids=live.pending_approvals),) if live.pending_approvals else ()
     )
@@ -273,6 +277,17 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
         return Transition(state=remaining, effects=withdraw)
     if entry.outcome is WorkOutcome.CANCELLED or live.detached:
         return Transition(state=remaining, effects=withdraw)
+    return _report_finished(remaining, seq, entry, live, withdraw)
+
+
+def _report_finished(
+    state: ConversationState,
+    seq: int,
+    entry: WorkFinished,
+    live: LiveWork,
+    effects: tuple[Effect, ...],
+) -> Transition:
+    """Queue the finished work for the step to narrate, and wake it."""
     result = FinishedWork(
         seq=seq,
         task_id=entry.task_id,
@@ -280,8 +295,8 @@ def _finish_work(state: ConversationState, seq: int, entry: WorkFinished) -> Tra
         cause_from=live.cause_from,
         answers=live.answers,
     )
-    awaiting = remaining.model_copy(update={"finished_work": (*state.finished_work, result)})
-    return Transition(state=_wake(awaiting, seq), effects=(*withdraw, KickStep()))
+    awaiting = state.model_copy(update={"finished_work": (*state.finished_work, result)})
+    return Transition(state=_wake(awaiting, seq), effects=(*effects, KickStep()))
 
 
 def _open_reply(state: ConversationState, seq: int, entry: Reply) -> Transition | Rejected:
