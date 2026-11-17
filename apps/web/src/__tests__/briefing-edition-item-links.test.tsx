@@ -34,6 +34,13 @@ function payload(
   };
 }
 
+/** The matches a sighted reader sees; the edition's screen-reader copy of the letter is left out. */
+function shown(text: string | RegExp): HTMLElement[] {
+  return screen
+    .queryAllByText(text)
+    .filter((element) => !element.closest(".sr-only"));
+}
+
 describe("brief item links", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -189,7 +196,7 @@ describe("brief item links", () => {
     expect(
       screen.getByRole("heading", { name: "More from GAIA" }),
     ).toBeTruthy();
-    expect(screen.getByText("Three hires closed this week.")).toBeTruthy();
+    expect(shown("Three hires closed this week.")).toHaveLength(1);
     expect(
       screen.getByRole("heading", { name: "Also on your radar" }),
     ).toBeTruthy();
@@ -197,9 +204,9 @@ describe("brief item links", () => {
       screen.getByText("Other things GAIA found that didn't make the brief."),
     ).toBeTruthy();
     expect(screen.getByText("Linear")).toBeTruthy();
-    expect(screen.queryByText("Your morning")).toBeNull();
-    expect(screen.queryByText("The deck is ready.")).toBeNull();
-    expect(screen.queryByText("Deck")).toBeNull();
+    expect(shown("Your morning")).toHaveLength(0);
+    expect(shown("The deck is ready.")).toHaveLength(0);
+    expect(shown("Deck")).toHaveLength(0);
   });
 
   it("says every block the edition could not draw, and nothing for the rest", () => {
@@ -275,11 +282,11 @@ describe("brief item links", () => {
       />,
     );
 
-    expect(screen.getByText("Weekly lead request")).toBeTruthy();
-    expect(screen.getByText("Fourth row")).toBeTruthy();
-    expect(screen.getByText("Fifth row")).toBeTruthy();
-    expect(screen.getByText(/Late call/)).toBeTruthy();
-    expect(screen.queryByText("Three")).toBeNull();
-    expect(screen.queryByText("B")).toBeNull();
+    expect(shown("Weekly lead request")).toHaveLength(1);
+    expect(shown("Fourth row")).toHaveLength(1);
+    expect(shown("Fifth row")).toHaveLength(1);
+    expect(shown(/Late call/)).toHaveLength(1);
+    expect(shown("Three")).toHaveLength(0);
+    expect(shown("B")).toHaveLength(0);
   });
 });

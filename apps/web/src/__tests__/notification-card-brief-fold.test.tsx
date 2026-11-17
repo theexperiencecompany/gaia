@@ -141,7 +141,7 @@ describe("briefing notification", () => {
     expect(fetchBriefing).toHaveBeenCalledWith("brief_1");
   });
 
-  it("unfolds a rendered edition on its own, with none of the brief's text below it", async () => {
+  it("unfolds a rendered edition on its own, its text only for screen readers", async () => {
     // jsdom never decodes images nor cuts bitmaps; the browser does both off this path.
     Object.defineProperty(HTMLImageElement.prototype, "decode", {
       configurable: true,
@@ -198,7 +198,9 @@ describe("briefing notification", () => {
     );
 
     expect(await screen.findByRole("img", { name: HEADLINE })).toBeTruthy();
-    expect(screen.queryByText(MESSAGE)).toBeNull();
+    expect(
+      (await screen.findByText(MESSAGE)).closest(".sr-only"),
+    ).not.toBeNull();
     expect(fetchBriefing).toHaveBeenCalledWith("brief_2");
   });
 
@@ -236,6 +238,29 @@ describe("briefing notification", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Close" }));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("tells a screen reader the brief's day, what waits and its edition, not only its headline", () => {
+    renderCard(
+      notification(
+        briefMetadata("brief_1", {
+          needs_you_count: 4,
+          edition_name: "Air Mail",
+          stamp_city_name: "Bogotá",
+        }),
+      ),
+    );
+
+    const card = screen.getByRole("button", {
+      name: `Open brief: ${HEADLINE}`,
+    });
+    const description = (card.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .map((id) => document.getElementById(id)?.textContent)
+      .join(" ");
+    expect(description).toContain("4 waiting");
+    expect(description).toContain("Air Mail, Bogotá");
+    expect(description).toMatch(/Oct/);
   });
 
   it("says a deleted brief isn't available anymore", async () => {

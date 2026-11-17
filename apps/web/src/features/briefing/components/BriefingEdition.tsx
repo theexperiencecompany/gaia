@@ -135,11 +135,20 @@ function clockTime(start: string): string {
   });
 }
 
-/** A brief with no rendered edition, read as text: the headline, GAIA's message, its items, then what it could not draw or left out. */
-function BriefingText({ payload }: { payload: BriefingEditionPayload }) {
+interface BriefingTextProps {
+  payload: BriefingEditionPayload;
+  /** Only the letter the edition draws, for a page that lists what it left out below it. */
+  letterOnly?: boolean;
+}
+
+/** A brief read as text: the headline, GAIA's message, its items, then what it could not draw or left out. */
+export function BriefingText({
+  payload,
+  letterOnly = false,
+}: BriefingTextProps) {
   const calendar = payload.calendar ?? [];
-  const uncomposed = payload.uncomposed ?? [];
-  const undrawn = undrawnLines(payload);
+  const uncomposed = letterOnly ? [] : (payload.uncomposed ?? []);
+  const undrawn = letterOnly ? [] : undrawnLines(payload);
   return (
     <article className="w-full rounded-2xl bg-zinc-800 p-4">
       <p className="mb-3 text-sm font-semibold text-zinc-100">
@@ -336,6 +345,10 @@ export function BriefingEdition({ payload, imageUrl }: BriefingEditionProps) {
         // px-4 gutter, so the paper gets the screen's width instead of losing 32px.
         className="-mx-4 h-auto w-[calc(100%+2rem)] max-w-none sm:mx-auto sm:w-full sm:max-w-[572px]"
       />
+      {/* The edition is a picture of the letter; a screen reader reads the letter itself. */}
+      <div className="sr-only">
+        <BriefingText payload={payload} letterOnly />
+      </div>
       {(undrawn.length > 0 ||
         leftOut.length > 0 ||
         hiddenEvents.length > 0) && (

@@ -58,7 +58,7 @@ describe("brief page", () => {
     fetchBriefing.mockReset();
   });
 
-  it("shows the rendered edition alone, without repeating the letter under it", () => {
+  it("shows the rendered edition alone, its letter only for screen readers", () => {
     render(
       <BriefingEdition
         payload={PAYLOAD}
@@ -67,10 +67,14 @@ describe("brief page", () => {
     );
 
     expect(screen.getByRole("img", { name: HEADLINE })).toBeTruthy();
-    expect(screen.queryByText(HEADLINE)).toBeNull();
-    expect(screen.queryByText(MESSAGE)).toBeNull();
-    expect(screen.queryByText("Reply to Dana")).toBeNull();
-    expect(screen.queryByText("Lunch and learn")).toBeNull();
+    for (const text of [
+      HEADLINE,
+      MESSAGE,
+      "Reply to Dana",
+      "Lunch and learn",
+    ]) {
+      expect(screen.getByText(text).closest(".sr-only")).not.toBeNull();
+    }
   });
 
   it("reads a brief without an edition as text, its times on a clock", () => {

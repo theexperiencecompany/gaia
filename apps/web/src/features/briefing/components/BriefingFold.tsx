@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowExpand01Icon } from "@icons";
+import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 import {
@@ -11,6 +12,7 @@ import {
 import { LinkButton } from "@/components/shared/LinkButton";
 import { LoadError } from "@/components/shared/LoadError";
 
+import { briefingQuery } from "../api/briefingApi";
 import { BRIEF_LETTER_WIDTH } from "../constants";
 import {
   type BriefSource,
@@ -19,7 +21,7 @@ import {
 } from "../hooks/useOpenBrief";
 
 import { briefPath, type FoldedBriefSummary } from "../utils/briefCard";
-import { BriefingEdition } from "./BriefingEdition";
+import { BriefingEdition, BriefingText } from "./BriefingEdition";
 import { EditionUnfold } from "./EditionUnfold";
 
 export type BriefingFoldProps = BriefSource & {
@@ -36,6 +38,15 @@ export function BriefingFold({
 }: BriefingFoldProps) {
   const { trigger, opened, origin, isOpen, close, retry, settle } =
     useOpenBrief(brief, source);
+  // The unfolding edition is a picture; a screen reader reads the letter's text, fetched alongside it.
+  const { data: stored } = useQuery({
+    ...briefingQuery(source.briefingId ?? ""),
+    enabled:
+      Boolean(source.briefingId) &&
+      !source.payload &&
+      opened?.kind === "edition",
+  });
+  const letterText = source.payload ?? stored?.payload;
   const { headline } = brief;
   const fullBrief =
     source.briefingId && opened && opened.kind !== "missing"
@@ -65,12 +76,19 @@ export function BriefingFold({
         }
       >
         {opened?.kind === "edition" ? (
-          <EditionUnfold
-            edition={opened.edition}
-            alt={headline}
-            origin={origin}
-            onFolded={settle}
-          />
+          <>
+            <EditionUnfold
+              edition={opened.edition}
+              alt={headline}
+              origin={origin}
+              onFolded={settle}
+            />
+            {letterText && (
+              <div className="sr-only">
+                <BriefingText payload={letterText} />
+              </div>
+            )}
+          </>
         ) : (
           <LetterSheet
             style={{ width: BRIEF_LETTER_WIDTH }}
