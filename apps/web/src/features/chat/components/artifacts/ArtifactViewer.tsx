@@ -1,9 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { Cancel01Icon, Download02Icon } from "@icons";
 import { usePanelDrawsClose } from "@/components/layout/sidebar/RightSidebarSlot";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { artifactPdfDownloadUrl } from "@/features/artifacts/api/artifactsApi";
 import { useArtifact } from "@/features/artifacts/hooks/useArtifact";
 import { LazyArtifactRenderer } from "@/features/artifacts/LazyArtifactRenderer";
@@ -25,32 +26,31 @@ export function ArtifactViewer({ artifactId, title }: ArtifactViewerProps) {
     <div className="flex h-full min-h-0 flex-col bg-zinc-900">
       <div className="flex min-h-12 shrink-0 items-center gap-2 bg-zinc-800 px-3">
         <p className="min-w-0 flex-1 truncate text-sm text-zinc-200">{title}</p>
-        <Button
+        <LinkButton
           isIconOnly
           size="sm"
-          variant="light"
-          as="a"
+          variant="ghost"
           href={artifactPdfDownloadUrl(artifactId)}
           download
           aria-label="Download PDF"
         >
           <Download02Icon size={16} />
-        </Button>
+        </LinkButton>
         <ShareLinkControls
           iconOnly
           targetType="openui_artifact"
           targetId={artifactId}
         />
         {drawsClose && (
-          <Button
+          <GaiaButton
             isIconOnly
             size="sm"
-            variant="light"
+            variant="ghost"
             onPress={closeSidebar}
             aria-label="Close artifact"
           >
             <Cancel01Icon size={16} />
-          </Button>
+          </GaiaButton>
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">

@@ -1,8 +1,9 @@
 "use client";
 
-import { Slider } from "@heroui/slider";
-import { Switch } from "@heroui/switch";
+import { Slider, Switch } from "@heroui/react";
 import { Moon02Icon } from "@icons";
+import { sliderVariants } from "@/components/shared/controlVariants";
+import { toneVariants } from "@/components/shared/tone";
 import { useQuietHours } from "@/features/settings/hooks/useQuietHours";
 import {
   formatHour,
@@ -60,20 +61,29 @@ export function QuietHoursSettings() {
           <Switch
             size="sm"
             isSelected={hours.enabled}
-            onValueChange={(enabled) => save({ ...hours, enabled })}
+            onChange={(enabled: boolean) => save({ ...hours, enabled })}
             aria-label="Use quiet hours"
-          />
+          >
+            <Switch.Content>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
+          </Switch>
         </div>
         <Slider
           aria-label="Quiet hours window"
-          className={cn(
-            "mt-4 transition-opacity duration-200",
-            !hours.enabled && "pointer-events-none opacity-40",
-          )}
+          className={sliderVariants({
+            size: "sm",
+            color: "indigo",
+            className: cn(
+              "mt-4 transition-opacity duration-200",
+              !hours.enabled && "pointer-events-none opacity-40",
+            ),
+          })}
           minValue={QUIET_AXIS_START}
           maxValue={QUIET_AXIS_END}
           step={1}
-          size="sm"
           value={toAxis(hours)}
           isDisabled={!hours.enabled}
           onChange={(value) =>
@@ -87,18 +97,27 @@ export function QuietHoursSettings() {
             if (next.start_hour === next.end_hour) preview(null);
             else save(next);
           }}
-          marks={QUIET_AXIS_MARKS.map((value) => ({
-            value,
-            label: markLabel(value),
-          }))}
-          classNames={{
-            filler: "bg-indigo-400/70",
-            thumb: "bg-indigo-300 after:bg-indigo-300",
-            // Marks label the axis, not move a thumb: HeroUI moves one on a mark click
-            // without firing onChangeEnd, which would preview a window that is never saved.
-            mark: "pointer-events-none whitespace-nowrap text-[11px] text-zinc-500 tabular-nums",
-          }}
-        />
+        >
+          <Slider.Track>
+            <Slider.Fill />
+            <Slider.Thumb index={0} />
+            <Slider.Thumb index={1} />
+          </Slider.Track>
+          <Slider.Marks className="pointer-events-none">
+            {QUIET_AXIS_MARKS.map((value) => (
+              <Slider.Mark
+                key={value}
+                value={value}
+                className={toneVariants({
+                  tone: "faint",
+                  className: "whitespace-nowrap text-[11px] tabular-nums",
+                })}
+              >
+                {markLabel(value)}
+              </Slider.Mark>
+            ))}
+          </Slider.Marks>
+        </Slider>
       </div>
     </section>
   );

@@ -1,11 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Card } from "@heroui/card";
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import { FavouriteIcon } from "@icons";
 import type { BriefingEdition } from "@shared/api/generated";
 import Image from "next/image";
+import { GaiaButton } from "@/components/shared/GaiaButton";
 import { useBriefingEditionsSettings } from "@/features/settings/hooks/useBriefingEditionsSettings";
 
 /** Built by apps/api/scripts/build_edition_thumbnails.py, one per daily family. */
@@ -65,12 +64,12 @@ function EditionCard({
 
   return (
     <div className="relative">
-      <Card
-        isPressable
-        onPress={onToggle}
+      <button
+        type="button"
+        onClick={onToggle}
         aria-label={`${edition.name}: ${isOff ? "off, tap to turn on" : "on, tap to turn off"}`}
         aria-pressed={!isOff}
-        className={`aspect-[3/4] w-full bg-zinc-800 transition ${isOff ? "opacity-40 grayscale" : ""}`}
+        className={`relative block aspect-[3/4] w-full cursor-pointer overflow-hidden rounded-2xl bg-zinc-800 outline-none transition focus-visible:ring-2 focus-visible:ring-accent active:scale-[0.97] ${isOff ? "opacity-40 grayscale" : ""}`}
       >
         <Image
           src={thumbnailSrc(edition.family)}
@@ -79,12 +78,12 @@ function EditionCard({
           sizes="(min-width: 640px) 220px, 45vw"
           className="object-cover object-top"
         />
-      </Card>
-      <Button
+      </button>
+      <GaiaButton
         isIconOnly
         size="sm"
-        radius="full"
-        variant="flat"
+        shape="pill"
+        variant="scrim"
         aria-label={
           isFavourite
             ? `Remove ${edition.name} from favourites`
@@ -92,13 +91,13 @@ function EditionCard({
         }
         aria-pressed={isFavourite}
         onPress={onFavourite}
-        className="absolute top-2 right-2 z-20 bg-black/50 backdrop-blur"
+        className="absolute top-2 right-2 z-20"
       >
         <FavouriteIcon
           size={16}
           className={isFavourite ? "text-red-500" : "text-zinc-300"}
         />
-      </Button>
+      </GaiaButton>
       <p
         className={`mt-2 text-sm font-medium ${isOff ? "text-zinc-500" : "text-zinc-200"}`}
       >

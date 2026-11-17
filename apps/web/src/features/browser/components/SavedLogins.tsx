@@ -1,17 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
 import {
+  Chip,
   Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Input } from "@heroui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
-import { ScrollShadow } from "@heroui/react";
-import { Skeleton } from "@heroui/skeleton";
+  Popover,
+  ScrollShadow,
+  SearchField,
+  Skeleton,
+} from "@heroui/react";
 import {
   ArcBrowserIcon,
   ChromeIcon,
@@ -28,6 +24,9 @@ import {
 import Image from "next/image";
 import { type ComponentType, useEffect, useState } from "react";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { inputVariants } from "@/components/shared/controlVariants";
+import { GaiaButton } from "@/components/shared/GaiaButton";
+import { toneVariants } from "@/components/shared/tone";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { useBrowserLogins } from "../hooks/useBrowserLogins";
 import type { SavedBrowserLogin } from "../types";
@@ -85,20 +84,24 @@ function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
   const BrowserLogo = browserIcon(login.source_browser);
 
   return (
-    <Popover isOpen={open} onOpenChange={setOpen} placement="top" showArrow>
-      <PopoverTrigger>
+    <Popover isOpen={open} onOpenChange={setOpen}>
+      <Popover.Trigger>
         <button
           type="button"
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
         >
-          <Chip size="sm" variant="flat" className="bg-zinc-800 text-zinc-300">
-            Imported
+          <Chip
+            size="sm"
+            variant="secondary"
+            className={toneVariants({ tone: "dim" })}
+          >
+            <Chip.Label>Imported</Chip.Label>
           </Chip>
         </button>
-      </PopoverTrigger>
-      <PopoverContent className="rounded-2xl bg-zinc-900 p-3">
-        <div className="flex flex-col gap-3">
+      </Popover.Trigger>
+      <Popover.Content placement="top">
+        <div className="flex flex-col gap-3 p-3">
           {login.source_browser && (
             <ProvenanceFact
               icon={BrowserLogo}
@@ -121,7 +124,7 @@ function ImportedBadge({ login }: { login: SavedBrowserLogin }) {
             />
           )}
         </div>
-      </PopoverContent>
+      </Popover.Content>
     </Popover>
   );
 }
@@ -181,17 +184,16 @@ function LoginRow({
           </p>
         )}
       </div>
-      <Button
+      <GaiaButton
         size="sm"
-        variant="light"
-        color="danger"
+        variant="ghost"
         className={`h-8 shrink-0 transition-opacity ${isForgetting ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-        isLoading={isForgetting}
-        startContent={!isForgetting && <Delete02Icon className="size-4" />}
+        isPending={isForgetting}
         onPress={() => onForget(login.domain)}
       >
+        {!isForgetting && <Delete02Icon className="size-4" />}
         Forget
-      </Button>
+      </GaiaButton>
     </div>
   );
 }
@@ -258,61 +260,56 @@ export function SavedLogins() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {logins.length > 0 && (
-            <Input
-              size="sm"
-              radius="lg"
+            <SearchField
+              aria-label="Search saved sites"
               value={query}
-              onValueChange={setQuery}
-              isClearable
-              onClear={() => setQuery("")}
-              placeholder="Search saved sites…"
-              startContent={<Search01Icon className="size-4 text-zinc-500" />}
-              className="max-w-52"
-              classNames={{ inputWrapper: "bg-zinc-800" }}
-            />
+              onChange={setQuery}
+              className={inputVariants({ size: "sm", className: "max-w-52" })}
+            >
+              <SearchField.Group>
+                <Search01Icon className="size-4 text-zinc-500" />
+                <SearchField.Input placeholder="Search saved sites…" />
+                <SearchField.ClearButton />
+              </SearchField.Group>
+            </SearchField>
           )}
-          <Dropdown placement="bottom-end">
-            <DropdownTrigger>
-              <Button
-                isIconOnly
+          <Dropdown>
+            <GaiaButton
+              isIconOnly
+              aria-label="Saved sites actions"
+              size="sm"
+              variant="ghost"
+            >
+              <MoreVerticalIcon className="size-4" />
+            </GaiaButton>
+            <Dropdown.Popover placement="bottom end">
+              <Dropdown.Menu
                 aria-label="Saved sites actions"
-                size="sm"
-                variant="light"
+                onAction={(key) => {
+                  if (key === "import") setConnectOpen(true);
+                  if (key === "refresh") void refetch();
+                  if (key === "clear") void handleClearAll();
+                }}
               >
-                <MoreVerticalIcon className="size-4" />
-              </Button>
-            </DropdownTrigger>
-            <DropdownMenu aria-label="Saved sites actions">
-              <DropdownItem
-                key="import"
-                textValue="Import from browser"
-                startContent={
+                <Dropdown.Item id="import" textValue="Import from browser">
                   <DatabaseImportIcon className="size-4 text-zinc-400" />
-                }
-                onPress={() => setConnectOpen(true)}
-              >
-                Import from browser
-              </DropdownItem>
-              <DropdownItem
-                key="refresh"
-                textValue="Refresh"
-                startContent={<RefreshIcon className="size-4 text-zinc-400" />}
-                onPress={() => void refetch()}
-              >
-                Refresh
-              </DropdownItem>
-              <DropdownItem
-                key="clear"
-                textValue="Clear all"
-                color="danger"
-                className="text-danger"
-                isDisabled={logins.length === 0 || isClearingAll}
-                startContent={<Delete02Icon className="size-4" />}
-                onPress={() => void handleClearAll()}
-              >
-                Clear all
-              </DropdownItem>
-            </DropdownMenu>
+                  Import from browser
+                </Dropdown.Item>
+                <Dropdown.Item id="refresh" textValue="Refresh">
+                  <RefreshIcon className="size-4 text-zinc-400" />
+                  Refresh
+                </Dropdown.Item>
+                <Dropdown.Item
+                  id="clear"
+                  textValue="Clear all"
+                  variant="danger"
+                  isDisabled={logins.length === 0 || isClearingAll}
+                >
+                  <Delete02Icon className="size-4" />
+                  Clear all
+                </Dropdown.Item>
+              </Dropdown.Menu>
+            </Dropdown.Popover>
           </Dropdown>
         </div>
       </div>
@@ -331,9 +328,13 @@ export function SavedLogins() {
       ) : error ? (
         <div className="flex flex-col items-center gap-3 rounded-2xl bg-zinc-800/40 p-6 text-center text-sm text-zinc-400">
           <span>Couldn&apos;t load your saved sites.</span>
-          <Button size="sm" variant="flat" onPress={() => void refetch()}>
+          <GaiaButton
+            size="sm"
+            variant="default-soft"
+            onPress={() => void refetch()}
+          >
             Retry
-          </Button>
+          </GaiaButton>
         </div>
       ) : logins.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-zinc-800/40 p-8 text-center">
@@ -344,13 +345,13 @@ export function SavedLogins() {
           <p className="truncate text-xs text-zinc-500">
             Import logins from your computer's browser to get started.
           </p>
-          <Button
+          <GaiaButton
             size="sm"
-            color="primary"
             onPress={() => setConnectOpen(true)}
+            variant="primary"
           >
             Import
-          </Button>
+          </GaiaButton>
         </div>
       ) : (
         <ScrollShadow className="max-h-[540px]">

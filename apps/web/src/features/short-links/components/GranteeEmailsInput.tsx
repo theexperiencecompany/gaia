@@ -1,7 +1,14 @@
 "use client";
 
-import { Chip } from "@heroui/chip";
-import { Input } from "@heroui/input";
+import {
+  Description,
+  FieldError,
+  Input,
+  Label,
+  Tag,
+  TagGroup,
+  TextField,
+} from "@heroui/react";
 import { type KeyboardEvent, useState } from "react";
 import { z } from "zod";
 
@@ -55,35 +62,45 @@ export function GranteeEmailsInput({
 
   return (
     <div className="flex flex-col gap-2">
-      <Input
-        label="People"
-        labelPlacement="outside"
-        placeholder="name@example.com"
+      <TextField
         type="email"
         value={draft}
-        onValueChange={(value) => {
+        onChange={(value) => {
           setDraft(value);
           setError(null);
         }}
         onKeyDown={onKeyDown}
         onBlur={commit}
         isInvalid={shownError !== null}
-        errorMessage={shownError}
-        description="Press Enter or a comma after each email. They open it signed in to GAIA with that email."
-      />
+      >
+        <Label>People</Label>
+        <Input placeholder="name@example.com" />
+        {shownError ? (
+          <FieldError>{shownError}</FieldError>
+        ) : (
+          <Description>
+            Press Enter or a comma after each email. They open it signed in to
+            GAIA with that email.
+          </Description>
+        )}
+      </TextField>
       {emails.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {emails.map((email) => (
-            <Chip
-              key={email}
-              size="sm"
-              variant="flat"
-              onClose={() => onEmailsChange(emails.filter((e) => e !== email))}
-            >
-              {email}
-            </Chip>
-          ))}
-        </div>
+        <TagGroup
+          aria-label="People with access"
+          size="sm"
+          onRemove={(removed) =>
+            onEmailsChange(emails.filter((email) => !removed.has(email)))
+          }
+        >
+          <TagGroup.List>
+            {emails.map((email) => (
+              <Tag key={email} id={email} textValue={email}>
+                {email}
+                <Tag.RemoveButton aria-label={`Remove ${email}`} />
+              </Tag>
+            ))}
+          </TagGroup.List>
+        </TagGroup>
       )}
     </div>
   );

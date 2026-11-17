@@ -1,9 +1,8 @@
-import { Card, CardBody } from "@heroui/card";
-import { Link } from "@heroui/link";
 import {
   type ComponentRenderProps,
   defineComponent,
 } from "@openuidev/react-lang";
+import Link from "next/link";
 import { useContext } from "react";
 import type { z } from "zod";
 import { GroundedText } from "../GroundedText";
@@ -25,13 +24,13 @@ import {
 // Views stay file-private: this module's surface is the defs (react-refresh/only-export-components).
 
 const TONE_SURFACE: Record<z.infer<typeof calloutTone>, string> = {
-  note: "bg-primary/10",
+  note: "bg-accent/10",
   good: "bg-success/10",
   warn: "bg-warning/10",
   risk: "bg-danger/10",
 };
 const TONE_TEXT: Record<z.infer<typeof calloutTone>, string> = {
-  note: "text-primary",
+  note: "text-accent",
   good: "text-success",
   warn: "text-warning",
   risk: "text-danger",
@@ -71,11 +70,11 @@ function ArtifactRoot({
         >
           <GroundedText text={props.title} />
         </h1>
-        <p className={`leading-relaxed text-default-600 ${classes.subtitle}`}>
+        <p className={`leading-relaxed text-foreground/80 ${classes.subtitle}`}>
           <GroundedText text={props.subtitle} />
         </p>
         {props.details?.length ? (
-          <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-1 text-sm text-default-500">
+          <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted">
             {props.details.map((detail) => (
               <li key={detail}>
                 <GroundedText text={detail} />
@@ -86,7 +85,7 @@ function ArtifactRoot({
       </header>
       <div className="flex flex-col gap-6">{renderNode(props.children)}</div>
       {density === "page" ? (
-        <footer className="mt-16 pt-5 text-sm text-default-500">
+        <footer className="mt-16 pt-5 text-sm text-muted">
           Prepared by GAIA
         </footer>
       ) : null}
@@ -112,7 +111,7 @@ export const sectionDef = defineComponent({
           <GroundedText text={props.title} />
         </h2>
         {props.summary ? (
-          <p className="mt-1 text-default-500">
+          <p className="mt-1 text-muted">
             <GroundedText text={props.summary} />
           </p>
         ) : null}
@@ -138,7 +137,7 @@ export const paragraphDef = defineComponent({
   description: describeArtifactComponent("Paragraph"),
   props: paragraphSchema,
   component: ({ props }) => (
-    <p className="text-[1.0625rem] leading-relaxed text-default-700">
+    <p className="text-[1.0625rem] leading-relaxed text-foreground/90">
       <GroundedText text={props.text} />
     </p>
   ),
@@ -149,18 +148,16 @@ export const takeawaysDef = defineComponent({
   description: describeArtifactComponent("Takeaways"),
   props: takeawaysSchema,
   component: ({ props }) => (
-    <Card shadow="none" className="bg-default-100">
-      <CardBody className="gap-2 p-6">
-        <p className="text-sm font-semibold text-default-500">In short</p>
-        <ul className="list-disc space-y-2 pl-5 marker:text-primary">
-          {props.items.map((item) => (
-            <li key={item}>
-              <GroundedText text={item} />
-            </li>
-          ))}
-        </ul>
-      </CardBody>
-    </Card>
+    <div className="flex flex-col gap-2 rounded-2xl bg-default p-6">
+      <p className="text-sm font-semibold text-muted">In short</p>
+      <ul className="list-disc space-y-2 pl-5 marker:text-accent">
+        {props.items.map((item) => (
+          <li key={item}>
+            <GroundedText text={item} />
+          </li>
+        ))}
+      </ul>
+    </div>
   ),
 });
 
@@ -169,16 +166,14 @@ export const calloutDef = defineComponent({
   description: describeArtifactComponent("Callout"),
   props: calloutSchema,
   component: ({ props }) => (
-    <Card shadow="none" className={TONE_SURFACE[props.tone]}>
-      <CardBody className="p-5">
-        <p>
-          <strong className={`font-semibold ${TONE_TEXT[props.tone]}`}>
-            <GroundedText text={props.title} />
-          </strong>{" "}
-          <GroundedText text={props.text} />
-        </p>
-      </CardBody>
-    </Card>
+    <div className={`rounded-2xl p-5 ${TONE_SURFACE[props.tone]}`}>
+      <p>
+        <strong className={`font-semibold ${TONE_TEXT[props.tone]}`}>
+          <GroundedText text={props.title} />
+        </strong>{" "}
+        <GroundedText text={props.text} />
+      </p>
+    </div>
   ),
 });
 
@@ -191,7 +186,7 @@ export const quoteDef = defineComponent({
       <blockquote className="text-xl font-medium tracking-tight text-foreground italic">
         <GroundedText text={props.text} />
       </blockquote>
-      <figcaption className="mt-2 text-sm text-default-500">
+      <figcaption className="mt-2 text-sm text-muted">
         {props.attribution}
       </figcaption>
     </figure>
@@ -207,16 +202,14 @@ export const todoDef = defineComponent({
       {props.items.map(([verb, text, side]) => (
         <li
           key={`${verb} ${text}`}
-          className="flex flex-col gap-1 border-b border-default-200 py-3 last:border-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+          className="flex flex-col gap-1 border-b border-separator py-3 last:border-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
         >
           <span>
             <strong className="font-semibold text-foreground">{verb}</strong>{" "}
             <GroundedText text={text} />
           </span>
           {side ? (
-            <span className="text-sm whitespace-nowrap text-default-500">
-              {side}
-            </span>
+            <span className="text-sm whitespace-nowrap text-muted">{side}</span>
           ) : null}
         </li>
       ))}
@@ -229,16 +222,15 @@ export const sourcesDef = defineComponent({
   description: describeArtifactComponent("Sources"),
   props: sourcesSchema,
   component: ({ props }) => (
-    <ol className="list-decimal pl-6 text-sm text-default-500">
+    <ol className="list-decimal pl-6 text-sm text-muted">
       {props.items.map(([title, publisher, url]) => (
         <li key={`${title} ${publisher}`}>
           {url ? (
             <Link
               href={url}
-              isExternal
-              size="sm"
-              underline="always"
-              className="text-primary"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-accent underline"
             >
               {title}
             </Link>

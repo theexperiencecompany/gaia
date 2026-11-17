@@ -1,6 +1,6 @@
 "use client";
 
-import { Skeleton } from "@heroui/skeleton";
+import { Skeleton } from "@heroui/react";
 import dynamic from "next/dynamic";
 
 /** The artifact renderer, loaded only on surfaces that show an artifact. */

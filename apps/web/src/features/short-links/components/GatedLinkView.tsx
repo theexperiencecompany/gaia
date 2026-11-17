@@ -1,6 +1,6 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { Spinner } from "@heroui/react";
 import { ApiError } from "@shared/api";
 import { useEffect, useState } from "react";
 

@@ -187,6 +187,10 @@
     "width": 225,
     "height": 225
   },
+  "/images/icons/height.png": {
+    "width": 32,
+    "height": 32
+  },
   "/images/icons/hubspot.svg": {
     "width": 128,
     "height": 128
@@ -331,7 +335,7 @@
     "width": 512,
     "height": 591
   },
-  "/images/icons/poke.png": {
+  "/images/icons/poke.webp": {
     "width": 192,
     "height": 192
   },
@@ -350,6 +354,10 @@
   "/images/icons/slack.svg": {
     "width": 128,
     "height": 128
+  },
+  "/images/icons/ticktick.png": {
+    "width": 152,
+    "height": 152
   },
   "/images/icons/todoist.svg": {
     "width": 256,
@@ -431,7 +439,7 @@
     "width": 334,
     "height": 104
   },
-  "/images/readme/self-host-installer.webp": {
+  "/images/readme/self-host-installer.jpg": {
     "width": 2400,
     "height": 1350
   },
@@ -447,10 +455,6 @@
     "width": 1280,
     "height": 720
   },
-  "/images/screenshots/phone_dock.png": {
-    "width": 1920,
-    "height": 1080
-  },
   "/images/screenshots/phone_dock.webp": {
     "width": 1920,
     "height": 1080
@@ -463,10 +467,6 @@
     "width": 870,
     "height": 494
   },
-  "/images/wallpapers/bands_gradient_1.png": {
-    "width": 1536,
-    "height": 1024
-  },
   "/images/wallpapers/bands_gradient_1.webp": {
     "width": 1536,
     "height": 1024
@@ -475,17 +475,9 @@
     "width": 1536,
     "height": 1024
   },
-  "/images/wallpapers/blueprint.png": {
-    "width": 1536,
-    "height": 1024
-  },
   "/images/wallpapers/blueprint.webp": {
     "width": 1536,
     "height": 1024
-  },
-  "/images/wallpapers/creation_of_adam.png": {
-    "width": 1672,
-    "height": 941
   },
   "/images/wallpapers/creation_of_adam.webp": {
     "width": 1672,
@@ -498,10 +490,6 @@
   "/images/wallpapers/earth_satellite.png": {
     "width": 1536,
     "height": 1024
-  },
-  "/images/wallpapers/ethereal_alpine_valley.png": {
-    "width": 1672,
-    "height": 941
   },
   "/images/wallpapers/ethereal_alpine_valley.webp": {
     "width": 1672,
@@ -535,15 +523,7 @@
     "width": 1672,
     "height": 941
   },
-  "/images/wallpapers/swiss_evening.png": {
-    "width": 1536,
-    "height": 1024
-  },
   "/images/wallpapers/swiss_evening.webp": {
-    "width": 1536,
-    "height": 1024
-  },
-  "/images/wallpapers/swiss_morning.png": {
     "width": 1536,
     "height": 1024
   },
@@ -551,15 +531,7 @@
     "width": 1536,
     "height": 1024
   },
-  "/images/wallpapers/swiss_night.png": {
-    "width": 1536,
-    "height": 1024
-  },
   "/images/wallpapers/swiss_night.webp": {
-    "width": 1536,
-    "height": 1024
-  },
-  "/images/wallpapers/swiss.png": {
     "width": 1536,
     "height": 1024
   },

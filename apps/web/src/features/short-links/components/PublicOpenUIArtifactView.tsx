@@ -1,8 +1,7 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Link } from "@heroui/link";
 import { Download01Icon } from "@icons";
+import { LinkButton } from "@/components/shared/LinkButton";
 import { LazyArtifactRenderer } from "@/features/artifacts/LazyArtifactRenderer";
 import { shortLinkPdfDownloadUrl } from "@/features/short-links/api/linkViewerApi";
 import type { PublicOpenUIArtifact } from "@/types/features/shortLinkTypes";
@@ -12,15 +11,14 @@ import { useReaderDateLabel } from "../hooks/useReaderDateLabel";
 /** Download the shared artifact as a PDF; sits in the page header. */
 export function ArtifactPdfDownload({ slug }: { slug: string }) {
   return (
-    <Button
-      as={Link}
+    <LinkButton
       href={shortLinkPdfDownloadUrl(slug)}
       size="sm"
-      variant="flat"
-      startContent={<Download01Icon className="size-4" />}
+      variant="default-soft"
     >
+      <Download01Icon className="size-4" />
       Download PDF
-    </Button>
+    </LinkButton>
   );
 }
 
