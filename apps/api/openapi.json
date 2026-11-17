@@ -2301,8 +2301,13 @@
         "type": "object"
       },
       "BotMessageAccepted": {
-        "description": "A bot message accepted, with the token the bot follows the events stream with.",
+        "description": "A bot message accepted, with the token the bot follows the events stream with.\n\nafter_seq and partial_reply are where the follow starts: the session's delivery cursor while\nit still owes anything, else just before the message.",
         "properties": {
+          "after_seq": {
+            "minimum": 0.0,
+            "title": "After Seq",
+            "type": "integer"
+          },
           "conversation_id": {
             "title": "Conversation Id",
             "type": "string"
@@ -2310,6 +2315,16 @@
           "message_id": {
             "title": "Message Id",
             "type": "string"
+          },
+          "partial_reply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PartialReply"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "seq": {
             "title": "Seq",
@@ -2324,7 +2339,9 @@
           "conversation_id",
           "message_id",
           "seq",
-          "session_token"
+          "session_token",
+          "after_seq",
+          "partial_reply"
         ],
         "title": "BotMessageAccepted",
         "type": "object"

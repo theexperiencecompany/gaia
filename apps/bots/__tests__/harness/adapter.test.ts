@@ -124,6 +124,7 @@ function makeGaia(script: ApiScript, held: Promise<void> = Promise.resolve()) {
         message_id: `u${posts.length}`,
         seq: posts.length,
         session_token: "session",
+        after_seq: posts.length - 1,
       };
     }),
     conversationEvents: vi.fn(async function* () {

@@ -316,3 +316,8 @@ TELEGRAM_REACTION_PALETTE: Final[Mapping[str, str]] = MappingProxyType(
 REACTION_PALETTE_BY_SURFACE: Final[Mapping[ConversationSource, Mapping[str, str]]] = (
     MappingProxyType({ConversationSource.TELEGRAM: TELEGRAM_REACTION_PALETTE})
 )
+
+# The prompt's example reaction for a thank-you: in every surface's palette.
+THANKS_REACTION_EMOJI: Final = "🙏"
+# U+FE0F asks for emoji presentation of the same character; Telegram lists its emoji without it.
+EMOJI_PRESENTATION_SELECTOR: Final = "️"

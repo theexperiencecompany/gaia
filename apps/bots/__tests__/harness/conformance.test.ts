@@ -163,6 +163,7 @@ function makeGaia(script: ApiScript) {
         message_id: "u1",
         seq: 1,
         session_token: "session",
+        after_seq: 0,
       };
     }),
     conversationEvents: vi.fn(async function* () {

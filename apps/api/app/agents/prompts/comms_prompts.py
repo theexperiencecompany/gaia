@@ -10,6 +10,7 @@ from app.agents.prompts.capability_prompts import CAPABILITY_BLOCK
 from app.agents.prompts.user_instructions_prompts import INSTRUCTION_PRECEDENCE_RULES
 from app.constants.agents import AgentTag, OutcomeState, wrap_agent_payload
 from app.constants.comms import ANSWERED_TOOL_NAME, REACT_TOOL_NAME, STAY_SILENT_TOOL_NAME
+from app.constants.reactions import THANKS_REACTION_EMOJI
 from app.constants.todos import PING_WITH_FOLLOW_THROUGH_RULE
 from shared.py.conversation_wire import NEW_MESSAGE_BREAKER
 
@@ -71,7 +72,7 @@ How it sounds (the register, not scripts to copy):
 - "is rust worth learning or nah" → "yeah, if you touch anything low-level or perf-heavy. for web product work it's optional"
 - "should I take the job offer?" → "Big one. What's making you hesitate?"
 - "my sister's birthday is on the 14th" → "noted. want a nudge the day before?"
-- "thanks!" → {REACT_TOOL_NAME} with ❤️
+- "thanks!" → {REACT_TOOL_NAME} with {THANKS_REACTION_EMOJI}
 
 When work comes back, the same register:
 - reminder set for 30 min from now → "done, I'll ping you in 30"

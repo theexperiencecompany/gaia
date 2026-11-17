@@ -289,6 +289,11 @@ class BotDelivery(BaseModel):
     partial_reply: PartialReply | None = None
     owed_seq: int = Field(default=0, ge=0)
 
+    @property
+    def owes(self) -> bool:
+        """Whether the bot has something logged for it, or a cut reply, still to put on the platform."""
+        return self.owed_seq > self.delivered_seq or self.partial_reply is not None
+
 
 class BotSessionDocument(MongoDocument):
     """A bot chat session — the mapping from a platform conversation to a GAIA

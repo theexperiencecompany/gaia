@@ -66,9 +66,15 @@ class MessageAccepted(ResponseModel):
 
 
 class BotMessageAccepted(MessageAccepted):
-    """A bot message accepted, with the token the bot follows the events stream with."""
+    """A bot message accepted, with the token the bot follows the events stream with.
+
+    after_seq and partial_reply are where the follow starts: the session's delivery cursor while
+    it still owes anything, else just before the message.
+    """
 
     session_token: str
+    after_seq: int = Field(ge=0)
+    partial_reply: PartialReply | None = None
 
 
 class ActiveBotConversation(ResponseModel):

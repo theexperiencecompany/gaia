@@ -6841,12 +6841,18 @@ export interface components {
         /**
          * BotMessageAccepted
          * @description A bot message accepted, with the token the bot follows the events stream with.
+         *
+         *     after_seq and partial_reply are where the follow starts: the session's delivery cursor while
+         *     it still owes anything, else just before the message.
          */
         BotMessageAccepted: {
+            /** After Seq */
+            after_seq: number;
             /** Conversation Id */
             conversation_id: string;
             /** Message Id */
             message_id: string;
+            partial_reply: components["schemas"]["PartialReply"] | null;
             /** Seq */
             seq: number;
             /** Session Token */
