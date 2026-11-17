@@ -68,6 +68,14 @@ Components render. Hooks think.
 - Keep components under ~150 lines — split if larger.
 - No prop drilling more than 2 levels — lift to Zustand or use composition.
 
+## Debt Guardrails (web)
+
+The repo-wide rules are in the root `CLAUDE.md` ("Debt Guardrails"). On the web, the `debt-review` skill looks hardest at these three things:
+
+- **Render the server's decision; never re-derive it.** If the API decides something (which items were left out, an item's state label, whether quiet hours apply), the web reads a field the API sends. It never recomputes the decision, and it never keeps a mirror constant such as `EDITION_ROWS_SHOWN` or a copied state map. If the field is missing, add it to the API model.
+- **No mirrors of server constants or enums.** Enums and limits come from `@shared/api/generated` (a `StrEnum` arrives as a literal union). A test that regex-parses Python source to keep two copies equal shows that one copy should not exist.
+- **One test home per subject.** Each component has one test file. Mocks and fixtures come from shared factories, typed against the generated types. Never copy a `vi.mock` block or a partial fixture into a second file.
+
 ## API Layer
 
 Never call `fetch` or `axios` directly from components or hooks.

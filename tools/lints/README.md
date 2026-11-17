@@ -23,7 +23,10 @@ remediation, and a link back to the relevant section here.
 Every rule carries an `ALLOWLIST` of the offenders that predate it, checked into
 the rule file with a per-entry reason. The list is a **ratchet**: remove an
 entry when you fix its target; never add one. A new violation cannot be
-allowlisted away — it must be fixed, which is the point.
+allowlisted away — it must be fixed, which is the point. CI enforces it:
+`scripts/ci/baselines.py growth` (the `baseline-growth` check) fails an
+allowlist that gains an entry or a raised count, and the `*_baseline.txt`
+files below that gain a line.
 
 ---
 
@@ -281,9 +284,10 @@ exemption to "has this PR touched the file" turns each PR that happens to
 edit a grandfathered file into the moment its debt gets paid down, without
 blocking unrelated work everywhere else.
 
-**Fix:** if the violation is new, simplify the function (or, if it's a
-genuine one-off, justify it in review and add it to the baseline with
-`--update`). If it's grandfathered but your PR touches that file, fix the
+**Fix:** if the violation is new, simplify the function (or, only on the
+founder's explicit approval, add it to the baseline with `--update` and write
+`# growth approved by <login> on YYYY-MM-DD: <reason>` above the new line —
+`scripts/ci/baselines.py growth` fails a baseline that grows without one). If it's grandfathered but your PR touches that file, fix the
 violation now and delete its line from the baseline.
 
 **Scope:** on a PR, "touched" is the same `scripts/ci/changes.sh files py`

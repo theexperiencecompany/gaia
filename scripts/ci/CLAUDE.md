@@ -27,6 +27,7 @@ lane without grepping the workflow first.
 | The release-metadata guards | `release.mjs` | `validate-manifest`, `verify-cli` |
 | Shipping to production | `deploy.sh` | `plan`, `stack`, `verify`, `retag`, `notify`, `failing-checks`, `served-commit`, `verify-commit`, `changelog`, `unwedge` |
 | What search engines see of, and are told about, the live marketing site | `smoke-web.sh` | `audit`, `squirrel`, `audit-build`, `tighten`, `indexnow` |
+| The ratchet baselines, which only shrink | `baselines.py` | `growth` |
 
 `.py` concepts decide (parse API results, route, pack, classify); `.sh`
 concepts orchestrate (containers, polling, ordered commands) — "Bash for glue,
@@ -47,6 +48,19 @@ that already violated them (`checks.mjs api-schema-types`,
 saying what would remove it, and the gate fails on anything NOT listed while
 reporting a line that no longer matches as merely removable — so a baseline can
 be emptied without reddening the PR that empties it.
+
+Growing one is the founder's call, never the author's. `baselines.py growth`
+(the `baseline-growth` check in repo-policy, on a PR and in the merge queue)
+fails a change that adds an entry to any of these files, to
+`tools/lints/*_baseline.txt` or `apps/api/tests/meta/*_baseline.txt`, or to a
+module-level `*ALLOWLIST*` literal in `tools/lints/*.py` — or that loosens a
+bound one records (a squirrel `score:` floor lowered, an allowlist count
+raised). The one way through is a comment written in the same change directly
+above the entry, or above the run of entries it opens:
+`# growth approved by <github-login> on YYYY-MM-DD: <reason>`. An approval
+already on the base approves nothing new, a renewed `deferred-until=` is not
+growth, and a new gate's seed file is not growth. Write that line only when
+the founder has approved the growth in so many words.
 
 `lib/` holds what the entrypoints share or delegate to: `output_findings.py`
 (what a tool printed, read back as findings at file:line — pytest, vitest,
