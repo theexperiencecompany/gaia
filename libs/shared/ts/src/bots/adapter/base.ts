@@ -41,6 +41,7 @@ import {
   platformIdentity,
 } from "../../analytics";
 import type { ActiveBotConversation } from "../../api/generated";
+import { RETRY_POLICY } from "../../retry";
 import { GaiaClient } from "../api";
 import { loadConfig } from "../config";
 import type { OutboundAttachment } from "../consumer/envelope";
@@ -101,9 +102,6 @@ import { wideLog, withWideEvent } from "../utils/wide-events";
 import { ArrivalOrder } from "./arrival-order";
 import { BotServer } from "./base-server";
 import { listActiveUntilAnswered } from "./resume-list";
-
-/** Tries at fetching an artifact from GAIA's API before the file counts as undeliverable. */
-const ARTIFACT_FETCH_MAX_ATTEMPTS = 3;
 
 /** An outbound artifact, fetched and within the platform's cap, ready to upload. */
 export interface OutboundFile {
@@ -458,7 +456,7 @@ export abstract class BaseBotAdapter {
               attachment.path,
               ctx,
             ),
-      ARTIFACT_FETCH_MAX_ATTEMPTS,
+      RETRY_POLICY.OWN_API,
     );
     const limit = OUTBOUND_FILE_LIMITS[this.platform];
     if (artifact.data.length > limit) {

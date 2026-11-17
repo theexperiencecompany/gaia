@@ -27,6 +27,8 @@ const { server, saved, sendResult, retitled } = vi.hoisted(() => ({
   server: {
     streams: [] as OpenStream[],
     notFound: new Set<string>(),
+    refused: new Map<string, number>(),
+    subscribes: 0,
   },
   saved: new Map<string, unknown>(),
   retitled: [] as { id: string; fields: unknown }[],
@@ -40,8 +42,14 @@ const { server, saved, sendResult, retitled } = vi.hoisted(() => ({
 
 vi.mock("@/features/chat/api/chatApi", () => {
   class ConversationNotFoundError extends Error {}
+  class ConversationEventsRefusedError extends Error {
+    constructor(readonly status: number) {
+      super(`refused (${status})`);
+    }
+  }
   return {
     ConversationNotFoundError,
+    ConversationEventsRefusedError,
     chatApi: {
       subscribeToConversationEvents: (
         conversationId: string,
@@ -49,6 +57,12 @@ vi.mock("@/features/chat/api/chatApi", () => {
         signal: AbortSignal,
       ) =>
         new Promise<void>((resolve, reject) => {
+          server.subscribes += 1;
+          const refusedWith = server.refused.get(conversationId);
+          if (refusedWith !== undefined) {
+            reject(new ConversationEventsRefusedError(refusedWith));
+            return;
+          }
           if (server.notFound.has(conversationId)) {
             reject(new ConversationNotFoundError(conversationId));
             return;
@@ -136,6 +150,8 @@ let release: (() => void) | null = null;
 beforeEach(() => {
   server.streams = [];
   server.notFound.clear();
+  server.refused.clear();
+  server.subscribes = 0;
   saved.clear();
   sendResult.fail = null;
   sendResult.refusals = [];
@@ -201,6 +217,26 @@ describe("following a conversation's events", () => {
       screenFrame([userItem("m1", 1), replyItem("r1", 2, "done", "answered")]),
     );
     expect(ids()).toEqual(["m1", "r1"]);
+  });
+
+  it("stops reconnecting when the server refuses the stream with a 4xx", async () => {
+    vi.useFakeTimers();
+    server.refused.set(CONVERSATION, 401);
+    release = openConversation(CONVERSATION);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(server.subscribes).toBe(1);
+  });
+
+  it("keeps reconnecting through a rate limit, which can pass", async () => {
+    vi.useFakeTimers();
+    server.refused.set(CONVERSATION, 429);
+    release = openConversation(CONVERSATION);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(server.subscribes).toBeGreaterThan(1);
   });
 
   it("reopens when a delta skips an index, and the fresh stream fills the gap", async () => {

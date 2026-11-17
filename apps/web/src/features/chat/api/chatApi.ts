@@ -45,6 +45,14 @@ export class ConversationNotFoundError extends Error {
   }
 }
 
+/** The events stream answered with a status other than an event stream. */
+export class ConversationEventsRefusedError extends Error {
+  constructor(readonly status: number) {
+    super(`Unexpected conversation events response (${status})`);
+    this.name = "ConversationEventsRefusedError";
+  }
+}
+
 const HTTP_NOT_FOUND = 404;
 const HTTP_GONE = 410;
 
@@ -274,9 +282,7 @@ export const chatApi = {
             !response.ok ||
             !response.headers.get("content-type")?.includes("text/event-stream")
           ) {
-            throw new Error(
-              `Unexpected conversation events response (${response.status})`,
-            );
+            throw new ConversationEventsRefusedError(response.status);
           }
         },
         onmessage(event) {

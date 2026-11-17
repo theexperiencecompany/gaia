@@ -7,15 +7,13 @@
  * connection reconnects with backoff.
  */
 
+import { isRetryableStatus, reconnectDelayMs } from "../retry";
 import {
   FRAME_KIND,
   type FrameParseError,
   parseConversationEvent,
 } from "./frames";
 import type { ConversationFrame, FrameGap } from "./types";
-
-const RECONNECT_BASE_MS = 500;
-const RECONNECT_MAX_MS = 15_000;
 
 /** What a platform gives the follower: its transport, its store, and where to report. */
 export interface ConversationFollowPorts {
@@ -27,6 +25,8 @@ export interface ConversationFollowPorts {
   ) => Promise<void>;
   /** The subscribe error for a conversation that does not exist yet. */
   isNotFound: (error: unknown) => boolean;
+  /** The status the server refused the stream with, when it answered one. */
+  statusOf: (error: unknown) => number | undefined;
   /** Apply one frame to the store; returns the gap when it could not. */
   apply: (conversationId: string, frame: ConversationFrame) => FrameGap | null;
   /** The conversation's title changed; it belongs to the conversation list, not the view. */
@@ -52,9 +52,6 @@ interface Connection {
   /** Resolves the current wait early: a send just created the conversation, or the caller closed. */
   wake: (() => void) | null;
 }
-
-const backoff = (attempt: number): number =>
-  Math.min(RECONNECT_BASE_MS * 2 ** attempt, RECONNECT_MAX_MS);
 
 function wait(connection: Connection, ms: number | null): Promise<void> {
   return new Promise((resolve) => {
@@ -104,6 +101,26 @@ export function createConversationFollower(
     return { gap, delivered };
   }
 
+  /** What a failed connection leads to: stop, reconnect at once (a send woke it), or back off first. */
+  async function afterFailure(
+    conversationId: string,
+    connection: Connection,
+    error: unknown,
+  ): Promise<"stop" | "reconnect" | "backoff"> {
+    if (connection.closed) return "stop";
+    if (ports.isNotFound(error)) {
+      // Nothing to follow until this device's first send creates it.
+      await wait(connection, null);
+      return "reconnect";
+    }
+    ports.onDrop(conversationId, error);
+    const status = ports.statusOf(error);
+    // A refusal (signed out, forbidden) fails the same way on every reconnect.
+    return status !== undefined && !isRetryableStatus(status)
+      ? "stop"
+      : "backoff";
+  }
+
   async function follow(
     conversationId: string,
     connection: Connection,
@@ -118,20 +135,16 @@ export function createConversationFollower(
         gap = ended.gap;
         if (ended.delivered) attempt = 0;
       } catch (error) {
-        if (connection.closed) return;
-        if (ports.isNotFound(error)) {
-          // Nothing to follow until this device's first send creates it.
-          await wait(connection, null);
-          continue;
-        }
-        ports.onDrop(conversationId, error);
+        const next = await afterFailure(conversationId, connection, error);
+        if (next === "stop") return;
+        if (next === "reconnect") continue;
       }
       if (connection.closed) return;
       if (gap) {
         ports.onReopen(conversationId, gap);
         continue;
       }
-      await wait(connection, backoff(attempt));
+      await wait(connection, reconnectDelayMs(attempt));
       attempt += 1;
     }
   }

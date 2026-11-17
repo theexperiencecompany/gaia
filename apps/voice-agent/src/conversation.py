@@ -33,6 +33,7 @@ from shared.py.conversation_wire import (
     ScreenItemHeader,
     ScreenUpdateFrame,
 )
+from shared.py.retry import STREAM_RECONNECT, is_retryable_status, retrying
 from shared.py.wide_events import VoiceContext, log, log_context, wide_task
 from src.constants import (
     CONVERSATION_DESCRIPTION_TOPIC,
@@ -46,6 +47,17 @@ from src.constants import (
 from src.speech import Flush, ReplySpeech
 
 _Item = Annotated[ReplyItem | ScreenItemHeader, Field(union_mode="left_to_right")]
+
+
+def _reconnectable(error: BaseException) -> bool:
+    """Whether opening the events stream may pass on a retry: a network failure, or a status that can."""
+    if isinstance(error, aiohttp.ClientResponseError):
+        return is_retryable_status(error.status)
+    return isinstance(error, aiohttp.ClientError | TimeoutError)
+
+
+def _log_drop(attempt: int, error: BaseException) -> None:
+    log.warning(f"{LogTag.VOICE} events stream could not open", attempt=attempt, error=str(error))
 
 
 class _OtherFrame(BaseModel):
@@ -145,18 +157,32 @@ class VoiceConversation:
             await self._http.close()
 
     async def _follow(self, conversation_id: str, after_seq: int) -> None:
-        """Speak every reply opened after after_seq, reconnecting when the stream drops."""
+        """Speak every reply opened after after_seq, reopening the stream as it ends.
+
+        A stream that cannot be opened is retried under STREAM_RECONNECT and then raised; a refusal
+        (a 4xx other than 408 and 429) is raised at once.
+        """
         while True:
-            async with log_context(
-                "voice_follow", user_id=self.user_id, conversation_id=conversation_id
-            ):
-                log.set(voice=VoiceContext(operation="follow", room=self.room_name))
-                try:
-                    async for event in self._events(conversation_id):
-                        await self.apply(event.frame, after_seq)
-                except (aiohttp.ClientError, TimeoutError) as error:
-                    log.warning(f"{LogTag.VOICE} events stream dropped", error=str(error))
+            async for attempt in retrying(STREAM_RECONNECT, _reconnectable, _log_drop):
+                with attempt:
+                    await self._follow_once(conversation_id, after_seq)
             await asyncio.sleep(FOLLOW_RECONNECT_DELAY_S)
+
+    async def _follow_once(self, conversation_id: str, after_seq: int) -> None:
+        """Read one connection; a drop after it delivered ends it like a close, so the retries start over."""
+        delivered = False
+        async with log_context(
+            "voice_follow", user_id=self.user_id, conversation_id=conversation_id
+        ):
+            log.set(voice=VoiceContext(operation="follow", room=self.room_name))
+            try:
+                async for event in self._events(conversation_id):
+                    delivered = True
+                    await self.apply(event.frame, after_seq)
+            except (aiohttp.ClientError, TimeoutError) as error:
+                if not delivered:
+                    raise
+                log.warning(f"{LogTag.VOICE} events stream dropped", error=str(error))
 
     async def apply(self, frame: _Frame, after_seq: int) -> None:
         """Speak and display one frame; replies at or before after_seq were never this session's."""

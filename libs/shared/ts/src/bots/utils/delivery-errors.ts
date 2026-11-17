@@ -8,9 +8,9 @@
  * the reply twice with a stale partial copy above it.
  */
 
+import { RETRY_POLICY, type RetryPolicy, withRetry } from "../../retry";
 import { classifyBotFailure, isTransientBotFailure } from "./failure-reasons";
 import { getHttpStatus, sanitizeErrorForLog } from "./logger";
-import { sleep } from "./timeout";
 import { wideLog } from "./wide-events";
 
 /** How long to wait for a rate limit that did not say (platforms often omit it). */
@@ -70,40 +70,23 @@ export function retryAfterMs(error: unknown): number | null {
   return isRateLimited ? RATE_LIMIT_DEFAULT_WAIT_MS : null;
 }
 
-const BACKOFF_BASE_MS = 500;
-
-/** How long to wait before retrying call attempt n, or null when its failure is permanent. */
-function transientWaitMs(error: unknown, attempt: number): number | null {
-  if (!isTransientBotFailure(classifyBotFailure(error))) return null;
-  return (
-    retryAfterMs(error) ??
-    Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), RATE_LIMIT_MAX_WAIT_MS)
-  );
-}
-
 /**
- * Runs one call, retrying it in place while it fails transiently: after the
- * platform's retry_after on a rate limit, else a backoff capped at
- * RATE_LIMIT_MAX_WAIT_MS. A follow waiting here is paused and goes on from where it
- * was once the platform answers. A permanent failure (chat not found, bot blocked,
- * a rejected request) throws, and so does the last failure after maxAttempts.
+ * Runs one platform call under policy, retrying it in place while it fails transiently: after
+ * the platform's retry_after on a rate limit, plus the policy's backoff. A permanent failure
+ * (chat not found, bot blocked, a rejected request) throws at once, and so does the last
+ * failure once the policy's retries are spent.
  */
-export async function retryTransientPlatformCall<T>(
+export function retryTransientPlatformCall<T>(
   call: () => Promise<T>,
-  maxAttempts = Number.POSITIVE_INFINITY,
+  policy: RetryPolicy = RETRY_POLICY.PLATFORM_SEND,
 ): Promise<T> {
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await call();
-    } catch (error) {
-      const waitMs = transientWaitMs(error, attempt);
-      if (waitMs === null || attempt >= maxAttempts) throw error;
+  return withRetry(policy, call, {
+    transient: (error) => isTransientBotFailure(classifyBotFailure(error)),
+    waitAsked: retryAfterMs,
+    onRetry: (error, attempt) =>
       wideLog.warning("platform_call_retrying", {
         ...sanitizeErrorForLog(error),
         attempt,
-        wait_ms: waitMs,
-      });
-      await sleep(waitMs);
-    }
-  }
+      }),
+  });
 }

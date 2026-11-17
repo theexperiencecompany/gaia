@@ -77,6 +77,8 @@ const follower = createConversationFollower({
   subscribe: chatApi.subscribeToConversationEvents,
   isNotFound: (error) =>
     error instanceof EventStreamHttpError && error.status === HTTP_NOT_FOUND,
+  statusOf: (error) =>
+    error instanceof EventStreamHttpError ? error.status : undefined,
   apply: (conversationId, frame) => {
     const gap = useLiveConversationStore
       .getState()

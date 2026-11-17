@@ -26,6 +26,7 @@ import type {
   ConversationFrame,
   ScreenItem,
 } from "../../../../../libs/shared/ts/src/conversation/types";
+import { RETRY_POLICY } from "../../../../../libs/shared/ts/src/retry";
 
 /** The conversation's screen: a request already answered "On it.", then the work's late result. */
 const SCREEN: ScreenItem[] = [
@@ -165,6 +166,24 @@ describe("a bot that boots before the API listens", () => {
 
     expect(listActiveConversations).toHaveBeenCalledTimes(3);
     expect(adapter.sent).toEqual(["Your flight is booked."]);
+  });
+
+  it("gives up once the OWN_API retries are spent, instead of asking forever", async () => {
+    const { adapter, listActiveConversations } = restarted([target(3)]);
+    listActiveConversations.mockRejectedValue(refused());
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const resumed = adapter.resume();
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      await resumed;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(listActiveConversations).toHaveBeenCalledTimes(
+      RETRY_POLICY.OWN_API.retries + 1,
+    );
+    expect(adapter.sent).toEqual([]);
   });
 
   it("does not ask again when the API refuses the bot for good", async () => {

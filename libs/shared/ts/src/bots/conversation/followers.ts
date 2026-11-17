@@ -11,6 +11,7 @@
  */
 
 import type { ConversationFrame } from "../../conversation/types";
+import { isRetryableStatus, RETRY_POLICY, reconnectDelayMs } from "../../retry";
 import type { BotUserContext } from "../types";
 import { recordBotFailure } from "../utils/failure-reasons";
 import {
@@ -41,12 +42,6 @@ export type DeliveryRecorder = (
   conversationId: string,
   cursor: DeliveryCursor,
 ) => Promise<void>;
-
-/** Reconnect backoff: doubles from the base, capped. */
-const RECONNECT_BASE_MS = 500;
-const RECONNECT_MAX_MS = 10_000;
-/** Consecutive failed connections before the follow gives up. */
-const MAX_RECONNECTS = 8;
 
 interface Followed {
   follower: ConversationFollower;
@@ -244,8 +239,8 @@ export class ConversationFollowers {
         }
         const status = getHttpStatus(error);
         failures += 1;
-        const refused = status !== undefined && status >= 400 && status < 500;
-        if (refused || failures > MAX_RECONNECTS) {
+        const refused = status !== undefined && !isRetryableStatus(status);
+        if (refused || failures > RETRY_POLICY.STREAM_RECONNECT.retries) {
           // The follow is over; its replies stay in the log for the next follow and the web app.
           recordBotFailure("conversation_follow_failed", error, { failures });
           return;
@@ -256,9 +251,7 @@ export class ConversationFollowers {
         });
       }
       reconnects += 1;
-      await sleep(
-        Math.min(RECONNECT_BASE_MS * 2 ** failures, RECONNECT_MAX_MS),
-      );
+      await sleep(reconnectDelayMs(failures));
     }
   }
 }

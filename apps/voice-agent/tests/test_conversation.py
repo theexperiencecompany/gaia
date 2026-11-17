@@ -7,9 +7,11 @@ import json
 from types import SimpleNamespace
 from typing import cast
 
+import aiohttp
 from livekit import rtc
 from livekit.agents.llm import ChatItem, ChatMessage
 from livekit.agents.voice import SpeechHandle
+import pytest
 from src.conversation import ConversationEvent, VoiceConversation, parse_event
 
 from shared.py.conversation_wire import (
@@ -292,3 +294,45 @@ def test_a_reply_is_spoken_but_shown_only_through_the_events_stream() -> None:
 
     asyncio.run(scenario())
     assert sent == []
+
+
+class RefusedApi(RecordingApi):
+    """An events endpoint that answers each open with the next scripted status, then streams."""
+
+    def __init__(self, statuses: list[int]) -> None:
+        super().__init__([entry(2, "reply", "r1")])
+        self.statuses = statuses
+        self.opens = 0
+
+    async def _events(self, conversation_id: str) -> AsyncIterator[ConversationEvent]:
+        self.opens += 1
+        if self.statuses:
+            raise aiohttp.ClientResponseError(
+                cast(aiohttp.RequestInfo, SimpleNamespace(real_url="http://api/events")),
+                (),
+                status=self.statuses.pop(0),
+            )
+        async for event in super()._events(conversation_id):
+            yield event
+
+
+def test_a_refused_events_stream_is_raised_at_once_not_retried_forever() -> None:
+    async def scenario() -> None:
+        conversation = RefusedApi([401, 401])
+        with pytest.raises(aiohttp.ClientResponseError) as refused:
+            await asyncio.wait_for(conversation._follow(CONVERSATION, 1), timeout=5)
+        assert refused.value.status == 401
+        assert conversation.opens == 1
+
+    asyncio.run(scenario())
+
+
+def test_a_stream_the_api_could_not_open_yet_is_opened_again() -> None:
+    async def scenario() -> None:
+        conversation = RefusedApi([503])
+        follow_task = asyncio.create_task(conversation._follow(CONVERSATION, 1))
+        await asyncio.wait_for(conversation.drained.wait(), timeout=5)
+        follow_task.cancel()
+        assert conversation.opens == 2
+
+    asyncio.run(scenario())

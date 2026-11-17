@@ -27,6 +27,7 @@ import {
   userItemWith,
 } from "../../../../../libs/shared/ts/src/conversation/testing";
 import type { ConversationFrame } from "../../../../../libs/shared/ts/src/conversation/types";
+import { RETRY_POLICY } from "../../../../../libs/shared/ts/src/retry";
 
 // A live preview goes out on the edit timer, after the frame that scheduled it rendered.
 const EDIT_INTERVAL_MS = 5;
@@ -279,5 +280,82 @@ describe("an edit during a platform outage", () => {
     expect(ended).toBe(true);
     expect(outage).toEqual([]);
     expect(sent.at(-1)).toBe("Your flight is booked.");
+  });
+});
+
+describe("an events stream the API answers with a 4xx", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function followThrough(status: number): Promise<{
+    opened: number;
+    sent: string[];
+  }> {
+    vi.useFakeTimers();
+    let opened = 0;
+    const source: ConversationEventSource = async function* () {
+      opened += 1;
+      if (opened === 1) {
+        throw Object.assign(new Error(`stream refused (${status})`), {
+          response: { status },
+        });
+      }
+      yield* conversation("r1", "Your flight is booked.");
+    };
+    const sent: string[] = [];
+    const followers = new ConversationFollowers(source, TELEGRAM, NOT_KEPT);
+    followers.follow(
+      { platform: "telegram", platformUserId: "1" },
+      "c1",
+      1,
+      { delivered_seq: 0, partial_reply: null },
+      surface(sent, null),
+    );
+    let ended = false;
+    void followers.idle().then(() => {
+      ended = true;
+    });
+    for (let tick = 0; tick < 60 && !ended; tick += 1) {
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+    return { opened, sent };
+  }
+
+  it("reconnects after a rate limit, which can pass", async () => {
+    const { opened, sent } = await followThrough(429);
+
+    expect(opened).toBe(2);
+    expect(sent.at(-1)).toBe("Your flight is booked.");
+  });
+
+  it("ends the follow on a refusal, which fails the same way every time", async () => {
+    const { opened, sent } = await followThrough(401);
+
+    expect(opened).toBe(1);
+    expect(sent).toEqual([]);
+  });
+});
+
+describe("a platform that never comes back", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is given up on once the PLATFORM_SEND retries are spent, instead of retried forever", async () => {
+    vi.useFakeTimers();
+    let tries = 0;
+    const call = retryTransientPlatformCall(async () => {
+      tries += 1;
+      throw grammyError(502, "Bad Gateway");
+    });
+    const settled = call.then(
+      () => "sent",
+      (error: unknown) => error,
+    );
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+
+    await expect(settled).resolves.toMatchObject({ error_code: 502 });
+    expect(tries).toBe(RETRY_POLICY.PLATFORM_SEND.retries + 1);
   });
 });

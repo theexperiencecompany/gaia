@@ -5,6 +5,7 @@ import {
 } from "@shared/conversation/live";
 import { v4 as uuidv4 } from "uuid";
 import {
+  ConversationEventsRefusedError,
   ConversationNotFoundError,
   chatApi,
 } from "@/features/chat/api/chatApi";
@@ -100,6 +101,8 @@ function retitle(conversationId: string, description: string): void {
 const follower = createConversationFollower({
   subscribe: chatApi.subscribeToConversationEvents,
   isNotFound: (error) => error instanceof ConversationNotFoundError,
+  statusOf: (error) =>
+    error instanceof ConversationEventsRefusedError ? error.status : undefined,
   apply: (conversationId, frame) => {
     const gap = useLiveConversationStore
       .getState()
